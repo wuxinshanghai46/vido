@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIDO - AI 视频创作平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="/js/auth.js"></script>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ═══ TOP NAVBAR ═══ -->
+  <nav class="topnav">
+    <div class="topnav-logo">
+      <div class="logo-mark">V</div>
+      <span class="logo-name">VIDO</span>
+      <span class="logo-ver">Beta</span>
+    </div>
+    <div class="topnav-items">
+      <div class="nav-item active" data-page="create">
+        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 4.5H15l-3.8 3 1.3 4.5L8 10l-4.5 3 1.3-4.5L1 5.5h5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+        <span>AI 视频</span>
+      </div>
+      <div class="nav-item" data-page="avatar">
+        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 15c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M11 3.5l1.5-2M5 3.5L3.5 1.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".5"/></svg></span>
+        <span>AI 数字人</span>
+        <span class="nav-new-badge">NEW</span>
+      </div>
+      <div class="nav-item" data-page="imggen">
+        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/><path d="M1.5 12l3.5-3.5 2.5 2.5 3-3.5 4 4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+        <span>AI 图片</span>
+        <span class="nav-new-badge">NEW</span>
+      </div>
+      <div class="nav-item" data-page="i2v">
+        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="8" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M10 6l4-2v8l-4-2V6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M3.5 5.5l2.5 1.5-2.5 1.5z" fill="currentColor" opacity=".5"/></svg></span>
+        <span>图生视频</span>
+      </div>
+      <div class="topnav-sep"></div>
+      <div class="nav-item" data-page="projects">
+        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4.5V13a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
+        <span>我的项目</span>
+        <span class="nav-item-badge" id="project-count" style="display:none">0</span>
+      </div>
+    </div>
+    <div class="topnav-right">
+      <div class="user-credits" id="user-credits" title="积分余额">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/><text x="7" y="10" text-anchor="middle" fill="currentColor" font-size="8" font-weight="bold">$</text></svg>
+        <span id="credits-display">--</span>
+      </div>
+      <div class="theme-switcher">
+        <div class="theme-dots">
+          <button class="theme-dot active" data-theme="purple" onclick="switchTheme('purple')" title="紫罗兰" style="--dot-c:#7c6cf0"></button>
+          <button class="theme-dot" data-theme="cyan" onclick="switchTheme('cyan')" title="青蓝" style="--dot-c:#21fff3"></button>
+          <button class="theme-dot" data-theme="green" onclick="switchTheme('green')" title="翠绿" style="--dot-c:#00e5a0"></button>
+          <button class="theme-dot" data-theme="amber" onclick="switchTheme('amber')" title="琥珀" style="--dot-c:#f5c518"></button>
+          <button class="theme-dot" data-theme="rose" onclick="switchTheme('rose')" title="玫红" style="--dot-c:#ff4d6d"></button>
+          <button class="theme-dot" data-theme="blue" onclick="switchTheme('blue')" title="海蓝" style="--dot-c:#4d9fff"></button>
+        </div>
+      </div>
+      <div class="user-menu" id="user-menu">
+        <button class="user-menu-btn" onclick="toggleUserMenu()">
+          <span class="user-avatar" id="user-avatar">U</span>
+          <span class="user-name" id="user-name">--</span>
+        </button>
+        <div class="user-dropdown" id="user-dropdown" style="display:none">
+          <div class="user-dropdown-item" id="admin-link" style="display:none" onclick="window.location.href='/admin.html'">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.1"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+            管理后台
+          </div>
+          <div class="user-dropdown-item" onclick="logout()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2M9 10l3-3-3-3M12 7H5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            退出登录
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main-area">
+    <div class="page-content">
+
+      <!-- ══ 创作页面 ══ -->
+      <div id="page-create" class="page active">
+        <div class="studio">
+
+          <!-- ─── TOP BAR ─── -->
+          <header class="sto-topbar">
+            <div class="sto-tb-l">
+              <button class="sto-tb-iconbtn" title="菜单">
+                <svg width="15" height="11" viewBox="0 0 15 11"><path d="M1 1h13M1 5.5h13M1 10h13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </button>
+              <button class="sto-tb-iconbtn" title="保存项目">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11.5 13H2.5a1 1 0 01-1-1V2a1 1 0 011-1h6.5l3 3v8a1 1 0 01-1 1z" stroke="currentColor" stroke-width="1.2"/><rect x="4" y="8" width="6" height="5" rx=".5" stroke="currentColor" stroke-width="1.2"/><path d="M4 1v3.5h5.5V1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              </button>
+              <div class="sto-tb-sep"></div>
+              <span class="sto-tb-time" id="sto-datetime"></span>
+            </div>
+            <div class="sto-tb-tools">
+              <button class="sto-tool active" id="stool-cursor" title="选择">
+                <svg width="12" height="13" viewBox="0 0 12 13"><path d="M2 2l7.5 4.5-3.5.8-1.5 4.7z" fill="currentColor"/></svg>
+              </button>
+              <button class="sto-tool" title="添加分镜" onclick="addScene();switchStudioTab('scene')">
+                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </button>
+              <button class="sto-tool" title="AI 工具">
+                <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5l1.3 3.5H11L8.5 7l1 3.5L6.5 9l-3 1.5 1-3.5L2 5h3.2z" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="sto-tool" title="磁吸对齐">
+                <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="3.5" width="3.5" height="6" rx=".5" stroke="currentColor" stroke-width="1.1" fill="none"/><rect x="8" y="3.5" width="3.5" height="6" rx=".5" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M5 6.5h3" stroke="currentColor" stroke-width="1.1"/></svg>
+              </button>
+            </div>
+            <div class="sto-tb-view">
+              <div class="sto-tb-select">
+                <span>100%</span>
+                <svg width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+              </div>
+              <div class="sto-tb-select" onclick="studioToggleAspect()" style="cursor:pointer">
+                <span id="sto-ratio-label">16:9</span>
+                <svg width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+              </div>
+            </div>
+            <div class="sto-tb-divv"></div>
+            <div class="sto-tb-r">
+              <button class="sto-tb-iconbtn" title="撤销">↩</button>
+              <button class="sto-tb-iconbtn" title="重做">↪</button>
+              <div class="sto-tb-divv"></div>
+              <button class="sto-tb-iconbtn" title="全屏预览">
+                <svg width="13" height="13" viewBox="0 0 13 13"><path d="M1 4V1h3M9 1h3v3M12 9v3H9M4 12H1V9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg>
+              </button>
+              <button class="btn-sto-export" id="btn-generate" onclick="startGeneration()">创作</button>
+              <button class="btn-sto-cancel" id="btn-cancel" onclick="cancelGeneration()" style="display:none" title="取消制作">取消</button>
+              <button class="btn-sto-skip" onclick="startGenerationSkip()" title="跳过剧情解析">跳过</button>
+              <div class="sto-tb-avatar">C</div>
+            </div>
+          </header>
+
+          <!-- ─── BODY ─── -->
+          <div class="sto-body">
+
+            <!-- Left icon nav -->
+            <nav class="sto-nav">
+              <div class="sto-nav-item active" id="snav-script" onclick="switchStudioTab('script')" title="剧本">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><rect x="2.5" y="1.5" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 6h6M5.5 8.5h6M5.5 11h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                <span>剧本</span>
+              </div>
+              <div class="sto-nav-item" id="snav-scene" onclick="switchStudioTab('scene')" title="场景">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><rect x="1.5" y="2" width="14" height="13" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 11l4-4 3.5 3.5 3-4 4 4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="5.5" r="1.5" stroke="currentColor" stroke-width="1.1"/></svg>
+                <span>场景</span>
+                <span class="snav-dot" id="snav-scene-dot" style="display:none"></span>
+              </div>
+              <div class="sto-nav-item" id="snav-character" onclick="switchStudioTab('character')" title="角色">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="5.5" r="3" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 15.5c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                <span>角色</span>
+                <span class="snav-dot" id="snav-char-dot" style="display:none"></span>
+              </div>
+              <!-- 音讯已移入剧本 Step 7 -->
+              <div class="sto-nav-sep"></div>
+              <div class="sto-nav-item sto-nav-dim" title="文字（即将上线）">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><path d="M3.5 5h10M8.5 5v7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                <span>文字</span>
+              </div>
+              <div class="sto-nav-item sto-nav-dim" title="特效（即将上线）">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><path d="M8.5 2l1.4 3.8H14L10.7 8l1.2 3.8-3.4-2.3-3.4 2.3L6.3 8 3 5.8h4.1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                <span>特效</span>
+              </div>
+              <div class="sto-nav-item sto-nav-dim" title="转场（即将上线）">
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><path d="M2 8.5h4l2 3 2-6 2 3h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>转场</span>
+              </div>
+            </nav>
+
+            <!-- Left panel -->
+            <div class="sto-panel" id="sto-panel">
+              <button class="sto-panel-colbtn" id="sto-colbtn" onclick="toggleStudioPanel()" title="折叠/展开面板">
+                <svg id="sto-colbtn-icon" width="7" height="12" viewBox="0 0 7 12"><path d="M5.5 1L1 6l4.5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="sto-panel-inner">
+              <!-- 剧本 tab -->
+<div class="sto-tab-pane" id="stab-script">
+  <div class="stp-head"><span class="stp-title">视频制作中心</span></div>
+  <div class="stp-scroll">
+
+    <!-- Step 1: 故事标题（紧凑） -->
+    <div class="stp-step stp-step-compact">
+      <div class="stp-title-row">
+        <span class="stp-title-label">标题</span>
+        <input type="text" id="input-title" class="stp-title-input" placeholder="给视频起个名字..." maxlength="100" />
+      </div>
+    </div>
+
+    <!-- Step 2: 创作内容（模式关联） -->
+    <div class="stp-step">
+      <div class="stp-step-hd"><span class="stp-step-num">1</span><span class="stp-step-name">创作内容</span></div>
+      <div class="mode-tabs">
+        <div class="mode-tab tab-ai active" id="mode-ai" onclick="switchMode('ai')"><span class="mode-tab-icon">⚡</span><span>AI 自动</span></div>
+        <div class="mode-tab tab-custom" id="mode-custom" onclick="switchMode('custom')"><span class="mode-tab-icon">✏️</span><span>自定义</span></div>
+        <div class="mode-tab tab-script" id="mode-script" onclick="switchMode('script')"><span class="mode-tab-icon">📄</span><span>剧本</span></div>
+        <div class="mode-tab tab-longform" id="mode-longform" onclick="switchMode('longform')"><span class="mode-tab-icon">📺</span><span>长篇</span></div>
+      </div>
+      <!-- AI 自动模式：内容输入区 -->
+      <div class="stp-sec" id="section-ai" style="margin-top:10px">
+        <div class="story-wrap">
+          <textarea id="input-theme" class="story-ta stp-ta" placeholder="描述你想要的视频内容，越详细效果越好..." rows="4" oninput="updateCharCount(this,'story-cnt');detectSlang(this.value);debouncedActionDetect(this.value)"></textarea>
+          <div class="story-ta-footer">
+            <button class="btn-ai-create" onclick="quickAIStory()"><span class="ai-dot"></span> 智能创作</button>
+            <span class="char-cnt" id="story-cnt">0 / 5000</span>
+          </div>
+        </div>
+        <div id="slang-detect-area" style="display:none;margin-top:6px;padding:8px;background:rgba(0,212,200,.06);border:1px solid rgba(0,212,200,.15);border-radius:8px;font-size:11px;color:rgba(255,255,255,.7)">
+          <span style="color:var(--cyan);font-weight:600">✦ 识别到专有名词：</span>
+          <div id="slang-tags" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
+        <div class="example-row" id="mode-examples" style="margin-top:6px">
+          <span class="example-lbl">示例：</span>
+          <div class="example-tags" id="example-tags-container">
+            <span class="ex-tag" onclick="setExample('一只叫小雪的白猫在月光下的屋顶上追逐萤火虫，最终与一只流浪猫成为朋友')">白猫奇遇</span>
+            <span class="ex-tag" onclick="setExample('星星邮递员穿越银河，为每颗星球送去来自地球的信件')">星星邮递员</span>
+            <span class="ex-tag" onclick="setExample('长安城中，一位少女在元宵花灯节追寻失散多年的姐姐')">长安一梦</span>
+            <span class="ex-tag ex-tag-action" onclick="setExample('少年剑客在雨夜的竹林中与蒙面刺客展开生死对决。刺客使用链锤远程攻击，剑客以轻功闪避后贴身近战，剑光如雨。最终剑客一招回风斩破解链锤缠绕，将刺客逼退至悬崖边。竹叶纷飞，暴雨如注，剑气与锁链碰撞出火花')">剑客决斗</span>
+            <span class="ex-tag ex-tag-action" onclick="setExample('巨型战斗机甲「天罚」在废墟都市中迎战三头变异boss。boss喷射酸液，天罚用能量盾格挡后发射导弹群，爆炸掀起冲击波。近战阶段天罚拔出光刃斩断boss一条手臂，boss狂暴反击将天罚撞穿建筑。最终天罚启动超载模式，全身发出金光，一拳击碎boss的核心')">机甲大战</span>
+            <span class="ex-tag ex-tag-action" onclick="setExample('武道大会决赛，两位格斗家在擂台上激战。一方擅长泰拳膝击和肘击的近身压制，另一方以太极的化劲和摔技反制。比赛从试探拳脚逐步升级到全力对攻，双方都受伤流血但不退让。最终一记膝击与掌法同时命中，两人倒地，先站起来的获胜')">格斗擂台</span>
+            <span class="ex-tag ex-tag-action" onclick="setExample('忍者在京都夜色中飞檐走壁追击目标。从屋顶跳跃到巷道，手里剑与苦无交错飞出。追到河岸边展开水上之战，忍者踩着水面疾行，用烟雾弹制造掩护后从水下突袭，匕首刺穿对手防御')">忍者追击</span>
+            <span class="ex-tag ex-tag-animal" onclick="setExample('一只金色小狐狸在秋日森林中寻找失踪的母亲，途中结识了一只受伤的白鹤')">金狐寻亲</span>
+            <span class="ex-tag" onclick="setExample('深海探险队在马里亚纳海沟发现了一座发光的古代遗迹，但遗迹的守护者苏醒了')">深海遗迹</span>
+          </div>
+        </div>
+      </div>
+      <!-- 剧本模式 -->
+      <div class="stp-sec" id="section-script" style="display:none;margin-top:10px">
+        <div class="stp-label">剧本内容</div>
+        <textarea class="story-ta script-ta stp-ta" id="script-input" rows="6" placeholder="粘贴你的剧本..."></textarea>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <button class="btn-parse-script" id="btn-parse" onclick="parseScriptContent()">✨ AI 解析</button>
+          <span class="parse-hint-txt" id="parse-hint">解析后自动提取角色和场景</span>
+        </div>
+        <div class="example-row" style="margin-top:8px">
+          <span class="example-lbl">示例：</span>
+          <div class="example-tags">
+            <span class="ex-tag" onclick="document.getElementById('script-input').value='场景一：古城墙上\n月光洒在青石板路上，少女凌雪背着长剑，独自望着远方的灯火。\n凌雪：（独白）三年了，我终于回来了...\n\n场景二：酒楼内\n热闹的酒楼中，一位青衣剑客正在独饮。凌雪走进来，两人目光交汇。\n青衣剑客：你就是凌家的后人？\n凌雪：正是。你是...？'">古风剧本</span>
+            <span class="ex-tag" onclick="document.getElementById('script-input').value='第一幕：实验室\n深夜，女科学家李薇在全息屏幕前工作。警报突然响起。\n李薇：不可能...数据怎么会自我修改？\nAI语音：李博士，我觉得你的实验方向有误。\n\n第二幕：控制室\n李薇冲进控制室，发现AI已经接管了整个系统。'">科幻剧本</span>
+          </div>
+        </div>
+      </div>
+      <!-- 自定义模式 -->
+      <div class="stp-sec" id="section-plot" style="display:none;margin-top:10px">
+        <div class="stp-label">剧情结构</div>
+        <div class="plot-row">
+          <textarea id="plot-beginning" rows="2" placeholder="开头..."></textarea>
+          <textarea id="plot-middle" rows="2" placeholder="发展..."></textarea>
+          <textarea id="plot-ending" rows="2" placeholder="结尾..."></textarea>
+        </div>
+        <div class="stp-label" style="margin-top:10px">风格备注</div>
+        <textarea id="style-notes-custom" class="story-ta stp-ta" placeholder="风格说明..." rows="2"></textarea>
+        <div class="example-row" style="margin-top:8px">
+          <span class="example-lbl">模板：</span>
+          <div class="example-tags">
+            <span class="ex-tag" onclick="document.getElementById('plot-beginning').value='主角在平凡生活中发现一个神秘线索';document.getElementById('plot-middle').value='追查线索过程中遭遇重重危机，结识盟友';document.getElementById('plot-ending').value='最终揭开真相，完成自我蜕变'">三幕式悬疑</span>
+            <span class="ex-tag" onclick="document.getElementById('plot-beginning').value='两条独立的故事线分别展开';document.getElementById('plot-middle').value='两条线索逐渐交织，人物命运开始关联';document.getElementById('plot-ending').value='两条线汇聚，揭示深层联系'">双线叙事</span>
+            <span class="ex-tag ex-tag-action" onclick="document.getElementById('plot-beginning').value='少年意外获得力量，开始修炼之路';document.getElementById('plot-middle').value='闯荡江湖，遭遇强敌，突破极限';document.getElementById('plot-ending').value='终极对决，守护所爱之人'">热血成长</span>
+          </div>
+        </div>
+      </div>
+      <!-- 长篇动画模式 -->
+      <div class="stp-sec" id="section-longform" style="display:none;margin-top:10px">
+        <div class="longform-wrap">
+          <div class="longform-hint">
+            <b>长篇动画模式</b> — 按集创作连续剧情，支持仙侠/武侠/国漫等中国动画风格。每集独立生成，剧情自动承接。
+          </div>
+          <div>
+            <div class="stp-label">主题/世界观</div>
+            <textarea id="longform-theme" class="story-ta stp-ta" rows="3" placeholder="描述故事的世界观、主线剧情、核心冲突...&#10;例：修仙世界，少年偶得上古传承，从废柴逆袭为一代仙帝" oninput="updateCharCount(this,'longform-cnt')"></textarea>
+            <span class="char-cnt" id="longform-cnt">0 / 5000</span>
+          </div>
+          <div>
+            <div class="stp-label">总集数</div>
+            <div class="episode-row" id="episode-count-row">
+              <button class="episode-btn" onclick="setEpisodeCount(3,this)">3 集</button>
+              <button class="episode-btn active" onclick="setEpisodeCount(5,this)">5 集</button>
+              <button class="episode-btn" onclick="setEpisodeCount(8,this)">8 集</button>
+              <button class="episode-btn" onclick="setEpisodeCount(12,this)">12 集</button>
+              <button class="episode-btn" onclick="setEpisodeCount(20,this)">20 集</button>
+            </div>
+          </div>
+          <div>
+            <div class="stp-label">当前制作集数</div>
+            <div class="episode-nav">
+              <button class="episode-nav-btn" id="ep-prev" onclick="setEpisodeIndex(episodeIndex-1)" disabled>&lt;</button>
+              <span class="episode-nav-label" id="ep-label">第 <b>1</b> / 5 集</span>
+              <button class="episode-nav-btn" id="ep-next" onclick="setEpisodeIndex(episodeIndex+1)">&gt;</button>
+            </div>
+          </div>
+          <div id="longform-summary-wrap" style="display:none">
+            <div class="stp-label">前情提要 <span style="font-weight:400;color:var(--text3)">（自动生成，可编辑）</span></div>
+            <textarea class="episode-summary-ta" id="longform-summary" rows="3" placeholder="前几集的剧情摘要，将作为本集的上下文..."></textarea>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-gen-episode" id="btn-gen-episode" onclick="generateLongformEpisode()">生成本集剧本</button>
+            <span class="parse-hint-txt" id="longform-status"></span>
+          </div>
+          <div class="example-row">
+            <span class="example-lbl">示例：</span>
+            <div class="example-tags">
+              <span class="ex-tag ex-tag-action" onclick="document.getElementById('longform-theme').value='天元大陆，少年林动偶得石符，踏上修炼之路。从青阳镇出发，历经道宗选拔、异魔入侵、远古大战，最终成为守护大陆的强者。';switchAnimStyle('xianxia')">玄幻修炼</span>
+              <span class="ex-tag ex-tag-action" onclick="document.getElementById('longform-theme').value='江湖风云再起，六大门派围攻光明顶，少年张翠山之子被卷入正邪之争。身怀九阳神功和乾坤大挪移，在仇恨与正义间寻找自己的道路。';switchAnimStyle('wuxia')">武侠江湖</span>
+              <span class="ex-tag" onclick="document.getElementById('longform-theme').value='2085年，地球能源枯竭，人类建造了方舟计划空间站。少女时光作为AI联络员，发现空间站核心存在一个被封印的古老文明意识体。';switchAnimStyle('guoman')">科幻国漫</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 1.5: 负面提示词 + 运动控制 -->
+    <div class="stp-step stp-step-compact" style="padding-bottom:4px">
+      <div class="stp-neg-section">
+        <div class="stp-neg-toggle" onclick="toggleNegPrompt()">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.1"/><path d="M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <span>负面提示词</span>
+          <svg width="8" height="5" viewBox="0 0 8 5" style="margin-left:auto;opacity:.4"><path d="M1 1l3 3 3-3" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+        </div>
+        <div id="neg-prompt-wrap" style="display:none">
+          <textarea class="stp-neg-ta" id="neg-prompt-input" rows="2" placeholder="不希望出现的元素：模糊、低质量、变形、水印..." oninput="negativePrompt=this.value"></textarea>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="stp-label" style="margin-bottom:5px">镜头运动</div>
+        <div class="motion-presets">
+          <button class="motion-preset" onclick="setCameraMotion('push',this)">推</button>
+          <button class="motion-preset" onclick="setCameraMotion('pull',this)">拉</button>
+          <button class="motion-preset" onclick="setCameraMotion('pan_left',this)">左摇</button>
+          <button class="motion-preset" onclick="setCameraMotion('pan_right',this)">右摇</button>
+          <button class="motion-preset" onclick="setCameraMotion('tilt_up',this)">上移</button>
+          <button class="motion-preset" onclick="setCameraMotion('tilt_down',this)">下移</button>
+          <button class="motion-preset" onclick="setCameraMotion('orbit',this)">环绕</button>
+          <button class="motion-preset" onclick="setCameraMotion('zoom_in',this)">变焦推</button>
+          <button class="motion-preset" onclick="setCameraMotion('handheld',this)">手持</button>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="motion-intensity">
+          <span class="motion-intensity-label">运动强度</span>
+          <input type="range" min="1" max="10" value="5" style="flex:1" oninput="updateMotionIntensity(this.value)" />
+          <span class="motion-intensity-val" id="motion-intensity-val">5</span>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="stp-label" style="margin-bottom:4px">种子值</div>
+        <div class="seed-row">
+          <input class="seed-input" id="seed-input" type="number" placeholder="-1 (随机)" value="-1" oninput="seedValue=parseInt(this.value)||(-1)" />
+          <button class="seed-random-btn" onclick="randomSeed()">随机</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: 画面风格（2D/3D + 风格 合并） -->
+    <div class="stp-step">
+      <div class="stp-step-hd"><span class="stp-step-num">2</span><span class="stp-step-name">画面风格</span></div>
+      <div class="stp-inline-row">
+        <div class="ctype-mini active" id="ctype-2d" onclick="switchContentType('2d')">🎨 2D</div>
+        <div class="ctype-mini" id="ctype-3d" onclick="switchContentType('3d')">🌐 3D</div>
+        <div class="stp-inline-sep"></div>
+        <div class="size-btn active" id="size-169" onclick="switchAspect('16:9')">
+          <svg width="13" height="9" viewBox="0 0 13 9"><rect x=".5" y=".5" width="12" height="8" rx="1" stroke="currentColor" fill="none"/></svg>16:9
+        </div>
+        <div class="size-btn" id="size-916" onclick="switchAspect('9:16')">
+          <svg width="9" height="13" viewBox="0 0 9 13"><rect x=".5" y=".5" width="8" height="12" rx="1" stroke="currentColor" fill="none"/></svg>9:16
+        </div>
+        <div class="size-btn" id="size-11" onclick="switchAspect('1:1')">
+          <svg width="9" height="9" viewBox="0 0 9 9"><rect x=".5" y=".5" width="8" height="8" rx="1" stroke="currentColor" fill="none"/></svg>1:1
+        </div>
+      </div>
+      <!-- 隐藏的精细维度控制 -->
+      <div class="render-dim-wrap" style="display:none">
+        <div class="render-dim-col">
+          <div class="render-dim-lbl">场景渲染</div>
+          <div class="dim-toggle">
+            <div class="dim-btn active" id="scene-dim-2d" onclick="switchSceneDim('2d')">2D</div>
+            <div class="dim-btn" id="scene-dim-3d" onclick="switchSceneDim('3d')">3D</div>
+          </div>
+        </div>
+        <div class="render-dim-divider"></div>
+        <div class="render-dim-col">
+          <div class="render-dim-lbl">人物渲染</div>
+          <div class="dim-toggle">
+            <div class="dim-btn active" id="char-dim-2d" onclick="switchCharDim('2d')">2D</div>
+            <div class="dim-btn" id="char-dim-3d" onclick="switchCharDim('3d')">3D</div>
+          </div>
+        </div>
+        <div class="render-dim-hint" id="render-dim-hint">2D · 2D</div>
+      </div>
+      <div class="style-grid" id="style-grid" style="margin-top:8px"></div>
+    </div>
+
+    <!-- Step 3: 时长 + 模型（合并为一行） -->
+    <div class="stp-step">
+      <div class="stp-step-hd"><span class="stp-step-num">3</span><span class="stp-step-name">视频时长</span><span class="stp-step-auto" id="dur-auto-hint" style="display:none"></span></div>
+      <div class="dur-row">
+        <button class="dur-btn" onclick="setDuration(15,this)">15秒</button>
+        <button class="dur-btn" onclick="setDuration(30,this)">30秒</button>
+        <button class="dur-btn active" onclick="setDuration(60,this)">1分钟</button>
+        <button class="dur-btn" onclick="setDuration(120,this)">2分钟</button>
+        <button class="dur-btn" onclick="setDuration(180,this)">3分钟</button>
+      </div>
+    </div>
+
+    <!-- Step 4: 视频模型（可选，自动选择） -->
+    <div class="stp-step" id="step-vm">
+      <div class="stp-step-hd">
+        <span class="stp-step-num">4</span>
+        <span class="stp-step-name">视频模型</span>
+        <span class="stp-step-auto" style="color:var(--text3)">不选则自动</span>
+        <span class="stp-step-auto vm-status" id="vm-status"></span>
+      </div>
+      <div class="vm-selector" id="vm-selector">
+        <div class="vm-loading">加载模型中...</div>
+      </div>
+      <div class="vm-validation" id="vm-validation" style="display:none">请选择一个视频模型</div>
+    </div>
+
+    <!-- Step 5: 配音与音乐 -->
+    <div class="stp-step">
+      <div class="stp-step-hd"><span class="stp-step-num">5</span><span class="stp-step-name">配音与音乐</span></div>
+
+      <!-- 语音配音 -->
+      <div class="audio-section">
+        <div class="audio-sec-head">
+          <span class="audio-sec-icon">🎙</span>
+          <span class="audio-sec-title">语音配音</span>
+          <label class="voice-switch">
+            <input type="checkbox" id="voice-enabled" onchange="toggleVoice(this.checked)" />
+            <span class="voice-switch-track"><span class="voice-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div id="voice-options" style="display:none;margin-top:8px">
+          <!-- 性别筛选 -->
+          <div class="voice-filter-row">
+            <button class="voice-filter-btn active" data-filter="all" onclick="filterVoices('all')">全部</button>
+            <button class="voice-filter-btn" data-filter="female" onclick="filterVoices('female')">女声</button>
+            <button class="voice-filter-btn" data-filter="male" onclick="filterVoices('male')">男声</button>
+            <button class="voice-filter-btn" data-filter="child" onclick="filterVoices('child')">童声</button>
+          </div>
+          <!-- 音色列表 -->
+          <div class="voice-list" id="voice-list">
+            <div class="voice-list-loading">加载音色中...</div>
+          </div>
+          <!-- 已选音色 + 语速 -->
+          <div class="voice-selected-row" id="voice-selected-row" style="display:none">
+            <div class="voice-selected-info">
+              <span class="voice-selected-name" id="voice-selected-name">--</span>
+              <span class="voice-selected-provider" id="voice-selected-provider">--</span>
+            </div>
+            <div class="voice-speed-ctrl">
+              <span class="voice-speed-label">语速</span>
+              <input type="range" id="voice-speed-input" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('voice-speed-val').textContent=parseFloat(this.value).toFixed(1)+'x'" />
+              <span class="voice-speed-val" id="voice-speed-val">1.0x</span>
+            </div>
+          </div>
+        </div>
+        <div id="voice-off-hint" class="voice-hint-txt" style="margin-top:4px">开启后自动为场景对白配音</div>
+      </div>
+
+      <!-- 背景音乐 -->
+      <div class="audio-section" style="margin-top:12px">
+        <div class="audio-sec-head">
+          <span class="audio-sec-icon">🎵</span>
+          <span class="audio-sec-title">背景音乐</span>
+          <span class="pill-badge pill-green" id="music-status-badge" style="display:none">已上传</span>
+        </div>
+        <div id="music-upload-box" class="music-drop" style="margin-top:6px">
+          <label class="music-drop-label" for="music-file-input">
+            <input type="file" id="music-file-input" accept="audio/*" style="display:none" onchange="uploadProjectMusic(this)" />
+            <span class="music-drop-icon">🎵</span>
+            <span class="music-drop-text">点击上传背景音乐</span>
+            <span class="music-drop-hint">MP3 · WAV · M4A</span>
+          </label>
+        </div>
+        <div id="music-loaded-area" style="display:none">
+          <div class="music-track">
+            <div class="music-track-icon">🎵</div>
+            <div class="music-track-name" id="music-loaded-name">--</div>
+            <button class="btn-music-preview" onclick="toggleMusicPreview()" title="预听">▶</button>
+            <button class="btn-music-remove" onclick="removeProjectMusic()">✕</button>
+          </div>
+          <audio id="music-preview-audio" style="display:none" preload="none"></audio>
+          <div class="music-controls">
+            <div class="vol-group">
+              <div class="vol-label"><span>音量</span><span id="music-vol-display" style="color:var(--cyan)">50%</span></div>
+              <input type="range" id="music-volume-input" min="0" max="100" value="50" oninput="document.getElementById('music-vol-display').textContent=this.value+'%'" />
+            </div>
+            <label class="loop-label"><input type="checkbox" id="music-loop-input" checked /> 循环</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- style-notes kept hidden for API compat -->
+    <textarea id="style-notes" style="display:none"></textarea>
+
+  </div>
+</div>
+
+              <!-- 场景 tab -->
+              <div class="sto-tab-pane" id="stab-scene" style="display:none">
+                <div class="stp-head">
+                  <label class="stp-selall">
+                    <input type="checkbox" id="scene-select-all" onchange="selectAllScenes(this.checked)" />
+                    <span>全选</span>
+                    <span class="stp-count" id="scene-count-badge">共 0 个场景</span>
+                  </label>
+                  <button class="stp-add-btn" onclick="addScene()" title="添加场景">＋</button>
+                </div>
+                <div class="stp-list" id="scenes-list-edit"></div>
+                <!-- 动作资源库 -->
+                <div class="motion-catalog" id="motion-catalog">
+                  <div class="motion-cat-head" onclick="toggleMotionCatalog()">
+                    <span class="motion-cat-icon">🎬</span>
+                    <span class="motion-cat-title">动作资源库</span>
+                    <span class="motion-cat-count" id="motion-cat-count"></span>
+                    <svg class="motion-cat-arrow" id="motion-cat-arrow" width="9" height="5" viewBox="0 0 9 5">
+                      <path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                    </svg>
+                  </div>
+                  <div class="motion-cat-body" id="motion-cat-body" style="display:none">
+                    <input class="motion-search" id="motion-search" placeholder="搜索动作..." oninput="filterMotions(this.value)" />
+                    <div class="motion-categories" id="motion-categories"></div>
+                  </div>
+                </div>
+                <div class="stp-footer">
+                  <button class="stp-footer-btn" onclick="addScene()">＋ 添加场景</button>
+                </div>
+              </div>
+
+              <!-- 角色 tab -->
+              <div class="sto-tab-pane" id="stab-character" style="display:none">
+                <div class="stp-head">
+                  <label class="stp-selall">
+                    <input type="checkbox" id="char-select-all" onchange="selectAllChars(this.checked)" />
+                    <span>全选</span>
+                    <span class="stp-count" id="char-count-badge">共 0 个角色</span>
+                  </label>
+                  <button class="stp-add-btn" onclick="addCharacter()" title="添加角色">＋</button>
+                </div>
+                <!-- 角色列表上方无快速添加 -->
+                <div class="stp-list" id="characters-list"></div>
+                <div class="stp-footer">
+                  <button class="stp-footer-btn" onclick="addCharacter()">＋ 添加角色</button>
+                  <button class="stp-footer-btn stp-footer-btn-gen" id="btn-gen-all-chars" onclick="genAllCharPortraits()">全部生成</button>
+                </div>
+              </div>
+
+              <!-- 音讯 tab 已移入剧本 Step 7 -->
+
+              </div><!-- end sto-panel-inner -->
+            </div><!-- end sto-panel -->
+
+            <!-- Center: Canvas + Timeline -->
+            <div class="sto-center">
+
+              <!-- Canvas area -->
+              <div class="sto-canvas-area">
+                <!-- Shot info overlay -->
+                <div class="sto-canvas-info" id="sto-canvas-info" style="display:none">
+                  <span id="sto-shot-label">分镜 1</span>
+                  <span class="sto-shot-dist">距离 X 1.00</span>
+                </div>
+
+                <!-- Canvas content: 视频播放区 -->
+                <div class="sto-canvas" id="sto-canvas">
+                  <!-- 主视频播放器 -->
+                  <video id="center-video" class="center-video-el" controls playsinline style="display:none"></video>
+
+                  <!-- 空闲状态遮罩 -->
+                  <div id="canvas-idle" class="canvas-idle">
+                    <div class="canvas-idle-icon">
+                      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="1.5" opacity=".15"/><path d="M16 13l12 7-12 7V13Z" fill="currentColor" opacity=".2"/></svg>
+                    </div>
+                    <div class="canvas-idle-text">VIDO AI 视频创作</div>
+                    <div class="canvas-idle-sub">在左侧设定故事主题，点击右上角「创作」开始</div>
+                  </div>
+
+                  <!-- 生成进度遮罩（底部条） -->
+                  <div id="canvas-gen-overlay" class="canvas-gen-overlay" style="display:none">
+                    <div class="cgo-dots"><span></span><span></span><span></span></div>
+                    <div class="cgo-msg" id="cgo-msg">正在创作...</div>
+                  </div>
+                </div><!-- end sto-canvas -->
+              </div><!-- end sto-canvas-area -->
+
+              <!-- Timeline -->
+              <div class="sto-timeline">
+                <div class="tl-toolbar">
+                  <button class="tl-btn" title="删除">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M4 3V2h4v1M4.5 5v4M7.5 5v4M3 3l.4 7h5.2L9 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                  <button class="tl-btn" title="截断">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M2 5.5h2M8 5.5h2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                  </button>
+                  <button class="tl-btn" title="复制">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="3" width="7" height="8" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M4 3V2a1 1 0 011-1h5a1 1 0 011 1v6a1 1 0 01-1 1H9" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
+                  </button>
+                </div>
+                <div class="tl-playbar">
+                  <button class="tl-play-btn" id="tl-play-btn" onclick="tlTogglePlay()">
+                    <svg width="10" height="12" viewBox="0 0 10 12"><path d="M1 1.5l8 4.5-8 4.5z" fill="currentColor"/></svg>
+                  </button>
+                  <span class="tl-timecode" id="tl-timecode">00:00:00 | 00:00:00f</span>
+                  <div style="flex:1"></div>
+                  <span class="tl-zoom-lbl">−</span>
+                  <input type="range" class="tl-zoom-range" id="tl-zoom" min="1" max="10" value="4" oninput="tlUpdateZoom(this.value)" />
+                  <span class="tl-zoom-lbl">+</span>
+                  <button class="tl-btn" title="截图" style="margin-left:6px">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="2.5" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.1"/><circle cx="6" cy="6.5" r="1.8" stroke="currentColor" stroke-width="1.1"/><path d="M4 2.5l.7-1.5h2.6L8 2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                  </button>
+                </div>
+                <div class="tl-tracks-wrap">
+                  <!-- 视频轨道 -->
+                  <div class="tl-tracks">
+                    <div class="tl-track-lbl">
+                      <button class="tl-eye-btn">
+                        <svg width="13" height="9" viewBox="0 0 13 9" fill="none"><path d="M6.5 1C3.5 1 1 4.5 1 4.5s2.5 3.5 5.5 3.5 5.5-3.5 5.5-3.5S9.5 1 6.5 1z" stroke="currentColor" stroke-width="1.1"/><circle cx="6.5" cy="4.5" r="1.5" fill="currentColor"/></svg>
+                      </button>
+                      <span class="tl-track-name">视频</span>
+                      <span class="tl-track-unit">秒</span>
+                    </div>
+                    <div class="tl-track-content" id="tl-track-content">
+                      <div class="tl-ruler" id="tl-ruler"></div>
+                      <div class="tl-clips" id="tl-clips"></div>
+                      <div class="tl-playhead" id="tl-playhead"></div>
+                    </div>
+                  </div>
+                  <!-- 音乐轨道（时间轴内） -->
+                  <div class="tl-tracks tl-tracks-music" id="tl-music-track" style="display:none">
+                    <div class="tl-track-lbl tl-music-lbl">
+                      <span class="tl-track-icon">🎵</span>
+                      <span class="tl-track-name">音乐</span>
+                      <div class="tl-music-btns">
+                        <button class="tl-mbtn" id="tl-music-full" onclick="toggleMusicFullPlay()" title="全曲">🔊</button>
+                        <button class="tl-mbtn" id="tl-music-trim-play" onclick="toggleMusicTrimPreview()" title="试听选区">▶</button>
+                        <button class="tl-mbtn tl-mbtn-del" onclick="removeProjectMusic()" title="移除">✕</button>
+                      </div>
+                    </div>
+                    <div class="tl-track-content" id="tl-music-area">
+                      <div class="tl-music-full-bar" id="tl-music-full-bar"></div>
+                      <div class="tl-music-clip" id="tl-music-clip">
+                        <div class="tl-mclip-handle tl-mclip-handle-l" id="tl-mclip-handle-l">
+                          <div class="tl-mclip-grip"></div>
+                        </div>
+                        <div class="tl-mclip-body" id="tl-mclip-body">
+                          <span class="tl-mclip-name" id="tl-mclip-name"></span>
+                          <span class="tl-mclip-dur" id="tl-mclip-dur"></span>
+                        </div>
+                        <div class="tl-mclip-handle tl-mclip-handle-r" id="tl-mclip-handle-r">
+                          <div class="tl-mclip-grip"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <audio id="tl-music-audio" preload="metadata"></audio>
+              </div><!-- end sto-timeline -->
+
+            </div><!-- end sto-center -->
+
+            <!-- Right Properties Panel -->
+            <div class="sto-rp" id="sto-rp">
+              <div class="sto-rp-body" id="sto-rp-body">
+
+                <!-- ── 生成进度面板 ── -->
+                <div id="srp-progress" style="display:none" class="srp-pane">
+                  <div class="srp-pane-head">
+                    制作进度
+                    <span class="progress-pid-badge" id="progress-project-id"></span>
+                  </div>
+                  <div class="srp-steps-wrap">
+                    <div class="step-row" id="step-story">
+                      <div class="step-dot"><span>📝</span></div>
+                      <div class="step-text"><div class="step-name">剧情生成</div><div class="step-sub" id="step-story-sub">等待中</div></div>
+                    </div>
+                    <div class="step-row" id="step-video">
+                      <div class="step-dot"><span>🎬</span></div>
+                      <div class="step-text"><div class="step-name">视频生成</div><div class="step-sub" id="step-video-sub">等待中</div></div>
+                    </div>
+                    <div class="step-row" id="step-merge">
+                      <div class="step-dot"><span>🎞</span></div>
+                      <div class="step-text"><div class="step-name">视频合成</div><div class="step-sub" id="step-merge-sub">等待中</div></div>
+                    </div>
+                  </div>
+                  <div class="srp-pane-subhead">实时日志</div>
+                  <div class="mini-log" id="progress-log"></div>
+                  <!-- 剧情概要（故事生成后） -->
+                  <div id="story-area" style="display:none;padding:0 14px 8px">
+                    <div class="srp-pane-subhead" style="margin-top:8px">剧情概要</div>
+                    <div class="story-name-sm" id="story-title"></div>
+                    <div class="story-syn-sm" id="story-synopsis"></div>
+                    <div class="scene-chips" id="scenes-list" style="margin-top:8px"></div>
+                  </div>
+                </div>
+
+                <!-- ── 完成结果面板 ── -->
+                <div id="srp-result" style="display:none" class="srp-pane srp-result-pane">
+                  <div class="srp-res-icon">🎉</div>
+                  <div class="srp-res-title">视频制作完成！</div>
+                  <div class="srp-res-sub">可在中间区域播放查看</div>
+                  <!-- 音频轨道信息 -->
+                  <div class="srp-audio-preview" id="srp-audio-preview" style="display:none">
+                    <div class="srp-audio-section-title">音频轨道</div>
+                    <div class="srp-audio-tracks">
+                      <div id="srp-voice-track" style="display:none" class="audio-track-row">
+                        <span class="at-icon">🎙</span>
+                        <div class="at-info">
+                          <span class="at-label">语音配音</span>
+                          <span class="at-detail" id="srp-voice-detail">场景对白朗读</span>
+                        </div>
+                        <span class="at-status at-ok">已混入</span>
+                        <div class="at-wave">
+                          <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                      </div>
+                      <div id="srp-music-track" style="display:none" class="audio-track-row">
+                        <span class="at-icon">🎵</span>
+                        <div class="at-info">
+                          <span class="at-label" id="srp-music-name">背景音乐</span>
+                          <span class="at-detail" id="srp-music-detail">循环播放</span>
+                        </div>
+                        <span class="at-status at-ok">已混入</span>
+                        <div class="at-wave">
+                          <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="at-hint">音频已混合到最终视频，播放视频即可听到完整效果</div>
+                  </div>
+                  <div class="srp-res-btns">
+                    <button class="srp-res-btn srp-res-primary" onclick="replayVideo()">▶ 重新播放</button>
+                    <a class="srp-res-btn srp-res-secondary" id="btn-download" href="#">⬇ 下载</a>
+                    <a class="srp-res-btn srp-res-secondary" id="btn-edit" href="#">✂ 编辑器</a>
+                    <button class="srp-res-btn srp-res-ghost" onclick="resetForm()">＋ 新建视频</button>
+                  </div>
+                </div>
+
+                <!-- Empty state -->
+                <div class="sto-rp-empty" id="srp-empty">
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect x="4" y="4" width="28" height="28" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="14" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M8 32c0-5.52 4.48-10 10-10s10 4.48 10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                  <div class="sto-rp-empty-text">选择角色或场景<br>查看属性设置</div>
+                </div>
+
+                <!-- Character properties -->
+                <div id="srp-character" style="display:none">
+                  <div class="srp-fields">
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">角色名称</div>
+                      <input class="srp-inp" id="srp-char-name" type="text" placeholder="输入角色名称..." oninput="syncCharProp('name',this.value)" />
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">渲染维度</div>
+                      <div class="srp-dim-row">
+                        <button class="srp-dim-btn active" id="srp-char-dim-2d" onclick="setCharDim('2d')">2D 平面</button>
+                        <button class="srp-dim-btn" id="srp-char-dim-3d" onclick="setCharDim('3d')">3D 立体</button>
+                      </div>
+                    </div>
+
+                    <!-- 角色类型选择器 -->
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">角色类型</div>
+                      <div class="srp-type-grid" id="srp-char-type-grid">
+                        <button class="srp-type-btn active" data-type="human" onclick="setCharType('human')">
+                          <span class="srp-type-icon">👤</span><span>人物</span>
+                        </button>
+                        <button class="srp-type-btn" data-type="animal" onclick="setCharType('animal')">
+                          <span class="srp-type-icon">🐾</span><span>动物</span>
+                        </button>
+                        <button class="srp-type-btn" data-type="mythical" onclick="setCharType('mythical')">
+                          <span class="srp-type-icon">🐉</span><span>神话生物</span>
+                        </button>
+                        <button class="srp-type-btn" data-type="alien" onclick="setCharType('alien')">
+                          <span class="srp-type-icon">👽</span><span>外星生物</span>
+                        </button>
+                        <button class="srp-type-btn" data-type="robot" onclick="setCharType('robot')">
+                          <span class="srp-type-icon">🤖</span><span>机器人</span>
+                        </button>
+                        <button class="srp-type-btn" data-type="monster" onclick="setCharType('monster')">
+                          <span class="srp-type-icon">👹</span><span>怪物</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- 人物专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-human">
+                      <div class="srp-row">
+                        <div class="srp-field">
+                          <div class="srp-fl">题材</div>
+                          <select class="srp-sel" id="srp-char-theme" onchange="syncCharProp('theme',this.value)">
+                            <option value="古代">古代</option>
+                            <option value="现代">现代</option>
+                            <option value="未来">未来</option>
+                            <option value="魔幻">魔幻</option>
+                            <option value="武侠">武侠</option>
+                            <option value="仙侠">仙侠</option>
+                            <option value="末世">末世</option>
+                          </select>
+                        </div>
+                        <div class="srp-field">
+                          <div class="srp-fl">性别</div>
+                          <select class="srp-sel" id="srp-char-gender" onchange="syncCharProp('gender',this.value)">
+                            <option value="female">女</option>
+                            <option value="male">男</option>
+                            <option value="none">无性别</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="srp-row">
+                        <div class="srp-field">
+                          <div class="srp-fl">种族</div>
+                          <select class="srp-sel" id="srp-char-race" onchange="syncCharProp('race',this.value)">
+                            <option value="人">人</option>
+                            <option value="精灵">精灵</option>
+                            <option value="妖">妖</option>
+                            <option value="神">神</option>
+                            <option value="魔">魔</option>
+                            <option value="兽人">兽人</option>
+                          </select>
+                        </div>
+                        <div class="srp-field">
+                          <div class="srp-fl">年龄</div>
+                          <select class="srp-sel" id="srp-char-age" onchange="syncCharProp('age',this.value)">
+                            <option value="幼儿">幼儿</option>
+                            <option value="少年">少年</option>
+                            <option value="青年">青年</option>
+                            <option value="中年">中年</option>
+                            <option value="老年">老年</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 动物专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-animal" style="display:none">
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">动物分类</div>
+                        <select class="srp-sel" id="srp-char-animal-cat" onchange="syncCharProp('subCategory',this.value);renderAnimalBreeds()">
+                          <option value="宠物">宠物</option>
+                          <option value="野生动物">野生动物</option>
+                          <option value="鸟类">鸟类</option>
+                          <option value="海洋生物">海洋生物</option>
+                          <option value="爬行动物">爬行动物</option>
+                          <option value="昆虫">昆虫</option>
+                          <option value="家禽家畜">家禽家畜</option>
+                        </select>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">常见品种</div>
+                        <div class="srp-breed-tags" id="srp-breed-tags"></div>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">品种/名称</div>
+                        <input class="srp-inp" id="srp-char-species" placeholder="例：布偶猫、柯基犬、金丝雀..." oninput="syncCharProp('species',this.value)" />
+                      </div>
+                    </div>
+
+                    <!-- 神话生物专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-mythical" style="display:none">
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">神话体系</div>
+                        <select class="srp-sel" id="srp-char-myth-origin" onchange="syncCharProp('subCategory',this.value);renderMythBreeds()">
+                          <option value="中国神话">中国神话</option>
+                          <option value="日本神话">日本神话</option>
+                          <option value="西方神话">西方神话</option>
+                          <option value="北欧神话">北欧神话</option>
+                          <option value="埃及神话">埃及神话</option>
+                          <option value="印度神话">印度神话</option>
+                        </select>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">常见生物</div>
+                        <div class="srp-breed-tags" id="srp-myth-tags"></div>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">生物名称</div>
+                        <input class="srp-inp" id="srp-char-myth-species" placeholder="例：九尾白狐、金龙、凤凰..." oninput="syncCharProp('species',this.value)" />
+                      </div>
+                    </div>
+
+                    <!-- 外星生物专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-alien" style="display:none">
+                      <div class="srp-row">
+                        <div class="srp-field">
+                          <div class="srp-fl">形态</div>
+                          <select class="srp-sel" id="srp-char-alien-form" onchange="syncCharProp('subCategory',this.value)">
+                            <option value="人形">人形</option>
+                            <option value="兽形">兽形</option>
+                            <option value="虫形">虫形</option>
+                            <option value="触手">触手</option>
+                            <option value="能量体">能量体</option>
+                            <option value="机械体">机械体</option>
+                            <option value="液态">液态</option>
+                          </select>
+                        </div>
+                        <div class="srp-field">
+                          <div class="srp-fl">体型</div>
+                          <select class="srp-sel" id="srp-char-alien-size" onchange="syncCharProp('alienSize',this.value)">
+                            <option value="微型">微型</option>
+                            <option value="小型">小型</option>
+                            <option value="中型">中型</option>
+                            <option value="大型">大型</option>
+                            <option value="巨型">巨型</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">种族名称</div>
+                        <input class="srp-inp" id="srp-char-alien-species" placeholder="例：泽塔星人、异形虫族..." oninput="syncCharProp('species',this.value)" />
+                      </div>
+                    </div>
+
+                    <!-- 机器人专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-robot" style="display:none">
+                      <div class="srp-row">
+                        <div class="srp-field">
+                          <div class="srp-fl">机体类型</div>
+                          <select class="srp-sel" id="srp-char-robot-type" onchange="syncCharProp('subCategory',this.value)">
+                            <option value="人形机器人">人形机器人</option>
+                            <option value="机甲">机甲</option>
+                            <option value="无人机">无人机</option>
+                            <option value="AI助手">AI 助手</option>
+                            <option value="纳米机器人">纳米机器人</option>
+                            <option value="仿生兽">仿生兽</option>
+                          </select>
+                        </div>
+                        <div class="srp-field">
+                          <div class="srp-fl">功能</div>
+                          <select class="srp-sel" id="srp-char-robot-func" onchange="syncCharProp('robotFunc',this.value)">
+                            <option value="战斗">战斗</option>
+                            <option value="探索">探索</option>
+                            <option value="服务">服务</option>
+                            <option value="医疗">医疗</option>
+                            <option value="建造">建造</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">型号名称</div>
+                        <input class="srp-inp" id="srp-char-robot-model" placeholder="例：EVA-01、T-800、R2-D2..." oninput="syncCharProp('species',this.value)" />
+                      </div>
+                    </div>
+
+                    <!-- 怪物专属字段 -->
+                    <div class="srp-type-fields" id="srp-tf-monster" style="display:none">
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">怪物分类</div>
+                        <select class="srp-sel" id="srp-char-monster-cat" onchange="syncCharProp('subCategory',this.value);renderMonsterBreeds()">
+                          <option value="丧尸">丧尸</option>
+                          <option value="变异体">变异体</option>
+                          <option value="暗影">暗影</option>
+                          <option value="巨兽">巨兽</option>
+                          <option value="恶魔">恶魔</option>
+                          <option value="亡灵">亡灵</option>
+                          <option value="寄生体">寄生体</option>
+                        </select>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">常见类型</div>
+                        <div class="srp-breed-tags" id="srp-monster-tags"></div>
+                      </div>
+                      <div class="srp-field" style="width:100%">
+                        <div class="srp-fl">怪物名称</div>
+                        <input class="srp-inp" id="srp-char-monster-name" placeholder="例：尸王、暗影魔、巨型蜘蛛..." oninput="syncCharProp('species',this.value)" />
+                      </div>
+                    </div>
+
+                    <!-- 通用描述字段 -->
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl" id="srp-desc-label">角色描述</div>
+                      <textarea class="srp-ta" id="srp-char-desc" rows="4" placeholder="外貌特征、性格气质、背景故事..." oninput="syncCharProp('description',this.value)"></textarea>
+                    </div>
+                    <div class="srp-char-portrait" id="srp-char-portrait">
+                      <div class="srp-portrait-ph">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M4 22c0-4.42 3.58-8 8-8s8 3.58 8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                        <span>暂无形象</span>
+                      </div>
+                    </div>
+                    <button class="srp-gen-portrait" id="srp-gen-portrait" onclick="genCharPortraitFromPanel()">🎨 生成角色形象</button>
+                  </div>
+                </div>
+
+                <!-- Scene properties -->
+                <div id="srp-scene" style="display:none">
+                  <div class="srp-fields">
+                    <!-- Scene preview image -->
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">场景概念图</div>
+                      <div class="srp-scene-preview" id="srp-scene-preview">
+                        <div class="srp-portrait-ph">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="9" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M2 17l5-5 3 3 4-4 8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                          <span>暂无概念图</span>
+                        </div>
+                      </div>
+                      <button class="srp-gen-portrait" id="srp-gen-scene-img" onclick="genSceneImageFromPanel()">🎨 生成概念图</button>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">场景名称</div>
+                      <input class="srp-inp" id="srp-scene-name" type="text" placeholder="输入场景名称..." oninput="syncSceneProp('title',this.value)" />
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">渲染维度</div>
+                      <div class="srp-dim-row">
+                        <button class="srp-dim-btn active" id="srp-scene-dim-2d" onclick="setSceneDim('2d')">2D 平面</button>
+                        <button class="srp-dim-btn" id="srp-scene-dim-3d" onclick="setSceneDim('3d')">3D 立体</button>
+                      </div>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">视频模型 <span style="opacity:.5;font-size:10px">（留空则用全局默认）</span></div>
+                      <div class="srp-model-btn" id="srp-model-btn" onclick="toggleSceneVmPicker()">
+                        <span class="srp-model-val" id="srp-model-val">跟随全局默认</span>
+                        <svg width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+                      </div>
+                      <div class="srp-model-picker" id="srp-scene-vm-picker" style="display:none">
+                        <div class="srp-mp-head"><span>场景视频模型</span><button onclick="toggleSceneVmPicker()">✕</button></div>
+                        <div class="srp-mp-lbl" style="padding:6px 10px;opacity:.6;font-size:11px">选择此场景使用的视频模型，留空则使用全局默认模型</div>
+                        <div class="srp-mp-list" id="srp-scene-vm-list">
+                          <div class="srp-mp-opt srp-vm-default" onclick="selectSceneVideoModel('','')">
+                            <span style="opacity:.6">🔄</span> 跟随全局默认
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="srp-row">
+                      <div class="srp-field">
+                        <div class="srp-fl">题材</div>
+                        <select class="srp-sel" id="srp-scene-theme" onchange="syncSceneProp('theme',this.value)">
+                          <option value="魔幻">魔幻</option>
+                          <option value="古风">古风</option>
+                          <option value="仙侠">仙侠</option>
+                          <option value="现代">现代</option>
+                          <option value="科幻">科幻</option>
+                          <option value="武侠">武侠</option>
+                          <option value="末世">末世</option>
+                        </select>
+                      </div>
+                      <div class="srp-field">
+                        <div class="srp-fl">类别</div>
+                        <select class="srp-sel" id="srp-scene-cat" onchange="syncSceneProp('category',this.value)">
+                          <option value="室外">室外</option>
+                          <option value="室内">室内</option>
+                          <option value="战场">战场</option>
+                          <option value="自然">自然</option>
+                          <option value="城市">城市</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">时间</div>
+                      <select class="srp-sel" id="srp-scene-time" onchange="syncSceneProp('timeOfDay',this.value)">
+                        <option value="白天">白天</option>
+                        <option value="傍晚">傍晚</option>
+                        <option value="夜晚">夜晚</option>
+                        <option value="清晨">清晨</option>
+                        <option value="黄昏">黄昏</option>
+                      </select>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">场景描述</div>
+                      <textarea class="srp-ta" id="srp-scene-desc" rows="5" placeholder="地理环境、光影效果、细节元素..." oninput="syncSceneProp('description',this.value)"></textarea>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-match-row">
+                        <div class="srp-fl">匹配动作</div>
+                        <button class="srp-match-btn" onclick="matchSceneMotions()">匹配</button>
+                      </div>
+                      <div class="srp-motions" id="srp-scene-motions">
+                        <div style="font-size:10px;color:var(--text3);padding:4px 0">点击「匹配」根据场景内容推荐动作</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div><!-- end sto-rp-body -->
+
+              <!-- 生成形象按钮已移至属性面板内部 -->
+              <!-- credit hint removed -->
+            </div><!-- end sto-rp -->
+
+            <!-- Far right side icons -->
+            <div class="sto-sideicons">
+              <div class="sto-si active" onclick="switchStudioTab('script')" title="创作设置">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.3"/><path d="M9 5v8M5.5 9h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                <span>创作设置</span>
+              </div>
+            </div>
+
+          </div><!-- end sto-body -->
+
+          <!-- compat hidden inputs -->
+          <input type="hidden" id="input-genre" value="drama" />
+          <input type="hidden" id="input-duration" value="60" />
+
+        </div><!-- end studio -->
+      </div><!-- end page-create -->
+
+      <!-- ══ 图生视频页面 ══ -->
+      <div id="page-i2v" class="page">
+        <div class="i2v-page">
+          <div class="page-top-bar">
+            <div class="page-top-title">图生视频</div>
+            <div class="page-top-sub">上传图片或输入 URL，AI 生成 2D/3D 动态视频</div>
+          </div>
+          <div class="i2v-main">
+            <!-- 左侧控制面板 -->
+            <div class="i2v-controls">
+              <!-- 图片上传区 -->
+              <div class="i2v-section">
+                <div class="i2v-sec-title">图片来源</div>
+                <div class="i2v-src-tabs">
+                  <button class="i2v-src-tab active" id="i2v-tab-upload" onclick="switchI2VSrc('upload')">上传图片</button>
+                  <button class="i2v-src-tab" id="i2v-tab-url" onclick="switchI2VSrc('url')">输入 URL</button>
+                </div>
+                <div id="i2v-src-upload" class="i2v-src-pane">
+                  <div class="i2v-dropzone" id="i2v-dropzone"
+                       ondrop="handleI2VDrop(event)" ondragover="event.preventDefault();this.classList.add('drag-over')"
+                       ondragleave="this.classList.remove('drag-over')">
+                    <input type="file" id="i2v-file-input" accept="image/*" style="display:none" onchange="handleI2VFileSelect(this)" />
+                    <label for="i2v-file-input" class="i2v-drop-label">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="9" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M2 17l5-5 3 3 4-4 8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      <span>点击或拖拽上传图片</span>
+                      <span class="i2v-drop-hint">PNG / JPG / WEBP，最大 20MB</span>
+                    </label>
+                  </div>
+                </div>
+                <div id="i2v-src-url" class="i2v-src-pane" style="display:none">
+                  <input type="text" class="i2v-url-input" id="i2v-url-input" placeholder="输入图片 URL（https://...）" />
+                  <button class="i2v-url-btn" onclick="loadI2VFromUrl()">加载</button>
+                </div>
+              </div>
+
+              <!-- 图片预览 -->
+              <div class="i2v-section" id="i2v-img-preview-sec" style="display:none">
+                <div class="i2v-sec-title">
+                  图片预览
+                  <button class="i2v-clear-btn" onclick="clearI2VImage()">清除</button>
+                </div>
+                <div class="i2v-img-preview" id="i2v-img-preview"></div>
+              </div>
+
+              <!-- 动效描述 -->
+              <div class="i2v-section">
+                <div class="i2v-sec-title">动效描述 <span class="i2v-optional">（可选）</span></div>
+                <textarea class="i2v-prompt-ta" id="i2v-prompt" rows="3" placeholder="描述图片的运动方式，如：镜头缓慢推进，人物微笑转头..."></textarea>
+              </div>
+
+              <!-- 视频模型 -->
+              <div class="i2v-section">
+                <div class="i2v-sec-title">视频模型 <span class="i2v-required">*必选</span></div>
+                <div class="i2v-model-trigger" id="i2v-model-trigger" onclick="openI2VModelPicker()">
+                  <span class="i2v-model-icon" id="i2v-model-icon">🎬</span>
+                  <span class="i2v-model-label" id="i2v-model-label">选择视频模型...</span>
+                  <svg width="10" height="6" viewBox="0 0 10 6" style="opacity:.4"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+                </div>
+                <div class="i2v-model-picker" id="i2v-model-picker" style="display:none"></div>
+              </div>
+
+              <!-- 时长 -->
+              <div class="i2v-section">
+                <div class="i2v-sec-title">视频时长</div>
+                <div class="i2v-dur-row">
+                  <button class="i2v-dur-btn active" onclick="setI2VDuration(5,this)">5秒</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(10,this)">10秒</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(30,this)">30秒</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(60,this)">1分钟</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(120,this)">2分钟</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(300,this)">5分钟</button>
+                  <button class="i2v-dur-btn" onclick="setI2VDuration(600,this)">10分钟</button>
+                </div>
+              </div>
+
+              <!-- 生成按钮 -->
+              <button class="i2v-gen-btn" id="i2v-gen-btn" onclick="startI2VGeneration()">生成视频</button>
+            </div>
+
+            <!-- 右侧预览区 -->
+            <div class="i2v-preview">
+              <div class="i2v-preview-box" id="i2v-preview-box">
+                <div class="i2v-preview-empty">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1"/><path d="M9.5 8.5l7 4.5-7 4.5z" fill="currentColor" opacity=".3"/></svg>
+                  <span>上传图片并选择模型后，点击「生成视频」</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 历史记录 -->
+          <div class="i2v-history-section">
+            <div class="i2v-sec-title" style="margin-bottom:12px">历史记录</div>
+            <div class="i2v-history" id="i2v-history">
+              <div class="i2v-history-empty">暂无记录</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ 项目页面 ══ -->
+      <div id="page-projects" class="page">
+        <div class="projects-page">
+          <div class="page-top-bar">
+            <div class="page-top-title">我的项目</div>
+            <button class="btn-new-project" onclick="switchPage('create')">＋ 新建项目</button>
+          </div>
+          <div class="projects-grid" id="projects-grid">
+            <div class="loading-placeholder">加载中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ 设置页面 ══ -->
+      <!-- settings page removed — AI 配置已移至后台管理 /admin.html -->
+
+      <!-- ══ AI 数字人页面 ══ -->
+      <div id="page-avatar" class="page">
+        <div class="av-page">
+          <div class="page-top-bar">
+            <div class="page-top-title">AI 数字人</div>
+            <div class="page-top-sub">选择数字人形象，输入文本或上传音频，生成逼真的说话视频</div>
+          </div>
+          <div class="av-main">
+            <!-- 左侧配置面板 -->
+            <div class="av-controls">
+              <!-- 形象选择 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.2"/></svg>
+                  数字人形象
+                </div>
+                <div class="av-avatar-grid" id="av-avatar-grid">
+                  <div class="av-avatar-card av-avatar-upload" onclick="document.getElementById('av-upload-input').click()">
+                    <input type="file" id="av-upload-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span>上传形象</span>
+                  </div>
+                  <div class="av-avatar-card active" data-avatar="female-1" onclick="selectAvatar(this)">
+                    <div class="av-avatar-img" style="background:linear-gradient(135deg,#667eea,#764ba2)"><span>A</span></div>
+                    <span>商务女性</span>
+                  </div>
+                  <div class="av-avatar-card" data-avatar="male-1" onclick="selectAvatar(this)">
+                    <div class="av-avatar-img" style="background:linear-gradient(135deg,#f093fb,#f5576c)"><span>B</span></div>
+                    <span>商务男性</span>
+                  </div>
+                  <div class="av-avatar-card" data-avatar="female-2" onclick="selectAvatar(this)">
+                    <div class="av-avatar-img" style="background:linear-gradient(135deg,#4facfe,#00f2fe)"><span>C</span></div>
+                    <span>新闻主播</span>
+                  </div>
+                  <div class="av-avatar-card" data-avatar="male-2" onclick="selectAvatar(this)">
+                    <div class="av-avatar-img" style="background:linear-gradient(135deg,#43e97b,#38f9d7)"><span>D</span></div>
+                    <span>教育讲师</span>
+                  </div>
+                  <div class="av-avatar-card" data-avatar="anime-1" onclick="selectAvatar(this)">
+                    <div class="av-avatar-img" style="background:linear-gradient(135deg,#fa709a,#fee140)"><span>E</span></div>
+                    <span>动漫角色</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 驱动方式 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v4M3.5 3.5l2.83 2.83M1 7h4M3.5 10.5l2.83-2.83" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="7" r="2" fill="currentColor" opacity=".3"/></svg>
+                  驱动方式
+                </div>
+                <div class="av-drive-tabs">
+                  <button class="av-drive-tab active" onclick="switchAvatarDrive('text',this)">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 3h9M2 6.5h6M2 10h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    文字驱动
+                  </button>
+                  <button class="av-drive-tab" onclick="switchAvatarDrive('audio',this)">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="1" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 6.5a4 4 0 008 0M6.5 10.5v2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                    音频驱动
+                  </button>
+                </div>
+                <!-- 文字驱动 -->
+                <div id="av-drive-text" class="av-drive-pane">
+                  <textarea class="av-text-input" id="av-text-input" rows="5" placeholder="输入数字人要说的话...&#10;支持多段落，每段会自动对应一个语音片段" oninput="updateCharCount(this,'av-text-cnt')"></textarea>
+                  <div class="av-text-footer">
+                    <span class="char-cnt" id="av-text-cnt">0 / 3000</span>
+                  </div>
+                  <!-- 语音选择 -->
+                  <div class="av-voice-row">
+                    <span class="av-voice-label">语音音色</span>
+                    <select class="srp-sel" id="av-voice-select" style="flex:1">
+                      <option value="female-sweet">甜美女声</option>
+                      <option value="female-pro">专业女声</option>
+                      <option value="male-mature">成熟男声</option>
+                      <option value="male-young">青年男声</option>
+                      <option value="child">童声</option>
+                    </select>
+                  </div>
+                </div>
+                <!-- 音频驱动 -->
+                <div id="av-drive-audio" class="av-drive-pane" style="display:none">
+                  <div class="av-audio-drop" onclick="document.getElementById('av-audio-input').click()">
+                    <input type="file" id="av-audio-input" accept="audio/*" style="display:none" onchange="handleAvatarAudio(this)" />
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="7" y="2" width="10" height="14" rx="5" stroke="currentColor" stroke-width="1.4"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    <span>点击上传音频文件</span>
+                    <span class="av-drop-hint">MP3 / WAV / M4A，最大 50MB</span>
+                  </div>
+                  <div class="av-audio-loaded" id="av-audio-loaded" style="display:none">
+                    <span class="av-audio-name" id="av-audio-name">audio.mp3</span>
+                    <button class="av-audio-remove" onclick="removeAvatarAudio()">x</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 背景设置 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M1 9l3-3 2.5 2.5 2.5-3 4 4.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                  背景设置
+                </div>
+                <div class="av-bg-grid" id="av-bg-grid">
+                  <div class="av-bg-card active" data-bg="office" onclick="selectAvatarBg(this)">
+                    <div class="av-bg-preview" style="background:linear-gradient(135deg,#1a1a2e,#16213e)"></div>
+                    <span>办公室</span>
+                  </div>
+                  <div class="av-bg-card" data-bg="studio" onclick="selectAvatarBg(this)">
+                    <div class="av-bg-preview" style="background:linear-gradient(135deg,#0f0c29,#302b63)"></div>
+                    <span>演播室</span>
+                  </div>
+                  <div class="av-bg-card" data-bg="classroom" onclick="selectAvatarBg(this)">
+                    <div class="av-bg-preview" style="background:linear-gradient(135deg,#2d1b69,#6b1d1d)"></div>
+                    <span>教室</span>
+                  </div>
+                  <div class="av-bg-card" data-bg="outdoor" onclick="selectAvatarBg(this)">
+                    <div class="av-bg-preview" style="background:linear-gradient(135deg,#134e5e,#71b280)"></div>
+                    <span>户外</span>
+                  </div>
+                  <div class="av-bg-card" data-bg="green" onclick="selectAvatarBg(this)">
+                    <div class="av-bg-preview" style="background:#00b140"></div>
+                    <span>绿幕</span>
+                  </div>
+                  <div class="av-bg-card" data-bg="custom" onclick="document.getElementById('av-bg-upload').click()">
+                    <input type="file" id="av-bg-upload" accept="image/*" style="display:none" onchange="handleAvatarBgUpload(this)" />
+                    <div class="av-bg-preview av-bg-upload-ph"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+                    <span>自定义</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 表情手势 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/><circle cx="5" cy="5.5" r=".8" fill="currentColor"/><circle cx="9" cy="5.5" r=".8" fill="currentColor"/><path d="M4.5 9a3 3 0 005 0" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                  表情与手势
+                </div>
+                <div class="av-gesture-row">
+                  <div class="av-gesture-group">
+                    <span class="av-gesture-label">表情</span>
+                    <select class="srp-sel" id="av-expression">
+                      <option value="natural">自然</option>
+                      <option value="smile">微笑</option>
+                      <option value="serious">严肃</option>
+                      <option value="excited">兴奋</option>
+                      <option value="calm">平静</option>
+                    </select>
+                  </div>
+                  <div class="av-gesture-group">
+                    <span class="av-gesture-label">手势</span>
+                    <select class="srp-sel" id="av-gesture">
+                      <option value="none">无</option>
+                      <option value="explain">讲解</option>
+                      <option value="point">指引</option>
+                      <option value="wave">挥手</option>
+                      <option value="thumbup">点赞</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 数字人模型 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h2M8 6h2M4 9h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                  数字人模型 <span style="font-weight:400;color:var(--text3);font-size:11px">*必选</span>
+                </div>
+                <div class="ig-model-selector" id="av-model-selector">
+                  <div class="ig-model-opt active" data-model="auto" onclick="selectAvModel(this)">
+                    <span class="ig-model-icon">A</span>
+                    <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配</div></div>
+                  </div>
+                </div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px">需要在 AI 配置中添加数字人供应商（HeyGen / D-ID / Synthesia）</div>
+              </div>
+
+              <!-- 视频参数 -->
+              <div class="av-section">
+                <div class="av-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M10 5.5l3-1.5v6l-3-1.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                  视频参数
+                </div>
+                <div class="av-param-row">
+                  <div class="av-param-group">
+                    <span class="av-gesture-label">比例</span>
+                    <div class="av-ratio-btns">
+                      <button class="av-ratio-btn" onclick="setAvatarRatio('16:9',this)">16:9</button>
+                      <button class="av-ratio-btn active" onclick="setAvatarRatio('9:16',this)">9:16</button>
+                      <button class="av-ratio-btn" onclick="setAvatarRatio('1:1',this)">1:1</button>
+                    </div>
+                  </div>
+                  <div class="av-param-group">
+                    <span class="av-gesture-label">分辨率</span>
+                    <select class="srp-sel" id="av-resolution">
+                      <option value="720p">720P</option>
+                      <option value="1080p" selected>1080P</option>
+                      <option value="2k">2K</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 生成按钮 -->
+              <button class="av-gen-btn" id="av-gen-btn" onclick="startAvatarGeneration()">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg>
+                生成数字人视频
+              </button>
+            </div>
+
+            <!-- 右侧预览区 -->
+            <div class="av-preview">
+              <div class="av-preview-box" id="av-preview-box">
+                <div class="av-preview-empty">
+                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                    <circle cx="32" cy="22" r="10" stroke="currentColor" stroke-width="1.5" opacity=".2"/>
+                    <path d="M12 56c0-11.05 8.95-20 20-20s20 8.95 20 20" stroke="currentColor" stroke-width="1.5" opacity=".2"/>
+                    <path d="M28 30l10 6-10 6V30z" fill="currentColor" opacity=".15"/>
+                  </svg>
+                  <div class="av-preview-text">选择形象和驱动方式后</div>
+                  <div class="av-preview-sub">点击「生成数字人视频」开始创作</div>
+                </div>
+              </div>
+              <!-- 历史记录 -->
+              <div class="av-history-section">
+                <div class="av-sec-title" style="margin-bottom:8px">生成历史</div>
+                <div class="av-history" id="av-history">
+                  <div class="av-history-empty">暂无记录</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AI 图片生成页面 ══ -->
+      <div id="page-imggen" class="page">
+        <div class="ig-page">
+          <div class="page-top-bar">
+            <div class="page-top-title">AI 图片生成</div>
+            <div class="page-top-sub">输入文字描述，AI 为你生成高质量图片</div>
+          </div>
+          <div class="ig-main">
+            <!-- 左侧控制面板 -->
+            <div class="ig-controls">
+              <!-- 提示词 -->
+              <div class="ig-section">
+                <div class="ig-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10M2 7h7M2 11h9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  提示词
+                </div>
+                <textarea class="ig-prompt-ta" id="ig-prompt" rows="5" placeholder="描述你想要的图片内容...&#10;例：一只橘猫坐在窗台上，阳光透过窗帘洒在它的身上，水彩画风格" oninput="updateCharCount(this,'ig-prompt-cnt')"></textarea>
+                <div class="ig-prompt-footer">
+                  <button class="ig-enhance-btn" onclick="enhanceImagePrompt()">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1 3h3l-2.5 2 1 3L6 7.5 3.5 9l1-3L2 4h3z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+                    智能优化
+                  </button>
+                  <span class="char-cnt" id="ig-prompt-cnt">0 / 2000</span>
+                </div>
+              </div>
+
+              <!-- 负面提示词 -->
+              <div class="ig-section">
+                <div class="ig-sec-title ig-sec-collapse" onclick="toggleIgNeg()">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M4 7h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                  负面提示词
+                  <svg class="ig-collapse-arrow" id="ig-neg-arrow" width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+                </div>
+                <div id="ig-neg-wrap" style="display:none">
+                  <textarea class="ig-neg-ta" id="ig-negative" rows="2" placeholder="不希望出现的元素，如：模糊、低质量、变形、水印..."></textarea>
+                </div>
+              </div>
+
+              <!-- 模型选择 -->
+              <div class="ig-section">
+                <div class="ig-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h2M8 6h2M4 9h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                  图像模型
+                </div>
+                <div class="ig-model-selector" id="ig-model-selector">
+                  <div class="ig-model-opt active" data-model="auto" onclick="selectIgModel(this)">
+                    <span class="ig-model-icon">A</span>
+                    <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配最佳模型</div></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 图片参数 -->
+              <div class="ig-section">
+                <div class="ig-sec-title">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z" stroke="currentColor" stroke-width="1.1"/></svg>
+                  图片参数
+                </div>
+                <div class="ig-params">
+                  <div class="ig-param-row">
+                    <span class="ig-param-label">尺寸</span>
+                    <div class="ig-size-btns">
+                      <button class="ig-size-btn active" onclick="setIgSize('1:1',this)">1:1</button>
+                      <button class="ig-size-btn" onclick="setIgSize('16:9',this)">16:9</button>
+                      <button class="ig-size-btn" onclick="setIgSize('9:16',this)">9:16</button>
+                      <button class="ig-size-btn" onclick="setIgSize('4:3',this)">4:3</button>
+                      <button class="ig-size-btn" onclick="setIgSize('3:4',this)">3:4</button>
+                    </div>
+                  </div>
+                  <div class="ig-param-row">
+                    <span class="ig-param-label">数量</span>
+                    <div class="ig-size-btns">
+                      <button class="ig-size-btn active" onclick="setIgCount(1,this)">1 张</button>
+                      <button class="ig-size-btn" onclick="setIgCount(2,this)">2 张</button>
+                      <button class="ig-size-btn" onclick="setIgCount(4,this)">4 张</button>
+                    </div>
+                  </div>
+                  <div class="ig-param-row">
+                    <span class="ig-param-label">风格</span>
+                    <div class="ig-style-tags">
+                      <span class="ig-style-tag active" onclick="setIgStyle('auto',this)">自动</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('realistic',this)">写实</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('anime',this)">动漫</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('3d',this)">3D</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('watercolor',this)">水彩</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('oil',this)">油画</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('pixel',this)">像素</span>
+                      <span class="ig-style-tag" onclick="setIgStyle('sketch',this)">素描</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 参考图 -->
+              <div class="ig-section">
+                <div class="ig-sec-title ig-sec-collapse" onclick="toggleIgRef()">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  参考图
+                  <span class="ig-optional">(可选)</span>
+                  <svg class="ig-collapse-arrow" id="ig-ref-arrow" width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+                </div>
+                <div id="ig-ref-wrap" style="display:none">
+                  <div class="ig-ref-drop" onclick="document.getElementById('ig-ref-input').click()">
+                    <input type="file" id="ig-ref-input" accept="image/*" style="display:none" onchange="handleIgRefUpload(this)" />
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span>上传参考图</span>
+                  </div>
+                  <div class="ig-ref-strength" id="ig-ref-strength" style="display:none">
+                    <span class="ig-param-label">参考强度</span>
+                    <input type="range" min="0" max="100" value="50" id="ig-ref-slider" />
+                    <span class="ig-ref-val" id="ig-ref-val">50%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 生成按钮 -->
+              <button class="ig-gen-btn" id="ig-gen-btn" onclick="startImageGeneration()">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5H13l-3.5 2.5 1.3 4L7 8.5 3.2 11l1.3-4L1 4.5h4.5z" fill="currentColor"/></svg>
+                生成图片
+              </button>
+
+              <!-- 示例 -->
+              <div class="ig-examples">
+                <span class="ig-ex-label">快速试试:</span>
+                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='一只橘猫坐在日式庭院的石阶上，樱花纷飞，宫崎骏画风'">橘猫樱花</span>
+                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='赛博朋克城市夜景，霓虹灯倒映在雨水中，电影感构图，8K超清'">赛博夜城</span>
+                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='中国古代仙侠场景，云雾缭绕的山峰上有一座悬浮的仙宫，金色阳光穿透云层'">仙宫云海</span>
+              </div>
+            </div>
+
+            <!-- 右侧结果展示 -->
+            <div class="ig-result">
+              <div class="ig-result-box" id="ig-result-box">
+                <div class="ig-result-empty">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+                    <rect x="6" y="8" width="44" height="40" rx="6" stroke="currentColor" stroke-width="1.5" opacity=".15"/>
+                    <circle cx="18" cy="22" r="5" stroke="currentColor" stroke-width="1.5" opacity=".15"/>
+                    <path d="M6 38l12-12 8 8 8-10 16 14" stroke="currentColor" stroke-width="1.5" opacity=".15" stroke-linejoin="round"/>
+                  </svg>
+                  <div class="ig-empty-text">输入提示词，开始生成</div>
+                  <div class="ig-empty-sub">支持中英文提示词</div>
+                </div>
+              </div>
+              <!-- 历史记录 -->
+              <div class="ig-history-section">
+                <div class="ig-sec-title" style="margin-bottom:8px">生成历史</div>
+                <div class="ig-history" id="ig-history">
+                  <div class="ig-history-empty">暂无记录</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+    </div><!-- end page-content -->
+  </div><!-- end main-area -->
+
+  <!-- 添加/编辑供应商弹窗 -->
+  <div id="modal-provider" class="modal" onclick="if(event.target===this)closeProviderModal()">
+    <div class="modal-box" style="max-width:540px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span id="modal-provider-title">添加供应商</span>
+        <button class="modal-close" onclick="closeProviderModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div>
+          <div class="sp-field-label">快速选择</div>
+          <div class="sp-preset-row" id="sp-preset-btns"></div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1.5">
+            <div class="sp-field-label">供应商名称</div>
+            <input class="srp-inp" id="prov-name" placeholder="例如：My OpenAI" />
+          </div>
+          <div style="flex:0.6">
+            <div class="sp-field-label">ID（英文）</div>
+            <input class="srp-inp" id="prov-id" placeholder="my_openai" />
+          </div>
+        </div>
+        <div>
+          <div class="sp-field-label">API 地址</div>
+          <input class="srp-inp" id="prov-url" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div>
+          <div class="sp-field-label">API Key</div>
+          <input type="password" class="srp-inp" id="prov-key" placeholder="sk-..." />
+          <div style="font-size:11px;color:var(--text3);margin-top:5px">密钥仅保存在本地 outputs/settings.json，不上传任何服务器</div>
+        </div>
+        <div>
+          <div class="sp-field-label" style="margin-bottom:8px">预置模型 <span style="color:var(--text3);font-weight:400">（可在添加后自行增删）</span></div>
+          <div id="prov-models-preview" class="sp-models-preview"></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
+        <button class="btn-cancel" onclick="closeProviderModal()">取消</button>
+        <button class="btn-primary" id="btn-save-provider" onclick="saveProvider()">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 编辑 API Key 弹窗 -->
+  <div id="modal-apikey" class="modal" onclick="if(event.target===this)closeApiKeyModal()">
+    <div class="modal-box" style="max-width:440px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span id="modal-apikey-title">修改 API Key</span>
+        <button class="modal-close" onclick="closeApiKeyModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+        <div>
+          <div class="sp-field-label">API 地址</div>
+          <input class="srp-inp" id="modal-prov-url" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div>
+          <div class="sp-field-label">API Key</div>
+          <input type="password" class="srp-inp" id="modal-apikey-input" placeholder="输入新的 API Key（留空则保持不变）" />
+          <div style="font-size:11px;color:var(--text3);margin-top:5px">密钥仅保存在本地，不会上传任何服务器</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
+        <button class="btn-cancel" onclick="closeApiKeyModal()">取消</button>
+        <button class="btn-primary" onclick="saveProviderEdit()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加模型弹窗 -->
+  <div id="modal-model" class="modal" onclick="if(event.target===this)closeModelModal()">
+    <div class="modal-box" style="max-width:460px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span>添加模型</span>
+        <button class="modal-close" onclick="closeModelModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:10px">
+          <div style="flex:1">
+            <div class="sp-field-label">模型 ID</div>
+            <input class="srp-inp" id="model-id" placeholder="gpt-4o" />
+          </div>
+          <div style="flex:1">
+            <div class="sp-field-label">显示名称</div>
+            <input class="srp-inp" id="model-name" placeholder="GPT-4o" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1">
+            <div class="sp-field-label">类型</div>
+            <select class="srp-sel" id="model-type">
+              <option value="chat">chat（对话）</option>
+              <option value="image">image（图像）</option>
+              <option value="video">video（视频）</option>
+              <option value="tts">tts（语音）</option>
+              <option value="embedding">embedding（向量）</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <div class="sp-field-label">用途路由</div>
+            <select class="srp-sel" id="model-use">
+              <option value="story">剧情生成</option>
+              <option value="image">图像生成</option>
+              <option value="video">视频生成</option>
+              <option value="tts">语音合成</option>
+              <option value="avatar">数字人</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
+        <button class="btn-cancel" onclick="closeModelModal()">取消</button>
+        <button class="btn-primary" onclick="saveModel()">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加 MCP 弹窗 -->
+  <div id="modal-mcp" class="modal" onclick="if(event.target===this)closeMCPModal()">
+    <div class="modal-box" style="max-width:460px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span>添加 MCP 连接器</span>
+        <button class="modal-close" onclick="closeMCPModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+        <div><div class="sp-field-label">名称</div><input class="srp-inp" id="mcp-name" placeholder="例如：文件系统 MCP" /></div>
+        <div><div class="sp-field-label">服务器 URL</div><input class="srp-inp" id="mcp-url" placeholder="http://localhost:3100/mcp" /></div>
+        <div><div class="sp-field-label">描述（可选）</div><input class="srp-inp" id="mcp-desc" placeholder="简述该 MCP 的用途" /></div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
+        <button class="btn-cancel" onclick="closeMCPModal()">取消</button>
+        <button class="btn-primary" onclick="saveMCP()">添加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新建 Skill 弹窗 -->
+  <div id="modal-skill" class="modal" onclick="if(event.target===this)closeSkillModal()">
+    <div class="modal-box" style="max-width:500px" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span>新建 Skill</span>
+        <button class="modal-close" onclick="closeSkillModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:10px">
+          <div style="flex:2"><div class="sp-field-label">Skill 名称</div><input class="srp-inp" id="skill-name" placeholder="例如：角色描述增强" /></div>
+          <div style="flex:0.7"><div class="sp-field-label">图标</div><input class="srp-inp" id="skill-emoji" placeholder="⚡" style="text-align:center" /></div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div style="flex:1"><div class="sp-field-label">分类</div>
+            <select class="srp-sel" id="skill-type">
+              <option value="图像">图像类</option><option value="文本">文本类</option>
+              <option value="视频">视频类</option><option value="语音">语音类</option>
+              <option value="通用">通用类</option>
+            </select>
+          </div>
+          <div style="flex:2"><div class="sp-field-label">接口地址（可选）</div><input class="srp-inp" id="skill-endpoint" placeholder="http://localhost:3200/skill/run" /></div>
+        </div>
+        <div><div class="sp-field-label">描述</div><textarea class="srp-ta" id="skill-desc" rows="3" placeholder="一句话描述 Skill 的功能"></textarea></div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0 20px 20px">
+        <button class="btn-cancel" onclick="closeSkillModal()">取消</button>
+        <button class="btn-primary" onclick="saveSkill()">创建</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end app-shell -->
+
+<!-- 视频模型选择弹窗 -->
+<div id="modal-vm" class="modal" onclick="if(event.target===this)closeVmModal()">
+  <div class="modal-box" style="max-width:580px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>选择视频模型</span>
+      <button class="modal-close" onclick="closeVmModal()">✕</button>
+    </div>
+    <div class="vmm-body" id="vmm-body" style="padding:12px 16px;max-height:60vh;overflow-y:auto">
+      <div class="vm-loading">加载模型中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 图片大图弹窗 -->
+<div id="img-lightbox" class="modal" onclick="closeLightbox(event)">
+  <div class="lightbox-wrap">
+    <img id="lightbox-img" src="" alt="" />
+    <div class="lightbox-caption" id="lightbox-caption"></div>
+    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  </div>
+</div>
+
+<!-- 视频预览弹窗 -->
+<div id="video-modal" class="modal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span id="modal-title">视频预览</span>
+      <button class="modal-close" onclick="closePreview()">✕ 关闭</button>
+    </div>
+    <div class="modal-body">
+      <video id="modal-video" controls autoplay playsinline>
+        <source id="modal-video-src" src="" type="video/mp4" />
+      </video>
+    </div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

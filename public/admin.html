@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIDO - 管理后台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/admin.css" />
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div class="admin-topbar">
+  <div class="logo-mark">V</div>
+  <span class="logo-name">VIDO</span>
+  <span class="logo-tag">管理后台</span>
+  <div class="topbar-spacer"></div>
+  <span class="topbar-user" id="topbar-user"></span>
+  <div class="topbar-btns">
+    <button class="topbar-btn" onclick="location.href='/'">返回前台</button>
+    <button class="topbar-btn danger" onclick="logout()">退出登录</button>
+  </div>
+</div>
+
+<!-- ═══ TABS ═══ -->
+<div class="admin-tabs">
+  <button class="admin-tab active" data-tab="users">用户管理</button>
+  <button class="admin-tab" data-tab="roles">角色管理</button>
+  <button class="admin-tab" data-tab="credits">积分记录</button>
+  <button class="admin-tab" data-tab="system">系统设置</button>
+</div>
+
+<!-- ═══ CONTENT ═══ -->
+<div class="admin-content">
+
+  <!-- ── 用户管理 ── -->
+  <div class="admin-panel active" id="panel-users">
+    <div class="panel-toolbar">
+      <span class="panel-title">用户管理</span>
+      <button class="btn-primary" id="btn-new-user">+ 新建用户</button>
+    </div>
+    <div class="inline-form" id="form-new-user">
+      <div class="form-title">新建用户</div>
+      <div class="form-row">
+        <div class="form-group"><label>用户名</label><input id="nu-username" placeholder="username" /></div>
+        <div class="form-group"><label>邮箱</label><input id="nu-email" type="email" placeholder="email@example.com" /></div>
+        <div class="form-group"><label>密码</label><input id="nu-password" type="password" placeholder="password" /></div>
+        <div class="form-group"><label>角色</label><select id="nu-role"></select></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" id="btn-save-user">创建</button>
+        <button class="btn-sm" id="btn-cancel-user">取消</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table" id="users-table">
+        <thead><tr>
+          <th>用户名</th><th>邮箱</th><th>角色</th><th>积分</th><th>状态</th><th>最近登录</th><th>操作</th>
+        </tr></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 角色管理 ── -->
+  <div class="admin-panel" id="panel-roles">
+    <div class="panel-toolbar">
+      <span class="panel-title">角色管理</span>
+      <button class="btn-primary" id="btn-new-role">+ 新建角色</button>
+    </div>
+    <div id="roles-container" class="roles-grid"></div>
+  </div>
+
+  <!-- ── 积分记录 ── -->
+  <div class="admin-panel" id="panel-credits">
+    <div class="panel-toolbar">
+      <span class="panel-title">积分记录</span>
+    </div>
+    <div class="filter-bar">
+      <div class="form-group"><label>用户</label><select id="cf-user"><option value="">全部</option></select></div>
+      <div class="form-group"><label>操作类型</label>
+        <select id="cf-operation">
+          <option value="">全部</option>
+          <option value="admin_adjust">管理员调整</option>
+          <option value="consume">消耗</option>
+          <option value="recharge">充值</option>
+          <option value="refund">退款</option>
+          <option value="init">初始化</option>
+        </select>
+      </div>
+      <div class="form-group"><label>开始日期</label><input type="date" id="cf-start" /></div>
+      <div class="form-group"><label>结束日期</label><input type="date" id="cf-end" /></div>
+      <button class="btn-primary" id="btn-filter-credits" style="align-self:end;">查询</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table" id="credits-table">
+        <thead><tr><th>时间</th><th>用户</th><th>操作类型</th><th>变动</th><th>余额</th><th>详情</th></tr></thead>
+        <tbody id="credits-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 系统设置 ── -->
+  <div class="admin-panel" id="panel-system">
+    <div class="panel-toolbar"><span class="panel-title">系统设置</span></div>
+    <div class="hint-box">
+      <span>AI 配置已移至专属页面</span>
+      <a href="/settings.html">前往 Settings 页面 &rarr;</a>
+    </div>
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card"><div class="stat-card-label">总用户数</div><div class="stat-card-value" id="st-total-users">-</div></div>
+      <div class="stat-card"><div class="stat-card-label">活跃用户</div><div class="stat-card-value" id="st-active-users">-</div></div>
+      <div class="stat-card"><div class="stat-card-label">今日积分消耗</div><div class="stat-card-value" id="st-today-credits">-</div></div>
+      <div class="stat-card"><div class="stat-card-label">总交易数</div><div class="stat-card-value" id="st-total-txns">-</div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ ROLE MODAL ═══ -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-box">
+    <div class="form-title" id="role-modal-title">编辑角色</div>
+    <div class="form-row">
+      <div class="form-group"><label>角色 ID</label><input id="rm-id" placeholder="role_id" /></div>
+      <div class="form-group"><label>角色名称</label><input id="rm-label" placeholder="显示名称" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>默认积分</label><input id="rm-credits" type="number" placeholder="100" /></div>
+      <div class="form-group"><label>最大项目数</label><input id="rm-max-projects" type="number" placeholder="10" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>允许模型 (逗号分隔)</label><input id="rm-models" placeholder="gpt-4,deepseek-v3" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>权限</label>
+        <div id="rm-permissions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-primary" id="btn-save-role">保存</button>
+      <button class="btn-sm" id="btn-cancel-role">取消</button>
+      <div style="flex:1"></div>
+      <button class="btn-sm danger" id="btn-delete-role" style="display:none;">删除角色</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

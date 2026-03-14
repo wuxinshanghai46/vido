@@ -1,0 +1,227 @@
+const express = require('express');
+const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const db = require('../models/database');
+
+const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
+
+// 项目创建前上传背景音乐
+const musicStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(OUTPUT_DIR, 'music');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.mp3';
+    cb(null, `pre_${Date.now()}${ext}`);
+  }
+});
+const uploadMusic = multer({
+  storage: musicStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = file.mimetype.startsWith('audio/') ||
+               /\.(mp3|wav|ogg|flac|aac|m4a)$/i.test(file.originalname);
+    cb(null, ok);
+  }
+});
+
+router.post('/upload-music', uploadMusic.single('music'), (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: '请上传音频文件' });
+  const filename = path.basename(req.file.path);
+  res.json({ success: true, data: { file_path: req.file.path, original_name: req.file.originalname, file_url: `/api/projects/music/${filename}` } });
+});
+
+// 提供上传音乐文件的预听
+router.get('/music/:filename', (req, res) => {
+  const filePath = path.join(OUTPUT_DIR, 'music', req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '文件不存在' });
+  res.sendFile(filePath);
+});
+const {
+  createProject,
+  getProjectDetails,
+  listProjects,
+  runFullPipeline,
+  addProgressListener,
+  removeProgressListener,
+  cancelPipeline
+} = require('../services/projectService');
+
+router.get('/', (req, res) => {
+  try {
+    const all = listProjects();
+    // admin 看全部，普通用户只看自己的
+    const filtered = req.user?.role === 'admin' ? all : all.filter(p => p.user_id === req.user?.id || !p.user_id);
+    res.json({ success: true, data: filtered });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/', async (req, res) => {
+  const {
+    title, theme, genre = 'drama', duration = 60,
+    mode, custom_content, skip_parse,
+    anim_style, aspect_ratio,
+    music_path, music_trim_start, music_trim_end, music_volume, music_loop,
+    scene_dim, char_dim,
+    voice_enabled, voice_gender, voice_speed,
+    video_provider, video_model,
+    creation_mode, episode_count, episode_index, previous_summary
+  } = req.body;
+  if (!theme) return res.status(400).json({ success: false, error: '请提供视频主题' });
+
+  try {
+    const projectId = createProject({
+      title: title || theme, theme, genre, duration,
+      mode: mode || 'quick',
+      custom_content: custom_content || null,
+      anim_style: anim_style || 'anime',
+      aspect_ratio: aspect_ratio || '16:9',
+      music_path: music_path || null,
+      music_trim_start: music_trim_start || null,
+      music_trim_end: music_trim_end || null,
+      music_volume: music_volume ?? 0.5,
+      music_loop: music_loop !== false,
+      scene_dim: scene_dim || '2d',
+      char_dim: char_dim || '2d',
+      voice_enabled: !!voice_enabled,
+      voice_gender: voice_gender || 'female',
+      voice_speed: voice_speed || 1.0,
+      video_provider: video_provider || null,
+      video_model: video_model || null,
+      creation_mode: creation_mode || 'ai',
+      episode_count: episode_count || null,
+      episode_index: episode_index || null,
+      previous_summary: previous_summary || null,
+      user_id: req.user?.id || null
+    });
+    res.json({ success: true, data: { projectId } });
+
+    // 异步执行，不阻塞响应
+    runFullPipeline(projectId, req.user?.id).catch(err => {
+      console.error(`[Project ${projectId}] Pipeline error:`, err.message);
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/:id', (req, res) => {
+  const details = getProjectDetails(req.params.id);
+  if (!details) return res.status(404).json({ success: false, error: '项目不存在' });
+  res.json({ success: true, data: details });
+});
+
+// 取消制作
+router.post('/:id/cancel', (req, res) => {
+  try {
+    cancelPipeline(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SSE 实时进度
+router.get('/:id/progress', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.write(`data: ${JSON.stringify({ step: 'connected', message: '已连接进度监听' })}\n\n`);
+  addProgressListener(req.params.id, res);
+  req.on('close', () => removeProgressListener(req.params.id, res));
+});
+
+// 下载最终视频
+router.get('/:id/download', (req, res) => {
+  const details = getProjectDetails(req.params.id);
+  if (!details?.finalVideo) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
+
+  const filePath = details.finalVideo.file_path;
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '视频文件不存在' });
+
+  res.download(filePath, `${details.title || details.id}_final.mp4`);
+});
+
+// 流式播放最终视频（支持 Range 请求，浏览器原生播放）
+router.get('/:id/stream', (req, res) => {
+  const details = getProjectDetails(req.params.id);
+  if (!details?.finalVideo) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
+
+  const filePath = details.finalVideo.file_path;
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '文件不存在' });
+
+  const stat = fs.statSync(filePath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+    const chunkSize = end - start + 1;
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': 'video/mp4'
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': 'video/mp4',
+      'Accept-Ranges': 'bytes'
+    });
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
+// 流式播放单个场景片段
+router.get('/:id/clips/:clipId/stream', (req, res) => {
+  const clip = db.getClip(req.params.clipId, req.params.id);
+  if (!clip?.file_path || !fs.existsSync(clip.file_path)) {
+    return res.status(404).json({ success: false, error: '片段不存在' });
+  }
+
+  const stat = fs.statSync(clip.file_path);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  if (range) {
+    const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': 'video/mp4'
+    });
+    fs.createReadStream(clip.file_path, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes' });
+    fs.createReadStream(clip.file_path).pipe(res);
+  }
+});
+
+// 预览片段（兼容旧接口）
+router.get('/:id/clips/:clipId/preview', (req, res) => {
+  const clip = db.getClip(req.params.clipId, req.params.id);
+  if (!clip?.file_path || !fs.existsSync(clip.file_path)) {
+    return res.status(404).json({ success: false, error: '片段不存在' });
+  }
+  res.setHeader('Content-Type', 'video/mp4');
+  fs.createReadStream(clip.file_path).pipe(res);
+});
+
+module.exports = router;

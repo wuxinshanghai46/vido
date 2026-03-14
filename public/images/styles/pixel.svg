@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
+  <rect width="120" height="160" fill="#0a0520"/>
+  <!-- Pixel grid background -->
+  <rect x="0" y="0" width="120" height="160" fill="none" stroke="#1a0840" stroke-width="0.3" opacity=".5"/>
+  <!-- Pixel character (8-bit style) -->
+  <!-- Head -->
+  <rect x="40" y="25" width="8" height="8" fill="#f4c090"/>
+  <rect x="48" y="25" width="8" height="8" fill="#f4c090"/>
+  <rect x="56" y="25" width="8" height="8" fill="#f4c090"/>
+  <rect x="64" y="25" width="8" height="8" fill="#f4c090"/>
+  <rect x="72" y="25" width="8" height="8" fill="#f4c090"/>
+  <rect x="40" y="33" width="8" height="8" fill="#f4c090"/>
+  <rect x="48" y="33" width="8" height="8" fill="#202080"/><!-- eye -->
+  <rect x="56" y="33" width="8" height="8" fill="#f4c090"/>
+  <rect x="64" y="33" width="8" height="8" fill="#202080"/><!-- eye -->
+  <rect x="72" y="33" width="8" height="8" fill="#f4c090"/>
+  <rect x="40" y="41" width="8" height="8" fill="#f4c090"/>
+  <rect x="48" y="41" width="8" height="8" fill="#f4c090"/>
+  <rect x="56" y="41" width="8" height="8" fill="#e06060"/><!-- mouth -->
+  <rect x="64" y="41" width="8" height="8" fill="#f4c090"/>
+  <rect x="72" y="41" width="8" height="8" fill="#f4c090"/>
+  <!-- Body -->
+  <rect x="40" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="48" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="56" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="64" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="72" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="40" y="57" width="8" height="8" fill="#4040c0"/>
+  <rect x="48" y="57" width="8" height="8" fill="#ff8000"/>
+  <rect x="56" y="57" width="8" height="8" fill="#ff8000"/>
+  <rect x="64" y="57" width="8" height="8" fill="#ff8000"/>
+  <rect x="72" y="57" width="8" height="8" fill="#4040c0"/>
+  <!-- Arms -->
+  <rect x="32" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="32" y="57" width="8" height="8" fill="#f4c090"/>
+  <rect x="80" y="49" width="8" height="8" fill="#4040c0"/>
+  <rect x="80" y="57" width="8" height="8" fill="#f4c090"/>
+  <!-- Legs -->
+  <rect x="48" y="65" width="8" height="8" fill="#202080"/>
+  <rect x="64" y="65" width="8" height="8" fill="#202080"/>
+  <rect x="48" y="73" width="8" height="8" fill="#202080"/>
+  <rect x="64" y="73" width="8" height="8" fill="#202080"/>
+  <rect x="48" y="81" width="8" height="8" fill="#c04000"/>
+  <rect x="64" y="81" width="8" height="8" fill="#c04000"/>
+  <!-- Pixel heart UI -->
+  <rect x="15" y="10" width="6" height="6" fill="#ff0040"/>
+  <rect x="21" y="8" width="4" height="4" fill="#ff0040"/>
+  <rect x="11" y="8" width="4" height="4" fill="#ff0040"/>
+  <rect x="9" y="12" width="4" height="4" fill="#ff0040"/>
+  <rect x="25" y="12" width="4" height="4" fill="#ff0040"/>
+  <rect x="11" y="16" width="4" height="4" fill="#ff0040"/>
+  <rect x="23" y="16" width="4" height="4" fill="#ff0040"/>
+  <rect x="13" y="20" width="8" height="4" fill="#ff0040"/>
+  <!-- Score -->
+  <rect x="70" y="8" width="40" height="6" rx="1" fill="#1a0840"/>
+  <text x="72" y="14" font-size="6" fill="#ffff00" font-family="monospace">00480</text>
+  <!-- Ground -->
+  <rect x="0" y="120" width="120" height="8" fill="#2a1060"/>
+  <rect x="0" y="128" width="120" height="32" fill="#1a0840"/>
+  <!-- Coins -->
+  <circle cx="30" cy="110" r="5" fill="#ffcc00" opacity=".8"/>
+  <circle cx="50" cy="110" r="5" fill="#ffcc00" opacity=".8"/>
+  <circle cx="70" cy="110" r="5" fill="#ffcc00" opacity=".8"/>
+</svg>

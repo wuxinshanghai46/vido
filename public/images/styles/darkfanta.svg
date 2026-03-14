@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
+  <defs>
+    <radialGradient id="purpleglow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#8000c0" stop-opacity=".4"/>
+      <stop offset="100%" stop-color="#040008" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="120" height="160" fill="#030006"/>
+  <rect width="120" height="160" fill="url(#purpleglow)"/>
+  <!-- Dark castle -->
+  <rect x="35" y="55" width="50" height="105" fill="#0a0012"/>
+  <rect x="40" y="40" width="12" height="25" fill="#0a0012"/>
+  <rect x="68" y="40" width="12" height="25" fill="#0a0012"/>
+  <!-- Battlements -->
+  <rect x="35" y="50" width="6" height="10" fill="#0a0012"/>
+  <rect x="44" y="50" width="6" height="10" fill="#0a0012"/>
+  <rect x="53" y="50" width="6" height="10" fill="#0a0012"/>
+  <rect x="62" y="50" width="6" height="10" fill="#0a0012"/>
+  <rect x="71" y="50" width="6" height="10" fill="#0a0012"/>
+  <rect x="79" y="50" width="6" height="10" fill="#0a0012"/>
+  <!-- Castle windows -->
+  <rect x="45" y="65" width="8" height="10" rx="4" fill="#6000a0" opacity=".7"/>
+  <rect x="67" y="65" width="8" height="10" rx="4" fill="#6000a0" opacity=".7"/>
+  <rect x="56" y="78" width="8" height="12" rx="4" fill="#8000c0" opacity=".5"/>
+  <!-- Dark magic circle -->
+  <circle cx="60" cy="115" r="22" fill="none" stroke="#8000c0" stroke-width="1" opacity=".7"/>
+  <circle cx="60" cy="115" r="16" fill="none" stroke="#a000e0" stroke-width="0.5" opacity=".5"/>
+  <!-- Pentagram-like shape -->
+  <polygon points="60,95 64,108 78,108 67,117 71,130 60,122 49,130 53,117 42,108 56,108" fill="none" stroke="#c000ff" stroke-width="0.8" opacity=".6"/>
+  <!-- Dark figure -->
+  <circle cx="60" cy="102" r="5" fill="#0a0012"/>
+  <polygon points="55,107 65,107 70,130 50,130" fill="#0a0012"/>
+  <!-- Wings -->
+  <path d="M55,110 C40,100 20,115 30,130 C40,130 50,120 55,115Z" fill="#150020" opacity=".9"/>
+  <path d="M65,110 C80,100 100,115 90,130 C80,130 70,120 65,115Z" fill="#150020" opacity=".9"/>
+  <!-- Magic particles -->
+  <circle cx="40" cy="40" r="2" fill="#c000ff" opacity=".7"/>
+  <circle cx="85" cy="35" r="1.5" fill="#8000c0" opacity=".8"/>
+  <circle cx="20" cy="80" r="1.5" fill="#c000ff" opacity=".6"/>
+  <circle cx="100" cy="75" r="2" fill="#8000c0" opacity=".7"/>
+  <circle cx="15" cy="130" r="1.5" fill="#ff4000" opacity=".5"/>
+  <circle cx="105" cy="125" r="1.5" fill="#ff4000" opacity=".6"/>
+  <!-- Red moon -->
+  <circle cx="20" cy="25" r="12" fill="#400000" opacity=".6"/>
+  <circle cx="20" cy="25" r="10" fill="#600000" opacity=".5"/>
+  <circle cx="23" cy="22" r="8" fill="#030006"/>
+</svg>

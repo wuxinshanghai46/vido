@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a0520"/>
+      <stop offset="50%" stop-color="#5a1a7a"/>
+      <stop offset="100%" stop-color="#f4a0c0"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde8d8"/>
+      <stop offset="100%" stop-color="#f4b8a0"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="160" fill="url(#bg)"/>
+  <!-- Stars -->
+  <circle cx="15" cy="20" r="1" fill="white" opacity=".6"/>
+  <circle cx="95" cy="15" r="1.5" fill="white" opacity=".8"/>
+  <circle cx="105" cy="50" r="1" fill="white" opacity=".5"/>
+  <circle cx="20" cy="60" r="1" fill="white" opacity=".4"/>
+  <!-- Anime face -->
+  <ellipse cx="60" cy="72" rx="28" ry="32" fill="url(#face)"/>
+  <!-- Hair -->
+  <ellipse cx="60" cy="48" rx="30" ry="18" fill="#3a1060"/>
+  <rect x="32" y="48" width="10" height="35" rx="5" fill="#3a1060"/>
+  <rect x="78" y="48" width="10" height="35" rx="5" fill="#3a1060"/>
+  <!-- Eyes -->
+  <ellipse cx="48" cy="72" rx="8" ry="10" fill="#1a0a30"/>
+  <ellipse cx="72" cy="72" rx="8" ry="10" fill="#1a0a30"/>
+  <ellipse cx="48" cy="72" rx="6" ry="8" fill="#6040c0"/>
+  <ellipse cx="72" cy="72" rx="6" ry="8" fill="#6040c0"/>
+  <ellipse cx="48" cy="72" rx="3" ry="4" fill="#1a0a30"/>
+  <ellipse cx="72" cy="72" rx="3" ry="4" fill="#1a0a30"/>
+  <circle cx="50" cy="70" r="1.5" fill="white"/>
+  <circle cx="74" cy="70" r="1.5" fill="white"/>
+  <!-- Blush -->
+  <ellipse cx="38" cy="82" rx="7" ry="4" fill="#f080a0" opacity=".5"/>
+  <ellipse cx="82" cy="82" rx="7" ry="4" fill="#f080a0" opacity=".5"/>
+  <!-- Mouth -->
+  <path d="M53 90 Q60 96 67 90" stroke="#c06080" stroke-width="1.5" fill="none"/>
+  <!-- Sakura petals -->
+  <g opacity=".7" fill="#ffb0d0">
+    <ellipse cx="25" cy="130" rx="6" ry="4" transform="rotate(-30 25 130)"/>
+    <ellipse cx="30" cy="128" rx="6" ry="4" transform="rotate(20 30 128)"/>
+    <ellipse cx="90" cy="140" rx="5" ry="3.5" transform="rotate(10 90 140)"/>
+    <ellipse cx="96" cy="138" rx="5" ry="3.5" transform="rotate(-20 96 138)"/>
+    <ellipse cx="60" cy="145" rx="5" ry="3.5" transform="rotate(5 60 145)"/>
+  </g>
+</svg>

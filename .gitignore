@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Output data & generated files
+outputs/vido_db.json
+outputs/edit_db.json
+outputs/auth_db.json
+outputs/settings.json
+outputs/projects/
+outputs/videos/
+outputs/renders/
+outputs/scenes/
+outputs/voice/
+outputs/music/
+outputs/characters/
+outputs/avatar/
+outputs/screenshots/
+outputs/ref_frames/
+outputs/ref_video.mp4
+outputs/i2v_images/
+outputs/i2v_videos/
+outputs/tmp/
+outputs/test/
+outputs/_server.log
+
+# Claude Code
+.claude/
+
+# Logs
+logs/
+
+# Large binary assets
+动作资源包/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160">
+  <defs>
+    <linearGradient id="bgsh" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a1200"/>
+      <stop offset="50%" stop-color="#8b3500"/>
+      <stop offset="100%" stop-color="#d46a0a"/>
+    </linearGradient>
+    <linearGradient id="light" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#ffcc60" stop-opacity=".3"/>
+      <stop offset="100%" stop-color="#ff8800" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="160" fill="url(#bgsh)"/>
+  <!-- Lantern glow -->
+  <ellipse cx="60" cy="50" rx="35" ry="40" fill="url(#light)"/>
+  <!-- Lantern -->
+  <rect x="53" y="15" width="14" height="5" rx="2" fill="#8b3500"/>
+  <line x1="60" y1="20" x2="60" y2="25" stroke="#8b3500" stroke-width="1.5"/>
+  <rect x="50" y="25" width="20" height="30" rx="3" fill="#ff9030" opacity=".9"/>
+  <line x1="50" y1="30" x2="70" y2="30" stroke="#c05000" stroke-width="0.8"/>
+  <line x1="50" y1="37" x2="70" y2="37" stroke="#c05000" stroke-width="0.8"/>
+  <line x1="50" y1="44" x2="70" y2="44" stroke="#c05000" stroke-width="0.8"/>
+  <rect x="48" y="55" width="24" height="4" rx="2" fill="#8b3500"/>
+  <line x1="52" y1="59" x2="50" y2="65" stroke="#8b3500" stroke-width="1"/>
+  <line x1="68" y1="59" x2="70" y2="65" stroke="#8b3500" stroke-width="1"/>
+  <!-- Shadow puppet figure silhouette -->
+  <!-- Body -->
+  <ellipse cx="60" cy="105" rx="12" ry="18" fill="#1a0500" opacity=".95"/>
+  <!-- Head -->
+  <circle cx="60" cy="82" r="11" fill="#1a0500" opacity=".95"/>
+  <!-- Traditional hat -->
+  <ellipse cx="60" cy="74" rx="14" ry="4" fill="#1a0500" opacity=".95"/>
+  <polygon points="60,60 50,74 70,74" fill="#1a0500" opacity=".95"/>
+  <!-- Arms extended -->
+  <line x1="48" y1="98" x2="25" y2="115" stroke="#1a0500" stroke-width="4" stroke-linecap="round"/>
+  <line x1="72" y1="98" x2="95" y2="110" stroke="#1a0500" stroke-width="4" stroke-linecap="round"/>
+  <!-- Legs -->
+  <line x1="55" y1="120" x2="45" y2="145" stroke="#1a0500" stroke-width="4" stroke-linecap="round"/>
+  <line x1="65" y1="120" x2="75" y2="145" stroke="#1a0500" stroke-width="4" stroke-linecap="round"/>
+  <!-- Decorative border -->
+  <rect x="0" y="0" width="120" height="160" fill="none" stroke="#c06010" stroke-width="3" opacity=".4"/>
+  <rect x="4" y="4" width="112" height="152" fill="none" stroke="#ff9030" stroke-width="1" opacity=".3"/>
+</svg>
