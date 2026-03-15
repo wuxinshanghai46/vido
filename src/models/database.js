@@ -12,7 +12,8 @@ const DEFAULT_DB = {
   video_clips: [],
   final_videos: [],
   i2v_tasks: [],
-  novels: []
+  novels: [],
+  assets: []
 };
 
 function readDB() {
@@ -173,6 +174,41 @@ const db = {
       data.novels.splice(idx, 1);
       writeDB(data);
     }
+  },
+
+  // ——— Assets（素材库）———
+  insertAsset(row) {
+    const data = readDB();
+    if (!data.assets) data.assets = [];
+    row.created_at = new Date().toISOString();
+    row.updated_at = row.created_at;
+    data.assets.push(row);
+    writeDB(data);
+  },
+  getAsset(id) {
+    const data = readDB();
+    return (data.assets || []).find(a => a.id === id) || null;
+  },
+  listAssets(userId, type) {
+    const data = readDB();
+    return (data.assets || [])
+      .filter(a => (!userId || a.user_id === userId) && (!type || type === 'all' || a.type === type))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  updateAsset(id, fields) {
+    const data = readDB();
+    if (!data.assets) data.assets = [];
+    const idx = data.assets.findIndex(a => a.id === id);
+    if (idx !== -1) {
+      data.assets[idx] = { ...data.assets[idx], ...fields, updated_at: new Date().toISOString() };
+      writeDB(data);
+    }
+  },
+  deleteAsset(id) {
+    const data = readDB();
+    if (!data.assets) return;
+    const idx = data.assets.findIndex(a => a.id === id);
+    if (idx !== -1) { data.assets.splice(idx, 1); writeDB(data); }
   }
 };
 

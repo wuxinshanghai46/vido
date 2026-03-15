@@ -68,6 +68,18 @@ app.get('/api/projects/music/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 素材文件（公开，audio/img 标签无法带 Authorization header）
+app.get('/api/assets/file/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const dirs = ['music', 'characters', 'scenes'];
+  for (const sub of dirs) {
+    const filePath = path.join(__dirname, '../outputs/assets', sub, filename);
+    if (fs.existsSync(filePath)) return res.sendFile(filePath);
+  }
+  res.status(404).end();
+});
+
 // 角色/场景图片（公开，img 标签无法带 Authorization header）
 app.get('/api/story/character-image/:filename', (req, res) => {
   const fs = require('fs');
@@ -79,10 +91,26 @@ app.get('/api/story/character-image/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 用户主题偏好
+app.put('/api/user/theme', authenticate, (req, res) => {
+  const { theme } = req.body;
+  const valid = ['purple', 'cyan', 'green', 'amber', 'rose', 'blue'];
+  if (!valid.includes(theme)) return res.status(400).json({ success: false, error: '无效主题' });
+  const authStore = require('./models/authStore');
+  authStore.updateUser(req.user.id, { theme });
+  res.json({ success: true });
+});
+app.get('/api/user/theme', authenticate, (req, res) => {
+  const authStore = require('./models/authStore');
+  const user = authStore.getUserById(req.user.id);
+  res.json({ success: true, theme: user?.theme || 'purple' });
+});
+
 // === 需认证的路由 ===
 app.use('/api/projects', authenticate, require('./routes/projects'));
 app.use('/api/story', authenticate, require('./routes/story'));
 app.use('/api/editor', authenticate, require('./routes/editor'));
+app.use('/api/assets', authenticate, require('./routes/assets'));
 
 // === 需特定权限的路由 ===
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));
@@ -128,9 +156,20 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  VIDO AI 视频平台已启动`);
   console.log(`  本地访问: http://localhost:${PORT}`);
+  // 显示局域网地址
+  try {
+    const nets = require('os').networkInterfaces();
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          console.log(`  局域网: http://${net.address}:${PORT}`);
+        }
+      }
+    }
+  } catch {}
   const { getStoryInfo } = require('./services/storyService');
   const story = getStoryInfo();
   console.log(`  剧情模型: ${story.provider === 'none' ? '未配置（请在 AI 配置页面添加）' : `${story.provider} (${story.model})`}`);

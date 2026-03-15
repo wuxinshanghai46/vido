@@ -13,8 +13,14 @@ let saveTimer = null;
 
 // ——— 初始化 ———
 async function init() {
+  // 确认登录状态
+  if (typeof requireAuth === 'function') {
+    const ok = await requireAuth();
+    if (!ok) return;
+  }
+
   try {
-    const res = await fetch(`/api/editor/${projectId}`);
+    const res = await authFetch(`/api/editor/${projectId}`);
     const data = await res.json();
     if (!data.success) { alert('项目加载失败'); return; }
 
@@ -59,7 +65,7 @@ function renderTimeline() {
         <div class="track-drag-handle">⠿</div>
         <div class="track-num">${position + 1}</div>
         <div class="track-thumb">
-          <video src="/api/projects/${projectId}/clips/${clip.id}/stream" preload="metadata" muted
+          <video src="${authUrl(`/api/projects/${projectId}/clips/${clip.id}/stream`)}" preload="metadata" muted
             onloadedmetadata="this.currentTime=1"></video>
         </div>
         <div class="track-body">
@@ -268,7 +274,7 @@ function loadMusicUI() {
 function initMusicAudio() {
   if (musicAudio) { musicAudio.pause(); musicAudio = null; }
 
-  musicAudio = new Audio(`/api/editor/${projectId}/music-stream`);
+  musicAudio = new Audio(authUrl(`/api/editor/${projectId}/music-stream`));
   musicAudio.crossOrigin = 'anonymous';
 
   musicAudio.addEventListener('loadedmetadata', () => {
@@ -292,7 +298,7 @@ function initMusicAudio() {
 }
 
 function decodeWaveform() {
-  fetch(`/api/editor/${projectId}/music-stream`)
+  authFetch(`/api/editor/${projectId}/music-stream`)
     .then(r => r.arrayBuffer())
     .then(buf => {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -520,7 +526,7 @@ async function uploadMusic(input) {
 
   setSaveStatus('上传中...');
   try {
-    const res = await fetch(`/api/editor/${projectId}/music`, { method: 'POST', body: formData });
+    const res = await authFetch(`/api/editor/${projectId}/music`, { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
     editData.music = data.data.music;
@@ -535,7 +541,7 @@ async function uploadMusic(input) {
 async function removeMusic() {
   if (!confirm('确认删除背景音乐？')) return;
   cleanupMusicPreview();
-  await fetch(`/api/editor/${projectId}/music`, { method: 'DELETE' });
+  await authFetch(`/api/editor/${projectId}/music`, { method: 'DELETE' });
   editData.music = null;
   loadMusicUI();
 }
@@ -554,14 +560,13 @@ async function saveEdit() {
     if (editData.music) {
       editData.music.volume = parseInt(document.getElementById('music-volume').value) / 100;
       editData.music.loop = document.getElementById('music-loop').checked;
-      if (musicTrimStart > 0 || (musicTrimEnd > 0 && musicTrimEnd < musicDuration)) {
+      if (musicDuration > 0) {
         editData.music.trim_start = Math.round(musicTrimStart * 100) / 100;
         editData.music.trim_end = Math.round(musicTrimEnd * 100) / 100;
       }
     }
-    const res = await fetch(`/api/editor/${projectId}`, {
+    const res = await authFetch(`/api/editor/${projectId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editData)
     });
     const data = await res.json();
@@ -592,7 +597,7 @@ async function startRender() {
   addRenderLog('开始渲染...');
 
   if (renderSSE) renderSSE.close();
-  renderSSE = new EventSource(`/api/editor/${projectId}/render/progress`);
+  renderSSE = new EventSource(authUrl(`/api/editor/${projectId}/render/progress`));
   renderSSE.onmessage = (e) => {
     const data = JSON.parse(e.data);
     if (data.step === 'connected') return;
@@ -605,7 +610,7 @@ async function startRender() {
       btn.disabled = false;
       btn.innerHTML = '<span>⚡</span> 渲染导出';
       document.getElementById('render-result').style.display = 'block';
-      document.getElementById('render-download').href = `/api/editor/${projectId}/download-render`;
+      document.getElementById('render-download').href = authUrl(`/api/editor/${projectId}/download-render`);
     }
     if (isError) {
       renderSSE.close();
@@ -615,7 +620,7 @@ async function startRender() {
   };
 
   // 发起渲染
-  fetch(`/api/editor/${projectId}/render`, { method: 'POST' }).catch(e => addRenderLog(e.message, 'error'));
+  authFetch(`/api/editor/${projectId}/render`, { method: 'POST' }).catch(e => addRenderLog(e.message, 'error'));
 }
 
 function addRenderLog(msg, type = '') {
@@ -628,7 +633,7 @@ function addRenderLog(msg, type = '') {
 }
 
 function previewRender() {
-  openVideoPreview(`/api/editor/${projectId}/stream-render`, '成品预览');
+  openVideoPreview(authUrl(`/api/editor/${projectId}/stream-render`), '成品预览');
 }
 
 // ——— 视频预览 ———

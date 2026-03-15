@@ -209,7 +209,7 @@ router.get('/contents/:type/:id', (req, res) => {
       prompt: p.prompt, scene_count: p.scene_count, video_provider: p.video_provider,
       video_model: p.video_model, anim_style: p.anim_style,
       scenes: (p.scenes || []).map(s => ({ index: s.scene_index, description: s.description, visual_prompt: s.visual_prompt })),
-      has_video: !!(p.output_path || p.final_video_path),
+      has_video: !!(p.output_path || p.final_video_path || db.getFinalVideoByProject(p.id)),
       stream_url: `/api/projects/${p.id}/stream`
     };
   } else if (type === 'i2v') {

@@ -110,11 +110,22 @@ function switchTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('vido-theme', theme);
   document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === theme));
+  // 保存到后端（用户偏好）
+  authFetch('/api/user/theme', { method: 'PUT', body: JSON.stringify({ theme }) }).catch(() => {});
 }
 
 function loadTheme() {
   const saved = localStorage.getItem('vido-theme');
-  if (saved) switchTheme(saved);
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === saved));
+  }
+  // 从后端同步（登录后）
+  authFetch('/api/user/theme').then(r => r.json()).then(data => {
+    if (data.success && data.theme && data.theme !== saved) {
+      switchTheme(data.theme);
+    }
+  }).catch(() => {});
 }
 
 // ═══ 用户菜单 ═══
@@ -162,6 +173,8 @@ async function init() {
   renderTimeline();
   initMusicTrimDrag();
   initMusicPreview();
+  initScrollSync();
+  initRulerScrub();
   loadVideoModels();
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => switchPage(el.dataset.page));
@@ -180,6 +193,8 @@ async function init() {
 // ═══ 导航 ═══
 function switchPage(page, opts) {
   if (page === 'settings') return; // AI 配置已移至后台
+  // 切换页面时停止所有音频播放
+  stopAllAudio();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const pageEl = document.getElementById('page-' + page);
@@ -192,6 +207,7 @@ function switchPage(page, opts) {
   if (page === 'avatar') loadAvatarPage();
   if (page === 'imggen') loadImgGenPage();
   if (page === 'novel') nvLoadPage();
+  if (page === 'assets') loadAssetsPage();
   if (page === 'create' && !(opts && opts.keepProject)) {
     resetForm();
   }
@@ -1021,27 +1037,132 @@ function toggleParamPanel() {
 }
 
 // ═══ 时间轴 ═══
+
+// ═══ 播放指针位置更新（统一函数） ═══
+function updateTlPlayhead(timeSec) {
+  const ph = document.getElementById('tl-playhead');
+  if (!ph) return;
+  const pixPerSec = studioTlZoom * 10;
+  const scrollEl = document.getElementById('tl-ruler-area');
+  const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
+  const xPx = 110 + timeSec * pixPerSec - scrollLeft;
+  // 限制在轨道区域内（110px ~ 容器宽度）
+  ph.style.left = Math.max(110, xPx) + 'px';
+  ph.style.display = xPx < 110 ? 'none' : '';
+}
+
+// 标尺拖拽快速定位
+function initRulerScrub() {
+  const rulerArea = document.getElementById('tl-ruler-area');
+  if (!rulerArea) return;
+
+  let autoScrollRAF = null;
+
+  function seekFromX(clientX) {
+    const rect = rulerArea.getBoundingClientRect();
+    const xInContent = clientX - rect.left + rulerArea.scrollLeft;
+    const pixPerSec = studioTlZoom * 10;
+    const timeSec = Math.max(0, xInContent / pixPerSec);
+    const vid = document.getElementById('center-video');
+    if (vid && vid.duration) vid.currentTime = Math.min(timeSec, vid.duration);
+    updateTlPlayhead(timeSec);
+
+    // 靠近边缘自动滚动
+    const edge = 40;
+    const relX = clientX - rect.left;
+    if (relX < edge) {
+      rulerArea.scrollLeft = Math.max(0, rulerArea.scrollLeft - 8);
+      syncAllScroll(rulerArea);
+    } else if (relX > rect.width - edge) {
+      rulerArea.scrollLeft += 8;
+      syncAllScroll(rulerArea);
+    }
+  }
+
+  function syncAllScroll(src) {
+    const els = document.querySelectorAll('.tl-scroll-sync');
+    els.forEach(el => { if (el !== src) el.scrollLeft = src.scrollLeft; });
+  }
+
+  // 标尺 + 轨道区域都可以点击/拖拽定位
+  document.querySelectorAll('.tl-track-area.tl-scroll-sync').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.tl-clip-trim') || e.target.closest('.tl-mclip-handle') || e.target.closest('.tl-mclip-body')) return;
+      e.preventDefault();
+      seekFromX(e.clientX);
+      const onMove = (ev) => seekFromX(ev.clientX);
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // 视频播放时指针跟随
+  const vid = document.getElementById('center-video');
+  if (vid) {
+    vid.addEventListener('timeupdate', () => updateTlPlayhead(vid.currentTime));
+  }
+
+  // 播放指针自身可拖拽
+  const ph = document.getElementById('tl-playhead');
+  if (ph) {
+    ph.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const onMove = (ev) => seekFromX(ev.clientX);
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+}
+
+// 横向滚动同步
+function initScrollSync() {
+  setTimeout(() => {
+    const els = Array.from(document.querySelectorAll('.tl-scroll-sync'));
+    if (!els.length) return;
+    let syncing = false;
+    els.forEach(el => {
+      el.addEventListener('scroll', () => {
+        if (syncing) return;
+        syncing = true;
+        const sl = el.scrollLeft;
+        els.forEach(other => { if (other !== el) other.scrollLeft = sl; });
+        const vid = document.getElementById('center-video');
+        if (vid) updateTlPlayhead(vid.currentTime);
+        syncing = false;
+      });
+    });
+  }, 100);
+}
+
 function renderTimeline() {
   const clips = document.getElementById('tl-clips');
   const ruler = document.getElementById('tl-ruler');
   if (!clips || !ruler) return;
-  const zoom = studioTlZoom; // pixels per second
+  const zoom = studioTlZoom;
   const pixPerSec = zoom * 10;
-  // Ruler ticks
-  const totalSecs = 60;
-  ruler.style.width = (totalSecs * pixPerSec) + 'px';
-  let rulerHtml = '';
-  for (let i = 0; i <= totalSecs; i += 5) {
-    rulerHtml += `<div class="tl-ruler-tick" style="left:${i * pixPerSec}px"><div class="tl-ruler-line"></div><div class="tl-ruler-txt">0:${String(i).padStart(2,'0')}</div></div>`;
-  }
-  ruler.innerHTML = rulerHtml;
-  // Clips from customScenes or a default set
+  // 计算总时长：取视频场景、音乐、60秒中的最大值
   const items = customScenes.length ? customScenes : [];
   let offset = 0;
   const totalDurSecs = items.reduce((sum, s) => sum + (s.duration || 10), 0);
-  const neededWidth = Math.max(totalSecs, totalDurSecs + 10) * pixPerSec;
+  const totalSecs = Math.max(60, totalDurSecs + 10, musicDuration ? musicDuration + 5 : 0);
+  // 标尺刻度
+  let rulerHtml = '';
+  for (let i = 0; i <= totalSecs; i += 5) {
+    const m = Math.floor(i / 60), s = i % 60;
+    const label = m > 0 ? `${m}:${String(s).padStart(2,'0')}` : `0:${String(i).padStart(2,'0')}`;
+    rulerHtml += `<div class="tl-ruler-tick" style="left:${i * pixPerSec}px"><div class="tl-ruler-line"></div><div class="tl-ruler-txt">${label}</div></div>`;
+  }
+  ruler.innerHTML = rulerHtml;
+  const neededWidth = totalSecs * pixPerSec;
   clips.style.width = neededWidth + 'px';
   ruler.style.width = neededWidth + 'px';
+  // 同步所有轨道区域和底部滚动条宽度
+  const sbInner = document.getElementById('tl-scrollbar-inner');
+  if (sbInner) sbInner.style.width = neededWidth + 'px';
+  const voiceClips = document.getElementById('tl-voice-clips');
+  if (voiceClips) voiceClips.style.width = neededWidth + 'px';
   clips.innerHTML = items.map((s, i) => {
     const dur = s.duration || 10;
     const left = offset * pixPerSec;
@@ -1096,6 +1217,8 @@ function tlUpdateZoom(val) {
   renderMusicTrack();
 }
 
+let tlMusicLoop = true; // 默认循环（与左侧 checkbox 同步）
+
 function tlTogglePlay() {
   const btn = document.getElementById('tl-play-btn');
   if (!btn) return;
@@ -1106,22 +1229,40 @@ function tlTogglePlay() {
     : '<svg width="10" height="12" viewBox="0 0 10 12"><rect x="1" y="1" width="3" height="10" rx="1" fill="currentColor"/><rect x="6" y="1" width="3" height="10" rx="1" fill="currentColor"/></svg>';
 }
 
+function tlToggleLoop() {
+  tlMusicLoop = !tlMusicLoop;
+  const btn = document.getElementById('tl-loop-btn');
+  if (btn) btn.classList.toggle('active', tlMusicLoop);
+  // 同步视频循环
+  const vid = document.getElementById('center-video');
+  if (vid) vid.loop = tlMusicLoop;
+  cvLoopEnabled = tlMusicLoop;
+  // 同步到左侧面板的循环 checkbox
+  const cb = document.getElementById('music-loop-input');
+  if (cb) cb.checked = tlMusicLoop;
+}
+
 // ═══ 音乐轨道（时间轴内） ═══
 function renderMusicTrack() {
   const track = document.getElementById('tl-music-track');
+  const pair = document.getElementById('tl-music-pair');
   if (!track) return;
-  if (!musicFilePath || !musicDuration) { track.style.display = 'none'; return; }
-  track.style.display = 'flex';
+  if (!musicFilePath || !musicDuration) {
+    if (pair) pair.style.display = 'none';
+    return;
+  }
+  if (pair) pair.style.display = '';
+
+  // 如果音乐比当前标尺长，重新渲染标尺以扩展宽度
+  const ruler = document.getElementById('tl-ruler');
+  if (ruler && musicDuration * studioTlZoom * 10 > ruler.scrollWidth) {
+    renderTimeline();
+  }
 
   const pixPerSec = studioTlZoom * 10;
-  const area = document.getElementById('tl-music-area');
   const fullBar = document.getElementById('tl-music-full-bar');
   const clip = document.getElementById('tl-music-clip');
-  if (!area || !clip) return;
-
-  // 区域宽度跟随视频轨道
-  const totalW = Math.max(musicDuration, 60) * pixPerSec;
-  area.style.width = totalW + 'px';
+  if (!clip) return;
 
   // 全曲底条（虚线框表示完整音频范围）
   if (fullBar) {
@@ -1150,7 +1291,7 @@ function fmtSec(s) {
 
 // 裁剪交互
 function initMusicTrimDrag() {
-  const area = document.getElementById('tl-music-area');
+  const area = document.getElementById('tl-music-track');
   if (!area) return;
 
   function pxToSec(x) {
@@ -1214,15 +1355,42 @@ function initMusicTrimDrag() {
 function initMusicPreview() {
   const audio = document.getElementById('tl-music-audio');
   if (!audio) return;
+  // 初始化循环按钮状态
+  const loopBtn = document.getElementById('tl-loop-btn');
+  if (loopBtn) loopBtn.classList.toggle('active', tlMusicLoop);
   audio.addEventListener('timeupdate', () => {
     if (musicPlayMode === 'trim' && audio.currentTime >= musicTrimEnd) {
+      if (tlMusicLoop) {
+        audio.currentTime = musicTrimStart;
+        audio.play().catch(() => {});
+      } else {
+        stopMusicPlayback();
+      }
+    }
+  });
+  audio.addEventListener('ended', () => {
+    if (tlMusicLoop && musicPlayMode !== 'none') {
+      // 循环：从裁剪起点或开头重新播放
+      audio.currentTime = musicTrimStart || 0;
+      audio.play().catch(() => {});
+    } else {
       stopMusicPlayback();
     }
   });
-  audio.addEventListener('ended', () => { stopMusicPlayback(); });
 }
 
 let musicPlayMode = 'none'; // 'none' | 'full' | 'trim'
+
+function stopAllAudio() {
+  stopMusicPlayback();
+  // 素材预听
+  if (typeof _assetAudio !== 'undefined' && _assetAudio) { _assetAudio.pause(); _assetAudio = null; }
+  // 裁剪弹窗
+  if (typeof mtmAudio !== 'undefined' && mtmAudio) mtmAudio.pause();
+  // 预览音频
+  const pa = document.getElementById('music-preview-audio');
+  if (pa) pa.pause();
+}
 
 function stopMusicPlayback() {
   const audio = document.getElementById('tl-music-audio');
@@ -1873,11 +2041,16 @@ function applyTemplate(tplId) {
   // 设置时长
   if (tpl.duration) {
     videoDuration = tpl.duration;
-    const durMap = { 15: '15秒', 30: '30秒', 60: '1分钟', 120: '2分钟', 180: '3分钟' };
+    const durMap = { 15: '15秒', 30: '30秒', 60: '1分钟', 120: '2分钟', 180: '3分钟', 300: '5分钟', 600: '10分钟' };
     const durText = durMap[tpl.duration] || '';
     document.querySelectorAll('.dur-btn').forEach(b => {
       b.classList.toggle('active', b.textContent.trim() === durText);
     });
+    // 非预设时长显示在自定义按钮上
+    if (!durText) {
+      const customBtn = document.getElementById('dur-custom-btn');
+      if (customBtn) { customBtn.classList.add('active'); customBtn.textContent = fmtDurLabel(tpl.duration); }
+    }
   }
 
   // 清空并填充角色
@@ -2099,9 +2272,12 @@ function toggleMusicPreview() {
   const btn = document.querySelector('.btn-music-preview');
   if (!audio || !musicFilePath) return;
   if (audio.paused) {
-    // 设置音源（使用上传路径的文件名构建 URL）
-    if (!audio.src || audio.src === '') {
-      audio.src = musicFilePath.replace(/\\/g, '/');
+    // 设置音源
+    if (!audio.src || audio.src === window.location.href) {
+      const fn = musicFilePath.split(/[\\/]/).pop();
+      audio.src = musicFilePath.includes('assets')
+        ? '/api/assets/file/' + encodeURIComponent(fn)
+        : '/api/projects/music/' + encodeURIComponent(fn);
     }
     audio.play().catch(() => {});
     if (btn) { btn.textContent = '⏸'; btn.classList.add('playing'); }
@@ -2144,10 +2320,12 @@ function updateDurationHint() {
   const hint = document.getElementById('dur-auto-hint');
   if (!hint) return;
   if (count > 0) {
-    const estSecs = count * 8; // avg 8s per scene
-    const estMin = estSecs >= 60 ? Math.floor(estSecs/60) + '分' + (estSecs%60 ? (estSecs%60) + '秒' : '') : estSecs + '秒';
-    hint.textContent = `建议 ${estMin}（${count} 个场景）`;
+    const estSecs = count * 8;
+    hint.textContent = `建议 ${fmtDurLabel(estSecs)}（${count} 个场景）`;
     hint.style.display = 'inline';
+    hint.style.cursor = 'pointer';
+    hint.onclick = () => autoRecommendDuration(count);
+    hint.title = '点击应用推荐时长';
   } else {
     hint.style.display = 'none';
   }
@@ -2230,6 +2408,52 @@ function setDuration(secs, btn) {
   videoDuration = secs;
   document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  const customRow = document.getElementById('dur-custom-row');
+  if (customRow) customRow.style.display = 'none';
+}
+
+function showCustomDuration() {
+  const row = document.getElementById('dur-custom-row');
+  if (row) row.style.display = row.style.display === 'none' ? 'flex' : 'none';
+  const input = document.getElementById('dur-custom-input');
+  if (input) { input.value = videoDuration; input.focus(); }
+}
+
+function applyCustomDuration() {
+  const input = document.getElementById('dur-custom-input');
+  const secs = parseInt(input?.value);
+  if (!secs || secs < 5) { alert('至少 5 秒'); return; }
+  videoDuration = secs;
+  document.querySelectorAll('.dur-btn').forEach(b => b.classList.remove('active'));
+  const customBtn = document.getElementById('dur-custom-btn');
+  if (customBtn) { customBtn.classList.add('active'); customBtn.textContent = fmtDurLabel(secs); }
+  document.getElementById('dur-custom-row').style.display = 'none';
+}
+
+function fmtDurLabel(secs) {
+  if (secs >= 60) {
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return s ? `${m}分${s}秒` : `${m}分钟`;
+  }
+  return secs + '秒';
+}
+
+// 根据场景数自动推荐时长并高亮
+function autoRecommendDuration(sceneCount) {
+  if (!sceneCount) return;
+  const estSecs = sceneCount * 8;
+  // 找最接近的预设时长
+  const presets = [15, 30, 60, 120, 180, 300, 600];
+  let best = presets[0];
+  for (const p of presets) {
+    if (Math.abs(p - estSecs) < Math.abs(best - estSecs)) best = p;
+  }
+  // 自动设置
+  videoDuration = best;
+  document.querySelectorAll('.dur-btn').forEach(b => {
+    const match = b.onclick?.toString().includes(best + ',');
+    b.classList.toggle('active', !!match);
+  });
 }
 
 // ═══ 右侧面板区域切换（互斥显示） ═══
@@ -2273,13 +2497,22 @@ function updateBackToProgressBtn() {
   }
 }
 
+// ═══ 视频循环播放 ═══
+let cvLoopEnabled = true; // 与 tlMusicLoop 同步
+
+function cvApplyLoop() {
+  const vid = document.getElementById('center-video');
+  if (vid) vid.loop = cvLoopEnabled;
+}
+
 // ═══ 中央画布状态 ═══
 // state: 'idle' | 'generating' | 'done' | 'preview'
 function setCanvasState(state) {
   show('canvas-idle', state === 'idle');
   show('canvas-gen-overlay', state === 'generating');
   const vid = document.getElementById('center-video');
-  if (vid) vid.style.display = (state === 'done' || state === 'preview') ? 'block' : 'none';
+  const showVid = state === 'done' || state === 'preview';
+  if (vid) vid.style.display = showVid ? 'block' : 'none';
 }
 
 // 标记场景卡片为可点击播放
@@ -2309,6 +2542,7 @@ function previewClip(projectId, clipId, sceneIndex, sceneTitle) {
   if (!vid) return;
   vid.src = authUrl('/api/projects/' + projectId + '/clips/' + clipId + '/stream');
   vid.style.display = 'block';
+  cvApplyLoop();
   vid.load();
   vid.play().catch(() => {});
   // 隐藏 idle/overlay，显示视频
@@ -2689,6 +2923,7 @@ function showResult(payload) {
   const vid = document.getElementById('center-video');
   if (vid) {
     vid.src = authUrl('/api/projects/' + currentProjectId + '/stream');
+    cvApplyLoop();
     vid.load();
     vid.play().catch(() => {});
   }
@@ -2726,6 +2961,7 @@ function replayVideo() {
   const vid = document.getElementById('center-video');
   if (vid && currentProjectId) {
     vid.src = authUrl('/api/projects/' + currentProjectId + '/stream');
+    cvApplyLoop();
     vid.load();
     vid.play().catch(() => {});
   }
@@ -2812,12 +3048,123 @@ function addLog(msg, type = '') {
   log.appendChild(row); log.scrollTop = log.scrollHeight;
 }
 
+// ═══ 视频轮播 ═══
+let carouselClips = [];    // [{clipId, label}]
+let carouselIndex = 0;
+let carouselActive = false;
+let carouselProjectId = null;
+
+function toggleCarousel() {
+  carouselActive = !carouselActive;
+  const btn = document.getElementById('carousel-toggle');
+  if (btn) btn.classList.toggle('active', carouselActive);
+
+  const indicator = document.getElementById('carousel-indicator');
+  const prev = document.getElementById('carousel-prev');
+  const next = document.getElementById('carousel-next');
+
+  if (carouselActive && carouselClips.length > 1) {
+    if (indicator) indicator.style.display = '';
+    if (prev) prev.style.display = '';
+    if (next) next.style.display = '';
+    // 从第一个场景开始轮播
+    carouselIndex = 0;
+    carouselPlayCurrent();
+  } else {
+    if (indicator) indicator.style.display = 'none';
+    if (prev) prev.style.display = 'none';
+    if (next) next.style.display = 'none';
+    // 关闭轮播，回到完整视频
+    if (carouselProjectId) {
+      const v = document.getElementById('modal-video');
+      document.getElementById('modal-video-src').src = authUrl('/api/projects/' + carouselProjectId + '/stream');
+      v.load(); v.play().catch(() => {});
+      document.getElementById('modal-title').textContent = '视频预览';
+      // 重置 footer 按钮高亮
+      document.querySelectorAll('.clip-btn').forEach(b => b.classList.remove('active'));
+      const fullBtn = document.querySelector('.clip-btn');
+      if (fullBtn) fullBtn.classList.add('active');
+    }
+  }
+}
+
+function carouselPlayCurrent() {
+  if (!carouselClips.length) return;
+  const clip = carouselClips[carouselIndex];
+  const v = document.getElementById('modal-video');
+  document.getElementById('modal-video-src').src = authUrl('/api/projects/' + carouselProjectId + '/clips/' + clip.clipId + '/stream');
+  document.getElementById('modal-title').textContent = clip.label;
+  v.load(); v.play().catch(() => {});
+
+  // 更新指示器
+  updateCarouselDots();
+
+  // 更新 footer 按钮高亮
+  const btns = document.querySelectorAll('.clip-btn');
+  btns.forEach(b => b.classList.remove('active'));
+  if (btns[carouselIndex + 1]) btns[carouselIndex + 1].classList.add('active'); // +1 因为第0个是"完整"
+}
+
+function updateCarouselDots() {
+  const dots = document.getElementById('carousel-dots');
+  const label = document.getElementById('carousel-label');
+  if (dots) {
+    dots.innerHTML = carouselClips.map((c, i) =>
+      `<div class="carousel-dot ${i === carouselIndex ? 'active' : ''}" onclick="carouselGoTo(${i})"></div>`
+    ).join('');
+  }
+  if (label && carouselClips[carouselIndex]) {
+    label.textContent = `${carouselIndex + 1} / ${carouselClips.length}  ${carouselClips[carouselIndex].label}`;
+  }
+}
+
+function carouselNext() {
+  if (!carouselClips.length) return;
+  carouselIndex = (carouselIndex + 1) % carouselClips.length;
+  carouselPlayCurrent();
+}
+
+function carouselPrev() {
+  if (!carouselClips.length) return;
+  carouselIndex = (carouselIndex - 1 + carouselClips.length) % carouselClips.length;
+  carouselPlayCurrent();
+}
+
+function carouselGoTo(i) {
+  carouselIndex = i;
+  carouselPlayCurrent();
+}
+
+function setupCarouselAutoNext() {
+  const v = document.getElementById('modal-video');
+  if (!v) return;
+  // 移除旧监听
+  v.removeEventListener('ended', onCarouselVideoEnded);
+  v.addEventListener('ended', onCarouselVideoEnded);
+}
+
+function onCarouselVideoEnded() {
+  if (!carouselActive || !carouselClips.length) return;
+  carouselNext();
+}
+
 // ═══ 视频预览 ═══
 function openPreview(projectId, title) {
   const id = projectId || currentProjectId; if (!id) return;
+  carouselProjectId = id;
+  carouselActive = false;
+  carouselClips = [];
+  carouselIndex = 0;
+  const toggleBtn = document.getElementById('carousel-toggle');
+  if (toggleBtn) toggleBtn.classList.remove('active');
+  document.getElementById('carousel-indicator').style.display = 'none';
+  document.getElementById('carousel-prev').style.display = 'none';
+  document.getElementById('carousel-next').style.display = 'none';
+
   document.getElementById('modal-title').textContent = title || '视频预览';
   document.getElementById('modal-video-src').src = authUrl('/api/projects/' + id + '/stream');
   const v = document.getElementById('modal-video'); v.load(); v.play().catch(()=>{});
+  setupCarouselAutoNext();
   loadClipButtons(id);
   document.getElementById('video-modal').classList.add('open');
 }
@@ -2828,9 +3175,17 @@ async function loadClipButtons(pid) {
     const data = await (await authFetch('/api/projects/' + pid)).json();
     const clips = (data.data?.clips||[]).filter(c => c.status==='done');
     if (!clips.length) { footer.innerHTML = ''; return; }
+
+    // 填充轮播数据
+    carouselClips = clips.map((c, i) => ({ clipId: c.id, label: '场景 ' + (i + 1) }));
+
     footer.innerHTML = '<span style="color:var(--text3);font-size:11px;margin-right:6px">场景：</span>' +
       '<button class="clip-btn active" onclick="playFull(\''+pid+'\',this)">完整</button>' +
       clips.map((c,i)=>`<button class="clip-btn" onclick="playClip('${pid}','${c.id}',${i},this)">场景 ${i+1}</button>`).join('');
+
+    // 如果有多个场景，显示轮播按钮
+    const toggleBtn = document.getElementById('carousel-toggle');
+    if (toggleBtn) toggleBtn.style.display = clips.length > 1 ? '' : 'none';
   } catch { footer.innerHTML = ''; }
 }
 function playFull(pid, btn) {
@@ -2847,8 +3202,11 @@ function playClip(pid, cid, i, btn) {
 function setAB(btn) { document.querySelectorAll('.clip-btn').forEach(b=>b.classList.remove('active')); btn?.classList.add('active'); }
 function closePreview() {
   const v = document.getElementById('modal-video'); v.pause();
+  v.removeEventListener('ended', onCarouselVideoEnded);
   document.getElementById('modal-video-src').src = ''; v.load();
   document.getElementById('video-modal').classList.remove('open');
+  carouselActive = false;
+  carouselClips = [];
 }
 function closeModal(e) { if (e.target.id==='video-modal') closePreview(); }
 
@@ -3028,6 +3386,56 @@ function restoreProjectToStudio(p) {
       selectedVoiceId = p.voice_id;
     }
     voiceGender = p.voice_gender || 'female';
+  }
+
+  // 恢复音乐
+  if (p.music_path) {
+    musicFilePath = p.music_path;
+    musicOriginalName = p.music_original_name || p.music_path.split(/[\\/]/).pop();
+    musicTrimStart = p.music_trim_start || 0;
+    musicTrimEnd = p.music_trim_end || 0;
+
+    show('music-upload-box', false);
+    show('music-loaded-area', true);
+    const nameEl = document.getElementById('music-loaded-name');
+    if (nameEl) nameEl.textContent = musicOriginalName;
+    const badge = document.getElementById('music-status-badge');
+    if (badge) { badge.style.display = 'inline-flex'; badge.textContent = '已上传'; }
+
+    if (p.music_volume != null) {
+      const volInput = document.getElementById('music-volume-input');
+      if (volInput) volInput.value = Math.round(p.music_volume * 100);
+    }
+    if (p.music_loop != null) {
+      const loopInput = document.getElementById('music-loop-input');
+      if (loopInput) loopInput.checked = p.music_loop;
+    }
+
+    // 加载音频到时间轴
+    const fn = musicFilePath.split(/[\\/]/).pop();
+    const audioUrl = musicFilePath.includes('assets')
+      ? '/api/assets/file/' + encodeURIComponent(fn)
+      : '/api/projects/music/' + encodeURIComponent(fn);
+    const previewAudio = document.getElementById('music-preview-audio');
+    if (previewAudio) previewAudio.src = audioUrl;
+    const tlAudio = document.getElementById('tl-music-audio');
+    if (tlAudio) {
+      tlAudio.src = audioUrl;
+      const onMeta = () => {
+        musicDuration = tlAudio.duration || 0;
+        if (!musicTrimEnd) musicTrimEnd = musicDuration;
+        renderMusicTrack();
+        tlAudio.removeEventListener('loadedmetadata', onMeta);
+      };
+      tlAudio.addEventListener('loadedmetadata', onMeta);
+      tlAudio.addEventListener('canplay', () => {
+        if (!musicDuration && tlAudio.duration && isFinite(tlAudio.duration)) {
+          musicDuration = tlAudio.duration;
+          if (!musicTrimEnd) musicTrimEnd = musicDuration;
+          renderMusicTrack();
+        }
+      }, { once: true });
+    }
   }
 }
 
@@ -4019,6 +4427,7 @@ let avatarRatio = '9:16';
 
 function loadAvatarPage() {
   loadAvModels();
+  loadAvatarPresets();
 }
 
 async function loadAvModels() {
@@ -4070,7 +4479,15 @@ function handleAvatarUpload(input) {
   const reader = new FileReader();
   reader.onload = function(e) {
     const uploadCard = document.querySelector('.av-avatar-upload');
-    uploadCard.innerHTML = `<img src="${e.target.result}" style="width:52px;height:52px;border-radius:50%;object-fit:cover" /><span>自定义</span>`;
+    const imgEl = uploadCard.querySelector('.av-avatar-img');
+    if (imgEl) {
+      imgEl.classList.remove('av-avatar-upload-ph');
+      imgEl.style.backgroundImage = `url(${e.target.result})`;
+      imgEl.style.backgroundSize = 'cover';
+      imgEl.style.backgroundPosition = 'center';
+      imgEl.innerHTML = '';
+    }
+    uploadCard.querySelector('span').textContent = '自定义';
     uploadCard.dataset.avatar = 'custom';
     selectAvatar(uploadCard);
   };
@@ -4149,6 +4566,78 @@ async function startAvatarGeneration() {
     btn.disabled = false;
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg> 生成数字人视频';
   }, 3000);
+}
+
+// ═══════ 预设图片加载与生成 ═══════
+
+async function loadAvatarPresets() {
+  try {
+    const resp = await authFetch('/api/avatar/presets');
+    const data = await resp.json();
+    if (!data.success) return;
+
+    // 加载头像预设
+    for (const [key, url] of Object.entries(data.avatars || {})) {
+      if (url) applyPresetImage('.av-preset-avatar', key, url);
+    }
+    // 加载背景预设
+    for (const [key, url] of Object.entries(data.backgrounds || {})) {
+      if (url) applyPresetImage('.av-preset-bg', key, url);
+    }
+  } catch {}
+}
+
+function applyPresetImage(selector, key, url) {
+  const el = document.querySelector(`${selector}[data-preset="${key}"]`);
+  if (!el) return;
+  const token = getToken() || '';
+  const fullUrl = url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  const img = new Image();
+  img.onload = () => {
+    el.classList.add('has-img');
+    // 移除内联渐变背景
+    el.style.background = 'none';
+    el.insertBefore(img, el.firstChild);
+  };
+  img.src = fullUrl;
+}
+
+async function generateAvatarPresets(type) {
+  const btnId = type === 'background' ? 'av-gen-bg-btn' : 'av-gen-presets-btn';
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="sto-li-spin">&#8635;</span> 生成中...';
+
+  try {
+    const resp = await authFetch('/api/avatar/generate-presets', {
+      method: 'POST',
+      body: JSON.stringify({ type })
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      alert(data.error || '生成失败');
+      return;
+    }
+
+    // 应用生成的图片
+    for (const [key, url] of Object.entries(data.results?.avatars || {})) {
+      applyPresetImage('.av-preset-avatar', key, url);
+    }
+    for (const [key, url] of Object.entries(data.results?.backgrounds || {})) {
+      applyPresetImage('.av-preset-bg', key, url);
+    }
+
+    if (data.errors?.length) {
+      console.warn('部分生成失败:', data.errors);
+    }
+  } catch (e) {
+    alert('生成失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
 }
 
 // ══════════════════════════════════════════
@@ -4297,6 +4786,803 @@ async function startImageGeneration() {
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5H13l-3.5 2.5 1.3 4L7 8.5 3.2 11l1.3-4L1 4.5h4.5z" fill="currentColor"/></svg> 生成图片';
 }
 
+
+// ══════════════════════════════════════════
+//  我的素材页面
+// ══════════════════════════════════════════
+let assetsFilter = 'all';
+let assetsCache = [];
+
+async function loadAssetsPage() {
+  const grid = document.getElementById('assets-grid');
+  grid.innerHTML = '<div class="assets-empty">加载中...</div>';
+  try {
+    const resp = await authFetch('/api/assets?type=' + assetsFilter);
+    const data = await resp.json();
+    assetsCache = data.data || [];
+    renderAssetsGrid(assetsCache);
+  } catch (e) {
+    grid.innerHTML = '<div class="assets-empty">加载失败</div>';
+  }
+}
+
+function filterAssets(type, btn) {
+  assetsFilter = type;
+  document.querySelectorAll('.assets-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadAssetsPage();
+}
+
+function renderAssetsGrid(assets) {
+  const grid = document.getElementById('assets-grid');
+  if (!assets.length) { grid.innerHTML = '<div class="assets-empty">暂无素材</div>'; return; }
+
+  const TYPE_MAP = { character: '角色', scene: '场景', music: '音乐' };
+
+  grid.innerHTML = assets.map(a => {
+    const isMusic = a.type === 'music';
+    const thumbContent = isMusic
+      ? `<div class="asset-card-thumb music-thumb">
+           <span class="asset-card-music-icon">♪</span>
+           ${a.duration ? `<span class="asset-card-dur">${formatAssetTime(a.duration)}</span>` : ''}
+           <div class="asset-card-play" onclick="event.stopPropagation();previewAssetAudio('${a.id}')">▶</div>
+         </div>`
+      : `<div class="asset-card-thumb">
+           <img src="${a.file_url}" loading="lazy" onerror="this.style.display='none'" />
+         </div>`;
+
+    return `<div class="asset-card" onclick="previewAsset('${a.id}')">
+      ${thumbContent}
+      <div class="asset-card-info">
+        <div class="asset-card-name" title="${esc(a.name)}">${esc(a.name)}</div>
+        <div class="asset-card-meta">
+          <span class="asset-card-type">${TYPE_MAP[a.type] || a.type}</span>
+          <span>${new Date(a.created_at).toLocaleDateString('zh-CN')}</span>
+        </div>
+      </div>
+      <div class="asset-card-actions">
+        <button class="asset-card-btn" onclick="event.stopPropagation();useAsset('${a.id}')">使用</button>
+        ${isMusic ? `<button class="asset-card-btn" onclick="event.stopPropagation();openMusicTrimFromAsset('${a.id}')">裁剪</button>` : ''}
+        <button class="asset-card-btn danger" onclick="event.stopPropagation();deleteAsset('${a.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function formatAssetTime(sec) {
+  if (!sec || !isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+async function uploadAssetFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('name', file.name);
+  try {
+    const resp = await authFetch('/api/assets/upload', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!data.success) { alert(data.error || '上传失败'); return; }
+    loadAssetsPage();
+  } catch (e) { alert('上传失败: ' + e.message); }
+  input.value = '';
+}
+
+async function deleteAsset(id) {
+  if (!confirm('确认删除此素材？')) return;
+  try {
+    await authFetch('/api/assets/' + id, { method: 'DELETE' });
+    loadAssetsPage();
+  } catch {}
+}
+
+let _assetAudio = null;
+function previewAssetAudio(id) {
+  const asset = assetsCache.find(a => a.id === id);
+  if (!asset) return;
+  if (_assetAudio) { _assetAudio.pause(); _assetAudio = null; }
+  _assetAudio = new Audio(asset.file_url);
+  _assetAudio.play().catch(() => {});
+}
+
+function previewAsset(id) {
+  const asset = assetsCache.find(a => a.id === id);
+  if (!asset) return;
+  if (asset.type === 'music') {
+    openMusicTrimModal(asset.file_url, asset.file_path, asset.name);
+  } else {
+    openLightbox(asset.file_url, asset.name);
+  }
+}
+
+function useAsset(id) {
+  const asset = assetsCache.find(a => a.id === id);
+  if (!asset) return;
+  if (asset.type === 'music') {
+    // 设置为当前项目音乐
+    musicFilePath = asset.file_path;
+    musicOriginalName = asset.name;
+    musicTrimStart = 0;
+    musicTrimEnd = 0;
+    switchPage('create', { keepProject: true });
+    // 更新 UI
+    show('music-empty', false);
+    show('music-loaded', true);
+    const nameEl = document.getElementById('music-file-name');
+    if (nameEl) nameEl.textContent = asset.name;
+    renderMusicTrack();
+    showToast('已选择音乐: ' + asset.name);
+  } else {
+    showToast('素材已选择（请在创作页面使用）');
+  }
+}
+
+// ══════════════════════════════════════════
+//  音乐裁剪弹窗（专业剪辑风格）
+// ══════════════════════════════════════════
+let mtmAudio = null;
+let mtmDuration = 0;
+let mtmStart = 0;
+let mtmEnd = 0;
+let mtmPlaying = false;
+let mtmRAF = null;
+let mtmSourcePath = '';
+let mtmWaveformData = null;
+let mtmZoom = 1;          // 缩放级别
+let mtmScrollLeft = 0;    // 滚动偏移(秒)
+let mtmDragging = null;   // 'left' | 'right' | 'playhead' | null
+
+function openMusicTrimModal(fileUrl, filePath, name) {
+  mtmSourcePath = filePath || '';
+  mtmStart = 0; mtmEnd = 0; mtmDuration = 0;
+  mtmPlaying = false; mtmWaveformData = null;
+  mtmZoom = 1; mtmScrollLeft = 0; mtmDragging = null;
+  document.getElementById('mtm-name').value = name ? name.replace(/\.[^.]+$/, '') + '_裁剪' : '';
+  const fn = document.getElementById('mtm-file-name');
+  if (fn) fn.textContent = name || '';
+  document.getElementById('music-trim-modal').classList.add('open');
+
+  if (mtmAudio) { mtmAudio.pause(); mtmAudio = null; }
+  // 公开端点不需要 token，直接用路径；有 token 的 URL 也兼容
+  const audioUrl = fileUrl.includes('?') ? fileUrl : authUrl(fileUrl);
+  mtmAudio = new Audio(audioUrl);
+  mtmAudio.preload = 'auto';
+
+  const onReady = () => {
+    mtmDuration = mtmAudio.duration;
+    mtmEnd = mtmDuration;
+    mtmInitCanvas();
+    mtmUpdateAll();
+    mtmDecodeWaveform(fileUrl);
+  };
+  mtmAudio.addEventListener('loadedmetadata', onReady);
+  // 某些格式(flac等) loadedmetadata 不触发，用 canplay 兜底
+  mtmAudio.addEventListener('canplay', () => {
+    if (!mtmDuration && mtmAudio.duration && isFinite(mtmAudio.duration)) onReady();
+  });
+  mtmAudio.addEventListener('error', (e) => {
+    console.error('[MTM] audio load error:', mtmAudio.error?.message || e);
+  });
+  mtmAudio.load();
+  mtmBindEvents();
+}
+
+function openMusicTrimFromAsset(id) {
+  const asset = assetsCache.find(a => a.id === id);
+  if (asset) openMusicTrimModal(asset.file_url, asset.file_path, asset.name);
+}
+
+function closeMusicTrimModal() {
+  document.getElementById('music-trim-modal').classList.remove('open');
+  if (mtmAudio) { mtmAudio.pause(); }
+  if (mtmRAF) { cancelAnimationFrame(mtmRAF); mtmRAF = null; }
+  mtmPlaying = false;
+  mtmDragging = null;
+}
+
+// --- Canvas 初始化 ---
+function mtmInitCanvas() {
+  const timeline = document.getElementById('mtm-timeline');
+  if (!timeline) return;
+  const w = timeline.clientWidth;
+  const wf = document.getElementById('mtm-waveform');
+  const ruler = document.getElementById('mtm-ruler');
+  if (wf) { wf.width = w * 2; wf.style.width = w + 'px'; }
+  if (ruler) { ruler.width = w * 2; ruler.style.width = w + 'px'; }
+}
+
+// --- 波形解码 ---
+function mtmDecodeWaveform(fileUrl) {
+  const url = fileUrl.includes('?') ? fileUrl : authUrl(fileUrl);
+  fetch(url).then(r => r.arrayBuffer()).then(buf => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    return ctx.decodeAudioData(buf);
+  }).then(audioBuffer => {
+    const raw = audioBuffer.getChannelData(0);
+    const samples = 2000;
+    const blockSize = Math.floor(raw.length / samples);
+    mtmWaveformData = new Float32Array(samples);
+    for (let i = 0; i < samples; i++) {
+      let peak = 0;
+      const off = i * blockSize;
+      for (let j = 0; j < blockSize; j++) {
+        const v = Math.abs(raw[off + j] || 0);
+        if (v > peak) peak = v;
+      }
+      mtmWaveformData[i] = peak;
+    }
+    mtmDrawAll();
+    mtmFlashHandles();
+  }).catch(() => mtmDrawAll());
+}
+
+function mtmFlashHandles() {
+  const hl = document.getElementById('mtm-handle-left');
+  const hr = document.getElementById('mtm-handle-right');
+  if (hl) { hl.classList.add('hint'); setTimeout(() => hl.classList.remove('hint'), 2000); }
+  if (hr) { hr.classList.add('hint'); setTimeout(() => hr.classList.remove('hint'), 2000); }
+}
+
+// --- 坐标转换 ---
+function mtmVisibleDuration() { return mtmDuration / mtmZoom; }
+function mtmTimeToX(t, canvasW) {
+  return ((t - mtmScrollLeft) / mtmVisibleDuration()) * canvasW;
+}
+function mtmXToTime(x, elW) {
+  return mtmScrollLeft + (x / elW) * mtmVisibleDuration();
+}
+function mtmTimeToPct(t) {
+  return ((t - mtmScrollLeft) / mtmVisibleDuration()) * 100;
+}
+
+// --- 绘制标尺 ---
+function mtmDrawRuler() {
+  const canvas = document.getElementById('mtm-ruler');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const visDur = mtmVisibleDuration();
+  // 选择合适的刻度间距
+  const intervals = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+  let interval = 5;
+  for (const iv of intervals) {
+    if (visDur / iv <= 30) { interval = iv; break; }
+  }
+
+  ctx.fillStyle = 'rgba(251,251,251,.35)';
+  ctx.font = '18px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+
+  const startT = Math.floor(mtmScrollLeft / interval) * interval;
+  for (let t = startT; t <= mtmScrollLeft + visDur; t += interval) {
+    if (t < 0) continue;
+    const x = mtmTimeToX(t, w);
+    if (x < -20 || x > w + 20) continue;
+
+    // 主刻度线
+    ctx.fillRect(x, h - 8, 1, 8);
+
+    // 时间文字
+    const m = Math.floor(t / 60);
+    const s = Math.floor(t % 60);
+    const label = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+    ctx.fillText(label, x, h - 10);
+
+    // 子刻度
+    const subCount = interval >= 10 ? 5 : interval >= 2 ? 4 : 2;
+    const subInterval = interval / subCount;
+    for (let si = 1; si < subCount; si++) {
+      const st = t + si * subInterval;
+      const sx = mtmTimeToX(st, w);
+      if (sx >= 0 && sx <= w) {
+        ctx.fillRect(sx, h - 4, 1, 4);
+      }
+    }
+  }
+}
+
+// --- 绘制波形 ---
+function mtmDrawWaveform() {
+  const canvas = document.getElementById('mtm-waveform');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!mtmWaveformData || !mtmDuration) {
+    // 占位条纹
+    ctx.fillStyle = 'rgba(251,251,251,.06)';
+    for (let i = 0; i < w; i += 3) {
+      const bh = 8 + Math.abs(Math.sin(i * 0.04)) * 35 + Math.random() * 5;
+      ctx.fillRect(i, (h - bh) / 2, 2, bh);
+    }
+    return;
+  }
+
+  let peak = 0;
+  for (let i = 0; i < mtmWaveformData.length; i++) {
+    if (mtmWaveformData[i] > peak) peak = mtmWaveformData[i];
+  }
+  if (peak === 0) peak = 1;
+
+  const visDur = mtmVisibleDuration();
+  const samplesPerSec = mtmWaveformData.length / mtmDuration;
+
+  for (let px = 0; px < w; px++) {
+    const t = mtmScrollLeft + (px / w) * visDur;
+    const si = Math.floor(t * samplesPerSec);
+    if (si < 0 || si >= mtmWaveformData.length) continue;
+
+    const v = mtmWaveformData[si] / peak;
+    const barH = Math.max(2, v * h * 0.82);
+    const inRegion = t >= mtmStart && t <= mtmEnd;
+
+    ctx.fillStyle = inRegion ? 'rgba(33,255,243,.5)' : 'rgba(251,251,251,.1)';
+    ctx.fillRect(px, (h - barH) / 2, 1.5, barH);
+  }
+}
+
+// --- 更新遮罩和选区 ---
+function mtmUpdateSelection() {
+  if (!mtmDuration) return;
+  const maskL = document.getElementById('mtm-mask-left');
+  const maskR = document.getElementById('mtm-mask-right');
+  const sel = document.getElementById('mtm-selection');
+  const hlt = document.getElementById('mtm-handle-left-time');
+  const hrt = document.getElementById('mtm-handle-right-time');
+
+  const lPct = Math.max(0, mtmTimeToPct(mtmStart));
+  const rPct = Math.min(100, mtmTimeToPct(mtmEnd));
+  const wPct = rPct - lPct;
+
+  maskL.style.width = Math.max(0, lPct) + '%';
+  maskR.style.width = Math.max(0, 100 - rPct) + '%';
+  sel.style.left = lPct + '%';
+  sel.style.width = wPct + '%';
+
+  if (hlt) hlt.textContent = mtmFmtTime(mtmStart);
+  if (hrt) hrt.textContent = mtmFmtTime(mtmEnd);
+}
+
+// --- 更新播放指针 ---
+function mtmUpdatePlayhead(time) {
+  const ph = document.getElementById('mtm-playhead');
+  if (!ph) return;
+  ph.style.left = mtmTimeToPct(time) + '%';
+  const label = document.getElementById('mtm-playhead-time');
+  if (label) label.textContent = mtmFmtTime(time);
+}
+
+// --- 更新信息显示 ---
+function mtmUpdateInfo() {
+  const ct = document.getElementById('mtm-current-time');
+  const st = document.getElementById('mtm-start-time');
+  const et = document.getElementById('mtm-end-time');
+  const sd = document.getElementById('mtm-sel-dur');
+  const td = document.getElementById('mtm-total-dur');
+  const curTime = mtmAudio ? mtmAudio.currentTime : 0;
+
+  if (ct) ct.textContent = mtmFmtTimePrecise(curTime);
+  if (st) st.textContent = mtmFmtTime(mtmStart);
+  if (et) et.textContent = mtmFmtTime(mtmEnd);
+  if (sd) sd.textContent = mtmFmtTime(mtmEnd - mtmStart);
+  if (td) td.textContent = mtmFmtTime(mtmDuration);
+}
+
+// --- 统一刷新 ---
+function mtmDrawAll() {
+  mtmDrawRuler();
+  mtmDrawWaveform();
+  mtmUpdateSelection();
+}
+function mtmUpdateAll() {
+  mtmDrawAll();
+  mtmUpdateInfo();
+  if (mtmAudio) mtmUpdatePlayhead(mtmAudio.currentTime);
+}
+
+// --- 格式化时间 ---
+function mtmFmtTime(sec) {
+  if (!sec || !isFinite(sec) || sec < 0) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + String(s).padStart(2, '0');
+}
+function mtmFmtTimePrecise(sec) {
+  if (!sec || !isFinite(sec) || sec < 0) return '0:00.0';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m + ':' + s.toFixed(1).padStart(4, '0');
+}
+
+// --- 事件绑定 ---
+let _mtmAC = null; // AbortController for cleanup
+function mtmBindEvents() {
+  // 清除上次绑定
+  if (_mtmAC) _mtmAC.abort();
+  _mtmAC = new AbortController();
+  const sig = { signal: _mtmAC.signal };
+
+  const timeline = document.getElementById('mtm-timeline');
+  if (!timeline) return;
+
+  const getHandle = (which) => document.getElementById(which === 'left' ? 'mtm-handle-left' : 'mtm-handle-right');
+
+  // 拖拽手柄
+  const onDown = (which) => (e) => {
+    e.preventDefault(); e.stopPropagation();
+    mtmHideCutPopup();
+    mtmDragging = which;
+    const h = getHandle(which);
+    if (h) h.classList.add('dragging');
+
+    const onMove = (e) => {
+      if (!mtmDragging) return;
+      const rect = timeline.getBoundingClientRect();
+      const t = mtmXToTime(e.clientX - rect.left, rect.width);
+      if (mtmDragging === 'left') {
+        mtmStart = Math.max(0, Math.min(t, mtmEnd - 0.5));
+      } else if (mtmDragging === 'right') {
+        mtmEnd = Math.min(mtmDuration, Math.max(t, mtmStart + 0.5));
+      }
+      mtmDrawAll();
+      mtmUpdateInfo();
+    };
+    const onUp = () => {
+      const h2 = getHandle(mtmDragging);
+      if (h2) h2.classList.remove('dragging');
+      mtmDragging = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  getHandle('left')?.addEventListener('mousedown', onDown('left'), sig);
+  getHandle('right')?.addEventListener('mousedown', onDown('right'), sig);
+
+  // 拖拽播放指针
+  const playhead = document.getElementById('mtm-playhead');
+  if (playhead) {
+    playhead.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      mtmHideCutPopup();
+      mtmDragging = 'playhead';
+      playhead.classList.add('dragging');
+
+      const phMove = (e) => {
+        const rect = timeline.getBoundingClientRect();
+        const t = Math.max(0, Math.min(mtmDuration, mtmXToTime(e.clientX - rect.left, rect.width)));
+        if (mtmAudio) mtmAudio.currentTime = t;
+        mtmUpdatePlayhead(t);
+        mtmUpdateInfo();
+      };
+      const phUp = (e) => {
+        playhead.classList.remove('dragging');
+        mtmDragging = null;
+        document.removeEventListener('mousemove', phMove);
+        document.removeEventListener('mouseup', phUp);
+        // 拖拽结束弹出剪切按钮
+        const rect = timeline.getBoundingClientRect();
+        mtmShowCutPopup(e.clientX - rect.left);
+      };
+      document.addEventListener('mousemove', phMove);
+      document.addEventListener('mouseup', phUp);
+    }, sig);
+  }
+
+  // 点击波形区域 → 移动播放指针 + 弹出剪切按钮
+  timeline.addEventListener('mousedown', (e) => {
+    if (e.target.closest('.mtm-handle') || e.target.closest('.mtm-playhead') || e.target.closest('.mtm-cut-popup')) return;
+    e.preventDefault();
+    mtmHideCutPopup();
+    const rect = timeline.getBoundingClientRect();
+
+    const seek = (ev) => {
+      const t = Math.max(0, Math.min(mtmDuration, mtmXToTime(ev.clientX - rect.left, rect.width)));
+      if (mtmAudio) mtmAudio.currentTime = t;
+      mtmUpdatePlayhead(t);
+      mtmUpdateInfo();
+    };
+    seek(e);
+    mtmDragging = 'playhead';
+
+    const onMove = (ev) => seek(ev);
+    const onUp = (ev) => {
+      mtmDragging = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      mtmShowCutPopup(ev.clientX - rect.left);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, sig);
+
+  // 滚轮缩放
+  timeline.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = timeline.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseTime = mtmXToTime(mouseX, rect.width);
+
+    if (e.deltaY < 0) mtmZoom = Math.min(32, mtmZoom * 1.25);
+    else mtmZoom = Math.max(1, mtmZoom / 1.25);
+
+    // 保持鼠标位置对应的时间不变
+    mtmScrollLeft = mouseTime - (mouseX / rect.width) * mtmVisibleDuration();
+    mtmClampScroll();
+    mtmUpdateAll();
+  }, sig);
+}
+
+function mtmClampScroll() {
+  const maxScroll = Math.max(0, mtmDuration - mtmVisibleDuration());
+  mtmScrollLeft = Math.max(0, Math.min(mtmScrollLeft, maxScroll));
+}
+
+// --- 剪切浮动按钮 ---
+function mtmShowCutPopup(xPx) {
+  const popup = document.getElementById('mtm-cut-popup');
+  const timeline = document.getElementById('mtm-timeline');
+  if (!popup || !timeline) return;
+  const tw = timeline.clientWidth;
+  // 限制不超出两侧
+  let left = Math.max(50, Math.min(xPx, tw - 50));
+  popup.style.left = left + 'px';
+  popup.style.bottom = '-38px';
+  popup.classList.add('show');
+}
+
+function mtmHideCutPopup() {
+  const popup = document.getElementById('mtm-cut-popup');
+  if (popup) popup.classList.remove('show');
+}
+
+function mtmCutSetStart() {
+  if (!mtmAudio) return;
+  mtmStart = Math.max(0, Math.min(mtmAudio.currentTime, mtmEnd - 0.5));
+  mtmDrawAll();
+  mtmUpdateInfo();
+  mtmHideCutPopup();
+}
+
+function mtmCutSetEnd() {
+  if (!mtmAudio) return;
+  mtmEnd = Math.min(mtmDuration, Math.max(mtmAudio.currentTime, mtmStart + 0.5));
+  mtmDrawAll();
+  mtmUpdateInfo();
+  mtmHideCutPopup();
+}
+
+// --- 播放控制 ---
+function mtmTogglePlay() {
+  if (!mtmAudio) return;
+  mtmHideCutPopup();
+  if (mtmPlaying) {
+    mtmAudio.pause();
+    mtmPlaying = false;
+    if (mtmRAF) { cancelAnimationFrame(mtmRAF); mtmRAF = null; }
+    mtmSetPlayBtn(false);
+    return;
+  }
+  // 如果指针在选区外，从选区起点开始
+  if (mtmAudio.currentTime < mtmStart || mtmAudio.currentTime >= mtmEnd) {
+    mtmAudio.currentTime = mtmStart;
+  }
+  mtmAudio.play().catch(err => {
+    console.error('[MTM] play failed:', err.name, err.message);
+    mtmPlaying = false;
+    mtmSetPlayBtn(false);
+  });
+  mtmPlaying = true;
+  mtmSetPlayBtn(true);
+
+  const tick = () => {
+    if (!mtmPlaying) return;
+    const ct = mtmAudio.currentTime;
+    if (ct >= mtmEnd) {
+      mtmAudio.pause();
+      mtmAudio.currentTime = mtmEnd;
+      mtmPlaying = false;
+      mtmSetPlayBtn(false);
+      mtmUpdatePlayhead(mtmEnd);
+      mtmUpdateInfo();
+      return;
+    }
+    mtmUpdatePlayhead(ct);
+    mtmUpdateInfo();
+    mtmRAF = requestAnimationFrame(tick);
+  };
+  mtmRAF = requestAnimationFrame(tick);
+}
+
+function mtmSetPlayBtn(playing) {
+  const btn = document.getElementById('mtm-play-btn');
+  const icon = document.getElementById('mtm-play-icon');
+  if (btn) btn.classList.toggle('playing', playing);
+  if (icon) icon.innerHTML = playing
+    ? '<rect x="3" y="2" width="3" height="10" rx="1" fill="currentColor"/><rect x="8" y="2" width="3" height="10" rx="1" fill="currentColor"/>'
+    : '<path d="M3 1.5v11l9-5.5z" fill="currentColor"/>';
+}
+
+// --- 缩放按钮 ---
+function mtmZoomIn() {
+  const centerTime = mtmScrollLeft + mtmVisibleDuration() / 2;
+  mtmZoom = Math.min(32, mtmZoom * 1.5);
+  mtmScrollLeft = centerTime - mtmVisibleDuration() / 2;
+  mtmClampScroll();
+  mtmUpdateAll();
+}
+function mtmZoomOut() {
+  const centerTime = mtmScrollLeft + mtmVisibleDuration() / 2;
+  mtmZoom = Math.max(1, mtmZoom / 1.5);
+  mtmScrollLeft = centerTime - mtmVisibleDuration() / 2;
+  mtmClampScroll();
+  mtmUpdateAll();
+}
+
+// --- 重置选区 ---
+function mtmReset() {
+  mtmStart = 0;
+  mtmEnd = mtmDuration;
+  mtmZoom = 1;
+  mtmScrollLeft = 0;
+  mtmUpdateAll();
+}
+
+// --- 应用裁剪到当前项目 ---
+function mtmApply() {
+  if (!mtmDuration) return;
+  musicTrimStart = Math.round(mtmStart * 100) / 100;
+  musicTrimEnd = Math.round(mtmEnd * 100) / 100;
+  showToast('已应用裁剪: ' + mtmFmtTime(mtmStart) + ' — ' + mtmFmtTime(mtmEnd));
+  closeMusicTrimModal();
+}
+
+// --- 保存到素材库 ---
+async function mtmSave() {
+  const name = document.getElementById('mtm-name').value.trim();
+  if (mtmEnd <= mtmStart) { alert('请先选择裁剪范围'); return; }
+  if (mtmEnd - mtmStart < 1) { alert('裁剪片段至少 1 秒'); return; }
+
+  const btn = document.getElementById('mtm-save-btn');
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '保存中...';
+
+  try {
+    const resp = await authFetch('/api/assets/trim-music', {
+      method: 'POST',
+      body: JSON.stringify({
+        source_path: mtmSourcePath,
+        start: Math.round(mtmStart * 100) / 100,
+        end: Math.round(mtmEnd * 100) / 100,
+        name: name || undefined
+      })
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    showToast('裁剪片段已保存到素材库');
+    closeMusicTrimModal();
+    if (document.getElementById('page-assets')?.classList.contains('active')) loadAssetsPage();
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+// ═══ 音乐集成 ═══
+function onPickMusic(asset) {
+  if (!asset) return;
+  musicFilePath = asset.file_path;
+  musicOriginalName = asset.name;
+  musicTrimStart = 0;
+  musicTrimEnd = 0;
+  show('music-upload-box', false);
+  show('music-loaded-area', true);
+  document.getElementById('music-loaded-name').textContent = asset.name;
+  const badge = document.getElementById('music-status-badge');
+  if (badge) { badge.style.display = ''; badge.textContent = '素材库'; }
+
+  // 加载音频获取时长，然后渲染时间轴轨道
+  const fn = asset.file_path.split(/[\\/]/).pop();
+  const audioUrl = asset.file_url || '/api/assets/file/' + encodeURIComponent(fn);
+  const previewAudio = document.getElementById('music-preview-audio');
+  if (previewAudio) previewAudio.src = audioUrl;
+  const tlAudio = document.getElementById('tl-music-audio');
+  if (tlAudio) {
+    tlAudio.src = audioUrl;
+    const onMeta = () => {
+      musicDuration = tlAudio.duration || 0;
+      musicTrimEnd = musicDuration;
+      renderMusicTrack();
+      tlAudio.removeEventListener('loadedmetadata', onMeta);
+    };
+    tlAudio.addEventListener('loadedmetadata', onMeta);
+    // 有些格式 loadedmetadata 不触发
+    tlAudio.addEventListener('canplay', () => {
+      if (!musicDuration && tlAudio.duration && isFinite(tlAudio.duration)) {
+        musicDuration = tlAudio.duration;
+        musicTrimEnd = musicDuration;
+        renderMusicTrack();
+      }
+    }, { once: true });
+  }
+  // asset 自带 duration 时先用
+  if (asset.duration) {
+    musicDuration = asset.duration;
+    musicTrimEnd = musicDuration;
+    renderMusicTrack();
+  }
+  showToast('已选择: ' + asset.name);
+}
+
+function openMusicTrimForCurrent() {
+  if (!musicFilePath) return;
+  const filename = musicFilePath.split(/[\\/]/).pop();
+  // 根据文件路径判断走哪个公开端点
+  const isAsset = musicFilePath.includes('assets');
+  const musicUrl = isAsset
+    ? '/api/assets/file/' + encodeURIComponent(filename)
+    : '/api/projects/music/' + encodeURIComponent(filename);
+  openMusicTrimModal(musicUrl, musicFilePath, musicOriginalName || '背景音乐');
+}
+
+// ═══ 素材选择弹窗 ═══
+let assetPickerCallback = null;
+
+function openAssetPicker(type, onSelect) {
+  assetPickerCallback = onSelect;
+  document.getElementById('asset-picker-title').textContent = type === 'music' ? '选择音乐素材' : '选择素材';
+  document.getElementById('asset-picker-modal').classList.add('open');
+  const grid = document.getElementById('ap-grid');
+  grid.innerHTML = '<div style="padding:20px;color:var(--text3);text-align:center">加载中...</div>';
+
+  authFetch('/api/assets?type=' + type).then(r => r.json()).then(data => {
+    const assets = data.data || [];
+    if (!assets.length) { grid.innerHTML = '<div style="padding:20px;color:var(--text3);text-align:center">暂无素材</div>'; return; }
+    grid.innerHTML = assets.map(a => {
+      const isMusic = a.type === 'music';
+      return `<div class="ap-item" onclick="selectPickerAsset('${a.id}')" data-id="${a.id}">
+        <div class="ap-item-thumb ${isMusic ? 'music' : ''}">
+          ${isMusic
+            ? `<span style="font-size:24px;opacity:.2">♪</span>`
+            : `<img src="${a.file_url}" onerror="this.style.display='none'" />`}
+        </div>
+        <div class="ap-item-name" title="${esc(a.name)}">${esc(a.name)}${a.duration ? ' (' + formatAssetTime(a.duration) + ')' : ''}</div>
+      </div>`;
+    }).join('');
+  }).catch(() => { grid.innerHTML = '<div style="padding:20px;color:var(--text3)">加载失败</div>'; });
+}
+
+function selectPickerAsset(id) {
+  document.querySelectorAll('.ap-item').forEach(el => el.classList.remove('selected'));
+  const el = document.querySelector('.ap-item[data-id="' + id + '"]');
+  if (el) el.classList.add('selected');
+  if (assetPickerCallback) {
+    const assets = assetsCache.length ? assetsCache : [];
+    // 需要重新拿
+    authFetch('/api/assets/' + id).then(r => r.json()).then(data => {
+      if (data.success) {
+        assetPickerCallback(data.data);
+        closeAssetPicker();
+      }
+    }).catch(() => {});
+  }
+}
+
+function closeAssetPicker() {
+  document.getElementById('asset-picker-modal').classList.remove('open');
+  assetPickerCallback = null;
+}
 
 // ══════════════════════════════════════════
 //  创作页面增强：负面提示词 + 运动控制 + 种子

@@ -19,6 +19,10 @@ let editingRoleId = null; // null = create, string = edit
   const ok = await requireAdmin();
   if (!ok) return;
 
+  // 加载主题
+  const saved = localStorage.getItem('vido-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+
   const user = getCurrentUser();
   document.getElementById('topbar-user').innerHTML =
     `<strong>${esc(user.username)}</strong> (${esc(user.role)})`;
@@ -1012,7 +1016,7 @@ function showContentDetail(item) {
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
   let body = '';
-  const token = localStorage.getItem('auth_token') || '';
+  const token = getToken() || '';
   const TYPE_NAMES = { project: 'AI 视频项目', i2v: '图生视频', novel: 'AI 小说' };
 
   if (item.type === 'project') {
