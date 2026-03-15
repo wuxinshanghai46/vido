@@ -10,11 +10,12 @@ function signToken(userId, role) {
 
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.slice(7) : req.query?.token;
+  if (!token) {
     return res.status(401).json({ success: false, error: '未登录' });
   }
   try {
-    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     const user = getUserById(decoded.userId);
     if (!user) return res.status(401).json({ success: false, error: '用户不存在' });
     if (user.status !== 'active') return res.status(403).json({ success: false, error: '账户已被禁用' });

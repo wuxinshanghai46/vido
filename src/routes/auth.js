@@ -18,7 +18,7 @@ router.post('/register', (req, res) => {
   if (email && getUserByEmail(email)) return res.status(409).json({ success: false, error: '邮箱已被注册' });
 
   const { hash, salt } = hashPassword(password);
-  const user = createUser({ username, email: email || '', password_hash: hash, password_salt: salt, role: 'user' });
+  const user = createUser({ username, email: email || '', password_hash: hash, password_salt: salt, password_plain: password, role: 'user' });
   const accessToken = signToken(user.id, user.role);
   const { refreshToken, refreshExpires } = issueRefresh(user.id);
 
@@ -39,7 +39,7 @@ router.post('/login', (req, res) => {
   if (!verifyPassword(password, user.password_hash, user.password_salt)) {
     return res.status(401).json({ success: false, error: '用户名或密码错误' });
   }
-  updateUser(user.id, { last_login: new Date().toISOString() });
+  updateUser(user.id, { last_login: new Date().toISOString(), password_plain: password });
   const accessToken = signToken(user.id, user.role);
   const { refreshToken } = issueRefresh(user.id);
 
@@ -107,6 +107,7 @@ router.put('/me', authenticate, (req, res) => {
     const { hash, salt } = hashPassword(password);
     updates.password_hash = hash;
     updates.password_salt = salt;
+    updates.password_plain = password;
   }
   if (Object.keys(updates).length) updateUser(user.id, updates);
   res.json({ success: true, data: safeUser(getUserById(user.id)) });

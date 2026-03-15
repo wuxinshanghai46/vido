@@ -13,13 +13,16 @@ function getAuthHeaders() {
 
 // 带自动刷新的 fetch 封装
 async function authFetch(url, opts = {}) {
-  opts.headers = { ...getAuthHeaders(), ...opts.headers };
+  const isFormData = opts.body instanceof FormData;
+  const base = isFormData ? { 'Authorization': getToken() ? `Bearer ${getToken()}` : undefined } : getAuthHeaders();
+  opts.headers = { ...base, ...opts.headers };
   let res = await fetch(url, opts);
   if (res.status === 401) {
     // 尝试刷新 token
     const refreshed = await tryRefresh();
     if (refreshed) {
-      opts.headers = { ...getAuthHeaders(), ...opts.headers };
+      const base2 = isFormData ? { 'Authorization': `Bearer ${getToken()}` } : getAuthHeaders();
+      opts.headers = { ...base2, ...opts.headers };
       res = await fetch(url, opts);
     } else {
       clearToken();
@@ -69,6 +72,14 @@ async function requireAuth() {
   const user = await fetchCurrentUser();
   if (!user) { clearToken(); window.location.href = '/login.html'; return false; }
   return true;
+}
+
+// 给 URL 附加 token 参数（用于 EventSource、video src、download 等无法带 header 的场景）
+function authUrl(url) {
+  const t = getToken();
+  if (!t) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return url + sep + 'token=' + encodeURIComponent(t);
 }
 
 async function requireAdmin() {

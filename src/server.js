@@ -34,6 +34,51 @@ app.use(express.static(path.join(__dirname, '../public')));
 // === 公开路由（无需认证） ===
 app.use('/api/auth', require('./routes/auth'));
 
+// 登录页视频展示墙（公开，无需认证）
+app.get('/api/showcase/videos', (req, res) => {
+  const fs = require('fs');
+  const projDir = path.join(__dirname, '../outputs/projects');
+  try {
+    const files = fs.readdirSync(projDir).filter(f => f.endsWith('_final.mp4'));
+    const videos = files
+      .map(f => {
+        const stat = fs.statSync(path.join(projDir, f));
+        return { id: f.replace('_final.mp4', ''), size: stat.size };
+      })
+      .filter(v => v.size > 100000) // 过滤太小的文件
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 12);
+    res.json({ success: true, videos });
+  } catch { res.json({ success: true, videos: [] }); }
+});
+app.get('/api/showcase/stream/:id', (req, res) => {
+  const fs = require('fs');
+  const filePath = path.join(__dirname, '../outputs/projects', req.params.id + '_final.mp4');
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=3600' });
+  fs.createReadStream(filePath).pipe(res);
+});
+
+// 音乐预听（公开，audio 标签无法带 Authorization header）
+app.get('/api/projects/music/:filename', (req, res) => {
+  const fs = require('fs');
+  const filePath = path.join(__dirname, '../outputs/music', req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
+// 角色/场景图片（公开，img 标签无法带 Authorization header）
+app.get('/api/story/character-image/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  // 先查角色目录，再查场景目录
+  let filePath = path.join(__dirname, '../outputs/characters', filename);
+  if (!fs.existsSync(filePath)) filePath = path.join(__dirname, '../outputs/scenes', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
 // === 需认证的路由 ===
 app.use('/api/projects', authenticate, require('./routes/projects'));
 app.use('/api/story', authenticate, require('./routes/story'));

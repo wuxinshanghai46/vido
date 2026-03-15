@@ -24,7 +24,7 @@ let editingRoleId = null; // null = create, string = edit
     `<strong>${esc(user.username)}</strong> (${esc(user.role)})`;
 
   initTabs();
-  await Promise.all([loadUsers(), loadRoles()]);
+  await Promise.all([loadUsers(), loadRoles(), loadProviders()]);
   populateRoleDropdowns();
   loadCreditsLog();
   loadStats();
@@ -33,14 +33,15 @@ let editingRoleId = null; // null = create, string = edit
 
 // ══════════════════════ TABS ══════════════════════
 function initTabs() {
-  document.querySelectorAll('.admin-tab').forEach(tab => {
+  document.querySelectorAll('.nav-item[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.nav-item[data-tab]').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
       if (tab.dataset.tab === 'credits') loadCreditsLog();
       if (tab.dataset.tab === 'system') loadStats();
+      if (tab.dataset.tab === 'ai') loadProviders();
     });
   });
 }
@@ -96,8 +97,8 @@ function renderUsers() {
         <td><span class="badge ${statusClass}">${statusLabel}</span></td>
         <td style="font-size:12px;">${lastLogin}</td>
         <td class="actions-cell">
+          <button class="btn-sm" onclick="openUserDetail('${u.id}')">查看</button>
           <button class="btn-sm accent" onclick="toggleCreditsForm('${u.id}')">调整积分</button>
-          <button class="btn-sm" onclick="togglePasswordForm('${u.id}')">重置密码</button>
           <button class="btn-sm danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">删除</button>
         </td>
       </tr>
@@ -207,6 +208,123 @@ async function deleteUser(uid, username) {
   } catch (e) { toast('请求失败', 'error'); }
 }
 
+// ══════════════════════ USER DETAIL MODAL ══════════════════════
+let currentDetailUid = null;
+let currentDetailPwd = null;
+
+function openUserDetail(uid) {
+  const u = usersCache.find(x => x.id === uid);
+  if (!u) return;
+  currentDetailUid = uid;
+  currentDetailPwd = u.password_plain || null;
+
+  document.getElementById('user-modal-title').textContent = `用户详情 — ${u.username}`;
+  document.getElementById('ud-id').textContent = u.id;
+  document.getElementById('ud-username').textContent = u.username;
+  document.getElementById('ud-created').textContent = u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-';
+  document.getElementById('ud-login').textContent = u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '从未登录';
+  document.getElementById('ud-status').textContent = u.status === 'active' ? '正常' : u.status === 'disabled' ? '已禁用' : (u.status || '-');
+
+  // 密码显示
+  document.getElementById('ud-pwd-display').textContent = '••••••';
+  document.getElementById('btn-show-pwd').textContent = '显示';
+  document.getElementById('ud-email').value = u.email || '';
+  document.getElementById('ud-credits').textContent = u.credits ?? 0;
+  document.getElementById('ud-credits-adj').value = '';
+  document.getElementById('ud-credits-reason').value = '';
+  document.getElementById('ud-password').value = '';
+  document.getElementById('ud-password').type = 'password';
+  document.getElementById('ud-status-sel').value = u.status || 'active';
+
+  // 填充角色 select
+  const roleSel = document.getElementById('ud-role');
+  roleSel.innerHTML = rolesCache.map(r =>
+    `<option value="${r.id}" ${r.id === u.role ? 'selected' : ''}>${esc(r.label || r.id)}</option>`
+  ).join('');
+
+  document.getElementById('user-modal').classList.add('show');
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal').classList.remove('show');
+  currentDetailUid = null;
+}
+
+function toggleShowPwd() {
+  const el = document.getElementById('ud-pwd-display');
+  const btn = document.getElementById('btn-show-pwd');
+  if (btn.textContent === '显示') {
+    el.textContent = currentDetailPwd || '（无记录，仅重置后可见）';
+    btn.textContent = '隐藏';
+  } else {
+    el.textContent = '••••••';
+    btn.textContent = '显示';
+  }
+}
+
+function toggleUdPwd() {
+  const inp = document.getElementById('ud-password');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+async function saveUserDetail() {
+  if (!currentDetailUid) return;
+  const uid = currentDetailUid;
+  let changed = false;
+
+  // 1. 更新基本信息（邮箱/角色/状态）
+  const email = document.getElementById('ud-email').value.trim();
+  const role = document.getElementById('ud-role').value;
+  const status = document.getElementById('ud-status-sel').value;
+  try {
+    const res = await authFetch(`/api/admin/users/${uid}`, {
+      method: 'PUT', body: JSON.stringify({ email, role, status })
+    });
+    const data = await res.json();
+    if (!data.success) { toast(data.error || '更新失败', 'error'); return; }
+    changed = true;
+  } catch (e) { toast('更新失败: ' + e.message, 'error'); return; }
+
+  // 2. 积分调整
+  const adj = parseInt(document.getElementById('ud-credits-adj').value);
+  if (!isNaN(adj) && adj !== 0) {
+    const reason = document.getElementById('ud-credits-reason').value.trim();
+    try {
+      const res = await authFetch(`/api/admin/users/${uid}/credits`, {
+        method: 'POST', body: JSON.stringify({ amount: adj, reason: reason || '管理员调整' })
+      });
+      const data = await res.json();
+      if (!data.success) toast(data.error || '积分调整失败', 'error');
+      else changed = true;
+    } catch (e) { toast('积分调整失败', 'error'); }
+  }
+
+  // 3. 重置密码
+  const newPwd = document.getElementById('ud-password').value;
+  if (newPwd) {
+    if (newPwd.length < 6) { toast('密码至少 6 位', 'error'); return; }
+    try {
+      const res = await authFetch(`/api/admin/users/${uid}/reset-password`, {
+        method: 'POST', body: JSON.stringify({ password: newPwd })
+      });
+      const data = await res.json();
+      if (!data.success) toast(data.error || '密码重置失败', 'error');
+      else changed = true;
+    } catch (e) { toast('密码重置失败', 'error'); }
+  }
+
+  if (changed) {
+    toast('用户信息已更新');
+    await loadUsers();
+    closeUserModal();
+  }
+}
+
+// Click overlay to close
+document.getElementById('user-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('user-modal')) closeUserModal();
+});
+
 // ══════════════════════ ROLES ══════════════════════
 async function loadRoles() {
   try {
@@ -280,6 +398,9 @@ function openRoleModal(roleId) {
     </label>
   `).join('');
 
+  // Render model checkboxes
+  renderModelCheckboxes(roleId, isNew);
+
   modal.classList.add('show');
 }
 
@@ -293,7 +414,8 @@ async function saveRole() {
   const label = $('#rm-label').value.trim();
   const default_credits = parseInt($('#rm-credits').value) || 0;
   const max_projects = parseInt($('#rm-max-projects').value) || 10;
-  const allowed_models = $('#rm-models').value.split(',').map(s => s.trim()).filter(Boolean);
+  const wildcard = $('#rm-models-wildcard')?.checked;
+  const allowed_models = wildcard ? ['*'] : [...$('#rm-models').querySelectorAll('input:checked')].map(cb => cb.value);
   const permissions = [...$('#rm-permissions').querySelectorAll('input:checked')].map(cb => cb.value);
 
   if (!id) return toast('角色 ID 必填', 'error');
@@ -430,10 +552,381 @@ function populateRoleDropdowns() {
   renderUsers();
 }
 
+// ══════════════════════ MODEL CHECKBOXES ══════════════════════
+function renderModelCheckboxes(roleId, isNew) {
+  const container = $('#rm-models');
+  const wildcardCb = $('#rm-models-wildcard');
+  const role = isNew ? null : rolesCache.find(x => x.id === roleId);
+  const existing = role ? (role.allowed_models || []) : [];
+  const isWildcard = existing.includes('*');
+
+  if (wildcardCb) wildcardCb.checked = isWildcard;
+
+  // Gather all models from settings providers
+  const allModels = [];
+  if (settingsData?.providers) {
+    settingsData.providers.forEach(p => {
+      (p.models || []).forEach(m => {
+        if (!allModels.find(x => x.id === m.id)) {
+          allModels.push({ id: m.id, name: m.name, provider: p.name, use: m.use });
+        }
+      });
+    });
+  }
+  // Also add special entries
+  ['demo', '*'].forEach(id => {
+    if (id === '*') return;
+    if (!allModels.find(x => x.id === id)) allModels.push({ id, name: id, provider: '内置', use: '' });
+  });
+
+  if (!allModels.length) {
+    container.innerHTML = '<div style="font-size:11px;color:var(--text3)">暂无可选模型，请先在 AI 配置中添加供应商和模型</div>';
+    return;
+  }
+
+  container.innerHTML = allModels.map(m => `
+    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);cursor:pointer;min-width:160px;${isWildcard ? 'opacity:0.4;pointer-events:none' : ''}">
+      <input type="checkbox" value="${esc(m.id)}" ${isWildcard || existing.includes(m.id) ? 'checked' : ''} />
+      <span>${esc(m.name)}</span>
+      <span style="font-size:10px;color:var(--text3)">${esc(m.provider)}</span>
+    </label>
+  `).join('');
+}
+
+function toggleAllModels(selectAll) {
+  const container = $('#rm-models');
+  if (!container) return;
+  container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = selectAll);
+}
+
+function toggleModelsWildcard(checked) {
+  const container = $('#rm-models');
+  if (!container) return;
+  container.querySelectorAll('label').forEach(l => {
+    l.style.opacity = checked ? '0.4' : '';
+    l.style.pointerEvents = checked ? 'none' : '';
+  });
+  if (checked) container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+}
+
 function toast(msg, type = 'success') {
   const el = document.createElement('div');
   el.className = `admin-toast ${type}`;
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2800);
+}
+
+// ══════════════════════════════════════════════════
+//  AI 配置（供应商 / MCP / Skill — 与前端 app.js 同结构）
+// ══════════════════════════════════════════════════
+
+let settingsData = null;
+let editingProviderId = null;
+let addingModelForProv = null;
+let presetsCache = null;
+const USE_LABELS = { story: '剧情生成', image: '图像生成', video: '视频生成', tts: '语音合成', avatar: '数字人' };
+
+function switchAITab(tab) {
+  ['providers', 'mcps', 'skills'].forEach(t => {
+    document.getElementById('sptab-' + t)?.classList.toggle('active', t === tab);
+    const pane = document.getElementById('sppane-' + t);
+    if (pane) pane.style.display = t === tab ? '' : 'none';
+  });
+}
+
+async function loadProviders() {
+  const list = document.getElementById('sp-providers-list');
+  if (list) list.innerHTML = '<div class="sp-loading">加载中...</div>';
+  try {
+    const [sRes, pRes] = await Promise.all([authFetch('/api/settings'), authFetch('/api/settings/presets')]);
+    const sData = await sRes.json(); const pData = await pRes.json();
+    if (!sData.success) throw new Error(sData.error);
+    settingsData = sData.data;
+    presetsCache = pData.success ? pData.data : [];
+    renderProviders(); renderMCPs(); renderSkills();
+  } catch (e) {
+    if (list) list.innerHTML = `<div class="sp-loading" style="color:var(--error)">${esc(e.message)}</div>`;
+  }
+}
+
+// 供应商渲染
+function renderProviders() {
+  const container = document.getElementById('sp-providers-list');
+  if (!container || !settingsData) return;
+  if (!settingsData.providers.length) {
+    container.innerHTML = `<div class="sp-empty-state"><p>还没有供应商<br><span style="font-size:11px">点击「添加供应商」开始配置</span></p></div>`;
+    return;
+  }
+  container.innerHTML = settingsData.providers.map(p => {
+    const models = p.models || [];
+    const checking = p._checking;
+    const statusClass = checking ? 'checking' : !p.enabled ? 'inactive' : p.test_status === 'error' ? 'error' : p.test_status === 'ok' ? 'active' : 'unknown';
+    const statusText  = checking ? '检测中' : !p.enabled ? '未启用' : p.test_status === 'error' ? '异常' : p.test_status === 'ok' ? '正常' : '未检测';
+    const statusIcon  = checking ? '<span class="sp-status-spin"></span>' : p.test_status === 'ok' ? '<span class="sp-status-dot active"></span>' : p.test_status === 'error' ? '<span class="sp-status-dot error"></span>' : '';
+    const statusTip   = p.test_error ? esc(p.test_error) : '';
+    const testedAt = p.last_tested ? new Date(p.last_tested).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+    const useSummary = [...new Set(models.map(m => USE_LABELS[m.use]).filter(Boolean))].join(' · ');
+    return `<div class="sp-provider-row" id="sprow-${esc(p.id)}">
+      <div class="sp-prov-main" onclick="toggleProviderModels('${esc(p.id)}')">
+        <div class="sp-prov-info">
+          <div class="sp-prov-name-line">
+            ${statusIcon}<span class="sp-prov-name">${esc(p.name)}</span>
+            <span class="sp-status-badge ${statusClass}" ${statusTip ? `title="${statusTip}"` : ''}>${statusText}</span>
+          </div>
+          <div class="sp-prov-meta">
+            <span class="sp-prov-tag">${esc(p.id.toUpperCase())}</span>
+            ${useSummary ? `<span class="sp-prov-use-summary">${useSummary}</span>` : ''}
+          </div>
+        </div>
+        <div class="sp-prov-url" title="${esc(p.api_url)}">${esc(p.api_url)}</div>
+        <div class="sp-prov-key">${p.api_key_masked ? esc(p.api_key_masked) : '<span style="color:var(--text3)">未配置</span>'}</div>
+        <div class="sp-prov-model-count"><span class="sp-cnt-num">${models.length}</span><span class="sp-cnt-label">模型</span></div>
+        <div class="sp-prov-tested">${testedAt !== '-' ? `<span class="sp-tested-label">最近测试</span>` : ''}<span class="sp-tested-time">${testedAt}</span></div>
+        <div class="sp-prov-actions" onclick="event.stopPropagation()">
+          <button class="sp-btn" onclick="editProviderKey('${esc(p.id)}')">编辑</button>
+          <button class="sp-btn" id="sptest-${esc(p.id)}" onclick="testProvider('${esc(p.id)}')" ${!p.enabled?'disabled':''}>测试</button>
+          <button class="sp-btn danger" onclick="deleteProvider('${esc(p.id)}')">删除</button>
+        </div>
+        <span class="sp-expand-icon">▶</span>
+      </div>
+      ${statusTip ? `<div class="sp-error-bar">${statusTip}</div>` : ''}
+      <div class="sp-models-sub" id="spmodels-${esc(p.id)}">
+        <div class="sp-models-sub-head"><span>${models.length} 个模型</span><button class="sp-btn primary-btn" onclick="showAddModel('${esc(p.id)}')">＋ 添加模型</button></div>
+        ${models.length ? models.map(m => `
+          <div class="sp-model-row">
+            <span class="sp-model-name">${esc(m.name)}</span>
+            <span class="sp-model-id">${esc(m.id)}</span>
+            <span class="sp-model-type">${esc(m.type)}</span>
+            <span class="sp-model-use">${esc(USE_LABELS[m.use] || m.use)}</span>
+            <button class="sp-model-del" onclick="deleteModel('${esc(p.id)}','${esc(m.id)}')" title="删除">×</button>
+          </div>`).join('')
+        : '<div style="font-size:11px;color:var(--text3);padding:4px 0">暂无模型</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleProviderModels(id) {
+  const sub = document.getElementById('spmodels-' + id);
+  const main = sub?.previousElementSibling;
+  if (!sub) return;
+  const open = sub.classList.toggle('open');
+  main?.classList.toggle('expanded', open);
+}
+
+// 添加供应商
+async function showAddProvider() {
+  if (!presetsCache) { const res = await authFetch('/api/settings/presets'); const d = await res.json(); presetsCache = d.success ? d.data : []; }
+  ['prov-name','prov-id','prov-url','prov-key'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('modal-provider-title').textContent = '添加供应商';
+  document.getElementById('btn-save-provider').textContent = '添加';
+  const btns = document.getElementById('sp-preset-btns');
+  btns.innerHTML = presetsCache.map(p => `<button onclick="applyPreset('${esc(p.id)}')">${esc(p.name || p.id)}</button>`).join('');
+  updateModelsPreview([]);
+  document.getElementById('modal-provider').classList.add('show');
+}
+
+function applyPreset(presetId) {
+  const preset = presetsCache?.find(p => p.id === presetId);
+  if (!preset) return;
+  document.getElementById('prov-name').value = preset.name;
+  document.getElementById('prov-id').value = presetId;
+  document.getElementById('prov-url').value = preset.api_url;
+  document.querySelectorAll('#sp-preset-btns button').forEach(b => b.classList.toggle('active', b.textContent === preset.name));
+  updateModelsPreview(preset.defaultModels || []);
+}
+
+function updateModelsPreview(models) {
+  const el = document.getElementById('prov-models-preview');
+  if (!el) return;
+  el.innerHTML = models.length
+    ? models.map(m => `<div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span>${esc(m.name)}</span><span style="color:var(--text3)">${esc(m.id)}</span><span style="font-size:10px;color:var(--accent)">${esc(m.type)}</span></div>`).join('')
+    : '<div style="font-size:11px;color:var(--text3)">选择预设后将自动添加默认模型</div>';
+}
+
+function closeProviderModal() { document.getElementById('modal-provider').classList.remove('show'); }
+
+async function saveProvider() {
+  const name = document.getElementById('prov-name').value.trim();
+  const id = document.getElementById('prov-id').value.trim();
+  const url = document.getElementById('prov-url').value.trim();
+  const key = document.getElementById('prov-key').value.trim();
+  if (!name || !url) { toast('请填写供应商名称和 API 地址', 'error'); return; }
+  const btn = document.getElementById('btn-save-provider');
+  btn.disabled = true; btn.textContent = '添加中...';
+  const preset = presetsCache?.find(p => p.id === id);
+  const models = preset?.defaultModels || [];
+  try {
+    const res = await authFetch('/api/settings/providers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id || undefined, name, api_url: url, api_key: key, models }) });
+    const data = await res.json(); if (!data.success) throw new Error(data.error);
+    closeProviderModal(); await loadProviders(); toast('供应商已添加');
+  } catch (e) { toast('添加失败: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = '添加'; }
+}
+
+// 编辑供应商
+function editProviderKey(id) {
+  editingProviderId = id;
+  const p = settingsData?.providers.find(p => p.id === id);
+  if (!p) return;
+  document.getElementById('modal-apikey-title').textContent = `编辑 ${p.name}`;
+  document.getElementById('modal-prov-url').value = p.api_url || '';
+  document.getElementById('modal-apikey-input').value = '';
+  document.getElementById('modal-apikey').classList.add('show');
+}
+function closeApiKeyModal() { document.getElementById('modal-apikey').classList.remove('show'); editingProviderId = null; }
+async function saveProviderEdit() {
+  if (!editingProviderId) return;
+  const url = document.getElementById('modal-prov-url').value.trim();
+  const key = document.getElementById('modal-apikey-input').value.trim();
+  try {
+    const body = {}; if (url) body.api_url = url; if (key) body.api_key = key;
+    const res = await authFetch(`/api/settings/providers/${editingProviderId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json(); if (!data.success) throw new Error(data.error);
+    closeApiKeyModal(); await loadProviders(); toast('已保存');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+// 删除/测试供应商
+async function deleteProvider(id) {
+  const p = settingsData?.providers.find(p => p.id === id);
+  if (!confirm(`确认删除供应商「${p?.name || id}」？`)) return;
+  await authFetch(`/api/settings/providers/${id}`, { method: 'DELETE' });
+  await loadProviders(); toast('已删除');
+}
+async function testProvider(id) {
+  const btn = document.getElementById('sptest-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = '测试中...'; }
+  try {
+    const res = await authFetch(`/api/settings/providers/${id}/test`, { method: 'POST' });
+    const data = await res.json();
+    if (btn) { btn.textContent = data.success ? '✓ 正常' : '✕ 失败'; btn.style.color = data.success ? '#00d464' : '#ff5050'; setTimeout(() => { if(btn){btn.textContent='测试';btn.style.color='';btn.disabled=false;} },3000); }
+    await loadProviders();
+  } catch (e) { if (btn) { btn.textContent = '失败'; btn.disabled = false; } }
+}
+async function refreshAllProviders() {
+  const indicator = document.getElementById('sp-refresh-indicator');
+  if (indicator) { indicator.style.display = 'inline-flex'; indicator.textContent = '刷新中...'; }
+  settingsData?.providers?.forEach(p => { if (p.enabled && p.api_key) p._checking = true; }); renderProviders();
+  try {
+    await authFetch('/api/settings/providers/refresh-all', { method: 'POST' });
+    await loadProviders();
+    if (indicator) { indicator.textContent = '刷新完成'; setTimeout(() => { indicator.style.display = 'none'; }, 2000); }
+    toast('刷新完成');
+  } catch (e) { toast('刷新失败', 'error'); if (indicator) indicator.style.display = 'none'; }
+  finally { settingsData?.providers?.forEach(p => { delete p._checking; }); }
+}
+
+// 模型
+function showAddModel(providerId) {
+  addingModelForProv = providerId;
+  ['model-id','model-name'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('modal-model').classList.add('show');
+}
+function closeModelModal() { document.getElementById('modal-model').classList.remove('show'); addingModelForProv = null; }
+async function saveModel() {
+  if (!addingModelForProv) return;
+  const modelId = document.getElementById('model-id').value.trim();
+  const name = document.getElementById('model-name').value.trim();
+  if (!modelId || !name) { toast('请填写模型 ID 和名称', 'error'); return; }
+  try {
+    const res = await authFetch(`/api/settings/providers/${addingModelForProv}/models`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: modelId, name, type: document.getElementById('model-type').value, use: document.getElementById('model-use').value }) });
+    const data = await res.json(); if (!data.success) throw new Error(data.error);
+    closeModelModal(); await loadProviders(); toast('模型已添加');
+    setTimeout(() => { const sub = document.getElementById('spmodels-' + addingModelForProv); if (sub && !sub.classList.contains('open')) toggleProviderModels(addingModelForProv); }, 100);
+  } catch (e) { toast('添加失败: ' + e.message, 'error'); }
+}
+async function deleteModel(providerId, modelId) {
+  if (!confirm(`确认删除模型 ${modelId}？`)) return;
+  await authFetch(`/api/settings/providers/${providerId}/models/${modelId}`, { method: 'DELETE' });
+  await loadProviders(); toast('已删除');
+  setTimeout(() => { const sub = document.getElementById('spmodels-' + providerId); if (sub && !sub.classList.contains('open')) toggleProviderModels(providerId); }, 100);
+}
+
+// MCP
+function renderMCPs() {
+  const container = document.getElementById('sp-mcps-list');
+  if (!container || !settingsData) return;
+  if (!settingsData.mcps || !settingsData.mcps.length) {
+    container.innerHTML = `<div class="sp-empty-state"><p>还没有 MCP 连接器<br><span style="font-size:11px">点击「添加连接器」接入外部工具</span></p></div>`;
+    return;
+  }
+  container.innerHTML = settingsData.mcps.map(m => `
+    <div class="sp-card">
+      <div class="sp-card-head">
+        <div class="sp-card-icon">🔌</div>
+        <div class="sp-card-info">
+          <div class="sp-card-name">${esc(m.name)}</div>
+          <div class="sp-card-desc">${esc(m.description || '外部 MCP 服务')}</div>
+          <div class="sp-card-url">${esc(m.url)}</div>
+        </div>
+      </div>
+      <div class="sp-card-actions"><button class="sp-card-del" onclick="deleteMCP('${m.id}')">删除</button></div>
+    </div>`).join('');
+}
+function showAddMCP() {
+  ['mcp-name','mcp-url','mcp-desc'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('modal-mcp').classList.add('show');
+}
+function closeMCPModal() { document.getElementById('modal-mcp').classList.remove('show'); }
+async function saveMCP() {
+  const name = document.getElementById('mcp-name').value.trim();
+  const url = document.getElementById('mcp-url').value.trim();
+  if (!name || !url) { toast('请填写名称和 URL', 'error'); return; }
+  try {
+    const res = await authFetch('/api/settings/mcps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, url, description: document.getElementById('mcp-desc').value.trim() }) });
+    const data = await res.json(); if (!data.success) throw new Error(data.error);
+    closeMCPModal(); await loadProviders(); switchAITab('mcps'); toast('MCP 已添加');
+  } catch(e) { toast('添加失败: ' + e.message, 'error'); }
+}
+async function deleteMCP(id) {
+  if (!confirm('确认删除该 MCP 连接器？')) return;
+  await authFetch(`/api/settings/mcps/${id}`, { method: 'DELETE' });
+  await loadProviders(); switchAITab('mcps'); toast('已删除');
+}
+
+// Skill
+function renderSkills() {
+  const container = document.getElementById('sp-skills-list');
+  if (!container || !settingsData) return;
+  if (!settingsData.skills || !settingsData.skills.length) {
+    container.innerHTML = `<div class="sp-empty-state"><p>还没有 Skill<br><span style="font-size:11px">点击「新建 Skill」创建 AI 能力</span></p></div>`;
+    return;
+  }
+  const TYPE_COLORS = { '图像':'#ffb400','文本':'#2178ff','视频':'#7850ff','语音':'#00c878','通用':'#7c6cf0' };
+  container.innerHTML = settingsData.skills.map(s => `
+    <div class="sp-card">
+      <div class="sp-card-head">
+        <div class="sp-card-icon">${esc(s.emoji||'⚡')}</div>
+        <div class="sp-card-info">
+          <div class="sp-card-name">${esc(s.name)}</div>
+          <div class="sp-card-desc">${esc(s.description||'')}</div>
+        </div>
+      </div>
+      <div class="sp-card-meta">
+        <span class="sp-card-type" style="color:${TYPE_COLORS[s.type]||'#7c6cf0'}">${esc(s.type)}</span>
+        ${s.endpoint ? `<span style="font-size:10px;color:var(--text3)">${esc(s.endpoint)}</span>` : ''}
+      </div>
+      <div class="sp-card-actions"><button class="sp-card-del" onclick="deleteSkill('${s.id}')">删除</button></div>
+    </div>`).join('');
+}
+function showAddSkill() {
+  ['skill-name','skill-emoji','skill-endpoint','skill-desc'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('modal-skill').classList.add('show');
+}
+function closeSkillModal() { document.getElementById('modal-skill').classList.remove('show'); }
+async function saveSkill() {
+  const name = document.getElementById('skill-name').value.trim();
+  if (!name) { toast('请填写 Skill 名称', 'error'); return; }
+  try {
+    const res = await authFetch('/api/settings/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, emoji: document.getElementById('skill-emoji').value.trim()||'⚡', type: document.getElementById('skill-type').value, endpoint: document.getElementById('skill-endpoint').value.trim(), description: document.getElementById('skill-desc').value.trim() }) });
+    const data = await res.json(); if (!data.success) throw new Error(data.error);
+    closeSkillModal(); await loadProviders(); switchAITab('skills'); toast('Skill 已创建');
+  } catch(e) { toast('创建失败: ' + e.message, 'error'); }
+}
+async function deleteSkill(id) {
+  if (!confirm('确认删除该 Skill？')) return;
+  await authFetch(`/api/settings/skills/${id}`, { method: 'DELETE' });
+  await loadProviders(); switchAITab('skills'); toast('已删除');
 }

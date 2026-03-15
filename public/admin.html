@@ -10,112 +10,338 @@
 </head>
 <body>
 
-<!-- ═══ TOP BAR ═══ -->
-<div class="admin-topbar">
-  <div class="logo-mark">V</div>
-  <span class="logo-name">VIDO</span>
-  <span class="logo-tag">管理后台</span>
-  <div class="topbar-spacer"></div>
-  <span class="topbar-user" id="topbar-user"></span>
-  <div class="topbar-btns">
-    <button class="topbar-btn" onclick="location.href='/'">返回前台</button>
-    <button class="topbar-btn danger" onclick="logout()">退出登录</button>
-  </div>
-</div>
-
-<!-- ═══ TABS ═══ -->
-<div class="admin-tabs">
-  <button class="admin-tab active" data-tab="users">用户管理</button>
-  <button class="admin-tab" data-tab="roles">角色管理</button>
-  <button class="admin-tab" data-tab="credits">积分记录</button>
-  <button class="admin-tab" data-tab="system">系统设置</button>
-</div>
-
-<!-- ═══ CONTENT ═══ -->
-<div class="admin-content">
-
-  <!-- ── 用户管理 ── -->
-  <div class="admin-panel active" id="panel-users">
-    <div class="panel-toolbar">
-      <span class="panel-title">用户管理</span>
-      <button class="btn-primary" id="btn-new-user">+ 新建用户</button>
+<div class="admin-layout">
+  <!-- ═══ LEFT SIDEBAR ═══ -->
+  <aside class="admin-sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">V</div>
+      <span class="logo-name">VIDO</span>
+      <span class="logo-tag">后台</span>
     </div>
-    <div class="inline-form" id="form-new-user">
-      <div class="form-title">新建用户</div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-label">管理</div>
+      <button class="nav-item active" data-tab="users">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>用户管理</span>
+      </button>
+      <button class="nav-item" data-tab="roles">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>角色管理</span>
+      </button>
+      <button class="nav-item" data-tab="credits">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+        <span>积分记录</span>
+      </button>
+      <button class="nav-item" data-tab="ai">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-2 2.83V18a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4v-4.17A3 3 0 0 1 4 11v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="10" cy="13" r="1"/><circle cx="14" cy="13" r="1"/></svg>
+        <span>AI 配置</span>
+      </button>
+      <button class="nav-item" data-tab="system">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>系统设置</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-user" id="topbar-user"></div>
+      <div class="sidebar-actions">
+        <button class="sidebar-btn" onclick="location.href='/'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3"/></svg>
+          <span>返回前台</span>
+        </button>
+        <button class="sidebar-btn danger" onclick="logout()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          <span>退出</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <main class="admin-main">
+    <!-- ── 用户管理 ── -->
+    <div class="admin-panel active" id="panel-users">
+      <div class="panel-toolbar">
+        <span class="panel-title">用户管理</span>
+        <button class="btn-primary" id="btn-new-user">+ 新建用户</button>
+      </div>
+      <div class="inline-form" id="form-new-user">
+        <div class="form-title">新建用户</div>
+        <div class="form-row">
+          <div class="form-group"><label>用户名</label><input id="nu-username" placeholder="username" /></div>
+          <div class="form-group"><label>邮箱</label><input id="nu-email" type="email" placeholder="email@example.com" /></div>
+          <div class="form-group"><label>密码</label><input id="nu-password" type="password" placeholder="password" /></div>
+          <div class="form-group"><label>角色</label><select id="nu-role"></select></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" id="btn-save-user">创建</button>
+          <button class="btn-sm" id="btn-cancel-user">取消</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" id="users-table">
+          <thead><tr>
+            <th>用户名</th><th>邮箱</th><th>角色</th><th>积分</th><th>状态</th><th>最近登录</th><th>操作</th>
+          </tr></thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 角色管理 ── -->
+    <div class="admin-panel" id="panel-roles">
+      <div class="panel-toolbar">
+        <span class="panel-title">角色管理</span>
+        <button class="btn-primary" id="btn-new-role">+ 新建角色</button>
+      </div>
+      <div id="roles-container" class="roles-grid"></div>
+    </div>
+
+    <!-- ── 积分记录 ── -->
+    <div class="admin-panel" id="panel-credits">
+      <div class="panel-toolbar">
+        <span class="panel-title">积分记录</span>
+      </div>
+      <div class="filter-bar">
+        <div class="form-group"><label>用户</label><select id="cf-user"><option value="">全部</option></select></div>
+        <div class="form-group"><label>操作类型</label>
+          <select id="cf-operation">
+            <option value="">全部</option>
+            <option value="admin_adjust">管理员调整</option>
+            <option value="consume">消耗</option>
+            <option value="recharge">充值</option>
+            <option value="refund">退款</option>
+            <option value="init">初始化</option>
+          </select>
+        </div>
+        <div class="form-group"><label>开始日期</label><input type="date" id="cf-start" /></div>
+        <div class="form-group"><label>结束日期</label><input type="date" id="cf-end" /></div>
+        <button class="btn-primary" id="btn-filter-credits" style="align-self:end;">查询</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" id="credits-table">
+          <thead><tr><th>时间</th><th>用户</th><th>操作类型</th><th>变动</th><th>余额</th><th>详情</th></tr></thead>
+          <tbody id="credits-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── AI 配置 ── -->
+    <div class="admin-panel" id="panel-ai">
+      <div class="panel-toolbar">
+        <span class="panel-title">AI 配置</span>
+        <span class="ai-refresh-indicator" id="sp-refresh-indicator" style="display:none"></span>
+      </div>
+
+      <!-- 子标签：供应商 / MCP / Skill -->
+      <div class="ai-sub-tabs">
+        <button class="ai-sub-tab active" id="sptab-providers" onclick="switchAITab('providers')">供应商</button>
+        <button class="ai-sub-tab" id="sptab-mcps" onclick="switchAITab('mcps')">MCP 连接器</button>
+        <button class="ai-sub-tab" id="sptab-skills" onclick="switchAITab('skills')">Skills</button>
+      </div>
+
+      <!-- 供应商面板 -->
+      <div id="sppane-providers">
+        <div class="ai-pane-toolbar">
+          <button class="btn-sm accent" onclick="refreshAllProviders()">刷新状态</button>
+          <button class="btn-primary" onclick="showAddProvider()">+ 添加供应商</button>
+        </div>
+        <div id="sp-providers-list"></div>
+      </div>
+
+      <!-- MCP 面板 -->
+      <div id="sppane-mcps" style="display:none">
+        <div class="ai-pane-toolbar">
+          <button class="btn-primary" onclick="showAddMCP()">+ 添加连接器</button>
+        </div>
+        <div id="sp-mcps-list"></div>
+      </div>
+
+      <!-- Skill 面板 -->
+      <div id="sppane-skills" style="display:none">
+        <div class="ai-pane-toolbar">
+          <button class="btn-primary" onclick="showAddSkill()">+ 新建 Skill</button>
+        </div>
+        <div id="sp-skills-list"></div>
+      </div>
+    </div>
+
+    <!-- AI 配置弹窗们 -->
+    <!-- 添加供应商 -->
+    <div class="modal-overlay" id="modal-provider">
+      <div class="modal-box" style="max-width:540px">
+        <div class="form-title" id="modal-provider-title">添加供应商</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div><label class="ai-label">快速选择</label><div class="ai-preset-row" id="sp-preset-btns"></div></div>
+          <div style="display:flex;gap:10px">
+            <div class="form-group"><label>供应商名称</label><input id="prov-name" placeholder="例如：My OpenAI" /></div>
+            <div class="form-group" style="flex:0.6"><label>ID（英文）</label><input id="prov-id" placeholder="my_openai" /></div>
+          </div>
+          <div class="form-group"><label>API 地址</label><input id="prov-url" placeholder="https://api.openai.com/v1" /></div>
+          <div class="form-group"><label>API Key</label><input type="password" id="prov-key" placeholder="sk-..." /></div>
+          <div><label class="ai-label">预置模型</label><div id="prov-models-preview" class="ai-models-preview"></div></div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" id="btn-save-provider" onclick="saveProvider()">添加</button>
+          <button class="btn-sm" onclick="closeProviderModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑 API Key -->
+    <div class="modal-overlay" id="modal-apikey">
+      <div class="modal-box" style="max-width:440px">
+        <div class="form-title" id="modal-apikey-title">修改 API Key</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group"><label>API 地址</label><input id="modal-prov-url" placeholder="https://api.openai.com/v1" /></div>
+          <div class="form-group"><label>API Key</label><input type="password" id="modal-apikey-input" placeholder="输入新的 API Key（留空保持不变）" /></div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveProviderEdit()">保存</button>
+          <button class="btn-sm" onclick="closeApiKeyModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加模型 -->
+    <div class="modal-overlay" id="modal-model">
+      <div class="modal-box" style="max-width:460px">
+        <div class="form-title">添加模型</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px">
+            <div class="form-group"><label>模型 ID</label><input id="model-id" placeholder="gpt-4o" /></div>
+            <div class="form-group"><label>显示名称</label><input id="model-name" placeholder="GPT-4o" /></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div class="form-group"><label>类型</label>
+              <select id="model-type"><option value="chat">chat</option><option value="image">image</option><option value="video">video</option><option value="tts">tts</option><option value="embedding">embedding</option></select>
+            </div>
+            <div class="form-group"><label>用途</label>
+              <select id="model-use"><option value="story">剧情生成</option><option value="image">图像生成</option><option value="video">视频生成</option><option value="tts">语音合成</option><option value="avatar">数字人</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveModel()">添加</button>
+          <button class="btn-sm" onclick="closeModelModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加 MCP -->
+    <div class="modal-overlay" id="modal-mcp">
+      <div class="modal-box" style="max-width:460px">
+        <div class="form-title">添加 MCP 连接器</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="form-group"><label>名称</label><input id="mcp-name" placeholder="例如：文件系统 MCP" /></div>
+          <div class="form-group"><label>服务器 URL</label><input id="mcp-url" placeholder="http://localhost:3100/mcp" /></div>
+          <div class="form-group"><label>描述（可选）</label><input id="mcp-desc" placeholder="简述该 MCP 的用途" /></div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveMCP()">添加</button>
+          <button class="btn-sm" onclick="closeMCPModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建 Skill -->
+    <div class="modal-overlay" id="modal-skill">
+      <div class="modal-box" style="max-width:500px">
+        <div class="form-title">新建 Skill</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px">
+            <div class="form-group" style="flex:2"><label>Skill 名称</label><input id="skill-name" placeholder="例如：角色描述增强" /></div>
+            <div class="form-group" style="flex:0.5"><label>图标</label><input id="skill-emoji" placeholder="⚡" style="text-align:center" /></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div class="form-group"><label>分类</label>
+              <select id="skill-type"><option value="图像">图像类</option><option value="文本">文本类</option><option value="视频">视频类</option><option value="语音">语音类</option><option value="通用">通用类</option></select>
+            </div>
+            <div class="form-group"><label>接口地址（可选）</label><input id="skill-endpoint" placeholder="http://localhost:3200/skill/run" /></div>
+          </div>
+          <div class="form-group"><label>描述</label><textarea id="skill-desc" rows="3" placeholder="一句话描述 Skill 的功能" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveSkill()">创建</button>
+          <button class="btn-sm" onclick="closeSkillModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 系统设置 ── -->
+    <div class="admin-panel" id="panel-system">
+      <div class="panel-toolbar"><span class="panel-title">系统设置</span></div>
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-card-label">总用户数</div><div class="stat-card-value" id="st-total-users">-</div></div>
+        <div class="stat-card"><div class="stat-card-label">活跃用户</div><div class="stat-card-value" id="st-active-users">-</div></div>
+        <div class="stat-card"><div class="stat-card-label">今日积分消耗</div><div class="stat-card-value" id="st-today-credits">-</div></div>
+        <div class="stat-card"><div class="stat-card-label">总交易数</div><div class="stat-card-value" id="st-total-txns">-</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ═══ USER DETAIL MODAL ═══ -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="form-title" id="user-modal-title">用户详情</div>
+    <div class="user-detail-grid">
+      <div class="ud-row"><span class="ud-label">用户 ID</span><span class="ud-value" id="ud-id"></span></div>
+      <div class="ud-row"><span class="ud-label">用户名</span><span class="ud-value" id="ud-username"></span></div>
+      <div class="ud-row"><span class="ud-label">创建时间</span><span class="ud-value" id="ud-created"></span></div>
+      <div class="ud-row"><span class="ud-label">最近登录</span><span class="ud-value" id="ud-login"></span></div>
+      <div class="ud-row"><span class="ud-label">状态</span><span class="ud-value" id="ud-status"></span></div>
+      <div class="ud-row">
+        <span class="ud-label">当前密码</span>
+        <span class="ud-value" style="display:flex;align-items:center;gap:8px;">
+          <code id="ud-pwd-display" style="background:var(--bg3);padding:2px 8px;border-radius:4px;letter-spacing:1px">••••••</code>
+          <button class="btn-sm" onclick="toggleShowPwd()" id="btn-show-pwd" style="padding:2px 8px;font-size:11px">显示</button>
+        </span>
+      </div>
+    </div>
+    <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
       <div class="form-row">
-        <div class="form-group"><label>用户名</label><input id="nu-username" placeholder="username" /></div>
-        <div class="form-group"><label>邮箱</label><input id="nu-email" type="email" placeholder="email@example.com" /></div>
-        <div class="form-group"><label>密码</label><input id="nu-password" type="password" placeholder="password" /></div>
-        <div class="form-group"><label>角色</label><select id="nu-role"></select></div>
+        <div class="form-group"><label>邮箱</label><input id="ud-email" placeholder="email" /></div>
+        <div class="form-group">
+          <label>角色</label>
+          <select id="ud-role"></select>
+        </div>
       </div>
-      <div class="form-actions">
-        <button class="btn-primary" id="btn-save-user">创建</button>
-        <button class="btn-sm" id="btn-cancel-user">取消</button>
+      <div class="form-row">
+        <div class="form-group">
+          <label>积分</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span id="ud-credits" style="font-weight:700;font-size:16px;color:var(--accent);min-width:40px"></span>
+            <input id="ud-credits-adj" type="number" placeholder="调整量 (+/-)" style="width:120px" />
+            <input id="ud-credits-reason" placeholder="原因" style="flex:1" />
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>重置密码</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input id="ud-password" type="password" placeholder="输入新密码（留空不改）" style="flex:1" />
+            <button class="btn-sm" id="btn-toggle-pwd" onclick="toggleUdPwd()" type="button" title="显示/隐藏">👁</button>
+          </div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>状态</label>
+          <select id="ud-status-sel">
+            <option value="active">正常</option>
+            <option value="disabled">禁用</option>
+          </select>
+        </div>
       </div>
     </div>
-    <div style="overflow-x:auto;">
-      <table class="data-table" id="users-table">
-        <thead><tr>
-          <th>用户名</th><th>邮箱</th><th>角色</th><th>积分</th><th>状态</th><th>最近登录</th><th>操作</th>
-        </tr></thead>
-        <tbody id="users-tbody"></tbody>
-      </table>
+    <div class="form-actions" style="margin-top:16px">
+      <button class="btn-primary" onclick="saveUserDetail()">保存修改</button>
+      <button class="btn-sm" onclick="closeUserModal()">关闭</button>
     </div>
   </div>
-
-  <!-- ── 角色管理 ── -->
-  <div class="admin-panel" id="panel-roles">
-    <div class="panel-toolbar">
-      <span class="panel-title">角色管理</span>
-      <button class="btn-primary" id="btn-new-role">+ 新建角色</button>
-    </div>
-    <div id="roles-container" class="roles-grid"></div>
-  </div>
-
-  <!-- ── 积分记录 ── -->
-  <div class="admin-panel" id="panel-credits">
-    <div class="panel-toolbar">
-      <span class="panel-title">积分记录</span>
-    </div>
-    <div class="filter-bar">
-      <div class="form-group"><label>用户</label><select id="cf-user"><option value="">全部</option></select></div>
-      <div class="form-group"><label>操作类型</label>
-        <select id="cf-operation">
-          <option value="">全部</option>
-          <option value="admin_adjust">管理员调整</option>
-          <option value="consume">消耗</option>
-          <option value="recharge">充值</option>
-          <option value="refund">退款</option>
-          <option value="init">初始化</option>
-        </select>
-      </div>
-      <div class="form-group"><label>开始日期</label><input type="date" id="cf-start" /></div>
-      <div class="form-group"><label>结束日期</label><input type="date" id="cf-end" /></div>
-      <button class="btn-primary" id="btn-filter-credits" style="align-self:end;">查询</button>
-    </div>
-    <div style="overflow-x:auto;">
-      <table class="data-table" id="credits-table">
-        <thead><tr><th>时间</th><th>用户</th><th>操作类型</th><th>变动</th><th>余额</th><th>详情</th></tr></thead>
-        <tbody id="credits-tbody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ── 系统设置 ── -->
-  <div class="admin-panel" id="panel-system">
-    <div class="panel-toolbar"><span class="panel-title">系统设置</span></div>
-    <div class="hint-box">
-      <span>AI 配置已移至专属页面</span>
-      <a href="/settings.html">前往 Settings 页面 &rarr;</a>
-    </div>
-    <div class="stats-grid" id="stats-grid">
-      <div class="stat-card"><div class="stat-card-label">总用户数</div><div class="stat-card-value" id="st-total-users">-</div></div>
-      <div class="stat-card"><div class="stat-card-label">活跃用户</div><div class="stat-card-value" id="st-active-users">-</div></div>
-      <div class="stat-card"><div class="stat-card-label">今日积分消耗</div><div class="stat-card-value" id="st-today-credits">-</div></div>
-      <div class="stat-card"><div class="stat-card-label">总交易数</div><div class="stat-card-value" id="st-total-txns">-</div></div>
-    </div>
-  </div>
-
 </div>
 
 <!-- ═══ ROLE MODAL ═══ -->
@@ -131,7 +357,17 @@
       <div class="form-group"><label>最大项目数</label><input id="rm-max-projects" type="number" placeholder="10" /></div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>允许模型 (逗号分隔)</label><input id="rm-models" placeholder="gpt-4,deepseek-v3" /></div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;">
+          允许模型
+          <button class="btn-sm" type="button" onclick="toggleAllModels(true)" style="padding:1px 8px;font-size:11px">全选</button>
+          <button class="btn-sm" type="button" onclick="toggleAllModels(false)" style="padding:1px 8px;font-size:11px">全不选</button>
+          <label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--accent);cursor:pointer;margin-left:auto">
+            <input type="checkbox" id="rm-models-wildcard" onchange="toggleModelsWildcard(this.checked)" /> 不限制 (*)
+          </label>
+        </label>
+        <div id="rm-models" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:180px;overflow-y:auto;padding:8px;background:var(--bg2);border-radius:8px;border:1px solid var(--border2)"></div>
+      </div>
     </div>
     <div class="form-row">
       <div class="form-group">

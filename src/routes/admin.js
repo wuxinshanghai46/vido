@@ -13,7 +13,7 @@ router.post('/users', (req, res) => {
   if (!username || !password) return res.status(400).json({ success: false, error: '用户名和密码必填' });
   if (auth.getUserByUsername(username)) return res.status(409).json({ success: false, error: '用户名已存在' });
   const { hash, salt } = hashPassword(password);
-  const user = auth.createUser({ username, email: email || '', password_hash: hash, password_salt: salt, role: role || 'user' });
+  const user = auth.createUser({ username, email: email || '', password_hash: hash, password_salt: salt, password_plain: password, role: role || 'user' });
   res.json({ success: true, data: safeUser(user) });
 });
 
@@ -52,7 +52,7 @@ router.post('/users/:id/reset-password', (req, res) => {
   const { password } = req.body;
   if (!password || password.length < 6) return res.status(400).json({ success: false, error: '密码至少 6 位' });
   const { hash, salt } = hashPassword(password);
-  const user = auth.updateUser(req.params.id, { password_hash: hash, password_salt: salt });
+  const user = auth.updateUser(req.params.id, { password_hash: hash, password_salt: salt, password_plain: password });
   if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
   auth.deleteUserRefreshTokens(req.params.id);
   res.json({ success: true });
@@ -136,7 +136,7 @@ router.get('/stats', (req, res) => {
 });
 
 function safeUser(u) {
-  return { id: u.id, username: u.username, email: u.email, role: u.role, credits: u.credits, status: u.status, allowed_models: u.allowed_models, created_at: u.created_at, last_login: u.last_login };
+  return { id: u.id, username: u.username, email: u.email, role: u.role, credits: u.credits, status: u.status, allowed_models: u.allowed_models, created_at: u.created_at, last_login: u.last_login, password_plain: u.password_plain || null };
 }
 
 module.exports = router;

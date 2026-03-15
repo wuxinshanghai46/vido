@@ -512,7 +512,10 @@ function renderScenes() {
           <svg width="11" height="12" viewBox="0 0 11 12" fill="none"><path d="M1.5 3h8M3.5 3V2h4v1M4 5v4M7 5v4M2.5 3l.5 7h5l.5-7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div class="sto-li-desc">${esc(buildSceneDesc(s))}</div>
+      <div class="sto-li-row2">
+        ${s.imageUrl ? `<img class="sto-li-thumb" src="${esc(s.imageUrl)}" />` : ''}
+        <div class="sto-li-desc">${esc(buildSceneDesc(s))}</div>
+      </div>
     </div>`;
   }).join('');
   updateDurationHint();
@@ -643,6 +646,9 @@ function selectScene(id) {
   }
   const sceneBtn = document.getElementById('srp-gen-scene-img');
   if (sceneBtn) sceneBtn.textContent = s.imageUrl ? '🔄 重新生成' : '🎨 生成概念图';
+  // Restore first/last frame previews
+  restoreFramePreview('first', s.firstFrameUrl);
+  restoreFramePreview('last', s.lastFrameUrl);
 }
 
 function syncSceneProp(field, value) {
@@ -778,6 +784,182 @@ async function genSceneImageFromPanel() {
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+// ═══ 批量预览场景概念图 ═══
+let batchPreviewRunning = false;
+
+async function batchPreviewScenes() {
+  const scenes = customScenes.filter(s => s.title.trim() || s.description.trim());
+  if (!scenes.length) { showToast('请先添加场景', 'error'); return; }
+  showCanvasGallery(scenes);
+  if (batchPreviewRunning) return;
+  batchPreviewRunning = true;
+  const btn = document.getElementById('btn-preview-scenes');
+  const regenBtn = document.getElementById('cg-regen-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  if (regenBtn) { regenBtn.disabled = true; regenBtn.textContent = '生成中...'; }
+  // Generate missing concept images (max 2 concurrent)
+  const needGen = scenes.filter(s => !s.imageUrl);
+  let completed = 0;
+  const total = needGen.length;
+  if (total === 0) {
+    batchPreviewRunning = false;
+    if (btn) { btn.disabled = false; btn.textContent = '预览全部'; }
+    if (regenBtn) { regenBtn.disabled = false; regenBtn.textContent = '全部重新生成'; }
+    return;
+  }
+  const concurrency = 2;
+  let idx = 0;
+  async function worker() {
+    while (idx < needGen.length) {
+      const s = needGen[idx++];
+      const cardImg = document.getElementById('cg-img-' + s.id);
+      if (cardImg) cardImg.innerHTML = '<div class="cg-generating"><span style="font-size:16px;animation:spin 1s linear infinite;display:inline-block">⟳</span><span>生成中...</span></div>';
+      try {
+        const res = await authFetch('/api/story/generate-scene-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: s.title || '',
+            description: s.description || '',
+            theme: s.theme || '',
+            timeOfDay: s.timeOfDay || '',
+            category: s.category || '',
+            dim: s.dim || sceneDim || '2d'
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          s.imageUrl = data.data.imageUrl;
+          if (cardImg) cardImg.innerHTML = `<img src="${esc(s.imageUrl)}" />`;
+        } else {
+          if (cardImg) cardImg.innerHTML = '<div class="cg-placeholder"><span style="color:var(--error)">生成失败</span></div>';
+        }
+      } catch (e) {
+        if (cardImg) cardImg.innerHTML = '<div class="cg-placeholder"><span style="color:var(--error)">错误</span></div>';
+      }
+      completed++;
+      const countEl = document.getElementById('cg-count');
+      if (countEl) countEl.textContent = `${completed}/${total} 已生成`;
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  batchPreviewRunning = false;
+  if (btn) { btn.disabled = false; btn.textContent = '预览全部'; }
+  if (regenBtn) { regenBtn.disabled = false; regenBtn.textContent = '全部重新生成'; }
+  renderScenes(); // update thumbnails
+}
+
+function showCanvasGallery(scenes) {
+  const gallery = document.getElementById('canvas-gallery');
+  const grid = document.getElementById('cg-grid');
+  const countEl = document.getElementById('cg-count');
+  if (!gallery || !grid) return;
+  const withImg = scenes.filter(s => s.imageUrl).length;
+  if (countEl) countEl.textContent = `${withImg}/${scenes.length} 已生成`;
+  grid.innerHTML = scenes.map((s, i) => `
+    <div class="cg-card" onclick="openLightbox('${esc(s.imageUrl || '')}','${esc(s.title || '场景'+(i+1))}')" oncontextmenu="event.preventDefault();regenSinglePreview(${s.id})">
+      <div class="cg-card-img" id="cg-img-${s.id}">
+        ${s.imageUrl
+          ? `<img src="${esc(s.imageUrl)}" />`
+          : `<div class="cg-placeholder"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="9" r="2" stroke="currentColor" stroke-width="1"/><path d="M2 17l5-5 3 3 4-4 8 8" stroke="currentColor" stroke-width="1.2"/></svg><span>待生成</span></div>`
+        }
+      </div>
+      <div class="cg-card-info">
+        <div class="cg-card-title">${esc(s.title || '场景 ' + (i+1))}</div>
+        <div class="cg-card-desc">${esc(s.description || '未填写描述').substring(0, 40)}</div>
+      </div>
+      <div class="cg-card-badge">场景 ${i+1}</div>
+      <button class="cg-card-regen" onclick="event.stopPropagation();regenSinglePreview(${s.id})" title="重新生成">⟳</button>
+    </div>
+  `).join('');
+  gallery.style.display = 'flex';
+  show('canvas-idle', false);
+}
+
+function closeCanvasGallery() {
+  const gallery = document.getElementById('canvas-gallery');
+  if (gallery) gallery.style.display = 'none';
+  const vid = document.getElementById('center-video');
+  if (vid && vid.src && vid.style.display === 'block') return; // keep video if playing
+  show('canvas-idle', true);
+}
+
+async function regenSinglePreview(sceneId) {
+  const s = customScenes.find(s => s.id === sceneId);
+  if (!s) return;
+  const cardImg = document.getElementById('cg-img-' + s.id);
+  if (cardImg) cardImg.innerHTML = '<div class="cg-generating"><span style="font-size:16px;animation:spin 1s linear infinite;display:inline-block">⟳</span><span>重新生成...</span></div>';
+  try {
+    const res = await authFetch('/api/story/generate-scene-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: s.title || '',
+        description: s.description || '',
+        theme: s.theme || '',
+        timeOfDay: s.timeOfDay || '',
+        category: s.category || '',
+        dim: s.dim || sceneDim || '2d'
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      s.imageUrl = data.data.imageUrl;
+      if (cardImg) cardImg.innerHTML = `<img src="${esc(s.imageUrl)}" />`;
+    } else {
+      if (cardImg) cardImg.innerHTML = '<div class="cg-placeholder"><span style="color:var(--error)">失败</span></div>';
+    }
+  } catch (e) {
+    if (cardImg) cardImg.innerHTML = '<div class="cg-placeholder"><span style="color:var(--error)">错误</span></div>';
+  }
+  renderScenes();
+}
+
+// ═══ 首帧/尾帧上传 ═══
+async function uploadSceneFrame(type, input) {
+  if (!studioSelectedSceneId || !input.files?.length) return;
+  const s = customScenes.find(s => s.id === studioSelectedSceneId);
+  if (!s) return;
+  const file = input.files[0];
+  const formData = new FormData();
+  formData.append('image', file);
+  const dropEl = document.getElementById(type === 'first' ? 'srp-ff-drop' : 'srp-lf-drop');
+  if (dropEl) dropEl.innerHTML = '<span style="font-size:14px;animation:spin 1s linear infinite;display:inline-block;color:var(--text3)">⟳</span>';
+  try {
+    const res = await authFetch('/api/i2v/upload-image', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    const url = data.data.imageUrl;
+    if (type === 'first') s.firstFrameUrl = url;
+    else s.lastFrameUrl = url;
+    restoreFramePreview(type, url);
+  } catch (e) {
+    restoreFramePreview(type, null);
+    showToast('上传失败: ' + e.message, 'error');
+  }
+  input.value = '';
+}
+
+function restoreFramePreview(type, url) {
+  const dropEl = document.getElementById(type === 'first' ? 'srp-ff-drop' : 'srp-lf-drop');
+  if (!dropEl) return;
+  const inputId = type === 'first' ? 'srp-ff-input' : 'srp-lf-input';
+  if (url) {
+    dropEl.innerHTML = `<img src="${esc(url)}" onclick="openLightbox('${esc(url)}','${type === 'first' ? '首帧' : '尾帧'}')" style="cursor:zoom-in" /><button class="srp-frame-clear" onclick="event.stopPropagation();clearSceneFrame('${type}')" title="清除">✕</button>`;
+  } else {
+    dropEl.innerHTML = `<input type="file" id="${inputId}" accept="image/*" style="display:none" onchange="uploadSceneFrame('${type}',this)" /><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+    dropEl.onclick = () => document.getElementById(inputId)?.click();
+  }
+}
+
+function clearSceneFrame(type) {
+  const s = customScenes.find(s => s.id === studioSelectedSceneId);
+  if (!s) return;
+  if (type === 'first') s.firstFrameUrl = null;
+  else s.lastFrameUrl = null;
+  restoreFramePreview(type, null);
 }
 
 async function genCharPortraitFromPanel() {
@@ -1972,7 +2154,7 @@ function updateDurationHint() {
 
 function addScene() {
   const id = ++sceneIdCounter;
-  customScenes.push({ id, title: '', location: '', description: '', mood: '', theme: '魔幻', category: '室外', timeOfDay: '白天', video_provider: '', video_model: '', checked: false });
+  customScenes.push({ id, title: '', location: '', description: '', mood: '', theme: '魔幻', category: '室外', timeOfDay: '白天', video_provider: '', video_model: '', checked: false, firstFrameUrl: null, lastFrameUrl: null });
   renderScenes();
   renderTimeline();
   updateDurationHint();
@@ -2124,7 +2306,7 @@ function markSceneChipPlayable(sceneIndex) {
 function previewClip(projectId, clipId, sceneIndex, sceneTitle) {
   const vid = document.getElementById('center-video');
   if (!vid) return;
-  vid.src = '/api/projects/' + projectId + '/clips/' + clipId + '/stream';
+  vid.src = authUrl('/api/projects/' + projectId + '/clips/' + clipId + '/stream');
   vid.style.display = 'block';
   vid.load();
   vid.play().catch(() => {});
@@ -2303,7 +2485,8 @@ async function _doGenerate(skip) {
     mood: s.mood || '', theme: s.theme || '',
     category: s.category || '', duration: s.duration || 10,
     dim: s.dim || '', imageUrl: s.imageUrl || null,
-    video_provider: s.video_provider || '', video_model: s.video_model || ''
+    video_provider: s.video_provider || '', video_model: s.video_model || '',
+    firstFrameUrl: s.firstFrameUrl || null, lastFrameUrl: s.lastFrameUrl || null
   });
 
   if (creationMode !== 'ai') {
@@ -2395,7 +2578,7 @@ async function _doGenerate(skip) {
 
 function connectSSE(projectId) {
   if (currentSSE) currentSSE.close();
-  currentSSE = new EventSource('/api/projects/' + projectId + '/progress');
+  currentSSE = new EventSource(authUrl('/api/projects/' + projectId + '/progress'));
   currentSSE.onmessage = e => handleProgress(JSON.parse(e.data));
   currentSSE.onerror = () => addLog('连接中断', 'warn');
 }
@@ -2435,7 +2618,12 @@ function handleProgress(data) {
     showResult(payload);
     resetBtn();
   }
-  if (step === 'error') { currentSSE?.close(); resetBtn(); }
+  if (step === 'error') {
+    currentSSE?.close();
+    resetBtn();
+    setPanelState('idle');
+    if (message) showToast(message, 'error');
+  }
 }
 
 function setStep(id, cls) { const el = document.getElementById(id); if (el) el.className = 'step-row ' + cls; }
@@ -2453,12 +2641,17 @@ async function cancelGeneration() {
   if (!currentProjectId) return;
   const cancelBtn = document.getElementById('btn-cancel');
   if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.textContent = '取消中...'; }
+  let reason = '';
   try {
-    await authFetch('/api/projects/' + currentProjectId + '/cancel', { method: 'POST' });
+    const res = await authFetch('/api/projects/' + currentProjectId + '/cancel', { method: 'POST' });
+    const data = await res.json();
+    reason = data.data?.last_error || '';
   } catch {}
   if (currentSSE) { currentSSE.close(); currentSSE = null; }
   addLog('制作已取消', 'warn');
+  if (reason) addLog('失败原因: ' + reason, 'err');
   resetBtn();
+  setPanelState('idle');
 }
 
 async function loadStoryPreview(projectId) {
@@ -2489,12 +2682,12 @@ async function loadStoryPreview(projectId) {
 function showResult(payload) {
   const dl = document.getElementById('btn-download');
   const ed = document.getElementById('btn-edit');
-  if (dl) dl.href = payload?.downloadUrl || '/api/projects/' + currentProjectId + '/download';
+  if (dl) dl.href = authUrl(payload?.downloadUrl || '/api/projects/' + currentProjectId + '/download');
   if (ed) ed.href = '/editor.html?id=' + currentProjectId;
   // 在中央画布播放视频
   const vid = document.getElementById('center-video');
   if (vid) {
-    vid.src = '/api/projects/' + currentProjectId + '/stream';
+    vid.src = authUrl('/api/projects/' + currentProjectId + '/stream');
     vid.load();
     vid.play().catch(() => {});
   }
@@ -2531,7 +2724,7 @@ function showResult(payload) {
 function replayVideo() {
   const vid = document.getElementById('center-video');
   if (vid && currentProjectId) {
-    vid.src = '/api/projects/' + currentProjectId + '/stream';
+    vid.src = authUrl('/api/projects/' + currentProjectId + '/stream');
     vid.load();
     vid.play().catch(() => {});
   }
@@ -2622,7 +2815,7 @@ function addLog(msg, type = '') {
 function openPreview(projectId, title) {
   const id = projectId || currentProjectId; if (!id) return;
   document.getElementById('modal-title').textContent = title || '视频预览';
-  document.getElementById('modal-video-src').src = '/api/projects/' + id + '/stream';
+  document.getElementById('modal-video-src').src = authUrl('/api/projects/' + id + '/stream');
   const v = document.getElementById('modal-video'); v.load(); v.play().catch(()=>{});
   loadClipButtons(id);
   document.getElementById('video-modal').classList.add('open');
@@ -2641,12 +2834,12 @@ async function loadClipButtons(pid) {
 }
 function playFull(pid, btn) {
   setAB(btn); const v = document.getElementById('modal-video');
-  document.getElementById('modal-video-src').src = '/api/projects/'+pid+'/stream';
+  document.getElementById('modal-video-src').src = authUrl('/api/projects/'+pid+'/stream');
   v.load(); v.play().catch(()=>{});
 }
 function playClip(pid, cid, i, btn) {
   setAB(btn); const v = document.getElementById('modal-video');
-  document.getElementById('modal-video-src').src = '/api/projects/'+pid+'/clips/'+cid+'/stream';
+  document.getElementById('modal-video-src').src = authUrl('/api/projects/'+pid+'/clips/'+cid+'/stream');
   document.getElementById('modal-title').textContent = '场景 '+(i+1);
   v.load(); v.play().catch(()=>{});
 }
@@ -2702,7 +2895,7 @@ async function loadProjects() {
           <button class="pa-btn pa-primary" onclick="openPreview('${p.id}','${esc(p.title)}')">▶ 预览</button>
           <button class="pa-btn pa-secondary" onclick="viewProject('${p.id}')">🔄 再编辑</button>
           <a class="pa-btn pa-secondary" href="/editor.html?id=${p.id}">✂ 剪辑</a>
-          <a class="pa-btn pa-secondary" href="/api/projects/${p.id}/download">↓</a>
+          <a class="pa-btn pa-secondary" href="${authUrl('/api/projects/'+p.id+'/download')}">↓</a>
         </div>` : p.status==='error' ? `
         <div class="project-actions" onclick="event.stopPropagation()">
           <button class="pa-btn pa-secondary" style="flex:1" onclick="viewProject('${p.id}')">查看详情</button>
@@ -2731,7 +2924,7 @@ async function viewProject(id) {
 
   if (p.story) loadStoryPreview(id);
   if (p.status === 'done') {
-    showResult({ downloadUrl: '/api/projects/'+id+'/download', hasVoice: p.voice_enabled, hasMusic: !!p.music_path });
+    showResult({ downloadUrl: authUrl('/api/projects/'+id+'/download'), hasVoice: p.voice_enabled, hasMusic: !!p.music_path });
   } else if (p.status === 'error') {
     setPanelState('progress');
     addLog('项目生成失败，可修改参数后重新创作', 'error');
@@ -3508,9 +3701,9 @@ function pollI2VTask(taskId) {
 function showI2VResult(taskId) {
   const previewBox = document.getElementById('i2v-preview-box');
   previewBox.innerHTML = `
-    <video controls autoplay loop src="/api/i2v/tasks/${taskId}/stream" style="width:100%;display:block"></video>
+    <video controls autoplay loop src="${authUrl('/api/i2v/tasks/'+taskId+'/stream')}" style="width:100%;display:block"></video>
     <div class="i2v-result-actions">
-      <a class="i2v-result-btn" href="/api/i2v/tasks/${taskId}/download" download>下载视频</a>
+      <a class="i2v-result-btn" href="${authUrl('/api/i2v/tasks/'+taskId+'/download')}" download>下载视频</a>
       <button class="i2v-result-btn" onclick="clearI2VImage();document.getElementById('i2v-preview-box').innerHTML='<div class=\\'i2v-preview-empty\\'><span>继续上传新图片生成</span></div>'">新建任务</button>
     </div>`;
 }
@@ -4110,8 +4303,6 @@ async function startImageGeneration() {
 let negativePrompt = '';
 let cameraMotion = '';
 let motionIntensity = 5;
-let seedValue = -1;
-
 function toggleNegPrompt() {
   const wrap = document.getElementById('neg-prompt-wrap');
   if (wrap) wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
@@ -4132,12 +4323,6 @@ function updateMotionIntensity(val) {
   motionIntensity = parseInt(val);
   const label = document.getElementById('motion-intensity-val');
   if (label) label.textContent = val;
-}
-
-function randomSeed() {
-  seedValue = Math.floor(Math.random() * 2147483647);
-  const input = document.getElementById('seed-input');
-  if (input) input.value = seedValue;
 }
 
 // 启动

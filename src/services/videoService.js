@@ -176,7 +176,7 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
         return await _zhipuSubmit(body);
       } catch (e) {
         if (isRateLimited(e.message) && attempt < maxRetries - 1) {
-          const wait = (attempt + 1) * 30; // 30s, 60s
+          const wait = 10; // 10秒后重试
           console.log(`[Zhipu] ${label} 限流，${wait}s 后重试（第 ${attempt + 1} 次）...`);
           await new Promise(r => setTimeout(r, wait * 1000));
         } else {

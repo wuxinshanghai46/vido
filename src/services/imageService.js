@@ -79,94 +79,100 @@ const DIM_SUFFIX_CN = {
 
 const ANIMAL_RACES = ['动物','宠物','神兽','怪兽'];
 
-// 即梦AI 专用 prompt（全中文，主体描述优先）
+// 即梦AI 专用 prompt — 多角度角色转面图
 function buildJimengPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
   const isAnimal = ANIMAL_RACES.includes(race);
-  console.log(`[buildJimengPrompt] race=${JSON.stringify(race)}, species=${JSON.stringify(species)}, isAnimal=${isAnimal}, ANIMAL_RACES=${JSON.stringify(ANIMAL_RACES)}`);
   const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : 'celulose';
   const styleCN = STYLE_PROMPTS_CN[styleKey];
   const dimCN = DIM_SUFFIX_CN[dim] || DIM_SUFFIX_CN['2d'];
 
   if (isAnimal) {
     const creatureType = species || race;
-    const parts = [`${creatureType}，${name}`];
+    const parts = [`角色设定图，多角度参考，${creatureType}，${name}`];
     if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 200));
     parts.push(styleCN);
     parts.push(dimCN);
-    parts.push('完整身体设计，从头到尾，居中构图，高质量，精细，干净背景');
+    parts.push('角色转面图，正面侧面背面三视图排列，完整身体，从头到尾，白色干净背景，高质量，精细设定');
     return parts.join('，');
   }
 
   const roleMap = { main: '主角', supporting: '配角', villain: '反派', mentor: '导师', other: '角色' };
   const roleLabel = roleMap[role] || '角色';
-  const parts = [`${name}，${roleLabel}，全身角色设计`];
+  const parts = [`角色设定图，多角度转面图，${name}，${roleLabel}`];
   if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 250));
   parts.push(styleCN);
   parts.push(dimCN);
-  parts.push('全身正面站立，角色设定图风格，精细面部和服装，干净背景，高质量');
+  parts.push('角色360度多视角参考图，正面视图、3/4侧面视图、背面视图，同一角色三个角度并排排列，全身站立姿势，统一比例，精细面部和服装细节，纯白干净背景，专业角色设定参考');
   return parts.join('，');
 }
 
+// 英文 prompt — 多角度角色转面图 (character turnaround sheet)
 function buildPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
   const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : 'celulose';
   const isAnimal = ANIMAL_RACES.includes(race);
   if (isAnimal) {
     const creatureType = species || race;
-    const parts = [`${name}, ${creatureType}`];
+    const parts = [`character turnaround reference sheet of ${name}, ${creatureType}`];
     if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 180));
     parts.push(STYLE_PROMPTS[styleKey]);
     if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
-    parts.push('full body creature design, showing head to tail, centered composition, high quality, detailed, clean background');
+    parts.push('360 degree multi-angle character model sheet, front view, 3/4 side view, back view, three poses of same creature side by side, full body from head to tail, consistent proportions, clean white background, professional concept art');
     return parts.join(', ');
   }
   const roleMap = { main: 'protagonist', supporting: 'supporting character', villain: 'villain', mentor: 'mentor', other: 'character' };
   const roleLabel = roleMap[role] || 'character';
-  const parts = [`full body character design of ${name}, ${roleLabel}`];
+  const parts = [`character turnaround reference sheet of ${name}, ${roleLabel}`];
   if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 250));
   parts.push(STYLE_PROMPTS[styleKey]);
   if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
-  parts.push('full body shot from head to feet, standing pose, front view, character turnaround sheet style, detailed face and clothing, clean background, high quality');
+  parts.push('360 degree multi-angle character model sheet, front view, 3/4 side view, back view, three poses of the same character arranged side by side, full body standing pose from head to feet, consistent proportions and design, detailed face and clothing, clean white background, professional character design reference');
   return parts.join(', ');
 }
 
-// 从描述中去除人物/动作内容，只保留环境信息
+// 从描述中提取纯环境信息，彻底去除所有人物/角色/动作内容
 function stripCharacterContent(desc) {
   if (!desc) return '';
-  // 提取方括号中的环境标签内容（[地理环境]、[光影]、[细节]等）
-  const envTags = desc.match(/\[(?:地理环境|光影|细节|场景|环境|背景|天气|氛围)[^\]]*\][^[]*(?=\[|$)/g);
+  // 1. 优先提取方括号中的环境标签
+  const envTags = desc.match(/\[(?:地理环境|地点|光影|细节|场景|环境|背景|天气|氛围|地形|建筑|植被)[^\]]*\][^[]*(?=\[|$)/g);
   if (envTags && envTags.length > 0) {
-    return envTags.join(' ').trim();
+    return envTags.map(t => t.replace(/\[.*?\]\s*/, '').trim()).filter(Boolean).join('，');
   }
-  // 去掉包含人物动作的短句（中文）
-  let clean = desc.replace(/[^，。、；\n]*(?:走|跑|站|坐|说|看|打|挥|握|拿|举|转身|回头|微笑|哭|笑|喊|叫|冲|跳|飞|踢|挡|躲|闪|追|逃|倒|躺|蹲|跪|抱|扔|拉|推|砍|刺|射|吼|怒|惊|喜|悲|叹|角色|人物|主角|少年|少女|男|女|老人|孩子|身穿|手持|头戴|腰间|肩上)[^，。、；\n]*/g, '');
-  // 去掉英文中的人物动作描述
-  clean = clean.replace(/\b(he|she|they|him|her|character|person|man|woman|boy|girl|figure|protagonist|hero|heroine|warrior|sword|weapon)\b[^,.;]*/gi, '');
-  // 去掉 Character 描述块
-  clean = clean.replace(/\[Character[^\]]*\][^,.]*/gi, '');
-  // 清理多余标点
-  clean = clean.replace(/[，,]{2,}/g, '，').replace(/^[，,\s]+|[，,\s]+$/g, '');
-  return clean || desc;
+  // 2. 提取【地点】标记后的内容
+  const locMatch = desc.match(/【地点】\s*([^【\n]+)/);
+  const envParts = [];
+  if (locMatch) envParts.push(locMatch[1].trim());
+  // 3. 按句拆分，只保留环境/地点类句子
+  const sentences = desc.split(/[，。！？；\n]+/).filter(Boolean);
+  const envKeywords = /山|水|河|海|湖|林|森|天|云|雾|雨|雪|风|沙|石|岩|洞|城|宫|殿|楼|塔|庙|寺|村|镇|街|道|路|桥|门|墙|屋|房|院|园|花|草|树|竹|瀑|泉|池|谷|崖|峰|岭|地|原|漠|冰|火|光|影|暗|明|阳|月|星|空|夜|晨|晚|黄昏|日落|日出|建筑|地面|天花板|窗|景色|景观|环境|场地|空间|氛围/;
+  const charKeywords = /他|她|它们|人|角色|主角|少年|少女|男|女|老|孩|穿|戴|持|拿|握|挥|走|跑|站|坐|飞|打|战|斗|冲|跳|踢|砍|刺|射|追|逃|躲|闪|看|说|喊|叫|笑|哭|怒|惊|悲|身|手|头|脸|眼|臂|腿|肩|发|孙悟空|二郎神|唐僧|猪八戒|沙僧|武|侠|剑|刀|枪|弓|盾|甲|铠/;
+  for (const s of sentences) {
+    const t = s.trim();
+    if (!t || t.length < 2) continue;
+    if (charKeywords.test(t)) continue; // 含人物关键词，跳过
+    if (envKeywords.test(t)) envParts.push(t); // 含环境关键词，保留
+  }
+  return envParts.join('，') || '电影级场景环境';
 }
 
-// 场景图片 prompt
+// 场景图片 prompt — 纯环境，绝对无人物
 function buildScenePrompt(title, description, theme, timeOfDay, category, dim = '2d', animStyle = '') {
   const parts = [];
   const cleanDesc = stripCharacterContent(description);
-  parts.push(`background environment scene: ${title || 'scene'}, ${cleanDesc || 'cinematic landscape'}`);
-  if (theme) parts.push(`${theme} genre`);
+  parts.push(`empty landscape environment painting: ${title || 'scene'}`);
+  if (cleanDesc) parts.push(cleanDesc);
+  if (theme) parts.push(`${theme} genre atmosphere`);
   if (timeOfDay) {
     const timeMap = { '白天': 'bright daylight', '傍晚': 'sunset golden hour', '夜晚': 'night scene, moonlight', '清晨': 'early morning, dawn', '黄昏': 'twilight, dusk' };
     parts.push(timeMap[timeOfDay] || timeOfDay);
   }
   if (category) {
-    const catMap = { '室外': 'outdoor', '室内': 'indoor interior', '战场': 'battlefield', '自然': 'nature landscape', '城市': 'cityscape urban' };
+    const catMap = { '室外': 'outdoor', '室内': 'indoor interior', '战场': 'empty battlefield aftermath', '自然': 'nature landscape', '城市': 'cityscape urban' };
     parts.push(catMap[category] || category);
   }
-  // 使用选定的风格，而非硬编码
   const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : 'celulose';
   parts.push(STYLE_PROMPTS[styleKey]);
   if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
-  parts.push('wide angle establishing shot, cinematic composition, detailed environment, concept art, background only, NO people, NO characters, NO figures, NO human, empty scene, high quality');
+  parts.push('wide angle establishing shot, matte painting, environment concept art, background plate, completely empty scene, absolutely no people, no characters, no figures, no silhouettes, no creatures, uninhabited, desolate, high quality');
   return parts.join(', ');
 }
 
@@ -236,7 +242,8 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
     ? buildScenePrompt(name, description, race, species, '')
     : buildPrompt(name, role, description, '2d', race, species);
   // Full body character → portrait; scene → landscape
-  const size = imageType === 'scene' ? '1792x1024' : '1024x1792';
+  // 角色转面图和场景都用横向比例
+  const size = '1792x1024';
 
   const body = JSON.stringify({
     model: 'dall-e-3',
@@ -378,7 +385,7 @@ async function generateReplicateImage({ name, role, description, dim, filename, 
     ? 'black-forest-labs/flux-dev'
     : 'black-forest-labs/flux-schnell';
 
-  const body = JSON.stringify({ input: { prompt, num_outputs: 1, aspect_ratio: '1:1', output_format: 'png', num_inference_steps: dim === '3d' ? 28 : 4 } });
+  const body = JSON.stringify({ input: { prompt, num_outputs: 1, aspect_ratio: '16:9', output_format: 'png', num_inference_steps: dim === '3d' ? 28 : 4 } });
 
   // Submit prediction
   const prediction = await new Promise((resolve, reject) => {
@@ -517,8 +524,8 @@ async function generateJimengImage({ prompt, filename, dim = '2d' }) {
       req_key: reqKey,
       prompt: prompt.substring(0, 800),
       seed: -1,
-      width: 1024,
-      height: 1024,
+      width: 1536,
+      height: 768,
       use_pre_llm: true,
       return_url: true,
       req_json: reqJson
@@ -556,8 +563,8 @@ async function generateJimengImage({ prompt, filename, dim = '2d' }) {
       req_key: reqKey,
       prompt: prompt.substring(0, 2000),
       seed: -1,
-      width: 1024,
-      height: 1024
+      width: 1536,
+      height: 768
     });
     const result = await _jimengRequest(ak, sk, query, submitBody);
     console.log('[Jimeng Image] CVProcess response:', JSON.stringify(result).substring(0, 500));
@@ -597,18 +604,22 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
   return { filePath, filename: path.basename(filePath) };
 }
 
-// 即梦AI 专用中文场景 prompt
+// 即梦AI 专用中文场景 prompt — 纯环境，绝对无人物
 function buildJimengScenePrompt(title, description, theme, timeOfDay, category, dim = '2d', animStyle = '') {
   const parts = [];
   const cleanDesc = stripCharacterContent(description);
-  parts.push(`纯背景环境场景：${title || '场景'}，${cleanDesc || '电影级场景'}`);
-  if (theme) parts.push(`${theme}题材`);
+  parts.push(`无人空旷风景画：${title || '场景'}`);
+  if (cleanDesc) parts.push(cleanDesc);
+  if (theme) parts.push(`${theme}题材氛围`);
   if (timeOfDay) parts.push(timeOfDay);
-  if (category) parts.push(category);
+  if (category) {
+    const catCN = { '战场': '空旷战后废墟', '室内': '空荡室内空间' };
+    parts.push(catCN[category] || category);
+  }
   const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : 'celulose';
   parts.push(STYLE_PROMPTS_CN[styleKey]);
   parts.push(DIM_SUFFIX_CN[dim] || DIM_SUFFIX_CN['2d']);
-  parts.push('广角全景镜头，电影构图，精细环境，概念艺术，纯背景，禁止出现人物，禁止出现角色，无人物，空场景，高质量');
+  parts.push('广角全景，环境概念画，场景设定图，完全空旷无人，严禁出现任何人物角色动物生物，只画地形建筑天空植被，无人荒凉空境，高质量精细');
   return parts.join('，');
 }
 

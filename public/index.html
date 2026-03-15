@@ -346,13 +346,6 @@
           <span class="motion-intensity-val" id="motion-intensity-val">5</span>
         </div>
       </div>
-      <div style="margin-top:8px">
-        <div class="stp-label" style="margin-bottom:4px">种子值</div>
-        <div class="seed-row">
-          <input class="seed-input" id="seed-input" type="number" placeholder="-1 (随机)" value="-1" oninput="seedValue=parseInt(this.value)||(-1)" />
-          <button class="seed-random-btn" onclick="randomSeed()">随机</button>
-        </div>
-      </div>
     </div>
 
     <!-- Step 2: 画面风格（2D/3D + 风格 合并） -->
@@ -530,6 +523,7 @@
                 </div>
                 <div class="stp-footer">
                   <button class="stp-footer-btn" onclick="addScene()">＋ 添加场景</button>
+                  <button class="stp-footer-btn stp-footer-btn-gen" id="btn-preview-scenes" onclick="batchPreviewScenes()">预览全部</button>
                 </div>
               </div>
 
@@ -585,6 +579,20 @@
                   <div id="canvas-gen-overlay" class="canvas-gen-overlay" style="display:none">
                     <div class="cgo-dots"><span></span><span></span><span></span></div>
                     <div class="cgo-msg" id="cgo-msg">正在创作...</div>
+                  </div>
+
+                  <!-- 场景预览画廊 -->
+                  <div id="canvas-gallery" class="canvas-gallery" style="display:none">
+                    <div class="cg-header">
+                      <span class="cg-title">场景概念图预览</span>
+                      <span class="cg-count" id="cg-count"></span>
+                      <button class="cg-close" onclick="closeCanvasGallery()">✕</button>
+                    </div>
+                    <div class="cg-grid" id="cg-grid"></div>
+                    <div class="cg-footer">
+                      <button class="cg-btn cg-btn-regen" id="cg-regen-btn" onclick="batchPreviewScenes()">全部重新生成</button>
+                      <span class="cg-hint">点击单张图片可放大查看，右键可重新生成</span>
+                    </div>
                   </div>
                 </div><!-- end sto-canvas -->
               </div><!-- end sto-canvas-area -->
@@ -998,6 +1006,29 @@
                         </div>
                       </div>
                       <button class="srp-gen-portrait" id="srp-gen-scene-img" onclick="genSceneImageFromPanel()">🎨 生成概念图</button>
+                    </div>
+                    <!-- 首帧/尾帧上传 -->
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">首帧 / 尾帧图片 <span style="font-weight:400;color:var(--text3);font-size:10px">（可选，控制视频起止画面）</span></div>
+                      <div class="srp-frames-row">
+                        <div class="srp-frame-box" id="srp-first-frame">
+                          <div class="srp-frame-label">首帧</div>
+                          <div class="srp-frame-drop" id="srp-ff-drop" onclick="document.getElementById('srp-ff-input').click()">
+                            <input type="file" id="srp-ff-input" accept="image/*" style="display:none" onchange="uploadSceneFrame('first',this)" />
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                          </div>
+                        </div>
+                        <div class="srp-frame-arrow">
+                          <svg width="20" height="12" viewBox="0 0 20 12" fill="none"><path d="M2 6h16M14 2l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="srp-frame-box" id="srp-last-frame">
+                          <div class="srp-frame-label">尾帧</div>
+                          <div class="srp-frame-drop" id="srp-lf-drop" onclick="document.getElementById('srp-lf-input').click()">
+                            <input type="file" id="srp-lf-input" accept="image/*" style="display:none" onchange="uploadSceneFrame('last',this)" />
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div class="srp-field" style="width:100%">
                       <div class="srp-fl">场景名称</div>

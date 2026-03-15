@@ -3,76 +3,136 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VIDO - 登录</title>
+  <title>VIDO - AI 视频创作平台</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/login.css" />
 </head>
 <body>
-<div class="login-wrap">
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="logo-mark">V</div>
-      <span class="logo-text">VIDO</span>
+<div class="login-page">
+  <!-- 左侧视频展示墙 -->
+  <div class="login-visual" id="visualPanel">
+    <!-- 视频瀑布流网格 -->
+    <div class="video-wall" id="videoWall"></div>
+    <!-- 渐变遮罩层 -->
+    <div class="wall-overlay"></div>
+    <!-- 品牌浮层 -->
+    <div class="visual-overlay">
+      <div class="visual-brand">
+        <div class="brand-badge">AI VIDEO</div>
+        <h1 class="brand-name">VIDO</h1>
+        <p class="brand-slogan">
+          <span class="typing-text" id="typingText"></span><span class="typing-cursor">|</span>
+        </p>
+        <div class="showcase-stats" id="showcaseStats"></div>
+      </div>
     </div>
+  </div>
 
-    <div class="login-tabs">
-      <div class="login-tab active" onclick="switchTab('login')">登录</div>
-      <div class="login-tab" onclick="switchTab('register')">注册</div>
+  <!-- 右侧表单区域 -->
+  <div class="login-form-side">
+    <div class="form-container">
+      <div class="form-header">
+        <h2 class="form-title">欢迎登录</h2>
+        <p class="form-subtitle">开启 AI 视频创作之旅</p>
+      </div>
+
+      <div class="login-tabs">
+        <div class="login-tab active" onclick="switchTab('login')">登录</div>
+        <div class="login-tab" onclick="switchTab('register')">注册</div>
+        <div class="tab-indicator" id="tabIndicator"></div>
+      </div>
+
+      <div id="login-error" class="login-error"></div>
+
+      <!-- 登录表单 -->
+      <form id="form-login" onsubmit="handleLogin(event)">
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <input type="text" id="login-username" placeholder="请输入用户名" autocomplete="username" required />
+        </div>
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <input type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password" required />
+          <div class="field-toggle" onclick="togglePassword(this)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+        </div>
+        <button type="submit" class="login-btn" id="btn-login">
+          <span class="btn-text">立即创作</span>
+          <svg class="btn-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </form>
+
+      <!-- 注册表单 -->
+      <form id="form-register" style="display:none" onsubmit="handleRegister(event)">
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <input type="text" id="reg-username" placeholder="用户名（3-20位字母数字下划线）" autocomplete="username" required />
+        </div>
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <input type="email" id="reg-email" placeholder="邮箱（选填）" autocomplete="email" />
+        </div>
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <input type="password" id="reg-password" placeholder="密码（至少 6 位）" autocomplete="new-password" required />
+        </div>
+        <div class="login-field">
+          <div class="field-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+          </div>
+          <input type="password" id="reg-password2" placeholder="确认密码" autocomplete="new-password" required />
+        </div>
+        <button type="submit" class="login-btn" id="btn-register">
+          <span class="btn-text">立即注册</span>
+          <svg class="btn-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </form>
+
+      <div class="login-footer">
+        <span>登录即代表同意</span>
+        <a href="javascript:void(0)">《用户协议》</a>
+        <span>和</span>
+        <a href="javascript:void(0)">《隐私政策》</a>
+      </div>
     </div>
-
-    <div id="login-error" class="login-error"></div>
-
-    <!-- 登录表单 -->
-    <form id="form-login" onsubmit="handleLogin(event)">
-      <div class="login-field">
-        <label>用户名</label>
-        <input type="text" id="login-username" placeholder="请输入用户名" autocomplete="username" required />
-      </div>
-      <div class="login-field">
-        <label>密码</label>
-        <input type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password" required />
-      </div>
-      <button type="submit" class="login-btn" id="btn-login">登录</button>
-    </form>
-
-    <!-- 注册表单 -->
-    <form id="form-register" style="display:none" onsubmit="handleRegister(event)">
-      <div class="login-field">
-        <label>用户名</label>
-        <input type="text" id="reg-username" placeholder="3-20位字母数字下划线" autocomplete="username" required />
-      </div>
-      <div class="login-field">
-        <label>邮箱 <span style="opacity:.4">(选填)</span></label>
-        <input type="email" id="reg-email" placeholder="your@email.com" autocomplete="email" />
-      </div>
-      <div class="login-field">
-        <label>密码</label>
-        <input type="password" id="reg-password" placeholder="至少 6 位" autocomplete="new-password" required />
-      </div>
-      <div class="login-field">
-        <label>确认密码</label>
-        <input type="password" id="reg-password2" placeholder="再次输入密码" autocomplete="new-password" required />
-      </div>
-      <button type="submit" class="login-btn" id="btn-register">注册</button>
-    </form>
-
-    <div class="login-footer">VIDO AI 视频创作平台</div>
   </div>
 </div>
 
 <script>
-// 已登录则跳转
 if (sessionStorage.getItem('vido_token')) window.location.href = '/';
 
 function switchTab(tab) {
-  document.querySelectorAll('.login-tab').forEach((el, i) => el.classList.toggle('active', (tab === 'login' ? i === 0 : i === 1)));
+  document.querySelectorAll('.login-tab').forEach((el, i) =>
+    el.classList.toggle('active', tab === 'login' ? i === 0 : i === 1)
+  );
+  document.getElementById('tabIndicator').style.left = tab === 'login' ? '4px' : '50%';
   document.getElementById('form-login').style.display = tab === 'login' ? '' : 'none';
   document.getElementById('form-register').style.display = tab === 'register' ? '' : 'none';
   hideError();
 }
 
-function showError(msg) { const el = document.getElementById('login-error'); el.textContent = msg; el.classList.add('show'); }
+function togglePassword(el) {
+  const input = el.parentElement.querySelector('input');
+  input.type = input.type === 'password' ? 'text' : 'password';
+  el.classList.toggle('active');
+}
+
+function showError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg; el.classList.add('show');
+}
 function hideError() { document.getElementById('login-error').classList.remove('show'); }
 
 async function handleLogin(e) {
@@ -81,7 +141,7 @@ async function handleLogin(e) {
   const password = document.getElementById('login-password').value;
   if (!username || !password) return showError('请填写用户名和密码');
   const btn = document.getElementById('btn-login');
-  btn.disabled = true; btn.textContent = '登录中...';
+  btn.disabled = true; btn.querySelector('.btn-text').textContent = '登录中...';
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -90,10 +150,9 @@ async function handleLogin(e) {
     const data = await res.json();
     if (!data.success) { showError(data.error); return; }
     sessionStorage.setItem('vido_token', data.data.access_token);
-    // admin 跳转后台，其他跳前台
     window.location.href = data.data.user.role === 'admin' ? '/admin.html' : '/';
   } catch (err) { showError('网络错误: ' + err.message); }
-  finally { btn.disabled = false; btn.textContent = '登录'; }
+  finally { btn.disabled = false; btn.querySelector('.btn-text').textContent = '立即创作'; }
 }
 
 async function handleRegister(e) {
@@ -105,7 +164,7 @@ async function handleRegister(e) {
   if (!username || !password) return showError('请填写用户名和密码');
   if (password !== password2) return showError('两次密码不一致');
   const btn = document.getElementById('btn-register');
-  btn.disabled = true; btn.textContent = '注册中...';
+  btn.disabled = true; btn.querySelector('.btn-text').textContent = '注册中...';
   try {
     const res = await fetch('/api/auth/register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -116,8 +175,89 @@ async function handleRegister(e) {
     sessionStorage.setItem('vido_token', data.data.access_token);
     window.location.href = '/';
   } catch (err) { showError('网络错误: ' + err.message); }
-  finally { btn.disabled = false; btn.textContent = '注册'; }
+  finally { btn.disabled = false; btn.querySelector('.btn-text').textContent = '立即注册'; }
 }
+
+/* ===== 打字机 ===== */
+(function() {
+  const phrases = [
+    'AI 驱动的下一代视频创作平台',
+    '从文字到视频，一键生成',
+    '让每一帧都充满想象力',
+    '48+ 顶尖 AI 视频模型',
+  ];
+  const el = document.getElementById('typingText');
+  let pi = 0, ci = 0, del = false;
+  function tick() {
+    const p = phrases[pi];
+    if (!del) {
+      el.textContent = p.slice(0, ++ci);
+      if (ci >= p.length) { setTimeout(() => { del = true; tick(); }, 2200); return; }
+      setTimeout(tick, 75);
+    } else {
+      el.textContent = p.slice(0, --ci);
+      if (ci <= 0) { del = false; pi = (pi + 1) % phrases.length; setTimeout(tick, 350); return; }
+      setTimeout(tick, 30);
+    }
+  }
+  tick();
+})();
+
+/* ===== 视频展示墙 ===== */
+(function() {
+  const wall = document.getElementById('videoWall');
+  const stats = document.getElementById('showcaseStats');
+
+  async function loadShowcase() {
+    try {
+      const res = await fetch('/api/showcase/videos');
+      const data = await res.json();
+      if (!data.success || !data.videos.length) return;
+
+      stats.innerHTML = `<span class="stat-glow">${data.videos.length}</span> 部 AI 生成作品展示`;
+
+      // 创建视频卡片网格
+      data.videos.forEach((v, i) => {
+        const card = document.createElement('div');
+        card.className = 'vwall-card';
+        card.style.animationDelay = (i * 0.15) + 's';
+
+        const video = document.createElement('video');
+        video.src = '/api/showcase/stream/' + v.id;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        video.setAttribute('playsinline', '');
+
+        // 交错播放，避免同时加载
+        setTimeout(() => {
+          video.play().catch(() => {});
+        }, i * 800 + Math.random() * 500);
+
+        // hover 高亮效果
+        card.addEventListener('mouseenter', () => {
+          card.classList.add('active');
+          // 暂停其他卡片
+          wall.querySelectorAll('.vwall-card').forEach(c => {
+            if (c !== card) c.classList.add('dimmed');
+          });
+        });
+        card.addEventListener('mouseleave', () => {
+          card.classList.remove('active');
+          wall.querySelectorAll('.vwall-card').forEach(c => c.classList.remove('dimmed'));
+        });
+
+        card.appendChild(video);
+        wall.appendChild(card);
+      });
+    } catch(e) {
+      console.log('Showcase load failed:', e);
+    }
+  }
+
+  loadShowcase();
+})();
 </script>
 </body>
 </html>

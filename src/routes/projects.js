@@ -55,7 +55,7 @@ router.get('/', (req, res) => {
   try {
     const all = listProjects();
     // admin 看全部，普通用户只看自己的
-    const filtered = req.user?.role === 'admin' ? all : all.filter(p => p.user_id === req.user?.id || !p.user_id);
+    const filtered = req.user?.role === 'admin' ? all : all.filter(p => p.user_id === req.user?.id);
     res.json({ success: true, data: filtered });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -121,7 +121,10 @@ router.get('/:id', (req, res) => {
 router.post('/:id/cancel', (req, res) => {
   try {
     cancelPipeline(req.params.id);
-    res.json({ success: true });
+    // 返回项目最后的错误信息
+    const details = getProjectDetails(req.params.id);
+    const lastError = details?.error || details?.last_error || '';
+    res.json({ success: true, data: { last_error: lastError } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

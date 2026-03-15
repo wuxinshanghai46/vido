@@ -823,6 +823,7 @@ async function runFullPipeline(projectId, userId = null) {
               imageUrlForVideo = await uploadImageToTempHost(imageBase64ForVideo, sceneImage);
             } catch (uploadErr) {
               console.warn(`[Pipeline] 场景 ${i} 参考图上传失败: ${uploadErr.message}`);
+              emitProgress(projectId, { step: 'video', status: 'warn', message: `场景 ${i + 1} 参考图上传图床失败，将使用 base64 模式（部分模型可能不支持）` });
             }
           }
 
@@ -834,7 +835,17 @@ async function runFullPipeline(projectId, userId = null) {
         }
 
         // 优先用公网 URL（兼容所有 provider），回退 base64（jimeng/sora 支持）
-        const effectiveImageUrl = imageUrlForVideo || imageBase64ForVideo || null;
+        let effectiveImageUrl = imageUrlForVideo || imageBase64ForVideo || null;
+        // Override with user-specified first frame if available
+        const userSceneData = customScenesList[i];
+        if (userSceneData?.firstFrameUrl) {
+          const ffRef = resolveImageRef(userSceneData.firstFrameUrl);
+          const ffUrl = ffRef.publicUrl || ffRef.base64 || null;
+          if (ffUrl) {
+            effectiveImageUrl = ffUrl;
+            emitProgress(projectId, { step: 'video', status: 'info', message: `场景 ${i + 1}: 使用用户指定首帧图` });
+          }
+        }
         // 查找场景级模型覆盖（优先按 index，其次按 title 匹配）
         const sceneOverride = sceneModelOverrides[i] || (scene.title && sceneModelOverrides[`title:${scene.title}`]) || null;
         const effectiveProvider = sceneOverride?.video_provider || project.video_provider || null;
@@ -845,8 +856,13 @@ async function runFullPipeline(projectId, userId = null) {
         // Kling V3 支持最长 120 秒，其他模型限制更短
         const isKlingV3 = effectiveModel === 'kling-v3';
         const maxDuration = isKlingV3 ? 120 : 20;
+        // 有参考图时，prompt 中强调必须严格参照参考图
+        let finalPrompt = enhancedPrompt;
+        if (effectiveImageUrl) {
+          finalPrompt = `Strictly follow the reference image. Keep the exact same character appearance, costume, and scene environment as shown in the reference image. ${enhancedPrompt}`;
+        }
         const clipOptions = {
-          prompt: enhancedPrompt,
+          prompt: finalPrompt,
           negative_prompt: styleConf.negative || '',
           duration: Math.min(scene.duration || 10, maxDuration),
           outputDir: projectOutputDir,
@@ -855,13 +871,16 @@ async function runFullPipeline(projectId, userId = null) {
           sceneIndex: i,
           video_provider: effectiveProvider,
           video_model: effectiveModel,
-          image_url: effectiveImageUrl
+          image_url: effectiveImageUrl,
+          last_frame_url: userSceneData?.lastFrameUrl || null
         };
         if (effectiveImageUrl) {
           const mode = imageUrlForVideo ? 'URL' : 'base64';
           emitProgress(projectId, { step: 'video', status: 'info', message: `场景 ${i + 1} 使用参考图生成视频 (i2v, ${mode})` });
         }
-        const isRetryable = (msg) => /访问量过大|rate.?limit|too.?many|capacity|quota|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket.?disconnect|TLS|network|EAI_AGAIN|EPIPE|ECONNREFUSED|fetch.?failed|abort|参数有误|1210/i.test(msg || '');
+        // 认证/Key 错误不重试，直接失败
+        const isAuthError = (msg) => /access.?denied|unauthorized|forbidden|invalid.?key|api.?key|认证|50400|401|403/i.test(msg || '');
+        const isRetryable = (msg) => !isAuthError(msg) && /访问量过大|rate.?limit|too.?many|capacity|quota|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket.?disconnect|TLS|network|EAI_AGAIN|EPIPE|ECONNREFUSED|fetch.?failed|abort|参数有误|1210/i.test(msg || '');
         // 视频片段积分扣减
         deductCredits(userId, 'video_gen', `场景${i+1}: ${scene.title || ''}`, projectId, clipOptions.model || '');
         let lastErr;
@@ -874,8 +893,8 @@ async function runFullPipeline(projectId, userId = null) {
             lastErr = e;
             if (isRetryable(e.message) && attempt < 2) {
               if (isCancelled(projectId)) break;
-              const wait = (attempt + 1) * 30; // 30s, 60s（限流需要更长等待）
-              emitProgress(projectId, { step: 'video', status: 'retry', message: `场景 ${i + 1} API 限流，${wait}s 后重试（第 ${attempt + 1} 次）...` });
+              const wait = 15; // 固定15秒，3次共45秒
+              emitProgress(projectId, { step: 'video', status: 'retry', message: `场景 ${i + 1} 第${attempt + 1}次失败: ${e.message.substring(0, 50)}，${wait}s 后重试...` });
               await new Promise(r => setTimeout(r, wait * 1000));
             } else {
               break;
@@ -883,8 +902,10 @@ async function runFullPipeline(projectId, userId = null) {
           }
         }
         if (!result) {
+          const reason = lastErr?.message || '未知错误';
+          emitProgress(projectId, { step: 'video', status: 'error', message: `场景 ${i + 1} 生成失败（3次重试均失败）: ${reason.substring(0, 100)}` });
           // 降级：用 Demo 模式生成占位视频，避免整个项目失败
-          emitProgress(projectId, { step: 'video', status: 'fallback', message: `场景 ${i + 1} 生成失败（${lastErr?.message?.substring(0, 60)}），已降级为 Demo 占位视频` });
+          emitProgress(projectId, { step: 'video', status: 'fallback', message: `场景 ${i + 1} 已降级为占位视频` });
           const { execSync } = require('child_process');
           const ffmpegStatic2 = require('ffmpeg-static');
           const ffmpegPath2 = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg') ? process.env.FFMPEG_PATH : ffmpegStatic2;
@@ -994,7 +1015,7 @@ async function runFullPipeline(projectId, userId = null) {
     return { finalPath, duration: totalDuration };
 
   } catch (err) {
-    updateProjectStatus(projectId, 'error');
+    db.updateProject(projectId, { status: 'error', last_error: err.message });
     emitProgress(projectId, { step: 'error', status: 'error', message: err.message });
     throw err;
   }
