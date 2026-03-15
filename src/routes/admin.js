@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { hashPassword } = require('../utils/crypto');
 const auth = require('../models/authStore');
+const db = require('../models/database');
 
 // === 用户管理 ===
 router.get('/users', (req, res) => {
@@ -133,6 +134,122 @@ router.get('/stats', (req, res) => {
       }
     }
   });
+});
+
+// === 内容管理 ===
+router.get('/contents', (req, res) => {
+  const { type, user_id, limit = 50, offset = 0 } = req.query;
+  const users = auth.getUsers();
+  const userMap = {};
+  users.forEach(u => { userMap[u.id] = u.username; });
+
+  let items = [];
+
+  // 项目
+  if (!type || type === 'project') {
+    db.listProjects().forEach(p => {
+      if (user_id && p.user_id !== user_id) return;
+      items.push({
+        type: 'project', id: p.id, title: p.title || p.prompt?.slice(0, 40) || '未命名项目',
+        user_id: p.user_id, username: userMap[p.user_id] || '未知',
+        status: p.status, created_at: p.created_at,
+        detail: `${p.scene_count || '-'} 场景 · ${p.video_provider || 'demo'}`
+      });
+    });
+  }
+
+  // 图生视频
+  if (!type || type === 'i2v') {
+    db.listI2VTasks().forEach(t => {
+      if (user_id && t.user_id !== user_id) return;
+      items.push({
+        type: 'i2v', id: t.id, title: t.prompt?.slice(0, 40) || '图生视频任务',
+        user_id: t.user_id, username: userMap[t.user_id] || '未知',
+        status: t.status, created_at: t.created_at,
+        detail: `${t.provider || ''} · ${t.model || ''}`
+      });
+    });
+  }
+
+  // 小说
+  if (!type || type === 'novel') {
+    db.listNovels().forEach(n => {
+      if (user_id && n.user_id !== user_id) return;
+      const totalWords = (n.chapters || []).reduce((s, c) => s + (c.word_count || 0), 0);
+      items.push({
+        type: 'novel', id: n.id, title: n.title || '未命名小说',
+        user_id: n.user_id, username: userMap[n.user_id] || '未知',
+        status: n.chapters?.length ? `${n.chapters.length} 章` : '空',
+        created_at: n.created_at,
+        detail: `${totalWords} 字 · ${n.genre || ''}`
+      });
+    });
+  }
+
+  // 按时间排序
+  items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  const total = items.length;
+  items = items.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+  res.json({ success: true, data: { items, total } });
+});
+
+// 内容详情
+router.get('/contents/:type/:id', (req, res) => {
+  const { type, id } = req.params;
+  const users = auth.getUsers();
+  const userMap = {};
+  users.forEach(u => { userMap[u.id] = u.username; });
+
+  let item = null;
+  if (type === 'project') {
+    const p = db.getProject(id);
+    if (p) item = {
+      type: 'project', id: p.id, title: p.title || p.prompt?.slice(0, 60) || '未命名',
+      username: userMap[p.user_id] || '未知', status: p.status, created_at: p.created_at,
+      prompt: p.prompt, scene_count: p.scene_count, video_provider: p.video_provider,
+      video_model: p.video_model, anim_style: p.anim_style,
+      scenes: (p.scenes || []).map(s => ({ index: s.scene_index, description: s.description, visual_prompt: s.visual_prompt })),
+      has_video: !!(p.output_path || p.final_video_path),
+      stream_url: `/api/projects/${p.id}/stream`
+    };
+  } else if (type === 'i2v') {
+    const t = db.getI2VTask(id);
+    if (t) item = {
+      type: 'i2v', id: t.id, title: t.prompt?.slice(0, 60) || '图生视频',
+      username: userMap[t.user_id] || '未知', status: t.status, created_at: t.created_at,
+      prompt: t.prompt, provider: t.provider, model: t.model,
+      has_video: t.status === 'completed',
+      stream_url: `/api/i2v/tasks/${t.id}/stream`,
+      image_url: t.image_path ? `/api/i2v/images/${require('path').basename(t.image_path)}` : null
+    };
+  } else if (type === 'novel') {
+    const n = db.getNovel(id);
+    if (n) item = {
+      type: 'novel', id: n.id, title: n.title, novel_type: n.novel_type,
+      username: userMap[n.user_id] || '未知', status: n.status, created_at: n.created_at,
+      genre: n.genre, style: n.style, total_words: n.total_words,
+      synopsis: n.outline?.synopsis || '',
+      chapters: (n.chapters || []).map(c => ({ index: c.index, title: c.title, word_count: c.word_count, content: c.content })),
+      outline_chapters: (n.outline?.chapters || []).map(c => ({ index: c.index, title: c.title, summary: c.summary }))
+    };
+  }
+  if (!item) return res.status(404).json({ success: false, error: '内容不存在' });
+  res.json({ success: true, data: item });
+});
+
+// 删除内容
+router.delete('/contents/:type/:id', (req, res) => {
+  const { type, id } = req.params;
+  if (type === 'novel') {
+    db.deleteNovel(id);
+  } else if (type === 'project') {
+    db.deleteProject(id);
+  } else if (type === 'i2v') {
+    db.deleteI2VTask(id);
+  } else {
+    return res.status(400).json({ success: false, error: '不支持的类型' });
+  }
+  res.json({ success: true });
 });
 
 function safeUser(u) {

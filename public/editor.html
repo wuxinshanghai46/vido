@@ -53,18 +53,44 @@
             </div>
             <div id="music-loaded" style="display:none">
               <div class="music-info">
-                <span class="music-icon">♪</span>
+                <span class="music-icon">♫</span>
                 <span id="music-name" class="music-name"></span>
                 <button class="icon-btn" onclick="removeMusic()" title="删除">✕</button>
               </div>
+
+              <!-- Music trim timeline -->
+              <div class="music-timeline-wrap" style="margin-top:12px">
+                <div class="music-timeline" id="music-timeline">
+                  <canvas id="music-waveform" width="268" height="52"></canvas>
+                  <div class="music-trim-region" id="music-trim-region">
+                    <div class="music-trim-handle left" id="trim-handle-left" title="拖拽调整起点"></div>
+                    <div class="music-trim-handle right" id="trim-handle-right" title="拖拽调整终点"></div>
+                  </div>
+                  <div class="music-playhead" id="music-playhead"></div>
+                </div>
+                <div class="music-time-display">
+                  <span id="music-trim-range">0:00 - 0:00</span>
+                  <span id="music-trim-duration">选中 0:00 / 总 0:00</span>
+                </div>
+                <div class="music-video-ref" id="music-video-ref">
+                  视频总时长: <span id="video-total-duration">--</span>
+                </div>
+              </div>
+
+              <!-- Preview button -->
+              <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+                <button class="music-preview-btn" id="music-preview-btn" onclick="toggleMusicPreview()" title="试听裁剪片段">&#9654; 试听</button>
+                <button class="music-preview-btn" onclick="resetMusicTrim()" title="重置裁剪" style="background:rgba(255,255,255,.04)">重置</button>
+              </div>
+
               <div class="form-group" style="margin-top:12px">
                 <label>音量 <span id="volume-val">50%</span></label>
                 <input type="range" id="music-volume" min="0" max="100" value="50"
-                  oninput="document.getElementById('volume-val').textContent=this.value+'%'; saveEdit()" />
+                  oninput="document.getElementById('volume-val').textContent=this.value+'%'; scheduleSave()" />
               </div>
               <div class="form-group">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                  <input type="checkbox" id="music-loop" checked onchange="saveEdit()" />
+                  <input type="checkbox" id="music-loop" checked onchange="scheduleSave()" />
                   循环播放
                 </label>
               </div>

@@ -81,6 +81,36 @@ router.post('/:id/music', uploadMusic.single('music'), (req, res) => {
   res.json({ success: true, data: { music: edit.music } });
 });
 
+// 音乐流式播放（供前端 Audio 元素加载）
+router.get('/:id/music-stream', (req, res) => {
+  const edit = getEdit(req.params.id);
+  const filePath = edit.music?.file_path;
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: '音乐文件不存在' });
+  }
+  const stat = fs.statSync(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac', '.m4a': 'audio/mp4' };
+  const contentType = mimeMap[ext] || 'audio/mpeg';
+
+  const range = req.headers.range;
+  if (range) {
+    const [s, e] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(s, 10);
+    const end = e ? parseInt(e, 10) : stat.size - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': contentType
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': contentType, 'Accept-Ranges': 'bytes' });
+    fs.createReadStream(filePath).pipe(res);
+  }
+});
+
 // 删除音乐
 router.delete('/:id/music', (req, res) => {
   const edit = getEdit(req.params.id);

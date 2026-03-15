@@ -71,36 +71,78 @@ function concatClips(clipPaths, outputPath) {
   });
 }
 
-// 叠加背景音乐
-function mixMusic(videoPath, musicPath, outputPath, volume = 0.5, loop = true) {
-  return new Promise((resolve, reject) => {
-    const cmd = ffmpeg(videoPath).input(musicPath);
-    const loopOpt = loop ? ['-stream_loop', '-1'] : [];
+// 叠加背景音乐（支持裁剪参数）
+function mixMusic(videoPath, musicPath, outputPath, volume = 0.5, loop = true, trimStart = null, trimEnd = null) {
+  return new Promise(async (resolve, reject) => {
+    let effectiveMusicPath = musicPath;
+    let tmpTrimmedMusic = null;
 
-    cmd.inputOptions(loop ? ['-stream_loop', '-1'] : [])
-      .complexFilter([
-        `[1:a]volume=${volume}[music]`,
-        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`
-      ])
-      .outputOptions(['-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-shortest'])
-      .output(outputPath)
-      .on('end', () => resolve(outputPath))
-      .on('error', (err) => {
-        // 无音轨时直接叠加音乐
-        ffmpeg(videoPath).input(musicPath)
-          .inputOptions(loop ? ['-stream_loop', '-1'] : [])
-          .outputOptions([
-            '-map', '0:v',
-            '-map', '1:a',
-            `-af:a volume=${volume}`,
-            '-c:v', 'copy', '-c:a', 'aac', '-shortest'
-          ])
-          .output(outputPath)
-          .on('end', () => resolve(outputPath))
-          .on('error', reject)
-          .run();
-      })
-      .run();
+    try {
+      // If trim params are set and we need to loop, extract trimmed segment first
+      const hasTrim = (trimStart != null && trimStart > 0) || (trimEnd != null && trimEnd > 0);
+
+      if (hasTrim && loop) {
+        // Extract trimmed segment to a temp file, then loop that
+        tmpTrimmedMusic = outputPath.replace('.mp4', '_trimmed_music' + path.extname(musicPath));
+        await new Promise((res2, rej2) => {
+          const cmd2 = ffmpeg(musicPath);
+          if (trimStart != null && trimStart > 0) cmd2.setStartTime(trimStart);
+          if (trimEnd != null && trimEnd > 0) cmd2.setDuration(trimEnd - (trimStart || 0));
+          cmd2.outputOptions(['-c:a', 'aac', '-vn'])
+            .output(tmpTrimmedMusic)
+            .on('end', res2)
+            .on('error', rej2)
+            .run();
+        });
+        effectiveMusicPath = tmpTrimmedMusic;
+      }
+
+      // Build music input options
+      const musicInputOpts = [];
+      if (loop) musicInputOpts.push('-stream_loop', '-1');
+      if (!loop && hasTrim) {
+        if (trimStart != null && trimStart > 0) musicInputOpts.push('-ss', String(trimStart));
+        if (trimEnd != null && trimEnd > 0) musicInputOpts.push('-t', String(trimEnd - (trimStart || 0)));
+      }
+
+      const cmd = ffmpeg(videoPath).input(effectiveMusicPath);
+      cmd.inputOptions(musicInputOpts)
+        .complexFilter([
+          `[1:a]volume=${volume}[music]`,
+          `[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]`
+        ])
+        .outputOptions(['-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-shortest'])
+        .output(outputPath)
+        .on('end', () => {
+          if (tmpTrimmedMusic && fs.existsSync(tmpTrimmedMusic)) fs.unlinkSync(tmpTrimmedMusic);
+          resolve(outputPath);
+        })
+        .on('error', (err) => {
+          // 无音轨时直接叠加音乐
+          ffmpeg(videoPath).input(effectiveMusicPath)
+            .inputOptions(musicInputOpts)
+            .outputOptions([
+              '-map', '0:v',
+              '-map', '1:a',
+              `-af:a volume=${volume}`,
+              '-c:v', 'copy', '-c:a', 'aac', '-shortest'
+            ])
+            .output(outputPath)
+            .on('end', () => {
+              if (tmpTrimmedMusic && fs.existsSync(tmpTrimmedMusic)) fs.unlinkSync(tmpTrimmedMusic);
+              resolve(outputPath);
+            })
+            .on('error', (err2) => {
+              if (tmpTrimmedMusic && fs.existsSync(tmpTrimmedMusic)) fs.unlinkSync(tmpTrimmedMusic);
+              reject(err2);
+            })
+            .run();
+        })
+        .run();
+    } catch (e) {
+      if (tmpTrimmedMusic && fs.existsSync(tmpTrimmedMusic)) try { fs.unlinkSync(tmpTrimmedMusic); } catch {}
+      reject(e);
+    }
   });
 }
 
@@ -189,7 +231,7 @@ async function renderWithEdits(projectId, progressCallback) {
 
   if (edit.music?.file_path && fs.existsSync(edit.music.file_path)) {
     progressCallback?.({ step: 'music', message: '叠加背景音乐...' });
-    await mixMusic(mergedPath, edit.music.file_path, finalPath, edit.music.volume ?? 0.5, edit.music.loop !== false);
+    await mixMusic(mergedPath, edit.music.file_path, finalPath, edit.music.volume ?? 0.5, edit.music.loop !== false, edit.music.trim_start || null, edit.music.trim_end || null);
   } else {
     fs.copyFileSync(mergedPath, finalPath);
   }

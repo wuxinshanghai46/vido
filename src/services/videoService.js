@@ -55,7 +55,10 @@ async function generateDemoClip({ prompt, duration = 5, outputDir, filename, sce
 }
 
 // ——— HuggingFace 模式：ModelScope text-to-video ———
-async function generateHuggingFaceClip({ prompt, duration = 3, outputDir, filename, video_model }) {
+async function generateHuggingFaceClip({ prompt, duration = 3, outputDir, filename, video_model, image_url }) {
+  if (image_url) {
+    console.warn('[HuggingFace] 该 provider 不支持图生视频 (i2v)，参考图将被忽略，仅使用 prompt 文生视频');
+  }
   const { getApiKey } = require('./settingsService');
   const apiKey = getApiKey('huggingface') || process.env.HUGGINGFACE_API_KEY;
   if (!apiKey) throw new Error('未配置 HUGGINGFACE_API_KEY');
@@ -252,7 +255,10 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
 }
 
 // ——— Replicate 模式：稳定免费额度 ———
-async function generateReplicateClip({ prompt, duration = 3, outputDir, filename }) {
+async function generateReplicateClip({ prompt, duration = 3, outputDir, filename, image_url }) {
+  if (image_url) {
+    console.warn('[Replicate] 该 provider 不支持图生视频 (i2v)，参考图将被忽略，仅使用 prompt 文生视频');
+  }
   const { getApiKey } = require('./settingsService');
   const apiKey = getApiKey('replicate') || process.env.REPLICATE_API_KEY;
   if (!apiKey) throw new Error('未配置 Replicate API Key，请在「AI 配置」页面添加 Replicate 供应商');
@@ -1317,8 +1323,23 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
       generateAudio: false
     }
   };
-  if (image_url && !image_url.startsWith('data:')) {
-    body.instances[0].image = { imageUri: image_url };
+  if (image_url) {
+    if (image_url.startsWith('data:')) {
+      // Veo 支持 inline base64：提取 mimeType 和 data
+      const b64Match = image_url.match(/^data:([^;]+);base64,(.+)$/s);
+      if (b64Match) {
+        body.instances[0].image = {
+          bytesBase64Encoded: b64Match[2],
+          mimeType: b64Match[1]
+        };
+        console.log(`[Veo] 使用 base64 内联图片 (i2v), mime=${b64Match[1]}`);
+      } else {
+        console.warn('[Veo] base64 格式无法解析，跳过参考图');
+      }
+    } else {
+      body.instances[0].image = { imageUri: image_url };
+      console.log(`[Veo] 使用公网 URL 图生视频 (i2v)`);
+    }
   }
   const bodyStr = JSON.stringify(body);
 
@@ -1408,7 +1429,10 @@ function resolveVideoProvider() {
 // ——— 主入口：自动选择 provider ———
 async function generateVideoClip(options) {
   const provider = options.video_provider || resolveVideoProvider();
-  console.log(`[VideoService] provider=${provider}, video_model=${options.video_model || '(auto)'}, image_url=${options.image_url ? 'YES' : 'no'}`);
+  const imgInfo = options.image_url
+    ? (options.image_url.startsWith('data:') ? `base64(${Math.round(options.image_url.length/1024)}KB)` : `URL(${options.image_url.substring(0, 80)})`)
+    : 'none';
+  console.log(`[VideoService] provider=${provider}, video_model=${options.video_model || '(auto)'}, image=${imgInfo}`);
 
   // 根据 video_model 自动路由到正确的 provider（新模型可能通过 FAL 代理）
   const model = options.video_model || '';

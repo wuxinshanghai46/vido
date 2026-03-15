@@ -44,10 +44,16 @@ function resolveLocalFile(filename) {
 // publicUrl: 公网可访问的 URL（外部链接或上传后的临时链接）
 function resolveImageRef(imageRef) {
   try {
-    if (!imageRef) return { base64: null, publicUrl: null };
+    if (!imageRef) {
+      console.log('[resolveImageRef] 输入为空');
+      return { base64: null, publicUrl: null };
+    }
+
+    console.log(`[resolveImageRef] 解析: ${imageRef.substring(0, 100)}`);
 
     // 外部 URL 直接可用
     if (imageRef.startsWith('http') && !imageRef.startsWith('http://localhost') && !imageRef.startsWith('http://127.0.0.1')) {
+      console.log(`[resolveImageRef] 外部 URL 直接使用`);
       return { base64: null, publicUrl: imageRef };
     }
 
@@ -65,15 +71,24 @@ function resolveImageRef(imageRef) {
       if (fs.existsSync(filePath)) {
         const ext = path.extname(filename).toLowerCase().replace('.', '') || 'png';
         const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        console.log(`[resolveImageRef] 找到 i2v 图片: ${filePath}`);
         return { base64: `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`, publicUrl: null };
       }
+      console.warn(`[resolveImageRef] i2v 图片不存在: ${filePath}`);
       return { base64: null, publicUrl: null };
     }
 
-    if (!filename) return { base64: null, publicUrl: null };
+    if (!filename) {
+      console.warn(`[resolveImageRef] 无法从路径提取文件名: ${imageRef}`);
+      return { base64: null, publicUrl: null };
+    }
 
     const local = resolveLocalFile(filename);
-    if (!local) return { base64: null, publicUrl: null };
+    if (!local) {
+      console.warn(`[resolveImageRef] 本地文件未找到: ${filename}（已搜索 characters/ scenes/ outputs/）`);
+      return { base64: null, publicUrl: null };
+    }
+    console.log(`[resolveImageRef] 本地文件已解析: ${local.filePath} (${Math.round(local.base64.length / 1024)}KB base64)`);
     return { base64: local.base64, publicUrl: null, _filePath: local.filePath, _mime: local.mime, _ext: local.ext };
   } catch (e) {
     console.warn('[resolveImageRef] 解析失败:', e.message);
@@ -82,9 +97,12 @@ function resolveImageRef(imageRef) {
 }
 
 // 上传本地图片到免费图床获取公网 URL（供不支持 base64 的视频API使用）
-// 支持多图床自动切换：smms → catbox → 0x0.st
+// 优先级：PUBLIC_URL 自托管 → smms → catbox → 0x0.st
 async function uploadImageToTempHost(base64DataUri, cacheKey) {
-  if (!base64DataUri || !base64DataUri.startsWith('data:')) return null;
+  if (!base64DataUri || !base64DataUri.startsWith('data:')) {
+    console.warn('[Upload] 无效的 base64 数据，跳过上传');
+    return null;
+  }
 
   // 检查缓存
   if (cacheKey && _publicUrlCache.has(cacheKey)) {
@@ -94,11 +112,33 @@ async function uploadImageToTempHost(base64DataUri, cacheKey) {
   }
 
   const matches = base64DataUri.match(/^data:([^;]+);base64,(.+)$/s);
-  if (!matches) return null;
+  if (!matches) {
+    console.warn('[Upload] base64 数据格式不正确，无法解析');
+    return null;
+  }
 
   const mimeType = matches[1];
   const buffer = Buffer.from(matches[2], 'base64');
   const ext = mimeType.includes('jpeg') ? 'jpg' : (mimeType.split('/')[1] || 'png');
+  console.log(`[Upload] 准备上传图片: ${Math.round(buffer.length / 1024)}KB, type=${mimeType}, cacheKey=${cacheKey ? cacheKey.substring(0, 60) : 'none'}`);
+
+  // 方法0: 自托管（如果配置了 PUBLIC_URL，直接构造本服务器的公网 URL）
+  const publicBaseUrl = process.env.PUBLIC_URL;
+  if (publicBaseUrl && cacheKey) {
+    // cacheKey 通常是 /api/story/character-image/xxx.png 格式
+    if (cacheKey.startsWith('/api/')) {
+      const selfUrl = publicBaseUrl.replace(/\/+$/, '') + cacheKey;
+      console.log(`[Upload] 使用 PUBLIC_URL 自托管: ${selfUrl}`);
+      _publicUrlCache.set(cacheKey, selfUrl);
+      return selfUrl;
+    }
+    // cacheKey 也可能是外部 URL（已缓存的情况）
+    if (cacheKey.startsWith('http')) {
+      console.log(`[Upload] cacheKey 已是外部 URL: ${cacheKey}`);
+      _publicUrlCache.set(cacheKey, cacheKey);
+      return cacheKey;
+    }
+  }
 
   // 方法1: sm.ms（中国图床，国内访问快）
   try {
@@ -183,7 +223,7 @@ async function uploadImageToTempHost(base64DataUri, cacheKey) {
     console.warn(`[Upload] 0x0.st 失败: ${e.message}`);
   }
 
-  console.warn('[Upload] 所有图床上传失败，将使用 base64 模式');
+  console.warn('[Upload] 所有图床上传失败，将使用 base64 模式（提示：可设置环境变量 PUBLIC_URL=https://your-domain.com 使用自托管方式绕过图床）');
   return null;
 }
 

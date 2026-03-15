@@ -191,6 +191,7 @@ function switchPage(page, opts) {
   if (page === 'i2v') loadI2VPage();
   if (page === 'avatar') loadAvatarPage();
   if (page === 'imggen') loadImgGenPage();
+  if (page === 'novel') nvLoadPage();
   if (page === 'create' && !(opts && opts.keepProject)) {
     resetForm();
   }
@@ -4323,6 +4324,658 @@ function updateMotionIntensity(val) {
   motionIntensity = parseInt(val);
   const label = document.getElementById('motion-intensity-val');
   if (label) label.textContent = val;
+}
+
+// ══════════════════════════════════════════
+//  AI 小说模块
+// ══════════════════════════════════════════
+let nvCurrentId = null;
+let nvCurrentChapter = 1;
+let nvSaveTimer = null;
+let nvStreaming = false;
+let nvCurrentMode = 'outline'; // 'outline' | 'write'
+let nvOutlineSaveTimer = null;
+
+const NV_TYPE_PRESETS = {
+  flash: { label: '超短篇', chapter_count: 1, chapter_words: 1500 },
+  short: { label: '短篇',  chapter_count: 5, chapter_words: 2000 },
+  long:  { label: '长篇',  chapter_count: 20, chapter_words: 3000 }
+};
+
+async function nvLoadPage() {
+  // 加载小说列表
+  try {
+    const res = await fetch('/api/novel', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    const data = await res.json();
+    const list = document.getElementById('nv-list');
+    if (!data.success || !data.novels.length) {
+      list.innerHTML = '<div class="nv-list-empty">暂无小说</div>';
+      return;
+    }
+    list.innerHTML = data.novels.map(n => {
+      const typeLabel = NV_TYPE_PRESETS[n.novel_type]?.label || '短篇';
+      return `
+      <div class="nv-list-item ${n.id === nvCurrentId ? 'active' : ''}" onclick="nvSelect('${n.id}')">
+        <div class="nv-list-title"><span class="nv-list-type">${typeLabel}</span>${esc(n.title)}</div>
+        <div class="nv-list-meta">
+          <span>${n.total_words || 0} 字</span>
+          <span>${(n.chapters || []).length} 章</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {}
+  // 加载模型列表
+  try {
+    const res = await fetch('/api/novel/models', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    const data = await res.json();
+    const sel = document.getElementById('nv-model');
+    if (data.success && data.models.length) {
+      sel.innerHTML = '<option value="">自动选择</option>' +
+        data.models.map(m => `<option value="${m.providerId}">${m.providerName} / ${m.modelName}</option>`).join('');
+    }
+  } catch {}
+}
+
+function nvShowCreateDialog() {
+  const modal = document.createElement('div');
+  modal.className = 'nv-modal';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div class="nv-modal-box">
+      <h3>新建小说</h3>
+      <div class="nv-create-types" id="nv-create-types">
+        <div class="nv-create-type" data-type="flash" onclick="nvCreateTypeSelect(this,'flash')">
+          <div class="nv-create-type-name">超短篇</div>
+          <div class="nv-create-type-desc">1~3章 约1500字<br>闪小说、微型故事</div>
+        </div>
+        <div class="nv-create-type active" data-type="short" onclick="nvCreateTypeSelect(this,'short')">
+          <div class="nv-create-type-name">短篇</div>
+          <div class="nv-create-type-desc">5~10章 约1万字<br>短篇小说、故事</div>
+        </div>
+        <div class="nv-create-type" data-type="long" onclick="nvCreateTypeSelect(this,'long')">
+          <div class="nv-create-type-name">长篇</div>
+          <div class="nv-create-type-desc">20章+ 6万字+<br>连载长篇小说</div>
+        </div>
+      </div>
+      <label class="nv-label" style="margin-top:0">小说标题</label>
+      <input class="nv-inp" id="nv-create-title" placeholder="给你的小说起个名字..." style="margin-bottom:12px" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore />
+      <label class="nv-label">题材</label>
+      <select class="nv-sel" id="nv-create-genre" style="margin-bottom:12px">
+        <option value="fantasy">奇幻</option><option value="wuxia">武侠</option><option value="xianxia">仙侠</option>
+        <option value="scifi">科幻</option><option value="romance">言情</option><option value="mystery">悬疑</option>
+        <option value="horror">恐怖</option><option value="urban">都市</option><option value="historical">历史</option>
+      </select>
+      <div class="nv-modal-actions">
+        <button class="nv-act-btn" onclick="this.closest('.nv-modal').remove()">取消</button>
+        <button class="nv-gen-btn" onclick="nvDoCreate(this)">创建</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#nv-create-title').focus();
+}
+let _nvCreateType = 'short';
+function nvCreateTypeSelect(el, type) {
+  _nvCreateType = type;
+  el.closest('.nv-create-types').querySelectorAll('.nv-create-type').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+}
+async function nvDoCreate(btn) {
+  const modal = btn.closest('.nv-modal');
+  const title = modal.querySelector('#nv-create-title').value.trim();
+  if (!title) return alert('请输入标题');
+  const genre = modal.querySelector('#nv-create-genre').value;
+  const preset = NV_TYPE_PRESETS[_nvCreateType];
+  btn.disabled = true; btn.textContent = '创建中...';
+  try {
+    const res = await fetch('/api/novel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({
+        title, genre, novel_type: _nvCreateType,
+        chapter_count: preset.chapter_count,
+        chapter_words: preset.chapter_words
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      modal.remove();
+      nvCurrentId = data.novel.id;
+      nvLoadPage();
+      nvSelect(data.novel.id);
+    } else alert(data.error);
+  } catch (e) { alert('创建失败: ' + e.message); }
+  btn.disabled = false; btn.textContent = '创建';
+}
+
+async function nvSelect(id) {
+  try {
+    const res = await fetch('/api/novel/' + id, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    const data = await res.json();
+    if (!data.success) return;
+    const novel = data.novel;
+    nvCurrentId = id;
+    nvCurrentChapter = 1;
+
+    // 更新列表高亮
+    document.querySelectorAll('.nv-list-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nv-list-item').forEach(el => {
+      if (el.getAttribute('onclick')?.includes(id)) el.classList.add('active');
+    });
+
+    // 显示编辑器
+    document.getElementById('nv-editor-empty').style.display = 'none';
+    document.getElementById('nv-editor-active').style.display = '';
+    document.getElementById('nv-title').value = novel.title;
+    document.getElementById('nv-genre').value = novel.genre || 'fantasy';
+    document.getElementById('nv-style').value = novel.style || 'descriptive';
+    document.getElementById('nv-chapter-words').value = novel.chapter_words || 2000;
+    document.getElementById('nv-chapter-count').value = novel.chapter_count || 10;
+    document.getElementById('nv-description').value = novel.description || '';
+    if (novel.provider) document.getElementById('nv-model').value = novel.provider;
+
+    // 篇幅类型
+    const novelType = novel.novel_type || 'short';
+    document.getElementById('nv-type-badge').textContent = NV_TYPE_PRESETS[novelType]?.label || '短篇';
+    document.querySelectorAll('.nv-type-card').forEach(c => {
+      c.classList.toggle('active', c.dataset.type === novelType);
+    });
+
+    // 统计信息
+    const totalWords = novel.total_words || 0;
+    const chaptersDone = (novel.chapters || []).filter(c => c.status === 'done').length;
+    const chaptersTotal = novel.outline?.chapters?.length || novel.chapter_count || 0;
+    document.getElementById('nv-mode-stats').textContent = `${totalWords} 字 · ${chaptersDone}/${chaptersTotal} 章`;
+
+    // 渲染大纲工作台
+    nvRenderOutlineWorkspace(novel);
+
+    // 渲染写作工作台
+    nvRenderChapterTabs(novel);
+    nvShowChapter(1, novel);
+  } catch (e) { console.error('nvSelect error', e); }
+  nvLoadPage();
+}
+
+// ── 模式切换 ──
+function nvSwitchMode(mode) {
+  nvCurrentMode = mode;
+  document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  document.getElementById('nv-ws-outline').style.display = mode === 'outline' ? '' : 'none';
+  document.getElementById('nv-ws-write').style.display = mode === 'write' ? '' : 'none';
+  if (mode === 'write') nvSaveCurrentContent();
+}
+
+// ── 篇幅类型切换 ──
+function nvSetType(type) {
+  if (!nvCurrentId) return;
+  const preset = NV_TYPE_PRESETS[type];
+  document.querySelectorAll('.nv-type-card').forEach(c => c.classList.toggle('active', c.dataset.type === type));
+  document.getElementById('nv-type-badge').textContent = preset.label;
+  document.getElementById('nv-chapter-words').value = preset.chapter_words;
+  document.getElementById('nv-chapter-count').value = preset.chapter_count;
+  nvSaveField('novel_type', type);
+  nvSaveField('chapter_words', preset.chapter_words);
+  nvSaveField('chapter_count', preset.chapter_count);
+}
+
+// ── 大纲工作台 ──
+function nvRenderOutlineWorkspace(novel) {
+  const synopsis = document.getElementById('nv-synopsis');
+  synopsis.value = novel.outline?.synopsis || '';
+  nvRenderOutlineChapters(novel.outline);
+}
+
+function nvRenderOutlineChapters(outline) {
+  const el = document.getElementById('nv-outline-chapters');
+  if (!outline || !outline.chapters || !outline.chapters.length) {
+    el.innerHTML = '<div class="nv-outline-empty">生成或导入大纲后，章节将在此显示</div>';
+    return;
+  }
+  el.innerHTML = outline.chapters.map(ch => `
+    <div class="nv-ol-ch-card" data-index="${ch.index}">
+      <div class="nv-ol-ch-idx">${ch.index}</div>
+      <div class="nv-ol-ch-body">
+        <input class="nv-ol-ch-title" value="${esc(ch.title || '')}" placeholder="章节标题" onchange="nvSaveOutlineChapter(${ch.index},'title',this.value)" />
+        <textarea class="nv-ol-ch-summary" placeholder="章节摘要..." onchange="nvSaveOutlineChapter(${ch.index},'summary',this.value)">${esc(ch.summary || '')}</textarea>
+      </div>
+      <button class="nv-ol-ch-del" onclick="nvDeleteOutlineChapter(${ch.index})" title="删除章节">&times;</button>
+    </div>
+  `).join('');
+  // 自适应 textarea 高度
+  el.querySelectorAll('.nv-ol-ch-summary').forEach(ta => {
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(24, ta.scrollHeight) + 'px';
+    ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.max(24, ta.scrollHeight) + 'px'; });
+  });
+}
+
+async function nvSaveSynopsis() {
+  if (!nvCurrentId) return;
+  const synopsis = document.getElementById('nv-synopsis').value;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel) return;
+  const outline = novel.outline || { synopsis: '', chapters: [] };
+  outline.synopsis = synopsis;
+  await nvSaveField('outline', outline);
+}
+
+async function nvSaveOutlineChapter(index, field, value) {
+  if (!nvCurrentId) return;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel || !novel.outline) return;
+  const ch = novel.outline.chapters.find(c => c.index === index);
+  if (ch) {
+    ch[field] = value;
+    await nvSaveField('outline', novel.outline);
+  }
+}
+
+async function nvDeleteOutlineChapter(index) {
+  if (!nvCurrentId) return;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel || !novel.outline) return;
+  if (novel.outline.chapters.length <= 1) return alert('至少保留一个章节');
+  if (!confirm(`删除第${index}章大纲？`)) return;
+  novel.outline.chapters = novel.outline.chapters.filter(c => c.index !== index);
+  // 重排索引
+  novel.outline.chapters.forEach((c, i) => c.index = i + 1);
+  await nvSaveField('outline', novel.outline);
+  nvRenderOutlineChapters(novel.outline);
+  // 同步删除对应的已写章节
+  const chapters = (novel.chapters || []).filter(c => c.index !== index);
+  await nvSaveField('chapters', chapters);
+}
+
+async function nvAddOutlineChapter() {
+  if (!nvCurrentId) return;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel) return;
+  const outline = novel.outline || { synopsis: '', chapters: [] };
+  const newIndex = outline.chapters.length ? Math.max(...outline.chapters.map(c => c.index)) + 1 : 1;
+  outline.chapters.push({ index: newIndex, title: '', summary: '' });
+  await nvSaveField('outline', outline);
+  nvRenderOutlineChapters(outline);
+  // 聚焦到新章节标题输入
+  setTimeout(() => {
+    const cards = document.querySelectorAll('.nv-ol-ch-card');
+    if (cards.length) cards[cards.length - 1].querySelector('.nv-ol-ch-title')?.focus();
+  }, 50);
+}
+
+// ── 导入大纲 ──
+function nvShowImportOutline() {
+  const modal = document.createElement('div');
+  modal.className = 'nv-modal';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div class="nv-modal-box">
+      <h3>导入大纲</h3>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5">
+        粘贴你的大纲文本，每行一个章节。支持格式：<br>
+        <span style="color:var(--text2)">第1章 标题 摘要...</span> 或 <span style="color:var(--text2)">1. 标题 - 摘要</span> 或 <span style="color:var(--text2)">章节标题（每行自动编号）</span>
+      </div>
+      <label class="nv-label" style="margin-top:0">故事简介（可选）</label>
+      <textarea id="nv-import-synopsis" rows="2" placeholder="一句话概括..." style="margin-bottom:10px"></textarea>
+      <label class="nv-label">章节大纲</label>
+      <textarea id="nv-import-text" rows="12" placeholder="第1章 初入江湖 少年离开家乡前往京城&#10;第2章 风云际会 在客栈遇到神秘剑客&#10;第3章 暗流涌动 发现一个惊天阴谋"></textarea>
+      <div class="nv-modal-actions">
+        <button class="nv-act-btn" onclick="this.closest('.nv-modal').remove()">取消</button>
+        <button class="nv-gen-btn" onclick="nvDoImportOutline(this)">导入</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#nv-import-text').focus();
+}
+
+async function nvDoImportOutline(btn) {
+  if (!nvCurrentId) return;
+  const modal = btn.closest('.nv-modal');
+  const synopsis = modal.querySelector('#nv-import-synopsis').value.trim();
+  const text = modal.querySelector('#nv-import-text').value.trim();
+  if (!text) return alert('请粘贴大纲内容');
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const chapters = [];
+  lines.forEach((line, i) => {
+    // 尝试解析: "第X章 标题 摘要" / "X. 标题 - 摘要" / 纯文本
+    let title = '', summary = '';
+    let m;
+    if ((m = line.match(/^第(\d+)章[：:\s]+(.+)/))) {
+      const rest = m[2];
+      const parts = rest.split(/[：:\s]{2,}|——|--|\s{2,}/);
+      title = parts[0].trim();
+      summary = parts.slice(1).join(' ').trim();
+    } else if ((m = line.match(/^(\d+)[.、)）]\s*(.+)/))) {
+      const rest = m[2];
+      const parts = rest.split(/[-—：:]\s*/);
+      title = parts[0].trim();
+      summary = parts.slice(1).join(' ').trim();
+    } else {
+      const parts = line.split(/[-—：:]\s*/);
+      title = parts[0].trim();
+      summary = parts.slice(1).join(' ').trim();
+    }
+    chapters.push({ index: i + 1, title: title || line, summary });
+  });
+
+  const outline = { synopsis, chapters };
+  await nvSaveField('outline', outline);
+  await nvSaveField('chapter_count', chapters.length);
+  document.getElementById('nv-chapter-count').value = chapters.length;
+  document.getElementById('nv-synopsis').value = synopsis;
+  nvRenderOutlineChapters(outline);
+  modal.remove();
+}
+
+// ── 写作工作台 ──
+function nvRenderChapterTabs(novel) {
+  const tabs = document.getElementById('nv-chapter-tabs');
+  const chapterIndices = new Set();
+  const baseCount = novel.outline ? novel.outline.chapters.length : (novel.chapter_count || 0);
+  for (let i = 1; i <= baseCount; i++) chapterIndices.add(i);
+  (novel.chapters || []).forEach(c => chapterIndices.add(c.index));
+  if (chapterIndices.size === 0) chapterIndices.add(1);
+  const sorted = [...chapterIndices].sort((a, b) => a - b);
+
+  let html = '';
+  sorted.forEach(i => {
+    const ch = (novel.chapters || []).find(c => c.index === i);
+    const active = i === nvCurrentChapter ? 'active' : '';
+    const done = ch && ch.status === 'done' ? 'done' : '';
+    const title = ch?.title || novel.outline?.chapters?.find(c => c.index === i)?.title || `第${i}章`;
+    html += `<button class="nv-ch-tab ${active} ${done}" onclick="nvSwitchChapter(${i})" oncontextmenu="event.preventDefault();nvDeleteChapter(${i})" title="${esc(title)}（右键删除）">第${i}章</button>`;
+  });
+  html += `<button class="nv-ch-tab nv-ch-add" onclick="nvAddChapter()" title="添加章节">+</button>`;
+  tabs.innerHTML = html;
+}
+
+async function nvAddChapter() {
+  if (!nvCurrentId) return;
+  nvSaveCurrentContent();
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel) return;
+  const indices = (novel.chapters || []).map(c => c.index);
+  if (novel.outline?.chapters) novel.outline.chapters.forEach(c => indices.push(c.index));
+  const maxIndex = indices.length ? Math.max(...indices) : 0;
+  const newIndex = maxIndex + 1;
+  nvCurrentChapter = newIndex;
+  nvRenderChapterTabs({ ...novel, chapters: [...(novel.chapters || []), { index: newIndex, title: `第${newIndex}章`, content: '', status: '' }] });
+  document.getElementById('nv-content').textContent = '';
+  nvUpdateWordCount();
+}
+
+async function nvDeleteChapter(index) {
+  if (!nvCurrentId) return;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel) return;
+  const chapters = (novel.chapters || []).filter(c => c.index !== index);
+  const allIndices = new Set();
+  chapters.forEach(c => allIndices.add(c.index));
+  if (novel.outline?.chapters) novel.outline.chapters.forEach(c => { if (c.index !== index) allIndices.add(c.index); });
+  if (allIndices.size === 0 && chapters.length === 0) return alert('至少保留一个章节');
+  if (!confirm(`确定删除第${index}章？`)) return;
+  let outline = novel.outline;
+  if (outline?.chapters) {
+    outline = { ...outline, chapters: outline.chapters.filter(c => c.index !== index) };
+  }
+  await fetch('/api/novel/' + nvCurrentId, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+    body: JSON.stringify({ chapters, outline })
+  });
+  if (nvCurrentChapter === index) nvCurrentChapter = 1;
+  nvSelect(nvCurrentId);
+}
+
+function nvSwitchChapter(index) {
+  if (nvStreaming) return;
+  nvSaveCurrentContent();
+  nvCurrentChapter = index;
+  nvSelect(nvCurrentId);
+}
+
+function nvShowChapter(index, novel) {
+  nvCurrentChapter = index;
+  const content = document.getElementById('nv-content');
+  const ch = (novel.chapters || []).find(c => c.index === index);
+  content.textContent = ch ? ch.content : '';
+  nvUpdateWordCount();
+}
+
+function nvUpdateWordCount() {
+  const content = document.getElementById('nv-content');
+  const count = (content.textContent || '').replace(/\s/g, '').length;
+  document.getElementById('nv-word-count').textContent = count + ' 字';
+}
+
+function nvAutoSaveContent() {
+  nvUpdateWordCount();
+  clearTimeout(nvSaveTimer);
+  nvSaveTimer = setTimeout(() => nvSaveCurrentContent(), 2000);
+}
+
+async function nvSaveCurrentContent() {
+  if (!nvCurrentId || nvStreaming) return;
+  try {
+    const novel = await nvFetch(nvCurrentId);
+    if (!novel) return;
+    const chapters = [...(novel.chapters || [])];
+    const content = document.getElementById('nv-content').textContent;
+    const existing = chapters.findIndex(c => c.index === nvCurrentChapter);
+    const outlineChapter = novel.outline?.chapters?.find(c => c.index === nvCurrentChapter);
+    const chData = {
+      index: nvCurrentChapter,
+      title: outlineChapter?.title || `第${nvCurrentChapter}章`,
+      content,
+      word_count: content.replace(/\s/g, '').length,
+      status: 'done'
+    };
+    if (existing >= 0) chapters[existing] = chData;
+    else if (content.trim()) chapters.push(chData);
+    else return;
+    chapters.sort((a, b) => a.index - b.index);
+    await fetch('/api/novel/' + nvCurrentId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ chapters })
+    });
+  } catch {}
+}
+
+async function nvFetch(id) {
+  try {
+    const res = await fetch('/api/novel/' + id, { headers: { 'Authorization': 'Bearer ' + getToken() } });
+    const data = await res.json();
+    return data.success ? data.novel : null;
+  } catch { return null; }
+}
+
+async function nvSaveField(field, value) {
+  if (!nvCurrentId) return;
+  try {
+    await fetch('/api/novel/' + nvCurrentId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ [field]: value })
+    });
+  } catch {}
+}
+
+async function nvGenerateOutline() {
+  if (!nvCurrentId) return;
+  const btn = document.getElementById('nv-outline-btn');
+  btn.disabled = true;
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="animation:spin 1s linear infinite"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-dasharray="28" stroke-dashoffset="8" opacity=".6"/></svg> 生成中...';
+  try {
+    const res = await fetch('/api/novel/' + nvCurrentId + '/generate-outline', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('nv-synopsis').value = data.outline.synopsis || '';
+      nvRenderOutlineChapters(data.outline);
+      document.getElementById('nv-chapter-count').value = data.outline.chapters?.length || 0;
+      // 刷新 tabs
+      const novel = await nvFetch(nvCurrentId);
+      if (novel) {
+        nvRenderChapterTabs(novel);
+        document.getElementById('nv-mode-stats').textContent = `${novel.total_words || 0} 字 · 0/${data.outline.chapters?.length || 0} 章`;
+      }
+    } else alert('生成大纲失败: ' + data.error);
+  } catch (e) { alert('生成大纲失败: ' + e.message); }
+  btn.disabled = false;
+  btn.innerHTML = origHTML;
+}
+
+async function nvGenerateChapter() {
+  if (!nvCurrentId || nvStreaming) return;
+  const novel = await nvFetch(nvCurrentId);
+  if (!novel || !novel.outline) return alert('请先生成或导入大纲');
+
+  nvStreaming = true;
+  const btn = document.getElementById('nv-gen-btn');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  const content = document.getElementById('nv-content');
+  content.textContent = '';
+  content.contentEditable = 'false';
+
+  const cursor = document.createElement('span');
+  cursor.className = 'nv-streaming-cursor';
+  content.appendChild(cursor);
+
+  const token = getToken();
+  const url = `/api/novel/${nvCurrentId}/generate-chapter-stream?chapter=${nvCurrentChapter}&token=${encodeURIComponent(token)}`;
+  const es = new EventSource(url);
+
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'chunk') {
+        cursor.before(document.createTextNode(msg.text));
+        content.scrollTop = content.scrollHeight;
+      } else if (msg.type === 'done') {
+        es.close();
+        cursor.remove();
+        content.contentEditable = 'true';
+        nvStreaming = false;
+        btn.disabled = false;
+        btn.textContent = '生成本章';
+        nvUpdateWordCount();
+        nvSelect(nvCurrentId);
+      } else if (msg.type === 'error') {
+        es.close();
+        cursor.remove();
+        content.contentEditable = 'true';
+        nvStreaming = false;
+        btn.disabled = false;
+        btn.textContent = '生成本章';
+        alert('生成失败: ' + msg.message);
+      }
+    } catch {}
+  };
+  es.onerror = () => {
+    es.close();
+    cursor.remove();
+    content.contentEditable = 'true';
+    nvStreaming = false;
+    btn.disabled = false;
+    btn.textContent = '生成本章';
+  };
+}
+
+function nvRefine() {
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : '';
+  if (!text) return alert('请先选中要优化的文本');
+  if (!nvCurrentId) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'nv-modal';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div class="nv-modal-box" style="width:420px">
+      <h3>AI 文本优化</h3>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">选中文本（${text.length}字）</div>
+      <div style="font-size:12px;color:var(--text2);background:var(--bg3);padding:8px;border-radius:8px;max-height:100px;overflow-y:auto;margin-bottom:12px;line-height:1.5">${esc(text.slice(0, 200))}${text.length > 200 ? '...' : ''}</div>
+      <textarea id="nv-refine-instruction" rows="3" placeholder="优化指令，如：让对话更自然、增加环境描写、加入心理活动..."></textarea>
+      <div class="nv-modal-actions">
+        <button class="nv-act-btn" onclick="this.closest('.nv-modal').remove()">取消</button>
+        <button class="nv-gen-btn" onclick="nvDoRefine(this)">开始优化</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector('#nv-refine-instruction').focus();
+}
+
+async function nvDoRefine(btn) {
+  const modal = btn.closest('.nv-modal');
+  const instruction = modal.querySelector('#nv-refine-instruction').value.trim();
+  if (!instruction) return alert('请输入优化指令');
+
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : '';
+  if (!text) { modal.remove(); return; }
+
+  btn.disabled = true;
+  btn.textContent = '优化中...';
+
+  const token = getToken();
+  const url = `/api/novel/${nvCurrentId}/refine-stream?text=${encodeURIComponent(text)}&instruction=${encodeURIComponent(instruction)}&token=${encodeURIComponent(token)}`;
+  const es = new EventSource(url);
+  let refined = '';
+
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'chunk') {
+        refined += msg.text;
+      } else if (msg.type === 'done') {
+        es.close();
+        const content = document.getElementById('nv-content');
+        const fullText = content.textContent;
+        content.textContent = fullText.replace(text, refined);
+        nvUpdateWordCount();
+        nvAutoSaveContent();
+        modal.remove();
+      } else if (msg.type === 'error') {
+        es.close();
+        alert('优化失败: ' + msg.message);
+        btn.disabled = false;
+        btn.textContent = '开始优化';
+      }
+    } catch {}
+  };
+  es.onerror = () => {
+    es.close();
+    btn.disabled = false;
+    btn.textContent = '开始优化';
+  };
+}
+
+async function nvExport() {
+  if (!nvCurrentId) return;
+  window.open('/api/novel/' + nvCurrentId + '/export?token=' + encodeURIComponent(getToken()));
+}
+
+async function nvDelete() {
+  if (!nvCurrentId) return;
+  if (!confirm('确定删除这部小说？此操作不可撤销。')) return;
+  try {
+    await fetch('/api/novel/' + nvCurrentId, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    });
+    nvCurrentId = null;
+    document.getElementById('nv-editor-empty').style.display = '';
+    document.getElementById('nv-editor-active').style.display = 'none';
+    nvLoadPage();
+  } catch {}
 }
 
 // 启动

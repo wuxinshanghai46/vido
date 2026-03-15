@@ -9,6 +9,8 @@ const CREDIT_COSTS = {
   i2v: 50,
   avatar: 30,
   imggen: 10,
+  novel_outline: 5,
+  novel_chapter: 5,
 };
 
 const PREMIUM_MODELS = [

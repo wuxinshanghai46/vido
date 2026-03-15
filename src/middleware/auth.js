@@ -49,6 +49,8 @@ function requireRole(...roles) {
 function requirePermission(...perms) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ success: false, error: '未登录' });
+    // admin 角色始终拥有所有权限
+    if (req.user.role === 'admin') return next();
     const role = getRoleById(req.user.role);
     if (!role) return res.status(403).json({ success: false, error: '角色不存在' });
     if (role.permissions.includes('*')) return next();

@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const { generateStory, generateLongStory, refineScene, parseScript } = require('../services/storyService');
-const { generateCharacterImage, generateSceneImage, CHAR_IMG_DIR } = require('../services/imageService');
+const { generateCharacterImage, generateSceneImage, CHAR_IMG_DIR, SCENE_IMG_DIR } = require('../services/imageService');
 const { getAvailableVoices } = require('../services/ttsService');
 const motionService = require('../services/motionService');
 
@@ -114,9 +114,12 @@ router.post('/generate-scene-image', async (req, res) => {
 // 提供角色图片文件
 router.get('/character-image/:filename', (req, res) => {
   const filename = path.basename(req.params.filename); // 防路径穿越
-  const filePath = path.join(CHAR_IMG_DIR, filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'not found' });
-  res.sendFile(filePath);
+  // 依次检查角色图目录和场景图目录（场景图也通过此路由提供）
+  for (const dir of [CHAR_IMG_DIR, SCENE_IMG_DIR]) {
+    const filePath = path.join(dir, filename);
+    if (fs.existsSync(filePath)) return res.sendFile(filePath);
+  }
+  return res.status(404).json({ error: 'not found' });
 });
 
 // ═══ 长篇剧情动画生成（中国国风专用） ═══

@@ -88,6 +88,7 @@ app.use('/api/editor', authenticate, require('./routes/editor'));
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));
 app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./routes/avatar'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
+app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 
 // === 设置路由（仅 admin，AI 配置已移至后台） ===
 app.use('/api/settings', authenticate, requireRole('admin'), require('./routes/settings'));
@@ -119,8 +120,11 @@ app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../publi
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
 app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
 
-// SPA 回退
+// SPA 回退（排除 API 路径）
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ success: false, error: 'API 端点不存在' });
+  }
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 

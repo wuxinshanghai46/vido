@@ -102,6 +102,112 @@
 .music-icon { font-size: 16px; color: #21FFF3; }
 .music-name { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Music trim timeline */
+.music-timeline-wrap { width: 100%; }
+.music-timeline {
+  position: relative;
+  height: 52px;
+  background: #141519;
+  border: 1px solid rgba(251,251,251,.08);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.music-timeline canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.music-trim-region {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(33,255,243,.12);
+  border-left: 2px solid #21FFF3;
+  border-right: 2px solid #21FFF3;
+  pointer-events: none;
+  z-index: 2;
+}
+.music-trim-handle {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 100%;
+  cursor: ew-resize;
+  pointer-events: all;
+  z-index: 3;
+  transition: background 0.15s;
+}
+.music-trim-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 18px;
+  background: #21FFF3;
+  border-radius: 1px;
+  box-shadow: 0 0 6px rgba(33,255,243,.5);
+}
+.music-trim-handle.left { left: -6px; }
+.music-trim-handle.right { right: -6px; }
+.music-trim-handle:hover { background: rgba(33,255,243,.15); }
+.music-trim-handle:active { background: rgba(33,255,243,.25); }
+
+.music-playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #FFF600;
+  z-index: 4;
+  display: none;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(255,246,0,.6);
+}
+
+.music-time-display {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10px;
+  color: rgba(251,251,251,.4);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+.music-video-ref {
+  font-size: 10px;
+  color: rgba(251,251,251,.25);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(255,246,0,.04);
+  border: 1px solid rgba(255,246,0,.08);
+  border-radius: 6px;
+}
+
+.music-preview-btn {
+  background: rgba(33,255,243,.08);
+  border: 1px solid rgba(33,255,243,.2);
+  color: #21FFF3;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.music-preview-btn:hover {
+  background: rgba(33,255,243,.15);
+  border-color: rgba(33,255,243,.4);
+}
+.music-preview-btn.playing {
+  background: rgba(255,246,0,.1);
+  border-color: rgba(255,246,0,.3);
+  color: #FFF600;
+}
+
 /* 通用 */
 .icon-btn {
   background: none; border: 1px solid rgba(251,251,251,.1); color: rgba(251,251,251,.4);

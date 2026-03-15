@@ -11,7 +11,8 @@ const DEFAULT_DB = {
   stories: [],
   video_clips: [],
   final_videos: [],
-  i2v_tasks: []
+  i2v_tasks: [],
+  novels: []
 };
 
 function readDB() {
@@ -50,6 +51,11 @@ const db = {
       data.projects[idx] = { ...data.projects[idx], ...fields, updated_at: new Date().toISOString() };
       writeDB(data);
     }
+  },
+  deleteProject(id) {
+    const data = readDB();
+    const idx = data.projects.findIndex(p => p.id === id);
+    if (idx !== -1) { data.projects.splice(idx, 1); writeDB(data); }
   },
 
   // ——— Stories ———
@@ -121,6 +127,50 @@ const db = {
     const idx = data.i2v_tasks.findIndex(t => t.id === id);
     if (idx !== -1) {
       data.i2v_tasks[idx] = { ...data.i2v_tasks[idx], ...fields, updated_at: new Date().toISOString() };
+      writeDB(data);
+    }
+  },
+  deleteI2VTask(id) {
+    const data = readDB();
+    if (!data.i2v_tasks) return;
+    const idx = data.i2v_tasks.findIndex(t => t.id === id);
+    if (idx !== -1) { data.i2v_tasks.splice(idx, 1); writeDB(data); }
+  },
+
+  // ——— Novels（AI 小说）———
+  insertNovel(row) {
+    const data = readDB();
+    if (!data.novels) data.novels = [];
+    row.created_at = new Date().toISOString();
+    row.updated_at = row.created_at;
+    data.novels.push(row);
+    writeDB(data);
+  },
+  getNovel(id) {
+    const data = readDB();
+    return (data.novels || []).find(n => n.id === id) || null;
+  },
+  listNovels(userId) {
+    const data = readDB();
+    return (data.novels || [])
+      .filter(n => !userId || n.user_id === userId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  updateNovel(id, fields) {
+    const data = readDB();
+    if (!data.novels) data.novels = [];
+    const idx = data.novels.findIndex(n => n.id === id);
+    if (idx !== -1) {
+      data.novels[idx] = { ...data.novels[idx], ...fields, updated_at: new Date().toISOString() };
+      writeDB(data);
+    }
+  },
+  deleteNovel(id) {
+    const data = readDB();
+    if (!data.novels) return;
+    const idx = data.novels.findIndex(n => n.id === id);
+    if (idx !== -1) {
+      data.novels.splice(idx, 1);
       writeDB(data);
     }
   }

@@ -205,6 +205,42 @@ function onDragEnd(e) {
 }
 
 // ——— 音乐 ———
+let musicDuration = 0;
+let musicTrimStart = 0;
+let musicTrimEnd = 0;
+let musicAudio = null;        // for preview playback
+let musicPreviewPlaying = false;
+let musicPreviewRAF = null;
+let musicWaveformData = null;
+
+function formatTime(sec) {
+  if (!sec || !isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function getVideoDurationTotal() {
+  // Sum clip durations minus trims
+  let total = 0;
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const deleted = editData.deleted_scenes || [];
+  order.forEach(idx => {
+    if (deleted.includes(idx)) return;
+    const clip = clips.find(c => c.scene_index === idx);
+    if (!clip) return;
+    let dur = clip.duration || 0;
+    const trim = editData.scene_trims?.[idx];
+    if (trim) {
+      const s = trim.start || 0;
+      const e = trim.end || dur;
+      dur = Math.max(0, e - s);
+    }
+    total += dur;
+  });
+  return total;
+}
+
 function loadMusicUI() {
   const music = editData.music;
   if (music?.file_path) {
@@ -214,10 +250,264 @@ function loadMusicUI() {
     document.getElementById('music-volume').value = (music.volume || 0.5) * 100;
     document.getElementById('volume-val').textContent = Math.round((music.volume || 0.5) * 100) + '%';
     document.getElementById('music-loop').checked = music.loop !== false;
+
+    // Load audio to get duration and init timeline
+    initMusicAudio();
   } else {
     document.getElementById('music-empty').style.display = 'block';
     document.getElementById('music-loaded').style.display = 'none';
+    cleanupMusicPreview();
   }
+
+  // Update video duration reference
+  const vidDur = getVideoDurationTotal();
+  const vidRef = document.getElementById('video-total-duration');
+  if (vidRef) vidRef.textContent = vidDur > 0 ? formatTime(vidDur) : '--';
+}
+
+function initMusicAudio() {
+  if (musicAudio) { musicAudio.pause(); musicAudio = null; }
+
+  musicAudio = new Audio(`/api/editor/${projectId}/music-stream`);
+  musicAudio.crossOrigin = 'anonymous';
+
+  musicAudio.addEventListener('loadedmetadata', () => {
+    musicDuration = musicAudio.duration;
+
+    // Restore saved trim or default to full
+    musicTrimStart = editData.music?.trim_start || 0;
+    musicTrimEnd = editData.music?.trim_end || musicDuration;
+    if (musicTrimEnd > musicDuration) musicTrimEnd = musicDuration;
+
+    initMusicTimeline();
+    updateTrimDisplay();
+
+    // Decode waveform
+    decodeWaveform();
+  });
+
+  musicAudio.addEventListener('ended', () => {
+    stopMusicPreview();
+  });
+}
+
+function decodeWaveform() {
+  fetch(`/api/editor/${projectId}/music-stream`)
+    .then(r => r.arrayBuffer())
+    .then(buf => {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx.decodeAudioData(buf);
+    })
+    .then(audioBuffer => {
+      // Get channel data and reduce to drawable peaks
+      const raw = audioBuffer.getChannelData(0);
+      const canvas = document.getElementById('music-waveform');
+      const samples = canvas.width;
+      const blockSize = Math.floor(raw.length / samples);
+      musicWaveformData = new Float32Array(samples);
+      for (let i = 0; i < samples; i++) {
+        let sum = 0;
+        const start = i * blockSize;
+        for (let j = 0; j < blockSize; j++) {
+          sum += Math.abs(raw[start + j] || 0);
+        }
+        musicWaveformData[i] = sum / blockSize;
+      }
+      drawWaveform();
+    })
+    .catch(() => {
+      // Fallback: draw a simple placeholder
+      drawWaveformPlaceholder();
+    });
+}
+
+function drawWaveform() {
+  const canvas = document.getElementById('music-waveform');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!musicWaveformData) { drawWaveformPlaceholder(); return; }
+
+  // Normalize
+  let max = 0;
+  for (let i = 0; i < musicWaveformData.length; i++) {
+    if (musicWaveformData[i] > max) max = musicWaveformData[i];
+  }
+  if (max === 0) max = 1;
+
+  ctx.fillStyle = 'rgba(251,251,251,.15)';
+  const barW = Math.max(1, w / musicWaveformData.length);
+  for (let i = 0; i < musicWaveformData.length; i++) {
+    const barH = (musicWaveformData[i] / max) * (h * 0.85);
+    const x = i * barW;
+    const y = (h - barH) / 2;
+    ctx.fillRect(x, y, Math.max(1, barW - 0.5), barH);
+  }
+}
+
+function drawWaveformPlaceholder() {
+  const canvas = document.getElementById('music-waveform');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Draw simple sine-like pattern
+  ctx.fillStyle = 'rgba(251,251,251,.1)';
+  for (let i = 0; i < w; i += 2) {
+    const barH = 5 + Math.abs(Math.sin(i * 0.05)) * (h * 0.5) + Math.random() * 4;
+    ctx.fillRect(i, (h - barH) / 2, 1.5, barH);
+  }
+}
+
+function initMusicTimeline() {
+  const timeline = document.getElementById('music-timeline');
+  const region = document.getElementById('music-trim-region');
+  const handleLeft = document.getElementById('trim-handle-left');
+  const handleRight = document.getElementById('trim-handle-right');
+
+  if (!timeline || !region) return;
+
+  updateTrimRegion();
+
+  // Drag handling
+  let dragging = null; // 'left', 'right', or null
+
+  const getTimeFromX = (clientX) => {
+    const rect = timeline.getBoundingClientRect();
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    return (x / rect.width) * musicDuration;
+  };
+
+  handleLeft.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); dragging = 'left'; });
+  handleRight.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); dragging = 'right'; });
+
+  // Also support touch
+  handleLeft.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); dragging = 'left'; }, { passive: false });
+  handleRight.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); dragging = 'right'; }, { passive: false });
+
+  const onMove = (clientX) => {
+    if (!dragging) return;
+    const t = getTimeFromX(clientX);
+    if (dragging === 'left') {
+      musicTrimStart = Math.max(0, Math.min(t, musicTrimEnd - 1));
+    } else {
+      musicTrimEnd = Math.min(musicDuration, Math.max(t, musicTrimStart + 1));
+    }
+    updateTrimRegion();
+    updateTrimDisplay();
+  };
+
+  document.addEventListener('mousemove', (e) => { if (dragging) onMove(e.clientX); });
+  document.addEventListener('touchmove', (e) => { if (dragging && e.touches[0]) onMove(e.touches[0].clientX); }, { passive: true });
+
+  const onEnd = () => {
+    if (dragging) {
+      dragging = null;
+      saveMusicTrim();
+    }
+  };
+  document.addEventListener('mouseup', onEnd);
+  document.addEventListener('touchend', onEnd);
+}
+
+function updateTrimRegion() {
+  const timeline = document.getElementById('music-timeline');
+  const region = document.getElementById('music-trim-region');
+  if (!timeline || !region || !musicDuration) return;
+
+  const w = timeline.clientWidth;
+  const leftPct = (musicTrimStart / musicDuration) * 100;
+  const widthPct = ((musicTrimEnd - musicTrimStart) / musicDuration) * 100;
+
+  region.style.left = leftPct + '%';
+  region.style.width = widthPct + '%';
+}
+
+function updateTrimDisplay() {
+  const rangeEl = document.getElementById('music-trim-range');
+  const durEl = document.getElementById('music-trim-duration');
+  if (rangeEl) rangeEl.textContent = `${formatTime(musicTrimStart)} - ${formatTime(musicTrimEnd)}`;
+  if (durEl) durEl.textContent = `选中 ${formatTime(musicTrimEnd - musicTrimStart)} / 总 ${formatTime(musicDuration)}`;
+}
+
+function saveMusicTrim() {
+  if (!editData.music) return;
+  editData.music.trim_start = Math.round(musicTrimStart * 100) / 100;
+  editData.music.trim_end = Math.round(musicTrimEnd * 100) / 100;
+  scheduleSave();
+}
+
+function resetMusicTrim() {
+  if (!musicDuration) return;
+  musicTrimStart = 0;
+  musicTrimEnd = musicDuration;
+  updateTrimRegion();
+  updateTrimDisplay();
+  saveMusicTrim();
+}
+
+function toggleMusicPreview() {
+  if (musicPreviewPlaying) {
+    stopMusicPreview();
+  } else {
+    startMusicPreview();
+  }
+}
+
+function startMusicPreview() {
+  if (!musicAudio || !musicDuration) return;
+  musicAudio.currentTime = musicTrimStart;
+  musicAudio.volume = parseInt(document.getElementById('music-volume').value) / 100;
+  musicAudio.play().catch(() => {});
+  musicPreviewPlaying = true;
+
+  const btn = document.getElementById('music-preview-btn');
+  if (btn) { btn.textContent = '\u23F8 停止'; btn.classList.add('playing'); }
+
+  const playhead = document.getElementById('music-playhead');
+  if (playhead) playhead.style.display = 'block';
+
+  // Animate playhead
+  const tick = () => {
+    if (!musicPreviewPlaying) return;
+    if (musicAudio.currentTime >= musicTrimEnd) {
+      stopMusicPreview();
+      return;
+    }
+    // Update playhead position
+    if (playhead && musicDuration) {
+      const pct = (musicAudio.currentTime / musicDuration) * 100;
+      playhead.style.left = pct + '%';
+    }
+    musicPreviewRAF = requestAnimationFrame(tick);
+  };
+  musicPreviewRAF = requestAnimationFrame(tick);
+}
+
+function stopMusicPreview() {
+  if (musicAudio) { musicAudio.pause(); }
+  musicPreviewPlaying = false;
+  if (musicPreviewRAF) { cancelAnimationFrame(musicPreviewRAF); musicPreviewRAF = null; }
+
+  const btn = document.getElementById('music-preview-btn');
+  if (btn) { btn.innerHTML = '&#9654; 试听'; btn.classList.remove('playing'); }
+
+  const playhead = document.getElementById('music-playhead');
+  if (playhead) playhead.style.display = 'none';
+}
+
+function cleanupMusicPreview() {
+  stopMusicPreview();
+  musicDuration = 0;
+  musicTrimStart = 0;
+  musicTrimEnd = 0;
+  musicWaveformData = null;
+  if (musicAudio) { musicAudio.pause(); musicAudio = null; }
 }
 
 async function uploadMusic(input) {
@@ -244,6 +534,7 @@ async function uploadMusic(input) {
 
 async function removeMusic() {
   if (!confirm('确认删除背景音乐？')) return;
+  cleanupMusicPreview();
   await fetch(`/api/editor/${projectId}/music`, { method: 'DELETE' });
   editData.music = null;
   loadMusicUI();
@@ -259,10 +550,14 @@ function scheduleSave() {
 async function saveEdit() {
   setSaveStatus('保存中...');
   try {
-    // 同步音乐音量
+    // 同步音乐设置
     if (editData.music) {
       editData.music.volume = parseInt(document.getElementById('music-volume').value) / 100;
       editData.music.loop = document.getElementById('music-loop').checked;
+      if (musicTrimStart > 0 || (musicTrimEnd > 0 && musicTrimEnd < musicDuration)) {
+        editData.music.trim_start = Math.round(musicTrimStart * 100) / 100;
+        editData.music.trim_end = Math.round(musicTrimEnd * 100) / 100;
+      }
     }
     const res = await fetch(`/api/editor/${projectId}`, {
       method: 'PUT',

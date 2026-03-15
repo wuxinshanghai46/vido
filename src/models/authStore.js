@@ -13,12 +13,12 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'vip', label: 'VIP用户',
-    permissions: ['create', 'generate', 'edit', 'i2v', 'avatar', 'imggen', 'view_settings'],
+    permissions: ['create', 'generate', 'edit', 'i2v', 'avatar', 'imggen', 'novel', 'view_settings'],
     default_credits: 5000, allowed_models: ['*'], max_projects: 100
   },
   {
     id: 'user', label: '普通用户',
-    permissions: ['create', 'generate', 'edit'],
+    permissions: ['create', 'generate', 'edit', 'novel'],
     default_credits: 100,
     allowed_models: ['demo', 'deepseek-chat', 'cogvideox-flash', 'cogview-3-flash'],
     max_projects: 10
@@ -39,7 +39,23 @@ function save(db) {
 
 function init() {
   let db = load();
-  if (db && db.users && db.users.length > 0) return db;
+  if (db && db.users && db.users.length > 0) {
+    // 自动同步默认角色的新增权限（避免代码更新后旧数据库缺少权限）
+    let changed = false;
+    for (const def of DEFAULT_ROLES) {
+      const existing = (db.roles || []).find(r => r.id === def.id);
+      if (existing) {
+        for (const perm of def.permissions) {
+          if (!existing.permissions.includes(perm) && perm !== '*') {
+            existing.permissions.push(perm);
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed) save(db);
+    return db;
+  }
 
   const { hash, salt } = hashPassword('admin123');
   db = {

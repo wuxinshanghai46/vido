@@ -40,6 +40,7 @@ function initTabs() {
       tab.classList.add('active');
       document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
       if (tab.dataset.tab === 'credits') loadCreditsLog();
+      if (tab.dataset.tab === 'contents') loadContents();
       if (tab.dataset.tab === 'system') loadStats();
       if (tab.dataset.tab === 'ai') loadProviders();
     });
@@ -929,4 +930,166 @@ async function deleteSkill(id) {
   if (!confirm('确认删除该 Skill？')) return;
   await authFetch(`/api/settings/skills/${id}`, { method: 'DELETE' });
   await loadProviders(); switchAITab('skills'); toast('已删除');
+}
+
+// ══════════════════════ 内容管理 ══════════════════════
+let contentsLoaded = false;
+async function loadContents() {
+  // 填充用户下拉
+  if (!contentsLoaded) {
+    const sel = document.getElementById('ct-user');
+    usersCache.forEach(u => {
+      const opt = document.createElement('option');
+      opt.value = u.id; opt.textContent = u.username;
+      sel.appendChild(opt);
+    });
+    contentsLoaded = true;
+  }
+
+  const type = document.getElementById('ct-type').value;
+  const userId = document.getElementById('ct-user').value;
+  const params = new URLSearchParams();
+  if (type) params.set('type', type);
+  if (userId) params.set('user_id', userId);
+  params.set('limit', '200');
+
+  try {
+    const res = await authFetch('/api/admin/contents?' + params.toString());
+    const data = await res.json();
+    if (!data.success) return;
+
+    const items = data.data.items;
+    const tbody = document.getElementById('contents-tbody');
+
+    // 统计
+    const stats = document.getElementById('contents-stats');
+    const pCount = items.filter(i => i.type === 'project').length;
+    const iCount = items.filter(i => i.type === 'i2v').length;
+    const nCount = items.filter(i => i.type === 'novel').length;
+    stats.innerHTML = `<span class="ct-stat">共 <b>${data.data.total}</b> 条</span>` +
+      (pCount ? `<span class="ct-stat">视频项目 <b>${pCount}</b></span>` : '') +
+      (iCount ? `<span class="ct-stat">图生视频 <b>${iCount}</b></span>` : '') +
+      (nCount ? `<span class="ct-stat">小说 <b>${nCount}</b></span>` : '');
+
+    const TYPE_LABELS = { project: 'AI 视频', i2v: '图生视频', novel: 'AI 小说' };
+    const TYPE_COLORS = { project: '#7c6cf0', i2v: '#21fff3', novel: '#f5c518' };
+
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">暂无内容</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(item => `<tr>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${TYPE_COLORS[item.type]}18;color:${TYPE_COLORS[item.type]};border:1px solid ${TYPE_COLORS[item.type]}30">${TYPE_LABELS[item.type] || item.type}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.title)}">${esc(item.title)}</td>
+      <td>${esc(item.username)}</td>
+      <td><span style="font-size:12px;color:var(--text2)">${esc(item.status || '-')}</span></td>
+      <td style="font-size:12px;color:var(--text3)">${esc(item.detail || '')}</td>
+      <td style="font-size:12px;color:var(--text3);white-space:nowrap">${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</td>
+      <td class="actions-cell">
+        <button class="btn-sm" onclick="viewContent('${item.type}','${item.id}')">查看</button>
+        <button class="btn-sm danger" onclick="deleteContent('${item.type}','${item.id}')">删除</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { console.error('loadContents error', e); }
+}
+
+async function viewContent(type, id) {
+  try {
+    const res = await authFetch(`/api/admin/contents/${type}/${id}`);
+    const data = await res.json();
+    if (!data.success) return toast(data.error || '获取失败', 'error');
+    const item = data.data;
+    showContentDetail(item);
+  } catch (e) { toast('获取失败: ' + e.message, 'error'); }
+}
+
+function showContentDetail(item) {
+  // 移除已有的弹窗
+  document.querySelectorAll('.ct-detail-overlay').forEach(e => e.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay show ct-detail-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  let body = '';
+  const token = localStorage.getItem('auth_token') || '';
+  const TYPE_NAMES = { project: 'AI 视频项目', i2v: '图生视频', novel: 'AI 小说' };
+
+  if (item.type === 'project') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">状态</span><span>${esc(item.status || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">场景数</span><span>${item.scene_count || '-'}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">视频供应商</span><span>${esc(item.video_provider || '-')} / ${esc(item.video_model || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">动画风格</span><span>${esc(item.anim_style || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">创建时间</span><span>${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</span></div>
+      </div>
+      ${item.prompt ? `<div class="ct-section"><div class="ct-sec-title">创作提示词</div><div class="ct-text-block">${esc(item.prompt)}</div></div>` : ''}
+      ${item.has_video ? `<div class="ct-section"><div class="ct-sec-title">生成视频</div><video class="ct-video" controls src="${item.stream_url}?token=${encodeURIComponent(token)}"></video></div>` : '<div class="ct-section"><div class="ct-sec-title">视频</div><div class="ct-empty">尚未生成视频</div></div>'}
+      ${item.scenes?.length ? `<div class="ct-section"><div class="ct-sec-title">场景列表</div>${item.scenes.map(s => `<div class="ct-scene-card"><span class="ct-scene-idx">S${s.index}</span><span class="ct-scene-desc">${esc(s.description || s.visual_prompt || '')}</span></div>`).join('')}</div>` : ''}
+    `;
+  } else if (item.type === 'i2v') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">状态</span><span>${esc(item.status || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">供应商</span><span>${esc(item.provider || '-')} / ${esc(item.model || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">创建时间</span><span>${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</span></div>
+      </div>
+      ${item.prompt ? `<div class="ct-section"><div class="ct-sec-title">提示词</div><div class="ct-text-block">${esc(item.prompt)}</div></div>` : ''}
+      ${item.image_url ? `<div class="ct-section"><div class="ct-sec-title">源图片</div><img class="ct-image" src="${item.image_url}?token=${encodeURIComponent(token)}" /></div>` : ''}
+      ${item.has_video ? `<div class="ct-section"><div class="ct-sec-title">生成视频</div><video class="ct-video" controls src="${item.stream_url}?token=${encodeURIComponent(token)}"></video></div>` : '<div class="ct-section"><div class="ct-sec-title">视频</div><div class="ct-empty">尚未完成</div></div>'}
+    `;
+  } else if (item.type === 'novel') {
+    const GENRE_MAP = { fantasy:'奇幻', wuxia:'武侠', xianxia:'仙侠', scifi:'科幻', romance:'言情', mystery:'悬疑', horror:'恐怖', urban:'都市', historical:'历史' };
+    const TYPE_MAP = { flash:'超短篇', short:'短篇', long:'长篇' };
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">篇幅</span><span>${TYPE_MAP[item.novel_type] || '短篇'}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">题材</span><span>${GENRE_MAP[item.genre] || item.genre || '-'}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">总字数</span><span>${(item.total_words || 0).toLocaleString()} 字</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">章节</span><span>${item.chapters?.length || 0} 章已写</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">创建时间</span><span>${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</span></div>
+      </div>
+      ${item.synopsis ? `<div class="ct-section"><div class="ct-sec-title">故事简介</div><div class="ct-text-block">${esc(item.synopsis)}</div></div>` : ''}
+      ${item.outline_chapters?.length ? `<div class="ct-section"><div class="ct-sec-title">大纲</div>${item.outline_chapters.map(c => `<div class="ct-scene-card"><span class="ct-scene-idx">${c.index}</span><b>${esc(c.title)}</b> <span style="color:var(--text3);font-size:11px">${esc(c.summary || '')}</span></div>`).join('')}</div>` : ''}
+      ${item.chapters?.length ? `<div class="ct-section"><div class="ct-sec-title">正文内容</div>
+        <div class="ct-novel-chapters">
+          <div class="ct-ch-tabs">${item.chapters.map((c, i) => `<button class="ct-ch-tab ${i === 0 ? 'active' : ''}" onclick="ctSwitchChapter(this,${i})">第${c.index}章 ${esc(c.title)}</button>`).join('')}</div>
+          ${item.chapters.map((c, i) => `<div class="ct-ch-content ${i === 0 ? '' : 'hidden'}" data-ch="${i}"><div class="ct-ch-meta">${(c.word_count || 0).toLocaleString()} 字</div><div class="ct-text-block ct-novel-text">${esc(c.content || '（空）')}</div></div>`).join('')}
+        </div>
+      </div>` : '<div class="ct-section"><div class="ct-sec-title">正文</div><div class="ct-empty">尚未生成章节</div></div>'}
+    `;
+  }
+
+  overlay.innerHTML = `
+    <div class="modal-box ct-detail-box">
+      <div class="ct-detail-header">
+        <span class="form-title" style="margin:0">${esc(item.title)}</span>
+        <span class="ct-type-badge" style="margin-left:8px;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--bg4);color:var(--text2)">${TYPE_NAMES[item.type] || item.type}</span>
+        <button class="ct-close-btn" onclick="this.closest('.ct-detail-overlay').remove()">&times;</button>
+      </div>
+      ${body}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function ctSwitchChapter(btn, idx) {
+  const box = btn.closest('.ct-novel-chapters');
+  box.querySelectorAll('.ct-ch-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  box.querySelectorAll('.ct-ch-content').forEach(c => c.classList.toggle('hidden', parseInt(c.dataset.ch) !== idx));
+}
+
+async function deleteContent(type, id) {
+  if (!confirm('确定删除此内容？')) return;
+  try {
+    const res = await authFetch(`/api/admin/contents/${type}/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) { toast('已删除'); loadContents(); document.querySelectorAll('.ct-detail-overlay').forEach(e => e.remove()); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('删除失败: ' + e.message, 'error'); }
 }
