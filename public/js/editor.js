@@ -790,10 +790,9 @@ function initTimelinePan() {
   if (!wrap) return;
   let isPanning = false, startX = 0, startScroll = 0;
 
-  // 拖拽平移（在空白处或任意地方中键拖拽）
+  // 拖拽平移
   wrap.addEventListener('mousedown', (e) => {
-    // 允许在空白处和lane-label以外的地方拖拽
-    if (e.target.closest('.ed-clip-trim')) return;
+    if (e.target.closest('.ed-clip-trim') || playheadDragging) return;
     isPanning = true;
     startX = e.clientX;
     startScroll = wrap.scrollLeft;
@@ -851,6 +850,7 @@ let playheadDragging = false;
 
 function startPlayheadDrag(e) {
   e.preventDefault();
+  e.stopPropagation();
   playheadDragging = true;
   document.addEventListener('mousemove', onPlayheadDrag);
   document.addEventListener('mouseup', endPlayheadDrag);
@@ -860,7 +860,11 @@ function onPlayheadDrag(e) {
   if (!playheadDragging) return;
   const ruler = document.getElementById('tl-ruler');
   const rect = ruler.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  // 考虑标尺滚动偏移
+  const scrollOffset = ruler.scrollLeft || 0;
+  const totalWidth = ruler.scrollWidth || rect.width;
+  const x = e.clientX - rect.left + scrollOffset;
+  const pct = Math.max(0, Math.min(1, x / totalWidth));
   // 直接更新播放头位置
   const ph = document.getElementById('tl-playhead');
   const phExt = document.getElementById('tl-playhead-ext');
@@ -875,10 +879,12 @@ function endPlayheadDrag(e) {
   playheadDragging = false;
   document.removeEventListener('mousemove', onPlayheadDrag);
   document.removeEventListener('mouseup', endPlayheadDrag);
-  // 跳转到拖拽位置
   const ruler = document.getElementById('tl-ruler');
   const rect = ruler.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  const scrollOffset = ruler.scrollLeft || 0;
+  const totalWidth = ruler.scrollWidth || rect.width;
+  const x = e.clientX - rect.left + scrollOffset;
+  const pct = Math.max(0, Math.min(1, x / totalWidth));
   seekTimelinePlayhead(pct);
 }
 

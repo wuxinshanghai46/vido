@@ -30,6 +30,19 @@
 }
 .ed-sep { color: var(--text3); font-size: 12px; }
 .ed-proj-name { font-size: 12px; color: var(--text2); }
+.ed-back-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 6px;
+  color: var(--text3); text-decoration: none; transition: all .12s;
+}
+.ed-back-btn:hover { background: rgba(255,255,255,.06); color: var(--text); }
+.ed-btn-save {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border2);
+  background: transparent; color: var(--text2);
+  font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: all .12s;
+}
+.ed-btn-save:hover { border-color: var(--cyan); color: var(--cyan); }
 .ed-btn-render {
   padding: 6px 16px; border-radius: 8px; border: none;
   background: linear-gradient(135deg, var(--cyan), #FFF600); color: #000;
@@ -243,14 +256,16 @@
 
 /* 播放头（可拖拽） */
 .ed-tl-playhead {
-  position: absolute; top: 0; left: 0; z-index: 10;
+  position: absolute; top: -2px; left: 0; z-index: 10;
   transform: translateX(-50%); cursor: grab;
+  padding: 0 4px; /* 扩大点击区域 */
 }
 .ed-tl-playhead:active { cursor: grabbing; }
 .ed-tl-playhead-head {
-  width: 14px; height: 14px; background: #FF4D6D;
-  clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+  width: 16px; height: 16px; background: #FF4D6D;
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
   margin: 0 auto; pointer-events: auto;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
 }
 .ed-tl-playhead-line {
   width: 2px; height: 200px; background: #FF4D6D;

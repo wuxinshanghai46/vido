@@ -13,6 +13,9 @@
     <!-- 顶栏 -->
     <header class="ed-header">
       <div class="ed-header-left">
+        <a href="/" class="ed-back-btn" title="返回首页">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="10,2 4,8 10,14"/></svg>
+        </a>
         <a href="/" class="ed-logo">
           <div class="ed-logo-icon">V</div>
           <span class="ed-logo-text">VIDO</span>
@@ -22,6 +25,7 @@
       </div>
       <div class="ed-header-right">
         <span id="save-status" class="save-status"></span>
+        <button class="ed-btn-save" onclick="saveEdit()">保存</button>
         <button class="ed-btn-render" id="btn-render" onclick="startRender()">渲染导出</button>
       </div>
     </header>
