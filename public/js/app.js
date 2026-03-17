@@ -4794,8 +4794,8 @@ async function startAvatarGeneration() {
   }
 
   // 获取选中的头像
-  const selectedAvEl = document.querySelector('.av-card.selected');
-  const avatar = selectedAvEl?.dataset?.avatar || selectedAvEl?.dataset?.src;
+  const selectedAvEl = document.querySelector('.av-avatar-card.active');
+  const avatar = selectedAvEl?.dataset?.avatar || avatarSelected;
   if (!avatar) { alert('请选择数字人形象'); resetBtn(); return; }
 
   // 获取比例
