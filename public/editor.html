@@ -56,35 +56,46 @@
             <div style="font-size:12px;color:rgba(251,251,251,.4)">点击时间轴上的片段进行编辑</div>
           </div>
 
-          <!-- 场景属性 -->
-          <div id="scene-panel" style="display:none">
-            <div class="ed-panel-head">
-              <span id="scene-panel-title">场景属性</span>
-              <button class="ed-icon-btn danger" id="btn-delete-scene" onclick="deleteSelectedScene()">删除</button>
-            </div>
+          <!-- 右侧 Tab 切换 -->
+          <div class="ed-rtabs">
+            <button class="ed-rtab active" onclick="switchRightTab('clip',this)">片段</button>
+            <button class="ed-rtab" onclick="switchRightTab('subtitle',this)">字幕</button>
+            <button class="ed-rtab" onclick="switchRightTab('audio',this)">音频</button>
+            <button class="ed-rtab" onclick="switchRightTab('voice',this)">配音</button>
+          </div>
 
-            <div class="ed-form-group">
-              <label>裁剪起点（秒）</label>
-              <input type="number" id="trim-start" min="0" step="0.5" value="0" placeholder="0" oninput="saveTrim()" />
+          <!-- Tab: 片段属性 -->
+          <div class="ed-rtab-panel" id="rtab-clip">
+            <div id="scene-panel" style="display:none">
+              <div class="ed-panel-head">
+                <span id="scene-panel-title">场景属性</span>
+                <button class="ed-icon-btn danger" id="btn-delete-scene" onclick="deleteSelectedScene()">删除</button>
+              </div>
+              <div class="ed-form-group">
+                <label>裁剪起点（秒）</label>
+                <input type="number" id="trim-start" min="0" step="0.5" value="0" placeholder="0" oninput="saveTrim()" />
+              </div>
+              <div class="ed-form-group">
+                <label>裁剪终点（秒）<span class="ed-hint" id="clip-duration-hint"></span></label>
+                <input type="number" id="trim-end" min="0" step="0.5" placeholder="留空=不截断" oninput="saveTrim()" />
+              </div>
             </div>
-            <div class="ed-form-group">
-              <label>裁剪终点（秒）<span class="ed-hint" id="clip-duration-hint"></span></label>
-              <input type="number" id="trim-end" min="0" step="0.5" placeholder="留空=不截断" oninput="saveTrim()" />
-            </div>
+          </div>
 
-            <div class="ed-divider"></div>
-
+          <!-- Tab: 字幕 -->
+          <div class="ed-rtab-panel" id="rtab-subtitle" style="display:none">
+            <div class="ed-panel-head"><span>字幕配置</span></div>
             <div class="ed-form-group">
-              <label>字幕文字</label>
-              <textarea id="dialogue-text" rows="3" placeholder="输入要显示的字幕..." oninput="saveDialogue()"></textarea>
+              <label>字幕文字（当前场景）</label>
+              <textarea id="dialogue-text" rows="4" placeholder="输入要显示的字幕..." oninput="saveDialogue()"></textarea>
             </div>
             <div class="ed-form-row">
               <div class="ed-form-group">
-                <label>出现时间</label>
+                <label>出现时间（秒）</label>
                 <input type="number" id="dialogue-start" min="0" step="0.5" value="0" oninput="saveDialogue()" />
               </div>
               <div class="ed-form-group">
-                <label>持续时长</label>
+                <label>持续时长（秒）</label>
                 <input type="number" id="dialogue-duration" min="1" step="1" value="5" oninput="saveDialogue()" />
               </div>
             </div>
@@ -107,18 +118,25 @@
                 </select>
               </div>
             </div>
+            <div class="ed-form-group">
+              <label>颜色</label>
+              <div class="ed-color-row">
+                <button class="ed-color-opt active" data-color="white" onclick="pickSubtitleColor(this,'white')" style="background:#fff"></button>
+                <button class="ed-color-opt" data-color="yellow" onclick="pickSubtitleColor(this,'yellow')" style="background:#FFF600"></button>
+                <button class="ed-color-opt" data-color="#21FFF3" onclick="pickSubtitleColor(this,'#21FFF3')" style="background:#21FFF3"></button>
+                <button class="ed-color-opt" data-color="black" onclick="pickSubtitleColor(this,'black')" style="background:#333;border:1px solid #666"></button>
+              </div>
+            </div>
           </div>
 
-          <!-- 音乐面板 -->
-          <div id="music-section">
-            <div class="ed-panel-head" style="margin-top:12px">
-              <span>背景音乐</span>
-            </div>
+          <!-- Tab: 音频/音乐 -->
+          <div class="ed-rtab-panel" id="rtab-audio" style="display:none">
+            <div class="ed-panel-head"><span>背景音乐</span></div>
             <div id="music-panel">
               <div id="music-empty" class="ed-music-empty">
                 <label class="ed-upload-btn" for="music-upload">
                   <input type="file" id="music-upload" accept="audio/*" onchange="uploadMusic(this)" style="display:none" />
-                  + 上传音乐
+                  + 导入音乐（MP3/WAV/FLAC）
                 </label>
               </div>
               <div id="music-loaded" style="display:none">
@@ -144,8 +162,43 @@
                   <input type="range" id="music-volume" min="0" max="100" value="50"
                     oninput="document.getElementById('volume-val').textContent=this.value+'%'; scheduleSave()" />
                 </div>
+                <div class="ed-form-group">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" id="music-loop" checked onchange="scheduleSave()" /> 循环播放
+                  </label>
+                </div>
               </div>
             </div>
+          </div>
+
+          <!-- Tab: 配音/TTS -->
+          <div class="ed-rtab-panel" id="rtab-voice" style="display:none">
+            <div class="ed-panel-head"><span>语音配音</span></div>
+            <div class="ed-form-group">
+              <label>当前场景配音文本</label>
+              <textarea id="voice-text" rows="4" placeholder="输入需要配音的文字..." oninput="saveVoiceover()"></textarea>
+            </div>
+            <div class="ed-form-group">
+              <label>音色</label>
+              <select id="voice-id" onchange="saveVoiceover()">
+                <option value="">默认</option>
+              </select>
+            </div>
+            <div class="ed-form-row">
+              <div class="ed-form-group">
+                <label>语速</label>
+                <input type="range" id="voice-speed" min="0.5" max="2" step="0.1" value="1.0"
+                  oninput="document.getElementById('voice-speed-val').textContent=parseFloat(this.value).toFixed(1)+'x'; saveVoiceover()" />
+              </div>
+              <span class="ed-form-val" id="voice-speed-val">1.0x</span>
+            </div>
+            <div class="ed-form-group">
+              <label>音量 <span id="voice-volume-val">80%</span></label>
+              <input type="range" id="voice-volume" min="0" max="100" value="80"
+                oninput="document.getElementById('voice-volume-val').textContent=this.value+'%'; saveVoiceover()" />
+            </div>
+            <button class="ed-btn-render" style="width:100%;margin-top:8px" id="btn-gen-voice" onclick="generateVoiceover()">生成配音</button>
+            <div id="voice-status" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
           </div>
 
           <!-- 渲染进度 -->
@@ -198,17 +251,32 @@
       </div>
 
       <!-- 底部时间轴 -->
-      <div class="ed-timeline-area">
+      <div class="ed-timeline-area" id="timeline-area">
+        <!-- 标尺 + 播放头 -->
         <div class="ed-tl-ruler" id="tl-ruler">
-          <div class="ed-tl-playhead" id="tl-playhead">
+          <div class="ed-tl-playhead" id="tl-playhead" onmousedown="startPlayheadDrag(event)">
             <div class="ed-tl-playhead-head"></div>
             <div class="ed-tl-playhead-line"></div>
           </div>
         </div>
-        <div class="ed-tl-tracks-wrap">
+        <!-- 轨道区域 -->
+        <div class="ed-tl-tracks-wrap" id="tl-tracks-wrap">
+          <!-- 播放头竖线（贯穿所有轨道） -->
           <div class="ed-tl-playhead-ext" id="tl-playhead-ext"></div>
-          <div class="ed-tl-track" id="timeline">
-            <div style="padding:20px;color:rgba(251,251,251,.3);font-size:12px">加载中...</div>
+          <!-- 视频轨 -->
+          <div class="ed-tl-lane">
+            <div class="ed-tl-lane-label">V</div>
+            <div class="ed-tl-track" id="timeline"></div>
+          </div>
+          <!-- 音频轨 -->
+          <div class="ed-tl-lane ed-tl-lane-audio">
+            <div class="ed-tl-lane-label">A</div>
+            <div class="ed-tl-track ed-tl-audio-track" id="audio-track"></div>
+          </div>
+          <!-- 配音轨 -->
+          <div class="ed-tl-lane ed-tl-lane-voice">
+            <div class="ed-tl-lane-label">VO</div>
+            <div class="ed-tl-track ed-tl-voice-track" id="voice-track"></div>
           </div>
         </div>
       </div>

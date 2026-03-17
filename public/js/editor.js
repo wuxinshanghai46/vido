@@ -114,6 +114,45 @@ function renderTimeline() {
         </div>
       </div>`;
   }).join('');
+
+  // 渲染音频轨
+  renderAudioTrack();
+  // 渲染配音轨
+  renderVoiceTrack();
+}
+
+function renderAudioTrack() {
+  const track = document.getElementById('audio-track');
+  if (!track) return;
+  const music = editData.music;
+  if (!music?.file_path) {
+    track.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.2);cursor:pointer" onclick="switchRightTab(\'audio\',null)">+ 添加音乐</div>';
+    return;
+  }
+  const name = music.original_name || '背景音乐';
+  track.innerHTML = `<div class="ed-audio-block" onclick="switchRightTab('audio',null)">♫ ${escHtml(name)}</div>`;
+}
+
+function renderVoiceTrack() {
+  const track = document.getElementById('voice-track');
+  if (!track) return;
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const voiceovers = editData.voiceovers || [];
+
+  if (!voiceovers.length) {
+    track.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.2);cursor:pointer" onclick="switchRightTab(\'voice\',null)">+ 添加配音</div>';
+    return;
+  }
+
+  track.innerHTML = order.map((sceneIdx, pos) => {
+    const clip = clips.find(c => c.scene_index === sceneIdx);
+    const dur = clip?.duration || 10;
+    const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
+    const vo = voiceovers.find(v => v.scene_index === sceneIdx);
+    if (!vo?.text) return `<div style="width:${widthPct}%"></div>`;
+    const hasAudio = !!vo.audio_path;
+    return `<div class="ed-voice-block${hasAudio ? ' has-audio' : ''}" style="width:${widthPct}%" onclick="selectScene(${sceneIdx});switchRightTab('voice',null)" title="${escHtml(vo.text)}">${hasAudio ? '🔊' : '🎙'} ${escHtml(vo.text.slice(0,15))}</div>`;
+  }).join('');
 }
 
 // ——— 预览播放 ———
@@ -721,9 +760,174 @@ function startPlayheadLoop() {
   requestAnimationFrame(tick);
 }
 
+// ——— 播放头拖拽 ———
+let playheadDragging = false;
+
+function startPlayheadDrag(e) {
+  e.preventDefault();
+  playheadDragging = true;
+  document.addEventListener('mousemove', onPlayheadDrag);
+  document.addEventListener('mouseup', endPlayheadDrag);
+}
+
+function onPlayheadDrag(e) {
+  if (!playheadDragging) return;
+  const ruler = document.getElementById('tl-ruler');
+  const rect = ruler.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  // 直接更新播放头位置
+  const ph = document.getElementById('tl-playhead');
+  const phExt = document.getElementById('tl-playhead-ext');
+  if (ph) ph.style.left = (pct * 100) + '%';
+  if (phExt) phExt.style.left = (pct * 100) + '%';
+  const tbTime = document.getElementById('tb-current-time');
+  if (tbTime) tbTime.textContent = formatTime(pct * totalTimelineDur);
+}
+
+function endPlayheadDrag(e) {
+  if (!playheadDragging) return;
+  playheadDragging = false;
+  document.removeEventListener('mousemove', onPlayheadDrag);
+  document.removeEventListener('mouseup', endPlayheadDrag);
+  // 跳转到拖拽位置
+  const ruler = document.getElementById('tl-ruler');
+  const rect = ruler.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  seekTimelinePlayhead(pct);
+}
+
+// ——— 右侧面板 Tab 切换 ———
+function switchRightTab(tab, btn) {
+  document.querySelectorAll('.ed-rtab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    document.querySelectorAll('.ed-rtab').forEach(b => {
+      if (b.textContent.trim() === {clip:'片段',subtitle:'字幕',audio:'音频',voice:'配音'}[tab]) b.classList.add('active');
+    });
+  }
+  ['clip','subtitle','audio','voice'].forEach(t => {
+    const panel = document.getElementById('rtab-' + t);
+    if (panel) panel.style.display = t === tab ? '' : 'none';
+  });
+  document.getElementById('props-empty').style.display = 'none';
+}
+
+// ——— 字幕颜色 ———
+let subtitleColor = 'white';
+
+function pickSubtitleColor(btn, color) {
+  subtitleColor = color;
+  document.querySelectorAll('.ed-color-opt').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  saveDialogue();
+}
+
+// ——— 配音/TTS ———
+function saveVoiceover() {
+  if (selectedSceneIndex === null) return;
+  if (!editData.voiceovers) editData.voiceovers = [];
+  const text = document.getElementById('voice-text').value.trim();
+  const existIdx = editData.voiceovers.findIndex(v => v.scene_index === selectedSceneIndex);
+  if (!text) {
+    if (existIdx >= 0) editData.voiceovers.splice(existIdx, 1);
+  } else {
+    const entry = {
+      scene_index: selectedSceneIndex,
+      text,
+      voice_id: document.getElementById('voice-id').value || '',
+      speed: parseFloat(document.getElementById('voice-speed').value) || 1.0,
+      volume: parseInt(document.getElementById('voice-volume').value) / 100,
+      audio_path: existIdx >= 0 ? editData.voiceovers[existIdx].audio_path : null
+    };
+    if (existIdx >= 0) editData.voiceovers[existIdx] = entry;
+    else editData.voiceovers.push(entry);
+  }
+  renderVoiceTrack();
+  scheduleSave();
+}
+
+async function generateVoiceover() {
+  if (selectedSceneIndex === null) return;
+  const text = document.getElementById('voice-text').value.trim();
+  if (!text) { document.getElementById('voice-status').textContent = '请输入配音文本'; return; }
+  const btn = document.getElementById('btn-gen-voice');
+  btn.disabled = true; btn.textContent = '生成中...';
+  document.getElementById('voice-status').textContent = '正在生成语音...';
+  try {
+    const voiceId = document.getElementById('voice-id').value || '';
+    const speed = parseFloat(document.getElementById('voice-speed').value) || 1.0;
+    const res = await authFetch('/api/story/preview-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_id: voiceId, text, speed })
+    });
+    const data = await res.json();
+    if (data.success && data.audio_url) {
+      // 保存配音音频路径
+      if (!editData.voiceovers) editData.voiceovers = [];
+      const existIdx = editData.voiceovers.findIndex(v => v.scene_index === selectedSceneIndex);
+      const entry = {
+        scene_index: selectedSceneIndex, text,
+        voice_id: voiceId, speed,
+        volume: parseInt(document.getElementById('voice-volume').value) / 100,
+        audio_url: data.audio_url,
+        audio_path: data.audio_url
+      };
+      if (existIdx >= 0) editData.voiceovers[existIdx] = entry;
+      else editData.voiceovers.push(entry);
+      renderVoiceTrack();
+      scheduleSave();
+      document.getElementById('voice-status').innerHTML = '<span style="color:var(--success)">配音已生成</span>';
+      // 播放预览
+      new Audio(data.audio_url).play().catch(() => {});
+    } else {
+      document.getElementById('voice-status').innerHTML = `<span style="color:var(--error)">${data.error || '生成失败'}</span>`;
+    }
+  } catch (e) {
+    document.getElementById('voice-status').innerHTML = `<span style="color:var(--error)">${e.message}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '生成配音';
+  }
+}
+
+// 加载音色列表
+async function loadVoiceOptions() {
+  try {
+    const res = await authFetch('/api/story/voices');
+    const data = await res.json();
+    if (data.success) {
+      const sel = document.getElementById('voice-id');
+      (data.data || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        opt.textContent = `${v.name} (${v.provider})`;
+        sel.appendChild(opt);
+      });
+    }
+  } catch {}
+}
+
+// 更新 selectScene 填充配音数据
+const _origSelectScene = selectScene;
+selectScene = function(sceneIdx) {
+  _origSelectScene(sceneIdx);
+  // 填充配音数据
+  const vo = (editData.voiceovers || []).find(v => v.scene_index === sceneIdx) || {};
+  const vtEl = document.getElementById('voice-text');
+  if (vtEl) vtEl.value = vo.text || '';
+  const viEl = document.getElementById('voice-id');
+  if (viEl) viEl.value = vo.voice_id || '';
+  const vsEl = document.getElementById('voice-speed');
+  if (vsEl) { vsEl.value = vo.speed || 1.0; document.getElementById('voice-speed-val').textContent = (vo.speed || 1.0).toFixed(1) + 'x'; }
+  const vvEl = document.getElementById('voice-volume');
+  if (vvEl) { vvEl.value = (vo.volume || 0.8) * 100; document.getElementById('voice-volume-val').textContent = Math.round((vo.volume || 0.8) * 100) + '%'; }
+  document.getElementById('voice-status').textContent = vo.audio_path ? '已有配音' : '';
+};
+
 function escHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 startPlayheadLoop();
+loadVoiceOptions();
 init();

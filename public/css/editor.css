@@ -98,6 +98,33 @@
   border-left: 1px solid var(--border); padding: 14px;
   overflow-y: auto; font-size: 12px;
 }
+/* 右侧 Tab */
+.ed-rtabs {
+  display: flex; gap: 0; margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.ed-rtab {
+  flex: 1; padding: 6px 0; border: none; background: transparent;
+  color: var(--text3); font-size: 11px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: all .12s;
+  border-right: 1px solid var(--border);
+}
+.ed-rtab:last-child { border-right: none; }
+.ed-rtab:hover { color: var(--text2); background: rgba(255,255,255,.02); }
+.ed-rtab.active { color: var(--cyan); background: rgba(var(--accent-rgb),.08); }
+.ed-rtab-panel { }
+
+/* 颜色选择 */
+.ed-color-row { display: flex; gap: 6px; }
+.ed-color-opt {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border);
+  cursor: pointer; transition: all .12s; padding: 0;
+}
+.ed-color-opt:hover { transform: scale(1.15); }
+.ed-color-opt.active { border-color: var(--cyan); box-shadow: 0 0 6px rgba(var(--accent-rgb),.4); }
+
+.ed-form-val { font-size: 11px; color: var(--text3); min-width: 32px; padding-top: 18px; }
+
 .ed-props-empty {
   text-align: center; padding: 40px 10px;
 }
@@ -203,7 +230,7 @@
 
 /* ═══ 底部时间轴 ═══ */
 .ed-timeline-area {
-  height: 160px; flex-shrink: 0; background: var(--bg2);
+  height: 200px; flex-shrink: 0; background: var(--bg2);
   display: flex; flex-direction: column; position: relative;
 }
 .ed-tl-ruler {
@@ -216,37 +243,74 @@
   transform: translateX(-50%); top: 4px;
 }
 
-/* 播放头 */
+/* 播放头（可拖拽） */
 .ed-tl-playhead {
   position: absolute; top: 0; left: 0; z-index: 10;
-  transform: translateX(-50%); pointer-events: none;
-  transition: left .05s linear;
+  transform: translateX(-50%); cursor: grab;
 }
+.ed-tl-playhead:active { cursor: grabbing; }
 .ed-tl-playhead-head {
-  width: 12px; height: 12px; background: #FF4D6D;
+  width: 14px; height: 14px; background: #FF4D6D;
   clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
-  margin: 0 auto;
+  margin: 0 auto; pointer-events: auto;
 }
 .ed-tl-playhead-line {
-  width: 2px; height: 160px; background: #FF4D6D;
-  margin: 0 auto; opacity: .8;
+  width: 2px; height: 240px; background: #FF4D6D;
+  margin: 0 auto; opacity: .7; pointer-events: none;
 }
 .ed-tl-playhead-ext {
   position: absolute; top: 0; left: 0; width: 2px; height: 100%;
-  background: #FF4D6D; opacity: .5; z-index: 5;
+  background: #FF4D6D; opacity: .4; z-index: 5;
   pointer-events: none; transform: translateX(-50%);
-  transition: left .05s linear;
 }
 
-/* 轨道容器 */
+/* 轨道区域 */
 .ed-tl-tracks-wrap {
   flex: 1; position: relative; overflow-x: auto; overflow-y: hidden;
+  display: flex; flex-direction: column;
+}
+.ed-tl-lane {
+  display: flex; border-bottom: 1px solid var(--border); min-height: 0;
+}
+.ed-tl-lane:first-of-type { flex: 3; } /* 视频轨占大 */
+.ed-tl-lane-audio { flex: 1.5; }
+.ed-tl-lane-voice { flex: 1; }
+.ed-tl-lane-label {
+  width: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: var(--text3);
+  background: rgba(0,0,0,.2); border-right: 1px solid var(--border);
+  user-select: none;
 }
 .ed-tl-track {
-  display: flex; height: 100%;
-  padding: 6px 4px; gap: 3px; align-items: stretch;
-  min-width: 100%;
+  display: flex; flex: 1; min-width: 0;
+  padding: 3px 2px; gap: 2px; align-items: stretch;
+  overflow: hidden;
 }
+.ed-tl-audio-track {
+  background: rgba(255,200,0,.03);
+}
+.ed-tl-voice-track {
+  background: rgba(33,255,243,.03);
+}
+
+/* 音频轨块 */
+.ed-audio-block {
+  flex: 1; border-radius: 4px; background: rgba(255,200,0,.12);
+  border: 1px solid rgba(255,200,0,.2); display: flex; align-items: center;
+  padding: 0 8px; font-size: 10px; color: rgba(255,200,0,.7);
+  gap: 4px; overflow: hidden; cursor: pointer;
+}
+.ed-audio-block:hover { background: rgba(255,200,0,.18); }
+
+/* 配音轨块 */
+.ed-voice-block {
+  border-radius: 4px; background: rgba(33,255,243,.1);
+  border: 1px solid rgba(33,255,243,.15); display: flex; align-items: center;
+  padding: 0 6px; font-size: 9px; color: rgba(33,255,243,.6);
+  overflow: hidden; white-space: nowrap; cursor: pointer;
+}
+.ed-voice-block:hover { background: rgba(33,255,243,.18); }
+.ed-voice-block.has-audio { border-color: rgba(33,255,243,.4); color: var(--cyan); }
 
 /* 片段块 */
 .ed-clip {
