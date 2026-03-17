@@ -173,10 +173,20 @@ function renderAudioTrack() {
     }
 
     return `<div class="ed-orig-audio${hasDialogue ? ' has-audio' : ''}${isMuted ? ' muted' : ''}${isDeleted ? ' muted' : ''}"
-      style="width:${widthPct}%" onclick="selectScene(${sceneIdx})" title="${hasDialogue ? escHtml(scene.dialogue.slice(0,30)) : '无音频'}">
+      style="width:${widthPct}%" title="${hasDialogue ? escHtml(scene.dialogue.slice(0,30)) : '无音频'}">
       <div class="ed-audio-wave">${waveBars}</div>
+      <button class="ed-audio-mute" onclick="event.stopPropagation();toggleMuteAudio(${sceneIdx})" title="${isMuted ? '恢复音频' : '静音'}">${isMuted ? '🔇' : '🔊'}</button>
     </div>`;
   }).join('');
+}
+
+function toggleMuteAudio(sceneIdx) {
+  if (!editData.muted_audio) editData.muted_audio = [];
+  const idx = editData.muted_audio.indexOf(sceneIdx);
+  if (idx >= 0) editData.muted_audio.splice(idx, 1);
+  else editData.muted_audio.push(sceneIdx);
+  renderAudioTrack();
+  scheduleSave();
 }
 
 function renderMusicTrack() {

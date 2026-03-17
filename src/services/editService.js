@@ -202,6 +202,18 @@ async function renderWithEdits(projectId, progressCallback) {
     let currentPath = clip.file_path;
     const tmpBase = path.join(tmpDir, `clip_${String(i).padStart(3, '0')}`);
 
+    // 静音处理
+    const sceneKey = clip._resolvedIndex ?? clip.scene_index;
+    const mutedList = edit.muted_audio || [];
+    if (mutedList.includes(sceneKey)) {
+      const mutedPath = `${tmpBase}_muted.mp4`;
+      await new Promise((resolve, reject) => {
+        ffmpeg(currentPath).outputOptions(['-an', '-c:v', 'copy']).output(mutedPath)
+          .on('end', () => resolve()).on('error', reject).run();
+      });
+      currentPath = mutedPath;
+    }
+
     // 裁剪
     const trim = edit.scene_trims?.[clip.scene_index];
     if (trim && (trim.start > 0 || trim.end)) {
