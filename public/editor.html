@@ -256,32 +256,30 @@
         </div>
         <!-- 轨道区域 -->
         <div class="ed-tl-tracks-wrap" id="tl-tracks-wrap">
-          <!-- 播放头竖线（贯穿所有轨道） -->
+          <!-- 播放头竖线 -->
           <div class="ed-tl-playhead-ext" id="tl-playhead-ext"></div>
-          <!-- 视频轨 -->
-          <div class="ed-tl-lane">
-            <div class="ed-tl-lane-label">V</div>
-            <div class="ed-tl-track" id="timeline"></div>
+          <div class="ed-tl-lanes" id="tl-lanes">
+            <!-- 视频轨 -->
+            <div class="ed-tl-lane">
+              <div class="ed-tl-lane-label">V</div>
+              <div class="ed-tl-track" id="timeline"></div>
+            </div>
+            <!-- 原始音频轨 -->
+            <div class="ed-tl-lane ed-tl-lane-audio">
+              <div class="ed-tl-lane-label">A</div>
+              <div class="ed-tl-track ed-tl-audio-track" id="audio-track"></div>
+            </div>
+            <!-- 背景音乐轨 -->
+            <div class="ed-tl-lane ed-tl-lane-music">
+              <div class="ed-tl-lane-label">M</div>
+              <div class="ed-tl-track ed-tl-music-track" id="music-track"></div>
+            </div>
+            <!-- 配音轨 -->
+            <div class="ed-tl-lane ed-tl-lane-voice">
+              <div class="ed-tl-lane-label">VO</div>
+              <div class="ed-tl-track ed-tl-voice-track" id="voice-track"></div>
+            </div>
           </div>
-          <!-- 原始音频轨（从视频片段中分离） -->
-          <div class="ed-tl-lane ed-tl-lane-audio">
-            <div class="ed-tl-lane-label">A</div>
-            <div class="ed-tl-track ed-tl-audio-track" id="audio-track"></div>
-          </div>
-          <!-- 背景音乐轨 -->
-          <div class="ed-tl-lane ed-tl-lane-music">
-            <div class="ed-tl-lane-label">M</div>
-            <div class="ed-tl-track ed-tl-music-track" id="music-track"></div>
-          </div>
-          <!-- 配音轨 -->
-          <div class="ed-tl-lane ed-tl-lane-voice">
-            <div class="ed-tl-lane-label">VO</div>
-            <div class="ed-tl-track ed-tl-voice-track" id="voice-track"></div>
-          </div>
-        </div>
-        <!-- 底部滚动条 -->
-        <div class="ed-tl-scrollbar" id="tl-scrollbar">
-          <div class="ed-tl-scrollbar-inner" id="tl-scrollbar-inner"></div>
         </div>
       </div>
     </div>

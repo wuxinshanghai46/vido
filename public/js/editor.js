@@ -773,71 +773,54 @@ function zoomTimeline(dir) {
 }
 
 function applyZoom() {
-  // 所有 track 和标尺都设置 min-width
   const w = timelineZoom + '%';
-  document.querySelectorAll('.ed-tl-track').forEach(t => t.style.minWidth = w);
+  const lanes = document.getElementById('tl-lanes');
+  if (lanes) lanes.style.minWidth = w;
   const ruler = document.getElementById('tl-ruler');
-  if (ruler) ruler.style.minWidth = timelineZoom + '%';
-  // 更新滚动条
-  const inner = document.getElementById('tl-scrollbar-inner');
-  const scrollbar = document.getElementById('tl-scrollbar');
-  if (inner && scrollbar) {
-    inner.style.width = (scrollbar.clientWidth * timelineZoom / 100) + 'px';
+  if (ruler) {
+    // ruler 需要留出 lane-label 宽度
+    ruler.style.width = `calc(${w} - 32px)`;
   }
 }
 
-// ——— 时间轴拖拽平移 + 滚轮缩放 + 滚动条同步 ———
-let tlScrollLeft = 0;
-
-function syncAllScroll(scrollLeft) {
-  tlScrollLeft = scrollLeft;
-  const wrap = document.getElementById('tl-tracks-wrap');
-  const ruler = document.getElementById('tl-ruler');
-  const scrollbar = document.getElementById('tl-scrollbar');
-  // 同步所有轨道内的 track
-  if (wrap) wrap.querySelectorAll('.ed-tl-track').forEach(t => t.scrollLeft = scrollLeft);
-  if (ruler) ruler.scrollLeft = scrollLeft;
-  if (scrollbar && Math.abs(scrollbar.scrollLeft - scrollLeft) > 1) scrollbar.scrollLeft = scrollLeft;
-}
-
+// ——— 时间轴拖拽平移 + 滚轮缩放 ———
 function initTimelinePan() {
   const wrap = document.getElementById('tl-tracks-wrap');
   const ruler = document.getElementById('tl-ruler');
-  const scrollbar = document.getElementById('tl-scrollbar');
   if (!wrap) return;
   let isPanning = false, startX = 0, startScroll = 0;
 
-  // 拖拽平移
+  // 拖拽平移（在空白处或任意地方中键拖拽）
   wrap.addEventListener('mousedown', (e) => {
-    if (e.target.closest('.ed-clip') || e.target.closest('.ed-clip-trim') || e.target.closest('.ed-orig-audio') || e.target.closest('.ed-voice-block') || e.target.closest('.ed-audio-block')) return;
+    // 允许在空白处和lane-label以外的地方拖拽
+    if (e.target.closest('.ed-clip-trim')) return;
     isPanning = true;
     startX = e.clientX;
-    startScroll = tlScrollLeft;
+    startScroll = wrap.scrollLeft;
     wrap.classList.add('dragging');
-    e.preventDefault();
   });
   document.addEventListener('mousemove', (e) => {
     if (!isPanning) return;
-    syncAllScroll(startScroll - (e.clientX - startX));
+    wrap.scrollLeft = startScroll - (e.clientX - startX);
   });
   document.addEventListener('mouseup', () => {
     if (isPanning) { isPanning = false; wrap.classList.remove('dragging'); }
   });
 
-  // 滚轮
+  // 滚轮：Ctrl缩放，普通横滚
   wrap.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       zoomTimeline(e.deltaY < 0 ? 1 : -1);
     } else {
-      syncAllScroll(tlScrollLeft + (e.deltaY || e.deltaX));
+      wrap.scrollLeft += (e.deltaY || e.deltaX);
     }
   }, { passive: false });
 
-  // 底部滚动条
-  if (scrollbar) {
-    scrollbar.addEventListener('scroll', () => syncAllScroll(scrollbar.scrollLeft));
-  }
+  // wrap scroll → 同步标尺
+  wrap.addEventListener('scroll', () => {
+    if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+  });
 }
 
 // ——— 键盘快捷键 ———
