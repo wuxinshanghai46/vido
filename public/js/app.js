@@ -4782,37 +4782,88 @@ function setAvatarRatio(ratio, btn) {
 
 async function startAvatarGeneration() {
   const btn = document.getElementById('av-gen-btn');
+  const resetBtn = () => { btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg> 生成数字人视频'; };
   btn.disabled = true;
   btn.innerHTML = '<span class="sto-li-spin">&#8635;</span> 生成中...';
 
   const text = document.getElementById('av-text-input')?.value || '';
   if (avatarDrive === 'text' && !text.trim()) {
     alert('请输入数字人要说的话');
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg> 生成数字人视频';
+    resetBtn();
     return;
   }
 
-  // Show generating state in preview
+  // 获取选中的头像
+  const selectedAvEl = document.querySelector('.av-card.selected');
+  const avatar = selectedAvEl?.dataset?.avatar || selectedAvEl?.dataset?.src;
+  if (!avatar) { alert('请选择数字人形象'); resetBtn(); return; }
+
+  // 获取比例
+  const ratioEl = document.querySelector('.av-ratio-btn.active');
+  const ratio = ratioEl?.dataset?.ratio || '9:16';
+
+  // 获取模型
+  const modelEl = document.getElementById('av-model-select');
+  const model = modelEl?.value || 'cogvideox-flash';
+
   const previewBox = document.getElementById('av-preview-box');
   previewBox.innerHTML = `
     <div class="av-preview-empty" style="animation:fadeUp .3s ease">
       <div class="sto-li-spin" style="font-size:32px;color:var(--accent)">&#8635;</div>
-      <div class="av-preview-text">正在生成数字人视频...</div>
+      <div class="av-preview-text" id="av-gen-status">正在提交生成任务...</div>
       <div class="av-preview-sub">预计需要 1-3 分钟</div>
     </div>`;
 
-  // Simulate generation (backend API would go here)
-  setTimeout(() => {
+  try {
+    // 调用后端 API
+    const res = await authFetch('/api/avatar/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar, text, voiceId: selectedVoiceId || '', ratio, model })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+
+    const taskId = data.taskId;
+
+    // SSE 监听进度
+    const sse = new EventSource(authUrl(`/api/avatar/tasks/${taskId}/progress`));
+    sse.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.step === 'connected') return;
+      const statusEl = document.getElementById('av-gen-status');
+      if (statusEl) statusEl.textContent = d.message || d.step;
+
+      if (d.step === 'done') {
+        sse.close();
+        previewBox.innerHTML = `
+          <video controls autoplay playsinline style="width:100%;height:100%;object-fit:contain;border-radius:8px">
+            <source src="${authUrl(d.videoUrl)}" type="video/mp4" />
+          </video>
+          <div style="text-align:center;margin-top:8px">
+            <a href="${authUrl('/api/avatar/tasks/${taskId}/download')}" class="av-dl-btn" style="color:var(--cyan);font-size:12px;text-decoration:none">⬇ 下载视频</a>
+          </div>`;
+        resetBtn();
+      }
+      if (d.step === 'error') {
+        sse.close();
+        previewBox.innerHTML = `
+          <div class="av-preview-empty">
+            <div class="av-preview-text" style="color:var(--error)">生成失败</div>
+            <div class="av-preview-sub">${esc(d.message || '未知错误')}</div>
+          </div>`;
+        resetBtn();
+      }
+    };
+    sse.onerror = () => { sse.close(); };
+  } catch (err) {
     previewBox.innerHTML = `
-      <div class="av-preview-empty" style="animation:fadeUp .3s ease">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="var(--success)" stroke-width="2"/><path d="M15 24l6 6 12-12" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <div class="av-preview-text" style="color:var(--success)">数字人视频已生成</div>
-        <div class="av-preview-sub">功能即将上线，敬请期待</div>
+      <div class="av-preview-empty">
+        <div class="av-preview-text" style="color:var(--error)">生成失败</div>
+        <div class="av-preview-sub">${esc(err.message)}</div>
       </div>`;
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg> 生成数字人视频';
-  }, 3000);
+    resetBtn();
+  }
 }
 
 // ═══════ 预设图片加载与生成 ═══════

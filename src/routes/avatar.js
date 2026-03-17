@@ -40,27 +40,118 @@ router.get('/images/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 任务存储
+const avatarTasks = new Map();
+const avatarSSE = new Map();
+
 // POST /api/avatar/generate - 生成数字人视频
 router.post('/generate', async (req, res) => {
   try {
-    const { avatar, text, voiceId, background, expression, gesture, ratio, resolution } = req.body;
+    const { avatar, text, voiceId, ratio, model } = req.body;
+    if (!avatar) return res.status(400).json({ success: false, error: '请选择数字人形象' });
 
-    // 数字人视频生成需要专门的API（如 HeyGen, D-ID, Synthesia 等）
-    // 目前返回待实现状态
-    res.json({
-      status: 'pending',
-      taskId: uuidv4(),
-      message: '数字人视频生成功能正在开发中。需要配置数字人 API 供应商（如 HeyGen、D-ID 等）。',
-      params: { avatar, voiceId, background, expression, gesture, ratio, resolution }
+    const { generateAvatarVideo } = require('../services/avatarService');
+    const taskId = uuidv4();
+
+    // 解析图片路径
+    let imageUrl = avatar;
+    if (avatar.startsWith('/api/avatar/images/')) {
+      imageUrl = path.join(uploadDir, path.basename(avatar));
+    } else if (avatar.startsWith('/api/avatar/preset-img/')) {
+      imageUrl = path.join(presetsDir, path.basename(avatar));
+    }
+
+    // 记录任务
+    avatarTasks.set(taskId, { id: taskId, status: 'processing', created_at: new Date().toISOString(), text, user_id: req.user?.id });
+    res.json({ success: true, taskId });
+
+    // 异步生成
+    generateAvatarVideo({
+      imageUrl,
+      text: text || '',
+      voiceId: voiceId || '',
+      ratio: ratio || '9:16',
+      model: model || 'cogvideox-flash',
+      onProgress: (data) => {
+        const listeners = avatarSSE.get(taskId) || [];
+        listeners.forEach(r => { try { r.write(`data: ${JSON.stringify(data)}\n\n`); } catch {} });
+      }
+    }).then(result => {
+      avatarTasks.set(taskId, { ...avatarTasks.get(taskId), status: 'done', videoPath: result.videoPath, videoUrl: result.videoUrl });
+      const listeners = avatarSSE.get(taskId) || [];
+      listeners.forEach(r => { try { r.write(`data: ${JSON.stringify({ step: 'done', videoUrl: result.videoUrl })}\n\n`); } catch {} });
+    }).catch(err => {
+      console.error('[Avatar] 生成失败:', err.message);
+      avatarTasks.set(taskId, { ...avatarTasks.get(taskId), status: 'error', error: err.message });
+      const listeners = avatarSSE.get(taskId) || [];
+      listeners.forEach(r => { try { r.write(`data: ${JSON.stringify({ step: 'error', message: err.message })}\n\n`); } catch {} });
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// GET /api/avatar/tasks/:id/progress - SSE 进度
+router.get('/tasks/:id/progress', (req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+  res.write(`data: ${JSON.stringify({ step: 'connected' })}\n\n`);
+  const list = avatarSSE.get(req.params.id) || [];
+  avatarSSE.set(req.params.id, [...list, res]);
+  req.on('close', () => {
+    const updated = (avatarSSE.get(req.params.id) || []).filter(r => r !== res);
+    avatarSSE.set(req.params.id, updated);
+  });
+  // 如果任务已完成，立即发送结果
+  const task = avatarTasks.get(req.params.id);
+  if (task?.status === 'done') {
+    res.write(`data: ${JSON.stringify({ step: 'done', videoUrl: task.videoUrl })}\n\n`);
+  } else if (task?.status === 'error') {
+    res.write(`data: ${JSON.stringify({ step: 'error', message: task.error })}\n\n`);
+  }
+});
+
+// GET /api/avatar/tasks/:id/stream - 流式播放结果视频
+router.get('/tasks/:id/stream', (req, res) => {
+  const task = avatarTasks.get(req.params.id);
+  if (!task?.videoPath || !fs.existsSync(task.videoPath)) {
+    return res.status(404).json({ error: '视频不存在' });
+  }
+  const stat = fs.statSync(task.videoPath);
+  const range = req.headers.range;
+  if (range) {
+    const [s, e] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(s, 10);
+    const end = e ? parseInt(e, 10) : stat.size - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Content-Type': 'video/mp4'
+    });
+    fs.createReadStream(task.videoPath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': 'video/mp4' });
+    fs.createReadStream(task.videoPath).pipe(res);
+  }
+});
+
+// GET /api/avatar/tasks/:id/download - 下载结果视频
+router.get('/tasks/:id/download', (req, res) => {
+  const task = avatarTasks.get(req.params.id);
+  if (!task?.videoPath || !fs.existsSync(task.videoPath)) {
+    return res.status(404).json({ error: '视频不存在' });
+  }
+  res.download(task.videoPath, `avatar_${req.params.id.slice(0,8)}.mp4`);
 });
 
 // GET /api/avatar/tasks - 任务列表
 router.get('/tasks', (req, res) => {
-  res.json({ tasks: [] });
+  const tasks = [];
+  avatarTasks.forEach(t => {
+    if (!req.user || t.user_id === req.user.id || req.user.role === 'admin') {
+      tasks.push({ id: t.id, status: t.status, text: t.text, created_at: t.created_at, videoUrl: t.videoUrl });
+    }
+  });
+  tasks.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  res.json({ success: true, tasks });
 });
 
 // ═══════ 预设图片管理 ═══════
