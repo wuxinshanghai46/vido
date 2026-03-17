@@ -39,7 +39,7 @@ async function init() {
         if (sourceClip && !clips.find(cl => cl.scene_index === sid)) {
           clips.push({ ...sourceClip, scene_index: sid, _split_source: info.source_scene_index });
           const origScene = scenes[info.source_scene_index] || {};
-          scenes[sid] = { ...origScene, title: (origScene.title || '') + ' (B)' };
+          scenes[sid] = { ...origScene };
         }
       }
     }
@@ -726,70 +726,60 @@ function nextClip() {
   if (curIdx < order.length - 1) selectScene(order[curIdx + 1]);
 }
 
-// ——— 分割（在当前播放位置标记裁剪终点） ———
+// ——— 分割：在播放头位置把当前片段一刀切成两半 ———
 function splitClipAtPlayhead() {
   if (selectedSceneIndex === null) return;
   const video = document.getElementById('preview-video');
-  if (!video || !video.currentTime || video.currentTime < 0.3) return;
-
-  saveUndo();
+  if (!video || !video.duration) return;
 
   const sceneIdx = selectedSceneIndex;
   const clip = clips.find(c => c.scene_index === sceneIdx);
   if (!clip) return;
   const clipDur = clip.duration || 10;
-  const splitTime = Math.round(video.currentTime * 10) / 10;
 
-  // 获取当前裁剪范围
+  // video.currentTime 是相对于整个源视频的绝对时间
+  const splitAt = Math.round(video.currentTime * 10) / 10;
+
+  // 获取当前这个片段的裁剪范围
   if (!editData.scene_trims) editData.scene_trims = {};
-  const existTrim = editData.scene_trims[sceneIdx] || { start: 0, end: clipDur };
-  const trimStart = existTrim.start || 0;
-  const trimEnd = existTrim.end || clipDur;
+  const existTrim = editData.scene_trims[sceneIdx] || {};
+  const rangeStart = existTrim.start || 0;
+  const rangeEnd = existTrim.end || clipDur;
 
-  // 分割点必须在裁剪范围内
-  const absSplit = trimStart + splitTime;
-  if (absSplit <= trimStart + 0.2 || absSplit >= trimEnd - 0.2) return;
+  // 分割点必须在范围内（留至少0.3秒余量）
+  if (splitAt <= rangeStart + 0.3 || splitAt >= rangeEnd - 0.3) return;
 
-  // 为分割创建虚拟片段ID（scene_index + 偏移）
-  // 使用负数或大数来标识分割后的后半段
+  saveUndo();
+
+  // 生成后半段的虚拟 ID
   if (!editData.splits) editData.splits = {};
-  const splitId = sceneIdx + 10000 + Object.keys(editData.splits).length;
+  const splitId = 10000 + sceneIdx * 100 + Object.keys(editData.splits).length;
 
-  // 记录分割信息：splitId 对应 原始 sceneIdx + 裁剪范围
   editData.splits[splitId] = {
-    source_scene_index: sceneIdx,
+    source_scene_index: clip._split_source ?? sceneIdx,
     source_clip_id: clip.id
   };
 
-  // 前半段：原 sceneIdx，裁剪 start ~ absSplit
-  editData.scene_trims[sceneIdx] = { start: trimStart, end: absSplit };
+  // 前半段：rangeStart → splitAt
+  editData.scene_trims[sceneIdx] = { start: rangeStart, end: splitAt };
+  // 后半段：splitAt → rangeEnd
+  editData.scene_trims[splitId] = { start: splitAt, end: rangeEnd };
 
-  // 后半段：splitId，裁剪 absSplit ~ trimEnd
-  editData.scene_trims[splitId] = { start: absSplit, end: trimEnd };
-
-  // 在 scenes_order 中，在当前位置后插入 splitId
+  // 在 scenes_order 中紧跟当前位置后面插入
   if (!editData.scenes_order) editData.scenes_order = clips.map(c => c.scene_index);
   const pos = editData.scenes_order.indexOf(sceneIdx);
-  if (pos >= 0) {
-    editData.scenes_order.splice(pos + 1, 0, splitId);
-  }
+  if (pos >= 0) editData.scenes_order.splice(pos + 1, 0, splitId);
 
-  // 为 splitId 创建虚拟 clip 数据（复用原 clip）
-  clips.push({
-    ...clip,
-    scene_index: splitId,
-    _split_source: sceneIdx
-  });
+  // 复用原 clip 数据
+  clips.push({ ...clip, scene_index: splitId, _split_source: clip._split_source ?? sceneIdx });
 
-  // 创建虚拟 scene 数据
+  // 复用 scene 名称（不加后缀，看起来就是同一个被切开了）
   const origScene = scenes[sceneIdx] || {};
-  scenes[splitId] = {
-    ...origScene,
-    title: (origScene.title || `场景${sceneIdx+1}`) + ' (B)'
-  };
+  scenes[splitId] = { ...origScene };
 
   renderTimeline();
-  selectScene(splitId);
+  // 选中前半段，保持播放头在分割点
+  selectScene(sceneIdx);
   scheduleSave();
 }
 
