@@ -59,6 +59,16 @@ router.post('/generate', async (req, res) => {
       imageUrl = path.join(uploadDir, path.basename(avatar));
     } else if (avatar.startsWith('/api/avatar/preset-img/')) {
       imageUrl = path.join(presetsDir, path.basename(avatar));
+    } else if (PRESET_AVATARS[avatar]) {
+      // 预设 ID（如 "female-1"），查找已生成的预设图片
+      const presetFiles = fs.readdirSync(presetsDir).filter(f => f.startsWith(`avatar_${avatar}.`));
+      if (presetFiles.length > 0) {
+        imageUrl = path.join(presetsDir, presetFiles[0]);
+      } else {
+        return res.status(400).json({ success: false, error: `预设形象 "${avatar}" 的图片尚未生成，请先在设置中生成预设图片` });
+      }
+    } else if (!avatar.startsWith('http') && !fs.existsSync(avatar)) {
+      return res.status(400).json({ success: false, error: '无效的形象图片: ' + avatar });
     }
 
     // 记录任务

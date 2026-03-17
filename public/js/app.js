@@ -4822,7 +4822,8 @@ async function startAvatarGeneration() {
       body: JSON.stringify({ avatar, text, voiceId: selectedVoiceId || '', ratio, model })
     });
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || '生成失败');
+    console.log('[Avatar] generate response:', data);
+    if (!data.success) throw new Error(data.error || data.message || '生成失败，请检查控制台');
 
     const taskId = data.taskId;
 
