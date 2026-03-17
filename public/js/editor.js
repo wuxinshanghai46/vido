@@ -738,26 +738,39 @@ function nextClip() {
 
 // ——— 分割：在播放头位置把当前片段一刀切成两半 ———
 function splitClipAtPlayhead() {
-  if (selectedSceneIndex === null) return;
-  const video = document.getElementById('preview-video');
-  if (!video || !video.duration) return;
+  // 必须先选中一个视频轨片段
+  if (selectedSceneIndex === null) {
+    alert('请先点击视频轨(V)上的片段，再点分割');
+    return;
+  }
 
   const sceneIdx = selectedSceneIndex;
   const clip = clips.find(c => c.scene_index === sceneIdx);
   if (!clip) return;
   const clipDur = clip.duration || 10;
 
-  // video.currentTime 是相对于整个源视频的绝对时间
-  const splitAt = Math.round(video.currentTime * 10) / 10;
-
   // 获取当前这个片段的裁剪范围
   if (!editData.scene_trims) editData.scene_trims = {};
   const existTrim = editData.scene_trims[sceneIdx] || {};
   const rangeStart = existTrim.start || 0;
   const rangeEnd = existTrim.end || clipDur;
+  const effectiveDur = rangeEnd - rangeStart;
 
-  // 分割点必须在范围内（留至少0.3秒余量）
-  if (splitAt <= rangeStart + 0.3 || splitAt >= rangeEnd - 0.3) return;
+  // 用视频当前播放时间作为分割点
+  const video = document.getElementById('preview-video');
+  let splitAt;
+  if (video && video.currentTime > 0.1) {
+    splitAt = Math.round(video.currentTime * 10) / 10;
+  } else {
+    // 如果视频没在播放或在开头，默认从中间切
+    splitAt = Math.round((rangeStart + effectiveDur / 2) * 10) / 10;
+  }
+
+  // 分割点必须在范围内
+  if (splitAt <= rangeStart + 0.1 || splitAt >= rangeEnd - 0.1) {
+    // 范围外则强制中间切
+    splitAt = Math.round((rangeStart + effectiveDur / 2) * 10) / 10;
+  }
 
   saveUndo();
 
