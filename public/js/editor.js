@@ -123,6 +123,8 @@ function renderTimeline() {
   renderMusicTrack();
   // 渲染配音轨
   renderVoiceTrack();
+  // 应用缩放
+  applyZoom();
 }
 
 function renderAudioTrack() {
@@ -764,57 +766,78 @@ function undoAction() {
 
 // ——— 时间轴缩放 ———
 function zoomTimeline(dir) {
-  timelineZoom = Math.max(50, Math.min(300, timelineZoom + dir * 25));
+  timelineZoom = Math.max(50, Math.min(400, timelineZoom + dir * 25));
   const el = document.getElementById('tb-zoom-level');
   if (el) el.textContent = timelineZoom + '%';
-  const track = document.getElementById('timeline');
-  if (track) track.style.minWidth = timelineZoom + '%';
+  applyZoom();
 }
 
-// ——— 时间轴拖拽平移 + 滚轮缩放 ———
+function applyZoom() {
+  // 所有 track 和标尺都设置 min-width
+  const w = timelineZoom + '%';
+  document.querySelectorAll('.ed-tl-track').forEach(t => t.style.minWidth = w);
+  const ruler = document.getElementById('tl-ruler');
+  if (ruler) ruler.style.minWidth = timelineZoom + '%';
+  // 更新滚动条
+  const inner = document.getElementById('tl-scrollbar-inner');
+  const scrollbar = document.getElementById('tl-scrollbar');
+  if (inner && scrollbar) {
+    inner.style.width = (scrollbar.clientWidth * timelineZoom / 100) + 'px';
+  }
+}
+
+// ——— 时间轴拖拽平移 + 滚轮缩放 + 滚动条同步 ———
+let tlScrollLeft = 0;
+
+function syncAllScroll(scrollLeft) {
+  tlScrollLeft = scrollLeft;
+  const wrap = document.getElementById('tl-tracks-wrap');
+  const ruler = document.getElementById('tl-ruler');
+  const scrollbar = document.getElementById('tl-scrollbar');
+  // 同步所有轨道内的 track
+  if (wrap) wrap.querySelectorAll('.ed-tl-track').forEach(t => t.scrollLeft = scrollLeft);
+  if (ruler) ruler.scrollLeft = scrollLeft;
+  if (scrollbar && Math.abs(scrollbar.scrollLeft - scrollLeft) > 1) scrollbar.scrollLeft = scrollLeft;
+}
+
 function initTimelinePan() {
   const wrap = document.getElementById('tl-tracks-wrap');
   const ruler = document.getElementById('tl-ruler');
+  const scrollbar = document.getElementById('tl-scrollbar');
   if (!wrap) return;
   let isPanning = false, startX = 0, startScroll = 0;
 
+  // 拖拽平移
   wrap.addEventListener('mousedown', (e) => {
-    // 不拦截片段点击和裁剪手柄
     if (e.target.closest('.ed-clip') || e.target.closest('.ed-clip-trim') || e.target.closest('.ed-orig-audio') || e.target.closest('.ed-voice-block') || e.target.closest('.ed-audio-block')) return;
     isPanning = true;
     startX = e.clientX;
-    startScroll = wrap.scrollLeft;
+    startScroll = tlScrollLeft;
     wrap.classList.add('dragging');
     e.preventDefault();
   });
   document.addEventListener('mousemove', (e) => {
     if (!isPanning) return;
-    const dx = e.clientX - startX;
-    wrap.scrollLeft = startScroll - dx;
-    // 同步标尺滚动
-    if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+    syncAllScroll(startScroll - (e.clientX - startX));
   });
   document.addEventListener('mouseup', () => {
     if (isPanning) { isPanning = false; wrap.classList.remove('dragging'); }
   });
 
-  // 滚轮：Ctrl+滚轮缩放，普通滚轮左右平移
+  // 滚轮
   wrap.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
-      // 缩放
       zoomTimeline(e.deltaY < 0 ? 1 : -1);
     } else {
-      // 水平平移
-      wrap.scrollLeft += e.deltaY || e.deltaX;
-      if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+      syncAllScroll(tlScrollLeft + (e.deltaY || e.deltaX));
     }
   }, { passive: false });
 
-  // 同步标尺和轨道滚动
-  wrap.addEventListener('scroll', () => {
-    if (ruler) ruler.scrollLeft = wrap.scrollLeft;
-  });
+  // 底部滚动条
+  if (scrollbar) {
+    scrollbar.addEventListener('scroll', () => syncAllScroll(scrollbar.scrollLeft));
+  }
 }
 
 // ——— 键盘快捷键 ———
