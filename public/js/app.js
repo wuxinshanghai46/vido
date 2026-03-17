@@ -24,6 +24,10 @@ let selectedVoiceId = null;
 let allVoices = [];
 let voiceFilter = 'all';
 let voiceSpeed = 1.0;
+let subtitleEnabled = true;
+let subtitleSize = 32;
+let subtitlePosition = 'bottom';
+let subtitleColor = 'white';
 let selectedVideoProvider = null;
 let selectedVideoModelId = null;
 let videoModelsCache = null;
@@ -388,12 +392,21 @@ function toggleVoice(enabled) {
   document.getElementById('voice-options').style.display = enabled ? 'block' : 'none';
   document.getElementById('voice-off-hint').style.display = enabled ? 'none' : 'block';
   if (enabled && allVoices.length === 0) loadVoices();
-  // 显示/隐藏场景配音字段
-  const vf = document.getElementById('srp-voice-field');
-  if (vf) vf.style.display = enabled ? '' : 'none';
   // 配音轨道标签
   const vlbl = document.getElementById('tl-voice-lbl');
   if (vlbl) vlbl.classList.toggle('has-voice', enabled);
+}
+
+function toggleSubtitle(enabled) {
+  subtitleEnabled = enabled;
+  document.getElementById('subtitle-options').style.display = enabled ? '' : 'none';
+  document.getElementById('subtitle-off-hint').style.display = enabled ? 'none' : '';
+}
+
+function pickSubColor(btn, color) {
+  subtitleColor = color;
+  document.querySelectorAll('.sub-color-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
 }
 
 function switchVoiceGender(gender) {
@@ -601,10 +614,10 @@ function renderScenes() {
         ${s.imageUrl ? `<img class="sto-li-thumb" src="${esc(s.imageUrl)}" />` : ''}
         <div class="sto-li-desc">${esc(buildSceneDesc(s))}</div>
       </div>
-      ${voiceEnabled ? `<div class="sto-li-dialogue" onclick="event.stopPropagation();selectScene(${s.id});switchStudioTab('scene')">
-        <span class="sto-li-dialogue-icon">🎙</span>
-        <span class="sto-li-dialogue-text">${s.dialogue ? esc(s.dialogue.slice(0,30)) + (s.dialogue.length>30?'...':'') : '<em>点击编辑配音</em>'}</span>
-      </div>` : ''}
+      <div class="sto-li-dialogue" onclick="event.stopPropagation();selectScene(${s.id});switchStudioTab('scene')">
+        <span class="sto-li-dialogue-icon">CC</span>
+        <span class="sto-li-dialogue-text">${s.dialogue ? esc(s.dialogue.slice(0,30)) + (s.dialogue.length>30?'...':'') : '<em>点击编辑字幕</em>'}</span>
+      </div>
     </div>`;
   }).join('');
   updateDurationHint();
@@ -726,11 +739,9 @@ function selectScene(id) {
   setSelectVal('srp-scene-cat', s.category || '室外');
   setSelectVal('srp-scene-time', s.timeOfDay || '白天');
   document.getElementById('srp-scene-desc').value = s.description || '';
-  // 配音台词
+  // 字幕/配音文本
   const dialogueEl = document.getElementById('srp-scene-dialogue');
   if (dialogueEl) dialogueEl.value = s.dialogue || '';
-  const vf = document.getElementById('srp-voice-field');
-  if (vf) vf.style.display = voiceEnabled ? '' : 'none';
   // Scene preview image
   const preview = document.getElementById('srp-scene-preview');
   if (preview) {
@@ -2280,14 +2291,67 @@ async function detectSlang(text) {
 }
 
 // ═══ AI 智能创作（快速填词） ═══
-function quickAIStory() {
+async function quickAIStory() {
   const ta = document.getElementById('input-theme');
-  if (!ta.value.trim()) {
+  const theme = ta.value.trim();
+  if (!theme) {
     ta.placeholder = '请先输入内容描述，再点击智能创作...';
     ta.focus();
     setTimeout(() => { ta.placeholder = '描述你想要的视频内容，越详细效果越好...'; }, 3000);
+    return;
   }
-  // 实际生成在 startGeneration 中完成，这里只是 UX 提示
+  const btn = document.querySelector('.btn-ai-create');
+  btn.disabled = true; btn.innerHTML = '<span class="ai-dot spinning"></span> 生成中...';
+  try {
+    const res = await authFetch('/api/story/parse-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: theme, genre: 'drama', duration: 60 })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    // 填充角色
+    characters = []; charIdCounter = 0;
+    (data.data.characters || []).forEach(c => {
+      characters.push({
+        id: ++charIdCounter, name: c.name || '', role: c.role || 'main',
+        charType: c.charType || 'human', description: c.description || '',
+        imageUrl: '', theme: c.theme || '古代', gender: c.gender || 'female',
+        race: c.race || '人', age: c.age || '青年', species: '', subCategory: '', checked: false
+      });
+    });
+    renderCharacters();
+
+    // 填充场景
+    customScenes = []; sceneIdCounter = 0;
+    (data.data.custom_scenes || []).forEach(s => {
+      customScenes.push({
+        id: ++sceneIdCounter, title: s.title || '', location: s.location || '',
+        description: s.description || '', dialogue: s.dialogue || '',
+        mood: s.mood || '', theme: '魔幻', category: '室外', timeOfDay: '白天',
+        dim: '2d', imageUrl: null, video_provider: '', video_model: '',
+        duration: s.duration || 10, checked: false
+      });
+    });
+    renderScenes();
+    renderTimeline();
+    updateDurationHint();
+
+    // 更新 tab 指示器
+    const charDot = document.getElementById('snav-char-dot');
+    const sceneDot = document.getElementById('snav-scene-dot');
+    if (charDot && characters.length) charDot.style.display = '';
+    if (sceneDot && customScenes.length) sceneDot.style.display = '';
+
+    showToast(`智能创作完成：${characters.length} 个角色 + ${customScenes.length} 个场景`, 'ok');
+    if (customScenes.length) switchStudioTab('scene');
+    detectActionContent(theme);
+  } catch (e) {
+    showToast('智能创作失败: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<span class="ai-dot"></span> 智能创作';
+  }
 }
 
 // ═══ 剧本解析 ═══
@@ -2870,6 +2934,10 @@ async function _doGenerate(skip) {
         voice_gender: voiceGender,
         voice_id: selectedVoiceId,
         voice_speed: voiceEnabled ? parseFloat(document.getElementById('voice-speed-input').value) : 1.0,
+        subtitle_enabled: subtitleEnabled,
+        subtitle_size: subtitleSize,
+        subtitle_position: subtitlePosition,
+        subtitle_color: subtitleColor,
         video_provider: selectedVideoProvider,
         video_model: selectedVideoModelId,
         // 长篇模式参数
@@ -3310,45 +3378,77 @@ function closeLightbox(e) {
 }
 
 // ═══ 项目列表 ═══
+let allProjectsCache = [];
+let projectFilter = 'all';
+
+function filterProjects(filter, btn) {
+  projectFilter = filter;
+  document.querySelectorAll('.proj-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderProjectGrid(allProjectsCache);
+}
+
+function isRunning(status) {
+  return ['pending','generating_story','generating_videos','merging'].includes(status);
+}
+
+function renderProjectGrid(projects) {
+  const grid = document.getElementById('projects-grid');
+  let list = projects;
+  if (projectFilter === 'running') list = projects.filter(p => isRunning(p.status));
+  else if (projectFilter === 'done') list = projects.filter(p => p.status === 'done');
+  else if (projectFilter === 'error') list = projects.filter(p => p.status === 'error' || p.status === 'cancelled');
+
+  if (!list.length) {
+    const msg = projectFilter === 'all' ? '还没有项目' : '没有符合条件的项目';
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-title">${msg}</div></div>`;
+    return;
+  }
+
+  const sl = { pending:'等待中', done:'已完成', error:'失败', cancelled:'已取消', generating_story:'生成剧情', generating_videos:'生成视频', merging:'合成中' };
+
+  grid.innerHTML = list.map(p => {
+    const isDone = p.status === 'done';
+    const isErr = p.status === 'error' || p.status === 'cancelled';
+    const statusCls = isDone ? 'pc-done' : isErr ? 'pc-error' : 'pc-running';
+    return `
+    <div class="project-card ${statusCls}" onclick="viewProject('${p.id}')">
+      <div class="pc-thumb">🎬</div>
+      <div class="pc-body">
+        <div class="pc-title">${esc(p.title)}</div>
+        <div class="pc-theme">${esc(p.theme||'')}</div>
+        <div class="pc-meta">
+          <span class="pc-status">${sl[p.status]||p.status}</span>
+          <span class="pc-date">${fmt(p.created_at)}</span>
+        </div>
+      </div>
+      <div class="pc-actions" onclick="event.stopPropagation()">
+        ${isDone ? `
+          <button class="pca-btn pca-play" onclick="openPreview('${p.id}','${esc(p.title)}')">▶</button>
+          <a class="pca-btn pca-dl" href="${authUrl('/api/projects/'+p.id+'/download')}">⬇</a>
+          <button class="pca-btn pca-pub" onclick="openPublishModal('${p.id}')">发布</button>
+          <a class="pca-btn pca-edit" href="/editor.html?id=${p.id}">剪辑</a>
+          <button class="pca-btn pca-del" onclick="deleteProject('${p.id}')">删除</button>
+        ` : isErr ? `
+          <button class="pca-btn pca-del" onclick="deleteProject('${p.id}')">删除</button>
+        ` : `
+          <span class="pca-progress-dot"></span>
+        `}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function loadProjects() {
   const grid = document.getElementById('projects-grid');
   grid.innerHTML = '<div class="loading-placeholder">加载中...</div>';
   try {
     const res = await authFetch('/api/projects'); const data = await res.json();
-    if (!data.success || !data.data.length) {
-      grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-title">还没有项目</div><div class="empty-sub">去创作你的第一个 AI 视频吧</div></div>';
-      return;
-    }
+    if (!data.success) throw new Error(data.error || '加载失败');
+    allProjectsCache = data.data || [];
     const badge = document.getElementById('project-count');
-    if (badge) { badge.textContent = data.data.length; badge.style.display = ''; }
-    const sc = { pending:'s-pending', done:'s-done', error:'s-error', generating_story:'s-running', generating_videos:'s-running', merging:'s-running' };
-    const sl = { pending:'等待中', done:'已完成', error:'出错', generating_story:'生成剧情', generating_videos:'生成视频', merging:'合成中' };
-    grid.innerHTML = data.data.map(p => `
-      <div class="project-card" onclick="viewProject('${p.id}')" style="cursor:pointer">
-        <div class="project-thumb">🎬</div>
-        <div class="project-title">${esc(p.title)}</div>
-        <div class="project-theme">${esc(p.theme)}</div>
-        <div class="project-meta">
-          <span class="project-status ${sc[p.status]||'s-pending'}">${sl[p.status]||p.status}</span>
-          <span class="project-date">${fmt(p.created_at)}</span>
-        </div>
-        ${p.status==='done' ? `
-        <div class="project-actions-grid" onclick="event.stopPropagation()">
-          <button class="pa-btn pa-primary" onclick="openPreview('${p.id}','${esc(p.title)}')">▶ 预览</button>
-          <button class="pa-btn pa-publish" onclick="openPublishModal('${p.id}')">📤 发布</button>
-          <a class="pa-btn pa-secondary" href="${authUrl('/api/projects/'+p.id+'/download')}">⬇ 下载</a>
-          <button class="pa-btn pa-secondary" onclick="viewProject('${p.id}')">🔄 再编辑</button>
-          <a class="pa-btn pa-secondary" href="/editor.html?id=${p.id}">✂ 剪辑</a>
-          <button class="pa-btn pa-danger" onclick="deleteProject('${p.id}')">🗑 删除</button>
-        </div>` : p.status==='error' ? `
-        <div class="project-actions-grid" onclick="event.stopPropagation()">
-          <button class="pa-btn pa-secondary" onclick="viewProject('${p.id}')">查看详情</button>
-          <button class="pa-btn pa-danger" onclick="deleteProject('${p.id}')">🗑 删除</button>
-        </div>` : `
-        <div class="project-actions-grid" onclick="event.stopPropagation()">
-          <button class="pa-btn pa-secondary" style="grid-column:1/-1" onclick="viewProject('${p.id}')">查看进度</button>
-        </div>`}
-      </div>`).join('');
+    if (badge) { badge.textContent = allProjectsCache.length; badge.style.display = allProjectsCache.length ? '' : 'none'; }
+    renderProjectGrid(allProjectsCache);
   } catch(err) {
     grid.innerHTML = '<div class="empty-state"><div class="empty-title">加载失败：'+esc(err.message)+'</div></div>';
   }
@@ -3488,6 +3588,25 @@ function restoreProjectToStudio(p) {
       selectedVoiceId = p.voice_id;
     }
     voiceGender = p.voice_gender || 'female';
+  }
+
+  // 恢复字幕设置
+  subtitleEnabled = p.subtitle_enabled !== false;
+  document.getElementById('subtitle-enabled').checked = subtitleEnabled;
+  toggleSubtitle(subtitleEnabled);
+  if (p.subtitle_size) {
+    subtitleSize = p.subtitle_size;
+    document.getElementById('subtitle-size').value = String(p.subtitle_size);
+  }
+  if (p.subtitle_position) {
+    subtitlePosition = p.subtitle_position;
+    document.getElementById('subtitle-position').value = p.subtitle_position;
+  }
+  if (p.subtitle_color) {
+    subtitleColor = p.subtitle_color;
+    document.querySelectorAll('.sub-color-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.color === p.subtitle_color);
+    });
   }
 
   // 恢复音乐
@@ -6378,10 +6497,7 @@ let pubPlatforms = [];
 let socialLoginPlatform = null;
 
 const PLAT_ICONS = {
-  weishi: '微',
-  douyin: '抖',
-  xiaohongshu: '红',
-  kuaishou: '快'
+  xiaohongshu: '红'
 };
 
 async function openPublishModal(projectId) {

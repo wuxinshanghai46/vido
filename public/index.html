@@ -322,57 +322,12 @@
       </div>
     </div>
 
-    <!-- Step 1.5: 负面提示词 + 运动控制 -->
-    <div class="stp-step stp-step-compact" style="padding-bottom:4px">
-      <div class="stp-neg-section">
-        <div class="stp-neg-toggle" onclick="toggleNegPrompt()">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.1"/><path d="M4 6h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-          <span>负面提示词</span>
-          <svg width="8" height="5" viewBox="0 0 8 5" style="margin-left:auto;opacity:.4"><path d="M1 1l3 3 3-3" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-        </div>
-        <div id="neg-prompt-wrap" style="display:none">
-          <textarea class="stp-neg-ta" id="neg-prompt-input" rows="2" placeholder="不希望出现的元素：模糊、低质量、变形、水印..." oninput="negativePrompt=this.value"></textarea>
-        </div>
-      </div>
-      <div style="margin-top:8px">
-        <div class="stp-label" style="margin-bottom:5px">镜头运动</div>
-        <div class="motion-presets">
-          <button class="motion-preset" onclick="setCameraMotion('push',this)">推</button>
-          <button class="motion-preset" onclick="setCameraMotion('pull',this)">拉</button>
-          <button class="motion-preset" onclick="setCameraMotion('pan_left',this)">左摇</button>
-          <button class="motion-preset" onclick="setCameraMotion('pan_right',this)">右摇</button>
-          <button class="motion-preset" onclick="setCameraMotion('tilt_up',this)">上移</button>
-          <button class="motion-preset" onclick="setCameraMotion('tilt_down',this)">下移</button>
-          <button class="motion-preset" onclick="setCameraMotion('orbit',this)">环绕</button>
-          <button class="motion-preset" onclick="setCameraMotion('zoom_in',this)">变焦推</button>
-          <button class="motion-preset" onclick="setCameraMotion('handheld',this)">手持</button>
-        </div>
-      </div>
-      <div style="margin-top:8px">
-        <div class="motion-intensity">
-          <span class="motion-intensity-label">运动强度</span>
-          <input type="range" min="1" max="10" value="5" style="flex:1" oninput="updateMotionIntensity(this.value)" />
-          <span class="motion-intensity-val" id="motion-intensity-val">5</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 2: 画面风格（2D/3D + 风格 合并） -->
+    <!-- Step 2: 画面风格 -->
     <div class="stp-step">
       <div class="stp-step-hd"><span class="stp-step-num">2</span><span class="stp-step-name">画面风格</span></div>
       <div class="stp-inline-row">
         <div class="ctype-mini active" id="ctype-2d" onclick="switchContentType('2d')">🎨 2D</div>
         <div class="ctype-mini" id="ctype-3d" onclick="switchContentType('3d')">🌐 3D</div>
-        <div class="stp-inline-sep"></div>
-        <div class="size-btn active" id="size-169" onclick="switchAspect('16:9')">
-          <svg width="13" height="9" viewBox="0 0 13 9"><rect x=".5" y=".5" width="12" height="8" rx="1" stroke="currentColor" fill="none"/></svg>16:9
-        </div>
-        <div class="size-btn" id="size-916" onclick="switchAspect('9:16')">
-          <svg width="9" height="13" viewBox="0 0 9 13"><rect x=".5" y=".5" width="8" height="12" rx="1" stroke="currentColor" fill="none"/></svg>9:16
-        </div>
-        <div class="size-btn" id="size-11" onclick="switchAspect('1:1')">
-          <svg width="9" height="9" viewBox="0 0 9 9"><rect x=".5" y=".5" width="8" height="8" rx="1" stroke="currentColor" fill="none"/></svg>1:1
-        </div>
       </div>
       <!-- 隐藏的精细维度控制 -->
       <div class="render-dim-wrap" style="display:none">
@@ -396,9 +351,25 @@
       <div class="style-grid" id="style-grid" style="margin-top:8px"></div>
     </div>
 
-    <!-- Step 3: 时长 + 模型（合并为一行） -->
+    <!-- Step 3: 屏幕比例 -->
     <div class="stp-step">
-      <div class="stp-step-hd"><span class="stp-step-num">3</span><span class="stp-step-name">视频时长</span><span class="stp-step-auto" id="dur-auto-hint" style="display:none"></span></div>
+      <div class="stp-step-hd"><span class="stp-step-num">3</span><span class="stp-step-name">屏幕比例</span></div>
+      <div class="stp-inline-row">
+        <div class="size-btn active" id="size-169" onclick="switchAspect('16:9')">
+          <svg width="13" height="9" viewBox="0 0 13 9"><rect x=".5" y=".5" width="12" height="8" rx="1" stroke="currentColor" fill="none"/></svg>16:9
+        </div>
+        <div class="size-btn" id="size-916" onclick="switchAspect('9:16')">
+          <svg width="9" height="13" viewBox="0 0 9 13"><rect x=".5" y=".5" width="8" height="12" rx="1" stroke="currentColor" fill="none"/></svg>9:16
+        </div>
+        <div class="size-btn" id="size-11" onclick="switchAspect('1:1')">
+          <svg width="9" height="9" viewBox="0 0 9 9"><rect x=".5" y=".5" width="8" height="8" rx="1" stroke="currentColor" fill="none"/></svg>1:1
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: 时长 -->
+    <div class="stp-step">
+      <div class="stp-step-hd"><span class="stp-step-num">4</span><span class="stp-step-name">视频时长</span><span class="stp-step-auto" id="dur-auto-hint" style="display:none"></span></div>
       <div class="dur-row">
         <button class="dur-btn" onclick="setDuration(15,this)">15秒</button>
         <button class="dur-btn" onclick="setDuration(30,this)">30秒</button>
@@ -415,10 +386,10 @@
       </div>
     </div>
 
-    <!-- Step 4: 视频模型（可选，自动选择） -->
+    <!-- Step 5: 视频模型（可选，自动选择） -->
     <div class="stp-step" id="step-vm">
       <div class="stp-step-hd">
-        <span class="stp-step-num">4</span>
+        <span class="stp-step-num">5</span>
         <span class="stp-step-name">视频模型</span>
         <span class="stp-step-auto" style="color:var(--text3)">不选则自动</span>
         <span class="stp-step-auto vm-status" id="vm-status"></span>
@@ -429,7 +400,7 @@
       <div class="vm-validation" id="vm-validation" style="display:none">请选择一个视频模型</div>
     </div>
 
-    <!-- Step 5: 配音与音乐 -->
+    <!-- Step 6: 配音与音乐 -->
     <div class="stp-step">
       <div class="stp-step-hd"><span class="stp-step-num">5</span><span class="stp-step-name">配音与音乐</span></div>
 
@@ -469,6 +440,45 @@
           </div>
         </div>
         <div id="voice-off-hint" class="voice-hint-txt" style="margin-top:4px">开启后自动为场景对白配音</div>
+      </div>
+
+      <!-- 字幕设置 -->
+      <div class="audio-section" style="margin-top:12px">
+        <div class="audio-sec-head">
+          <span class="audio-sec-icon">CC</span>
+          <span class="audio-sec-title">字幕</span>
+          <label class="voice-switch">
+            <input type="checkbox" id="subtitle-enabled" checked onchange="toggleSubtitle(this.checked)" />
+            <span class="voice-switch-track"><span class="voice-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div id="subtitle-options" style="margin-top:8px">
+          <div class="sub-opt-row">
+            <label class="sub-opt-label">字号</label>
+            <select class="sub-opt-select" id="subtitle-size" onchange="subtitleSize=+this.value">
+              <option value="24">小</option>
+              <option value="32" selected>中</option>
+              <option value="42">大</option>
+            </select>
+          </div>
+          <div class="sub-opt-row">
+            <label class="sub-opt-label">位置</label>
+            <select class="sub-opt-select" id="subtitle-position" onchange="subtitlePosition=this.value">
+              <option value="bottom" selected>底部</option>
+              <option value="center">居中</option>
+              <option value="top">顶部</option>
+            </select>
+          </div>
+          <div class="sub-opt-row">
+            <label class="sub-opt-label">颜色</label>
+            <div class="sub-color-group">
+              <button class="sub-color-btn active" data-color="white" onclick="pickSubColor(this,'white')" style="background:#fff"></button>
+              <button class="sub-color-btn" data-color="yellow" onclick="pickSubColor(this,'yellow')" style="background:#FFF600"></button>
+              <button class="sub-color-btn" data-color="#21FFF3" onclick="pickSubColor(this,'#21FFF3')" style="background:#21FFF3"></button>
+            </div>
+          </div>
+        </div>
+        <div id="subtitle-off-hint" class="voice-hint-txt" style="margin-top:4px;display:none">关闭后视频不嵌入字幕</div>
       </div>
 
       <!-- 背景音乐 -->
@@ -1137,13 +1147,13 @@
                       <div class="srp-fl">场景描述</div>
                       <textarea class="srp-ta" id="srp-scene-desc" rows="5" placeholder="地理环境、光影效果、细节元素..." oninput="syncSceneProp('description',this.value)"></textarea>
                     </div>
-                    <div class="srp-field srp-voice-field" id="srp-voice-field" style="width:100%;display:none">
+                    <div class="srp-field" id="srp-voice-field" style="width:100%">
                       <div class="srp-fl">
-                        <span>🎙 配音台词</span>
-                        <button class="srp-voice-gen-btn" onclick="aiGenerateDialogue()" title="AI 生成台词">AI 生成</button>
+                        <span>CC 字幕 / 配音文本</span>
+                        <button class="srp-voice-gen-btn" onclick="aiGenerateDialogue()" title="AI 生成文本">AI 生成</button>
                       </div>
-                      <textarea class="srp-ta" id="srp-scene-dialogue" rows="3" placeholder="此场景的旁白或对白内容，留空则该场景不配音" oninput="syncSceneProp('dialogue',this.value)"></textarea>
-                      <div class="srp-voice-hint">开启语音配音后，此内容将被合成为语音叠加到视频中</div>
+                      <textarea class="srp-ta" id="srp-scene-dialogue" rows="3" placeholder="此场景的字幕文字（同时用于语音配音），留空则无字幕" oninput="syncSceneProp('dialogue',this.value)"></textarea>
+                      <div class="srp-voice-hint" id="srp-dialogue-hint">此文本将作为字幕烧录到视频中，开启配音后同时合成为语音</div>
                     </div>
                     <div class="srp-field" style="width:100%">
                       <div class="srp-match-row">
@@ -1543,6 +1553,12 @@
           <div class="page-top-bar">
             <div class="page-top-title">我的项目</div>
             <button class="btn-new-project" onclick="switchPage('create')">＋ 新建项目</button>
+          </div>
+          <div class="proj-filter-bar">
+            <button class="proj-filter-btn active" data-filter="all" onclick="filterProjects('all',this)">全部</button>
+            <button class="proj-filter-btn" data-filter="running" onclick="filterProjects('running',this)">生成中</button>
+            <button class="proj-filter-btn" data-filter="done" onclick="filterProjects('done',this)">已完成</button>
+            <button class="proj-filter-btn" data-filter="error" onclick="filterProjects('error',this)">失败</button>
           </div>
           <div class="projects-grid" id="projects-grid">
             <div class="loading-placeholder">加载中...</div>

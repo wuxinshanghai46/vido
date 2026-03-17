@@ -8,171 +8,174 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/editor.css" />
 </head>
-<body style="background:#0D0E12;color:#FBFBFB;font-family:'Inter',-apple-system,sans-serif">
-  <div id="app">
-    <header class="header" style="background:rgba(13,14,18,.9);border-bottom:1px solid rgba(251,251,251,.08);position:sticky;top:0;z-index:200;backdrop-filter:blur(20px)">
-      <div style="max-width:1200px;margin:0 auto;padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:12px">
-          <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:8px">
-            <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(102deg,#CBFFF8,#21FFF3 46%,#FFF600);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#000">V</div>
-            <span style="font-size:17px;font-weight:800;background:linear-gradient(98deg,#CBFFF8 6%,#21FFF3 36%,#FFF600 98%);-webkit-background-clip:text;-webkit-text-fill-color:transparent">VIDO</span>
-          </a>
-          <span style="color:rgba(251,251,251,.3);font-size:13px">/</span>
-          <span style="font-size:13px;color:rgba(251,251,251,.6)" id="editor-project-title">编辑器</span>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <span id="save-status" class="save-status"></span>
-          <button class="btn-primary" id="btn-render" onclick="startRender()">
-            ⚡ 渲染导出
-          </button>
-        </div>
+<body style="background:#0D0E12;color:#FBFBFB;font-family:'Inter',-apple-system,sans-serif;margin:0;overflow:hidden">
+  <div id="app" style="display:flex;flex-direction:column;height:100vh">
+    <!-- 顶栏 -->
+    <header class="ed-header">
+      <div class="ed-header-left">
+        <a href="/" class="ed-logo">
+          <div class="ed-logo-icon">V</div>
+          <span class="ed-logo-text">VIDO</span>
+        </a>
+        <span class="ed-sep">/</span>
+        <span class="ed-proj-name" id="editor-project-title">编辑器</span>
+      </div>
+      <div class="ed-header-right">
+        <span id="save-status" class="save-status"></span>
+        <button class="ed-btn-render" id="btn-render" onclick="startRender()">渲染导出</button>
       </div>
     </header>
 
-    <div class="editor-layout">
-      <!-- 左侧：场景轨道 -->
-      <div class="editor-left">
-        <div class="panel-title">
-          <span>场景轨道</span>
-          <span class="panel-hint">拖拽排序 / 点击编辑</span>
-        </div>
-        <div id="timeline" class="timeline"></div>
-      </div>
-
-      <!-- 右侧：属性面板 -->
-      <div class="editor-right">
-        <!-- 音乐面板 -->
-        <div class="panel">
-          <div class="panel-title">背景音乐</div>
-          <div id="music-panel">
-            <div id="music-empty" class="music-empty">
-              <label class="upload-btn" for="music-upload">
-                <input type="file" id="music-upload" accept="audio/*" onchange="uploadMusic(this)" style="display:none" />
-                + 上传音乐（MP3/WAV）
-              </label>
+    <!-- 主体 -->
+    <div class="ed-main">
+      <!-- 左：预览 + 右属性面板 -->
+      <div class="ed-workspace">
+        <!-- 视频预览区 -->
+        <div class="ed-preview">
+          <div class="ed-player-wrap">
+            <video id="preview-video" class="ed-player" preload="metadata" playsinline>
+              <source id="preview-video-src" src="" type="video/mp4" />
+            </video>
+            <div class="ed-player-overlay" id="player-overlay" onclick="togglePlay()">
+              <div class="ed-play-btn" id="play-btn-icon">▶</div>
             </div>
-            <div id="music-loaded" style="display:none">
-              <div class="music-info">
-                <span class="music-icon">♫</span>
-                <span id="music-name" class="music-name"></span>
-                <button class="icon-btn" onclick="removeMusic()" title="删除">✕</button>
-              </div>
+          </div>
+          <div class="ed-player-controls">
+            <button class="ed-ctrl-btn" onclick="togglePlay()" id="ctrl-play">▶</button>
+            <span class="ed-time" id="player-time">0:00 / 0:00</span>
+            <div class="ed-progress-bar" id="progress-bar" onclick="seekTo(event)">
+              <div class="ed-progress-fill" id="progress-fill"></div>
+            </div>
+          </div>
+        </div>
 
-              <!-- Music trim timeline -->
-              <div class="music-timeline-wrap" style="margin-top:12px">
-                <div class="music-timeline" id="music-timeline">
-                  <canvas id="music-waveform" width="268" height="52"></canvas>
+        <!-- 右侧属性面板 -->
+        <div class="ed-props" id="ed-props">
+          <div class="ed-props-empty" id="props-empty">
+            <div style="opacity:.3;font-size:18px;margin-bottom:6px">✂</div>
+            <div style="font-size:12px;color:rgba(251,251,251,.4)">点击时间轴上的片段进行编辑</div>
+          </div>
+
+          <!-- 场景属性 -->
+          <div id="scene-panel" style="display:none">
+            <div class="ed-panel-head">
+              <span id="scene-panel-title">场景属性</span>
+              <button class="ed-icon-btn danger" id="btn-delete-scene" onclick="deleteSelectedScene()">删除</button>
+            </div>
+
+            <div class="ed-form-group">
+              <label>裁剪起点（秒）</label>
+              <input type="number" id="trim-start" min="0" step="0.5" value="0" placeholder="0" oninput="saveTrim()" />
+            </div>
+            <div class="ed-form-group">
+              <label>裁剪终点（秒）<span class="ed-hint" id="clip-duration-hint"></span></label>
+              <input type="number" id="trim-end" min="0" step="0.5" placeholder="留空=不截断" oninput="saveTrim()" />
+            </div>
+
+            <div class="ed-divider"></div>
+
+            <div class="ed-form-group">
+              <label>字幕文字</label>
+              <textarea id="dialogue-text" rows="3" placeholder="输入要显示的字幕..." oninput="saveDialogue()"></textarea>
+            </div>
+            <div class="ed-form-row">
+              <div class="ed-form-group">
+                <label>出现时间</label>
+                <input type="number" id="dialogue-start" min="0" step="0.5" value="0" oninput="saveDialogue()" />
+              </div>
+              <div class="ed-form-group">
+                <label>持续时长</label>
+                <input type="number" id="dialogue-duration" min="1" step="1" value="5" oninput="saveDialogue()" />
+              </div>
+            </div>
+            <div class="ed-form-row">
+              <div class="ed-form-group">
+                <label>位置</label>
+                <select id="dialogue-position" onchange="saveDialogue()">
+                  <option value="bottom">底部</option>
+                  <option value="center">居中</option>
+                  <option value="top">顶部</option>
+                </select>
+              </div>
+              <div class="ed-form-group">
+                <label>字号</label>
+                <select id="dialogue-fontsize" onchange="saveDialogue()">
+                  <option value="20">小</option>
+                  <option value="28" selected>中</option>
+                  <option value="36">大</option>
+                  <option value="48">超大</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 音乐面板 -->
+          <div id="music-section">
+            <div class="ed-panel-head" style="margin-top:12px">
+              <span>背景音乐</span>
+            </div>
+            <div id="music-panel">
+              <div id="music-empty" class="ed-music-empty">
+                <label class="ed-upload-btn" for="music-upload">
+                  <input type="file" id="music-upload" accept="audio/*" onchange="uploadMusic(this)" style="display:none" />
+                  + 上传音乐
+                </label>
+              </div>
+              <div id="music-loaded" style="display:none">
+                <div class="ed-music-info">
+                  <span>♫</span>
+                  <span id="music-name" class="ed-music-name"></span>
+                  <button class="ed-icon-btn" onclick="removeMusic()">✕</button>
+                </div>
+                <div class="ed-music-timeline" id="music-timeline">
+                  <canvas id="music-waveform" width="220" height="40"></canvas>
                   <div class="music-trim-region" id="music-trim-region">
-                    <div class="music-trim-handle left" id="trim-handle-left" title="拖拽调整起点"></div>
-                    <div class="music-trim-handle right" id="trim-handle-right" title="拖拽调整终点"></div>
+                    <div class="music-trim-handle left" id="trim-handle-left"></div>
+                    <div class="music-trim-handle right" id="trim-handle-right"></div>
                   </div>
                   <div class="music-playhead" id="music-playhead"></div>
                 </div>
-                <div class="music-time-display">
+                <div class="ed-music-meta">
                   <span id="music-trim-range">0:00 - 0:00</span>
-                  <span id="music-trim-duration">选中 0:00 / 总 0:00</span>
+                  <button class="ed-mini-btn" id="music-preview-btn" onclick="toggleMusicPreview()">▶ 试听</button>
                 </div>
-                <div class="music-video-ref" id="music-video-ref">
-                  视频总时长: <span id="video-total-duration">--</span>
+                <div class="ed-form-group" style="margin-top:8px">
+                  <label>音量 <span id="volume-val">50%</span></label>
+                  <input type="range" id="music-volume" min="0" max="100" value="50"
+                    oninput="document.getElementById('volume-val').textContent=this.value+'%'; scheduleSave()" />
                 </div>
               </div>
+            </div>
+          </div>
 
-              <!-- Preview button -->
-              <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-                <button class="music-preview-btn" id="music-preview-btn" onclick="toggleMusicPreview()" title="试听裁剪片段">&#9654; 试听</button>
-                <button class="music-preview-btn" onclick="resetMusicTrim()" title="重置裁剪" style="background:rgba(255,255,255,.04)">重置</button>
-              </div>
-
-              <div class="form-group" style="margin-top:12px">
-                <label>音量 <span id="volume-val">50%</span></label>
-                <input type="range" id="music-volume" min="0" max="100" value="50"
-                  oninput="document.getElementById('volume-val').textContent=this.value+'%'; scheduleSave()" />
-              </div>
-              <div class="form-group">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                  <input type="checkbox" id="music-loop" checked onchange="scheduleSave()" />
-                  循环播放
-                </label>
-              </div>
+          <!-- 渲染进度 -->
+          <div id="render-panel" style="display:none;margin-top:12px">
+            <div class="ed-panel-head"><span>渲染进度</span></div>
+            <div id="render-log" class="ed-render-log"></div>
+            <div id="render-result" style="display:none;margin-top:8px">
+              <button class="ed-btn-render" style="width:100%" onclick="previewRender()">▶ 预览成品</button>
+              <a id="render-download" class="ed-btn-dl" href="#">⬇ 下载成品</a>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- 选中场景属性 -->
-        <div class="panel" id="scene-panel" style="display:none">
-          <div class="panel-title">
-            <span id="scene-panel-title">场景属性</span>
-            <button class="icon-btn danger" id="btn-delete-scene" onclick="deleteSelectedScene()">删除场景</button>
-          </div>
-
-          <div class="form-group">
-            <label>裁剪起点（秒）</label>
-            <input type="number" id="trim-start" min="0" step="0.5" value="0"
-              placeholder="0" oninput="saveTrim()" />
-          </div>
-          <div class="form-group">
-            <label>裁剪终点（秒）<span class="hint" id="clip-duration-hint"></span></label>
-            <input type="number" id="trim-end" min="0" step="0.5"
-              placeholder="留空=不截断" oninput="saveTrim()" />
-          </div>
-
-          <div class="divider"></div>
-
-          <div class="form-group">
-            <label>对话 / 字幕文字</label>
-            <textarea id="dialogue-text" rows="3" placeholder="输入要显示的对话或字幕..."
-              oninput="saveDialogue()"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>出现时间（秒）</label>
-              <input type="number" id="dialogue-start" min="0" step="0.5" value="0" oninput="saveDialogue()" />
-            </div>
-            <div class="form-group">
-              <label>持续时长（秒）</label>
-              <input type="number" id="dialogue-duration" min="1" step="1" value="5" oninput="saveDialogue()" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>位置</label>
-              <select id="dialogue-position" onchange="saveDialogue()">
-                <option value="bottom">底部</option>
-                <option value="center">居中</option>
-                <option value="top">顶部</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>字号</label>
-              <select id="dialogue-fontsize" onchange="saveDialogue()">
-                <option value="20">小（20）</option>
-                <option value="28" selected>中（28）</option>
-                <option value="36">大（36）</option>
-                <option value="48">超大（48）</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- 渲染进度 -->
-        <div class="panel" id="render-panel" style="display:none">
-          <div class="panel-title">渲染进度</div>
-          <div id="render-log" class="render-log"></div>
-          <div id="render-result" style="display:none;margin-top:12px">
-            <button class="btn-primary" style="width:100%;justify-content:center" onclick="previewRender()">▶ 预览成品</button>
-            <a id="render-download" class="btn-secondary" style="display:block;text-align:center;margin-top:8px;padding:10px" href="#">↓ 下载成品</a>
-          </div>
+      <!-- 底部时间轴 -->
+      <div class="ed-timeline-area">
+        <div class="ed-tl-ruler" id="tl-ruler"></div>
+        <div class="ed-tl-track" id="timeline">
+          <div style="padding:20px;color:rgba(251,251,251,.3);font-size:12px">加载中...</div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- 视频预览弹窗 -->
-  <div id="video-modal" class="modal" onclick="if(event.target.id==='video-modal')closePreview()">
+  <div id="video-modal" class="modal" onclick="if(event.target.id==='video-modal')closePreviewModal()">
     <div class="modal-box">
       <div class="modal-header">
         <span id="modal-title">预览</span>
-        <button class="modal-close" onclick="closePreview()">✕</button>
+        <button class="modal-close" onclick="closePreviewModal()">✕</button>
       </div>
       <div class="modal-body">
         <video id="modal-video" controls autoplay playsinline>

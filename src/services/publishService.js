@@ -6,34 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
-// 平台配置
+// 平台配置（仅保留小红书）
 const PLATFORMS = {
-  weishi: {
-    name: '微视',
-    icon: 'weishi',
-    color: '#FF4081',
-    authUrl: 'https://open.weishi.qq.com/oauth2/authorize',
-    tokenUrl: 'https://open.weishi.qq.com/oauth2/access_token',
-    uploadUrl: 'https://open.weishi.qq.com/video/upload',
-    publishUrl: 'https://open.weishi.qq.com/video/publish',
-    scopes: 'video_upload,video_publish',
-    maxTitleLen: 30,
-    maxDescLen: 1000,
-    maxTags: 5
-  },
-  douyin: {
-    name: '抖音',
-    icon: 'douyin',
-    color: '#000000',
-    authUrl: 'https://open.douyin.com/platform/oauth/connect',
-    tokenUrl: 'https://open.douyin.com/oauth/access_token',
-    uploadUrl: 'https://open.douyin.com/api/v2/video/upload',
-    publishUrl: 'https://open.douyin.com/api/v2/video/create',
-    scopes: 'video.create,video.data',
-    maxTitleLen: 55,
-    maxDescLen: 2000,
-    maxTags: 10
-  },
   xiaohongshu: {
     name: '小红书',
     icon: 'xiaohongshu',
@@ -46,19 +20,6 @@ const PLATFORMS = {
     maxTitleLen: 20,
     maxDescLen: 1000,
     maxTags: 10
-  },
-  kuaishou: {
-    name: '快手',
-    icon: 'kuaishou',
-    color: '#FF6600',
-    authUrl: 'https://open.kuaishou.com/oauth2/authorize',
-    tokenUrl: 'https://open.kuaishou.com/oauth2/access_token',
-    uploadUrl: 'https://open.kuaishou.com/openapi/photo/upload',
-    publishUrl: 'https://open.kuaishou.com/openapi/photo/publish',
-    scopes: 'user_info,video_publish',
-    maxTitleLen: 30,
-    maxDescLen: 500,
-    maxTags: 5
   }
 };
 
@@ -133,43 +94,14 @@ async function generateCopywriting(projectData, platform) {
     contentSummary += `\n剧情内容：${story.substring(0, 500)}`;
   }
 
-  const platformPrompts = {
-    weishi: `你是微视平台的内容运营专家。请为以下视频生成微视平台的发布文案。
-要求：
-- 标题控制在${platformInfo.maxTitleLen}字以内，简洁有力
-- 正文控制在${platformInfo.maxDescLen}字以内，注重娱乐性和传播性
-- 生成${platformInfo.maxTags}个热门话题标签（带#号）
-- 微视用户偏好短视频、搞笑、生活、技能展示类内容
-- 加入合适的表情符号增强互动感`,
-
-    douyin: `你是抖音平台的内容运营专家。请为以下视频生成抖音平台的发布文案。
-要求：
-- 标题控制在${platformInfo.maxTitleLen}字以内，要有话题引爆力
-- 正文控制在${platformInfo.maxDescLen}字以内，注重热点话题和互动引导
-- 生成${platformInfo.maxTags}个抖音热门话题标签（带#号）
-- 抖音用户偏好节奏快、有视觉冲击力的内容
-- 结尾加上互动引导语如"你觉得呢？"、"关注看更多"等
-- 加入合适的表情符号`,
-
-    xiaohongshu: `你是小红书平台的内容运营专家。请为以下视频生成小红书平台的发布笔记文案。
+  const systemPrompt = `你是小红书平台的内容运营专家。请为以下视频生成小红书平台的发布笔记文案。
 要求：
 - 标题控制在${platformInfo.maxTitleLen}字以内，要有种草感和好奇心
 - 正文控制在${platformInfo.maxDescLen}字以内，用分享种草的口吻
 - 生成${platformInfo.maxTags}个小红书热门标签（带#号）
 - 小红书用户偏好真实分享、干货推荐、审美类内容
 - 多用emoji表情，营造亲切的社区氛围
-- 适当分段，增加可读性`,
-
-    kuaishou: `你是快手平台的内容运营专家。请为以下视频生成快手平台的发布文案。
-要求：
-- 标题控制在${platformInfo.maxTitleLen}字以内，接地气、易传播
-- 正文控制在${platformInfo.maxDescLen}字以内，注重真实感和亲和力
-- 生成${platformInfo.maxTags}个快手热门标签（带#号）
-- 快手用户偏好真实、接地气、有才艺、生活化的内容
-- 语言风格要朴实自然，不要太"营销感"`
-  };
-
-  const systemPrompt = platformPrompts[platform] || platformPrompts.douyin;
+- 适当分段，增加可读性`;
   const userPrompt = `请为以下视频内容生成发布文案：
 
 ${contentSummary}
@@ -251,57 +183,8 @@ async function publishVideo(userId, projectId, platform, copywriting) {
  * 平台发布分发
  */
 async function _platformPublish(platform, account, videoPath, copywriting) {
-  const cfg = PLATFORMS[platform];
-  if (!cfg) throw new Error('不支持的平台');
-
-  // 真实 API 调用框架
-  switch (platform) {
-    case 'douyin':
-      return await _publishDouyin(account, videoPath, copywriting);
-    case 'xiaohongshu':
-      return await _publishXiaohongshu(account, videoPath, copywriting);
-    case 'kuaishou':
-      return await _publishKuaishou(account, videoPath, copywriting);
-    case 'weishi':
-      return await _publishWeishi(account, videoPath, copywriting);
-    default:
-      throw new Error('暂不支持该平台');
-  }
-}
-
-// ─── 抖音发布 ───
-async function _publishDouyin(account, videoPath, copywriting) {
-  const cfg = PLATFORMS.douyin;
-  try {
-    // Step 1: 上传视频
-    const fileStream = fs.createReadStream(videoPath);
-    const stat = fs.statSync(videoPath);
-
-    const uploadRes = await axios.post(cfg.uploadUrl, fileStream, {
-      headers: {
-        'access-token': account.access_token,
-        'Content-Type': 'video/mp4',
-        'Content-Length': stat.size
-      },
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity
-    });
-
-    if (uploadRes.data?.data?.video?.video_id) {
-      // Step 2: 创建视频
-      const createRes = await axios.post(cfg.publishUrl, {
-        video_id: uploadRes.data.data.video.video_id,
-        text: `${copywriting.title}\n${copywriting.description}\n${(copywriting.tags || []).join(' ')}`
-      }, {
-        headers: { 'access-token': account.access_token, 'Content-Type': 'application/json' }
-      });
-      return { post_id: createRes.data?.data?.item_id || '', url: '' };
-    }
-    throw new Error(uploadRes.data?.data?.description || '上传失败');
-  } catch (err) {
-    if (err.response?.status === 401) throw new Error('抖音授权已过期，请重新登录');
-    throw new Error('抖音发布失败: ' + (err.response?.data?.data?.description || err.message));
-  }
+  if (platform !== 'xiaohongshu') throw new Error('暂不支持该平台');
+  return await _publishXiaohongshu(account, videoPath, copywriting);
 }
 
 // ─── 小红书发布 ───
@@ -339,70 +222,6 @@ async function _publishXiaohongshu(account, videoPath, copywriting) {
   } catch (err) {
     if (err.response?.status === 401) throw new Error('小红书授权已过期，请重新登录');
     throw new Error('小红书发布失败: ' + (err.response?.data?.message || err.message));
-  }
-}
-
-// ─── 快手发布 ───
-async function _publishKuaishou(account, videoPath, copywriting) {
-  const cfg = PLATFORMS.kuaishou;
-  try {
-    const stat = fs.statSync(videoPath);
-    const fileStream = fs.createReadStream(videoPath);
-
-    // Step 1: 上传视频
-    const uploadRes = await axios.post(cfg.uploadUrl, fileStream, {
-      headers: {
-        'access-token': account.access_token,
-        'Content-Type': 'video/mp4'
-      },
-      maxContentLength: Infinity, maxBodyLength: Infinity
-    });
-
-    if (uploadRes.data?.result === 1 && uploadRes.data?.photo_id) {
-      // Step 2: 发布
-      const publishRes = await axios.post(cfg.publishUrl, {
-        photo_id: uploadRes.data.photo_id,
-        caption: `${copywriting.title}\n${copywriting.description}\n${(copywriting.tags || []).join(' ')}`
-      }, {
-        headers: { 'access-token': account.access_token, 'Content-Type': 'application/json' }
-      });
-      return { post_id: publishRes.data?.photo_id || '', url: '' };
-    }
-    throw new Error(uploadRes.data?.error_msg || '上传失败');
-  } catch (err) {
-    if (err.response?.status === 401) throw new Error('快手授权已过期，请重新登录');
-    throw new Error('快手发布失败: ' + (err.response?.data?.error_msg || err.message));
-  }
-}
-
-// ─── 微视发布 ───
-async function _publishWeishi(account, videoPath, copywriting) {
-  const cfg = PLATFORMS.weishi;
-  try {
-    const stat = fs.statSync(videoPath);
-    const fileStream = fs.createReadStream(videoPath);
-
-    const uploadRes = await axios.post(cfg.uploadUrl, fileStream, {
-      headers: {
-        'Authorization': `Bearer ${account.access_token}`,
-        'Content-Type': 'video/mp4'
-      },
-      maxContentLength: Infinity, maxBodyLength: Infinity
-    });
-
-    if (uploadRes.data?.data?.video_id) {
-      const publishRes = await axios.post(cfg.publishUrl, {
-        video_id: uploadRes.data.data.video_id,
-        desc: `${copywriting.title}\n${copywriting.description}\n${(copywriting.tags || []).join(' ')}`
-      }, {
-        headers: { 'Authorization': `Bearer ${account.access_token}`, 'Content-Type': 'application/json' }
-      });
-      return { post_id: publishRes.data?.data?.feed_id || '', url: '' };
-    }
-    throw new Error(uploadRes.data?.msg || '上传失败');
-  } catch (err) {
-    if (err.response?.status === 401) throw new Error('微视授权已过期，请重新登录');
-    throw new Error('微视发布失败: ' + (err.response?.data?.msg || err.message));
   }
 }
 

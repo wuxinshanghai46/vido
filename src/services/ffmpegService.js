@@ -156,4 +156,69 @@ async function applyPostVFX({ inputPath, outputPath, vfxTags = [], actionType = 
   });
 }
 
-module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX };
+/**
+ * 烧录字幕到视频片段
+ * @param {string} inputPath - 输入视频路径
+ * @param {string} outputPath - 输出视频路径
+ * @param {string} text - 字幕文本
+ * @param {object} opts - 选项 { fontSize, color, position, startSec, endSec }
+ */
+async function burnSubtitle(inputPath, outputPath, text, opts = {}) {
+  const { fontSize = 32, color = 'white', position = 'bottom', startSec = 0, endSec } = opts;
+
+  // 查找中文字体
+  const fontCandidates = [
+    'C:/Windows/Fonts/msyh.ttc',
+    'C:/Windows/Fonts/msyhbd.ttc',
+    'C:/Windows/Fonts/simhei.ttf',
+    'C:/Windows/Fonts/simsun.ttc',
+    '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
+  ];
+  const fontFile = fontCandidates.find(f => fs.existsSync(f));
+
+  // 自动分行：每行最多 maxCharsPerLine 个字符
+  const maxCharsPerLine = 20;
+  const lines = [];
+  for (let i = 0; i < text.length; i += maxCharsPerLine) {
+    lines.push(text.slice(i, i + maxCharsPerLine));
+  }
+
+  const yMap = { top: '60', center: '(h-text_h)/2', bottom: `(h-${fontSize * lines.length + 40})` };
+  const yBase = yMap[position] || yMap.bottom;
+
+  // 构建多行 drawtext 滤镜
+  const filters = lines.map((line, idx) => {
+    const safeLine = line.replace(/['"\\:]/g, ' ').replace(/\n/g, ' ');
+    const fontOpt = fontFile ? `fontfile='${fontFile.replace(/\\/g, '/')}':` : '';
+    const yExpr = idx === 0 ? yBase : `${yBase}+${idx * (fontSize + 6)}`;
+    const parts = [
+      `drawtext=${fontOpt}text='${safeLine}'`,
+      `fontsize=${fontSize}`,
+      `fontcolor=${color}`,
+      `x=(w-text_w)/2`,
+      `y=${yExpr}`,
+      `box=1:boxcolor=black@0.45:boxborderw=6`,
+      `shadowcolor=black@0.6:shadowx=2:shadowy=2`
+    ];
+    if (endSec != null) {
+      parts.push(`enable='between(t,${startSec},${endSec})'`);
+    }
+    return parts.join(':');
+  });
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .videoFilters(filters)
+      .outputOptions(['-c:a', 'copy', '-pix_fmt', 'yuv420p'])
+      .output(outputPath)
+      .on('end', () => resolve(outputPath))
+      .on('error', (err) => {
+        console.warn(`[Subtitle] 字幕烧录失败: ${err.message}`);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX, burnSubtitle };

@@ -7,7 +7,7 @@ const ffmpegStatic = require('ffmpeg-static');
 const db = require('../models/database');
 const { generateStory, generateStoryCustom, generateLongStory } = require('./storyService');
 const { generateVideoClip } = require('./videoService');
-const { mergeVideoClips, getVideoDuration, applyPostVFX } = require('./ffmpegService');
+const { mergeVideoClips, getVideoDuration, applyPostVFX, burnSubtitle } = require('./ffmpegService');
 const { generateSpeech } = require('./ttsService');
 const { buildMotionPrompt } = require('./motionService');
 const { deductCredits } = require('../middleware/credits');
@@ -1001,6 +1001,27 @@ async function runFullPipeline(projectId, userId = null) {
             }
           } catch (vfxErr) {
             console.warn(`[PostVFX] 场景 ${i + 1} 特效处理失败（使用原始片段）:`, vfxErr.message);
+          }
+        }
+
+        // 字幕烧录：将场景文本（对白或动作描述）烧录为字幕
+        const subtitleText = (scene.dialogue && scene.dialogue.trim()) || '';
+        if (subtitleText && project.subtitle_enabled !== false) {
+          try {
+            emitProgress(projectId, { step: 'video', status: 'subtitle', message: `场景 ${i + 1} 烧录字幕...` });
+            const subOutputPath = result.filePath.replace(/\.mp4$/, '_sub.mp4');
+            await burnSubtitle(result.filePath, subOutputPath, subtitleText, {
+              fontSize: project.subtitle_size || 32,
+              color: project.subtitle_color || 'white',
+              position: project.subtitle_position || 'bottom'
+            });
+            if (fs.existsSync(subOutputPath) && fs.statSync(subOutputPath).size > 1000) {
+              fs.unlinkSync(result.filePath);
+              fs.renameSync(subOutputPath, result.filePath);
+              console.log(`[Subtitle] 场景 ${i + 1} 字幕烧录完成: "${subtitleText.slice(0, 30)}..."`);
+            }
+          } catch (subErr) {
+            console.warn(`[Subtitle] 场景 ${i + 1} 字幕烧录失败（跳过）:`, subErr.message);
           }
         }
 
