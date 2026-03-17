@@ -6,6 +6,7 @@ if (!projectId) { location.href = '/'; }
 let editData = {};
 let clips = [];
 let scenes = [];
+let projectData = {};
 let selectedSceneIndex = null;
 let dragSrcIndex = null;
 let saveTimer = null;
@@ -27,6 +28,7 @@ async function init() {
     clips = c;
     scenes = s;
     editData = edit;
+    projectData = project;
     document.getElementById('editor-project-title').textContent = project.title || '编辑器';
     document.title = `编辑 · ${project.title} - VIDO`;
     renderTimeline();
@@ -115,8 +117,10 @@ function renderTimeline() {
       </div>`;
   }).join('');
 
-  // 渲染音频轨
+  // 渲染音频轨（从原视频分离）
   renderAudioTrack();
+  // 渲染音乐轨
+  renderMusicTrack();
   // 渲染配音轨
   renderVoiceTrack();
 }
@@ -124,13 +128,44 @@ function renderTimeline() {
 function renderAudioTrack() {
   const track = document.getElementById('audio-track');
   if (!track) return;
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const hasVoice = projectData.voice_enabled;
+
+  // 每个片段对应一个音频块（从视频中分离出来的音频部分）
+  track.innerHTML = order.map((sceneIdx, pos) => {
+    const clip = clips.find(c => c.scene_index === sceneIdx);
+    const dur = clip?.duration || 10;
+    const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
+    const scene = scenes[sceneIdx] || {};
+    const isDeleted = (editData.deleted_scenes || []).includes(sceneIdx);
+    const hasDialogue = !!(scene.dialogue && scene.dialogue.trim());
+    const isMuted = editData.muted_audio?.includes(sceneIdx);
+
+    // 生成小波形条（伪波形）
+    let waveBars = '';
+    const barCount = Math.max(8, Math.floor(dur * 3));
+    for (let i = 0; i < barCount; i++) {
+      const h = hasDialogue ? (4 + Math.random() * 14) : (2 + Math.random() * 5);
+      waveBars += `<div class="ed-audio-bar" style="height:${h}px"></div>`;
+    }
+
+    return `<div class="ed-orig-audio${hasDialogue ? ' has-audio' : ''}${isMuted ? ' muted' : ''}${isDeleted ? ' muted' : ''}"
+      style="width:${widthPct}%" onclick="selectScene(${sceneIdx})" title="${hasDialogue ? escHtml(scene.dialogue.slice(0,30)) : '无音频'}">
+      <div class="ed-audio-wave">${waveBars}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderMusicTrack() {
+  const track = document.getElementById('music-track');
+  if (!track) return;
   const music = editData.music;
   if (!music?.file_path) {
-    track.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.2);cursor:pointer" onclick="switchRightTab(\'audio\',null)">+ 添加音乐</div>';
+    track.innerHTML = '<div style="flex:1;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.15);cursor:pointer" onclick="switchRightTab(\'audio\',null)">+ 添加背景音乐</div>';
     return;
   }
   const name = music.original_name || '背景音乐';
-  track.innerHTML = `<div class="ed-audio-block" onclick="switchRightTab('audio',null)">♫ ${escHtml(name)}</div>`;
+  track.innerHTML = `<div class="ed-audio-block" onclick="switchRightTab('audio',null)" style="flex:1">♫ ${escHtml(name)}</div>`;
 }
 
 function renderVoiceTrack() {

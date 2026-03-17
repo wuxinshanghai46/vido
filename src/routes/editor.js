@@ -53,7 +53,7 @@ router.get('/:id', (req, res) => {
 
 // 保存编辑数据
 router.put('/:id', (req, res) => {
-  const { scenes_order, scene_trims, deleted_scenes, music, dialogues } = req.body;
+  const { scenes_order, scene_trims, deleted_scenes, music, dialogues, voiceovers } = req.body;
   const edit = getEdit(req.params.id);
 
   if (scenes_order !== undefined) edit.scenes_order = scenes_order;
@@ -61,6 +61,7 @@ router.put('/:id', (req, res) => {
   if (deleted_scenes !== undefined) edit.deleted_scenes = deleted_scenes;
   if (music !== undefined) edit.music = music;
   if (dialogues !== undefined) edit.dialogues = dialogues;
+  if (voiceovers !== undefined) edit.voiceovers = voiceovers;
 
   saveEdit(req.params.id, edit);
   res.json({ success: true, data: edit });

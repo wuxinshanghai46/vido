@@ -230,7 +230,7 @@
 
 /* ═══ 底部时间轴 ═══ */
 .ed-timeline-area {
-  height: 200px; flex-shrink: 0; background: var(--bg2);
+  height: 240px; flex-shrink: 0; background: var(--bg2);
   display: flex; flex-direction: column; position: relative;
 }
 .ed-tl-ruler {
@@ -255,7 +255,7 @@
   margin: 0 auto; pointer-events: auto;
 }
 .ed-tl-playhead-line {
-  width: 2px; height: 240px; background: #FF4D6D;
+  width: 2px; height: 280px; background: #FF4D6D;
   margin: 0 auto; opacity: .7; pointer-events: none;
 }
 .ed-tl-playhead-ext {
@@ -273,7 +273,8 @@
   display: flex; border-bottom: 1px solid var(--border); min-height: 0;
 }
 .ed-tl-lane:first-of-type { flex: 3; } /* 视频轨占大 */
-.ed-tl-lane-audio { flex: 1.5; }
+.ed-tl-lane-audio { flex: 1.2; }
+.ed-tl-lane-music { flex: 1; }
 .ed-tl-lane-voice { flex: 1; }
 .ed-tl-lane-label {
   width: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -287,13 +288,33 @@
   overflow: hidden;
 }
 .ed-tl-audio-track {
+  background: rgba(139,92,246,.03);
+}
+.ed-tl-music-track {
   background: rgba(255,200,0,.03);
 }
 .ed-tl-voice-track {
   background: rgba(33,255,243,.03);
 }
 
-/* 音频轨块 */
+/* 原始音频轨块（从视频分离出来的音频） */
+.ed-orig-audio {
+  border-radius: 3px; background: rgba(139,92,246,.12);
+  border: 1px solid rgba(139,92,246,.2); display: flex; align-items: center;
+  justify-content: center; font-size: 9px; color: rgba(139,92,246,.7);
+  overflow: hidden; min-width: 0; position: relative;
+}
+.ed-orig-audio.has-audio { background: rgba(139,92,246,.18); color: rgba(139,92,246,.9); }
+.ed-orig-audio.muted { opacity: .3; }
+.ed-orig-audio .ed-audio-wave {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 1px;
+  padding: 0 2px; overflow: hidden;
+}
+.ed-orig-audio .ed-audio-bar {
+  flex-shrink: 0; width: 2px; background: rgba(139,92,246,.4); border-radius: 1px;
+}
+
+/* 音乐轨块 */
 .ed-audio-block {
   flex: 1; border-radius: 4px; background: rgba(255,200,0,.12);
   border: 1px solid rgba(255,200,0,.2); display: flex; align-items: center;
