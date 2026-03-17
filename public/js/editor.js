@@ -105,10 +105,11 @@ function renderTimeline() {
     const scene = scenes[sceneIdx] || {};
     const isDeleted = (editData.deleted_scenes || []).includes(sceneIdx);
     const isSelected = selectedSceneIndex === sceneIdx;
-    const dur = clip.duration || 10;
+    const dur = getEffectiveDuration(sceneIdx);
     const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
     const dialogue = editData.dialogues?.find(d => d.scene_index === sceneIdx);
     const trim = editData.scene_trims?.[sceneIdx];
+    const isSplit = !!editData.splits?.[sceneIdx];
 
     return `
       <div class="ed-clip${isSelected ? ' selected' : ''}${isDeleted ? ' deleted' : ''}"
@@ -130,7 +131,7 @@ function renderTimeline() {
           <div class="ed-clip-info">
             <span class="ed-clip-num">${position + 1}</span>
             <span class="ed-clip-title">${escHtml(scene.title || `场景${sceneIdx+1}`)}</span>
-            <span class="ed-clip-dur">${trim ? '✂' : ''}${dur}s</span>
+            <span class="ed-clip-dur">${trim ? '✂' : ''}${Math.round(dur*10)/10}s</span>
           </div>
           ${dialogue?.text ? '<div class="ed-clip-sub">CC</div>' : ''}
           ${isDeleted ? '<div class="ed-clip-del">已删除</div>' : ''}
@@ -746,7 +747,11 @@ function splitClipAtPlayhead() {
 
   const sceneIdx = selectedSceneIndex;
   const clip = clips.find(c => c.scene_index === sceneIdx);
-  if (!clip) return;
+  if (!clip) {
+    console.error('[Split] 未找到 clip, sceneIdx=', sceneIdx, 'clips=', clips.map(c=>c.scene_index));
+    alert('未找到选中的片段数据');
+    return;
+  }
   const clipDur = clip.duration || 10;
 
   // 获取当前这个片段的裁剪范围
@@ -759,24 +764,30 @@ function splitClipAtPlayhead() {
   // 用视频当前播放时间作为分割点
   const video = document.getElementById('preview-video');
   let splitAt;
-  if (video && video.currentTime > 0.1) {
+  if (video && video.currentTime > 0.1 && video.currentTime < rangeEnd) {
     splitAt = Math.round(video.currentTime * 10) / 10;
   } else {
-    // 如果视频没在播放或在开头，默认从中间切
     splitAt = Math.round((rangeStart + effectiveDur / 2) * 10) / 10;
   }
 
-  // 分割点必须在范围内
-  if (splitAt <= rangeStart + 0.1 || splitAt >= rangeEnd - 0.1) {
-    // 范围外则强制中间切
-    splitAt = Math.round((rangeStart + effectiveDur / 2) * 10) / 10;
+  // 确保在范围内
+  if (splitAt <= rangeStart + 0.1) splitAt = rangeStart + Math.max(0.5, effectiveDur * 0.3);
+  if (splitAt >= rangeEnd - 0.1) splitAt = rangeEnd - Math.max(0.5, effectiveDur * 0.3);
+  splitAt = Math.round(splitAt * 10) / 10;
+
+  if (effectiveDur < 0.5) {
+    alert('片段太短，无法分割');
+    return;
   }
+
+  console.log(`[Split] sceneIdx=${sceneIdx}, clipDur=${clipDur}, range=${rangeStart}~${rangeEnd}, splitAt=${splitAt}`);
 
   saveUndo();
 
-  // 生成后半段的虚拟 ID
+  // 生成后半段的虚拟 ID（确保唯一）
   if (!editData.splits) editData.splits = {};
-  const splitId = 10000 + sceneIdx * 100 + Object.keys(editData.splits).length;
+  let splitId = 10000 + Date.now() % 100000;
+  while (editData.splits[splitId] || clips.find(c => c.scene_index === splitId)) splitId++;
 
   editData.splits[splitId] = {
     source_scene_index: clip._split_source ?? sceneIdx,
@@ -789,21 +800,34 @@ function splitClipAtPlayhead() {
   editData.scene_trims[splitId] = { start: splitAt, end: rangeEnd };
 
   // 在 scenes_order 中紧跟当前位置后面插入
-  if (!editData.scenes_order) editData.scenes_order = clips.map(c => c.scene_index);
+  if (!editData.scenes_order) {
+    editData.scenes_order = clips.map(c => c.scene_index);
+  }
   const pos = editData.scenes_order.indexOf(sceneIdx);
-  if (pos >= 0) editData.scenes_order.splice(pos + 1, 0, splitId);
+  console.log(`[Split] pos in scenes_order=${pos}, order before=`, [...editData.scenes_order]);
+  if (pos >= 0) {
+    editData.scenes_order.splice(pos + 1, 0, splitId);
+  } else {
+    // 如果找不到（不应该发生），追加到末尾
+    editData.scenes_order.push(splitId);
+    console.warn('[Split] sceneIdx not found in scenes_order, appended');
+  }
+  console.log(`[Split] order after=`, [...editData.scenes_order], 'splitId=', splitId);
 
-  // 复用原 clip 数据
-  clips.push({ ...clip, scene_index: splitId, _split_source: clip._split_source ?? sceneIdx });
+  // 复用原 clip 数据（关键：scene_index 设为 splitId）
+  const newClip = { ...clip, scene_index: splitId, _split_source: clip._split_source ?? sceneIdx };
+  clips.push(newClip);
+  console.log(`[Split] new clip added, scene_index=${splitId}, source=${newClip._split_source}, clip.id=${clip.id}`);
 
-  // 复用 scene 名称（不加后缀，看起来就是同一个被切开了）
+  // 复用 scene 数据
   const origScene = scenes[sceneIdx] || {};
   scenes[splitId] = { ...origScene };
 
   renderTimeline();
-  // 选中前半段，保持播放头在分割点
   selectScene(sceneIdx);
   scheduleSave();
+
+  console.log('[Split] done. totalTimelineDur=', totalTimelineDur, 'clips count=', clips.length);
 }
 
 // ——— 片段裁剪拖拽 ———
