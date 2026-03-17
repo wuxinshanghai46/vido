@@ -9,6 +9,9 @@ let scenes = [];
 let selectedSceneIndex = null;
 let dragSrcIndex = null;
 let saveTimer = null;
+let timelineZoom = 100;
+let totalTimelineDur = 0;
+let undoStack = [];
 
 // ——— 初始化 ———
 async function init() {
@@ -41,25 +44,35 @@ function renderTimeline() {
   const timeline = document.getElementById('timeline');
   const ruler = document.getElementById('tl-ruler');
 
-  // 计算总时长用于标尺
-  let totalDur = 0;
-  const clipDurations = [];
+  // 计算总时长
+  totalTimelineDur = 0;
   order.forEach(sceneIdx => {
     const clip = clips.find(c => c.scene_index === sceneIdx);
-    const dur = clip?.duration || 10;
-    clipDurations.push(dur);
-    totalDur += dur;
+    totalTimelineDur += clip?.duration || 10;
   });
 
-  // 绘制标尺
+  // 更新总时长显示
+  const totalEl = document.getElementById('tb-total-time');
+  if (totalEl) totalEl.textContent = formatTime(totalTimelineDur);
+
+  // 绘制标尺（保留 playhead 元素）
   if (ruler) {
+    const playhead = ruler.querySelector('.ed-tl-playhead');
+    const phHtml = playhead ? playhead.outerHTML : '<div class="ed-tl-playhead" id="tl-playhead"><div class="ed-tl-playhead-head"></div><div class="ed-tl-playhead-line"></div></div>';
     let marks = '';
-    let acc = 0;
-    for (let t = 0; t <= totalDur; t += 5) {
-      const pct = totalDur > 0 ? (t / totalDur * 100) : 0;
+    const step = totalTimelineDur > 60 ? 10 : 5;
+    for (let t = 0; t <= totalTimelineDur; t += step) {
+      const pct = totalTimelineDur > 0 ? (t / totalTimelineDur * 100) : 0;
       marks += `<span class="ed-tl-mark" style="left:${pct}%">${formatTime(t)}</span>`;
     }
-    ruler.innerHTML = marks;
+    ruler.innerHTML = marks + phHtml;
+    // 点击标尺跳转
+    ruler.onclick = (e) => {
+      if (e.target.closest('.ed-tl-playhead')) return;
+      const rect = ruler.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      seekTimelinePlayhead(pct);
+    };
   }
 
   // 渲染片段块
@@ -70,8 +83,9 @@ function renderTimeline() {
     const isDeleted = (editData.deleted_scenes || []).includes(sceneIdx);
     const isSelected = selectedSceneIndex === sceneIdx;
     const dur = clip.duration || 10;
-    const widthPct = totalDur > 0 ? (dur / totalDur * 100) : (100 / order.length);
+    const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
     const dialogue = editData.dialogues?.find(d => d.scene_index === sceneIdx);
+    const trim = editData.scene_trims?.[sceneIdx];
 
     return `
       <div class="ed-clip${isSelected ? ' selected' : ''}${isDeleted ? ' deleted' : ''}"
@@ -83,6 +97,8 @@ function renderTimeline() {
         ondragover="onDragOver(event,${position})"
         ondrop="onDrop(event,${position})"
         ondragend="onDragEnd(event)">
+        <div class="ed-clip-trim left" onmousedown="startClipTrim(event,${sceneIdx},'start')"></div>
+        <div class="ed-clip-trim right" onmousedown="startClipTrim(event,${sceneIdx},'end')"></div>
         <div class="ed-clip-inner">
           <div class="ed-clip-thumb">
             <video src="${authUrl(`/api/projects/${projectId}/clips/${clip.id}/stream`)}" preload="metadata" muted
@@ -91,7 +107,7 @@ function renderTimeline() {
           <div class="ed-clip-info">
             <span class="ed-clip-num">${position + 1}</span>
             <span class="ed-clip-title">${escHtml(scene.title || `场景${sceneIdx+1}`)}</span>
-            <span class="ed-clip-dur">${dur}s</span>
+            <span class="ed-clip-dur">${trim ? '✂' : ''}${dur}s</span>
           </div>
           ${dialogue?.text ? '<div class="ed-clip-sub">CC</div>' : ''}
           ${isDeleted ? '<div class="ed-clip-del">已删除</div>' : ''}
@@ -125,16 +141,19 @@ function playClipPreview(sceneIdx) {
 
 function togglePlay() {
   const video = document.getElementById('preview-video');
+  const tbPlay = document.getElementById('tb-play');
   if (video.paused) {
     video.play().catch(() => {});
     document.getElementById('ctrl-play').textContent = '⏸';
     document.getElementById('play-btn-icon').textContent = '⏸';
     document.getElementById('player-overlay').classList.add('hidden');
+    if (tbPlay) tbPlay.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10" rx="0.5"/><rect x="8" y="2" width="3" height="10" rx="0.5"/></svg>';
   } else {
     video.pause();
     document.getElementById('ctrl-play').textContent = '▶';
     document.getElementById('play-btn-icon').textContent = '▶';
     document.getElementById('player-overlay').classList.remove('hidden');
+    if (tbPlay) tbPlay.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="3,1 12,7 3,13"/></svg>';
   }
 }
 
@@ -191,6 +210,7 @@ function selectScene(sceneIdx) {
 // ——— 删除/恢复场景 ———
 function deleteSelectedScene() {
   if (selectedSceneIndex === null) return;
+  saveUndo();
   const deleted = editData.deleted_scenes || [];
   const idx = deleted.indexOf(selectedSceneIndex);
   if (idx >= 0) deleted.splice(idx, 1);
@@ -204,6 +224,7 @@ function deleteSelectedScene() {
 // ——— 裁剪 ———
 function saveTrim() {
   if (selectedSceneIndex === null) return;
+  saveUndo();
   const start = parseFloat(document.getElementById('trim-start').value) || 0;
   const end = parseFloat(document.getElementById('trim-end').value) || null;
   if (!editData.scene_trims) editData.scene_trims = {};
@@ -508,6 +529,7 @@ async function startRender() {
       btn.disabled = false; btn.textContent = '渲染导出';
       document.getElementById('render-result').style.display = 'block';
       document.getElementById('render-download').href = authUrl(`/api/editor/${projectId}/download-render`);
+      addRenderLog('已保存到「已剪辑」项目列表', 'success');
     }
     if (d.step === 'error') { renderSSE.close(); btn.disabled = false; btn.textContent = '渲染导出'; }
   };
@@ -537,8 +559,171 @@ function closePreviewModal() {
   document.getElementById('video-modal').classList.remove('open');
 }
 
+// ——— 播放头 ———
+function updatePlayhead() {
+  const video = document.getElementById('preview-video');
+  if (!video || !video.duration) return;
+  const cur = video.currentTime || 0;
+  const dur = video.duration || 1;
+  // 计算在整个时间轴中的位置
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  let offset = 0;
+  for (const idx of order) {
+    if (idx === currentPlayingClip) break;
+    const c = clips.find(c => c.scene_index === idx);
+    offset += c?.duration || 10;
+  }
+  const globalTime = offset + cur;
+  const pct = totalTimelineDur > 0 ? (globalTime / totalTimelineDur * 100) : 0;
+
+  const ph = document.getElementById('tl-playhead');
+  const phExt = document.getElementById('tl-playhead-ext');
+  if (ph) ph.style.left = pct + '%';
+  if (phExt) phExt.style.left = pct + '%';
+
+  const tbTime = document.getElementById('tb-current-time');
+  if (tbTime) tbTime.textContent = formatTime(globalTime);
+}
+
+function seekTimelinePlayhead(pct) {
+  const targetTime = pct * totalTimelineDur;
+  // 找到对应片段
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  let acc = 0;
+  for (const idx of order) {
+    const c = clips.find(c => c.scene_index === idx);
+    const dur = c?.duration || 10;
+    if (acc + dur >= targetTime) {
+      selectScene(idx);
+      const video = document.getElementById('preview-video');
+      video.onloadeddata = () => {
+        video.currentTime = Math.max(0, targetTime - acc);
+        video.onloadeddata = null;
+      };
+      return;
+    }
+    acc += dur;
+  }
+}
+
+// ——— 前后片段 ———
+function prevClip() {
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const curIdx = order.indexOf(selectedSceneIndex);
+  if (curIdx > 0) selectScene(order[curIdx - 1]);
+}
+
+function nextClip() {
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const curIdx = order.indexOf(selectedSceneIndex);
+  if (curIdx < order.length - 1) selectScene(order[curIdx + 1]);
+}
+
+// ——— 分割（在当前播放位置标记裁剪终点） ———
+function splitClipAtPlayhead() {
+  if (selectedSceneIndex === null) return;
+  const video = document.getElementById('preview-video');
+  if (!video || !video.currentTime) return;
+  const t = Math.round(video.currentTime * 10) / 10;
+  document.getElementById('trim-end').value = t;
+  saveTrim();
+}
+
+// ——— 片段裁剪拖拽 ———
+let trimDragState = null;
+
+function startClipTrim(e, sceneIdx, side) {
+  e.preventDefault();
+  e.stopPropagation();
+  const clip = clips.find(c => c.scene_index === sceneIdx);
+  if (!clip) return;
+  selectScene(sceneIdx);
+  trimDragState = { sceneIdx, side, startX: e.clientX, origDur: clip.duration || 10 };
+  document.addEventListener('mousemove', onClipTrimMove);
+  document.addEventListener('mouseup', onClipTrimEnd);
+}
+
+function onClipTrimMove(e) {
+  if (!trimDragState) return;
+  const { sceneIdx, side, startX, origDur } = trimDragState;
+  const timeline = document.getElementById('timeline');
+  const pxPerSec = timeline.clientWidth / totalTimelineDur;
+  const delta = (e.clientX - startX) / pxPerSec;
+
+  if (!editData.scene_trims) editData.scene_trims = {};
+  const trim = editData.scene_trims[sceneIdx] || { start: 0, end: origDur };
+
+  if (side === 'start') {
+    trim.start = Math.max(0, Math.min(Math.round((trim.start + delta) * 10) / 10, (trim.end || origDur) - 0.5));
+  } else {
+    trim.end = Math.max((trim.start || 0) + 0.5, Math.min(Math.round(((trim.end || origDur) + delta) * 10) / 10, origDur));
+  }
+  editData.scene_trims[sceneIdx] = trim;
+  trimDragState.startX = e.clientX;
+
+  document.getElementById('trim-start').value = trim.start || '';
+  document.getElementById('trim-end').value = trim.end || '';
+}
+
+function onClipTrimEnd() {
+  if (trimDragState) {
+    trimDragState = null;
+    renderTimeline();
+    scheduleSave();
+  }
+  document.removeEventListener('mousemove', onClipTrimMove);
+  document.removeEventListener('mouseup', onClipTrimEnd);
+}
+
+// ——— 撤销 ———
+function saveUndo() {
+  undoStack.push(JSON.stringify(editData));
+  if (undoStack.length > 20) undoStack.shift();
+}
+
+function undoAction() {
+  if (!undoStack.length) return;
+  editData = JSON.parse(undoStack.pop());
+  renderTimeline();
+  if (selectedSceneIndex !== null) selectScene(selectedSceneIndex);
+  scheduleSave();
+}
+
+// ——— 时间轴缩放 ———
+function zoomTimeline(dir) {
+  timelineZoom = Math.max(50, Math.min(300, timelineZoom + dir * 25));
+  const el = document.getElementById('tb-zoom-level');
+  if (el) el.textContent = timelineZoom + '%';
+  const track = document.getElementById('timeline');
+  if (track) track.style.minWidth = timelineZoom + '%';
+}
+
+// ——— 键盘快捷键 ———
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowLeft') { e.preventDefault(); prevClip(); }
+  if (e.code === 'ArrowRight') { e.preventDefault(); nextClip(); }
+  if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); deleteSelectedScene(); }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); undoAction(); }
+});
+
+// ——— 播放头持续更新 ———
+function startPlayheadLoop() {
+  const tick = () => {
+    updatePlayhead();
+    const video = document.getElementById('preview-video');
+    if (video && !video.paused) {
+      updateTimeDisplay();
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
 function escHtml(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+startPlayheadLoop();
 init();

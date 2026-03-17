@@ -146,12 +146,53 @@ router.post('/:id/render', async (req, res) => {
 
   try {
     const finalPath = await renderWithEdits(projectId, emitRender);
-    emitRender({ step: 'done', filePath: finalPath, downloadUrl: `/api/editor/${projectId}/download-render` });
+
     // 保存渲染结果路径到编辑数据
     const edit = getEdit(projectId);
     edit.last_render_path = finalPath;
-    const { saveEdit } = require('../models/editStore');
-    saveEdit(projectId, edit);
+    const { saveEdit: _saveEdit } = require('../models/editStore');
+    _saveEdit(projectId, edit);
+
+    // 创建/更新一条 "已剪辑" 项目记录
+    const { v4: uuidv4 } = require('uuid');
+    const originalProject = db.getProject(projectId);
+    const editedId = edit.edited_project_id || uuidv4();
+    const editedTitle = (originalProject?.title || '未命名') + '（已剪辑）';
+
+    // 获取渲染视频时长
+    let editedDuration = 0;
+    try { editedDuration = await getVideoDuration(finalPath); } catch {}
+
+    const existingEdited = db.getProject(editedId);
+    if (existingEdited) {
+      // 更新已有的剪辑项目
+      db.updateProject(editedId, {
+        status: 'done',
+        title: editedTitle,
+        duration: editedDuration,
+        final_video_path: finalPath
+      });
+    } else {
+      // 新建剪辑项目
+      db.insertProject({
+        id: editedId,
+        type: 'edited',
+        source_project_id: projectId,
+        title: editedTitle,
+        theme: originalProject?.theme || '',
+        genre: originalProject?.genre || '',
+        status: 'done',
+        duration: editedDuration,
+        final_video_path: finalPath,
+        user_id: req.user?.id || originalProject?.user_id || null
+      });
+    }
+
+    // 记录 editedId 到编辑数据，下次渲染覆盖同一条
+    edit.edited_project_id = editedId;
+    _saveEdit(projectId, edit);
+
+    emitRender({ step: 'done', filePath: finalPath, editedProjectId: editedId, downloadUrl: `/api/editor/${projectId}/download-render` });
   } catch (err) {
     emitRender({ step: 'error', message: err.message });
   }

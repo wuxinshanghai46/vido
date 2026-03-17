@@ -1554,7 +1554,13 @@
             <div class="page-top-title">我的项目</div>
             <button class="btn-new-project" onclick="switchPage('create')">＋ 新建项目</button>
           </div>
-          <div class="proj-filter-bar">
+          <!-- 主分类 -->
+          <div class="proj-type-bar">
+            <button class="proj-type-btn active" onclick="switchProjectType('original',this)">原视频</button>
+            <button class="proj-type-btn" onclick="switchProjectType('edited',this)">已剪辑</button>
+          </div>
+          <!-- 状态筛选 -->
+          <div class="proj-filter-bar" id="proj-filter-bar">
             <button class="proj-filter-btn active" data-filter="all" onclick="filterProjects('all',this)">全部</button>
             <button class="proj-filter-btn" data-filter="running" onclick="filterProjects('running',this)">生成中</button>
             <button class="proj-filter-btn" data-filter="done" onclick="filterProjects('done',this)">已完成</button>

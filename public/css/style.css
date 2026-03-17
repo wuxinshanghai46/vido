@@ -1744,6 +1744,21 @@ input[type=checkbox] { accent-color: var(--cyan); width: 13px; height: 13px; cur
 }
 .btn-new-project:hover { opacity: .88; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(var(--accent-rgb),.3); }
 
+/* 项目类型栏 */
+.proj-type-bar { display: flex; gap: 0; margin-bottom: 10px; }
+.proj-type-btn {
+  padding: 8px 20px; border: 1px solid var(--border); border-right: none;
+  background: transparent; color: var(--text3); font-size: 13px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.proj-type-btn:first-child { border-radius: 10px 0 0 10px; }
+.proj-type-btn:last-child { border-radius: 0 10px 10px 0; border-right: 1px solid var(--border); }
+.proj-type-btn.active {
+  background: rgba(var(--accent-rgb),.1); border-color: rgba(var(--accent-rgb),.25);
+  color: var(--cyan);
+}
+.proj-type-btn.active + .proj-type-btn { border-left-color: rgba(var(--accent-rgb),.25); }
+
 /* 项目筛选栏 */
 .proj-filter-bar { display: flex; gap: 6px; margin-bottom: 14px; }
 .proj-filter-btn {

@@ -160,11 +160,56 @@
         </div>
       </div>
 
+      <!-- 操作工具栏 -->
+      <div class="ed-toolbar">
+        <div class="ed-tb-left">
+          <button class="ed-tb-btn" id="tb-play" onclick="togglePlay()" title="播放/暂停">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><polygon points="3,1 12,7 3,13"/></svg>
+          </button>
+          <button class="ed-tb-btn" onclick="prevClip()" title="上一个片段">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="2" width="2" height="10"/><polygon points="12,2 5,7 12,12"/></svg>
+          </button>
+          <button class="ed-tb-btn" onclick="nextClip()" title="下一个片段">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="11" y="2" width="2" height="10"/><polygon points="2,2 9,7 2,12"/></svg>
+          </button>
+          <span class="ed-tb-time" id="tb-current-time">0:00</span>
+          <span class="ed-tb-sep">/</span>
+          <span class="ed-tb-time ed-tb-total" id="tb-total-time">0:00</span>
+        </div>
+        <div class="ed-tb-center">
+          <button class="ed-tb-btn" onclick="splitClipAtPlayhead()" title="在播放位置分割">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="7" y1="1" x2="7" y2="13"/><polyline points="4,4 7,1 10,4"/><polyline points="4,10 7,13 10,10"/></svg>
+            分割
+          </button>
+          <button class="ed-tb-btn" onclick="deleteSelectedScene()" title="删除选中片段">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><polyline points="2,4 12,4"/><path d="M5,4V2.5A.5.5,0,0,1,5.5,2h3a.5.5,0,0,1,.5.5V4"/><path d="M3,4v8.5a.5.5,0,0,0,.5.5h7a.5.5,0,0,0,.5-.5V4"/></svg>
+            删除
+          </button>
+          <button class="ed-tb-btn" onclick="undoAction()" title="撤销">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4,5H10a3,3,0,0,1,0,6H8"/><polyline points="6,3 4,5 6,7"/></svg>
+            撤销
+          </button>
+        </div>
+        <div class="ed-tb-right">
+          <button class="ed-tb-btn" onclick="zoomTimeline(-1)" title="缩小">−</button>
+          <span class="ed-tb-zoom" id="tb-zoom-level">100%</span>
+          <button class="ed-tb-btn" onclick="zoomTimeline(1)" title="放大">+</button>
+        </div>
+      </div>
+
       <!-- 底部时间轴 -->
       <div class="ed-timeline-area">
-        <div class="ed-tl-ruler" id="tl-ruler"></div>
-        <div class="ed-tl-track" id="timeline">
-          <div style="padding:20px;color:rgba(251,251,251,.3);font-size:12px">加载中...</div>
+        <div class="ed-tl-ruler" id="tl-ruler">
+          <div class="ed-tl-playhead" id="tl-playhead">
+            <div class="ed-tl-playhead-head"></div>
+            <div class="ed-tl-playhead-line"></div>
+          </div>
+        </div>
+        <div class="ed-tl-tracks-wrap">
+          <div class="ed-tl-playhead-ext" id="tl-playhead-ext"></div>
+          <div class="ed-tl-track" id="timeline">
+            <div style="padding:20px;color:rgba(251,251,251,.3);font-size:12px">加载中...</div>
+          </div>
         </div>
       </div>
     </div>

@@ -78,6 +78,7 @@ router.post('/', async (req, res) => {
 
   try {
     const projectId = createProject({
+      type: 'original',
       title: title || theme, theme, genre, duration,
       mode: mode || 'quick',
       custom_content: custom_content || null,
@@ -148,24 +149,34 @@ router.get('/:id/progress', (req, res) => {
   req.on('close', () => removeProgressListener(req.params.id, res));
 });
 
+// 解析视频文件路径（支持原始项目和剪辑项目）
+function resolveVideoPath(projectId) {
+  const project = db.getProject(projectId);
+  // 剪辑项目：直接使用 final_video_path
+  if (project?.final_video_path && fs.existsSync(project.final_video_path)) {
+    return project.final_video_path;
+  }
+  // 原始项目：使用 finalVideo 记录
+  const details = getProjectDetails(projectId);
+  if (details?.finalVideo?.file_path && fs.existsSync(details.finalVideo.file_path)) {
+    return details.finalVideo.file_path;
+  }
+  return null;
+}
+
 // 下载最终视频
 router.get('/:id/download', (req, res) => {
-  const details = getProjectDetails(req.params.id);
-  if (!details?.finalVideo) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
+  const filePath = resolveVideoPath(req.params.id);
+  if (!filePath) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
 
-  const filePath = details.finalVideo.file_path;
-  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '视频文件不存在' });
-
-  res.download(filePath, `${details.title || details.id}_final.mp4`);
+  const project = db.getProject(req.params.id);
+  res.download(filePath, `${project?.title || req.params.id}_final.mp4`);
 });
 
 // 流式播放最终视频（支持 Range 请求，浏览器原生播放）
 router.get('/:id/stream', (req, res) => {
-  const details = getProjectDetails(req.params.id);
-  if (!details?.finalVideo) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
-
-  const filePath = details.finalVideo.file_path;
-  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '文件不存在' });
+  const filePath = resolveVideoPath(req.params.id);
+  if (!filePath) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
 
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;

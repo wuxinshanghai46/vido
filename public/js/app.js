@@ -3380,6 +3380,21 @@ function closeLightbox(e) {
 // ═══ 项目列表 ═══
 let allProjectsCache = [];
 let projectFilter = 'all';
+let projectTypeFilter = 'original';
+
+function switchProjectType(type, btn) {
+  projectTypeFilter = type;
+  document.querySelectorAll('.proj-type-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  // 剪辑视频没有"生成中"状态，隐藏状态筛选
+  const filterBar = document.getElementById('proj-filter-bar');
+  if (filterBar) filterBar.style.display = type === 'edited' ? 'none' : '';
+  projectFilter = 'all';
+  document.querySelectorAll('.proj-filter-btn').forEach(b => b.classList.remove('active'));
+  const allBtn = document.querySelector('.proj-filter-btn[data-filter="all"]');
+  if (allBtn) allBtn.classList.add('active');
+  renderProjectGrid(allProjectsCache);
+}
 
 function filterProjects(filter, btn) {
   projectFilter = filter;
@@ -3394,26 +3409,37 @@ function isRunning(status) {
 
 function renderProjectGrid(projects) {
   const grid = document.getElementById('projects-grid');
-  let list = projects;
-  if (projectFilter === 'running') list = projects.filter(p => isRunning(p.status));
-  else if (projectFilter === 'done') list = projects.filter(p => p.status === 'done');
-  else if (projectFilter === 'error') list = projects.filter(p => p.status === 'error' || p.status === 'cancelled');
+
+  // 按类型分类
+  let list = projects.filter(p => {
+    if (projectTypeFilter === 'edited') return p.type === 'edited';
+    return p.type !== 'edited'; // original 或无 type 的旧项目
+  });
+
+  // 再按状态筛选（仅原视频类）
+  if (projectTypeFilter === 'original') {
+    if (projectFilter === 'running') list = list.filter(p => isRunning(p.status));
+    else if (projectFilter === 'done') list = list.filter(p => p.status === 'done');
+    else if (projectFilter === 'error') list = list.filter(p => p.status === 'error' || p.status === 'cancelled');
+  }
 
   if (!list.length) {
-    const msg = projectFilter === 'all' ? '还没有项目' : '没有符合条件的项目';
-    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🎬</div><div class="empty-title">${msg}</div></div>`;
+    const msg = projectTypeFilter === 'edited' ? '还没有剪辑过的视频' : (projectFilter === 'all' ? '还没有项目' : '没有符合条件的项目');
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">${projectTypeFilter === 'edited' ? '✂' : '🎬'}</div><div class="empty-title">${msg}</div></div>`;
     return;
   }
 
   const sl = { pending:'等待中', done:'已完成', error:'失败', cancelled:'已取消', generating_story:'生成剧情', generating_videos:'生成视频', merging:'合成中' };
+  const isEdited = projectTypeFilter === 'edited';
 
   grid.innerHTML = list.map(p => {
     const isDone = p.status === 'done';
     const isErr = p.status === 'error' || p.status === 'cancelled';
     const statusCls = isDone ? 'pc-done' : isErr ? 'pc-error' : 'pc-running';
+    const onclick = isEdited ? `openPreview('${p.id}','${esc(p.title)}')` : `viewProject('${p.id}')`;
     return `
-    <div class="project-card ${statusCls}" onclick="viewProject('${p.id}')">
-      <div class="pc-thumb">🎬</div>
+    <div class="project-card ${statusCls}" onclick="${onclick}">
+      <div class="pc-thumb">${isEdited ? '✂' : '🎬'}</div>
       <div class="pc-body">
         <div class="pc-title">${esc(p.title)}</div>
         <div class="pc-theme">${esc(p.theme||'')}</div>
@@ -3427,7 +3453,7 @@ function renderProjectGrid(projects) {
           <button class="pca-btn pca-play" onclick="openPreview('${p.id}','${esc(p.title)}')">▶</button>
           <a class="pca-btn pca-dl" href="${authUrl('/api/projects/'+p.id+'/download')}">⬇</a>
           <button class="pca-btn pca-pub" onclick="openPublishModal('${p.id}')">发布</button>
-          <a class="pca-btn pca-edit" href="/editor.html?id=${p.id}">剪辑</a>
+          ${isEdited ? `<a class="pca-btn pca-edit" href="/editor.html?id=${p.source_project_id||p.id}">再编辑</a>` : `<a class="pca-btn pca-edit" href="/editor.html?id=${p.id}">剪辑</a>`}
           <button class="pca-btn pca-del" onclick="deleteProject('${p.id}')">删除</button>
         ` : isErr ? `
           <button class="pca-btn pca-del" onclick="deleteProject('${p.id}')">删除</button>
