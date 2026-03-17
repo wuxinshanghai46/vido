@@ -190,7 +190,32 @@ function toggleMuteAudio(sceneIdx) {
   if (idx >= 0) editData.muted_audio.splice(idx, 1);
   else editData.muted_audio.push(sceneIdx);
   renderAudioTrack();
+  updateMuteAllBtn();
   scheduleSave();
+}
+
+function toggleMuteAllAudio() {
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const allMuted = order.every(idx => (editData.muted_audio || []).includes(idx));
+  if (allMuted) {
+    // 恢复全部
+    editData.muted_audio = [];
+  } else {
+    // 静音全部
+    editData.muted_audio = [...order];
+  }
+  renderAudioTrack();
+  updateMuteAllBtn();
+  scheduleSave();
+}
+
+function updateMuteAllBtn() {
+  const btn = document.getElementById('btn-mute-all-audio');
+  if (!btn) return;
+  const order = editData.scenes_order || clips.map(c => c.scene_index);
+  const allMuted = order.length > 0 && order.every(idx => (editData.muted_audio || []).includes(idx));
+  btn.classList.toggle('active', allMuted);
+  btn.title = allMuted ? '恢复原始音频' : '删除原始音频';
 }
 
 function renderMusicTrack() {

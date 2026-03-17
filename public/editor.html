@@ -268,7 +268,10 @@
             </div>
             <!-- 原始音频轨 -->
             <div class="ed-tl-lane ed-tl-lane-audio">
-              <div class="ed-tl-lane-label">A</div>
+              <div class="ed-tl-lane-label" id="audio-lane-label">
+                <span>A</span>
+                <button class="ed-lane-del" id="btn-mute-all-audio" onclick="toggleMuteAllAudio()" title="删除原始音频">✕</button>
+              </div>
               <div class="ed-tl-track ed-tl-audio-track" id="audio-track"></div>
             </div>
             <!-- 背景音乐轨 -->
