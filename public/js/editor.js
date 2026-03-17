@@ -29,6 +29,21 @@ async function init() {
     scenes = s;
     editData = edit;
     projectData = project;
+
+    // 恢复分割片段的虚拟 clip/scene 数据
+    if (editData.splits) {
+      for (const [splitId, info] of Object.entries(editData.splits)) {
+        const sid = parseInt(splitId);
+        const sourceClip = clips.find(cl => cl.scene_index === info.source_scene_index)
+          || clips.find(cl => cl.id === info.source_clip_id);
+        if (sourceClip && !clips.find(cl => cl.scene_index === sid)) {
+          clips.push({ ...sourceClip, scene_index: sid, _split_source: info.source_scene_index });
+          const origScene = scenes[info.source_scene_index] || {};
+          scenes[sid] = { ...origScene, title: (origScene.title || '') + ' (B)' };
+        }
+      }
+    }
+
     document.getElementById('editor-project-title').textContent = project.title || '编辑器';
     document.title = `编辑 · ${project.title} - VIDO`;
     renderTimeline();
@@ -40,17 +55,28 @@ async function init() {
   }
 }
 
+function getEffectiveDuration(sceneIdx) {
+  const clip = clips.find(c => c.scene_index === sceneIdx);
+  const fullDur = clip?.duration || 10;
+  const trim = editData.scene_trims?.[sceneIdx];
+  if (trim) {
+    const s = trim.start || 0;
+    const e = trim.end || fullDur;
+    return Math.max(0.5, e - s);
+  }
+  return fullDur;
+}
+
 // ——— 时间轴渲染 ———
 function renderTimeline() {
   const order = editData.scenes_order || clips.map(c => c.scene_index);
   const timeline = document.getElementById('timeline');
   const ruler = document.getElementById('tl-ruler');
 
-  // 计算总时长
+  // 计算总时长（考虑裁剪/分割）
   totalTimelineDur = 0;
   order.forEach(sceneIdx => {
-    const clip = clips.find(c => c.scene_index === sceneIdx);
-    totalTimelineDur += clip?.duration || 10;
+    totalTimelineDur += getEffectiveDuration(sceneIdx);
   });
 
   // 更新总时长显示
@@ -131,7 +157,7 @@ function renderAudioTrack() {
   // 每个片段对应一个音频块（从视频中分离出来的音频部分）
   track.innerHTML = order.map((sceneIdx, pos) => {
     const clip = clips.find(c => c.scene_index === sceneIdx);
-    const dur = clip?.duration || 10;
+    const dur = getEffectiveDuration(sceneIdx);
     const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
     const scene = scenes[sceneIdx] || {};
     const isDeleted = (editData.deleted_scenes || []).includes(sceneIdx);
@@ -178,7 +204,7 @@ function renderVoiceTrack() {
 
   track.innerHTML = order.map((sceneIdx, pos) => {
     const clip = clips.find(c => c.scene_index === sceneIdx);
-    const dur = clip?.duration || 10;
+    const dur = getEffectiveDuration(sceneIdx);
     const widthPct = totalTimelineDur > 0 ? (dur / totalTimelineDur * 100) : (100 / order.length);
     const vo = voiceovers.find(v => v.scene_index === sceneIdx);
     if (!vo?.text) return `<div style="width:${widthPct}%"></div>`;
@@ -199,7 +225,10 @@ function playClipPreview(sceneIdx) {
   src.src = authUrl(`/api/projects/${projectId}/clips/${clip.id}/stream`);
   video.load();
   currentPlayingClip = sceneIdx;
+  const trim = editData.scene_trims?.[sceneIdx];
   video.onloadedmetadata = () => {
+    // 如果有裁剪起点，跳到起点
+    if (trim?.start > 0) video.currentTime = trim.start;
     updateTimeDisplay();
   };
   video.ontimeupdate = () => { updateTimeDisplay(); };
@@ -701,10 +730,67 @@ function nextClip() {
 function splitClipAtPlayhead() {
   if (selectedSceneIndex === null) return;
   const video = document.getElementById('preview-video');
-  if (!video || !video.currentTime) return;
-  const t = Math.round(video.currentTime * 10) / 10;
-  document.getElementById('trim-end').value = t;
-  saveTrim();
+  if (!video || !video.currentTime || video.currentTime < 0.3) return;
+
+  saveUndo();
+
+  const sceneIdx = selectedSceneIndex;
+  const clip = clips.find(c => c.scene_index === sceneIdx);
+  if (!clip) return;
+  const clipDur = clip.duration || 10;
+  const splitTime = Math.round(video.currentTime * 10) / 10;
+
+  // 获取当前裁剪范围
+  if (!editData.scene_trims) editData.scene_trims = {};
+  const existTrim = editData.scene_trims[sceneIdx] || { start: 0, end: clipDur };
+  const trimStart = existTrim.start || 0;
+  const trimEnd = existTrim.end || clipDur;
+
+  // 分割点必须在裁剪范围内
+  const absSplit = trimStart + splitTime;
+  if (absSplit <= trimStart + 0.2 || absSplit >= trimEnd - 0.2) return;
+
+  // 为分割创建虚拟片段ID（scene_index + 偏移）
+  // 使用负数或大数来标识分割后的后半段
+  if (!editData.splits) editData.splits = {};
+  const splitId = sceneIdx + 10000 + Object.keys(editData.splits).length;
+
+  // 记录分割信息：splitId 对应 原始 sceneIdx + 裁剪范围
+  editData.splits[splitId] = {
+    source_scene_index: sceneIdx,
+    source_clip_id: clip.id
+  };
+
+  // 前半段：原 sceneIdx，裁剪 start ~ absSplit
+  editData.scene_trims[sceneIdx] = { start: trimStart, end: absSplit };
+
+  // 后半段：splitId，裁剪 absSplit ~ trimEnd
+  editData.scene_trims[splitId] = { start: absSplit, end: trimEnd };
+
+  // 在 scenes_order 中，在当前位置后插入 splitId
+  if (!editData.scenes_order) editData.scenes_order = clips.map(c => c.scene_index);
+  const pos = editData.scenes_order.indexOf(sceneIdx);
+  if (pos >= 0) {
+    editData.scenes_order.splice(pos + 1, 0, splitId);
+  }
+
+  // 为 splitId 创建虚拟 clip 数据（复用原 clip）
+  clips.push({
+    ...clip,
+    scene_index: splitId,
+    _split_source: sceneIdx
+  });
+
+  // 创建虚拟 scene 数据
+  const origScene = scenes[sceneIdx] || {};
+  scenes[splitId] = {
+    ...origScene,
+    title: (origScene.title || `场景${sceneIdx+1}`) + ' (B)'
+  };
+
+  renderTimeline();
+  selectScene(splitId);
+  scheduleSave();
 }
 
 // ——— 片段裁剪拖拽 ———

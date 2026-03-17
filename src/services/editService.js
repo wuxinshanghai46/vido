@@ -168,12 +168,26 @@ async function renderWithEdits(projectId, progressCallback) {
   const tmpDir = path.join(OUTPUT_DIR, 'tmp', projectId);
   fs.mkdirSync(tmpDir, { recursive: true });
 
-  // 确定场景顺序
+  // 确定场景顺序（支持分割片段：splits 映射 splitId → 原始 clip）
+  const splits = edit.splits || {};
+  const resolveClip = (idx) => {
+    const direct = allClips.find(c => c.scene_index === idx);
+    if (direct) return { ...direct, _resolvedIndex: idx };
+    // 分割片段：查找源 clip
+    const splitInfo = splits[idx];
+    if (splitInfo) {
+      const source = allClips.find(c => c.scene_index === splitInfo.source_scene_index)
+        || allClips.find(c => c.id === splitInfo.source_clip_id);
+      if (source) return { ...source, scene_index: idx, _resolvedIndex: idx };
+    }
+    return null;
+  };
+
   let orderedClips = [...allClips];
   if (edit.scenes_order) {
     orderedClips = edit.scenes_order
       .filter(idx => !edit.deleted_scenes.includes(idx))
-      .map(idx => allClips.find(c => c.scene_index === idx))
+      .map(resolveClip)
       .filter(Boolean);
   } else {
     orderedClips = allClips.filter(c => !edit.deleted_scenes.includes(c.scene_index));
