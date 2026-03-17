@@ -251,17 +251,15 @@
 
       <!-- 底部时间轴 -->
       <div class="ed-timeline-area" id="timeline-area">
-        <!-- 标尺 + 播放头 -->
-        <div class="ed-tl-ruler" id="tl-ruler">
-          <div class="ed-tl-playhead" id="tl-playhead" onmousedown="startPlayheadDrag(event)">
-            <div class="ed-tl-playhead-head"></div>
-            <div class="ed-tl-playhead-line"></div>
-          </div>
+        <!-- 播放头（全高度，绝对定位在timeline-area上） -->
+        <div class="ed-tl-playhead" id="tl-playhead" onmousedown="startPlayheadDrag(event)">
+          <div class="ed-tl-playhead-head"></div>
+          <div class="ed-tl-playhead-line"></div>
         </div>
+        <!-- 标尺 -->
+        <div class="ed-tl-ruler" id="tl-ruler"></div>
         <!-- 轨道区域 -->
         <div class="ed-tl-tracks-wrap" id="tl-tracks-wrap">
-          <!-- 播放头竖线 -->
-          <div class="ed-tl-playhead-ext" id="tl-playhead-ext"></div>
           <div class="ed-tl-lanes" id="tl-lanes">
             <!-- 视频轨 -->
             <div class="ed-tl-lane">

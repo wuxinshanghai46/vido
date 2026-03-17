@@ -57,23 +57,18 @@ function renderTimeline() {
   const totalEl = document.getElementById('tb-total-time');
   if (totalEl) totalEl.textContent = formatTime(totalTimelineDur);
 
-  // 绘制标尺（保留 playhead 元素）
+  // 绘制标尺
   if (ruler) {
-    const playhead = ruler.querySelector('.ed-tl-playhead');
-    const phHtml = playhead ? playhead.outerHTML : '<div class="ed-tl-playhead" id="tl-playhead"><div class="ed-tl-playhead-head"></div><div class="ed-tl-playhead-line"></div></div>';
     let marks = '';
     const step = totalTimelineDur > 60 ? 10 : 5;
     for (let t = 0; t <= totalTimelineDur; t += step) {
       const pct = totalTimelineDur > 0 ? (t / totalTimelineDur * 100) : 0;
       marks += `<span class="ed-tl-mark" style="left:${pct}%">${formatTime(t)}</span>`;
     }
-    ruler.innerHTML = marks + phHtml;
+    ruler.innerHTML = marks;
     // 点击标尺跳转
     ruler.onclick = (e) => {
-      if (e.target.closest('.ed-tl-playhead')) return;
-      const rect = ruler.getBoundingClientRect();
-      const pct = (e.clientX - rect.left) / rect.width;
-      seekTimelinePlayhead(pct);
+      seekTimelinePlayhead(pxToPct(e.clientX));
     };
   }
 
@@ -635,12 +630,22 @@ function closePreviewModal() {
 }
 
 // ——— 播放头 ———
+const LANE_LABEL_W = 32;
+
+function getPlayheadPx(pct) {
+  // 计算播放头在 timeline-area 中的 left (px)
+  const wrap = document.getElementById('tl-tracks-wrap');
+  if (!wrap) return LANE_LABEL_W;
+  const trackWidth = wrap.scrollWidth - LANE_LABEL_W; // 轨道内容区域宽度
+  const scrollLeft = wrap.scrollLeft;
+  return LANE_LABEL_W + (pct / 100) * trackWidth - scrollLeft;
+}
+
 function updatePlayhead() {
+  if (playheadDragging) return; // 拖拽中不自动更新
   const video = document.getElementById('preview-video');
   if (!video || !video.duration) return;
   const cur = video.currentTime || 0;
-  const dur = video.duration || 1;
-  // 计算在整个时间轴中的位置
   const order = editData.scenes_order || clips.map(c => c.scene_index);
   let offset = 0;
   for (const idx of order) {
@@ -652,9 +657,7 @@ function updatePlayhead() {
   const pct = totalTimelineDur > 0 ? (globalTime / totalTimelineDur * 100) : 0;
 
   const ph = document.getElementById('tl-playhead');
-  const phExt = document.getElementById('tl-playhead-ext');
-  if (ph) ph.style.left = pct + '%';
-  if (phExt) phExt.style.left = pct + '%';
+  if (ph) ph.style.left = getPlayheadPx(pct) + 'px';
 
   const tbTime = document.getElementById('tb-current-time');
   if (tbTime) tbTime.textContent = formatTime(globalTime);
@@ -848,6 +851,17 @@ function startPlayheadLoop() {
 // ——— 播放头拖拽 ———
 let playheadDragging = false;
 
+function pxToPct(clientX) {
+  // 从鼠标 clientX 计算时间轴百分比 (0~1)
+  const wrap = document.getElementById('tl-tracks-wrap');
+  const area = document.getElementById('timeline-area');
+  if (!wrap || !area) return 0;
+  const areaRect = area.getBoundingClientRect();
+  const trackWidth = wrap.scrollWidth - LANE_LABEL_W;
+  const x = clientX - areaRect.left - LANE_LABEL_W + wrap.scrollLeft;
+  return Math.max(0, Math.min(1, x / trackWidth));
+}
+
 function startPlayheadDrag(e) {
   e.preventDefault();
   e.stopPropagation();
@@ -858,18 +872,9 @@ function startPlayheadDrag(e) {
 
 function onPlayheadDrag(e) {
   if (!playheadDragging) return;
-  const ruler = document.getElementById('tl-ruler');
-  const rect = ruler.getBoundingClientRect();
-  // 考虑标尺滚动偏移
-  const scrollOffset = ruler.scrollLeft || 0;
-  const totalWidth = ruler.scrollWidth || rect.width;
-  const x = e.clientX - rect.left + scrollOffset;
-  const pct = Math.max(0, Math.min(1, x / totalWidth));
-  // 直接更新播放头位置
+  const pct = pxToPct(e.clientX);
   const ph = document.getElementById('tl-playhead');
-  const phExt = document.getElementById('tl-playhead-ext');
-  if (ph) ph.style.left = (pct * 100) + '%';
-  if (phExt) phExt.style.left = (pct * 100) + '%';
+  if (ph) ph.style.left = getPlayheadPx(pct * 100) + 'px';
   const tbTime = document.getElementById('tb-current-time');
   if (tbTime) tbTime.textContent = formatTime(pct * totalTimelineDur);
 }
@@ -879,13 +884,7 @@ function endPlayheadDrag(e) {
   playheadDragging = false;
   document.removeEventListener('mousemove', onPlayheadDrag);
   document.removeEventListener('mouseup', endPlayheadDrag);
-  const ruler = document.getElementById('tl-ruler');
-  const rect = ruler.getBoundingClientRect();
-  const scrollOffset = ruler.scrollLeft || 0;
-  const totalWidth = ruler.scrollWidth || rect.width;
-  const x = e.clientX - rect.left + scrollOffset;
-  const pct = Math.max(0, Math.min(1, x / totalWidth));
-  seekTimelinePlayhead(pct);
+  seekTimelinePlayhead(pxToPct(e.clientX));
 }
 
 // ——— 右侧面板 Tab 切换 ———

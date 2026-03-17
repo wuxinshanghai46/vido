@@ -246,35 +246,30 @@
 .ed-tl-ruler {
   height: 22px; position: relative; background: var(--bg3);
   border-bottom: 1px solid var(--border); flex-shrink: 0;
-  overflow-x: hidden; overflow-y: visible;
-  cursor: pointer; margin-left: 28px; /* match lane label width */
+  overflow: hidden; cursor: pointer; margin-left: 32px;
 }
 .ed-tl-mark {
   position: absolute; font-size: 9px; color: var(--text3);
   transform: translateX(-50%); top: 4px;
 }
 
-/* 播放头（可拖拽） */
+/* 播放头（在 timeline-area 上绝对定位，全高度） */
 .ed-tl-playhead {
-  position: absolute; top: -2px; left: 0; z-index: 10;
-  transform: translateX(-50%); cursor: grab;
-  padding: 0 4px; /* 扩大点击区域 */
+  position: absolute; top: 0; bottom: 0; left: 32px;
+  z-index: 20; transform: translateX(-50%);
+  cursor: grab; width: 20px;
+  display: flex; flex-direction: column; align-items: center;
+  pointer-events: auto;
 }
 .ed-tl-playhead:active { cursor: grabbing; }
 .ed-tl-playhead-head {
-  width: 16px; height: 16px; background: #FF4D6D;
+  width: 14px; height: 14px; background: #FF4D6D;
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
-  margin: 0 auto; pointer-events: auto;
+  flex-shrink: 0; margin-top: 2px;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,.5));
 }
 .ed-tl-playhead-line {
-  width: 2px; height: 200px; background: #FF4D6D;
-  margin: 0 auto; opacity: .7; pointer-events: none;
-}
-.ed-tl-playhead-ext {
-  position: absolute; top: 0; left: 0; width: 2px; height: 100%;
-  background: #FF4D6D; opacity: .4; z-index: 5;
-  pointer-events: none; transform: translateX(-50%);
+  width: 2px; flex: 1; background: #FF4D6D; opacity: .7;
 }
 
 /* 轨道区域 */
