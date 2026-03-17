@@ -48,8 +48,11 @@ async function init() {
     document.title = `编辑 · ${project.title} - VIDO`;
     renderTimeline();
     loadMusicUI();
+    // 初始化播放头位置
+    const ph = document.getElementById('tl-playhead');
+    if (ph) ph.style.left = LANE_LABEL_W + 'px';
     // 自动播放第一个片段
-    if (clips.length) playClipPreview(0);
+    if (clips.length) playClipPreview(clips[0].scene_index);
   } catch (e) {
     alert('加载失败: ' + e.message);
   }
@@ -682,18 +685,25 @@ function getPlayheadPx(pct) {
 }
 
 function updatePlayhead() {
-  if (playheadDragging) return; // 拖拽中不自动更新
+  if (playheadDragging) return;
   const video = document.getElementById('preview-video');
   if (!video || !video.duration) return;
-  const cur = video.currentTime || 0;
+
   const order = editData.scenes_order || clips.map(c => c.scene_index);
+
+  // 计算前面所有片段的有效时长总和
   let offset = 0;
   for (const idx of order) {
     if (idx === currentPlayingClip) break;
-    const c = clips.find(c => c.scene_index === idx);
-    offset += c?.duration || 10;
+    offset += getEffectiveDuration(idx);
   }
-  const globalTime = offset + cur;
+
+  // 当前片段的播放进度（相对于裁剪起点）
+  const trim = editData.scene_trims?.[currentPlayingClip];
+  const trimStart = trim?.start || 0;
+  const curInClip = Math.max(0, (video.currentTime || 0) - trimStart);
+
+  const globalTime = offset + curInClip;
   const pct = totalTimelineDur > 0 ? (globalTime / totalTimelineDur * 100) : 0;
 
   const ph = document.getElementById('tl-playhead');
@@ -705,17 +715,18 @@ function updatePlayhead() {
 
 function seekTimelinePlayhead(pct) {
   const targetTime = pct * totalTimelineDur;
-  // 找到对应片段
   const order = editData.scenes_order || clips.map(c => c.scene_index);
   let acc = 0;
   for (const idx of order) {
-    const c = clips.find(c => c.scene_index === idx);
-    const dur = c?.duration || 10;
+    const dur = getEffectiveDuration(idx);
     if (acc + dur >= targetTime) {
       selectScene(idx);
+      const trim = editData.scene_trims?.[idx];
+      const trimStart = trim?.start || 0;
       const video = document.getElementById('preview-video');
       video.onloadeddata = () => {
-        video.currentTime = Math.max(0, targetTime - acc);
+        // 跳到裁剪起点 + 偏移
+        video.currentTime = trimStart + Math.max(0, targetTime - acc);
         video.onloadeddata = null;
       };
       return;
@@ -775,8 +786,8 @@ function splitClipAtPlayhead() {
   if (splitAt >= rangeEnd - 0.1) splitAt = rangeEnd - Math.max(0.5, effectiveDur * 0.3);
   splitAt = Math.round(splitAt * 10) / 10;
 
-  if (effectiveDur < 0.5) {
-    alert('片段太短，无法分割');
+  if (effectiveDur < 1.0) {
+    alert('片段太短（' + effectiveDur.toFixed(1) + '秒），无法继续分割');
     return;
   }
 
