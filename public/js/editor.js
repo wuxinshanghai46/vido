@@ -254,7 +254,6 @@ function selectScene(sceneIdx) {
   renderTimeline();
   playClipPreview(sceneIdx);
 
-  document.getElementById('props-empty').style.display = 'none';
   const panel = document.getElementById('scene-panel');
   panel.style.display = 'block';
 
@@ -844,7 +843,6 @@ function switchRightTab(tab, btn) {
     const panel = document.getElementById('rtab-' + t);
     if (panel) panel.style.display = t === tab ? '' : 'none';
   });
-  document.getElementById('props-empty').style.display = 'none';
 }
 
 // ——— 字幕颜色 ———
