@@ -771,6 +771,52 @@ function zoomTimeline(dir) {
   if (track) track.style.minWidth = timelineZoom + '%';
 }
 
+// ——— 时间轴拖拽平移 + 滚轮缩放 ———
+function initTimelinePan() {
+  const wrap = document.getElementById('tl-tracks-wrap');
+  const ruler = document.getElementById('tl-ruler');
+  if (!wrap) return;
+  let isPanning = false, startX = 0, startScroll = 0;
+
+  wrap.addEventListener('mousedown', (e) => {
+    // 不拦截片段点击和裁剪手柄
+    if (e.target.closest('.ed-clip') || e.target.closest('.ed-clip-trim') || e.target.closest('.ed-orig-audio') || e.target.closest('.ed-voice-block') || e.target.closest('.ed-audio-block')) return;
+    isPanning = true;
+    startX = e.clientX;
+    startScroll = wrap.scrollLeft;
+    wrap.classList.add('dragging');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+    const dx = e.clientX - startX;
+    wrap.scrollLeft = startScroll - dx;
+    // 同步标尺滚动
+    if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+  });
+  document.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; wrap.classList.remove('dragging'); }
+  });
+
+  // 滚轮：Ctrl+滚轮缩放，普通滚轮左右平移
+  wrap.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      // 缩放
+      zoomTimeline(e.deltaY < 0 ? 1 : -1);
+    } else {
+      // 水平平移
+      wrap.scrollLeft += e.deltaY || e.deltaX;
+      if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+    }
+  }, { passive: false });
+
+  // 同步标尺和轨道滚动
+  wrap.addEventListener('scroll', () => {
+    if (ruler) ruler.scrollLeft = wrap.scrollLeft;
+  });
+}
+
 // ——— 键盘快捷键 ———
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -964,3 +1010,4 @@ function escHtml(str) {
 startPlayheadLoop();
 loadVoiceOptions();
 init();
+setTimeout(initTimelinePan, 100);

@@ -232,8 +232,9 @@
 }
 .ed-tl-ruler {
   height: 22px; position: relative; background: var(--bg3);
-  border-bottom: 1px solid var(--border); flex-shrink: 0; overflow: visible;
-  cursor: pointer;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  overflow-x: hidden; overflow-y: visible;
+  cursor: pointer; margin-left: 28px; /* match lane label width */
 }
 .ed-tl-mark {
   position: absolute; font-size: 9px; color: var(--text3);
@@ -265,7 +266,13 @@
 .ed-tl-tracks-wrap {
   flex: 1; position: relative; overflow-x: auto; overflow-y: hidden;
   display: flex; flex-direction: column;
+  cursor: grab;
 }
+.ed-tl-tracks-wrap.dragging { cursor: grabbing; }
+.ed-tl-tracks-wrap::-webkit-scrollbar { height: 4px; }
+.ed-tl-tracks-wrap::-webkit-scrollbar-track { background: transparent; }
+.ed-tl-tracks-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+.ed-tl-tracks-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
 .ed-tl-lane {
   display: flex; border-bottom: 1px solid var(--border); min-height: 0;
 }
