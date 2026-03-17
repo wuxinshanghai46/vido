@@ -80,6 +80,14 @@ app.get('/api/assets/file/:filename', (req, res) => {
   res.status(404).end();
 });
 
+// 语音预览文件（公开，audio 标签无法带 Authorization header）
+app.get('/api/story/voice-preview/:filename', (req, res) => {
+  const fs = require('fs');
+  const filePath = path.join(__dirname, '../outputs/voice/preview', path.basename(req.params.filename));
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
 // 角色/场景图片（公开，img 标签无法带 Authorization header）
 app.get('/api/story/character-image/:filename', (req, res) => {
   const fs = require('fs');
@@ -111,6 +119,9 @@ app.use('/api/projects', authenticate, require('./routes/projects'));
 app.use('/api/story', authenticate, require('./routes/story'));
 app.use('/api/editor', authenticate, require('./routes/editor'));
 app.use('/api/assets', authenticate, require('./routes/assets'));
+
+// === 社交媒体发布 ===
+app.use('/api/publish', authenticate, require('./routes/publish'));
 
 // === 需特定权限的路由 ===
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));

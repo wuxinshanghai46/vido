@@ -17,6 +17,38 @@ router.get('/voices', (req, res) => {
   }
 });
 
+// 语音试听
+router.post('/preview-voice', async (req, res) => {
+  const { voice_id, text } = req.body;
+  const previewText = text || '欢迎使用VIDO AI视频创作平台。';
+  const { generateSpeech } = require('../services/ttsService');
+  const { v4: uuidv4 } = require('uuid');
+  const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
+  const voiceDir = path.join(OUTPUT_DIR, 'voice', 'preview');
+  if (!fs.existsSync(voiceDir)) fs.mkdirSync(voiceDir, { recursive: true });
+  const outBase = path.join(voiceDir, `pv_${uuidv4().slice(0, 8)}`);
+  try {
+    const audioFile = await generateSpeech(previewText, outBase, { voiceId: voice_id });
+    if (!audioFile || !fs.existsSync(audioFile)) {
+      return res.json({ success: false, error: '语音生成失败' });
+    }
+    const filename = path.basename(audioFile);
+    res.json({ success: true, audio_url: `/api/story/voice-preview/${filename}` });
+    // 60秒后清理预览文件
+    setTimeout(() => { try { fs.unlinkSync(audioFile); } catch {} }, 60000);
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// 提供语音预览文件
+router.get('/voice-preview/:filename', (req, res) => {
+  const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
+  const filePath = path.join(OUTPUT_DIR, 'voice', 'preview', path.basename(req.params.filename));
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
 // 单独预生成剧情（预览用，不创建项目）
 router.post('/generate', async (req, res) => {
   const { theme, genre = 'drama', duration = 60, language = '中文' } = req.body;

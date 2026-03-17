@@ -209,6 +209,39 @@ const db = {
     if (!data.assets) return;
     const idx = data.assets.findIndex(a => a.id === id);
     if (idx !== -1) { data.assets.splice(idx, 1); writeDB(data); }
+  },
+
+  // ——— Publications（社交媒体发布记录）———
+  insertPublication(row) {
+    const data = readDB();
+    if (!data.publications) data.publications = [];
+    row.created_at = row.created_at || new Date().toISOString();
+    row.updated_at = row.created_at;
+    data.publications.push(row);
+    writeDB(data);
+  },
+  getPublication(id) {
+    const data = readDB();
+    return (data.publications || []).find(p => p.id === id) || null;
+  },
+  listPublications() {
+    const data = readDB();
+    return (data.publications || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  updatePublication(id, fields) {
+    const data = readDB();
+    if (!data.publications) data.publications = [];
+    const idx = data.publications.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      data.publications[idx] = { ...data.publications[idx], ...fields, updated_at: new Date().toISOString() };
+      writeDB(data);
+    }
+  },
+  deletePublication(id) {
+    const data = readDB();
+    if (!data.publications) return;
+    const idx = data.publications.findIndex(p => p.id === id);
+    if (idx !== -1) { data.publications.splice(idx, 1); writeDB(data); }
   }
 };
 

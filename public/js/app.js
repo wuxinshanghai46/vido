@@ -322,11 +322,78 @@ function updateDimHint() {
 }
 
 // ═══ 语音配音 ═══
+// AI 生成当前场景的配音台词
+async function aiGenerateDialogue() {
+  const s = customScenes.find(s => s.id === studioSelectedSceneId);
+  if (!s) { alert('请先选择一个场景'); return; }
+  const btn = document.querySelector('.srp-voice-gen-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  try {
+    const resp = await authFetch('/api/story/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        theme: `为以下场景生成一段简短的旁白配音文字（50字以内，适合语音合成）：\n场景标题：${s.title}\n场景描述：${s.description}\n只返回旁白文字，不要任何解释`,
+        scene_count: 1
+      })
+    });
+    const data = await resp.json();
+    // 从返回内容提取文本
+    let text = '';
+    if (data.data?.story?.scenes?.[0]?.dialogue) {
+      text = data.data.story.scenes[0].dialogue;
+    } else if (data.data?.story?.scenes?.[0]?.action) {
+      text = data.data.story.scenes[0].action;
+    } else if (typeof data.data?.story === 'string') {
+      text = data.data.story.replace(/["""]/g, '').trim().slice(0, 100);
+    }
+    if (text) {
+      s.dialogue = text;
+      const el = document.getElementById('srp-scene-dialogue');
+      if (el) el.value = text;
+    }
+  } catch (e) {
+    alert('生成失败: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'AI 生成'; }
+  }
+}
+
+// 试听语音
+async function previewVoice(voiceId) {
+  const v = allVoices.find(v => v.id === voiceId);
+  if (!v) return;
+  const btn = document.querySelector(`.voice-card[onclick*="${voiceId}"] .voice-preview-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const resp = await authFetch('/api/story/preview-voice', {
+      method: 'POST',
+      body: JSON.stringify({ voice_id: voiceId, text: '欢迎使用VIDO AI视频创作平台，让创意变为现实。' })
+    });
+    const data = await resp.json();
+    if (data.success && data.audio_url) {
+      const audio = new Audio(data.audio_url);
+      audio.play().catch(() => {});
+    } else {
+      alert(data.error || '试听失败');
+    }
+  } catch (e) {
+    alert('试听失败: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '▶'; }
+  }
+}
+
 function toggleVoice(enabled) {
   voiceEnabled = enabled;
   document.getElementById('voice-options').style.display = enabled ? 'block' : 'none';
   document.getElementById('voice-off-hint').style.display = enabled ? 'none' : 'block';
   if (enabled && allVoices.length === 0) loadVoices();
+  // 显示/隐藏场景配音字段
+  const vf = document.getElementById('srp-voice-field');
+  if (vf) vf.style.display = enabled ? '' : 'none';
+  // 配音轨道标签
+  const vlbl = document.getElementById('tl-voice-lbl');
+  if (vlbl) vlbl.classList.toggle('has-voice', enabled);
 }
 
 function switchVoiceGender(gender) {
@@ -373,6 +440,7 @@ function renderVoiceList() {
         </div>
         <span class="voice-card-gender">${genderLabel}</span>
         ${v.tag ? `<span class="voice-card-tag">${esc(v.tag)}</span>` : ''}
+        <button class="voice-preview-btn" onclick="event.stopPropagation();previewVoice('${v.id}')" title="试听">▶</button>
       </div>`;
     });
   }
@@ -533,6 +601,10 @@ function renderScenes() {
         ${s.imageUrl ? `<img class="sto-li-thumb" src="${esc(s.imageUrl)}" />` : ''}
         <div class="sto-li-desc">${esc(buildSceneDesc(s))}</div>
       </div>
+      ${voiceEnabled ? `<div class="sto-li-dialogue" onclick="event.stopPropagation();selectScene(${s.id});switchStudioTab('scene')">
+        <span class="sto-li-dialogue-icon">🎙</span>
+        <span class="sto-li-dialogue-text">${s.dialogue ? esc(s.dialogue.slice(0,30)) + (s.dialogue.length>30?'...':'') : '<em>点击编辑配音</em>'}</span>
+      </div>` : ''}
     </div>`;
   }).join('');
   updateDurationHint();
@@ -654,6 +726,11 @@ function selectScene(id) {
   setSelectVal('srp-scene-cat', s.category || '室外');
   setSelectVal('srp-scene-time', s.timeOfDay || '白天');
   document.getElementById('srp-scene-desc').value = s.description || '';
+  // 配音台词
+  const dialogueEl = document.getElementById('srp-scene-dialogue');
+  if (dialogueEl) dialogueEl.value = s.dialogue || '';
+  const vf = document.getElementById('srp-voice-field');
+  if (vf) vf.style.display = voiceEnabled ? '' : 'none';
   // Scene preview image
   const preview = document.getElementById('srp-scene-preview');
   if (preview) {
@@ -2635,6 +2712,11 @@ async function startGeneration() { await _doGenerate(false); }
 async function startGenerationSkip() { await _doGenerate(true); }
 
 async function _doGenerate(skip) {
+  // 重新生成时停止所有音频/视频播放
+  stopAllAudio();
+  const vid = document.getElementById('center-video');
+  if (vid) { vid.pause(); vid.src = ''; }
+
   let theme = document.getElementById('input-theme').value.trim();
 
   // 剧本模式：用剧本内容或已解析的场景作为 theme
@@ -2716,6 +2798,7 @@ async function _doGenerate(skip) {
   const serializeScene = s => ({
     title: s.title || '场景',
     description: s.description || '',
+    dialogue: s.dialogue || '',
     location: s.location || '', timeOfDay: s.timeOfDay || '',
     mood: s.mood || '', theme: s.theme || '',
     category: s.category || '', duration: s.duration || 10,
@@ -3250,17 +3333,20 @@ async function loadProjects() {
           <span class="project-date">${fmt(p.created_at)}</span>
         </div>
         ${p.status==='done' ? `
-        <div class="project-actions" onclick="event.stopPropagation()">
+        <div class="project-actions-grid" onclick="event.stopPropagation()">
           <button class="pa-btn pa-primary" onclick="openPreview('${p.id}','${esc(p.title)}')">▶ 预览</button>
+          <button class="pa-btn pa-publish" onclick="openPublishModal('${p.id}')">📤 发布</button>
+          <a class="pa-btn pa-secondary" href="${authUrl('/api/projects/'+p.id+'/download')}">⬇ 下载</a>
           <button class="pa-btn pa-secondary" onclick="viewProject('${p.id}')">🔄 再编辑</button>
           <a class="pa-btn pa-secondary" href="/editor.html?id=${p.id}">✂ 剪辑</a>
-          <a class="pa-btn pa-secondary" href="${authUrl('/api/projects/'+p.id+'/download')}">↓</a>
+          <button class="pa-btn pa-danger" onclick="deleteProject('${p.id}')">🗑 删除</button>
         </div>` : p.status==='error' ? `
-        <div class="project-actions" onclick="event.stopPropagation()">
-          <button class="pa-btn pa-secondary" style="flex:1" onclick="viewProject('${p.id}')">查看详情</button>
+        <div class="project-actions-grid" onclick="event.stopPropagation()">
+          <button class="pa-btn pa-secondary" onclick="viewProject('${p.id}')">查看详情</button>
+          <button class="pa-btn pa-danger" onclick="deleteProject('${p.id}')">🗑 删除</button>
         </div>` : `
-        <div class="project-actions" onclick="event.stopPropagation()">
-          <button class="pa-btn pa-secondary" style="flex:1" onclick="viewProject('${p.id}')">查看进度</button>
+        <div class="project-actions-grid" onclick="event.stopPropagation()">
+          <button class="pa-btn pa-secondary" style="grid-column:1/-1" onclick="viewProject('${p.id}')">查看进度</button>
         </div>`}
       </div>`).join('');
   } catch(err) {
@@ -3291,6 +3377,21 @@ async function viewProject(id) {
   } else {
     setPanelState('progress');
     connectSSE(id);
+  }
+}
+
+async function deleteProject(id) {
+  if (!confirm('确定删除此项目？视频文件将一并删除，此操作不可撤销。')) return;
+  try {
+    const res = await authFetch('/api/projects/' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      loadProjects();
+    } else {
+      alert('删除失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('删除失败: ' + err.message);
   }
 }
 
@@ -3332,6 +3433,7 @@ function restoreProjectToStudio(p) {
           id: ++sceneIdCounter,
           title: s.title || '场景 ' + (i+1),
           description: s.description || s.action || '',
+          dialogue: s.dialogue || '',
           location: s.location || '',
           timeOfDay: s.timeOfDay || '',
           mood: s.mood || '',
@@ -6174,12 +6276,15 @@ async function nvGenerateChapter() {
   };
 }
 
+let _nvRefineText = '';
+
 function nvRefine() {
   const sel = window.getSelection();
-  const text = sel ? sel.toString().trim() : '';
-  if (!text) return alert('请先选中要优化的文本');
+  _nvRefineText = sel ? sel.toString().trim() : '';
+  if (!_nvRefineText) return alert('请先选中要优化的文本');
   if (!nvCurrentId) return;
 
+  const text = _nvRefineText;
   const modal = document.createElement('div');
   modal.className = 'nv-modal';
   modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
@@ -6204,8 +6309,7 @@ async function nvDoRefine(btn) {
   const instruction = modal.querySelector('#nv-refine-instruction').value.trim();
   if (!instruction) return alert('请输入优化指令');
 
-  const sel = window.getSelection();
-  const text = sel ? sel.toString().trim() : '';
+  const text = _nvRefineText;
   if (!text) { modal.remove(); return; }
 
   btn.disabled = true;
@@ -6262,6 +6366,252 @@ async function nvDelete() {
     document.getElementById('nv-editor-active').style.display = 'none';
     nvLoadPage();
   } catch {}
+}
+
+// ═══════════════════════════════════════════
+// 社交媒体发布
+// ═══════════════════════════════════════════
+let pubProjectId = null;
+let pubSelectedPlatform = null;
+let pubAccounts = [];
+let pubPlatforms = [];
+let socialLoginPlatform = null;
+
+const PLAT_ICONS = {
+  weishi: '微',
+  douyin: '抖',
+  xiaohongshu: '红',
+  kuaishou: '快'
+};
+
+async function openPublishModal(projectId) {
+  pubProjectId = projectId;
+  pubSelectedPlatform = null;
+  document.getElementById('publish-modal').classList.add('open');
+  document.getElementById('pub-account-section').style.display = 'none';
+  document.getElementById('pub-copy-section').style.display = 'none';
+  document.getElementById('pub-actions').style.display = 'none';
+  document.getElementById('pub-status').style.display = 'none';
+
+  // 并行加载平台列表和已绑定账号
+  try {
+    const [platRes, accRes] = await Promise.all([
+      authFetch('/api/publish/platforms'),
+      authFetch('/api/publish/accounts')
+    ]);
+    const platData = await platRes.json();
+    const accData = await accRes.json();
+    pubPlatforms = platData.success ? platData.data : [];
+    pubAccounts = accData.success ? accData.data : [];
+  } catch {
+    pubPlatforms = [
+      { id: 'weishi', name: '微视', color: '#FF4081' },
+      { id: 'douyin', name: '抖音', color: '#FE2C55' },
+      { id: 'xiaohongshu', name: '小红书', color: '#FE2C55' },
+      { id: 'kuaishou', name: '快手', color: '#FF6600' }
+    ];
+    pubAccounts = [];
+  }
+  renderPubPlatforms();
+}
+
+function closePublishModal() {
+  document.getElementById('publish-modal').classList.remove('open');
+  pubProjectId = null;
+  pubSelectedPlatform = null;
+}
+
+function renderPubPlatforms() {
+  const container = document.getElementById('pub-platforms');
+  container.innerHTML = pubPlatforms.map(p => {
+    const connected = pubAccounts.some(a => a.platform === p.id);
+    return `<div class="pub-plat-card ${pubSelectedPlatform === p.id ? 'active' : ''} ${connected ? 'connected' : ''}"
+      onclick="selectPubPlatform('${p.id}')">
+      <div class="pub-plat-icon ${p.id}">${PLAT_ICONS[p.id] || p.id[0].toUpperCase()}</div>
+      <div class="pub-plat-name">${esc(p.name)}</div>
+      <div class="pub-plat-status ${connected ? 'connected' : ''}">${connected ? '已绑定' : '未绑定'}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectPubPlatform(platformId) {
+  pubSelectedPlatform = platformId;
+  renderPubPlatforms();
+
+  const accountSection = document.getElementById('pub-account-section');
+  const copySection = document.getElementById('pub-copy-section');
+  const actionsSection = document.getElementById('pub-actions');
+  accountSection.style.display = '';
+  document.getElementById('pub-status').style.display = 'none';
+
+  const connected = pubAccounts.find(a => a.platform === platformId);
+  const platInfo = pubPlatforms.find(p => p.id === platformId);
+  const infoEl = document.getElementById('pub-account-info');
+
+  if (connected) {
+    infoEl.innerHTML = `<div class="pub-account-row">
+      <div class="pub-account-avatar">${PLAT_ICONS[platformId] || '?'}</div>
+      <div class="pub-account-name">${esc(connected.nickname)}</div>
+      <div class="pub-account-actions">
+        <button class="pub-unlink-btn" onclick="pubUnlinkAccount('${platformId}')">解绑</button>
+      </div>
+    </div>`;
+    copySection.style.display = '';
+    actionsSection.style.display = '';
+    // 清空文案
+    document.getElementById('pub-title').value = '';
+    document.getElementById('pub-desc').value = '';
+    document.getElementById('pub-tags').value = '';
+    document.getElementById('pub-title').maxLength = platInfo?.maxTitleLen || 55;
+  } else {
+    infoEl.innerHTML = `<div class="pub-account-row">
+      <div class="pub-account-avatar" style="opacity:.4">${PLAT_ICONS[platformId] || '?'}</div>
+      <div class="pub-account-name" style="color:var(--text3)">尚未绑定${platInfo?.name || ''}账号</div>
+      <div class="pub-account-actions">
+        <button class="pub-link-btn" onclick="openSocialLogin('${platformId}')">立即绑定</button>
+      </div>
+    </div>`;
+    copySection.style.display = 'none';
+    actionsSection.style.display = 'none';
+  }
+}
+
+async function pubUnlinkAccount(platform) {
+  if (!confirm('确定解绑该平台账号？')) return;
+  try {
+    await authFetch('/api/publish/accounts/' + platform, { method: 'DELETE' });
+    pubAccounts = pubAccounts.filter(a => a.platform !== platform);
+    renderPubPlatforms();
+    selectPubPlatform(platform);
+  } catch {}
+}
+
+function openSocialLogin(platform) {
+  socialLoginPlatform = platform;
+  const platInfo = pubPlatforms.find(p => p.id === platform);
+  document.getElementById('social-login-title').textContent = '绑定' + (platInfo?.name || platform);
+  document.getElementById('social-login-platform-name').textContent = platInfo?.name || platform;
+  document.getElementById('social-nickname').value = '';
+  document.getElementById('social-token').value = '';
+  document.getElementById('social-openid').value = '';
+  document.getElementById('social-login-modal').classList.add('open');
+}
+
+function closeSocialLogin() {
+  document.getElementById('social-login-modal').classList.remove('open');
+  socialLoginPlatform = null;
+}
+
+async function submitSocialLogin() {
+  const platform = socialLoginPlatform;
+  if (!platform) return;
+  const nickname = document.getElementById('social-nickname').value.trim();
+  const token = document.getElementById('social-token').value.trim();
+  const openId = document.getElementById('social-openid').value.trim();
+
+  if (!token) { alert('请输入 Access Token'); return; }
+
+  try {
+    const res = await authFetch('/api/publish/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        nickname: nickname || platform + '用户',
+        access_token: token,
+        open_id: openId,
+        expires_in: 7776000 // 90 days
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      pubAccounts = pubAccounts.filter(a => a.platform !== platform);
+      pubAccounts.push(data.data);
+      closeSocialLogin();
+      renderPubPlatforms();
+      selectPubPlatform(platform);
+    } else {
+      alert('绑定失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    alert('绑定失败: ' + err.message);
+  }
+}
+
+async function pubGenerateCopy() {
+  if (!pubProjectId || !pubSelectedPlatform) return;
+  const btn = document.getElementById('pub-gen-btn');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  setPubStatus('info', '正在用 AI 生成专属文案...');
+
+  try {
+    const res = await authFetch('/api/publish/copywriting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: pubProjectId, platform: pubSelectedPlatform })
+    });
+    const data = await res.json();
+    if (data.success && data.data) {
+      document.getElementById('pub-title').value = data.data.title || '';
+      document.getElementById('pub-desc').value = data.data.description || '';
+      document.getElementById('pub-tags').value = (data.data.tags || []).join(' ');
+      setPubStatus('success', '文案已生成，可自行修改后发布');
+    } else {
+      setPubStatus('error', '生成失败: ' + (data.error || '请检查 AI 配置'));
+    }
+  } catch (err) {
+    setPubStatus('error', '生成失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'AI 生成文案';
+  }
+}
+
+async function pubSendVideo() {
+  if (!pubProjectId || !pubSelectedPlatform) return;
+  const title = document.getElementById('pub-title').value.trim();
+  const desc = document.getElementById('pub-desc').value.trim();
+  const tags = document.getElementById('pub-tags').value.trim().split(/\s+/).filter(Boolean);
+  const btn = document.getElementById('pub-send-btn');
+
+  if (!title && !desc) {
+    setPubStatus('error', '请填写标题或描述');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '发布中...';
+  setPubStatus('info', '正在上传视频到' + (pubPlatforms.find(p => p.id === pubSelectedPlatform)?.name || '') + '...');
+
+  try {
+    const res = await authFetch('/api/publish/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: pubProjectId,
+        platform: pubSelectedPlatform,
+        title, description: desc, tags
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      setPubStatus('success', '发布成功！' + (data.data.platform_url ? ' <a href="'+esc(data.data.platform_url)+'" target="_blank" style="color:var(--cyan)">查看</a>' : ''));
+    } else {
+      setPubStatus('error', '发布失败: ' + (data.error || '未知错误'));
+    }
+  } catch (err) {
+    setPubStatus('error', '发布失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '发布视频';
+  }
+}
+
+function setPubStatus(type, msg) {
+  const el = document.getElementById('pub-status');
+  el.style.display = '';
+  el.innerHTML = `<div class="pub-status-msg ${type}">${msg}</div>`;
 }
 
 // 启动

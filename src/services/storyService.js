@@ -503,4 +503,4 @@ ${SCENE_JSON_SCHEMA}`;
   catch { throw new Error('长篇剧情生成失败：AI 返回格式异常，请重试'); }
 }
 
-module.exports = { generateStory, generateStoryCustom, generateLongStory, refineScene, parseScript, getStoryInfo };
+module.exports = { generateStory, generateStoryCustom, generateLongStory, refineScene, parseScript, getStoryInfo, callLLM };

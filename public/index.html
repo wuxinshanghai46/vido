@@ -1137,6 +1137,14 @@
                       <div class="srp-fl">场景描述</div>
                       <textarea class="srp-ta" id="srp-scene-desc" rows="5" placeholder="地理环境、光影效果、细节元素..." oninput="syncSceneProp('description',this.value)"></textarea>
                     </div>
+                    <div class="srp-field srp-voice-field" id="srp-voice-field" style="width:100%;display:none">
+                      <div class="srp-fl">
+                        <span>🎙 配音台词</span>
+                        <button class="srp-voice-gen-btn" onclick="aiGenerateDialogue()" title="AI 生成台词">AI 生成</button>
+                      </div>
+                      <textarea class="srp-ta" id="srp-scene-dialogue" rows="3" placeholder="此场景的旁白或对白内容，留空则该场景不配音" oninput="syncSceneProp('dialogue',this.value)"></textarea>
+                      <div class="srp-voice-hint">开启语音配音后，此内容将被合成为语音叠加到视频中</div>
+                    </div>
                     <div class="srp-field" style="width:100%">
                       <div class="srp-match-row">
                         <div class="srp-fl">匹配动作</div>
@@ -2153,6 +2161,73 @@
     <img id="lightbox-img" src="" alt="" />
     <div class="lightbox-caption" id="lightbox-caption"></div>
     <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  </div>
+</div>
+
+<!-- 社交媒体发布弹窗 -->
+<div id="publish-modal" class="modal" onclick="if(event.target===this)closePublishModal()">
+  <div class="modal-box" style="max-width:580px">
+    <div class="modal-header">
+      <span>发布到社交平台</span>
+      <button class="modal-close" onclick="closePublishModal()">✕ 关闭</button>
+    </div>
+    <div style="padding:20px;max-height:70vh;overflow-y:auto" id="publish-modal-body">
+      <!-- 平台选择 -->
+      <div class="pub-section">
+        <div class="pub-label">选择平台</div>
+        <div class="pub-platforms" id="pub-platforms"></div>
+      </div>
+      <!-- 账号状态 -->
+      <div class="pub-section" id="pub-account-section" style="display:none">
+        <div class="pub-label">账号状态</div>
+        <div id="pub-account-info"></div>
+      </div>
+      <!-- 文案区域 -->
+      <div class="pub-section" id="pub-copy-section" style="display:none">
+        <div class="pub-label" style="display:flex;align-items:center;justify-content:space-between">
+          发布文案
+          <button class="pub-ai-btn" id="pub-gen-btn" onclick="pubGenerateCopy()">AI 生成文案</button>
+        </div>
+        <input class="pub-input" id="pub-title" placeholder="标题" maxlength="55" />
+        <textarea class="pub-textarea" id="pub-desc" placeholder="正文描述..." rows="5"></textarea>
+        <input class="pub-input" id="pub-tags" placeholder="标签（用空格分隔，如 #AI视频 #创意）" />
+      </div>
+      <!-- 操作按钮 -->
+      <div class="pub-actions" id="pub-actions" style="display:none">
+        <button class="pub-send-btn" id="pub-send-btn" onclick="pubSendVideo()">发布视频</button>
+      </div>
+      <!-- 发布状态 -->
+      <div id="pub-status" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 社交账号绑定弹窗 -->
+<div id="social-login-modal" class="modal" onclick="if(event.target===this)closeSocialLogin()">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <span id="social-login-title">绑定账号</span>
+      <button class="modal-close" onclick="closeSocialLogin()">✕ 关闭</button>
+    </div>
+    <div style="padding:20px">
+      <div class="pub-label" style="margin-bottom:12px">快捷登录 — <span id="social-login-platform-name"></span></div>
+      <div class="pub-section">
+        <label class="pub-label" style="font-size:11px;color:var(--text3)">昵称</label>
+        <input class="pub-input" id="social-nickname" placeholder="你的昵称" />
+      </div>
+      <div class="pub-section">
+        <label class="pub-label" style="font-size:11px;color:var(--text3)">Access Token（从平台开放平台获取）</label>
+        <input class="pub-input" id="social-token" placeholder="粘贴 access_token" type="password" />
+      </div>
+      <div class="pub-section">
+        <label class="pub-label" style="font-size:11px;color:var(--text3)">Open ID（可选）</label>
+        <input class="pub-input" id="social-openid" placeholder="open_id" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="pub-send-btn" style="flex:1" onclick="submitSocialLogin()">确认绑定</button>
+        <button class="pub-ai-btn" style="flex:0 0 auto" onclick="closeSocialLogin()">取消</button>
+      </div>
+    </div>
   </div>
 </div>
 

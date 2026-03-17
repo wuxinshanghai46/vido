@@ -218,6 +218,25 @@ router.get('/:id/clips/:clipId/stream', (req, res) => {
 });
 
 // 预览片段（兼容旧接口）
+// 删除项目
+router.delete('/:id', (req, res) => {
+  const project = db.getProject(req.params.id);
+  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
+  // 仅允许项目所有者或管理员删除
+  if (project.user_id && project.user_id !== req.user?.id && req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, error: '无权删除此项目' });
+  }
+  // 清理视频文件
+  const projectDir = path.join(OUTPUT_DIR, 'projects');
+  const patterns = [`${req.params.id}_final.mp4`, `${req.params.id}_*.mp4`];
+  try {
+    const files = fs.readdirSync(projectDir).filter(f => f.startsWith(req.params.id));
+    files.forEach(f => { try { fs.unlinkSync(path.join(projectDir, f)); } catch {} });
+  } catch {}
+  db.deleteProject(req.params.id);
+  res.json({ success: true });
+});
+
 router.get('/:id/clips/:clipId/preview', (req, res) => {
   const clip = db.getClip(req.params.clipId, req.params.id);
   if (!clip?.file_path || !fs.existsSync(clip.file_path)) {
