@@ -47,6 +47,7 @@ function initTabs() {
       if (tab.dataset.tab === 'contents') loadContents();
       if (tab.dataset.tab === 'system') loadStats();
       if (tab.dataset.tab === 'ai') loadProviders();
+      if (tab.dataset.tab === 'sync') loadSyncConfig();
     });
   });
 }
@@ -1086,6 +1087,174 @@ function ctSwitchChapter(btn, idx) {
   box.querySelectorAll('.ct-ch-tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   box.querySelectorAll('.ct-ch-content').forEach(c => c.classList.toggle('hidden', parseInt(c.dataset.ch) !== idx));
+}
+
+// ══════════════════════════════════════════════════
+//  数据同步
+// ══════════════════════════════════════════════════
+
+function toggleSyncAuth() {
+  const type = document.getElementById('sync-auth-type').value;
+  document.getElementById('sync-auth-password').style.display = type === 'password' ? '' : 'none';
+  document.getElementById('sync-auth-key').style.display = type === 'key' ? '' : 'none';
+}
+
+async function loadSyncConfig() {
+  try {
+    const [cfgRes, statsRes] = await Promise.all([
+      authFetch('/api/sync/config'),
+      authFetch('/api/sync/stats'),
+    ]);
+    const cfgData = await cfgRes.json();
+    const statsData = await statsRes.json();
+
+    // 填充配置表单
+    if (cfgData.success && cfgData.data) {
+      const c = cfgData.data;
+      document.getElementById('sync-host').value = c.host || '';
+      document.getElementById('sync-port').value = c.port || 22;
+      document.getElementById('sync-username').value = c.username || '';
+      document.getElementById('sync-auth-type').value = c.auth_type || 'password';
+      document.getElementById('sync-keypath').value = c.private_key_path || '';
+      document.getElementById('sync-remote-path').value = c.remote_path || '';
+      toggleSyncAuth();
+
+      // 上次同步信息
+      if (c.last_synced) {
+        document.getElementById('sync-stat-last').textContent = new Date(c.last_synced).toLocaleString('zh-CN');
+      }
+      if (c.last_sync_files) {
+        document.getElementById('sync-stat-last-files').textContent = c.last_sync_files + ' 个';
+      }
+    }
+
+    // 数据统计
+    if (statsData.success && statsData.data) {
+      const s = statsData.data;
+      document.getElementById('sync-stat-files').textContent = s.files + ' 个';
+      document.getElementById('sync-stat-size').textContent = formatBytes(s.totalSize);
+
+      // 目录详情
+      const breakdown = document.getElementById('sync-dir-breakdown');
+      const dirs = Object.entries(s.dirs).filter(([, v]) => v.files > 0);
+      if (dirs.length) {
+        breakdown.innerHTML = `<div class="sync-dir-list">${dirs.map(([name, d]) =>
+          `<div class="sync-dir-item">
+            <span class="sync-dir-name">${esc(name)}/</span>
+            <span class="sync-dir-meta">${d.files} 个文件 · ${formatBytes(d.size)}</span>
+          </div>`
+        ).join('')}</div>`;
+      }
+    }
+  } catch (e) { console.error('loadSyncConfig error', e); }
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+async function saveSyncConfig() {
+  const host = document.getElementById('sync-host').value.trim();
+  const username = document.getElementById('sync-username').value.trim();
+  if (!host || !username) { toast('请填写主机地址和用户名', 'error'); return; }
+
+  const body = {
+    host,
+    port: document.getElementById('sync-port').value || 22,
+    username,
+    auth_type: document.getElementById('sync-auth-type').value,
+    password: document.getElementById('sync-password')?.value || '',
+    private_key_path: document.getElementById('sync-keypath')?.value.trim() || '',
+    passphrase: document.getElementById('sync-passphrase')?.value || '',
+    remote_path: document.getElementById('sync-remote-path').value.trim() || '',
+  };
+
+  try {
+    const res = await authFetch('/api/sync/config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    toast('同步配置已保存');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function testSyncConnection() {
+  const btn = document.getElementById('btn-sync-test');
+  btn.disabled = true; btn.textContent = '测试中...';
+  try {
+    const res = await authFetch('/api/sync/test', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast('连接成功: ' + (data.detail || ''));
+      btn.textContent = '✓ 连接正常'; btn.style.color = '#00d464';
+    } else {
+      toast('连接失败: ' + data.error, 'error');
+      btn.textContent = '✕ 失败'; btn.style.color = '#ff5050';
+    }
+    setTimeout(() => { btn.textContent = '测试连接'; btn.style.color = ''; btn.disabled = false; }, 3000);
+  } catch (e) {
+    toast('测试失败: ' + e.message, 'error');
+    btn.textContent = '测试连接'; btn.disabled = false;
+  }
+}
+
+async function executeSyncNow() {
+  const btn = document.getElementById('btn-sync-execute');
+  const statusEl = document.getElementById('sync-execute-status');
+  const logContainer = document.getElementById('sync-log-container');
+  const logEl = document.getElementById('sync-log');
+
+  btn.disabled = true; btn.textContent = '同步中...';
+  logContainer.style.display = '';
+  logEl.innerHTML = '';
+  statusEl.textContent = '正在连接...';
+
+  try {
+    const token = getToken();
+    const es = new EventSource(`/api/sync/execute?token=${encodeURIComponent(token)}`);
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        statusEl.textContent = data.message || '';
+
+        const line = document.createElement('div');
+        line.className = 'sync-log-line';
+        const stepClass = data.step === 'error' ? 'error' : data.step === 'complete' ? 'done' : '';
+        line.innerHTML = `<span class="sync-log-step ${stepClass}">[${data.step}]</span> ${esc(data.message)}${data.detail ? ` <span style="color:var(--text3)">${esc(data.detail)}</span>` : ''}`;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+
+        if (data.step === 'complete' || data.step === 'error') {
+          es.close();
+          btn.disabled = false;
+          btn.textContent = '开始同步';
+          if (data.step === 'complete') {
+            toast('同步完成！共上传 ' + (data.files || 0) + ' 个文件');
+            loadSyncConfig(); // 刷新统计
+          } else {
+            toast(data.message, 'error');
+          }
+        }
+      } catch {}
+    };
+
+    es.onerror = () => {
+      es.close();
+      btn.disabled = false; btn.textContent = '开始同步';
+      statusEl.textContent = '连接中断';
+      toast('同步连接中断', 'error');
+    };
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '开始同步';
+    toast('同步失败: ' + e.message, 'error');
+  }
 }
 
 async function deleteContent(type, id) {

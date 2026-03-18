@@ -206,6 +206,63 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
     }
   }
 
+  // === 轮询封装（复用，避免重复代码） ===
+  async function _zhipuPoll(tId) {
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const status = await new Promise((resolve, reject) => {
+        https.get(`https://open.bigmodel.cn/api/paas/v4/async-result/${tId}`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        }, (res) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => {
+            try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+            catch (e) { reject(e); }
+          });
+        }).on('error', reject);
+      });
+
+      if (i % 6 === 0 || status.task_status !== 'PROCESSING') {
+        console.log(`[Zhipu] 轮询 #${i}: status=${status.task_status}, keys=${Object.keys(status).join(',')}`);
+      }
+
+      if (status.task_status === 'SUCCESS') {
+        const videoUrl = status.video_result?.[0]?.url;
+        if (!videoUrl) {
+          console.log(`[Zhipu] SUCCESS 但无 video URL:`, JSON.stringify(status).substring(0, 500));
+          throw new Error('智谱AI 未返回视频URL');
+        }
+        console.log(`[Zhipu] 视频生成成功, URL=${videoUrl.substring(0, 100)}`);
+        await downloadFile(videoUrl, outputPath);
+        const fileSize = fs.statSync(outputPath).size;
+        console.log(`[Zhipu] 视频已下载: ${outputPath} (${(fileSize/1024).toFixed(1)}KB)`);
+        return { filePath: outputPath };
+      }
+      if (status.task_status === 'FAIL') {
+        const errCode = status.error?.code || '';
+        console.log(`[Zhipu] 任务失败:`, JSON.stringify(status).substring(0, 500));
+        const err = new Error(`智谱AI 生成失败: ${JSON.stringify(status).substring(0, 200)}`);
+        err.zhipuCode = errCode;
+        throw err;
+      }
+    }
+    throw new Error('智谱AI 生成超时（10分钟）');
+  }
+
+  // === 提交 + 轮询封装 ===
+  async function _zhipuSubmitAndPoll(body, label) {
+    const submitted = await submitWithRetry(body, label || (body.image_url ? 'i2v' : 't2v'), 2);
+    const tId = submitted.id;
+    if (!tId) {
+      console.log(`[Zhipu] 提交响应（无 taskId）:`, JSON.stringify(submitted).substring(0, 500));
+      throw new Error('智谱AI 未返回任务ID');
+    }
+    console.log(`[Zhipu] 任务已提交, taskId=${tId}, model=${modelId}`);
+    return await _zhipuPoll(tId);
+  }
+
+  // === 执行：i2v → t2v 回退 ===
   const taskId = task.id;
   if (!taskId) {
     console.log(`[Zhipu] 提交响应（无 taskId）:`, JSON.stringify(task).substring(0, 500));
@@ -213,45 +270,19 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
   }
   console.log(`[Zhipu] 任务已提交, taskId=${taskId}, model=${modelId}`);
 
-  // 第二步：轮询任务状态（最多 10 分钟）
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 5000));
+  const t2vBody = { model: modelId, prompt, size: '1280x720', duration: Math.min(Math.max(duration, 3), 10), fps: 30 };
 
-    const status = await new Promise((resolve, reject) => {
-      https.get(`https://open.bigmodel.cn/api/paas/v4/async-result/${taskId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      }, (res) => {
-        const chunks = [];
-        res.on('data', c => chunks.push(c));
-        res.on('end', () => {
-          try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-          catch (e) { reject(e); }
-        });
-      }).on('error', reject);
-    });
-
-    if (i % 6 === 0 || status.task_status !== 'PROCESSING') {
-      console.log(`[Zhipu] 轮询 #${i}: status=${status.task_status}, keys=${Object.keys(status).join(',')}`);
+  try {
+    return await _zhipuPoll(taskId);
+  } catch (e) {
+    // i2v 失败（任何模式：公网 URL 或 base64）→ 回退到 t2v 纯文本模式
+    if (image_url && (e.zhipuCode === '1210' || /参数有误|1210/i.test(e.message))) {
+      const mode = image_url.startsWith('data:') ? 'base64' : '公网 URL';
+      console.log(`[Zhipu] ${mode} i2v 失败 (${e.zhipuCode || e.message})，回退到 t2v 纯文本模式`);
+      return await _zhipuSubmitAndPoll(t2vBody, 't2v-fallback');
     }
-
-    if (status.task_status === 'SUCCESS') {
-      const videoUrl = status.video_result?.[0]?.url;
-      if (!videoUrl) {
-        console.log(`[Zhipu] SUCCESS 但无 video URL:`, JSON.stringify(status).substring(0, 500));
-        throw new Error('智谱AI 未返回视频URL');
-      }
-      console.log(`[Zhipu] 视频生成成功, URL=${videoUrl.substring(0, 100)}`);
-      await downloadFile(videoUrl, outputPath);
-      const fileSize = fs.statSync(outputPath).size;
-      console.log(`[Zhipu] 视频已下载: ${outputPath} (${(fileSize/1024).toFixed(1)}KB)`);
-      return { filePath: outputPath };
-    }
-    if (status.task_status === 'FAIL') {
-      console.log(`[Zhipu] 任务失败:`, JSON.stringify(status).substring(0, 500));
-      throw new Error(`智谱AI 生成失败: ${JSON.stringify(status).substring(0, 200)}`);
-    }
+    throw e;
   }
-  throw new Error('智谱AI 生成超时（10分钟）');
 }
 
 // ——— Replicate 模式：稳定免费额度 ———

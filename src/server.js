@@ -132,6 +132,9 @@ app.use('/api/novel', authenticate, requirePermission('novel'), require('./route
 // === 设置路由（仅 admin，AI 配置已移至后台） ===
 app.use('/api/settings', authenticate, requireRole('admin'), require('./routes/settings'));
 
+// === 数据同步（仅 admin） ===
+app.use('/api/sync', authenticate, requireRole('admin'), require('./routes/sync'));
+
 // === 管理后台（仅 admin） ===
 app.use('/api/admin', authenticate, requireRole('admin'), require('./routes/admin'));
 

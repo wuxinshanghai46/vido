@@ -874,8 +874,11 @@ async function runFullPipeline(projectId, userId = null) {
           }
         }
 
-        // 优先用公网 URL（兼容所有 provider），回退 base64（jimeng/sora 支持）
-        let effectiveImageUrl = imageUrlForVideo || imageBase64ForVideo || null;
+        // 智谱 CogVideoX 优先用 base64（公网图床 URL 容易被拒绝返回 1210），其他 provider 优先公网 URL
+        const isZhipuProvider = (project.video_provider === 'zhipu') && !(sceneModelOverrides[i]?.video_provider);
+        let effectiveImageUrl = isZhipuProvider
+          ? (imageBase64ForVideo || imageUrlForVideo || null)
+          : (imageUrlForVideo || imageBase64ForVideo || null);
         // Override with user-specified first frame if available
         const userSceneData = customScenesList[i];
         if (userSceneData?.firstFrameUrl) {
