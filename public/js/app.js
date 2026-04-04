@@ -7738,12 +7738,21 @@ async function nvSelect(id) {
     nvShowChapter(nvCurrentChapter, novel);
 
     // 如果已有章节内容，自动切换到写作模式（直接切换 DOM，不调用 nvSwitchMode 避免递归）
-    const hasChapterContent = (novel.chapters || []).some(c => c.content && c.content.trim());
-    if (hasChapterContent && nvCurrentMode !== 'write') {
-      nvCurrentMode = 'write';
-      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
-      document.getElementById('nv-ws-outline').style.display = 'none';
-      document.getElementById('nv-ws-write').style.display = '';
+    const firstWithContent = (novel.chapters || []).find(c => c.content && c.content.trim());
+    if (firstWithContent) {
+      // 如果当前章节为空，跳到第一个有内容的章节
+      const curCh = (novel.chapters || []).find(c => c.index === nvCurrentChapter);
+      if (!curCh?.content?.trim()) {
+        nvCurrentChapter = firstWithContent.index;
+        nvRenderChapterTabs(novel);
+        nvShowChapter(nvCurrentChapter, novel);
+      }
+      if (nvCurrentMode !== 'write') {
+        nvCurrentMode = 'write';
+        document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
+        document.getElementById('nv-ws-outline').style.display = 'none';
+        document.getElementById('nv-ws-write').style.display = '';
+      }
     }
   } catch (e) { console.error('nvSelect error', e); }
   nvLoadPage();
