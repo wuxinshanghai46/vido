@@ -1,0 +1,26 @@
+{
+  "name": "mcp-bizsense-team",
+  "version": "1.0.0",
+  "description": "业务感知系统研发团队 MCP：暴露 F/L/Z/D/S/B/Q 角色与咨询能力",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-bizsense-team": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

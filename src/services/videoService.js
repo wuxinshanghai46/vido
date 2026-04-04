@@ -1010,26 +1010,36 @@ async function generateJimengClip({ prompt, duration = 5, outputDir, filename, a
 
   const [ak, sk] = rawKey.split(':');
 
-  // 优先使用用户选择的 video_model，回退到 settings
-  let reqKey = 'jimeng_vgfm_t2v_l20_pro';
+  // 优先使用用户选择的 video_model，回退到 settings（优先1080p）
+  let reqKey = 'jimeng_t2v_v30_1080p';
   if (video_model) {
     reqKey = video_model;
   } else {
     try {
       const settings = loadSettings();
       const p = settings.providers.find(p => p.id === 'jimeng' && p.enabled);
-      const m = (p?.models || []).find(m => m.enabled !== false && m.use === 'video');
-      if (m?.id) reqKey = m.id;
+      // 优先选择 1080p 模型
+      const m1080 = (p?.models || []).find(m => m.enabled !== false && m.use === 'video' && m.id.includes('1080'));
+      const mAny = (p?.models || []).find(m => m.enabled !== false && m.use === 'video');
+      if (m1080?.id) reqKey = m1080.id;
+      else if (mAny?.id) reqKey = mAny.id;
     } catch {}
   }
 
   // 图生视频：切换到 i2v 模型
   if (image_url && reqKey.includes('t2v')) {
-    reqKey = reqKey.replace('t2v', 'i2v');
+    // jimeng_t2v_v30 → jimeng_i2v_first_v30（不是 jimeng_i2v_v30）
+    // jimeng_t2v_v30_1080p → jimeng_i2v_first_v30_1080
+    if (reqKey === 'jimeng_t2v_v30') reqKey = 'jimeng_i2v_first_v30';
+    else if (reqKey === 'jimeng_t2v_v30_1080p') reqKey = 'jimeng_i2v_first_v30_1080';
+    else reqKey = reqKey.replace('t2v', 'i2v_first');
+    console.log(`[Jimeng Video] 检测到参考图，自动切换到 i2v: ${reqKey}`);
   }
 
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
+
+  console.log(`[Jimeng Video] reqKey=${reqKey}, hasImage=${!!image_url}, aspectRatio=${aspectRatio}`);
 
   const query = { Action: 'CVSync2AsyncSubmitTask', Version: '2022-08-31' };
   const submitObj = {
@@ -1051,30 +1061,31 @@ async function generateJimengClip({ prompt, duration = 5, outputDir, filename, a
   }
   const submitBody = JSON.stringify(submitObj);
 
-  const submitHeaders = _signJimeng(ak, sk, { method: 'POST', query, body: submitBody });
-
-  const task = await new Promise((resolve, reject) => {
-    const qs = Object.keys(query).sort().map(k => `${k}=${query[k]}`).join('&');
-    const req = https.request({
-      hostname: 'visual.volcengineapi.com',
-      path: '/?' + qs,
-      method: 'POST',
-      headers: { ...submitHeaders, 'Content-Length': Buffer.byteLength(submitBody) }
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(Buffer.concat(chunks).toString());
-          if (json.ResponseMetadata?.Error) return reject(new Error('即梦AI: ' + (json.ResponseMetadata.Error.Message || JSON.stringify(json.ResponseMetadata.Error))));
-          resolve(json);
-        } catch (e) { reject(e); }
+  // 复用通用即梦请求函数（与 imageService 共享签名逻辑）
+  function _jimengReq(ak2, sk2, q, b) {
+    const bodyStr = typeof b === 'string' ? b : JSON.stringify(b);
+    const headers = _signJimeng(ak2, sk2, { method: 'POST', query: q, body: bodyStr });
+    return new Promise((resolve, reject) => {
+      const qs = Object.keys(q).sort().map(k => `${k}=${q[k]}`).join('&');
+      const req = https.request({
+        hostname: 'visual.volcengineapi.com', path: '/?' + qs, method: 'POST',
+        headers: { ...headers, 'Content-Length': Buffer.byteLength(bodyStr) }
+      }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(Buffer.concat(chunks).toString());
+            if (json.ResponseMetadata?.Error) return reject(new Error('即梦AI: ' + (json.ResponseMetadata.Error.Message || JSON.stringify(json.ResponseMetadata.Error))));
+            resolve(json);
+          } catch (e) { reject(e); }
+        });
       });
+      req.on('error', reject); req.write(bodyStr); req.end();
     });
-    req.on('error', reject);
-    req.write(submitBody);
-    req.end();
-  });
+  }
+
+  const task = await _jimengReq(ak, sk, query, submitBody);
 
   const taskId = task.Result?.data?.task_id || task.data?.task_id;
   if (!taskId) throw new Error('即梦AI 未返回任务ID: ' + JSON.stringify(task).substring(0, 300));
@@ -1085,24 +1096,7 @@ async function generateJimengClip({ prompt, duration = 5, outputDir, filename, a
     await new Promise(r => setTimeout(r, 5000));
 
     const queryBody = JSON.stringify({ req_key: reqKey, task_id: taskId });
-    const queryHeaders = _signJimeng(ak, sk, { method: 'POST', query: queryAction, body: queryBody });
-
-    const result = await new Promise((resolve, reject) => {
-      const qs = Object.keys(queryAction).sort().map(k => `${k}=${queryAction[k]}`).join('&');
-      const req = https.request({
-        hostname: 'visual.volcengineapi.com',
-        path: '/?' + qs,
-        method: 'POST',
-        headers: { ...queryHeaders, 'Content-Length': Buffer.byteLength(queryBody) }
-      }, (res) => {
-        const chunks = [];
-        res.on('data', c => chunks.push(c));
-        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
-      });
-      req.on('error', reject);
-      req.write(queryBody);
-      req.end();
-    });
+    const result = await _jimengReq(ak, sk, queryAction, queryBody);
 
     const resultData = result.Result?.data || result.data || {};
     const status = resultData.status;
@@ -1427,31 +1421,25 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
 }
 
 // ——— 自动检测视频 provider（settings > env > demo）———
+// 视频供应商优先级（质量+稳定性排序，即梦/Kling 优先于免费的智谱）
+const VIDEO_PROVIDER_PRIORITY = [
+  'jimeng', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
+  'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
+];
+const PROVIDER_ID_MAP = { openai: 'sora' };
+
 function resolveVideoProvider() {
   const explicit = process.env.VIDEO_PROVIDER;
   if (explicit && explicit !== 'auto') return explicit;
-  // 从 settings 中找第一个有 video 用途模型的供应商（按优先级）
   try {
     const { loadSettings } = require('./settingsService');
     const settings = loadSettings();
-    for (const provider of settings.providers) {
-      if (!provider.enabled || !provider.api_key) continue;
+    // 按预定义优先级遍历
+    for (const pid of VIDEO_PROVIDER_PRIORITY) {
+      const provider = settings.providers.find(p => p.id === pid && p.enabled && p.api_key);
+      if (!provider) continue;
       const model = (provider.models || []).find(m => m.enabled !== false && m.use === 'video');
-      if (model) {
-        if (provider.id === 'openai')      return 'sora';
-        if (provider.id === 'pika')         return 'pika';
-        if (provider.id === 'jimeng')      return 'jimeng';
-        if (provider.id === 'fal')         return 'fal';
-        if (provider.id === 'kling')       return 'kling';
-        if (provider.id === 'runway')      return 'runway';
-        if (provider.id === 'luma')        return 'luma';
-        if (provider.id === 'minimax')     return 'minimax';
-        if (provider.id === 'seedance')    return 'seedance';
-        if (provider.id === 'veo')         return 'veo';
-        if (provider.id === 'zhipu')       return 'zhipu';
-        if (provider.id === 'replicate')   return 'replicate';
-        if (provider.id === 'huggingface') return 'huggingface';
-      }
+      if (model) return PROVIDER_ID_MAP[pid] || pid;
     }
   } catch {}
   return 'demo';

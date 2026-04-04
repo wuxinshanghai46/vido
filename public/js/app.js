@@ -115,8 +115,26 @@ function switchTheme(theme) {
   localStorage.setItem('vido-theme', theme);
   document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === theme));
   // 保存到后端（用户偏好）
-  authFetch('/api/user/theme', { method: 'PUT', body: JSON.stringify({ theme }) }).catch(() => {});
+  authFetch('/api/user/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme }) }).catch(() => {});
+  // 关闭面板
+  const panel = document.getElementById('theme-panel');
+  if (panel) panel.style.display = 'none';
 }
+
+function toggleThemePanel() {
+  const panel = document.getElementById('theme-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+// 点击面板外关闭
+document.addEventListener('click', e => {
+  const panel = document.getElementById('theme-panel');
+  const toggle = document.getElementById('theme-mode-toggle');
+  if (panel && panel.style.display !== 'none' && !panel.contains(e.target) && !toggle?.contains(e.target)) {
+    panel.style.display = 'none';
+  }
+});
 
 function loadTheme() {
   const saved = localStorage.getItem('vido-theme');
@@ -148,17 +166,22 @@ async function initAuth() {
   if (!getToken()) { window.location.href = '/login.html'; return false; }
   const user = await fetchCurrentUser();
   if (!user) { clearToken(); window.location.href = '/login.html'; return false; }
-  document.getElementById('user-name').textContent = user.username;
-  document.getElementById('user-avatar').textContent = user.username[0].toUpperCase();
-  document.getElementById('credits-display').textContent = user.credits;
-  if (user.role === 'admin') document.getElementById('admin-link').style.display = '';
+  const nameEl = document.getElementById('user-name');
+  if (nameEl) nameEl.textContent = user.username;
+  const avatarEl = document.getElementById('user-avatar');
+  if (avatarEl) avatarEl.textContent = user.username[0].toUpperCase();
+  const creditsEl = document.getElementById('credits-display');
+  if (creditsEl) creditsEl.textContent = user.credits;
+  const adminEl = document.getElementById('admin-link');
+  if (adminEl && user.role === 'admin') adminEl.style.display = '';
   return true;
 }
 
 function updateCreditsDisplay() {
   fetchCurrentUser().then(() => {
     const u = getCurrentUser();
-    if (u) document.getElementById('credits-display').textContent = u.credits;
+    const el = document.getElementById('credits-display');
+    if (u && el) el.textContent = u.credits;
   });
 }
 
@@ -195,8 +218,17 @@ async function init() {
 }
 
 // ═══ 导航 ═══
+const PAGE_TITLES = {
+  dashboard:'工作台', create:'AI视频生成', imggen:'AI图片生成', avatar:'AI数字人',
+  comic:'AI漫画', novel:'AI小说', i2v:'图生视频', portrait:'我的角色',
+  projects:'我的项目', works:'我的作品', assets:'素材库', workbench:'声音克隆',
+  radar:'雷达总览', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
+  profile:'个人信息'
+};
+
 function switchPage(page, opts) {
-  if (page === 'settings') return; // AI 配置已移至后台
+  if (page === 'settings') return;
+  if (page === 'dashboard') loadDashboard();
   // 切换页面时停止所有音频播放
   stopAllAudio();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -206,15 +238,598 @@ function switchPage(page, opts) {
   pageEl.classList.add('active');
   const navEl = document.querySelector('[data-page="' + page + '"]');
   if (navEl) navEl.classList.add('active');
+  // 更新顶栏标题
+  const titleEl = document.getElementById('topbar-title');
+  const breadEl = document.getElementById('topbar-breadcrumb');
+  if (titleEl) titleEl.textContent = PAGE_TITLES[page] || page;
+  if (breadEl) breadEl.textContent = page === 'dashboard' ? '/ 首页概览' : '';
   if (page === 'projects') loadProjects();
   if (page === 'i2v') loadI2VPage();
   if (page === 'avatar') loadAvatarPage();
   if (page === 'imggen') loadImgGenPage();
   if (page === 'novel') nvLoadPage();
+  if (page === 'comic') loadComicPage();
+  if (page === 'portrait') loadPortraitPage();
+  if (page === 'works') loadWorksPage();
   if (page === 'assets') loadAssetsPage();
+  if (page === 'radar') loadRadarOverview();
+  if (page === 'monitor') loadMonitorList();
+  if (page === 'contentlib') loadContentLib();
+  if (page === 'replicate') loadReplicatePage();
+  if (page === 'workbench') loadVoiceClonePage();
+  if (page === 'profile') loadProfilePage();
   if (page === 'create' && !(opts && opts.keepProject)) {
     resetForm();
   }
+}
+
+// ═══ 仪表板 ═══
+async function loadDashboard() {
+  // 并行加载统计、任务
+  const [statsRes, tasksRes] = await Promise.all([
+    authFetch('/api/dashboard/stats').then(r => r.json()).catch(() => null),
+    authFetch('/api/dashboard/recent-tasks').then(r => r.json()).catch(() => null)
+  ]);
+
+  // 统计卡片
+  if (statsRes?.success) {
+    const s = statsRes.data;
+    document.getElementById('ds-videos').textContent = s.total_projects || 0;
+    document.getElementById('ds-videos-sub').textContent = `今日 +${s.today_videos || 0}`;
+    document.getElementById('ds-avatars').textContent = s.total_avatars || 0;
+    document.getElementById('ds-avatars-sub').textContent = `今日 +${s.today_avatars || 0}`;
+    document.getElementById('ds-images').textContent = (s.total_portraits || 0) + (s.total_comics || 0);
+    document.getElementById('ds-images-sub').textContent = `形象 ${s.total_portraits || 0} · 漫画 ${s.total_comics || 0}`;
+    document.getElementById('ds-novels').textContent = s.total_novels || 0;
+    document.getElementById('ds-novels-sub').textContent = `今日 +${s.today_novels || 0}`;
+  }
+
+  // 最近任务（原型table格式）
+  const tasksEl = document.getElementById('dash-tasks');
+  if (tasksRes?.success && tasksRes.tasks?.length) {
+    const TYPE_TAG = { 'AI视频':'tag-blue', '数字人':'tag-yellow', 'AI漫画':'tag-purple', 'AI图片':'tag-green', 'AI小说':'tag-gray', '图生视频':'tag-blue' };
+    const STATUS_TAG = { done:'tag-green', completed:'tag-green', processing:'tag-yellow', generating:'tag-yellow', error:'tag-red', pending:'tag-gray' };
+    const STATUS_LABEL = { done:'已完成', completed:'已完成', processing:'生成中', generating:'生成中', error:'失败', pending:'等待中' };
+    const TYPE_PAGE = { 'AI视频':'projects', '数字人':'avatar', 'AI漫画':'comic', 'AI图片':'portrait', 'AI小说':'novel', '图生视频':'i2v' };
+    tasksEl.innerHTML = `<table class="table" style="width:100%"><thead><tr><th>任务名称</th><th>类型</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>` +
+      tasksRes.tasks.map(t => {
+        const st = t.status || 'pending';
+        const pg = TYPE_PAGE[t.type] || 'works';
+        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span></td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>`;
+      }).join('') + '</tbody></table>';
+  } else {
+    tasksEl.innerHTML = '<table class="table"><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无任务记录</td></tr></tbody></table>';
+  }
+
+  // 模型状态已移除
+}
+
+// 页面加载时默认打开工作台
+document.addEventListener('DOMContentLoaded', () => { loadDashboard(); });
+
+// ═══ 个人信息 ═══
+function loadProfilePage() {
+  const user = getCurrentUser();
+  if (!user) return;
+  const el = (id) => document.getElementById(id);
+  if (el('profile-avatar-lg')) el('profile-avatar-lg').textContent = (user.username || 'U')[0].toUpperCase();
+  if (el('profile-username')) el('profile-username').textContent = user.username || '--';
+  if (el('profile-role')) el('profile-role').textContent = user.role === 'admin' ? '管理员' : '普通用户';
+  if (el('profile-name-val')) el('profile-name-val').textContent = user.username || '--';
+  if (el('profile-email-val')) el('profile-email-val').textContent = user.email || '未设置';
+  if (el('profile-role-val')) el('profile-role-val').textContent = user.role === 'admin' ? '超级管理员' : '普通用户';
+  if (el('profile-created-val')) el('profile-created-val').textContent = user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '--';
+}
+
+// ═══ 修改密码 ═══
+async function changePassword() {
+  const oldPwd = document.getElementById('pwd-old')?.value;
+  const newPwd = document.getElementById('pwd-new')?.value;
+  const confirmPwd = document.getElementById('pwd-confirm')?.value;
+  const msgEl = document.getElementById('pwd-msg');
+  if (!oldPwd || !newPwd) { msgEl.innerHTML = '<span style="color:#ef4444">请填写所有字段</span>'; return; }
+  if (newPwd !== confirmPwd) { msgEl.innerHTML = '<span style="color:#ef4444">两次密码不一致</span>'; return; }
+  if (newPwd.length < 6) { msgEl.innerHTML = '<span style="color:#ef4444">密码至少6位</span>'; return; }
+  try {
+    const resp = await authFetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }) });
+    const data = await resp.json();
+    if (data.success) {
+      msgEl.innerHTML = '<span style="color:#22c55e">密码修改成功！</span>';
+      document.getElementById('pwd-old').value = '';
+      document.getElementById('pwd-new').value = '';
+      document.getElementById('pwd-confirm').value = '';
+    } else {
+      msgEl.innerHTML = `<span style="color:#ef4444">${data.error || '修改失败'}</span>`;
+    }
+  } catch (err) { msgEl.innerHTML = `<span style="color:#ef4444">${err.message}</span>`; }
+}
+
+// ═══ 内容雷达 ═══
+
+async function loadRadarOverview() {
+  try {
+    const resp = await authFetch('/api/radar/overview');
+    const data = await resp.json();
+    if (!data.success) return;
+    const d = data.data;
+    const el = (id) => document.getElementById(id);
+    if (el('rd-accounts')) el('rd-accounts').textContent = d.account_count || 0;
+    if (el('rd-contents')) el('rd-contents').textContent = d.content_count || 0;
+    if (el('rd-replicated')) el('rd-replicated').textContent = d.replicate_count || 0;
+    if (el('rd-voices')) el('rd-voices').textContent = d.voice_count || 0;
+    // 徽章
+    const badge = el('radar-badge');
+    if (badge && d.content_count > 0) { badge.textContent = d.content_count; badge.style.display = ''; }
+    // 最近内容
+    const rcEl = el('rd-recent-contents');
+    if (rcEl && d.recent_contents?.length) {
+      rcEl.innerHTML = d.recent_contents.map(c => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;"><span style="color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.title||'未命名')}</span><span class="tag tag-blue" style="flex-shrink:0;margin-left:8px;">${esc(c.platform_name||'')}</span></div>`).join('');
+    }
+    // 最近任务
+    const rtEl = el('rd-recent-tasks');
+    if (rtEl && d.recent_tasks?.length) {
+      rtEl.innerHTML = d.recent_tasks.map(t => {
+        const sc = t.status === 'done' ? 'tag-green' : t.status === 'error' ? 'tag-red' : 'tag-yellow';
+        const sl = t.status === 'done' ? '完成' : t.status === 'error' ? '失败' : '进行中';
+        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;"><span style="color:var(--text)">${esc(t.title||'复刻任务')}</span><span class="tag ${sc}">${sl}</span></div>`;
+      }).join('');
+    }
+  } catch (err) { console.warn('[Radar]', err.message); }
+}
+
+async function radarExtract() {
+  const urlInput = document.getElementById('radar-extract-url');
+  const resultEl = document.getElementById('radar-extract-result');
+  const btn = document.querySelector('[onclick="radarExtract()"]');
+  if (!urlInput?.value.trim()) return;
+  // 显示加载动画
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 分析中...'; }
+  resultEl.innerHTML = `<div class="card" style="padding:20px;margin-top:8px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div style="width:20px;height:20px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0;"></div>
+      <span style="color:var(--accent);font-size:13px;font-weight:600;">AI 正在分析视频内容...</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.8;">
+      ✅ 正在识别平台来源...<br>
+      ⏳ 提取视频文案和标签...<br>
+      ⏳ 分析内容结构和风格...
+    </div>
+  </div>`;
+  try {
+    const resp = await authFetch('/api/radar/extract', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url: urlInput.value.trim() }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    const c = data.content;
+    resultEl.innerHTML = `<div class="card" style="padding:16px;margin-top:8px;border:1px solid rgba(34,197,94,.2);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="color:#22c55e;font-size:13px;font-weight:600;">✅ 提取成功</span>
+        <span class="tag tag-blue" style="font-size:10px;">${esc(c.platformName||'')}</span>
+        ${c.style?`<span class="tag tag-purple" style="font-size:10px;">${esc(c.style)}</span>`:''}
+      </div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">${esc(c.title||'')}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;max-height:120px;overflow-y:auto;margin-bottom:10px;padding:10px;background:var(--bg);border-radius:6px;">${esc(c.transcript||'').substring(0,500)}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">${(c.tags||[]).map(t=>`<span class="tag tag-purple">${esc(t)}</span>`).join('')}</div>
+      ${c.hook?`<div style="font-size:11px;color:var(--accent);margin-bottom:4px;">🎣 钩子: ${esc(c.hook)}</div>`:''}
+      ${c.structure?`<div style="font-size:11px;color:var(--text3);">📐 结构: ${esc(c.structure)}</div>`:''}
+      <div style="margin-top:10px;display:flex;gap:6px;">
+        <button onclick="openContentProcess('${c.id}')" style="padding:5px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">处理内容</button>
+        <button onclick="navigator.clipboard.writeText(document.querySelector('#radar-extract-result .card div[style*=overflow-y]')?.textContent||'');alert('已复制')" style="padding:5px 14px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">复制文案</button>
+      </div>
+    </div>`;
+    urlInput.value = '';
+    loadRadarOverview();
+  } catch (err) {
+    resultEl.innerHTML = `<div class="card" style="padding:14px;margin-top:8px;border:1px solid rgba(239,68,68,.2);">
+      <div style="color:#ef4444;font-size:13px;font-weight:600;">❌ 提取失败</div>
+      <div style="color:var(--text3);font-size:12px;margin-top:4px;">${esc(err.message)}</div>
+      <div style="color:var(--text3);font-size:11px;margin-top:6px;">提示：请检查链接是否正确，或尝试直接粘贴视频文案</div>
+    </div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'AI 提取分析'; }
+  }
+}
+
+let currentMonitorId = null;
+
+function matSwitchTab(tab) {
+  document.querySelectorAll('.mat-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  ['blogger','parsed','transcript','audio'].forEach(t => {
+    const el = document.getElementById('mat-tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'parsed') matLoadParsed();
+  if (tab === 'transcript') matLoadTranscripts();
+  if (tab === 'audio') matLoadAudios();
+}
+
+function matFilterContent() {
+  // 在当前 tab 下搜索
+  const q = document.getElementById('mat-search')?.value?.toLowerCase() || '';
+  const activeTab = document.querySelector('.mat-tab.active')?.dataset.tab;
+  if (activeTab === 'blogger') {
+    document.querySelectorAll('.mat-blogger-card').forEach(card => {
+      const text = card.textContent.toLowerCase();
+      card.style.display = text.includes(q) ? '' : 'none';
+    });
+  }
+}
+
+async function loadMonitorList() {
+  try {
+    const resp = await authFetch('/api/radar/monitors');
+    const data = await resp.json();
+    const el = document.getElementById('monitor-list');
+    if (!data.success || !data.monitors?.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无关注博主，点击上方按钮添加</div>';
+      return;
+    }
+    const platformIcon = { douyin:'📱', bilibili:'📺', xiaohongshu:'📕', kuaishou:'🎬', wechat:'💬' };
+    el.innerHTML = data.monitors.map(m => {
+      const icon = platformIcon[m.platform] || '🌐';
+      const timeAgo = m.created_at ? new Date(m.created_at).toLocaleDateString('zh-CN') : '';
+      return `<div class="mat-blogger-card">
+        <div class="mat-blogger-avatar">${icon}</div>
+        <div class="mat-blogger-info">
+          <div class="mat-blogger-name">${esc(m.account_name)}</div>
+          <div class="mat-blogger-meta">${esc(m.platform_name)} · 关注于 ${timeAgo}</div>
+        </div>
+        <div class="mat-blogger-actions">
+          <span class="mat-btn-follow-status">${m.is_active ? '已关注' : '已暂停'}</span>
+          <button class="mat-btn-view" onclick="viewMonitorDetail('${m.id}','${esc(m.account_name)}','${esc(m.platform_name)}')">查看视频</button>
+          <button class="mat-btn-unfollow" onclick="deleteMonitor('${m.id}')">取关</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (err) { console.warn('[Monitor]', err.message); }
+}
+
+async function matLoadParsed() {
+  const el = document.getElementById('mat-parsed-list');
+  if (!el) return;
+  try {
+    const resp = await authFetch('/api/radar/contents');
+    const data = await resp.json();
+    if (!data.success || !data.contents?.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无解析记录</div>'; return; }
+    el.innerHTML = data.contents.map(c => `<div class="card" style="padding:14px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:14px;font-weight:600;color:var(--text);flex:1;">${esc(c.title||'未命名')}</span>
+        <span class="tag tag-blue" style="font-size:10px;">${esc(c.platform_name||'')}</span>
+        <span style="font-size:11px;color:var(--text3);">${c.created_at?new Date(c.created_at).toLocaleString('zh-CN'):''}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;max-height:60px;overflow:hidden;">${esc((c.transcript||'').substring(0,200))}</div>
+      <div style="margin-top:8px;display:flex;gap:6px;">
+        <button onclick="openContentProcess('${c.id}')" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">加载文案</button>
+        <button onclick="deleteContentItem('${c.id}')" style="padding:4px 12px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:11px;cursor:pointer;">删除</button>
+      </div>
+    </div>`).join('');
+  } catch {}
+}
+
+async function matLoadTranscripts() {
+  const el = document.getElementById('mat-transcript-list');
+  if (!el) return;
+  try {
+    const resp = await authFetch('/api/radar/contents');
+    const data = await resp.json();
+    const contents = (data.contents || []).filter(c => c.transcript);
+    if (!contents.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无提取文案</div>'; return; }
+    el.innerHTML = contents.map(c => `<div class="card" style="padding:14px;margin-bottom:8px;">
+      <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:6px;">${esc(c.title||'未命名')}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;max-height:80px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:6px;">${esc(c.transcript.substring(0,300))}</div>
+      <div style="margin-top:8px;display:flex;gap:6px;">
+        <button onclick="navigator.clipboard.writeText(${JSON.stringify(c.transcript)});alert('已复制')" style="padding:4px 12px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">复制</button>
+        <button onclick="cpToAvatarFromId('${c.id}')" style="padding:4px 12px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:6px;font-size:11px;cursor:pointer;">生成数字人</button>
+      </div>
+    </div>`).join('');
+  } catch {}
+}
+
+async function matLoadAudios() {
+  const el = document.getElementById('mat-audio-list');
+  if (!el) return;
+  try {
+    const resp = await authFetch('/api/workbench/voices');
+    const data = await resp.json();
+    const voices = data.voices || [];
+    if (!voices.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无合成配音</div>'; return; }
+    el.innerHTML = voices.map(v => `<div class="card" style="padding:14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:20px;">🎵</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:500;color:var(--text);">${esc(v.name||'未命名')}</div>
+        <div style="font-size:11px;color:var(--text3);">创建于 ${v.created_at?new Date(v.created_at).toLocaleDateString('zh-CN'):''}</div>
+      </div>
+      <button onclick="new Audio('/api/workbench/voices/${v.id}/play').play()" style="padding:5px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">▶ 试听</button>
+    </div>`).join('');
+  } catch {}
+}
+
+function viewMonitorDetail(id, name, platform) {
+  currentMonitorId = id;
+  document.getElementById('monitor-detail').style.display = '';
+  document.getElementById('md-name').textContent = name + ' (' + platform + ')';
+  // 加载该博主的提取内容
+  loadMonitorVideos(id);
+}
+
+async function loadMonitorVideos(accountId) {
+  try {
+    const resp = await authFetch(`/api/radar/contents?account_id=${accountId}`);
+    const data = await resp.json();
+    const el = document.getElementById('md-videos');
+    if (!data.success || !data.contents?.length) {
+      el.innerHTML = '<div style="grid-column:1/-1;color:var(--text3);font-size:12px;text-align:center;padding:30px;">暂无提取内容，请粘贴该博主视频链接进行提取</div>';
+      return;
+    }
+    el.innerHTML = data.contents.map(c => `<div class="card" style="padding:12px;">
+      <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;">${esc(c.title||'未命名')}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${esc(c.style||'')} · ${(c.tags||[]).map(t=>'#'+t).join(' ')}</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.5;max-height:50px;overflow:hidden;margin-bottom:8px;">${esc((c.transcript||'').substring(0,150))}</div>
+      <div style="display:flex;gap:4px;">
+        <button onclick="openContentProcess('${c.id}')" style="padding:3px 8px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:10px;cursor:pointer;">处理</button>
+        <button onclick="rewriteContentUI('${c.id}')" style="padding:3px 8px;background:rgba(34,197,94,.12);color:#22c55e;border:none;border-radius:4px;font-size:10px;cursor:pointer;">改写</button>
+      </div>
+    </div>`).join('');
+  } catch (err) { console.warn('[Monitor]', err.message); }
+}
+
+async function extractMonitorVideo() {
+  const urlInput = document.getElementById('md-video-url');
+  if (!urlInput?.value.trim()) return alert('请输入视频链接');
+  try {
+    const resp = await authFetch('/api/radar/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: urlInput.value.trim(), account_id: currentMonitorId }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    urlInput.value = '';
+    alert('提取成功：' + (data.content?.title || ''));
+    if (currentMonitorId) loadMonitorVideos(currentMonitorId);
+  } catch (err) { alert('提取失败: ' + err.message); }
+}
+
+function addMonitorPrompt() {
+  // 创建内联对话框
+  let modal = document.getElementById('add-monitor-modal');
+  if (modal) { modal.style.display = 'flex'; return; }
+  modal = document.createElement('div');
+  modal.id = 'add-monitor-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">关注博主</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;">添加博主账号，追踪其最新内容</div>
+    <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">博主名称</label>
+    <input id="am-name" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;margin-bottom:12px;box-sizing:border-box;" placeholder="例如：王先生说金融" />
+    <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">账号主页链接</label>
+    <input id="am-url" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;margin-bottom:6px;box-sizing:border-box;" placeholder="粘贴抖音/快手/B站/小红书主页链接..." />
+    <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">支持平台：抖音 · 快手 · B站 · 小红书 · 视频号</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="document.getElementById('add-monitor-modal').style.display='none'" style="padding:8px 20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;">取消</button>
+      <button onclick="submitAddMonitor()" style="padding:8px 20px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">确认关注</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+  document.getElementById('am-name').focus();
+}
+
+async function submitAddMonitor() {
+  const url = document.getElementById('am-url')?.value?.trim();
+  const name = document.getElementById('am-name')?.value?.trim();
+  if (!url) { document.getElementById('am-url').style.borderColor = '#ef4444'; return; }
+  if (!name) { document.getElementById('am-name').style.borderColor = '#ef4444'; return; }
+  try {
+    const resp = await authFetch('/api/radar/monitors', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, name }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    document.getElementById('add-monitor-modal').style.display = 'none';
+    document.getElementById('am-url').value = '';
+    document.getElementById('am-name').value = '';
+    loadMonitorList();
+  } catch (err) { alert('关注失败: ' + err.message); }
+}
+async function toggleMonitor(id) {
+  await authFetch(`/api/radar/monitors/${id}/toggle`, { method:'PUT' });
+  loadMonitorList();
+}
+async function deleteMonitor(id) {
+  if (!confirm('确定删除此监控账号？')) return;
+  await authFetch(`/api/radar/monitors/${id}`, { method:'DELETE' });
+  loadMonitorList();
+}
+
+async function loadContentLib() {
+  try {
+    const platform = document.getElementById('clib-platform-filter')?.value || '';
+    const resp = await authFetch(`/api/radar/contents${platform?'?platform='+platform:''}`);
+    const data = await resp.json();
+    const el = document.getElementById('clib-list');
+    if (!data.success || !data.contents?.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无内容</div>'; return; }
+    el.innerHTML = data.contents.map(c => `<div class="card" style="padding:14px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px;">
+        <div style="font-size:13px;font-weight:500;color:var(--text);">${esc(c.title||'未命名')}</div>
+        <div style="display:flex;gap:4px;flex-shrink:0;"><span class="tag tag-blue">${esc(c.platform_name||'')}</span><span class="tag tag-purple">${esc(c.style||'')}</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;max-height:60px;overflow:hidden;">${esc((c.transcript||'').substring(0,200))}</div>
+      <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">${(c.tags||[]).map(t=>`<span class="tag tag-gray">${esc(t)}</span>`).join('')}</div>
+      <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
+        <button onclick="openContentProcess('${c.id}')" style="padding:4px 10px;background:rgba(var(--accent-rgb),.15);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">📝 处理</button>
+        <button onclick="rewriteContentUI('${c.id}')" style="padding:4px 10px;background:rgba(34,197,94,.12);color:#22c55e;border:none;border-radius:6px;font-size:11px;cursor:pointer;">🔄 快速改写</button>
+        <button onclick="cpToAvatarFromId('${c.id}')" style="padding:4px 10px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:6px;font-size:11px;cursor:pointer;">👤 生成数字人</button>
+        <button onclick="deleteContentItem('${c.id}')" style="padding:4px 10px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:11px;cursor:pointer;">✕ 删除</button>
+      </div>
+    </div>`).join('');
+  } catch (err) { console.warn('[ContentLib]', err.message); }
+}
+
+function filterContentLib() { loadContentLib(); }
+
+async function rewriteContentUI(id) {
+  const style = prompt('改写风格:\nsame=保持原风格\noral=口播\nsell=带货\nknowledge=知识\nstory=故事', 'same');
+  if (!style) return;
+  try {
+    const resp = await authFetch('/api/radar/rewrite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content_id: id, style }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    alert('改写完成！\n\n' + data.rewritten.substring(0, 300) + '...');
+  } catch (err) { alert('改写失败: ' + err.message); }
+}
+
+async function deleteContentItem(id) {
+  if (!confirm('删除此内容？')) return;
+  await authFetch(`/api/radar/contents/${id}`, { method:'DELETE' });
+  loadContentLib();
+}
+
+async function loadReplicatePage() {
+  // 加载内容选项
+  try {
+    const resp = await authFetch('/api/radar/contents');
+    const data = await resp.json();
+    const sel = document.getElementById('rep-content');
+    if (sel && data.success) {
+      sel.innerHTML = '<option value="">选择要复刻的内容...</option>' + (data.contents||[]).map(c => `<option value="${c.id}">${esc(c.title||'未命名')} (${esc(c.platform_name||'')})</option>`).join('');
+    }
+  } catch {}
+  // 加载声音选项
+  try {
+    const resp = await authFetch('/api/story/voices');
+    const data = await resp.json();
+    const sel = document.getElementById('rep-voice');
+    if (sel && data.success) {
+      sel.innerHTML = '<option value="">默认声音</option>' + (data.voices||[]).map(v => `<option value="${v.id}">${esc(v.name)} (${esc(v.provider)})</option>`).join('');
+    }
+  } catch {}
+  // 加载历史
+  try {
+    const resp = await authFetch('/api/radar/replicate/tasks');
+    const data = await resp.json();
+    const el = document.getElementById('rep-history');
+    if (!data.success || !data.tasks?.length) return;
+    el.innerHTML = data.tasks.reverse().map(t => {
+      const sc = t.status==='done'?'tag-green':t.status==='error'?'tag-red':'tag-yellow';
+      const sl = t.status==='done'?'完成':t.status==='error'?'失败':'进行中';
+      const preview = t.rewritten_text ? esc(t.rewritten_text.substring(0, 80)) + '...' : '';
+      const errMsg = t.status==='error' && t.error ? `<div style="color:#ef4444;font-size:11px;margin-top:4px;">${esc(t.error)}</div>` : '';
+      const created = t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '';
+      return `<div class="card" style="padding:14px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${preview||errMsg?'8':'0'}px;">
+          <span style="font-size:13px;color:var(--text);flex:1;font-weight:500;">${esc(t.title||'复刻任务')}</span>
+          <span style="font-size:11px;color:var(--text3);">${created}</span>
+          <span class="tag ${sc}">${sl}</span>
+        </div>
+        ${preview?`<div style="font-size:12px;color:var(--text2);line-height:1.5;">${preview}</div>`:''}
+        ${errMsg}
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+// ═══ 内容处理面板 ═══
+let currentProcessContentId = null;
+
+async function openContentProcess(id) {
+  try {
+    const resp = await authFetch(`/api/radar/contents/${id}`);
+    const data = await resp.json();
+    if (!data.success) return;
+    currentProcessContentId = id;
+    const c = data.content;
+    document.getElementById('cp-title').textContent = c.title || '未命名';
+    document.getElementById('cp-original').textContent = c.transcript || '';
+    document.getElementById('cp-result').style.display = 'none';
+    document.getElementById('clib-process').style.display = '';
+    document.getElementById('clib-process').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) { alert(err.message); }
+}
+
+async function cpRewrite(style) {
+  if (!currentProcessContentId) return;
+  document.getElementById('cp-result').style.display = '';
+  document.getElementById('cp-rewritten').innerHTML = '<span style="color:var(--accent)">🔄 AI 改写中...</span>';
+  try {
+    const resp = await authFetch('/api/radar/rewrite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content_id: currentProcessContentId, style }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    document.getElementById('cp-rewritten').textContent = data.rewritten;
+  } catch (err) { document.getElementById('cp-rewritten').innerHTML = `<span style="color:#ef4444">${esc(err.message)}</span>`; }
+}
+
+function cpCopyResult() {
+  const text = document.getElementById('cp-rewritten')?.textContent;
+  if (text) { navigator.clipboard.writeText(text); alert('已复制到剪贴板'); }
+}
+
+function cpToAvatar() {
+  const text = document.getElementById('cp-original')?.textContent;
+  if (!text) return;
+  switchPage('avatar');
+  setTimeout(() => { const ta = document.getElementById('av-text'); if (ta) ta.value = text; }, 300);
+}
+
+function cpToAvatarRewritten() {
+  const text = document.getElementById('cp-rewritten')?.textContent;
+  if (!text) return;
+  switchPage('avatar');
+  setTimeout(() => { const ta = document.getElementById('av-text'); if (ta) ta.value = text; }, 300);
+}
+
+function cpToVideo() {
+  const text = document.getElementById('cp-original')?.textContent;
+  if (!text) return;
+  switchPage('create');
+  setTimeout(() => { const ta = document.getElementById('theme-input'); if (ta) ta.value = text.substring(0, 200); }, 300);
+}
+
+async function cpToAvatarFromId(contentId) {
+  try {
+    const resp = await authFetch(`/api/radar/contents/${contentId}`);
+    const data = await resp.json();
+    if (!data.success) return;
+    switchPage('avatar');
+    setTimeout(() => { const ta = document.getElementById('av-text'); if (ta) ta.value = data.content.transcript || ''; }, 300);
+  } catch {}
+}
+
+async function startReplicate() {
+  const contentId = document.getElementById('rep-content')?.value;
+  if (!contentId) return alert('请先选择要复刻的内容');
+  const style = document.getElementById('rep-style')?.value || 'same';
+  const voiceId = document.getElementById('rep-voice')?.value || '';
+  const statusEl = document.getElementById('rep-status');
+  if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '<span style="color:var(--accent)">⚡ 正在创建复刻任务...</span>'; }
+  try {
+    const resp = await authFetch('/api/radar/replicate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ content_id: contentId, style, voice_id: voiceId }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    // 轮询任务状态
+    pollReplicateTask(data.taskId);
+  } catch (err) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">❌ 复刻失败: ${esc(err.message)}</span>`;
+  }
+}
+
+async function pollReplicateTask(taskId) {
+  const statusEl = document.getElementById('rep-status');
+  const steps = { processing: '🔄 复刻进行中...', rewrite: '📝 AI改写文案中...', tts: '🎙 生成语音配音...', video: '🎬 生成数字人视频...' };
+  let attempts = 0;
+  const poll = setInterval(async () => {
+    try {
+      attempts++;
+      const resp = await authFetch(`/api/radar/replicate/tasks/${taskId}`);
+      const data = await resp.json();
+      if (!data.success) { clearInterval(poll); return; }
+      const t = data.task;
+      if (t.status === 'done') {
+        clearInterval(poll);
+        if (statusEl) statusEl.innerHTML = '<span style="color:#22c55e">✅ 复刻完成！</span>';
+        loadReplicatePage();
+      } else if (t.status === 'error') {
+        clearInterval(poll);
+        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">❌ 复刻失败: ${esc(t.error || '未知错误')}</span>`;
+      } else {
+        if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent)">${steps[t.status] || steps.processing}</span>`;
+      }
+      if (attempts > 120) { clearInterval(poll); if (statusEl) statusEl.innerHTML = '<span style="color:#f59e0b">⏱ 任务超时，请稍后刷新查看</span>'; }
+    } catch { /* ignore polling errors */ }
+  }, 3000);
 }
 
 // ═══ 尺寸切换 ═══
@@ -738,6 +1353,9 @@ function selectScene(id) {
   setSelectVal('srp-scene-theme', s.theme || '魔幻');
   setSelectVal('srp-scene-cat', s.category || '室外');
   setSelectVal('srp-scene-time', s.timeOfDay || '白天');
+  setSelectVal('srp-scene-camera', s.camera_move || '');
+  setSelectVal('srp-scene-shottype', s.shot_type || '');
+  updateStoryboardPreview(s);
   document.getElementById('srp-scene-desc').value = s.description || '';
   // 字幕/配音文本
   const dialogueEl = document.getElementById('srp-scene-dialogue');
@@ -761,7 +1379,59 @@ function syncSceneProp(field, value) {
   if (!s) return;
   s[field] = value;
   if (field === 'title') document.getElementById('srp-scene-name').textContent = value || '场景';
+  if (field === 'camera_move' || field === 'shot_type') updateStoryboardPreview(s);
   renderScenes();
+}
+
+function updateStoryboardPreview(scene) {
+  const frame = document.getElementById('srp-sb-frame');
+  const meta = document.getElementById('srp-sb-meta');
+  if (!frame || !meta) return;
+
+  const CAMERA_LABELS = {
+    static:'固定',push_in:'推',pull_out:'拉',pan_left:'左摇',pan_right:'右摇',
+    tilt_up:'上仰',tilt_down:'下俯',tracking:'跟拍',dolly_zoom:'希区柯克',
+    orbit:'环绕360°',crane_up:'升',crane_down:'降',handheld:'手持',
+    first_person:'第一视角',over_shoulder:'过肩',aerial:'航拍',
+    whip_pan:'甩镜',slow_zoom:'缓推',bullet_time:'子弹时间'
+  };
+  const SHOT_LABELS = {
+    extreme_wide:'大远景',wide:'远景',full:'全景',medium:'中景',
+    medium_close:'中近景',close_up:'特写',extreme_close:'大特写',
+    low_angle:'仰拍',high_angle:'俯拍',birds_eye:'鸟瞰',dutch_angle:'荷兰角'
+  };
+  // SVG icons for camera movements
+  const CAMERA_ICONS = {
+    push_in:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="10" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2"/><path d="M14 8v12M10 12l4-4 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pull_out:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="10" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2"/><path d="M14 8v12M10 16l4 4 4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pan_left:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M20 14H8M12 10l-4 4 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pan_right:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M8 14h12M16 10l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    orbit:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><ellipse cx="14" cy="14" rx="10" ry="6" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 2"/><path d="M22 10l2 4-4 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    tracking:'<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="6" y="8" width="10" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M18 14h6M22 11l3 3-3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+
+  const cam = scene.camera_move || '';
+  const shot = scene.shot_type || '';
+
+  if (!cam && !shot) {
+    frame.innerHTML = '<div class="srp-sb-empty">选择镜头运动和景别后自动生成分镜描述</div>';
+    meta.innerHTML = '';
+    return;
+  }
+
+  // Frame icon
+  const icon = CAMERA_ICONS[cam] || '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="4" y="7" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="14" cy="14" r="3" stroke="currentColor" stroke-width="1.2"/></svg>';
+  frame.innerHTML = scene.imageUrl
+    ? `<img src="${esc(scene.imageUrl)}" /><div style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,.6);border-radius:4px;padding:1px 4px;font-size:8px;color:var(--accent)">${CAMERA_LABELS[cam] || ''}</div>`
+    : icon;
+
+  // Meta tags
+  const tags = [];
+  if (cam) tags.push(`<span class="sb-tag">${CAMERA_LABELS[cam] || cam}</span>`);
+  if (shot) tags.push(`<span class="sb-tag">${SHOT_LABELS[shot] || shot}</span>`);
+  if (scene.timeOfDay) tags.push(`<span class="sb-tag">${scene.timeOfDay}</span>`);
+  const title = scene.title ? `<div style="font-weight:600;margin-bottom:2px">${esc(scene.title)}</div>` : '';
+  meta.innerHTML = title + tags.join('') + (scene.camera ? `<div style="margin-top:3px;font-size:9px;color:var(--text3)">${esc(scene.camera)}</div>` : '');
 }
 
 // ═══ 2D/3D 维度 per item ═══
@@ -2241,7 +2911,7 @@ function showActionModelHint(rule) {
 }
 
 function updateCharCount(el, targetId) {
-  const max = el.id === 'input-theme' ? 5000 : 1000;
+  const max = el.id === 'input-theme' ? 5000 : el.id === 'av-text-input' ? 3000 : 1000;
   const cnt = document.getElementById(targetId);
   if (cnt) cnt.textContent = el.value.length + ' / ' + max;
 }
@@ -3362,12 +4032,22 @@ function closePreview() {
 function closeModal(e) { if (e.target.id==='video-modal') closePreview(); }
 
 // ═══ 图片大图弹窗 ═══
-function openLightbox(src, caption) {
+function openLightbox(src, caption, type) {
   const box = document.getElementById('img-lightbox');
   const img = document.getElementById('lightbox-img');
+  const vid = document.getElementById('lightbox-video');
   const cap = document.getElementById('lightbox-caption');
-  if (!box || !img) return;
-  img.src = src;
+  if (!box) return;
+  if (type === 'video' && vid) {
+    img.style.display = 'none';
+    vid.style.display = 'block';
+    vid.src = src;
+    vid.play().catch(() => {});
+  } else {
+    if (vid) { vid.style.display = 'none'; vid.pause(); vid.src = ''; }
+    img.style.display = '';
+    img.src = src;
+  }
   if (cap) cap.textContent = caption || '';
   box.classList.add('open');
 }
@@ -3375,6 +4055,10 @@ function closeLightbox(e) {
   if (e && e.target !== document.getElementById('img-lightbox') && !e.target.classList.contains('lightbox-close')) return;
   const box = document.getElementById('img-lightbox');
   if (box) box.classList.remove('open');
+  const vid = document.getElementById('lightbox-video');
+  if (vid) { vid.pause(); vid.src = ''; vid.style.display = 'none'; }
+  const img = document.getElementById('lightbox-img');
+  if (img) img.style.display = '';
 }
 
 // ═══ 项目列表 ═══
@@ -4671,10 +5355,44 @@ let avatarDrive = 'text';
 let avatarSelected = 'female-1';
 let avatarBg = 'office';
 let avatarRatio = '9:16';
+let avatarTemplate = ''; // 当前选中的脚本模板
+let avatarSegments = null; // AI 分段结果 [{text, expression, motion}]
 
-function loadAvatarPage() {
+// 历史记录（内存，刷新后清空）
+const avatarHistory = [];
+
+async function loadAvatarPage() {
   loadAvModels();
   loadAvatarPresets();
+  // 从数据库加载历史记录
+  await loadAvatarHistoryFromDB();
+  renderAvatarHistory();
+}
+
+async function loadAvatarHistoryFromDB() {
+  try {
+    const resp = await authFetch('/api/avatar/tasks');
+    const data = await resp.json();
+    if (!data.success || !data.tasks) return;
+    // 将 DB 记录合并到内存（去重）
+    const existingIds = new Set(avatarHistory.map(h => h.taskId));
+    for (const t of data.tasks) {
+      if (t.status === 'done' && t.videoUrl && !existingIds.has(t.id)) {
+        avatarHistory.push({
+          taskId: t.id,
+          text: t.text || '',
+          videoUrl: t.videoUrl,
+          ratio: t.ratio || '9:16',
+          model: t.model || '',
+          time: new Date(t.created_at)
+        });
+      }
+    }
+    // 按时间倒序
+    avatarHistory.sort((a, b) => b.time - a.time);
+  } catch (err) {
+    console.warn('[Avatar] 加载历史失败:', err.message);
+  }
 }
 
 async function loadAvModels() {
@@ -4683,21 +5401,23 @@ async function loadAvModels() {
     const data = await resp.json();
     const providers = data.providers || [];
     const container = document.getElementById('av-model-selector');
-    let html = `<div class="ig-model-opt active" data-model="auto" onclick="selectAvModel(this)">
-      <span class="ig-model-icon">A</span>
-      <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配</div></div>
-    </div>`;
+    // 保留默认两个 CogVideoX 选项，追加 settings 中 use=avatar 的模型
+    let extra = '';
     providers.forEach(p => {
       (p.models || []).forEach(m => {
         if (m.use === 'avatar') {
-          html += `<div class="ig-model-opt" data-model="${m.id}" data-provider="${p.id}" onclick="selectAvModel(this)">
-            <span class="ig-model-icon">${(p.name || p.id)[0].toUpperCase()}</span>
-            <div class="ig-model-info"><div class="ig-model-name">${esc(m.name || m.id)}</div><div class="ig-model-desc">${esc(p.name || p.id)}</div></div>
+          const initials = (p.name || p.id)[0].toUpperCase();
+          extra += `<div class="ig-model-opt" data-model="${m.id}" data-provider="${p.id}" onclick="selectAvModel(this)">
+            <span class="ig-model-icon">${initials}</span>
+            <div class="ig-model-info">
+              <div class="ig-model-name">${esc(m.name || m.id)}</div>
+              <div class="ig-model-desc">${esc(p.name || p.id)}</div>
+            </div>
           </div>`;
         }
       });
     });
-    container.innerHTML = html;
+    if (extra) container.insertAdjacentHTML('beforeend', extra);
   } catch {}
 }
 
@@ -4720,13 +5440,16 @@ function switchAvatarDrive(mode, btn) {
   document.getElementById('av-drive-audio').style.display = mode === 'audio' ? '' : 'none';
 }
 
-function handleAvatarUpload(input) {
+async function handleAvatarUpload(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
+  const uploadCard = document.querySelector('.av-avatar-upload');
+  const imgEl = uploadCard.querySelector('.av-avatar-img');
+  const span = uploadCard.querySelector('span');
+
+  // 本地预览
   const reader = new FileReader();
   reader.onload = function(e) {
-    const uploadCard = document.querySelector('.av-avatar-upload');
-    const imgEl = uploadCard.querySelector('.av-avatar-img');
     if (imgEl) {
       imgEl.classList.remove('av-avatar-upload-ph');
       imgEl.style.backgroundImage = `url(${e.target.result})`;
@@ -4734,11 +5457,29 @@ function handleAvatarUpload(input) {
       imgEl.style.backgroundPosition = 'center';
       imgEl.innerHTML = '';
     }
-    uploadCard.querySelector('span').textContent = '自定义';
-    uploadCard.dataset.avatar = 'custom';
-    selectAvatar(uploadCard);
+    if (span) span.textContent = '上传中...';
   };
   reader.readAsDataURL(file);
+  selectAvatar(uploadCard);
+  uploadCard.dataset.avatar = ''; // 上传完成前清空，防止带着 'custom' 提交
+
+  // 上传到服务器
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const res = await authFetch('/api/avatar/upload-image', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.path) {
+      uploadCard.dataset.avatar = data.path; // 服务器路径，如 /api/avatar/images/xxx.png
+      if (span) span.textContent = file.name.length > 8 ? file.name.slice(0, 7) + '…' : file.name;
+    } else {
+      throw new Error(data.error || '上传失败');
+    }
+  } catch (err) {
+    if (span) span.textContent = '上传失败';
+    if (imgEl) { imgEl.classList.add('av-avatar-upload-ph'); imgEl.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; imgEl.style.backgroundImage = ''; }
+    alert('图片上传失败：' + err.message);
+  }
 }
 
 function handleAvatarAudio(input) {
@@ -4766,13 +5507,70 @@ function handleAvatarBgUpload(input) {
   const card = input.closest('.av-bg-card');
   const reader = new FileReader();
   reader.onload = function(e) {
-    card.querySelector('.av-bg-preview').style.backgroundImage = `url(${e.target.result})`;
-    card.querySelector('.av-bg-preview').style.backgroundSize = 'cover';
-    card.querySelector('.av-bg-preview').classList.remove('av-bg-upload-ph');
+    const preview = card.querySelector('.av-bg-preview');
+    if (preview) {
+      preview.style.backgroundImage = `url(${e.target.result})`;
+      preview.style.backgroundSize = 'cover';
+      preview.classList.remove('av-bg-upload-ph');
+    }
   };
   reader.readAsDataURL(input.files[0]);
   selectAvatarBg(card);
 }
+
+function selectAvatarVoice(el) {
+  document.querySelectorAll('.av-voice-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// 自定义声音上传
+let customVoices = JSON.parse(localStorage.getItem('vido_custom_voices') || '[]');
+
+async function uploadCustomVoice(input) {
+  if (!input.files?.[0]) return;
+  const file = input.files[0];
+  const name = prompt('给这个声音起个名字：', file.name.replace(/\.[^.]+$/, ''));
+  if (!name) { input.value = ''; return; }
+
+  const fd = new FormData();
+  fd.append('audio', file);
+  fd.append('name', name);
+
+  try {
+    const res = await authFetch('/api/workbench/upload-voice', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    customVoices.push({ id: data.voiceId, name, file: data.filename });
+    localStorage.setItem('vido_custom_voices', JSON.stringify(customVoices));
+    renderCustomVoices();
+  } catch (err) {
+    alert('上传失败: ' + err.message);
+  }
+  input.value = '';
+}
+
+function renderCustomVoices() {
+  const container = document.getElementById('av-custom-voice-list');
+  const section = document.getElementById('av-custom-voices');
+  if (!container || !section) return;
+  if (!customVoices.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  container.innerHTML = customVoices.map((v, i) => `
+    <span class="av-voice-chip av-voice-chip-custom" data-voice="custom:${v.id}" onclick="selectAvatarVoice(this)">
+      ${esc(v.name)}
+      <button class="av-voice-chip-del" onclick="event.stopPropagation();removeCustomVoice(${i})">✕</button>
+    </span>
+  `).join('');
+}
+
+function removeCustomVoice(idx) {
+  customVoices.splice(idx, 1);
+  localStorage.setItem('vido_custom_voices', JSON.stringify(customVoices));
+  renderCustomVoices();
+}
+
+// 页面加载时渲染
+setTimeout(renderCustomVoices, 500);
 
 function setAvatarRatio(ratio, btn) {
   avatarRatio = ratio;
@@ -4780,50 +5578,118 @@ function setAvatarRatio(ratio, btn) {
   if (btn) btn.classList.add('active');
 }
 
+// 进度步骤映射
+const AV_STEPS = [
+  { key: 'start',    label: '准备' },
+  { key: 'video',    label: '生成' },
+  { key: 'tts',      label: '配音' },
+  { key: 'merge',    label: '合成' },
+  { key: 'done',     label: '完成' },
+];
+
+function renderProgressUI(currentStep, statusMsg, segmentInfo) {
+  const stepIdx = AV_STEPS.findIndex(s => s.key === currentStep);
+  const stepsHTML = AV_STEPS.map((s, i) => {
+    const isDone   = i < stepIdx || currentStep === 'done';
+    const isActive = i === stepIdx && currentStep !== 'done';
+    const cls = isDone ? 'av-step done' : isActive ? 'av-step active' : 'av-step';
+    const dot = isDone
+      ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      : (i + 1);
+    const line = i < AV_STEPS.length - 1
+      ? `<div class="av-step-line${isDone ? ' done' : ''}"></div>`
+      : '';
+    return `<div class="${cls}"><div class="av-step-dot">${dot}</div><div class="av-step-name">${s.label}</div></div>${line}`;
+  }).join('');
+
+  // 多段进度条
+  let segProgressHTML = '';
+  if (segmentInfo && segmentInfo.total > 1) {
+    const pct = Math.round((segmentInfo.segment / segmentInfo.total) * 100);
+    segProgressHTML = `<div class="av-seg-progress">
+      <div class="av-seg-progress-bar"><div class="av-seg-progress-fill" style="width:${pct}%"></div></div>
+      <div class="av-seg-progress-label">片段 ${segmentInfo.segment} / ${segmentInfo.total}</div>
+    </div>`;
+  }
+
+  const isMulti = avatarSegments && avatarSegments.length > 1;
+  const subText = isMulti
+    ? `多段模式 · ${avatarSegments.length} 个片段`
+    : '智谱 CogVideoX · 预计 1~3 分钟';
+
+  return `<div class="av-progress-wrap">
+    <div class="av-spinner"></div>
+    <div class="av-progress-status" id="av-gen-status">${esc(statusMsg || '正在生成...')}</div>
+    <div class="av-progress-sub">${subText}</div>
+    ${segProgressHTML}
+    <div class="av-progress-steps">${stepsHTML}</div>
+  </div>`;
+}
+
 async function startAvatarGeneration() {
   const btn = document.getElementById('av-gen-btn');
-  const resetBtn = () => { btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg> 生成数字人视频'; };
+  const resetBtn = () => {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3.5 2.5l9 5-9 5v-10z" fill="currentColor"/></svg> 生成数字人视频';
+  };
   btn.disabled = true;
-  btn.innerHTML = '<span class="sto-li-spin">&#8635;</span> 生成中...';
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 生成中...';
 
-  const text = document.getElementById('av-text-input')?.value || '';
-  if (avatarDrive === 'text' && !text.trim()) {
-    alert('请输入数字人要说的话');
+  const text = document.getElementById('av-text-input')?.value?.trim() || '';
+  if (avatarDrive === 'text' && !text) {
+    alert('请输入数字人要说的台词');
     resetBtn();
     return;
   }
 
-  // 获取选中的头像
   const selectedAvEl = document.querySelector('.av-avatar-card.active');
   const avatar = selectedAvEl?.dataset?.avatar || avatarSelected;
   if (!avatar) { alert('请选择数字人形象'); resetBtn(); return; }
+  if (avatar === 'custom' || avatar === '') { alert('图片正在上传中，请稍候再试'); resetBtn(); return; }
 
-  // 获取比例
-  const ratioEl = document.querySelector('.av-ratio-btn.active');
-  const ratio = ratioEl?.dataset?.ratio || '9:16';
-
-  // 获取模型
-  const modelEl = document.getElementById('av-model-select');
-  const model = modelEl?.value || 'cogvideox-flash';
+  // 从 voice chip 取音色
+  const voiceId = document.querySelector('.av-voice-chip.active')?.dataset?.voice || '';
+  const speed = parseFloat(document.getElementById('av-speed-range')?.value) || 1.0;
+  // 从 active 模型 opt 取模型 ID
+  const modelEl = document.querySelector('#av-model-selector .ig-model-opt.active');
+  const model = modelEl?.dataset?.model || 'cogvideox-flash';
 
   const previewBox = document.getElementById('av-preview-box');
-  previewBox.innerHTML = `
-    <div class="av-preview-empty" style="animation:fadeUp .3s ease">
-      <div class="sto-li-spin" style="font-size:32px;color:var(--accent)">&#8635;</div>
-      <div class="av-preview-text" id="av-gen-status">正在提交生成任务...</div>
-      <div class="av-preview-sub">预计需要 1-3 分钟</div>
-    </div>`;
+  previewBox.innerHTML = renderProgressUI('start', '正在提交生成任务...');
+
+  // 长文本自动分段：超过50字(约12秒说话)触发分段
+  if (text.length > 50 && (!avatarSegments || avatarSegments.length <= 1)) {
+    previewBox.innerHTML = renderProgressUI('start', 'AI 智能分段中...');
+    try {
+      const segRes = await authFetch('/api/avatar/segment-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      const segData = await segRes.json();
+      if (segData.success && segData.segments?.length > 1) {
+        avatarSegments = segData.segments;
+        renderAvatarSegments();
+        updateAvatarGenHint();
+      }
+    } catch (segErr) {
+      console.warn('[Avatar] 自动分段失败，使用单段模式:', segErr.message);
+    }
+  }
 
   try {
-    // 调用后端 API
     const res = await authFetch('/api/avatar/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ avatar, text, voiceId: selectedVoiceId || '', ratio, model })
+      body: JSON.stringify({
+        avatar, text, voiceId, speed, ratio: avatarRatio, model,
+        expression: document.getElementById('av-expression')?.value || 'natural',
+        background: avatarBg || 'office',
+        segments: (avatarSegments && avatarSegments.length > 1) ? avatarSegments : undefined
+      })
     });
     const data = await res.json();
-    console.log('[Avatar] generate response:', data);
-    if (!data.success) throw new Error(data.error || data.message || '生成失败，请检查控制台');
+    if (!data.success) throw new Error(data.error || data.message || '生成失败');
 
     const taskId = data.taskId;
 
@@ -4832,39 +5698,404 @@ async function startAvatarGeneration() {
     sse.onmessage = (e) => {
       const d = JSON.parse(e.data);
       if (d.step === 'connected') return;
-      const statusEl = document.getElementById('av-gen-status');
-      if (statusEl) statusEl.textContent = d.message || d.step;
 
       if (d.step === 'done') {
         sse.close();
+        const dlUrl = authUrl(`/api/avatar/tasks/${taskId}/download`);
+        const videoSrc = authUrl(d.videoUrl);
         previewBox.innerHTML = `
-          <video controls autoplay playsinline style="width:100%;height:100%;object-fit:contain;border-radius:8px">
-            <source src="${authUrl(d.videoUrl)}" type="video/mp4" />
-          </video>
-          <div style="text-align:center;margin-top:8px">
-            <a href="${authUrl('/api/avatar/tasks/${taskId}/download')}" class="av-dl-btn" style="color:var(--cyan);font-size:12px;text-decoration:none">⬇ 下载视频</a>
+          <div class="av-result-wrap">
+            <video class="av-result-video" controls autoplay playsinline>
+              <source src="${videoSrc}" type="video/mp4" />
+            </video>
+            <div class="av-result-actions">
+              <a href="${dlUrl}" download class="av-action-btn av-action-btn-primary">
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 6.5l3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 11.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                下载视频
+              </a>
+              <button class="av-action-btn av-action-btn-ghost" onclick="this.closest('.av-preview-box').querySelector('video').requestFullscreen()">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M8 1h3v3M1 8v3h3M11 8v3H8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                全屏
+              </button>
+              <button class="av-action-btn av-action-btn-regen" onclick="startAvatarGeneration()">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 6a4.5 4.5 0 018.2-2.5M10.5 6a4.5 4.5 0 01-8.2 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M9.7 1v2.5H7.2M2.3 11V8.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                重新生成
+              </button>
+            </div>
           </div>`;
+        addAvatarHistory({ taskId, text, videoUrl: d.videoUrl, voiceId, ratio: avatarRatio, model });
         resetBtn();
+        return;
       }
+
       if (d.step === 'error') {
         sse.close();
         previewBox.innerHTML = `
-          <div class="av-preview-empty">
-            <div class="av-preview-text" style="color:var(--error)">生成失败</div>
-            <div class="av-preview-sub">${esc(d.message || '未知错误')}</div>
+          <div class="av-error-wrap">
+            <div class="av-error-icon">⚠</div>
+            <div class="av-error-title">生成失败</div>
+            <div class="av-error-msg">${esc(d.message || '请检查 API 配置后重试')}</div>
+            <button class="av-error-retry" onclick="restoreAvatarPipeline()">关闭</button>
+            <button class="av-error-retry" style="border-color:var(--accent);color:var(--accent)" onclick="startAvatarGeneration()">重试</button>
           </div>`;
         resetBtn();
+        return;
       }
+
+      // 更新进度步骤（含多段信息）
+      previewBox.innerHTML = renderProgressUI(d.step, d.message || d.step, d.segment ? { segment: d.segment, total: d.total } : null);
     };
-    sse.onerror = () => { sse.close(); };
+    // SSE 断线自动重连 + 轮询兜底
+    let sseRetries = 0;
+    sse.onerror = () => {
+      sse.close();
+      sseRetries++;
+      if (sseRetries > 30) return; // 最多重试 30 次（约 5 分钟）
+      setTimeout(() => {
+        // 先 REST 轮询检查任务状态
+        authFetch(`/api/avatar/tasks/${taskId}/status`).then(r => r.json()).then(d => {
+          if (d.status === 'done' && d.videoUrl) {
+            const dlUrl = authUrl(`/api/avatar/tasks/${taskId}/download`);
+            const videoSrc = authUrl(d.videoUrl);
+            previewBox.innerHTML = `
+              <div class="av-result-wrap">
+                <video class="av-result-video" controls autoplay playsinline>
+                  <source src="${videoSrc}" type="video/mp4" />
+                </video>
+                <div class="av-result-actions">
+                  <a href="${dlUrl}" download class="av-action-btn av-action-btn-primary">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 6.5l3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 11.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    下载视频
+                  </a>
+                  <button class="av-action-btn av-action-btn-ghost" onclick="this.closest('.av-preview-box').querySelector('video').requestFullscreen()">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M8 1h3v3M1 8v3h3M11 8v3H8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    全屏
+                  </button>
+                  <button class="av-action-btn av-action-btn-regen" onclick="startAvatarGeneration()">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 6a4.5 4.5 0 018.2-2.5M10.5 6a4.5 4.5 0 01-8.2 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M9.7 1v2.5H7.2M2.3 11V8.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    重新生成
+                  </button>
+                </div>
+              </div>`;
+            addAvatarHistory({ taskId, text, videoUrl: d.videoUrl, ratio: avatarRatio, model });
+            resetBtn();
+          } else if (d.status === 'error') {
+            previewBox.innerHTML = `
+              <div class="av-error-wrap">
+                <div class="av-error-icon">⚠</div>
+                <div class="av-error-title">生成失败</div>
+                <div class="av-error-msg">${esc(d.error || '请检查 API 配置后重试')}</div>
+                <button class="av-error-retry" onclick="restoreAvatarPipeline()">关闭</button>
+                <button class="av-error-retry" style="border-color:var(--accent);color:var(--accent)" onclick="startAvatarGeneration()">重试</button>
+              </div>`;
+            resetBtn();
+          }
+          // 仍在 processing → 不做任何事，等下次重试
+        }).catch(() => {});
+      }, 10000); // 10 秒后重试
+    };
   } catch (err) {
     previewBox.innerHTML = `
-      <div class="av-preview-empty">
-        <div class="av-preview-text" style="color:var(--error)">生成失败</div>
-        <div class="av-preview-sub">${esc(err.message)}</div>
+      <div class="av-error-wrap">
+        <div class="av-error-icon">⚠</div>
+        <div class="av-error-title">请求失败</div>
+        <div class="av-error-msg">${esc(err.message)}</div>
+        <button class="av-error-retry" onclick="restoreAvatarPipeline()">关闭</button>
+        <button class="av-error-retry" style="border-color:var(--accent);color:var(--accent)" onclick="startAvatarGeneration()">重试</button>
       </div>`;
     resetBtn();
   }
+}
+
+// ═══ 历史记录 ═══
+
+function addAvatarHistory({ taskId, text, videoUrl, ratio, model }) {
+  const entry = {
+    taskId, text, videoUrl, ratio, model,
+    time: new Date()
+  };
+  avatarHistory.unshift(entry);
+  renderAvatarHistory();
+}
+
+function renderAvatarHistory() {
+  const container = document.getElementById('av-history');
+  const countEl = document.getElementById('av-history-count');
+  if (!container) return;
+  if (!avatarHistory.length) {
+    container.innerHTML = '<div class="av-history-empty">完成首次生成后，历史记录将在此显示</div>';
+    if (countEl) countEl.style.display = 'none';
+    return;
+  }
+  if (countEl) { countEl.textContent = avatarHistory.length + ' 条'; countEl.style.display = ''; }
+  container.innerHTML = avatarHistory.map((h, i) => {
+    const timeStr = h.time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const textPreview = h.text ? esc(h.text.slice(0, 60)) + (h.text.length > 60 ? '…' : '') : '（无台词）';
+    const dlUrl = authUrl(`/api/avatar/tasks/${h.taskId}/download`);
+    const videoSrc = authUrl(h.videoUrl);
+    return `<div class="av-hist-card" onclick="avatarHistPlay(${i})">
+      <div class="av-hist-thumb" id="av-hist-thumb-${i}">
+        <video src="${videoSrc}" muted preload="metadata" style="width:100%;height:100%;object-fit:cover;pointer-events:none"></video>
+        <div class="av-hist-play">
+          <svg width="12" height="14" viewBox="0 0 12 14" fill="none"><path d="M1 1.5l10 5.5L1 12.5V1.5z" fill="white"/></svg>
+        </div>
+        <div class="av-hist-badge">${h.ratio || '9:16'}</div>
+      </div>
+      <div class="av-hist-body">
+        <div class="av-hist-text">${textPreview}</div>
+        <div class="av-hist-meta">
+          <span class="av-hist-time">${timeStr}</span>
+          <a href="${dlUrl}" download class="av-hist-dl" onclick="event.stopPropagation()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v6M2.5 5l2.5 2.5L7.5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 9h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            下载
+          </a>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function avatarHistPlay(i) {
+  const h = avatarHistory[i];
+  if (!h) return;
+  const previewBox = document.getElementById('av-preview-box');
+  const dlUrl = authUrl(`/api/avatar/tasks/${h.taskId}/download`);
+  const videoSrc = authUrl(h.videoUrl);
+  previewBox.innerHTML = `
+    <div class="av-result-wrap">
+      <video class="av-result-video" controls autoplay playsinline>
+        <source src="${videoSrc}" type="video/mp4" />
+      </video>
+      <div class="av-result-actions">
+        <a href="${dlUrl}" download class="av-action-btn av-action-btn-primary">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 6.5l3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 11.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          下载视频
+        </a>
+        <button class="av-action-btn av-action-btn-ghost" onclick="this.closest('.av-preview-box').querySelector('video').requestFullscreen()">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M8 1h3v3M1 8v3h3M11 8v3H8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          全屏
+        </button>
+      </div>
+    </div>`;
+  previewBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ═══ AI 生成台词 ═══
+async function aiGenerateAvatarText() {
+  const btn = document.getElementById('av-ai-gen-btn');
+  const ta = document.getElementById('av-text-input');
+  if (!btn || !ta) return;
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 生成中';
+
+  // 收集上下文
+  const avatarEl = document.querySelector('.av-avatar-card.active');
+  const avatarName = avatarEl?.querySelector('span')?.textContent || '数字人';
+  const bgEl = document.querySelector('.av-bg-card.active');
+  const bgName = bgEl?.querySelector('span')?.textContent || '办公室';
+  const existingText = ta.value.trim();
+
+  try {
+    const res = await authFetch('/api/avatar/generate-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar_name: avatarName, bg_name: bgName, draft: existingText, template: avatarTemplate })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '生成失败');
+    const text = data.text || '';
+    if (text) {
+      ta.value = text.trim();
+      ta.dispatchEvent(new Event('input'));
+    } else {
+      alert('AI 未返回内容，请检查剧情模型配置');
+    }
+  } catch (err) {
+    alert('AI 生成失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+// ═══ 脚本模板选择 ═══
+function selectAvatarTemplate(el) {
+  document.querySelectorAll('.av-tpl-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  avatarTemplate = el.dataset.tpl || '';
+}
+
+// ═══ 台词文本变化时：显示/隐藏分段按钮 ═══
+function onAvatarTextChange() {
+  const text = document.getElementById('av-text-input')?.value || '';
+  const segBtn = document.getElementById('av-seg-btn');
+  if (segBtn) segBtn.style.display = text.length > 100 ? '' : 'none';
+  // 文本改变后清除旧分段
+  if (avatarSegments) {
+    avatarSegments = null;
+    document.getElementById('av-segments-preview').style.display = 'none';
+    updateAvatarGenHint();
+  }
+}
+
+// ═══ AI 智能分段 ═══
+async function segmentAvatarScript() {
+  const text = document.getElementById('av-text-input')?.value?.trim();
+  if (!text || text.length < 30) { alert('台词太短，无需分段'); return; }
+
+  const btn = document.getElementById('av-seg-btn');
+  const origHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 分段中';
+
+  try {
+    const res = await authFetch('/api/avatar/segment-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '分段失败');
+
+    avatarSegments = data.segments;
+    renderAvatarSegments();
+    updateAvatarGenHint();
+  } catch (err) {
+    alert('智能分段失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHTML;
+  }
+}
+
+function renderAvatarSegments() {
+  const container = document.getElementById('av-segments-preview');
+  const list = document.getElementById('av-seg-list');
+  const countEl = document.getElementById('av-seg-count');
+  if (!container || !list || !avatarSegments?.length) { container.style.display = 'none'; return; }
+
+  container.style.display = '';
+  countEl.textContent = `${avatarSegments.length} 段`;
+
+  const exprLabels = { natural: '自然', smile: '微笑', serious: '严肃', excited: '兴奋', calm: '平静' };
+  list.innerHTML = avatarSegments.map((seg, i) => {
+    const charCount = seg.text.length;
+    const exprLabel = exprLabels[seg.expression] || seg.expression;
+    return `<div class="av-seg-item">
+      <div class="av-seg-idx">${i + 1}</div>
+      <div class="av-seg-body">
+        <div class="av-seg-text">${esc(seg.text)}</div>
+        <div class="av-seg-meta">
+          <span class="av-seg-tag">${charCount}字</span>
+          <span class="av-seg-tag expr">${exprLabel}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function clearAvatarSegments() {
+  avatarSegments = null;
+  document.getElementById('av-segments-preview').style.display = 'none';
+  updateAvatarGenHint();
+}
+
+function updateAvatarGenHint() {
+  const hint = document.getElementById('av-gen-hint');
+  if (!hint) return;
+  if (avatarSegments && avatarSegments.length > 1) {
+    const est = avatarSegments.length * 2;
+    hint.textContent = `多段模式 · ${avatarSegments.length} 个片段 · 预计 ${est}~${est * 2} 分钟`;
+    hint.style.color = 'var(--accent)';
+  } else {
+    hint.textContent = '基于智谱 CogVideoX 图生视频 · 预计 1~3 分钟';
+    hint.style.color = '';
+  }
+}
+
+// ═══ 恢复 pipeline 空状态 ═══
+function restoreAvatarPipeline() {
+  const box = document.getElementById('av-preview-box');
+  if (!box) return;
+  const tpl = document.getElementById('av-pipeline-tpl');
+  if (tpl) {
+    box.innerHTML = '';
+    box.appendChild(tpl.content.cloneNode(true));
+  } else {
+    box.innerHTML = '<div class="av-preview-empty"></div>';
+  }
+}
+
+// ═══ 从形象库导入 ═══
+async function openPortraitImport() {
+  // 先获取形象列表
+  let portraits = [];
+  try {
+    const res = await authFetch('/api/portrait/list');
+    const data = await res.json();
+    if (data.success && data.data?.length) {
+      portraits = data.data.filter(p => p.status === 'done');
+    }
+  } catch {}
+
+  const cardsHtml = portraits.length
+    ? portraits.map(p => {
+      const thumbUrl = p.result_2d?.url || p.result_3d?.url || p.photo_url || '';
+      const dimLabel = p.result_2d && p.result_3d ? '2D+3D' : p.result_3d ? '3D' : '2D';
+      return `<div class="av-import-card" onclick="selectPortraitAsAvatar('${esc(p.photo_url || thumbUrl)}','${esc(p.name || '形象库')}')">
+        ${thumbUrl ? `<img src="${thumbUrl}" alt="" />` : '<div style="aspect-ratio:3/4;background:var(--bg4)"></div>'}
+        <div class="av-import-card-info">
+          <div class="av-import-card-name">${esc(p.name || '未命名')}</div>
+          <div class="av-import-card-dim">${dimLabel}</div>
+        </div>
+      </div>`;
+    }).join('')
+    : `<div class="av-import-empty">暂无已完成的形象<br><a onclick="closePortraitImport();switchPage('portrait')">去 AI 形象工坊创建</a></div>`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'av-import-overlay';
+  overlay.id = 'av-import-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closePortraitImport(); };
+  overlay.innerHTML = `
+    <div class="av-import-modal">
+      <div class="av-import-hd">
+        <div class="av-import-title">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.46-6 5.5-6s5.5 2.69 5.5 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          从形象库选择
+        </div>
+        <button class="av-import-close" onclick="closePortraitImport()">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="av-import-body">
+        <div class="av-import-grid">${cardsHtml}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function closePortraitImport() {
+  document.getElementById('av-import-overlay')?.remove();
+}
+
+function selectPortraitAsAvatar(imgUrl, name) {
+  closePortraitImport();
+  // 设置上传卡片显示该图片
+  const uploadCard = document.querySelector('.av-avatar-upload');
+  if (!uploadCard) return;
+  const imgEl = uploadCard.querySelector('.av-avatar-img');
+  const span = uploadCard.querySelector('span');
+  if (imgEl) {
+    imgEl.classList.remove('av-avatar-upload-ph');
+    imgEl.style.backgroundImage = `url(${imgUrl})`;
+    imgEl.style.backgroundSize = 'cover';
+    imgEl.style.backgroundPosition = 'center';
+    imgEl.innerHTML = '';
+  }
+  if (span) span.textContent = name.length > 8 ? name.slice(0, 7) + '…' : name;
+  uploadCard.dataset.avatar = imgUrl;
+  selectAvatar(uploadCard);
 }
 
 // ═══════ 预设图片加载与生成 ═══════
@@ -4874,12 +6105,9 @@ async function loadAvatarPresets() {
     const resp = await authFetch('/api/avatar/presets');
     const data = await resp.json();
     if (!data.success) return;
-
-    // 加载头像预设
     for (const [key, url] of Object.entries(data.avatars || {})) {
       if (url) applyPresetImage('.av-preset-avatar', key, url);
     }
-    // 加载背景预设
     for (const [key, url] of Object.entries(data.backgrounds || {})) {
       if (url) applyPresetImage('.av-preset-bg', key, url);
     }
@@ -4894,7 +6122,6 @@ function applyPresetImage(selector, key, url) {
   const img = new Image();
   img.onload = () => {
     el.classList.add('has-img');
-    // 移除内联渐变背景
     el.style.background = 'none';
     el.insertBefore(img, el.firstChild);
   };
@@ -4907,30 +6134,23 @@ async function generateAvatarPresets(type) {
   if (!btn) return;
   const origHTML = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="sto-li-spin">&#8635;</span> 生成中...';
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 生成中...';
 
   try {
     const resp = await authFetch('/api/avatar/generate-presets', {
       method: 'POST',
-      body: JSON.stringify({ type })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: type || 'avatar' })
     });
     const data = await resp.json();
-    if (!data.success) {
-      alert(data.error || '生成失败');
-      return;
-    }
-
-    // 应用生成的图片
+    if (!data.success) { alert(data.error || '生成失败'); return; }
     for (const [key, url] of Object.entries(data.results?.avatars || {})) {
       applyPresetImage('.av-preset-avatar', key, url);
     }
     for (const [key, url] of Object.entries(data.results?.backgrounds || {})) {
       applyPresetImage('.av-preset-bg', key, url);
     }
-
-    if (data.errors?.length) {
-      console.warn('部分生成失败:', data.errors);
-    }
+    if (data.errors?.length) console.warn('[Avatar Presets] 部分失败:', data.errors);
   } catch (e) {
     alert('生成失败: ' + e.message);
   } finally {
@@ -6088,7 +7308,10 @@ function nvSwitchMode(mode) {
   document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   document.getElementById('nv-ws-outline').style.display = mode === 'outline' ? '' : 'none';
   document.getElementById('nv-ws-write').style.display = mode === 'write' ? '' : 'none';
-  if (mode === 'write') nvSaveCurrentContent();
+  if (mode === 'write') {
+    // 切换到写作模式时重新加载章节内容，而不是保存（当前编辑器可能是空的）
+    nvSelect(nvCurrentId);
+  }
 }
 
 // ── 篇幅类型切换 ──
@@ -6331,8 +7554,17 @@ function nvShowChapter(index, novel) {
 
 function nvUpdateWordCount() {
   const content = document.getElementById('nv-content');
-  const count = (content.textContent || '').replace(/\s/g, '').length;
-  document.getElementById('nv-word-count').textContent = count + ' 字';
+  const count = (content?.textContent || '').replace(/\s/g, '').length;
+  const wcEl = document.getElementById('nv-word-count');
+  if (wcEl) wcEl.textContent = count + ' 字';
+  // 右侧面板统计
+  const statWords = document.getElementById('nv-stat-words');
+  if (statWords) statWords.textContent = count + ' 字';
+  const target = parseInt(document.getElementById('nv-chapter-words')?.value || 3000);
+  const statTarget = document.getElementById('nv-stat-target');
+  if (statTarget) statTarget.textContent = target + ' 字';
+  const bar = document.getElementById('nv-stat-bar');
+  if (bar) bar.style.width = Math.min(100, Math.round(count / target * 100)) + '%';
 }
 
 function nvAutoSaveContent() {
@@ -6343,12 +7575,18 @@ function nvAutoSaveContent() {
 
 async function nvSaveCurrentContent() {
   if (!nvCurrentId || nvStreaming) return;
+  // 只在写作模式且编辑器可见时才保存
+  if (nvCurrentMode !== 'write') return;
+  const writeWs = document.getElementById('nv-ws-write');
+  if (!writeWs || writeWs.style.display === 'none') return;
   try {
     const novel = await nvFetch(nvCurrentId);
     if (!novel) return;
     const chapters = [...(novel.chapters || [])];
     const content = document.getElementById('nv-content').textContent;
     const existing = chapters.findIndex(c => c.index === nvCurrentChapter);
+    // 不要用空内容覆盖已有章节
+    if (!content.trim() && existing >= 0 && chapters[existing].content) return;
     const outlineChapter = novel.outline?.chapters?.find(c => c.index === nvCurrentChapter);
     const chData = {
       index: nvCurrentChapter,
@@ -6475,7 +7713,22 @@ async function nvGenerateChapter() {
 
 let _nvRefineText = '';
 
-function nvRefine() {
+function nvSetStyle(btn, style) {
+  document.querySelectorAll('.nv-style-tag').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  nvSaveField('style', style);
+}
+
+function nvExpandSelection() {
+  // 扩写选中段落 — 复用 refine 逻辑但 prompt 不同
+  const contentEl = document.getElementById('nv-content');
+  const sel = window.getSelection();
+  const text = sel?.toString()?.trim();
+  if (!text || text.length < 10) return alert('请先在编辑器中选中要扩写的段落（至少10字）');
+  nvRefine('expand');
+}
+
+function nvRefine(mode) {
   const sel = window.getSelection();
   _nvRefineText = sel ? sel.toString().trim() : '';
   if (!_nvRefineText) return alert('请先选中要优化的文本');
@@ -6806,6 +8059,1040 @@ function setPubStatus(type, msg) {
   const el = document.getElementById('pub-status');
   el.style.display = '';
   el.innerHTML = `<div class="pub-status-msg ${type}">${msg}</div>`;
+}
+
+// ═══════════════════════════════════════════
+// ═══ AI 形象 ═══
+// ═══════════════════════════════════════════
+let ptrPhotoFilename = null;
+let ptrDim = '2d';
+
+function loadPortraitPage() {
+  loadPtrGallery();
+}
+
+// ── 照片上传 ──
+function handlePtrDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith('image/')) uploadPtrPhoto(file);
+}
+
+function handlePtrFileSelect(input) {
+  const file = input.files?.[0];
+  if (file) uploadPtrPhoto(file);
+  input.value = '';
+}
+
+async function uploadPtrPhoto(file) {
+  const formData = new FormData();
+  formData.append('photo', file);
+  try {
+    const res = await authFetch('/api/portrait/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    setPtrPhoto(data.data.filename, data.data.image_url);
+  } catch (e) {
+    alert('上传失败: ' + e.message);
+  }
+}
+
+function setPtrPhoto(filename, url) {
+  ptrPhotoFilename = filename;
+  document.getElementById('ptr-preview-sec').style.display = '';
+  document.getElementById('ptr-photo-preview').innerHTML = `<img src="${url}" alt="照片预览" />`;
+  document.getElementById('ptr-dropzone').style.display = 'none';
+}
+
+function clearPtrPhoto() {
+  ptrPhotoFilename = null;
+  document.getElementById('ptr-preview-sec').style.display = 'none';
+  document.getElementById('ptr-dropzone').style.display = '';
+}
+
+function selectPtrDim(btn) {
+  document.querySelectorAll('.ptr-dim-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ptrDim = btn.dataset.dim;
+}
+
+// ── 生成形象 ──
+async function startPortraitGeneration() {
+  if (!ptrPhotoFilename) return alert('请先上传照片');
+  const name = document.getElementById('ptr-name')?.value?.trim() || '';
+
+  const btn = document.getElementById('ptr-gen-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 生成中...'; }
+
+  const canvas = document.getElementById('ptr-canvas');
+  if (canvas) {
+    canvas.innerHTML = `
+      <div class="ptr-progress">
+        <div class="ptr-progress-ring">
+          <svg viewBox="0 0 100 100"><circle class="ring-bg" cx="50" cy="50" r="44" fill="none" stroke-width="4"/><circle class="ring-fill" id="ptr-ring-fill" cx="50" cy="50" r="44" fill="none" stroke-width="4" stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="276.5" style="stroke:var(--accent);transition:stroke-dashoffset .4s"/></svg>
+          <div class="ptr-progress-pct" id="ptr-progress-pct">0%</div>
+        </div>
+        <div class="ptr-progress-text" id="ptr-progress-text">初始化...</div>
+      </div>`;
+  }
+
+  try {
+    const res = await authFetch('/api/portrait/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_filename: ptrPhotoFilename, dim: ptrDim, name })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    pollPtrProgress(data.data.id);
+  } catch (err) {
+    alert('生成失败: ' + err.message);
+    resetPtrBtn();
+  }
+}
+
+function resetPtrBtn() {
+  const btn = document.getElementById('ptr-gen-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H2l5.5 4.2L5.3 20 12 15.8 18.7 20l-2.2-6.8L22 9h-7z" fill="currentColor"/></svg> 生成卡通形象'; }
+}
+
+function pollPtrProgress(taskId) {
+  const check = async () => {
+    try {
+      const res = await authFetch(`/api/portrait/${taskId}`);
+      const data = await res.json();
+      if (!data.success) return;
+      const task = data.data;
+
+      // 更新进度
+      const ring = document.getElementById('ptr-ring-fill');
+      const pctEl = document.getElementById('ptr-progress-pct');
+      const textEl = document.getElementById('ptr-progress-text');
+      if (ring) ring.style.strokeDashoffset = 276.5 * (1 - (task.progress || 0) / 100);
+      if (pctEl) pctEl.textContent = (task.progress || 0) + '%';
+      if (textEl) textEl.textContent = task.message || '处理中...';
+
+      if (task.status === 'done') {
+        renderPtrResult(task);
+        resetPtrBtn();
+        loadPtrGallery();
+      } else if (task.status === 'error') {
+        const canvas = document.getElementById('ptr-canvas');
+        if (canvas) canvas.innerHTML = `<div class="ptr-empty-state"><div class="ptr-empty-title" style="color:var(--error)">生成失败</div><div class="ptr-empty-sub">${esc(task.error_message || '未知错误')}</div></div>`;
+        resetPtrBtn();
+      } else {
+        setTimeout(check, 2500);
+      }
+    } catch { setTimeout(check, 4000); }
+  };
+  setTimeout(check, 2000);
+}
+
+function renderPtrResult(task) {
+  const canvas = document.getElementById('ptr-canvas');
+  if (!canvas) return;
+
+  const photoUrl = task.photo_url || `/api/portrait/image/${task.photo_filename}`;
+  const cards = [];
+
+  // 原始照片
+  cards.push(`
+    <div class="ptr-result-card ptr-card-photo">
+      <div class="ptr-card-tag">原始照片</div>
+      <img src="${photoUrl}" alt="原始照片" />
+    </div>`);
+
+  // 2D 结果
+  if (task.result_2d) {
+    cards.push(`
+      <div class="ptr-result-card ptr-card-2d">
+        <div class="ptr-card-tag ptr-tag-2d">2D 动漫</div>
+        <img src="${task.result_2d.url}" alt="2D 形象" />
+      </div>`);
+  }
+
+  // 3D 结果
+  if (task.result_3d) {
+    cards.push(`
+      <div class="ptr-result-card ptr-card-3d">
+        <div class="ptr-card-tag ptr-tag-3d">3D CG</div>
+        <img src="${task.result_3d.url}" alt="3D 形象" />
+      </div>`);
+  }
+
+  // 分析摘要
+  const analysis = task.analysis || {};
+  const infoHtml = analysis.description_cn
+    ? `<div class="ptr-analysis"><div class="ptr-analysis-title">AI 特征分析</div><div class="ptr-analysis-text">${esc(analysis.description_cn)}</div></div>`
+    : '';
+
+  canvas.innerHTML = `
+    <div class="ptr-result">
+      <div class="ptr-result-name">${esc(task.name || '未命名形象')}</div>
+      <div class="ptr-result-grid">${cards.join('')}</div>
+      ${infoHtml}
+      <div class="ptr-result-actions">
+        <div class="ptr-use-hint">此形象可用于：</div>
+        <span class="ptr-use-tag">漫画角色</span>
+        <span class="ptr-use-tag">视频角色</span>
+        <span class="ptr-use-tag">数字人形象</span>
+        <button class="ptr-use-as-avatar" onclick="usePortraitAsAvatar('${esc(task.photo_url || '')}','${esc(task.name || '形象')}')">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 11c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path d="M8.5 1.5l2 2-2 2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          用作数字人形象
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── 形象库 ──
+function togglePtrGallery() {
+  const gallery = document.getElementById('ptr-gallery');
+  if (!gallery) return;
+  const show = gallery.style.display === 'none';
+  gallery.style.display = show ? '' : 'none';
+  if (show) loadPtrGallery();
+}
+
+async function loadPtrGallery() {
+  const container = document.getElementById('ptr-gallery');
+  if (!container) return;
+  try {
+    const res = await authFetch('/api/portrait/list');
+    const data = await res.json();
+    if (!data.success || !data.data?.length) {
+      container.innerHTML = '<div class="ptr-gallery-empty">暂无形象</div>';
+      return;
+    }
+    container.innerHTML = data.data.map(p => {
+      const thumbUrl = p.result_2d?.url || p.result_3d?.url || p.photo_url || '';
+      const statusCls = p.status === 'done' ? 'done' : p.status === 'error' ? 'error' : 'processing';
+      const dimLabel = p.result_2d && p.result_3d ? '2D+3D' : p.result_3d ? '3D' : '2D';
+      return `
+        <div class="ptr-gallery-card" onclick="viewPortrait('${p.id}')">
+          ${thumbUrl ? `<img class="ptr-gallery-thumb" src="${thumbUrl}" alt="" />` : '<div class="ptr-gallery-thumb" style="background:var(--bg3)"></div>'}
+          <div class="ptr-gallery-info">
+            <div class="ptr-gallery-name">${esc(p.name || '未命名')}</div>
+            <div class="ptr-gallery-meta">
+              <span class="ptr-gallery-dim">${dimLabel}</span>
+              <span class="ptr-gallery-status ${statusCls}">${p.status === 'done' ? '完成' : p.status === 'error' ? '失败' : '生成中'}</span>
+            </div>
+          </div>
+          <button class="ptr-gallery-del" onclick="event.stopPropagation();deletePortrait('${p.id}')" title="删除">&times;</button>
+        </div>`;
+    }).join('');
+  } catch {}
+}
+
+async function viewPortrait(id) {
+  try {
+    const res = await authFetch(`/api/portrait/${id}`);
+    const data = await res.json();
+    if (data.success && data.data.status === 'done') renderPtrResult(data.data);
+  } catch {}
+}
+
+async function deletePortrait(id) {
+  if (!confirm('确定删除此形象？')) return;
+  try {
+    await authFetch(`/api/portrait/${id}`, { method: 'DELETE' });
+    loadPtrGallery();
+  } catch {}
+}
+
+// ── 跳转到数字人页面并设置形象 ──
+function usePortraitAsAvatar(imgUrl, name) {
+  switchPage('avatar');
+  setTimeout(() => selectPortraitAsAvatar(imgUrl, name), 100);
+}
+
+// ═══════════════════════════════════════════
+// ═══ 声音克隆 ═══
+// ═══════════════════════════════════════════
+
+let vcRecording = false;
+let vcMediaRecorder = null;
+let vcRecordChunks = [];
+let vcRecordTimer = null;
+let vcRecordSeconds = 0;
+let vcUploadedFile = null;
+
+async function loadVoiceClonePage() {
+  try {
+    const resp = await authFetch('/api/workbench/voices');
+    const data = await resp.json();
+    const el = document.getElementById('vc-voice-list');
+    if (!el) return;
+    const voices = data.voices || [];
+    if (!voices.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:60px 0;">暂无克隆声音，上传音频开始克隆</div>';
+      return;
+    }
+    el.innerHTML = voices.map(v => `
+      <div class="card" style="padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text);">🎙 ${esc(v.name || '未命名声音')}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">创建于 ${v.created_at ? new Date(v.created_at).toLocaleDateString('zh-CN') : '未知'}</div>
+          </div>
+          <span class="tag tag-green">训练完成</span>
+        </div>
+        <div style="height:32px;background:rgba(var(--accent-rgb),.08);border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
+          <div style="display:flex;gap:2px;align-items:end;height:20px;">
+            ${Array.from({length:20}, (_, i) => `<div style="width:3px;height:${4+Math.random()*16}px;background:var(--accent);border-radius:1px;opacity:${0.4+Math.random()*0.6}"></div>`).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="vcPlayVoice('${v.id}')" style="padding:6px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">▶ 试听</button>
+          <button onclick="vcUseVoice('${v.id}','${esc(v.name)}')" style="padding:6px 16px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">使用此声音</button>
+          <button onclick="vcDeleteVoice('${v.id}')" style="padding:6px 16px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-left:auto;">🗑 删除</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) { console.error('loadVoiceClonePage error', err); }
+}
+
+async function vcToggleRecord() {
+  if (vcRecording) {
+    // 停止录音
+    if (vcMediaRecorder) vcMediaRecorder.stop();
+    vcRecording = false;
+    clearInterval(vcRecordTimer);
+    document.getElementById('vc-record-btn').style.background = 'linear-gradient(135deg,#ef4444,#dc2626)';
+    document.getElementById('vc-record-btn').textContent = '🎙';
+    document.getElementById('vc-record-status').textContent = '录音完成';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    vcRecordChunks = [];
+    vcMediaRecorder = new MediaRecorder(stream);
+    vcMediaRecorder.ondataavailable = e => { if (e.data.size > 0) vcRecordChunks.push(e.data); };
+    vcMediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(vcRecordChunks, { type: 'audio/wav' });
+      vcUploadedFile = new File([blob], 'recording.wav', { type: 'audio/wav' });
+      document.getElementById('vc-name-area').style.display = '';
+      document.getElementById('vc-clone-btn').style.display = '';
+      document.getElementById('vc-record-status').textContent = `录音完成 (${vcRecordSeconds}秒)`;
+    };
+    vcMediaRecorder.start();
+    vcRecording = true;
+    vcRecordSeconds = 0;
+    document.getElementById('vc-record-btn').style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+    document.getElementById('vc-record-btn').textContent = '⏹';
+    document.getElementById('vc-record-status').textContent = '正在录音...';
+    document.getElementById('vc-record-timer').style.display = '';
+    vcRecordTimer = setInterval(() => {
+      vcRecordSeconds++;
+      const m = String(Math.floor(vcRecordSeconds / 60)).padStart(2, '0');
+      const s = String(vcRecordSeconds % 60).padStart(2, '0');
+      document.getElementById('vc-record-timer').textContent = `${m}:${s}`;
+    }, 1000);
+  } catch (err) {
+    document.getElementById('vc-record-status').textContent = '无法访问麦克风: ' + err.message;
+  }
+}
+
+function vcHandleUpload(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  vcUploadedFile = file;
+  document.getElementById('vc-name-area').style.display = '';
+  document.getElementById('vc-clone-btn').style.display = '';
+  document.getElementById('vc-record-status').textContent = `已选择: ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)`;
+}
+
+async function vcStartClone() {
+  if (!vcUploadedFile) return alert('请先录音或上传音频');
+  const name = document.getElementById('vc-voice-name')?.value?.trim() || '我的声音';
+  const btn = document.getElementById('vc-clone-btn');
+  const prog = document.getElementById('vc-progress-area');
+  btn.disabled = true;
+  btn.textContent = '⏳ 正在克隆...';
+  prog.style.display = '';
+
+  // 模拟训练进度
+  const s1 = document.getElementById('vc-step1');
+  const s2 = document.getElementById('vc-step2');
+  const s3 = document.getElementById('vc-step3');
+  s1.textContent = '处理中...'; s1.style.color = 'var(--accent)';
+
+  const fd = new FormData();
+  fd.append('audio', vcUploadedFile);
+  fd.append('name', name);
+  try {
+    s1.textContent = '已完成'; s1.style.color = '#22c55e';
+    s2.textContent = '处理中...'; s2.style.color = 'var(--accent)';
+    const resp = await authFetch('/api/workbench/upload-voice', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    s2.textContent = '已完成'; s2.style.color = '#22c55e';
+    s3.textContent = data.cloned ? '已完成' : '跳过（未配置 Fish Audio）';
+    s3.style.color = data.cloned ? '#22c55e' : '#f59e0b';
+    btn.textContent = data.cloned ? '✅ 克隆完成！' : '✅ 已保存（需配置 Fish Audio 才能克隆）';
+    // 刷新声音列表
+    loadVoiceClonePage();
+    // 重置表单
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '🎙 开始克隆声音';
+      btn.style.display = 'none';
+      prog.style.display = 'none';
+      document.getElementById('vc-name-area').style.display = 'none';
+      s1.textContent = '等待中'; s1.style.color = 'var(--text3)';
+      s2.textContent = '等待中'; s2.style.color = 'var(--text3)';
+      s3.textContent = '等待中'; s3.style.color = 'var(--text3)';
+      vcUploadedFile = null;
+    }, 2000);
+  } catch (err) {
+    s3.textContent = '失败'; s3.style.color = '#ef4444';
+    btn.textContent = '🎙 开始克隆声音';
+    btn.disabled = false;
+    alert('克隆失败: ' + err.message);
+  }
+}
+
+async function vcPlayVoice(id) {
+  try {
+    const resp = await authFetch(`/api/workbench/voices/${id}/play`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play();
+  } catch (err) { alert('试听失败: ' + err.message); }
+}
+
+function vcUseVoice(id, name) {
+  // 保存到 localStorage，数字人页面可以使用
+  let voices = JSON.parse(localStorage.getItem('vido_custom_voices') || '[]');
+  if (!voices.find(v => v.id === id)) {
+    voices.push({ id, name, voiceId: 'custom:' + id });
+    localStorage.setItem('vido_custom_voices', JSON.stringify(voices));
+  }
+  alert('声音已添加到自定义声音列表，可在数字人和一键复刻中使用');
+}
+
+async function vcDeleteVoice(id) {
+  if (!confirm('确定删除此声音？')) return;
+  try {
+    await authFetch('/api/workbench/voices/' + id, { method: 'DELETE' });
+    loadVoiceClonePage();
+  } catch {}
+}
+
+// ═══════════════════════════════════════════
+// ═══ 创作工作台（一键复刻） ═══
+// ═══════════════════════════════════════════
+
+function wbSelectVoice(el) {
+  document.querySelectorAll('.wb-voice-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+async function wbParseInput() {
+  const input = document.getElementById('wb-url-input')?.value?.trim();
+  if (!input) return alert('请输入内容');
+  const btn = document.getElementById('wb-parse-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span>';
+
+  // 判断是 URL 还是纯文本
+  const isUrl = /^https?:\/\//.test(input) || /douyin|tiktok|bilibili|youtube/i.test(input);
+
+  if (isUrl) {
+    // URL 解析暂不实现后端，直接提示
+    document.getElementById('wb-original-text').value = '（URL 解析功能开发中，请直接粘贴文案文本）';
+  } else {
+    // 纯文本直接放入原始文案
+    document.getElementById('wb-original-text').value = input;
+    document.getElementById('wb-source-info').style.display = 'flex';
+    document.getElementById('wb-source-name').textContent = '手动输入文本 (' + input.length + '字)';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 1a5 5 0 104 8.9l3.1 3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> 解析';
+}
+
+function wbClearSource() {
+  document.getElementById('wb-source-info').style.display = 'none';
+  document.getElementById('wb-url-input').value = '';
+  document.getElementById('wb-original-text').value = '';
+}
+
+function wbHandleUpload(input) {
+  if (!input.files?.[0]) return;
+  const file = input.files[0];
+  document.getElementById('wb-source-info').style.display = 'flex';
+  document.getElementById('wb-source-name').textContent = file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + 'MB)';
+  document.getElementById('wb-original-text').value = '（音视频文案提取功能开发中，请手动输入文案）';
+  input.value = '';
+}
+
+function wbCopyText(id) {
+  const el = document.getElementById(id);
+  if (!el?.value) return;
+  navigator.clipboard.writeText(el.value).then(() => {
+    // 临时提示
+    const btn = el.closest('.wb-pane')?.querySelector('.wb-copy-btn');
+    if (btn) { const orig = btn.textContent; btn.textContent = '已复制'; setTimeout(() => btn.textContent = orig, 1500); }
+  }).catch(() => { el.select(); document.execCommand('copy'); });
+}
+
+async function wbRewrite() {
+  const original = document.getElementById('wb-original-text')?.value?.trim();
+  if (!original) return alert('请先输入或粘贴原始文案');
+  const style = document.getElementById('wb-style-select')?.value || '';
+  const custom = document.getElementById('wb-custom-prompt')?.value?.trim() || '';
+  const btn = document.getElementById('wb-rewrite-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 仿写中';
+
+  try {
+    const res = await authFetch('/api/avatar/generate-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        avatar_name: '创作者',
+        bg_name: style || '通用',
+        draft: (style ? `【风格：${style}】` : '') + (custom ? `【要求：${custom}】` : '') + `\n请基于以下原始文案进行仿写改编，保留核心信息但改变表达方式：\n\n${original}`
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    document.getElementById('wb-rewritten-text').value = data.text || '';
+    // 自动同步到配音文本
+    document.getElementById('wb-tts-text').value = data.text || '';
+  } catch (err) {
+    alert('AI 仿写失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.2 3.2H10L7.6 6l.9 3L6 7.4 3.5 9l.9-3L2 4.2h2.8z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg> AI 仿写';
+  }
+}
+
+async function wbSynthesize() {
+  const text = document.getElementById('wb-tts-text')?.value?.trim();
+  if (!text) return alert('请输入配音文本');
+  const voiceId = document.querySelector('.wb-voice-chip.active')?.dataset?.voice || 'female-sweet';
+  const speed = parseFloat(document.getElementById('wb-speed-range')?.value) || 1.0;
+  const btn = document.getElementById('wb-synth-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 合成中...';
+
+  try {
+    const res = await authFetch('/api/workbench/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voiceId, speed })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    // 显示结果
+    const resultEl = document.getElementById('wb-audio-result');
+    resultEl.style.display = '';
+    const player = document.getElementById('wb-audio-player');
+    player.src = data.audioUrl;
+    player.load();
+    document.getElementById('wb-audio-download').href = data.audioUrl;
+  } catch (err) {
+    alert('合成失败: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="1" width="6" height="8" rx="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 7a5 5 0 0010 0M7 11v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> 一键合成配音';
+  }
+}
+
+function wbClearAudio() {
+  document.getElementById('wb-audio-result').style.display = 'none';
+  document.getElementById('wb-audio-player').src = '';
+}
+
+// ═══════════════════════════════════════════
+// ═══ AI 漫画 ═══
+// ═══════════════════════════════════════════
+let comicStyle = '日系动漫';
+let comicPages = 4;
+let comicPanelsPerPage = 4;
+let comicCharacters = [];
+let comicCurrentTaskId = null;
+let comicImageModels = [];
+let comicSelectedModel = null; // null = auto
+
+function loadComicPage() {
+  loadComicImageModels();
+  loadComicHistory();
+}
+
+function selectComicStyle(btn) {
+  document.querySelectorAll('.comic-style-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  comicStyle = btn.dataset.style;
+}
+
+function setComicPages(n, btn) {
+  comicPages = n;
+  btn.parentElement.querySelectorAll('.comic-opt-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function setComicPanels(n, btn) {
+  comicPanelsPerPage = n;
+  btn.parentElement.querySelectorAll('.comic-opt-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// ── 图片模型选择器 ──
+async function loadComicImageModels() {
+  try {
+    const res = await authFetch('/api/settings');
+    const data = await res.json();
+    if (!data.success) return;
+    comicImageModels = [];
+    for (const p of (data.data.providers || [])) {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) continue;
+      for (const m of (p.models || [])) {
+        if (m.use !== 'image' || m.enabled === false) continue;
+        comicImageModels.push({ providerId: p.id, providerName: p.name, modelId: m.id, modelName: m.name });
+      }
+    }
+    renderComicModelPicker();
+  } catch {}
+}
+
+function renderComicModelPicker() {
+  const picker = document.getElementById('comic-model-picker');
+  if (!picker) return;
+  const groups = {};
+  for (const m of comicImageModels) {
+    if (!groups[m.providerId]) groups[m.providerId] = { name: m.providerName, models: [] };
+    groups[m.providerId].models.push(m);
+  }
+  let html = `<div class="comic-model-opt ${!comicSelectedModel ? 'active' : ''}" onclick="selectComicModel(null)">
+    <span class="comic-model-opt-dot"></span> 自动选择（推荐）
+  </div>`;
+  for (const [gid, g] of Object.entries(groups)) {
+    html += `<div class="comic-model-group-label">${esc(g.name)}</div>`;
+    for (const m of g.models) {
+      const isActive = comicSelectedModel?.modelId === m.modelId && comicSelectedModel?.providerId === m.providerId;
+      html += `<div class="comic-model-opt ${isActive ? 'active' : ''}" onclick="selectComicModel({providerId:'${m.providerId}',modelId:'${m.modelId}',modelName:'${esc(m.modelName)}'})">
+        <span class="comic-model-opt-dot"></span> ${esc(m.modelName)}
+      </div>`;
+    }
+  }
+  picker.innerHTML = html;
+}
+
+function toggleComicModelPicker() {
+  const picker = document.getElementById('comic-model-picker');
+  if (picker) picker.style.display = picker.style.display === 'none' ? '' : 'none';
+}
+
+function selectComicModel(model) {
+  comicSelectedModel = model;
+  const label = document.getElementById('comic-model-label');
+  if (label) {
+    label.textContent = model ? model.modelName : '自动选择（推荐）';
+    label.classList.toggle('selected', !!model);
+  }
+  const picker = document.getElementById('comic-model-picker');
+  if (picker) picker.style.display = 'none';
+  renderComicModelPicker();
+}
+
+// ── 角色管理 ──
+function addComicCharacter() {
+  const id = Date.now();
+  comicCharacters.push({ id, name: '', description: '' });
+  renderComicCharacters();
+}
+
+function removeComicCharacter(id) {
+  comicCharacters = comicCharacters.filter(c => c.id !== id);
+  renderComicCharacters();
+}
+
+function renderComicCharacters() {
+  const container = document.getElementById('comic-characters');
+  if (!container) return;
+  container.innerHTML = comicCharacters.map(c => `
+    <div class="comic-char-item" data-id="${c.id}">
+      <input class="comic-char-input" placeholder="角色名" value="${esc(c.name)}" onchange="updateComicChar(${c.id},'name',this.value)" />
+      <input class="comic-char-input" placeholder="外貌描述（发型、服装、特征...）" value="${esc(c.description)}" onchange="updateComicChar(${c.id},'description',this.value)" />
+      <button class="comic-char-del" onclick="removeComicCharacter(${c.id})">&times;</button>
+    </div>
+  `).join('');
+}
+
+function updateComicChar(id, field, value) {
+  const char = comicCharacters.find(c => c.id === id);
+  if (char) char[field] = value;
+}
+
+// ── 历史面板折叠 ──
+function toggleComicHistory() {
+  const hist = document.getElementById('comic-history');
+  const toggle = document.getElementById('comic-hist-toggle');
+  if (!hist) return;
+  const show = hist.style.display === 'none';
+  hist.style.display = show ? '' : 'none';
+  toggle?.classList.toggle('open', show);
+  if (show) loadComicHistory();
+}
+
+// ── AI 生成故事内容 ──
+async function aiGenerateComicStory() {
+  const title = document.getElementById('comic-title')?.value?.trim();
+  if (!title) return alert('请先输入漫画标题');
+
+  const btn = document.getElementById('comic-ai-story-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+
+  try {
+    const res = await authFetch('/api/comic/ai-story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, style: comicStyle })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    const storyEl = document.getElementById('comic-story');
+    if (storyEl && data.data.content) {
+      storyEl.value = data.data.content;
+      storyEl.style.height = 'auto';
+      storyEl.style.height = storyEl.scrollHeight + 'px';
+    }
+  } catch (err) {
+    alert('AI 生成失败: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 4.5H15l-3.8 3 1.3 4.5L8 10l-4.5 3 1.3-4.5L1 5.5h5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> AI 生成';
+    }
+  }
+}
+
+// ── 生成漫画 ──
+async function startComicGeneration() {
+  const title = document.getElementById('comic-title')?.value?.trim();
+  const story = document.getElementById('comic-story')?.value?.trim();
+  if (!title) return alert('请输入漫画标题');
+  const theme = story ? `${title}：${story}` : title;
+
+  const btn = document.getElementById('comic-gen-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="comic-gen-spinner"></span> 创作中...'; }
+
+  // 显示圆形进度
+  const area = document.getElementById('comic-canvas-area');
+  if (area) {
+    area.innerHTML = `
+      <div class="comic-progress" id="comic-preview-box">
+        <div class="comic-progress-ring">
+          <svg viewBox="0 0 100 100"><circle class="ring-bg" cx="50" cy="50" r="44"/><circle class="ring-fill" id="comic-ring-fill" cx="50" cy="50" r="44" stroke-dasharray="276.5" stroke-dashoffset="276.5"/></svg>
+          <div class="comic-progress-pct" id="comic-progress-pct">0%</div>
+        </div>
+        <div class="comic-progress-text" id="comic-progress-text">初始化...</div>
+      </div>`;
+  }
+
+  try {
+    const chars = comicCharacters.filter(c => c.name.trim());
+    const res = await authFetch('/api/comic/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        theme,
+        style: comicStyle,
+        pages: comicPages,
+        panels_per_page: comicPanelsPerPage,
+        characters: chars
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    comicCurrentTaskId = data.data.id;
+    pollComicProgress(comicCurrentTaskId);
+  } catch (err) {
+    alert('生成失败: ' + err.message);
+    resetComicBtn();
+  }
+}
+
+function resetComicBtn() {
+  const btn = document.getElementById('comic-gen-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H2l5.5 4.2L5.3 20 12 15.8 18.7 20l-2.2-6.8L22 9h-7z" fill="currentColor"/></svg> 开始创作'; }
+}
+
+function updateComicProgress(pct, text) {
+  const ring = document.getElementById('comic-ring-fill');
+  const pctEl = document.getElementById('comic-progress-pct');
+  const textEl = document.getElementById('comic-progress-text');
+  if (ring) {
+    const offset = 276.5 * (1 - pct / 100);
+    ring.style.strokeDashoffset = offset;
+  }
+  if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+  if (textEl) textEl.textContent = text || '';
+}
+
+function pollComicProgress(taskId) {
+  const check = async () => {
+    try {
+      const res = await authFetch(`/api/comic/tasks/${taskId}`);
+      const data = await res.json();
+      if (!data.success) return;
+      const task = data.data;
+      updateComicProgress(task.progress || 0, task.message || '处理中...');
+
+      if (task.status === 'done') {
+        renderComicResult(task);
+        resetComicBtn();
+        loadComicHistory();
+      } else if (task.status === 'error') {
+        const area = document.getElementById('comic-canvas-area');
+        if (area) area.innerHTML = `<div class="comic-empty-state" id="comic-preview-box"><div class="comic-empty-title" style="color:var(--error)">生成失败</div><div class="comic-empty-sub">${esc(task.error_message || '未知错误')}</div></div>`;
+        resetComicBtn();
+      } else {
+        setTimeout(check, 3000);
+      }
+    } catch { setTimeout(check, 5000); }
+  };
+  setTimeout(check, 2000);
+}
+
+function renderComicResult(task) {
+  const area = document.getElementById('comic-canvas-area');
+  if (!area || !task.result) return;
+  const result = task.result;
+
+  const pagesHtml = (result.pages || []).map(page => {
+    const panelsHtml = (page.panels || []).map(panel => {
+      const panelImgUrl = `/api/comic/image/${task.id}/${panel.image}`;
+      const dialogueHtml = panel.dialogue ? `<div class="comic-bubble comic-bubble-${panel.dialogue_position || 'bottom'}">${esc(panel.dialogue)}</div>` : '';
+      const narratorHtml = panel.narrator ? `<div class="comic-narrator">${esc(panel.narrator)}</div>` : '';
+      const sfxHtml = panel.sfx ? `<div class="comic-sfx">${esc(panel.sfx)}</div>` : '';
+      return `<div class="comic-panel-cell">
+        <img src="${panelImgUrl}" alt="${esc(panel.description || '')}" loading="lazy" />
+        ${dialogueHtml}${narratorHtml}${sfxHtml}
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="comic-page-result">
+        <div class="comic-page-header">
+          <div class="comic-page-num">${page.page_number}</div>
+          <div class="comic-page-label">第 ${page.page_number} 页</div>
+        </div>
+        <div class="comic-panels-grid">${panelsHtml}</div>
+      </div>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div class="comic-result" id="comic-preview-box">
+      <div class="comic-result-header">
+        <div>
+          <div class="comic-result-title">${esc(result.title || '未命名漫画')}</div>
+          <div class="comic-result-synopsis">${esc(result.synopsis || '')}</div>
+          <div class="comic-result-meta">
+            <span class="comic-result-tag">${esc(result.style || comicStyle)}</span>
+            <span class="comic-result-tag">${result.total_panels || 0} 格</span>
+            <span class="comic-result-tag">${result.pages?.length || 0} 页</span>
+          </div>
+        </div>
+      </div>
+      <div class="comic-pages-container">${pagesHtml}</div>
+    </div>`;
+}
+
+async function loadComicHistory() {
+  const container = document.getElementById('comic-history');
+  if (!container) return;
+  try {
+    const res = await authFetch('/api/comic/tasks');
+    const data = await res.json();
+    if (!data.success || !data.data?.length) {
+      container.innerHTML = '<div class="comic-history-empty">暂无记录</div>';
+      return;
+    }
+    container.innerHTML = data.data.map(task => {
+      const title = task.result?.title || task.theme?.substring(0, 20) || '未命名';
+      const statusMap = { processing: '创作中', done: '完成', error: '失败' };
+      const statusCls = task.status === 'done' ? 'done' : task.status === 'error' ? 'error' : 'processing';
+      const thumbUrl = task.status === 'done' && task.result?.pages?.[0]
+        ? `/api/comic/image/${task.id}/page_1.png` : '';
+      return `
+        <div class="comic-hist-card" onclick="viewComicTask('${task.id}')">
+          ${thumbUrl ? `<img class="comic-hist-card-thumb" src="${thumbUrl}" alt="" />` : '<div class="comic-hist-card-thumb" style="background:var(--bg3)"></div>'}
+          <div class="comic-hist-card-body">
+            <div class="comic-hist-card-title">${esc(title)}</div>
+            <div class="comic-hist-card-meta">
+              <span class="comic-hist-card-status ${statusCls}">${statusMap[task.status] || task.status}</span>
+              <button class="comic-hist-card-del" onclick="event.stopPropagation();deleteComicTask('${task.id}')" title="删除">&times;</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch {}
+}
+
+async function viewComicTask(taskId) {
+  try {
+    const res = await authFetch(`/api/comic/tasks/${taskId}`);
+    const data = await res.json();
+    if (!data.success) return;
+    if (data.data.status === 'done') {
+      renderComicResult(data.data);
+    } else if (data.data.status === 'processing') {
+      comicCurrentTaskId = taskId;
+      const area = document.getElementById('comic-canvas-area');
+      if (area) {
+        area.innerHTML = `
+          <div class="comic-progress" id="comic-preview-box">
+            <div class="comic-progress-ring">
+              <svg viewBox="0 0 100 100"><circle class="ring-bg" cx="50" cy="50" r="44"/><circle class="ring-fill" id="comic-ring-fill" cx="50" cy="50" r="44" stroke-dasharray="276.5" stroke-dashoffset="${276.5 * (1 - (data.data.progress||0)/100)}"/></svg>
+              <div class="comic-progress-pct" id="comic-progress-pct">${data.data.progress || 0}%</div>
+            </div>
+            <div class="comic-progress-text" id="comic-progress-text">${esc(data.data.message || '处理中...')}</div>
+          </div>`;
+      }
+      pollComicProgress(taskId);
+    }
+  } catch {}
+}
+
+async function deleteComicTask(taskId) {
+  if (!confirm('确定删除此漫画？')) return;
+  try {
+    await authFetch(`/api/comic/tasks/${taskId}`, { method: 'DELETE' });
+    loadComicHistory();
+  } catch {}
+}
+
+// ══════════════════════════════════════════
+//  我的作品
+// ══════════════════════════════════════════
+let worksFilter = 'all';
+let worksCache = [];
+
+async function loadWorksPage() {
+  const grid = document.getElementById('works-grid');
+  grid.innerHTML = '<div class="assets-empty">加载中...</div>';
+  try {
+    const [worksResp, statsResp] = await Promise.all([
+      authFetch('/api/works?type=' + worksFilter),
+      authFetch('/api/works/stats')
+    ]);
+    const worksData = await worksResp.json();
+    const statsData = await statsResp.json();
+    worksCache = worksData.works || [];
+    renderWorksStats(statsData.stats || {});
+    renderWorksGrid(worksCache);
+  } catch (e) {
+    grid.innerHTML = '<div class="assets-empty">加载失败</div>';
+  }
+}
+
+function renderWorksStats(stats) {
+  const el = document.getElementById('works-stats');
+  const items = [
+    { key: 'all', label: '全部作品', count: Object.values(stats).reduce((s, n) => s + n, 0) },
+    { key: 'avatar', label: '数字人', count: stats.avatar || 0 },
+    { key: 'video', label: 'AI 视频', count: stats.video || 0 },
+    { key: 'i2v', label: '图生视频', count: stats.i2v || 0 },
+    { key: 'portrait', label: 'AI 形象', count: stats.portrait || 0 },
+    { key: 'comic', label: 'AI 漫画', count: stats.comic || 0 },
+    { key: 'novel', label: 'AI 小说', count: stats.novel || 0 },
+  ];
+  el.innerHTML = items.map(it => `
+    <div class="works-stat-card ${worksFilter === it.key ? 'active' : ''}" onclick="filterWorks('${it.key}',null)">
+      <div class="works-stat-num">${it.count}</div>
+      <div class="works-stat-label">${it.label}</div>
+    </div>
+  `).join('');
+}
+
+function filterWorks(type, btn) {
+  worksFilter = type;
+  document.querySelectorAll('#works-tabs .assets-tab').forEach(t => t.classList.remove('active'));
+  if (btn) {
+    btn.classList.add('active');
+  } else {
+    const tabs = document.querySelectorAll('#works-tabs .assets-tab');
+    tabs.forEach(t => {
+      const tabType = t.getAttribute('onclick')?.match(/filterWorks\('(\w+)'/)?.[1];
+      if (tabType === type) t.classList.add('active');
+    });
+  }
+  loadWorksPage();
+}
+
+function renderWorksGrid(works) {
+  const grid = document.getElementById('works-grid');
+  if (!works.length) {
+    grid.innerHTML = '<div class="assets-empty">暂无作品，去各模块生成内容吧</div>';
+    return;
+  }
+
+  grid.innerHTML = works.map(w => {
+    let thumbContent;
+    if (w.media_type === 'video') {
+      const poster = w.thumbnail_url ? ` poster="${w.thumbnail_url}"` : '';
+      thumbContent = `<div class="work-card-thumb">
+        <video src="${w.stream_url}" muted preload="metadata"${poster}></video>
+        <div class="work-card-play">&#9654;</div>
+      </div>`;
+    } else if (w.media_type === 'image') {
+      thumbContent = `<div class="work-card-thumb">
+        <img src="${w.preview_url}" loading="lazy" onerror="this.style.display='none'" />
+      </div>`;
+    } else {
+      thumbContent = `<div class="work-card-text-preview">${esc(w.preview_text || '')}</div>`;
+    }
+
+    const downloadBtn = w.download_url
+      ? `<button class="work-card-btn" onclick="event.stopPropagation();window.open('${w.download_url}','_blank')">下载</button>`
+      : '';
+
+    return `<div class="work-card" onclick="previewWork('${w.id}')">
+      <span class="work-card-type-badge">${w.type_label}</span>
+      ${thumbContent}
+      <div class="work-card-info">
+        <div class="work-card-title" title="${esc(w.title)}">${esc(w.title)}</div>
+        <div class="work-card-meta">
+          <span>${new Date(w.created_at).toLocaleDateString('zh-CN')}</span>
+          ${w.word_count ? `<span>${w.word_count} 字</span>` : ''}
+          ${w.panels ? `<span>${w.panels} 格</span>` : ''}
+        </div>
+      </div>
+      <div class="work-card-actions">
+        ${downloadBtn}
+        <button class="work-card-btn danger" onclick="event.stopPropagation();deleteWork('${w.type}','${w.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function previewWork(id) {
+  const w = worksCache.find(x => x.id === id);
+  if (!w) return;
+  if (w.media_type === 'video' && w.stream_url) {
+    openLightbox(w.stream_url, w.title, 'video');
+  } else if (w.media_type === 'image' && w.preview_url) {
+    openLightbox(w.preview_url, w.title);
+  } else if (w.media_type === 'text') {
+    // 跳转到对应模块
+    switchPage('novel');
+  }
+}
+
+async function deleteWork(type, id) {
+  if (!confirm('确认删除此作品？')) return;
+  try {
+    await authFetch(`/api/works/${type}/${id}`, { method: 'DELETE' });
+    loadWorksPage();
+  } catch {}
 }
 
 // 启动

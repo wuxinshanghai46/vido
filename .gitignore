@@ -5,26 +5,11 @@ node_modules/
 .env
 
 # Output data & generated files
-outputs/vido_db.json
-outputs/edit_db.json
-outputs/auth_db.json
-outputs/settings.json
-outputs/projects/
-outputs/videos/
-outputs/renders/
-outputs/scenes/
-outputs/voice/
-outputs/music/
-outputs/characters/
-outputs/avatar/
-outputs/screenshots/
-outputs/ref_frames/
-outputs/ref_video.mp4
-outputs/i2v_images/
-outputs/i2v_videos/
-outputs/tmp/
-outputs/test/
-outputs/_server.log
+outputs/
+
+# Large binary assets
+*.mp3
+参考样式/
 
 # Claude Code
 .claude/

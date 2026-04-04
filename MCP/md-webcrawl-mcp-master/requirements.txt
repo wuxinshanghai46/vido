@@ -1,0 +1,7 @@
+fastmcp
+beautifulsoup4
+requests
+html2text
+python-dotenv
+fastapi
+uvicorn[standard]

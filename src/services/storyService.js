@@ -85,8 +85,17 @@ function getStoryInfo() {
 
 function parseJSON(raw) {
   let str = raw.trim();
+  // 去掉 markdown 代码块（含未闭合的情况）
   const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (m) str = m[1].trim();
+  if (m) {
+    str = m[1].trim();
+  } else if (str.startsWith('```')) {
+    str = str.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+  }
+  // 提取第一个 { ... } 块
+  const start = str.indexOf('{');
+  const end = str.lastIndexOf('}');
+  if (start !== -1 && end > start) str = str.slice(start, end + 1);
   return JSON.parse(str);
 }
 

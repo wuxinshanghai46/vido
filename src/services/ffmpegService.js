@@ -24,6 +24,8 @@ async function mergeVideoClips({ clipPaths, outputPath, addSubtitles = false, su
       .outputOptions([
         '-c:v', 'libx264',
         '-c:a', 'aac',
+        '-map', '0:v:0',
+        '-map', '0:a?',
         '-movflags', '+faststart',
         '-pix_fmt', 'yuv420p'
       ])

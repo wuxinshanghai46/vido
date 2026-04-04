@@ -1,0 +1,13 @@
+{
+  "name": "project-manager-mcp",
+  "version": "1.0.0",
+  "description": "项目管理MCP - 封装全栈开发分工策略与流程模板，可复用于其他项目",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}

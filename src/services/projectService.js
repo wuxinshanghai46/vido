@@ -233,6 +233,18 @@ function resolveImageToBase64(imageRef) {
   return publicUrl || base64 || null;
 }
 
+// 加载用户自定义风格模板（合并内置预设）
+function loadStyleTemplates() {
+  try {
+    const { loadSettings } = require('./settingsService');
+    const settings = loadSettings();
+    if (settings.style_templates && Object.keys(settings.style_templates).length) {
+      return { ...ANIM_STYLE_PROMPTS, ...settings.style_templates };
+    }
+  } catch {}
+  return ANIM_STYLE_PROMPTS;
+}
+
 // 动画风格 → prompt 前缀 + 负向提示词（实际影响视频模型输出）
 const ANIM_STYLE_PROMPTS = {
   anime: {
@@ -435,7 +447,8 @@ async function runFullPipeline(projectId, userId = null) {
     emitProgress(projectId, { step: 'story', status: 'start', message: '正在生成剧情故事...' });
     deductCredits(userId, 'story_gen', '剧情生成', projectId);
 
-    const styleConf = ANIM_STYLE_PROMPTS[project.anim_style] || ANIM_STYLE_PROMPTS.anime;
+    const allStyles = loadStyleTemplates();
+    const styleConf = allStyles[project.anim_style] || allStyles.anime || ANIM_STYLE_PROMPTS.anime;
     const dimParams = {
       scene_dim: project.scene_dim || '2d',
       char_dim: project.char_dim || '2d',
@@ -666,7 +679,7 @@ async function runFullPipeline(projectId, userId = null) {
       // === 增强 visual_prompt：注入风格前缀 + 角色外貌 + 动作增强 ===
       let enhancedPrompt = scene.visual_prompt || '';
 
-      // 注入出场角色外貌描述（模糊匹配）
+      // 注入出场角色外貌描述（模糊匹配）+ 一致性约束
       if (scene.characters?.length && Object.keys(charLookup).length) {
         const charDescs = scene.characters
           .map(name => {
@@ -674,7 +687,11 @@ async function runFullPipeline(projectId, userId = null) {
             return desc ? `[Character "${name}": ${desc}]` : '';
           })
           .filter(Boolean).join(' ');
-        if (charDescs) enhancedPrompt = charDescs + ' ' + enhancedPrompt;
+        if (charDescs) {
+          enhancedPrompt = charDescs + ' ' + enhancedPrompt;
+          // 角色一致性强化约束
+          enhancedPrompt += ', maintain exact character appearance consistency, same face same hair same outfit as reference image, consistent character design across all shots';
+        }
       }
 
       // 注入动画风格 prompt 前缀 + 2D/3D 维度强制约束
@@ -690,6 +707,55 @@ async function runFullPipeline(projectId, userId = null) {
       }
       if (styleConf.negative) {
         enhancedPrompt += `, avoid: ${styleConf.negative}`;
+      }
+
+      // ═══ 镜头运动 + 景别注入 ═══
+      const CAMERA_MOVE_PROMPTS = {
+        static:       'static camera, locked-off shot, no camera movement',
+        push_in:      'camera slowly pushing in, dolly forward, gradually closing in on subject',
+        pull_out:     'camera pulling out, dolly backward, revealing wider scene',
+        pan_left:     'camera panning left, smooth horizontal movement left',
+        pan_right:    'camera panning right, smooth horizontal movement right',
+        tilt_up:      'camera tilting up, vertical upward movement revealing sky/ceiling',
+        tilt_down:    'camera tilting down, vertical downward movement',
+        tracking:     'tracking shot following subject, camera moving alongside character, dynamic follow',
+        dolly_zoom:   'dolly zoom effect, vertigo effect, background stretching while subject stays same size',
+        orbit:        'orbiting camera, 360 degree rotation around subject, circular tracking shot',
+        crane_up:     'crane shot rising upward, ascending aerial reveal, sweeping upward movement',
+        crane_down:   'crane shot descending, camera lowering from above, descending reveal',
+        handheld:     'handheld camera, slight shake and wobble, documentary realism, organic movement',
+        first_person: 'first person POV, subjective camera, seeing through character eyes',
+        over_shoulder:'over-the-shoulder shot, character in foreground frame edge, depth perspective',
+        aerial:       'aerial drone shot, bird eye view, sweeping overhead, establishing shot from above',
+        whip_pan:     'whip pan, rapid camera swish, fast horizontal blur transition',
+        slow_zoom:    'very slow subtle zoom in, barely perceptible push, building tension',
+        bullet_time:  'bullet time effect, frozen moment with orbiting camera, time-slice photography'
+      };
+      const SHOT_TYPE_PROMPTS = {
+        extreme_wide: 'extreme wide shot, vast landscape, tiny figures in grand environment',
+        wide:         'wide shot, full environment visible, characters in context',
+        full:         'full shot, character from head to toe, complete body visible',
+        medium:       'medium shot, character from waist up, conversational framing',
+        medium_close: 'medium close-up, chest and face, intimate but contextual',
+        close_up:     'close-up shot, face filling frame, emotional detail, facial expression focus',
+        extreme_close:'extreme close-up, detail shot, eyes or specific object detail',
+        low_angle:    'low angle shot, camera below subject looking up, powerful imposing perspective',
+        high_angle:   'high angle shot, camera above subject looking down, vulnerable diminished perspective',
+        birds_eye:    'bird\'s eye view, directly overhead, top-down perspective',
+        dutch_angle:  'dutch angle, tilted camera, diagonal horizon, unease tension'
+      };
+
+      const cameraMove = scene.camera_move || '';
+      const shotType = scene.shot_type || '';
+      if (cameraMove && CAMERA_MOVE_PROMPTS[cameraMove]) {
+        enhancedPrompt += ', ' + CAMERA_MOVE_PROMPTS[cameraMove];
+      }
+      if (shotType && SHOT_TYPE_PROMPTS[shotType]) {
+        enhancedPrompt += ', ' + SHOT_TYPE_PROMPTS[shotType];
+      }
+      // AI 生成的 camera 字段也注入（如果用户没手动选择）
+      if (!cameraMove && scene.camera) {
+        enhancedPrompt += `, camera: ${scene.camera}`;
       }
 
       // 动作/打斗场景视频 prompt 增强：基于 action_type + vfx 标签精准增强
@@ -915,7 +981,8 @@ async function runFullPipeline(projectId, userId = null) {
           video_provider: effectiveProvider,
           video_model: effectiveModel,
           image_url: effectiveImageUrl,
-          last_frame_url: userSceneData?.lastFrameUrl || null
+          last_frame_url: userSceneData?.lastFrameUrl || null,
+          aspectRatio: project.aspect_ratio || '16:9'
         };
         if (effectiveImageUrl) {
           const mode = imageUrlForVideo ? 'URL' : 'base64';
@@ -985,9 +1052,13 @@ async function runFullPipeline(projectId, userId = null) {
               fs.unlinkSync(result.filePath);
               fs.renameSync(withVoicePath, result.filePath);
               try { fs.unlinkSync(audioFile); } catch {}
+            } else {
+              console.warn(`[TTS] 场景 ${i + 1} 语音生成返回空（无可用 TTS 供应商或文本为空）`);
+              emitProgress(projectId, { step: 'video', status: 'voice_warn', message: `场景 ${i + 1} 无法生成语音，请检查 TTS 配置` });
             }
           } catch (voiceErr) {
             console.warn(`[TTS] 场景 ${i + 1} 配音失败（跳过）:`, voiceErr.message);
+            emitProgress(projectId, { step: 'video', status: 'voice_warn', message: `场景 ${i + 1} 配音失败: ${voiceErr.message}` });
           }
         }
 
@@ -1099,4 +1170,4 @@ function getProjectDetails(projectId) {
   };
 }
 
-module.exports = { createProject, getProject, listProjects, runFullPipeline, getProjectDetails, addProgressListener, removeProgressListener, cancelPipeline };
+module.exports = { createProject, getProject, listProjects, runFullPipeline, getProjectDetails, addProgressListener, removeProgressListener, cancelPipeline, ANIM_STYLE_PROMPTS };

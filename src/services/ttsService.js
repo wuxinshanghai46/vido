@@ -19,45 +19,61 @@ const http = require('http');
  */
 async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, voiceId = null } = {}) {
   if (!text || !text.trim()) return null;
-  try {
-    // 1. 火山引擎 TTS（豆包大模型语音，中文最自然）
-    const volcKey = _getTTSKey('volcengine');
-    if (volcKey) return await generateWithVolcEngine(text, outputPath, { gender, speed, voiceId, apiKey: volcKey });
 
-    // 2. 百度语音合成（百度/高德地图级中文）
-    const baiduKey = _getTTSKey('baidu');
-    if (baiduKey) return await generateWithBaidu(text, outputPath, { gender, speed, voiceId, apiKey: baiduKey });
-
-    // 3. 阿里云 CosyVoice（自然中文，多音色）
-    const aliKey = _getTTSKey('aliyun-tts');
-    if (aliKey) return await generateWithAliyunTTS(text, outputPath, { gender, speed, voiceId, apiKey: aliKey });
-
-    // 4. Fish Audio（中文极自然）
-    const fishKey = _getTTSKey('fishaudio');
-    if (fishKey) return await generateWithFishAudio(text, outputPath, { gender, speed, apiKey: fishKey });
-
-    // 5. MiniMax TTS（中文优质）
-    const mmKey = _getTTSKey('minimax');
-    if (mmKey) return await generateWithMiniMaxTTS(text, outputPath, { gender, speed, apiKey: mmKey });
-
-    // 6. 科大讯飞 TTS（中文极自然，WebSocket 实时合成）
-    const xfKey = _getTTSKey('xunfei');
-    if (xfKey) return await generateWithXunfei(text, outputPath, { gender, speed, voiceId, apiKey: xfKey });
-
-    // 7. ElevenLabs（多语言）
-    const elKey = _getTTSKey('elevenlabs');
-    if (elKey) return await generateWithElevenLabs(text, outputPath, { gender, speed, apiKey: elKey });
-
-    // 8. OpenAI TTS
-    const oaiKey = _getTTSKey('openai') || process.env.OPENAI_API_KEY;
-    if (oaiKey) return await generateWithOpenAI(text, outputPath, { gender, speed, apiKey: oaiKey });
-
-    // 9. Windows SAPI（本地免费）
-    return await generateWithSAPI(text, outputPath, { gender, speed });
-  } catch (err) {
-    console.warn('[TTS] 语音生成失败（非致命）:', err.message);
-    return null;
+  // 自定义声音：如果选择了用户上传的声音，用 CosyVoice 克隆或 FFmpeg 变调
+  if (voiceId && voiceId.startsWith('custom_')) {
+    try {
+      const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
+      if (result) { console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`); return result; }
+    } catch (err) {
+      console.warn(`[TTS] 自定义声音 ${voiceId} 失败，回退到默认声音: ${err.message}`);
+    }
   }
+
+  // 供应商优先级链：每个失败后自动回退到下一个
+  const chain = [
+    { id: 'zhipu',      name: '智谱',       fn: generateWithZhipu,      opts: { gender, speed, voiceId } },
+    { id: 'volcengine',  name: '火山引擎',   fn: generateWithVolcEngine,  opts: { gender, speed, voiceId } },
+    { id: 'baidu',       name: '百度',       fn: generateWithBaidu,       opts: { gender, speed, voiceId } },
+    { id: 'aliyun-tts',  name: '阿里云',     fn: generateWithAliyunTTS,   opts: { gender, speed, voiceId } },
+    { id: 'fishaudio',   name: 'FishAudio',  fn: generateWithFishAudio,   opts: { gender, speed } },
+    { id: 'minimax',     name: 'MiniMax',    fn: generateWithMiniMaxTTS,  opts: { gender, speed } },
+    { id: 'xunfei',      name: '讯飞',       fn: generateWithXunfei,      opts: { gender, speed, voiceId } },
+    { id: 'elevenlabs',  name: 'ElevenLabs', fn: generateWithElevenLabs,  opts: { gender, speed } },
+  ];
+
+  for (const { id, name, fn, opts } of chain) {
+    const apiKey = _getTTSKey(id);
+    if (!apiKey) continue;
+    try {
+      const result = await fn(text, outputPath, { ...opts, apiKey });
+      if (result) { console.log(`[TTS] 使用 ${name} 生成成功`); return result; }
+    } catch (err) {
+      console.warn(`[TTS] ${name} 失败，尝试下一个: ${err.message}`);
+    }
+  }
+
+  // OpenAI（支持 env 回退）
+  const oaiKey = _getTTSKey('openai') || process.env.OPENAI_API_KEY;
+  if (oaiKey) {
+    try {
+      const result = await generateWithOpenAI(text, outputPath, { gender, speed, apiKey: oaiKey });
+      if (result) { console.log('[TTS] 使用 OpenAI 生成成功'); return result; }
+    } catch (err) {
+      console.warn(`[TTS] OpenAI 失败: ${err.message}`);
+    }
+  }
+
+  // 最终兜底：Windows SAPI
+  try {
+    const result = await generateWithSAPI(text, outputPath, { gender, speed });
+    if (result) { console.log('[TTS] 使用 Windows SAPI 生成成功'); return result; }
+  } catch (err) {
+    console.warn(`[TTS] SAPI 失败: ${err.message}`);
+  }
+
+  console.warn('[TTS] 所有供应商均失败，无法生成语音');
+  return null;
 }
 
 function _getTTSKey(providerId) {
@@ -78,6 +94,217 @@ function _getTTSModel(providerId) {
     const p = settings.providers.find(p => p.id === providerId && p.enabled);
     return (p?.models || []).find(m => m.enabled !== false && m.use === 'tts') || null;
   } catch { return null; }
+}
+
+// ═══════════════════════════════════════════
+// 自定义声音克隆
+// 策略1: Fish Audio — 上传参考音频作为 reference，用 reference_id 生成
+// 策略2: 回退到基础 TTS + FFmpeg 音色微调
+// ═══════════════════════════════════════════
+
+/**
+ * 上传音频到 Fish Audio 创建声音克隆 reference
+ * @returns {string|null} reference_id
+ */
+async function uploadVoiceToFishAudio(voiceFilePath, voiceName, apiKey) {
+  const audioData = fs.readFileSync(voiceFilePath);
+  const boundary = '----VidoVoiceClone' + Date.now();
+  const ext = path.extname(voiceFilePath).slice(1) || 'mp3';
+  const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', webm: 'audio/webm' };
+
+  // multipart/form-data 构建
+  const parts = [];
+  // id 字段
+  const refId = 'vido_' + voiceName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20) + '_' + Date.now();
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="id"\r\n\r\n${refId}`);
+  // text 字段（参考文本，可选）
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="text"\r\n\r\n${voiceName}`);
+  // audio 字段
+  parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="ref.${ext}"\r\nContent-Type: ${mimeMap[ext] || 'audio/mpeg'}\r\n\r\n`);
+
+  const bodyStart = Buffer.from(parts.join('\r\n') + '\r\n');
+  const bodyEnd = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([bodyStart, audioData, bodyEnd]);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.fish.audio',
+      path: '/v1/references/add',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          return reject(new Error(`Fish Audio 上传失败 (${res.statusCode}): ${data}`));
+        }
+        console.log(`[TTS] Fish Audio 声音克隆上传成功: ${refId}`);
+        resolve(refId);
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('Fish Audio 上传超时')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0 }) {
+  const db = require('../models/database');
+  const voice = db.getVoice(voiceId);
+  if (!voice?.file_path || !fs.existsSync(voice.file_path)) {
+    throw new Error(`自定义声音 ${voiceId} 文件不存在`);
+  }
+
+  // 策略1: Fish Audio 声音克隆（效果最好）
+  const fishKey = _getTTSKey('fishaudio');
+  if (fishKey) {
+    try {
+      // 检查是否已有 Fish Audio reference_id
+      let refId = voice.fish_ref_id;
+      if (!refId) {
+        // 首次使用：上传音频到 Fish Audio 创建克隆
+        console.log(`[TTS] 首次使用自定义声音 "${voice.name}"，正在上传到 Fish Audio...`);
+        refId = await uploadVoiceToFishAudio(voice.file_path, voice.name, fishKey);
+        // 保存 reference_id 到数据库，后续直接复用
+        db.updateVoice(voiceId, { fish_ref_id: refId });
+      }
+      // 用 reference_id 生成 TTS
+      const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
+      const body = JSON.stringify({
+        text: text.substring(0, 10000),
+        reference_id: refId,
+        format: 'mp3',
+        latency: 'normal',
+        normalize: true,
+        streaming: false
+      });
+
+      const result = await new Promise((resolve, reject) => {
+        const req = https.request({
+          hostname: 'api.fish.audio',
+          path: '/v1/tts',
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + fishKey,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          }
+        }, (res) => {
+          if (res.statusCode >= 400) {
+            let errData = '';
+            res.on('data', c => errData += c);
+            res.on('end', () => reject(new Error(`Fish Audio TTS ${res.statusCode}: ${errData}`)));
+            return;
+          }
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => {
+            fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
+            fs.writeFileSync(mp3Path, Buffer.concat(chunks));
+            resolve(mp3Path);
+          });
+        });
+        req.on('error', reject);
+        req.setTimeout(60000, () => { req.destroy(); reject(new Error('Fish Audio TTS 超时')); });
+        req.write(body);
+        req.end();
+      });
+
+      if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
+        console.log(`[TTS] Fish Audio 声音克隆生成成功: ${voice.name}`);
+        return result;
+      }
+    } catch (err) {
+      console.warn(`[TTS] Fish Audio 声音克隆失败: ${err.message}`);
+    }
+  }
+
+  // 策略2: 回退 — 用基础 TTS + FFmpeg 音色微调
+  const baseGender = voice.gender || 'female';
+  const providers = [
+    { id: 'zhipu', fn: generateWithZhipu },
+    { id: 'xunfei', fn: generateWithXunfei },
+    { id: 'volcengine', fn: generateWithVolcEngine },
+  ];
+
+  let baseAudio = null;
+  for (const { id, fn } of providers) {
+    const apiKey = _getTTSKey(id);
+    if (!apiKey) continue;
+    try {
+      baseAudio = await fn(text, outputPath + '_base', { gender: baseGender, speed, apiKey });
+      if (baseAudio) break;
+    } catch { continue; }
+  }
+  if (!baseAudio) baseAudio = await generateWithSAPI(text, outputPath + '_base', { gender: baseGender, speed });
+  if (!baseAudio) throw new Error('基础语音生成失败');
+
+  // FFmpeg 微调音色
+  const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg')
+    ? process.env.FFMPEG_PATH : require('ffmpeg-static');
+  const { execSync } = require('child_process');
+  const finalPath = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
+
+  try {
+    const pitchShift = baseGender === 'male' ? 0.97 : 1.03;
+    execSync(
+      `"${ffmpegPath}" -i "${baseAudio}" -af "asetrate=44100*${pitchShift},aresample=44100,atempo=${1/pitchShift}" -y "${finalPath}"`,
+      { stdio: 'pipe', timeout: 30000 }
+    );
+    try { fs.unlinkSync(baseAudio); } catch {}
+    if (fs.existsSync(finalPath) && fs.statSync(finalPath).size > 100) return finalPath;
+  } catch (err) {
+    console.warn('[TTS] FFmpeg 音色调整失败:', err.message);
+  }
+
+  // 最终：直接用基础语音
+  if (fs.existsSync(baseAudio)) return baseAudio;
+  return null;
+}
+
+// ═══════════════════════════════════════════
+// 智谱 GLM-TTS（OpenAI 兼容格式）
+// 音色：tongtong（彤彤）、chuichui（锤锤）、xiaochen（小陈）、
+//       jam、kazi、douji、luodo
+// ═══════════════════════════════════════════
+const ZHIPU_VOICES = {
+  female: 'tongtong',
+  male: 'chuichui',
+  child: 'tongtong',
+};
+
+async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey }) {
+  const OpenAI = require('openai');
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://open.bigmodel.cn/api/paas/v4'
+  });
+
+  let voice = voiceId || ZHIPU_VOICES[gender] || 'tongtong';
+  const model = _getTTSModel('zhipu');
+  if (model?.id && model.id !== 'glm-tts' && !voiceId) voice = model.id;
+
+  const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.wav';
+
+  const response = await client.audio.speech.create({
+    model: 'glm-tts',
+    voice,
+    input: text.substring(0, 1024),
+    response_format: 'wav',
+    speed: Math.min(2.0, Math.max(0.5, speed))
+  });
+
+  fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(mp3Path, buffer);
+  console.log(`[TTS] 智谱 GLM-TTS 合成成功: ${voice}, ${buffer.length} bytes`);
+  return mp3Path;
 }
 
 // ═══════════════════════════════════════════
@@ -732,6 +959,19 @@ function getAvailableVoices() {
   const { loadSettings } = require('./settingsService');
   const voices = [];
 
+  // 智谱 GLM-TTS
+  if (_getTTSKey('zhipu')) {
+    voices.push(
+      { id: 'tongtong', name: '彤彤·温柔', gender: 'female', provider: '智谱AI', providerIcon: '🔮', lang: 'zh', tag: '推荐' },
+      { id: 'xiaochen', name: '小陈·知性', gender: 'female', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
+      { id: 'chuichui', name: '锤锤·沉稳', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh', tag: '推荐' },
+      { id: 'jam', name: 'Jam·活力', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
+      { id: 'kazi', name: 'Kazi·磁性', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
+      { id: 'douji', name: 'Douji·少年', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
+      { id: 'luodo', name: 'Luodo·儒雅', gender: 'male', provider: '智谱AI', providerIcon: '🔮', lang: 'zh' },
+    );
+  }
+
   // 火山引擎
   if (_getTTSKey('volcengine')) {
     voices.push(
@@ -840,7 +1080,26 @@ function getAvailableVoices() {
     { id: 'sapi-male', name: '系统男声', gender: 'male', provider: 'Windows', providerIcon: '🪟', lang: 'zh', tag: '免费' },
   );
 
+  // 自定义声音（用户上传）
+  try {
+    const db = require('../models/database');
+    const customVoices = db.listVoices();
+    for (const v of customVoices) {
+      voices.unshift({
+        id: v.id,
+        name: v.name,
+        gender: v.gender || 'female',
+        provider: '我的声音',
+        providerIcon: '🎤',
+        lang: 'zh',
+        tag: '自定义',
+        custom: true,
+        filePath: v.file_path
+      });
+    }
+  } catch {}
+
   return voices;
 }
 
-module.exports = { generateSpeech, getAvailableVoices };
+module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio };

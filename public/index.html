@@ -10,90 +10,153 @@
   <script src="/js/auth.js"></script>
 </head>
 <body>
-<div class="app-shell">
+<div class="layout">
 
-  <!-- ═══ TOP NAVBAR ═══ -->
-  <nav class="topnav">
-    <div class="topnav-logo">
-      <div class="logo-mark">V</div>
-      <span class="logo-name">VIDO</span>
-      <span class="logo-ver">Beta</span>
-    </div>
-    <div class="topnav-items">
-      <div class="nav-item active" data-page="create">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 4.5H15l-3.8 3 1.3 4.5L8 10l-4.5 3 1.3-4.5L1 5.5h5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
-        <span>AI 视频</span>
-      </div>
-      <div class="nav-item" data-page="avatar">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 15c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M11 3.5l1.5-2M5 3.5L3.5 1.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".5"/></svg></span>
-        <span>AI 数字人</span>
-        <span class="nav-new-badge">NEW</span>
-      </div>
-      <div class="nav-item" data-page="imggen">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6" r="1.5" stroke="currentColor" stroke-width="1"/><path d="M1.5 12l3.5-3.5 2.5 2.5 3-3.5 4 4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
-        <span>AI 图片</span>
-        <span class="nav-new-badge">NEW</span>
-      </div>
-      <div class="nav-item" data-page="i2v">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="8" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M10 6l4-2v8l-4-2V6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M3.5 5.5l2.5 1.5-2.5 1.5z" fill="currentColor" opacity=".5"/></svg></span>
-        <span>图生视频</span>
-      </div>
-      <div class="nav-item" data-page="novel">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2"/><path d="M10 2v3h3M5 8h6M5 11h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg></span>
-        <span>AI 小说</span>
-        <span class="nav-new-badge">NEW</span>
-      </div>
-      <div class="topnav-sep"></div>
-      <div class="nav-item" data-page="assets">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.1"/></svg></span>
-        <span>我的素材</span>
-      </div>
-      <div class="nav-item" data-page="projects">
-        <span class="nav-item-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4.5V13a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3H3a1 1 0 00-1 1z" stroke="currentColor" stroke-width="1.2"/></svg></span>
-        <span>我的项目</span>
-        <span class="nav-item-badge" id="project-count" style="display:none">0</span>
-      </div>
-    </div>
-    <div class="topnav-right">
-      <div class="user-credits" id="user-credits" title="积分余额">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/><text x="7" y="10" text-anchor="middle" fill="currentColor" font-size="8" font-weight="bold">$</text></svg>
-        <span id="credits-display">--</span>
-      </div>
+<!-- ═══ SIDEBAR（参照原型） ═══ -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">V</div>
+    <div class="logo-text">VIDO</div>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">创作工具</div>
+    <div class="nav-item active" data-page="dashboard"><div class="nav-icon">⬛</div>工作台</div>
+    <div class="nav-item" data-page="create"><div class="nav-icon">🎬</div>AI视频生成</div>
+    <div class="nav-item" data-page="imggen"><div class="nav-icon">🖼️</div>AI图片生成</div>
+    <div class="nav-item" data-page="avatar"><div class="nav-icon">🧑‍💼</div>AI数字人</div>
+    <div class="nav-item" data-page="comic"><div class="nav-icon">📚</div>AI漫画</div>
+    <div class="nav-item" data-page="novel"><div class="nav-icon">✍️</div>AI小说</div>
+    <div class="nav-item" data-page="i2v"><div class="nav-icon">🎞️</div>图生视频</div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">内容雷达 ★</div>
+    <div class="nav-item" data-page="radar"><div class="nav-icon">📡</div>雷达总览<span class="nav-badge" id="radar-badge" style="display:none">0</span></div>
+    <div class="nav-item" data-page="monitor"><div class="nav-icon">📂</div>素材库</div>
+    <div class="nav-item" data-page="contentlib"><div class="nav-icon">🗂️</div>内容库</div>
+    <div class="nav-item" data-page="workbench"><div class="nav-icon">🎙️</div>声音克隆</div>
+    <div class="nav-item" data-page="replicate"><div class="nav-icon">⚡</div>一键复刻</div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">资产管理</div>
+    <div class="nav-item" data-page="portrait"><div class="nav-icon">👤</div>我的角色</div>
+    <div class="nav-item" data-page="projects"><div class="nav-icon">📁</div>我的项目<span class="nav-badge" id="project-count" style="display:none">0</span></div>
+    <div class="nav-item" data-page="works"><div class="nav-icon">🔗</div>我的作品</div>
+    <div class="nav-item" data-page="assets"><div class="nav-icon">🎨</div>素材库</div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">账号</div>
+    <div class="nav-item" data-page="profile"><div class="nav-icon">👤</div>个人信息</div>
+    <div class="nav-item" id="admin-link" style="display:none" onclick="window.location.href='/admin.html'"><div class="nav-icon">⚙️</div>管理后台</div>
+    <div class="nav-item" onclick="logout()"><div class="nav-icon">🚪</div>退出登录</div>
+  </div>
+</nav>
+
+<!-- ═══ MAIN AREA ═══ -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">工作台</div>
+    <div class="topbar-breadcrumb" id="topbar-breadcrumb">/ 首页概览</div>
+    <div class="topbar-right">
       <div class="theme-switcher">
-        <div class="theme-dots">
-          <button class="theme-dot active" data-theme="purple" onclick="switchTheme('purple')" title="紫罗兰" style="--dot-c:#7c6cf0"></button>
-          <button class="theme-dot" data-theme="cyan" onclick="switchTheme('cyan')" title="青蓝" style="--dot-c:#21fff3"></button>
-          <button class="theme-dot" data-theme="green" onclick="switchTheme('green')" title="翠绿" style="--dot-c:#00e5a0"></button>
-          <button class="theme-dot" data-theme="amber" onclick="switchTheme('amber')" title="琥珀" style="--dot-c:#f5c518"></button>
-          <button class="theme-dot" data-theme="rose" onclick="switchTheme('rose')" title="玫红" style="--dot-c:#ff4d6d"></button>
-          <button class="theme-dot" data-theme="blue" onclick="switchTheme('blue')" title="海蓝" style="--dot-c:#4d9fff"></button>
+        <button class="theme-mode-toggle" id="theme-mode-toggle" onclick="toggleThemePanel()" title="切换主题">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <div class="theme-panel" id="theme-panel" style="display:none">
+          <div class="theme-panel-section">
+            <div class="theme-panel-label">深色</div>
+            <div class="theme-dots">
+              <button class="theme-dot active" data-theme="purple" onclick="switchTheme('purple')" title="紫罗兰" style="--dot-c:#7c6cf0"></button>
+              <button class="theme-dot" data-theme="cyan" onclick="switchTheme('cyan')" title="青蓝" style="--dot-c:#21fff3"></button>
+              <button class="theme-dot" data-theme="green" onclick="switchTheme('green')" title="翠绿" style="--dot-c:#00e5a0"></button>
+              <button class="theme-dot" data-theme="amber" onclick="switchTheme('amber')" title="琥珀" style="--dot-c:#f5c518"></button>
+              <button class="theme-dot" data-theme="rose" onclick="switchTheme('rose')" title="玫红" style="--dot-c:#ff4d6d"></button>
+              <button class="theme-dot" data-theme="blue" onclick="switchTheme('blue')" title="海蓝" style="--dot-c:#4d9fff"></button>
+            </div>
+          </div>
+          <div class="theme-panel-section">
+            <div class="theme-panel-label">浅色</div>
+            <div class="theme-dots">
+              <button class="theme-dot" data-theme="light" onclick="switchTheme('light')" title="纯白" style="--dot-c:#94a3b8;background:#f8fafc;border-color:#e2e8f0"></button>
+              <button class="theme-dot" data-theme="light-purple" onclick="switchTheme('light-purple')" title="浅紫" style="--dot-c:#8b5cf6;background:#ede9fe;border-color:#c4b5fd"></button>
+              <button class="theme-dot" data-theme="light-blue" onclick="switchTheme('light-blue')" title="浅蓝" style="--dot-c:#3b82f6;background:#dbeafe;border-color:#93c5fd"></button>
+              <button class="theme-dot" data-theme="light-green" onclick="switchTheme('light-green')" title="浅绿" style="--dot-c:#10b981;background:#d1fae5;border-color:#6ee7b7"></button>
+              <button class="theme-dot" data-theme="light-rose" onclick="switchTheme('light-rose')" title="浅玫" style="--dot-c:#f43f5e;background:#ffe4e6;border-color:#fda4af"></button>
+              <button class="theme-dot" data-theme="light-amber" onclick="switchTheme('light-amber')" title="浅琥珀" style="--dot-c:#f59e0b;background:#fef3c7;border-color:#fcd34d"></button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="user-menu" id="user-menu">
         <button class="user-menu-btn" onclick="toggleUserMenu()">
-          <span class="user-avatar" id="user-avatar">U</span>
-          <span class="user-name" id="user-name">--</span>
+          <div class="topbar-avatar" id="user-avatar">U</div>
         </button>
         <div class="user-dropdown" id="user-dropdown" style="display:none">
-          <div class="user-dropdown-item" id="admin-link" style="display:none" onclick="window.location.href='/admin.html'">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.1"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
-            管理后台
-          </div>
-          <div class="user-dropdown-item" onclick="logout()">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2M9 10l3-3-3-3M12 7H5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            退出登录
-          </div>
+          <div class="user-dropdown-item" onclick="logout()">退出登录</div>
         </div>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <!-- ═══ MAIN ═══ -->
-  <div class="main-area">
+  <div class="content">
     <div class="page-content">
 
       <!-- ══ 创作页面 ══ -->
-      <div id="page-create" class="page active">
+      <!-- ═══════ 工作台 ═══════ -->
+      <div id="page-dashboard" class="page active" style="padding:24px;">
+        <div class="stat-grid">
+          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
+            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(139,92,246,.2))">🎬</div>
+            <div class="stat-info"><div class="label">视频项目</div><div class="value" id="ds-videos">-</div><div class="sub" id="ds-videos-sub"></div></div>
+          </div>
+          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
+            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(16,185,129,.2))">🖼️</div>
+            <div class="stat-info"><div class="label">图片/漫画</div><div class="value" id="ds-images">-</div><div class="sub" id="ds-images-sub"></div></div>
+          </div>
+          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
+            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(245,158,11,.2))">👤</div>
+            <div class="stat-info"><div class="label">数字人任务</div><div class="value" id="ds-avatars">-</div><div class="sub" id="ds-avatars-sub"></div></div>
+          </div>
+          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
+            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(236,72,153,.2))">✍️</div>
+            <div class="stat-info"><div class="label">AI 小说</div><div class="value" id="ds-novels">-</div><div class="sub" id="ds-novels-sub"></div></div>
+          </div>
+        </div>
+
+        <div class="section-title">快速创作</div>
+        <div class="grid-4" style="margin-bottom:24px;">
+          <div class="quick-card" onclick="switchPage('create')"><div class="qc-icon">🎬</div><div class="qc-name">AI视频生成</div><div class="qc-desc">文字/图片一键生成视频</div></div>
+          <div class="quick-card" onclick="switchPage('imggen')"><div class="qc-icon">🖼️</div><div class="qc-name">AI图片生成</div><div class="qc-desc">多风格智能图片创作</div></div>
+          <div class="quick-card" onclick="switchPage('avatar')"><div class="qc-icon">🧑‍💼</div><div class="qc-name">AI数字人</div><div class="qc-desc">照片驱动数字人视频</div></div>
+          <div class="quick-card" onclick="switchPage('comic')"><div class="qc-icon">📚</div><div class="qc-name">AI漫画</div><div class="qc-desc">脚本自动转漫画分格</div></div>
+          <div class="quick-card" onclick="switchPage('novel')"><div class="qc-icon">✍️</div><div class="qc-name">AI小说</div><div class="qc-desc">AI辅助长文创作</div></div>
+          <div class="quick-card" onclick="switchPage('i2v')"><div class="qc-icon">🎞️</div><div class="qc-name">图生视频</div><div class="qc-desc">静态图片变动态视频</div></div>
+          <div class="quick-card" onclick="switchPage('radar')"><div class="qc-icon">📡</div><div class="qc-name">内容雷达</div><div class="qc-desc">监控热门内容动态</div></div>
+          <div class="quick-card" onclick="switchPage('portrait')"><div class="qc-icon">👤</div><div class="qc-name">角色库</div><div class="qc-desc">管理创作角色资产</div></div>
+        </div>
+
+        <div class="section-title">最近任务</div>
+        <div class="card" style="padding:0;margin-bottom:20px;" id="dash-tasks"><table class="table" style="width:100%"><thead><tr><th>任务名称</th><th>类型</th><th>状态</th><th>时间</th></tr></thead><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">加载中...</td></tr></tbody></table></div>
+
+        <div class="section-title">平台公告</div>
+        <div class="notice" id="dash-notice">
+          📢 <strong>功能更新</strong>：运镜控制系统上线，支持19种运镜+11种景别！<br>
+          🎤 声音克隆功能已集成 Fish Audio，上传10秒音频即可克隆。<br>
+          🎬 即梦AI图片生成已接入，角色形象更精准。<br>
+          📡 内容雷达上线：监控竞品账号 + AI文案提取 + 一键复刻！
+        </div>
+      </div>
+
+      <div id="page-create" class="page">
         <div class="studio">
 
           <!-- ─── TOP BAR ─── -->
@@ -1144,6 +1207,54 @@
                       </select>
                     </div>
                     <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">镜头运动</div>
+                      <select class="srp-sel" id="srp-scene-camera" onchange="syncSceneProp('camera_move',this.value)">
+                        <option value="">默认（AI 自动）</option>
+                        <optgroup label="基础运镜">
+                          <option value="static">固定镜头 Static</option>
+                          <option value="push_in">推镜头 Push In（远→近）</option>
+                          <option value="pull_out">拉镜头 Pull Out（近→远）</option>
+                          <option value="pan_left">左摇 Pan Left</option>
+                          <option value="pan_right">右摇 Pan Right</option>
+                          <option value="tilt_up">上仰 Tilt Up</option>
+                          <option value="tilt_down">下俯 Tilt Down</option>
+                        </optgroup>
+                        <optgroup label="进阶运镜">
+                          <option value="tracking">跟拍 Tracking Shot</option>
+                          <option value="dolly_zoom">希区柯克变焦 Dolly Zoom</option>
+                          <option value="orbit">环绕 Orbit 360°</option>
+                          <option value="crane_up">升镜头 Crane Up</option>
+                          <option value="crane_down">降镜头 Crane Down</option>
+                          <option value="handheld">手持晃动 Handheld</option>
+                        </optgroup>
+                        <optgroup label="电影级运镜">
+                          <option value="first_person">第一人称 First Person POV</option>
+                          <option value="over_shoulder">过肩镜头 Over-the-Shoulder</option>
+                          <option value="aerial">航拍 Aerial / Drone</option>
+                          <option value="whip_pan">甩镜头 Whip Pan</option>
+                          <option value="slow_zoom">缓慢推进 Slow Zoom</option>
+                          <option value="bullet_time">子弹时间 Bullet Time</option>
+                        </optgroup>
+                      </select>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">景别</div>
+                      <select class="srp-sel" id="srp-scene-shottype" onchange="syncSceneProp('shot_type',this.value)">
+                        <option value="">默认（AI 自动）</option>
+                        <option value="extreme_wide">大远景 Extreme Wide Shot</option>
+                        <option value="wide">远景 Wide Shot</option>
+                        <option value="full">全景 Full Shot</option>
+                        <option value="medium">中景 Medium Shot</option>
+                        <option value="medium_close">中近景 Medium Close-up</option>
+                        <option value="close_up">特写 Close-up</option>
+                        <option value="extreme_close">大特写 Extreme Close-up</option>
+                        <option value="low_angle">低角度仰拍 Low Angle</option>
+                        <option value="high_angle">高角度俯拍 High Angle</option>
+                        <option value="birds_eye">鸟瞰 Bird's Eye View</option>
+                        <option value="dutch_angle">荷兰角 Dutch Angle</option>
+                      </select>
+                    </div>
+                    <div class="srp-field" style="width:100%">
                       <div class="srp-fl">场景描述</div>
                       <textarea class="srp-ta" id="srp-scene-desc" rows="5" placeholder="地理环境、光影效果、细节元素..." oninput="syncSceneProp('description',this.value)"></textarea>
                     </div>
@@ -1154,6 +1265,17 @@
                       </div>
                       <textarea class="srp-ta" id="srp-scene-dialogue" rows="3" placeholder="此场景的字幕文字（同时用于语音配音），留空则无字幕" oninput="syncSceneProp('dialogue',this.value)"></textarea>
                       <div class="srp-voice-hint" id="srp-dialogue-hint">此文本将作为字幕烧录到视频中，开启配音后同时合成为语音</div>
+                    </div>
+                    <div class="srp-field" style="width:100%">
+                      <div class="srp-fl">分镜预览</div>
+                      <div id="srp-storyboard-preview" class="srp-storyboard-box">
+                        <div class="srp-sb-card">
+                          <div class="srp-sb-frame" id="srp-sb-frame">
+                            <div class="srp-sb-empty">选择镜头运动和景别后自动生成分镜描述</div>
+                          </div>
+                          <div class="srp-sb-meta" id="srp-sb-meta"></div>
+                        </div>
+                      </div>
                     </div>
                     <div class="srp-field" style="width:100%">
                       <div class="srp-match-row">
@@ -1290,10 +1412,10 @@
         </div>
       </div>
 
-      <!-- ══ AI 小说页面 ══ -->
+      <!-- ══ AI 小说页面（三栏布局，参照原型） ══ -->
       <div id="page-novel" class="page">
         <div class="nv-page">
-          <div class="page-top-bar">
+          <div class="page-top-bar" style="padding:12px 20px 8px;border-bottom:1px solid var(--border)">
             <div class="page-top-title">AI 小说</div>
             <div class="page-top-sub">AI 智能创作，支持超短篇 / 短篇 / 长篇，大纲规划与逐章生成</div>
           </div>
@@ -1363,26 +1485,36 @@
                 </div>
               </div>
             </div>
-            <!-- 右侧：设置 -->
+            <!-- 右侧：AI 辅助创作 -->
             <div class="nv-settings" id="nv-settings">
               <div class="nv-section">
-                <div class="nv-sec-title">篇幅</div>
-                <div class="nv-type-cards" id="nv-type-cards">
-                  <div class="nv-type-card active" data-type="flash" onclick="nvSetType('flash')">
-                    <div class="nv-type-card-name">超短篇</div>
-                    <div class="nv-type-card-desc">1~3章 / ~1500字</div>
-                  </div>
-                  <div class="nv-type-card" data-type="short" onclick="nvSetType('short')">
-                    <div class="nv-type-card-name">短篇</div>
-                    <div class="nv-type-card-desc">5~10章 / ~1万字</div>
-                  </div>
-                  <div class="nv-type-card" data-type="long" onclick="nvSetType('long')">
-                    <div class="nv-type-card-name">长篇</div>
-                    <div class="nv-type-card-desc">20章+ / 6万字+</div>
-                  </div>
+                <div class="nv-sec-title">AI 辅助创作</div>
+                <button class="nv-ai-main-btn" onclick="nvGenerateChapter()" id="nv-gen-btn2" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">✨ 续写（300字）</button>
+                <button class="nv-ai-sec-btn" onclick="nvExpandSelection()" style="width:100%;padding:8px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:6px;">📝 扩写选中段落</button>
+                <button class="nv-ai-sec-btn" onclick="nvRefine()" style="width:100%;padding:8px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:14px;">🔄 改写优化</button>
+              </div>
+
+              <div class="nv-section">
+                <div class="nv-sec-title">AI 建议</div>
+                <div id="nv-ai-suggestion" style="background:rgba(var(--accent-rgb),.08);border:1px solid rgba(var(--accent-rgb),.15);border-radius:8px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;min-height:60px;">
+                  选择文本后，AI 将在此给出创作建议
                 </div>
               </div>
+
               <div class="nv-section">
+                <div class="nv-sec-title">章节统计</div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:4px 0;">
+                  <span>字数：</span><span id="nv-stat-words">0</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:4px 0;">
+                  <span>目标：</span><span id="nv-stat-target">3000 字</span>
+                </div>
+                <div style="margin-top:6px;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;">
+                  <div id="nv-stat-bar" style="height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width .3s;"></div>
+                </div>
+              </div>
+
+              <div class="nv-section" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
                 <div class="nv-sec-title">创作设置</div>
                 <label class="nv-label">题材</label>
                 <select class="nv-sel" id="nv-genre" onchange="nvSaveField('genre',this.value)">
@@ -1396,32 +1528,360 @@
                   <option value="urban">都市</option>
                   <option value="historical">历史</option>
                 </select>
-                <label class="nv-label">文风</label>
-                <select class="nv-sel" id="nv-style" onchange="nvSaveField('style',this.value)">
-                  <option value="descriptive">细腻描写</option>
-                  <option value="concise">简练干脆</option>
-                  <option value="literary">文学性强</option>
-                  <option value="humorous">幽默风趣</option>
-                  <option value="poetic">诗意唯美</option>
-                </select>
+                <label class="nv-label">写作风格</label>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;">
+                  <button class="nv-style-tag active" onclick="nvSetStyle(this,'descriptive')">热血爽文</button>
+                  <button class="nv-style-tag" onclick="nvSetStyle(this,'concise')">细腻情感</button>
+                  <button class="nv-style-tag" onclick="nvSetStyle(this,'literary')">悬疑紧张</button>
+                  <button class="nv-style-tag" onclick="nvSetStyle(this,'poetic')">诗意唯美</button>
+                </div>
+                <label class="nv-label">世界观设定</label>
+                <textarea class="nv-ta" id="nv-description" rows="3" placeholder="远古大陆，灵气浮沉，人族、魔族、妖族三方鼎立..." onchange="nvSaveField('description',this.value)"></textarea>
                 <label class="nv-label">AI 模型</label>
                 <select class="nv-sel" id="nv-model" onchange="nvSaveField('provider',this.value)">
                   <option value="">自动选择</option>
                 </select>
                 <label class="nv-label">每章字数</label>
-                <input type="number" class="nv-inp" id="nv-chapter-words" value="2000" min="300" max="10000" step="100" onchange="nvSaveField('chapter_words',this.value)" />
+                <input type="number" class="nv-inp" id="nv-chapter-words" value="3000" min="300" max="10000" step="100" onchange="nvSaveField('chapter_words',this.value)" />
+              </div>
+
+              <div class="nv-section">
+                <div class="nv-sec-title">篇幅</div>
+                <div class="nv-type-cards" id="nv-type-cards">
+                  <div class="nv-type-card active" data-type="flash" onclick="nvSetType('flash')">
+                    <div class="nv-type-card-name">超短篇</div>
+                    <div class="nv-type-card-desc">1~3章</div>
+                  </div>
+                  <div class="nv-type-card" data-type="short" onclick="nvSetType('short')">
+                    <div class="nv-type-card-name">短篇</div>
+                    <div class="nv-type-card-desc">5~10章</div>
+                  </div>
+                  <div class="nv-type-card" data-type="long" onclick="nvSetType('long')">
+                    <div class="nv-type-card-name">长篇</div>
+                    <div class="nv-type-card-desc">20章+</div>
+                  </div>
+                </div>
                 <label class="nv-label">章节数</label>
                 <input type="number" class="nv-inp" id="nv-chapter-count" value="10" min="1" max="200" onchange="nvSaveField('chapter_count',this.value)" />
-                <label class="nv-label">补充描述</label>
-                <textarea class="nv-ta" id="nv-description" rows="3" placeholder="世界观、主要角色、核心冲突..." onchange="nvSaveField('description',this.value)"></textarea>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- ══ 个人信息 ══ -->
+      <div id="page-profile" class="page" style="padding:24px;">
+        <div class="section-title">账号信息</div>
+        <div class="card" style="padding:24px;max-width:500px;margin-bottom:24px;">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+            <div style="width:56px;height:56px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#000;" id="profile-avatar-lg">U</div>
+            <div>
+              <div style="font-size:16px;font-weight:600;color:var(--text);" id="profile-username">--</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:2px;" id="profile-role">用户</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">用户名</div><div style="font-size:13px;color:var(--text);" id="profile-name-val">--</div></div>
+            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">邮箱</div><div style="font-size:13px;color:var(--text);" id="profile-email-val">--</div></div>
+            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">角色</div><div style="font-size:13px;color:var(--text);" id="profile-role-val">--</div></div>
+            <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">注册时间</div><div style="font-size:13px;color:var(--text);" id="profile-created-val">--</div></div>
+          </div>
+        </div>
+
+        <div class="section-title">修改密码</div>
+        <div class="card" style="padding:24px;max-width:500px;">
+          <div style="margin-bottom:14px;"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">当前密码</label><input type="password" id="pwd-old" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" /></div>
+          <div style="margin-bottom:14px;"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">新密码</label><input type="password" id="pwd-new" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" /></div>
+          <div style="margin-bottom:18px;"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">确认新密码</label><input type="password" id="pwd-confirm" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" /></div>
+          <button onclick="changePassword()" style="padding:10px 28px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">确认修改</button>
+          <div id="pwd-msg" style="margin-top:10px;font-size:12px;"></div>
+        </div>
+      </div>
+
+      <!-- ══ 雷达总览 ══ -->
+      <div id="page-radar" class="page" style="padding:24px;">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(139,92,246,.2))">👁️</div><div class="stat-info"><div class="label">监控账号</div><div class="value" id="rd-accounts">0</div></div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(16,185,129,.2))">📄</div><div class="stat-info"><div class="label">提取内容</div><div class="value" id="rd-contents">0</div></div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(245,158,11,.2))">⚡</div><div class="stat-info"><div class="label">已复刻</div><div class="value" id="rd-replicated">0</div></div></div>
+          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(236,72,153,.2))">🎙️</div><div class="stat-info"><div class="label">克隆声音</div><div class="value" id="rd-voices">0</div></div></div>
+        </div>
+        <div class="section-title">快速提取</div>
+        <div class="card" style="padding:20px;margin-bottom:20px;">
+          <div style="display:flex;gap:10px;align-items:flex-end;">
+            <div style="flex:1"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">粘贴视频链接</label><input id="radar-extract-url" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" placeholder="抖音/快手/小红书/B站 视频链接..." /></div>
+            <button onclick="radarExtract()" style="padding:8px 20px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">AI 提取分析</button>
+          </div>
+          <div id="radar-extract-result" style="margin-top:12px;"></div>
+        </div>
+        <div class="grid-2">
+          <div><div class="section-title">最近提取内容</div><div id="rd-recent-contents" class="card" style="padding:16px;"><div style="color:var(--text3);font-size:12px;text-align:center;">暂无内容</div></div></div>
+          <div><div class="section-title">最近复刻任务</div><div id="rd-recent-tasks" class="card" style="padding:16px;"><div style="color:var(--text3);font-size:12px;text-align:center;">暂无任务</div></div></div>
+        </div>
+      </div>
+
+      <!-- ══ 监控账号 (素材库) ══ -->
+      <div id="page-monitor" class="page" style="padding:24px;">
+        <div style="margin-bottom:6px;">
+          <div style="font-size:20px;font-weight:700;color:var(--text);">我的素材库</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px;">所有历史资产：下载的视频、提取的文案、合成的配音</div>
+        </div>
+        <!-- 搜索栏 -->
+        <div style="margin-bottom:16px;">
+          <input id="mat-search" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" placeholder="搜索文件名、文案关键词..." oninput="matFilterContent()" />
+        </div>
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;" id="mat-tabs">
+          <button class="mat-tab active" onclick="matSwitchTab('blogger')" data-tab="blogger">👤 博主</button>
+          <button class="mat-tab" onclick="matSwitchTab('parsed')" data-tab="parsed">📄 解析记录</button>
+          <button class="mat-tab" onclick="matSwitchTab('transcript')" data-tab="transcript">📝 文案</button>
+          <button class="mat-tab" onclick="matSwitchTab('audio')" data-tab="audio">🎵 配音</button>
+        </div>
+        <!-- 博主 Tab -->
+        <div id="mat-tab-blogger">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+            <button onclick="addMonitorPrompt()" style="padding:7px 18px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">+ 关注博主</button>
+          </div>
+          <div id="monitor-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无关注博主，点击上方按钮添加</div></div>
+          <!-- 博主详情面板 -->
+          <div id="monitor-detail" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+            <div class="section-title">博主内容 · <span id="md-name"></span></div>
+            <div style="margin-bottom:12px;display:flex;gap:8px;">
+              <input id="md-video-url" style="flex:1;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" placeholder="粘贴该博主的视频链接提取内容..." />
+              <button onclick="extractMonitorVideo()" style="padding:8px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">提取内容</button>
+            </div>
+            <div id="md-videos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+          </div>
+        </div>
+        <!-- 解析记录 Tab -->
+        <div id="mat-tab-parsed" style="display:none;">
+          <div id="mat-parsed-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无解析记录</div></div>
+        </div>
+        <!-- 文案 Tab -->
+        <div id="mat-tab-transcript" style="display:none;">
+          <div id="mat-transcript-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无提取文案</div></div>
+        </div>
+        <!-- 配音 Tab -->
+        <div id="mat-tab-audio" style="display:none;">
+          <div id="mat-audio-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无合成配音</div></div>
+        </div>
+      </div>
+
+      <!-- ══ 内容库 ══ -->
+      <div id="page-contentlib" class="page" style="padding:24px;">
+        <div class="section-title">内容库</div>
+        <div style="margin-bottom:16px;display:flex;gap:10px;">
+          <input id="clib-search" style="flex:1;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" placeholder="搜索内容..." oninput="filterContentLib()" />
+          <select id="clib-platform-filter" style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;" onchange="loadContentLib()">
+            <option value="">全部平台</option><option value="douyin">抖音</option><option value="kuaishou">快手</option><option value="bilibili">B站</option><option value="xiaohongshu">小红书</option>
+          </select>
+        </div>
+        <div id="clib-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无提取内容</div></div>
+        <!-- 内容处理面板 -->
+        <div id="clib-process" style="display:none;margin-top:20px;border-top:1px solid var(--border);padding-top:16px;">
+          <div class="section-title">内容处理 · <span id="cp-title"></span></div>
+          <div class="card" style="padding:16px;margin-bottom:12px;">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">原始文案</div>
+            <div id="cp-original" style="font-size:12px;color:var(--text2);line-height:1.6;max-height:120px;overflow-y:auto;margin-bottom:12px;"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button onclick="cpRewrite('same')" style="padding:5px 12px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">🔄 AI 改写（保持风格）</button>
+              <button onclick="cpRewrite('oral')" style="padding:5px 12px;background:rgba(34,197,94,.12);color:#22c55e;border:none;border-radius:6px;font-size:11px;cursor:pointer;">🎙 口播风格</button>
+              <button onclick="cpRewrite('sell')" style="padding:5px 12px;background:rgba(234,179,8,.12);color:#eab308;border:none;border-radius:6px;font-size:11px;cursor:pointer;">🛒 带货风格</button>
+              <button onclick="cpRewrite('knowledge')" style="padding:5px 12px;background:rgba(59,130,246,.12);color:#60a5fa;border:none;border-radius:6px;font-size:11px;cursor:pointer;">📚 知识科普</button>
+              <button onclick="cpToAvatar()" style="padding:5px 12px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:6px;font-size:11px;cursor:pointer;">👤 生成数字人视频</button>
+              <button onclick="cpToVideo()" style="padding:5px 12px;background:rgba(139,92,246,.12);color:#8b5cf6;border:none;border-radius:6px;font-size:11px;cursor:pointer;">🎬 生成AI视频</button>
+            </div>
+          </div>
+          <div id="cp-result" style="display:none;">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">改写结果</div>
+            <div id="cp-rewritten" class="card" style="padding:14px;font-size:12px;color:var(--text);line-height:1.6;max-height:200px;overflow-y:auto;"></div>
+            <div style="margin-top:8px;display:flex;gap:6px;">
+              <button onclick="cpCopyResult()" style="padding:5px 12px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">📋 复制文案</button>
+              <button onclick="cpToAvatarRewritten()" style="padding:5px 12px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:6px;font-size:11px;cursor:pointer;">👤 用改写文案生成数字人</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ 一键复刻 ══ -->
+      <div id="page-replicate" class="page">
+        <div class="wb-page">
+          <div class="wb-header">
+            <div class="wb-header-left">
+              <div class="wb-header-title">一键复刻</div>
+              <span class="wb-header-badge">NEW</span>
+            </div>
+            <div class="wb-header-sub">素材获取 → 文案提取 → AI 仿写 → 语音合成配音</div>
+          </div>
+          <div class="wb-body">
+            <!-- Step 1: 素材获取 -->
+            <div class="wb-card">
+              <div class="wb-card-title"><span class="wb-step-badge">Step 1</span> 素材获取</div>
+              <div class="wb-input-row">
+                <textarea class="wb-url-input" id="wb-url-input" rows="2" placeholder="粘贴视频链接，或直接输入/粘贴文案内容..."></textarea>
+                <button class="wb-parse-btn" id="wb-parse-btn" onclick="wbParseInput()">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 1a5 5 0 104 8.9l3.1 3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                  解析
+                </button>
+              </div>
+              <div class="wb-upload-zone" onclick="document.getElementById('wb-file-input').click()">
+                <input type="file" id="wb-file-input" accept="audio/*,video/*" style="display:none" onchange="wbHandleUpload(this)" />
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 14V3M7 7l4-4 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 14v4a1 1 0 001 1h14a1 1 0 001-1v-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                <span>没有链接？上传本地音视频文件</span>
+                <span class="wb-upload-hint">MP3 · WAV · MP4 · MOV · 最大 200MB</span>
+              </div>
+              <div class="wb-source-info" id="wb-source-info" style="display:none">
+                <div class="wb-source-badge" id="wb-source-badge">已加载</div>
+                <span class="wb-source-name" id="wb-source-name"></span>
+                <button class="wb-source-clear" onclick="wbClearSource()">✕</button>
+              </div>
+            </div>
+            <!-- Step 2: 文案提取与 AI 仿写 -->
+            <div class="wb-card">
+              <div class="wb-card-title"><span class="wb-step-badge">Step 2</span> 文案提取与 AI 引擎</div>
+              <div class="wb-dual-pane">
+                <div class="wb-pane">
+                  <div class="wb-pane-hd"><span>原始文案</span><button class="wb-copy-btn" onclick="wbCopyText('wb-original-text')">复制</button></div>
+                  <textarea class="wb-pane-ta" id="wb-original-text" placeholder="原始文案将显示在这里...&#10;或直接粘贴/输入文案内容"></textarea>
+                </div>
+                <div class="wb-ai-toolbar">
+                  <select class="wb-style-sel" id="wb-style-select">
+                    <option value="">默认风格</option><option value="口播">口播风格</option><option value="种草">种草带货</option>
+                    <option value="故事">故事叙述</option><option value="教程">教程讲解</option><option value="搞笑">搞笑幽默</option><option value="文艺">文艺清新</option>
+                  </select>
+                  <input class="wb-custom-prompt" id="wb-custom-prompt" placeholder="自定义指令..." />
+                  <button class="wb-rewrite-btn" id="wb-rewrite-btn" onclick="wbRewrite()">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.2 3.2H10L7.6 6l.9 3L6 7.4 3.5 9l.9-3L2 4.2h2.8z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg>
+                    AI 仿写
+                  </button>
+                </div>
+                <div class="wb-pane">
+                  <div class="wb-pane-hd"><span>AI 生成文案</span><button class="wb-copy-btn" onclick="wbCopyText('wb-rewritten-text')">复制</button></div>
+                  <textarea class="wb-pane-ta" id="wb-rewritten-text" placeholder="AI 优化后的文案将显示在这里..."></textarea>
+                </div>
+              </div>
+            </div>
+            <!-- Step 3: 语音合成配音 -->
+            <div class="wb-card">
+              <div class="wb-card-title"><span class="wb-step-badge">Step 3</span> 语音合成配音</div>
+              <div class="wb-voice-label">选择音色</div>
+              <div class="wb-voice-chips" id="wb-voice-chips">
+                <span class="wb-voice-chip active" data-voice="female-sweet" onclick="wbSelectVoice(this)">甜美女声</span>
+                <span class="wb-voice-chip" data-voice="female-pro" onclick="wbSelectVoice(this)">专业女声</span>
+                <span class="wb-voice-chip" data-voice="male-mature" onclick="wbSelectVoice(this)">成熟男声</span>
+                <span class="wb-voice-chip" data-voice="male-young" onclick="wbSelectVoice(this)">青年男声</span>
+                <span class="wb-voice-chip" data-voice="child" onclick="wbSelectVoice(this)">童声</span>
+              </div>
+              <div class="wb-speed-row">
+                <span class="wb-speed-label">语速</span>
+                <input type="range" class="wb-speed-slider" id="wb-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('wb-speed-val').textContent=this.value+'x'">
+                <span class="wb-speed-val" id="wb-speed-val">1.0x</span>
+              </div>
+              <div class="wb-tts-text-label">配音文本 <span class="wb-tts-hint">自动同步 AI 文案</span></div>
+              <textarea class="wb-tts-ta" id="wb-tts-text" rows="3" placeholder="配音文本将自动从 AI 文案同步..."></textarea>
+              <button class="wb-synth-btn" id="wb-synth-btn" onclick="wbSynthesize()">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="4" y="1" width="6" height="8" rx="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 7a5 5 0 0010 0M7 11v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                一键合成配音
+              </button>
+              <div class="wb-audio-result" id="wb-audio-result" style="display:none">
+                <div class="wb-audio-hd"><span>合成结果</span><button class="wb-audio-del" onclick="wbClearAudio()">删除</button></div>
+                <audio id="wb-audio-player" controls style="width:100%;margin-top:8px"></audio>
+                <a id="wb-audio-download" class="wb-audio-dl-btn" download>下载音频</a>
+              </div>
+            </div>
+          </div>
+          <!-- 复刻历史 -->
+          <div style="padding:0 24px 24px;">
+            <div class="section-title">复刻历史</div>
+            <div id="rep-history"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无复刻记录</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ 声音克隆 ══ -->
+      <div id="page-workbench" class="page" style="padding:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;height:100%;">
+          <!-- 左侧：我的声音库 -->
+          <div>
+            <div class="section-title" style="color:var(--accent);">我的声音库</div>
+            <div id="vc-voice-list" style="display:flex;flex-direction:column;gap:12px;">
+              <div style="color:var(--text3);font-size:12px;text-align:center;padding:60px 0;">暂无克隆声音，上传音频开始克隆</div>
+            </div>
+          </div>
+          <!-- 右侧：克隆新声音 -->
+          <div>
+            <div class="section-title" style="color:var(--accent);">克隆新声音</div>
+            <div class="card" style="padding:20px;text-align:center;margin-bottom:16px;">
+              <div style="color:var(--text2);font-size:13px;margin-bottom:16px;">点击下方按钮开始录音，或上传已有音频进行克隆</div>
+              <!-- 录音按钮 -->
+              <div id="vc-record-area" style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:20px;">
+                <button id="vc-record-btn" onclick="vcToggleRecord()" style="width:80px;height:80px;border-radius:50%;border:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-size:24px;cursor:pointer;box-shadow:0 4px 20px rgba(239,68,68,.4);transition:all .2s;">
+                  🎙
+                </button>
+                <div id="vc-record-status" style="font-size:12px;color:var(--text3);">点击开始录音</div>
+                <div id="vc-record-timer" style="font-size:14px;font-weight:600;color:var(--text);display:none;">00:00</div>
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">建议录制 30-60 秒，清晰发音，安静环境</div>
+              <!-- 上传区域 -->
+              <div class="card" style="padding:24px;border:2px dashed var(--border);cursor:pointer;text-align:center;" onclick="document.getElementById('vc-file-input').click()">
+                <input type="file" id="vc-file-input" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4,audio/x-m4a" style="display:none" onchange="vcHandleUpload(this)" />
+                <div style="font-size:28px;margin-bottom:8px;">📂</div>
+                <div style="font-size:13px;color:var(--text);">上传音频文件</div>
+                <div style="font-size:11px;color:var(--text3);margin-top:4px;">支持 MP3/WAV/M4A，最大 50MB</div>
+              </div>
+            </div>
+            <!-- 声音名称输入 -->
+            <div id="vc-name-area" style="display:none;margin-bottom:16px;">
+              <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">声音名称</label>
+              <input id="vc-voice-name" style="width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;" placeholder="例如：我的声音 V1" />
+            </div>
+            <!-- 训练进度 -->
+            <div id="vc-progress-area" style="display:none;">
+              <div class="card" style="padding:16px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);text-align:center;margin-bottom:14px;">训练进度示例</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;color:var(--text2);">音频分析</span><span id="vc-step1" style="font-size:11px;color:var(--text3);">等待中</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;color:var(--text2);">特征提取</span><span id="vc-step2" style="font-size:11px;color:var(--text3);">等待中</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;color:var(--text2);">模型训练</span><span id="vc-step3" style="font-size:11px;color:var(--text3);">等待中</span></div>
+                </div>
+              </div>
+            </div>
+            <!-- 开始克隆按钮 -->
+            <button id="vc-clone-btn" onclick="vcStartClone()" style="display:none;width:100%;padding:14px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;">
+              🎙 开始克隆声音
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ 项目页面 ══ -->
       <!-- ══ 我的素材 ══ -->
+      <!-- ══ 我的作品 ══ -->
+      <div id="page-works" class="page">
+        <div class="works-page">
+          <div class="page-top-bar">
+            <div class="page-top-title">我的作品</div>
+            <div class="page-top-sub">浏览所有模块生成的内容，统一管理和下载</div>
+          </div>
+          <!-- 统计卡片 -->
+          <div class="works-stats" id="works-stats"></div>
+          <!-- Tab 筛选 -->
+          <div class="assets-tabs" id="works-tabs">
+            <button class="assets-tab active" onclick="filterWorks('all',this)">全部</button>
+            <button class="assets-tab" onclick="filterWorks('avatar',this)">数字人</button>
+            <button class="assets-tab" onclick="filterWorks('video',this)">AI 视频</button>
+            <button class="assets-tab" onclick="filterWorks('i2v',this)">图生视频</button>
+            <button class="assets-tab" onclick="filterWorks('portrait',this)">AI 形象</button>
+            <button class="assets-tab" onclick="filterWorks('comic',this)">AI 漫画</button>
+            <button class="assets-tab" onclick="filterWorks('novel',this)">AI 小说</button>
+          </div>
+          <!-- 作品网格 -->
+          <div class="works-grid" id="works-grid">
+            <div class="assets-empty">暂无作品</div>
+          </div>
+        </div>
+      </div>
+
       <div id="page-assets" class="page">
         <div class="assets-page">
           <div class="page-top-bar">
@@ -1577,172 +2037,330 @@
 
       <!-- ══ AI 数字人页面 ══ -->
       <div id="page-avatar" class="page">
+        <div class="page-top-bar"><h2>AI 数字人</h2><span class="page-top-sub">照片驱动数字人视频</span></div>
         <div class="av-page">
-          <div class="page-top-bar">
-            <div class="page-top-title">AI 数字人</div>
-            <div class="page-top-sub">选择数字人形象，输入文本或上传音频，生成逼真的说话视频</div>
-          </div>
           <div class="av-main">
-            <!-- 左侧配置面板 -->
+            <!-- ── 左侧配置面板 ── -->
             <div class="av-controls">
+              <!-- 面板内标题 -->
+              <div class="av-panel-hd">
+                <div class="av-panel-title">
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.46-6 5.5-6s5.5 2.69 5.5 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M11 3.5l2-2.5M4 3.5L2 1" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".5"/></svg>
+                  AI 数字人
+                </div>
+                <button class="av-preset-gen-btn" id="av-gen-presets-btn" onclick="generateAvatarPresets('avatar')" title="用图像模型生成预设头像">
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1l1 2.8H9L6.8 5.5l.8 2.7L5.5 6.8 3.2 8.2l.8-2.7L1.8 3.8h2.7z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg>
+                  生成预设
+                </button>
+              </div>
+
               <!-- 形象选择 -->
               <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.2"/></svg>
-                  数字人形象
+                <div class="av-sec-label">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="4" r="2.5" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                  选择形象
                 </div>
                 <div class="av-avatar-grid" id="av-avatar-grid">
                   <div class="av-avatar-card av-avatar-upload" onclick="document.getElementById('av-upload-input').click()">
                     <input type="file" id="av-upload-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)" />
                     <div class="av-avatar-img av-avatar-upload-ph">
-                      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M11 5v12M5 11h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
                     </div>
                     <span>上传形象</span>
                   </div>
                   <div class="av-avatar-card active" data-avatar="female-1" onclick="selectAvatar(this)">
                     <div class="av-avatar-img av-preset-avatar" data-preset="female-1" style="background:linear-gradient(135deg,#667eea,#764ba2)">
-                      <svg class="av-avatar-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".8"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".6"/></svg>
+                      <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
                     </div>
                     <span>商务女性</span>
                   </div>
                   <div class="av-avatar-card" data-avatar="male-1" onclick="selectAvatar(this)">
-                    <div class="av-avatar-img av-preset-avatar" data-preset="male-1" style="background:linear-gradient(135deg,#3a7bd5,#3a6073)">
-                      <svg class="av-avatar-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".8"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".6"/></svg>
+                    <div class="av-avatar-img av-preset-avatar" data-preset="male-1" style="background:linear-gradient(135deg,#3a7bd5,#00d2ff)">
+                      <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
                     </div>
                     <span>商务男性</span>
                   </div>
                   <div class="av-avatar-card" data-avatar="female-2" onclick="selectAvatar(this)">
                     <div class="av-avatar-img av-preset-avatar" data-preset="female-2" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">
-                      <svg class="av-avatar-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".8"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".6"/></svg>
+                      <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
                     </div>
                     <span>新闻主播</span>
                   </div>
                   <div class="av-avatar-card" data-avatar="male-2" onclick="selectAvatar(this)">
                     <div class="av-avatar-img av-preset-avatar" data-preset="male-2" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">
-                      <svg class="av-avatar-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".8"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".6"/></svg>
+                      <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
                     </div>
                     <span>教育讲师</span>
                   </div>
                   <div class="av-avatar-card" data-avatar="anime-1" onclick="selectAvatar(this)">
                     <div class="av-avatar-img av-preset-avatar" data-preset="anime-1" style="background:linear-gradient(135deg,#fa709a,#fee140)">
-                      <svg class="av-avatar-fallback" width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".8"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".6"/></svg>
+                      <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
                     </div>
                     <span>动漫角色</span>
                   </div>
+                  <!-- 从形象库导入 -->
+                  <div class="av-avatar-card" onclick="openPortraitImport()">
+                    <div class="av-avatar-img av-avatar-import-ph">
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.3"/><path d="M3 17c0-3.3 2.8-6 7-6s7 2.7 7 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M14 2l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg>
+                    </div>
+                    <span>形象库</span>
+                  </div>
                 </div>
-                <button class="av-gen-presets-btn" id="av-gen-presets-btn" onclick="generateAvatarPresets('avatar')" title="用 AI 生成形象预览图">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1 3h3l-2.5 2 1 3L6 7.5 3.5 9l1-3L2 4h3z" stroke="currentColor" stroke-width=".8" stroke-linejoin="round"/></svg>
-                  AI 生成形象图
-                </button>
               </div>
 
-              <!-- 驱动方式 -->
+              <!-- 台词与配音 -->
               <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v4M3.5 3.5l2.83 2.83M1 7h4M3.5 10.5l2.83-2.83" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="7" r="2" fill="currentColor" opacity=".3"/></svg>
-                  驱动方式
+                <div class="av-sec-label">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="3" y="1" width="7" height="9" rx="3.5" stroke="currentColor" stroke-width="1.1"/><path d="M1 7a5.5 5.5 0 0011 0M6.5 10.5V12" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                  台词与配音
                 </div>
                 <div class="av-drive-tabs">
                   <button class="av-drive-tab active" onclick="switchAvatarDrive('text',this)">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 3h9M2 6.5h6M2 10h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2.5h8M2 6h5M2 9.5h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                     文字驱动
                   </button>
                   <button class="av-drive-tab" onclick="switchAvatarDrive('audio',this)">
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="1" width="4" height="7" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M2.5 6.5a4 4 0 008 0M6.5 10.5v2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="4" y="1" width="4" height="6" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M2 6a4 4 0 008 0M6 9.5V11" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
                     音频驱动
                   </button>
                 </div>
-                <!-- 文字驱动 -->
                 <div id="av-drive-text" class="av-drive-pane">
-                  <textarea class="av-text-input" id="av-text-input" rows="5" placeholder="输入数字人要说的话...&#10;支持多段落，每段会自动对应一个语音片段" oninput="updateCharCount(this,'av-text-cnt')"></textarea>
+                  <!-- 脚本模板选择器 -->
+                  <div class="av-tpl-bar" id="av-tpl-bar">
+                    <span class="av-tpl-label">模板</span>
+                    <button class="av-tpl-chip active" data-tpl="" onclick="selectAvatarTemplate(this)">自由</button>
+                    <button class="av-tpl-chip" data-tpl="promo" onclick="selectAvatarTemplate(this)">推广</button>
+                    <button class="av-tpl-chip" data-tpl="knowledge" onclick="selectAvatarTemplate(this)">知识</button>
+                    <button class="av-tpl-chip" data-tpl="news" onclick="selectAvatarTemplate(this)">播报</button>
+                    <button class="av-tpl-chip" data-tpl="story" onclick="selectAvatarTemplate(this)">故事</button>
+                    <button class="av-tpl-chip" data-tpl="tutorial" onclick="selectAvatarTemplate(this)">教程</button>
+                  </div>
+                  <textarea class="av-text-input" id="av-text-input" rows="6" placeholder="输入数字人要说的台词...&#10;&#10;例：大家好，欢迎来到本频道。今天我将为大家带来...&#10;&#10;提示：长文本（>100字）将自动智能分段，每段生成独立视频片段后无缝拼接" oninput="updateCharCount(this,'av-text-cnt');onAvatarTextChange()"></textarea>
                   <div class="av-text-footer">
+                    <button class="av-ai-gen-btn" onclick="aiGenerateAvatarText()" id="av-ai-gen-btn" title="AI 智能生成台词">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.2 3.2H10L7.6 6l.9 3L6 7.4 3.5 9l.9-3L2 4.2h2.8z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg>
+                      AI 生成
+                    </button>
+                    <button class="av-seg-btn" id="av-seg-btn" onclick="segmentAvatarScript()" title="AI 智能分段" style="display:none">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M2 6h6M2 9h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                      智能分段
+                    </button>
                     <span class="char-cnt" id="av-text-cnt">0 / 3000</span>
                   </div>
-                  <!-- 语音选择 -->
-                  <div class="av-voice-row">
-                    <span class="av-voice-label">语音音色</span>
-                    <select class="srp-sel" id="av-voice-select" style="flex:1">
-                      <option value="female-sweet">甜美女声</option>
-                      <option value="female-pro">专业女声</option>
-                      <option value="male-mature">成熟男声</option>
-                      <option value="male-young">青年男声</option>
-                      <option value="child">童声</option>
-                    </select>
+                  <!-- 分段预览区 -->
+                  <div class="av-segments-preview" id="av-segments-preview" style="display:none">
+                    <div class="av-seg-hd">
+                      <span class="av-seg-title">
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1 2.5h9M1 5.5h7M1 8.5h8" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                        分段预览
+                      </span>
+                      <span class="av-seg-count" id="av-seg-count"></span>
+                      <button class="av-seg-clear" onclick="clearAvatarSegments()" title="清除分段">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                      </button>
+                    </div>
+                    <div class="av-seg-list" id="av-seg-list"></div>
+                  </div>
+                  <div class="av-voice-section">
+                    <div class="av-voice-hd">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="color:var(--accent);flex-shrink:0"><path d="M4 3v6M2 4.5v3M6 2v8M8 4v4M10 4.5v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+                      <span class="av-voice-label">音色</span>
+                    </div>
+                    <div class="av-voice-chips" id="av-voice-chips">
+                      <span class="av-voice-chip active" data-voice="" onclick="selectAvatarVoice(this)">自动</span>
+                      <span class="av-voice-chip" data-voice="female-sweet" onclick="selectAvatarVoice(this)">甜美女声</span>
+                      <span class="av-voice-chip" data-voice="female-pro" onclick="selectAvatarVoice(this)">专业女声</span>
+                      <span class="av-voice-chip" data-voice="male-mature" onclick="selectAvatarVoice(this)">成熟男声</span>
+                      <span class="av-voice-chip" data-voice="male-young" onclick="selectAvatarVoice(this)">青年男声</span>
+                      <span class="av-voice-chip" data-voice="child" onclick="selectAvatarVoice(this)">童声</span>
+                      <span class="av-voice-chip av-voice-add" onclick="document.getElementById('av-voice-upload').click()">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                        我的声音
+                      </span>
+                      <input type="file" id="av-voice-upload" accept="audio/*" style="display:none" onchange="uploadCustomVoice(this)" />
+                    </div>
+                    <!-- 已上传的自定义声音 -->
+                    <div class="av-custom-voices" id="av-custom-voices" style="display:none">
+                      <div class="av-voice-hd" style="margin-top:4px">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="color:var(--accent)"><rect x="3" y="1" width="4" height="5" rx="2" stroke="currentColor" stroke-width="1"/><path d="M1 5a4 4 0 008 0M5 8v1.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                        <span class="av-voice-label">我的声音</span>
+                      </div>
+                      <div class="av-voice-chips" id="av-custom-voice-list"></div>
+                    </div>
+                    <div class="av-speed-row">
+                      <span class="av-speed-label">语速</span>
+                      <input type="range" class="av-speed-slider" id="av-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('av-speed-val').textContent=this.value+'x'">
+                      <span class="av-speed-val" id="av-speed-val">1.0x</span>
+                    </div>
                   </div>
                 </div>
-                <!-- 音频驱动 -->
                 <div id="av-drive-audio" class="av-drive-pane" style="display:none">
                   <div class="av-audio-drop" onclick="document.getElementById('av-audio-input').click()">
                     <input type="file" id="av-audio-input" accept="audio/*" style="display:none" onchange="handleAvatarAudio(this)" />
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><rect x="7" y="2" width="10" height="14" rx="5" stroke="currentColor" stroke-width="1.4"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="7" y="2" width="10" height="14" rx="5" stroke="currentColor" stroke-width="1.4"/><path d="M5 11a7 7 0 0014 0M12 18v4M8 22h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                     <span>点击上传音频文件</span>
-                    <span class="av-drop-hint">MP3 / WAV / M4A，最大 50MB</span>
+                    <span class="av-drop-hint">MP3 · WAV · M4A · 最大 50MB</span>
                   </div>
                   <div class="av-audio-loaded" id="av-audio-loaded" style="display:none">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="color:var(--accent);flex-shrink:0"><rect x="4" y="1" width="6" height="8" rx="3" stroke="currentColor" stroke-width="1.1"/><path d="M1.5 7a5 5 0 0011 0M7 10.5V12" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
                     <span class="av-audio-name" id="av-audio-name">audio.mp3</span>
-                    <button class="av-audio-remove" onclick="removeAvatarAudio()">x</button>
+                    <button class="av-audio-remove" onclick="removeAvatarAudio()">
+                      <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <!-- 背景设置 -->
+              <!-- 背景场景 -->
               <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M1 9l3-3 2.5 2.5 2.5-3 4 4.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-                  背景设置
+                <div class="av-sec-label">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.1"/><path d="M1 8.5l3-3 2.5 2.5 2-2.5 4 4" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+                  背景场景
                 </div>
                 <div class="av-bg-grid" id="av-bg-grid">
+                  <!-- 办公室 -->
                   <div class="av-bg-card active" data-bg="office" onclick="selectAvatarBg(this)">
-                    <div class="av-bg-preview av-preset-bg" data-preset="office" style="background:linear-gradient(135deg,#1a1a2e,#16213e)">
-                      <svg class="av-bg-fallback" viewBox="0 0 48 28" fill="none"><rect x="4" y="4" width="14" height="10" rx="1" stroke="#fff" stroke-width=".8" opacity=".5"/><rect x="22" y="8" width="6" height="16" rx="1" stroke="#fff" stroke-width=".8" opacity=".35"/><rect x="32" y="6" width="12" height="18" rx="1" stroke="#fff" stroke-width=".8" opacity=".4"/></svg>
+                    <div class="av-bg-preview av-preset-bg" data-preset="office" style="background:linear-gradient(160deg,#1c2e4a 0%,#243b55 100%)">
+                      <svg class="av-bg-fallback" viewBox="0 0 60 36" fill="none">
+                        <!-- 窗外城市 -->
+                        <rect x="4" y="2" width="52" height="32" rx="2" fill="#1a3a5c" opacity=".6"/>
+                        <!-- 大楼剪影 -->
+                        <rect x="8" y="12" width="8" height="22" fill="#0d1f33" opacity=".8"/>
+                        <rect x="18" y="6" width="6" height="28" fill="#0d1f33" opacity=".8"/>
+                        <rect x="26" y="16" width="10" height="18" fill="#0d1f33" opacity=".8"/>
+                        <rect x="38" y="10" width="7" height="24" fill="#0d1f33" opacity=".8"/>
+                        <rect x="47" y="18" width="9" height="16" fill="#0d1f33" opacity=".8"/>
+                        <!-- 窗灯 -->
+                        <rect x="10" y="14" width="2" height="2" fill="#ffd700" opacity=".7"/>
+                        <rect x="13" y="18" width="2" height="2" fill="#ffd700" opacity=".5"/>
+                        <rect x="20" y="9" width="2" height="2" fill="#ffd700" opacity=".6"/>
+                        <rect x="39" y="13" width="2" height="2" fill="#ffd700" opacity=".5"/>
+                        <!-- 桌面 -->
+                        <rect x="0" y="28" width="60" height="8" rx="1" fill="#162032" opacity=".9"/>
+                        <rect x="8" y="26" width="18" height="4" rx="1" fill="#1e2d40" opacity=".8"/>
+                      </svg>
                     </div>
                     <span>办公室</span>
                   </div>
+                  <!-- 演播室 -->
                   <div class="av-bg-card" data-bg="studio" onclick="selectAvatarBg(this)">
-                    <div class="av-bg-preview av-preset-bg" data-preset="studio" style="background:linear-gradient(135deg,#0f0c29,#302b63)">
-                      <svg class="av-bg-fallback" viewBox="0 0 48 28" fill="none"><circle cx="24" cy="6" r="4" stroke="#fff" stroke-width=".8" opacity=".5"/><rect x="6" y="18" width="36" height="8" rx="2" stroke="#fff" stroke-width=".8" opacity=".3"/></svg>
+                    <div class="av-bg-preview av-preset-bg" data-preset="studio" style="background:linear-gradient(160deg,#0d0b2b 0%,#1a1250 100%)">
+                      <svg class="av-bg-fallback" viewBox="0 0 60 36" fill="none">
+                        <!-- 射灯光束 -->
+                        <path d="M10 0 L22 18 L2 18Z" fill="url(#sg1)" opacity=".3"/>
+                        <path d="M50 0 L62 18 L38 18Z" fill="url(#sg2)" opacity=".3"/>
+                        <defs>
+                          <linearGradient id="sg1" x1="10" y1="0" x2="12" y2="18" gradientUnits="userSpaceOnUse"><stop stop-color="#7c6cf0"/><stop offset="1" stop-color="#7c6cf0" stop-opacity="0"/></linearGradient>
+                          <linearGradient id="sg2" x1="50" y1="0" x2="50" y2="18" gradientUnits="userSpaceOnUse"><stop stop-color="#21fff3"/><stop offset="1" stop-color="#21fff3" stop-opacity="0"/></linearGradient>
+                        </defs>
+                        <!-- 背景屏幕 -->
+                        <rect x="10" y="4" width="40" height="18" rx="2" fill="#1e1660" opacity=".8"/>
+                        <rect x="13" y="7" width="34" height="12" rx="1" fill="#2a1f8c" opacity=".6"/>
+                        <!-- 播音台 -->
+                        <rect x="4" y="26" width="52" height="10" rx="3" fill="#120f3a" opacity=".9"/>
+                        <rect x="16" y="23" width="28" height="5" rx="2" fill="#1a166a" opacity=".8"/>
+                        <!-- 射灯点 -->
+                        <circle cx="8" cy="2" r="2.5" fill="#ffe566" opacity=".8"/>
+                        <circle cx="52" cy="2" r="2.5" fill="#ffe566" opacity=".8"/>
+                      </svg>
                     </div>
                     <span>演播室</span>
                   </div>
+                  <!-- 教室 -->
                   <div class="av-bg-card" data-bg="classroom" onclick="selectAvatarBg(this)">
-                    <div class="av-bg-preview av-preset-bg" data-preset="classroom" style="background:linear-gradient(135deg,#1a2332,#2d3a4a)">
-                      <svg class="av-bg-fallback" viewBox="0 0 48 28" fill="none"><rect x="8" y="3" width="32" height="16" rx="1.5" stroke="#fff" stroke-width=".8" opacity=".45"/><rect x="14" y="22" width="8" height="4" rx="1" stroke="#fff" stroke-width=".6" opacity=".25"/><rect x="26" y="22" width="8" height="4" rx="1" stroke="#fff" stroke-width=".6" opacity=".25"/></svg>
+                    <div class="av-bg-preview av-preset-bg" data-preset="classroom" style="background:linear-gradient(160deg,#1c2a3a 0%,#243447 100%)">
+                      <svg class="av-bg-fallback" viewBox="0 0 60 36" fill="none">
+                        <!-- 黑板 -->
+                        <rect x="6" y="3" width="48" height="22" rx="2" fill="#1a3320" opacity=".9"/>
+                        <rect x="9" y="6" width="42" height="16" rx="1" fill="#1e3d27" opacity=".7"/>
+                        <!-- 板书线条 -->
+                        <line x1="14" y1="10" x2="34" y2="10" stroke="#fff" stroke-width=".7" stroke-linecap="round" opacity=".3"/>
+                        <line x1="14" y1="14" x2="28" y2="14" stroke="#fff" stroke-width=".7" stroke-linecap="round" opacity=".25"/>
+                        <line x1="14" y1="18" x2="32" y2="18" stroke="#fff" stroke-width=".7" stroke-linecap="round" opacity=".2"/>
+                        <!-- 粉笔槽 -->
+                        <rect x="6" y="24" width="48" height="2" rx="1" fill="#2d4a35" opacity=".8"/>
+                        <!-- 讲桌 -->
+                        <rect x="18" y="28" width="24" height="6" rx="1.5" fill="#1a2535" opacity=".9"/>
+                        <rect x="14" y="27" width="32" height="3" rx="1" fill="#243347" opacity=".8"/>
+                        <!-- 窗 -->
+                        <rect x="50" y="4" width="8" height="16" rx="1" fill="#3a6080" opacity=".4"/>
+                        <line x1="54" y1="4" x2="54" y2="20" stroke="#fff" stroke-width=".5" opacity=".3"/>
+                      </svg>
                     </div>
                     <span>教室</span>
                   </div>
+                  <!-- 户外 -->
                   <div class="av-bg-card" data-bg="outdoor" onclick="selectAvatarBg(this)">
-                    <div class="av-bg-preview av-preset-bg" data-preset="outdoor" style="background:linear-gradient(180deg,#1b4332,#2d6a4f 60%,#40916c)">
-                      <svg class="av-bg-fallback" viewBox="0 0 48 28" fill="none"><path d="M0 20 L12 8 L20 16 L30 6 L48 20" stroke="#fff" stroke-width=".8" opacity=".4" fill="none"/><circle cx="38" cy="5" r="3" fill="#FFD700" opacity=".35"/></svg>
+                    <div class="av-bg-preview av-preset-bg" data-preset="outdoor" style="background:linear-gradient(180deg,#1a4a6e 0%,#2d6a4f 55%,#1b4332 100%)">
+                      <svg class="av-bg-fallback" viewBox="0 0 60 36" fill="none">
+                        <!-- 天空 -->
+                        <rect x="0" y="0" width="60" height="20" fill="#1a4a6e" opacity=".5"/>
+                        <!-- 太阳 -->
+                        <circle cx="48" cy="8" r="5" fill="#ffe566" opacity=".7"/>
+                        <!-- 云 -->
+                        <ellipse cx="20" cy="8" rx="8" ry="4" fill="#fff" opacity=".12"/>
+                        <ellipse cx="28" cy="7" rx="6" ry="3.5" fill="#fff" opacity=".1"/>
+                        <!-- 远山 -->
+                        <path d="M0 22 L10 10 L20 18 L30 8 L42 18 L52 12 L60 20 L60 36 L0 36Z" fill="#1b4332" opacity=".8"/>
+                        <!-- 草地 -->
+                        <rect x="0" y="26" width="60" height="10" rx="0" fill="#2d6a4f" opacity=".9"/>
+                        <!-- 树 -->
+                        <rect x="7" y="16" width="3" height="12" rx="1" fill="#1b4332"/>
+                        <ellipse cx="8.5" cy="14" rx="5" ry="6" fill="#2d6a4f" opacity=".9"/>
+                        <rect x="50" y="18" width="2.5" height="9" rx="1" fill="#1b4332"/>
+                        <ellipse cx="51" cy="16" rx="4" ry="5" fill="#2d6a4f" opacity=".9"/>
+                      </svg>
                     </div>
                     <span>户外</span>
                   </div>
+                  <!-- 绿幕 -->
                   <div class="av-bg-card" data-bg="green" onclick="selectAvatarBg(this)">
                     <div class="av-bg-preview" style="background:#00b140">
-                      <span style="font-size:8px;color:rgba(255,255,255,.5);font-weight:600">CHROMA</span>
+                      <svg viewBox="0 0 60 36" fill="none" style="width:100%;height:100%">
+                        <rect width="60" height="36" fill="#00b140"/>
+                        <!-- 网格线 -->
+                        <line x1="20" y1="0" x2="20" y2="36" stroke="#009933" stroke-width=".8" opacity=".5"/>
+                        <line x1="40" y1="0" x2="40" y2="36" stroke="#009933" stroke-width=".8" opacity=".5"/>
+                        <line x1="0" y1="12" x2="60" y2="12" stroke="#009933" stroke-width=".8" opacity=".5"/>
+                        <line x1="0" y1="24" x2="60" y2="24" stroke="#009933" stroke-width=".8" opacity=".5"/>
+                        <!-- CHROMA 文字 -->
+                        <text x="30" y="21" text-anchor="middle" font-size="6" font-weight="700" fill="#fff" opacity=".5" font-family="monospace">CHROMA KEY</text>
+                      </svg>
                     </div>
                     <span>绿幕</span>
                   </div>
+                  <!-- 自定义 -->
                   <div class="av-bg-card" data-bg="custom" onclick="document.getElementById('av-bg-upload').click()">
                     <input type="file" id="av-bg-upload" accept="image/*" style="display:none" onchange="handleAvatarBgUpload(this)" />
-                    <div class="av-bg-preview av-bg-upload-ph"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+                    <div class="av-bg-preview av-bg-upload-ph">
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    </div>
                     <span>自定义</span>
                   </div>
                 </div>
                 <button class="av-gen-presets-btn" id="av-gen-bg-btn" onclick="generateAvatarPresets('background')" title="用 AI 生成背景预览图">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1 3h3l-2.5 2 1 3L6 7.5 3.5 9l1-3L2 4h3z" stroke="currentColor" stroke-width=".8" stroke-linejoin="round"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.2 3.2H10L7.6 6l.9 3L6 7.4 3.5 9l.9-3L2 6h2.8z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg>
                   AI 生成背景图
                 </button>
               </div>
 
-              <!-- 表情手势 -->
+              <!-- 视频设置 -->
               <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/><circle cx="5" cy="5.5" r=".8" fill="currentColor"/><circle cx="9" cy="5.5" r=".8" fill="currentColor"/><path d="M4.5 9a3 3 0 005 0" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
-                  表情与手势
+                <div class="av-sec-label">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2.5" width="7.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M9.5 4.5l3-1.5v6l-3-1.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+                  视频设置
                 </div>
-                <div class="av-gesture-row">
-                  <div class="av-gesture-group">
-                    <span class="av-gesture-label">表情</span>
+                <div class="av-settings-grid">
+                  <div class="av-param-group">
+                    <span class="av-param-label">画面比例</span>
+                    <div class="av-ratio-btns">
+                      <button class="av-ratio-btn" onclick="setAvatarRatio('16:9',this)">16:9</button>
+                      <button class="av-ratio-btn active" onclick="setAvatarRatio('9:16',this)">9:16</button>
+                      <button class="av-ratio-btn" onclick="setAvatarRatio('1:1',this)">1:1</button>
+                    </div>
+                  </div>
+                  <div class="av-param-group">
+                    <span class="av-param-label">表情风格</span>
                     <select class="srp-sel" id="av-expression">
                       <option value="natural">自然</option>
                       <option value="smile">微笑</option>
@@ -1751,85 +2369,398 @@
                       <option value="calm">平静</option>
                     </select>
                   </div>
-                  <div class="av-gesture-group">
-                    <span class="av-gesture-label">手势</span>
-                    <select class="srp-sel" id="av-gesture">
-                      <option value="none">无</option>
-                      <option value="explain">讲解</option>
-                      <option value="point">指引</option>
-                      <option value="wave">挥手</option>
-                      <option value="thumbup">点赞</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 
-              <!-- 数字人模型 -->
+              <!-- 生成模型 -->
               <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h2M8 6h2M4 9h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-                  数字人模型 <span style="font-weight:400;color:var(--text3);font-size:11px">*必选</span>
+                <div class="av-sec-label">
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.1"/><path d="M3.5 5.5h2M7.5 5.5h2M3.5 8h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+                  生成模型
                 </div>
                 <div class="ig-model-selector" id="av-model-selector">
-                  <div class="ig-model-opt active" data-model="auto" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon">A</span>
-                    <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配</div></div>
-                  </div>
-                </div>
-                <div style="font-size:11px;color:var(--text3);margin-top:4px">需要在 AI 配置中添加数字人供应商（HeyGen / D-ID / Synthesia）</div>
-              </div>
-
-              <!-- 视频参数 -->
-              <div class="av-section">
-                <div class="av-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M10 5.5l3-1.5v6l-3-1.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
-                  视频参数
-                </div>
-                <div class="av-param-row">
-                  <div class="av-param-group">
-                    <span class="av-gesture-label">比例</span>
-                    <div class="av-ratio-btns">
-                      <button class="av-ratio-btn" onclick="setAvatarRatio('16:9',this)">16:9</button>
-                      <button class="av-ratio-btn active" onclick="setAvatarRatio('9:16',this)">9:16</button>
-                      <button class="av-ratio-btn" onclick="setAvatarRatio('1:1',this)">1:1</button>
+                  <div class="ig-model-opt active" data-model="cogvideox-flash" onclick="selectAvModel(this)">
+                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">Z</span>
+                    <div class="ig-model-info">
+                      <div class="ig-model-name">CogVideoX Flash</div>
+                      <div class="ig-model-desc">智谱AI · 快速生成</div>
                     </div>
                   </div>
-                  <div class="av-param-group">
-                    <span class="av-gesture-label">分辨率</span>
-                    <select class="srp-sel" id="av-resolution">
-                      <option value="720p">720P</option>
-                      <option value="1080p" selected>1080P</option>
-                      <option value="2k">2K</option>
-                    </select>
+                  <div class="ig-model-opt" data-model="cogvideox-3" onclick="selectAvModel(this)">
+                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">Z</span>
+                    <div class="ig-model-info">
+                      <div class="ig-model-name">CogVideoX 3</div>
+                      <div class="ig-model-desc">智谱AI · 高质量</div>
+                    </div>
                   </div>
+                </div>
+              </div>
+
+              <!-- 生成按钮区 -->
+              <div class="av-gen-area">
+                <button class="av-gen-btn" id="av-gen-btn" onclick="startAvatarGeneration()">
+                  <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3.5 2.5l9 5-9 5v-10z" fill="currentColor"/></svg>
+                  生成数字人视频
+                </button>
+                <div class="av-gen-hint" id="av-gen-hint">基于智谱 CogVideoX 图生视频 · 预计 1~3 分钟</div>
+              </div>
+
+            </div>
+
+            <!-- ── 右侧预览 & 历史 ── -->
+            <div class="av-preview">
+
+              <!-- 主预览框 -->
+              <div class="av-preview-box" id="av-preview-box">
+                <div class="av-preview-empty">
+                  <!-- 流程说明卡片 -->
+                  <div class="av-pipeline">
+                    <div class="av-pipeline-title">生成流程</div>
+                    <div class="av-pipeline-steps">
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="3" stroke="#fff" stroke-width="1.2"/><path d="M2 14c0-3.31 2.46-6 6-6s6 2.69 6 6" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </div>
+                        <div class="av-pip-info">
+                          <div class="av-pip-name">选择形象</div>
+                          <div class="av-pip-desc">上传或选预设人像</div>
+                        </div>
+                      </div>
+                      <div class="av-pip-conn">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="10" height="8" rx="1.5" stroke="#fff" stroke-width="1.2"/><path d="M12 6l4-2v8l-4-2" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="av-pip-info">
+                          <div class="av-pip-name">图生视频</div>
+                          <div class="av-pip-desc">CogVideoX · ~2min</div>
+                        </div>
+                      </div>
+                      <div class="av-pip-conn">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4.5" y="1.5" width="7" height="9" rx="3.5" stroke="#fff" stroke-width="1.2"/><path d="M2 8.5a6 6 0 0012 0M8 13.5V15" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </div>
+                        <div class="av-pip-info">
+                          <div class="av-pip-name">TTS 配音</div>
+                          <div class="av-pip-desc">语音合成 · &lt;10s</div>
+                        </div>
+                      </div>
+                      <div class="av-pip-conn">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                      </div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#fa709a,#fee140)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="14" height="8" rx="1.5" stroke="#fff" stroke-width="1.2"/><path d="M5 7.5l2 2 4-4" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="av-pip-info">
+                          <div class="av-pip-name">合成输出</div>
+                          <div class="av-pip-desc">FFmpeg 混流</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="av-pip-cta">在左侧完成配置后点击「生成数字人视频」</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- pipeline 模板（用于恢复空状态） -->
+              <template id="av-pipeline-tpl">
+                <div class="av-preview-empty">
+                  <div class="av-pipeline">
+                    <div class="av-pipeline-title">生成流程</div>
+                    <div class="av-pipeline-steps">
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="3" stroke="#fff" stroke-width="1.2"/><path d="M2 14c0-3.31 2.46-6 6-6s6 2.69 6 6" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </div>
+                        <div class="av-pip-info"><div class="av-pip-name">选择形象</div><div class="av-pip-desc">上传或选预设人像</div></div>
+                      </div>
+                      <div class="av-pip-conn"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="10" height="8" rx="1.5" stroke="#fff" stroke-width="1.2"/><path d="M12 6l4-2v8l-4-2" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="av-pip-info"><div class="av-pip-name">图生视频</div><div class="av-pip-desc">CogVideoX · ~2min</div></div>
+                      </div>
+                      <div class="av-pip-conn"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="4.5" y="1.5" width="7" height="9" rx="3.5" stroke="#fff" stroke-width="1.2"/><path d="M2 8.5a6 6 0 0012 0M8 13.5V15" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>
+                        </div>
+                        <div class="av-pip-info"><div class="av-pip-name">TTS 配音</div><div class="av-pip-desc">语音合成 · &lt;10s</div></div>
+                      </div>
+                      <div class="av-pip-conn"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 8h8M9 5l3 3-3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                      <div class="av-pip-step">
+                        <div class="av-pip-icon" style="background:linear-gradient(135deg,#fa709a,#fee140)">
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="14" height="8" rx="1.5" stroke="#fff" stroke-width="1.2"/><path d="M5 7.5l2 2 4-4" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="av-pip-info"><div class="av-pip-name">合成输出</div><div class="av-pip-desc">FFmpeg 混流</div></div>
+                      </div>
+                    </div>
+                    <div class="av-pip-cta">在左侧完成配置后点击「生成数字人视频」</div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 历史记录 -->
+              <div class="av-history-section">
+                <div class="av-history-hd">
+                  <span class="av-sec-label" style="margin:0">生成历史</span>
+                  <span class="av-history-count" id="av-history-count" style="display:none"></span>
+                </div>
+                <div class="av-history-grid" id="av-history">
+                  <div class="av-history-empty">完成首次生成后，历史记录将在此显示</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AI 形象生成页面 ══ -->
+      <div id="page-portrait" class="page">
+        <div class="ptr-page">
+          <!-- 顶栏 -->
+          <div class="ptr-header">
+            <div class="ptr-header-left">
+              <div class="ptr-header-title">AI 形象工坊</div>
+              <span class="ptr-header-badge">NEW</span>
+            </div>
+            <div class="ptr-header-sub">上传真人照片，AI 生成 2D/3D 卡通形象，可用于漫画、视频、数字人</div>
+          </div>
+
+          <div class="ptr-body">
+            <!-- 左侧：上传 & 设置 -->
+            <div class="ptr-sidebar">
+              <!-- 照片上传 -->
+              <div class="ptr-field">
+                <div class="ptr-label">上传照片 <span class="ptr-required">*必须</span></div>
+                <div class="ptr-dropzone" id="ptr-dropzone"
+                     ondrop="handlePtrDrop(event)" ondragover="event.preventDefault();this.classList.add('drag-over')"
+                     ondragleave="this.classList.remove('drag-over')">
+                  <input type="file" id="ptr-file-input" accept="image/*" style="display:none" onchange="handlePtrFileSelect(this)" />
+                  <div class="ptr-drop-content" id="ptr-drop-content">
+                    <label for="ptr-file-input" class="ptr-drop-label">
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                      <span>点击或拖拽上传人物照片</span>
+                      <span class="ptr-drop-hint">支持 JPG/PNG/WEBP，建议正面清晰照</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 照片预览 -->
+              <div class="ptr-field" id="ptr-preview-sec" style="display:none">
+                <div class="ptr-label">
+                  照片预览
+                  <button class="ptr-clear-btn" onclick="clearPtrPhoto()">更换</button>
+                </div>
+                <div class="ptr-photo-preview" id="ptr-photo-preview"></div>
+              </div>
+
+              <!-- 形象名称 -->
+              <div class="ptr-field">
+                <div class="ptr-label">形象名称 <span class="ptr-optional">可选</span></div>
+                <input class="ptr-input" id="ptr-name" placeholder="给你的卡通形象起个名字" />
+              </div>
+
+              <!-- 维度选择 -->
+              <div class="ptr-field">
+                <div class="ptr-label">生成类型</div>
+                <div class="ptr-dim-grid">
+                  <button class="ptr-dim-btn active" data-dim="2d" onclick="selectPtrDim(this)">
+                    <div class="ptr-dim-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="10" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M7 16c0-1.1.9-2 2-2s2 .9 2 2" stroke="currentColor" stroke-width="1.2"/></svg>
+                    </div>
+                    <div class="ptr-dim-text">2D 动漫</div>
+                    <div class="ptr-dim-sub">日漫/国漫风格</div>
+                  </button>
+                  <button class="ptr-dim-btn" data-dim="3d" onclick="selectPtrDim(this)">
+                    <div class="ptr-dim-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2l9 5v10l-9 5-9-5V7z" stroke="currentColor" stroke-width="1.4"/><path d="M12 12l9-5M12 12v10M12 12L3 7" stroke="currentColor" stroke-width="1" opacity=".4"/></svg>
+                    </div>
+                    <div class="ptr-dim-text">3D CG</div>
+                    <div class="ptr-dim-sub">皮克斯/CG风格</div>
+                  </button>
+                  <button class="ptr-dim-btn" data-dim="both" onclick="selectPtrDim(this)">
+                    <div class="ptr-dim-icon">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="8" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M14 3l8 4v6l-8 4-8-4V7z" stroke="currentColor" stroke-width="1.2"/><circle cx="6" cy="7" r="1.5" fill="currentColor" opacity=".3"/></svg>
+                    </div>
+                    <div class="ptr-dim-text">同时生成</div>
+                    <div class="ptr-dim-sub">2D + 3D 双版本</div>
+                  </button>
                 </div>
               </div>
 
               <!-- 生成按钮 -->
-              <button class="av-gen-btn" id="av-gen-btn" onclick="startAvatarGeneration()">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg>
-                生成数字人视频
+              <button class="ptr-gen-btn" id="ptr-gen-btn" onclick="startPortraitGeneration()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H2l5.5 4.2L5.3 20 12 15.8 18.7 20l-2.2-6.8L22 9h-7z" fill="currentColor"/></svg>
+                生成卡通形象
               </button>
             </div>
 
-            <!-- 右侧预览区 -->
-            <div class="av-preview">
-              <div class="av-preview-box" id="av-preview-box">
-                <div class="av-preview-empty">
-                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-                    <circle cx="32" cy="22" r="10" stroke="currentColor" stroke-width="1.5" opacity=".2"/>
-                    <path d="M12 56c0-11.05 8.95-20 20-20s20 8.95 20 20" stroke="currentColor" stroke-width="1.5" opacity=".2"/>
-                    <path d="M28 30l10 6-10 6V30z" fill="currentColor" opacity=".15"/>
+            <!-- 右侧：结果展示 -->
+            <div class="ptr-main-area">
+              <div class="ptr-canvas" id="ptr-canvas">
+                <div class="ptr-empty-state">
+                  <svg width="72" height="72" viewBox="0 0 72 72" fill="none" style="opacity:.12">
+                    <circle cx="36" cy="24" r="12" stroke="currentColor" stroke-width="2.5"/>
+                    <path d="M12 60c0-10 10.7-18 24-18s24 8 24 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    <path d="M48 14l6 6-10 10-6-6z" stroke="currentColor" stroke-width="2" opacity=".5"/>
                   </svg>
-                  <div class="av-preview-text">选择形象和驱动方式后</div>
-                  <div class="av-preview-sub">点击「生成数字人视频」开始创作</div>
+                  <div class="ptr-empty-title">上传照片开始生成</div>
+                  <div class="ptr-empty-sub">AI 将分析照片中的人物特征，生成卡通风格形象</div>
+                  <div class="ptr-empty-uses">
+                    <span class="ptr-use-tag">漫画角色</span>
+                    <span class="ptr-use-tag">视频角色</span>
+                    <span class="ptr-use-tag">数字人形象</span>
+                  </div>
                 </div>
               </div>
-              <!-- 历史记录 -->
-              <div class="av-history-section">
-                <div class="av-sec-title" style="margin-bottom:8px">生成历史</div>
-                <div class="av-history" id="av-history">
-                  <div class="av-history-empty">暂无记录</div>
+
+              <!-- 已生成的形象库 -->
+              <div class="ptr-gallery-bar">
+                <div class="ptr-gallery-toggle" onclick="togglePtrGallery()">
+                  <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 5l4-4 4 4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+                  我的形象库
+                </div>
+                <div class="ptr-gallery" id="ptr-gallery" style="display:none">
+                  <div class="ptr-gallery-empty">暂无形象</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AI 漫画生成页面 ══ -->
+      <div id="page-comic" class="page">
+        <div class="comic-page">
+          <!-- 顶栏 -->
+          <div class="comic-header">
+            <div class="comic-header-left">
+              <div class="comic-header-title">AI 漫画工坊</div>
+              <span class="comic-header-badge">BETA</span>
+            </div>
+            <div class="comic-header-sub">输入故事主题，AI 自动创作分镜脚本并生成高质量漫画</div>
+          </div>
+
+          <!-- 主体 -->
+          <div class="comic-body">
+            <!-- 左侧控制栏 -->
+            <div class="comic-sidebar">
+              <!-- 标题 -->
+              <div class="comic-field">
+                <div class="comic-label">漫画标题 <span class="comic-required">*必填</span></div>
+                <input class="comic-title-input" id="comic-title" placeholder="例：机械猫与少年" />
+              </div>
+
+              <!-- 故事内容 -->
+              <div class="comic-field">
+                <div class="comic-label">
+                  故事内容
+                  <button class="comic-ai-gen-btn" id="comic-ai-story-btn" onclick="aiGenerateComicStory()">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 4.5H15l-3.8 3 1.3 4.5L8 10l-4.5 3 1.3-4.5L1 5.5h5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+                    AI 生成
+                  </button>
+                </div>
+                <textarea class="comic-textarea" id="comic-story" rows="4" placeholder="详细描述故事内容、情节发展，或点击「AI 生成」根据标题自动创作..."></textarea>
+              </div>
+
+              <!-- 画风 -->
+              <div class="comic-field">
+                <div class="comic-label">画风</div>
+                <div class="comic-style-grid">
+                  <button class="comic-style-btn active" data-style="日系动漫" onclick="selectComicStyle(this)">日系动漫</button>
+                  <button class="comic-style-btn" data-style="美式漫画" onclick="selectComicStyle(this)">美式漫画</button>
+                  <button class="comic-style-btn" data-style="韩国漫画" onclick="selectComicStyle(this)">韩国漫画</button>
+                  <button class="comic-style-btn" data-style="少年漫画" onclick="selectComicStyle(this)">少年漫画</button>
+                  <button class="comic-style-btn" data-style="少女漫画" onclick="selectComicStyle(this)">少女漫画</button>
+                  <button class="comic-style-btn" data-style="水墨漫画" onclick="selectComicStyle(this)">水墨漫画</button>
+                  <button class="comic-style-btn" data-style="赛博朋克" onclick="selectComicStyle(this)">赛博朋克</button>
+                  <button class="comic-style-btn" data-style="欧式漫画" onclick="selectComicStyle(this)">欧式漫画</button>
+                </div>
+              </div>
+
+              <!-- 图片模型 -->
+              <div class="comic-field">
+                <div class="comic-label">图片模型</div>
+                <div class="comic-model-trigger" id="comic-model-trigger" onclick="toggleComicModelPicker()">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="opacity:.5"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6.5" r="1.5" stroke="currentColor" stroke-width="1"/><path d="M1 12l4-4 2.5 2.5 3-3.5L15 12" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+                  <span class="comic-model-label" id="comic-model-label">自动选择（推荐）</span>
+                  <svg width="10" height="6" viewBox="0 0 10 6" style="opacity:.3"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+                </div>
+                <div class="comic-model-picker" id="comic-model-picker" style="display:none"></div>
+              </div>
+
+              <!-- 页数 & 格数 — 并排 -->
+              <div style="display:flex;gap:10px">
+                <div class="comic-field" style="flex:1">
+                  <div class="comic-label">页数</div>
+                  <div class="comic-option-row">
+                    <button class="comic-opt-btn" onclick="setComicPages(2,this)">2</button>
+                    <button class="comic-opt-btn active" onclick="setComicPages(4,this)">4</button>
+                    <button class="comic-opt-btn" onclick="setComicPages(6,this)">6</button>
+                    <button class="comic-opt-btn" onclick="setComicPages(8,this)">8</button>
+                  </div>
+                </div>
+                <div class="comic-field" style="flex:1">
+                  <div class="comic-label">每页格数</div>
+                  <div class="comic-option-row">
+                    <button class="comic-opt-btn" onclick="setComicPanels(2,this)">2</button>
+                    <button class="comic-opt-btn active" onclick="setComicPanels(4,this)">4</button>
+                    <button class="comic-opt-btn" onclick="setComicPanels(6,this)">6</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 角色 -->
+              <div class="comic-field">
+                <div class="comic-label">角色 <span class="comic-optional">可选</span></div>
+                <div id="comic-characters"></div>
+                <button class="comic-add-char-btn" onclick="addComicCharacter()">+ 添加角色</button>
+              </div>
+
+              <!-- 生成按钮 -->
+              <button class="comic-gen-btn" id="comic-gen-btn" onclick="startComicGeneration()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H2l5.5 4.2L5.3 20 12 15.8 18.7 20l-2.2-6.8L22 9h-7z" fill="currentColor"/></svg>
+                开始创作
+              </button>
+            </div>
+
+            <!-- 右侧主区域 -->
+            <div class="comic-main-area">
+              <div class="comic-canvas-area" id="comic-canvas-area">
+                <div class="comic-empty-state" id="comic-preview-box">
+                  <div class="comic-empty-icon">
+                    <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                      <rect x="4" y="4" width="30" height="30" rx="5" stroke="currentColor" stroke-width="2"/>
+                      <rect x="46" y="4" width="30" height="30" rx="5" stroke="currentColor" stroke-width="2"/>
+                      <rect x="4" y="46" width="72" height="30" rx="5" stroke="currentColor" stroke-width="2"/>
+                      <circle cx="14" cy="14" r="3" fill="currentColor" opacity=".15"/>
+                      <circle cx="56" cy="14" r="3" fill="currentColor" opacity=".15"/>
+                      <line x1="20" y1="61" x2="56" y2="61" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".1"/>
+                    </svg>
+                  </div>
+                  <div class="comic-empty-title">开始你的漫画创作</div>
+                  <div class="comic-empty-sub">在左侧输入故事主题和设置，点击「开始创作」</div>
+                </div>
+              </div>
+
+              <!-- 底部历史栏 -->
+              <div class="comic-history-bar">
+                <div class="comic-history-toggle" id="comic-hist-toggle" onclick="toggleComicHistory()">
+                  <svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 5l4-4 4 4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+                  历史记录
+                </div>
+                <div class="comic-history" id="comic-history" style="display:none">
+                  <div class="comic-history-empty">暂无记录</div>
                 </div>
               </div>
             </div>
@@ -1994,7 +2925,8 @@
 
 
     </div><!-- end page-content -->
-  </div><!-- end main-area -->
+  </div><!-- end content -->
+</div><!-- end main -->
 
   <!-- 添加/编辑供应商弹窗 -->
   <div id="modal-provider" class="modal" onclick="if(event.target===this)closeProviderModal()">
@@ -2162,7 +3094,7 @@
     </div>
   </div>
 
-</div><!-- end app-shell -->
+</div><!-- end layout -->
 
 <!-- 视频模型选择弹窗 -->
 <div id="modal-vm" class="modal" onclick="if(event.target===this)closeVmModal()">
@@ -2181,6 +3113,7 @@
 <div id="img-lightbox" class="modal" onclick="closeLightbox(event)">
   <div class="lightbox-wrap">
     <img id="lightbox-img" src="" alt="" />
+    <video id="lightbox-video" src="" controls style="display:none;max-width:90vw;max-height:85vh;border-radius:8px"></video>
     <div class="lightbox-caption" id="lightbox-caption"></div>
     <button class="lightbox-close" onclick="closeLightbox()">✕</button>
   </div>

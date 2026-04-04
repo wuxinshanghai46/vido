@@ -40,7 +40,7 @@ function getZhipuKey() {
  * @param {function} params.onProgress - 进度回调
  */
 async function generateAvatarVideo(params) {
-  const { imageUrl, text, voiceId, ratio = '9:16', model = 'cogvideox-flash', onProgress } = params;
+  const { imageUrl, text, voiceId, ratio = '9:16', model = 'cogvideox-flash', expression = 'natural', background = 'office', onProgress } = params;
   const taskId = uuidv4();
   const taskDir = path.join(AVATAR_DIR, taskId);
   fs.mkdirSync(taskDir, { recursive: true });
@@ -78,25 +78,94 @@ async function generateAvatarVideo(params) {
   const sizeMap = { '9:16': '720x1280', '16:9': '1280x720', '1:1': '1024x1024' };
   const size = sizeMap[ratio] || '720x1280';
 
+  const expressionMap = {
+    natural: 'natural and relaxed facial expression',
+    smile: 'warm smiling facial expression',
+    serious: 'serious and focused facial expression',
+    excited: 'excited and energetic facial expression',
+    calm: 'calm and composed facial expression',
+  };
+  const exprDesc = expressionMap[expression] || expressionMap.natural;
+
+  const bgDescMap = {
+    office: 'in a modern corporate office with city skyline view through glass windows, warm professional lighting',
+    studio: 'in a professional TV broadcast studio with blue and purple neon lighting, LED screen background',
+    classroom: 'in a modern bright classroom with whiteboard and bookshelves, warm natural lighting',
+    outdoor: 'in a beautiful outdoor garden with cherry blossoms and soft golden sunlight',
+    green: 'against a solid green chroma key background',
+    custom: '',
+  };
+  const bgDesc = bgDescMap[background] || bgDescMap.office;
+
   const prompt = text
-    ? `The person in the image is speaking naturally to the camera. They say: "${text.slice(0, 100)}". Natural head movements, subtle facial expressions, professional presentation, smooth lip movements.`
-    : 'The person in the image is speaking naturally to the camera with confident expression, subtle head movements, professional demeanor, smooth motion.';
+    ? `The person in the image is speaking naturally to the camera ${bgDesc ? bgDesc + ', ' : ''}with ${exprDesc}. They say: "${text.slice(0, 100)}". Natural head movements, professional presentation, smooth lip movements.`
+    : `The person in the image is speaking naturally to the camera ${bgDesc ? bgDesc + ', ' : ''}with ${exprDesc}, subtle head movements, professional demeanor, smooth motion.`;
+
+  // 2.5 如果选择了背景（非绿幕/自定义），先用 CogView 生成"人物+背景"合成图
+  if (background && background !== 'green' && background !== 'custom') {
+    const bgPromptMap = {
+      office: '现代高端办公室，落地窗城市夜景',
+      studio: '专业电视演播室，蓝色霓虹灯光',
+      classroom: '明亮的现代教室，白板和书架',
+      outdoor: '美丽的户外樱花园林，金色阳光',
+    };
+    const bgPrompt = bgPromptMap[background] || bgPromptMap.office;
+    onProgress?.({ step: 'start', message: '生成场景合成图...' });
+    try {
+      const compRes = await axios.post(`${ZHIPU_API_BASE}/images/generations`, {
+        model: 'cogview-3-flash',
+        prompt: `一个年轻的中国职业人士半身照，站在${bgPrompt}的场景中，面对镜头，自然微笑，专业摄影风格，高清写实`
+      }, {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 30000
+      });
+      const compUrl = compRes.data?.data?.[0]?.url;
+      if (compUrl) {
+        const compImg = await axios.get(compUrl, { responseType: 'arraybuffer', timeout: 30000 });
+        const compPath = path.join(taskDir, 'avatar_with_bg.png');
+        fs.writeFileSync(compPath, compImg.data);
+        const ext = 'png';
+        imgParam = `data:image/${ext};base64,${compImg.data.toString('base64')}`;
+        console.log(`[Avatar] 场景合成图生成完成 (${(compImg.data.length/1024).toFixed(0)}KB)`);
+      }
+    } catch (compErr) {
+      console.warn('[Avatar] 场景合成图生成失败，使用原始头像:', compErr.message?.slice(0, 80));
+    }
+  }
 
   onProgress?.({ step: 'video', message: '正在生成动画视频（约1-3分钟）...' });
 
-  // 3. 调用智谱 CogVideoX API
-  const genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, {
-    model,
-    prompt,
-    image_url: imgParam,
-    size,
-    duration: 5,
-    fps: 30,
-    quality: 'quality'
-  }, {
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    timeout: 30000
-  });
+  // 3. 调用智谱 CogVideoX API（i2v 模式不支持 size/duration/fps 参数）
+  const reqBody = { model, prompt, image_url: imgParam };
+  // 注意：智谱 CogVideoX 图生视频（i2v）模式固定输出 720x1280 @ 5秒，
+  // 传 size/duration/fps 会报 400 "不支持当前size值"
+  console.log(`[Avatar] 智谱 i2v 请求: model=${model}, prompt长度=${prompt.length}, 图片=${imgParam.startsWith('data:') ? 'base64' : imgParam.slice(0, 60)}`);
+
+  let genRes;
+  for (let retry = 0; retry < 5; retry++) {
+    try {
+      genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, reqBody, {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 300000
+      });
+      break;
+    } catch (apiErr) {
+      const detail = apiErr.response?.data?.error?.message || apiErr.response?.data?.message || apiErr.message;
+      const status = apiErr.response?.status;
+      const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
+      const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
+      if ((isNetworkErr || isRateLimit) && retry < 4) {
+        const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
+        const reason = isRateLimit ? '服务繁忙' : '网络波动';
+        console.warn(`[Avatar] ${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
+        onProgress?.({ step: 'video', message: `${reason}，${wait}秒后自动重试...` });
+        await new Promise(r => setTimeout(r, wait * 1000));
+        continue;
+      }
+      console.error('[Avatar] 智谱 API 错误:', status, JSON.stringify(apiErr.response?.data || ''));
+      throw new Error(`智谱视频 API 调用失败 (${status || '网络错误'}): ${detail}`);
+    }
+  }
 
   const zhipuTaskId = genRes.data?.id;
   if (!zhipuTaskId) throw new Error('智谱 API 返回异常: ' + JSON.stringify(genRes.data));
@@ -128,11 +197,30 @@ async function generateAvatarVideo(params) {
 
   if (!videoUrl) throw new Error('视频生成超时，请重试');
 
-  // 5. 下载视频
-  onProgress?.({ step: 'download', message: '下载生成的视频...' });
-  const videoPath = path.join(taskDir, 'avatar_raw.mp4');
+  // 5. 从智谱云端拉取视频到本地
+  onProgress?.({ step: 'video', message: '获取视频结果...' });
+  const rawVideoPath = path.join(taskDir, 'avatar_raw.mp4');
   const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
-  fs.writeFileSync(videoPath, videoResp.data);
+  fs.writeFileSync(rawVideoPath, videoResp.data);
+
+  const ffmpegStatic = require('ffmpeg-static');
+  const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
+  const { execSync } = require('child_process');
+
+  // 5.5 创建乒乓循环视频（正放+倒放，过渡更平滑，约10秒基础素材）
+  let videoPath = rawVideoPath;
+  const pingpongPath = path.join(taskDir, 'avatar_pingpong.mp4');
+  try {
+    onProgress?.({ step: 'video', message: '优化视频连贯性...' });
+    const ppCmd = `"${ffmpegPath}" -i "${rawVideoPath}" -filter_complex "[0:v]split[v1][v2];[v2]reverse[vr];[v1][vr]concat=n=2:v=1:a=0" -c:v libx264 -preset fast -crf 22 -an -y "${pingpongPath}"`;
+    execSync(ppCmd, { timeout: 60000, stdio: 'pipe' });
+    if (fs.existsSync(pingpongPath) && fs.statSync(pingpongPath).size > 5000) {
+      videoPath = pingpongPath;
+      console.log('[Avatar] 乒乓循环视频创建完成（~10秒基础素材）');
+    }
+  } catch (ppErr) {
+    console.warn('[Avatar] 乒乓循环失败:', ppErr.message?.slice(0, 80));
+  }
 
   // 6. 生成 TTS 语音（如果有文本）
   let finalPath = videoPath;
@@ -143,31 +231,47 @@ async function generateAvatarVideo(params) {
       const audioFile = await generateSpeech(text, voiceBase, { voiceId: voiceId || null });
 
       if (audioFile && fs.existsSync(audioFile)) {
-        // 7. 合成视频 + 音频
+        // 7. 合成视频 + 音频（循环视频匹配音频长度）
         onProgress?.({ step: 'merge', message: '合成视频与语音...' });
         const mergedPath = path.join(taskDir, 'avatar_final.mp4');
-        const ffmpeg = require('fluent-ffmpeg');
         const ffmpegStatic = require('ffmpeg-static');
-        ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH || ffmpegStatic);
+        const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
+        const { execSync } = require('child_process');
 
-        await new Promise((resolve, reject) => {
-          ffmpeg(videoPath)
-            .input(audioFile)
-            .outputOptions([
-              '-c:v', 'copy',
-              '-c:a', 'aac',
-              '-map', '0:v:0',
-              '-map', '1:a:0',
-              '-shortest'
-            ])
-            .output(mergedPath)
-            .on('end', resolve)
-            .on('error', reject)
-            .run();
-        });
+        try {
+          // 获取音频时长
+          const probeCmd = `"${ffmpegPath}" -i "${audioFile}" 2>&1`;
+          let audioDuration = 5;
+          try {
+            const probeOut = execSync(probeCmd, { encoding: 'utf8', timeout: 10000 }).toString();
+            const durMatch = probeOut.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (durMatch) audioDuration = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseInt(durMatch[3]) + parseInt(durMatch[4]) / 100;
+          } catch (e) {
+            const stderr = e.stderr?.toString() || e.stdout?.toString() || '';
+            const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (durMatch) audioDuration = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseInt(durMatch[3]) + parseInt(durMatch[4]) / 100;
+          }
+          console.log(`[Avatar] 音频时长: ${audioDuration.toFixed(1)}秒，视频将循环匹配`);
 
-        if (fs.existsSync(mergedPath) && fs.statSync(mergedPath).size > 1000) {
-          finalPath = mergedPath;
+          // 用 -stream_loop 循环视频到音频长度，重新编码
+          const mergeCmd = `"${ffmpegPath}" -stream_loop -1 -i "${videoPath}" -i "${audioFile}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -map 0:v:0 -map 1:a:0 -t ${Math.ceil(audioDuration)} -movflags +faststart -y "${mergedPath}"`;
+          execSync(mergeCmd, { timeout: 120000, stdio: 'pipe' });
+
+          if (fs.existsSync(mergedPath) && fs.statSync(mergedPath).size > 1000) {
+            finalPath = mergedPath;
+            console.log(`[Avatar] 合成完成: ${(fs.statSync(mergedPath).size / 1024).toFixed(0)}KB, 时长≈${Math.ceil(audioDuration)}秒`);
+          }
+        } catch (mergeErr) {
+          console.warn('[Avatar] 循环合成失败，回退到简单合成:', mergeErr.message);
+          // 回退：简单合成 -shortest
+          const fluent = require('fluent-ffmpeg');
+          fluent.setFfmpegPath(ffmpegPath);
+          await new Promise((resolve, reject) => {
+            fluent(videoPath).input(audioFile)
+              .outputOptions(['-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest'])
+              .output(mergedPath).on('end', resolve).on('error', reject).run();
+          });
+          if (fs.existsSync(mergedPath) && fs.statSync(mergedPath).size > 1000) finalPath = mergedPath;
         }
         try { fs.unlinkSync(audioFile); } catch {}
       }
@@ -176,13 +280,277 @@ async function generateAvatarVideo(params) {
     }
   }
 
-  onProgress?.({ step: 'done', message: '数字人视频生成完成' });
-
   return {
-    taskId,
-    videoPath: finalPath,
-    videoUrl: `/api/avatar/tasks/${taskId}/stream`
+    taskDir,
+    videoPath: finalPath
   };
 }
 
-module.exports = { generateAvatarVideo };
+/**
+ * 多段视频生成 — 每段独立 CogVideoX + TTS，最后 crossfade 拼接
+ */
+async function generateMultiSegmentVideo(params) {
+  const { imageUrl, segments, voiceId, ratio = '9:16', model = 'cogvideox-flash', background = 'office', onProgress } = params;
+  const taskId = uuidv4();
+  const taskDir = path.join(AVATAR_DIR, taskId);
+  fs.mkdirSync(taskDir, { recursive: true });
+
+  const apiKey = getZhipuKey();
+  if (!apiKey) throw new Error('未配置智谱 AI API Key');
+  const total = segments.length;
+
+  onProgress?.({ step: 'start', message: `开始多段生成（共 ${total} 段）...` });
+
+  // 1. 准备图片（只做一次）
+  let imgParam;
+  if (imageUrl.startsWith('http')) {
+    imgParam = imageUrl;
+  } else if (fs.existsSync(imageUrl)) {
+    const buf = fs.readFileSync(imageUrl);
+    const ext = path.extname(imageUrl).slice(1) || 'png';
+    imgParam = `data:image/${ext};base64,${buf.toString('base64')}`;
+  } else {
+    throw new Error('无效的图片路径: ' + imageUrl);
+  }
+
+  const ffmpegStatic = require('ffmpeg-static');
+  const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
+  const { execSync } = require('child_process');
+
+  const bgDescMap = {
+    office: 'in a modern corporate office with city skyline view through glass windows, warm professional lighting',
+    studio: 'in a professional TV broadcast studio with blue and purple neon lighting, LED screen background',
+    classroom: 'in a modern bright classroom with whiteboard and bookshelves, warm natural lighting',
+    outdoor: 'in a beautiful outdoor garden with cherry blossoms and soft golden sunlight',
+    green: 'against a solid green chroma key background',
+    custom: '',
+  };
+  const bgDesc = bgDescMap[background] || bgDescMap.office;
+
+  const expressionMap = {
+    natural: 'natural and relaxed facial expression',
+    smile: 'warm smiling facial expression',
+    serious: 'serious and focused facial expression',
+    excited: 'excited and energetic facial expression',
+    calm: 'calm and composed facial expression',
+  };
+
+  // 2. 并发生成各段视频（每次最多3个并发，避免 API 限流）
+  const segClips = []; // [{videoPath, audioPath}]
+  const CONCURRENCY = 2;
+
+  for (let batch = 0; batch < total; batch += CONCURRENCY) {
+    const batchSegs = segments.slice(batch, batch + CONCURRENCY);
+    const batchPromises = batchSegs.map(async (seg, batchIdx) => {
+      const idx = batch + batchIdx;
+      const segDir = path.join(taskDir, `seg_${idx}`);
+      fs.mkdirSync(segDir, { recursive: true });
+
+      // 差异化 prompt —— 每段不同的表情和动作
+      const exprDesc = expressionMap[seg.expression] || expressionMap.natural;
+      const motion = seg.motion || 'natural speaking with subtle head movements';
+      const textSnippet = seg.text.slice(0, 80);
+
+      const prompt = `The person in the image is speaking naturally to the camera ${bgDesc ? bgDesc + ', ' : ''}with ${exprDesc}. ${motion}. They say: "${textSnippet}". Smooth lip movements, professional presentation.`;
+
+      onProgress?.({ step: 'video', message: `生成第 ${idx + 1}/${total} 段视频...`, segment: idx + 1, total });
+
+      // 调用 CogVideoX（含网络重试 + 限流重试）
+      let genRes;
+      for (let retry = 0; retry < 5; retry++) {
+        try {
+          genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, {
+            model, prompt, image_url: imgParam
+          }, {
+            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+            timeout: 300000
+          });
+          break;
+        } catch (apiErr) {
+          const detail = apiErr.response?.data?.error?.message || apiErr.message;
+          const status = apiErr.response?.status;
+          const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
+          const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
+          if ((isNetworkErr || isRateLimit) && retry < 4) {
+            const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
+            const reason = isRateLimit ? '服务繁忙' : '网络波动';
+            console.warn(`[Avatar] 第${idx + 1}段${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
+            onProgress?.({ step: 'video', message: `第${idx + 1}段${reason}，${wait}秒后自动重试...`, segment: idx + 1, total });
+            await new Promise(r => setTimeout(r, wait * 1000));
+            continue;
+          }
+          throw new Error(`第${idx + 1}段视频 API 失败: ${detail}`);
+        }
+      }
+
+      const zhipuTaskId = genRes.data?.id;
+      if (!zhipuTaskId) throw new Error(`第${idx + 1}段: 智谱 API 返回异常`);
+
+      // 轮询等待
+      let videoUrl = null;
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        if (i % 6 === 0) onProgress?.({ step: 'video', message: `第 ${idx + 1}/${total} 段生成中... (${(i + 1) * 5}秒)`, segment: idx + 1, total });
+        try {
+          const pollRes = await axios.get(`${ZHIPU_API_BASE}/async-result/${zhipuTaskId}`, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }, timeout: 15000
+          });
+          if (pollRes.data?.task_status === 'SUCCESS') {
+            videoUrl = pollRes.data?.video_result?.[0]?.url;
+            break;
+          } else if (pollRes.data?.task_status === 'FAIL') {
+            throw new Error(`第${idx + 1}段视频生成失败`);
+          }
+        } catch (pollErr) {
+          if (pollErr.message.includes('生成失败')) throw pollErr;
+        }
+      }
+      if (!videoUrl) throw new Error(`第${idx + 1}段视频生成超时`);
+
+      // 下载视频
+      const rawPath = path.join(segDir, 'raw.mp4');
+      const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
+      fs.writeFileSync(rawPath, videoResp.data);
+
+      // 乒乓循环
+      const ppPath = path.join(segDir, 'pingpong.mp4');
+      let segVideoPath = rawPath;
+      try {
+        const ppCmd = `"${ffmpegPath}" -i "${rawPath}" -filter_complex "[0:v]split[v1][v2];[v2]reverse[vr];[v1][vr]concat=n=2:v=1:a=0" -c:v libx264 -preset fast -crf 22 -an -y "${ppPath}"`;
+        execSync(ppCmd, { timeout: 60000, stdio: 'pipe' });
+        if (fs.existsSync(ppPath) && fs.statSync(ppPath).size > 5000) segVideoPath = ppPath;
+      } catch {}
+
+      // TTS
+      onProgress?.({ step: 'tts', message: `第 ${idx + 1}/${total} 段配音...`, segment: idx + 1, total });
+      let audioPath = null;
+      if (seg.text && seg.text.trim()) {
+        try {
+          const voiceBase = path.join(segDir, 'voice');
+          audioPath = await generateSpeech(seg.text, voiceBase, { voiceId: voiceId || null });
+          if (!audioPath || !fs.existsSync(audioPath)) audioPath = null;
+        } catch (ttsErr) {
+          console.warn(`[Avatar] 第${idx + 1}段 TTS 失败:`, ttsErr.message);
+        }
+      }
+
+      // 合成单段：循环视频匹配音频长度
+      let finalSegPath = segVideoPath;
+      if (audioPath) {
+        const mergedPath = path.join(segDir, 'merged.mp4');
+        try {
+          let audioDuration = 5;
+          try {
+            const probeOut = execSync(`"${ffmpegPath}" -i "${audioPath}" 2>&1`, { encoding: 'utf8', timeout: 10000 });
+            const dm = probeOut.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (dm) audioDuration = +dm[1] * 3600 + +dm[2] * 60 + +dm[3] + +dm[4] / 100;
+          } catch (e) {
+            const stderr = e.stderr?.toString() || e.stdout?.toString() || '';
+            const dm = stderr.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (dm) audioDuration = +dm[1] * 3600 + +dm[2] * 60 + +dm[3] + +dm[4] / 100;
+          }
+
+          const mergeCmd = `"${ffmpegPath}" -stream_loop -1 -i "${segVideoPath}" -i "${audioPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -map 0:v:0 -map 1:a:0 -t ${Math.ceil(audioDuration)} -movflags +faststart -y "${mergedPath}"`;
+          execSync(mergeCmd, { timeout: 120000, stdio: 'pipe' });
+          if (fs.existsSync(mergedPath) && fs.statSync(mergedPath).size > 1000) {
+            finalSegPath = mergedPath;
+          }
+        } catch (mergeErr) {
+          console.warn(`[Avatar] 第${idx + 1}段合成失败:`, mergeErr.message?.slice(0, 80));
+        }
+      }
+
+      return { idx, videoPath: finalSegPath };
+    });
+
+    const results = await Promise.all(batchPromises);
+    segClips.push(...results);
+  }
+
+  // 排序确保顺序
+  segClips.sort((a, b) => a.idx - b.idx);
+
+  // 3. 拼接所有段落 — crossfade 过渡
+  onProgress?.({ step: 'merge', message: '合成最终视频（无缝拼接）...' });
+  const finalPath = path.join(taskDir, 'avatar_final.mp4');
+
+  if (segClips.length === 1) {
+    // 只有一段，直接用
+    fs.copyFileSync(segClips[0].videoPath, finalPath);
+  } else {
+    // 创建 concat 文件列表
+    const concatFile = path.join(taskDir, 'concat.txt');
+    const concatContent = segClips.map(c => `file '${c.videoPath.replace(/\\/g, '/')}'`).join('\n');
+    fs.writeFileSync(concatFile, concatContent);
+
+    try {
+      // 先用 concat 拼接，然后用 crossfade（如果段数<=6且各段有音频）
+      if (segClips.length <= 6) {
+        // 使用 xfade 做视频过渡 + acrossfade 做音频过渡
+        let filterComplex = '';
+        let inputArgs = segClips.map(c => `-i "${c.videoPath}"`).join(' ');
+
+        // 先获取每段时长
+        const durations = [];
+        for (const clip of segClips) {
+          let dur = 5;
+          try {
+            const out = execSync(`"${ffmpegPath}" -i "${clip.videoPath}" 2>&1`, { encoding: 'utf8', timeout: 10000 });
+            const dm = out.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (dm) dur = +dm[1] * 3600 + +dm[2] * 60 + +dm[3] + +dm[4] / 100;
+          } catch (e) {
+            const stderr = e.stderr?.toString() || '';
+            const dm = stderr.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
+            if (dm) dur = +dm[1] * 3600 + +dm[2] * 60 + +dm[3] + +dm[4] / 100;
+          }
+          durations.push(dur);
+        }
+
+        // 构建 xfade filter chain
+        const XFADE_DUR = 0.5; // 0.5秒过渡
+        let vLabel = '[0:v]';
+        let aLabel = '[0:a]';
+        let offset = durations[0] - XFADE_DUR;
+
+        for (let i = 1; i < segClips.length; i++) {
+          const outV = i < segClips.length - 1 ? `[xv${i}]` : '[outv]';
+          const outA = i < segClips.length - 1 ? `[xa${i}]` : '[outa]';
+          filterComplex += `${vLabel}[${i}:v]xfade=transition=fade:duration=${XFADE_DUR}:offset=${Math.max(0, offset).toFixed(2)}${outV};`;
+          filterComplex += `${aLabel}[${i}:a]acrossfade=d=${XFADE_DUR}${outA};`;
+          vLabel = outV;
+          aLabel = outA;
+          offset += durations[i] - XFADE_DUR;
+        }
+        // 去掉末尾分号
+        filterComplex = filterComplex.replace(/;$/, '');
+
+        const xfadeCmd = `"${ffmpegPath}" ${inputArgs} -filter_complex "${filterComplex}" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -y "${finalPath}"`;
+
+        try {
+          execSync(xfadeCmd, { timeout: 300000, stdio: 'pipe' });
+        } catch (xfadeErr) {
+          console.warn('[Avatar] xfade 拼接失败，回退 concat:', xfadeErr.message?.slice(0, 100));
+          // 回退到简单 concat
+          const concatCmd = `"${ffmpegPath}" -f concat -safe 0 -i "${concatFile}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -y "${finalPath}"`;
+          execSync(concatCmd, { timeout: 300000, stdio: 'pipe' });
+        }
+      } else {
+        // 段数太多，直接 concat
+        const concatCmd = `"${ffmpegPath}" -f concat -safe 0 -i "${concatFile}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -y "${finalPath}"`;
+        execSync(concatCmd, { timeout: 300000, stdio: 'pipe' });
+      }
+    } catch (concatErr) {
+      console.error('[Avatar] 拼接失败:', concatErr.message?.slice(0, 100));
+      // 最后兜底：直接用第一段
+      fs.copyFileSync(segClips[0].videoPath, finalPath);
+    }
+  }
+
+  if (!fs.existsSync(finalPath)) throw new Error('最终视频文件生成失败');
+  const finalSize = fs.statSync(finalPath).size;
+  console.log(`[Avatar] 多段拼接完成: ${segClips.length}段, ${(finalSize / 1024 / 1024).toFixed(1)}MB`);
+
+  return { taskDir, videoPath: finalPath };
+}
+
+module.exports = { generateAvatarVideo, generateMultiSegmentVideo };

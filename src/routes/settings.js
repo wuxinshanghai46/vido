@@ -326,4 +326,39 @@ router.delete('/skills/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// ——— 风格模板 ———
+router.get('/style-templates', (req, res) => {
+  const settings = loadSettings();
+  // 合并内置 + 自定义模板
+  const builtin = require('../services/projectService').ANIM_STYLE_PROMPTS || {};
+  const custom = settings.style_templates || {};
+  const templates = {};
+  for (const [id, conf] of Object.entries(builtin)) {
+    templates[id] = { ...conf, builtin: true };
+  }
+  for (const [id, conf] of Object.entries(custom)) {
+    templates[id] = { ...conf, builtin: false };
+  }
+  res.json({ success: true, templates });
+});
+
+router.post('/style-templates', (req, res) => {
+  const { id, prefix, negative, storyHint } = req.body;
+  if (!id || !prefix) return res.status(400).json({ success: false, error: '缺少 id 或 prefix' });
+  const settings = loadSettings();
+  if (!settings.style_templates) settings.style_templates = {};
+  settings.style_templates[id] = { prefix, negative: negative || '', storyHint: storyHint || '' };
+  saveSettings(settings);
+  res.json({ success: true });
+});
+
+router.delete('/style-templates/:id', (req, res) => {
+  const settings = loadSettings();
+  if (settings.style_templates) {
+    delete settings.style_templates[req.params.id];
+    saveSettings(settings);
+  }
+  res.json({ success: true });
+});
+
 module.exports = router;

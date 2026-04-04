@@ -491,7 +491,7 @@ function _jimengRequest(ak, sk, query, body) {
   });
 }
 
-async function generateJimengImage({ prompt, filename, dim = '2d' }) {
+async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '' }) {
   const rawKey = getApiKey('jimeng') || process.env.JIMENG_API_KEY;
   if (!rawKey) throw new Error('未配置即梦AI Key');
   if (!rawKey.includes(':')) throw new Error('即梦AI Key 格式错误，应为 AccessKeyId:SecretAccessKey');
@@ -523,6 +523,7 @@ async function generateJimengImage({ prompt, filename, dim = '2d' }) {
     const submitBody = JSON.stringify({
       req_key: reqKey,
       prompt: prompt.substring(0, 800),
+      ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
       seed: -1,
       width: 1536,
       height: 768,
@@ -640,7 +641,7 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
   let filePath;
   switch (provider) {
     case 'jimeng':
-      filePath = await generateJimengImage({ prompt, filename, dim });
+      filePath = await generateJimengImage({ prompt, filename, dim, negativePrompt: '人物，角色，人，人类，动物，生物，面孔，身体，person, people, human, character, figure, face, body, animal, creature' });
       break;
     case 'zhipu':
       filePath = await generateZhipuImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene' });

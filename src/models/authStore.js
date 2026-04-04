@@ -13,7 +13,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: 'vip', label: 'VIP用户',
-    permissions: ['create', 'generate', 'edit', 'i2v', 'avatar', 'imggen', 'novel', 'view_settings'],
+    permissions: ['create', 'generate', 'edit', 'i2v', 'avatar', 'imggen', 'novel', 'comic', 'portrait', 'view_settings'],
     default_credits: 5000, allowed_models: ['*'], max_projects: 100
   },
   {

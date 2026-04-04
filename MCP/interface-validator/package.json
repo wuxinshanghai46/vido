@@ -1,0 +1,14 @@
+{
+  "name": "interface-validator-mcp",
+  "version": "1.0.0",
+  "description": "接口协议验证MCP - 自动检测项目中所有接口/协议实现，验证可对接性和一致性",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.23.0"
+  }
+}

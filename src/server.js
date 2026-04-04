@@ -88,6 +88,26 @@ app.get('/api/story/voice-preview/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 形象图片（公开，img 标签无法带 Authorization header）
+app.get('/api/portrait/image/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  // 先查 portraits 主目录，再查 uploads 子目录
+  let filePath = path.join(__dirname, '../outputs/portraits', filename);
+  if (!fs.existsSync(filePath)) filePath = path.join(__dirname, '../outputs/portraits/uploads', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
+// 漫画页面/面板图片（公开，img 标签无法带 Authorization header）
+app.get('/api/comic/image/:taskId/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/comics', req.params.taskId, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
 // 角色/场景图片（公开，img 标签无法带 Authorization header）
 app.get('/api/story/character-image/:filename', (req, res) => {
   const fs = require('fs');
@@ -102,7 +122,7 @@ app.get('/api/story/character-image/:filename', (req, res) => {
 // 用户主题偏好
 app.put('/api/user/theme', authenticate, (req, res) => {
   const { theme } = req.body;
-  const valid = ['purple', 'cyan', 'green', 'amber', 'rose', 'blue'];
+  const valid = ['purple', 'cyan', 'green', 'amber', 'rose', 'blue', 'light', 'light-purple', 'light-blue', 'light-green', 'light-rose', 'light-amber'];
   if (!valid.includes(theme)) return res.status(400).json({ success: false, error: '无效主题' });
   const authStore = require('./models/authStore');
   authStore.updateUser(req.user.id, { theme });
@@ -115,6 +135,8 @@ app.get('/api/user/theme', authenticate, (req, res) => {
 });
 
 // === 需认证的路由 ===
+app.use('/api/dashboard', authenticate, require('./routes/dashboard'));
+app.use('/api/radar', authenticate, require('./routes/radar'));
 app.use('/api/projects', authenticate, require('./routes/projects'));
 app.use('/api/story', authenticate, require('./routes/story'));
 app.use('/api/editor', authenticate, require('./routes/editor'));
@@ -128,9 +150,16 @@ app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2
 app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./routes/avatar'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
+app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));
+app.use('/api/portrait', authenticate, requirePermission('portrait'), require('./routes/portrait'));
+app.use('/api/workbench', authenticate, require('./routes/workbench'));
+app.use('/api/works', authenticate, require('./routes/works'));
 
 // === 设置路由（仅 admin，AI 配置已移至后台） ===
 app.use('/api/settings', authenticate, requireRole('admin'), require('./routes/settings'));
+
+// === MCP 管理（仅 admin） ===
+app.use('/api/mcp', authenticate, requireRole('admin'), require('./routes/mcp'));
 
 // === 数据同步（仅 admin） ===
 app.use('/api/sync', authenticate, requireRole('admin'), require('./routes/sync'));
@@ -170,7 +199,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`\n  VIDO AI 视频平台已启动`);
   console.log(`  本地访问: http://localhost:${PORT}`);
   // 显示局域网地址
@@ -190,4 +219,16 @@ app.listen(PORT, '0.0.0.0', () => {
   const vp = process.env.VIDEO_PROVIDER || 'auto';
   const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（国内免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', auto: '自动（由 AI 配置决定）' };
   console.log(`  视频模型: ${videoLabels[vp] || vp}\n`);
+
+  // 自动启动本地 MCP 服务器
+  try {
+    const mcpManager = require('./services/mcpManager');
+    await mcpManager.startAll();
+    // 优雅退出时停止 MCP 子进程
+    const cleanup = () => { mcpManager.stopAll(); process.exit(0); };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+  } catch (err) {
+    console.error('  [MCP] 自动启动失败:', err.message);
+  }
 });

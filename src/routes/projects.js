@@ -41,6 +41,27 @@ router.get('/music/:filename', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '文件不存在' });
   res.sendFile(filePath);
 });
+
+// AI 配乐生成
+router.post('/generate-music', async (req, res) => {
+  try {
+    const { genre, mood, duration, scenes, projectId } = req.body;
+    const { generateMusic } = require('../services/musicService');
+    const result = await generateMusic({ scenes, genre, mood, duration: duration || 60, projectId: projectId || 'preview' });
+    if (!result) return res.status(500).json({ success: false, error: 'AI 配乐生成失败，请配置 Suno API key 或手动上传音乐' });
+    res.json({
+      success: true,
+      data: {
+        file_path: result.filePath,
+        file_url: `/api/projects/music/${path.basename(result.filePath)}`,
+        source: result.source,
+        prompt: result.prompt
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 const {
   createProject,
   getProjectDetails,
@@ -164,13 +185,49 @@ function resolveVideoPath(projectId) {
   return null;
 }
 
-// 下载最终视频
-router.get('/:id/download', (req, res) => {
+// 下载最终视频（支持格式转换: ?format=mp4|webm|gif）
+router.get('/:id/download', async (req, res) => {
   const filePath = resolveVideoPath(req.params.id);
   if (!filePath) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
 
   const project = db.getProject(req.params.id);
-  res.download(filePath, `${project?.title || req.params.id}_final.mp4`);
+  const format = (req.query.format || 'mp4').toLowerCase();
+  const baseName = project?.title || req.params.id;
+
+  if (format === 'mp4') {
+    return res.download(filePath, `${baseName}_final.mp4`);
+  }
+
+  // 其他格式：FFmpeg 实时转换
+  const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg')
+    ? process.env.FFMPEG_PATH : require('ffmpeg-static');
+  const outputDir = path.join(OUTPUT_DIR, 'exports');
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+  const FORMAT_OPTS = {
+    webm: { ext: 'webm', args: ['-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-b:v', '2M', '-crf', '30'], mime: 'video/webm' },
+    gif:  { ext: 'gif', args: ['-vf', 'fps=12,scale=480:-1:flags=lanczos', '-loop', '0'], mime: 'image/gif' },
+    mov:  { ext: 'mov', args: ['-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart'], mime: 'video/quicktime' },
+  };
+
+  const fmt = FORMAT_OPTS[format];
+  if (!fmt) return res.status(400).json({ success: false, error: `不支持的格式: ${format}，可选: mp4, webm, gif, mov` });
+
+  const outputPath = path.join(outputDir, `${req.params.id}_final.${fmt.ext}`);
+
+  // 如果已有转换缓存，直接下载
+  if (fs.existsSync(outputPath)) {
+    return res.download(outputPath, `${baseName}_final.${fmt.ext}`);
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const args = fmt.args.join(' ');
+    execSync(`"${ffmpegPath}" -i "${filePath}" ${args} -y "${outputPath}"`, { stdio: 'pipe', timeout: 300000 });
+    res.download(outputPath, `${baseName}_final.${fmt.ext}`);
+  } catch (err) {
+    res.status(500).json({ success: false, error: `格式转换失败: ${err.message}` });
+  }
 });
 
 // 流式播放最终视频（支持 Range 请求，浏览器原生播放）
@@ -182,6 +239,7 @@ router.get('/:id/stream', (req, res) => {
   const fileSize = stat.size;
   const range = req.headers.range;
 
+  const etag = `"${stat.mtimeMs}-${fileSize}"`;
   if (range) {
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
     const start = parseInt(startStr, 10);
@@ -192,14 +250,18 @@ router.get('/:id/stream', (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunkSize,
-      'Content-Type': 'video/mp4'
+      'Content-Type': 'video/mp4',
+      'Cache-Control': 'no-cache',
+      'ETag': etag
     });
     fs.createReadStream(filePath, { start, end }).pipe(res);
   } else {
     res.writeHead(200, {
       'Content-Length': fileSize,
       'Content-Type': 'video/mp4',
-      'Accept-Ranges': 'bytes'
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'no-cache',
+      'ETag': etag
     });
     fs.createReadStream(filePath).pipe(res);
   }

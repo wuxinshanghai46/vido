@@ -125,4 +125,26 @@ function safeUser(u) {
   return { id: u.id, username: u.username, email: u.email, role: u.role, credits: u.credits, status: u.status, created_at: u.created_at, last_login: u.last_login };
 }
 
+// 修改密码
+router.post('/change-password', authenticate, (req, res) => {
+  try {
+    const { old_password, new_password } = req.body;
+    if (!old_password || !new_password) return res.status(400).json({ success: false, error: '请填写所有字段' });
+    if (new_password.length < 6) return res.status(400).json({ success: false, error: '新密码至少6位' });
+
+    const user = getUserById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
+
+    if (!verifyPassword(old_password, user.password_hash, user.salt)) {
+      return res.status(400).json({ success: false, error: '当前密码不正确' });
+    }
+
+    const { hash, salt } = hashPassword(new_password);
+    updateUser(user.id, { password_hash: hash, salt });
+    res.json({ success: true, message: '密码修改成功' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
