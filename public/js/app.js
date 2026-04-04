@@ -320,7 +320,18 @@ function loadProfilePage() {
   if (el('profile-email-val')) el('profile-email-val').textContent = user.email || '未设置';
   if (el('profile-role-val')) el('profile-role-val').textContent = user.role === 'admin' ? '超级管理员' : '普通用户';
   if (el('profile-created-val')) el('profile-created-val').textContent = user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '--';
-  loadPlatformLogins();
+}
+
+function switchProfileTab(tab, btn) {
+  ['info', 'platforms', 'security'].forEach(t => {
+    const el = document.getElementById('profile-tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  if (btn) {
+    btn.closest('.assets-tabs').querySelectorAll('.assets-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  if (tab === 'platforms') loadPlatformLogins();
 }
 
 // ═══ 修改密码 ═══
@@ -355,8 +366,9 @@ async function loadPlatformLogins() {
   if (!list) return;
   try {
     const resp = await authFetch('/api/browser/status');
+    if (!resp.ok) throw new Error('API 不可用');
     const data = await resp.json();
-    if (!data.success) { list.innerHTML = '<div style="color:var(--text3);font-size:12px;">加载失败</div>'; return; }
+    if (!data.success) throw new Error(data.error || '加载失败');
     const icons = { douyin: '🎵', xiaohongshu: '📕', kuaishou: '⚡' };
     list.innerHTML = Object.entries(data.platforms).map(([id, p]) => {
       const icon = icons[id] || '🌐';
@@ -376,7 +388,16 @@ async function loadPlatformLogins() {
       </div>`;
     }).join('');
   } catch (err) {
-    list.innerHTML = `<div style="color:var(--text3);font-size:12px;">${err.message}</div>`;
+    // API 不可用时显示手动配置提示
+    const icons = { douyin: '🎵', xiaohongshu: '📕', kuaishou: '⚡' };
+    const names = { douyin: '抖音', xiaohongshu: '小红书', kuaishou: '快手' };
+    list.innerHTML = Object.entries(names).map(([id, name]) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg3);border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">${icons[id]}</span>
+        <div><div style="font-size:13px;font-weight:500;color:var(--text);">${name}</div><span style="color:var(--text3);font-size:11px;">○ 未登录</span></div>
+      </div>
+      <button onclick="platformLogin('${id}')" style="padding:4px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">扫码登录</button>
+    </div>`).join('');
   }
 }
 
