@@ -7585,7 +7585,7 @@ let nvCurrentId = null;
 let nvCurrentChapter = 1;
 let nvSaveTimer = null;
 let nvStreaming = false;
-let nvCurrentMode = 'outline'; // 'outline' | 'write'
+let nvCurrentMode = 'read'; // 'read' | 'outline' | 'write'
 let nvOutlineSaveTimer = null;
 
 const NV_TYPE_PRESETS = {
@@ -7754,12 +7754,22 @@ async function nvSelect(id) {
     }
     nvShowChapter(nvCurrentChapter, novel);
 
-    // 有章节内容 → 强制切到写作模式（每次选择都检查）
-    if (firstWithContent) {
-      nvCurrentMode = 'write';
-      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
+    // 渲染阅读模式
+    nvRenderReadMode(novel);
+
+    // 有章节内容 → 默认进阅读模式；无内容 → 大纲模式
+    if (firstWithContent && nvCurrentMode === 'read') {
+      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'read'));
+      document.getElementById('nv-ws-read').style.display = '';
       document.getElementById('nv-ws-outline').style.display = 'none';
-      document.getElementById('nv-ws-write').style.display = '';
+      document.getElementById('nv-ws-write').style.display = 'none';
+    } else if (!firstWithContent && nvCurrentMode === 'read') {
+      // 没内容，自动切到大纲
+      nvCurrentMode = 'outline';
+      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'outline'));
+      document.getElementById('nv-ws-read').style.display = 'none';
+      document.getElementById('nv-ws-outline').style.display = '';
+      document.getElementById('nv-ws-write').style.display = 'none';
     }
   } catch (e) { console.error('nvSelect error', e); }
   nvLoadPage();
@@ -7769,11 +7779,11 @@ async function nvSelect(id) {
 function nvSwitchMode(mode) {
   nvCurrentMode = mode;
   document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  document.getElementById('nv-ws-read').style.display = mode === 'read' ? '' : 'none';
   document.getElementById('nv-ws-outline').style.display = mode === 'outline' ? '' : 'none';
   document.getElementById('nv-ws-write').style.display = mode === 'write' ? '' : 'none';
-  if (mode === 'write' && nvCurrentId) {
-    // 切换到写作模式时重新加载章节内容
-    nvSaveCurrentContent();
+  if ((mode === 'write' || mode === 'read') && nvCurrentId) {
+    if (mode === 'write') nvSaveCurrentContent();
     nvSelect(nvCurrentId);
   }
 }
@@ -8014,6 +8024,37 @@ function nvShowChapter(index, novel) {
   const ch = (novel.chapters || []).find(c => c.index === index);
   content.textContent = ch ? ch.content : '';
   nvUpdateWordCount();
+}
+
+let _nvReadChapter = 1;
+function nvRenderReadMode(novel) {
+  const tabs = document.getElementById('nv-read-chapter-tabs');
+  const body = document.getElementById('nv-read-content');
+  if (!tabs || !body) return;
+  const chapters = (novel.chapters || []).filter(c => c.content && c.content.trim()).sort((a, b) => a.index - b.index);
+  if (!chapters.length) {
+    tabs.innerHTML = '';
+    body.textContent = '暂无章节内容，请在「写作」模式中生成。';
+    return;
+  }
+  // 确保当前阅读章节有效
+  if (!chapters.find(c => c.index === _nvReadChapter)) _nvReadChapter = chapters[0].index;
+  // 渲染章节 tabs
+  tabs.innerHTML = chapters.map(c => {
+    const title = c.title || novel.outline?.chapters?.find(o => o.index === c.index)?.title || `第${c.index}章`;
+    return `<button class="nv-ch-tab ${c.index === _nvReadChapter ? 'active' : ''}" onclick="nvReadChapter(${c.index})">${esc(title)}</button>`;
+  }).join('');
+  // 渲染内容
+  const ch = chapters.find(c => c.index === _nvReadChapter);
+  body.textContent = ch?.content || '';
+}
+
+function nvReadChapter(index) {
+  _nvReadChapter = index;
+  if (nvCurrentId) {
+    fetch('/api/novel/' + nvCurrentId, { headers: { 'Authorization': 'Bearer ' + getToken() } })
+      .then(r => r.json()).then(data => { if (data.success) nvRenderReadMode(data.novel); });
+  }
 }
 
 function nvUpdateWordCount() {

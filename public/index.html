@@ -1444,12 +1444,20 @@
                 </div>
                 <!-- 工作台模式切换 -->
                 <div class="nv-mode-bar">
-                  <button class="nv-mode-tab active" data-mode="outline" onclick="nvSwitchMode('outline')">大纲</button>
+                  <button class="nv-mode-tab active" data-mode="read" onclick="nvSwitchMode('read')">阅读</button>
+                  <button class="nv-mode-tab" data-mode="outline" onclick="nvSwitchMode('outline')">大纲</button>
                   <button class="nv-mode-tab" data-mode="write" onclick="nvSwitchMode('write')">写作</button>
                   <div class="nv-mode-stats" id="nv-mode-stats"></div>
                 </div>
+                <!-- 阅读工作台 -->
+                <div class="nv-workspace" id="nv-ws-read">
+                  <div class="nv-chapter-tabs" id="nv-read-chapter-tabs"></div>
+                  <div class="nv-content-wrap" style="padding:20px 24px;">
+                    <div id="nv-read-content" style="font-size:15px;line-height:2;color:var(--text);white-space:pre-wrap;min-height:200px;user-select:text;"></div>
+                  </div>
+                </div>
                 <!-- 大纲工作台 -->
-                <div class="nv-workspace" id="nv-ws-outline">
+                <div class="nv-workspace" id="nv-ws-outline" style="display:none">
                   <div class="nv-ol-top">
                     <div class="nv-ol-synopsis-wrap">
                       <label class="nv-label" style="margin-top:0">故事简介</label>
