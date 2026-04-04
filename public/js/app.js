@@ -378,6 +378,38 @@ async function loadRadarOverview() {
   } catch (err) { console.warn('[Radar]', err.message); }
 }
 
+const PLATFORM_LABEL = { douyin:'抖音', xiaohongshu:'小红书', bilibili:'B站', weibo:'微博' };
+
+async function loadTrending(platform) {
+  const el = document.getElementById('rd-trending');
+  if (!el) return;
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></div><span style="font-size:12px;color:var(--accent);">正在获取${PLATFORM_LABEL[platform]||platform}热门内容...</span></div>`;
+  try {
+    const resp = await authFetch(`/api/radar/trending/${platform}`);
+    const data = await resp.json();
+    if (!data.success || (!data.trending?.length && !data.links?.length)) {
+      el.innerHTML = `<div style="color:var(--text3);font-size:12px;text-align:center;">${data.message || '未获取到热门内容（MCP 爬虫可能未运行）'}</div>`;
+      return;
+    }
+    let html = `<div style="font-size:12px;color:var(--accent);margin-bottom:10px;font-weight:600;">🔥 ${PLATFORM_LABEL[platform]} 热门话题</div>`;
+    if (data.trending?.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">';
+      html += data.trending.slice(0, 15).map((t, i) => `<span style="font-size:11px;padding:4px 10px;background:${i<3?'rgba(239,68,68,.12)':'rgba(var(--accent-rgb),.08)'};color:${i<3?'#ef4444':'var(--text2)'};border-radius:4px;cursor:default;">${i<3?'🔥':''} ${esc(t)}</span>`).join('');
+      html += '</div>';
+    }
+    if (data.links?.length) {
+      html += '<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">相关视频链接：</div>';
+      html += data.links.slice(0, 5).map(l => `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+        <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(l.substring(0,80))}</span>
+        <button onclick="extractVideoUrl('${esc(l)}')" style="padding:2px 8px;background:var(--accent);color:#000;border:none;border-radius:4px;font-size:10px;cursor:pointer;white-space:nowrap;">提取</button>
+      </div>`).join('');
+    }
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = `<div style="color:#ef4444;font-size:12px;">${esc(err.message)}</div>`;
+  }
+}
+
 async function radarExtract() {
   const urlInput = document.getElementById('radar-extract-url');
   const resultEl = document.getElementById('radar-extract-result');
@@ -468,13 +500,20 @@ async function loadMonitorList() {
     el.innerHTML = data.monitors.map(m => {
       const icon = platformIcon[m.platform] || '🌐';
       const timeAgo = m.created_at ? new Date(m.created_at).toLocaleDateString('zh-CN') : '';
+      const followersText = m.followers ? `${m.followers > 10000 ? (m.followers / 10000).toFixed(1) + '万' : m.followers} 粉丝` : '';
+      const bioText = m.bio ? esc(m.bio.substring(0, 40)) : '';
+      const syncText = m.last_sync_at ? `最后同步 ${new Date(m.last_sync_at).toLocaleString('zh-CN')}` : '未同步';
       return `<div class="mat-blogger-card">
         <div class="mat-blogger-avatar">${icon}</div>
         <div class="mat-blogger-info">
-          <div class="mat-blogger-name">${esc(m.account_name)}</div>
-          <div class="mat-blogger-meta">${esc(m.platform_name)} · 关注于 ${timeAgo}</div>
+          <div class="mat-blogger-name">${esc(m.account_name)}${followersText ? ` <span style="font-size:11px;color:var(--text3);font-weight:400;">${followersText}</span>` : ''}</div>
+          <div class="mat-blogger-meta">${esc(m.platform_name)} · ID: ${esc(m.account_url?.match(/\/([^\/\?]+)\/?(\?|$)/)?.[1] || '').substring(0,20)} · ${syncText}</div>
+          ${bioText ? `<div style="font-size:11px;color:var(--text3);margin-top:1px;">${bioText}</div>` : ''}
         </div>
         <div class="mat-blogger-actions">
+          <label style="font-size:11px;color:var(--text3);cursor:pointer;display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" ${m.is_active?'checked':''} onchange="toggleMonitor('${m.id}')" style="accent-color:var(--accent);" /> 自动抓取
+          </label>
           <span class="mat-btn-follow-status">${m.is_active ? '已关注' : '已暂停'}</span>
           <button class="mat-btn-view" onclick="viewMonitorDetail('${m.id}','${esc(m.account_name)}','${esc(m.platform_name)}')">查看视频</button>
           <button class="mat-btn-unfollow" onclick="deleteMonitor('${m.id}')">取关</button>
@@ -547,56 +586,99 @@ async function matLoadAudios() {
 async function viewMonitorDetail(id, name, platform) {
   currentMonitorId = id;
   document.getElementById('monitor-detail').style.display = '';
-  document.getElementById('md-name').textContent = name + ' (' + platform + ')';
+  document.getElementById('md-name').textContent = (name || '加载中...') + (platform ? ' (' + platform + ')' : '');
   const el = document.getElementById('md-videos');
-  el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;"><div style="width:20px;height:20px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;display:inline-block;"></div><div style="color:var(--text3);font-size:12px;margin-top:8px;">正在抓取博主内容...</div></div>';
+  el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:24px;">
+    <div style="width:24px;height:24px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;display:inline-block;"></div>
+    <div style="color:var(--accent);font-size:13px;margin-top:10px;font-weight:600;">MCP 爬虫正在抓取博主内容...</div>
+    <div style="color:var(--text3);font-size:11px;margin-top:4px;">自动识别平台，提取视频列表和文案</div>
+  </div>`;
 
-  // 先尝试抓取博主页面
   try {
     const resp = await authFetch(`/api/radar/monitors/${id}/crawl`);
     const data = await resp.json();
     if (data.success) {
-      // 更新博主名称
       if (data.account_name) {
-        document.getElementById('md-name').textContent = data.account_name + ' (' + platform + ')';
+        document.getElementById('md-name').textContent = data.account_name + (platform ? ' (' + platform + ')' : '');
+        // 刷新左侧博主列表名称
+        loadMonitorList();
       }
-      let html = '';
-      // 抓取到的视频链接
+      const source = data.crawl_source === 'mcp' ? '🤖 MCP 爬虫' : '🔍 内置抓取';
+      let html = `<div style="grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <span style="font-size:11px;color:var(--text3);background:var(--bg);padding:3px 8px;border-radius:4px;">${source}</span>
+        ${data.videos?.length ? `<span style="font-size:11px;color:var(--accent);">发现 ${data.videos.length} 个作品</span>` : ''}
+        ${data.videos?.length > 1 ? `<button onclick="batchExtractVideos()" style="margin-left:auto;padding:4px 14px;background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">⚡ 一键全部提取</button>` : ''}
+      </div>`;
+
+      // 视频列表
       if (data.videos?.length) {
-        html += '<div style="grid-column:1/-1;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text2);">发现 ' + data.videos.length + ' 个视频链接</div>';
-        html += data.videos.slice(0, 8).map(v => `<div class="card" style="padding:10px;">
-          <div style="font-size:12px;color:var(--text);margin-bottom:6px;word-break:break-all;">${esc(v.title || v.url.substring(0, 60))}</div>
-          <button onclick="extractVideoUrl('${esc(v.url)}')" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">提取文案</button>
-        </div>`).join('');
-      }
-      // 已提取的内容
-      if (data.contents?.length) {
-        html += '<div style="grid-column:1/-1;margin-top:12px;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text2);">已提取内容</div>';
-        html += data.contents.map(c => `<div class="card" style="padding:12px;">
-          <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;">${esc(c.title||'未命名')}</div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${esc(c.style||'')} · ${(c.tags||[]).map(t=>'#'+t).join(' ')}</div>
-          <div style="font-size:11px;color:var(--text2);line-height:1.5;max-height:50px;overflow:hidden;margin-bottom:8px;">${esc((c.transcript||'').substring(0,150))}</div>
-          <div style="display:flex;gap:4px;">
-            <button onclick="openContentProcess('${c.id}')" style="padding:3px 8px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:10px;cursor:pointer;">处理</button>
-            <button onclick="cpToAvatarFromId('${c.id}')" style="padding:3px 8px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:4px;font-size:10px;cursor:pointer;">数字人</button>
+        window._monitorVideos = data.videos; // 存储用于批量提取
+        html += data.videos.slice(0, 12).map((v, i) => `<div class="card" style="padding:12px;" id="mv-card-${i}">
+          <div style="font-size:12px;color:var(--text);margin-bottom:4px;font-weight:500;">${esc(v.title || '作品 ' + (i + 1))}</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;word-break:break-all;max-height:30px;overflow:hidden;">${esc(typeof v === 'string' ? v : v.url || '')}</div>
+          <div style="display:flex;gap:6px;">
+            <button onclick="extractVideoUrl('${esc(typeof v === 'string' ? v : v.url)}', ${i})" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">📄 提取文案</button>
+            <a href="${esc(typeof v === 'string' ? v : v.url)}" target="_blank" style="padding:4px 12px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:none;border-radius:6px;font-size:11px;text-decoration:none;display:inline-flex;align-items:center;">🔗 查看原文</a>
           </div>
         </div>`).join('');
       }
-      if (!html) html = '<div style="grid-column:1/-1;color:var(--text3);font-size:12px;text-align:center;padding:30px;">未抓取到视频内容，请在下方手动粘贴视频链接提取</div>';
+
+      // 已提取内容
+      if (data.contents?.length) {
+        html += '<div style="grid-column:1/-1;margin-top:16px;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--text);">📋 已提取内容 (' + data.contents.length + ')</div>';
+        html += data.contents.map(c => `<div class="card" style="padding:12px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:13px;font-weight:500;color:var(--text);flex:1;">${esc(c.title||'未命名')}</span>
+            <span class="tag tag-purple" style="font-size:9px;">${esc(c.style||'')}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5;max-height:45px;overflow:hidden;margin-bottom:8px;">${esc((c.transcript||'').substring(0,150))}</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            ${(c.tags||[]).slice(0,5).map(t=>`<span style="font-size:9px;color:var(--accent);background:rgba(var(--accent-rgb),.08);padding:1px 6px;border-radius:3px;">#${esc(t)}</span>`).join('')}
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button onclick="openContentProcess('${c.id}')" style="padding:4px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:5px;font-size:10px;cursor:pointer;">✏️ AI改写</button>
+            <button onclick="cpToAvatarFromId('${c.id}')" style="padding:4px 10px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:5px;font-size:10px;cursor:pointer;">👤 数字人</button>
+            <button onclick="navigator.clipboard.writeText(${JSON.stringify(c.transcript||'')});alert('已复制')" style="padding:4px 10px;background:rgba(34,197,94,.12);color:#22c55e;border:none;border-radius:5px;font-size:10px;cursor:pointer;">📋 复制</button>
+          </div>
+        </div>`).join('');
+      }
+
+      if (!data.videos?.length && !data.contents?.length) {
+        html += '<div style="grid-column:1/-1;color:var(--text3);font-size:12px;text-align:center;padding:30px;">未抓取到视频内容（平台可能需要登录）<br>请在下方手动粘贴视频链接提取</div>';
+      }
       el.innerHTML = html;
       return;
     }
   } catch {}
-  // 回退到已提取内容
   loadMonitorVideosLegacy(id);
 }
 
-async function extractVideoUrl(url) {
+async function batchExtractVideos() {
+  if (!window._monitorVideos?.length) return;
+  const urls = window._monitorVideos.slice(0, 5).map(v => typeof v === 'string' ? v : v.url).filter(Boolean);
+  if (!urls.length) return;
+  if (!confirm(`确定批量提取 ${urls.length} 个视频的文案？`)) return;
+  try {
+    const resp = await authFetch('/api/radar/batch-extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ urls }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    const ok = data.results.filter(r => r.success).length;
+    alert(`批量提取完成: ${ok}/${urls.length} 成功`);
+    if (currentMonitorId) viewMonitorDetail(currentMonitorId, '', '');
+  } catch (err) { alert('批量提取失败: ' + err.message); }
+}
+
+async function extractVideoUrl(url, cardIndex) {
+  const card = cardIndex !== undefined ? document.getElementById('mv-card-' + cardIndex) : null;
+  if (card) {
+    const btn = card.querySelector('button');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ 提取中...'; }
+  }
   try {
     const resp = await authFetch('/api/radar/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
-    alert('提取成功: ' + (data.content?.title || ''));
+    if (card) card.style.borderColor = 'rgba(34,197,94,.3)';
     if (currentMonitorId) viewMonitorDetail(currentMonitorId, '', '');
   } catch (err) { alert('提取失败: ' + err.message); }
 }

@@ -34,12 +34,24 @@ router.get('/overview', (req, res) => {
 // ═══════ 监控账号管理 ═══════
 
 // POST /api/radar/monitors - 添加监控账号
-router.post('/monitors', (req, res) => {
+router.post('/monitors', async (req, res) => {
   const { url, name } = req.body;
   if (!url) return res.status(400).json({ success: false, error: '请输入账号链接' });
 
   const { platform, name: platformName } = parsePlatformUrl(url);
   const id = uuidv4();
+
+  let accountName = name || `${platformName}账号`;
+  let followers = 0, bio = '', avatar = '';
+
+  // 通过 MCP 自动抓取博主信息
+  const mcpData = await tryMcpCrawlCreator(url);
+  if (mcpData) {
+    if (mcpData.author && !name) accountName = mcpData.author;
+    followers = mcpData.followers || 0;
+    bio = mcpData.bio || '';
+    console.log(`[Radar] MCP 自动获取博主信息: ${accountName}, ${followers} 粉丝`);
+  }
 
   db.insertMonitor({
     id,
@@ -47,12 +59,14 @@ router.post('/monitors', (req, res) => {
     platform,
     platform_name: platformName,
     account_url: url,
-    account_name: name || `${platformName}账号`,
+    account_name: accountName,
+    followers,
+    bio,
     is_active: true,
-    last_sync_at: null
+    last_sync_at: mcpData ? new Date().toISOString() : null
   });
 
-  res.json({ success: true, monitor: { id, platform, platformName, account_name: name || `${platformName}账号` } });
+  res.json({ success: true, monitor: { id, platform, platformName, account_name: accountName, followers, bio } });
 });
 
 // GET /api/radar/monitors - 监控账号列表
@@ -141,6 +155,45 @@ router.get('/monitors/:id/crawl', async (req, res) => {
       account_name: updated?.account_name || monitor.account_name,
       crawl_source: crawlSource
     });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/radar/trending/:platform - 获取平台热门内容
+router.get('/trending/:platform', async (req, res) => {
+  try {
+    const platform = req.params.platform;
+    const mcpManager = require('../services/mcpManager');
+    const instances = mcpManager.listInstances();
+    const crawler = instances.find(i => i.id === 'media-crawler' && i.status === 'running');
+    if (!crawler) return res.json({ success: true, trending: [], links: [], source: 'none', message: 'MCP 爬虫未运行' });
+
+    const result = await mcpManager.callTool('media-crawler', 'search_trending', { platform });
+    if (!result?.content?.[0]?.text) return res.json({ success: true, trending: [], links: [] });
+    const data = JSON.parse(result.content[0].text);
+    res.json({ success: true, ...data, source: 'mcp' });
+  } catch (err) {
+    res.json({ success: true, trending: [], links: [], error: err.message });
+  }
+});
+
+// POST /api/radar/batch-extract - 批量提取多个链接
+router.post('/batch-extract', async (req, res) => {
+  try {
+    const { urls } = req.body;
+    if (!urls?.length) return res.status(400).json({ success: false, error: '请提供链接列表' });
+
+    const results = [];
+    for (const url of urls.slice(0, 10)) {
+      try {
+        const content = await extractContent(url, req.user?.id);
+        results.push({ url, success: true, content });
+      } catch (err) {
+        results.push({ url, success: false, error: err.message });
+      }
+    }
+    res.json({ success: true, results });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
