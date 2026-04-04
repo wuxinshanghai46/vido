@@ -90,15 +90,68 @@ async function fetchPageContent(url) {
 }
 
 /**
- * 从视频URL提取内容（先抓取网页，再用AI分析）
+ * 尝试通过 MCP media-crawler 工具提取内容
+ */
+async function tryMcpExtract(url) {
+  try {
+    const mcpManager = require('./mcpManager');
+    const instances = mcpManager.listInstances();
+    const crawler = instances.find(i => i.id === 'media-crawler' && i.status === 'running');
+    if (!crawler) return null;
+
+    const result = await mcpManager.callTool('media-crawler', 'extract_content', { url });
+    if (!result?.content?.[0]?.text) return null;
+    const data = JSON.parse(result.content[0].text);
+    if (!data.success) return null;
+    console.log(`[Radar] MCP media-crawler 提取成功: ${data.title || url}`);
+    return data;
+  } catch (err) {
+    console.warn(`[Radar] MCP 提取失败，回退到内置: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * 尝试通过 MCP media-crawler 抓取博主主页
+ */
+async function tryMcpCrawlCreator(url) {
+  try {
+    const mcpManager = require('./mcpManager');
+    const instances = mcpManager.listInstances();
+    const crawler = instances.find(i => i.id === 'media-crawler' && i.status === 'running');
+    if (!crawler) return null;
+
+    const result = await mcpManager.callTool('media-crawler', 'crawl_creator', { url, platform: 'auto' });
+    if (!result?.content?.[0]?.text) return null;
+    const data = JSON.parse(result.content[0].text);
+    return data.success ? data : null;
+  } catch (err) {
+    console.warn(`[Radar] MCP 博主抓取失败: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * 从视频URL提取内容（优先 MCP → 内置抓取 → AI分析）
  */
 async function extractContent(videoUrl, userId) {
   const { callLLM } = require('./storyService');
   const { platform, name: platformName } = parsePlatformUrl(videoUrl);
 
-  // 第1步：实际抓取网页内容
+  // 第0步：尝试 MCP media-crawler（更精准的平台特化爬虫）
+  const mcpData = await tryMcpExtract(videoUrl);
+
+  // 第1步：内置抓取（MCP 失败时的回退）
   console.log(`[Radar] 正在抓取 ${platformName} 页面: ${videoUrl}`);
-  const page = await fetchPageContent(videoUrl);
+  const page = mcpData ? {
+    title: mcpData.title || '',
+    description: mcpData.description || '',
+    bodyText: mcpData.description || '',
+    author: mcpData.author || '',
+    tags: mcpData.tags || [],
+    rawText: mcpData.rawText || mcpData.description || '',
+    finalUrl: videoUrl
+  } : await fetchPageContent(videoUrl);
 
   const hasRealContent = page.title || page.bodyText || page.rawText.length > 100;
 
@@ -266,4 +319,4 @@ async function replicateContent({ contentId, voiceId, style, avatarImage, userId
   }
 }
 
-module.exports = { parsePlatformUrl, extractContent, rewriteContent, replicateContent };
+module.exports = { parsePlatformUrl, extractContent, rewriteContent, replicateContent, tryMcpCrawlCreator };

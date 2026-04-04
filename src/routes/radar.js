@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
-const { parsePlatformUrl, extractContent, rewriteContent, replicateContent } = require('../services/radarService');
+const { parsePlatformUrl, extractContent, rewriteContent, replicateContent, tryMcpCrawlCreator } = require('../services/radarService');
 
 // ═══════ 雷达总览 ═══════
 
@@ -81,80 +81,65 @@ router.get('/monitors/:id/crawl', async (req, res) => {
     const monitor = db.getMonitor(req.params.id);
     if (!monitor) return res.status(404).json({ success: false, error: '账号不存在' });
 
-    const axios = require('axios');
     const url = monitor.account_url;
     let videos = [];
+    let crawlSource = 'builtin';
 
-    try {
-      const resp = await axios.get(url, {
-        timeout: 15000,
-        maxRedirects: 5,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9'
-        }
-      });
-      const html = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
-
-      // 提取视频链接和标题
-      const videoPatterns = [
-        // 抖音
-        /href=["'](https?:\/\/www\.douyin\.com\/video\/\d+)["']/gi,
-        /href=["'](https?:\/\/v\.douyin\.com\/[^\s"']+)["']/gi,
-        // 快手
-        /href=["'](https?:\/\/www\.kuaishou\.com\/short-video\/[^\s"']+)["']/gi,
-        // B站
-        /href=["'](https?:\/\/www\.bilibili\.com\/video\/[^\s"']+)["']/gi,
-        // 小红书
-        /href=["'](https?:\/\/www\.xiaohongshu\.com\/explore\/[^\s"']+)["']/gi,
-        // 通用视频链接
-        /href=["'](https?:\/\/[^\s"']*(?:video|watch|play)[^\s"']+)["']/gi
-      ];
-
-      const foundUrls = new Set();
-      for (const pat of videoPatterns) {
-        let m;
-        while ((m = pat.exec(html)) !== null) {
-          if (!foundUrls.has(m[1])) {
-            foundUrls.add(m[1]);
-            videos.push({ url: m[1] });
+    // 优先尝试 MCP media-crawler
+    const mcpResult = await tryMcpCrawlCreator(url);
+    if (mcpResult) {
+      crawlSource = 'mcp';
+      videos = (mcpResult.videoLinks || []).map(v => typeof v === 'string' ? { url: v } : v);
+      if (mcpResult.author) {
+        db.updateMonitor(req.params.id, { account_name: mcpResult.author });
+      }
+      console.log(`[Radar] MCP 抓取博主成功: ${mcpResult.author || url}, ${videos.length} 个视频`);
+    } else {
+      // 回退到内置抓取
+      try {
+        const axios = require('axios');
+        const resp = await axios.get(url, {
+          timeout: 15000, maxRedirects: 5,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9'
+          }
+        });
+        const html = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+        const videoPatterns = [
+          /href=["'](https?:\/\/(?:www\.)?douyin\.com\/video\/\d+[^"']*?)["']/gi,
+          /href=["'](https?:\/\/v\.douyin\.com\/[^"']+)["']/gi,
+          /href=["'](https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[^"']+)["']/gi,
+          /href=["'](https?:\/\/(?:www\.)?bilibili\.com\/video\/[^"']+)["']/gi,
+          /href=["'](https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery\/item)\/[^"']+)["']/gi,
+          /href=["'](https?:\/\/[^"']*(?:video|watch|play)[^"']+)["']/gi
+        ];
+        const foundUrls = new Set();
+        for (const pat of videoPatterns) {
+          let m;
+          while ((m = pat.exec(html)) !== null) {
+            if (!foundUrls.has(m[1])) { foundUrls.add(m[1]); videos.push({ url: m[1] }); }
           }
         }
+        const nameMatch = html.match(/["'](?:nickname|author(?:_name)?)["']\s*:\s*["']([^"']+)/i);
+        if (nameMatch && nameMatch[1].length > 1) db.updateMonitor(req.params.id, { account_name: nameMatch[1] });
+      } catch (err) {
+        console.warn(`[Radar] 内置抓取失败: ${err.message}`);
       }
-
-      // 提取标题（JSON-LD 或 meta 标签）
-      const titleMatches = html.match(/"desc"\s*:\s*"([^"]{5,100})"/g) || [];
-      titleMatches.forEach((tm, i) => {
-        if (videos[i]) {
-          const desc = tm.match(/"desc"\s*:\s*"([^"]+)"/);
-          if (desc) videos[i].title = desc[1];
-        }
-      });
-
-      // 更新博主名称（从页面提取）
-      const nameMatch = html.match(/["'](?:nickname|author(?:_name)?)["']\s*:\s*["']([^"']+)/i);
-      if (nameMatch && nameMatch[1].length > 1) {
-        db.updateMonitor(req.params.id, { account_name: nameMatch[1] });
-      }
-
-      db.updateMonitor(req.params.id, { last_sync_at: new Date().toISOString() });
-    } catch (err) {
-      console.warn(`[Radar] 抓取博主页面失败: ${err.message}`);
     }
+    db.updateMonitor(req.params.id, { last_sync_at: new Date().toISOString() });
 
-    // 同时返回已提取的内容
-    const contents = db.listContents(req.user?.id).filter(c => {
-      if (!monitor.account_url) return false;
-      // 匹配同平台的内容
-      return c.platform === monitor.platform;
-    });
+    const contents = db.listContents(req.user?.id).filter(c => c.platform === monitor.platform);
 
+    // 重新读取最新的 monitor（可能被 crawl 更新了名字）
+    const updated = db.getMonitor(req.params.id);
     res.json({
       success: true,
       videos: videos.slice(0, 20),
       contents: contents.slice(0, 20),
-      account_name: monitor.account_name
+      account_name: updated?.account_name || monitor.account_name,
+      crawl_source: crawlSource
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
