@@ -8027,8 +8027,9 @@ let _nvReadChapter = 1;
 function nvRenderReadMode(novel) {
   const tabs = document.getElementById('nv-read-chapter-tabs');
   const body = document.getElementById('nv-read-content');
-  if (!tabs || !body) return;
+  if (!tabs || !body) { console.warn('[Novel] read mode elements not found'); return; }
   const chapters = (novel.chapters || []).filter(c => c.content && c.content.trim()).sort((a, b) => a.index - b.index);
+  console.log('[Novel] renderReadMode:', novel.title, 'chapters with content:', chapters.length);
   if (!chapters.length) {
     tabs.innerHTML = '';
     body.textContent = '暂无章节内容，请在「写作」模式中生成。';
@@ -8044,6 +8045,7 @@ function nvRenderReadMode(novel) {
   // 渲染内容
   const ch = chapters.find(c => c.index === _nvReadChapter);
   body.textContent = ch?.content || '';
+  console.log('[Novel] read ch', _nvReadChapter, 'length:', (ch?.content||'').length);
 }
 
 function nvReadChapter(index) {
