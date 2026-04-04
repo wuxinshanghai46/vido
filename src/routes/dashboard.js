@@ -70,6 +70,7 @@ router.get('/recent-tasks', (req, res) => {
         title: p.title || p.theme || 'AI 视频',
         type: 'AI视频',
         status: p.status,
+        error: p.error || p.error_message || '',
         created_at: p.created_at
       });
     }
@@ -80,6 +81,7 @@ router.get('/recent-tasks', (req, res) => {
         title: (t.text || '').slice(0, 30) || '数字人视频',
         type: '数字人',
         status: t.status,
+        error: t.error || '',
         created_at: t.created_at
       });
     }
@@ -90,6 +92,7 @@ router.get('/recent-tasks', (req, res) => {
         title: c.title || 'AI 漫画',
         type: 'AI漫画',
         status: c.status,
+        error: c.error || '',
         created_at: c.created_at
       });
     }
@@ -100,6 +103,7 @@ router.get('/recent-tasks', (req, res) => {
         title: (p.prompt || '').slice(0, 30) || 'AI 图片',
         type: 'AI图片',
         status: p.status,
+        error: p.error || '',
         created_at: p.created_at
       });
     }
@@ -110,6 +114,7 @@ router.get('/recent-tasks', (req, res) => {
         title: n.title || 'AI 小说',
         type: 'AI小说',
         status: n.status,
+        error: n.error || '',
         created_at: n.created_at
       });
     }
@@ -120,6 +125,7 @@ router.get('/recent-tasks', (req, res) => {
         title: (t.prompt || '').slice(0, 30) || '图生视频',
         type: '图生视频',
         status: t.status,
+        error: t.error || '',
         created_at: t.created_at
       });
     }

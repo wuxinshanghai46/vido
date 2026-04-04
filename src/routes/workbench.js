@@ -65,6 +65,8 @@ router.get('/voices', (req, res) => {
     name: v.name,
     gender: v.gender || 'female',
     filename: v.filename,
+    cloned: !!v.fish_ref_id,
+    fish_ref_id: v.fish_ref_id || null,
     created_at: v.created_at
   }));
   res.json({ success: true, voices });

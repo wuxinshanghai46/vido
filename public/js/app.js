@@ -295,7 +295,8 @@ async function loadDashboard() {
       tasksRes.tasks.map(t => {
         const st = t.status || 'pending';
         const pg = TYPE_PAGE[t.type] || 'works';
-        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span></td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>`;
+        const errRow = (st === 'error' && t.error) ? `<tr><td colspan="5" style="padding:2px 12px 8px;border:none;"><div style="font-size:11px;color:#ef4444;background:rgba(239,68,68,.08);padding:6px 10px;border-radius:4px;line-height:1.4;">❌ ${esc(t.error.substring(0, 200))}</div></td></tr>` : '';
+        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span></td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>${errRow}`;
       }).join('') + '</tbody></table>';
   } else {
     tasksEl.innerHTML = '<table class="table"><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无任务记录</td></tr></tbody></table>';
@@ -543,15 +544,64 @@ async function matLoadAudios() {
   } catch {}
 }
 
-function viewMonitorDetail(id, name, platform) {
+async function viewMonitorDetail(id, name, platform) {
   currentMonitorId = id;
   document.getElementById('monitor-detail').style.display = '';
   document.getElementById('md-name').textContent = name + ' (' + platform + ')';
-  // 加载该博主的提取内容
-  loadMonitorVideos(id);
+  const el = document.getElementById('md-videos');
+  el.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;"><div style="width:20px;height:20px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;display:inline-block;"></div><div style="color:var(--text3);font-size:12px;margin-top:8px;">正在抓取博主内容...</div></div>';
+
+  // 先尝试抓取博主页面
+  try {
+    const resp = await authFetch(`/api/radar/monitors/${id}/crawl`);
+    const data = await resp.json();
+    if (data.success) {
+      // 更新博主名称
+      if (data.account_name) {
+        document.getElementById('md-name').textContent = data.account_name + ' (' + platform + ')';
+      }
+      let html = '';
+      // 抓取到的视频链接
+      if (data.videos?.length) {
+        html += '<div style="grid-column:1/-1;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text2);">发现 ' + data.videos.length + ' 个视频链接</div>';
+        html += data.videos.slice(0, 8).map(v => `<div class="card" style="padding:10px;">
+          <div style="font-size:12px;color:var(--text);margin-bottom:6px;word-break:break-all;">${esc(v.title || v.url.substring(0, 60))}</div>
+          <button onclick="extractVideoUrl('${esc(v.url)}')" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">提取文案</button>
+        </div>`).join('');
+      }
+      // 已提取的内容
+      if (data.contents?.length) {
+        html += '<div style="grid-column:1/-1;margin-top:12px;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text2);">已提取内容</div>';
+        html += data.contents.map(c => `<div class="card" style="padding:12px;">
+          <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;">${esc(c.title||'未命名')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${esc(c.style||'')} · ${(c.tags||[]).map(t=>'#'+t).join(' ')}</div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5;max-height:50px;overflow:hidden;margin-bottom:8px;">${esc((c.transcript||'').substring(0,150))}</div>
+          <div style="display:flex;gap:4px;">
+            <button onclick="openContentProcess('${c.id}')" style="padding:3px 8px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:10px;cursor:pointer;">处理</button>
+            <button onclick="cpToAvatarFromId('${c.id}')" style="padding:3px 8px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:4px;font-size:10px;cursor:pointer;">数字人</button>
+          </div>
+        </div>`).join('');
+      }
+      if (!html) html = '<div style="grid-column:1/-1;color:var(--text3);font-size:12px;text-align:center;padding:30px;">未抓取到视频内容，请在下方手动粘贴视频链接提取</div>';
+      el.innerHTML = html;
+      return;
+    }
+  } catch {}
+  // 回退到已提取内容
+  loadMonitorVideosLegacy(id);
 }
 
-async function loadMonitorVideos(accountId) {
+async function extractVideoUrl(url) {
+  try {
+    const resp = await authFetch('/api/radar/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    alert('提取成功: ' + (data.content?.title || ''));
+    if (currentMonitorId) viewMonitorDetail(currentMonitorId, '', '');
+  } catch (err) { alert('提取失败: ' + err.message); }
+}
+
+async function loadMonitorVideosLegacy(accountId) {
   try {
     const resp = await authFetch(`/api/radar/contents?account_id=${accountId}`);
     const data = await resp.json();
@@ -575,14 +625,16 @@ async function loadMonitorVideos(accountId) {
 async function extractMonitorVideo() {
   const urlInput = document.getElementById('md-video-url');
   if (!urlInput?.value.trim()) return alert('请输入视频链接');
+  const btn = urlInput.nextElementSibling;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 提取中...'; }
   try {
     const resp = await authFetch('/api/radar/extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: urlInput.value.trim(), account_id: currentMonitorId }) });
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
     urlInput.value = '';
-    alert('提取成功：' + (data.content?.title || ''));
-    if (currentMonitorId) loadMonitorVideos(currentMonitorId);
+    if (currentMonitorId) viewMonitorDetail(currentMonitorId, '', '');
   } catch (err) { alert('提取失败: ' + err.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '提取内容'; } }
 }
 
 function addMonitorPrompt() {
@@ -679,22 +731,23 @@ async function deleteContentItem(id) {
 }
 
 async function loadReplicatePage() {
-  // 加载内容选项
+  // 加载克隆声音到 voice chips
   try {
-    const resp = await authFetch('/api/radar/contents');
+    const resp = await authFetch('/api/workbench/voices');
     const data = await resp.json();
-    const sel = document.getElementById('rep-content');
-    if (sel && data.success) {
-      sel.innerHTML = '<option value="">选择要复刻的内容...</option>' + (data.contents||[]).map(c => `<option value="${c.id}">${esc(c.title||'未命名')} (${esc(c.platform_name||'')})</option>`).join('');
-    }
-  } catch {}
-  // 加载声音选项
-  try {
-    const resp = await authFetch('/api/story/voices');
-    const data = await resp.json();
-    const sel = document.getElementById('rep-voice');
-    if (sel && data.success) {
-      sel.innerHTML = '<option value="">默认声音</option>' + (data.voices||[]).map(v => `<option value="${v.id}">${esc(v.name)} (${esc(v.provider)})</option>`).join('');
+    const chips = document.getElementById('wb-voice-chips');
+    if (chips && data.success && data.voices?.length) {
+      // 移除旧的克隆声音 chips
+      chips.querySelectorAll('.wb-voice-cloned').forEach(el => el.remove());
+      // 添加克隆声音
+      data.voices.forEach(v => {
+        const span = document.createElement('span');
+        span.className = 'wb-voice-chip wb-voice-cloned';
+        span.dataset.voice = 'custom:' + v.id;
+        span.onclick = () => wbSelectVoice(span);
+        span.textContent = '🎙 ' + (v.name || '克隆声音');
+        chips.appendChild(span);
+      });
     }
   } catch {}
   // 加载历史
@@ -2139,8 +2192,11 @@ function initMusicPreview() {
 
 let musicPlayMode = 'none'; // 'none' | 'full' | 'trim'
 
+let _globalAudio = null; // 全局音频播放器（声音克隆试听等）
 function stopAllAudio() {
   stopMusicPlayback();
+  // 全局音频
+  if (_globalAudio) { _globalAudio.pause(); _globalAudio.src = ''; _globalAudio = null; }
   // 素材预听
   if (typeof _assetAudio !== 'undefined' && _assetAudio) { _assetAudio.pause(); _assetAudio = null; }
   // 裁剪弹窗
@@ -2148,6 +2204,9 @@ function stopAllAudio() {
   // 预览音频
   const pa = document.getElementById('music-preview-audio');
   if (pa) pa.pause();
+  // workbench audio
+  const wba = document.getElementById('wb-audio-player');
+  if (wba) wba.pause();
 }
 
 function stopMusicPlayback() {
@@ -5549,15 +5608,25 @@ async function uploadCustomVoice(input) {
   input.value = '';
 }
 
-function renderCustomVoices() {
+async function renderCustomVoices() {
   const container = document.getElementById('av-custom-voice-list');
   const section = document.getElementById('av-custom-voices');
   if (!container || !section) return;
+  // 从服务器加载克隆声音（合并 localStorage）
+  try {
+    const resp = await authFetch('/api/workbench/voices');
+    const data = await resp.json();
+    if (data.success && data.voices?.length) {
+      // 用服务器数据为准，同步到 localStorage
+      customVoices = data.voices.map(v => ({ id: v.id, name: v.name, file: v.filename }));
+      localStorage.setItem('vido_custom_voices', JSON.stringify(customVoices));
+    }
+  } catch {}
   if (!customVoices.length) { section.style.display = 'none'; return; }
   section.style.display = '';
   container.innerHTML = customVoices.map((v, i) => `
     <span class="av-voice-chip av-voice-chip-custom" data-voice="custom:${v.id}" onclick="selectAvatarVoice(this)">
-      ${esc(v.name)}
+      🎙 ${esc(v.name)}
       <button class="av-voice-chip-del" onclick="event.stopPropagation();removeCustomVoice(${i})">✕</button>
     </span>
   `).join('');
@@ -8328,14 +8397,21 @@ async function loadVoiceClonePage() {
       el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:60px 0;">暂无克隆声音，上传音频开始克隆</div>';
       return;
     }
-    el.innerHTML = voices.map(v => `
-      <div class="card" style="padding:16px;">
+    el.innerHTML = voices.map(v => {
+      const statusTag = v.cloned
+        ? '<span class="tag tag-green">语音包就绪</span>'
+        : '<span class="tag tag-yellow">仅本地</span>';
+      const statusHint = v.cloned
+        ? `<div style="font-size:10px;color:#22c55e;margin-top:2px;">Fish Audio ID: ${esc((v.fish_ref_id||'').substring(0,20))}...</div>`
+        : `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">未配置 Fish Audio，无法用于 TTS</div>`;
+      return `<div class="card" style="padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <div>
             <div style="font-size:14px;font-weight:600;color:var(--text);">🎙 ${esc(v.name || '未命名声音')}</div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px;">创建于 ${v.created_at ? new Date(v.created_at).toLocaleDateString('zh-CN') : '未知'}</div>
+            ${statusHint}
           </div>
-          <span class="tag tag-green">训练完成</span>
+          ${statusTag}
         </div>
         <div style="height:32px;background:rgba(var(--accent-rgb),.08);border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
           <div style="display:flex;gap:2px;align-items:end;height:20px;">
@@ -8347,8 +8423,8 @@ async function loadVoiceClonePage() {
           <button onclick="vcUseVoice('${v.id}','${esc(v.name)}')" style="padding:6px 16px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">使用此声音</button>
           <button onclick="vcDeleteVoice('${v.id}')" style="padding:6px 16px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-left:auto;">🗑 删除</button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (err) { console.error('loadVoiceClonePage error', err); }
 }
 
@@ -8454,13 +8530,15 @@ async function vcStartClone() {
 }
 
 async function vcPlayVoice(id) {
+  // 先停止之前的
+  if (_globalAudio) { _globalAudio.pause(); _globalAudio.src = ''; _globalAudio = null; }
   try {
     const resp = await authFetch(`/api/workbench/voices/${id}/play`);
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    audio.play();
+    _globalAudio = new Audio(url);
+    _globalAudio.onended = () => { URL.revokeObjectURL(url); _globalAudio = null; };
+    _globalAudio.play();
   } catch (err) { alert('试听失败: ' + err.message); }
 }
 
