@@ -202,8 +202,11 @@ router.post('/batch-extract', async (req, res) => {
 // POST /api/radar/extract-blogger - 解析博主主页或视频链接
 router.post('/extract-blogger', async (req, res) => {
   try {
-    const { url } = req.body;
+    let { url } = req.body;
     if (!url) return res.status(400).json({ success: false, error: '请输入链接' });
+    // 从混合文本中提取URL（支持抖音分享文案等）
+    const urlMatch = url.match(/https?:\/\/[^\s<>"'，。！？、；：）》\]]+/i);
+    if (urlMatch) url = urlMatch[0].replace(/[.,;:!?]+$/, '');
 
     const { platform, name: platformName } = parsePlatformUrl(url);
     const platformIcons = { douyin:'📱', xiaohongshu:'📕', kuaishou:'🎬', bilibili:'📺', weibo:'💬' };
@@ -287,8 +290,11 @@ router.post('/extract-blogger', async (req, res) => {
 // POST /api/radar/extract - 提取视频内容（粘贴链接）
 router.post('/extract', async (req, res) => {
   try {
-    const { url } = req.body;
+    let { url } = req.body;
     if (!url) return res.status(400).json({ success: false, error: '请输入视频链接' });
+    // 从混合文本中提取URL
+    const urlMatch = url.match(/https?:\/\/[^\s<>"'，。！？、；：）》\]]+/i);
+    if (urlMatch) url = urlMatch[0].replace(/[.,;:!?]+$/, '');
     const result = await extractContent(url, req.user?.id);
     res.json({ success: true, content: result });
   } catch (err) {

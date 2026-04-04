@@ -355,11 +355,19 @@ async function loadRadarOverview() {
 let _radarVideos = []; // 解析出的视频列表
 let _radarBlogger = null; // 解析出的博主信息
 
+/** 从混合文本中提取URL（支持抖音分享文案等） */
+function extractUrlFromText(text) {
+  if (!text) return '';
+  const m = text.match(/https?:\/\/[^\s<>"'，。！？、；：）》\]]+/i);
+  return m ? m[0].replace(/[.,;:!?]+$/, '') : text;
+}
+
 async function radarParse() {
   const input = document.getElementById('radar-extract-url');
   const btn = document.getElementById('radar-parse-btn');
-  const url = input?.value?.trim();
-  if (!url) return;
+  const rawText = input?.value?.trim();
+  if (!rawText) return;
+  const url = extractUrlFromText(rawText);
 
   btn.disabled = true; btn.textContent = '⏳';
   const infoEl = document.getElementById('radar-blogger-info');
@@ -374,7 +382,10 @@ async function radarParse() {
   try {
     // 先尝试当作博主主页解析
     const crawlResp = await authFetch('/api/radar/extract-blogger', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
-    const crawlData = await crawlResp.json();
+    if (!crawlResp.ok) throw new Error(`服务器错误 (${crawlResp.status})`);
+    const crawlText = await crawlResp.text();
+    let crawlData;
+    try { crawlData = JSON.parse(crawlText); } catch { throw new Error('服务器返回了无效数据，请检查链接格式'); }
 
     if (crawlData.success && crawlData.blogger) {
       _radarBlogger = crawlData.blogger;
@@ -403,10 +414,33 @@ async function radarParse() {
       // 当作单个视频链接提取
       infoEl.style.display = 'none';
       toolbarEl.style.display = 'none';
+      listEl.innerHTML = `<div class="card" style="padding:16px;border:1px solid rgba(var(--accent-rgb),.2);">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:15px;">🔄</span>
+          <span style="color:var(--accent);font-size:13px;font-weight:600;">未识别为博主主页，正在尝试单视频提取...</span>
+        </div>
+      </div>`;
       radarExtract();
     }
   } catch (err) {
-    listEl.innerHTML = `<div class="card" style="padding:16px;color:#ef4444;">解析失败: ${esc(err.message)}</div>`;
+    listEl.innerHTML = `<div class="card" style="padding:18px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.04);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(239,68,68,.1);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⚠️</div>
+        <div>
+          <div style="color:#ef4444;font-size:14px;font-weight:700;">链接解析失败</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:2px;">${esc(err.message)}</div>
+        </div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:8px;line-height:1.8;">
+        <div style="color:var(--text2);font-size:12px;font-weight:600;margin-bottom:4px;">💡 请检查以下几点：</div>
+        <div style="color:var(--text3);font-size:11px;">
+          1. 链接是否完整 — 请直接从平台复制分享链接<br>
+          2. 可以粘贴抖音/快手的「分享文案」，系统会自动提取其中的链接<br>
+          3. 确认链接来自支持的平台：<span style="color:var(--accent);">抖音 · 小红书 · 快手 · B站 · 微博</span><br>
+          4. 如果是私密/已删除内容，可能无法访问
+        </div>
+      </div>
+    </div>`;
   } finally {
     btn.disabled = false; btn.textContent = '解析';
   }
@@ -555,6 +589,10 @@ async function radarExtract() {
   const resultEl = document.getElementById('radar-extract-result');
   const btn = document.querySelector('[onclick="radarExtract()"]');
   if (!urlInput?.value.trim()) return;
+  if (!resultEl) return;
+  // 清除视频列表区域（可能有 radarParse 的 loading）
+  const listEl = document.getElementById('radar-video-list');
+  if (listEl) listEl.innerHTML = '';
   // 显示加载动画
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 分析中...'; }
   resultEl.innerHTML = `<div class="card" style="padding:20px;margin-top:8px;">
@@ -569,8 +607,12 @@ async function radarExtract() {
     </div>
   </div>`;
   try {
-    const resp = await authFetch('/api/radar/extract', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url: urlInput.value.trim() }) });
-    const data = await resp.json();
+    const extractedUrl = extractUrlFromText(urlInput.value.trim());
+    const resp = await authFetch('/api/radar/extract', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url: extractedUrl }) });
+    if (!resp.ok) throw new Error(`服务器错误 (${resp.status})`);
+    const respText = await resp.text();
+    let data;
+    try { data = JSON.parse(respText); } catch { throw new Error('服务器返回了无效数据，请检查链接格式'); }
     if (!data.success) throw new Error(data.error);
     const c = data.content;
     resultEl.innerHTML = `<div class="card" style="padding:16px;margin-top:8px;border:1px solid rgba(34,197,94,.2);">
@@ -592,10 +634,23 @@ async function radarExtract() {
     urlInput.value = '';
     loadRadarOverview();
   } catch (err) {
-    resultEl.innerHTML = `<div class="card" style="padding:14px;margin-top:8px;border:1px solid rgba(239,68,68,.2);">
-      <div style="color:#ef4444;font-size:13px;font-weight:600;">❌ 提取失败</div>
-      <div style="color:var(--text3);font-size:12px;margin-top:4px;">${esc(err.message)}</div>
-      <div style="color:var(--text3);font-size:11px;margin-top:6px;">提示：请检查链接是否正确，或尝试直接粘贴视频文案</div>
+    resultEl.innerHTML = `<div class="card" style="padding:18px;margin-top:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.04);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(239,68,68,.1);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">❌</div>
+        <div>
+          <div style="color:#ef4444;font-size:14px;font-weight:700;">素材提取失败</div>
+          <div style="color:var(--text3);font-size:11px;margin-top:2px;">${esc(err.message)}</div>
+        </div>
+      </div>
+      <div style="padding:12px;background:var(--bg);border-radius:8px;line-height:1.8;">
+        <div style="color:var(--text2);font-size:12px;font-weight:600;margin-bottom:4px;">💡 可能的原因：</div>
+        <div style="color:var(--text3);font-size:11px;">
+          1. 视频链接已失效或内容已被删除<br>
+          2. 该平台需要登录才能访问（私密内容）<br>
+          3. MCP 爬虫服务未配置或连接异常 — 请在 <span style="color:var(--accent);cursor:pointer;" onclick="switchPage('settings')">设置页</span> 检查 MCP 连接<br>
+          4. 也可以直接粘贴视频的文案内容进行分析
+        </div>
+      </div>
     </div>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'AI 提取分析'; }
@@ -8847,23 +8902,52 @@ function wbSelectVoice(el) {
 }
 
 async function wbParseInput() {
-  const input = document.getElementById('wb-url-input')?.value?.trim();
-  if (!input) return alert('请输入内容');
+  const rawInput = document.getElementById('wb-url-input')?.value?.trim();
+  if (!rawInput) return alert('请输入内容');
   const btn = document.getElementById('wb-parse-btn');
+  const sourceInfo = document.getElementById('wb-source-info');
+  const sourceName = document.getElementById('wb-source-name');
+  const sourceBadge = document.getElementById('wb-source-badge');
   btn.disabled = true;
   btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span>';
 
-  // 判断是 URL 还是纯文本
-  const isUrl = /^https?:\/\//.test(input) || /douyin|tiktok|bilibili|youtube/i.test(input);
+  // 判断是否包含 URL
+  const extractedUrl = extractUrlFromText(rawInput);
+  const isUrl = /^https?:\/\//i.test(extractedUrl);
 
   if (isUrl) {
-    // URL 解析暂不实现后端，直接提示
-    document.getElementById('wb-original-text').value = '（URL 解析功能开发中，请直接粘贴文案文本）';
+    try {
+      const resp = await authFetch('/api/radar/extract', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ url: extractedUrl })
+      });
+      if (!resp.ok) throw new Error(`服务器错误 (${resp.status})`);
+      const respText = await resp.text();
+      let data;
+      try { data = JSON.parse(respText); } catch { throw new Error('服务器返回了无效数据，请检查链接格式'); }
+      if (!data.success) throw new Error(data.error);
+      const c = data.content;
+      document.getElementById('wb-original-text').value = c.transcript || c.title || '';
+      sourceInfo.style.display = 'flex';
+      sourceBadge.textContent = '已解析';
+      sourceBadge.style.background = 'rgba(34,197,94,.15)';
+      sourceBadge.style.color = '#22c55e';
+      sourceName.textContent = (c.platformName ? `[${c.platformName}] ` : '') + (c.title || extractedUrl).substring(0, 60);
+    } catch (err) {
+      sourceInfo.style.display = 'flex';
+      sourceBadge.textContent = '解析失败';
+      sourceBadge.style.background = 'rgba(239,68,68,.15)';
+      sourceBadge.style.color = '#ef4444';
+      sourceName.textContent = err.message;
+    }
   } else {
     // 纯文本直接放入原始文案
-    document.getElementById('wb-original-text').value = input;
-    document.getElementById('wb-source-info').style.display = 'flex';
-    document.getElementById('wb-source-name').textContent = '手动输入文本 (' + input.length + '字)';
+    document.getElementById('wb-original-text').value = rawInput;
+    sourceInfo.style.display = 'flex';
+    sourceBadge.textContent = '已加载';
+    sourceBadge.style.background = '';
+    sourceBadge.style.color = '';
+    sourceName.textContent = '手动输入文本 (' + rawInput.length + '字)';
   }
   btn.disabled = false;
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 1a5 5 0 104 8.9l3.1 3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> 解析';

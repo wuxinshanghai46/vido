@@ -1609,7 +1609,7 @@
         <!-- URL输入区 -->
         <div class="card" style="padding:20px;margin-bottom:16px;">
           <div style="display:flex;gap:12px;align-items:stretch;">
-            <textarea id="radar-extract-url" rows="3" style="flex:1;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;resize:none;font-family:inherit;" placeholder="粘贴博主主页链接 或 单个视频链接...&#10;&#10;支持：抖音 · 小红书 · 快手 · B站 · 微博"></textarea>
+            <textarea id="radar-extract-url" rows="3" style="flex:1;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;resize:none;font-family:inherit;" placeholder="粘贴博主主页链接 或 单个视频链接...&#10;可直接粘贴抖音分享文案，系统会自动提取链接&#10;支持：抖音 · 小红书 · 快手 · B站 · 微博"></textarea>
             <button onclick="radarParse()" id="radar-parse-btn" style="padding:0 28px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;min-width:80px;">解析</button>
           </div>
         </div>
@@ -1634,6 +1634,9 @@
             </div>
           </div>
         </div>
+
+        <!-- 单视频提取结果 -->
+        <div id="radar-extract-result"></div>
 
         <!-- 视频列表 -->
         <div id="radar-video-list"></div>
@@ -1763,7 +1766,7 @@
             <div class="wb-card">
               <div class="wb-card-title"><span class="wb-step-badge">Step 1</span> 素材获取</div>
               <div class="wb-input-row">
-                <textarea class="wb-url-input" id="wb-url-input" rows="2" placeholder="粘贴视频链接，或直接输入/粘贴文案内容..."></textarea>
+                <textarea class="wb-url-input" id="wb-url-input" rows="2" placeholder="粘贴视频链接（支持抖音分享文案自动提取），或直接输入文案内容..."></textarea>
                 <button class="wb-parse-btn" id="wb-parse-btn" onclick="wbParseInput()">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M6 1a5 5 0 104 8.9l3.1 3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
                   解析
