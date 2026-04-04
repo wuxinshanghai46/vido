@@ -6813,13 +6813,17 @@ function formatAssetTime(sec) {
 async function uploadAssetFile(input) {
   const file = input.files[0];
   if (!file) return;
+  // 显示上传中状态
+  const grid = document.getElementById('assets-grid');
+  const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+  grid.innerHTML = `<div class="assets-empty"><span class="av-spinner" style="display:inline-block;width:28px;height:28px;margin-bottom:8px"></span><div>正在上传 ${esc(file.name)} (${sizeMB}MB)...</div><div style="font-size:11px;color:var(--text3);margin-top:4px">大文件可能需要较长时间</div></div>`;
   const fd = new FormData();
   fd.append('file', file);
   fd.append('name', file.name);
   try {
     const resp = await authFetch('/api/assets/upload', { method: 'POST', body: fd });
     const data = await resp.json();
-    if (!data.success) { alert(data.error || '上传失败'); return; }
+    if (!data.success) { alert(data.error || '上传失败'); loadAssetsPage(); return; }
     // 切换到全部tab确保新素材可见
     assetsFilter = 'all';
     document.querySelectorAll('.assets-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === '全部'));
@@ -7741,24 +7745,21 @@ async function nvSelect(id) {
 
     // 渲染写作工作台
     nvRenderChapterTabs(novel);
-    nvShowChapter(nvCurrentChapter, novel);
 
-    // 如果已有章节内容，自动切换到写作模式（直接切换 DOM，不调用 nvSwitchMode 避免递归）
+    // 自动选择有内容的章节
     const firstWithContent = (novel.chapters || []).find(c => c.content && c.content.trim());
     if (firstWithContent) {
-      // 如果当前章节为空，跳到第一个有内容的章节
       const curCh = (novel.chapters || []).find(c => c.index === nvCurrentChapter);
-      if (!curCh?.content?.trim()) {
-        nvCurrentChapter = firstWithContent.index;
-        nvRenderChapterTabs(novel);
-        nvShowChapter(nvCurrentChapter, novel);
-      }
-      if (nvCurrentMode !== 'write') {
-        nvCurrentMode = 'write';
-        document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
-        document.getElementById('nv-ws-outline').style.display = 'none';
-        document.getElementById('nv-ws-write').style.display = '';
-      }
+      if (!curCh?.content?.trim()) nvCurrentChapter = firstWithContent.index;
+    }
+    nvShowChapter(nvCurrentChapter, novel);
+
+    // 有章节内容 → 强制切到写作模式（每次选择都检查）
+    if (firstWithContent) {
+      nvCurrentMode = 'write';
+      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
+      document.getElementById('nv-ws-outline').style.display = 'none';
+      document.getElementById('nv-ws-write').style.display = '';
     }
   } catch (e) { console.error('nvSelect error', e); }
   nvLoadPage();
