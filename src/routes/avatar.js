@@ -237,19 +237,19 @@ router.get('/tasks', (req, res) => {
 // ═══════ 预设图片管理 ═══════
 
 const PRESET_AVATARS = {
-  'female-1': { name: '商务女性', prompt: 'AI generated portrait of a young attractive Asian woman in her mid-20s, wearing elegant white blazer, natural makeup, gentle confident smile, soft studio lighting, clean gradient background, half body shot, ultra detailed skin texture, 8K, hyperrealistic digital art' },
-  'male-1':   { name: '商务男性', prompt: 'AI generated portrait of a young handsome Asian man in his late 20s, wearing slim-fit dark navy suit with open collar shirt, charming smile, modern hairstyle, soft studio lighting, clean gradient background, half body shot, ultra detailed, 8K, hyperrealistic digital art' },
-  'female-2': { name: '新闻主播', prompt: 'AI generated portrait of a beautiful young Chinese woman TV news anchor in her mid-20s, professional elegant appearance, natural makeup, pearl earrings, broadcast studio soft lighting, confident warm expression, half body shot, ultra detailed, 8K, hyperrealistic' },
-  'male-2':   { name: '教育讲师', prompt: 'AI generated portrait of a young friendly Asian male teacher in his early 30s, wearing smart casual sweater over button shirt, warm approachable smile, modern classroom background blurred, half body shot, ultra detailed, 8K, hyperrealistic digital art' },
+  'female-1': { name: '商务女性', prompt: '真人摄影照片，一位25岁左右的年轻漂亮亚洲女性，穿着白色西装外套，淡妆，自信温柔的微笑，柔和的影棚灯光，干净的渐变背景，半身照，超高清皮肤纹理，真实人像摄影，8K写实照片，photorealistic portrait photography, NOT illustration NOT cartoon NOT anime' },
+  'male-1':   { name: '商务男性', prompt: '真人摄影照片，一位28岁左右的英俊亚洲男性，穿着深藏青色修身西装配开领衬衫，迷人微笑，现代发型，柔和灯光，干净背景，半身照，超清晰，8K写实照片，photorealistic portrait photography, NOT illustration NOT cartoon NOT anime' },
+  'female-2': { name: '新闻主播', prompt: '真人摄影照片，一位25岁左右的美丽中国女性电视新闻主播，专业优雅的外表，淡妆，珍珠耳环，演播室柔和灯光，自信温暖的表情，半身照，超清晰，8K写实照片，photorealistic portrait, NOT illustration NOT anime' },
+  'male-2':   { name: '教育讲师', prompt: '真人摄影照片，一位30岁左右的友善亚洲男性教师，穿着休闲毛衣配衬衫，温暖平易近人的微笑，现代教室背景虚化，半身照，超清晰，8K写实照片，photorealistic portrait, NOT illustration NOT anime' },
   'anime-1':  { name: '动漫角色', prompt: 'Beautiful anime character portrait, young girl with flowing pastel gradient hair, large sparkling crystal eyes, delicate facial features, wearing futuristic outfit, soft glowing particles, vibrant colors, digital anime illustration, Makoto Shinkai style lighting, detailed, upper body, 4K' }
 };
 
-const BG_NEGATIVE = ', absolutely no people, no humans, no person, no characters, no figures, no faces, no body parts, empty scene only, pure environment background, uninhabited';
+const BG_NEGATIVE = '，绝对不要出现任何人物、人像、角色、动物，只画纯环境背景，空旷无人';
 const PRESET_BACKGROUNDS = {
-  'office':    { name: '办公室', prompt: 'Modern luxury corporate office interior, floor-to-ceiling glass windows with panoramic city skyline night view, warm ambient lighting, minimalist white desk with monitor, potted green plants, clean elegant design, empty room' + BG_NEGATIVE + ', cinematic lighting, 8K' },
-  'studio':    { name: '演播室', prompt: 'Professional modern TV broadcast studio, deep blue and cyan neon accent lighting, curved LED screen wall, sleek news anchor desk, volumetric light beams, futuristic design, empty studio' + BG_NEGATIVE + ', cinematic, 8K' },
-  'classroom': { name: '教室', prompt: 'Modern smart classroom interior, large interactive digital whiteboard, wooden desks arranged neatly, warm sunlight streaming through tall windows, bookshelves, educational tech atmosphere, bright and welcoming, empty classroom' + BG_NEGATIVE + ', 8K' },
-  'outdoor':   { name: '户外', prompt: 'Beautiful Japanese garden outdoor scene, cherry blossom trees in full bloom, stone pathway beside a calm pond, soft golden hour sunlight, bokeh background, peaceful serene atmosphere, dreamy lighting, empty landscape' + BG_NEGATIVE + ', 8K' }
+  'office':    { name: '办公室', prompt: '写实摄影风格，现代豪华办公室内景，落地玻璃窗外是城市夜景全景，温暖氛围灯光，极简白色办公桌配显示器，绿植盆栽，空旷无人的房间' + BG_NEGATIVE + '，8K超清照片' },
+  'studio':    { name: '演播室', prompt: '写实摄影风格，专业现代电视演播室，深蓝色和青色霓虹灯带，弧形LED屏幕墙，流线型主播台，体积光束，空旷无人的演播室' + BG_NEGATIVE + '，8K超清照片' },
+  'classroom': { name: '教室', prompt: '写实摄影风格，现代智慧教室内景，大型交互式数字白板，整齐排列的木桌，温暖阳光透过高窗洒入，书架，明亮温馨，空旷无人的教室' + BG_NEGATIVE + '，8K超清照片' },
+  'outdoor':   { name: '户外', prompt: '写实摄影风格，美丽的城市公园户外场景，绿树成荫的小径，湖边长椅，温暖的黄金时刻阳光，虚化背景，宁静祥和的氛围，空旷无人的风景' + BG_NEGATIVE + '，8K超清照片' }
 };
 
 // GET /api/avatar/presets - 获取预设图片列表
@@ -293,20 +293,33 @@ router.post('/generate-presets', async (req, res) => {
   const { getApiKey } = require('../services/settingsService');
   const settings = require('../services/settingsService').loadSettings();
 
-  // 查找 image 模型
+  // 查找 image 模型（优先即梦/智谱，写实效果更好）
   let targetProvider = null, targetModel = null;
-  for (const p of (settings.providers || [])) {
-    const imgModel = (p.models || []).find(m => m.use === 'image');
-    if (imgModel) { targetProvider = p; targetModel = imgModel.id; break; }
+  const preferOrder = ['jimeng', 'zhipu', 'openai', 'stability', 'replicate'];
+  for (const pid of preferOrder) {
+    const p = (settings.providers || []).find(p => p.id === pid || p.preset === pid);
+    if (p) {
+      const imgModel = (p.models || []).find(m => m.use === 'image');
+      if (imgModel && getApiKey(p.id)) { targetProvider = p; targetModel = imgModel.id; break; }
+    }
+  }
+  // 如果优先列表没有，用任意有 image 模型的供应商
+  if (!targetProvider) {
+    for (const p of (settings.providers || [])) {
+      const imgModel = (p.models || []).find(m => m.use === 'image');
+      if (imgModel && getApiKey(p.id)) { targetProvider = p; targetModel = imgModel.id; break; }
+    }
   }
   if (!targetProvider) return res.status(400).json({ success: false, error: '未配置图像生成模型，请在 AI 配置中添加 use=image 的模型' });
 
   const apiKey = getApiKey(targetProvider.id);
-  if (!apiKey) return res.status(400).json({ success: false, error: `供应商 ${targetProvider.name} 未配置 API Key` });
+  const isJimeng = targetProvider.id === 'jimeng' || targetProvider.preset === 'jimeng';
 
   const OpenAI = require('openai');
   const axios = require('axios');
-  const client = new OpenAI({ apiKey, baseURL: targetProvider.baseURL || 'https://api.openai.com/v1' });
+  const baseURL = targetProvider.api_url || 'https://api.openai.com/v1';
+  console.log(`[Avatar Presets] 使用 ${targetProvider.name} (${targetModel}) 生成预设`);
+  const client = new OpenAI({ apiKey, baseURL });
 
   const results = { avatars: {}, backgrounds: {} };
   const errors = [];
