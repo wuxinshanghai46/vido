@@ -7721,19 +7721,20 @@ async function nvSelect(id) {
     });
 
     // 显示编辑器
-    document.getElementById('nv-editor-empty').style.display = 'none';
-    document.getElementById('nv-editor-active').style.display = '';
-    document.getElementById('nv-title').value = novel.title;
-    document.getElementById('nv-genre').value = novel.genre || 'fantasy';
-    document.getElementById('nv-style').value = novel.style || 'descriptive';
-    document.getElementById('nv-chapter-words').value = novel.chapter_words || 2000;
-    document.getElementById('nv-chapter-count').value = novel.chapter_count || 10;
-    document.getElementById('nv-description').value = novel.description || '';
-    if (novel.provider) document.getElementById('nv-model').value = novel.provider;
+    const _$ = id => document.getElementById(id);
+    if (_$('nv-editor-empty')) _$('nv-editor-empty').style.display = 'none';
+    if (_$('nv-editor-active')) _$('nv-editor-active').style.display = '';
+    if (_$('nv-title')) _$('nv-title').value = novel.title;
+    if (_$('nv-genre')) _$('nv-genre').value = novel.genre || 'fantasy';
+    if (_$('nv-style')) _$('nv-style').value = novel.style || 'descriptive';
+    if (_$('nv-chapter-words')) _$('nv-chapter-words').value = novel.chapter_words || 2000;
+    if (_$('nv-chapter-count')) _$('nv-chapter-count').value = novel.chapter_count || 10;
+    if (_$('nv-description')) _$('nv-description').value = novel.description || '';
+    if (novel.provider && _$('nv-model')) _$('nv-model').value = novel.provider;
 
     // 篇幅类型
     const novelType = novel.novel_type || 'short';
-    document.getElementById('nv-type-badge').textContent = NV_TYPE_PRESETS[novelType]?.label || '短篇';
+    if (_$('nv-type-badge')) _$('nv-type-badge').textContent = NV_TYPE_PRESETS[novelType]?.label || '短篇';
     document.querySelectorAll('.nv-type-card').forEach(c => {
       c.classList.toggle('active', c.dataset.type === novelType);
     });
