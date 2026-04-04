@@ -79,7 +79,7 @@ function resolveAvatarImage(avatar) {
 // POST /api/avatar/generate - 生成数字人视频（支持多段模式）
 router.post('/generate', async (req, res) => {
   try {
-    const { avatar, text, voiceId, ratio, model, expression, background, segments } = req.body;
+    const { avatar, text, voiceId, ratio, model, expression, background, segments, title } = req.body;
     if (!avatar) return res.status(400).json({ success: false, error: '请选择数字人形象' });
 
     const { generateAvatarVideo, generateMultiSegmentVideo } = require('../services/avatarService');
@@ -91,7 +91,7 @@ router.post('/generate', async (req, res) => {
     // 记录任务（含 ratio 和 model 以便历史记录显示）
     const taskRatio = req.body.ratio || '9:16';
     const taskModel = req.body.model || 'cogvideox-flash';
-    avatarTasks.set(taskId, { id: taskId, status: 'processing', created_at: new Date().toISOString(), text, segments: segments || null, user_id: req.user?.id, ratio: taskRatio, model: taskModel });
+    avatarTasks.set(taskId, { id: taskId, status: 'processing', created_at: new Date().toISOString(), title: title || '', text, segments: segments || null, user_id: req.user?.id, ratio: taskRatio, model: taskModel });
     res.json({ success: true, taskId });
 
     const onProgress = (data) => {

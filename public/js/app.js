@@ -6115,6 +6115,7 @@ async function startAvatarGeneration() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         avatar, text, voiceId, speed, ratio: avatarRatio, model,
+        title: document.getElementById('av-title-input')?.value?.trim() || '',
         expression: document.getElementById('av-expression')?.value || 'natural',
         background: avatarBg || 'office',
         segments: (avatarSegments && avatarSegments.length > 1) ? avatarSegments : undefined
@@ -6241,9 +6242,10 @@ async function startAvatarGeneration() {
 
 // ═══ 历史记录 ═══
 
-function addAvatarHistory({ taskId, text, videoUrl, ratio, model }) {
+function addAvatarHistory({ taskId, text, videoUrl, ratio, model, title }) {
   const entry = {
     taskId, text, videoUrl, ratio, model,
+    title: title || document.getElementById('av-title-input')?.value?.trim() || '',
     time: new Date()
   };
   avatarHistory.unshift(entry);
@@ -6262,6 +6264,7 @@ function renderAvatarHistory() {
   if (countEl) { countEl.textContent = avatarHistory.length + ' 条'; countEl.style.display = ''; }
   container.innerHTML = avatarHistory.map((h, i) => {
     const timeStr = h.time.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const titleStr = h.title ? `<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px;">${esc(h.title)}</div>` : '';
     const textPreview = h.text ? esc(h.text.slice(0, 60)) + (h.text.length > 60 ? '…' : '') : '（无台词）';
     const dlUrl = authUrl(`/api/avatar/tasks/${h.taskId}/download`);
     const videoSrc = authUrl(h.videoUrl);
@@ -6274,7 +6277,7 @@ function renderAvatarHistory() {
         <div class="av-hist-badge">${h.ratio || '9:16'}</div>
       </div>
       <div class="av-hist-body">
-        <div class="av-hist-text">${textPreview}</div>
+        ${titleStr}<div class="av-hist-text">${textPreview}</div>
         <div class="av-hist-meta">
           <span class="av-hist-time">${timeStr}</span>
           <a href="${dlUrl}" download class="av-hist-dl" onclick="event.stopPropagation()">
