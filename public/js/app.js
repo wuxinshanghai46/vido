@@ -1836,6 +1836,17 @@ function setSceneDim(dim) {
   s.dim = dim;
   document.getElementById('srp-scene-dim-2d')?.classList.toggle('active', dim === '2d');
   document.getElementById('srp-scene-dim-3d')?.classList.toggle('active', dim === '3d');
+  // 自动推荐匹配维度的最佳模型
+  if (videoModelsCache?.length && (!s.video_model || !s.video_provider)) {
+    const sorted = [...videoModelsCache].sort((a, b) => modelSortScore(b.modelId, dim) - modelSortScore(a.modelId, dim));
+    if (sorted.length) {
+      const best = sorted[0];
+      const cap = getModelCap(best.modelId);
+      if (cap.dim === dim || cap.dim === 'both') {
+        selectSceneVideoModel(best.providerId, best.modelId);
+      }
+    }
+  }
 }
 
 function setSelectVal(id, val) {
@@ -1859,21 +1870,32 @@ function populateSceneVmList() {
   const s = customScenes.find(s => s.id === studioSelectedSceneId);
   const curProvider = s?.video_provider || '';
   const curModel = s?.video_model || '';
+  const dim = s?.dim || sceneDim || '2d';
   let html = `<div class="srp-mp-opt ${!curProvider ? 'active' : ''}" onclick="selectSceneVideoModel('','')">
     <span style="opacity:.6">🔄</span> 跟随全局默认
   </div>`;
   if (videoModelsCache && videoModelsCache.length) {
-    const groups = {};
-    for (const m of videoModelsCache) {
-      if (!groups[m.providerId]) groups[m.providerId] = { name: m.providerName, id: m.providerId, models: [] };
-      groups[m.providerId].models.push(m);
-    }
-    for (const g of Object.values(groups)) {
-      const icon = VM_PROVIDER_ICONS[g.id] || '🔹';
-      html += `<div style="padding:4px 10px 2px;opacity:.5;font-size:10px;font-weight:600">${icon} ${esc(g.name)}</div>`;
-      for (const m of g.models) {
+    // 按维度匹配度排序
+    const sorted = [...videoModelsCache].sort((a, b) => modelSortScore(b.modelId, dim) - modelSortScore(a.modelId, dim));
+    // 分组：推荐 vs 其他
+    const rec = sorted.filter(m => { const c = getModelCap(m.modelId); return c.dim === dim || c.dim === 'both'; });
+    const alt = sorted.filter(m => { const c = getModelCap(m.modelId); return c.dim !== dim && c.dim !== 'both'; });
+    if (rec.length) {
+      html += `<div style="padding:4px 10px 2px;color:var(--accent);font-size:10px;font-weight:600">⭐ ${dim === '3d' ? '3D' : '2D'} 推荐</div>`;
+      for (const m of rec) {
         const active = m.providerId === curProvider && m.modelId === curModel;
+        const cap = getModelCap(m.modelId);
+        const badge = cap.note ? `<span style="opacity:.5;font-size:10px;margin-left:4px">${cap.note}</span>` : '';
         html += `<div class="srp-mp-opt ${active ? 'active' : ''}" onclick="selectSceneVideoModel('${esc(m.providerId)}','${esc(m.modelId)}')">
+          ${esc(m.modelName)}${badge}
+        </div>`;
+      }
+    }
+    if (alt.length) {
+      html += `<div style="padding:4px 10px 2px;opacity:.4;font-size:10px;font-weight:600">其他模型</div>`;
+      for (const m of alt) {
+        const active = m.providerId === curProvider && m.modelId === curModel;
+        html += `<div class="srp-mp-opt ${active ? 'active' : ''}" style="opacity:.6" onclick="selectSceneVideoModel('${esc(m.providerId)}','${esc(m.modelId)}')">
           ${esc(m.modelName)}
         </div>`;
       }

@@ -239,7 +239,7 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
   ensureDir();
   const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
   const prompt = imageType === 'scene'
-    ? buildScenePrompt(name, description, race, species, '')
+    ? buildScenePrompt(name, description, '', '', '')
     : buildPrompt(name, role, description, '2d', race, species);
   // Full body character → portrait; scene → landscape
   // 角色转面图和场景都用横向比例
@@ -289,7 +289,7 @@ async function generateZhipuImage({ name, role, description, filename, race, spe
   ensureDir();
   const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
   const prompt = imageType === 'scene'
-    ? buildScenePrompt(name, description, race, species, '')
+    ? buildScenePrompt(name, description, '', '', '')
     : buildPrompt(name, role, description, '2d', race, species);
 
   const body = JSON.stringify({ model: 'cogview-3-flash', prompt, size: '1024x1024' });
