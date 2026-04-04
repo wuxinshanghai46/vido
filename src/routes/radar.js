@@ -237,7 +237,44 @@ router.post('/extract-blogger', async (req, res) => {
       });
     }
 
-    // 如果 MCP 没返回博主数据，尝试内置抓取
+    // 优先用 Puppeteer + Cookie 抓取（登录后数据更完整）
+    const browserService = require('../services/browserService');
+    if (browserService.hasCookies(platform)) {
+      try {
+        console.log(`[Radar] 使用 ${platform} Cookie + Puppeteer 抓取`);
+        const result = await browserService.fetchWithCookies(platform, url);
+        const html = result.html || '';
+        // 复用下方的 HTML 解析逻辑
+        if (html.length > 500) {
+          const finalUrl = result.url || url;
+          // 提取博主名
+          let authorName = null;
+          const namePatterns = [/"nickname"\s*:\s*"([^"]+)"/, /"author_name"\s*:\s*"([^"]+)"/, /<title[^>]*>([^<]*?)(?:的(?:抖音|主页)|[-|])/i];
+          for (const pat of namePatterns) { const m = html.match(pat); if (m && m[1].trim()) { authorName = m[1].trim(); break; } }
+          if (!authorName) authorName = platformName + '博主';
+          // 提取视频
+          const foundUrls = new Set();
+          const awemeIds = [...html.matchAll(/"aweme_id"\s*:\s*"(\d+)"/g)];
+          awemeIds.forEach(m => foundUrls.add(`https://www.douyin.com/video/${m[1]}`));
+          const linkPatterns = [/(?:href|src)=["'](https?:\/\/(?:www\.)?douyin\.com\/video\/\d+[^"']*?)["']/gi];
+          for (const pat of linkPatterns) { let m; while ((m = pat.exec(html)) !== null) foundUrls.add(m[1]); }
+          const videos = [...foundUrls].map((u, i) => ({ url: u, title: `作品 ${i+1}`, stats: {} }));
+          const descMatches = [...html.matchAll(/"desc"\s*:\s*"([^"]{2,200})"/g)];
+          descMatches.forEach((m, i) => { if (videos[i]) videos[i].title = m[1]; });
+          if (videos.length > 0) {
+            return res.json({
+              success: true, isBlogger: true,
+              blogger: { name: authorName, id: '', url: finalUrl, platform, videoCount: videos.length, totalLikes: 0 },
+              videos, platformIcon: platformIcons[platform] || '👤', source: 'browser'
+            });
+          }
+        }
+      } catch (browserErr) {
+        console.warn(`[Radar] Puppeteer 抓取失败，回退到 HTTP:`, browserErr.message);
+      }
+    }
+
+    // 回退：HTTP 直接抓取（无登录态）
     const axios = require('axios');
     try {
       const resp = await axios.get(url, {

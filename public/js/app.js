@@ -320,6 +320,7 @@ function loadProfilePage() {
   if (el('profile-email-val')) el('profile-email-val').textContent = user.email || '未设置';
   if (el('profile-role-val')) el('profile-role-val').textContent = user.role === 'admin' ? '超级管理员' : '普通用户';
   if (el('profile-created-val')) el('profile-created-val').textContent = user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '--';
+  loadPlatformLogins();
 }
 
 // ═══ 修改密码 ═══
@@ -343,6 +344,102 @@ async function changePassword() {
       msgEl.innerHTML = `<span style="color:#ef4444">${data.error || '修改失败'}</span>`;
     }
   } catch (err) { msgEl.innerHTML = `<span style="color:#ef4444">${err.message}</span>`; }
+}
+
+// ═══ 平台账号登录 ═══
+let _qrPlatform = '';
+let _qrPollTimer = null;
+
+async function loadPlatformLogins() {
+  const list = document.getElementById('platform-login-list');
+  if (!list) return;
+  try {
+    const resp = await authFetch('/api/browser/status');
+    const data = await resp.json();
+    if (!data.success) { list.innerHTML = '<div style="color:var(--text3);font-size:12px;">加载失败</div>'; return; }
+    const icons = { douyin: '🎵', xiaohongshu: '📕', kuaishou: '⚡' };
+    list.innerHTML = Object.entries(data.platforms).map(([id, p]) => {
+      const icon = icons[id] || '🌐';
+      const statusBadge = p.loggedIn
+        ? '<span style="color:#22c55e;font-size:11px;">● 已登录</span>'
+        : '<span style="color:var(--text3);font-size:11px;">○ 未登录</span>';
+      const btn = p.loggedIn
+        ? `<button onclick="platformLogout('${id}')" style="padding:4px 14px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:11px;cursor:pointer;">退出</button>`
+        : `<button onclick="platformLogin('${id}')" style="padding:4px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">扫码登录</button>`;
+      const chromeWarn = !data.hasChrome ? '<div style="font-size:10px;color:#f59e0b;margin-top:2px;">需安装 Chrome 浏览器</div>' : '';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--bg3);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:20px;">${icon}</span>
+          <div><div style="font-size:13px;font-weight:500;color:var(--text);">${esc(p.name)}</div>${statusBadge}${chromeWarn}</div>
+        </div>
+        ${btn}
+      </div>`;
+    }).join('');
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--text3);font-size:12px;">${err.message}</div>`;
+  }
+}
+
+async function platformLogin(platform) {
+  _qrPlatform = platform;
+  const modal = document.getElementById('qr-login-modal');
+  const img = document.getElementById('qr-login-img');
+  const title = document.getElementById('qr-login-title');
+  const hint = document.getElementById('qr-login-hint');
+  const names = { douyin: '抖音', xiaohongshu: '小红书', kuaishou: '快手' };
+  title.textContent = `扫码登录${names[platform] || platform}`;
+  hint.textContent = '正在打开登录页面...';
+  img.src = '';
+  modal.style.display = 'flex';
+
+  try {
+    const resp = await authFetch(`/api/browser/login/${platform}`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    img.src = data.screenshot;
+    hint.textContent = `请用${names[platform] || ''}APP 扫描页面中的二维码`;
+    // 开始轮询
+    startQrPoll(platform);
+  } catch (err) {
+    hint.textContent = '启动失败: ' + err.message;
+  }
+}
+
+function startQrPoll(platform) {
+  if (_qrPollTimer) clearInterval(_qrPollTimer);
+  _qrPollTimer = setInterval(async () => {
+    try {
+      const resp = await authFetch(`/api/browser/login/${platform}/poll`);
+      const data = await resp.json();
+      if (data.status === 'success') {
+        clearInterval(_qrPollTimer); _qrPollTimer = null;
+        document.getElementById('qr-login-hint').textContent = '登录成功！';
+        if (data.screenshot) document.getElementById('qr-login-img').src = data.screenshot;
+        setTimeout(() => { document.getElementById('qr-login-modal').style.display = 'none'; loadPlatformLogins(); }, 1500);
+      } else if (data.status === 'expired' || data.status === 'error') {
+        clearInterval(_qrPollTimer); _qrPollTimer = null;
+        document.getElementById('qr-login-hint').textContent = data.message || '会话过期';
+      } else if (data.screenshot) {
+        document.getElementById('qr-login-img').src = data.screenshot;
+      }
+    } catch {}
+  }, 3000);
+}
+
+function cancelPlatformLogin() {
+  if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+  authFetch(`/api/browser/login/${_qrPlatform}/cancel`, { method: 'POST' }).catch(() => {});
+  document.getElementById('qr-login-modal').style.display = 'none';
+}
+
+async function refreshPlatformLogin() {
+  if (_qrPlatform) platformLogin(_qrPlatform);
+}
+
+async function platformLogout(platform) {
+  if (!confirm('确定退出登录？')) return;
+  await authFetch(`/api/browser/logout/${platform}`, { method: 'POST' });
+  loadPlatformLogins();
 }
 
 // ═══ 内容雷达 ═══

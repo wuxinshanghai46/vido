@@ -154,6 +154,7 @@ app.use('/api/comic', authenticate, requirePermission('comic'), require('./route
 app.use('/api/portrait', authenticate, requirePermission('portrait'), require('./routes/portrait'));
 app.use('/api/workbench', authenticate, require('./routes/workbench'));
 app.use('/api/works', authenticate, require('./routes/works'));
+app.use('/api/browser', authenticate, require('./routes/browser'));
 
 // === 设置路由（仅 admin，AI 配置已移至后台） ===
 app.use('/api/settings', authenticate, requireRole('admin'), require('./routes/settings'));
