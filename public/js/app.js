@@ -830,7 +830,7 @@ async function matLoadAudios() {
         <div style="font-size:13px;font-weight:500;color:var(--text);">${esc(v.name||'未命名')}</div>
         <div style="font-size:11px;color:var(--text3);">创建于 ${v.created_at?new Date(v.created_at).toLocaleDateString('zh-CN'):''}</div>
       </div>
-      <button onclick="new Audio('/api/workbench/voices/${v.id}/play').play()" style="padding:5px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">▶ 试听</button>
+      <button onclick="vcPlayVoice('${v.id}')" style="padding:5px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">▶ 试听</button>
     </div>`).join('');
   } catch {}
 }
@@ -6831,12 +6831,17 @@ async function deleteAsset(id) {
 }
 
 let _assetAudio = null;
-function previewAssetAudio(id) {
+async function previewAssetAudio(id) {
   const asset = assetsCache.find(a => a.id === id);
   if (!asset) return;
-  if (_assetAudio) { _assetAudio.pause(); _assetAudio = null; }
-  _assetAudio = new Audio(asset.file_url);
-  _assetAudio.play().catch(() => {});
+  if (_assetAudio) { _assetAudio.pause(); _assetAudio = null; return; }
+  try {
+    const resp = await authFetch(asset.file_url);
+    const blob = await resp.blob();
+    _assetAudio = new Audio(URL.createObjectURL(blob));
+    _assetAudio.onended = () => { _assetAudio = null; };
+    _assetAudio.play();
+  } catch { }
 }
 
 function previewAsset(id) {
@@ -8777,7 +8782,7 @@ async function loadVoiceClonePage() {
         : '<span class="tag tag-yellow">仅本地</span>';
       const statusHint = v.cloned
         ? `<div style="font-size:10px;color:#22c55e;margin-top:2px;">Fish Audio ID: ${esc((v.fish_ref_id||'').substring(0,20))}...</div>`
-        : `<div style="font-size:10px;color:#f59e0b;margin-top:2px;">未配置 Fish Audio，无法用于 TTS</div>`;
+        : `<div style="font-size:10px;color:#8b8fa3;margin-top:2px;">可用于 TTS（配置 Fish Audio 效果更佳）</div>`;
       return `<div class="card" style="padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <div>
@@ -9050,6 +9055,39 @@ async function wbRewrite() {
     btn.disabled = false;
     btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1.2 3.2H10L7.6 6l.9 3L6 7.4 3.5 9l.9-3L2 4.2h2.8z" stroke="currentColor" stroke-width=".9" stroke-linejoin="round"/></svg> AI 仿写';
   }
+}
+
+async function wbPickFromContentLib() {
+  try {
+    const resp = await authFetch('/api/radar/contents');
+    const data = await resp.json();
+    if (!data.success || !data.contents?.length) return alert('内容库暂无内容，请先在素材获取中抓取');
+    const items = data.contents.slice(0, 20);
+    const pick = await new Promise(resolve => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:var(--bg2);border-radius:12px;padding:20px;max-width:600px;width:90%;max-height:70vh;overflow-y:auto;';
+      box.innerHTML = `<div style="font-size:16px;font-weight:700;margin-bottom:12px;color:var(--text);">选择内容</div>` +
+        items.map(c => `<div onclick="this.parentElement._pick('${c.id}')" style="padding:10px;margin-bottom:6px;background:var(--bg3);border-radius:8px;cursor:pointer;"><div style="font-size:13px;font-weight:500;color:var(--text);">${esc(c.title||'未命名')}</div><div style="font-size:11px;color:var(--text3);margin-top:4px;max-height:40px;overflow:hidden;">${esc((c.transcript||'').substring(0,120))}</div></div>`).join('') +
+        `<button onclick="this.parentElement._pick(null)" style="width:100%;padding:8px;margin-top:8px;background:var(--bg3);border:none;border-radius:8px;color:var(--text3);cursor:pointer;">取消</button>`;
+      box._pick = (id) => { document.body.removeChild(overlay); resolve(id); };
+      overlay.appendChild(box);
+      overlay.onclick = (e) => { if (e.target === overlay) { document.body.removeChild(overlay); resolve(null); } };
+      document.body.appendChild(overlay);
+    });
+    if (!pick) return;
+    const detail = await authFetch('/api/radar/contents/' + pick);
+    const cd = await detail.json();
+    if (cd.success && cd.content?.transcript) {
+      document.getElementById('wb-tts-text').value = cd.content.transcript;
+      document.getElementById('wb-url-input').value = cd.content.transcript;
+      const si = document.getElementById('wb-source-info');
+      si.style.display = '';
+      document.getElementById('wb-source-name').textContent = cd.content.title || '内容库文案';
+      document.getElementById('wb-source-badge').textContent = '内容库';
+    }
+  } catch (err) { alert('加载失败: ' + err.message); }
 }
 
 async function wbSynthesize() {
