@@ -12,18 +12,10 @@ if (!fs.existsSync(COOKIE_DIR)) fs.mkdirSync(COOKIE_DIR, { recursive: true });
 const PLATFORMS = {
   douyin: {
     name: '抖音',
-    loginUrl: 'https://www.douyin.com/',
+    loginUrl: 'https://sso.douyin.com/passport/web/account/info/self/?aid=6383',
     afterNav: async (page) => {
-      // 等页面加载，点击登录按钮触发二维码
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        // 尝试点击"登录"按钮
-        const loginBtn = await page.$('button[data-e2e="header-login-button"]') ||
-          await page.$('.login-guide-enter-btn') ||
-          await page.$('[class*="login"]');
-        if (loginBtn) await loginBtn.click();
-        await new Promise(r => setTimeout(r, 3000));
-      } catch {}
+      // SSO 页面会自动跳转到扫码登录或已登录页面
+      await new Promise(r => setTimeout(r, 5000));
     },
     checkLogin: async (page) => {
       try {
@@ -43,9 +35,14 @@ const PLATFORMS = {
     loginUrl: 'https://www.xiaohongshu.com/explore',
     afterNav: async (page) => {
       await new Promise(r => setTimeout(r, 3000));
+      // 小红书会弹出登录框，尝试点击
       try {
-        const loginBtn = await page.$('.login-btn') || await page.$('[class*="LoginBtn"]');
+        const loginBtn = await page.$('.login-btn') || await page.$('[class*="LoginBtn"]') || await page.$('[class*="login-container"]');
         if (loginBtn) await loginBtn.click();
+        await new Promise(r => setTimeout(r, 3000));
+        // 切到扫码登录tab
+        const qrTab = await page.$('[class*="qrcode"]') || await page.$('span:has-text("扫码登录")');
+        if (qrTab) await qrTab.click();
         await new Promise(r => setTimeout(r, 2000));
       } catch {}
     },
@@ -58,14 +55,9 @@ const PLATFORMS = {
   },
   kuaishou: {
     name: '快手',
-    loginUrl: 'https://www.kuaishou.com/',
+    loginUrl: 'https://passport.kuaishou.com/pc/account/login?sid=kuaishou.web.cp.api',
     afterNav: async (page) => {
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        const loginBtn = await page.$('.login-btn') || await page.$('[class*="login"]');
-        if (loginBtn) await loginBtn.click();
-        await new Promise(r => setTimeout(r, 2000));
-      } catch {}
+      await new Promise(r => setTimeout(r, 5000));
     },
     checkLogin: async (page) => {
       try {
