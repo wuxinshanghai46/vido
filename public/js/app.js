@@ -8166,11 +8166,21 @@ function nvRenderReadMode(novel) {
     const title = c.title || novel.outline?.chapters?.find(o => o.index === c.index)?.title || `第${c.index}章`;
     return `<button class="nv-ch-tab ${c.index === _nvReadChapter ? 'active' : ''}" onclick="nvReadChapter(${c.index})">${esc(title)}</button>`;
   }).join('');
-  // 渲染内容
+  // 渲染内容（简易 Markdown → HTML）
   const ch = chapters.find(c => c.index === _nvReadChapter);
   const chTitle = ch?.title || novel.outline?.chapters?.find(o => o.index === _nvReadChapter)?.title || '';
-  body.innerHTML = (chTitle ? `<div style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--accent);border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:12px;">${esc(chTitle)}</div>` : '') +
-    `<div style="white-space:pre-wrap;">${esc(ch?.content || '暂无内容')}</div>`;
+  const raw = ch?.content || '暂无内容';
+  // 按段落分割，处理 Markdown 标题
+  const formatted = raw.split(/\n{2,}/).map(para => {
+    const trimmed = para.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('# ')) return `<h2 style="font-size:20px;font-weight:700;color:var(--accent);margin:28px 0 12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06);">${esc(trimmed.slice(2))}</h2>`;
+    if (trimmed.startsWith('## ')) return `<h3 style="font-size:17px;font-weight:600;color:var(--text);margin:24px 0 10px;">${esc(trimmed.slice(3))}</h3>`;
+    if (trimmed.startsWith('### ')) return `<h4 style="font-size:15px;font-weight:600;color:var(--text2);margin:20px 0 8px;">${esc(trimmed.slice(4))}</h4>`;
+    // 普通段落：首行缩进
+    return `<p style="text-indent:2em;margin:0 0 16px;line-height:2;">${esc(trimmed).replace(/\n/g, '<br>')}</p>`;
+  }).filter(Boolean).join('');
+  body.innerHTML = (chTitle ? `<div style="font-size:22px;font-weight:700;text-align:center;margin-bottom:20px;color:var(--accent);">${esc(chTitle)}</div>` : '') + formatted;
   console.log('[Novel] read ch', _nvReadChapter, 'length:', (ch?.content||'').length);
 }
 
