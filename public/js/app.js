@@ -789,6 +789,8 @@ async function matLoadParsed() {
       <div style="font-size:12px;color:var(--text2);line-height:1.5;max-height:60px;overflow:hidden;">${esc((c.transcript||'').substring(0,200))}</div>
       <div style="margin-top:8px;display:flex;gap:6px;">
         <button onclick="openContentProcess('${c.id}')" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">加载文案</button>
+        <button onclick="navigator.clipboard.writeText(${JSON.stringify(c.transcript||'')});alert('已复制')" style="padding:4px 12px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">复制</button>
+        <button onclick="cpToAvatarFromId('${c.id}')" style="padding:4px 12px;background:rgba(236,72,153,.12);color:#ec4899;border:none;border-radius:6px;font-size:11px;cursor:pointer;">数字人</button>
         <button onclick="deleteContentItem('${c.id}')" style="padding:4px 12px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:11px;cursor:pointer;">删除</button>
       </div>
     </div>`).join('');
@@ -1075,7 +1077,7 @@ async function loadReplicatePage() {
       data.voices.forEach(v => {
         const span = document.createElement('span');
         span.className = 'wb-voice-chip wb-voice-cloned';
-        span.dataset.voice = 'custom:' + v.id;
+        span.dataset.voice = v.id;
         span.onclick = () => wbSelectVoice(span);
         span.textContent = '🎙 ' + (v.name || '克隆声音');
         chips.appendChild(span);
@@ -1169,7 +1171,7 @@ async function cpToAvatarFromId(contentId) {
     const data = await resp.json();
     if (!data.success) return;
     switchPage('avatar');
-    setTimeout(() => { const ta = document.getElementById('av-text'); if (ta) ta.value = data.content.transcript || ''; }, 300);
+    setTimeout(() => { const ta = document.getElementById('av-text-input'); if (ta) { ta.value = data.content.transcript || ''; ta.dispatchEvent(new Event('input')); } }, 300);
   } catch {}
 }
 
@@ -5815,6 +5817,15 @@ async function loadAvModels() {
 function selectAvModel(el) {
   document.querySelectorAll('#av-model-selector .ig-model-opt').forEach(o => o.classList.remove('active'));
   el.classList.add('active');
+  // 更新提示文字
+  const model = el.dataset?.model || '';
+  const hint = document.getElementById('av-gen-hint');
+  if (hint) {
+    const isMM = model.startsWith('I2V-') || model.startsWith('MiniMax-');
+    hint.textContent = isMM
+      ? `MiniMax Hailuo ${model.includes('Fast') ? '快速模式' : '图生视频'} · 预计 1~3 分钟`
+      : `智谱 CogVideoX 图生视频 · 预计 1~3 分钟`;
+  }
 }
 
 function selectAvatar(el) {
@@ -5957,7 +5968,7 @@ async function renderCustomVoices() {
   if (!customVoices.length) { section.style.display = 'none'; return; }
   section.style.display = '';
   container.innerHTML = customVoices.map((v, i) => `
-    <span class="av-voice-chip av-voice-chip-custom" data-voice="custom:${v.id}" onclick="selectAvatarVoice(this)">
+    <span class="av-voice-chip av-voice-chip-custom" data-voice="${v.id}" onclick="selectAvatarVoice(this)">
       🎙 ${esc(v.name)}
       <button class="av-voice-chip-del" onclick="event.stopPropagation();removeCustomVoice(${i})">✕</button>
     </span>
@@ -8878,7 +8889,7 @@ function vcUseVoice(id, name) {
   // 保存到 localStorage，数字人页面可以使用
   let voices = JSON.parse(localStorage.getItem('vido_custom_voices') || '[]');
   if (!voices.find(v => v.id === id)) {
-    voices.push({ id, name, voiceId: 'custom:' + id });
+    voices.push({ id, name, voiceId: id });
     localStorage.setItem('vido_custom_voices', JSON.stringify(voices));
   }
   alert('声音已添加到自定义声音列表，可在数字人和一键复刻中使用');

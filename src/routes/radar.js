@@ -242,41 +242,99 @@ router.post('/extract-blogger', async (req, res) => {
     try {
       const resp = await axios.get(url, {
         timeout: 15000, maxRedirects: 5,
-        headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15', 'Accept-Language': 'zh-CN,zh;q=0.9' }
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'zh-CN,zh;q=0.9',
+          'Referer': 'https://www.douyin.com/'
+        }
       });
       const html = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+      const finalUrl = resp.request?.res?.responseUrl || resp.request?.path || url;
 
-      // 提取博主名
-      const nameMatch = html.match(/"(?:nickname|screen_name|name|author_name)"\s*:\s*"([^"]+)"/i);
-      const authorName = nameMatch ? nameMatch[1] : platformName + '博主';
+      // 尝试从嵌入的 JSON 数据中提取（__INITIAL_STATE__ / RENDER_DATA / SSR_DATA）
+      let jsonData = null;
+      const jsonPatterns = [
+        /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});\s*<\/script/,
+        /self\.__next_f\.push\(\[.*?"((?:\\"|[^"])*aweme(?:\\"|[^"])*)".*?\]\)/,
+        /<script[^>]*id="RENDER_DATA"[^>]*>([\s\S]*?)<\/script>/
+      ];
+      for (const pat of jsonPatterns) {
+        const m = html.match(pat);
+        if (m) { try { jsonData = JSON.parse(decodeURIComponent(m[1])); } catch { try { jsonData = JSON.parse(m[1]); } catch {} } break; }
+      }
 
-      // 提取视频链接
+      // 提取博主名 — 多种来源
+      let authorName = null;
+      const namePatterns = [
+        /"nickname"\s*:\s*"([^"]+)"/,
+        /"author_name"\s*:\s*"([^"]+)"/,
+        /"screen_name"\s*:\s*"([^"]+)"/,
+        /"name"\s*:\s*"([^"]{2,30})"/,
+        /<title[^>]*>([^<]*?)(?:的(?:抖音|主页|作品)|[-|])/i
+      ];
+      for (const pat of namePatterns) {
+        const m = html.match(pat);
+        if (m && m[1].trim()) { authorName = m[1].trim(); break; }
+      }
+      if (!authorName) authorName = platformName + '博主';
+
+      // 提取作者 UID
+      const uidMatch = html.match(/"uid"\s*:\s*"(\d+)"/) || html.match(/"authorId"\s*:\s*"(\d+)"/) || html.match(/"sec_uid"\s*:\s*"([^"]+)"/);
+      const authorId = uidMatch ? uidMatch[1] : '';
+
+      // 提取视频链接 — 从 JSON 数据和 HTML 双重提取
+      const foundUrls = new Set();
+
+      // JSON 中的 aweme_id / video_id
+      const awemeIds = [...html.matchAll(/"aweme_id"\s*:\s*"(\d+)"/g)];
+      awemeIds.forEach(m => foundUrls.add(`https://www.douyin.com/video/${m[1]}`));
+
+      // HTML href/src 属性
       const linkPatterns = [
         /(?:href|src)=["'](https?:\/\/(?:www\.)?douyin\.com\/video\/\d+[^"']*?)["']/gi,
         /(?:href|src)=["'](https?:\/\/v\.douyin\.com\/[^"']+)["']/gi,
-        /(?:href|src)=["'](https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery)\/[^"']+)["']/gi,
+        /(?:href|src)=["'](https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery|item)\/[^"']+)["']/gi,
         /(?:href|src)=["'](https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[^"']+)["']/gi,
         /(?:href|src)=["'](https?:\/\/(?:www\.)?bilibili\.com\/video\/[^"']+)["']/gi
       ];
-      const foundUrls = new Set();
       for (const pat of linkPatterns) { let m; while ((m = pat.exec(html)) !== null) foundUrls.add(m[1]); }
+
+      // 从 URL 本身提取（如果是视频页面）
+      const videoIdMatch = finalUrl.match(/\/video\/(\d+)/);
+      if (videoIdMatch) foundUrls.add(`https://www.douyin.com/video/${videoIdMatch[1]}`);
+
       const videos = [...foundUrls].map((u, i) => ({ url: u, title: `作品 ${i+1}`, stats: {} }));
 
       // 提取视频标题
-      const descMatches = [...html.matchAll(/"desc"\s*:\s*"([^"]{5,100})"/g)];
+      const descMatches = [...html.matchAll(/"desc"\s*:\s*"([^"]{2,200})"/g)];
       descMatches.forEach((m, i) => { if (videos[i]) videos[i].title = m[1]; });
+
+      // 提取统计数据
+      const likesMatch = html.match(/"digg_count"\s*:\s*(\d+)/);
+      const commentMatch = html.match(/"comment_count"\s*:\s*(\d+)/);
+      const shareMatch = html.match(/"share_count"\s*:\s*(\d+)/);
+      if (videos.length > 0 && (likesMatch || commentMatch)) {
+        videos[0].stats = {
+          likes: likesMatch ? parseInt(likesMatch[1]) : 0,
+          comments: commentMatch ? parseInt(commentMatch[1]) : 0,
+          shares: shareMatch ? parseInt(shareMatch[1]) : 0
+        };
+      }
 
       return res.json({
         success: true,
         isBlogger: videos.length > 0,
         blogger: {
-          name: authorName, id: '', url, platform,
-          videoCount: videos.length, totalLikes: 0
+          name: authorName, id: authorId, url: finalUrl, platform,
+          videoCount: videos.length, totalLikes: likesMatch ? parseInt(likesMatch[1]) : 0
         },
         videos,
         platformIcon: platformIcons[platform] || '👤'
       });
-    } catch {}
+    } catch (parseErr) {
+      console.warn('[Radar] 内置抓取失败:', parseErr.message);
+    }
 
     // 都失败，返回单视频模式
     res.json({ success: false, isBlogger: false, message: '无法解析为博主主页，将尝试单视频提取' });

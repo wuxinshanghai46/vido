@@ -1,7 +1,7 @@
 /**
  * 数字人视频生成服务
- * 基于智谱AI CogVideoX 图生视频 + TTS 语音合成
- * 流程：人像图片 → CogVideoX 动画视频 → TTS 生成语音 → FFmpeg 合成
+ * 支持：智谱AI CogVideoX / MiniMax Hailuo 图生视频 + TTS 语音合成
+ * 流程：人像图片 → 视频模型动画 → TTS 生成语音 → FFmpeg 合成
  */
 const fs = require('fs');
 const path = require('path');
@@ -16,9 +16,17 @@ const AVATAR_DIR = path.join(OUTPUT_DIR, 'avatar');
 
 // 智谱 API 配置
 const ZHIPU_API_BASE = 'https://open.bigmodel.cn/api/paas/v4';
+// MiniMax API 配置
+const MINIMAX_API_BASE = 'https://api.minimaxi.com/v1';
+
+// MiniMax 模型列表（用于判断走哪个 provider）
+const MINIMAX_MODELS = ['I2V-01', 'I2V-01-live', 'I2V-01-Director', 'MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'MiniMax-Hailuo-02'];
+
+function isMiniMaxModel(model) {
+  return MINIMAX_MODELS.includes(model);
+}
 
 function getZhipuKey() {
-  // 优先从 settings 获取，回退到 env
   const settings = loadSettings();
   for (const p of (settings.providers || [])) {
     if (p.id === 'zhipu' || p.preset === 'zhipu') {
@@ -29,6 +37,106 @@ function getZhipuKey() {
   return process.env.ZHIPU_API_KEY || '';
 }
 
+function getMiniMaxKey() {
+  const settings = loadSettings();
+  for (const p of (settings.providers || [])) {
+    if (p.id === 'minimax' || p.preset === 'minimax') {
+      const key = getApiKey(p.id);
+      if (key) return key;
+    }
+  }
+  return process.env.MINIMAX_API_KEY || '';
+}
+
+/**
+ * MiniMax 图生视频：提交任务 → 轮询 → 下载
+ */
+async function _minimaxGenerateVideo(imgParam, prompt, model, apiKey, onProgress) {
+  // 1. 创建任务
+  const reqBody = {
+    model,
+    first_frame_image: imgParam,
+    prompt: prompt.substring(0, 2000),
+    prompt_optimizer: true
+  };
+  console.log(`[Avatar] MiniMax I2V 请求: model=${model}, prompt长度=${prompt.length}`);
+
+  let createRes;
+  for (let retry = 0; retry < 5; retry++) {
+    try {
+      createRes = await axios.post(`${MINIMAX_API_BASE}/video_generation`, reqBody, {
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60000
+      });
+      if (createRes.data?.base_resp?.status_code === 1002) {
+        const wait = 30 + retry * 15;
+        console.warn(`[Avatar] MiniMax 限流，${wait}秒后重试 (${retry + 1}/5)`);
+        onProgress?.({ step: 'video', message: `服务繁忙，${wait}秒后自动重试...` });
+        await new Promise(r => setTimeout(r, wait * 1000));
+        continue;
+      }
+      break;
+    } catch (apiErr) {
+      const detail = apiErr.response?.data?.base_resp?.status_msg || apiErr.message;
+      const status = apiErr.response?.status;
+      const isNetworkErr = !apiErr.response && /ECONNRESET|ECONNREFUSED|socket|TLS|ETIMEDOUT|network/i.test(apiErr.message);
+      if (isNetworkErr && retry < 4) {
+        const wait = 10 * (retry + 1);
+        console.warn(`[Avatar] MiniMax 网络波动，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
+        onProgress?.({ step: 'video', message: `网络波动，${wait}秒后自动重试...` });
+        await new Promise(r => setTimeout(r, wait * 1000));
+        continue;
+      }
+      throw new Error(`MiniMax 视频 API 调用失败 (${status || '网络错误'}): ${detail}`);
+    }
+  }
+
+  const taskIdMM = createRes.data?.task_id;
+  const respCode = createRes.data?.base_resp?.status_code;
+  if (respCode !== 0 || !taskIdMM) {
+    throw new Error(`MiniMax 创建任务失败: ${createRes.data?.base_resp?.status_msg || JSON.stringify(createRes.data)}`);
+  }
+  console.log(`[Avatar] MiniMax 任务已创建: ${taskIdMM}`);
+
+  // 2. 轮询等待结果
+  let fileId = null;
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    onProgress?.({ step: 'video', message: `MiniMax 生成中... (${(i + 1) * 5}秒)` });
+
+    try {
+      const pollRes = await axios.get(`${MINIMAX_API_BASE}/query/video_generation`, {
+        params: { task_id: taskIdMM },
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 15000
+      });
+      const status = pollRes.data?.status;
+      if (status === 'Success') {
+        fileId = pollRes.data?.file_id;
+        console.log(`[Avatar] MiniMax 生成完成, file_id=${fileId}, ${pollRes.data?.video_width}x${pollRes.data?.video_height}`);
+        break;
+      } else if (status === 'Fail') {
+        throw new Error('MiniMax 视频生成失败: ' + (pollRes.data?.base_resp?.status_msg || '未知错误'));
+      }
+      // Preparing / Queueing / Processing → 继续等
+    } catch (pollErr) {
+      if (pollErr.message.includes('生成失败')) throw pollErr;
+    }
+  }
+
+  if (!fileId) throw new Error('MiniMax 视频生成超时，请重试');
+
+  // 3. 下载视频文件
+  onProgress?.({ step: 'video', message: '下载 MiniMax 视频...' });
+  const fileResp = await axios.get(`${MINIMAX_API_BASE}/files/retrieve_content`, {
+    params: { file_id: fileId },
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+    responseType: 'arraybuffer',
+    timeout: 120000
+  });
+  return fileResp.data; // Buffer
+}
+
 /**
  * 生成数字人视频
  * @param {object} params
@@ -36,7 +144,7 @@ function getZhipuKey() {
  * @param {string} params.text - 要说的话（用于 TTS 和 prompt）
  * @param {string} params.voiceId - TTS 音色
  * @param {string} params.ratio - 比例 9:16 / 16:9 / 1:1
- * @param {string} params.model - 模型 cogvideox-3 / cogvideox-flash
+ * @param {string} params.model - 模型（cogvideox-flash / I2V-01-live / MiniMax-Hailuo-2.3 等）
  * @param {function} params.onProgress - 进度回调
  */
 async function generateAvatarVideo(params) {
@@ -45,8 +153,9 @@ async function generateAvatarVideo(params) {
   const taskDir = path.join(AVATAR_DIR, taskId);
   fs.mkdirSync(taskDir, { recursive: true });
 
-  const apiKey = getZhipuKey();
-  if (!apiKey) throw new Error('未配置智谱 AI API Key');
+  const useMiniMax = isMiniMaxModel(model);
+  const apiKey = useMiniMax ? getMiniMaxKey() : getZhipuKey();
+  if (!apiKey) throw new Error(useMiniMax ? '未配置 MiniMax API Key，请在设置中添加 minimax 供应商' : '未配置智谱 AI API Key');
 
   onProgress?.({ step: 'start', message: '开始生成数字人视频...' });
 
@@ -112,100 +221,97 @@ async function generateAvatarVideo(params) {
     const bgPrompt = bgPromptMap[background] || bgPromptMap.office;
     onProgress?.({ step: 'start', message: '生成场景合成图...' });
     try {
-      const compRes = await axios.post(`${ZHIPU_API_BASE}/images/generations`, {
-        model: 'cogview-3-flash',
-        prompt: `一个年轻的中国职业人士半身照，站在${bgPrompt}的场景中，面对镜头，自然微笑，专业摄影风格，高清写实`
-      }, {
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 30000
-      });
-      const compUrl = compRes.data?.data?.[0]?.url;
-      if (compUrl) {
-        const compImg = await axios.get(compUrl, { responseType: 'arraybuffer', timeout: 30000 });
-        const compPath = path.join(taskDir, 'avatar_with_bg.png');
-        fs.writeFileSync(compPath, compImg.data);
-        const ext = 'png';
-        imgParam = `data:image/${ext};base64,${compImg.data.toString('base64')}`;
-        console.log(`[Avatar] 场景合成图生成完成 (${(compImg.data.length/1024).toFixed(0)}KB)`);
+      const zhipuKeyForBg = getZhipuKey();
+      if (zhipuKeyForBg) {
+        const compRes = await axios.post(`${ZHIPU_API_BASE}/images/generations`, {
+          model: 'cogview-3-flash',
+          prompt: `一个年轻的中国职业人士半身照，站在${bgPrompt}的场景中，面对镜头，自然微笑，专业摄影风格，高清写实`
+        }, {
+          headers: { 'Authorization': `Bearer ${zhipuKeyForBg}`, 'Content-Type': 'application/json' },
+          timeout: 30000
+        });
+        const compUrl = compRes.data?.data?.[0]?.url;
+        if (compUrl) {
+          const compImg = await axios.get(compUrl, { responseType: 'arraybuffer', timeout: 30000 });
+          const compPath = path.join(taskDir, 'avatar_with_bg.png');
+          fs.writeFileSync(compPath, compImg.data);
+          imgParam = `data:image/png;base64,${compImg.data.toString('base64')}`;
+          console.log(`[Avatar] 场景合成图生成完成 (${(compImg.data.length/1024).toFixed(0)}KB)`);
+        }
       }
     } catch (compErr) {
       console.warn('[Avatar] 场景合成图生成失败，使用原始头像:', compErr.message?.slice(0, 80));
     }
   }
 
-  onProgress?.({ step: 'video', message: '正在生成动画视频（约1-3分钟）...' });
+  const providerName = useMiniMax ? 'MiniMax' : '智谱';
+  onProgress?.({ step: 'video', message: `${providerName} 正在生成动画视频（约1-3分钟）...` });
 
-  // 3. 调用智谱 CogVideoX API（i2v 模式不支持 size/duration/fps 参数）
-  const reqBody = { model, prompt, image_url: imgParam };
-  // 注意：智谱 CogVideoX 图生视频（i2v）模式固定输出 720x1280 @ 5秒，
-  // 传 size/duration/fps 会报 400 "不支持当前size值"
-  console.log(`[Avatar] 智谱 i2v 请求: model=${model}, prompt长度=${prompt.length}, 图片=${imgParam.startsWith('data:') ? 'base64' : imgParam.slice(0, 60)}`);
-
-  let genRes;
-  for (let retry = 0; retry < 5; retry++) {
-    try {
-      genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, reqBody, {
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 300000
-      });
-      break;
-    } catch (apiErr) {
-      const detail = apiErr.response?.data?.error?.message || apiErr.response?.data?.message || apiErr.message;
-      const status = apiErr.response?.status;
-      const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
-      const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
-      if ((isNetworkErr || isRateLimit) && retry < 4) {
-        const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
-        const reason = isRateLimit ? '服务繁忙' : '网络波动';
-        console.warn(`[Avatar] ${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
-        onProgress?.({ step: 'video', message: `${reason}，${wait}秒后自动重试...` });
-        await new Promise(r => setTimeout(r, wait * 1000));
-        continue;
-      }
-      console.error('[Avatar] 智谱 API 错误:', status, JSON.stringify(apiErr.response?.data || ''));
-      throw new Error(`智谱视频 API 调用失败 (${status || '网络错误'}): ${detail}`);
-    }
-  }
-
-  const zhipuTaskId = genRes.data?.id;
-  if (!zhipuTaskId) throw new Error('智谱 API 返回异常: ' + JSON.stringify(genRes.data));
-
-  // 4. 轮询等待结果
-  let videoUrl = null;
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    onProgress?.({ step: 'video', message: `等待视频生成... (${(i + 1) * 5}秒)` });
-
-    try {
-      const pollRes = await axios.get(`${ZHIPU_API_BASE}/async-result/${zhipuTaskId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        timeout: 15000
-      });
-
-      const status = pollRes.data?.task_status;
-      if (status === 'SUCCESS') {
-        videoUrl = pollRes.data?.video_result?.[0]?.url;
-        break;
-      } else if (status === 'FAIL') {
-        throw new Error('视频生成失败: ' + (pollRes.data?.message || '未知错误'));
-      }
-    } catch (pollErr) {
-      if (pollErr.message.includes('视频生成失败')) throw pollErr;
-      // 网络错误继续重试
-    }
-  }
-
-  if (!videoUrl) throw new Error('视频生成超时，请重试');
-
-  // 5. 从智谱云端拉取视频到本地
-  onProgress?.({ step: 'video', message: '获取视频结果...' });
   const rawVideoPath = path.join(taskDir, 'avatar_raw.mp4');
-  const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
-  fs.writeFileSync(rawVideoPath, videoResp.data);
-
   const ffmpegStatic = require('ffmpeg-static');
   const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
   const { execSync } = require('child_process');
+
+  if (useMiniMax) {
+    // ═══ MiniMax 路径 ═══
+    const videoData = await _minimaxGenerateVideo(imgParam, prompt, model, apiKey, onProgress);
+    fs.writeFileSync(rawVideoPath, videoData);
+    console.log(`[Avatar] MiniMax 视频已下载: ${(videoData.length / 1024).toFixed(0)}KB`);
+  } else {
+    // ═══ 智谱 CogVideoX 路径 ═══
+    const reqBody = { model, prompt, image_url: imgParam };
+    console.log(`[Avatar] 智谱 i2v 请求: model=${model}, prompt长度=${prompt.length}, 图片=${imgParam.startsWith('data:') ? 'base64' : imgParam.slice(0, 60)}`);
+
+    let genRes;
+    for (let retry = 0; retry < 5; retry++) {
+      try {
+        genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, reqBody, {
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          timeout: 300000
+        });
+        break;
+      } catch (apiErr) {
+        const detail = apiErr.response?.data?.error?.message || apiErr.response?.data?.message || apiErr.message;
+        const status = apiErr.response?.status;
+        const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
+        const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
+        if ((isNetworkErr || isRateLimit) && retry < 4) {
+          const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
+          const reason = isRateLimit ? '服务繁忙' : '网络波动';
+          console.warn(`[Avatar] ${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
+          onProgress?.({ step: 'video', message: `${reason}，${wait}秒后自动重试...` });
+          await new Promise(r => setTimeout(r, wait * 1000));
+          continue;
+        }
+        console.error('[Avatar] 智谱 API 错误:', status, JSON.stringify(apiErr.response?.data || ''));
+        throw new Error(`智谱视频 API 调用失败 (${status || '网络错误'}): ${detail}`);
+      }
+    }
+
+    const zhipuTaskId = genRes.data?.id;
+    if (!zhipuTaskId) throw new Error('智谱 API 返回异常: ' + JSON.stringify(genRes.data));
+
+    let videoUrl = null;
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      onProgress?.({ step: 'video', message: `等待视频生成... (${(i + 1) * 5}秒)` });
+      try {
+        const pollRes = await axios.get(`${ZHIPU_API_BASE}/async-result/${zhipuTaskId}`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }, timeout: 15000
+        });
+        const status = pollRes.data?.task_status;
+        if (status === 'SUCCESS') { videoUrl = pollRes.data?.video_result?.[0]?.url; break; }
+        else if (status === 'FAIL') throw new Error('视频生成失败: ' + (pollRes.data?.message || '未知错误'));
+      } catch (pollErr) {
+        if (pollErr.message.includes('视频生成失败')) throw pollErr;
+      }
+    }
+    if (!videoUrl) throw new Error('视频生成超时，请重试');
+
+    onProgress?.({ step: 'video', message: '获取视频结果...' });
+    const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
+    fs.writeFileSync(rawVideoPath, videoResp.data);
+  }
 
   // 5.5 创建乒乓循环视频（正放+倒放，过渡更平滑，约10秒基础素材）
   let videoPath = rawVideoPath;
@@ -295,8 +401,9 @@ async function generateMultiSegmentVideo(params) {
   const taskDir = path.join(AVATAR_DIR, taskId);
   fs.mkdirSync(taskDir, { recursive: true });
 
-  const apiKey = getZhipuKey();
-  if (!apiKey) throw new Error('未配置智谱 AI API Key');
+  const useMiniMax = isMiniMaxModel(model);
+  const apiKey = useMiniMax ? getMiniMaxKey() : getZhipuKey();
+  if (!apiKey) throw new Error(useMiniMax ? '未配置 MiniMax API Key' : '未配置智谱 AI API Key');
   const total = segments.length;
 
   onProgress?.({ step: 'start', message: `开始多段生成（共 ${total} 段）...` });
@@ -355,62 +462,64 @@ async function generateMultiSegmentVideo(params) {
 
       onProgress?.({ step: 'video', message: `生成第 ${idx + 1}/${total} 段视频...`, segment: idx + 1, total });
 
-      // 调用 CogVideoX（含网络重试 + 限流重试）
-      let genRes;
-      for (let retry = 0; retry < 5; retry++) {
-        try {
-          genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, {
-            model, prompt, image_url: imgParam
-          }, {
-            headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-            timeout: 300000
-          });
-          break;
-        } catch (apiErr) {
-          const detail = apiErr.response?.data?.error?.message || apiErr.message;
-          const status = apiErr.response?.status;
-          const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
-          const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
-          if ((isNetworkErr || isRateLimit) && retry < 4) {
-            const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
-            const reason = isRateLimit ? '服务繁忙' : '网络波动';
-            console.warn(`[Avatar] 第${idx + 1}段${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
-            onProgress?.({ step: 'video', message: `第${idx + 1}段${reason}，${wait}秒后自动重试...`, segment: idx + 1, total });
-            await new Promise(r => setTimeout(r, wait * 1000));
-            continue;
-          }
-          throw new Error(`第${idx + 1}段视频 API 失败: ${detail}`);
-        }
-      }
-
-      const zhipuTaskId = genRes.data?.id;
-      if (!zhipuTaskId) throw new Error(`第${idx + 1}段: 智谱 API 返回异常`);
-
-      // 轮询等待
-      let videoUrl = null;
-      for (let i = 0; i < 120; i++) {
-        await new Promise(r => setTimeout(r, 5000));
-        if (i % 6 === 0) onProgress?.({ step: 'video', message: `第 ${idx + 1}/${total} 段生成中... (${(i + 1) * 5}秒)`, segment: idx + 1, total });
-        try {
-          const pollRes = await axios.get(`${ZHIPU_API_BASE}/async-result/${zhipuTaskId}`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }, timeout: 15000
-          });
-          if (pollRes.data?.task_status === 'SUCCESS') {
-            videoUrl = pollRes.data?.video_result?.[0]?.url;
-            break;
-          } else if (pollRes.data?.task_status === 'FAIL') {
-            throw new Error(`第${idx + 1}段视频生成失败`);
-          }
-        } catch (pollErr) {
-          if (pollErr.message.includes('生成失败')) throw pollErr;
-        }
-      }
-      if (!videoUrl) throw new Error(`第${idx + 1}段视频生成超时`);
-
-      // 下载视频
       const rawPath = path.join(segDir, 'raw.mp4');
-      const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
-      fs.writeFileSync(rawPath, videoResp.data);
+
+      if (useMiniMax) {
+        // MiniMax 路径
+        const segProgress = (info) => onProgress?.({ ...info, message: `第${idx+1}段: ${info.message}`, segment: idx + 1, total });
+        const videoData = await _minimaxGenerateVideo(imgParam, prompt, model, apiKey, segProgress);
+        fs.writeFileSync(rawPath, videoData);
+      } else {
+        // 智谱 CogVideoX 路径
+        let genRes;
+        for (let retry = 0; retry < 5; retry++) {
+          try {
+            genRes = await axios.post(`${ZHIPU_API_BASE}/videos/generations`, {
+              model, prompt, image_url: imgParam
+            }, {
+              headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+              timeout: 300000
+            });
+            break;
+          } catch (apiErr) {
+            const detail = apiErr.response?.data?.error?.message || apiErr.message;
+            const status = apiErr.response?.status;
+            const isNetworkErr = !apiErr.response && (apiErr.code === 'ECONNRESET' || apiErr.code === 'ECONNREFUSED' || /socket|TLS|ETIMEDOUT|network/i.test(apiErr.message));
+            const isRateLimit = status === 429 || /访问量过大|rate.?limit|too many|请稍后/i.test(detail);
+            if ((isNetworkErr || isRateLimit) && retry < 4) {
+              const wait = isRateLimit ? 30 + retry * 15 : 10 * (retry + 1);
+              const reason = isRateLimit ? '服务繁忙' : '网络波动';
+              console.warn(`[Avatar] 第${idx + 1}段${reason}，${wait}秒后重试 (${retry + 1}/5): ${detail}`);
+              onProgress?.({ step: 'video', message: `第${idx + 1}段${reason}，${wait}秒后自动重试...`, segment: idx + 1, total });
+              await new Promise(r => setTimeout(r, wait * 1000));
+              continue;
+            }
+            throw new Error(`第${idx + 1}段视频 API 失败: ${detail}`);
+          }
+        }
+
+        const zhipuTaskId = genRes.data?.id;
+        if (!zhipuTaskId) throw new Error(`第${idx + 1}段: 智谱 API 返回异常`);
+
+        let videoUrl = null;
+        for (let i = 0; i < 120; i++) {
+          await new Promise(r => setTimeout(r, 5000));
+          if (i % 6 === 0) onProgress?.({ step: 'video', message: `第 ${idx + 1}/${total} 段生成中... (${(i + 1) * 5}秒)`, segment: idx + 1, total });
+          try {
+            const pollRes = await axios.get(`${ZHIPU_API_BASE}/async-result/${zhipuTaskId}`, {
+              headers: { 'Authorization': `Bearer ${apiKey}` }, timeout: 15000
+            });
+            if (pollRes.data?.task_status === 'SUCCESS') { videoUrl = pollRes.data?.video_result?.[0]?.url; break; }
+            else if (pollRes.data?.task_status === 'FAIL') throw new Error(`第${idx + 1}段视频生成失败`);
+          } catch (pollErr) {
+            if (pollErr.message.includes('生成失败')) throw pollErr;
+          }
+        }
+        if (!videoUrl) throw new Error(`第${idx + 1}段视频生成超时`);
+
+        const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 60000 });
+        fs.writeFileSync(rawPath, videoResp.data);
+      }
 
       // 乒乓循环
       const ppPath = path.join(segDir, 'pingpong.mp4');

@@ -21,7 +21,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   if (!text || !text.trim()) return null;
 
   // 自定义声音：如果选择了用户上传的声音，用 CosyVoice 克隆或 FFmpeg 变调
-  if (voiceId && voiceId.startsWith('custom_')) {
+  if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
     try {
       const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
       if (result) { console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`); return result; }
