@@ -1029,7 +1029,12 @@ async function runFullPipeline(projectId, userId = null) {
           // Windows 中文字体路径（msyh=微软雅黑，simhei=黑体）
           const fontFile = ['C:/Windows/Fonts/msyh.ttc', 'C:/Windows/Fonts/simhei.ttf'].find(f => fs.existsSync(f));
           const fontOpt = fontFile ? `fontfile='${fontFile.replace(/\\/g, '/')}':` : '';
-          execSync(`"${ffmpegPath2}" -f lavfi -i "color=c=${bgColor}:size=1280x720:duration=${clipDuration}:rate=24" -vf "drawtext=${fontOpt}text='场景 ${i+1}':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=h/2-80:alpha=0.9,drawtext=${fontOpt}text='${displayText}':fontsize=26:fontcolor=0xcccccc:x=(w-text_w)/2:y=h/2-20:alpha=0.8,drawtext=${fontOpt}text='视频生成失败 - 请检查API配置':fontsize=16:fontcolor=0xffaa00:x=(w-text_w)/2:y=h/2+30:alpha=0.8,drawtext=${fontOpt}text='${errMsg}':fontsize=13:fontcolor=0xff6666:x=(w-text_w)/2:y=h/2+60:alpha=0.7" -c:v libx264 -pix_fmt yuv420p -y "${demoPath}"`, { stdio: 'pipe' });
+          try {
+            execSync(`"${ffmpegPath2}" -f lavfi -i "color=c=${bgColor}:size=1280x720:duration=${clipDuration}:rate=24" -vf "drawtext=${fontOpt}text='场景 ${i+1}':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=h/2-80:alpha=0.9,drawtext=${fontOpt}text='${displayText}':fontsize=26:fontcolor=0xcccccc:x=(w-text_w)/2:y=h/2-20:alpha=0.8,drawtext=${fontOpt}text='视频生成失败 - 请检查API配置':fontsize=16:fontcolor=0xffaa00:x=(w-text_w)/2:y=h/2+30:alpha=0.8,drawtext=${fontOpt}text='${errMsg}':fontsize=13:fontcolor=0xff6666:x=(w-text_w)/2:y=h/2+60:alpha=0.7" -c:v libx264 -pix_fmt yuv420p -y "${demoPath}"`, { stdio: 'pipe' });
+          } catch {
+            // drawtext 不可用（服务器 ffmpeg 未编译 freetype），生成纯色占位
+            execSync(`"${ffmpegPath2}" -f lavfi -i "color=c=${bgColor}:size=1280x720:duration=${clipDuration}:rate=24" -c:v libx264 -pix_fmt yuv420p -y "${demoPath}"`, { stdio: 'pipe' });
+          }
           result = { filePath: demoPath };
         }
 

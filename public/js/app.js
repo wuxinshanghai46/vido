@@ -7691,8 +7691,9 @@ async function nvSelect(id) {
     const data = await res.json();
     if (!data.success) return;
     const novel = data.novel;
+    const isNewSelect = nvCurrentId !== id;
     nvCurrentId = id;
-    nvCurrentChapter = 1;
+    if (isNewSelect) nvCurrentChapter = 1;
 
     // 更新列表高亮
     document.querySelectorAll('.nv-list-item').forEach(el => el.classList.remove('active'));
@@ -7749,8 +7750,9 @@ function nvSwitchMode(mode) {
   document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
   document.getElementById('nv-ws-outline').style.display = mode === 'outline' ? '' : 'none';
   document.getElementById('nv-ws-write').style.display = mode === 'write' ? '' : 'none';
-  if (mode === 'write') {
-    // 切换到写作模式时重新加载章节内容，而不是保存（当前编辑器可能是空的）
+  if (mode === 'write' && nvCurrentId) {
+    // 切换到写作模式时重新加载章节内容
+    nvSaveCurrentContent();
     nvSelect(nvCurrentId);
   }
 }

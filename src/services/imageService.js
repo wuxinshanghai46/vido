@@ -108,7 +108,7 @@ function buildJimengPrompt(name, role, description, dim = '2d', race = '人', sp
 
 // 英文 prompt — 多角度角色转面图 (character turnaround sheet)
 function buildPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
-  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : 'celulose';
+  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
   const isAnimal = ANIMAL_RACES.includes(race);
   if (isAnimal) {
     const creatureType = species || race;
@@ -169,7 +169,7 @@ function buildScenePrompt(title, description, theme, timeOfDay, category, dim = 
     const catMap = { '室外': 'outdoor', '室内': 'indoor interior', '战场': 'empty battlefield aftermath', '自然': 'nature landscape', '城市': 'cityscape urban' };
     parts.push(catMap[category] || category);
   }
-  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : 'celulose';
+  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
   parts.push(STYLE_PROMPTS[styleKey]);
   if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
   parts.push('wide angle establishing shot, matte painting, environment concept art, background plate, completely empty scene, absolutely no people, no characters, no figures, no silhouettes, no creatures, uninhabited, desolate, high quality');
@@ -617,7 +617,7 @@ function buildJimengScenePrompt(title, description, theme, timeOfDay, category, 
     const catCN = { '战场': '空旷战后废墟', '室内': '空荡室内空间' };
     parts.push(catCN[category] || category);
   }
-  const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : 'celulose';
+  const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
   parts.push(STYLE_PROMPTS_CN[styleKey]);
   parts.push(DIM_SUFFIX_CN[dim] || DIM_SUFFIX_CN['2d']);
   parts.push('广角全景，环境概念画，场景设定图，完全空旷无人，严禁出现任何人物角色动物生物，只画地形建筑天空植被，无人荒凉空境，高质量精细');
