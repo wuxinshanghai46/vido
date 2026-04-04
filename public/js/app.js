@@ -295,8 +295,8 @@ async function loadDashboard() {
       tasksRes.tasks.map(t => {
         const st = t.status || 'pending';
         const pg = TYPE_PAGE[t.type] || 'works';
-        const errRow = (st === 'error' && t.error) ? `<tr><td colspan="5" style="padding:2px 12px 8px;border:none;"><div style="font-size:11px;color:#ef4444;background:rgba(239,68,68,.08);padding:6px 10px;border-radius:4px;line-height:1.4;">❌ ${esc(t.error.substring(0, 200))}</div></td></tr>` : '';
-        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span></td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>${errRow}`;
+        const errBtn = (st === 'error' && t.error) ? `<span onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="margin-left:4px;padding:1px 6px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:3px;font-size:10px;cursor:pointer;">原因</span><div style="display:none;margin-top:4px;font-size:11px;color:#ef4444;background:rgba(239,68,68,.06);padding:4px 8px;border-radius:4px;line-height:1.4;">${esc(t.error.substring(0, 200))}</div>` : '';
+        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span>${errBtn}</td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>`;
       }).join('') + '</tbody></table>';
   } else {
     tasksEl.innerHTML = '<table class="table"><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无任务记录</td></tr></tbody></table>';
@@ -5793,36 +5793,35 @@ async function loadAvModels() {
     const resp = await authFetch('/api/settings');
     const data = await resp.json();
     const providers = data.providers || [];
-    const container = document.getElementById('av-model-selector');
-    // 保留默认两个 CogVideoX 选项，追加 settings 中 use=avatar 的模型
+    const sel = document.getElementById('av-model-selector');
+    // 从 settings 追加 use=avatar 的模型到下拉框
+    const existingValues = new Set([...sel.options].map(o => o.value));
     let extra = '';
     providers.forEach(p => {
       (p.models || []).forEach(m => {
-        if (m.use === 'avatar') {
-          const initials = (p.name || p.id)[0].toUpperCase();
-          extra += `<div class="ig-model-opt" data-model="${m.id}" data-provider="${p.id}" onclick="selectAvModel(this)">
-            <span class="ig-model-icon">${initials}</span>
-            <div class="ig-model-info">
-              <div class="ig-model-name">${esc(m.name || m.id)}</div>
-              <div class="ig-model-desc">${esc(p.name || p.id)}</div>
-            </div>
-          </div>`;
+        if (m.use === 'avatar' && !existingValues.has(m.id)) {
+          extra += `<option value="${m.id}">${esc(m.name || m.id)} — ${esc(p.name || p.id)}</option>`;
         }
       });
     });
-    if (extra) container.insertAdjacentHTML('beforeend', extra);
+    if (extra) {
+      const group = document.createElement('optgroup');
+      group.label = '更多模型';
+      group.innerHTML = extra;
+      sel.appendChild(group);
+    }
   } catch {}
 }
 
-function selectAvModel(el) {
-  document.querySelectorAll('#av-model-selector .ig-model-opt').forEach(o => o.classList.remove('active'));
-  el.classList.add('active');
-  // 更新提示文字
-  const model = el.dataset?.model || '';
+function selectAvModel(sel) {
+  const model = sel.value || '';
   const hint = document.getElementById('av-gen-hint');
   if (hint) {
     const isMM = model.startsWith('I2V-') || model.startsWith('MiniMax-');
-    hint.textContent = isMM
+    const isKling = model.startsWith('kling-');
+    hint.textContent = isKling
+      ? `Kling AI ${model === 'kling-v3' ? '4K旗舰' : '图生视频'} · 预计 1~3 分钟`
+      : isMM
       ? `MiniMax Hailuo ${model.includes('Fast') ? '快速模式' : '图生视频'} · 预计 1~3 分钟`
       : `智谱 CogVideoX 图生视频 · 预计 1~3 分钟`;
   }
@@ -6062,9 +6061,8 @@ async function startAvatarGeneration() {
   // 从 voice chip 取音色
   const voiceId = document.querySelector('.av-voice-chip.active')?.dataset?.voice || '';
   const speed = parseFloat(document.getElementById('av-speed-range')?.value) || 1.0;
-  // 从 active 模型 opt 取模型 ID
-  const modelEl = document.querySelector('#av-model-selector .ig-model-opt.active');
-  const model = modelEl?.dataset?.model || 'cogvideox-flash';
+  // 从下拉选择器取模型 ID
+  const model = document.getElementById('av-model-selector')?.value || 'cogvideox-flash';
 
   const previewBox = document.getElementById('av-preview-box');
   previewBox.innerHTML = renderProgressUI('start', '正在提交生成任务...');
@@ -7709,7 +7707,16 @@ async function nvSelect(id) {
 
     // 渲染写作工作台
     nvRenderChapterTabs(novel);
-    nvShowChapter(1, novel);
+    nvShowChapter(nvCurrentChapter, novel);
+
+    // 如果已有章节内容，自动切换到写作模式（直接切换 DOM，不调用 nvSwitchMode 避免递归）
+    const hasChapterContent = (novel.chapters || []).some(c => c.content && c.content.trim());
+    if (hasChapterContent && nvCurrentMode !== 'write') {
+      nvCurrentMode = 'write';
+      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'write'));
+      document.getElementById('nv-ws-outline').style.display = 'none';
+      document.getElementById('nv-ws-write').style.display = '';
+    }
   } catch (e) { console.error('nvSelect error', e); }
   nvLoadPage();
 }
@@ -9038,13 +9045,17 @@ async function wbSynthesize() {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
-    // 显示结果
+    // 显示结果（需要带 token 获取音频，<audio> 无法自动带 header）
     const resultEl = document.getElementById('wb-audio-result');
     resultEl.style.display = '';
     const player = document.getElementById('wb-audio-player');
-    player.src = data.audioUrl;
+    const audioResp = await authFetch(data.audioUrl);
+    const audioBlob = await audioResp.blob();
+    const audioBlobUrl = URL.createObjectURL(audioBlob);
+    player.src = audioBlobUrl;
     player.load();
-    document.getElementById('wb-audio-download').href = data.audioUrl;
+    document.getElementById('wb-audio-download').href = audioBlobUrl;
+    document.getElementById('wb-audio-download').download = 'tts_audio' + (data.audioUrl.match(/\.\w+$/)?.[0] || '.mp3');
   } catch (err) {
     alert('合成失败: ' + err.message);
   } finally {

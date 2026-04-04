@@ -2085,7 +2085,10 @@
 
       <!-- ══ AI 数字人页面 ══ -->
       <div id="page-avatar" class="page">
-        <div class="page-top-bar"><h2>AI 数字人</h2><span class="page-top-sub">照片驱动数字人视频</span></div>
+        <div class="page-top-bar">
+          <div class="page-top-title">AI 数字人</div>
+          <div class="page-top-sub">上传人像照片，AI 驱动生成口播 / 讲解数字人视频</div>
+        </div>
         <div class="av-page">
           <div class="av-main">
             <!-- ── 左侧配置面板 ── -->
@@ -2426,43 +2429,26 @@
                   <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.1"/><path d="M3.5 5.5h2M7.5 5.5h2M3.5 8h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
                   生成模型
                 </div>
-                <div class="ig-model-selector" id="av-model-selector">
-                  <div class="ig-model-opt active" data-model="cogvideox-flash" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">Z</span>
-                    <div class="ig-model-info">
-                      <div class="ig-model-name">CogVideoX Flash</div>
-                      <div class="ig-model-desc">智谱AI · 快速生成</div>
-                    </div>
-                  </div>
-                  <div class="ig-model-opt" data-model="cogvideox-3" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)">Z</span>
-                    <div class="ig-model-info">
-                      <div class="ig-model-name">CogVideoX 3</div>
-                      <div class="ig-model-desc">智谱AI · 高质量</div>
-                    </div>
-                  </div>
-                  <div class="ig-model-opt" data-model="I2V-01-live" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#ff6b35,#f7c948)">M</span>
-                    <div class="ig-model-info">
-                      <div class="ig-model-name">Hailuo I2V Live</div>
-                      <div class="ig-model-desc">MiniMax · 口播推荐</div>
-                    </div>
-                  </div>
-                  <div class="ig-model-opt" data-model="MiniMax-Hailuo-2.3" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#ff4757,#ff6b81)">M</span>
-                    <div class="ig-model-info">
-                      <div class="ig-model-name">Hailuo 2.3</div>
-                      <div class="ig-model-desc">MiniMax · 最新旗舰</div>
-                    </div>
-                  </div>
-                  <div class="ig-model-opt" data-model="MiniMax-Hailuo-2.3-Fast" onclick="selectAvModel(this)">
-                    <span class="ig-model-icon" style="background:linear-gradient(135deg,#ffa502,#ff6348)">M</span>
-                    <div class="ig-model-info">
-                      <div class="ig-model-name">Hailuo 2.3 Fast</div>
-                      <div class="ig-model-desc">MiniMax · 快速低价</div>
-                    </div>
-                  </div>
-                </div>
+                <select class="srp-sel" id="av-model-selector" onchange="selectAvModel(this)">
+                  <optgroup label="⭐ 推荐">
+                    <option value="I2V-01-live">Hailuo I2V Live — MiniMax · 口播推荐</option>
+                    <option value="kling-v3">Kling 3.0 — 4K旗舰 · 动作自然</option>
+                    <option value="MiniMax-Hailuo-2.3">Hailuo 2.3 — MiniMax · 最新旗舰</option>
+                    <option value="cogvideox-flash" selected>CogVideoX Flash — 智谱AI · 快速免费</option>
+                  </optgroup>
+                  <optgroup label="Kling AI">
+                    <option value="kling-v2.5-turbo-pro">Kling 2.5 Turbo Pro — 快速 · 动作优秀</option>
+                    <option value="kling-v2-master">Kling V2 Master — 旗舰</option>
+                    <option value="kling-v1-6">Kling v1.6 — 经典</option>
+                  </optgroup>
+                  <optgroup label="MiniMax">
+                    <option value="MiniMax-Hailuo-2.3-Fast">Hailuo 2.3 Fast — 快速低价</option>
+                    <option value="I2V-01">Hailuo I2V-01 — 标准图生视频</option>
+                  </optgroup>
+                  <optgroup label="智谱AI">
+                    <option value="cogvideox-3">CogVideoX 3 — 高质量</option>
+                  </optgroup>
+                </select>
               </div>
 
               <!-- 生成按钮区 -->

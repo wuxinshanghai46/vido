@@ -20,14 +20,12 @@ const http = require('http');
 async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, voiceId = null } = {}) {
   if (!text || !text.trim()) return null;
 
-  // 自定义声音：如果选择了用户上传的声音，用 CosyVoice 克隆或 FFmpeg 变调
+  // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
-    try {
-      const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
-      if (result) { console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`); return result; }
-    } catch (err) {
-      console.warn(`[TTS] 自定义声音 ${voiceId} 失败，回退到默认声音: ${err.message}`);
-    }
+    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
+    if (result) { console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`); return result; }
+    // 不静默回退 — 用户明确选了自定义声音，失败就报错
+    throw new Error('自定义声音合成失败，请检查声音文件或配置 Fish Audio / 阿里云 CosyVoice API Key 以启用声音克隆');
   }
 
   // 供应商优先级链：每个失败后自动回退到下一个
@@ -225,7 +223,30 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     }
   }
 
-  // 策略2: 回退 — 用基础 TTS + FFmpeg 音色微调
+  // 策略2: 阿里云 CosyVoice 声音克隆
+  const aliyunKey = _getTTSKey('aliyun-tts');
+  if (aliyunKey) {
+    try {
+      const result = await _cloneWithCosyVoice(text, outputPath, voice.file_path, { speed, apiKey: aliyunKey });
+      if (result) { console.log(`[TTS] 阿里云 CosyVoice 声音克隆成功: ${voice.name}`); return result; }
+    } catch (err) {
+      console.warn(`[TTS] 阿里云 CosyVoice 声音克隆失败: ${err.message}`);
+    }
+  }
+
+  // 策略3: MiniMax 声音克隆（用 voice_clone 上传参考音频）
+  const mmKey = _getTTSKey('minimax');
+  if (mmKey) {
+    try {
+      const result = await _cloneWithMiniMax(text, outputPath, voice.file_path, { speed, apiKey: mmKey });
+      if (result) { console.log(`[TTS] MiniMax 声音克隆成功: ${voice.name}`); return result; }
+    } catch (err) {
+      console.warn(`[TTS] MiniMax 声音克隆失败: ${err.message}`);
+    }
+  }
+
+  // 策略4: 回退 — 基础 TTS + FFmpeg 音色微调（仅调音高，非真正克隆）
+  console.warn(`[TTS] 无声音克隆 API，回退到 FFmpeg 音色微调`);
   const baseGender = voice.gender || 'female';
   const providers = [
     { id: 'zhipu', fn: generateWithZhipu },
@@ -266,6 +287,117 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
   // 最终：直接用基础语音
   if (fs.existsSync(baseAudio)) return baseAudio;
   return null;
+}
+
+// ═══════════════════════════════════════════
+// 阿里云 CosyVoice 声音克隆（通过参考音频）
+// ═══════════════════════════════════════════
+async function _cloneWithCosyVoice(text, outputPath, refAudioPath, { speed = 1.0, apiKey }) {
+  const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
+  const refAudioBuf = fs.readFileSync(refAudioPath);
+  const refBase64 = refAudioBuf.toString('base64');
+  const ext = path.extname(refAudioPath).slice(1) || 'wav';
+
+  const body = JSON.stringify({
+    model: 'cosyvoice-clone-v1',
+    input: { text: text.substring(0, 5000) },
+    parameters: { voice: `data:audio/${ext};base64,${refBase64}`, format: 'mp3', rate: speed }
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'dashscope.aliyuncs.com',
+      path: '/api/v1/services/aigc/text2audio/text-synthesis',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      if (res.headers['content-type']?.includes('audio')) {
+        // 流式返回音频
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
+          fs.writeFileSync(mp3Path, Buffer.concat(chunks));
+          resolve(mp3Path);
+        });
+      } else {
+        let errData = '';
+        res.on('data', c => errData += c);
+        res.on('end', () => reject(new Error(`CosyVoice ${res.statusCode}: ${errData.substring(0, 200)}`)));
+      }
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('CosyVoice 超时')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ═══════════════════════════════════════════
+// MiniMax 声音克隆（T2A v2 + voice_clone 模式）
+// ═══════════════════════════════════════════
+async function _cloneWithMiniMax(text, outputPath, refAudioPath, { speed = 1.0, apiKey }) {
+  const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
+
+  // 读取参考音频作为 base64，通过 file_upload 上传
+  const refAudioBuf = fs.readFileSync(refAudioPath);
+
+  // MiniMax T2A v2 支持 voice_clone: 传 audio_sample_file_url 或 inline
+  // 使用 multipart 上传参考音频 + 文本
+  const FormData = await (async () => {
+    try { return require('form-data'); } catch { return null; }
+  })();
+
+  // 用 JSON 模式 + timber_weights（参考音色权重）
+  const body = JSON.stringify({
+    model: 'speech-01-turbo',
+    text: text.substring(0, 5000),
+    voice_setting: {
+      voice_id: 'male-qingxin',
+      speed: Math.min(2.0, Math.max(0.5, speed)),
+      vol: 1.0
+    },
+    audio_setting: { format: 'mp3', sample_rate: 32000 },
+    // 传参考音频 base64 做 voice clone
+    voice_clone: {
+      voice_audio: 'data:audio/' + (path.extname(refAudioPath).slice(1) || 'wav') + ';base64,' + refAudioBuf.toString('base64')
+    }
+  });
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.minimaxi.chat',
+      path: '/v1/t2a_v2?GroupId=0',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(Buffer.concat(chunks).toString());
+          if (json.base_resp?.status_code !== 0) return reject(new Error('MiniMax 克隆TTS: ' + (json.base_resp?.status_msg || '未知错误')));
+          const hexAudio = json.data?.audio;
+          if (!hexAudio) return reject(new Error('MiniMax 克隆TTS 未返回音频'));
+          fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
+          fs.writeFileSync(mp3Path, Buffer.from(hexAudio, 'hex'));
+          resolve(mp3Path);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(120000, () => { req.destroy(); reject(new Error('MiniMax 克隆TTS 超时')); });
+    req.write(body);
+    req.end();
+  });
 }
 
 // ═══════════════════════════════════════════

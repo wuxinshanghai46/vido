@@ -1,10 +1,12 @@
 /**
  * 数字人视频生成服务
- * 支持：智谱AI CogVideoX / MiniMax Hailuo 图生视频 + TTS 语音合成
+ * 支持：智谱AI CogVideoX / MiniMax Hailuo / Kling AI 图生视频 + TTS 语音合成
  * 流程：人像图片 → 视频模型动画 → TTS 生成语音 → FFmpeg 合成
  */
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const crypto = require('crypto');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const { getApiKey } = require('./settingsService');
@@ -18,12 +20,19 @@ const AVATAR_DIR = path.join(OUTPUT_DIR, 'avatar');
 const ZHIPU_API_BASE = 'https://open.bigmodel.cn/api/paas/v4';
 // MiniMax API 配置
 const MINIMAX_API_BASE = 'https://api.minimaxi.com/v1';
+// Kling API 配置
+const KLING_API_HOST = 'api-beijing.klingai.com';
 
 // MiniMax 模型列表（用于判断走哪个 provider）
 const MINIMAX_MODELS = ['I2V-01', 'I2V-01-live', 'I2V-01-Director', 'MiniMax-Hailuo-2.3', 'MiniMax-Hailuo-2.3-Fast', 'MiniMax-Hailuo-02'];
+// Kling 模型列表
+const KLING_MODELS = ['kling-v3', 'kling-v2-master', 'kling-v2.5-turbo-pro', 'kling-v1-6'];
 
 function isMiniMaxModel(model) {
   return MINIMAX_MODELS.includes(model);
+}
+function isKlingModel(model) {
+  return KLING_MODELS.includes(model);
 }
 
 function getZhipuKey() {
@@ -46,6 +55,107 @@ function getMiniMaxKey() {
     }
   }
   return process.env.MINIMAX_API_KEY || '';
+}
+
+function getKlingKey() {
+  const settings = loadSettings();
+  for (const p of (settings.providers || [])) {
+    if (p.id === 'kling' || p.preset === 'kling') {
+      const key = getApiKey(p.id);
+      if (key) return key;
+    }
+  }
+  return process.env.KLING_API_KEY || '';
+}
+
+function _createKlingToken(accessKey, secretKey) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({ iss: accessKey, exp: now + 1800, nbf: now - 5 })).toString('base64url');
+  const sig = crypto.createHmac('sha256', secretKey).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
+/**
+ * Kling AI 图生视频：提交任务 → 轮询 → 下载
+ */
+async function _klingGenerateVideo(imgParam, prompt, model, rawKey, onProgress) {
+  const authToken = rawKey.includes(':') ? _createKlingToken(...rawKey.split(':')) : rawKey;
+  const isV3 = model === 'kling-v3';
+
+  const bodyObj = {
+    model_name: model,
+    prompt: prompt.substring(0, isV3 ? 4000 : 2500),
+    image: imgParam,
+    cfg_scale: 0.5,
+    mode: isV3 ? 'pro' : 'std',
+    aspect_ratio: '9:16',
+    duration: '5'
+  };
+  console.log(`[Avatar] Kling I2V 请求: model=${model}, prompt长度=${prompt.length}`);
+
+  // 提交任务
+  function _klingRequest(method, kPath, body) {
+    return new Promise((resolve, reject) => {
+      const opts = { hostname: KLING_API_HOST, path: kPath, method, headers: { 'Authorization': 'Bearer ' + authToken, 'Content-Type': 'application/json' } };
+      const req = https.request(opts, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
+      });
+      req.on('error', reject);
+      req.setTimeout(60000, () => { req.destroy(); reject(new Error('Kling 请求超时')); });
+      if (body) req.write(JSON.stringify(body));
+      req.end();
+    });
+  }
+
+  let task;
+  for (let retry = 0; retry < 3; retry++) {
+    try {
+      const result = await _klingRequest('POST', '/v1/videos/image2video', bodyObj);
+      if (result.code !== 0) throw new Error('Kling: ' + (result.message || JSON.stringify(result)));
+      task = result.data;
+      break;
+    } catch (e) {
+      if (retry < 2 && /ECONNRESET|ETIMEDOUT|socket/i.test(e.message)) {
+        const wait = 10 * (retry + 1);
+        console.warn(`[Avatar] Kling 网络波动，${wait}秒后重试: ${e.message}`);
+        onProgress?.({ step: 'video', message: `网络波动，${wait}秒后自动重试...` });
+        await new Promise(r => setTimeout(r, wait * 1000));
+        continue;
+      }
+      throw new Error(`Kling 视频提交失败: ${e.message}`);
+    }
+  }
+
+  const taskId = task?.task_id;
+  if (!taskId) throw new Error('Kling 未返回任务 ID');
+  console.log(`[Avatar] Kling 任务已创建: ${taskId}`);
+
+  // 轮询
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    onProgress?.({ step: 'video', message: `Kling 生成中... (${(i + 1) * 5}秒)` });
+    try {
+      const status = await _klingRequest('GET', '/v1/videos/image2video/' + taskId, null);
+      if (status.data?.task_status === 'succeed') {
+        const videoUrl = status.data?.task_result?.videos?.[0]?.url;
+        if (!videoUrl) throw new Error('Kling 未返回视频 URL');
+        console.log(`[Avatar] Kling 生成完成`);
+        // 下载视频
+        onProgress?.({ step: 'video', message: '下载 Kling 视频...' });
+        const videoResp = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 120000 });
+        return videoResp.data; // Buffer
+      }
+      if (status.data?.task_status === 'failed') {
+        throw new Error('Kling 视频生成失败: ' + (status.data.task_status_msg || '未知错误'));
+      }
+    } catch (pollErr) {
+      if (pollErr.message.includes('生成失败')) throw pollErr;
+    }
+  }
+  throw new Error('Kling 视频生成超时，请重试');
 }
 
 /**
@@ -154,8 +264,9 @@ async function generateAvatarVideo(params) {
   fs.mkdirSync(taskDir, { recursive: true });
 
   const useMiniMax = isMiniMaxModel(model);
-  const apiKey = useMiniMax ? getMiniMaxKey() : getZhipuKey();
-  if (!apiKey) throw new Error(useMiniMax ? '未配置 MiniMax API Key，请在设置中添加 minimax 供应商' : '未配置智谱 AI API Key');
+  const useKling = isKlingModel(model);
+  const apiKey = useKling ? getKlingKey() : (useMiniMax ? getMiniMaxKey() : getZhipuKey());
+  if (!apiKey) throw new Error(useKling ? '未配置 Kling AI Key，请在设置中添加 kling 供应商' : (useMiniMax ? '未配置 MiniMax API Key，请在设置中添加 minimax 供应商' : '未配置智谱 AI API Key'));
 
   onProgress?.({ step: 'start', message: '开始生成数字人视频...' });
 
@@ -244,7 +355,7 @@ async function generateAvatarVideo(params) {
     }
   }
 
-  const providerName = useMiniMax ? 'MiniMax' : '智谱';
+  const providerName = useKling ? 'Kling' : (useMiniMax ? 'MiniMax' : '智谱');
   onProgress?.({ step: 'video', message: `${providerName} 正在生成动画视频（约1-3分钟）...` });
 
   const rawVideoPath = path.join(taskDir, 'avatar_raw.mp4');
@@ -252,7 +363,12 @@ async function generateAvatarVideo(params) {
   const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
   const { execSync } = require('child_process');
 
-  if (useMiniMax) {
+  if (useKling) {
+    // ═══ Kling 路径 ═══
+    const videoData = await _klingGenerateVideo(imgParam, prompt, model, apiKey, onProgress);
+    fs.writeFileSync(rawVideoPath, videoData);
+    console.log(`[Avatar] Kling 视频已下载: ${(videoData.length / 1024).toFixed(0)}KB`);
+  } else if (useMiniMax) {
     // ═══ MiniMax 路径 ═══
     const videoData = await _minimaxGenerateVideo(imgParam, prompt, model, apiKey, onProgress);
     fs.writeFileSync(rawVideoPath, videoData);
@@ -402,8 +518,9 @@ async function generateMultiSegmentVideo(params) {
   fs.mkdirSync(taskDir, { recursive: true });
 
   const useMiniMax = isMiniMaxModel(model);
-  const apiKey = useMiniMax ? getMiniMaxKey() : getZhipuKey();
-  if (!apiKey) throw new Error(useMiniMax ? '未配置 MiniMax API Key' : '未配置智谱 AI API Key');
+  const useKling = isKlingModel(model);
+  const apiKey = useKling ? getKlingKey() : (useMiniMax ? getMiniMaxKey() : getZhipuKey());
+  if (!apiKey) throw new Error(useKling ? '未配置 Kling AI Key' : (useMiniMax ? '未配置 MiniMax API Key' : '未配置智谱 AI API Key'));
   const total = segments.length;
 
   onProgress?.({ step: 'start', message: `开始多段生成（共 ${total} 段）...` });
@@ -464,7 +581,12 @@ async function generateMultiSegmentVideo(params) {
 
       const rawPath = path.join(segDir, 'raw.mp4');
 
-      if (useMiniMax) {
+      if (useKling) {
+        // Kling 路径
+        const segProgress = (info) => onProgress?.({ ...info, message: `第${idx+1}段: ${info.message}`, segment: idx + 1, total });
+        const videoData = await _klingGenerateVideo(imgParam, prompt, model, apiKey, segProgress);
+        fs.writeFileSync(rawPath, videoData);
+      } else if (useMiniMax) {
         // MiniMax 路径
         const segProgress = (info) => onProgress?.({ ...info, message: `第${idx+1}段: ${info.message}`, segment: idx + 1, total });
         const videoData = await _minimaxGenerateVideo(imgParam, prompt, model, apiKey, segProgress);
