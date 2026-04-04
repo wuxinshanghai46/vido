@@ -7757,20 +7757,15 @@ async function nvSelect(id) {
     // 渲染阅读模式
     nvRenderReadMode(novel);
 
-    // 有章节内容 → 默认进阅读模式；无内容 → 大纲模式
-    if (firstWithContent && nvCurrentMode === 'read') {
-      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'read'));
-      document.getElementById('nv-ws-read').style.display = '';
-      document.getElementById('nv-ws-outline').style.display = 'none';
-      document.getElementById('nv-ws-write').style.display = 'none';
-    } else if (!firstWithContent && nvCurrentMode === 'read') {
-      // 没内容，自动切到大纲
-      nvCurrentMode = 'outline';
-      document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === 'outline'));
-      document.getElementById('nv-ws-read').style.display = 'none';
-      document.getElementById('nv-ws-outline').style.display = '';
-      document.getElementById('nv-ws-write').style.display = 'none';
+    // 选择小说时自动决定模式：有内容→阅读，无内容→大纲
+    if (isNewSelect) {
+      nvCurrentMode = firstWithContent ? 'read' : 'outline';
     }
+    // 应用当前模式的 DOM 显示
+    document.querySelectorAll('.nv-mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === nvCurrentMode));
+    document.getElementById('nv-ws-read').style.display = nvCurrentMode === 'read' ? '' : 'none';
+    document.getElementById('nv-ws-outline').style.display = nvCurrentMode === 'outline' ? '' : 'none';
+    document.getElementById('nv-ws-write').style.display = nvCurrentMode === 'write' ? '' : 'none';
   } catch (e) { console.error('nvSelect error', e); }
   nvLoadPage();
 }
@@ -7782,8 +7777,10 @@ function nvSwitchMode(mode) {
   document.getElementById('nv-ws-read').style.display = mode === 'read' ? '' : 'none';
   document.getElementById('nv-ws-outline').style.display = mode === 'outline' ? '' : 'none';
   document.getElementById('nv-ws-write').style.display = mode === 'write' ? '' : 'none';
-  if ((mode === 'write' || mode === 'read') && nvCurrentId) {
-    if (mode === 'write') nvSaveCurrentContent();
+  if (mode === 'write' && nvCurrentId) {
+    nvSaveCurrentContent();
+    nvSelect(nvCurrentId);
+  } else if (mode === 'read' && nvCurrentId) {
     nvSelect(nvCurrentId);
   }
 }
