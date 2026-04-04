@@ -7857,6 +7857,7 @@ async function nvSelect(id) {
     nvShowChapter(nvCurrentChapter, novel);
 
     // 渲染阅读模式
+    _nvReadNovelCache = novel;
     nvRenderReadMode(novel);
 
     // 选择小说时自动决定模式：有内容→阅读，无内容→大纲
@@ -8150,11 +8151,17 @@ function nvRenderReadMode(novel) {
   console.log('[Novel] read ch', _nvReadChapter, 'length:', (ch?.content||'').length);
 }
 
+let _nvReadNovelCache = null;
 function nvReadChapter(index) {
   _nvReadChapter = index;
+  // 优先用缓存，避免每次切章都请求 API
+  if (_nvReadNovelCache) {
+    nvRenderReadMode(_nvReadNovelCache);
+    return;
+  }
   if (nvCurrentId) {
     fetch('/api/novel/' + nvCurrentId, { headers: { 'Authorization': 'Bearer ' + getToken() } })
-      .then(r => r.json()).then(data => { if (data.success) nvRenderReadMode(data.novel); });
+      .then(r => r.json()).then(data => { if (data.success) { _nvReadNovelCache = data.novel; nvRenderReadMode(data.novel); } });
   }
 }
 
