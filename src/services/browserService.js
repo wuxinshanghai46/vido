@@ -85,8 +85,17 @@ function loadCookies(platform) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
 }
 
-function saveCookies(platform, cookies) {
+function saveCookies(platform, cookies, meta = {}) {
   fs.writeFileSync(getCookiePath(platform), JSON.stringify(cookies, null, 2));
+  // 保存 meta（用户名等）
+  const metaPath = getCookiePath(platform).replace('.json', '_meta.json');
+  fs.writeFileSync(metaPath, JSON.stringify({ ...meta, updated_at: new Date().toISOString() }));
+}
+
+function loadMeta(platform) {
+  const metaPath = getCookiePath(platform).replace('.json', '_meta.json');
+  if (!fs.existsSync(metaPath)) return {};
+  try { return JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return {}; }
 }
 
 function deleteCookies(platform) {
@@ -100,17 +109,13 @@ function deleteCookies(platform) {
 function getLoginStatus() {
   const result = {};
   for (const [id, info] of Object.entries(PLATFORMS)) {
+    const meta = loadMeta(id);
     result[id] = {
       name: info.name,
       loggedIn: hasCookies(id),
-      cookieAge: null
+      username: meta.username || '',
+      updatedAt: meta.updated_at || null
     };
-    if (hasCookies(id)) {
-      try {
-        const stat = fs.statSync(getCookiePath(id));
-        result[id].cookieAge = Date.now() - stat.mtimeMs;
-      } catch {}
-    }
   }
   return result;
 }
@@ -209,9 +214,26 @@ async function pollLoginStatus(platform) {
     const loggedIn = await PLATFORMS[platform].checkLogin(page);
 
     if (loggedIn) {
-      // 保存 cookies
+      // 提取用户名
+      let username = '';
+      try {
+        username = await page.evaluate(() => {
+          // 尝试多种方式获取用户名
+          const el = document.querySelector('[data-e2e="user-info"] .name') ||
+                     document.querySelector('.avatar-wrapper + span') ||
+                     document.querySelector('.user-name') ||
+                     document.querySelector('[class*="nickname"]') ||
+                     document.querySelector('[class*="userName"]');
+          if (el) return el.textContent.trim();
+          // 从 cookie 提取
+          const m = document.cookie.match(/(?:nickname|user_name|username)=([^;]+)/);
+          return m ? decodeURIComponent(m[1]) : '';
+        });
+      } catch {}
+
+      // 保存 cookies + meta
       const cookies = await page.cookies();
-      saveCookies(platform, cookies);
+      saveCookies(platform, cookies, { username });
       session.status = 'success';
 
       // 截图确认

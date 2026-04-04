@@ -372,8 +372,9 @@ async function loadPlatformLogins() {
     const icons = { douyin: '🎵', xiaohongshu: '📕', kuaishou: '⚡' };
     list.innerHTML = Object.entries(data.platforms).map(([id, p]) => {
       const icon = icons[id] || '🌐';
+      const userName = p.username ? ` · ${esc(p.username)}` : '';
       const statusBadge = p.loggedIn
-        ? '<span style="color:#22c55e;font-size:11px;">● 已登录</span>'
+        ? `<span style="color:#22c55e;font-size:11px;">● 已登录${userName}</span>`
         : '<span style="color:var(--text3);font-size:11px;">○ 未登录</span>';
       const btn = p.loggedIn
         ? `<button onclick="platformLogout('${id}')" style="padding:4px 14px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:11px;cursor:pointer;">退出</button>`
