@@ -409,6 +409,12 @@ const ZHIPU_VOICES = {
   female: 'tongtong',
   male: 'chuichui',
   child: 'tongtong',
+  // 前端预设音色映射到智谱实际音色
+  'female-sweet': 'tongtong',
+  'female-pro': 'xiaochen',
+  'male-mature': 'chuichui',
+  'male-young': 'jam',
+  'child': 'tongtong',
 };
 
 async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey }) {
@@ -418,7 +424,7 @@ async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, api
     baseURL: 'https://open.bigmodel.cn/api/paas/v4'
   });
 
-  let voice = voiceId || ZHIPU_VOICES[gender] || 'tongtong';
+  let voice = ZHIPU_VOICES[voiceId] || voiceId || ZHIPU_VOICES[gender] || 'tongtong';
   const model = _getTTSModel('zhipu');
   if (model?.id && model.id !== 'glm-tts' && !voiceId) voice = model.id;
 
@@ -855,8 +861,11 @@ async function generateWithXunfei(text, outputPath, { gender, speed, voiceId, ap
   const authorization = Buffer.from(authorizationOrigin).toString('base64');
   const wsUrl = `wss://${host}${urlPath}?authorization=${encodeURIComponent(authorization)}&date=${encodeURIComponent(date)}&host=${encodeURIComponent(host)}`;
 
+  // 兼容 Node < 21（无全局 WebSocket），回退到 ws 包
+  const WS = typeof WebSocket !== 'undefined' ? WebSocket : (() => { try { return require('ws'); } catch { throw new Error('需要安装 ws 包: npm i ws'); } })();
+
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
+    const ws = new WS(wsUrl);
     const audioChunks = [];
     let resolved = false;
 
