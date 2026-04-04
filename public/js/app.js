@@ -6948,7 +6948,7 @@ function mtmInitCanvas() {
 // --- 波形解码 ---
 function mtmDecodeWaveform(fileUrl) {
   const url = fileUrl.includes('?') ? fileUrl : authUrl(fileUrl);
-  fetch(url).then(r => r.arrayBuffer()).then(buf => {
+  authFetch(url).then(r => r.arrayBuffer()).then(buf => {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     return ctx.decodeAudioData(buf);
   }).then(audioBuffer => {

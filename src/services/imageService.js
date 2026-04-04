@@ -233,13 +233,13 @@ async function generateDemoImage({ name, filename }) {
 }
 
 // OpenAI DALL-E 3
-async function generateOpenAIImage({ name, role, description, filename, race, species, imageType = 'character' }) {
+async function generateOpenAIImage({ name, role, description, filename, race, species, imageType = 'character', scenePrompt = '' }) {
   const apiKey = getApiKey('openai') || process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('未配置 OPENAI_API_KEY');
   ensureDir();
   const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
   const prompt = imageType === 'scene'
-    ? buildScenePrompt(name, description, '', '', '')
+    ? (scenePrompt || buildScenePrompt(name, description, '', '', ''))
     : buildPrompt(name, role, description, '2d', race, species);
   // Full body character → portrait; scene → landscape
   // 角色转面图和场景都用横向比例
@@ -283,13 +283,13 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
 }
 
 // 智谱 CogView-3-Flash
-async function generateZhipuImage({ name, role, description, filename, race, species, imageType = 'character' }) {
+async function generateZhipuImage({ name, role, description, filename, race, species, imageType = 'character', scenePrompt = '' }) {
   const apiKey = getApiKey('zhipu') || process.env.ZHIPU_API_KEY;
   if (!apiKey) throw new Error('未配置 ZHIPU_API_KEY');
   ensureDir();
   const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
   const prompt = imageType === 'scene'
-    ? buildScenePrompt(name, description, '', '', '')
+    ? (scenePrompt || buildScenePrompt(name, description, '', '', ''))
     : buildPrompt(name, role, description, '2d', race, species);
 
   const body = JSON.stringify({ model: 'cogview-3-flash', prompt, size: '1024x1024' });
@@ -644,10 +644,10 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
       filePath = await generateJimengImage({ prompt, filename, dim, negativePrompt: '人物，角色，人，人类，动物，生物，面孔，身体，person, people, human, character, figure, face, body, animal, creature' });
       break;
     case 'zhipu':
-      filePath = await generateZhipuImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene' });
+      filePath = await generateZhipuImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene', scenePrompt: prompt });
       break;
     case 'openai':
-      filePath = await generateOpenAIImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene' });
+      filePath = await generateOpenAIImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene', scenePrompt: prompt });
       break;
     case 'stability':
       filePath = await generateStabilityImage({ name: title, role: '', description, dim, filename, race: '', species: '' });
