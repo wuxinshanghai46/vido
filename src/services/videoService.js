@@ -1319,6 +1319,101 @@ async function generateSeedanceClip({ prompt, duration = 5, outputDir, filename,
   throw new Error('Seedance 生成超时（10 分钟）');
 }
 
+// ——— 火山方舟 Seedance 2.0 直连（content_generation API）———
+async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filename, image_url, video_model }) {
+  const { getApiKey, loadSettings } = require('./settingsService');
+  // 从 settings 中查找火山方舟供应商（id 含 api-key 或 preset=volcengine/ark）
+  let apiKey = '';
+  try {
+    const settings = loadSettings();
+    for (const p of (settings.providers || [])) {
+      if ((p.id || '').startsWith('api-key-') || p.preset === 'ark' || (p.name || '').includes('方舟')) {
+        const k = getApiKey(p.id);
+        if (k) { apiKey = k; break; }
+      }
+    }
+  } catch {}
+  if (!apiKey) apiKey = process.env.ARK_API_KEY || '';
+  if (!apiKey) throw new Error('未配置火山方舟 API Key');
+
+  const model = video_model || 'doubao-seedance-2-0-260128';
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `${filename}.mp4`);
+
+  // 构建 content 数组
+  const content = [{ type: 'text', text: prompt.substring(0, 2000) }];
+  if (image_url) {
+    content.push({ type: 'image_url', image_url: { url: image_url }, role: 'reference_image' });
+  }
+
+  const body = JSON.stringify({
+    model,
+    content,
+    ratio: '16:9',
+    duration: Math.min(Math.max(Math.round(duration), 5), 10),
+    generate_audio: true,
+    watermark: false
+  });
+
+  console.log(`[Seedance2.0] 火山方舟直连: model=${model}, prompt长度=${prompt.length}, 有图=${!!image_url}`);
+
+  // 1. 创建任务
+  const createResult = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'ark.cn-beijing.volces.com',
+      path: '/api/v3/content_generation/tasks',
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+        catch { reject(new Error('方舟返回格式错误')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('方舟请求超时')); });
+    req.write(body);
+    req.end();
+  });
+
+  const taskId = createResult.id;
+  if (!taskId) throw new Error('方舟 Seedance 创建任务失败: ' + JSON.stringify(createResult).substring(0, 300));
+  console.log(`[Seedance2.0] 任务创建成功: ${taskId}`);
+
+  // 2. 轮询（最多 15 分钟，每 30 秒）
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 30000));
+    const status = await new Promise((resolve, reject) => {
+      https.get(`https://ark.cn-beijing.volces.com/api/v3/content_generation/tasks/${taskId}`, {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+      }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch (e) { reject(e); } });
+      }).on('error', reject);
+    });
+
+    if (status.status === 'succeeded') {
+      const videoUrl = status.content?.video_url;
+      if (!videoUrl) throw new Error('Seedance 2.0 未返回视频 URL');
+      console.log(`[Seedance2.0] 生成完成，下载视频...`);
+      await downloadFile(videoUrl, outputPath);
+      return { filePath: outputPath };
+    }
+    if (status.status === 'failed') {
+      throw new Error('Seedance 2.0 生成失败: ' + (JSON.stringify(status.error || status) ).substring(0, 200));
+    }
+    console.log(`[Seedance2.0] 状态: ${status.status} (${(i+1)*30}秒)`);
+  }
+  throw new Error('Seedance 2.0 生成超时（15 分钟）');
+}
+
 // ——— Google Veo 3 / 3.1（Gemini API，影院级视频）———
 async function generateVeoClip({ prompt, duration = 8, outputDir, filename, image_url, video_model }) {
   const { getApiKey, loadSettings } = require('./settingsService');
@@ -1457,7 +1552,14 @@ async function generateVideoClip(options) {
   const model = options.video_model || '';
   const isFalModel = model.startsWith('fal-ai/');
 
-  // FAL 代理的模型（包括 Seedance 2.0 via FAL、HunyuanVideo 1.5 via FAL、Wan 2.2 via FAL 等）
+  // 火山方舟 Seedance 2.0 直连（doubao-seedance-* 模型）
+  const isArkSeedance = model.startsWith('doubao-seedance-');
+  if (isArkSeedance) {
+    console.log(`[VideoService] 模型 ${model} 通过火山方舟直连`);
+    return generateArkSeedanceClip(options);
+  }
+
+  // FAL 代理的模型（包括 Seedance via FAL、HunyuanVideo 1.5 via FAL、Wan 2.2 via FAL 等）
   if (isFalModel && provider !== 'fal') {
     console.log(`[VideoService] 模型 ${model} 通过 FAL 代理路由`);
     return generateFalClip(options);

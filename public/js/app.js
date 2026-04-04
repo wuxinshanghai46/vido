@@ -2654,8 +2654,12 @@ const MODEL_CAPS = {
   'gen4.5':                { dim: '3d', action: 3, note: 'Runway 最新旗舰，Elo 1247，Motion Brush 精控' },
   'gen4.5_turbo':          { dim: '3d', action: 3, note: 'Runway 4.5 快速版，高级镜头控制' },
   // --- Seedance 2.0 (ByteDance) ---
-  'fal-ai/seedance/v2/text-to-video':   { dim: 'both', action: 3, note: 'Seedance 2.0 T2V，12文件多模态输入，动作极强' },
-  'fal-ai/seedance/v2/image-to-video':  { dim: 'both', action: 3, note: 'Seedance 2.0 I2V，角色一致性引擎' },
+  'fal-ai/seedance/v2/text-to-video':   { dim: 'both', action: 3, note: 'Seedance 2.0 T2V via FAL，动作极强' },
+  'fal-ai/seedance/v2/image-to-video':  { dim: 'both', action: 3, note: 'Seedance 2.0 I2V via FAL，角色一致性引擎' },
+  // --- Seedance 2.0 火山方舟直连 ---
+  'doubao-seedance-2-0-260128':         { dim: 'both', action: 3, note: '火山方舟 Seedance 2.0 旗舰·视频编辑·音频同步' },
+  'doubao-seedance-2-0-t2v-250428':     { dim: 'both', action: 3, note: '火山方舟 Seedance 2.0 T2V·极致画质' },
+  'doubao-seedance-2-0-i2v-250428':     { dim: 'both', action: 3, note: '火山方舟 Seedance 2.0 I2V·角色一致' },
   // --- HunyuanVideo 1.5 (Tencent) ---
   'fal-ai/hunyuan-video/v1.5':          { dim: '2d', action: 2, note: '腾讯HunyuanVideo 1.5，开源SOTA，8.3B参数' },
   // --- Wan 2.2 ---
