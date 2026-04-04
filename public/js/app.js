@@ -8168,7 +8168,9 @@ function nvRenderReadMode(novel) {
   }).join('');
   // 渲染内容
   const ch = chapters.find(c => c.index === _nvReadChapter);
-  body.textContent = ch?.content || '';
+  const chTitle = ch?.title || novel.outline?.chapters?.find(o => o.index === _nvReadChapter)?.title || '';
+  body.innerHTML = (chTitle ? `<div style="font-size:18px;font-weight:700;margin-bottom:16px;color:var(--accent);border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:12px;">${esc(chTitle)}</div>` : '') +
+    `<div style="white-space:pre-wrap;">${esc(ch?.content || '暂无内容')}</div>`;
   console.log('[Novel] read ch', _nvReadChapter, 'length:', (ch?.content||'').length);
 }
 
