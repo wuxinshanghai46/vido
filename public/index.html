@@ -33,8 +33,8 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-title">内容雷达 ★</div>
-    <div class="nav-item" data-page="radar"><div class="nav-icon">📡</div>雷达总览<span class="nav-badge" id="radar-badge" style="display:none">0</span></div>
+    <div class="sidebar-section-title">爆款复制 ★</div>
+    <div class="nav-item" data-page="radar"><div class="nav-icon">🔍</div>素材获取<span class="nav-badge" id="radar-badge" style="display:none">0</span></div>
     <div class="nav-item" data-page="monitor"><div class="nav-icon">📂</div>素材库</div>
     <div class="nav-item" data-page="contentlib"><div class="nav-icon">🗂️</div>内容库</div>
     <div class="nav-item" data-page="workbench"><div class="nav-icon">🎙️</div>声音克隆</div>
@@ -140,7 +140,7 @@
           <div class="quick-card" onclick="switchPage('comic')"><div class="qc-icon">📚</div><div class="qc-name">AI漫画</div><div class="qc-desc">脚本自动转漫画分格</div></div>
           <div class="quick-card" onclick="switchPage('novel')"><div class="qc-icon">✍️</div><div class="qc-name">AI小说</div><div class="qc-desc">AI辅助长文创作</div></div>
           <div class="quick-card" onclick="switchPage('i2v')"><div class="qc-icon">🎞️</div><div class="qc-name">图生视频</div><div class="qc-desc">静态图片变动态视频</div></div>
-          <div class="quick-card" onclick="switchPage('radar')"><div class="qc-icon">📡</div><div class="qc-name">内容雷达</div><div class="qc-desc">监控热门内容动态</div></div>
+          <div class="quick-card" onclick="switchPage('radar')"><div class="qc-icon">🔥</div><div class="qc-name">爆款复制</div><div class="qc-desc">抓取热门博主内容</div></div>
           <div class="quick-card" onclick="switchPage('portrait')"><div class="qc-icon">👤</div><div class="qc-name">角色库</div><div class="qc-desc">管理创作角色资产</div></div>
         </div>
 
@@ -152,7 +152,7 @@
           📢 <strong>功能更新</strong>：运镜控制系统上线，支持19种运镜+11种景别！<br>
           🎤 声音克隆功能已集成 Fish Audio，上传10秒音频即可克隆。<br>
           🎬 即梦AI图片生成已接入，角色形象更精准。<br>
-          📡 内容雷达上线：监控竞品账号 + AI文案提取 + 一键复刻！
+          🔥 爆款复制上线：抓取博主内容 + AI文案提取 + 一键复刻！
         </div>
       </div>
 
@@ -1600,34 +1600,55 @@
 
       <!-- ══ 雷达总览 ══ -->
       <div id="page-radar" class="page" style="padding:24px;">
-        <div class="stat-grid">
-          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(139,92,246,.2))">👁️</div><div class="stat-info"><div class="label">监控账号</div><div class="value" id="rd-accounts">0</div></div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(16,185,129,.2))">📄</div><div class="stat-info"><div class="label">提取内容</div><div class="value" id="rd-contents">0</div></div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(245,158,11,.2))">⚡</div><div class="stat-info"><div class="label">已复刻</div><div class="value" id="rd-replicated">0</div></div></div>
-          <div class="stat-card"><div class="stat-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(236,72,153,.2))">🎙️</div><div class="stat-info"><div class="label">克隆声音</div><div class="value" id="rd-voices">0</div></div></div>
+        <!-- Step 1: 素材获取与解析 -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+          <span style="background:var(--accent);color:#000;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">Step 1</span>
+          <span style="font-size:16px;font-weight:700;color:var(--text);">素材获取与解析</span>
         </div>
-        <div class="section-title">快速提取</div>
-        <div class="card" style="padding:20px;margin-bottom:20px;">
-          <div style="display:flex;gap:10px;align-items:flex-end;">
-            <div style="flex:1"><label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px;">粘贴视频链接</label><input id="radar-extract-url" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;" placeholder="抖音/快手/小红书/B站 视频链接..." /></div>
-            <button onclick="radarExtract()" style="padding:8px 20px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">AI 提取分析</button>
-          </div>
-          <div id="radar-extract-result" style="margin-top:12px;"></div>
-        </div>
-        <!-- 平台热门 -->
-        <div class="section-title" style="display:flex;align-items:center;gap:8px;">🔥 平台热门
-          <div style="display:flex;gap:4px;margin-left:auto;">
-            <button onclick="loadTrending('douyin')" class="tag tag-blue" style="cursor:pointer;border:none;font-size:10px;">抖音</button>
-            <button onclick="loadTrending('xiaohongshu')" class="tag tag-purple" style="cursor:pointer;border:none;font-size:10px;">小红书</button>
-            <button onclick="loadTrending('bilibili')" class="tag tag-green" style="cursor:pointer;border:none;font-size:10px;">B站</button>
-            <button onclick="loadTrending('weibo')" class="tag tag-yellow" style="cursor:pointer;border:none;font-size:10px;">微博</button>
-          </div>
-        </div>
-        <div id="rd-trending" class="card" style="padding:16px;margin-bottom:20px;"><div style="color:var(--text3);font-size:12px;text-align:center;">点击上方平台按钮加载热门内容</div></div>
 
-        <div class="grid-2">
-          <div><div class="section-title">最近提取内容</div><div id="rd-recent-contents" class="card" style="padding:16px;"><div style="color:var(--text3);font-size:12px;text-align:center;">暂无内容</div></div></div>
-          <div><div class="section-title">最近复刻任务</div><div id="rd-recent-tasks" class="card" style="padding:16px;"><div style="color:var(--text3);font-size:12px;text-align:center;">暂无任务</div></div></div>
+        <!-- URL输入区 -->
+        <div class="card" style="padding:20px;margin-bottom:16px;">
+          <div style="display:flex;gap:12px;align-items:stretch;">
+            <textarea id="radar-extract-url" rows="3" style="flex:1;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;resize:none;font-family:inherit;" placeholder="粘贴博主主页链接 或 单个视频链接...&#10;&#10;支持：抖音 · 小红书 · 快手 · B站 · 微博"></textarea>
+            <button onclick="radarParse()" id="radar-parse-btn" style="padding:0 28px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;min-width:80px;">解析</button>
+          </div>
+        </div>
+
+        <!-- 博主信息（解析后显示） -->
+        <div id="radar-blogger-info" style="display:none;" class="card" style="margin-bottom:16px;">
+        </div>
+
+        <!-- 排序和全选 -->
+        <div id="radar-video-toolbar" style="display:none;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--text3);">排序:</span>
+            <button class="rv-sort active" onclick="rvSort('latest')" data-sort="latest" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">最新发布</button>
+            <button class="rv-sort" onclick="rvSort('likes')" data-sort="likes" style="padding:4px 12px;background:var(--bg3);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer;">点赞最多</button>
+            <button class="rv-sort" onclick="rvSort('comments')" data-sort="comments" style="padding:4px 12px;background:var(--bg3);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer;">评论最多</button>
+            <button class="rv-sort" onclick="rvSort('duration_long')" data-sort="duration_long" style="padding:4px 12px;background:var(--bg3);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer;">时长最长</button>
+            <button class="rv-sort" onclick="rvSort('duration_short')" data-sort="duration_short" style="padding:4px 12px;background:var(--bg3);color:var(--text2);border:none;border-radius:6px;font-size:11px;cursor:pointer;">时长最短</button>
+            <span id="radar-video-count" style="font-size:12px;color:var(--text3);margin-left:8px;"></span>
+            <div style="margin-left:auto;display:flex;gap:6px;">
+              <button onclick="rvSelectAll()" style="padding:4px 12px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:none;border-radius:6px;font-size:11px;cursor:pointer;">全选</button>
+              <button onclick="rvBatchExtract()" style="padding:4px 12px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">提取选中</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 视频列表 -->
+        <div id="radar-video-list"></div>
+
+        <!-- 热门内容 -->
+        <div style="margin-top:24px;">
+          <div class="section-title" style="display:flex;align-items:center;gap:8px;">🔥 平台热门
+            <div style="display:flex;gap:4px;margin-left:auto;">
+              <button onclick="loadTrending('douyin')" class="tag tag-blue" style="cursor:pointer;border:none;font-size:10px;">抖音</button>
+              <button onclick="loadTrending('xiaohongshu')" class="tag tag-purple" style="cursor:pointer;border:none;font-size:10px;">小红书</button>
+              <button onclick="loadTrending('bilibili')" class="tag tag-green" style="cursor:pointer;border:none;font-size:10px;">B站</button>
+              <button onclick="loadTrending('weibo')" class="tag tag-yellow" style="cursor:pointer;border:none;font-size:10px;">微博</button>
+            </div>
+          </div>
+          <div id="rd-trending" class="card" style="padding:16px;"><div style="color:var(--text3);font-size:12px;text-align:center;">点击上方平台按钮加载热门内容</div></div>
         </div>
       </div>
 
@@ -1643,15 +1664,20 @@
         </div>
         <!-- Tabs -->
         <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;" id="mat-tabs">
+          <button class="mat-tab" onclick="matSwitchTab('all')" data-tab="all">📋 全部</button>
           <button class="mat-tab active" onclick="matSwitchTab('blogger')" data-tab="blogger">👤 博主</button>
           <button class="mat-tab" onclick="matSwitchTab('parsed')" data-tab="parsed">📄 解析记录</button>
+          <button class="mat-tab" onclick="matSwitchTab('download')" data-tab="download">⬇️ 下载记录</button>
           <button class="mat-tab" onclick="matSwitchTab('transcript')" data-tab="transcript">📝 文案</button>
           <button class="mat-tab" onclick="matSwitchTab('audio')" data-tab="audio">🎵 配音</button>
         </div>
         <!-- 博主 Tab -->
         <div id="mat-tab-blogger">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-            <button onclick="addMonitorPrompt()" style="padding:7px 18px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">+ 关注博主</button>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--text3);">定时抓取: <span id="crawl-timer-status" style="color:var(--text2);">未启动</span></span>
+            <button onclick="startCrawlTimer()" style="padding:5px 14px;background:#22c55e;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">启动(每小时)</button>
+            <button onclick="crawlAllBloggers()" style="padding:5px 14px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:6px;font-size:11px;cursor:pointer;">立即抓取一次</button>
+            <button onclick="addMonitorPrompt()" style="margin-left:auto;padding:7px 18px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">+ 关注博主</button>
           </div>
           <div id="monitor-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无关注博主，点击上方按钮添加</div></div>
           <!-- 博主详情面板 -->
@@ -1675,6 +1701,14 @@
         <!-- 配音 Tab -->
         <div id="mat-tab-audio" style="display:none;">
           <div id="mat-audio-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无合成配音</div></div>
+        </div>
+        <!-- 全部 Tab -->
+        <div id="mat-tab-all" style="display:none;">
+          <div id="mat-all-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">加载中...</div></div>
+        </div>
+        <!-- 下载记录 Tab -->
+        <div id="mat-tab-download" style="display:none;">
+          <div id="mat-download-list"><div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无下载记录</div></div>
         </div>
       </div>
 

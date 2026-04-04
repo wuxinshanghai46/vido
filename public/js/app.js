@@ -222,7 +222,7 @@ const PAGE_TITLES = {
   dashboard:'工作台', create:'AI视频生成', imggen:'AI图片生成', avatar:'AI数字人',
   comic:'AI漫画', novel:'AI小说', i2v:'图生视频', portrait:'我的角色',
   projects:'我的项目', works:'我的作品', assets:'素材库', workbench:'声音克隆',
-  radar:'雷达总览', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
+  radar:'素材获取', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
   profile:'个人信息'
 };
 
@@ -348,34 +348,174 @@ async function changePassword() {
 // ═══ 内容雷达 ═══
 
 async function loadRadarOverview() {
+  // 素材获取页面不需要加载统计数据
+}
+
+// ═══ 素材获取与解析 ═══
+let _radarVideos = []; // 解析出的视频列表
+let _radarBlogger = null; // 解析出的博主信息
+
+async function radarParse() {
+  const input = document.getElementById('radar-extract-url');
+  const btn = document.getElementById('radar-parse-btn');
+  const url = input?.value?.trim();
+  if (!url) return;
+
+  btn.disabled = true; btn.textContent = '⏳';
+  const infoEl = document.getElementById('radar-blogger-info');
+  const toolbarEl = document.getElementById('radar-video-toolbar');
+  const listEl = document.getElementById('radar-video-list');
+
+  listEl.innerHTML = `<div class="card" style="padding:24px;text-align:center;">
+    <div style="width:24px;height:24px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;display:inline-block;"></div>
+    <div style="color:var(--accent);font-size:13px;margin-top:8px;">MCP 爬虫正在解析链接...</div>
+  </div>`;
+
   try {
-    const resp = await authFetch('/api/radar/overview');
+    // 先尝试当作博主主页解析
+    const crawlResp = await authFetch('/api/radar/extract-blogger', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
+    const crawlData = await crawlResp.json();
+
+    if (crawlData.success && crawlData.blogger) {
+      _radarBlogger = crawlData.blogger;
+      _radarVideos = crawlData.videos || [];
+
+      // 显示博主信息卡片
+      const b = crawlData.blogger;
+      infoEl.style.display = '';
+      infoEl.innerHTML = `<div class="card" style="padding:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:48px;height:48px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">${crawlData.platformIcon || '👤'}</div>
+          <div style="flex:1;">
+            <div style="font-size:15px;font-weight:700;color:var(--text);">${esc(b.name || '未知博主')}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">ID: ${esc(b.id || '-')} · ${b.videoCount || 0} 个视频 · 总赞 ${b.totalLikes ? (b.totalLikes > 10000 ? (b.totalLikes/10000).toFixed(1)+'万' : b.totalLikes) : 0}</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="radarFetchAllVideos()" style="padding:7px 16px;background:var(--accent);color:#000;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">获取全部视频</button>
+            <button onclick="radarFollowBlogger()" id="radar-follow-btn" style="padding:7px 16px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:8px;font-size:12px;cursor:pointer;">+ 关注博主</button>
+          </div>
+        </div>
+      </div>`;
+
+      // 显示视频列表
+      renderRadarVideos();
+    } else {
+      // 当作单个视频链接提取
+      infoEl.style.display = 'none';
+      toolbarEl.style.display = 'none';
+      radarExtract();
+    }
+  } catch (err) {
+    listEl.innerHTML = `<div class="card" style="padding:16px;color:#ef4444;">解析失败: ${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '解析';
+  }
+}
+
+function renderRadarVideos() {
+  const listEl = document.getElementById('radar-video-list');
+  const toolbarEl = document.getElementById('radar-video-toolbar');
+  const countEl = document.getElementById('radar-video-count');
+  if (!_radarVideos.length) {
+    toolbarEl.style.display = 'none';
+    listEl.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--text3);font-size:12px;">未获取到视频列表</div>';
+    return;
+  }
+  toolbarEl.style.display = '';
+  if (countEl) countEl.textContent = `共 ${_radarVideos.length} 个视频`;
+
+  listEl.innerHTML = _radarVideos.map((v, i) => {
+    const likes = v.stats?.likes || v.likes || 0;
+    const comments = v.stats?.comments || v.comments || 0;
+    const shares = v.stats?.shares || v.shares || 0;
+    const collects = v.stats?.collects || v.collects || 0;
+    const duration = v.duration || '';
+    const date = v.date || v.publish_time || '';
+    return `<div class="card" style="padding:14px;margin-bottom:8px;display:flex;gap:14px;align-items:flex-start;">
+      <input type="checkbox" class="rv-check" data-idx="${i}" style="margin-top:4px;accent-color:var(--accent);flex-shrink:0;" />
+      <div style="width:120px;height:68px;background:var(--bg3);border-radius:6px;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        ${v.cover ? `<img src="${esc(v.cover)}" style="width:100%;height:100%;object-fit:cover;" />` : `<span style="font-size:28px;opacity:.3;">🎬</span>`}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v.title || '作品 ' + (i+1))}</div>
+        <div style="font-size:11px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;">
+          ${likes ? `<span>${likes} 赞</span>` : ''}
+          ${comments ? `<span>${comments} 评论</span>` : ''}
+          ${collects ? `<span>${collects} 收藏</span>` : ''}
+          ${shares ? `<span>${shares} 转发</span>` : ''}
+          ${duration ? `<span>${duration}</span>` : ''}
+          ${date ? `<span>${esc(date)}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          ${v.url ? `<a href="${esc(v.url)}" target="_blank" style="padding:3px 10px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:none;border-radius:5px;font-size:10px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;">▶ 播放</a>` : ''}
+          ${v.url ? `<button onclick="extractVideoUrl('${esc(v.url)}',${i})" id="rv-extract-${i}" style="padding:3px 10px;background:var(--accent);color:#000;border:none;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer;">提取文案</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function rvSort(key) {
+  document.querySelectorAll('.rv-sort').forEach(b => {
+    b.classList.toggle('active', b.dataset.sort === key);
+    b.style.background = b.dataset.sort === key ? 'var(--accent)' : 'var(--bg3)';
+    b.style.color = b.dataset.sort === key ? '#000' : 'var(--text2)';
+  });
+  const sorters = {
+    latest: (a, b) => (b.date || b.publish_time || '').localeCompare(a.date || a.publish_time || ''),
+    likes: (a, b) => (b.stats?.likes || b.likes || 0) - (a.stats?.likes || a.likes || 0),
+    comments: (a, b) => (b.stats?.comments || b.comments || 0) - (a.stats?.comments || a.comments || 0),
+    duration_long: (a, b) => (b.duration_sec || 0) - (a.duration_sec || 0),
+    duration_short: (a, b) => (a.duration_sec || 0) - (b.duration_sec || 0)
+  };
+  if (sorters[key]) _radarVideos.sort(sorters[key]);
+  renderRadarVideos();
+}
+
+function rvSelectAll() {
+  const checks = document.querySelectorAll('.rv-check');
+  const allChecked = [...checks].every(c => c.checked);
+  checks.forEach(c => c.checked = !allChecked);
+}
+
+async function rvBatchExtract() {
+  const checks = [...document.querySelectorAll('.rv-check:checked')];
+  if (!checks.length) return alert('请先勾选要提取的视频');
+  const urls = checks.map(c => _radarVideos[c.dataset.idx]?.url).filter(Boolean);
+  if (!urls.length) return;
+  if (!confirm(`确定批量提取 ${urls.length} 个视频的文案？`)) return;
+  try {
+    const resp = await authFetch('/api/radar/batch-extract', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ urls }) });
     const data = await resp.json();
-    if (!data.success) return;
-    const d = data.data;
-    const el = (id) => document.getElementById(id);
-    if (el('rd-accounts')) el('rd-accounts').textContent = d.account_count || 0;
-    if (el('rd-contents')) el('rd-contents').textContent = d.content_count || 0;
-    if (el('rd-replicated')) el('rd-replicated').textContent = d.replicate_count || 0;
-    if (el('rd-voices')) el('rd-voices').textContent = d.voice_count || 0;
-    // 徽章
-    const badge = el('radar-badge');
-    if (badge && d.content_count > 0) { badge.textContent = d.content_count; badge.style.display = ''; }
-    // 最近内容
-    const rcEl = el('rd-recent-contents');
-    if (rcEl && d.recent_contents?.length) {
-      rcEl.innerHTML = d.recent_contents.map(c => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;"><span style="color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.title||'未命名')}</span><span class="tag tag-blue" style="flex-shrink:0;margin-left:8px;">${esc(c.platform_name||'')}</span></div>`).join('');
+    const ok = data.results?.filter(r => r.success).length || 0;
+    alert(`批量提取完成: ${ok}/${urls.length} 成功`);
+  } catch (err) { alert('失败: ' + err.message); }
+}
+
+async function radarFetchAllVideos() {
+  if (!_radarBlogger?.url) return;
+  const btn = document.querySelector('[onclick="radarFetchAllVideos()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 抓取中...'; }
+  try {
+    const resp = await authFetch('/api/radar/extract-blogger', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: _radarBlogger.url, fetchAll: true }) });
+    const data = await resp.json();
+    if (data.success && data.videos?.length) {
+      _radarVideos = data.videos;
+      renderRadarVideos();
     }
-    // 最近任务
-    const rtEl = el('rd-recent-tasks');
-    if (rtEl && d.recent_tasks?.length) {
-      rtEl.innerHTML = d.recent_tasks.map(t => {
-        const sc = t.status === 'done' ? 'tag-green' : t.status === 'error' ? 'tag-red' : 'tag-yellow';
-        const sl = t.status === 'done' ? '完成' : t.status === 'error' ? '失败' : '进行中';
-        return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;"><span style="color:var(--text)">${esc(t.title||'复刻任务')}</span><span class="tag ${sc}">${sl}</span></div>`;
-      }).join('');
-    }
-  } catch (err) { console.warn('[Radar]', err.message); }
+  } catch {}
+  if (btn) { btn.disabled = false; btn.textContent = '获取全部视频'; }
+}
+
+async function radarFollowBlogger() {
+  if (!_radarBlogger) return;
+  const btn = document.getElementById('radar-follow-btn');
+  try {
+    const resp = await authFetch('/api/radar/monitors', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: _radarBlogger.url, name: _radarBlogger.name || '' }) });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+    if (btn) { btn.textContent = '✅ 已关注'; btn.disabled = true; btn.style.background = 'rgba(34,197,94,.12)'; btn.style.color = '#22c55e'; }
+  } catch (err) { alert('关注失败: ' + err.message); }
 }
 
 const PLATFORM_LABEL = { douyin:'抖音', xiaohongshu:'小红书', bilibili:'B站', weibo:'微博' };
@@ -466,13 +606,68 @@ let currentMonitorId = null;
 
 function matSwitchTab(tab) {
   document.querySelectorAll('.mat-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  ['blogger','parsed','transcript','audio'].forEach(t => {
+  ['all','blogger','parsed','download','transcript','audio'].forEach(t => {
     const el = document.getElementById('mat-tab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
+  if (tab === 'all') matLoadAll();
   if (tab === 'parsed') matLoadParsed();
   if (tab === 'transcript') matLoadTranscripts();
   if (tab === 'audio') matLoadAudios();
+  if (tab === 'download') matLoadDownloads();
+}
+
+async function matLoadAll() {
+  const el = document.getElementById('mat-all-list');
+  if (!el) return;
+  try {
+    const [contentsResp, monitorsResp, voicesResp] = await Promise.all([
+      authFetch('/api/radar/contents').then(r=>r.json()).catch(()=>({contents:[]})),
+      authFetch('/api/radar/monitors').then(r=>r.json()).catch(()=>({monitors:[]})),
+      authFetch('/api/workbench/voices').then(r=>r.json()).catch(()=>({voices:[]}))
+    ]);
+    const items = [];
+    (contentsResp.contents||[]).forEach(c => items.push({ type:'content', title: c.title, sub: c.platform_name, time: c.created_at, id: c.id }));
+    (monitorsResp.monitors||[]).forEach(m => items.push({ type:'blogger', title: m.account_name, sub: m.platform_name, time: m.created_at }));
+    (voicesResp.voices||[]).forEach(v => items.push({ type:'voice', title: v.name, sub: '语音', time: v.created_at }));
+    items.sort((a,b) => (b.time||'').localeCompare(a.time||''));
+    if (!items.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无素材</div>'; return; }
+    const typeTag = { content:'tag-blue', blogger:'tag-green', voice:'tag-purple' };
+    const typeLabel = { content:'文案', blogger:'博主', voice:'配音' };
+    el.innerHTML = items.slice(0,30).map(it => `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      <span class="tag ${typeTag[it.type]}" style="font-size:10px;">${typeLabel[it.type]}</span>
+      <span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.title||'未命名')}</span>
+      <span style="font-size:11px;color:var(--text3);">${esc(it.sub||'')}</span>
+      <span style="font-size:10px;color:var(--text3);">${it.time?new Date(it.time).toLocaleDateString('zh-CN'):''}</span>
+    </div>`).join('');
+  } catch {}
+}
+
+function matLoadDownloads() {
+  const el = document.getElementById('mat-download-list');
+  if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px;">暂无下载记录</div>';
+}
+
+let _crawlTimer = null;
+function startCrawlTimer() {
+  if (_crawlTimer) { clearInterval(_crawlTimer); _crawlTimer = null; document.getElementById('crawl-timer-status').textContent = '未启动'; return; }
+  crawlAllBloggers();
+  _crawlTimer = setInterval(crawlAllBloggers, 3600000); // 每小时
+  document.getElementById('crawl-timer-status').textContent = '已启动（每小时）';
+}
+
+async function crawlAllBloggers() {
+  try {
+    const resp = await authFetch('/api/radar/monitors');
+    const data = await resp.json();
+    if (!data.success) return;
+    const active = (data.monitors||[]).filter(m => m.is_active);
+    let ok = 0;
+    for (const m of active) {
+      try { await authFetch(`/api/radar/monitors/${m.id}/crawl`); ok++; } catch {}
+    }
+    document.getElementById('crawl-timer-status').textContent = `已启动 · 上次抓取 ${ok}/${active.length} 个博主`;
+  } catch {}
 }
 
 function matFilterContent() {

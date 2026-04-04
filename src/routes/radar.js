@@ -199,6 +199,89 @@ router.post('/batch-extract', async (req, res) => {
   }
 });
 
+// POST /api/radar/extract-blogger - 解析博主主页或视频链接
+router.post('/extract-blogger', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: '请输入链接' });
+
+    const { platform, name: platformName } = parsePlatformUrl(url);
+    const platformIcons = { douyin:'📱', xiaohongshu:'📕', kuaishou:'🎬', bilibili:'📺', weibo:'💬' };
+
+    // 使用 MCP 抓取博主信息和视频列表
+    const mcpData = await tryMcpCrawlCreator(url);
+
+    if (mcpData && (mcpData.author || mcpData.videoLinks?.length)) {
+      const videos = (mcpData.videoLinks || []).map((v, i) => {
+        if (typeof v === 'string') return { url: v, title: `作品 ${i+1}`, stats: {} };
+        return { url: v.url || v, title: v.title || `作品 ${i+1}`, cover: v.cover || '', stats: v.stats || {}, date: v.date || '', duration: v.duration || '' };
+      });
+
+      return res.json({
+        success: true,
+        isBlogger: true,
+        blogger: {
+          name: mcpData.author || platformName + '博主',
+          id: mcpData.authorId || '',
+          url,
+          platform,
+          videoCount: mcpData.videoCount || videos.length,
+          totalLikes: mcpData.followers || 0,
+          bio: mcpData.bio || ''
+        },
+        videos,
+        platformIcon: platformIcons[platform] || '👤'
+      });
+    }
+
+    // 如果 MCP 没返回博主数据，尝试内置抓取
+    const axios = require('axios');
+    try {
+      const resp = await axios.get(url, {
+        timeout: 15000, maxRedirects: 5,
+        headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15', 'Accept-Language': 'zh-CN,zh;q=0.9' }
+      });
+      const html = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+
+      // 提取博主名
+      const nameMatch = html.match(/"(?:nickname|screen_name|name|author_name)"\s*:\s*"([^"]+)"/i);
+      const authorName = nameMatch ? nameMatch[1] : platformName + '博主';
+
+      // 提取视频链接
+      const linkPatterns = [
+        /(?:href|src)=["'](https?:\/\/(?:www\.)?douyin\.com\/video\/\d+[^"']*?)["']/gi,
+        /(?:href|src)=["'](https?:\/\/v\.douyin\.com\/[^"']+)["']/gi,
+        /(?:href|src)=["'](https?:\/\/(?:www\.)?xiaohongshu\.com\/(?:explore|discovery)\/[^"']+)["']/gi,
+        /(?:href|src)=["'](https?:\/\/(?:www\.)?kuaishou\.com\/short-video\/[^"']+)["']/gi,
+        /(?:href|src)=["'](https?:\/\/(?:www\.)?bilibili\.com\/video\/[^"']+)["']/gi
+      ];
+      const foundUrls = new Set();
+      for (const pat of linkPatterns) { let m; while ((m = pat.exec(html)) !== null) foundUrls.add(m[1]); }
+      const videos = [...foundUrls].map((u, i) => ({ url: u, title: `作品 ${i+1}`, stats: {} }));
+
+      // 提取视频标题
+      const descMatches = [...html.matchAll(/"desc"\s*:\s*"([^"]{5,100})"/g)];
+      descMatches.forEach((m, i) => { if (videos[i]) videos[i].title = m[1]; });
+
+      return res.json({
+        success: true,
+        isBlogger: videos.length > 0,
+        blogger: {
+          name: authorName, id: '', url, platform,
+          videoCount: videos.length, totalLikes: 0
+        },
+        videos,
+        platformIcon: platformIcons[platform] || '👤'
+      });
+    } catch {}
+
+    // 都失败，返回单视频模式
+    res.json({ success: false, isBlogger: false, message: '无法解析为博主主页，将尝试单视频提取' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ═══════ 内容提取/分析 ═══════
 
 // POST /api/radar/extract - 提取视频内容（粘贴链接）
