@@ -6817,6 +6817,9 @@ async function uploadAssetFile(input) {
     const resp = await authFetch('/api/assets/upload', { method: 'POST', body: fd });
     const data = await resp.json();
     if (!data.success) { alert(data.error || '上传失败'); return; }
+    // 切换到全部tab确保新素材可见
+    assetsFilter = 'all';
+    document.querySelectorAll('.assets-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === '全部'));
     loadAssetsPage();
   } catch (e) { alert('上传失败: ' + e.message); }
   input.value = '';

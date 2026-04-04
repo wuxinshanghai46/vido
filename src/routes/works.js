@@ -110,15 +110,18 @@ router.get('/', (req, res) => {
   if (!type || type === 'all' || type === 'novel') {
     const novels = db.listNovels(userId);
     for (const n of novels) {
-      if (!n.content) continue;
+      // 内容来源：top-level content 或 chapters 拼接
+      const chapterText = (n.chapters || []).map(c => c.content || '').join('\n').trim();
+      const novelContent = n.content || chapterText;
+      if (!novelContent) continue;
       works.push({
         id: n.id,
         type: 'novel',
         type_label: 'AI 小说',
         title: n.title || 'AI 小说',
-        preview_text: (n.content || '').slice(0, 100),
+        preview_text: novelContent.slice(0, 100),
         media_type: 'text',
-        word_count: (n.content || '').length,
+        word_count: n.total_words || novelContent.length,
         created_at: n.created_at
       });
     }
