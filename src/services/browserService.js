@@ -13,39 +13,64 @@ const PLATFORMS = {
   douyin: {
     name: '抖音',
     loginUrl: 'https://www.douyin.com/',
+    afterNav: async (page) => {
+      // 等页面加载，点击登录按钮触发二维码
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        // 尝试点击"登录"按钮
+        const loginBtn = await page.$('button[data-e2e="header-login-button"]') ||
+          await page.$('.login-guide-enter-btn') ||
+          await page.$('[class*="login"]');
+        if (loginBtn) await loginBtn.click();
+        await new Promise(r => setTimeout(r, 3000));
+      } catch {}
+    },
     checkLogin: async (page) => {
       try {
-        // 检查是否有登录后的用户信息
+        const cookies = await page.cookies();
+        const hasSession = cookies.some(c => c.name === 'sessionid' || c.name === 'passport_csrf_token' || c.name === 'sid_guard');
         const loggedIn = await page.evaluate(() => {
           return !!document.querySelector('[data-e2e="user-info"]') ||
                  !!document.querySelector('.avatar-wrapper') ||
-                 !!document.cookie.match(/passport_csrf_token/);
+                 document.cookie.includes('sessionid');
         });
-        return loggedIn;
+        return hasSession || loggedIn;
       } catch { return false; }
     }
   },
   xiaohongshu: {
     name: '小红书',
-    loginUrl: 'https://www.xiaohongshu.com/',
+    loginUrl: 'https://www.xiaohongshu.com/explore',
+    afterNav: async (page) => {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const loginBtn = await page.$('.login-btn') || await page.$('[class*="LoginBtn"]');
+        if (loginBtn) await loginBtn.click();
+        await new Promise(r => setTimeout(r, 2000));
+      } catch {}
+    },
     checkLogin: async (page) => {
       try {
-        return await page.evaluate(() => {
-          return !!document.querySelector('.user-info') ||
-                 !!document.cookie.match(/customer-sso-sid/);
-        });
+        const cookies = await page.cookies();
+        return cookies.some(c => c.name === 'customer-sso-sid' || c.name === 'xhsTrackerId');
       } catch { return false; }
     }
   },
   kuaishou: {
     name: '快手',
     loginUrl: 'https://www.kuaishou.com/',
+    afterNav: async (page) => {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const loginBtn = await page.$('.login-btn') || await page.$('[class*="login"]');
+        if (loginBtn) await loginBtn.click();
+        await new Promise(r => setTimeout(r, 2000));
+      } catch {}
+    },
     checkLogin: async (page) => {
       try {
-        return await page.evaluate(() => {
-          return !!document.querySelector('.avatar') ||
-                 !!document.cookie.match(/userId/);
-        });
+        const cookies = await page.cookies();
+        return cookies.some(c => c.name === 'userId' || c.name === 'kuaishou.web.cp.api_st');
       } catch { return false; }
     }
   }
@@ -163,7 +188,13 @@ async function startLogin(platform) {
   }
 
   await page.goto(PLATFORMS[platform].loginUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await new Promise(r => setTimeout(r, 2000));
+
+  // 平台特定：点击登录按钮等
+  if (PLATFORMS[platform].afterNav) {
+    await PLATFORMS[platform].afterNav(page);
+  } else {
+    await new Promise(r => setTimeout(r, 3000));
+  }
 
   // 截图
   const screenshot = await page.screenshot({ encoding: 'base64', type: 'jpeg', quality: 80 });
