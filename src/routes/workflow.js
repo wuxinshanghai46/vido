@@ -211,7 +211,8 @@ router.post('/effects/apply', async (req, res) => {
       } else if (i2vMatch) {
         const db = require('../models/database');
         const task = db.getI2VTask?.(i2vMatch[1]);
-        if (task?.videoPath) videoPath = task.videoPath;
+        if (task?.file_path) videoPath = task.file_path;
+        else if (task?.videoPath) videoPath = task.videoPath;
       } else if (fxMatch) {
         const fxDir = path.resolve(process.env.OUTPUT_DIR || './outputs', 'effects');
         videoPath = path.join(fxDir, `fx_${fxMatch[1]}.mp4`);
