@@ -283,6 +283,21 @@ function nodeHTML(type, nodeId) {
         <div class="wf-nd-body" id="nd-body-${nodeId}">
           <div class="wf-nd-label">人物形象</div>
           <div class="wf-nd-avatar-grid" id="nd-avatar-grid-${nodeId}">
+            <div class="wf-nd-avatar-item active" data-avatar-id="female-1" onclick="selectAvatarNode(this,'female-1')">
+              <img src="/api/avatar/preset-img/avatar_female-1.png" alt="商务女性" /><span class="wf-nd-avatar-name">商务女性</span>
+            </div>
+            <div class="wf-nd-avatar-item" data-avatar-id="male-1" onclick="selectAvatarNode(this,'male-1')">
+              <img src="/api/avatar/preset-img/avatar_male-1.png" alt="商务男性" /><span class="wf-nd-avatar-name">商务男性</span>
+            </div>
+            <div class="wf-nd-avatar-item" data-avatar-id="female-2" onclick="selectAvatarNode(this,'female-2')">
+              <img src="/api/avatar/preset-img/avatar_female-2.png" alt="新闻主播" /><span class="wf-nd-avatar-name">新闻主播</span>
+            </div>
+            <div class="wf-nd-avatar-item" data-avatar-id="male-2" onclick="selectAvatarNode(this,'male-2')">
+              <img src="/api/avatar/preset-img/avatar_male-2.png" alt="教育讲师" /><span class="wf-nd-avatar-name">教育讲师</span>
+            </div>
+            <div class="wf-nd-avatar-item" data-avatar-id="anime-1" onclick="selectAvatarNode(this,'anime-1')">
+              <img src="/api/avatar/preset-img/avatar_anime-1.png" alt="动漫角色" /><span class="wf-nd-avatar-name">动漫角色</span>
+            </div>
             <div class="wf-nd-avatar-item wf-nd-avatar-upload" onclick="uploadAvatarImage(this)" title="上传自定义形象">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </div>
@@ -290,19 +305,20 @@ function nodeHTML(type, nodeId) {
           <button class="wf-nd-action" style="font-size:11px;padding:5px 8px;background:var(--wf-bg);border:1px solid var(--wf-border);color:var(--wf-text2)" onclick="loadAvatarCharacters(this)">
             🔄 加载AI角色形象
           </button>
-          <div class="wf-nd-label" style="margin-top:6px">背景场景</div>
+          <div class="wf-nd-sep"></div>
+          <div class="wf-nd-label">背景场景</div>
           <div class="wf-nd-avatar-bg-grid">
             <div class="wf-nd-bg-card active" data-bg="office" onclick="selectAvatarBgPreset(this)">
-              <div class="wf-nd-bg-ph" style="background:linear-gradient(135deg,#1a1a3e,#2d2d6b)"></div><span>办公室</span>
+              <img class="wf-nd-bg-img" src="/api/avatar/preset-img/bg_office.png" alt="办公室" /><span>办公室</span>
             </div>
             <div class="wf-nd-bg-card" data-bg="studio" onclick="selectAvatarBgPreset(this)">
-              <div class="wf-nd-bg-ph" style="background:linear-gradient(135deg,#0a1628,#1e3a5f)"></div><span>演播室</span>
+              <img class="wf-nd-bg-img" src="/api/avatar/preset-img/bg_studio.png" alt="演播室" /><span>演播室</span>
             </div>
             <div class="wf-nd-bg-card" data-bg="classroom" onclick="selectAvatarBgPreset(this)">
-              <div class="wf-nd-bg-ph" style="background:linear-gradient(135deg,#2d1f10,#5c3d1e)"></div><span>教室</span>
+              <img class="wf-nd-bg-img" src="/api/avatar/preset-img/bg_classroom.png" alt="教室" /><span>教室</span>
             </div>
             <div class="wf-nd-bg-card" data-bg="outdoor" onclick="selectAvatarBgPreset(this)">
-              <div class="wf-nd-bg-ph" style="background:linear-gradient(135deg,#1a3a2a,#2d6b4a)"></div><span>户外</span>
+              <img class="wf-nd-bg-img" src="/api/avatar/preset-img/bg_outdoor.png" alt="户外" /><span>户外</span>
             </div>
             <div class="wf-nd-bg-card" data-bg="green" onclick="selectAvatarBgPreset(this)">
               <div class="wf-nd-bg-ph" style="background:#00b140"></div><span>绿幕</span>
@@ -314,8 +330,10 @@ function nodeHTML(type, nodeId) {
           <button class="wf-nd-action" style="font-size:11px;padding:5px 8px;background:var(--wf-bg);border:1px solid var(--wf-border);color:var(--wf-text2);margin-top:4px" onclick="generateAvatarBg(this)">
             ✦ AI 生成背景图
           </button>
-          <div class="wf-nd-label" style="margin-top:6px">台词</div>
+          <div class="wf-nd-sep"></div>
+          <div class="wf-nd-label">台词</div>
           <textarea class="wf-nd-ta" rows="3" placeholder="输入数字人要说的台词..." onchange="syncNodeData(this)"></textarea>
+          <div class="wf-nd-sep"></div>
           <div class="wf-nd-label">音色</div>
           <select class="wf-nd-select" data-field="avatar-voice" onchange="syncNodeData(this)">
             <option value="">自动</option>
@@ -331,7 +349,8 @@ function nodeHTML(type, nodeId) {
           <button class="wf-nd-action" style="font-size:11px;padding:5px 8px;background:var(--wf-bg);border:1px dashed var(--wf-border2);color:var(--wf-text2)" onclick="uploadCustomVoice(this)">
             🎙️ 上传自定义语音包
           </button>
-          <div class="wf-nd-label" style="margin-top:6px">数字人模型</div>
+          <div class="wf-nd-sep"></div>
+          <div class="wf-nd-label">数字人模型</div>
           <select class="wf-nd-select" data-field="avatar-model" onchange="syncNodeData(this)">
             <optgroup label="⭐ 推荐">
               <option value="I2V-01-live">Hailuo I2V Live — 口播推荐</option>
@@ -774,12 +793,9 @@ function initNodeDynamic(nodeId, type) {
     const modelSel = node.querySelector('.wf-video-model-select');
     if (modelSel) modelSel.innerHTML = buildVideoModelOptions();
   }
-  // 数字人节点：自动加载角色形象和语音包
+  // 数字人节点：自动加载语音包（不自动加载AI角色，保留预设形象）
   if (type === 'avatar') {
     initAvatarVoices(nodeId);
-    // 自动加载 AI 角色
-    const loadBtn = node.querySelector('[onclick*="loadAvatarCharacters"]');
-    if (loadBtn) loadAvatarCharacters(loadBtn);
   }
 }
 
@@ -1360,7 +1376,7 @@ async function generateAvatar(btn) {
         formData.append('image', blob, 'avatar.png');
         const upRes = await authFetch('/api/i2v/upload-image', { method: 'POST', body: formData });
         const upData = await upRes.json();
-        avatarImageUrl = upData.success ? (upData.data?.url || upData.data?.imageUrl || '') : '';
+        avatarImageUrl = upData.success ? (upData.data?.image_url || upData.data?.url || `/api/i2v/images/${upData.data?.filename}`) : '';
         if (!avatarImageUrl) { setNodeStatus(btn, 'error', '形象图上传失败'); btn.disabled = false; return; }
       } catch(e) { setNodeStatus(btn, 'error', '形象图上传失败: ' + e.message); return; }
     } else {
@@ -1377,17 +1393,40 @@ async function generateAvatar(btn) {
   const bgType = activeBgCard?.dataset?.bg || 'office';
   const bgImage = activeBgCard?.dataset?.customUrl || '';
 
-  setNodeStatus(btn, 'running', `生成中 (${modelLabel.split('—')[0].trim()})...`);
   btn.disabled = true;
+
+  // 自动分段：文本超过 30 字时调用 AI 智能分段
+  let segments = null;
+  if (text.length > 30) {
+    setNodeStatus(btn, 'running', '智能分段中...');
+    try {
+      const segRes = await authFetch('/api/avatar/segment-script', {
+        method: 'POST',
+        body: JSON.stringify({ text, segmentDuration: 10 })
+      });
+      const segData = await segRes.json();
+      if (segData.success && segData.segments?.length > 1) {
+        segments = segData.segments;
+        console.log(`[Workflow] 智能分段: ${segments.length} 段`);
+      }
+    } catch(e) {
+      console.warn('[Workflow] 分段失败，使用单段模式:', e.message);
+    }
+  }
+
+  setNodeStatus(btn, 'running', `生成中 (${modelLabel.split('—')[0].trim()})${segments ? ' · ' + segments.length + '段' : ''}...`);
   try {
+    // avatar 字段需要传可解析的形象路径：预设ID / 服务器URL / 本地路径
+    // 对于 AI 角色和自定义上传，用实际的图片 URL
+    const avatarValue = avatarImageUrl || avatar;
     const res = await authFetch('/api/avatar/generate', {
       method: 'POST',
       body: JSON.stringify({
-        avatar, text, voiceId, model,
+        avatar: avatarValue, text, voiceId, model,
         ratio: '9:16',
-        avatar_image: avatarImageUrl,
         background: bgType,
-        background_image: bgImage
+        background_image: bgImage,
+        segments
       })
     });
     const data = await res.json();
@@ -1420,17 +1459,19 @@ function uploadAvatarImage(el) {
     const formData = new FormData();
     formData.append('image', file);
     try {
-      const res = await authFetch('/api/i2v/upload-image', { method: 'POST', body: formData });
+      const res = await authFetch('/api/avatar/upload-image', { method: 'POST', body: formData });
       const data = await res.json();
-      const serverUrl = data.success ? (data.data?.url || `/api/i2v/images/${data.data?.filename}`) : null;
+      const serverUrl = data.path || (data.filename ? `/api/avatar/images/${data.filename}` : null);
       const displayUrl = serverUrl || URL.createObjectURL(file);
       // 取消其他选中
       grid.querySelectorAll('.wf-nd-avatar-item').forEach(i => i.classList.remove('active'));
+      // 移除旧的自定义上传项
+      grid.querySelectorAll('.wf-nd-avatar-custom').forEach(i => i.remove());
       // 创建新 avatar item
       const item = document.createElement('div');
-      item.className = 'wf-nd-avatar-item active';
+      item.className = 'wf-nd-avatar-item wf-nd-avatar-custom active';
       item.dataset.avatarId = 'custom_upload';
-      item.innerHTML = `<img src="${displayUrl}" alt="自定义" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`;
+      item.innerHTML = `<img src="${displayUrl}" alt="自定义形象" /><span class="wf-nd-avatar-name">自定义</span>`;
       item.onclick = function() { selectAvatarNode(this, 'custom_upload'); };
       grid.insertBefore(item, el);
     } catch(e) {
@@ -1537,7 +1578,7 @@ async function generateAvatarBg(btn) {
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
   const text = ta?.value?.trim() || '专业直播间背景';
-  btn.textContent = '生成中...';
+  btn.textContent = '✦ 生成中...';
   btn.disabled = true;
   try {
     const res = await authFetch('/api/story/generate-scene-image', {
@@ -1547,11 +1588,24 @@ async function generateAvatarBg(btn) {
     const data = await res.json();
     const imageUrl = data.data?.imageUrl;
     if (data.success && imageUrl) {
-      const bgPreview = node.querySelector('.wf-nd-avatar-bg');
-      bgPreview.innerHTML = `<img src="${imageUrl}" alt="背景" style="width:100%;height:100%;object-fit:cover;border-radius:6px" />`;
+      // 把生成的图设置到"自定义"背景卡片上
+      const customCard = node.querySelector('[data-bg="custom"]');
+      if (customCard) {
+        const ph = customCard.querySelector('.wf-nd-bg-ph');
+        ph.style.backgroundImage = `url(${imageUrl})`;
+        ph.style.backgroundSize = 'cover';
+        ph.style.backgroundPosition = 'center';
+        ph.textContent = '';
+        customCard.dataset.customUrl = imageUrl;
+        selectAvatarBgPreset(customCard);
+      }
+      btn.textContent = '✦ 已生成，点击重新生成';
+    } else {
+      btn.textContent = '✦ 生成失败: ' + (data.error || '未知错误');
     }
-  } catch(e) {}
-  btn.textContent = 'AI生成背景';
+  } catch(e) {
+    btn.textContent = '✦ 生成失败: ' + (e.message || '');
+  }
   btn.disabled = false;
 }
 

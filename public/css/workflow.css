@@ -232,6 +232,9 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 .wf-nd-bg-ph {
   width: 100%; aspect-ratio: 16/10; border-radius: 4px 4px 0 0;
 }
+.wf-nd-bg-img {
+  width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 4px 4px 0 0; display: block;
+}
 .wf-nd-bg-card span {
   display: block; font-size: 9px; color: var(--wf-text2);
   padding: 2px 0; line-height: 1.2;

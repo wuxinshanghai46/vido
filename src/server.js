@@ -147,6 +147,8 @@ app.use('/api/publish', authenticate, require('./routes/publish'));
 
 // === 需特定权限的路由 ===
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));
+// 预设图片公开访问（img 标签不带 token）
+app.use('/api/avatar/preset-img', require('./routes/avatar-preset-img'));
 app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./routes/avatar'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));

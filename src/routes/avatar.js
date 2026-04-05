@@ -59,10 +59,20 @@ const db = require('../models/database');
 // 解析 avatar 图片路径的公共函数
 function resolveAvatarImage(avatar) {
   let imageUrl = avatar;
+  const outputDir = path.resolve(process.env.OUTPUT_DIR || './outputs');
   if (avatar.startsWith('/api/avatar/images/')) {
     imageUrl = path.join(uploadDir, path.basename(avatar));
   } else if (avatar.startsWith('/api/avatar/preset-img/')) {
     imageUrl = path.join(presetsDir, path.basename(avatar));
+  } else if (avatar.startsWith('/api/story/character-image/')) {
+    // AI 角色图 — 在 characters/ 和 scenes/ 目录中查找
+    const fname = path.basename(avatar);
+    const charsPath = path.join(outputDir, 'characters', fname);
+    const scenesPath = path.join(outputDir, 'scenes', fname);
+    imageUrl = fs.existsSync(charsPath) ? charsPath : fs.existsSync(scenesPath) ? scenesPath : charsPath;
+  } else if (avatar.startsWith('/api/i2v/images/')) {
+    // i2v 上传的图片
+    imageUrl = path.join(outputDir, 'i2v', path.basename(avatar));
   } else if (PRESET_AVATARS[avatar]) {
     const presetFiles = fs.readdirSync(presetsDir).filter(f => f.startsWith(`avatar_${avatar}.`));
     if (presetFiles.length > 0) {
