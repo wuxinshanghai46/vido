@@ -360,25 +360,73 @@ router.post('/concat', async (req, res) => {
         return;
       }
 
-      // 创建 concat 文件列表
-      const listPath = path.join(outputDir, `concat_${taskId}.txt`);
-      fs.writeFileSync(listPath, localPaths.map(p => `file '${p}'`).join('\n'));
+      effectsTasks.set(taskId, { status: 'running', progress: 20, detail: '分析视频片段...' });
 
-      effectsTasks.set(taskId, { status: 'running', progress: 30, detail: '拼接视频中...' });
-
-      await new Promise((resolve, reject) => {
-        ffmpeg()
-          .input(listPath)
-          .inputOptions(['-f', 'concat', '-safe', '0'])
-          .outputOptions(['-c', 'copy', '-movflags', '+faststart'])
-          .output(outputPath)
-          .on('end', resolve)
-          .on('error', reject)
-          .run();
+      // 获取每个视频的时长
+      const ffprobeAsync = (f) => new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(f, (err, meta) => err ? reject(err) : resolve(meta));
       });
 
-      // 清理临时文件
-      try { fs.unlinkSync(listPath); } catch {}
+      const durations = [];
+      for (const p of localPaths) {
+        try {
+          const meta = await ffprobeAsync(p);
+          durations.push(meta.format?.duration || 10);
+        } catch { durations.push(10); }
+      }
+
+      const FADE_DUR = 0.8; // 交叉淡入淡出时长（秒）
+
+      effectsTasks.set(taskId, { status: 'running', progress: 30, detail: '拼接视频（交叉淡入淡出）...' });
+
+      if (localPaths.length === 2) {
+        // 两个视频：用 xfade 滤镜
+        const offset = Math.max(0, durations[0] - FADE_DUR);
+        await new Promise((resolve, reject) => {
+          const cmd = ffmpeg();
+          localPaths.forEach(p => cmd.input(p));
+          cmd.complexFilter([
+            `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`,
+            `[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`
+          ].join(';'))
+          .outputOptions(['-map', '[vout]', '-map', '[aout]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'])
+          .output(outputPath)
+          .on('end', resolve)
+          .on('error', (err) => {
+            // 音频 acrossfade 可能失败（无音轨），回退只做视频淡入淡出
+            console.warn('[Concat] 带音频转场失败，回退视频转场:', err.message);
+            const cmd2 = ffmpeg();
+            localPaths.forEach(p => cmd2.input(p));
+            cmd2.complexFilter(`[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`)
+            .outputOptions(['-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest'])
+            .output(outputPath).on('end', resolve).on('error', reject).run();
+          })
+          .run();
+        });
+      } else {
+        // 3+ 个视频：逐步 xfade 链式拼接
+        let prevPath = localPaths[0];
+        let prevDur = durations[0];
+        for (let i = 1; i < localPaths.length; i++) {
+          effectsTasks.set(taskId, { status: 'running', progress: 30 + Math.round(i / localPaths.length * 50), detail: `拼接片段 ${i+1}/${localPaths.length}...` });
+          const tempOut = path.join(outputDir, `temp_${taskId}_${i}.mp4`);
+          const offset = Math.max(0, prevDur - FADE_DUR);
+          await new Promise((resolve, reject) => {
+            const cmd = ffmpeg();
+            cmd.input(prevPath).input(localPaths[i]);
+            cmd.complexFilter(`[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`)
+            .outputOptions(['-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest'])
+            .output(tempOut).on('end', resolve).on('error', reject).run();
+          });
+          // 清理上一轮临时文件
+          if (i > 1) try { fs.unlinkSync(prevPath); } catch {}
+          prevPath = tempOut;
+          // 获取新时长
+          try { const m = await ffprobeAsync(tempOut); prevDur = m.format?.duration || prevDur + durations[i] - FADE_DUR; } catch { prevDur = prevDur + durations[i] - FADE_DUR; }
+        }
+        // 移动最终文件
+        fs.renameSync(prevPath, outputPath);
+      }
 
       effectsTasks.set(taskId, { status: 'done', outputPath, outputUrl: `/api/workflow/effects/result/${taskId}` });
     } catch (e) {
