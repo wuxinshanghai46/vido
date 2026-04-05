@@ -2379,7 +2379,7 @@ async function pollI2VStatus(btn, taskId, node) {
       if (task.status === 'done' && task.file_path) {
         setNodeStatus(btn, 'done', '已完成');
         const preview = node.querySelector('.wf-nd-preview');
-        if (preview) { preview.innerHTML = `<video src="/api/i2v/tasks/${taskId}/stream#t=0.1" controls preload="auto" playsinline></video>`; addExpandButton(preview); }
+        if (preview) { loadVideoPreview(preview, `/api/i2v/tasks/${taskId}/stream`); }
         btn.disabled = false;
       } else if (task.status === 'error') {
         const errDetail = task.error_message || task.error || '生成失败（未知原因）';
@@ -2405,7 +2405,7 @@ async function pollProjectStatus(btn, projectId, node) {
       if (project.status === 'done') {
         setNodeStatus(btn, 'done', '已完成');
         const preview = node.querySelector('.wf-nd-preview');
-        if (preview) { preview.innerHTML = `<video src="/api/projects/${projectId}/stream#t=0.1" controls preload="auto" playsinline></video>`; addExpandButton(preview); }
+        if (preview) { loadVideoPreview(preview, `/api/projects/${projectId}/stream`); }
         btn.disabled = false;
       } else if (project.status === 'error') {
         const errDetail = project.error || project.error_message || '生成失败（未知原因）';
@@ -2826,6 +2826,20 @@ function openLightbox(imgSrc, videoSrc) {
 }
 
 // 给预览区添加放大按钮（视频/图片生成后调用）
+// 通过 authFetch 下载视频并用 blob URL 加载预览（绕过认证限制）
+async function loadVideoPreview(previewEl, streamUrl) {
+  previewEl.innerHTML = '<span class="wf-nd-preview-ph" style="animation:wf-pulse 1.5s infinite">加载视频...</span>';
+  try {
+    const res = await authFetch(streamUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    previewEl.innerHTML = `<video src="${blobUrl}#t=0.1" controls preload="auto" playsinline></video>`;
+    addExpandButton(previewEl);
+  } catch(e) {
+    previewEl.innerHTML = `<span class="wf-nd-preview-ph">视频加载失败: ${e.message}</span>`;
+  }
+}
+
 function addExpandButton(previewEl) {
   // 移除旧按钮
   previewEl.querySelectorAll('.wf-expand-btn').forEach(b => b.remove());
