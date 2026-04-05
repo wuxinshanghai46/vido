@@ -1919,7 +1919,6 @@ async function executeMerge(btn) {
       setNodeStatus(btn, 'error', '拼接失败: ' + e.message);
     }
   }
-  }
   btn.disabled = false;
 }
 
