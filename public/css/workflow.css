@@ -107,7 +107,7 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 }
 .drawflow .drawflow-node {
   background: var(--wf-bg2) !important; border: 1px solid var(--wf-border2) !important;
-  border-radius: 12px !important; min-width: 240px; padding: 0 !important;
+  border-radius: 12px !important; min-width: 300px; padding: 0 !important;
   box-shadow: 0 4px 20px rgba(0,0,0,.4) !important; color: var(--wf-text) !important;
   font-family: 'Inter', sans-serif !important;
 }
@@ -148,7 +148,7 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 .wf-nd-ta {
   width: 100%; background: var(--wf-bg); border: 1px solid var(--wf-border);
   border-radius: 6px; padding: 8px 10px; color: var(--wf-text); font-size: 12px;
-  font-family: inherit; resize: vertical; min-height: 48px; outline: none;
+  font-family: inherit; resize: vertical; min-height: 80px; outline: none; line-height: 1.6;
 }
 .wf-nd-ta:focus { border-color: rgba(var(--wf-accent-rgb),.4); }
 .wf-nd-ta::placeholder { color: var(--wf-text3); }

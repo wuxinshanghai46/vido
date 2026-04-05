@@ -746,7 +746,13 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
   let prompt;
   if (mode === 'portrait') {
     // 单张人物肖像/全身图（用于工作流分镜）
-    prompt = buildPortraitPrompt(name, role, description, dim, race, species, animStyle);
+    if (provider === 'jimeng') {
+      // 即梦用中文 prompt 效果更好
+      const dimCN = dim === '3d' ? '3D写实CG渲染风格，三维立体建模质感，真实光影和材质' : dim === 'realistic' ? '真人摄影照片风格，8K超清写实' : '2D手绘动画风格，平面插画，赛璐珞上色';
+      prompt = `单人角色全身立绘：${name}，${description || ''}，${dimCN}，干净简洁背景，高质量角色设定图，电影级光线`;
+    } else {
+      prompt = buildPortraitPrompt(name, role, description, dim, race, species, animStyle);
+    }
   } else {
     // 多角度转面图（用于角色设定）
     prompt = provider === 'jimeng'
