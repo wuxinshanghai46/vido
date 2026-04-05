@@ -3784,6 +3784,9 @@ function removeScene(id) {
 async function uploadProjectMusic(input) {
   const file = input.files[0]; if (!file) return;
   const box = document.getElementById('music-upload-box');
+  const textEl = box.querySelector('.music-drop-text');
+  const origText = textEl?.textContent || '';
+  if (textEl) textEl.textContent = `上传中... (${(file.size/1024/1024).toFixed(1)}MB)`;
   box.style.opacity = '.5'; box.style.pointerEvents = 'none';
   try {
     const fd = new FormData(); fd.append('music', file);
@@ -3812,6 +3815,7 @@ async function uploadProjectMusic(input) {
   } catch (e) {
     alert('上传失败：' + e.message);
     box.style.opacity = '1'; box.style.pointerEvents = 'auto';
+    if (textEl) textEl.textContent = origText;
   }
 }
 function removeProjectMusic() {
