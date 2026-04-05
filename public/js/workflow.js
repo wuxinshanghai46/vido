@@ -535,16 +535,10 @@ function nodeHTML(type, nodeId) {
               <button class="wf-nd-action wf-nd-bgm-btn" style="flex:1;background:var(--wf-bg);border:1px dashed var(--wf-border2);color:var(--wf-text2);font-size:11px;padding:6px 10px" onclick="uploadFxBgm(this)">
                 🎵 点击上传BGM
               </button>
+              <button class="wf-nd-action" style="flex:0 0 auto;background:var(--wf-bg);border:1px solid var(--wf-accent);color:var(--wf-accent);font-size:11px;padding:6px 8px" onclick="pickBgmFromAssets(this)">
+                📁 素材库
+              </button>
             </div>
-            <select class="wf-nd-select" data-field="bgm-preset" style="font-size:11px;margin-top:4px" onchange="selectPresetBgm(this)">
-              <option value="">— 或从预设音乐库选择 —</option>
-              <option value="gentle-piano">轻柔钢琴</option>
-              <option value="emotional-strings">感人弦乐</option>
-              <option value="nature-ambient">自然环境音</option>
-              <option value="upbeat-pop">欢快流行</option>
-              <option value="cinematic-epic">电影史诗</option>
-              <option value="lofi-chill">Lo-Fi 放松</option>
-            </select>
           </div>
           <div class="wf-nd-row" style="margin-top:4px;align-items:center;display:none" id="fx-bgm-vol-${nodeId}">
             <span style="font-size:10px;color:var(--wf-text3);flex:0 0 auto">音量</span>
@@ -3284,6 +3278,73 @@ function removeFxItem(btn) {
 }
 
 /** 上传 BGM（特效版） */
+// 从素材库选择BGM
+async function pickBgmFromAssets(btn) {
+  const node = btn.closest('.drawflow-node');
+  try {
+    const res = await authFetch('/api/assets?type=music&limit=50');
+    const data = await res.json();
+    const assets = data.success ? (data.data || []) : [];
+    if (assets.length === 0) { showToast('素材库中暂无音乐文件', 'error'); return; }
+
+    // 创建选择弹窗
+    let modal = document.getElementById('wf-bgm-picker');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'wf-bgm-picker';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = `
+      <div style="background:var(--wf-bg2,#141519);border-radius:12px;padding:20px;width:400px;max-height:70vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:700;color:var(--wf-text,#eee)">选择背景音乐</span>
+          <button onclick="this.closest('#wf-bgm-picker').remove()" style="background:none;border:none;color:var(--wf-text3,#888);font-size:18px;cursor:pointer">✕</button>
+        </div>
+        <div id="wf-bgm-list" style="display:flex;flex-direction:column;gap:6px">
+          ${assets.map(a => `
+            <div class="wf-bgm-item" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--wf-bg,#0c0c12);border-radius:8px;cursor:pointer;border:1px solid var(--wf-border,#222)"
+                 onclick="selectAssetBgm(this,'${a.file_url || a.url}','${a.file_path || ''}','${(a.name || a.original_name || '').replace(/'/g, '')}')">
+              <span style="font-size:16px">🎵</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;color:var(--wf-text,#eee);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.name || a.original_name || '未命名'}</div>
+                <div style="font-size:10px;color:var(--wf-text3,#888)">${a.duration ? Math.round(a.duration) + '秒' : ''} ${a.format || ''}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+    // 记住目标节点
+    modal._targetNode = node;
+  } catch(e) {
+    showToast('加载素材库失败: ' + e.message, 'error');
+  }
+}
+
+function selectAssetBgm(item, fileUrl, filePath, name) {
+  const modal = document.getElementById('wf-bgm-picker');
+  const node = modal?._targetNode;
+  if (modal) modal.remove();
+  if (!node) return;
+
+  const bgmBtn = node.querySelector('.wf-nd-bgm-btn');
+  if (bgmBtn) {
+    bgmBtn.textContent = '🎵 ' + (name || '素材库音乐');
+    bgmBtn.dataset.bgmPath = filePath || fileUrl;
+    bgmBtn.dataset.bgmUrl = fileUrl;
+  }
+  // 显示音量控制
+  const volWrap = node.querySelector('[id^="fx-bgm-vol-"]');
+  if (volWrap) {
+    volWrap.style.display = 'flex';
+    const slider = volWrap.querySelector('input[type="range"]');
+    const label = volWrap.querySelector('.wf-fx-bgm-vol-val');
+    if (slider) slider.oninput = () => { if (label) label.textContent = slider.value + '%'; };
+  }
+  showToast('已选择: ' + (name || '素材库音乐'), 'success');
+}
+
 function uploadFxBgm(btn) {
   const node = btn.closest('.drawflow-node');
   const input = document.createElement('input');
