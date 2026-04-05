@@ -58,10 +58,6 @@ function nodeHTML(type, nodeId) {
           <div class="wf-nd-label">图片模型</div>
           <select class="wf-nd-select wf-nd-img-model-global" style="font-size:11px;padding:4px 6px" onchange="syncNodeData(this)">
             <option value="auto">自动选择模型</option>
-            <option value="nanobanana">NanoBanana</option>
-            <option value="zhipu">智谱 CogView</option>
-            <option value="jimeng">即梦AI</option>
-            <option value="openai">DALL-E 3</option>
           </select>
           <div class="wf-nd-row">
             <button class="wf-nd-action wf-nd-action-primary" style="flex:1" onclick="aiGenerateText(this)">
@@ -101,10 +97,6 @@ function nodeHTML(type, nodeId) {
           <textarea class="wf-nd-ta" rows="2" placeholder="背景场景描述..." onchange="syncNodeData(this)"></textarea>
           <select class="wf-nd-select" data-field="img-model" style="font-size:11px;padding:4px 6px" onchange="syncNodeData(this)">
             <option value="auto">自动选择模型</option>
-            <option value="nanobanana">NanoBanana</option>
-            <option value="zhipu">智谱 CogView</option>
-            <option value="jimeng">即梦AI</option>
-            <option value="openai">DALL-E 3</option>
           </select>
           <div class="wf-nd-row" style="gap:4px;margin-top:4px">
             <select class="wf-nd-select" data-field="img-ratio" style="flex:1;font-size:11px;padding:4px 6px">
@@ -146,10 +138,6 @@ function nodeHTML(type, nodeId) {
           <textarea class="wf-nd-ta" rows="2" placeholder="人物外貌特征描述（发型、服装、体型等）..." onchange="syncNodeData(this)"></textarea>
           <select class="wf-nd-select" data-field="img-model" style="font-size:11px;padding:4px 6px" onchange="syncNodeData(this)">
             <option value="auto">自动选择模型</option>
-            <option value="nanobanana">NanoBanana</option>
-            <option value="zhipu">智谱 CogView</option>
-            <option value="jimeng">即梦AI</option>
-            <option value="openai">DALL-E 3</option>
           </select>
           <div class="wf-nd-row" style="gap:4px;margin-top:4px">
             <select class="wf-nd-select" data-field="img-ratio" style="flex:1;font-size:11px;padding:4px 6px">
@@ -641,18 +629,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updateNodeCount();
 
-  // 从 settings 动态加载视频模型列表
-  loadVideoModels();
+  // 从 settings 动态加载视频/图片模型列表
+  loadAllModels();
 });
 
-// 加载视频模型列表
-async function loadVideoModels() {
+let _imageModels = [];
+
+// 加载视频 + 图片模型列表
+async function loadAllModels() {
   try {
     const res = await authFetch('/api/settings');
     const data = await res.json();
     if (!data.success) return;
     const providers = data.data?.providers || [];
     _videoModels = [];
+    _imageModels = [];
     providers.forEach(p => {
       if (!p.enabled && p.api_key) return;
       (p.models || []).forEach(m => {
@@ -663,13 +654,39 @@ async function loadVideoModels() {
             provider: p.id
           });
         }
+        if (m.use === 'image' || m.type === 'image') {
+          _imageModels.push({
+            id: p.id + ':' + (m.id || m.name),
+            name: `${p.name} - ${m.name || m.id}`,
+            provider: p.id,
+            modelId: m.id || m.name
+          });
+        }
       });
     });
-    console.log(`[Workflow] 已加载 ${_videoModels.length} 个视频模型`);
+    console.log(`[Workflow] 已加载 ${_videoModels.length} 个视频模型, ${_imageModels.length} 个图片模型`);
+    // 动态填充页面上所有图片模型下拉框
+    document.querySelectorAll('[data-field="img-model"], .wf-nd-img-model-global').forEach(sel => {
+      fillImageModelSelect(sel);
+    });
   } catch(e) {
-    console.warn('[Workflow] 加载视频模型失败:', e);
+    console.warn('[Workflow] 加载模型失败:', e);
   }
 }
+
+// 填充图片模型下拉框
+function fillImageModelSelect(sel) {
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="auto">自动选择模型</option>';
+  _imageModels.forEach(m => {
+    sel.innerHTML += `<option value="${m.provider}">${m.name}</option>`;
+  });
+  if (prev && sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
+}
+
+// 兼容旧调用名
+async function loadVideoModels() { return loadAllModels(); }
 
 // 风格与推荐模型的映射
 const STYLE_MODEL_RECOMMENDATIONS = {
@@ -792,6 +809,10 @@ function initNodeDynamic(nodeId, type) {
   if (type === 'video') {
     const modelSel = node.querySelector('.wf-video-model-select');
     if (modelSel) modelSel.innerHTML = buildVideoModelOptions();
+  }
+  // 填充图片模型选项（背景/人物/文本节点）
+  if (type === 'background' || type === 'character' || type === 'text') {
+    node.querySelectorAll('[data-field="img-model"], .wf-nd-img-model-global').forEach(sel => fillImageModelSelect(sel));
   }
   // 数字人节点：自动加载语音包（不自动加载AI角色，保留预设形象）
   if (type === 'avatar') {
