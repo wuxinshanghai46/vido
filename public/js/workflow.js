@@ -645,7 +645,7 @@ async function loadAllModels() {
     _videoModels = [];
     _imageModels = [];
     providers.forEach(p => {
-      if (!p.enabled && p.api_key) return;
+      if (p.enabled === false) return;
       (p.models || []).forEach(m => {
         if (m.use === 'video' || m.type === 'video') {
           _videoModels.push({
