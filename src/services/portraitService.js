@@ -334,9 +334,8 @@ async function generatePortrait(imagePath, dim = '2d', progressCallback) {
     }
   }
 
-  // 最终回退到 Demo 模式
   if (!result) {
-    result = await generateDemoPortrait(imagePath, dim);
+    throw new Error('形象生成失败：所有可用供应商均无法生成，请检查API配置。');
   }
 
   progress('done', 100, '形象生成完成！');

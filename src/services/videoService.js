@@ -189,22 +189,7 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
     }
   }
 
-  try {
-    task = await submitWithRetry(bodyObj, bodyObj.image_url ? 'i2v' : 't2v', 2);
-  } catch (e) {
-    // i2v 提交失败时自动回退到 t2v
-    if (bodyObj.image_url) {
-      console.log(`[Zhipu] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete bodyObj.image_url;
-      // 回退到 t2v 时需要补充 size/duration/fps 参数
-      bodyObj.size = '1280x720';
-      bodyObj.duration = Math.min(Math.max(duration, 3), 10);
-      bodyObj.fps = 30;
-      task = await submitWithRetry(bodyObj, 't2v', 3);
-    } else {
-      throw e;
-    }
-  }
+  task = await submitWithRetry(bodyObj, bodyObj.image_url ? 'i2v' : 't2v', 2);
 
   // === 轮询封装（复用，避免重复代码） ===
   async function _zhipuPoll(tId) {
@@ -272,17 +257,7 @@ async function generateZhipuClip({ prompt, duration = 5, outputDir, filename, im
 
   const t2vBody = { model: modelId, prompt, size: '1280x720', duration: Math.min(Math.max(duration, 3), 10), fps: 30 };
 
-  try {
-    return await _zhipuPoll(taskId);
-  } catch (e) {
-    // i2v 失败（任何模式：公网 URL 或 base64）→ 回退到 t2v 纯文本模式
-    if (image_url && (e.zhipuCode === '1210' || /参数有误|1210/i.test(e.message))) {
-      const mode = image_url.startsWith('data:') ? 'base64' : '公网 URL';
-      console.log(`[Zhipu] ${mode} i2v 失败 (${e.zhipuCode || e.message})，回退到 t2v 纯文本模式`);
-      return await _zhipuSubmitAndPoll(t2vBody, 't2v-fallback');
-    }
-    throw e;
-  }
+  return await _zhipuPoll(taskId);
 }
 
 // ——— Replicate 模式：稳定免费额度 ———
@@ -603,21 +578,7 @@ async function generateKlingClip({ prompt, negative_prompt = '', duration = 5, o
     });
   }
 
-  let task;
-  try {
-    task = await _klingSubmit(bodyObj, apiPath);
-  } catch (e) {
-    // i2v 失败时回退到 t2v
-    if (useI2V) {
-      console.log(`[Kling] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete bodyObj.image;
-      useI2V = false;
-      apiPath = '/v1/videos/text2video';
-      task = await _klingSubmit(bodyObj, apiPath);
-    } else {
-      throw e;
-    }
-  }
+  let task = await _klingSubmit(bodyObj, apiPath);
 
   const taskId = task.task_id;
   if (!taskId) throw new Error('Kling 未返回任务 ID');
@@ -709,20 +670,7 @@ async function generateRunwayClip({ prompt, duration = 5, outputDir, filename, i
     });
   }
 
-  let task;
-  try {
-    task = await _runwaySubmit(bodyObj, runwayApiPath);
-  } catch (e) {
-    if (runwayUseI2V) {
-      console.log(`[Runway] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete bodyObj.promptImage;
-      runwayUseI2V = false;
-      runwayApiPath = '/v1/text_to_video';
-      task = await _runwaySubmit(bodyObj, runwayApiPath);
-    } else {
-      throw e;
-    }
-  }
+  let task = await _runwaySubmit(bodyObj, runwayApiPath);
 
   const taskId = task.id;
   if (!taskId) throw new Error('Runway 未返回任务 ID');
@@ -811,18 +759,7 @@ async function generateLumaClip({ prompt, duration = 5, outputDir, filename, ima
     });
   }
 
-  let generation;
-  try {
-    generation = await _lumaSubmit(bodyObj);
-  } catch (e) {
-    if (bodyObj.keyframes) {
-      console.log(`[Luma] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete bodyObj.keyframes;
-      generation = await _lumaSubmit(bodyObj);
-    } else {
-      throw e;
-    }
-  }
+  let generation = await _lumaSubmit(bodyObj);
 
   const genId = generation.id;
   if (!genId) throw new Error('Luma AI 未返回生成 ID');
@@ -905,18 +842,7 @@ async function generateMinimaxClip({ prompt, duration = 5, outputDir, filename, 
     });
   }
 
-  let taskResp;
-  try {
-    taskResp = await _minimaxSubmit(mmBody);
-  } catch (e) {
-    if (mmBody.first_frame_image) {
-      console.log(`[MiniMax] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete mmBody.first_frame_image;
-      taskResp = await _minimaxSubmit(mmBody);
-    } else {
-      throw e;
-    }
-  }
+  let taskResp = await _minimaxSubmit(mmBody);
 
   const taskId = taskResp.task_id;
   if (!taskId) throw new Error('MiniMax 未返回任务 ID');
@@ -1187,19 +1113,7 @@ async function generatePikaClip({ prompt, negative_prompt = '', duration = 5, ou
     });
   }
 
-  let task;
-  try {
-    task = await _pikaSubmit(bodyObj, pikaUseI2V);
-  } catch (e) {
-    if (pikaUseI2V) {
-      console.log(`[Pika] i2v 提交失败 (${e.message})，回退到 t2v 模式`);
-      delete bodyObj.image;
-      pikaUseI2V = false;
-      task = await _pikaSubmit(bodyObj, false);
-    } else {
-      throw e;
-    }
-  }
+  let task = await _pikaSubmit(bodyObj, pikaUseI2V);
 
   const taskId = task.data?.id || task.id;
   if (!taskId) throw new Error('Pika 未返回任务 ID: ' + JSON.stringify(task).substring(0, 300));
@@ -1515,10 +1429,118 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
   throw new Error('Veo 生成超时（10 分钟）');
 }
 
+// ——— MXAPI 聚合平台（即梦/Sora/Veo 代理）———
+async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model }) {
+  const { getApiKey } = require('./settingsService');
+  const apiKey = getApiKey('mxapi') || process.env.MXAPI_API_KEY;
+  if (!apiKey) throw new Error('未配置 MXAPI API Key，请在「AI 配置」页面添加 MXAPI 聚合平台供应商');
+
+  const baseUrl = 'https://open.mxapi.org/api/v2';
+  const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
+
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `${filename}.mp4`);
+  const model = video_model || 'mxapi-jimeng-t2v';
+
+  // ——— Sora 路由 ———
+  if (model.includes('sora')) {
+    const isPro = model.includes('pro');
+    const body = {
+      prompt: prompt.substring(0, 2000),
+      aspect_ratio: aspectRatio === '9:16' ? '9:16' : '16:9',
+      duration: Math.min(duration, 15),
+    };
+    if (isPro) body.model = 'sora-2-pro';
+    if (image_url && !image_url.startsWith('data:')) body.reference_image = image_url;
+
+    console.log(`[MXAPI Sora] model=${isPro ? 'sora-2-pro' : 'sora-2'}, prompt长度=${prompt.length}`);
+    const submit = await axios.post(`${baseUrl}/sora/generate`, body, { headers });
+    const taskId = submit.data?.task_id || submit.data?.data?.task_id;
+    if (!taskId) throw new Error('MXAPI Sora 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
+    // 轮询
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const poll = await axios.get(`${baseUrl}/sora/query?task_id=${taskId}`, { headers });
+      const d = poll.data?.data || poll.data;
+      if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
+        const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
+        if (!videoUrl) throw new Error('MXAPI Sora 未返回视频 URL');
+        await downloadFile(videoUrl, outputPath);
+        return { filePath: outputPath };
+      }
+      if (d?.status === 'failed' || d?.status === 'fail') {
+        throw new Error('MXAPI Sora 生成失败: ' + (d.message || d.error || '未知错误'));
+      }
+    }
+    throw new Error('MXAPI Sora 生成超时（10 分钟）');
+  }
+
+  // ——— Veo 路由 ———
+  if (model.includes('veo')) {
+    const veoModel = model.includes('3-fast') || model.includes('veo3-fast') ? 'veo3-fast' : 'veo31';
+    const body = { model: veoModel, prompt: prompt.substring(0, 2000), aspectRatio: aspectRatio === '9:16' ? '9:16' : '16:9' };
+    if (image_url && !image_url.startsWith('data:')) body.images = [image_url];
+
+    console.log(`[MXAPI Veo] model=${veoModel}, prompt长度=${prompt.length}`);
+    const submit = await axios.post(`${baseUrl}/veo/generate`, body, { headers });
+    const taskId = submit.data?.task_id || submit.data?.data?.task_id;
+    if (!taskId) throw new Error('MXAPI Veo 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const poll = await axios.get(`${baseUrl}/veo/task?task_id=${taskId}`, { headers });
+      const d = poll.data?.data || poll.data;
+      if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
+        const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
+        if (!videoUrl) throw new Error('MXAPI Veo 未返回视频 URL');
+        await downloadFile(videoUrl, outputPath);
+        return { filePath: outputPath };
+      }
+      if (d?.status === 'failed' || d?.status === 'fail') {
+        throw new Error('MXAPI Veo 生成失败: ' + (d.message || d.error || '未知错误'));
+      }
+    }
+    throw new Error('MXAPI Veo 生成超时（10 分钟）');
+  }
+
+  // ——— 即梦视频路由（默认）———
+  const isI2V = model.includes('i2v') || (image_url && !model.includes('t2v'));
+  const ratioFlag = aspectRatio === '9:16' ? '9:16' : (aspectRatio === '1:1' ? '1:1' : '16:9');
+  const durSec = Math.min(Math.max(Math.round(duration), 3), 10);
+  // MXAPI 即梦视频通过 content 字段传 prompt + flags
+  let content = prompt.substring(0, 2000) + ` --ratio ${ratioFlag} --dur ${durSec}`;
+  if (isI2V) content += ' --rs 1080p';
+
+  const body = { model: 'jimeng', content };
+  if (isI2V && image_url && !image_url.startsWith('data:')) body.image = image_url;
+
+  console.log(`[MXAPI Jimeng] ${isI2V ? 'i2v' : 't2v'}, prompt长度=${prompt.length}, ratio=${ratioFlag}`);
+  const submit = await axios.post(`${baseUrl}/video/generate`, body, { headers });
+  const taskId = submit.data?.task_id || submit.data?.data?.task_id;
+  if (!taskId) throw new Error('MXAPI 即梦视频 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const poll = await axios.get(`${baseUrl}/video/task?task_id=${taskId}`, { headers });
+    const d = poll.data?.data || poll.data;
+    if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
+      const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
+      if (!videoUrl) throw new Error('MXAPI 即梦视频 未返回视频 URL');
+      await downloadFile(videoUrl, outputPath);
+      return { filePath: outputPath };
+    }
+    if (d?.status === 'failed' || d?.status === 'fail') {
+      throw new Error('MXAPI 即梦视频 生成失败: ' + (d.message || d.error || '未知错误'));
+    }
+  }
+  throw new Error('MXAPI 即梦视频 生成超时（10 分钟）');
+}
+
 // ——— 自动检测视频 provider（settings > env > demo）———
 // 视频供应商优先级（质量+稳定性排序，即梦/Kling 优先于免费的智谱）
 const VIDEO_PROVIDER_PRIORITY = [
-  'jimeng', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
+  'jimeng', 'mxapi', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
   'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
 ];
 const PROVIDER_ID_MAP = { openai: 'sora' };
@@ -1537,7 +1559,7 @@ function resolveVideoProvider() {
       if (model) return PROVIDER_ID_MAP[pid] || pid;
     }
   } catch {}
-  return 'demo';
+  throw new Error('无可用的视频生成供应商。请在管理后台配置至少一个视频生成API Key。');
 }
 
 // ——— 主入口：自动选择 provider ———
@@ -1559,6 +1581,12 @@ async function generateVideoClip(options) {
     return generateArkSeedanceClip(options);
   }
 
+  // MXAPI 聚合平台的模型（mxapi-* 前缀）
+  if (model.startsWith('mxapi-')) {
+    console.log(`[VideoService] 模型 ${model} 通过 MXAPI 聚合平台路由`);
+    return generateMxapiClip(options);
+  }
+
   // FAL 代理的模型（包括 Seedance via FAL、HunyuanVideo 1.5 via FAL、Wan 2.2 via FAL 等）
   if (isFalModel && provider !== 'fal') {
     console.log(`[VideoService] 模型 ${model} 通过 FAL 代理路由`);
@@ -1577,6 +1605,7 @@ async function generateVideoClip(options) {
     case 'minimax':     return generateMinimaxClip(options);
     case 'veo':         return generateVeoClip(options);
     case 'jimeng':      return generateJimengClip(options);
+    case 'mxapi':       return generateMxapiClip(options);
     case 'zhipu':       return generateZhipuClip(options);
     case 'huggingface': return generateHuggingFaceClip(options);
     case 'replicate':   return generateReplicateClip(options);

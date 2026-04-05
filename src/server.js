@@ -151,6 +151,7 @@ app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./rou
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));
+app.use('/api/workflow', authenticate, require('./routes/workflow'));
 app.use('/api/portrait', authenticate, requirePermission('portrait'), require('./routes/portrait'));
 app.use('/api/workbench', authenticate, require('./routes/workbench'));
 app.use('/api/works', authenticate, require('./routes/works'));

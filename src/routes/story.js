@@ -97,12 +97,12 @@ router.post('/parse-script', async (req, res) => {
 
 // 生成角色形象图
 router.post('/generate-character-image', async (req, res) => {
-  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '' } = req.body;
+  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [] } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: '请先填写角色名称' });
   }
   try {
-    const result = await generateCharacterImage({ name: name.trim(), role, description, dim, race, species });
+    const result = await generateCharacterImage({ name: name.trim(), role, description, dim, race, species, mode, aspectRatio, resolution, referenceImages });
     res.json({ success: true, data: { imageUrl: `/api/story/character-image/${result.filename}`, dim } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -131,16 +131,41 @@ router.post('/generate-character-images', async (req, res) => {
 
 // 生成场景概念图
 router.post('/generate-scene-image', async (req, res) => {
-  const { title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d' } = req.body;
+  const { title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', aspectRatio = '16:9', resolution = '2K', referenceImages = [] } = req.body;
   if (!title.trim() && !description.trim()) {
     return res.status(400).json({ success: false, error: '请填写场景名称或描述' });
   }
   try {
-    const result = await generateSceneImage({ title: title.trim(), description: description.trim(), theme, timeOfDay, category, dim });
+    const result = await generateSceneImage({ title: title.trim(), description: description.trim(), theme, timeOfDay, category, dim, aspectRatio, resolution, referenceImages });
     res.json({ success: true, data: { imageUrl: `/api/story/character-image/${result.filename}` } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// 列出已生成的角色图片
+router.get('/character-images', (req, res) => {
+  const images = [];
+  for (const dir of [CHAR_IMG_DIR, SCENE_IMG_DIR]) {
+    if (!fs.existsSync(dir)) continue;
+    const files = fs.readdirSync(dir)
+      .filter(f => /\.(png|jpg|jpeg|webp)$/i.test(f))
+      .sort((a, b) => {
+        // 按修改时间倒序
+        try { return fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs; } catch { return 0; }
+      });
+    files.forEach((f, i) => {
+      const isChar = dir === CHAR_IMG_DIR;
+      const baseName = f.replace(/\.[^.]+$/, '').replace(/^(char|scene)_(2d|3d|realistic)_\d+_\w+$/, '');
+      images.push({
+        name: baseName || (isChar ? `角色${i + 1}` : `场景${i + 1}`),
+        url: `/api/story/character-image/${f}`,
+        type: isChar ? 'character' : 'scene',
+        filename: f
+      });
+    });
+  }
+  res.json({ success: true, data: images });
 });
 
 // 提供角色图片文件

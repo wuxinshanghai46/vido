@@ -10,6 +10,7 @@ outputs/
 # Large binary assets
 *.mp3
 参考样式/
+seedance2.0/
 
 # Claude Code
 .claude/

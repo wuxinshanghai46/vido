@@ -129,6 +129,29 @@ function buildPrompt(name, role, description, dim = '2d', race = '人', species 
   return parts.join(', ');
 }
 
+// 单张人物肖像 prompt（用于工作流分镜，非转面图）
+function buildPortraitPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
+  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
+  const isAnimal = ANIMAL_RACES.includes(race);
+  if (isAnimal) {
+    const creatureType = species || race;
+    const parts = [`single portrait of ${name}, ${creatureType}`];
+    if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 200));
+    parts.push(STYLE_PROMPTS[styleKey]);
+    if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
+    parts.push('single character portrait, front 3/4 view, full body, detailed, expressive, cinematic lighting, high quality illustration');
+    return parts.join(', ');
+  }
+  const roleMap = { main: 'protagonist', supporting: 'supporting', villain: 'villain', mentor: 'mentor', other: 'character' };
+  const roleLabel = roleMap[role] || 'character';
+  const parts = [`single character portrait of ${name}, ${roleLabel}`];
+  if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 250));
+  parts.push(STYLE_PROMPTS[styleKey]);
+  if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
+  parts.push('single character portrait, front 3/4 view, full body from head to feet, expressive face, detailed clothing, cinematic lighting, beautiful composition, high quality character illustration, clean simple background');
+  return parts.join(', ');
+}
+
 // 从描述中提取纯环境信息，彻底去除所有人物/角色/动作内容
 function stripCharacterContent(desc) {
   if (!desc) return '';
@@ -182,18 +205,22 @@ function resolveProvider(dim) {
 
   // 按维度选择
   if (dim === '3d') {
-    if (getApiKey('jimeng'))    return 'jimeng';
-    if (getApiKey('stability')) return 'stability';
-    if (getApiKey('openai'))    return 'openai';
-    if (getApiKey('replicate')) return 'replicate';
+    if (getApiKey('jimeng'))      return 'jimeng';
+    if (getApiKey('mxapi'))       return 'mxapi';
+    if (getApiKey('nanobanana'))  return 'nanobanana';
+    if (getApiKey('stability'))   return 'stability';
+    if (getApiKey('openai'))      return 'openai';
+    if (getApiKey('replicate'))   return 'replicate';
   } else {
-    if (getApiKey('jimeng'))    return 'jimeng';
-    if (getApiKey('zhipu'))     return 'zhipu';
-    if (getApiKey('replicate')) return 'replicate';
-    if (getApiKey('stability')) return 'stability';
-    if (getApiKey('openai'))    return 'openai';
+    if (getApiKey('jimeng'))      return 'jimeng';
+    if (getApiKey('mxapi'))       return 'mxapi';
+    if (getApiKey('nanobanana'))  return 'nanobanana';
+    if (getApiKey('zhipu'))       return 'zhipu';
+    if (getApiKey('replicate'))   return 'replicate';
+    if (getApiKey('stability'))   return 'stability';
+    if (getApiKey('openai'))      return 'openai';
   }
-  return 'demo';
+  throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key（如 jimeng、mxapi、nanobanana、zhipu、openai 等）。`);
 }
 
 const DEMO_COLORS = {
@@ -279,6 +306,127 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
   const imageUrl = result.data?.[0]?.url;
   if (!imageUrl) throw new Error('DALL-E 未返回图片');
   await downloadFile(imageUrl, outputPath);
+  return outputPath;
+}
+
+// NanoBanana AI — generate-2 API (async task + polling)
+async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', referenceImages = [] }) {
+  const apiKey = getApiKey('nanobanana') || process.env.NANOBANANA_API_KEY;
+  if (!apiKey) throw new Error('未配置 NANOBANANA_API_KEY');
+  ensureDir();
+  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+
+  // referenceImages: 用于角色一致性的参考图 URL 数组（最多14张）
+  const imageUrls = (referenceImages || []).slice(0, 14);
+  console.log(`[ImageService] NanoBanana generate-2 → refs=${imageUrls.length}, ratio=${aspectRatio}, prompt: ${prompt.substring(0, 100)}`);
+
+  // Step 1: Submit generation task
+  const axios = require('axios');
+  const submitRes = await axios.post('https://api.nanobananaapi.ai/api/v1/nanobanana/generate-2', {
+    prompt,
+    imageUrls,
+    aspectRatio,
+    resolution,
+    outputFormat: 'png',
+  }, {
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    timeout: 30000,
+  });
+
+  if (submitRes.data?.code !== 200 || !submitRes.data?.data?.taskId) {
+    throw new Error(`NanoBanana 提交失败: ${submitRes.data?.message || JSON.stringify(submitRes.data)}`);
+  }
+
+  const taskId = submitRes.data.data.taskId;
+  console.log(`[ImageService] NanoBanana taskId=${taskId}, polling...`);
+
+  // Step 2: Poll for completion (max 120s)
+  const maxWait = 120000;
+  const interval = 3000;
+  const start = Date.now();
+
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, interval));
+    const pollRes = await axios.get('https://api.nanobananaapi.ai/api/v1/nanobanana/record-info', {
+      params: { taskId },
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      timeout: 15000,
+    });
+
+    const data = pollRes.data?.data;
+    if (!data) continue;
+
+    if (data.successFlag === 1) {
+      // Success — download the image
+      const imageUrl = data.response?.resultImageUrl || data.response?.originImageUrl;
+      if (!imageUrl) throw new Error('NanoBanana 成功但无图片URL');
+      console.log(`[ImageService] NanoBanana 完成, 下载图片...`);
+      await downloadFile(imageUrl, outputPath);
+      return outputPath;
+    } else if (data.successFlag === 2 || data.successFlag === 3) {
+      throw new Error(`NanoBanana 生成失败: ${data.errorMessage || `flag=${data.successFlag}`}`);
+    }
+    // successFlag === 0 — still generating, continue polling
+  }
+
+  throw new Error('NanoBanana 生成超时（120秒）');
+}
+
+// MXAPI 聚合平台 — 图片生成（NANO/Gemini3Pro/即梦4.5/豆包Seedream）
+async function generateMxapiImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', referenceImages = [], name, role, description, race, species, imageType = 'character', scenePrompt = '', image_model }) {
+  const apiKey = getApiKey('mxapi') || process.env.MXAPI_API_KEY;
+  if (!apiKey) throw new Error('未配置 MXAPI API Key');
+  ensureDir();
+  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const axios = require('axios');
+  const baseUrl = 'https://open.mxapi.org/api/v2';
+  const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
+
+  const finalPrompt = prompt || (imageType === 'scene'
+    ? (scenePrompt || buildScenePrompt(name, description, '', '', ''))
+    : buildPrompt(name, role, description, '2d', race, species));
+
+  const model = image_model || 'mxapi-draw';
+
+  // Gemini 3 Pro — 同步接口（需长超时）
+  if (model === 'mxapi-gemini3pro') {
+    console.log(`[ImageService] MXAPI Gemini 3 Pro → prompt: ${finalPrompt.substring(0, 80)}`);
+    const res = await axios.post(`${baseUrl}/images/gemini3pro`, {
+      prompt: finalPrompt, image_size: resolution === '4K' ? '2048x2048' : '1024x1024', aspect_ratio: aspectRatio,
+    }, { headers, timeout: 600000 });
+    const imgUrl = res.data?.data?.url || res.data?.url || res.data?.data?.[0]?.url;
+    if (!imgUrl) throw new Error('MXAPI Gemini 3 Pro 未返回图片: ' + JSON.stringify(res.data).substring(0, 300));
+    await downloadFile(imgUrl, outputPath);
+    return outputPath;
+  }
+
+  // 其他模型 — 通过 messages 流式/异步接口
+  const endpointMap = {
+    'mxapi-draw': '/draw',
+    'mxapi-draw-pro': '/draw-pro',
+    'mxapi-draw-4-5': '/draw-4-5',
+    'mxapi-seedream': '/draw-4-5',  // 豆包 Seedream 走即梦4.5接口
+  };
+  const endpoint = endpointMap[model] || '/draw';
+
+  console.log(`[ImageService] MXAPI ${model} → endpoint=${endpoint}, prompt: ${finalPrompt.substring(0, 80)}`);
+  const res = await axios.post(`${baseUrl}${endpoint}`, {
+    messages: [{ role: 'user', content: finalPrompt }],
+    stream: false,
+  }, { headers, timeout: 120000 });
+
+  // 返回可能在 data.data.url / data.choices[0].message.content (含图片URL) / data.url
+  const data = res.data?.data || res.data;
+  let imgUrl = data?.url || data?.image_url;
+  if (!imgUrl && data?.choices?.[0]?.message?.content) {
+    // 从 markdown 图片语法中提取 URL
+    const match = data.choices[0].message.content.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+    if (match) imgUrl = match[1];
+    // 或直接是 URL
+    if (!imgUrl && data.choices[0].message.content.startsWith('http')) imgUrl = data.choices[0].message.content.trim();
+  }
+  if (!imgUrl) throw new Error('MXAPI 图片 未返回图片 URL: ' + JSON.stringify(res.data).substring(0, 300));
+  await downloadFile(imgUrl, outputPath);
   return outputPath;
 }
 
@@ -582,25 +730,35 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
 }
 
 // ——— 主入口 ———
-async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '' }) {
+async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [] }) {
   const provider = resolveProvider(dim);
   const dimTag = dim === '3d' ? '3d' : '2d';
   const filename = `char_${dimTag}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  const prompt = provider === 'jimeng'
-    ? buildJimengPrompt(name, role, description, dim, race, species, animStyle)
-    : buildPrompt(name, role, description, dim, race, species, animStyle);
 
-  console.log(`[ImageService] 角色「${name}」→ provider=${provider}, dim=${dim}`);
+  let prompt;
+  if (mode === 'portrait') {
+    // 单张人物肖像/全身图（用于工作流分镜）
+    prompt = buildPortraitPrompt(name, role, description, dim, race, species, animStyle);
+  } else {
+    // 多角度转面图（用于角色设定）
+    prompt = provider === 'jimeng'
+      ? buildJimengPrompt(name, role, description, dim, race, species, animStyle)
+      : buildPrompt(name, role, description, dim, race, species, animStyle);
+  }
+
+  console.log(`[ImageService] 角色「${name}」→ provider=${provider}, dim=${dim}, mode=${mode}`);
   console.log(`[ImageService] prompt: ${prompt.substring(0, 200)}`);
 
   let filePath;
   switch (provider) {
-    case 'jimeng':    filePath = await generateJimengImage({ prompt, filename, dim }); break;
-    case 'openai':    filePath = await generateOpenAIImage({ name, role, description, filename, race, species }); break;
-    case 'zhipu':     filePath = await generateZhipuImage({ name, role, description, filename, race, species });  break;
-    case 'stability': filePath = await generateStabilityImage({ name, role, description, dim, filename, race, species }); break;
-    case 'replicate': filePath = await generateReplicateImage({ name, role, description, dim, filename, race, species }); break;
-    default:          filePath = await generateDemoImage({ name, filename }); break;
+    case 'jimeng':      filePath = await generateJimengImage({ prompt, filename, dim }); break;
+    case 'mxapi':      filePath = await generateMxapiImage({ prompt, filename, aspectRatio, resolution, referenceImages, name, role, description, race, species, imageType: 'character' }); break;
+    case 'nanobanana': filePath = await generateNanoBananaImage({ prompt, filename, aspectRatio, resolution, referenceImages }); break;
+    case 'openai':     filePath = await generateOpenAIImage({ name, role, description, filename, race, species }); break;
+    case 'zhipu':      filePath = await generateZhipuImage({ name, role, description, filename, race, species });  break;
+    case 'stability':  filePath = await generateStabilityImage({ name, role, description, dim, filename, race, species }); break;
+    case 'replicate':  filePath = await generateReplicateImage({ name, role, description, dim, filename, race, species }); break;
+    default:           throw new Error(`不支持的图片生成供应商: ${provider}`);
   }
   return { filePath, filename: path.basename(filePath) };
 }
@@ -627,7 +785,7 @@ function buildJimengScenePrompt(title, description, theme, timeOfDay, category, 
 // ——— 场景图片生成（复用 provider，但使用场景 prompt） ———
 const SCENE_IMG_DIR = path.join(OUTPUT_DIR, 'scenes');
 
-async function generateSceneImage({ title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', animStyle = '' }) {
+async function generateSceneImage({ title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', animStyle = '', aspectRatio = '16:9', resolution = '2K', referenceImages = [] }) {
   fs.mkdirSync(SCENE_IMG_DIR, { recursive: true });
   const provider = resolveProvider(dim);
   const filename = `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -636,12 +794,18 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
     : buildScenePrompt(title, description, theme, timeOfDay, category, dim, animStyle);
   ensureDir();
 
-  console.log(`[ImageService] 场景「${title}」→ provider=${provider}, dim=${dim}`);
+  console.log(`[ImageService] 场景「${title}」→ provider=${provider}, dim=${dim}, ratio=${aspectRatio}`);
 
   let filePath;
   switch (provider) {
     case 'jimeng':
       filePath = await generateJimengImage({ prompt, filename, dim, negativePrompt: '人物，角色，人，人类，动物，生物，面孔，身体，person, people, human, character, figure, face, body, animal, creature' });
+      break;
+    case 'mxapi':
+      filePath = await generateMxapiImage({ prompt, filename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
+      break;
+    case 'nanobanana':
+      filePath = await generateNanoBananaImage({ prompt, filename, aspectRatio, resolution, referenceImages });
       break;
     case 'zhipu':
       filePath = await generateZhipuImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene', scenePrompt: prompt });
@@ -656,8 +820,7 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
       filePath = await generateReplicateImage({ name: title, role: '', description, dim, filename, race: '', species: '' });
       break;
     default:
-      filePath = await generateDemoImage({ name: title || '场景', filename });
-      break;
+      throw new Error(`不支持的图片生成供应商: ${provider}`);
   }
   return { filePath, filename: path.basename(filePath) };
 }

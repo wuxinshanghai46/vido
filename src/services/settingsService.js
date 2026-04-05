@@ -90,6 +90,27 @@ const PROVIDER_PRESETS = {
     { id: 'personal-avatar', name: 'Personal Avatar（定制形象）', type: 'avatar', use: 'avatar' },
     { id: 'stock-avatar', name: 'Stock Avatar（预设形象）', type: 'avatar', use: 'avatar' },
   ] },
+  nanobanana:  { name: 'NanoBanana AI', api_url: 'https://api.nanobananaapi.ai/api/v1',           defaultModels: [
+    { id: 'nanobanana-2', name: 'NanoBanana 2（高质量·快速·4K）', type: 'image', use: 'image' },
+    { id: 'nanobanana-pro', name: 'NanoBanana Pro（Gemini 3 Pro·4K·高级控制）', type: 'image', use: 'image' },
+  ] },
+  mxapi: { name: 'MXAPI 聚合平台', api_url: 'https://open.mxapi.org/api/v2', defaultModels: [
+    // ——— 图片生成 ———
+    { id: 'mxapi-draw',         name: 'NANO 标准（Gemini Flash·快速）',     type: 'image', use: 'image' },
+    { id: 'mxapi-draw-pro',     name: 'NANO Pro（高质量·2K/4K）',           type: 'image', use: 'image' },
+    { id: 'mxapi-draw-4-5',     name: '即梦 4.5（文生图·高级）',            type: 'image', use: 'image' },
+    { id: 'mxapi-gemini3pro',   name: 'Gemini 3 Pro（4K·高级控制）',        type: 'image', use: 'image' },
+    { id: 'mxapi-seedream',     name: '豆包 Seedream（文生图 & 图生图）',   type: 'image', use: 'image' },
+    // ——— 视频生成 ———
+    { id: 'mxapi-jimeng-t2v',   name: '即梦 文生视频（720p/1080p）',        type: 'video', use: 'video' },
+    { id: 'mxapi-jimeng-i2v',   name: '即梦 图生视频（首帧/首尾帧）',      type: 'video', use: 'video' },
+    { id: 'mxapi-sora2',        name: 'Sora 2（OpenAI 视频·10/15秒）',     type: 'video', use: 'video' },
+    { id: 'mxapi-sora2-pro',    name: 'Sora 2 Pro（OpenAI 高质量）',       type: 'video', use: 'video' },
+    { id: 'mxapi-veo31',        name: 'Veo 3.1（Google 广播级画质）',       type: 'video', use: 'video' },
+    { id: 'mxapi-veo3-fast',    name: 'Veo 3 Fast（Google 快速）',          type: 'video', use: 'video' },
+    // ——— 音乐生成 ———
+    { id: 'mxapi-suno',         name: 'Suno AI（音乐生成·续写·翻唱）',     type: 'music', use: 'music' },
+  ] },
   custom:      { name: '',             api_url: '',                                              defaultModels: [] },
 };
 
@@ -120,6 +141,8 @@ const ENV_SEED_MAP = [
   { envKey: 'HEYGEN_API_KEY',     presetId: 'heygen'      },
   { envKey: 'DID_API_KEY',        presetId: 'did'         },
   { envKey: 'SYNTHESIA_API_KEY',  presetId: 'synthesia'   },
+  { envKey: 'NANOBANANA_API_KEY', presetId: 'nanobanana' },
+  { envKey: 'MXAPI_API_KEY',     presetId: 'mxapi'      },
 ];
 
 function loadSettings() {

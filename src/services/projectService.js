@@ -845,7 +845,7 @@ async function runFullPipeline(projectId, userId = null) {
       });
 
       try {
-        // 生成视频，限流错误时最多重试 2 次（间隔 30s），仍失败则降级 Demo
+        // 生成视频，限流错误时最多重试 2 次（间隔 15s），仍失败则直接报错终止
         let result;
         // 尝试找到场景参考图（改进匹配逻辑）：
         // 1. 精确 index 匹配
@@ -1014,28 +1014,7 @@ async function runFullPipeline(projectId, userId = null) {
         if (!result) {
           const reason = lastErr?.message || '未知错误';
           emitProgress(projectId, { step: 'video', status: 'error', message: `场景 ${i + 1} 生成失败（3次重试均失败）: ${reason.substring(0, 100)}` });
-          // 降级：用 Demo 模式生成占位视频，避免整个项目失败
-          emitProgress(projectId, { step: 'video', status: 'fallback', message: `场景 ${i + 1} 已降级为占位视频` });
-          const { execSync } = require('child_process');
-          const ffmpegStatic2 = require('ffmpeg-static');
-          const ffmpegPath2 = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg') ? process.env.FFMPEG_PATH : ffmpegStatic2;
-          fs.mkdirSync(projectOutputDir, { recursive: true });
-          const demoPath = path.join(projectOutputDir, `scene_${String(i).padStart(3, '0')}.mp4`);
-          const colors = ['0x1a1a2e','0x16213e','0x0f3460','0x533483','0x2d132c','0x1b262c'];
-          const bgColor = colors[i % colors.length];
-          const clipDuration = Math.min(Math.max(scene.duration || 5, 3), 15);
-          const displayText = (scene.title || '').replace(/['"\\:]/g, ' ').substring(0, 50);
-          const errMsg = (lastErr?.message || '').replace(/['"\\:]/g, ' ').substring(0, 60);
-          // Windows 中文字体路径（msyh=微软雅黑，simhei=黑体）
-          const fontFile = ['C:/Windows/Fonts/msyh.ttc', 'C:/Windows/Fonts/simhei.ttf'].find(f => fs.existsSync(f));
-          const fontOpt = fontFile ? `fontfile='${fontFile.replace(/\\/g, '/')}':` : '';
-          try {
-            execSync(`"${ffmpegPath2}" -f lavfi -i "color=c=${bgColor}:size=1280x720:duration=${clipDuration}:rate=24" -vf "drawtext=${fontOpt}text='场景 ${i+1}':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=h/2-80:alpha=0.9,drawtext=${fontOpt}text='${displayText}':fontsize=26:fontcolor=0xcccccc:x=(w-text_w)/2:y=h/2-20:alpha=0.8,drawtext=${fontOpt}text='视频生成失败 - 请检查API配置':fontsize=16:fontcolor=0xffaa00:x=(w-text_w)/2:y=h/2+30:alpha=0.8,drawtext=${fontOpt}text='${errMsg}':fontsize=13:fontcolor=0xff6666:x=(w-text_w)/2:y=h/2+60:alpha=0.7" -c:v libx264 -pix_fmt yuv420p -y "${demoPath}"`, { stdio: 'pipe' });
-          } catch {
-            // drawtext 不可用（服务器 ffmpeg 未编译 freetype），生成纯色占位
-            execSync(`"${ffmpegPath2}" -f lavfi -i "color=c=${bgColor}:size=1280x720:duration=${clipDuration}:rate=24" -c:v libx264 -pix_fmt yuv420p -y "${demoPath}"`, { stdio: 'pipe' });
-          }
-          result = { filePath: demoPath };
+          throw new Error(`场景 ${i + 1}「${scene.title || ''}」视频生成失败: ${reason}`);
         }
 
         const duration = await getVideoDuration(result.filePath).catch(() => scene.duration || 10);

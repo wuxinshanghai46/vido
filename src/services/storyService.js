@@ -351,20 +351,36 @@ async function refineScene(scene, userFeedback) {
 
 // ——— 从剧本解析角色和场景 ———
 async function parseScript({ script, genre = 'drama', duration = 60 }) {
-  const sceneCount = Math.max(3, Math.floor(duration / 15));
-  const systemPrompt = `你是专业影视编剧，从用户的剧本中提取角色和场景信息，严格按 JSON 格式输出，不要任何额外内容。`;
-  const userPrompt = `从以下剧本中提取角色列表和场景列表（不超过 ${sceneCount} 个场景）：
+  const sceneCount = Math.max(3, Math.floor(duration / 10));
+  const systemPrompt = `你是专业影视分镜师和概念美术师。从用户的剧本中精准提取角色和分镜信息。
+
+关键规则：
+1. background（背景）: 只描述纯粹的环境场景画面，绝对不能包含任何人物。要详细描绘：具体地点（如"月光下的古老榕树，巨大的树冠遮蔽天空"）、时间（白天/黄昏/夜晚）、天气、光线方向和颜色、环境物体细节、氛围感。描述要像在给画家看的场景说明，让人能直接画出来。
+2. characters_action（角色动作）: 描述角色在该场景中的具体动作、肢体语言、表情、互动关系。
+3. characters 的 appearance（外貌特征）: 必须详细描述发型发色、脸型五官、体型身高、服装款式颜色、配饰等可视化外貌特征，这是用于生成角色设定图的关键信息。
+4. 严格按 JSON 格式输出，不要任何额外内容。`;
+
+  const userPrompt = `从以下剧本中提取角色列表和分镜列表（拆分为 ${sceneCount} 个场景）：
 
 剧本内容：
-${script.substring(0, 3000)}
+${script.substring(0, 4000)}
 
 直接输出 JSON：
 {
   "characters": [
-    { "name": "角色名", "role": "main", "description": "角色性格/背景描述" }
+    { "name": "角色名", "role": "main", "description": "角色性格和背景", "appearance": "详细外貌特征：发型发色、脸型、眼睛颜色、体型、身高、服装款式和颜色、配饰（必须足够具体，用于生成角色设定图）" }
   ],
-  "custom_scenes": [
-    { "title": "场景标题", "location": "发生地点", "description": "场景内容描述", "mood": "场景氛围" }
+  "scenes": [
+    {
+      "title": "场景标题",
+      "background": "纯环境背景描述（不含人物！）：具体地点、环境物体细节、时间（白天/黄昏/夜晚）、天气、光线方向和颜色、氛围。像给画家看的场景说明，要能直接画出来（用中文，80-150字）",
+      "characters_action": "该场景中角色的具体动作、表情、互动（用中文，50-100字）",
+      "characters_in_scene": ["出场角色名1", "出场角色名2"],
+      "dialogue": "台词（如有）",
+      "camera": "镜头运动：如 特写/中景/远景/推近/拉远/环绕/俯拍/仰拍",
+      "mood": "场景情绪氛围",
+      "duration": 10
+    }
   ]
 }
 

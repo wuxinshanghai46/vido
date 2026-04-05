@@ -149,10 +149,8 @@ async function applyPostVFX({ inputPath, outputPath, vfxTags = [], actionType = 
       .output(outputPath)
       .on('end', () => resolve(outputPath))
       .on('error', (err) => {
-        console.warn(`[PostVFX] 特效处理失败，使用原始片段: ${err.message}`);
-        // 失败时回退到原始文件
-        try { fs.copyFileSync(inputPath, outputPath); } catch {}
-        resolve(outputPath);
+        console.error(`[PostVFX] 特效处理失败: ${err.message}`);
+        reject(new Error(`视频特效处理失败: ${err.message}`));
       })
       .run();
   });

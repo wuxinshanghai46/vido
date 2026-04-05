@@ -219,12 +219,52 @@ async function init() {
 
 // ═══ 导航 ═══
 const PAGE_TITLES = {
-  dashboard:'工作台', create:'AI视频生成', imggen:'AI图片生成', avatar:'AI数字人',
-  comic:'AI漫画', novel:'AI小说', i2v:'图生视频', portrait:'我的角色',
+  dashboard:'创作中心', create:'AI 视频', imggen:'AI 图片生成', avatar:'AI 数字人',
+  comic:'AI 漫画', novel:'AI 小说', i2v:'图生视频', portrait:'我的角色',
   projects:'我的项目', works:'我的作品', assets:'素材库', workbench:'声音克隆',
   radar:'素材获取', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
-  profile:'个人信息'
+  profile:'个人信息', workflow:'工作流画布'
 };
+
+function toggleMoreTools() {
+  const trigger = document.querySelector('.nav-sub-trigger');
+  const group = document.getElementById('nav-more-tools');
+  if (trigger) trigger.classList.toggle('open');
+  if (group) group.classList.toggle('open');
+}
+
+function toggleAdvancedSettings() {
+  const toggle = document.querySelector('.stp-advanced-toggle');
+  const body = document.getElementById('stp-advanced-body');
+  if (!toggle || !body) return;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  toggle.classList.toggle('open', !isOpen);
+}
+
+function toggleComicAdvanced() {
+  const toggle = document.querySelector('.comic-advanced-toggle');
+  const body = document.getElementById('comic-advanced-body');
+  if (!toggle || !body) return;
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+function toggleNovelAdvanced() {
+  const toggle = document.querySelector('.nv-advanced-toggle');
+  const body = document.getElementById('nv-advanced-body');
+  if (!toggle || !body) return;
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
+
+function toggleAvatarAdvanced() {
+  const toggle = document.querySelector('.av-advanced-toggle');
+  const body = document.getElementById('av-advanced-body');
+  if (!toggle || !body) return;
+  body.classList.toggle('open');
+  toggle.classList.toggle('open');
+}
 
 function switchPage(page, opts) {
   if (page === 'settings') return;
@@ -242,7 +282,7 @@ function switchPage(page, opts) {
   const titleEl = document.getElementById('topbar-title');
   const breadEl = document.getElementById('topbar-breadcrumb');
   if (titleEl) titleEl.textContent = PAGE_TITLES[page] || page;
-  if (breadEl) breadEl.textContent = page === 'dashboard' ? '/ 首页概览' : '';
+  if (breadEl) breadEl.textContent = page === 'dashboard' ? '/ 开始创作' : '';
   if (page === 'projects') loadProjects();
   if (page === 'i2v') loadI2VPage();
   if (page === 'avatar') loadAvatarPage();
@@ -258,6 +298,10 @@ function switchPage(page, opts) {
   if (page === 'replicate') loadReplicatePage();
   if (page === 'workbench') loadVoiceClonePage();
   if (page === 'profile') loadProfilePage();
+  if (page === 'workflow') {
+    const iframe = document.getElementById('workflow-iframe');
+    if (iframe && iframe.src === 'about:blank') iframe.src = '/workflow.html';
+  }
   if (page === 'create' && !(opts && opts.keepProject)) {
     resetForm();
   }
@@ -265,44 +309,86 @@ function switchPage(page, opts) {
 
 // ═══ 仪表板 ═══
 async function loadDashboard() {
-  // 并行加载统计、任务
   const [statsRes, tasksRes] = await Promise.all([
     authFetch('/api/dashboard/stats').then(r => r.json()).catch(() => null),
     authFetch('/api/dashboard/recent-tasks').then(r => r.json()).catch(() => null)
   ]);
 
-  // 统计卡片
+  // 统计数据
   if (statsRes?.success) {
     const s = statsRes.data;
-    document.getElementById('ds-videos').textContent = s.total_projects || 0;
-    document.getElementById('ds-videos-sub').textContent = `今日 +${s.today_videos || 0}`;
-    document.getElementById('ds-avatars').textContent = s.total_avatars || 0;
-    document.getElementById('ds-avatars-sub').textContent = `今日 +${s.today_avatars || 0}`;
-    document.getElementById('ds-images').textContent = (s.total_portraits || 0) + (s.total_comics || 0);
-    document.getElementById('ds-images-sub').textContent = `形象 ${s.total_portraits || 0} · 漫画 ${s.total_comics || 0}`;
-    document.getElementById('ds-novels').textContent = s.total_novels || 0;
-    document.getElementById('ds-novels-sub').textContent = `今日 +${s.today_novels || 0}`;
+    const totalVideos = s.total_projects || 0;
+    const totalAvatars = s.total_avatars || 0;
+    const totalImages = (s.total_portraits || 0) + (s.total_comics || 0);
+    const totalNovels = s.total_novels || 0;
+    const el = id => document.getElementById(id);
+    if (el('ds-videos')) el('ds-videos').textContent = totalVideos;
+    if (el('ds-avatars')) el('ds-avatars').textContent = totalAvatars;
+    if (el('ds-images')) el('ds-images').textContent = totalImages;
+    if (el('ds-novels')) el('ds-novels').textContent = totalNovels;
+    // 内容卡片计数
+    if (el('hub-cnt-video')) el('hub-cnt-video').textContent = totalVideos + ' 作品';
+    if (el('hub-cnt-avatar')) el('hub-cnt-avatar').textContent = totalAvatars + ' 作品';
+    if (el('hub-cnt-comic')) el('hub-cnt-comic').textContent = totalImages + ' 作品';
+    if (el('hub-cnt-novel')) el('hub-cnt-novel').textContent = totalNovels + ' 作品';
   }
 
-  // 最近任务（原型table格式）
+  // 最近作品（视觉画廊格式）
   const tasksEl = document.getElementById('dash-tasks');
   if (tasksRes?.success && tasksRes.tasks?.length) {
-    const TYPE_TAG = { 'AI视频':'tag-blue', '数字人':'tag-yellow', 'AI漫画':'tag-purple', 'AI图片':'tag-green', 'AI小说':'tag-gray', '图生视频':'tag-blue' };
-    const STATUS_TAG = { done:'tag-green', completed:'tag-green', processing:'tag-yellow', generating:'tag-yellow', error:'tag-red', pending:'tag-gray' };
+    const TYPE_ICON = { 'AI视频':'🎬', '数字人':'🧑‍💼', 'AI漫画':'📚', 'AI图片':'🖼️', 'AI小说':'✍️', '图生视频':'🎞️' };
     const STATUS_LABEL = { done:'已完成', completed:'已完成', processing:'生成中', generating:'生成中', error:'失败', pending:'等待中' };
     const TYPE_PAGE = { 'AI视频':'projects', '数字人':'avatar', 'AI漫画':'comic', 'AI图片':'portrait', 'AI小说':'novel', '图生视频':'i2v' };
-    tasksEl.innerHTML = `<table class="table" style="width:100%"><thead><tr><th>任务名称</th><th>类型</th><th>状态</th><th>时间</th><th></th></tr></thead><tbody>` +
-      tasksRes.tasks.map(t => {
-        const st = t.status || 'pending';
-        const pg = TYPE_PAGE[t.type] || 'works';
-        const errBtn = (st === 'error' && t.error) ? `<span onclick="event.stopPropagation();this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'" style="margin-left:4px;padding:1px 6px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:3px;font-size:10px;cursor:pointer;">原因</span><div style="display:none;margin-top:4px;font-size:11px;color:#ef4444;background:rgba(239,68,68,.06);padding:4px 8px;border-radius:4px;line-height:1.4;">${esc(t.error.substring(0, 200))}</div>` : '';
-        return `<tr><td class="cell-main">${esc(t.title || '未命名')}</td><td><span class="tag ${TYPE_TAG[t.type]||'tag-gray'}">${esc(t.type)}</span></td><td><span class="tag ${STATUS_TAG[st]||'tag-gray'}">${STATUS_LABEL[st]||st}</span>${errBtn}</td><td>${esc(t.time_ago||'')}</td><td><button onclick="switchPage('${pg}')" style="padding:2px 10px;background:rgba(var(--accent-rgb),.12);color:var(--accent);border:none;border-radius:4px;font-size:11px;cursor:pointer;">查看</button></td></tr>`;
-      }).join('') + '</tbody></table>';
+    tasksEl.innerHTML = tasksRes.tasks.map(t => {
+      const st = t.status || 'pending';
+      const pg = TYPE_PAGE[t.type] || 'works';
+      const icon = TYPE_ICON[t.type] || '📄';
+      const statusColor = (st === 'done' || st === 'completed') ? 'var(--accent)' : st === 'error' ? '#ef4444' : 'var(--text3)';
+      return `<div class="hub-recent-item" onclick="switchPage('${pg}')">
+        <div class="hub-recent-thumb" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(var(--accent-rgb),.04);">${icon}</div>
+        <div class="hub-recent-info">
+          <div class="hub-recent-title">${esc(t.title || '未命名')}</div>
+          <div class="hub-recent-meta">
+            <span class="hub-recent-type">${esc(t.type)}</span>
+            <span style="color:${statusColor}">${STATUS_LABEL[st]||st}</span>
+            <span>${esc(t.time_ago||'')}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
   } else {
-    tasksEl.innerHTML = '<table class="table"><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">暂无任务记录</td></tr></tbody></table>';
+    tasksEl.innerHTML = '<div class="hub-recent-empty">还没有作品，从上方开始你的第一次创作吧</div>';
   }
+}
 
-  // 模型状态已移除
+// Hub 智能路由
+function hubSmartRoute() {
+  const text = (document.getElementById('hub-input')?.value || '').trim();
+  if (!text) return;
+  const avatarKW = ['数字人','口播','讲解','主播','直播','大家好','欢迎','分享','今天'];
+  const comicKW = ['漫画','分镜','格漫','条漫'];
+  const novelKW = ['小说','章节','写作','长篇','连载','第一章'];
+  if (avatarKW.some(k => text.includes(k))) {
+    switchPage('avatar');
+    const el = document.getElementById('av-text-input');
+    if (el) el.value = text;
+  } else if (comicKW.some(k => text.includes(k))) {
+    switchPage('comic');
+    const el = document.getElementById('comic-story');
+    if (el) el.value = text;
+  } else if (novelKW.some(k => text.includes(k))) {
+    switchPage('novel');
+  } else {
+    switchPage('create');
+    const el = document.getElementById('input-theme');
+    if (el) { el.value = text; if (typeof updateCharCount === 'function') updateCharCount(el, 'story-cnt'); }
+  }
+}
+
+function hubSetExample(page, text) {
+  const el = document.getElementById('hub-input');
+  if (el) el.value = text;
+  hubSmartRoute();
 }
 
 // 页面加载时默认打开工作台
@@ -6887,7 +6973,102 @@ function filterAssets(type, btn) {
   assetsFilter = type;
   document.querySelectorAll('.assets-tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  loadAssetsPage();
+  const grid = document.getElementById('assets-grid');
+  const wfList = document.getElementById('workflow-list');
+  if (type === 'workflow') {
+    grid.style.display = 'none';
+    wfList.style.display = 'block';
+    loadWorkflowList();
+  } else {
+    grid.style.display = '';
+    wfList.style.display = 'none';
+    loadAssetsPage();
+  }
+}
+
+// ═══ 画布列表 ═══
+async function loadWorkflowList() {
+  const list = document.getElementById('workflow-list');
+  list.innerHTML = '<div class="assets-empty">加载中...</div>';
+  try {
+    const res = await authFetch('/api/workflow');
+    const data = await res.json();
+    const workflows = data.success ? (data.data || []) : [];
+    if (workflows.length === 0) {
+      list.innerHTML = '<div class="assets-empty">暂无保存的画布，在工作流画布中点击「保存」来保存进度</div>';
+      return;
+    }
+    list.innerHTML = `
+      <table class="wf-table">
+        <thead><tr>
+          <th>画布名称</th>
+          <th>节点数</th>
+          <th>进度</th>
+          <th>更新时间</th>
+          <th>操作</th>
+        </tr></thead>
+        <tbody>${workflows.map(w => {
+          const nodeCount = countWorkflowNodes(w.drawflow);
+          const progress = calcWorkflowProgress(w);
+          const time = w.updated_at ? new Date(w.updated_at).toLocaleString('zh-CN') : '-';
+          return `<tr>
+            <td><strong>${w.name || '未命名'}</strong></td>
+            <td>${nodeCount}</td>
+            <td>
+              <div class="wf-progress-bar"><div class="wf-progress-fill" style="width:${progress}%"></div></div>
+              <span class="wf-progress-text">${progress}%</span>
+            </td>
+            <td style="color:var(--text2);font-size:12px">${time}</td>
+            <td>
+              <button class="wf-tbl-btn" onclick="openWorkflow('${w.id}')">继续编辑</button>
+              <button class="wf-tbl-btn wf-tbl-btn-danger" onclick="deleteWorkflow('${w.id}')">删除</button>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+  } catch(e) {
+    list.innerHTML = '<div class="assets-empty">加载画布列表失败</div>';
+  }
+}
+
+function countWorkflowNodes(drawflow) {
+  try {
+    const d = typeof drawflow === 'string' ? JSON.parse(drawflow) : drawflow;
+    return Object.keys(d?.drawflow?.Home?.data || {}).length;
+  } catch { return 0; }
+}
+
+function calcWorkflowProgress(w) {
+  try {
+    const d = typeof w.drawflow === 'string' ? JSON.parse(w.drawflow) : w.drawflow;
+    const nodes = Object.values(d?.drawflow?.Home?.data || {});
+    if (nodes.length === 0) return 0;
+    // 简单统计：有数据的节点 / 总节点
+    let done = 0;
+    nodes.forEach(n => {
+      const data = n.data || {};
+      if (data.prompt || data.imageUrl || data.videoUrl) done++;
+    });
+    return Math.round((done / nodes.length) * 100);
+  } catch { return 0; }
+}
+
+function openWorkflow(id) {
+  switchPage('workflow');
+  setTimeout(() => {
+    const iframe = document.getElementById('workflow-iframe');
+    if (iframe) iframe.src = '/workflow.html?id=' + id;
+  }, 100);
+}
+
+async function deleteWorkflow(id) {
+  if (!confirm('确定删除此画布？不可恢复。')) return;
+  try {
+    await authFetch('/api/workflow/' + id, { method: 'DELETE' });
+    loadWorkflowList();
+  } catch(e) {
+    alert('删除失败');
+  }
 }
 
 function renderAssetsGrid(assets) {

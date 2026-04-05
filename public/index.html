@@ -20,20 +20,32 @@
   </div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-title">创作工具</div>
-    <div class="nav-item active" data-page="dashboard"><div class="nav-icon">⬛</div>工作台</div>
-    <div class="nav-item" data-page="create"><div class="nav-icon">🎬</div>AI视频生成</div>
-    <div class="nav-item" data-page="imggen"><div class="nav-icon">🖼️</div>AI图片生成</div>
-    <div class="nav-item" data-page="avatar"><div class="nav-icon">🧑‍💼</div>AI数字人</div>
-    <div class="nav-item" data-page="comic"><div class="nav-icon">📚</div>AI漫画</div>
-    <div class="nav-item" data-page="novel"><div class="nav-icon">✍️</div>AI小说</div>
-    <div class="nav-item" data-page="i2v"><div class="nav-icon">🎞️</div>图生视频</div>
+    <div class="nav-item active" data-page="dashboard"><div class="nav-icon">⬛</div>创作中心</div>
   </div>
 
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-title">爆款复制 ★</div>
+    <div class="sidebar-section-title">内容创作</div>
+    <div class="nav-item" data-page="create"><div class="nav-icon">🎬</div>AI 视频</div>
+    <div class="nav-item" data-page="avatar"><div class="nav-icon">🧑‍💼</div>AI 数字人</div>
+    <div class="nav-item" data-page="comic"><div class="nav-icon">📚</div>AI 漫画</div>
+    <div class="nav-item" data-page="novel"><div class="nav-icon">✍️</div>AI 小说</div>
+    <div class="nav-item" data-page="workflow"><div class="nav-icon">🔗</div>工作流画布</div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">工具</div>
+    <div class="nav-item" data-page="i2v"><div class="nav-icon">🎞️</div>图生视频</div>
+    <div class="nav-item" data-page="imggen"><div class="nav-icon">🖼️</div>AI 图片生成</div>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-title">爆款复刻 ★</div>
     <div class="nav-item" data-page="radar"><div class="nav-icon">🔍</div>素材获取<span class="nav-badge" id="radar-badge" style="display:none">0</span></div>
     <div class="nav-item" data-page="monitor"><div class="nav-icon">📂</div>素材库</div>
     <div class="nav-item" data-page="contentlib"><div class="nav-icon">🗂️</div>内容库</div>
@@ -44,10 +56,10 @@
   <div class="sidebar-divider"></div>
 
   <div class="sidebar-section">
-    <div class="sidebar-section-title">资产管理</div>
-    <div class="nav-item" data-page="portrait"><div class="nav-icon">👤</div>我的角色</div>
-    <div class="nav-item" data-page="projects"><div class="nav-icon">📁</div>我的项目<span class="nav-badge" id="project-count" style="display:none">0</span></div>
+    <div class="sidebar-section-title">我的</div>
     <div class="nav-item" data-page="works"><div class="nav-icon">🔗</div>我的作品</div>
+    <div class="nav-item" data-page="projects"><div class="nav-icon">📁</div>我的项目<span class="nav-badge" id="project-count" style="display:none">0</span></div>
+    <div class="nav-item" data-page="portrait"><div class="nav-icon">👤</div>我的角色</div>
     <div class="nav-item" data-page="assets"><div class="nav-icon">🎨</div>素材库</div>
   </div>
 
@@ -64,8 +76,8 @@
 <!-- ═══ MAIN AREA ═══ -->
 <div class="main">
   <div class="topbar">
-    <div class="topbar-title" id="topbar-title">工作台</div>
-    <div class="topbar-breadcrumb" id="topbar-breadcrumb">/ 首页概览</div>
+    <div class="topbar-title" id="topbar-title">创作中心</div>
+    <div class="topbar-breadcrumb" id="topbar-breadcrumb">/ 开始创作</div>
     <div class="topbar-right">
       <div class="theme-switcher">
         <button class="theme-mode-toggle" id="theme-mode-toggle" onclick="toggleThemePanel()" title="切换主题">
@@ -113,46 +125,102 @@
       <!-- ══ 创作页面 ══ -->
       <!-- ═══════ 工作台 ═══════ -->
       <div id="page-dashboard" class="page active" style="padding:24px;">
-        <div class="stat-grid">
-          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
-            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(99,102,241,.3),rgba(139,92,246,.2))">🎬</div>
-            <div class="stat-info"><div class="label">视频项目</div><div class="value" id="ds-videos">-</div><div class="sub" id="ds-videos-sub"></div></div>
+
+        <!-- Hero Creation Area -->
+        <div class="hub-hero">
+          <div class="hub-hero-title">想创作什么？</div>
+          <div class="hub-input-wrap">
+            <textarea class="hub-input" id="hub-input" placeholder="描述你想创作的内容... 例如：一只小猫在月光下追蝴蝶" rows="2"></textarea>
+            <button class="hub-input-btn" onclick="hubSmartRoute()">开始创作</button>
           </div>
-          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
-            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(34,197,94,.3),rgba(16,185,129,.2))">🖼️</div>
-            <div class="stat-info"><div class="label">图片/漫画</div><div class="value" id="ds-images">-</div><div class="sub" id="ds-images-sub"></div></div>
-          </div>
-          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
-            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(234,179,8,.3),rgba(245,158,11,.2))">👤</div>
-            <div class="stat-info"><div class="label">数字人任务</div><div class="value" id="ds-avatars">-</div><div class="sub" id="ds-avatars-sub"></div></div>
-          </div>
-          <div class="stat-card" style="cursor:pointer" onclick="switchPage('works')">
-            <div class="stat-icon" style="background:linear-gradient(135deg,rgba(239,68,68,.3),rgba(236,72,153,.2))">✍️</div>
-            <div class="stat-info"><div class="label">AI 小说</div><div class="value" id="ds-novels">-</div><div class="sub" id="ds-novels-sub"></div></div>
+          <div class="hub-input-hints">
+            <span class="hub-hint-tag" onclick="switchPage('workflow')" style="border-color:rgba(var(--accent-rgb),.3);font-weight:600;color:var(--accent)">🔗 工作流模式 — 拖拽式创作画布</span>
+            <span class="hub-hint-tag" onclick="hubSetExample('create','一只白猫在屋顶追萤火虫，月光洒在青瓦上')">🎬 白猫追萤火虫</span>
+            <span class="hub-hint-tag" onclick="hubSetExample('avatar','大家好，今天分享三个让你效率翻倍的AI工具')">🧑‍💼 效率工具分享</span>
+            <span class="hub-hint-tag" onclick="hubSetExample('comic','机械猫与少年在废墟都市中探险')">📚 机械猫冒险</span>
+            <span class="hub-hint-tag" onclick="hubSetExample('novel','修仙世界，少年偶得上古传承，从废柴逆袭为一代仙帝')">✍️ 修仙逆袭</span>
           </div>
         </div>
 
-        <div class="section-title">快速创作</div>
-        <div class="grid-4" style="margin-bottom:24px;">
-          <div class="quick-card" onclick="switchPage('create')"><div class="qc-icon">🎬</div><div class="qc-name">AI视频生成</div><div class="qc-desc">文字/图片一键生成视频</div></div>
-          <div class="quick-card" onclick="switchPage('imggen')"><div class="qc-icon">🖼️</div><div class="qc-name">AI图片生成</div><div class="qc-desc">多风格智能图片创作</div></div>
-          <div class="quick-card" onclick="switchPage('avatar')"><div class="qc-icon">🧑‍💼</div><div class="qc-name">AI数字人</div><div class="qc-desc">照片驱动数字人视频</div></div>
-          <div class="quick-card" onclick="switchPage('comic')"><div class="qc-icon">📚</div><div class="qc-name">AI漫画</div><div class="qc-desc">脚本自动转漫画分格</div></div>
-          <div class="quick-card" onclick="switchPage('novel')"><div class="qc-icon">✍️</div><div class="qc-name">AI小说</div><div class="qc-desc">AI辅助长文创作</div></div>
-          <div class="quick-card" onclick="switchPage('i2v')"><div class="qc-icon">🎞️</div><div class="qc-name">图生视频</div><div class="qc-desc">静态图片变动态视频</div></div>
-          <div class="quick-card" onclick="switchPage('radar')"><div class="qc-icon">🔥</div><div class="qc-name">爆款复制</div><div class="qc-desc">抓取热门博主内容</div></div>
-          <div class="quick-card" onclick="switchPage('portrait')"><div class="qc-icon">👤</div><div class="qc-name">角色库</div><div class="qc-desc">管理创作角色资产</div></div>
+        <!-- 4 Content Type Cards -->
+        <div class="hub-types">
+          <div class="hub-type-card" onclick="switchPage('create')">
+            <div class="hub-type-head">
+              <div class="hub-type-icon">🎬</div>
+              <div class="hub-type-info">
+                <div class="hub-type-name">AI 视频</div>
+                <div class="hub-type-desc">文字一键生成动画短片 · 支持13种画风</div>
+              </div>
+              <div class="hub-type-count" id="hub-cnt-video">0 作品</div>
+            </div>
+            <div class="hub-type-tags">
+              <span class="hub-tag">日系动漫</span><span class="hub-tag">水墨国风</span><span class="hub-tag">仙侠修真</span><span class="hub-tag">电影写实</span>
+            </div>
+            <button class="hub-type-btn">开始创作 →</button>
+          </div>
+          <div class="hub-type-card" onclick="switchPage('avatar')">
+            <div class="hub-type-head">
+              <div class="hub-type-icon">🧑‍💼</div>
+              <div class="hub-type-info">
+                <div class="hub-type-name">AI 数字人</div>
+                <div class="hub-type-desc">上传照片 · 文字/音频驱动口播视频</div>
+              </div>
+              <div class="hub-type-count" id="hub-cnt-avatar">0 作品</div>
+            </div>
+            <div class="hub-type-tags">
+              <span class="hub-tag">商务女性</span><span class="hub-tag">新闻主播</span><span class="hub-tag">教育讲师</span><span class="hub-tag">动漫角色</span>
+            </div>
+            <button class="hub-type-btn">开始创作 →</button>
+          </div>
+          <div class="hub-type-card" onclick="switchPage('comic')">
+            <div class="hub-type-head">
+              <div class="hub-type-icon">📚</div>
+              <div class="hub-type-info">
+                <div class="hub-type-name">AI 漫画</div>
+                <div class="hub-type-desc">输入故事 · AI 自动生成分镜漫画</div>
+              </div>
+              <div class="hub-type-count" id="hub-cnt-comic">0 作品</div>
+            </div>
+            <div class="hub-type-tags">
+              <span class="hub-tag">日系动漫</span><span class="hub-tag">美式漫画</span><span class="hub-tag">水墨漫画</span><span class="hub-tag">赛博朋克</span>
+            </div>
+            <button class="hub-type-btn">开始创作 →</button>
+          </div>
+          <div class="hub-type-card" onclick="switchPage('novel')">
+            <div class="hub-type-head">
+              <div class="hub-type-icon">✍️</div>
+              <div class="hub-type-info">
+                <div class="hub-type-name">AI 小说</div>
+                <div class="hub-type-desc">AI 辅助长文创作 · 大纲规划到逐章生成</div>
+              </div>
+              <div class="hub-type-count" id="hub-cnt-novel">0 作品</div>
+            </div>
+            <div class="hub-type-tags">
+              <span class="hub-tag">奇幻</span><span class="hub-tag">仙侠</span><span class="hub-tag">武侠</span><span class="hub-tag">科幻</span><span class="hub-tag">言情</span>
+            </div>
+            <button class="hub-type-btn">开始创作 →</button>
+          </div>
         </div>
 
-        <div class="section-title">最近任务</div>
-        <div class="card" style="padding:0;margin-bottom:20px;" id="dash-tasks"><table class="table" style="width:100%"><thead><tr><th>任务名称</th><th>类型</th><th>状态</th><th>时间</th></tr></thead><tbody><tr><td colspan="4" style="text-align:center;color:var(--text3)">加载中...</td></tr></tbody></table></div>
+        <!-- Compact Stats Strip -->
+        <div class="hub-stats-strip">
+          <div class="hub-stat"><span class="hub-stat-val" id="ds-videos">0</span><span class="hub-stat-lbl">视频</span></div>
+          <div class="hub-stat"><span class="hub-stat-val" id="ds-avatars">0</span><span class="hub-stat-lbl">数字人</span></div>
+          <div class="hub-stat"><span class="hub-stat-val" id="ds-images">0</span><span class="hub-stat-lbl">图片/漫画</span></div>
+          <div class="hub-stat"><span class="hub-stat-val" id="ds-novels">0</span><span class="hub-stat-lbl">小说</span></div>
+        </div>
 
-        <div class="section-title">平台公告</div>
-        <div class="notice" id="dash-notice">
+        <!-- Recent Works Gallery -->
+        <div class="section-title">最近作品</div>
+        <div class="hub-recent" id="dash-tasks">
+          <div class="hub-recent-empty">还没有作品，从上方开始你的第一次创作吧</div>
+        </div>
+
+        <!-- Notice -->
+        <div class="notice" id="dash-notice" style="margin-top:16px;">
           📢 <strong>功能更新</strong>：运镜控制系统上线，支持19种运镜+11种景别！<br>
           🎤 声音克隆功能已集成 Fish Audio，上传10秒音频即可克隆。<br>
-          🎬 即梦AI图片生成已接入，角色形象更精准。<br>
-          🔥 爆款复制上线：抓取博主内容 + AI文案提取 + 一键复刻！
+          🎬 即梦AI图片生成已接入，角色形象更精准。
         </div>
       </div>
 
@@ -430,6 +498,13 @@
       </div>
     </div>
 
+    <!-- 高级设置折叠区 -->
+    <div class="stp-advanced-toggle" onclick="toggleAdvancedSettings()">
+      <span>高级设置</span>
+      <span class="stp-advanced-arrow" id="stp-adv-arrow">▾</span>
+    </div>
+    <div class="stp-advanced-body" id="stp-advanced-body">
+
     <!-- Step 4: 时长 -->
     <div class="stp-step">
       <div class="stp-step-hd"><span class="stp-step-num">4</span><span class="stp-step-name">视频时长</span><span class="stp-step-auto" id="dur-auto-hint" style="display:none"></span></div>
@@ -497,8 +572,8 @@
             </div>
             <div class="voice-speed-ctrl">
               <span class="voice-speed-label">语速</span>
-              <input type="range" id="voice-speed-input" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('voice-speed-val').textContent=parseFloat(this.value).toFixed(1)+'x'" />
-              <span class="voice-speed-val" id="voice-speed-val">1.0x</span>
+              <input type="range" id="voice-speed-input" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('voice-speed-val').textContent=parseFloat(this.value).toFixed(1)==='1.0'?'正常':parseFloat(this.value).toFixed(1)+'x'" />
+              <span class="voice-speed-val" id="voice-speed-val">正常</span>
             </div>
           </div>
         </div>
@@ -581,6 +656,8 @@
         </div>
       </div>
     </div>
+
+    </div><!-- end stp-advanced-body -->
 
     <!-- style-notes kept hidden for API compat -->
     <textarea id="style-notes" style="display:none"></textarea>
@@ -1522,8 +1599,12 @@
                 </div>
               </div>
 
-              <div class="nv-section" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
-                <div class="nv-sec-title">创作设置</div>
+              <div class="nv-advanced-toggle" onclick="toggleNovelAdvanced()" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
+                <span>创作设置</span>
+                <span class="nv-adv-arrow" id="nv-adv-arrow">▾</span>
+              </div>
+              <div class="nv-advanced-body" id="nv-advanced-body">
+              <div class="nv-section">
                 <label class="nv-label">题材</label>
                 <select class="nv-sel" id="nv-genre" onchange="nvSaveField('genre',this.value)">
                   <option value="fantasy">奇幻</option>
@@ -1572,6 +1653,7 @@
                 <label class="nv-label">章节数</label>
                 <input type="number" class="nv-inp" id="nv-chapter-count" value="10" min="1" max="200" onchange="nvSaveField('chapter_count',this.value)" />
               </div>
+              </div><!-- end nv-advanced-body -->
             </div>
           </div>
         </div>
@@ -1878,8 +1960,8 @@
               </div>
               <div class="wb-speed-row">
                 <span class="wb-speed-label">语速</span>
-                <input type="range" class="wb-speed-slider" id="wb-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('wb-speed-val').textContent=this.value+'x'">
-                <span class="wb-speed-val" id="wb-speed-val">1.0x</span>
+                <input type="range" class="wb-speed-slider" id="wb-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('wb-speed-val').textContent=parseFloat(this.value).toFixed(1)==='1.0'?'正常':parseFloat(this.value).toFixed(1)+'x'">
+                <span class="wb-speed-val" id="wb-speed-val">正常</span>
               </div>
               <div class="wb-tts-text-label">配音文本 <span class="wb-tts-hint">自动同步 AI 文案</span></div>
               <textarea class="wb-tts-ta" id="wb-tts-text" rows="3" placeholder="配音文本将自动从 AI 文案同步..."></textarea>
@@ -2002,10 +2084,15 @@
             <button class="assets-tab" onclick="filterAssets('character',this)">角色</button>
             <button class="assets-tab" onclick="filterAssets('scene',this)">场景</button>
             <button class="assets-tab" onclick="filterAssets('music',this)">音乐</button>
+            <button class="assets-tab" onclick="filterAssets('workflow',this)">画布</button>
           </div>
           <!-- 素材网格 -->
           <div class="assets-grid" id="assets-grid">
             <div class="assets-empty">暂无素材</div>
+          </div>
+          <!-- 画布列表（切换到画布tab时显示） -->
+          <div class="workflow-list" id="workflow-list" style="display:none">
+            <div class="assets-empty">加载中...</div>
           </div>
         </div>
       </div>
@@ -2301,8 +2388,8 @@
                     </div>
                     <div class="av-speed-row">
                       <span class="av-speed-label">语速</span>
-                      <input type="range" class="av-speed-slider" id="av-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('av-speed-val').textContent=this.value+'x'">
-                      <span class="av-speed-val" id="av-speed-val">1.0x</span>
+                      <input type="range" class="av-speed-slider" id="av-speed-range" min="0.5" max="2.0" step="0.1" value="1.0" oninput="document.getElementById('av-speed-val').textContent=parseFloat(this.value).toFixed(1)==='1.0'?'正常':parseFloat(this.value).toFixed(1)+'x'">
+                      <span class="av-speed-val" id="av-speed-val">正常</span>
                     </div>
                   </div>
                 </div>
@@ -2456,6 +2543,13 @@
                 </button>
               </div>
 
+              <!-- 更多设置折叠 -->
+              <div class="av-advanced-toggle" onclick="toggleAvatarAdvanced()">
+                <span>更多设置</span>
+                <span class="av-adv-arrow" id="av-adv-arrow">▾</span>
+              </div>
+              <div class="av-advanced-body" id="av-advanced-body">
+
               <!-- 视频设置 -->
               <div class="av-section">
                 <div class="av-sec-label">
@@ -2509,8 +2603,18 @@
                   <optgroup label="智谱AI">
                     <option value="cogvideox-3">CogVideoX 3 — 高质量</option>
                   </optgroup>
+                  <optgroup label="MXAPI 聚合">
+                    <option value="mxapi-jimeng-t2v">即梦 文生视频 — 720p/1080p</option>
+                    <option value="mxapi-jimeng-i2v">即梦 图生视频 — 首帧/首尾帧</option>
+                    <option value="mxapi-sora2">Sora 2 — OpenAI · 10/15秒</option>
+                    <option value="mxapi-sora2-pro">Sora 2 Pro — OpenAI · 高质量</option>
+                    <option value="mxapi-veo31">Veo 3.1 — Google · 广播级画质</option>
+                    <option value="mxapi-veo3-fast">Veo 3 Fast — Google · 快速</option>
+                  </optgroup>
                 </select>
               </div>
+
+              </div><!-- end av-advanced-body -->
 
               <!-- 生成按钮区 -->
               <div class="av-gen-area">
@@ -2804,44 +2908,51 @@
                 </div>
               </div>
 
-              <!-- 图片模型 -->
-              <div class="comic-field">
-                <div class="comic-label">图片模型</div>
-                <div class="comic-model-trigger" id="comic-model-trigger" onclick="toggleComicModelPicker()">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="opacity:.5"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6.5" r="1.5" stroke="currentColor" stroke-width="1"/><path d="M1 12l4-4 2.5 2.5 3-3.5L15 12" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
-                  <span class="comic-model-label" id="comic-model-label">自动选择（推荐）</span>
-                  <svg width="10" height="6" viewBox="0 0 10 6" style="opacity:.3"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
-                </div>
-                <div class="comic-model-picker" id="comic-model-picker" style="display:none"></div>
+              <!-- 更多设置折叠 -->
+              <div class="comic-advanced-toggle" onclick="toggleComicAdvanced()">
+                <span>更多设置</span>
+                <span class="comic-adv-arrow" id="comic-adv-arrow">▾</span>
               </div>
+              <div class="comic-advanced-body" id="comic-advanced-body">
+                <!-- 图片模型 -->
+                <div class="comic-field">
+                  <div class="comic-label">图片模型</div>
+                  <div class="comic-model-trigger" id="comic-model-trigger" onclick="toggleComicModelPicker()">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="opacity:.5"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><circle cx="5.5" cy="6.5" r="1.5" stroke="currentColor" stroke-width="1"/><path d="M1 12l4-4 2.5 2.5 3-3.5L15 12" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+                    <span class="comic-model-label" id="comic-model-label">自动选择（推荐）</span>
+                    <svg width="10" height="6" viewBox="0 0 10 6" style="opacity:.3"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
+                  </div>
+                  <div class="comic-model-picker" id="comic-model-picker" style="display:none"></div>
+                </div>
 
-              <!-- 页数 & 格数 — 并排 -->
-              <div style="display:flex;gap:10px">
-                <div class="comic-field" style="flex:1">
-                  <div class="comic-label">页数</div>
-                  <div class="comic-option-row">
-                    <button class="comic-opt-btn" onclick="setComicPages(2,this)">2</button>
-                    <button class="comic-opt-btn active" onclick="setComicPages(4,this)">4</button>
-                    <button class="comic-opt-btn" onclick="setComicPages(6,this)">6</button>
-                    <button class="comic-opt-btn" onclick="setComicPages(8,this)">8</button>
+                <!-- 页数 & 格数 — 并排 -->
+                <div style="display:flex;gap:10px">
+                  <div class="comic-field" style="flex:1">
+                    <div class="comic-label">页数</div>
+                    <div class="comic-option-row">
+                      <button class="comic-opt-btn" onclick="setComicPages(2,this)">2</button>
+                      <button class="comic-opt-btn active" onclick="setComicPages(4,this)">4</button>
+                      <button class="comic-opt-btn" onclick="setComicPages(6,this)">6</button>
+                      <button class="comic-opt-btn" onclick="setComicPages(8,this)">8</button>
+                    </div>
+                  </div>
+                  <div class="comic-field" style="flex:1">
+                    <div class="comic-label">每页格数</div>
+                    <div class="comic-option-row">
+                      <button class="comic-opt-btn" onclick="setComicPanels(2,this)">2</button>
+                      <button class="comic-opt-btn active" onclick="setComicPanels(4,this)">4</button>
+                      <button class="comic-opt-btn" onclick="setComicPanels(6,this)">6</button>
+                    </div>
                   </div>
                 </div>
-                <div class="comic-field" style="flex:1">
-                  <div class="comic-label">每页格数</div>
-                  <div class="comic-option-row">
-                    <button class="comic-opt-btn" onclick="setComicPanels(2,this)">2</button>
-                    <button class="comic-opt-btn active" onclick="setComicPanels(4,this)">4</button>
-                    <button class="comic-opt-btn" onclick="setComicPanels(6,this)">6</button>
-                  </div>
-                </div>
-              </div>
 
-              <!-- 角色 -->
-              <div class="comic-field">
-                <div class="comic-label">角色 <span class="comic-optional">可选</span></div>
-                <div id="comic-characters"></div>
-                <button class="comic-add-char-btn" onclick="addComicCharacter()">+ 添加角色</button>
-              </div>
+                <!-- 角色 -->
+                <div class="comic-field">
+                  <div class="comic-label">角色 <span class="comic-optional">可选</span></div>
+                  <div id="comic-characters"></div>
+                  <button class="comic-add-char-btn" onclick="addComicCharacter()">+ 添加角色</button>
+                </div>
+              </div><!-- end comic-advanced-body -->
 
               <!-- 生成按钮 -->
               <button class="comic-gen-btn" id="comic-gen-btn" onclick="startComicGeneration()">
@@ -3039,6 +3150,11 @@
         </div>
       </div>
 
+
+      <!-- ═══ 工作流画布 ═══ -->
+      <div id="page-workflow" class="page" style="padding:0;height:100%;overflow:hidden;">
+        <iframe id="workflow-iframe" style="width:100%;height:100%;border:none;display:block;" src="about:blank"></iframe>
+      </div>
 
     </div><!-- end page-content -->
   </div><!-- end content -->
