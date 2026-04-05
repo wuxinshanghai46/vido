@@ -1157,10 +1157,11 @@ function autoCreateSceneNodes(textNode, scenes, parsedData) {
       const n = document.getElementById('node-' + bgNodeId);
       if (!n) return;
       const ta = n.querySelector('textarea');
-      if (ta) ta.value = scene.background || scene.location || scene.description || '';
+      // 优先用详细的 background 描述，否则回退到 location
+      if (ta) ta.value = scene.background || scene.description || scene.location || '';
       // 设置全局模型
       const sel = n.querySelector('[data-field="img-model"]');
-      if (sel) sel.value = globalImgModel;
+      if (sel) { fillImageModelSelect(sel); sel.value = globalImgModel; }
     }, 100);
 
     // ── 视频节点 ──
@@ -2152,7 +2153,7 @@ function buildCanvasFromPipeline(textNode, result) {
       const n = document.getElementById('node-' + bgNodeId);
       if (!n) return;
       const ta = n.querySelector('textarea');
-      if (ta) ta.value = sceneData.background || sceneData.location || '';
+      if (ta) ta.value = sceneData.background || sceneData.description || sceneData.location || '';
       // 填充已生成的图片
       if (scene.bg?.imageUrl) {
         const preview = n.querySelector('.wf-nd-preview');
@@ -2229,6 +2230,10 @@ function buildCanvasFromPipeline(textNode, result) {
               closest.selected = true;
             }
           }
+        } else if (sceneData.visual_prompt) {
+          // 使用 AI 生成的 visual_prompt（中文）
+          ta.value = sceneData.visual_prompt;
+          ta.rows = 5;
         } else {
           const bgDesc = sceneData.background || sceneData.location || '';
           const charDesc = sceneData.characters_action || sceneData.action || '';

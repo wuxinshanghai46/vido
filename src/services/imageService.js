@@ -637,7 +637,12 @@ function _jimengRequest(ak, sk, query, body) {
       res.on('end', () => {
         try {
           const json = JSON.parse(Buffer.concat(chunks).toString());
-          if (json.ResponseMetadata?.Error) return reject(new Error('即梦AI: ' + (json.ResponseMetadata.Error.Message || JSON.stringify(json.ResponseMetadata.Error))));
+          if (json.ResponseMetadata?.Error) {
+            let errMsg = json.ResponseMetadata.Error.Message || JSON.stringify(json.ResponseMetadata.Error);
+            // 过滤掉错误信息中的 API Key/Token（防止泄露到前端）
+            errMsg = errMsg.replace(/token\[[^\]]*\]/gi, 'token[***]').replace(/key\[[^\]]*\]/gi, 'key[***]');
+            return reject(new Error('即梦AI: ' + errMsg));
+          }
           resolve(json);
         } catch (e) { reject(e); }
       });

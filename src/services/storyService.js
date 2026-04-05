@@ -103,21 +103,26 @@ const SCENE_JSON_SCHEMA = `{
   "title": "视频标题",
   "synopsis": "100字以内故事简介",
   "full_script": "完整剧本",
+  "characters": [
+    { "name": "角色名", "role": "main或supporting", "appearance": "详细外貌特征：发型发色、脸型五官、体型身高、服装款式和颜色、配饰（必须足够具体，用于生成角色设定图，80-150字）" }
+  ],
   "scenes": [
     {
       "index": 1,
       "title": "场景标题",
       "duration": 10,
-      "location": "场景地点",
+      "location": "场景地点（简短）",
+      "background": "纯环境背景描述（不含人物！）：具体地点、环境物体细节、时间（白天/黄昏/夜晚）、天气、光线方向和颜色、氛围。像给画家看的场景说明，要能直接画出来（用中文，80-150字）",
       "time_of_day": "白天",
-      "characters": ["角色名"],
+      "characters_in_scene": ["角色名"],
+      "characters_action": "该场景中角色的具体动作、表情、互动（用中文，50-100字）",
       "action": "场景动作描述（中文，具体描述角色的肢体动作、移动轨迹、攻防交互）",
       "action_type": "场景动作类型，必须为以下之一：normal（日常对话/静态场景）| combat（近身格斗/武术对决/拳脚搏击）| ranged（远程攻击/枪战/魔法对射）| chase（追逐/飞车/逃跑）| explosion（爆炸/大规模破坏/坍塌）| power（能量爆发/变身/大招释放）| stealth（潜行/暗杀/偷袭）| aerial（空战/飞行/高空坠落）",
       "vfx": ["场景需要的视觉特效标签数组，可选值：shockwave（冲击波）| sparks（火花飞溅）| debris（碎片飞散）| energy_burst（能量爆发）| speed_lines（速度线）| impact_flash（打击闪光）| dust_cloud（烟尘）| fire（火焰）| lightning（闪电）| blood（血雾，慎用）| water_splash（水花）| screen_shake（镜头震动）| slow_motion（慢动作）| afterimage（残影）| particle_trail（粒子拖尾）| aura_glow（气场光晕）| ground_crack（地面龟裂）| explosion_ring（爆炸环）| lens_flare（镜头光晕）| motion_blur（运动模糊）| sword_qi（剑气/刀光）| qi_flow（灵力/真气流动）| ink_splash（水墨泼溅）| celestial_light（天光/仙光）"],
       "dialogue": "对白（可为空）",
       "mood": "场景氛围",
       "camera": "镜头运动描述（如：从远景推进到特写 / 跟拍横移 / 低角度仰拍 / 环绕 360 度 / 子弹时间环绕 / 高速跟拍）",
-      "visual_prompt": "Cinematic shot, [详细英文视觉描述：镜头类型+运动/光线方向+强度/人物具体动作姿态+运动轨迹/冲击特效+粒子/环境互动/风格], animation style: [风格描述]"
+      "visual_prompt": "中文视频画面描述：镜头类型+运动方向、光线方向+强度、人物具体动作姿态+运动轨迹、冲击特效+粒子效果、环境互动、画面风格。（用中文，100-200字，要足够详细以直接用于视频生成）"
     }
   ]
 }`;
@@ -162,25 +167,25 @@ function buildActionHint(genre, theme, animStyle) {
    stealth 场景常用：[motion_blur, afterimage, impact_flash, slow_motion]
    aerial 场景常用：[speed_lines, motion_blur, particle_trail, lens_flare, dust_cloud]
 
-4. visual_prompt 动作场景必写要素：
-   - 镜头类型：dynamic tracking shot / dramatic low-angle / whip pan / over-the-shoulder strike / aerial view of battlefield / extreme close-up on impact moment / bullet-time 360° rotation / crane shot swooping down
-   - 运动模糊：speed lines, motion blur on limbs, afterimage trail（残影拖尾）, ghost echo effect
-   - 冲击特效：shockwave ring, debris explosion, ground crack, spark shower, energy burst, screen-shake intensity
-   - 打击反馈：impact flash（白光闪帧）, distortion wave（冲击波变形）, sweat/blood particles, fabric tear, dust cloud on landing
-   - 光影戏剧性：dramatic rim light, volumetric god rays through debris, backlighting silhouette on power move, neon energy glow
+4. visual_prompt 动作场景必写要素（全部用中文描述）：
+   - 镜头类型：动态跟拍 / 低角度仰拍 / 快速横摇 / 过肩打击镜头 / 战场全景俯瞰 / 冲击瞬间极近特写 / 子弹时间360度环绕 / 摇臂俯冲
+   - 运动模糊：速度线、肢体运动模糊、残影拖尾、鬼影回声效果
+   - 冲击特效：冲击波环、碎片爆炸、地面龟裂、火花飞溅、能量爆发、镜头震动
+   - 打击反馈：白光闪帧、冲击波变形、汗珠/血雾粒子、衣物撕裂、落地烟尘
+   - 光影戏剧性：轮廓光、碎片中的体积光、力量释放时的逆光剪影、霓虹能量辉光
    - 环境互动：被打穿的墙壁/地面、断裂的武器、飞散的碎石、水花溅射、火焰蔓延
-   - 角色表现：fierce determined expression, battle stance, dynamic body angle (never static T-pose), muscles tensed, wind-blown hair/clothing
+   - 角色表现：坚毅的表情、战斗姿态、动态的身体角度（绝不静止T-pose）、肌肉绷紧、风吹头发/衣物
 
 5. 镜头编排规则：
-   - 场景1 → 远景建立战场空间（wide establishing shot of arena/battlefield）
-   - 场景2-N → 中近景交替：medium shot（连招连贯）↔ close-up（表情+冲击细节）↔ wide（展示位移和环境破坏）
+   - 场景1 → 远景建立战场空间（广角全景展示场地）
+   - 场景2-N → 中近景交替：中景（连招连贯）↔ 特写（表情+冲击细节）↔ 广角（展示位移和环境破坏）
    - 高潮场景 → 先极近特写蓄力，再突然切到广角展示全力一击的冲击波
    - 结尾 → 烟尘中的剪影或特写表情
 
 6. 禁止事项：
    - 禁止静止站立的画面、禁止 T-pose、禁止角色面朝镜头摆 pose
    - 每个场景画面中必须有明确的运动轨迹或冲击瞬间
-   - 不要用 "two characters facing each other" 这种静态描述，要用 "character A lunges forward with a spinning kick while character B raises guard" 这种动态描述`;
+   - 不要用"两个角色面对面站着"这种静态描述，要用"角色A飞身旋踢，角色B举臂格挡"这种动态描述`;
 }
 
 // ——— 快速模式：只需主题 ———
@@ -193,7 +198,13 @@ async function generateStory({ theme, genre, duration, language = '中文', scen
   let slangContext = '';
   try { const { buildSlangContext } = require('./slangService'); slangContext = buildSlangContext(theme); } catch {}
   const perScene = Math.round(duration / sceneCount);
-  const systemPrompt = `你是专业影视编剧，严格按 JSON 格式输出，不要任何额外内容。`;
+  const systemPrompt = `你是专业影视编剧和概念美术师，严格按 JSON 格式输出，不要任何额外内容。
+
+关键规则：
+1. characters 的 appearance（外貌特征）: 必须详细描述发型发色、脸型五官、体型身高、服装款式颜色、配饰等可视化特征（80-150字），这是生成角色设定图的关键信息。
+2. background（背景）: 只描述纯粹的环境场景画面，绝对不能包含任何人物。要详细描绘：具体地点、时间、天气、光线方向和颜色、环境物体细节、氛围感（80-150字），像给画家看的场景说明。
+3. visual_prompt（视频画面描述）: 用中文详细描述镜头类型+运动、光影效果、人物动作、画面氛围（100-200字），直接用于视频生成。
+4. characters_action（角色动作）: 描述角色在该场景中的具体动作、肢体语言、表情、互动关系（50-100字）。`;
   const userPrompt = `创作视频剧本：
 主题：${theme}
 风格：${genre}
@@ -201,7 +212,7 @@ async function generateStory({ theme, genre, duration, language = '中文', scen
 语言：${language}${styleHint}
 渲染维度：${dimHint}（visual_prompt 中必须体现此渲染风格）${actionHint}${slangContext}
 
-【重要】每个场景的 visual_prompt 必须全程保持完全一致的画面风格（${dimHint}），禁止在不同场景中切换 2D/3D 风格。
+【重要】每个场景的 visual_prompt 必须用中文描述，必须全程保持完全一致的画面风格（${dimHint}），禁止在不同场景中切换 2D/3D 风格。
 
 直接输出 JSON：
 ${SCENE_JSON_SCHEMA}`;
