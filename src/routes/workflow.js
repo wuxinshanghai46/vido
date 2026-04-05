@@ -375,58 +375,51 @@ router.post('/concat', async (req, res) => {
         } catch { durations.push(10); }
       }
 
-      const FADE_DUR = 0.8; // 交叉淡入淡出时长（秒）
+      const FADE_DUR = 0.6; // 淡入淡出时长（秒）
 
-      effectsTasks.set(taskId, { status: 'running', progress: 30, detail: '拼接视频（交叉淡入淡出）...' });
+      effectsTasks.set(taskId, { status: 'running', progress: 30, detail: '标准化视频片段...' });
 
-      if (localPaths.length === 2) {
-        // 两个视频：用 xfade 滤镜
-        const offset = Math.max(0, durations[0] - FADE_DUR);
+      // 先把所有片段统一为相同分辨率/帧率的中间文件
+      const normalizedPaths = [];
+      for (let i = 0; i < localPaths.length; i++) {
+        effectsTasks.set(taskId, { status: 'running', progress: 30 + Math.round(i / localPaths.length * 30), detail: `标准化片段 ${i+1}/${localPaths.length}...` });
+        const normPath = path.join(outputDir, `norm_${taskId}_${i}.mp4`);
+        const dur = durations[i];
+        // 统一为 1080x1920 或 1920x1080，30fps，每段首尾加淡入淡出
+        const fadeOutStart = Math.max(0, dur - FADE_DUR);
+        const vf = `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,fps=30,fade=t=in:st=0:d=${FADE_DUR},fade=t=out:st=${fadeOutStart}:d=${FADE_DUR}`;
         await new Promise((resolve, reject) => {
-          const cmd = ffmpeg();
-          localPaths.forEach(p => cmd.input(p));
-          cmd.complexFilter([
-            `[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`,
-            `[0:a][1:a]acrossfade=d=${FADE_DUR}[aout]`
-          ].join(';'))
-          .outputOptions(['-map', '[vout]', '-map', '[aout]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'])
+          ffmpeg(localPaths[i])
+            .videoFilters(vf)
+            .outputOptions(['-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart'])
+            .output(normPath)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
+        });
+        normalizedPaths.push(normPath);
+      }
+
+      effectsTasks.set(taskId, { status: 'running', progress: 70, detail: '拼接视频...' });
+
+      // 用 concat 协议拼接（所有片段已统一格式）
+      const listPath = path.join(outputDir, `concat_${taskId}.txt`);
+      fs.writeFileSync(listPath, normalizedPaths.map(p => `file '${p}'`).join('\n'));
+
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(listPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .outputOptions(['-c', 'copy', '-movflags', '+faststart'])
           .output(outputPath)
           .on('end', resolve)
-          .on('error', (err) => {
-            // 音频 acrossfade 可能失败（无音轨），回退只做视频淡入淡出
-            console.warn('[Concat] 带音频转场失败，回退视频转场:', err.message);
-            const cmd2 = ffmpeg();
-            localPaths.forEach(p => cmd2.input(p));
-            cmd2.complexFilter(`[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`)
-            .outputOptions(['-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest'])
-            .output(outputPath).on('end', resolve).on('error', reject).run();
-          })
+          .on('error', reject)
           .run();
-        });
-      } else {
-        // 3+ 个视频：逐步 xfade 链式拼接
-        let prevPath = localPaths[0];
-        let prevDur = durations[0];
-        for (let i = 1; i < localPaths.length; i++) {
-          effectsTasks.set(taskId, { status: 'running', progress: 30 + Math.round(i / localPaths.length * 50), detail: `拼接片段 ${i+1}/${localPaths.length}...` });
-          const tempOut = path.join(outputDir, `temp_${taskId}_${i}.mp4`);
-          const offset = Math.max(0, prevDur - FADE_DUR);
-          await new Promise((resolve, reject) => {
-            const cmd = ffmpeg();
-            cmd.input(prevPath).input(localPaths[i]);
-            cmd.complexFilter(`[0:v][1:v]xfade=transition=fade:duration=${FADE_DUR}:offset=${offset}[vout]`)
-            .outputOptions(['-map', '[vout]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-c:a', 'aac', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-shortest'])
-            .output(tempOut).on('end', resolve).on('error', reject).run();
-          });
-          // 清理上一轮临时文件
-          if (i > 1) try { fs.unlinkSync(prevPath); } catch {}
-          prevPath = tempOut;
-          // 获取新时长
-          try { const m = await ffprobeAsync(tempOut); prevDur = m.format?.duration || prevDur + durations[i] - FADE_DUR; } catch { prevDur = prevDur + durations[i] - FADE_DUR; }
-        }
-        // 移动最终文件
-        fs.renameSync(prevPath, outputPath);
-      }
+      });
+
+      // 清理临时文件
+      try { fs.unlinkSync(listPath); } catch {}
+      normalizedPaths.forEach(p => { try { fs.unlinkSync(p); } catch {} });
 
       effectsTasks.set(taskId, { status: 'done', outputPath, outputUrl: `/api/workflow/effects/result/${taskId}` });
     } catch (e) {
