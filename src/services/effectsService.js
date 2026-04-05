@@ -371,9 +371,14 @@ async function applyEffects(config) {
 
     // 输出映射
     const outputOpts = ['-c:v', 'libx264', '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+    const videoChanged = finalVideoLabel !== '0:v'; // 视频是否经过 filter 处理
 
     if (filterParts.length > 0) {
-      outputOpts.push('-map', `[${finalVideoLabel}]`);
+      if (videoChanged) {
+        outputOpts.push('-map', `[${finalVideoLabel}]`);
+      } else {
+        outputOpts.push('-map', '0:v');
+      }
       if (finalAudioLabel) {
         outputOpts.push('-map', `[${finalAudioLabel}]`);
       } else if (videoInfo.hasAudio) {
