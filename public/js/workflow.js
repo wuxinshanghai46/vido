@@ -531,9 +531,20 @@ function nodeHTML(type, nodeId) {
           <!-- ═══ 背景音乐 ═══ -->
           <div class="wf-nd-label" style="margin-top:4px">背景音乐</div>
           <div class="wf-fx-bgm-wrap" id="fx-bgm-${nodeId}">
-            <button class="wf-nd-action wf-nd-bgm-btn" style="background:var(--wf-bg);border:1px dashed var(--wf-border2);color:var(--wf-text2);font-size:11px;padding:6px 10px" onclick="uploadFxBgm(this)">
-              🎵 点击上传BGM
-            </button>
+            <div class="wf-nd-row" style="gap:4px">
+              <button class="wf-nd-action wf-nd-bgm-btn" style="flex:1;background:var(--wf-bg);border:1px dashed var(--wf-border2);color:var(--wf-text2);font-size:11px;padding:6px 10px" onclick="uploadFxBgm(this)">
+                🎵 点击上传BGM
+              </button>
+            </div>
+            <select class="wf-nd-select" data-field="bgm-preset" style="font-size:11px;margin-top:4px" onchange="selectPresetBgm(this)">
+              <option value="">— 或从预设音乐库选择 —</option>
+              <option value="gentle-piano">轻柔钢琴</option>
+              <option value="emotional-strings">感人弦乐</option>
+              <option value="nature-ambient">自然环境音</option>
+              <option value="upbeat-pop">欢快流行</option>
+              <option value="cinematic-epic">电影史诗</option>
+              <option value="lofi-chill">Lo-Fi 放松</option>
+            </select>
           </div>
           <div class="wf-nd-row" style="margin-top:4px;align-items:center;display:none" id="fx-bgm-vol-${nodeId}">
             <span style="font-size:10px;color:var(--wf-text3);flex:0 0 auto">音量</span>
@@ -3176,19 +3187,21 @@ function removeFxItem(btn) {
 function uploadFxBgm(btn) {
   const node = btn.closest('.drawflow-node');
   const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'audio/*';
+  input.type = 'file'; input.accept = '.mp3,.wav,.ogg,.m4a,audio/*';
   input.onchange = async () => {
     const file = input.files[0]; if (!file) return;
-    btn.textContent = '上传中...';
+    btn.textContent = '⏳ 上传中...';
+    btn.disabled = true;
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('music', file);
     try {
-      const res = await authFetch('/api/workflow/effects/upload', { method: 'POST', body: formData });
+      const res = await authFetch('/api/projects/upload-music', { method: 'POST', body: formData });
       const data = await res.json();
       if (data.success) {
+        const musicUrl = data.data?.file_url || data.data?.path || data.data?.file_path;
         btn.textContent = '🎵 ' + file.name;
-        btn.dataset.bgmPath = data.data.path;
-        btn.dataset.bgmUrl = data.data.url;
+        btn.dataset.bgmPath = data.data?.file_path || musicUrl;
+        btn.dataset.bgmUrl = musicUrl;
         // 显示音量控制
         const nodeId = node.id.replace('node-', '');
         const volWrap = node.querySelector('[id^="fx-bgm-vol-"]');
@@ -3202,8 +3215,9 @@ function uploadFxBgm(btn) {
         btn.textContent = '🎵 上传失败，点击重试';
       }
     } catch(e) {
-      btn.textContent = '🎵 上传失败';
+      btn.textContent = '🎵 上传失败: ' + (e.message || '').substring(0, 30);
     }
+    btn.disabled = false;
   };
   input.click();
 }
