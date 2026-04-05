@@ -2610,8 +2610,9 @@ async function batchGenerateAllImages(btn) {
   let done = 0;
   let errors = 0;
 
-  // 依次生成人物
+  // 依次生成人物（间隔2秒避免速率限制）
   for (const t of charNodes) {
+    if (done > 0) await new Promise(r => setTimeout(r, 2000));
     const model = t.node.querySelector('[data-field="img-model"]')?.selectedOptions?.[0]?.textContent || '自动';
     setNodeStatus(btn, 'running', `人物 ${done + 1}/${targetNodes.length} · ${model} · ${styleLabel}`);
     await generateImageAsync(t.btn, t.type);
@@ -2619,8 +2620,9 @@ async function batchGenerateAllImages(btn) {
     if (status?.className?.includes('error')) errors++;
     done++;
   }
-  // 再生成背景（此时可以利用角色参考图）
+  // 再生成背景（间隔2秒避免速率限制）
   for (const t of bgNodes) {
+    if (done > 0) await new Promise(r => setTimeout(r, 2000));
     const model = t.node.querySelector('[data-field="img-model"]')?.selectedOptions?.[0]?.textContent || '自动';
     setNodeStatus(btn, 'running', `背景 ${done + 1}/${targetNodes.length} · ${model} · ${styleLabel}`);
     await generateImageAsync(t.btn, t.type);

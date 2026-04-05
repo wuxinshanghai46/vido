@@ -832,4 +832,40 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
   return { filePath, filename: path.basename(filePath) };
 }
 
-module.exports = { generateCharacterImage, generateSceneImage, CHAR_IMG_DIR, SCENE_IMG_DIR };
+// ——— 速率限制自动重试包装器 ———
+const RATE_LIMIT_MAX_RETRIES = 3;
+const RATE_LIMIT_BASE_DELAY = 8000; // 8秒起步
+
+function isRateLimitError(err) {
+  const msg = (err.message || '').toLowerCase();
+  return msg.includes('rate') || msg.includes('速率') || msg.includes('频率') || msg.includes('限制')
+    || msg.includes('429') || msg.includes('too many') || msg.includes('quota');
+}
+
+async function withRetry(fn, label) {
+  for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < RATE_LIMIT_MAX_RETRIES) {
+        const delay = RATE_LIMIT_BASE_DELAY * (attempt + 1);
+        console.log(`[ImageService] ${label} 速率限制，${delay/1000}秒后重试 (${attempt+1}/${RATE_LIMIT_MAX_RETRIES})...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+const _origGenerateCharacterImage = generateCharacterImage;
+const _origGenerateSceneImage = generateSceneImage;
+
+async function generateCharacterImageWithRetry(opts) {
+  return withRetry(() => _origGenerateCharacterImage(opts), `角色「${opts.name}」`);
+}
+async function generateSceneImageWithRetry(opts) {
+  return withRetry(() => _origGenerateSceneImage(opts), `场景「${opts.title}」`);
+}
+
+module.exports = { generateCharacterImage: generateCharacterImageWithRetry, generateSceneImage: generateSceneImageWithRetry, CHAR_IMG_DIR, SCENE_IMG_DIR };
