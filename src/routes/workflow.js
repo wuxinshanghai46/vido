@@ -283,7 +283,9 @@ router.get('/effects/status/:taskId', (req, res) => {
 // GET /api/workflow/effects/result/:id — 获取特效处理结果视频
 router.get('/effects/result/:id', (req, res) => {
   const fxDir = path.resolve(process.env.OUTPUT_DIR || './outputs', 'effects');
-  const filePath = path.join(fxDir, `fx_${req.params.id}.mp4`);
+  // 支持 fx_ 和 final_ 前缀
+  let filePath = path.join(fxDir, `fx_${req.params.id}.mp4`);
+  if (!fs.existsSync(filePath)) filePath = path.join(fxDir, `final_${req.params.id}.mp4`);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: '结果不存在' });
 
   const stat = fs.statSync(filePath);

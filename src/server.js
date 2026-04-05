@@ -146,6 +146,7 @@ app.use('/api/assets', authenticate, require('./routes/assets'));
 app.use('/api/publish', authenticate, require('./routes/publish'));
 
 // === 媒体流公开访问（video/img 标签不带 Authorization header）===
+app.get('/api/workflow/effects/result/:id', require('./routes/effects-stream'));
 app.get('/api/i2v/tasks/:id/stream', require('./routes/i2v-stream'));
 app.get('/api/i2v/tasks/:id/download', require('./routes/i2v-stream'));
 app.get('/api/projects/:id/stream', require('./routes/project-stream'));

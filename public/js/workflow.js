@@ -43,7 +43,7 @@ function nodeHTML(type, nodeId) {
             <button class="wf-nd-chip" onclick="importFromNovel(this)">导入小说</button>
             <button class="wf-nd-chip" onclick="importFromContentLib(this)">导入内容库</button>
           </div>
-          <textarea class="wf-nd-ta" rows="4" placeholder="输入故事描述、台词或文案内容..." onchange="syncNodeData(this)"></textarea>
+          <textarea class="wf-nd-ta" rows="4" placeholder="输入故事描述、台词或文案内容..." onchange="syncNodeData(this)" oninput="autoCalcSceneCount(this)"></textarea>
           <div class="wf-nd-label">画面风格</div>
           <div class="wf-nd-chips" data-group="style">
             <button class="wf-nd-chip active" onclick="setChipGroup(this)">2D 动画</button>
@@ -52,7 +52,7 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-row" style="gap:8px;align-items:center">
             <span class="wf-nd-label" style="margin:0;flex:0 0 auto">分镜数量</span>
-            <input type="number" class="wf-nd-input wf-nd-scene-count-input" min="2" max="50" value="6" style="width:60px;text-align:center" onchange="syncNodeData(this)" />
+            <input type="number" class="wf-nd-input wf-nd-scene-count-input" min="2" max="50" value="3" style="width:60px;text-align:center" onchange="syncNodeData(this)" title="根据内容自动计算，也可手动修改" />
             <span style="font-size:11px;color:var(--wf-text2)">段</span>
           </div>
           <div class="wf-nd-label">图片模型</div>
@@ -869,6 +869,21 @@ function toggleNodeBody(btn) {
     body.classList.toggle('collapsed');
     btn.textContent = body.classList.contains('collapsed') ? '展开' : '折叠';
   }
+}
+
+// 根据文本内容自动计算推荐分镜数量
+function autoCalcSceneCount(ta) {
+  const node = ta.closest('.drawflow-node');
+  if (!node) return;
+  const input = node.querySelector('.wf-nd-scene-count-input');
+  if (!input || input._manuallySet) return; // 用户手动改过就不再自动
+  const text = ta.value.trim();
+  if (!text) return;
+  // 按自然段落/句号分段估算：每100字约1个场景，最少2个，最多20个
+  const charCount = text.length;
+  const paragraphs = text.split(/[。！？\n]+/).filter(s => s.trim().length > 10).length;
+  const recommended = Math.max(2, Math.min(20, Math.round(Math.max(charCount / 100, paragraphs))));
+  input.value = recommended;
 }
 
 function deleteNode(btn) {
