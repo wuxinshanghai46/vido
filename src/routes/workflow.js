@@ -305,4 +305,85 @@ router.get('/effects/result/:id', (req, res) => {
   }
 });
 
+// POST /api/workflow/concat — 拼接多个视频片段为一个最终视频
+router.post('/concat', async (req, res) => {
+  const { videoUrls } = req.body;
+  if (!videoUrls || videoUrls.length === 0) return res.status(400).json({ success: false, error: '无视频片段' });
+
+  const taskId = 'concat_' + Date.now();
+  effectsTasks.set(taskId, { status: 'running', progress: 0, detail: '准备拼接...' });
+  res.json({ success: true, taskId });
+
+  (async () => {
+    try {
+      const ffmpeg = require('fluent-ffmpeg');
+      const ffmpegStatic = require('ffmpeg-static');
+      ffmpeg.setFfmpegPath(ffmpegStatic);
+      try { ffmpeg.setFfprobePath(require('ffprobe-static').path); } catch {}
+
+      const db = require('../models/database');
+      const outputDir = path.resolve(process.env.OUTPUT_DIR || './outputs', 'effects');
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+      const outputPath = path.join(outputDir, `final_${taskId}.mp4`);
+
+      // 解析 URL 为本地路径
+      const localPaths = [];
+      for (const url of videoUrls) {
+        let localPath = url;
+        const i2vMatch = url.match(/\/api\/i2v\/tasks\/([^/]+)\/stream/);
+        const fxMatch = url.match(/\/api\/workflow\/effects\/result\/([^/]+)/);
+        const projMatch = url.match(/\/api\/projects\/([^/]+)\/stream/);
+        if (i2vMatch) {
+          const task = db.getI2VTask?.(i2vMatch[1]);
+          localPath = task?.file_path || path.join(outputDir, '..', 'i2v_videos', i2vMatch[1], 'result.mp4');
+        } else if (fxMatch) {
+          localPath = path.join(outputDir, `fx_${fxMatch[1]}.mp4`);
+        } else if (projMatch) {
+          const proj = db.getProject?.(projMatch[1]);
+          localPath = proj?.final_video || proj?.video_path || '';
+        }
+        // 去掉 #t=0.1
+        localPath = localPath.replace(/#.*$/, '');
+        if (fs.existsSync(localPath)) localPaths.push(localPath);
+      }
+
+      if (localPaths.length === 0) {
+        effectsTasks.set(taskId, { status: 'error', error: '无有效视频文件' });
+        return;
+      }
+
+      if (localPaths.length === 1) {
+        fs.copyFileSync(localPaths[0], outputPath);
+        effectsTasks.set(taskId, { status: 'done', outputPath, outputUrl: `/api/workflow/effects/result/${taskId}` });
+        return;
+      }
+
+      // 创建 concat 文件列表
+      const listPath = path.join(outputDir, `concat_${taskId}.txt`);
+      fs.writeFileSync(listPath, localPaths.map(p => `file '${p}'`).join('\n'));
+
+      effectsTasks.set(taskId, { status: 'running', progress: 30, detail: '拼接视频中...' });
+
+      await new Promise((resolve, reject) => {
+        ffmpeg()
+          .input(listPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .outputOptions(['-c', 'copy', '-movflags', '+faststart'])
+          .output(outputPath)
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+
+      // 清理临时文件
+      try { fs.unlinkSync(listPath); } catch {}
+
+      effectsTasks.set(taskId, { status: 'done', outputPath, outputUrl: `/api/workflow/effects/result/${taskId}` });
+    } catch (e) {
+      console.error('[Concat] 拼接失败:', e.message);
+      effectsTasks.set(taskId, { status: 'error', error: '拼接失败: ' + e.message });
+    }
+  })();
+});
+
 module.exports = router;

@@ -1860,41 +1860,65 @@ async function executeMerge(btn) {
   const fxConfig = collectFxConfig(node);
   const hasFx = fxConfig.texts.length > 0 || fxConfig.images.length > 0 || fxConfig.pointers.length > 0 || fxConfig.bgm;
 
+  // 逐个应用特效（如果有）
+  let finalUrls = connectedVideoUrls;
   if (hasFx && connectedVideoUrls.length > 0) {
-    // 逐个视频应用特效
     const processedUrls = [];
     for (let vi = 0; vi < connectedVideoUrls.length; vi++) {
       setNodeStatus(btn, 'running', `渲染特效 ${vi + 1}/${connectedVideoUrls.length}...`);
       const resultUrl = await applyFxToVideo(node, connectedVideoUrls[vi], btn);
       processedUrls.push(resultUrl);
     }
+    finalUrls = processedUrls;
+  }
+
+  // 拼接所有片段为最终视频
+  if (finalUrls.length === 1) {
     const preview = node.querySelector('.wf-nd-preview');
     if (preview) {
       preview.style.display = 'block';
-      if (processedUrls.length === 1) {
-        preview.innerHTML = `<video src="${processedUrls[0]}#t=0.1" controls preload="auto" playsinline style="cursor:pointer"></video>`;
-        addExpandButton(preview);
-      } else {
-        preview.innerHTML = processedUrls.map((url, i) =>
-          `<div style="font-size:11px;color:var(--wf-text2);padding:4px;">片段 ${i + 1}: <a href="${url}" target="_blank" style="color:var(--wf-accent)">预览</a></div>`
-        ).join('');
-      }
+      loadVideoPreview(preview, finalUrls[0]);
     }
-    setNodeStatus(btn, 'done', `${processedUrls.length} 个片段已加特效`);
+    setNodeStatus(btn, 'done', '合成完成');
   } else {
-    const preview = node.querySelector('.wf-nd-preview');
-    if (preview) {
-      preview.style.display = 'block';
-      if (connectedVideoUrls.length === 1) {
-        preview.innerHTML = `<video src="${connectedVideoUrls[0]}#t=0.1" controls preload="auto" playsinline style="cursor:pointer"></video>`;
-        addExpandButton(preview);
+    setNodeStatus(btn, 'running', `拼接 ${finalUrls.length} 个片段...`);
+    try {
+      const concatRes = await authFetch('/api/workflow/concat', {
+        method: 'POST',
+        body: JSON.stringify({ videoUrls: finalUrls })
+      });
+      const concatData = await concatRes.json();
+      if (concatData.success && concatData.taskId) {
+        // 轮询拼接状态
+        let concatDone = false;
+        for (let i = 0; i < 60; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const pollRes = await authFetch(`/api/workflow/effects/status/${concatData.taskId}`);
+          const pollData = await pollRes.json();
+          if (pollData.success) {
+            const t = pollData.data;
+            if (t.status === 'done') {
+              const preview = node.querySelector('.wf-nd-preview');
+              if (preview) { preview.style.display = 'block'; loadVideoPreview(preview, t.outputUrl); }
+              setNodeStatus(btn, 'done', '合成完成');
+              concatDone = true;
+              break;
+            } else if (t.status === 'error') {
+              setNodeStatus(btn, 'error', '拼接失败: ' + (t.error || '').substring(0, 60));
+              concatDone = true;
+              break;
+            }
+            setNodeStatus(btn, 'running', t.detail || '拼接中...');
+          }
+        }
+        if (!concatDone) setNodeStatus(btn, 'error', '拼接超时');
       } else {
-        preview.innerHTML = connectedVideoUrls.map((url, i) =>
-          `<div style="font-size:11px;color:var(--wf-text2);padding:4px;">片段 ${i + 1}: <a href="${url}" target="_blank" style="color:var(--wf-accent)">预览</a></div>`
-        ).join('');
+        setNodeStatus(btn, 'error', concatData.error || '拼接请求失败');
       }
+    } catch(e) {
+      setNodeStatus(btn, 'error', '拼接失败: ' + e.message);
     }
-    setNodeStatus(btn, 'done', `${connectedVideoUrls.length} 个片段就绪`);
+  }
   }
   btn.disabled = false;
 }
