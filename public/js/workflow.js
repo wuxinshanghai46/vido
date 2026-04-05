@@ -1824,6 +1824,52 @@ function uploadMusic(btn) {
   uploadMusicReal(btn);
 }
 
+// 合成完成后显示下载和保存按钮
+function showMergeActions(node, videoUrl) {
+  let actionsEl = node.querySelector('.wf-merge-actions');
+  if (actionsEl) actionsEl.remove();
+  actionsEl = document.createElement('div');
+  actionsEl.className = 'wf-merge-actions';
+  actionsEl.style.cssText = 'display:flex;gap:6px;padding:8px 14px;flex-wrap:wrap';
+  actionsEl.innerHTML = `
+    <a href="${videoUrl}" download="vido_output.mp4" class="wf-nd-action" style="flex:1;text-align:center;text-decoration:none;background:var(--wf-accent);color:#fff;font-size:12px;padding:8px;border-radius:6px;font-weight:600">
+      ⬇ 下载视频
+    </a>
+    <button class="wf-nd-action" style="flex:1;background:var(--wf-bg3);border:1px solid var(--wf-accent);color:var(--wf-accent);font-size:12px;padding:8px;border-radius:6px;font-weight:600" onclick="saveToWorks(this,'${videoUrl}')">
+      💾 保存到作品
+    </button>
+  `;
+  const footer = node.querySelector('.wf-nd-footer');
+  if (footer) footer.before(actionsEl);
+  else node.querySelector('.wf-nd-body')?.appendChild(actionsEl);
+}
+
+async function saveToWorks(btn, videoUrl) {
+  const node = btn.closest('.drawflow-node');
+  const title = document.getElementById('wf-title')?.value || '工作流视频';
+  btn.textContent = '保存中...';
+  btn.disabled = true;
+  try {
+    // 通过 workflow API 保存到作品库
+    const res = await authFetch('/api/workflow/save-to-works', {
+      method: 'POST',
+      body: JSON.stringify({ title, videoUrl, workflowId: currentWorkflowId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '✅ 已保存';
+      showToast('已保存到"我的作品"', 'success');
+    } else {
+      btn.textContent = '💾 保存到作品';
+      showToast('保存失败: ' + (data.error || ''), 'error');
+    }
+  } catch(e) {
+    btn.textContent = '💾 保存到作品';
+    showToast('保存失败: ' + e.message, 'error');
+  }
+  btn.disabled = false;
+}
+
 async function executeMerge(btn) {
   const node = btn.closest('.drawflow-node');
   const nodeId = node.id.replace('node-', '');
@@ -1895,6 +1941,7 @@ async function executeMerge(btn) {
       loadVideoPreview(preview, finalUrls[0]);
     }
     setNodeStatus(btn, 'done', '合成完成');
+    showMergeActions(node, finalUrls[0]);
   } else {
     setNodeStatus(btn, 'running', `拼接 ${finalUrls.length} 个片段...`);
     try {
@@ -1916,6 +1963,7 @@ async function executeMerge(btn) {
               const preview = node.querySelector('.wf-nd-preview');
               if (preview) { preview.style.display = 'block'; loadVideoPreview(preview, t.outputUrl); }
               setNodeStatus(btn, 'done', '合成完成');
+              showMergeActions(node, t.outputUrl);
               concatDone = true;
               break;
             } else if (t.status === 'error') {

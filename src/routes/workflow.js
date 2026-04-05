@@ -388,4 +388,49 @@ router.post('/concat', async (req, res) => {
   })();
 });
 
+// POST /api/workflow/save-to-works — 保存合成视频到作品库
+router.post('/save-to-works', (req, res) => {
+  const { title, videoUrl, workflowId } = req.body;
+  if (!videoUrl) return res.status(400).json({ success: false, error: '无视频URL' });
+
+  const db = require('../models/database');
+  const fxDir = path.resolve(process.env.OUTPUT_DIR || './outputs', 'effects');
+
+  // 解析视频本地路径
+  let videoPath = '';
+  const fxMatch = videoUrl.match(/effects\/result\/([^#?]+)/);
+  const i2vMatch = videoUrl.match(/i2v\/tasks\/([^/]+)\/stream/);
+  if (fxMatch) {
+    videoPath = path.join(fxDir, `fx_${fxMatch[1]}.mp4`);
+    if (!fs.existsSync(videoPath)) videoPath = path.join(fxDir, `final_${fxMatch[1]}.mp4`);
+  } else if (i2vMatch) {
+    const task = db.getI2VTask?.(i2vMatch[1]);
+    videoPath = task?.file_path || '';
+  }
+
+  if (!videoPath || !fs.existsSync(videoPath)) {
+    return res.status(400).json({ success: false, error: '视频文件不存在' });
+  }
+
+  // 插入到 i2v 任务表（复用现有的作品聚合逻辑）
+  const workId = 'wk_' + uuidv4().split('-')[0];
+  try {
+    db.insertI2VTask({
+      id: workId,
+      image_url: '',
+      prompt: title || '工作流合成视频',
+      video_provider: 'workflow',
+      video_model: 'concat',
+      duration: 0,
+      aspect_ratio: '16:9',
+      status: 'done',
+      file_path: videoPath,
+      user_id: req.user?.id
+    });
+    res.json({ success: true, workId });
+  } catch(e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;
