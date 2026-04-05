@@ -216,21 +216,12 @@ function resolveProvider(dim) {
     const p = (settings.providers || []).find(p => p.id === pid);
     return p && (p.models || []).some(m => m.use === 'image') && getApiKey(pid);
   };
-  if (dim === '3d') {
-    if (hasImageModel('mxapi'))       return 'mxapi';
-    if (hasImageModel('jimeng'))      return 'jimeng';
-    if (hasImageModel('nanobanana'))  return 'nanobanana';
-    if (hasImageModel('stability'))   return 'stability';
-    if (hasImageModel('openai'))      return 'openai';
-    if (hasImageModel('replicate'))   return 'replicate';
-  } else {
-    if (hasImageModel('mxapi'))       return 'mxapi';
-    if (hasImageModel('jimeng'))      return 'jimeng';
-    if (hasImageModel('nanobanana'))  return 'nanobanana';
-    if (hasImageModel('zhipu'))       return 'zhipu';
-    if (hasImageModel('replicate'))   return 'replicate';
-    if (hasImageModel('stability'))   return 'stability';
-    if (hasImageModel('openai'))      return 'openai';
+  // 优先级：zhipu（免费稳定）> mxapi > jimeng > 其他
+  const order = dim === '3d'
+    ? ['zhipu', 'mxapi', 'jimeng', 'nanobanana', 'stability', 'openai', 'replicate']
+    : ['zhipu', 'mxapi', 'jimeng', 'nanobanana', 'replicate', 'stability', 'openai'];
+  for (const pid of order) {
+    if (hasImageModel(pid)) return pid;
   }
   throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key（如 jimeng、mxapi、nanobanana、zhipu、openai 等）。`);
 }
