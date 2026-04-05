@@ -1299,8 +1299,15 @@ async function generateVideo(btn) {
   const ta = node.querySelector('textarea');
   const selfText = ta?.value?.trim() || '';
   const connectedText = getConnectedNodeText(node, 0) || getConnectedNodeText(node, 2);
-  const connectedImage = getConnectedNodeImage(node, 0) || getConnectedNodeImage(node, 1);
-  const prompt = selfText || connectedText || '';
+  const bgImage = getConnectedNodeImage(node, 0);     // input_1: 背景图
+  const charImage = getConnectedNodeImage(node, 1);    // input_2: 人物图
+  const charText = getConnectedNodeText(node, 1);      // input_2: 人物描述
+  const connectedImage = bgImage || charImage;
+  // 构建 prompt：自身提示词 + 人物外貌描述（确保角色一致性）
+  let prompt = selfText || connectedText || '';
+  if (charText && !prompt.includes(charText.substring(0, 20))) {
+    prompt = prompt + '。角色外貌：' + charText;
+  }
 
   if (!prompt && !connectedImage) {
     setNodeStatus(btn, 'error', '请输入提示词或连接上游节点');

@@ -1265,7 +1265,7 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
     content,
     ratio: '16:9',
     duration: Math.min(Math.max(Math.round(duration), 5), 10),
-    generate_audio: true,
+    generate_audio: false,
     watermark: false
   });
 
