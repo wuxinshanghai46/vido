@@ -2005,9 +2005,23 @@ async function loadWorkflow(id) {
       currentWorkflowId = data.data.id;
       document.getElementById('wf-title').value = data.data.name || '';
       if (data.data.drawflow) {
+        editor.clear();
         editor.import(data.data.drawflow);
         // 等 DOM 渲染后恢复动态内容
-        setTimeout(() => restoreNodeStates(), 200);
+        setTimeout(() => {
+          restoreNodeStates();
+          updateNodeCount();
+          updateNodeList();
+          // 重新填充动态模型下拉框
+          document.querySelectorAll('.drawflow-node').forEach(n => {
+            const nId = n.id.replace('node-', '');
+            try {
+              const nd = editor.getNodeFromId(nId);
+              const type = nd.class || nd.data?.type || '';
+              initNodeDynamic(nId, type);
+            } catch {}
+          });
+        }, 300);
       }
     }
   } catch(e) {

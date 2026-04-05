@@ -7041,13 +7041,14 @@ function calcWorkflowProgress(w) {
     const d = typeof w.drawflow === 'string' ? JSON.parse(w.drawflow) : w.drawflow;
     const nodes = Object.values(d?.drawflow?.Home?.data || {});
     if (nodes.length === 0) return 0;
-    // 简单统计：有数据的节点 / 总节点
+    // 统计：有预览或已完成状态的节点 / 总节点
     let done = 0;
     nodes.forEach(n => {
       const data = n.data || {};
-      if (data.prompt || data.imageUrl || data.videoUrl) done++;
+      if (data._previewImg || data._previewVid || (data._statusClass && data._statusClass.includes('done'))) done++;
+      else if (data._textareas && data._textareas.some(t => t && t.length > 10)) done += 0.5;
     });
-    return Math.round((done / nodes.length) * 100);
+    return Math.min(100, Math.round((done / nodes.length) * 100));
   } catch { return 0; }
 }
 
