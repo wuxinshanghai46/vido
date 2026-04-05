@@ -216,10 +216,10 @@ function resolveProvider(dim) {
     const p = (settings.providers || []).find(p => p.id === pid);
     return p && (p.models || []).some(m => m.use === 'image') && getApiKey(pid);
   };
-  // 优先级：zhipu（免费稳定）> mxapi > jimeng > 其他
+  // 优先级：mxapi(NANO) > zhipu > jimeng > 其他
   const order = dim === '3d'
-    ? ['zhipu', 'mxapi', 'jimeng', 'nanobanana', 'stability', 'openai', 'replicate']
-    : ['zhipu', 'mxapi', 'jimeng', 'nanobanana', 'replicate', 'stability', 'openai'];
+    ? ['mxapi', 'nanobanana', 'zhipu', 'jimeng', 'stability', 'openai', 'replicate']
+    : ['mxapi', 'nanobanana', 'zhipu', 'jimeng', 'replicate', 'stability', 'openai'];
   for (const pid of order) {
     if (hasImageModel(pid)) return pid;
   }
