@@ -210,22 +210,27 @@ function resolveProvider(dim) {
   const explicit = process.env.IMAGE_PROVIDER;
   if (explicit && explicit !== 'auto') return explicit;
 
-  // 按维度选择
+  // 按维度选择（优先选有 use=image 模型的供应商）
+  const settings = require('./settingsService').loadSettings();
+  const hasImageModel = (pid) => {
+    const p = (settings.providers || []).find(p => p.id === pid);
+    return p && (p.models || []).some(m => m.use === 'image') && getApiKey(pid);
+  };
   if (dim === '3d') {
-    if (getApiKey('jimeng'))      return 'jimeng';
-    if (getApiKey('mxapi'))       return 'mxapi';
-    if (getApiKey('nanobanana'))  return 'nanobanana';
-    if (getApiKey('stability'))   return 'stability';
-    if (getApiKey('openai'))      return 'openai';
-    if (getApiKey('replicate'))   return 'replicate';
+    if (hasImageModel('mxapi'))       return 'mxapi';
+    if (hasImageModel('jimeng'))      return 'jimeng';
+    if (hasImageModel('nanobanana'))  return 'nanobanana';
+    if (hasImageModel('stability'))   return 'stability';
+    if (hasImageModel('openai'))      return 'openai';
+    if (hasImageModel('replicate'))   return 'replicate';
   } else {
-    if (getApiKey('jimeng'))      return 'jimeng';
-    if (getApiKey('mxapi'))       return 'mxapi';
-    if (getApiKey('nanobanana'))  return 'nanobanana';
-    if (getApiKey('zhipu'))       return 'zhipu';
-    if (getApiKey('replicate'))   return 'replicate';
-    if (getApiKey('stability'))   return 'stability';
-    if (getApiKey('openai'))      return 'openai';
+    if (hasImageModel('mxapi'))       return 'mxapi';
+    if (hasImageModel('jimeng'))      return 'jimeng';
+    if (hasImageModel('nanobanana'))  return 'nanobanana';
+    if (hasImageModel('zhipu'))       return 'zhipu';
+    if (hasImageModel('replicate'))   return 'replicate';
+    if (hasImageModel('stability'))   return 'stability';
+    if (hasImageModel('openai'))      return 'openai';
   }
   throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key（如 jimeng、mxapi、nanobanana、zhipu、openai 等）。`);
 }
