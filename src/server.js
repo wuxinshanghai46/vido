@@ -145,6 +145,12 @@ app.use('/api/assets', authenticate, require('./routes/assets'));
 // === 社交媒体发布 ===
 app.use('/api/publish', authenticate, require('./routes/publish'));
 
+// === 媒体流公开访问（video/img 标签不带 Authorization header）===
+app.get('/api/i2v/tasks/:id/stream', require('./routes/i2v-stream'));
+app.get('/api/i2v/tasks/:id/download', require('./routes/i2v-stream'));
+app.get('/api/projects/:id/stream', require('./routes/project-stream'));
+app.get('/api/projects/:id/clips/:clipId/stream', require('./routes/project-stream'));
+
 // === 需特定权限的路由 ===
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));
 // 预设图片公开访问（img 标签不带 token）

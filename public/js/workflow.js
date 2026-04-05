@@ -2827,12 +2827,9 @@ function openLightbox(imgSrc, videoSrc) {
 }
 
 // 给预览区添加放大按钮（视频/图片生成后调用）
-// 加载视频预览（通过 URL token 绕过 header 认证）
+// 加载视频预览（流端点已公开，无需认证）
 function loadVideoPreview(previewEl, streamUrl) {
-  const token = localStorage.getItem('access_token') || '';
-  const sep = streamUrl.includes('?') ? '&' : '?';
-  const url = `${streamUrl}${sep}token=${token}#t=0.1`;
-  previewEl.innerHTML = `<video src="${url}" controls preload="auto" playsinline></video>`;
+  previewEl.innerHTML = `<video src="${streamUrl}#t=0.1" controls preload="auto" playsinline></video>`;
   addExpandButton(previewEl);
 }
 
