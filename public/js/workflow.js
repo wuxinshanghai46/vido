@@ -2826,18 +2826,13 @@ function openLightbox(imgSrc, videoSrc) {
 }
 
 // 给预览区添加放大按钮（视频/图片生成后调用）
-// 通过 authFetch 下载视频并用 blob URL 加载预览（绕过认证限制）
-async function loadVideoPreview(previewEl, streamUrl) {
-  previewEl.innerHTML = '<span class="wf-nd-preview-ph" style="animation:wf-pulse 1.5s infinite">加载视频...</span>';
-  try {
-    const res = await authFetch(streamUrl);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    previewEl.innerHTML = `<video src="${blobUrl}#t=0.1" controls preload="auto" playsinline></video>`;
-    addExpandButton(previewEl);
-  } catch(e) {
-    previewEl.innerHTML = `<span class="wf-nd-preview-ph">视频加载失败: ${e.message}</span>`;
-  }
+// 加载视频预览（通过 URL token 绕过 header 认证）
+function loadVideoPreview(previewEl, streamUrl) {
+  const token = localStorage.getItem('access_token') || '';
+  const sep = streamUrl.includes('?') ? '&' : '?';
+  const url = `${streamUrl}${sep}token=${token}#t=0.1`;
+  previewEl.innerHTML = `<video src="${url}" controls preload="auto" playsinline></video>`;
+  addExpandButton(previewEl);
 }
 
 function addExpandButton(previewEl) {
