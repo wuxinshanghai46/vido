@@ -482,3 +482,46 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
   border-top: 1px solid var(--wf-border);
   margin: 8px 0;
 }
+
+/* ═══ 章节总览 ═══ */
+.wf-nd-chapters { margin-top: 6px; }
+.wf-ch-header {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 8px; cursor: pointer; user-select: none;
+  background: var(--wf-bg); border-radius: 6px; margin-bottom: 4px;
+}
+.wf-ch-header:hover { background: var(--wf-bg3); }
+.wf-ch-list { max-height: 300px; overflow-y: auto; }
+.wf-ch-item {
+  background: var(--wf-bg); border: 1px solid var(--wf-border);
+  border-radius: 6px; margin-bottom: 3px; overflow: hidden;
+}
+.wf-ch-item-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; cursor: pointer; transition: background .15s;
+}
+.wf-ch-item-header:hover { background: var(--wf-bg3); }
+.wf-ch-num {
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  background: var(--wf-accent); color: #fff; border-radius: 50%;
+  font-size: 10px; font-weight: 700; flex-shrink: 0;
+}
+.wf-ch-title { font-size: 11px; font-weight: 600; color: var(--wf-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-ch-dur { font-size: 10px; color: var(--wf-text3); flex-shrink: 0; }
+.wf-ch-item-body {
+  padding: 4px 8px 6px 34px; font-size: 10px; line-height: 1.5; color: var(--wf-text2);
+}
+.wf-ch-item-body.wf-ch-collapsed { display: none; }
+.wf-ch-row { margin-bottom: 2px; }
+.wf-ch-tag {
+  font-weight: 600; font-size: 9px; margin-right: 4px;
+  padding: 1px 4px; background: rgba(255,255,255,.05); border-radius: 3px;
+}
+
+/* 数字人形象网格优化 */
+.wf-nd-avatar-more-btn {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--wf-bg2); border: 1px dashed var(--wf-border2); border-radius: 6px;
+  cursor: pointer; transition: all .15s;
+}
+.wf-nd-avatar-more-btn:hover { border-color: var(--wf-accent); background: var(--wf-bg3); }

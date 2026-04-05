@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDO AI 视频生成平台 — 完整操作手册</title>
+<style>
+  /* ── 全局 ── */
+  :root {
+    --accent: #7c6cf0;
+    --accent2: #21fff3;
+    --bg: #0c0c12;
+    --bg2: #12121a;
+    --bg3: #1a1a24;
+    --bg4: #222230;
+    --text: #edeef2;
+    --text2: rgba(237,238,242,.6);
+    --border: rgba(255,255,255,.09);
+    --green: #6ee7b7;
+    --cyan: #38bdf8;
+    --orange: #fb923c;
+    --pink: #f472b6;
+    --amber: #fbbf24;
+    --purple: #a78bfa;
+    --teal: #34d399;
+    --slate: #94a3b8;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 14px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+
+  /* ── 打印 ── */
+  @media print {
+    body { background: #fff; color: #1a1a2e; font-size: 11pt; }
+    .page { break-after: page; box-shadow: none !important; border: none !important; padding: 40px !important; }
+    .page:last-child { break-after: auto; }
+    .no-print { display: none !important; }
+    .mock { border: 1.5px solid #ccc !important; }
+    .mock-dark { background: #f5f5fa !important; color: #1a1a2e !important; }
+    h1, h2, h3 { color: #2d2b55 !important; }
+    .toc a { color: #4a3aad !important; }
+    .step-num { background: #4a3aad !important; }
+    .badge { border: 1px solid #999 !important; }
+    .node-card { border: 1.5px solid #ddd !important; }
+    table { border-color: #ccc !important; }
+    th { background: #eee !important; color: #333 !important; }
+    td { color: #333 !important; border-color: #ddd !important; }
+    .flow-box { border-color: #999 !important; color: #333 !important; }
+    .flow-arrow { color: #999 !important; }
+    .tip-box { border-color: #4a3aad !important; background: #f0eeff !important; color: #333 !important; }
+    .warn-box { border-color: #c07000 !important; background: #fff8ee !important; color: #333 !important; }
+    .mock-sidebar, .mock-topbar, .mock-canvas, .mock-panel { background: #f0f0f5 !important; color: #333 !important; }
+    .mock-node { background: #fff !important; color: #333 !important; border: 1.5px solid #ccc !important; }
+    .mock-btn { background: #e8e6f8 !important; color: #333 !important; }
+    .mock-btn-primary { background: #4a3aad !important; color: #fff !important; }
+    .mock-input { background: #fff !important; color: #333 !important; border-color: #ccc !important; }
+    .mock-chip { background: #e8e6f8 !important; color: #333 !important; }
+    .mock-chip.active { background: #4a3aad !important; color: #fff !important; }
+    .mock-avatar-card { background: #f5f5fa !important; border-color: #ccc !important; }
+    .cover-title { color: #2d2b55 !important; text-shadow: none !important; }
+    .cover-sub { color: #555 !important; }
+  }
+
+  /* ── 页面容器 ── */
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 60px 56px;
+    min-height: 100vh;
+  }
+  .page + .page { border-top: 1px solid var(--border); }
+
+  /* ── 封面 ── */
+  .cover {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; min-height: 90vh;
+  }
+  .cover-logo {
+    width: 100px; height: 100px; border-radius: 24px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px; font-weight: 900; color: #fff;
+    margin-bottom: 36px; box-shadow: 0 12px 40px rgba(124,108,240,.35);
+  }
+  .cover-title { font-size: 42px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 12px; }
+  .cover-sub { font-size: 18px; color: var(--text2); margin-bottom: 48px; }
+  .cover-meta { font-size: 13px; color: var(--text2); line-height: 2; }
+
+  /* ── 标题 ── */
+  h1 { font-size: 28px; font-weight: 800; margin: 0 0 28px; padding-bottom: 12px; border-bottom: 2px solid var(--accent); }
+  h2 { font-size: 22px; font-weight: 700; margin: 36px 0 18px; color: var(--accent); }
+  h3 { font-size: 17px; font-weight: 700; margin: 28px 0 12px; }
+  h4 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; color: var(--amber); }
+
+  /* ── 目录 ── */
+  .toc { background: var(--bg2); border-radius: 12px; padding: 28px 32px; margin: 24px 0 40px; }
+  .toc h3 { margin-top: 0; color: var(--text); }
+  .toc ol { padding-left: 22px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--accent2); }
+  .toc a:hover { text-decoration: underline; }
+
+  /* ── 步骤 ── */
+  .step { display: flex; gap: 16px; margin: 20px 0; align-items: flex-start; }
+  .step-num {
+    flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-body { flex: 1; padding-top: 4px; }
+  .step-body strong { color: var(--accent2); }
+
+  /* ── 表格 ── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: var(--bg3); color: var(--accent); font-weight: 600; text-align: left; padding: 10px 14px; border: 1px solid var(--border); }
+  td { padding: 9px 14px; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+
+  /* ── 提示框 ── */
+  .tip-box {
+    background: rgba(124,108,240,.08); border-left: 4px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-size: 13px;
+  }
+  .warn-box {
+    background: rgba(251,191,36,.08); border-left: 4px solid var(--amber);
+    border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0; font-size: 13px;
+  }
+  .tip-box::before { content: "💡 "; font-size: 15px; }
+  .warn-box::before { content: "⚠️ "; font-size: 15px; }
+
+  /* ── 流程图 ── */
+  .flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 20px 0; }
+  .flow-box {
+    padding: 10px 18px; border: 1.5px solid var(--accent); border-radius: 10px;
+    font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap;
+  }
+  .flow-arrow { font-size: 20px; color: var(--accent); }
+  .flow-vert { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 20px 0; }
+  .flow-vert .flow-arrow { transform: rotate(90deg); }
+
+  /* ── 徽章 ── */
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; margin: 0 3px;
+  }
+
+  /* ── 模拟 UI ── */
+  .mock {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; margin: 18px 0; font-size: 12px;
+  }
+  .mock-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: var(--bg3); border-bottom: 1px solid var(--border);
+  }
+  .mock-topbar-left, .mock-topbar-right { display: flex; align-items: center; gap: 8px; }
+
+  .mock-layout { display: flex; min-height: 340px; }
+  .mock-sidebar {
+    width: 180px; flex-shrink: 0; background: var(--bg3); border-right: 1px solid var(--border);
+    padding: 12px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .mock-canvas {
+    flex: 1; padding: 20px; position: relative;
+    background-image: radial-gradient(circle, rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .mock-panel {
+    width: 240px; flex-shrink: 0; background: var(--bg3); border-left: 1px solid var(--border);
+    padding: 14px; overflow-y: auto;
+  }
+
+  .mock-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    background: var(--bg4); color: var(--text); border: 1px solid var(--border);
+    cursor: default;
+  }
+  .mock-btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .mock-btn-sm { padding: 3px 8px; font-size: 10px; border-radius: 4px; }
+
+  .mock-input {
+    width: 100%; padding: 6px 10px; border-radius: 6px; font-size: 11px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  }
+  .mock-select { composes: mock-input; appearance: none; }
+  .mock-textarea {
+    width: 100%; min-height: 60px; padding: 8px 10px; border-radius: 6px;
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    font-size: 11px; resize: none; font-family: inherit;
+  }
+  .mock-label { font-size: 10px; color: var(--text2); margin-bottom: 4px; font-weight: 600; }
+
+  /* 模拟节点 */
+  .mock-node {
+    position: absolute; width: 220px; background: var(--bg3); border: 1.5px solid var(--border);
+    border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  }
+  .mock-node-header {
+    display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+    font-size: 12px; font-weight: 700; border-bottom: 1px solid var(--border);
+  }
+  .mock-node-icon {
+    width: 20px; height: 20px; border-radius: 5px; display: flex;
+    align-items: center; justify-content: center; font-size: 11px; color: #fff;
+  }
+  .mock-node-body { padding: 10px; font-size: 11px; color: var(--text2); }
+  .mock-node-port {
+    width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent);
+    background: var(--bg); position: absolute;
+  }
+  .mock-node-port.out { right: -5px; }
+  .mock-node-port.in { left: -5px; }
+
+  /* 模拟连线 */
+  .mock-conn {
+    position: absolute; border: none;
+    border-top: 2px dashed rgba(124,108,240,.5);
+  }
+
+  /* 模拟节点侧栏卡片 */
+  .node-card {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    cursor: default; font-size: 11px;
+  }
+  .node-card:hover { border-color: var(--accent); }
+  .node-card-icon {
+    width: 28px; height: 28px; border-radius: 7px; display: flex;
+    align-items: center; justify-content: center; font-size: 14px; color: #fff; flex-shrink: 0;
+  }
+  .node-card-text { line-height: 1.3; }
+  .node-card-title { font-weight: 700; font-size: 12px; }
+  .node-card-desc { font-size: 10px; color: var(--text2); }
+
+  /* 模拟头像卡片 */
+  .mock-avatar-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin: 8px 0; }
+  .mock-avatar-card {
+    aspect-ratio: 1; border-radius: 10px; border: 2px solid var(--border);
+    background: var(--bg); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-size: 10px;
+    text-align: center; padding: 6px; gap: 4px; cursor: default;
+  }
+  .mock-avatar-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124,108,240,.3); }
+  .mock-avatar-card .avatar-icon { font-size: 28px; }
+
+  /* 模拟芯片/标签 */
+  .mock-chip {
+    display: inline-block; padding: 4px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 600; background: var(--bg4);
+    border: 1px solid var(--border); margin: 2px 3px; cursor: default;
+  }
+  .mock-chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .mock-bg-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin: 8px 0; }
+  .mock-bg-card {
+    aspect-ratio: 16/10; border-radius: 8px; border: 2px solid var(--border);
+    display: flex; align-items: flex-end; justify-content: center;
+    font-size: 10px; font-weight: 600; padding-bottom: 6px; cursor: default;
+  }
+  .mock-bg-card.active { border-color: var(--accent); }
+
+  /* 模拟进度 */
+  .mock-progress {
+    width: 100%; height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin: 8px 0;
+  }
+  .mock-progress-bar { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+  /* 注释标注 */
+  .callout {
+    position: absolute; padding: 4px 10px; border-radius: 6px;
+    background: var(--amber); color: #000; font-size: 10px; font-weight: 700;
+    white-space: nowrap; z-index: 10;
+  }
+  .callout::after {
+    content: ''; position: absolute; bottom: -6px; left: 14px;
+    border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-top: 6px solid var(--amber);
+  }
+  .callout.right::after { bottom: auto; top: 50%; left: -6px; transform: translateY(-50%);
+    border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+    border-right: 6px solid var(--amber); border-left: none; }
+
+  /* 章节分隔 */
+  .section-divider {
+    text-align: center; margin: 40px 0 20px; font-size: 11px; color: var(--text2);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .section-divider::before, .section-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* 代码 */
+  code {
+    background: var(--bg3); padding: 2px 6px; border-radius: 4px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px;
+  }
+  pre {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; overflow-x: auto; margin: 12px 0; font-size: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace; line-height: 1.6;
+  }
+
+  /* 图注 */
+  .fig-caption {
+    text-align: center; font-size: 11px; color: var(--text2);
+    margin: -10px 0 18px; font-style: italic;
+  }
+
+  /* 带图标列表 */
+  .icon-list { list-style: none; padding: 0; }
+  .icon-list li { padding: 6px 0; display: flex; align-items: flex-start; gap: 8px; }
+  .icon-list li::before { content: attr(data-icon); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════ 封面 ════════════════════════════════════════ -->
+<div class="page cover">
+  <div class="cover-logo">V</div>
+  <div class="cover-title">VIDO AI 视频生成平台</div>
+  <div class="cover-sub">数字人 & 视频生成 & 工作流 — 完整操作手册</div>
+  <div class="cover-meta">
+    版本 1.0 &nbsp;|&nbsp; 2026 年 4 月<br>
+    涵盖：AI 视频全流程、数字人口播、工作流画布、模型选择指南
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ 目录 ════════════════════════════════════════ -->
+<div class="page">
+  <h1>目 录</h1>
+  <div class="toc">
+    <ol>
+      <li><a href="#ch1">平台概述 & 架构流程</a></li>
+      <li><a href="#ch2">环境准备 — 配置 API Key 与模型</a></li>
+      <li><a href="#ch3">AI 视频生成（全自动流水线）</a></li>
+      <li><a href="#ch4">AI 数字人生成（口播 / 广告）</a></li>
+      <li><a href="#ch5">工作流画布（可视化编排）</a></li>
+      <li><a href="#ch6">图生视频（I2V）</a></li>
+      <li><a href="#ch7">模型 & 平台完整参考表</a></li>
+      <li><a href="#ch8">实战案例：制作抖音广告数字人</a></li>
+    </ol>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ 第1章 ════════════════════════════════════════ -->
+<div class="page" id="ch1">
+  <h1>一、平台概述 & 架构流程</h1>
+
+  <p>VIDO AI 是一个全栈 AI 视频生成平台，支持从文字到成片的完整流水线，也支持数字人口播视频和可视化工作流编排。</p>
+
+  <h2>1.1 核心功能总览</h2>
+  <table>
+    <tr><th>功能模块</th><th>说明</th><th>入口</th></tr>
+    <tr><td>AI 视频</td><td>输入主题 → 自动生成剧本 → 生成角色/场景图 → 生成视频 → 合成终片</td><td>侧栏「AI 视频」</td></tr>
+    <tr><td>AI 数字人</td><td>上传人像 → 输入文案 → AI 驱动人像动起来 → 叠加语音 → 成品</td><td>侧栏「AI 数字人」</td></tr>
+    <tr><td>工作流画布</td><td>拖拽节点、连线编排，可视化构建视频生产流程</td><td>侧栏「工作流画布」</td></tr>
+    <tr><td>图生视频</td><td>上传任意图片，AI 让画面动起来</td><td>侧栏「图生视频」</td></tr>
+    <tr><td>AI 漫画</td><td>AI 生成连续分镜漫画</td><td>侧栏「AI 漫画」</td></tr>
+    <tr><td>AI 小说</td><td>AI 生成长篇章节小说</td><td>侧栏「AI 小说」</td></tr>
+  </table>
+
+  <h2>1.2 全流程架构图</h2>
+  <div class="flow">
+    <div class="flow-box" style="border-color:var(--green)">文本/剧本</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--orange)">角色形象图</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--cyan)">场景背景图</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--pink)">视频片段</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--purple)">TTS 语音</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--slate)">FFmpeg 合成</div>
+  </div>
+  <p class="fig-caption">图 1-1：AI 视频全流程流水线</p>
+
+  <h3>数字人生成流程</h3>
+  <div class="flow">
+    <div class="flow-box" style="border-color:var(--amber)">人像照片</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--pink)">i2v 模型<br><small>让人物动起来</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--purple)">TTS 语音<br><small>文字转语音</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--slate)">FFmpeg 合成<br><small>视频+音频</small></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="border-color:var(--teal)">成品视频</div>
+  </div>
+  <p class="fig-caption">图 1-2：数字人视频生成流程</p>
+</div>
+
+<!-- ════════════════════════════════════════ 第2章 ════════════════════════════════════════ -->
+<div class="page" id="ch2">
+  <h1>二、环境准备 — 配置 API Key 与模型</h1>
+
+  <p>使用任何 AI 功能前，需要先在<strong>设置页面</strong>配置供应商 API Key。</p>
+
+  <h2>2.1 打开设置页面</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">打开浏览器访问 <strong>http://localhost:3007</strong></div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">点击右上角 <strong>⚙️ 设置</strong> 按钮，或进入 <strong>管理后台 → AI 配置</strong></div>
+  </div>
+
+  <!-- 模拟设置页面 -->
+  <div class="mock">
+    <div class="mock-topbar">
+      <div class="mock-topbar-left">
+        <span style="font-weight:800;color:var(--accent)">V</span>
+        <span style="font-weight:700">VIDO 后台</span>
+      </div>
+      <div class="mock-topbar-right">
+        <span class="mock-btn-sm" style="background:var(--accent);color:#fff;padding:3px 10px;border-radius:4px">AI 配置</span>
+      </div>
+    </div>
+    <div style="display:flex;min-height:320px">
+      <!-- 左侧导航 -->
+      <div style="width:160px;background:var(--bg3);border-right:1px solid var(--border);padding:12px;font-size:11px">
+        <div style="padding:6px 8px;opacity:.5">👥 用户管理</div>
+        <div style="padding:6px 8px;opacity:.5">🛡️ 角色管理</div>
+        <div style="padding:6px 8px;opacity:.5">💰 积分记录</div>
+        <div style="padding:6px 8px;background:var(--accent);color:#fff;border-radius:6px;font-weight:700">🤖 AI 配置</div>
+        <div style="padding:6px 8px;opacity:.5">⚙️ 系统设置</div>
+      </div>
+      <!-- 右侧内容 -->
+      <div style="flex:1;padding:20px">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <span class="mock-chip active">供应商</span>
+          <span class="mock-chip">MCP 连接器</span>
+          <span class="mock-chip">Skills</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span class="mock-btn" style="font-size:10px">🔄 刷新状态</span>
+          <span class="mock-btn-primary mock-btn" style="background:var(--accent);border-color:var(--accent)">+ 添加供应商</span>
+        </div>
+        <!-- 供应商列表 -->
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+            <div><strong>DeepSeek</strong> <span style="font-size:10px;color:var(--text2)">deepseek</span></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">已连接</span>
+              <span style="font-size:10px;color:var(--text2)">2 个模型</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+            <div><strong>智谱 AI</strong> <span style="font-size:10px;color:var(--text2)">zhipu</span></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">已连接</span>
+              <span style="font-size:10px;color:var(--text2)">3 个模型</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+            <div><strong>MiniMax</strong> <span style="font-size:10px;color:var(--text2)">minimax</span></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="badge" style="background:rgba(148,163,184,.15);color:var(--slate)">未配置</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 2-1：AI 配置页面 — 供应商管理</p>
+
+  <h2>2.2 添加供应商</h2>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">点击 <strong>「+ 添加供应商」</strong> 按钮</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">在弹窗中 <strong>快速选择</strong> 预设平台（如 DeepSeek、智谱、MiniMax 等），系统自动填入名称、ID、API 地址</div>
+  </div>
+
+  <!-- 模拟添加供应商弹窗 -->
+  <div class="mock" style="max-width:480px;margin:18px auto">
+    <div class="mock-topbar" style="justify-content:space-between">
+      <strong>添加供应商</strong>
+      <span style="cursor:pointer;opacity:.5">✕</span>
+    </div>
+    <div style="padding:18px">
+      <div class="mock-label">快速选择预设</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px">
+        <span class="mock-chip active">DeepSeek</span>
+        <span class="mock-chip">OpenAI</span>
+        <span class="mock-chip">智谱 AI</span>
+        <span class="mock-chip">MiniMax</span>
+        <span class="mock-chip">Kling</span>
+        <span class="mock-chip">即梦 AI</span>
+        <span class="mock-chip">Anthropic</span>
+        <span class="mock-chip">FAL</span>
+        <span class="mock-chip">Runway</span>
+        <span class="mock-chip">Luma</span>
+        <span class="mock-chip">讯飞</span>
+        <span class="mock-chip">火山引擎</span>
+        <span class="mock-chip">Fish Audio</span>
+        <span class="mock-chip">ElevenLabs</span>
+      </div>
+      <div class="mock-label">供应商名称</div>
+      <input class="mock-input" value="DeepSeek" style="margin-bottom:10px">
+      <div class="mock-label">ID（英文）</div>
+      <input class="mock-input" value="deepseek" style="margin-bottom:10px">
+      <div class="mock-label">API 地址</div>
+      <input class="mock-input" value="https://api.deepseek.com/v1" style="margin-bottom:10px">
+      <div class="mock-label">API Key</div>
+      <input class="mock-input" type="password" value="sk-xxxxxxxxxxxxxxxx" style="margin-bottom:10px">
+      <div class="mock-label">预置模型</div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:11px;margin-bottom:14px">
+        <div>deepseek-chat <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">story</span></div>
+        <div style="margin-top:4px">deepseek-reasoner <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">story</span></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <span class="mock-btn">取消</span>
+        <span class="mock-btn mock-btn-primary" style="background:var(--accent);border-color:var(--accent)">添加</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 2-2：添加供应商弹窗 — 快速选择预设</p>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">填入你的 <strong>API Key</strong>，点击 <strong>「添加」</strong></div>
+  </div>
+
+  <h2>2.3 添加 / 管理模型</h2>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">在供应商列表中点击供应商，展开后点击 <strong>「+ 添加模型」</strong></div>
+  </div>
+
+  <!-- 模拟添加模型弹窗 -->
+  <div class="mock" style="max-width:440px;margin:18px auto">
+    <div class="mock-topbar"><strong>添加模型</strong></div>
+    <div style="padding:18px">
+      <div class="mock-label">模型 ID</div>
+      <input class="mock-input" placeholder="例如：cogvideox-flash" style="margin-bottom:10px">
+      <div class="mock-label">显示名称</div>
+      <input class="mock-input" placeholder="例如：CogVideoX Flash" style="margin-bottom:10px">
+      <div class="mock-label">类型</div>
+      <select class="mock-input" style="margin-bottom:10px">
+        <option>chat — 文本对话</option>
+        <option>image — 图像生成</option>
+        <option selected>video — 视频生成</option>
+        <option>tts — 语音合成</option>
+      </select>
+      <div class="mock-label">用途</div>
+      <select class="mock-input" style="margin-bottom:14px">
+        <option>剧情生成 (story)</option>
+        <option>图像生成 (image)</option>
+        <option selected>视频生成 (video)</option>
+        <option>语音合成 (tts)</option>
+        <option>数字人 (avatar)</option>
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <span class="mock-btn">取消</span>
+        <span class="mock-btn mock-btn-primary" style="background:var(--accent);border-color:var(--accent)">添加</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 2-3：添加模型 — 选择类型和用途</p>
+
+  <h2>2.4 推荐配置方案</h2>
+
+  <h4>最低成本（免费起步）</h4>
+  <table>
+    <tr><th>功能</th><th>推荐平台</th><th>模型</th><th>用途设为</th><th>费用</th></tr>
+    <tr><td>剧本/文案</td><td>DeepSeek</td><td>deepseek-chat</td><td>story</td><td>极低</td></tr>
+    <tr><td>视频/数字人</td><td>智谱 AI</td><td>cogvideox-flash</td><td>video</td><td>有免费额度</td></tr>
+    <tr><td>语音</td><td>Windows SAPI</td><td>（本地）</td><td>tts</td><td>免费</td></tr>
+  </table>
+
+  <h4>推荐质量方案</h4>
+  <table>
+    <tr><th>功能</th><th>推荐平台</th><th>模型</th><th>用途设为</th><th>特点</th></tr>
+    <tr><td>剧本/文案</td><td>DeepSeek / Claude</td><td>deepseek-chat / claude-*</td><td>story</td><td>中文质量好</td></tr>
+    <tr><td>角色/场景图</td><td>即梦 AI / 智谱</td><td>jimeng_t2i_v30 / cogview-3-flash</td><td>image</td><td>中文优化</td></tr>
+    <tr><td>视频片段</td><td>MiniMax / Kling</td><td>Hailuo-2.3 / kling-v3</td><td>video</td><td>画质最好</td></tr>
+    <tr><td>数字人</td><td>MiniMax / Kling</td><td>I2V-01 / kling-v3</td><td>video</td><td>人物驱动好</td></tr>
+    <tr><td>语音</td><td>火山引擎 / Fish Audio</td><td>—</td><td>tts</td><td>抖音同款 / 声音克隆</td></tr>
+  </table>
+
+  <div class="tip-box">每个供应商可添加多个模型，系统会自动按用途（story/image/video/tts）选择对应模型。</div>
+</div>
+
+<!-- ════════════════════════════════════════ 第3章 ════════════════════════════════════════ -->
+<div class="page" id="ch3">
+  <h1>三、AI 视频生成（全自动流水线）</h1>
+
+  <h2>3.1 进入 AI 视频页面</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">在左侧导航栏点击 <strong>「🎬 AI 视频」</strong></div>
+  </div>
+
+  <!-- 模拟侧栏 -->
+  <div class="mock" style="max-width:260px">
+    <div style="padding:12px;font-size:12px">
+      <div style="padding:6px 10px;opacity:.5;font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:4px">内容创作</div>
+      <div style="padding:8px 12px;background:var(--accent);color:#fff;border-radius:8px;font-weight:700;margin-bottom:4px">🎬 AI 视频</div>
+      <div style="padding:8px 12px;opacity:.7;margin-bottom:4px">🧑‍💼 AI 数字人</div>
+      <div style="padding:8px 12px;opacity:.7;margin-bottom:4px">📚 AI 漫画</div>
+      <div style="padding:8px 12px;opacity:.7;margin-bottom:4px">✍️ AI 小说</div>
+      <div style="padding:8px 12px;opacity:.7;margin-bottom:4px">🔗 工作流画布</div>
+      <div style="padding:6px 10px;opacity:.5;font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;margin:8px 0 4px">工具</div>
+      <div style="padding:8px 12px;opacity:.7;margin-bottom:4px">🎞️ 图生视频</div>
+      <div style="padding:8px 12px;opacity:.7">🖼️ AI 图片生成</div>
+    </div>
+  </div>
+  <p class="fig-caption">图 3-1：左侧导航栏</p>
+
+  <h2>3.2 配置并生成</h2>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">在左面板 <strong>「剧本」</strong> Tab 中输入视频主题和描述</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">选择 <strong>风格维度</strong>：2D 动画 / 3D 渲染 / 写实真人</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">设置 <strong>时长</strong>（30秒-5分钟）、<strong>场景数</strong>、<strong>语种</strong>等参数</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">点击 <strong>「生成」</strong> 按钮，系统自动开始 5 阶段流水线</div>
+  </div>
+
+  <!-- 模拟 Studio 界面 -->
+  <div class="mock">
+    <div class="mock-topbar">
+      <div class="mock-topbar-left">
+        <span style="font-weight:800;color:var(--accent)">V</span>
+        <span style="font-weight:600">Studio</span>
+      </div>
+      <div class="mock-topbar-right">
+        <span class="mock-btn-sm" style="padding:2px 8px;border-radius:4px;border:1px solid var(--border)">⚙️</span>
+      </div>
+    </div>
+    <div style="display:flex;min-height:340px">
+      <!-- 左面板 -->
+      <div style="width:240px;background:var(--bg3);border-right:1px solid var(--border);padding:14px">
+        <div style="display:flex;gap:2px;margin-bottom:12px">
+          <span class="mock-chip active" style="font-size:10px;padding:3px 10px">剧本</span>
+          <span class="mock-chip" style="font-size:10px;padding:3px 10px">场景</span>
+          <span class="mock-chip" style="font-size:10px;padding:3px 10px">角色</span>
+          <span class="mock-chip" style="font-size:10px;padding:3px 10px">音讯</span>
+        </div>
+        <div class="mock-label">主题 / 描述</div>
+        <textarea class="mock-textarea" style="min-height:70px">一个古风仙侠世界，少女白衣飘飘，在瀑布前修炼剑法</textarea>
+        <div class="mock-label" style="margin-top:10px">画面维度</div>
+        <div style="display:flex;gap:4px;margin-bottom:10px">
+          <span class="mock-chip active" style="font-size:10px;padding:2px 8px">2D 动画</span>
+          <span class="mock-chip" style="font-size:10px;padding:2px 8px">3D 渲染</span>
+          <span class="mock-chip" style="font-size:10px;padding:2px 8px">写实</span>
+        </div>
+        <div class="mock-label">时长</div>
+        <select class="mock-input" style="margin-bottom:10px;font-size:10px">
+          <option>60 秒</option>
+        </select>
+        <div class="mock-label">场景数</div>
+        <select class="mock-input" style="margin-bottom:14px;font-size:10px">
+          <option>5 个场景</option>
+        </select>
+        <div class="mock-btn mock-btn-primary" style="width:100%;justify-content:center;background:var(--accent);border-color:var(--accent)">▶ 生成视频</div>
+      </div>
+      <!-- 中央画布 -->
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px">
+          <div style="width:360px;aspect-ratio:16/9;background:var(--bg);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div style="font-size:11px;font-weight:600;margin-bottom:8px">🎬 阶段 3/5：视频片段生成中</div>
+            <div class="mock-progress" style="width:70%"><div class="mock-progress-bar" style="width:65%"></div></div>
+            <div style="font-size:10px;color:var(--text2)">场景 3/5 · cogvideox-flash · 预计剩余 2 分钟</div>
+          </div>
+        </div>
+        <!-- 时间轴 -->
+        <div style="height:60px;background:var(--bg3);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:4px">
+          <div style="flex:1;height:30px;background:var(--accent);opacity:.3;border-radius:4px"></div>
+          <div style="flex:1;height:30px;background:var(--pink);opacity:.3;border-radius:4px"></div>
+          <div style="flex:1;height:30px;background:var(--cyan);opacity:.5;border-radius:4px;border:1px solid var(--cyan)"></div>
+          <div style="flex:1;height:30px;background:var(--bg4);border-radius:4px;border:1px dashed var(--border)"></div>
+          <div style="flex:1;height:30px;background:var(--bg4);border-radius:4px;border:1px dashed var(--border)"></div>
+        </div>
+      </div>
+      <!-- 右面板 -->
+      <div style="width:200px;background:var(--bg3);border-left:1px solid var(--border);padding:14px;font-size:11px">
+        <div style="font-weight:700;margin-bottom:10px">项目属性</div>
+        <div class="mock-label">视频供应商</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:8px"><option>智谱 AI</option></select>
+        <div class="mock-label">视频模型</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:8px"><option>cogvideox-flash</option></select>
+        <div class="mock-label">语音</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:8px"><option>自动选择</option></select>
+        <div class="mock-label">画面比例</div>
+        <select class="mock-input" style="font-size:10px"><option>16:9</option></select>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 3-2：Studio 界面 — 视频生成进度</p>
+
+  <h2>3.3 流水线 5 阶段详解</h2>
+  <table>
+    <tr><th>阶段</th><th>说明</th><th>调用的模型</th><th>耗时参考</th></tr>
+    <tr><td>1. 剧本生成</td><td>AI 根据主题写出结构化剧本（角色、场景、对白）</td><td>DeepSeek / OpenAI / Claude</td><td>5-15 秒</td></tr>
+    <tr><td>2. 图片生成</td><td>并行生成角色形象图 + 场景背景图</td><td>即梦AI / 智谱 / OpenAI</td><td>10-30 秒</td></tr>
+    <tr><td>3. 视频片段</td><td>每个场景生成一段视频（5-10秒/段）</td><td>智谱 / MiniMax / Kling / Sora</td><td>1-5 分钟/段</td></tr>
+    <tr><td>4. 语音合成</td><td>角色对白转语音音频</td><td>讯飞 / 火山 / Fish Audio / OpenAI</td><td>5-15 秒/段</td></tr>
+    <tr><td>5. 终片合成</td><td>FFmpeg 拼接所有片段 + 叠加语音 + BGM</td><td>本地 FFmpeg</td><td>10-30 秒</td></tr>
+  </table>
+
+  <div class="tip-box">生成过程中可通过 SSE 实时查看进度，页面会显示当前阶段、处理的场景编号和预计剩余时间。</div>
+</div>
+
+<!-- ════════════════════════════════════════ 第4章 ════════════════════════════════════════ -->
+<div class="page" id="ch4">
+  <h1>四、AI 数字人生成（口播 / 广告）</h1>
+
+  <h2>4.1 进入数字人页面</h2>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">在左侧导航栏点击 <strong>「🧑‍💼 AI 数字人」</strong></div>
+  </div>
+
+  <h2>4.2 选择人物形象</h2>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">从 <strong>预设形象</strong> 中选择一个，或点击 <strong>「+ 上传你的人像」</strong> 上传自己的照片</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">人物形象</div>
+      <div class="mock-avatar-grid">
+        <div class="mock-avatar-card active">
+          <div class="avatar-icon">👩‍💼</div>
+          <div style="font-weight:600">商务女性</div>
+        </div>
+        <div class="mock-avatar-card">
+          <div class="avatar-icon">👨‍💼</div>
+          <div style="font-weight:600">商务男性</div>
+        </div>
+        <div class="mock-avatar-card">
+          <div class="avatar-icon">📺</div>
+          <div style="font-weight:600">新闻主播</div>
+        </div>
+        <div class="mock-avatar-card">
+          <div class="avatar-icon">👨‍🏫</div>
+          <div style="font-weight:600">教育讲师</div>
+        </div>
+        <div class="mock-avatar-card">
+          <div class="avatar-icon">🎨</div>
+          <div style="font-weight:600">动漫角色</div>
+        </div>
+        <div class="mock-avatar-card" style="border-style:dashed">
+          <div class="avatar-icon">➕</div>
+          <div style="font-weight:600;color:var(--text2)">上传人像</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-1：选择或上传数字人形象</p>
+
+  <div class="warn-box">上传照片要求：正面半身照、光线均匀、背景简洁、面部清晰无遮挡，建议分辨率 512×512 以上。</div>
+
+  <h2>4.3 选择音色</h2>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">选择数字人的说话 <strong>音色</strong>，或上传自定义参考音频进行声音克隆</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">音色</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="mock-chip active">○ 自动</span>
+        <span class="mock-chip">○ 甜美女声</span>
+        <span class="mock-chip">○ 专业女声</span>
+        <span class="mock-chip">○ 成熟男声</span>
+        <span class="mock-chip">○ 青年男声</span>
+        <span class="mock-chip">○ 童声</span>
+        <span class="mock-chip" style="border-style:dashed">+ 上传自己的声音</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-2：音色选择（含声音克隆）</p>
+
+  <h2>4.4 选择背景场景</h2>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">选择数字人出现的 <strong>背景环境</strong></div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">背景场景</div>
+      <div class="mock-bg-grid">
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#1a3a5c,#2a5a8c)">办公室</div>
+        <div class="mock-bg-card active" style="background:linear-gradient(135deg,#2a1a3c,#4a2a6c);border-color:var(--accent)">演播室</div>
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#2a3a4a,#4a5a6a)">教室</div>
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#1a4a2a,#2a6a3a)">户外</div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-3：背景场景选择</p>
+
+  <h2>4.5 选择视频模型</h2>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">在设置区域选择 <strong>视频模型</strong>（决定画质和生成速度）</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">视频模型</div>
+      <select class="mock-input" style="margin-bottom:12px">
+        <option>跟随全局默认</option>
+        <option>cogvideox-flash — 智谱 (免费额度)</option>
+        <option>I2V-01 — MiniMax</option>
+        <option selected>MiniMax-Hailuo-2.3 — MiniMax (推荐)</option>
+        <option>MiniMax-Hailuo-2.3-Fast — MiniMax (快速)</option>
+        <option>kling-v3 — Kling AI</option>
+        <option>kling-v2-master — Kling AI</option>
+      </select>
+      <div class="tip-box" style="margin:0;font-size:11px">数字人推荐：MiniMax Hailuo 2.3（画质最好）或 Kling v3（人物动态自然）</div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-4：选择 AI 视频模型</p>
+
+  <table>
+    <tr><th>模型</th><th>平台</th><th>质量</th><th>速度</th><th>价格</th><th>推荐场景</th></tr>
+    <tr><td>cogvideox-flash</td><td>智谱 AI</td><td>⭐⭐⭐</td><td>⭐⭐⭐⭐⭐</td><td>免费额度</td><td>测试、低成本</td></tr>
+    <tr><td>I2V-01</td><td>MiniMax</td><td>⭐⭐⭐⭐</td><td>⭐⭐⭐⭐</td><td>中</td><td>一般口播</td></tr>
+    <tr><td>Hailuo-2.3</td><td>MiniMax</td><td>⭐⭐⭐⭐⭐</td><td>⭐⭐⭐</td><td>中高</td><td>高质量广告</td></tr>
+    <tr><td>kling-v3</td><td>Kling AI</td><td>⭐⭐⭐⭐⭐</td><td>⭐⭐⭐</td><td>中高</td><td>人物动态丰富</td></tr>
+    <tr><td>kling-v2-master</td><td>Kling AI</td><td>⭐⭐⭐⭐</td><td>⭐⭐⭐⭐</td><td>中</td><td>均衡之选</td></tr>
+  </table>
+
+  <h2>4.6 输入台词 / AI 生成文案</h2>
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">在 <strong>「数字人台词」</strong> 文本框中输入口播文案，或使用 AI 自动生成</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">数字人台词</div>
+      <textarea class="mock-textarea" style="min-height:80px">家人们！今天给大家带来一个超级福利！淘宝闪购今日活动，外卖只需几块钱起！赶紧点击下方链接，直接下单，手慢无哦！</textarea>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <span class="mock-btn" style="font-size:10px">🤖 AI 生成文案</span>
+        <span class="mock-btn" style="font-size:10px">✂️ 智能分段</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-5：输入台词或 AI 生成广告文案</p>
+
+  <h3>AI 文案模板</h3>
+  <table>
+    <tr><th>模板</th><th>说明</th><th>适用场景</th></tr>
+    <tr><td><code>promo</code></td><td>商品促销文案（300-500字）</td><td>带货、优惠活动</td></tr>
+    <tr><td><code>knowledge</code></td><td>知识科普内容</td><td>教学、解说</td></tr>
+    <tr><td><code>news</code></td><td>新闻播报风格</td><td>资讯、快报</td></tr>
+    <tr><td><code>story</code></td><td>故事叙述</td><td>品牌故事、情感营销</td></tr>
+    <tr><td><code>tutorial</code></td><td>教程讲解</td><td>产品教程、攻略</td></tr>
+  </table>
+
+  <h2>4.7 多段式生成（推荐）</h2>
+
+  <p>点击 <strong>「✂️ 智能分段」</strong>，AI 会将长文案自动拆分为多段，每段有独立的表情和动作，让数字人更自然。</p>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">分段预览</div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span class="badge" style="background:var(--accent);color:#fff">段 1</span>
+          <span class="badge" style="background:rgba(251,191,36,.2);color:var(--amber)">excited</span>
+        </div>
+        <div style="font-size:11px">家人们！今天给大家带来一个超级福利！</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px">🎭 动作：挥手打招呼，面带兴奋表情</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span class="badge" style="background:var(--accent);color:#fff">段 2</span>
+          <span class="badge" style="background:rgba(110,231,183,.2);color:var(--green)">smile</span>
+        </div>
+        <div style="font-size:11px">淘宝闪购今日活动，外卖只需几块钱起！</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px">🎭 动作：双手比出OK手势，微笑点头</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <span class="badge" style="background:var(--accent);color:#fff">段 3</span>
+          <span class="badge" style="background:rgba(251,191,36,.2);color:var(--amber)">excited</span>
+        </div>
+        <div style="font-size:11px">赶紧点击下方链接，直接下单，手慢无哦！</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px">🎭 动作：指向下方，竖起大拇指</div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-6：智能分段 — 每段独立表情和动作</p>
+
+  <h2>4.8 生成并查看结果</h2>
+  <div class="step">
+    <div class="step-num">7</div>
+    <div class="step-body">点击 <strong>「生成数字人视频」</strong> 按钮，等待生成完成</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:16px;text-align:center">
+      <div class="mock-btn mock-btn-primary" style="padding:10px 32px;font-size:14px;font-weight:700;background:var(--accent);border-color:var(--accent)">🎬 生成数字人视频</div>
+      <div style="margin-top:14px">
+        <div style="font-size:11px;margin-bottom:6px">阶段：视频合成中 (3/4)</div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:75%"></div></div>
+        <div style="font-size:10px;color:var(--text2)">正在将视频片段与语音合成...</div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 4-7：生成进度显示</p>
+
+  <div class="step">
+    <div class="step-num">8</div>
+    <div class="step-body">生成完成后，在右侧预览区播放视频，可直接 <strong>下载</strong></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════ 第5章 ════════════════════════════════════════ -->
+<div class="page" id="ch5">
+  <h1>五、工作流画布（可视化编排）</h1>
+
+  <p>工作流画布允许你通过 <strong>拖拽节点 + 连线</strong> 的方式，可视化编排视频生产流程。</p>
+
+  <h2>5.1 进入工作流</h2>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">在左侧导航栏点击 <strong>「🔗 工作流画布」</strong>，或直接访问 <code>http://localhost:3007/workflow.html</code></div>
+  </div>
+
+  <h2>5.2 工作流界面总览</h2>
+
+  <!-- 完整工作流界面模拟 -->
+  <div class="mock">
+    <!-- 顶部工具栏 -->
+    <div class="mock-topbar">
+      <div class="mock-topbar-left">
+        <span class="mock-btn-sm" style="padding:2px 8px;border-radius:4px;border:1px solid var(--border)">← 返回</span>
+        <input class="mock-input" value="我的广告视频工作流" style="width:180px;font-weight:600;font-size:12px">
+        <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">就绪</span>
+      </div>
+      <div class="mock-topbar-right">
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">↶ 撤销</span>
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">↷ 重做</span>
+        <span style="color:var(--border)">|</span>
+        <span class="mock-btn" style="font-size:11px">💾 保存</span>
+        <span class="mock-btn mock-btn-primary" style="background:var(--accent);border-color:var(--accent);font-size:11px">▶ 执行</span>
+      </div>
+    </div>
+    <!-- 主体 -->
+    <div class="mock-layout" style="min-height:400px">
+      <!-- 左侧节点面板 -->
+      <div class="mock-sidebar" style="width:170px">
+        <div style="font-weight:700;font-size:11px;margin-bottom:8px;color:var(--text2)">添加节点</div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--green)">T</div>
+          <div class="node-card-text"><div class="node-card-title">文本</div><div class="node-card-desc">脚本、广告词</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--cyan)">🏞️</div>
+          <div class="node-card-text"><div class="node-card-title">背景</div><div class="node-card-desc">场景背景画面</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--orange)">👤</div>
+          <div class="node-card-text"><div class="node-card-title">人物</div><div class="node-card-desc">角色形象</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--pink)">🎬</div>
+          <div class="node-card-text"><div class="node-card-title">视频</div><div class="node-card-desc">文/图生视频</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--amber)">🧑‍💼</div>
+          <div class="node-card-text"><div class="node-card-title">数字人</div><div class="node-card-desc">口播/讲解</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--purple)">🎤</div>
+          <div class="node-card-text"><div class="node-card-title">配音</div><div class="node-card-desc">TTS 合成</div></div>
+        </div>
+        <div class="node-card" style="margin-bottom:4px">
+          <div class="node-card-icon" style="background:var(--teal)">🎵</div>
+          <div class="node-card-text"><div class="node-card-title">音乐</div><div class="node-card-desc">BGM</div></div>
+        </div>
+        <div class="node-card">
+          <div class="node-card-icon" style="background:var(--slate)">⬜</div>
+          <div class="node-card-text"><div class="node-card-title">合成</div><div class="node-card-desc">合并/导出</div></div>
+        </div>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
+          <span class="mock-btn" style="font-size:10px;justify-content:center">✕ 清空画布</span>
+          <span class="mock-btn" style="font-size:10px;justify-content:center">⊞ 自动排列</span>
+        </div>
+      </div>
+      <!-- 画布区域 -->
+      <div class="mock-canvas" style="position:relative">
+        <!-- 节点1: 文本 -->
+        <div class="mock-node" style="top:30px;left:20px;width:200px">
+          <div class="mock-node-header" style="border-bottom-color:var(--green)">
+            <div class="mock-node-icon" style="background:var(--green)">T</div>
+            广告文案
+            <span style="margin-left:auto;font-size:9px" class="badge" style="background:rgba(52,211,153,.2);color:var(--teal)">完成</span>
+          </div>
+          <div class="mock-node-body">
+            <div style="font-size:10px;color:var(--text2);line-height:1.4">"家人们！今天给大家带来一个超级福利..."</div>
+          </div>
+          <div class="mock-node-port out" style="top:30px"></div>
+        </div>
+
+        <!-- 节点2: 数字人 -->
+        <div class="mock-node" style="top:20px;left:280px;width:200px">
+          <div class="mock-node-header">
+            <div class="mock-node-icon" style="background:var(--amber)">🧑‍💼</div>
+            数字人生成
+            <span style="margin-left:auto;font-size:9px;color:var(--amber)">运行中</span>
+          </div>
+          <div class="mock-node-body">
+            <div style="font-size:10px;margin-bottom:4px">形象：商务女性</div>
+            <div style="font-size:10px;margin-bottom:4px">模型：Hailuo-2.3</div>
+            <div class="mock-progress"><div class="mock-progress-bar" style="width:40%"></div></div>
+          </div>
+          <div class="mock-node-port in" style="top:30px"></div>
+          <div class="mock-node-port out" style="top:30px"></div>
+        </div>
+
+        <!-- 节点3: 配音 -->
+        <div class="mock-node" style="top:180px;left:20px;width:200px">
+          <div class="mock-node-header">
+            <div class="mock-node-icon" style="background:var(--purple)">🎤</div>
+            语音合成
+          </div>
+          <div class="mock-node-body">
+            <div style="font-size:10px">音色：甜美女声</div>
+            <div style="font-size:10px">引擎：火山引擎</div>
+          </div>
+          <div class="mock-node-port out" style="top:30px"></div>
+        </div>
+
+        <!-- 节点4: 音乐 -->
+        <div class="mock-node" style="top:310px;left:20px;width:200px">
+          <div class="mock-node-header">
+            <div class="mock-node-icon" style="background:var(--teal)">🎵</div>
+            背景音乐
+          </div>
+          <div class="mock-node-body">
+            <div style="font-size:10px">bgm_energetic.mp3</div>
+            <div style="font-size:10px;color:var(--text2)">音量: 30%</div>
+          </div>
+          <div class="mock-node-port out" style="top:30px"></div>
+        </div>
+
+        <!-- 节点5: 合成 -->
+        <div class="mock-node" style="top:180px;left:280px;width:200px">
+          <div class="mock-node-header">
+            <div class="mock-node-icon" style="background:var(--slate)">⬜</div>
+            最终合成
+            <span style="margin-left:auto;font-size:9px;color:var(--text2)">空闲</span>
+          </div>
+          <div class="mock-node-body">
+            <div style="font-size:10px">等待上游节点完成</div>
+          </div>
+          <div class="mock-node-port in" style="top:30px"></div>
+        </div>
+
+        <!-- 模拟连线 -->
+        <div class="mock-conn" style="top:60px;left:218px;width:60px"></div>
+        <div class="mock-conn" style="top:213px;left:218px;width:60px"></div>
+        <div class="mock-conn" style="top:340px;left:218px;width:60px;transform:rotate(-30deg);transform-origin:left"></div>
+        <div class="mock-conn" style="top:90px;left:400px;width:1px;height:90px;border-top:none;border-left:2px dashed rgba(124,108,240,.5)"></div>
+      </div>
+    </div>
+    <!-- 底部工具栏 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--bg3);border-top:1px solid var(--border);font-size:11px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">⊞</span>
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">⬍ 适应画布</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">−</span>
+        <span>100%</span>
+        <span class="mock-btn-sm" style="padding:2px 6px;border-radius:4px;border:1px solid var(--border)">+</span>
+      </div>
+      <div style="color:var(--text2)">5 节点</div>
+    </div>
+  </div>
+  <p class="fig-caption">图 5-1：工作流画布全貌 — 节点面板 + 画布 + 连线</p>
+
+  <h2>5.3 添加节点（3 种方式）</h2>
+
+  <h4>方式一：从侧栏拖拽</h4>
+  <div class="step">
+    <div class="step-num">A</div>
+    <div class="step-body">在左侧 <strong>「添加节点」</strong> 面板中，<strong>拖拽</strong> 任意节点卡片到画布中</div>
+  </div>
+
+  <h4>方式二：点击添加</h4>
+  <div class="step">
+    <div class="step-num">B</div>
+    <div class="step-body">直接 <strong>点击</strong> 左侧节点卡片，节点会出现在画布中央</div>
+  </div>
+
+  <h4>方式三：右键菜单</h4>
+  <div class="step">
+    <div class="step-num">C</div>
+    <div class="step-body">在画布空白处 <strong>右键</strong>，弹出「添加节点」菜单，选择节点类型</div>
+  </div>
+
+  <div class="mock" style="max-width:200px;margin:18px auto">
+    <div style="padding:2px 0">
+      <div style="padding:6px 14px;font-size:11px;font-weight:700;color:var(--text2);border-bottom:1px solid var(--border)">添加节点</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">T 文本</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">🏞️ 背景</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">👤 人物</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default;background:var(--bg3)">🎬 视频</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">🧑‍💼 数字人</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">🎤 配音</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">🎵 音乐</div>
+      <div style="padding:6px 14px;font-size:11px;cursor:default">⬜ 合成</div>
+    </div>
+  </div>
+  <p class="fig-caption">图 5-2：右键菜单添加节点</p>
+
+  <h2>5.4 八种节点类型详解</h2>
+
+  <!-- 文本节点 -->
+  <h3>① 文本节点 <span class="badge" style="background:var(--green);color:#000">T 文本</span></h3>
+  <p>输入或 AI 生成剧本/文案内容。支持模板：短剧、动作、广告、品牌文案、自由创作。</p>
+  <div class="mock" style="max-width:280px;margin:14px auto">
+    <div class="mock-node" style="position:relative;width:100%">
+      <div class="mock-node-header" style="border-bottom-color:var(--green)">
+        <div class="mock-node-icon" style="background:var(--green)">T</div> 广告文案
+      </div>
+      <div class="mock-node-body">
+        <div class="mock-label">模式</div>
+        <div style="display:flex;gap:3px;margin-bottom:8px">
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">短剧</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">动作</span>
+          <span class="mock-chip active" style="font-size:9px;padding:2px 6px">广告</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">文案</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">自由</span>
+        </div>
+        <div class="mock-label">内容</div>
+        <textarea class="mock-textarea" style="min-height:40px;font-size:10px">淘宝闪购今日活动，外卖只需几块钱起...</textarea>
+        <div style="display:flex;gap:4px;margin-top:6px">
+          <span class="mock-btn-sm mock-btn" style="font-size:9px">🤖 AI 生成</span>
+          <span class="mock-btn-sm mock-btn" style="font-size:9px">✂️ 自动拆分</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 背景节点 -->
+  <h3>② 背景节点 <span class="badge" style="background:var(--cyan);color:#000">🏞️ 背景</span></h3>
+  <p>生成或上传场景背景图。</p>
+  <div class="mock" style="max-width:280px;margin:14px auto">
+    <div class="mock-node" style="position:relative;width:100%">
+      <div class="mock-node-header"><div class="mock-node-icon" style="background:var(--cyan)">🏞️</div> 瀑布场景</div>
+      <div class="mock-node-body">
+        <div class="mock-label">描述</div>
+        <textarea class="mock-textarea" style="min-height:30px;font-size:10px">高山瀑布，云雾缭绕，仙气十足</textarea>
+        <div class="mock-label" style="margin-top:6px">维度</div>
+        <div style="display:flex;gap:3px;margin-bottom:6px">
+          <span class="mock-chip active" style="font-size:9px;padding:2px 6px">2D</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">3D</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">写实</span>
+        </div>
+        <span class="mock-btn-sm mock-btn" style="font-size:9px">🎨 生成背景</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 人物节点 -->
+  <h3>③ 人物节点 <span class="badge" style="background:var(--orange);color:#000">👤 人物</span></h3>
+  <p>生成角色形象图。可设置名称、描述、种族等属性。</p>
+
+  <!-- 视频节点 -->
+  <h3>④ 视频节点 <span class="badge" style="background:var(--pink);color:#000">🎬 视频</span></h3>
+  <p>核心节点。支持三种模式：文生视频(t2v)、图生视频(i2v)、上传视频。</p>
+  <div class="mock" style="max-width:280px;margin:14px auto">
+    <div class="mock-node" style="position:relative;width:100%">
+      <div class="mock-node-header"><div class="mock-node-icon" style="background:var(--pink)">🎬</div> 视频生成</div>
+      <div class="mock-node-body">
+        <div class="mock-label">模式</div>
+        <div style="display:flex;gap:3px;margin-bottom:8px">
+          <span class="mock-chip active" style="font-size:9px;padding:2px 6px">文生视频</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">图生视频</span>
+          <span class="mock-chip" style="font-size:9px;padding:2px 6px">上传</span>
+        </div>
+        <div class="mock-label">提示词</div>
+        <textarea class="mock-textarea" style="min-height:30px;font-size:10px">少女在瀑布前挥剑，白色长发飘动</textarea>
+        <div class="mock-label" style="margin-top:6px">模型</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:6px">
+          <option>cogvideox-flash (智谱)</option>
+        </select>
+        <span class="mock-btn-sm mock-btn" style="font-size:9px">🎬 生成视频</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 数字人节点 -->
+  <h3>⑤ 数字人节点 <span class="badge" style="background:var(--amber);color:#000">🧑‍💼 数字人</span></h3>
+  <p>在工作流中直接生成数字人口播视频，可选择预设形象、设置音色和背景。</p>
+  <div class="mock" style="max-width:280px;margin:14px auto">
+    <div class="mock-node" style="position:relative;width:100%">
+      <div class="mock-node-header"><div class="mock-node-icon" style="background:var(--amber)">🧑‍💼</div> 数字人口播</div>
+      <div class="mock-node-body">
+        <div class="mock-label">形象</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:6px">
+          <div class="mock-avatar-card active" style="padding:2px;font-size:8px;border-radius:4px"><div style="font-size:16px">👩‍💼</div></div>
+          <div class="mock-avatar-card" style="padding:2px;font-size:8px;border-radius:4px"><div style="font-size:16px">👨‍💼</div></div>
+          <div class="mock-avatar-card" style="padding:2px;font-size:8px;border-radius:4px"><div style="font-size:16px">📺</div></div>
+          <div class="mock-avatar-card" style="padding:2px;font-size:8px;border-radius:4px;border-style:dashed"><div style="font-size:16px">+</div></div>
+        </div>
+        <div class="mock-label">背景</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:6px">
+          <option>演播室</option>
+        </select>
+        <div class="mock-label">模型</div>
+        <select class="mock-input" style="font-size:10px;margin-bottom:6px">
+          <option>MiniMax-Hailuo-2.3</option>
+        </select>
+        <span class="mock-btn-sm mock-btn" style="font-size:9px">🧑‍💼 生成数字人</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 配音节点 -->
+  <h3>⑥ 配音节点 <span class="badge" style="background:var(--purple);color:#fff">🎤 配音</span></h3>
+  <p>TTS 语音合成，将文本转为语音音频。</p>
+
+  <!-- 音乐节点 -->
+  <h3>⑦ 音乐节点 <span class="badge" style="background:var(--teal);color:#000">🎵 音乐</span></h3>
+  <p>上传或选择背景音乐，设置音量。</p>
+
+  <!-- 合成节点 -->
+  <h3>⑧ 合成节点 <span class="badge" style="background:var(--slate);color:#000">⬜ 合成</span></h3>
+  <p>终点节点。将上游的视频、音频、字幕等合并为最终成片。</p>
+
+  <h2>5.5 连接节点</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">每个节点左侧有 <strong>输入端口（蓝色圆点）</strong>，右侧有 <strong>输出端口</strong></div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">从一个节点的 <strong>输出端口拖拽到另一个节点的输入端口</strong>，即可建立连线</div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">连线表示数据流向：前一个节点的输出作为后一个节点的输入</div>
+  </div>
+
+  <div class="tip-box">典型连线示例：文本 → 数字人（台词传入）、配音 → 合成（音频传入）、视频 → 合成（画面传入）</div>
+
+  <h2>5.6 执行工作流</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">完成所有节点配置和连线后，点击右上角 <strong>「▶ 执行」</strong> 按钮</div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">系统按 <strong>DAG 拓扑顺序</strong> 依次执行节点，每个节点会显示状态：<br>
+      <span class="badge" style="background:var(--bg4);color:var(--text2)">空闲</span>
+      <span class="badge" style="background:rgba(251,191,36,.15);color:var(--amber)">运行中</span>
+      <span class="badge" style="background:rgba(52,211,153,.15);color:var(--teal)">完成</span>
+      <span class="badge" style="background:rgba(244,114,182,.15);color:var(--pink)">错误</span>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">最终合成节点完成后，可在其预览区 <strong>播放和下载</strong> 成品视频</div>
+  </div>
+
+  <h2>5.7 其他画布操作</h2>
+  <table>
+    <tr><th>操作</th><th>方式</th></tr>
+    <tr><td>缩放画布</td><td>鼠标滚轮，或底部工具栏 [−] [+] 按钮</td></tr>
+    <tr><td>拖动画布</td><td>按住空白区域拖拽</td></tr>
+    <tr><td>移动节点</td><td>按住节点头部拖拽</td></tr>
+    <tr><td>删除节点</td><td>点击节点右上角 ✕ 按钮</td></tr>
+    <tr><td>折叠节点</td><td>点击节点头部折叠按钮</td></tr>
+    <tr><td>适应画布</td><td>底部工具栏「⬍ 适应画布」按钮</td></tr>
+    <tr><td>自动排列</td><td>侧栏底部「⊞ 自动排列」按钮</td></tr>
+    <tr><td>清空画布</td><td>侧栏底部「✕ 清空画布」按钮</td></tr>
+    <tr><td>保存工作流</td><td>顶部「💾 保存」或 Ctrl+S</td></tr>
+    <tr><td>撤销 / 重做</td><td>顶部「↶ 撤销」「↷ 重做」</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════ 第6章 ════════════════════════════════════════ -->
+<div class="page" id="ch6">
+  <h1>六、图生视频（I2V）</h1>
+
+  <h2>6.1 操作步骤</h2>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">侧栏点击 <strong>「🎞️ 图生视频」</strong></div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">点击上传区域，选择一张图片（JPG/PNG/WebP）</div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">输入 <strong>动态描述提示词</strong>（如 "镜头缓慢推进，花瓣飘落"）</div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">选择视频模型和参数（时长、比例）</div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">点击 <strong>「生成视频」</strong>，等待完成后播放/下载</div>
+  </div>
+
+  <div class="mock" style="max-width:520px;margin:18px auto">
+    <div style="padding:18px">
+      <div style="display:flex;gap:16px">
+        <div style="width:180px;aspect-ratio:1;background:var(--bg3);border:2px dashed var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:28px;margin-bottom:4px">🖼️</div>
+          <div style="font-size:10px;color:var(--text2)">已上传图片</div>
+          <div style="font-size:10px;color:var(--green)">landscape.jpg</div>
+        </div>
+        <div style="flex:1">
+          <div class="mock-label">动态描述</div>
+          <textarea class="mock-textarea" style="min-height:60px;font-size:10px">镜头缓慢推进，云层流动，远处山峰若隐若现</textarea>
+          <div class="mock-label" style="margin-top:8px">视频模型</div>
+          <select class="mock-input" style="font-size:10px;margin-bottom:8px">
+            <option>cogvideox-flash (智谱)</option>
+            <option>I2V-01 (MiniMax)</option>
+            <option>kling-v3 (Kling AI)</option>
+          </select>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="flex:1"><div class="mock-label">时长</div><select class="mock-input" style="font-size:10px"><option>5 秒</option></select></div>
+            <div style="flex:1"><div class="mock-label">比例</div><select class="mock-input" style="font-size:10px"><option>16:9</option></select></div>
+          </div>
+          <div class="mock-btn mock-btn-primary" style="width:100%;justify-content:center;background:var(--accent);border-color:var(--accent)">🎬 生成视频</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 6-1：图生视频界面</p>
+
+  <h2>6.2 支持 i2v 的模型</h2>
+  <table>
+    <tr><th>平台</th><th>模型</th><th>特点</th></tr>
+    <tr><td>智谱 AI</td><td>cogvideox-flash</td><td>免费额度，速度快</td></tr>
+    <tr><td>MiniMax</td><td>I2V-01 / I2V-01-live / Hailuo-2.3</td><td>画质好，人物自然</td></tr>
+    <tr><td>Kling AI</td><td>kling-v3 / v2-master</td><td>动态丰富</td></tr>
+    <tr><td>OpenAI</td><td>sora-2</td><td>最强画质，价格高</td></tr>
+    <tr><td>即梦 AI</td><td>jimeng_i2v_first_v30</td><td>中文优化</td></tr>
+    <tr><td>Runway</td><td>gen-3</td><td>专业级</td></tr>
+    <tr><td>Luma</td><td>dream-machine-2</td><td>电影感</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════ 第7章 ════════════════════════════════════════ -->
+<div class="page" id="ch7">
+  <h1>七、模型 & 平台完整参考表</h1>
+
+  <h2>7.1 视频生成模型（16 个平台）</h2>
+  <table>
+    <tr><th>平台</th><th>模型</th><th>i2v</th><th>t2v</th><th>特点</th></tr>
+    <tr><td>智谱 AI</td><td>cogvideox-flash / cogvideox-5b</td><td>✅</td><td>✅</td><td>免费额度，快速</td></tr>
+    <tr><td>MiniMax</td><td>I2V-01 / I2V-01-live / Hailuo-2.3 / 2.3-Fast</td><td>✅</td><td>✅</td><td>高画质，数字人首选</td></tr>
+    <tr><td>Kling AI</td><td>kling-v3 / v2-master / v2.5-turbo-pro / v1-6</td><td>✅</td><td>✅</td><td>动画优秀</td></tr>
+    <tr><td>OpenAI Sora</td><td>sora-2</td><td>✅</td><td>✅</td><td>最强画质</td></tr>
+    <tr><td>Pika</td><td>pika-2.0</td><td>✅</td><td>✅</td><td>2D/3D 质量好</td></tr>
+    <tr><td>Runway</td><td>gen-3 / gen-2</td><td>✅</td><td>✅</td><td>专业级特效</td></tr>
+    <tr><td>Luma</td><td>dream-machine-2</td><td>✅</td><td>✅</td><td>电影感</td></tr>
+    <tr><td>Veo</td><td>veo-2</td><td>✅</td><td>✅</td><td>Google 实验性</td></tr>
+    <tr><td>即梦 AI</td><td>jimeng_t2v_v30 / jimeng_i2v_first_v30</td><td>✅</td><td>✅</td><td>中文，1080p</td></tr>
+    <tr><td>FAL.ai</td><td>Seedance / HunyuanVideo / Wan 2.2</td><td>✅</td><td>✅</td><td>代理网关</td></tr>
+    <tr><td>Seedance</td><td>seedance-2.0</td><td>✅</td><td>✅</td><td>快速动画</td></tr>
+    <tr><td>火山方舟</td><td>doubao-seedance-*</td><td>✅</td><td>✅</td><td>字节直连</td></tr>
+    <tr><td>MXAPI</td><td>mxapi-*</td><td>✅</td><td>✅</td><td>聚合平台</td></tr>
+    <tr><td>HuggingFace</td><td>text-to-video-ms-1.7b</td><td>❌</td><td>✅</td><td>开源</td></tr>
+    <tr><td>Replicate</td><td>自定义</td><td>✅</td><td>✅</td><td>定制训练</td></tr>
+    <tr><td>Demo</td><td>FFmpeg 占位</td><td>—</td><td>—</td><td>仅测试</td></tr>
+  </table>
+
+  <h2>7.2 图片生成模型</h2>
+  <table>
+    <tr><th>平台</th><th>模型</th><th>角色图</th><th>场景图</th><th>特点</th></tr>
+    <tr><td>即梦 AI</td><td>jimeng_t2i_v30</td><td>✅</td><td>✅</td><td>中文优化，风格丰富</td></tr>
+    <tr><td>智谱 AI</td><td>cogview-3-flash</td><td>✅</td><td>✅</td><td>快速，免费额度</td></tr>
+    <tr><td>OpenAI</td><td>dall-e-3</td><td>✅</td><td>✅</td><td>画质最好</td></tr>
+    <tr><td>Stability</td><td>stable-diffusion</td><td>✅</td><td>❌</td><td>开源可控</td></tr>
+    <tr><td>Replicate</td><td>自定义</td><td>✅</td><td>❌</td><td>训练定制</td></tr>
+    <tr><td>MxAPI</td><td>聚合</td><td>✅</td><td>✅</td><td>多模型聚合</td></tr>
+    <tr><td>NanoBanana</td><td>自定义</td><td>✅</td><td>✅</td><td>高分辨率</td></tr>
+  </table>
+
+  <h2>7.3 TTS 语音合成（10 个平台）</h2>
+  <table>
+    <tr><th>优先级</th><th>平台</th><th>声音克隆</th><th>特点</th></tr>
+    <tr><td>1</td><td>智谱 AI</td><td>Azure</td><td>中文优先</td></tr>
+    <tr><td>2</td><td>火山引擎</td><td>✅</td><td>抖音同款音色</td></tr>
+    <tr><td>3</td><td>百度</td><td>❌</td><td>中文自然</td></tr>
+    <tr><td>4</td><td>阿里云 CosyVoice</td><td>可选</td><td>中文专注</td></tr>
+    <tr><td>5</td><td>Fish Audio</td><td>✅</td><td>全功能克隆</td></tr>
+    <tr><td>6</td><td>MiniMax</td><td>❌</td><td>神经网络</td></tr>
+    <tr><td>7</td><td>讯飞</td><td>可选</td><td>WebSocket</td></tr>
+    <tr><td>8</td><td>ElevenLabs</td><td>✅</td><td>高端克隆</td></tr>
+    <tr><td>9</td><td>OpenAI TTS</td><td>❌</td><td>英文为主</td></tr>
+    <tr><td>10</td><td>Windows SAPI</td><td>❌</td><td>本地免费</td></tr>
+  </table>
+
+  <h2>7.4 剧本 / 文案 AI</h2>
+  <table>
+    <tr><th>平台</th><th>模型</th><th>中文质量</th><th>价格</th></tr>
+    <tr><td>DeepSeek</td><td>deepseek-chat / deepseek-reasoner</td><td>⭐⭐⭐⭐⭐</td><td>极低</td></tr>
+    <tr><td>Anthropic</td><td>claude-*</td><td>⭐⭐⭐⭐⭐</td><td>中高</td></tr>
+    <tr><td>OpenAI</td><td>gpt-4o / gpt-4o-mini</td><td>⭐⭐⭐⭐</td><td>中</td></tr>
+    <tr><td>通义千问</td><td>qwen-*</td><td>⭐⭐⭐⭐</td><td>低</td></tr>
+    <tr><td>智谱 AI</td><td>glm-4-flash</td><td>⭐⭐⭐⭐</td><td>有免费额度</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════ 第8章 ════════════════════════════════════════ -->
+<div class="page" id="ch8">
+  <h1>八、实战案例：制作抖音广告数字人</h1>
+
+  <p>以制作"淘宝闪购/外卖优惠"风格的广告口播数字人为例，完整走一遍流程。</p>
+
+  <h2>前置准备</h2>
+  <div class="warn-box">开始前确保已在设置页面配置好至少一个视频模型（推荐智谱 CogVideoX 免费起步）和一个 TTS 引擎。</div>
+
+  <h2>Step 1：准备人像素材</h2>
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">进入 <strong>「AI 数字人」</strong> 页面，选择 <strong>「👩‍💼 商务女性」</strong> 预设形象<br>
+    <small style="color:var(--text2)">或点击「+ 上传人像」上传一张正面半身照（建议512×512以上、光线均匀、背景简洁）</small></div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 1 — 选择人物形象</div>
+      <div class="mock-avatar-grid">
+        <div class="mock-avatar-card active" style="border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,108,240,.3)">
+          <div class="avatar-icon">👩‍💼</div>
+          <div style="font-weight:700;color:var(--accent)">商务女性 ✓</div>
+        </div>
+        <div class="mock-avatar-card"><div class="avatar-icon">👨‍💼</div><div>商务男性</div></div>
+        <div class="mock-avatar-card"><div class="avatar-icon">📺</div><div>新闻主播</div></div>
+        <div class="mock-avatar-card"><div class="avatar-icon">👨‍🏫</div><div>教育讲师</div></div>
+        <div class="mock-avatar-card"><div class="avatar-icon">🎨</div><div>动漫角色</div></div>
+        <div class="mock-avatar-card" style="border-style:dashed"><div class="avatar-icon">➕</div><div style="color:var(--text2)">上传人像</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-1：选择「商务女性」预设形象</p>
+
+  <h2>Step 2：选择音色</h2>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">选择 <strong>「甜美女声」</strong>（适合广告带货风格）</div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 2 — 选择音色</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <span class="mock-chip">○ 自动</span>
+        <span class="mock-chip active">● 甜美女声 ✓</span>
+        <span class="mock-chip">○ 专业女声</span>
+        <span class="mock-chip">○ 成熟男声</span>
+        <span class="mock-chip">○ 青年男声</span>
+        <span class="mock-chip">○ 童声</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-2：选择「甜美女声」音色</p>
+
+  <h2>Step 3：选择背景</h2>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">选择 <strong>「演播室」</strong> 背景（霓虹灯光，适合广告风格）</div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 3 — 选择背景</div>
+      <div class="mock-bg-grid">
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#1a3a5c,#2a5a8c)">办公室</div>
+        <div class="mock-bg-card active" style="background:linear-gradient(135deg,#2a1a3c,#4a2a6c);border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,108,240,.3)">演播室 ✓</div>
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#2a3a4a,#4a5a6a)">教室</div>
+        <div class="mock-bg-card" style="background:linear-gradient(135deg,#1a4a2a,#2a6a3a)">户外</div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-3：选择「演播室」背景</p>
+
+  <h2>Step 4：选择视频模型</h2>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">选择 <strong>MiniMax-Hailuo-2.3</strong>（高质量推荐）或 <strong>cogvideox-flash</strong>（免费测试）</div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 4 — 选择视频模型</div>
+      <select class="mock-input" style="font-size:12px;padding:10px">
+        <option>cogvideox-flash — 智谱AI (免费额度，速度快)</option>
+        <option>I2V-01 — MiniMax (标准画质)</option>
+        <option selected>★ MiniMax-Hailuo-2.3 — MiniMax (推荐，画质最好)</option>
+        <option>kling-v3 — Kling AI (人物动态丰富)</option>
+      </select>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-4：选择「MiniMax-Hailuo-2.3」视频模型</p>
+
+  <h2>Step 5：输入广告文案</h2>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">手动输入文案，或点击 <strong>「🤖 AI 生成文案」</strong> 自动生成促销口播稿</div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 5 — 输入/生成广告文案</div>
+      <textarea class="mock-textarea" style="min-height:90px;font-size:12px">家人们！今天给大家带来一个超级福利！
+淘宝闪购今日活动，外卖只需几块钱起！
+点击下方链接，直接下单，手慢无哦！</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <span class="mock-btn" style="font-size:11px">🤖 AI 生成文案</span>
+        <span class="mock-btn mock-btn-primary" style="background:var(--accent);border-color:var(--accent);font-size:11px">✂️ 智能分段</span>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-5：输入广告文案并点击智能分段</p>
+
+  <h2>Step 6：智能分段</h2>
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">点击 <strong>「✂️ 智能分段」</strong>，AI 自动拆分为多段，并分配表情和动作</div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px">Step 6 — 分段结果</div>
+      <div style="background:var(--bg);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span class="badge" style="background:var(--accent);color:#fff;font-size:12px">段 1</span>
+          <span class="badge" style="background:rgba(251,191,36,.2);color:var(--amber)">😆 excited</span>
+          <span style="font-size:10px;color:var(--text2)">~8秒</span>
+        </div>
+        <div style="font-size:12px;font-weight:600">"家人们！今天给大家带来一个超级福利！"</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">🎭 动作：挥手打招呼，面带兴奋表情</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid rgba(110,231,183,.3);border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span class="badge" style="background:var(--accent);color:#fff;font-size:12px">段 2</span>
+          <span class="badge" style="background:rgba(110,231,183,.2);color:var(--green)">😊 smile</span>
+          <span style="font-size:10px;color:var(--text2)">~10秒</span>
+        </div>
+        <div style="font-size:12px;font-weight:600">"淘宝闪购今日活动，外卖只需几块钱起！"</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">🎭 动作：双手比出OK手势，微笑点头</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:12px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span class="badge" style="background:var(--accent);color:#fff;font-size:12px">段 3</span>
+          <span class="badge" style="background:rgba(251,191,36,.2);color:var(--amber)">😆 excited</span>
+          <span style="font-size:10px;color:var(--text2)">~8秒</span>
+        </div>
+        <div style="font-size:12px;font-weight:600">"点击下方链接，直接下单，手慢无哦！"</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">🎭 动作：指向下方，竖起大拇指</div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-6：AI 自动分段结果 — 3 段，各有独立表情和动作</p>
+
+  <h2>Step 7：生成数字人视频</h2>
+  <div class="step">
+    <div class="step-num">7</div>
+    <div class="step-body">确认以上配置无误后，点击 <strong>「🎬 生成数字人视频」</strong></div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:20px;text-align:center">
+      <div class="mock-btn mock-btn-primary" style="padding:12px 36px;font-size:15px;font-weight:800;background:var(--accent);border-color:var(--accent);border-radius:999px">🎬 生成数字人视频</div>
+      <div style="margin-top:20px;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:8px">生成进度</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">✓</span>
+          <span style="font-size:11px">阶段 1/4：准备图片素材</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="badge" style="background:rgba(110,231,183,.15);color:var(--green)">✓</span>
+          <span style="font-size:11px">阶段 2/4：i2v 视频生成（3段）</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="badge" style="background:rgba(251,191,36,.15);color:var(--amber)">⟳</span>
+          <span style="font-size:11px;font-weight:600">阶段 3/4：TTS 语音合成</span>
+        </div>
+        <div class="mock-progress"><div class="mock-progress-bar" style="width:70%"></div></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <span class="badge" style="background:var(--bg4);color:var(--text2)">○</span>
+          <span style="font-size:11px;color:var(--text2)">阶段 4/4：FFmpeg 合成终片</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-7：生成进度 — 4 个阶段实时追踪</p>
+
+  <h2>Step 8：预览与下载</h2>
+  <div class="step">
+    <div class="step-num">8</div>
+    <div class="step-body">生成完成后，在右侧预览区 <strong>播放视频</strong>，确认满意后点击 <strong>「下载」</strong></div>
+  </div>
+
+  <div class="mock" style="max-width:500px;margin:14px auto">
+    <div style="padding:16px">
+      <div style="font-weight:700;margin-bottom:10px;color:var(--green)">✅ 生成完成！</div>
+      <div style="aspect-ratio:16/9;background:linear-gradient(135deg,#2a1a3c,#1a1a3c);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;border:1px solid var(--border)">
+        <div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer">▶</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:11px;color:var(--text2)">时长 26秒 · 1080p · MiniMax-Hailuo-2.3</div>
+        <div style="display:flex;gap:6px">
+          <span class="mock-btn" style="font-size:11px">🔗 分享</span>
+          <span class="mock-btn mock-btn-primary" style="background:var(--teal);border-color:var(--teal);font-size:11px">⬇ 下载</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="fig-caption">图 8-8：预览成品视频并下载</p>
+
+  <h2>完整配置速查</h2>
+  <table>
+    <tr><th>配置项</th><th>本案例选择</th><th>替代方案</th></tr>
+    <tr><td>人物形象</td><td>商务女性（预设）</td><td>上传自己的照片</td></tr>
+    <tr><td>音色</td><td>甜美女声</td><td>上传参考音频（声音克隆）</td></tr>
+    <tr><td>背景</td><td>演播室</td><td>自定义上传背景图</td></tr>
+    <tr><td>视频模型</td><td>MiniMax-Hailuo-2.3</td><td>cogvideox-flash（免费测试）</td></tr>
+    <tr><td>文案</td><td>手动输入</td><td>AI 生成（promo 模板）</td></tr>
+    <tr><td>分段</td><td>3 段（智能分段）</td><td>单段（简单快速）</td></tr>
+  </table>
+
+  <div class="section-divider">完</div>
+
+  <div class="tip-box" style="margin-top:40px">
+    <strong>打印为 PDF：</strong>在浏览器中按 <strong>Ctrl + P</strong>（Windows）或 <strong>Cmd + P</strong>（Mac），选择「另存为 PDF」，建议选择 A4 纸张、纵向、带背景图形。
+  </div>
+</div>
+
+</body>
+</html>

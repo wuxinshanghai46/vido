@@ -896,16 +896,19 @@ async function aiGenerateText(btn) {
     }
 
     const story = data.data;
+    // 保留完整剧本到 textarea（折叠，只显示摘要）
     ta.value = story.full_script || story.synopsis || theme;
+    ta.style.display = 'none'; // 隐藏原始 textarea，用章节视图替代
     setNodeStatus(btn, 'done', '已生成');
 
-    // ── 自动拆分：如果返回了 scenes 数组，直接渲染分镜列表 ──
+    // ── 渲染章节总览 ──
     const scenes = story.scenes || [];
     if (scenes.length > 0) {
+      renderChaptersOverview(node, scenes, story);
       renderScenesList(node, scenes);
       autoCreateSceneNodes(node, scenes, story);
     } else {
-      // 没有 scenes，触发 AI 分割
+      ta.style.display = ''; // 没有场景时恢复显示 textarea
       setNodeStatus(btn, 'running', '自动分割中...');
       await doAutoSplit(node, ta.value);
     }
@@ -914,6 +917,58 @@ async function aiGenerateText(btn) {
     console.error('[Workflow] AI生成失败:', e);
   }
   btn.disabled = false;
+}
+
+// 渲染章节总览（每章独立标题+内容，可折叠展开）
+function renderChaptersOverview(node, scenes, story) {
+  let overviewEl = node.querySelector('.wf-nd-chapters');
+  if (!overviewEl) {
+    const body = node.querySelector('.wf-nd-body');
+    const ta = body.querySelector('textarea');
+    overviewEl = document.createElement('div');
+    overviewEl.className = 'wf-nd-chapters';
+    // 插到 textarea 后面
+    if (ta?.nextSibling) body.insertBefore(overviewEl, ta.nextSibling);
+    else body.appendChild(overviewEl);
+  }
+
+  const synopsis = story?.synopsis || '';
+
+  overviewEl.innerHTML = `
+    <div class="wf-ch-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.wf-ch-toggle').textContent=this.nextElementSibling.style.display==='none'?'展开':'收起'">
+      <span style="font-weight:700;color:var(--wf-accent);font-size:12px">章节总览</span>
+      <span style="font-size:10px;color:var(--wf-text3);margin-left:4px">${scenes.length} 章</span>
+      <span class="wf-ch-toggle" style="margin-left:auto;font-size:10px;color:var(--wf-text3);cursor:pointer">收起</span>
+    </div>
+    ${synopsis ? `<div style="font-size:10px;color:var(--wf-text2);padding:4px 8px;line-height:1.5;background:var(--wf-bg);border-radius:6px;margin-bottom:4px">${synopsis.substring(0, 120)}${synopsis.length > 120 ? '...' : ''}</div>` : ''}
+    <div class="wf-ch-list">
+      ${scenes.map((s, i) => {
+        const title = s.title || `第${i + 1}章`;
+        const desc = s.description || s.background || s.location || '';
+        const action = s.characters_action || s.action || '';
+        const dialogue = s.dialogue || '';
+        const chars = (s.characters_in_scene || []).join('、');
+        const dur = s.duration || 10;
+        return `
+        <div class="wf-ch-item" data-idx="${i}">
+          <div class="wf-ch-item-header" onclick="this.nextElementSibling.classList.toggle('wf-ch-collapsed')">
+            <span class="wf-ch-num">${i + 1}</span>
+            <span class="wf-ch-title">${title}</span>
+            <span class="wf-ch-dur">${dur}s</span>
+          </div>
+          <div class="wf-ch-item-body">
+            ${desc ? `<div class="wf-ch-row"><span class="wf-ch-tag" style="color:var(--wf-node-bg)">场景</span>${desc.substring(0, 100)}</div>` : ''}
+            ${chars ? `<div class="wf-ch-row"><span class="wf-ch-tag" style="color:var(--wf-node-char)">角色</span>${chars}</div>` : ''}
+            ${action ? `<div class="wf-ch-row"><span class="wf-ch-tag" style="color:var(--wf-node-video)">动作</span>${action.substring(0, 80)}</div>` : ''}
+            ${dialogue ? `<div class="wf-ch-row"><span class="wf-ch-tag" style="color:var(--wf-node-voice)">台词</span>"${dialogue.substring(0, 60)}"</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="text-align:center;margin-top:4px">
+      <button class="wf-nd-btn-sm" style="font-size:10px;padding:2px 8px;color:var(--wf-text3);background:none;border:1px solid var(--wf-border);border-radius:4px;cursor:pointer" onclick="const ta=this.closest('.wf-nd-body').querySelector('textarea');ta.style.display=ta.style.display==='none'?'':'none';this.textContent=ta.style.display==='none'?'查看原始剧本':'隐藏原始剧本'">查看原始剧本</button>
+    </div>
+  `;
 }
 
 // 渲染分镜列表到文本节点
@@ -1385,8 +1440,9 @@ function uploadAvatarImage(el) {
   input.click();
 }
 
-// 加载 AI 生成的角色形象到 avatar 选择网格
+// 加载 AI 生成的角色形象到 avatar 选择网格（折叠展示，默认显示8个）
 async function loadAvatarCharacters(btn) {
+  const COLLAPSED_COUNT = 8;
   const node = btn.closest('.drawflow-node');
   const grid = node.querySelector('.wf-nd-avatar-grid');
   btn.textContent = '🔄 加载中...';
@@ -1394,25 +1450,50 @@ async function loadAvatarCharacters(btn) {
     const res = await authFetch('/api/story/character-images');
     const data = await res.json();
     const allImages = data.success ? (data.data || []) : [];
-    // 只显示角色类型
-    const charImages = allImages.filter(img => img.type === 'character');
+    // 严格过滤：只保留角色图（type=character 且文件名以 char_ 开头）
+    const charImages = allImages.filter(img => img.type === 'character' && (img.filename || '').startsWith('char_'));
     if (charImages.length === 0) {
       btn.textContent = '🔄 暂无AI角色，请先在分镜中生成';
       return;
     }
     // 清除旧的 AI 角色（保留上传按钮和已上传的自定义形象）
     grid.querySelectorAll('.wf-nd-avatar-ai').forEach(el => el.remove());
+    grid.querySelectorAll('.wf-nd-avatar-more-btn').forEach(el => el.remove());
     const uploadBtn = grid.querySelector('.wf-nd-avatar-upload');
+
     charImages.forEach((img, i) => {
       const item = document.createElement('div');
-      item.className = 'wf-nd-avatar-item wf-nd-avatar-ai' + (i === 0 ? ' active' : '');
-      item.dataset.avatarId = img.filename || img.name || `ai_char_${i}`;
+      const isHidden = i >= COLLAPSED_COUNT;
+      item.className = 'wf-nd-avatar-item wf-nd-avatar-ai' + (i === 0 ? ' active' : '') + (isHidden ? ' wf-nd-avatar-hidden' : '');
+      if (isHidden) item.style.display = 'none';
+      item.dataset.avatarId = img.url; // 使用完整 URL 作为 ID
       const displayName = (img.name || `角色${i + 1}`).substring(0, 6);
       item.innerHTML = `<img src="${img.url}" alt="${displayName}" /><span class="wf-nd-avatar-name">${displayName}</span>`;
-      item.onclick = function() { selectAvatarNode(this, item.dataset.avatarId); };
+      item.onclick = function() {
+        grid.querySelectorAll('.wf-nd-avatar-item').forEach(el => el.classList.remove('active'));
+        this.classList.add('active');
+      };
       grid.insertBefore(item, uploadBtn);
     });
-    // 取消上传按钮的 active
+
+    // 如果超过折叠数量，添加"展开更多"按钮
+    if (charImages.length > COLLAPSED_COUNT) {
+      const moreBtn = document.createElement('div');
+      moreBtn.className = 'wf-nd-avatar-item wf-nd-avatar-more-btn';
+      moreBtn.innerHTML = `<span style="font-size:10px;color:var(--wf-text2);text-align:center;line-height:1.3">展开<br>+${charImages.length - COLLAPSED_COUNT}</span>`;
+      moreBtn.style.cursor = 'pointer';
+      moreBtn.onclick = function() {
+        const hidden = grid.querySelectorAll('.wf-nd-avatar-hidden');
+        const isExpanded = this.dataset.expanded === 'true';
+        hidden.forEach(el => { el.style.display = isExpanded ? 'none' : ''; });
+        this.dataset.expanded = isExpanded ? 'false' : 'true';
+        this.innerHTML = isExpanded
+          ? `<span style="font-size:10px;color:var(--wf-text2);text-align:center;line-height:1.3">展开<br>+${hidden.length}</span>`
+          : `<span style="font-size:10px;color:var(--wf-text2);text-align:center">收起</span>`;
+      };
+      grid.insertBefore(moreBtn, uploadBtn);
+    }
+
     grid.querySelectorAll('.wf-nd-avatar-upload').forEach(el => el.classList.remove('active'));
     btn.textContent = `🔄 ${charImages.length} 个角色`;
   } catch(e) {

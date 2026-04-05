@@ -13,9 +13,16 @@ const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmp
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const CHAR_IMG_DIR = path.join(OUTPUT_DIR, 'characters');
+const SCENE_IMG_DIR = path.join(OUTPUT_DIR, 'scenes');
 
 function ensureDir() {
   fs.mkdirSync(CHAR_IMG_DIR, { recursive: true });
+  fs.mkdirSync(SCENE_IMG_DIR, { recursive: true });
+}
+
+// 根据文件名前缀决定输出目录：scene_ 开头 → scenes/，其他 → characters/
+function imgDir(filename) {
+  return filename.startsWith('scene_') ? SCENE_IMG_DIR : CHAR_IMG_DIR;
 }
 
 function downloadFile(url, destPath) {
@@ -238,7 +245,7 @@ const DEMO_COLORS = {
 // Demo: FFmpeg 生成占位图（异步，不阻塞事件循环）
 async function generateDemoImage({ name, filename }) {
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const palette = DEMO_COLORS.celulose;
   const color = palette[Math.floor(Math.random() * palette.length)];
   const safeName = (name || '角色').replace(/['"\\:<>]/g, ' ').substring(0, 12);
@@ -264,7 +271,7 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
   const apiKey = getApiKey('openai') || process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('未配置 OPENAI_API_KEY');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const prompt = imageType === 'scene'
     ? (scenePrompt || buildScenePrompt(name, description, '', '', ''))
     : buildPrompt(name, role, description, '2d', race, species);
@@ -314,7 +321,7 @@ async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', 
   const apiKey = getApiKey('nanobanana') || process.env.NANOBANANA_API_KEY;
   if (!apiKey) throw new Error('未配置 NANOBANANA_API_KEY');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
 
   // referenceImages: 用于角色一致性的参考图 URL 数组（最多14张）
   const imageUrls = (referenceImages || []).slice(0, 14);
@@ -377,7 +384,7 @@ async function generateMxapiImage({ prompt, filename, aspectRatio = '1:1', resol
   const apiKey = getApiKey('mxapi') || process.env.MXAPI_API_KEY;
   if (!apiKey) throw new Error('未配置 MXAPI API Key');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const axios = require('axios');
   const baseUrl = 'https://open.mxapi.org/api/v2';
   const headers = { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' };
@@ -435,7 +442,7 @@ async function generateZhipuImage({ name, role, description, filename, race, spe
   const apiKey = getApiKey('zhipu') || process.env.ZHIPU_API_KEY;
   if (!apiKey) throw new Error('未配置 ZHIPU_API_KEY');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const prompt = imageType === 'scene'
     ? (scenePrompt || buildScenePrompt(name, description, '', '', ''))
     : buildPrompt(name, role, description, '2d', race, species);
@@ -476,7 +483,7 @@ async function generateStabilityImage({ name, role, description, dim, filename, 
   const apiKey = getApiKey('stability') || process.env.STABILITY_API_KEY;
   if (!apiKey) throw new Error('未配置 STABILITY_API_KEY');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const prompt = buildPrompt(name, role, description, dim, race, species);
   const model = dim === '3d' ? 'sd3.5-large' : 'sd3.5-large-turbo';
 
@@ -526,7 +533,7 @@ async function generateReplicateImage({ name, role, description, dim, filename, 
   const apiKey = getApiKey('replicate') || process.env.REPLICATE_API_KEY;
   if (!apiKey) throw new Error('未配置 REPLICATE_API_KEY');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
   const prompt = buildPrompt(name, role, description, dim, race, species);
   // Use flux-schnell for 2D (fast), flux-dev for 3D (quality)
   const model = dim === '3d'
@@ -645,7 +652,7 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
   if (!rawKey.includes(':')) throw new Error('即梦AI Key 格式错误，应为 AccessKeyId:SecretAccessKey');
   const [ak, sk] = rawKey.split(':');
   ensureDir();
-  const outputPath = path.join(CHAR_IMG_DIR, `${filename}.png`);
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
 
   // 选择模型：从 settings 读取 use=image 的模型，否则用默认 3.0
   let reqKey = 'jimeng_t2i_v30';
@@ -783,10 +790,9 @@ function buildJimengScenePrompt(title, description, theme, timeOfDay, category, 
 }
 
 // ——— 场景图片生成（复用 provider，但使用场景 prompt） ———
-const SCENE_IMG_DIR = path.join(OUTPUT_DIR, 'scenes');
 
 async function generateSceneImage({ title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', animStyle = '', aspectRatio = '16:9', resolution = '2K', referenceImages = [] }) {
-  fs.mkdirSync(SCENE_IMG_DIR, { recursive: true });
+  ensureDir();
   const provider = resolveProvider(dim);
   const filename = `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const prompt = provider === 'jimeng'

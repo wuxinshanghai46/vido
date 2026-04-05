@@ -155,7 +155,8 @@ router.get('/character-images', (req, res) => {
         try { return fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs; } catch { return 0; }
       });
     files.forEach((f, i) => {
-      const isChar = dir === CHAR_IMG_DIR;
+      // 用文件名前缀判断类型（characters/ 目录下也可能有 scene_ 开头的文件）
+      const isChar = f.startsWith('char_');
       const baseName = f.replace(/\.[^.]+$/, '').replace(/^(char|scene)_(2d|3d|realistic)_\d+_\w+$/, '');
       images.push({
         name: baseName || (isChar ? `角色${i + 1}` : `场景${i + 1}`),
