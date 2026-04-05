@@ -344,13 +344,13 @@ async function applyEffects(config) {
     const dur = videoInfo.duration;
 
     if (videoInfo.hasAudio) {
-      // 混合原声 + BGM
-      filterParts.push(`[${bgmIdx}:a]volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${Math.max(0, dur - fadeOut)}:d=${fadeOut}[bgm_a]`);
+      // 混合原声 + BGM（先裁剪BGM到视频时长）
+      filterParts.push(`[${bgmIdx}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${Math.max(0, dur - fadeOut)}:d=${fadeOut}[bgm_a]`);
       filterParts.push(`[0:a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[a_out]`);
       finalAudioLabel = 'a_out';
     } else {
-      // 没有原声，直接用 BGM
-      filterParts.push(`[${bgmIdx}:a]volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${Math.max(0, dur - fadeOut)}:d=${fadeOut}[a_out]`);
+      // 没有原声，用 BGM（裁剪到视频时长）
+      filterParts.push(`[${bgmIdx}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${Math.max(0, dur - fadeOut)}:d=${fadeOut}[a_out]`);
       finalAudioLabel = 'a_out';
     }
   }
@@ -384,7 +384,7 @@ async function applyEffects(config) {
       } else if (videoInfo.hasAudio) {
         outputOpts.push('-map', '0:a?');
       }
-      outputOpts.push('-c:a', 'aac');
+      outputOpts.push('-c:a', 'aac', '-shortest');
     }
 
     cmd.outputOptions(outputOpts)
