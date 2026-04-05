@@ -14,6 +14,8 @@ const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmp
   ? process.env.FFMPEG_PATH
   : ffmpegStatic;
 ffmpeg.setFfmpegPath(ffmpegPath);
+try { const ffprobeStatic = require('ffprobe-static'); ffmpeg.setFfprobePath(ffprobeStatic.path); } catch {}
+
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const EFFECTS_DIR = path.join(OUTPUT_DIR, 'effects');
