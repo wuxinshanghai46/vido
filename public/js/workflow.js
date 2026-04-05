@@ -1306,9 +1306,17 @@ async function generateVideo(btn) {
     return;
   }
 
-  // 判断模式
+  // 判断模式：有上游图片时自动切换到图生视频
   const activeChip = node.querySelector('.wf-nd-chip.active');
-  const mode = activeChip?.textContent?.trim() || '文生视频';
+  let mode = activeChip?.textContent?.trim() || '文生视频';
+  if (connectedImage && mode === '文生视频') {
+    // 自动切换到图生视频
+    mode = '图生视频';
+    const chips = node.querySelectorAll('.wf-nd-chip');
+    chips.forEach(c => {
+      c.classList.toggle('active', c.textContent.trim() === '图生视频');
+    });
+  }
 
   const modelLabel = modelSel?.selectedOptions?.[0]?.textContent || model;
 

@@ -1275,7 +1275,7 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
   const createResult = await new Promise((resolve, reject) => {
     const req = https.request({
       hostname: 'ark.cn-beijing.volces.com',
-      path: '/api/v3/content_generation/tasks',
+      path: '/api/v3/contents/generations/tasks',
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + apiKey,
@@ -1304,7 +1304,7 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
   for (let i = 0; i < 30; i++) {
     await new Promise(r => setTimeout(r, 30000));
     const status = await new Promise((resolve, reject) => {
-      https.get(`https://ark.cn-beijing.volces.com/api/v3/content_generation/tasks/${taskId}`, {
+      https.get(`https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/${taskId}`, {
         headers: { 'Authorization': 'Bearer ' + apiKey }
       }, (res) => {
         const chunks = [];
