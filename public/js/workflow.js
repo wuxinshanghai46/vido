@@ -534,6 +534,7 @@ function nodeHTML(type, nodeId) {
               <select class="wf-nd-select" onchange="syncNodeData(this)">
                 <option value="mp4">MP4</option>
                 <option value="webm">WebM</option>
+                <option value="mp3">MP3（纯音频）</option>
               </select>
             </div>
             <div style="flex:1">
@@ -2882,7 +2883,7 @@ function uploadBgm(btn) {
 
 async function uploadMusicReal(btn) {
   const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'audio/*';
+  input.type = 'file'; input.accept = '.mp3,.wav,.ogg,.m4a,audio/*';
   input.onchange = async () => {
     const file = input.files[0]; if (!file) return;
     const formData = new FormData();
@@ -2891,9 +2892,22 @@ async function uploadMusicReal(btn) {
     try {
       const res = await authFetch('/api/projects/upload-music', { method: 'POST', body: formData });
       const data = await res.json();
-      if (data.success && data.data?.path) {
+      if (data.success && (data.data?.file_url || data.data?.file_path || data.data?.path)) {
+        const musicUrl = data.data.file_url || data.data.path || data.data.file_path;
         btn.textContent = '🎵 ' + file.name;
-        btn.dataset.musicPath = data.data.path;
+        btn.dataset.musicPath = musicUrl;
+        // 添加音频预听
+        const node = btn.closest('.wf-nd-body') || btn.closest('.drawflow-node');
+        let audioEl = node.querySelector('.wf-music-preview');
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.className = 'wf-music-preview';
+          audioEl.controls = true;
+          audioEl.style.cssText = 'width:100%;height:32px;margin-top:4px';
+          btn.parentNode.insertBefore(audioEl, btn.nextSibling);
+        }
+        const token = localStorage.getItem('access_token') || '';
+        audioEl.src = musicUrl + (musicUrl.includes('?') ? '&' : '?') + 'token=' + token;
         setNodeStatus(btn, 'done', '已上传');
       } else {
         setNodeStatus(btn, 'error', '上传失败');
