@@ -3251,14 +3251,8 @@ function switchAnimStyle(id) {
 }
 
 // ═══ 高级设置折叠 ═══
-function toggleAdvancedSettings() {
-  const body = document.getElementById('stp-adv-body');
-  const arrow = document.getElementById('stp-adv-arrow');
-  if (!body) return;
-  const open = body.style.display === 'none';
-  body.style.display = open ? '' : 'none';
-  if (arrow) arrow.classList.toggle('open', open);
-}
+// Note: toggleAdvancedSettings is defined earlier (line ~236) using classList toggle
+// with the correct element IDs (stp-advanced-body). Removed duplicate here.
 
 // ═══ 模式切换 ═══
 function switchMode(mode) {
@@ -4130,8 +4124,8 @@ async function _doGenerate(skip) {
       if (hasDisabled) msg = '当前无可用视频模型 — 请检查 AI 配置中的 API Key 和供应商状态';
       else msg = '未配置视频模型 — 请前往「AI 配置」添加视频供应商';
       // 展开高级设置让用户看到模型选择
-      const body = document.getElementById('stp-adv-body');
-      if (body && body.style.display === 'none') toggleAdvancedSettings();
+      const body = document.getElementById('stp-advanced-body');
+      if (body && !body.classList.contains('open')) toggleAdvancedSettings();
       scrollToField('step-vm', msg);
       const val = document.getElementById('vm-validation');
       if (val) { val.style.display = 'block'; val.textContent = msg; }

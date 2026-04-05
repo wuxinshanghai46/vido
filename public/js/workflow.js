@@ -441,6 +441,19 @@ function nodeHTML(type, nodeId) {
           <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--wf-text2)">
             <input type="checkbox" checked onchange="syncNodeData(this)" /> 循环播放
           </label>
+          <div class="wf-nd-row" style="margin-top:6px">
+            <div style="flex:1">
+              <div class="wf-nd-label">开始时间 (秒)</div>
+              <input type="number" min="0" step="0.1" value="0" placeholder="0" class="wf-nd-input wf-music-start" style="width:100%" onchange="syncNodeData(this)" />
+            </div>
+            <div style="flex:1">
+              <div class="wf-nd-label">结束时间 (秒)</div>
+              <input type="number" min="0" step="0.1" value="" placeholder="自动" class="wf-nd-input wf-music-end" style="width:100%" onchange="syncNodeData(this)" />
+            </div>
+          </div>
+          <button class="wf-nd-action wf-clip-preview-btn" style="margin-top:4px;font-size:11px;padding:4px 8px;background:var(--wf-bg);border:1px solid var(--wf-border2);color:var(--wf-text2);display:none" onclick="previewMusicClip(this)">
+            ✂️ 预览剪辑
+          </button>
         </div>
         <div class="wf-nd-footer">
           <span class="wf-nd-status wf-nd-status-idle">就绪</span>
@@ -2912,6 +2925,9 @@ async function uploadMusicReal(btn) {
         }
         const token = localStorage.getItem('access_token') || '';
         audioEl.src = musicUrl + (musicUrl.includes('?') ? '&' : '?') + 'token=' + token;
+        // Show clip preview button
+        const clipBtn = (btn.closest('.wf-nd-body') || btn.closest('.drawflow-node')).querySelector('.wf-clip-preview-btn');
+        if (clipBtn) clipBtn.style.display = '';
         setNodeStatus(btn, 'done', '已上传');
       } else {
         setNodeStatus(btn, 'error', '上传失败');
@@ -2921,6 +2937,29 @@ async function uploadMusicReal(btn) {
     }
   };
   input.click();
+}
+
+// ═══ MUSIC CLIP PREVIEW ═══
+
+function previewMusicClip(btn) {
+  const body = btn.closest('.wf-nd-body') || btn.closest('.drawflow-node');
+  const audioEl = body.querySelector('.wf-music-preview');
+  if (!audioEl || !audioEl.src) return;
+  const startInput = body.querySelector('.wf-music-start');
+  const endInput = body.querySelector('.wf-music-end');
+  const startTime = parseFloat(startInput?.value) || 0;
+  const endTime = parseFloat(endInput?.value) || 0;
+  audioEl.currentTime = startTime;
+  audioEl.play();
+  if (endTime > startTime) {
+    const checkEnd = () => {
+      if (audioEl.currentTime >= endTime) {
+        audioEl.pause();
+        audioEl.removeEventListener('timeupdate', checkEnd);
+      }
+    };
+    audioEl.addEventListener('timeupdate', checkEnd);
+  }
 }
 
 // ═══ NODE LIST PANEL ═══
