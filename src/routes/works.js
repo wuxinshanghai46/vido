@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
   if (!type || type === 'all' || type === 'i2v') {
     const i2vTasks = db.listI2VTasks();
     for (const t of i2vTasks) {
-      if (t.status !== 'completed') continue;
+      if (t.status !== 'completed' && t.status !== 'done') continue;
       works.push({
         id: t.id,
         type: 'i2v',
@@ -169,7 +169,7 @@ router.get('/stats', (req, res) => {
     success: true,
     stats: {
       avatar: db.listAvatarTasks(userId).filter(t => t.status === 'done').length,
-      i2v: db.listI2VTasks().filter(t => t.status === 'completed').length,
+      i2v: db.listI2VTasks().filter(t => t.status === 'completed' || t.status === 'done').length,
       video: db.listProjects().filter(p => p.status === 'done').length,
       portrait: db.listPortraits(userId).filter(p => p.status === 'completed' || p.status === 'done').length,
       comic: db.listComicTasks(userId).filter(c => c.status === 'completed' || c.status === 'done').length,

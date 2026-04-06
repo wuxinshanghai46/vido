@@ -4400,6 +4400,34 @@ function showResult(payload) {
   setPanelState('done');
 }
 
+async function saveProjectToWorks(btn) {
+  if (!currentProjectId) return;
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  try {
+    const res = await authFetch('/api/workflow/save-to-works', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: document.getElementById('input-theme')?.value || 'AI 视频',
+        videoUrl: '/api/projects/' + currentProjectId + '/stream',
+        projectId: currentProjectId
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '已保存 ✓';
+      showToast('已保存到作品库', 'ok');
+    } else {
+      throw new Error(data.error);
+    }
+  } catch (e) {
+    btn.textContent = '💾 保存到作品';
+    btn.disabled = false;
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
 function replayVideo() {
   const vid = document.getElementById('center-video');
   if (vid && currentProjectId) {
@@ -9940,9 +9968,9 @@ function renderWorksGrid(works) {
   grid.innerHTML = works.map(w => {
     let thumbContent;
     if (w.media_type === 'video') {
-      const poster = w.thumbnail_url ? ` poster="${w.thumbnail_url}"` : '';
+      const poster = w.thumbnail_url ? ` poster="${authUrl(w.thumbnail_url)}"` : '';
       thumbContent = `<div class="work-card-thumb">
-        <video src="${w.stream_url}" muted preload="metadata"${poster}></video>
+        <video src="${authUrl(w.stream_url)}" muted preload="metadata"${poster}></video>
         <div class="work-card-play">&#9654;</div>
       </div>`;
     } else if (w.media_type === 'image') {
@@ -9954,7 +9982,7 @@ function renderWorksGrid(works) {
     }
 
     const downloadBtn = w.download_url
-      ? `<button class="work-card-btn" onclick="event.stopPropagation();window.open('${w.download_url}','_blank')">下载</button>`
+      ? `<button class="work-card-btn" onclick="event.stopPropagation();window.open(authUrl('${w.download_url}'),'_blank')">下载</button>`
       : '';
 
     return `<div class="work-card" onclick="previewWork('${w.id}')">
@@ -9980,9 +10008,9 @@ function previewWork(id) {
   const w = worksCache.find(x => x.id === id);
   if (!w) return;
   if (w.media_type === 'video' && w.stream_url) {
-    openLightbox(w.stream_url, w.title, 'video');
+    openLightbox(authUrl(w.stream_url), w.title, 'video');
   } else if (w.media_type === 'image' && w.preview_url) {
-    openLightbox(w.preview_url, w.title);
+    openLightbox(authUrl(w.preview_url), w.title);
   } else if (w.media_type === 'text') {
     // 跳转到对应模块
     switchPage('novel');

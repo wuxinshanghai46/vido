@@ -441,12 +441,17 @@ router.post('/save-to-works', (req, res) => {
   let videoPath = '';
   const fxMatch = videoUrl.match(/effects\/result\/([^#?]+)/);
   const i2vMatch = videoUrl.match(/i2v\/tasks\/([^/]+)\/stream/);
+  const projMatch = videoUrl.match(/projects\/([^/]+)\/stream/);
   if (fxMatch) {
     videoPath = path.join(fxDir, `fx_${fxMatch[1]}.mp4`);
     if (!fs.existsSync(videoPath)) videoPath = path.join(fxDir, `final_${fxMatch[1]}.mp4`);
   } else if (i2vMatch) {
     const task = db.getI2VTask?.(i2vMatch[1]);
     videoPath = task?.file_path || '';
+  } else if (projMatch) {
+    // 项目视频：从 final_videos 表查找文件路径
+    const finalVideo = db.getFinalVideoByProject(projMatch[1]);
+    videoPath = finalVideo?.file_path || '';
   }
 
   if (!videoPath || !fs.existsSync(videoPath)) {

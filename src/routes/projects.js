@@ -90,7 +90,7 @@ router.post('/', async (req, res) => {
     anim_style, aspect_ratio,
     music_path, music_trim_start, music_trim_end, music_volume, music_loop,
     scene_dim, char_dim,
-    voice_enabled, voice_gender, voice_speed,
+    voice_enabled, voice_gender, voice_id, voice_speed,
     subtitle_enabled, subtitle_size, subtitle_position, subtitle_color,
     video_provider, video_model,
     creation_mode, episode_count, episode_index, previous_summary
@@ -114,6 +114,7 @@ router.post('/', async (req, res) => {
       char_dim: char_dim || '2d',
       voice_enabled: !!voice_enabled,
       voice_gender: voice_gender || 'female',
+      voice_id: voice_id || null,
       voice_speed: voice_speed || 1.0,
       subtitle_enabled: subtitle_enabled !== false,
       subtitle_size: subtitle_size || 32,

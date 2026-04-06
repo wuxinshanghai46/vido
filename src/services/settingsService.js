@@ -8,7 +8,15 @@ const SETTINGS_PATH = path.join(__dirname, '../../outputs/settings.json');
 const PROVIDER_PRESETS = {
   openai:      { name: 'OpenAI',       api_url: 'https://api.openai.com/v1',                  defaultModels: [{ id: 'gpt-4o', name: 'GPT-4o', type: 'chat', use: 'story' }, { id: 'gpt-4o-mini', name: 'GPT-4o Mini', type: 'chat', use: 'story' }, { id: 'dall-e-3', name: 'DALL-E 3', type: 'image', use: 'image' }, { id: 'sora-2-pro', name: 'Sora 2 Pro（25秒·故事板·物理仿真最强）', type: 'video', use: 'video' }, { id: 'sora-2', name: 'Sora 2（旗舰·高质量）', type: 'video', use: 'video' }, { id: 'sora-2-mini', name: 'Sora 2 Mini（轻量·快速）', type: 'video', use: 'video' }, { id: 'tts-1', name: 'TTS-1', type: 'tts', use: 'tts' }] },
   deepseek:    { name: 'DeepSeek',     api_url: 'https://api.deepseek.com/v1',                 defaultModels: [{ id: 'deepseek-chat', name: 'DeepSeek Chat V3', type: 'chat', use: 'story' }, { id: 'deepseek-reasoner', name: 'DeepSeek R1', type: 'chat', use: 'story' }] },
-  zhipu:       { name: '智谱 AI',      api_url: 'https://open.bigmodel.cn/api/paas/v4',        defaultModels: [{ id: 'cogview-3-flash', name: 'CogView-3-Flash', type: 'image', use: 'image' }, { id: 'cogvideox-flash', name: 'CogVideoX-Flash', type: 'video', use: 'video' }] },
+  zhipu:       { name: '智谱 AI',      api_url: 'https://open.bigmodel.cn/api/paas/v4',        defaultModels: [
+    { id: 'glm-4-plus', name: 'GLM-4-Plus（旗舰对话）', type: 'chat', use: 'story' },
+    { id: 'glm-4-flash', name: 'GLM-4-Flash（免费·快速）', type: 'chat', use: 'story' },
+    { id: 'cogview-4', name: 'CogView-4（高质量文生图）', type: 'image', use: 'image' },
+    { id: 'cogview-3-flash', name: 'CogView-3-Flash（快速文生图）', type: 'image', use: 'image' },
+    { id: 'cogvideox-2', name: 'CogVideoX-2（高质量视频·6秒）', type: 'video', use: 'video' },
+    { id: 'cogvideox-flash', name: 'CogVideoX-Flash（快速视频）', type: 'video', use: 'video' },
+    { id: 'cogvideox-2-i2v', name: 'CogVideoX-2 图生视频', type: 'video', use: 'video' },
+  ] },
   stability:   { name: 'Stability AI', api_url: 'https://api.stability.ai/v2beta',             defaultModels: [{ id: 'sd3.5-large', name: 'SD 3.5 Large', type: 'image', use: 'image' }, { id: 'sd3.5-large-turbo', name: 'SD 3.5 Turbo', type: 'image', use: 'image' }] },
   replicate:   { name: 'Replicate',    api_url: 'https://api.replicate.com/v1',                defaultModels: [{ id: 'flux-schnell', name: 'FLUX.1 Schnell', type: 'image', use: 'image' }, { id: 'flux-dev', name: 'FLUX.1 Dev', type: 'image', use: 'image' }, { id: 'wan-2-1', name: 'Wan 2.1', type: 'video', use: 'video' }] },
   huggingface: { name: 'HuggingFace',  api_url: 'https://api-inference.huggingface.co',        defaultModels: [{ id: 'modelscope-t2v', name: 'ModelScope T2V', type: 'video', use: 'video' }] },

@@ -37,8 +37,9 @@ app.use('/api/auth', require('./routes/auth'));
 // 登录页视频展示墙（公开，无需认证）
 app.get('/api/showcase/videos', (req, res) => {
   const fs = require('fs');
-  const projDir = path.join(__dirname, '../outputs/projects');
+  const projDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'), 'projects');
   try {
+    if (!fs.existsSync(projDir)) return res.json({ success: true, videos: [] });
     const files = fs.readdirSync(projDir).filter(f => f.endsWith('_final.mp4'));
     const videos = files
       .map(f => {
@@ -53,7 +54,8 @@ app.get('/api/showcase/videos', (req, res) => {
 });
 app.get('/api/showcase/stream/:id', (req, res) => {
   const fs = require('fs');
-  const filePath = path.join(__dirname, '../outputs/projects', req.params.id + '_final.mp4');
+  const projDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'), 'projects');
+  const filePath = path.join(projDir, req.params.id + '_final.mp4');
   if (!fs.existsSync(filePath)) return res.status(404).end();
   const stat = fs.statSync(filePath);
   res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=3600' });
