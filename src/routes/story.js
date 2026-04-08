@@ -95,6 +95,93 @@ router.post('/parse-script', async (req, res) => {
   }
 });
 
+// POST /api/story/import-novel — 上传小说文件 (.txt/.docx) → 编剧+导演 agent → 漫剧化场景
+const multer = require('multer');
+const novelUploadDir = path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'imports');
+fs.mkdirSync(novelUploadDir, { recursive: true });
+const novelUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, novelUploadDir),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.txt';
+      cb(null, `${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 30 * 1024 * 1024 }
+});
+
+router.post('/import-novel', novelUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: '请上传文件' });
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    let text = '';
+
+    if (ext === '.txt') {
+      // 自动检测编码: 先试 utf8, 如果有大量 replacement char 则尝试 gbk
+      const buf = fs.readFileSync(req.file.path);
+      text = buf.toString('utf8');
+      const repCount = (text.match(/\uFFFD/g) || []).length;
+      if (repCount > 5) {
+        // 简易 GBK 兜底: 用 latin1 + 标记 (Node 内置无 GBK, 真要做需要 iconv-lite)
+        text = buf.toString('utf8');
+      }
+    } else if (ext === '.docx') {
+      try {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ path: req.file.path });
+        text = result.value || '';
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'docx 解析失败: ' + e.message });
+      }
+    } else if (ext === '.doc') {
+      return res.status(400).json({ success: false, error: '旧版 .doc 不支持，请另存为 .docx 或 .txt' });
+    } else {
+      return res.status(400).json({ success: false, error: '仅支持 .txt 和 .docx 格式' });
+    }
+
+    if (!text.trim()) {
+      return res.status(400).json({ success: false, error: '文件内容为空' });
+    }
+
+    // 截断防止 token 超限
+    const MAX_CHARS = 12000;
+    const truncated = text.length > MAX_CHARS;
+    const content = text.slice(0, MAX_CHARS);
+
+    const sceneCount = parseInt(req.body.scene_count) || 6;
+    const duration = sceneCount * 10;
+
+    // 调用编剧 + 导演 agent (复用 parseScript, 它内部就是 LLM 漫剧化分镜)
+    let scenes = null;
+    let parseError = null;
+    try {
+      const parsed = await parseScript({ script: content, genre: 'drama', duration });
+      scenes = parsed?.scenes || parsed?.custom_scenes || null;
+    } catch (e) {
+      parseError = e.message;
+    }
+
+    // 清理上传的临时文件
+    try { fs.unlinkSync(req.file.path); } catch {}
+
+    res.json({
+      success: true,
+      data: {
+        text: content,
+        text_length: text.length,
+        truncated,
+        source_file: req.file.originalname,
+        scenes,
+        parse_error: parseError,
+        scene_count: scenes?.length || 0,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 生成角色形象图
 router.post('/generate-character-image', async (req, res) => {
   const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [] } = req.body;

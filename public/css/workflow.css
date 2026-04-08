@@ -149,12 +149,13 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
   background: #0d0d12 !important;
   border: 1px solid rgba(255,255,255,.08) !important;
   border-radius: 18px !important;
-  min-width: 300px; padding: 0 !important;
+  min-width: 240px !important; width: auto !important;
+  padding: 0 !important;
   box-shadow: 0 10px 32px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.02) inset !important;
   color: var(--wf-text) !important;
   font-family: 'Inter', sans-serif !important;
   overflow: visible !important;
-  transition: border-color .25s var(--wf-ease), box-shadow .25s var(--wf-ease), transform .25s var(--wf-ease);
+  transition: border-color .25s var(--wf-ease), box-shadow .25s var(--wf-ease);
 }
 .drawflow .drawflow-node:hover {
   border-color: rgba(255,255,255,.18) !important;
@@ -277,16 +278,20 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
   opacity: 1; pointer-events: auto;
 }
 .wf-nd-btn-sm {
-  height: 24px !important; min-width: 36px !important;
-  padding: 0 10px !important;
+  width: 26px !important; height: 26px !important;
+  min-width: 26px !important; max-width: 26px !important;
+  padding: 0 !important;
   display: inline-flex !important; align-items: center !important; justify-content: center !important;
   background: rgba(255,255,255,.06) !important;
-  border: 1px solid rgba(255,255,255,.1) !important; border-radius: 999px !important;
+  border: 1px solid rgba(255,255,255,.1) !important; border-radius: 50% !important;
   color: rgba(255,255,255,.7) !important; font-size: 11px !important; line-height: 1 !important;
   cursor: pointer; font-family: inherit; backdrop-filter: blur(8px);
   margin: 0 !important;
+  flex-shrink: 0 !important; flex-grow: 0 !important;
+  box-sizing: border-box !important;
 }
 .wf-nd-btn-sm:hover { background: rgba(255,255,255,.12) !important; color: #fff !important; }
+.wf-nd-btn-sm svg { display: block; }
 
 /* ═══ 浮动 + 圆按钮（左右两侧） ═══ */
 .wf-nd-add {
@@ -463,10 +468,18 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 .wf-nd-ta {
   width: 100%; background: var(--wf-bg); border: 1px solid var(--wf-border);
   border-radius: 6px; padding: 8px 10px; color: var(--wf-text); font-size: 12px;
-  font-family: inherit; resize: vertical; min-height: 80px; outline: none; line-height: 1.6;
+  font-family: inherit;
+  resize: both;            /* 横竖都可以拖拽变形 */
+  min-height: 80px; min-width: 200px;
+  max-width: 100%;
+  outline: none; line-height: 1.6;
 }
 .wf-nd-ta:focus { border-color: rgba(var(--wf-accent-rgb),.4); }
 .wf-nd-ta::placeholder { color: var(--wf-text3); }
+/* 自定义 resize 角标识(右下角) */
+.wf-nd-ta::-webkit-resizer {
+  background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 60%, transparent 60%, transparent 70%, rgba(255,255,255,.25) 70%, rgba(255,255,255,.25) 80%, transparent 80%);
+}
 .wf-nd-select {
   width: 100%; background: var(--wf-bg); border: 1px solid var(--wf-border);
   border-radius: 6px; padding: 6px 10px; color: var(--wf-text); font-size: 12px;

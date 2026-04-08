@@ -25,8 +25,8 @@ function nodeHTML(type, nodeId) {
           <div class="wf-nd-header-icon wf-icon-text">T</div>
           <div class="wf-nd-header-title">文本</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -86,8 +86,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">背景</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -127,8 +127,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">人物</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -168,8 +168,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">图片</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -205,8 +205,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">视频</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -264,8 +264,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">数字人</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -374,8 +374,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">配音</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -424,8 +424,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">音乐</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -469,8 +469,8 @@ function nodeHTML(type, nodeId) {
           </div>
           <div class="wf-nd-header-title">合成输出</div>
           <div class="wf-nd-header-actions">
-            <button class="wf-nd-btn-sm" onclick="toggleNodeBody(this)">折叠</button>
-            <button class="wf-nd-btn-sm" onclick="deleteNode(this)">×</button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="toggleNodeBody(this)" title="折叠/展开" data-collapsed="0"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 7.5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button class="wf-nd-btn-sm wf-nd-btn-icon" onclick="deleteNode(this)" title="删除节点"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
           </div>
         </div>
         <div class="wf-nd-body" id="nd-body-${nodeId}">
@@ -863,7 +863,13 @@ function toggleNodeBody(btn) {
   const body = node.querySelector('.wf-nd-body');
   if (body) {
     body.classList.toggle('collapsed');
-    btn.textContent = body.classList.contains('collapsed') ? '展开' : '折叠';
+    const collapsed = body.classList.contains('collapsed');
+    btn.dataset.collapsed = collapsed ? '1' : '0';
+    // 切换 chevron 方向
+    const svg = btn.querySelector('svg path');
+    if (svg) svg.setAttribute('d', collapsed ? 'M3 4.5l3 3 3-3' : 'M3 7.5l3-3 3 3');
+    // resize 后更新连线
+    try { editor.updateConnectionNodes(node.id); } catch {}
   }
 }
 
@@ -2109,6 +2115,27 @@ function injectAddButtons() {
     };
     wfnd.appendChild(make('left'));
     wfnd.appendChild(make('right'));
+
+    // 拖拽 textarea 时更新连线位置
+    if (nodeEl && !nodeEl.dataset.resizeWired) {
+      nodeEl.dataset.resizeWired = '1';
+      const tas = wfnd.querySelectorAll('textarea.wf-nd-ta');
+      if (tas.length && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+          try { editor.updateConnectionNodes(nodeEl.id); } catch {}
+        });
+        tas.forEach(ta => ro.observe(ta));
+      }
+      // textarea 拖拽 resize 角时阻止 drawflow 拖动节点
+      tas.forEach(ta => {
+        ta.addEventListener('mousedown', (e) => {
+          const rect = ta.getBoundingClientRect();
+          if (e.clientX > rect.right - 18 && e.clientY > rect.bottom - 18) {
+            e.stopPropagation();
+          }
+        });
+      });
+    }
   });
 }
 
@@ -2673,36 +2700,68 @@ function setTextSource(btn, source) {
   btn.classList.add('active');
 }
 
+// 导入小说: 上传 .txt/.docx → 编剧+导演 agent 漫剧化
 async function importFromNovel(btn) {
   setTextSource(btn, 'novel');
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
-  openPicker({
-    title: '导入小说',
-    placeholder: '搜索小说标题或简介...',
-    fetchUrl: '/api/novel',
-    emptyText: '暂无小说，请先在 AI 小说页面创建',
-    renderCard: (n) => ({
-      title: n.title || '未命名',
-      desc: n.synopsis || n.intro || '',
-      meta: [n.genre || '', `${(n.chapters || []).length} 章`].filter(Boolean),
-    }),
-    onPick: async (n) => {
-      try {
-        const detailRes = await authFetch(`/api/novel/${n.id}`);
-        const detail = await detailRes.json();
-        if (detail.success && detail.data) {
-          const content = (detail.data.chapters || []).map(c => c.content || '').join('\n\n') || detail.data.synopsis || '';
-          if (ta) ta.value = content;
-          if (typeof autoCalcSceneCount === 'function' && ta) autoCalcSceneCount(ta);
-          setNodeStatus(btn, 'done', `已导入: ${n.title}`);
-          if (typeof showToast === 'function') showToast('已导入小说: ' + n.title, 'success');
-        }
-      } catch(e) {
-        if (typeof showToast === 'function') showToast('加载小说详情失败: ' + e.message, 'error');
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.txt,.docx';
+  fileInput.style.display = 'none';
+  document.body.appendChild(fileInput);
+
+  fileInput.onchange = async () => {
+    const file = fileInput.files?.[0];
+    fileInput.remove();
+    if (!file) return;
+
+    const sceneInput = node.querySelector('.wf-nd-scene-count-input');
+    const sceneCount = sceneInput ? parseInt(sceneInput.value) || 6 : 6;
+
+    setNodeStatus(btn, 'running', `上传 ${file.name}...`);
+    if (typeof showToast === 'function') showToast(`正在解析 ${file.name},编剧+导演 agent 工作中...`, 'info');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('scene_count', sceneCount);
+
+      const res = await authFetch('/api/story/import-novel', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        setNodeStatus(btn, 'error', data.error || '导入失败');
+        if (typeof showToast === 'function') showToast('导入失败: ' + (data.error || ''), 'error');
+        return;
       }
-    },
-  });
+
+      if (ta) {
+        ta.value = data.data.text || '';
+        if (typeof syncNodeData === 'function') syncNodeData(ta);
+      }
+
+      const scenes = data.data.scenes || [];
+      if (scenes.length > 0) {
+        if (typeof renderScenesList === 'function') renderScenesList(node, scenes);
+        if (typeof autoCreateSceneNodes === 'function') autoCreateSceneNodes(node, scenes, data.data);
+        setNodeStatus(btn, 'done', `已导入并拆分 ${scenes.length} 段`);
+        if (typeof showToast === 'function') showToast(`✦ 漫剧化完成: ${file.name} → ${scenes.length} 个场景`, 'success');
+      } else {
+        setNodeStatus(btn, 'done', `已导入 ${file.name}`);
+        if (typeof showToast === 'function') showToast('已导入文件,可点击 AI 生成做分镜', 'info');
+      }
+    } catch(e) {
+      setNodeStatus(btn, 'error', '上传失败');
+      if (typeof showToast === 'function') showToast('上传失败: ' + e.message, 'error');
+    }
+  };
+
+  fileInput.click();
 }
 
 async function importFromContentLib(btn) {
