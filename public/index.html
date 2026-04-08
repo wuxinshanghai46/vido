@@ -1504,11 +1504,13 @@
               <div class="drama-progress" id="drama-progress">
                 <div class="drama-p-step" id="dp-screenwriter"><span class="dp-dot"></span> 1. 编剧Agent</div>
                 <div class="drama-p-step" id="dp-director"><span class="dp-dot"></span> 2. 导演Agent</div>
-                <div class="drama-p-step" id="dp-motion"><span class="dp-dot"></span> 3. 运镜标注</div>
-                <div class="drama-p-step" id="dp-prompt"><span class="dp-dot"></span> 4. 提示词组装</div>
-                <div class="drama-p-step" id="dp-imagegen"><span class="dp-dot"></span> 5. 分镜图生成</div>
-                <div class="drama-p-step" id="dp-done"><span class="dp-dot"></span> 6. 完成</div>
+                <div class="drama-p-step" id="dp-consistency"><span class="dp-dot"></span> 3. 🎭 人物一致性 Agent</div>
+                <div class="drama-p-step" id="dp-motion"><span class="dp-dot"></span> 4. 运镜标注</div>
+                <div class="drama-p-step" id="dp-prompt"><span class="dp-dot"></span> 5. 提示词组装</div>
+                <div class="drama-p-step" id="dp-imagegen"><span class="dp-dot"></span> 6. 分镜图生成</div>
+                <div class="drama-p-step" id="dp-done"><span class="dp-dot"></span> 7. 完成</div>
               </div>
+              <div id="drama-progress-msg" style="font-size:11px;color:rgba(255,255,255,.5);margin-top:6px;min-height:14px"></div>
             </div>
           </div>
 
@@ -1519,6 +1521,7 @@
               <button class="drama-btn-sm" style="color:#00e5a0;border-color:rgba(0,229,160,.3)" onclick="saveDramaEpisode()">保存</button>
               <button class="drama-btn-sm" onclick="exportDramaScript()">导出脚本</button>
               <button class="drama-btn-sm" style="color:var(--accent-color)" onclick="generateAllDramaVideos()">全部生成视频</button>
+              <button class="drama-btn-sm" style="color:#a78bfa;border-color:rgba(167,139,250,.4)" onclick="regenCharacterBible()" id="drama-bible-btn" title="重新生成角色一致性锁定表">🎭 角色一致性</button>
               <button class="drama-btn-sm" style="color:#fbbf24;border-color:rgba(251,191,36,.4)" onclick="composeDramaFinal()" id="drama-compose-btn">🎬 一键合成成片</button>
               <span class="drama-center-count" id="drama-scene-info"></span>
             </div>

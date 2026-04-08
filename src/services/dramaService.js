@@ -341,12 +341,16 @@ function assemblePrompts(script, style = '日系动漫') {
 
     // ═══ 英文提示词（精确版，用于AI生图/视频） ═══
     const enParts = [];
+    // 角色锁定 prompt 必须放在最前面 (Sora 2 法则: identity tokens 前置)
+    if (scene._char_lock_en) enParts.push(scene._char_lock_en);
     if (scene.visual_prompt) enParts.push(scene.visual_prompt);
     enParts.push(shotPrompt);
     if (scene.motion_prompt) enParts.push(scene.motion_prompt);
     enParts.push(styleSuffix);
-    enParts.push('cinematic lighting, high quality, 4K');
+    enParts.push('consistent character design, same face same outfit as reference, cinematic lighting, high quality, 4K');
     scene.full_prompt_en = enParts.join(', ');
+    // 把 negative lock 也保存下来,供生图时用
+    if (scene._char_negative) scene.negative_prompt_en = scene._char_negative;
 
     // ═══ 中文提示词 ═══
     // 优先使用导演Agent输出的精确中文描述，回退到结构化拼接
@@ -354,16 +358,200 @@ function assemblePrompts(script, style = '日系动漫') {
       // 导演已输出精确中文，追加运镜和风格信息
       const motionObj = CAMERA_MOTIONS.find(m => m.id === scene.motion_id);
       const motionCn = motionObj ? motionObj.prompt_cn : (scene.motion_name || '');
-      scene.full_prompt_cn = scene.visual_prompt_cn + (motionCn ? `，${motionCn}` : '') + `，${style}风格，电影级画质，4K高清`;
+      const lockCnPrefix = scene._char_lock_cn ? scene._char_lock_cn + '。' : '';
+      scene.full_prompt_cn = lockCnPrefix + scene.visual_prompt_cn + (motionCn ? `，${motionCn}` : '') + `，${style}风格，人物外观保持一致，电影级画质，4K高清`;
     } else {
       // 回退：从英文版结构化翻译
       const motionObj = CAMERA_MOTIONS.find(m => m.id === scene.motion_id);
       const motionCn = motionObj ? motionObj.prompt_cn : (scene.motion_name || '');
-      scene.full_prompt_cn = `${scene.shot_scale || '中景'}，${motionCn ? motionCn + '，' : ''}${scene.description || ''}${scene.composition ? '，构图：' + scene.composition : ''}${scene.lighting ? '，光影：' + scene.lighting : ''}，${style}风格，电影级画质，4K高清`;
+      const lockCnPrefix = scene._char_lock_cn ? scene._char_lock_cn + '。' : '';
+      scene.full_prompt_cn = lockCnPrefix + `${scene.shot_scale || '中景'}，${motionCn ? motionCn + '，' : ''}${scene.description || ''}${scene.composition ? '，构图：' + scene.composition : ''}${scene.lighting ? '，光影：' + scene.lighting : ''}，${style}风格，人物外观保持一致，电影级画质，4K高清`;
     }
   });
 
   return script;
+}
+
+// ═══════════════════════════════════════════════════
+// Agent 3.5: 角色一致性 (Character Consistency Lock)
+// 学习即梦/Seedance 2.0/Veo 3 的角色一致性技术:
+// 1) 为每个角色生成"视觉锁定表" (Character Bible) - 严格的可视化关键词
+// 2) 把锁定表注入到每个 scene prompt 的开头
+// 3) 配合 reference image 双重锁定 (锁定 face + wardrobe + distinguishing tokens)
+// ═══════════════════════════════════════════════════
+async function agentCharacterConsistency({ screenplay, characters = [] }) {
+  const { callLLM } = require('./storyService');
+  const db = require('../models/database');
+
+  // 收集角色信息: 优先用编剧 Agent 生成的 character_profiles, 回退到传入的 characters
+  const charProfiles = screenplay?.character_profiles || [];
+  const allChars = [];
+  // 合并 character_profiles 和外部 characters (角色库)
+  for (const cp of charProfiles) {
+    const extChar = characters.find(c => c.name === cp.name);
+    allChars.push({
+      name: cp.name,
+      appearance: cp.appearance || extChar?.appearance_prompt || extChar?.appearance || '',
+      personality: cp.personality || extChar?.personality || '',
+      voice_tone: cp.voice_tone || '',
+      // 从角色库带上三视图(用作 reference image)
+      ext_id: extChar?.id || null,
+      three_view: extChar?.three_view || null,
+      ref_images: extChar?.ref_images || [],
+    });
+  }
+  // 也加上 character_profiles 没列但 characters 有的(防漏)
+  for (const c of characters) {
+    if (!allChars.find(x => x.name === c.name)) {
+      allChars.push({
+        name: c.name,
+        appearance: c.appearance_prompt || c.appearance || '',
+        personality: c.personality || '',
+        voice_tone: '',
+        ext_id: c.id || null,
+        three_view: c.three_view || null,
+        ref_images: c.ref_images || [],
+      });
+    }
+  }
+
+  if (allChars.length === 0) {
+    return { characters: [], global_consistency_rules: [] };
+  }
+
+  // 调 LLM 生成视觉锁定表
+  const systemPrompt = `你是顶级的 AI 漫剧角色设定师, 专精**人物一致性锁定**。你的能力对标:
+- 字节即梦 (JiMeng): subject_reference 模式, 锁面部+服装跨镜头
+- 字节 Seedance 2.0: character token + wardrobe token 双锁
+- Google Veo 3: subject anchor + style anchor 跨镜头一致性
+- OpenAI Sora 2: identity tokens 严格 lock
+
+【任务】
+为每个角色生成一份"视觉锁定表" (Character Bible), 让 AI 图像/视频模型在不同分镜中生成同一个角色时**外观完全一致**。
+
+【核心原则】
+1. **每个特征都用具体可视化的关键词**, 禁止抽象描述
+   - ✗ 不写 "dark hair" → ✓ 写 "raven-black mid-back length hair, side bangs"
+   - ✗ 不写 "tall" → ✓ 写 "175cm tall, slender athletic build"
+   - ✗ 不写 "casual outfit" → ✓ 写 "white cotton T-shirt, dark blue denim jeans, brown leather belt"
+2. **颜色必须是具体词** (raven-black / chestnut brown / icy blue / sage green / cream white)
+3. **服装锁定 3 个层次**: 主色调 + 款式 + 关键配饰
+4. **标志特征 (distinguishing marks) 是最强的识别符**: 疤痕/纹身/胎记/眼镜/帽子/项链/特殊发饰
+5. **id_token** 是 1-3 个英文词的短标识, 在每个 prompt 里复用 (类似 "the same Asian young woman with raven-black hair")
+
+【输出严格 JSON】(不要任何额外文字, 不要 markdown 代码块):
+{
+  "characters": [
+    {
+      "name": "角色名(中文)",
+      "id_token_en": "the same [adjective] [age] [gender]",
+      "id_token_cn": "同一个 [形容词] [年龄] [性别]",
+      "lock_face": "面部锁定: 脸型/肤色/瞳色/发型/发色 (英文, 6-10 个具体特征, 30-50 词)",
+      "lock_body": "身体锁定: 身高/体型/年龄感 (英文, 3-5 个特征)",
+      "lock_wardrobe": "服装锁定: 主色 + 款式 + 配饰 (英文, 5-8 个具体词)",
+      "lock_distinguishing": "标志特征 (英文, 1-3 个最显著的, 例如 'small star-shaped scar above left eyebrow, silver wing-shaped earring')",
+      "lock_expression_default": "默认气质 (英文, 1-2 词, 例如 'serene and composed' / 'mischievous smirk')",
+      "full_lock_prompt_en": "把以上全部融合成一句完整英文锁定 prompt (60-100 词, 用逗号分隔, 以 id_token_en 开头)",
+      "full_lock_prompt_cn": "中文版本 (与英文一一对应)",
+      "negative_lock": "禁止特征英文 (例如 'different hair color, different outfit, blonde hair, glasses')"
+    }
+  ],
+  "global_rules": {
+    "lighting_anchor": "全剧光线锚点 (例如 'soft diffused warm sunlight, cinematic golden hour')",
+    "color_palette": "5 个主色 (例如 'cream white, sage green, dusty rose, charcoal grey, warm amber')",
+    "style_anchor": "整体画风锚点 (例如 'Studio Ghibli style, hand-painted watercolor texture')"
+  }
+}`;
+
+  const userPrompt = `请为以下网剧角色生成视觉锁定表:
+
+${allChars.map((c, i) => `角色 ${i + 1}:
+- 名字: ${c.name}
+- 现有外貌描述: ${c.appearance || '无'}
+- 性格: ${c.personality || '无'}
+${c.three_view ? '- 已有角色库三视图,需要根据描述生成更精确的锁定表' : ''}`).join('\n\n')}
+
+剧情背景: ${screenplay?.synopsis || screenplay?.title || '无'}
+
+请输出严格 JSON 锁定表。`;
+
+  let raw, parsed;
+  try {
+    raw = await callLLM(systemPrompt, userPrompt);
+    parsed = repairJSON(raw);
+  } catch (err) {
+    console.error('[CharConsistency] LLM 失败:', err.message);
+    // 回退: 用现有信息构造一个基础锁定表
+    parsed = {
+      characters: allChars.map(c => ({
+        name: c.name,
+        id_token_en: `the same character ${c.name}`,
+        id_token_cn: `同一个角色 ${c.name}`,
+        lock_face: c.appearance || c.name,
+        lock_body: '',
+        lock_wardrobe: '',
+        lock_distinguishing: '',
+        lock_expression_default: '',
+        full_lock_prompt_en: c.appearance || c.name,
+        full_lock_prompt_cn: c.appearance || c.name,
+        negative_lock: 'different character, different appearance',
+      })),
+      global_rules: {},
+    };
+  }
+
+  // 把角色库带的 three_view + ref_images 合并进结果(后续生图作为 reference image 用)
+  for (const lockChar of parsed.characters || []) {
+    const src = allChars.find(c => c.name === lockChar.name);
+    if (src) {
+      lockChar.ext_id = src.ext_id;
+      lockChar.three_view = src.three_view;
+      lockChar.ref_images = src.ref_images;
+    }
+  }
+
+  return parsed;
+}
+
+// 把角色 bible 注入到每个 scene 的 prompt 中
+function injectCharacterLocks(scenes, characterBible) {
+  const lockChars = characterBible?.characters || [];
+  if (!lockChars.length) return scenes;
+
+  const globalRules = characterBible?.global_rules || {};
+  const styleAnchor = globalRules.style_anchor || '';
+  const lightingAnchor = globalRules.lighting_anchor || '';
+
+  scenes.forEach(scene => {
+    // 探测当前场景出现了哪些已锁定的角色
+    const sceneText = `${scene.description || ''} ${scene.dialogue || ''} ${scene.speaker || ''} ${scene.visual_prompt || ''} ${scene.visual_prompt_cn || ''}`;
+    const presentChars = lockChars.filter(lc => sceneText.includes(lc.name));
+
+    if (presentChars.length === 0) {
+      // 没有锁定角色出现, 直接加全局规则
+      if (styleAnchor) scene._char_lock_en = styleAnchor;
+      return;
+    }
+
+    // 拼接出现角色的锁定 prompt
+    const lockEn = presentChars.map(c => c.full_lock_prompt_en).filter(Boolean).join('. ');
+    const lockCn = presentChars.map(c => c.full_lock_prompt_cn).filter(Boolean).join('。 ');
+    const negative = presentChars.map(c => c.negative_lock).filter(Boolean).join(', ');
+    // 收集出现角色的 reference image (用三视图 front 优先)
+    const refImages = [];
+    presentChars.forEach(c => {
+      if (c.three_view?.front) refImages.push(c.three_view.front);
+      else if (c.ref_images?.[0]) refImages.push(c.ref_images[0]);
+    });
+
+    scene._char_lock_en = `${lockEn}${styleAnchor ? '. ' + styleAnchor : ''}`;
+    scene._char_lock_cn = lockCn;
+    scene._char_negative = negative;
+    scene._char_ref_images = refImages;
+    scene._present_chars = presentChars.map(c => c.name);
+  });
+
+  return scenes;
 }
 
 // ═══════════════════════════════════════════════════
@@ -451,10 +639,24 @@ async function generateDrama(taskId, params, progressCallback) {
     directed = await agentDramaDirector(screenplay, resolvedStyle, enrichedChars);
   } catch (err) { throw new Error('导演Agent失败: ' + err.message); }
   fs.writeFileSync(path.join(taskDir, 'directed.json'), JSON.stringify(directed, null, 2), 'utf8');
-  progress('director', 40, `🎬 导演完成：分镜设计就绪`);
+  progress('director', 35, `🎬 导演完成：分镜设计就绪`);
+
+  // Step 2.5: 角色一致性 (Character Consistency Lock)
+  progress('consistency', 37, '🎭 人物一致性：生成 Character Bible 锁定外观...');
+  let characterBible = { characters: [], global_rules: {} };
+  try {
+    characterBible = await agentCharacterConsistency({ screenplay: directed, characters: enrichedChars });
+    fs.writeFileSync(path.join(taskDir, 'character_bible.json'), JSON.stringify(characterBible, null, 2), 'utf8');
+    progress('consistency', 42, `🎭 已锁定 ${characterBible.characters?.length || 0} 个角色外观`);
+  } catch (err) {
+    console.error('[CharConsistency] failed:', err.message);
+    progress('consistency', 42, `⚠️ 人物一致性 fallback: ${err.message}`);
+  }
+  // 把角色锁注入每个场景
+  injectCharacterLocks(directed.scenes || [], characterBible);
 
   // Step 3: 运镜标注
-  progress('motion', 42, '🎥 运镜标注：匹配镜头语言...');
+  progress('motion', 44, '🎥 运镜标注：匹配镜头语言...');
   const withMotion = applyMotionPrompts(directed, motionPreset);
   progress('motion', 50, `🎥 运镜完成：已标注${withMotion.scenes?.length || 0}个镜头`);
 
@@ -495,9 +697,14 @@ async function generateDrama(taskId, params, progressCallback) {
       visual_prompt_cn: s.visual_prompt_cn || '',
       full_prompt_en: s.full_prompt_en || '',
       full_prompt_cn: s.full_prompt_cn || '',
+      negative_prompt_en: s.negative_prompt_en || '',
+      char_ref_images: s._char_ref_images || [],
+      present_chars: s._present_chars || [],
+      char_lock_cn: s._char_lock_cn || '',
       video_url: null,
       image_url: null,
     })),
+    character_bible: characterBible,
     total_duration: (final.scenes || []).reduce((sum, s) => sum + (s.duration || durationPerScene), 0),
   };
 
@@ -520,10 +727,20 @@ async function generateDrama(taskId, params, progressCallback) {
 
     try {
       const prompt = scene.full_prompt_en || scene.visual_prompt || scene.description;
+      // 用角色一致性 Agent 收集到的 reference images (三视图 front 优先)
+      const refImages = (scene.char_ref_images || []).filter(Boolean);
+      // 把相对 URL 转成绝对 URL (供 jimeng 等需要公网 URL 的供应商)
+      const absRefImages = refImages.map(u => {
+        if (/^https?:\/\//.test(u)) return u;
+        // 内部 URL: 先拼上本机域名 (生产环境会走 PUBLIC_URL)
+        const base = process.env.PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 4600}`;
+        return base + u;
+      });
       const imgResult = await generateDramaImage({
         prompt,
         filename: `drama_${taskId}_s${i}`,
-        aspectRatio: aspect_ratio
+        aspectRatio: aspect_ratio,
+        referenceImages: absRefImages,
       });
       const imgDest = path.join(taskDir, `scene_${i}.png`);
       if (imgResult.filePath && fs.existsSync(imgResult.filePath)) {
@@ -619,4 +836,6 @@ module.exports = {
   assemblePrompts,
   applyMotionPrompts,
   agentDramaVoice,
+  agentCharacterConsistency,
+  injectCharacterLocks,
 };

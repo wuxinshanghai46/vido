@@ -9953,21 +9953,26 @@ async function loadDramaModels() {
 
 function updateDramaProgress(task) {
   const pct = task.progress || 0;
-  ['screenwriter', 'director', 'motion', 'prompt', 'imagegen', 'done'].forEach(s => {
+  ['screenwriter', 'director', 'consistency', 'motion', 'prompt', 'imagegen', 'done'].forEach(s => {
     const el = document.getElementById('dp-' + s); if (el) el.classList.remove('active', 'done');
   });
   if (pct >= 20) document.getElementById('dp-screenwriter')?.classList.add('done');
-  if (pct >= 40) document.getElementById('dp-director')?.classList.add('done');
+  if (pct >= 35) document.getElementById('dp-director')?.classList.add('done');
+  if (pct >= 43) document.getElementById('dp-consistency')?.classList.add('done');
   if (pct >= 50) document.getElementById('dp-motion')?.classList.add('done');
   if (pct >= 60) document.getElementById('dp-prompt')?.classList.add('done');
   if (pct >= 95) document.getElementById('dp-imagegen')?.classList.add('done');
   if (pct >= 100) document.getElementById('dp-done')?.classList.add('done');
   if (pct < 20) document.getElementById('dp-screenwriter')?.classList.add('active');
-  else if (pct < 40) document.getElementById('dp-director')?.classList.add('active');
+  else if (pct < 35) document.getElementById('dp-director')?.classList.add('active');
+  else if (pct < 43) document.getElementById('dp-consistency')?.classList.add('active');
   else if (pct < 50) document.getElementById('dp-motion')?.classList.add('active');
   else if (pct < 60) document.getElementById('dp-prompt')?.classList.add('active');
   else if (pct < 95) document.getElementById('dp-imagegen')?.classList.add('active');
   else if (pct < 100) document.getElementById('dp-done')?.classList.add('active');
+  // 进度文字
+  const msgEl = document.getElementById('drama-progress-msg');
+  if (msgEl && task.message) msgEl.textContent = task.message;
 }
 
 // ════════ 分镜列表+编辑（复用逻辑） ════════
@@ -10195,6 +10200,77 @@ function renderDramaFinalVideo() {
   video.src = url;
   if (meta) meta.textContent = `${dramaResult.composed_clips || 0} 段 · ${dramaResult.aspect_ratio || ''} · 约 ${dramaResult.total_duration || 0}s`;
   if (dl) dl.href = (dramaResult.final_video_url || '').replace(/\/final$/, '/final/download');
+}
+
+// ════════ 重新生成 Character Bible (角色一致性) ════════
+async function regenCharacterBible() {
+  if (!dramaResult || !currentDramaEpisode) {
+    alert('请先选中一个已生成的剧集');
+    return;
+  }
+  if (!confirm('重新生成角色一致性锁定表? 会调 LLM 重新分析所有角色的视觉特征并注入到每个分镜的 prompt 中(约 10-30 秒)。\n\n生成后,新生成的分镜图会用更严格的角色锁定。已生成的分镜图不会自动重画,需要单独点击"重新生成"。')) return;
+  const btn = document.getElementById('drama-bible-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  try {
+    const r = await authFetch(`${_dramaApiBase()}/regenerate-character-bible`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    dramaResult.character_bible = d.data.bible;
+    showCharacterBibleDialog(d.data.bible);
+    showToast(`✓ 已锁定 ${d.data.character_count} 个角色`, 'ok');
+  } catch (e) {
+    alert('生成失败: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🎭 角色一致性'; }
+  }
+}
+
+function showCharacterBibleDialog(bible) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:30px';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const chars = bible?.characters || [];
+  const rules = bible?.global_rules || {};
+  overlay.innerHTML = `<div style="background:#0d0d12;border:1px solid rgba(255,255,255,.1);border-radius:18px;width:880px;max-width:96vw;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.7)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="font-size:15px;font-weight:600;color:#fff">🎭 Character Bible — 角色一致性锁定表</div>
+      <button onclick="this.closest('div[style*=\\'position:fixed\\']').remove()" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.7);cursor:pointer">×</button>
+    </div>
+    <div style="overflow-y:auto;padding:20px 22px">
+      ${chars.length === 0 ? '<div style="color:rgba(255,255,255,.4);text-align:center;padding:40px">暂无角色锁定</div>' : chars.map(c => `
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            ${c.three_view?.front ? `<img src="${c.three_view.front}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0"/>` : ''}
+            <div>
+              <div style="font-size:15px;font-weight:600;color:#fff">${c.name || ''}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">${c.id_token_en || ''}</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:90px 1fr;gap:8px 14px;font-size:12px">
+            <div style="color:rgba(255,255,255,.4)">面部锁定</div><div style="color:rgba(255,255,255,.85)">${escHtml(c.lock_face || '')}</div>
+            <div style="color:rgba(255,255,255,.4)">身体</div><div style="color:rgba(255,255,255,.85)">${escHtml(c.lock_body || '')}</div>
+            <div style="color:rgba(255,255,255,.4)">服装</div><div style="color:rgba(255,255,255,.85)">${escHtml(c.lock_wardrobe || '')}</div>
+            <div style="color:rgba(255,255,255,.4)">标志特征</div><div style="color:rgba(255,255,255,.85)">${escHtml(c.lock_distinguishing || '无')}</div>
+            <div style="color:rgba(255,255,255,.4)">禁止</div><div style="color:#ff7a8a">${escHtml(c.negative_lock || '')}</div>
+          </div>
+          <details style="margin-top:10px"><summary style="font-size:11px;color:rgba(255,255,255,.5);cursor:pointer">展开完整锁定 prompt</summary>
+            <div style="background:rgba(0,0,0,.3);padding:10px;border-radius:6px;margin-top:6px;font-size:11px;color:rgba(255,255,255,.7);line-height:1.6;font-family:monospace">${escHtml(c.full_lock_prompt_en || '')}</div>
+          </details>
+        </div>
+      `).join('')}
+      ${rules.style_anchor || rules.color_palette || rules.lighting_anchor ? `
+        <div style="background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.2);border-radius:12px;padding:14px;font-size:12px">
+          <div style="font-weight:600;color:#a78bfa;margin-bottom:8px">全局一致性规则</div>
+          ${rules.lighting_anchor ? `<div style="margin-top:4px"><b style="color:rgba(255,255,255,.5)">光线:</b> ${escHtml(rules.lighting_anchor)}</div>` : ''}
+          ${rules.color_palette ? `<div style="margin-top:4px"><b style="color:rgba(255,255,255,.5)">配色:</b> ${escHtml(rules.color_palette)}</div>` : ''}
+          ${rules.style_anchor ? `<div style="margin-top:4px"><b style="color:rgba(255,255,255,.5)">画风:</b> ${escHtml(rules.style_anchor)}</div>` : ''}
+        </div>
+      ` : ''}
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
 }
 
 // 预览弹层（图片/视频）

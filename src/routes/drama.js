@@ -288,7 +288,7 @@ router.put('/projects/:pid/episodes/:eid/scenes/:idx', (req, res) => {
   res.json({ success: true, data: scenes[idx] });
 });
 
-// POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/generate-video — 单镜头生图
+// POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/generate-video — 单镜头生图(带角色一致性)
 router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (req, res) => {
   const ep = db.getDramaEpisode(req.params.eid);
   if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
@@ -299,10 +299,19 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (re
   try {
     const { generateDramaImage } = require('../services/imageService');
     const prompt = scene.full_prompt_en || scene.visual_prompt || scene.description;
+    // 角色一致性: 用本场景出现角色的三视图作为 reference image
+    const refImages = (scene.char_ref_images || []).filter(Boolean);
+    const absRefImages = refImages.map(u => {
+      if (/^https?:\/\//.test(u)) return u;
+      const base = process.env.PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 4600}`;
+      return base + u;
+    });
+    const aspectRatio = ep.result?.aspect_ratio || '9:16';
     const imgResult = await generateDramaImage({
       prompt,
       filename: `drama_${ep.id}_s${idx}`,
-      aspectRatio: '16:9'
+      aspectRatio,
+      referenceImages: absRefImages,
     });
     const taskDir = path.join(DRAMA_DIR, ep.id);
     fs.mkdirSync(taskDir, { recursive: true });
@@ -310,8 +319,54 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (re
     if (imgResult.filePath && fs.existsSync(imgResult.filePath)) fs.copyFileSync(imgResult.filePath, imgDest);
     scene.image_url = `/api/drama/tasks/${ep.id}/image/${idx}`;
     db.updateDramaEpisode(ep.id, { result: ep.result });
-    res.json({ success: true, data: { image_url: scene.image_url } });
+    res.json({ success: true, data: { image_url: scene.image_url, used_refs: absRefImages.length } });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// POST /api/drama/projects/:pid/episodes/:eid/regenerate-character-bible — 重新生成 Character Bible
+router.post('/projects/:pid/episodes/:eid/regenerate-character-bible', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+  try {
+    const { agentCharacterConsistency, injectCharacterLocks } = require('../services/dramaService');
+    const project = db.getDramaProject(req.params.pid);
+    // 获取角色库角色
+    const enrichedChars = [];
+    for (const c of (project?.characters || [])) {
+      if (c.id) {
+        const dbChar = db.getAIChar(c.id);
+        if (dbChar) enrichedChars.push({ ...dbChar, ...c });
+        else enrichedChars.push(c);
+      } else enrichedChars.push(c);
+    }
+    const screenplayLike = {
+      title: ep.result.title,
+      synopsis: ep.result.synopsis,
+      character_profiles: ep.result.character_bible?.characters || [],
+    };
+    const bible = await agentCharacterConsistency({ screenplay: screenplayLike, characters: enrichedChars });
+    // 重新注入到所有 scene
+    injectCharacterLocks(ep.result.scenes || [], bible);
+    // 把注入后的字段写回 scene
+    for (const s of (ep.result.scenes || [])) {
+      s.char_ref_images = s._char_ref_images || [];
+      s.present_chars = s._present_chars || [];
+      s.char_lock_cn = s._char_lock_cn || '';
+      // 重组 full_prompt_en/cn
+      const prefixEn = s._char_lock_en ? s._char_lock_en + ', ' : '';
+      const prefixCn = s._char_lock_cn ? s._char_lock_cn + '。' : '';
+      // 去掉旧的 lock 前缀(如果存在)
+      const baseEn = (s.full_prompt_en || '').replace(/^the same [^,]+,\s*/i, '');
+      const baseCn = (s.full_prompt_cn || '').replace(/^同一个[^。]+。/, '');
+      s.full_prompt_en = prefixEn + baseEn;
+      s.full_prompt_cn = prefixCn + baseCn;
+    }
+    ep.result.character_bible = bible;
+    db.updateDramaEpisode(ep.id, { result: ep.result });
+    res.json({ success: true, data: { character_count: bible.characters?.length || 0, bible } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/make-video — 单镜头生成视频
