@@ -837,6 +837,8 @@ function initNodeDynamic(nodeId, type) {
   if (type === 'avatar') {
     initAvatarVoices(nodeId);
   }
+  // 填充画风下拉(风格库): 函数若存在(用户 pending feature)则调用
+  if (typeof populateStyleSelects === 'function') populateStyleSelects(node);
 }
 
 function dragNode(event, type) {
@@ -2086,8 +2088,7 @@ async function loadWorkflow(id) {
   }
 }
 
-// ═══ 浮动 + 圆按钮注入（左右两侧，用于添加连接节点） ═══
-// Phase 1: 仅视觉,点击行为留待 Phase 2 接入 addLinkedNode()
+// ═══ 浮动 + 圆按钮注入（左右两侧） ═══
 function injectAddButtons() {
   document.querySelectorAll('.drawflow-node .wf-nd').forEach(wfnd => {
     if (wfnd.querySelector('.wf-nd-add-left')) return;
@@ -2099,17 +2100,107 @@ function injectAddButtons() {
       el.title = side === 'left' ? '向左添加节点' : '向右添加节点';
       el.dataset.nodeId = nodeId || '';
       el.dataset.side = side;
-      // Phase 1: 提示用户该按钮即将上线
       el.addEventListener('mousedown', (e) => e.stopPropagation());
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (typeof showToast === 'function') showToast('+ 按钮即将开放：用于快速添加连接节点', 'info');
+        showAddMenu(el, nodeId, side);
       });
       return el;
     };
     wfnd.appendChild(make('left'));
     wfnd.appendChild(make('right'));
   });
+}
+
+// ═══ + 按钮的弹出菜单 "引用该节点生成" ═══
+const ADD_MENU_OPTIONS = [
+  { type: 'text',       label: '文本生成', desc: '剧本、台词、文案',
+    icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>' },
+  { type: 'background', label: '图片生成', desc: '场景背景、海报、封面',
+    icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 10l4-3.5 2.5 2 3-3 4.5 4" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><circle cx="5" cy="6" r="1" fill="currentColor"/></svg>' },
+  { type: 'video',      label: '视频生成', desc: '文生视频、图生视频',
+    icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="3" width="9" height="10" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 6l4-2v8l-4-2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>' },
+  { type: 'voice',      label: '音频生成', desc: '配音、TTS 语音',
+    icon: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 6v4M6 4v8M9 5v6M12 7v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' },
+];
+
+function showAddMenu(anchorEl, sourceNodeId, side) {
+  closeAddMenu();
+  const menu = document.createElement('div');
+  menu.className = 'wf-add-menu';
+  menu.id = 'wf-add-menu';
+  let html = '<div class="wf-add-menu-title">引用该节点生成</div>';
+  ADD_MENU_OPTIONS.forEach(opt => {
+    html += `<div class="wf-add-menu-item" data-type="${opt.type}">
+      <div class="wf-add-menu-icon">${opt.icon}</div>
+      <div class="wf-add-menu-text">
+        <div class="wf-add-menu-label">${opt.label}</div>
+        <div class="wf-add-menu-desc">${opt.desc}</div>
+      </div>
+    </div>`;
+  });
+  menu.innerHTML = html;
+  document.body.appendChild(menu);
+
+  // 定位:菜单贴近 + 按钮
+  const rect = anchorEl.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  let left = side === 'right' ? rect.right + 10 : rect.left - menuRect.width - 10;
+  let top  = rect.top + rect.height / 2 - menuRect.height / 2;
+  // 视口边界保护
+  left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+  top  = Math.max(8, Math.min(top, window.innerHeight - menuRect.height - 8));
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+
+  menu.querySelectorAll('.wf-add-menu-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const type = item.dataset.type;
+      addLinkedNode(sourceNodeId, side, type);
+      closeAddMenu();
+    });
+  });
+  setTimeout(() => document.addEventListener('click', closeAddMenuOutside), 0);
+}
+function closeAddMenu() {
+  const menu = document.getElementById('wf-add-menu');
+  if (menu) menu.remove();
+  document.removeEventListener('click', closeAddMenuOutside);
+}
+function closeAddMenuOutside(e) {
+  if (!e.target.closest('#wf-add-menu')) closeAddMenu();
+}
+
+// 在源节点旁边创建并连接一个新节点
+function addLinkedNode(sourceNodeId, side, type) {
+  if (!sourceNodeId) return;
+  let src;
+  try { src = editor.getNodeFromId(sourceNodeId); } catch { return; }
+  if (!src) return;
+  const offset = 360;
+  const newX = side === 'right' ? src.pos_x + offset : src.pos_x - offset;
+  const newY = src.pos_y;
+
+  nodeCounter++;
+  const id = 'n' + nodeCounter;
+  const io = NODE_IO[type] || { inputs: 1, outputs: 1 };
+  const html = nodeHTML(type, id);
+  const newNodeId = editor.addNode(type, io.inputs, io.outputs, newX, newY, type, { type, nodeId: id }, html);
+
+  // 自动连接
+  setTimeout(() => {
+    try {
+      if (side === 'right' && io.inputs > 0) {
+        editor.addConnection(sourceNodeId, newNodeId, 'output_1', 'input_1');
+      } else if (side === 'left' && NODE_IO[src.class]?.inputs > 0) {
+        editor.addConnection(newNodeId, sourceNodeId, 'output_1', 'input_1');
+      }
+      initNodeDynamic(newNodeId, type);
+    } catch (e) {
+      console.warn('[addLinkedNode] connect failed:', e);
+    }
+  }, 60);
 }
 
 // 加载后：从 data 恢复所有节点的动态内容
@@ -2586,59 +2677,139 @@ async function importFromNovel(btn) {
   setTextSource(btn, 'novel');
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
-  // 弹出小说选择器
-  try {
-    const res = await authFetch('/api/novel');
-    const data = await res.json();
-    if (data.success && data.data?.length) {
-      const novels = data.data;
-      const names = novels.map((n, i) => `${i + 1}. ${n.title || '未命名'}`).join('\n');
-      const idx = prompt('选择小说（输入序号）：\n' + names);
-      if (idx) {
-        const novel = novels[parseInt(idx) - 1];
-        if (novel) {
-          // 加载小说完整内容
-          const detailRes = await authFetch(`/api/novel/${novel.id}`);
-          const detail = await detailRes.json();
-          if (detail.success && detail.data) {
-            const content = detail.data.chapters?.map(c => c.content || '').join('\n\n') || detail.data.synopsis || '';
-            ta.value = content;
-            setNodeStatus(btn, 'done', `已导入: ${novel.title}`);
-          }
+  openPicker({
+    title: '导入小说',
+    placeholder: '搜索小说标题或简介...',
+    fetchUrl: '/api/novel',
+    emptyText: '暂无小说，请先在 AI 小说页面创建',
+    renderCard: (n) => ({
+      title: n.title || '未命名',
+      desc: n.synopsis || n.intro || '',
+      meta: [n.genre || '', `${(n.chapters || []).length} 章`].filter(Boolean),
+    }),
+    onPick: async (n) => {
+      try {
+        const detailRes = await authFetch(`/api/novel/${n.id}`);
+        const detail = await detailRes.json();
+        if (detail.success && detail.data) {
+          const content = (detail.data.chapters || []).map(c => c.content || '').join('\n\n') || detail.data.synopsis || '';
+          if (ta) ta.value = content;
+          if (typeof autoCalcSceneCount === 'function' && ta) autoCalcSceneCount(ta);
+          setNodeStatus(btn, 'done', `已导入: ${n.title}`);
+          if (typeof showToast === 'function') showToast('已导入小说: ' + n.title, 'success');
         }
+      } catch(e) {
+        if (typeof showToast === 'function') showToast('加载小说详情失败: ' + e.message, 'error');
       }
-    } else {
-      alert('暂无小说，请先在 AI 小说页面创建');
-    }
-  } catch(e) {
-    alert('加载小说列表失败: ' + e.message);
-  }
+    },
+  });
 }
 
 async function importFromContentLib(btn) {
   setTextSource(btn, 'contentlib');
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
+  openPicker({
+    title: '导入内容库',
+    placeholder: '搜索标题或描述...',
+    fetchUrl: '/api/radar/contents',
+    emptyText: '内容库为空，请先在素材雷达页面抓取内容',
+    renderCard: (it) => ({
+      title: it.title || it.desc || '未命名',
+      desc: it.content || it.desc || '',
+      meta: [it.platform || '', it.author || '', it.created_at ? new Date(it.created_at).toLocaleDateString() : ''].filter(Boolean),
+    }),
+    onPick: (it) => {
+      const content = it.content || it.desc || it.title || '';
+      if (ta) ta.value = content;
+      if (typeof autoCalcSceneCount === 'function' && ta) autoCalcSceneCount(ta);
+      setNodeStatus(btn, 'done', '已导入内容');
+      if (typeof showToast === 'function') showToast('已导入内容', 'success');
+    },
+  });
+}
+
+// ═══ 通用选择器对话框 ═══
+async function openPicker({ title, placeholder, fetchUrl, emptyText, renderCard, onPick }) {
+  closePicker();
+  const overlay = document.createElement('div');
+  overlay.className = 'wf-picker-overlay';
+  overlay.id = 'wf-picker';
+  overlay.innerHTML = `
+    <div class="wf-picker-box" onclick="event.stopPropagation()">
+      <div class="wf-picker-header">
+        <div class="wf-picker-title">${title}</div>
+        <div class="wf-picker-close" id="wf-picker-close">×</div>
+      </div>
+      <input class="wf-picker-search" id="wf-picker-search" placeholder="${placeholder}" />
+      <div class="wf-picker-body" id="wf-picker-body">
+        <div class="wf-picker-loading">加载中...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closePicker(); });
+  document.getElementById('wf-picker-close').onclick = closePicker;
+
+  const body = document.getElementById('wf-picker-body');
+  const search = document.getElementById('wf-picker-search');
+
+  let allItems = [];
   try {
-    const res = await authFetch('/api/content');
+    const res = await authFetch(fetchUrl);
     const data = await res.json();
-    if (data.success && data.data?.length) {
-      const items = data.data.slice(0, 20);
-      const names = items.map((n, i) => `${i + 1}. ${(n.title || n.desc || '').substring(0, 40)}`).join('\n');
-      const idx = prompt('选择内容（输入序号）：\n' + names);
-      if (idx) {
-        const item = items[parseInt(idx) - 1];
-        if (item) {
-          ta.value = item.content || item.desc || item.title || '';
-          setNodeStatus(btn, 'done', '已导入内容');
-        }
-      }
-    } else {
-      alert('内容库为空，请先在素材获取页面抓取内容');
-    }
+    allItems = data.data || data.items || [];
   } catch(e) {
-    alert('加载内容库失败: ' + e.message);
+    body.innerHTML = `<div class="wf-picker-empty">加载失败: ${e.message}</div>`;
+    return;
   }
+
+  const render = (items) => {
+    if (!items.length) {
+      body.innerHTML = `<div class="wf-picker-empty">${emptyText}</div>`;
+      return;
+    }
+    let html = '<div class="wf-picker-grid">';
+    items.forEach((it, i) => {
+      const card = renderCard(it);
+      const meta = (card.meta || []).map(m => `<span>${escapeHtml(m)}</span>`).join('');
+      html += `<div class="wf-picker-card" data-idx="${i}">
+        <div class="wf-picker-card-title">${escapeHtml(card.title)}</div>
+        <div class="wf-picker-card-desc">${escapeHtml(card.desc || '')}</div>
+        ${meta ? `<div class="wf-picker-card-meta">${meta}</div>` : ''}
+      </div>`;
+    });
+    html += '</div>';
+    body.innerHTML = html;
+    body.querySelectorAll('.wf-picker-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.idx);
+        const item = items[idx];
+        closePicker();
+        onPick(item);
+      });
+    });
+  };
+
+  render(allItems);
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase().trim();
+    if (!q) { render(allItems); return; }
+    const filtered = allItems.filter(it => {
+      const card = renderCard(it);
+      return (card.title || '').toLowerCase().includes(q) ||
+             (card.desc || '').toLowerCase().includes(q);
+    });
+    render(filtered);
+  });
+  search.focus();
+}
+function closePicker() {
+  const p = document.getElementById('wf-picker');
+  if (p) p.remove();
+}
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 async function autoSplitText(btn) {

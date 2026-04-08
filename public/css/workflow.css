@@ -166,18 +166,28 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 }
 .drawflow .drawflow-node .inputs, .drawflow .drawflow-node .outputs { display: flex; }
 .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
-  width: 10px !important; height: 10px !important; border-radius: 50% !important;
+  width: 12px !important; height: 12px !important; border-radius: 50% !important;
   background: #0a0a0e !important;
-  border: 1.5px solid rgba(255,255,255,.55) !important;
+  border: 1.5px solid rgba(255,255,255,.6) !important;
   box-shadow: none !important;
   transition: all .2s var(--wf-ease) !important;
   cursor: crosshair !important;
+  position: relative !important;
+}
+/* 不可见的扩展点击区(24px)让端口更易点击 */
+.drawflow .drawflow-node .input::before,
+.drawflow .drawflow-node .output::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: transparent;
 }
 .drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover {
   background: #fff !important;
   border-color: #fff !important;
-  transform: scale(1.4);
-  box-shadow: 0 0 0 4px rgba(255,255,255,.10), 0 0 12px rgba(255,255,255,.4) !important;
+  transform: scale(1.35);
+  box-shadow: 0 0 0 5px rgba(255,255,255,.10), 0 0 14px rgba(255,255,255,.5) !important;
 }
 /* ═══ 连线：细白色 + 慢速流动 ═══ */
 .drawflow svg { overflow: visible !important; }
@@ -267,10 +277,14 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
   opacity: 1; pointer-events: auto;
 }
 .wf-nd-btn-sm {
-  padding: 3px 8px !important; background: rgba(255,255,255,.06) !important;
+  height: 24px !important; min-width: 36px !important;
+  padding: 0 10px !important;
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.1) !important; border-radius: 999px !important;
-  color: rgba(255,255,255,.7) !important; font-size: 10px !important;
+  color: rgba(255,255,255,.7) !important; font-size: 11px !important; line-height: 1 !important;
   cursor: pointer; font-family: inherit; backdrop-filter: blur(8px);
+  margin: 0 !important;
 }
 .wf-nd-btn-sm:hover { background: rgba(255,255,255,.12) !important; color: #fff !important; }
 
@@ -299,6 +313,139 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
   border-color: #fff;
   transform: translateY(-50%) scale(1.12);
   box-shadow: 0 0 0 6px rgba(255,255,255,.08), 0 6px 18px rgba(255,255,255,.18);
+}
+
+/* ═══ + 按钮弹出菜单（"引用该节点生成"） ═══ */
+.wf-add-menu {
+  position: fixed;
+  background: rgba(15,15,20,.96);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  padding: 10px 8px 8px;
+  min-width: 220px;
+  z-index: 1000;
+  box-shadow: 0 24px 60px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04) inset;
+  animation: wf-add-menu-in .15s var(--wf-ease);
+}
+@keyframes wf-add-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wf-add-menu-title {
+  font-size: 11px; color: rgba(255,255,255,.45);
+  padding: 4px 12px 8px; font-weight: 500; letter-spacing: .2px;
+}
+.wf-add-menu-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  transition: background .15s var(--wf-ease);
+}
+.wf-add-menu-item:hover { background: rgba(255,255,255,.06); }
+.wf-add-menu-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.85); flex-shrink: 0;
+}
+.wf-add-menu-item:hover .wf-add-menu-icon {
+  background: rgba(255,255,255,.1);
+  border-color: rgba(255,255,255,.18);
+}
+.wf-add-menu-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wf-add-menu-label { font-size: 13px; color: #fff; font-weight: 500; }
+.wf-add-menu-desc { font-size: 11px; color: rgba(255,255,255,.45); }
+
+/* ═══ 小说 / 内容库选择器对话框 ═══ */
+.wf-picker-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  animation: wf-picker-fade .18s var(--wf-ease);
+}
+@keyframes wf-picker-fade { from { opacity: 0; } to { opacity: 1; } }
+.wf-picker-box {
+  background: #0d0d12;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px;
+  width: 720px; max-width: 92vw; max-height: 82vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.04) inset;
+  animation: wf-picker-up .2s var(--wf-ease);
+}
+@keyframes wf-picker-up {
+  from { opacity: 0; transform: translateY(12px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wf-picker-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.wf-picker-title { font-size: 15px; font-weight: 600; color: #fff; }
+.wf-picker-close {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  color: rgba(255,255,255,.7); font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s var(--wf-ease);
+}
+.wf-picker-close:hover { background: rgba(255,255,255,.12); color: #fff; }
+.wf-picker-search {
+  margin: 14px 22px 6px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  padding: 9px 14px;
+  color: #fff; font-size: 13px;
+  font-family: inherit; outline: none;
+}
+.wf-picker-search:focus { border-color: rgba(255,255,255,.25); }
+.wf-picker-body {
+  flex: 1; overflow-y: auto;
+  padding: 8px 22px 18px;
+}
+.wf-picker-empty {
+  text-align: center; color: rgba(255,255,255,.4);
+  padding: 60px 20px; font-size: 13px;
+}
+.wf-picker-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;
+}
+.wf-picker-card {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px;
+  cursor: pointer; transition: all .18s var(--wf-ease);
+}
+.wf-picker-card:hover {
+  background: rgba(255,255,255,.06);
+  border-color: rgba(255,255,255,.2);
+  transform: translateY(-1px);
+}
+.wf-picker-card-title {
+  font-size: 13px; font-weight: 600; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wf-picker-card-desc {
+  font-size: 11px; color: rgba(255,255,255,.5);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wf-picker-card-meta {
+  display: flex; gap: 10px; margin-top: 4px;
+  font-size: 10px; color: rgba(255,255,255,.35);
+}
+.wf-picker-loading {
+  text-align: center; color: rgba(255,255,255,.5);
+  padding: 60px 20px; font-size: 13px;
 }
 
 .wf-nd-header-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
