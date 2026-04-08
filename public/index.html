@@ -1520,22 +1520,35 @@
               <span class="drama-center-title" id="drama-ep-title">分镜时间轴</span>
               <button class="drama-btn-sm" style="color:#00e5a0;border-color:rgba(0,229,160,.3)" onclick="saveDramaEpisode()">保存</button>
               <button class="drama-btn-sm" onclick="exportDramaScript()">导出脚本</button>
-              <button class="drama-btn-sm" style="color:var(--accent-color)" onclick="generateAllDramaVideos()">全部生成视频</button>
               <button class="drama-btn-sm" style="color:#a78bfa;border-color:rgba(167,139,250,.4)" onclick="regenCharacterBible()" id="drama-bible-btn" title="重新生成角色一致性锁定表">🎭 角色一致性</button>
-              <button class="drama-btn-sm" style="color:#fbbf24;border-color:rgba(251,191,36,.4)" onclick="composeDramaFinal()" id="drama-compose-btn">🎬 一键合成成片</button>
               <span class="drama-center-count" id="drama-scene-info"></span>
             </div>
             <div class="drama-sb-list" id="drama-sb-list">
               <div style="color:rgba(255,255,255,.25);text-align:center;padding:60px 20px;font-size:13px">选择左侧剧集或点击「生成新一集」</div>
             </div>
-            <!-- 成片预览区(合成后显示) -->
-            <div id="drama-final-wrap" style="display:none;padding:14px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.3)">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-                <span style="font-size:13px;font-weight:700;color:#fff">🎬 成片预览</span>
-                <span id="drama-final-meta" style="font-size:11px;color:rgba(255,255,255,.5)"></span>
-                <a id="drama-final-download" href="#" download style="margin-left:auto;font-size:12px;color:#fbbf24;text-decoration:none;padding:4px 12px;border:1px solid rgba(251,191,36,.4);border-radius:999px">⬇ 下载</a>
+            <!-- 成片合成面板(始终可见) -->
+            <div id="drama-final-panel" style="display:none;border-top:1px solid var(--border);background:linear-gradient(180deg, rgba(124,108,240,.04), rgba(0,0,0,.2))">
+              <div style="padding:16px 18px 12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px">🎬 成片合成与预览
+                    <span id="drama-final-status" style="font-size:11px;font-weight:500;color:rgba(255,255,255,.5);padding:2px 8px;background:rgba(255,255,255,.05);border-radius:999px">未合成</span>
+                  </div>
+                  <div id="drama-final-meta" style="font-size:11px;color:rgba(255,255,255,.45);margin-top:4px"></div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="drama-btn-sm" style="color:#21d4fd;border-color:rgba(33,212,253,.4);padding:8px 14px;font-size:12px" onclick="composeFromImages()" id="drama-compose-img-btn" title="把所有分镜图按时长拼接成 slideshow 视频(自动叠加配音), 速度快, 不需要先生成每段视频">⚡ 图片快速合成</button>
+                  <button class="drama-btn-sm" style="color:#fbbf24;border-color:rgba(251,191,36,.4);padding:8px 14px;font-size:12px" onclick="generateAllDramaVideos()" id="drama-gen-all-btn" title="为每个分镜单独生成 i2v 视频(质量高, 但每段需要 30s-3min)">🎞 全部生成视频</button>
+                  <button class="drama-btn-sm" style="color:#fbbf24;border-color:rgba(251,191,36,.4);padding:8px 14px;font-size:12px" onclick="composeDramaFinal()" id="drama-compose-btn" title="把已生成的分镜视频拼接成完整一集(需要先点'全部生成视频')">🎬 视频高质量合成</button>
+                </div>
               </div>
-              <video id="drama-final-video" controls style="width:100%;max-height:60vh;border-radius:10px;background:#000"></video>
+              <!-- 成片预览(合成后填充) -->
+              <div id="drama-final-wrap" style="display:none;padding:0 18px 18px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <span style="font-size:11px;color:rgba(255,255,255,.5)">预览</span>
+                  <a id="drama-final-download" href="#" download style="margin-left:auto;font-size:11px;color:#fbbf24;text-decoration:none;padding:4px 12px;border:1px solid rgba(251,191,36,.4);border-radius:999px">⬇ 下载成片</a>
+                </div>
+                <video id="drama-final-video" controls style="width:100%;max-height:50vh;border-radius:12px;background:#000;border:1px solid var(--border)"></video>
+              </div>
             </div>
           </div>
 

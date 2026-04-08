@@ -9842,7 +9842,7 @@ async function deleteDramaEpisode(eid, idx) {
         const listEl = document.getElementById('drama-sb-list');
         if (listEl) listEl.innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px 20px;font-size:13px">选择左侧剧集或点击「生成新一集」</div>';
         document.getElementById('drama-ep-title').textContent = '分镜时间轴';
-        const fw = document.getElementById('drama-final-wrap'); if (fw) fw.style.display = 'none';
+        const fp = document.getElementById('drama-final-panel'); if (fp) fp.style.display = 'none';
       }
       renderDramaEpisodeList();
       showToast(`已删除第 ${idx} 集`, 'ok');
@@ -10155,18 +10155,20 @@ async function generateAllDramaVideos() {
   renderDramaSBList();
 }
 
-// ════════ 一键合成成片 ════════
+// ════════ 一键合成成片(视频高质量模式) ════════
 async function composeDramaFinal() {
   if (!dramaResult?.scenes?.length || !currentDramaEpisode) return;
   const noVideo = dramaResult.scenes.filter(s => !s.video_url);
   if (noVideo.length === dramaResult.scenes.length) {
-    return alert('还没有任何分镜视频。请先点击"全部生成视频"。');
+    return alert('还没有任何分镜视频。\n\n请先点击"🎞 全部生成视频"为每个分镜生成视频, 或者用"⚡ 图片快速合成"直接从分镜图合成。');
   }
   if (noVideo.length > 0) {
     if (!confirm(`有 ${noVideo.length} 个分镜还没视频，是否只合成已有的 ${dramaResult.scenes.length - noVideo.length} 段?`)) return;
   }
   const btn = document.getElementById('drama-compose-btn');
+  const status = document.getElementById('drama-final-status');
   if (btn) { btn.disabled = true; btn.textContent = '合成中...'; }
+  if (status) { status.textContent = '🎬 视频合成中...'; status.style.color = '#fbbf24'; }
   try {
     const r = await authFetch(`${_dramaApiBase()}/compose`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
@@ -10175,31 +10177,101 @@ async function composeDramaFinal() {
     if (!d.success) throw new Error(d.error);
     dramaResult.final_video_url = d.data.final_video_url;
     dramaResult.composed_clips = d.data.composed_clips;
+    dramaResult.composed_with_voice = d.data.composed_with_voice;
+    dramaResult.composed_at = new Date().toISOString();
+    dramaResult.composed_mode = 'videos';
     renderDramaFinalVideo();
     showToast(`✓ 合成完成: ${d.data.composed_clips}/${d.data.total_scenes} 段`, 'ok');
   } catch (e) {
+    if (status) { status.textContent = '合成失败'; status.style.color = '#ff4d6d'; }
     alert('合成失败: ' + e.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🎬 一键合成成片'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🎬 视频高质量合成'; }
+  }
+}
+
+// ════════ 图片快速合成(slideshow 模式, 不需要 i2v 视频) ════════
+async function composeFromImages() {
+  if (!dramaResult?.scenes?.length || !currentDramaEpisode) return;
+  const noImage = dramaResult.scenes.filter(s => !s.image_url);
+  if (noImage.length === dramaResult.scenes.length) {
+    return alert('还没有任何分镜图。请等剧集 Agent 跑完所有分镜。');
+  }
+  if (noImage.length > 0) {
+    if (!confirm(`有 ${noImage.length} 个分镜还没图片，是否只合成已有的 ${dramaResult.scenes.length - noImage.length} 段?`)) return;
+  }
+  const btn = document.getElementById('drama-compose-img-btn');
+  const status = document.getElementById('drama-final-status');
+  if (btn) { btn.disabled = true; btn.textContent = '合成中...'; }
+  if (status) { status.textContent = '⚡ 图片合成中...'; status.style.color = '#21d4fd'; }
+  try {
+    const r = await authFetch(`${_dramaApiBase()}/compose-from-images`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    dramaResult.final_video_url = d.data.final_video_url;
+    dramaResult.composed_clips = d.data.composed_clips;
+    dramaResult.composed_with_voice = d.data.composed_with_voice;
+    dramaResult.composed_at = new Date().toISOString();
+    dramaResult.composed_mode = 'images';
+    dramaResult.aspect_ratio = d.data.aspect_ratio;
+    renderDramaFinalVideo();
+    showToast(`✓ 图片快速合成完成: ${d.data.composed_clips} 段${d.data.composed_with_voice ? ' (含 ' + d.data.composed_with_voice + ' 段配音)' : ''}`, 'ok');
+  } catch (e) {
+    if (status) { status.textContent = '合成失败'; status.style.color = '#ff4d6d'; }
+    alert('图片合成失败: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ 图片快速合成'; }
   }
 }
 
 function renderDramaFinalVideo() {
+  const panel = document.getElementById('drama-final-panel');
   const wrap = document.getElementById('drama-final-wrap');
   const video = document.getElementById('drama-final-video');
   const meta = document.getElementById('drama-final-meta');
+  const status = document.getElementById('drama-final-status');
   const dl = document.getElementById('drama-final-download');
-  if (!wrap || !video) return;
-  if (!dramaResult?.final_video_url) {
-    wrap.style.display = 'none';
-    return;
+  if (!panel) return;
+  // 只要选了已生成的剧集就显示成片面板
+  panel.style.display = (dramaResult && dramaResult.scenes?.length) ? '' : 'none';
+
+  // 状态文字
+  if (status) {
+    if (dramaResult?.final_video_url) {
+      const mode = dramaResult.composed_mode === 'images' ? '⚡ 图片快速' : (dramaResult.composed_mode === 'videos' ? '🎬 视频高质量' : '已合成');
+      status.textContent = `${mode} · ${dramaResult.composed_clips || 0} 段${dramaResult.composed_with_voice ? ' · 含配音' : ''}`;
+      status.style.color = '#00e5a0';
+    } else {
+      const sceneCount = dramaResult?.scenes?.length || 0;
+      const imgCount = (dramaResult?.scenes || []).filter(s => s.image_url).length;
+      const vidCount = (dramaResult?.scenes || []).filter(s => s.video_url).length;
+      status.textContent = `未合成 · 共 ${sceneCount} 段 (图 ${imgCount}, 视频 ${vidCount})`;
+      status.style.color = 'rgba(255,255,255,.5)';
+    }
   }
-  wrap.style.display = '';
-  // 加 timestamp 防止浏览器缓存旧合成
-  const url = dramaResult.final_video_url + (dramaResult.composed_at ? `?t=${encodeURIComponent(dramaResult.composed_at)}` : '');
-  video.src = url;
-  if (meta) meta.textContent = `${dramaResult.composed_clips || 0} 段 · ${dramaResult.aspect_ratio || ''} · 约 ${dramaResult.total_duration || 0}s`;
-  if (dl) dl.href = (dramaResult.final_video_url || '').replace(/\/final$/, '/final/download');
+
+  // 元信息
+  if (meta) {
+    if (dramaResult?.final_video_url) {
+      meta.textContent = `${dramaResult.aspect_ratio || ''} · 约 ${dramaResult.total_duration || 0}s 时长`;
+    } else {
+      meta.textContent = '点击「⚡ 图片快速合成」直接从分镜图合成 (推荐, 速度快), 或先「🎞 全部生成视频」再「🎬 视频高质量合成」';
+    }
+  }
+
+  // 视频预览
+  if (wrap && video) {
+    if (!dramaResult?.final_video_url) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = '';
+    const url = dramaResult.final_video_url + (dramaResult.composed_at ? `?t=${encodeURIComponent(dramaResult.composed_at)}` : '');
+    video.src = url;
+    if (dl) dl.href = (dramaResult.final_video_url || '').replace(/\/final$/, '/final/download');
+  }
 }
 
 // ════════ 重新生成 Character Bible (角色一致性) ════════

@@ -581,6 +581,94 @@ router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
   }
 });
 
+// POST /api/drama/projects/:pid/episodes/:eid/compose-from-images — 图片快速合成成片
+// 用 ffmpeg 把每个 scene 的图片按 duration 拼成 slideshow 视频, 自动叠加配音
+// 不依赖 video_<i>.mp4, 适合"分镜图都生成完了但还没生成视频"的场景
+router.post('/projects/:pid/episodes/:eid/compose-from-images', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+  const scenes = ep.result.scenes || [];
+  if (!scenes.length) return res.status(400).json({ success: false, error: '本集没有场景' });
+
+  try {
+    const taskDir = path.join(DRAMA_DIR, ep.id);
+    fs.mkdirSync(taskDir, { recursive: true });
+
+    // 收集每个 scene 的图片 + 时长 + 可选配音
+    const clips = [];
+    const missing = [];
+    for (let i = 0; i < scenes.length; i++) {
+      const imgPath = path.join(taskDir, `scene_${i}.png`);
+      if (!fs.existsSync(imgPath)) { missing.push(i); continue; }
+      const voicePath = path.join(taskDir, `voice_${i}.mp3`);
+      clips.push({
+        path: imgPath,
+        duration: scenes[i].duration || 5,
+        voicePath: fs.existsSync(voicePath) ? voicePath : null,
+      });
+    }
+    if (clips.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '没有可用的分镜图。请先确认每个分镜都已生成图片(scene_<i>.png)。'
+      });
+    }
+
+    // 根据剧集 aspect_ratio 计算输出尺寸
+    const ar = ep.result?.aspect_ratio || '9:16';
+    const sizeMap = {
+      '9:16': { width: 1080, height: 1920 },
+      '16:9': { width: 1920, height: 1080 },
+      '1:1':  { width: 1080, height: 1080 },
+      '4:3':  { width: 1440, height: 1080 },
+    };
+    const { width, height } = sizeMap[ar] || sizeMap['9:16'];
+
+    const { composeImagesToVideo, addAudioToVideo } = require('../services/ffmpegService');
+    const concatPath = path.join(taskDir, 'final_slideshow.mp4');
+    await composeImagesToVideo(clips, concatPath, { width, height, fps: 30 });
+
+    // 可选: 叠加 BGM
+    let finalPath = concatPath;
+    const bgmPath = req.body.bgm_path;
+    if (bgmPath && fs.existsSync(bgmPath)) {
+      finalPath = path.join(taskDir, 'final.mp4');
+      await addAudioToVideo({
+        videoPath: concatPath, audioPath: bgmPath, outputPath: finalPath,
+        volume: req.body.bgm_volume ?? 0.4
+      });
+      try { fs.unlinkSync(concatPath); } catch {}
+    } else {
+      const finalRenamed = path.join(taskDir, 'final.mp4');
+      try { fs.renameSync(concatPath, finalRenamed); finalPath = finalRenamed; } catch {}
+    }
+
+    const voiceMuxedCount = clips.filter(c => c.voicePath).length;
+    ep.result.final_video_url = `/api/drama/tasks/${ep.id}/final`;
+    ep.result.composed_at = new Date().toISOString();
+    ep.result.composed_clips = clips.length;
+    ep.result.composed_with_voice = voiceMuxedCount;
+    ep.result.composed_mode = 'images';
+    db.updateDramaEpisode(ep.id, { result: ep.result, status: 'composed' });
+
+    res.json({
+      success: true,
+      data: {
+        final_video_url: ep.result.final_video_url,
+        composed_clips: clips.length,
+        composed_with_voice: voiceMuxedCount,
+        missing_scenes: missing,
+        total_scenes: scenes.length,
+        mode: 'images',
+        aspect_ratio: ar,
+      }
+    });
+  } catch (err) {
+    console.error('[Drama compose-from-images]', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/drama/tasks/:id/final — 成片视频流
 router.get('/tasks/:id/final', (req, res) => {
   const filePath = path.join(DRAMA_DIR, req.params.id, 'final.mp4');

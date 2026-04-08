@@ -221,4 +221,86 @@ async function burnSubtitle(inputPath, outputPath, text, opts = {}) {
   });
 }
 
-module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX, burnSubtitle };
+/**
+ * 把图片序列合成为视频(slideshow), 每张图片显示指定秒数
+ * @param {Array<{path: string, duration: number, voicePath?: string}>} clips
+ * @param {string} outputPath - 输出 mp4 路径
+ * @param {object} opts - { width, height, fps, fadeBetween }
+ */
+async function composeImagesToVideo(clips, outputPath, opts = {}) {
+  const { width = 1080, height = 1920, fps = 30, fadeBetween = 0.4 } = opts;
+  if (!clips || !clips.length) throw new Error('没有图片可合成');
+
+  return new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+    const command = ffmpeg();
+    // 每张图片作为一个 input,带 -loop 1 和 -t duration
+    clips.forEach(c => {
+      command.input(c.path).inputOptions(['-loop', '1', '-t', String(c.duration || 5)]);
+    });
+    // 配音作为额外的 audio input
+    const voiceInputs = [];
+    clips.forEach((c, i) => {
+      if (c.voicePath && fs.existsSync(c.voicePath)) {
+        voiceInputs.push({ idx: clips.length + voiceInputs.length, sceneIdx: i, path: c.voicePath, duration: c.duration || 5 });
+      }
+    });
+    voiceInputs.forEach(v => { command.input(v.path); });
+
+    // 构建 filter_complex:
+    //   每个图 input 缩放/补黑边 → label v0/v1/...
+    //   concat 全部 → output v
+    //   音频: 给每个 scene 创建一段 silence(duration), 如有 voice 就 mix
+    const videoFilters = [];
+    clips.forEach((c, i) => {
+      const dur = c.duration || 5;
+      // scale to fit + pad to exact size
+      videoFilters.push(`[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=${fps},trim=duration=${dur}[v${i}]`);
+    });
+    // concat all video streams
+    const vConcat = clips.map((_, i) => `[v${i}]`).join('') + `concat=n=${clips.length}:v=1:a=0[vout]`;
+    videoFilters.push(vConcat);
+
+    // 音频轨道: 用 anullsrc 生成总时长的静音, 然后用 amix 把每个 voice 在对应时间点叠上
+    const totalDur = clips.reduce((s, c) => s + (c.duration || 5), 0);
+    let audioMap = null;
+    if (voiceInputs.length > 0) {
+      // anullsrc 生成 totalDur 秒静音 → label silent
+      // 把每个 voice 用 adelay 推到对应起始时间
+      const audioFilters = [];
+      audioFilters.push(`anullsrc=channel_layout=stereo:sample_rate=44100,atrim=duration=${totalDur}[silent]`);
+      const sceneStarts = [];
+      let cur = 0;
+      clips.forEach(c => { sceneStarts.push(cur); cur += (c.duration || 5); });
+      voiceInputs.forEach((v, vi) => {
+        const startMs = Math.round(sceneStarts[v.sceneIdx] * 1000);
+        audioFilters.push(`[${v.idx}:a]adelay=${startMs}|${startMs}[d${vi}]`);
+      });
+      const mixInputs = '[silent]' + voiceInputs.map((_, vi) => `[d${vi}]`).join('');
+      audioFilters.push(`${mixInputs}amix=inputs=${voiceInputs.length + 1}:duration=longest:dropout_transition=0[aout]`);
+      videoFilters.push(...audioFilters);
+      audioMap = '[aout]';
+    }
+
+    command
+      .complexFilter(videoFilters)
+      .outputOptions([
+        '-map', '[vout]',
+        ...(audioMap ? ['-map', audioMap] : []),
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+        ...(audioMap ? ['-c:a', 'aac', '-b:a', '128k'] : []),
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart'
+      ])
+      .output(outputPath)
+      .on('end', () => resolve(outputPath))
+      .on('error', (err) => {
+        console.error('[composeImagesToVideo] 失败:', err.message);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX, burnSubtitle, composeImagesToVideo };
