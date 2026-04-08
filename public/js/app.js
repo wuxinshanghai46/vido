@@ -9770,13 +9770,84 @@ function renderDramaEpisodeList() {
   if (!episodes.length) { list.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,.25);padding:8px">暂无剧集</div>'; return; }
   list.innerHTML = episodes.map(ep => {
     const active = currentDramaEpisode?.id === ep.id ? ' active' : '';
-    const statusMap = { done: '已完成', processing: '生成中', error: '失败', pending: '待生成' };
+    const statusMap = { done: '已完成', processing: '生成中', error: '失败', pending: '待生成', composed: '已合成' };
     return `<div class="drama-ep-item${active}" onclick="selectDramaEpisode('${ep.id}')">
       <div class="drama-ep-idx">${ep.episode_index}</div>
       <div class="drama-ep-name">${ep.title || '第' + ep.episode_index + '集'}</div>
       <div class="drama-ep-status ${ep.status}">${statusMap[ep.status] || ep.status}</div>
+      <div class="drama-ep-actions" onclick="event.stopPropagation()">
+        <button class="drama-ep-act-btn" title="重命名" onclick="renameDramaEpisode('${ep.id}')">✎</button>
+        <button class="drama-ep-act-btn" title="编辑剧本" onclick="editDramaEpisodeTheme('${ep.id}')">📝</button>
+        <button class="drama-ep-act-btn danger" title="删除剧集" onclick="deleteDramaEpisode('${ep.id}', ${ep.episode_index})">×</button>
+      </div>
     </div>`;
   }).join('');
+}
+
+// ════════ 剧集 CRUD ════════
+async function renameDramaEpisode(eid) {
+  const ep = (currentDramaProject.episodes || []).find(e => e.id === eid);
+  if (!ep) return;
+  const newTitle = prompt('重命名剧集：', ep.title || `第${ep.episode_index}集`);
+  if (!newTitle || newTitle === ep.title) return;
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${eid}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle })
+    });
+    const d = await r.json();
+    if (d.success) {
+      ep.title = newTitle;
+      renderDramaEpisodeList();
+      if (currentDramaEpisode?.id === eid) {
+        currentDramaEpisode.title = newTitle;
+        const titleEl = document.getElementById('drama-ep-title');
+        if (titleEl) titleEl.textContent = `${newTitle} — 分镜`;
+      }
+      showToast('已重命名', 'ok');
+    } else alert('重命名失败: ' + d.error);
+  } catch (e) { alert('重命名失败: ' + e.message); }
+}
+
+async function editDramaEpisodeTheme(eid) {
+  const ep = (currentDramaProject.episodes || []).find(e => e.id === eid);
+  if (!ep) return;
+  const newTheme = prompt('编辑本集剧本/主题（保存后下次重生成时生效）：', ep.theme || '');
+  if (newTheme === null) return;
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${eid}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: newTheme })
+    });
+    const d = await r.json();
+    if (d.success) {
+      ep.theme = newTheme;
+      showToast('剧本已保存', 'ok');
+    } else alert('保存失败: ' + d.error);
+  } catch (e) { alert('保存失败: ' + e.message); }
+}
+
+async function deleteDramaEpisode(eid, idx) {
+  if (!confirm(`确定删除「第${idx}集」?\n此操作会同时删除该集所有分镜图、视频和成片文件,不可恢复。`)) return;
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${eid}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) {
+      // 从本地列表移除
+      currentDramaProject.episodes = (currentDramaProject.episodes || []).filter(e => e.id !== eid);
+      // 如果删除的是当前选中的, 清空中央
+      if (currentDramaEpisode?.id === eid) {
+        currentDramaEpisode = null;
+        dramaResult = null;
+        const listEl = document.getElementById('drama-sb-list');
+        if (listEl) listEl.innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px 20px;font-size:13px">选择左侧剧集或点击「生成新一集」</div>';
+        document.getElementById('drama-ep-title').textContent = '分镜时间轴';
+        const fw = document.getElementById('drama-final-wrap'); if (fw) fw.style.display = 'none';
+      }
+      renderDramaEpisodeList();
+      showToast(`已删除第 ${idx} 集`, 'ok');
+    } else alert('删除失败: ' + d.error);
+  } catch (e) { alert('删除失败: ' + e.message); }
 }
 
 async function selectDramaEpisode(eid) {

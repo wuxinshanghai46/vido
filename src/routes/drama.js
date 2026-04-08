@@ -19,6 +19,69 @@ router.get('/motions', (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// 大纲生成 (小说→大纲→剧本三层)
+// ═══════════════════════════════════════════
+// POST /api/drama/generate-outline — 把 theme 扩为结构化大纲(章节列表)
+router.post('/generate-outline', async (req, res) => {
+  const { theme, episode_count = 5, style = '日系动漫', genre = '' } = req.body;
+  if (!theme || !theme.trim()) return res.status(400).json({ success: false, error: '请提供主题' });
+  try {
+    const { callLLM } = require('../services/storyService');
+    const systemPrompt = `你是顶级的连续剧编剧。用户给你一个主题, 你要先输出一份**故事大纲**(不是完整剧本), 让用户审核后再生成详细分镜。
+
+输出严格 JSON 格式:
+{
+  "title": "整部剧的标题",
+  "synopsis": "一句话介绍(≤30字)",
+  "world_setting": "世界观/时代背景(1-2句)",
+  "main_characters": [
+    { "name": "角色名", "role": "main/supporting/antagonist", "appearance": "外貌特征", "personality": "性格" }
+  ],
+  "episodes": [
+    {
+      "index": 1,
+      "title": "本集标题",
+      "hook": "黄金三秒钩子(≤20字)",
+      "summary": "本集剧情大纲(80-150字)",
+      "key_scenes": ["关键场景1","关键场景2","关键场景3"],
+      "ending_hook": "本集结尾留的悬念(≤30字)",
+      "emotion_arc": "情绪走向(如: 平静→紧张→爆发→余韵)"
+    }
+  ]
+}
+
+要求:
+- 共输出 ${episode_count} 集
+- 每集独立完整, 但与下一集有钩子衔接
+- main_characters 3-5 个, 包括主角和重要配角
+- 严格 JSON, 无任何额外文字, 无 markdown 代码块`;
+
+    const userPrompt = `主题: ${theme.trim()}
+画风: ${style}
+${genre ? `类型: ${genre}\n` : ''}集数: ${episode_count}
+请输出大纲 JSON。`;
+
+    const raw = await callLLM(systemPrompt, userPrompt);
+    // 复用 dramaService 的 JSON 修复逻辑
+    let outline;
+    try {
+      let str = raw.trim();
+      const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (m) str = m[1].trim();
+      const start = str.indexOf('{');
+      const end = str.lastIndexOf('}');
+      if (start !== -1 && end > start) str = str.slice(start, end + 1);
+      outline = JSON.parse(str);
+    } catch (e) {
+      return res.status(500).json({ success: false, error: '大纲解析失败: ' + e.message, raw });
+    }
+    res.json({ success: true, data: outline });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
 // 项目级 CRUD
 // ═══════════════════════════════════════════
 
@@ -320,6 +383,52 @@ router.get('/tasks/:id/video/:idx', (req, res) => {
   fs.createReadStream(filePath).pipe(res);
 });
 
+// GET /api/drama/tasks/:id/voice/:idx — 场景配音 mp3 流
+router.get('/tasks/:id/voice/:idx', (req, res) => {
+  const filePath = path.join(DRAMA_DIR, req.params.id, `voice_${req.params.idx}.mp3`);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': stat.size });
+  fs.createReadStream(filePath).pipe(res);
+});
+
+// POST /api/drama/projects/:pid/episodes/:eid/regenerate-voice — 重新生成本集所有配音
+router.post('/projects/:pid/episodes/:eid/regenerate-voice', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+  try {
+    const taskDir = path.join(DRAMA_DIR, ep.id);
+    fs.mkdirSync(taskDir, { recursive: true });
+    // 复用 dramaService 的 agentDramaVoice
+    const dramaSvc = require('../services/dramaService');
+    if (typeof dramaSvc.agentDramaVoice !== 'function') {
+      // 兜底: 直接调 ttsService
+      const { generateSpeech } = require('../services/ttsService');
+      let count = 0;
+      for (let i = 0; i < ep.result.scenes.length; i++) {
+        const s = ep.result.scenes[i];
+        const text = (s.dialogue || '').trim() || (s.narrator || '').trim();
+        if (!text) continue;
+        const out = path.join(taskDir, `voice_${i}.mp3`);
+        try {
+          await generateSpeech(text, out, { gender: 'female', speed: 1.0 });
+          if (fs.existsSync(out)) {
+            s.voice_url = `/api/drama/tasks/${ep.id}/voice/${i}`;
+            count++;
+          }
+        } catch (e) { s.voice_error = e.message; }
+      }
+      db.updateDramaEpisode(ep.id, { result: ep.result });
+      return res.json({ success: true, data: { voice_count: count } });
+    }
+    const count = await dramaSvc.agentDramaVoice(ep.result.scenes, taskDir);
+    db.updateDramaEpisode(ep.id, { result: ep.result });
+    res.json({ success: true, data: { voice_count: count } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/drama/projects/:pid/episodes/:eid/compose — 一键合成成片
 // 步骤: 拼接所有 scene 视频 → 可选叠加 BGM → 输出最终 mp4
 router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
@@ -332,13 +441,35 @@ router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
     const taskDir = path.join(DRAMA_DIR, ep.id);
     fs.mkdirSync(taskDir, { recursive: true });
 
-    // 1) 收集所有已生成的 scene 视频文件
+    // 1) 收集所有已生成的 scene 视频文件 (并尝试与对应配音 mux)
+    const { mergeVideoClips, addAudioToVideo } = require('../services/ffmpegService');
+    const muxedDir = path.join(taskDir, '_muxed');
+    fs.mkdirSync(muxedDir, { recursive: true });
+
     const clipPaths = [];
     const missing = [];
+    let muxedVoiceCount = 0;
     for (let i = 0; i < scenes.length; i++) {
-      const p = path.join(taskDir, `video_${i}.mp4`);
-      if (fs.existsSync(p)) clipPaths.push(p);
-      else missing.push(i);
+      const videoPath = path.join(taskDir, `video_${i}.mp4`);
+      const voicePath = path.join(taskDir, `voice_${i}.mp3`);
+      if (!fs.existsSync(videoPath)) { missing.push(i); continue; }
+      // 如果有配音, 把视频+配音 mux 成一个临时片段
+      if (fs.existsSync(voicePath)) {
+        try {
+          const muxedPath = path.join(muxedDir, `clip_${i}.mp4`);
+          await addAudioToVideo({
+            videoPath, audioPath: voicePath, outputPath: muxedPath, volume: 1.0
+          });
+          if (fs.existsSync(muxedPath)) {
+            clipPaths.push(muxedPath);
+            muxedVoiceCount++;
+            continue;
+          }
+        } catch (e) {
+          console.warn(`[compose] mux voice scene ${i} failed:`, e.message);
+        }
+      }
+      clipPaths.push(videoPath);
     }
     if (clipPaths.length === 0) {
       return res.status(400).json({
@@ -347,8 +478,7 @@ router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
       });
     }
 
-    // 2) 拼接 (mergeVideoClips 用 concat demuxer 要求所有片段编码一致)
-    const { mergeVideoClips, addAudioToVideo } = require('../services/ffmpegService');
+    // 2) 拼接所有片段
     const concatPath = path.join(taskDir, 'final_concat.mp4');
     await mergeVideoClips({ clipPaths, outputPath: concatPath });
 
@@ -370,10 +500,14 @@ router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
       try { fs.renameSync(concatPath, finalRenamed); finalPath = finalRenamed; } catch {}
     }
 
+    // 清理临时 muxed 目录
+    try { fs.rmSync(muxedDir, { recursive: true, force: true }); } catch {}
+
     // 4) 更新 episode.result.final_video_url
     ep.result.final_video_url = `/api/drama/tasks/${ep.id}/final`;
     ep.result.composed_at = new Date().toISOString();
     ep.result.composed_clips = clipPaths.length;
+    ep.result.composed_with_voice = muxedVoiceCount;
     db.updateDramaEpisode(ep.id, { result: ep.result, status: 'composed' });
 
     res.json({
@@ -381,6 +515,7 @@ router.post('/projects/:pid/episodes/:eid/compose', async (req, res) => {
       data: {
         final_video_url: ep.result.final_video_url,
         composed_clips: clipPaths.length,
+        composed_with_voice: muxedVoiceCount,
         missing_scenes: missing,
         total_scenes: scenes.length,
       }

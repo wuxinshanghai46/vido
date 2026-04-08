@@ -367,10 +367,50 @@ function assemblePrompts(script, style = '日系动漫') {
 }
 
 // ═══════════════════════════════════════════════════
+// Agent 4: 配音 — 给每个有 dialogue 的场景生成 TTS 音频
+// ═══════════════════════════════════════════════════
+async function agentDramaVoice(scenes, taskDir) {
+  const { generateSpeech } = require('./ttsService');
+  let generated = 0;
+  // 角色名 → 性别映射(用于选择 TTS 音色)
+  const speakerGenders = {};
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i];
+    const text = (scene.dialogue || '').trim() || (scene.narrator || '').trim();
+    if (!text) continue;
+    // 简单按说话者名字推测性别(默认 female)
+    const speaker = scene.speaker || '';
+    let gender = speakerGenders[speaker] || 'female';
+    if (!speakerGenders[speaker]) {
+      // 如果之前 director 标了 tone 含 "男" 或常见男性词, 用 male
+      const maleHints = /男|父|爹|伯|叔|哥|爷|king|man/i;
+      if (maleHints.test(speaker) || maleHints.test(scene.tone || '')) gender = 'male';
+      speakerGenders[speaker] = gender;
+    }
+    try {
+      const outputPath = path.join(taskDir, `voice_${i}.mp3`);
+      // 旁白用慢速, 对话用正常
+      const speed = scene.narrator && !scene.dialogue ? 0.95 : 1.0;
+      await generateSpeech(text, outputPath, { gender, speed });
+      if (fs.existsSync(outputPath)) {
+        scene.voice_url = `/api/drama/tasks/${path.basename(taskDir)}/voice/${i}`;
+        scene.voice_text = text;
+        scene.voice_speaker = speaker;
+        generated++;
+      }
+    } catch (e) {
+      console.warn(`[Drama voice] scene ${i} failed:`, e.message);
+      scene.voice_error = e.message;
+    }
+  }
+  return generated;
+}
+
+// ═══════════════════════════════════════════════════
 // 全流程：生成网剧
 // ═══════════════════════════════════════════════════
 async function generateDrama(taskId, params, progressCallback) {
-  const { theme, style = '日系动漫', sceneCount = 6, durationPerScene = 5, characters = [], motionPreset = 'cinematic', styleId = null, character_ids = [], episodeIndex = 1, episodeCount = 1, previousSummary = '', image_model = '', video_model = '', aspect_ratio = '9:16' } = params;
+  const { theme, style = '日系动漫', sceneCount = 6, durationPerScene = 5, characters = [], motionPreset = 'cinematic', styleId = null, character_ids = [], episodeIndex = 1, episodeCount = 1, previousSummary = '', image_model = '', video_model = '', aspect_ratio = '9:16', enable_voice = true } = params;
   const db = require('../models/database');
   const taskDir = path.join(DRAMA_DIR, taskId);
   ensureDir(taskDir);
@@ -501,6 +541,19 @@ async function generateDrama(taskId, params, progressCallback) {
   if (origImageProvider !== undefined) process.env.IMAGE_PROVIDER = origImageProvider;
   else delete process.env.IMAGE_PROVIDER;
 
+  // Step 6: 配音 (TTS, 可选)
+  if (enable_voice) {
+    progress('voice', 96, '🎙️ AI 配音：为有对话的分镜生成语音...');
+    try {
+      const voiceCount = await agentDramaVoice(result.scenes, taskDir);
+      progress('voice', 99, `🎙️ 配音完成: ${voiceCount} 段语音`);
+      result.voice_count = voiceCount;
+    } catch (e) {
+      console.error('[Drama voice] step failed:', e.message);
+      result.voice_error = e.message;
+    }
+  }
+
   // 保存模型选择和输出比例到结果
   result.image_model = image_model;
   result.video_model = video_model;
@@ -565,4 +618,5 @@ module.exports = {
   DRAMA_DIR,
   assemblePrompts,
   applyMotionPrompts,
+  agentDramaVoice,
 };
