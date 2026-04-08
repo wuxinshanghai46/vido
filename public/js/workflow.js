@@ -608,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Track node count + update node list
-  editor.on('nodeCreated', () => { updateNodeCount(); updateNodeList(); });
+  editor.on('nodeCreated', () => { updateNodeCount(); updateNodeList(); injectAddButtons(); });
   editor.on('nodeRemoved', () => { updateNodeCount(); updateNodeList(); });
 
   // Context menu on canvas double-click
@@ -2077,12 +2077,39 @@ async function loadWorkflow(id) {
               initNodeDynamic(nId, type);
             } catch {}
           });
+          injectAddButtons();
         }, 300);
       }
     }
   } catch(e) {
     console.error('加载失败', e);
   }
+}
+
+// ═══ 浮动 + 圆按钮注入（左右两侧，用于添加连接节点） ═══
+// Phase 1: 仅视觉,点击行为留待 Phase 2 接入 addLinkedNode()
+function injectAddButtons() {
+  document.querySelectorAll('.drawflow-node .wf-nd').forEach(wfnd => {
+    if (wfnd.querySelector('.wf-nd-add-left')) return;
+    const nodeEl = wfnd.closest('.drawflow-node');
+    const nodeId = nodeEl ? nodeEl.id.replace('node-', '') : null;
+    const make = (side) => {
+      const el = document.createElement('div');
+      el.className = `wf-nd-add wf-nd-add-${side}`;
+      el.title = side === 'left' ? '向左添加节点' : '向右添加节点';
+      el.dataset.nodeId = nodeId || '';
+      el.dataset.side = side;
+      // Phase 1: 提示用户该按钮即将上线
+      el.addEventListener('mousedown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof showToast === 'function') showToast('+ 按钮即将开放：用于快速添加连接节点', 'info');
+      });
+      return el;
+    };
+    wfnd.appendChild(make('left'));
+    wfnd.appendChild(make('right'));
+  });
 }
 
 // 加载后：从 data 恢复所有节点的动态内容

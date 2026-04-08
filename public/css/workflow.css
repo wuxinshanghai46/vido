@@ -140,17 +140,20 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 /* ═══ Drawflow Overrides ═══ */
 #drawflow {
   width: 100%; height: 100%;
-  background: #000;
+  background:
+    radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1.2px) 0 0 / 22px 22px,
+    #000;
   position: relative;
 }
 .drawflow .drawflow-node {
-  background: #0a0a0e !important;
+  background: #0d0d12 !important;
   border: 1px solid rgba(255,255,255,.08) !important;
-  border-radius: 16px !important;
+  border-radius: 18px !important;
   min-width: 300px; padding: 0 !important;
   box-shadow: 0 10px 32px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.02) inset !important;
   color: var(--wf-text) !important;
   font-family: 'Inter', sans-serif !important;
+  overflow: visible !important;
   transition: border-color .25s var(--wf-ease), box-shadow .25s var(--wf-ease), transform .25s var(--wf-ease);
 }
 .drawflow .drawflow-node:hover {
@@ -214,10 +217,90 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 /* ═══ Node Content Styles ═══ */
 .wf-nd { padding: 0; position: relative; }
 
+/* 外置标签：浮在卡片上方左侧 */
 .wf-nd-header {
-  display: flex; align-items: center; gap: 8px; padding: 11px 14px 9px;
-  border-bottom: 1px solid rgba(255,255,255,.05); cursor: move;
+  position: absolute;
+  top: -26px; left: 4px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0; margin: 0;
+  background: transparent;
+  border: 0;
+  cursor: move;
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  font-weight: 500;
+  z-index: 5;
+  pointer-events: auto;
+  user-select: none;
 }
+.wf-nd-header-icon {
+  width: 18px !important; height: 18px !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  color: rgba(255,255,255,.55) !important;
+}
+.wf-nd-header-title { font-size: 12px; font-weight: 500; color: rgba(255,255,255,.6); }
+/* hover 时整组变白 */
+.drawflow-node:hover .wf-nd-header,
+.drawflow-node.selected .wf-nd-header {
+  color: rgba(255,255,255,.92);
+}
+.drawflow-node:hover .wf-nd-header-title,
+.drawflow-node.selected .wf-nd-header-title {
+  color: rgba(255,255,255,.92);
+}
+.drawflow-node:hover .wf-nd-header-icon,
+.drawflow-node.selected .wf-nd-header-icon {
+  color: rgba(255,255,255,.92) !important;
+}
+/* hover 时才显示折叠/× 操作组 */
+.wf-nd-header-actions {
+  position: absolute; right: 0; top: -28px;
+  display: flex; gap: 4px;
+  opacity: 0; transition: opacity .2s var(--wf-ease);
+  pointer-events: none;
+}
+.drawflow-node:hover .wf-nd-header-actions,
+.drawflow-node.selected .wf-nd-header-actions {
+  opacity: 1; pointer-events: auto;
+}
+.wf-nd-btn-sm {
+  padding: 3px 8px !important; background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.1) !important; border-radius: 999px !important;
+  color: rgba(255,255,255,.7) !important; font-size: 10px !important;
+  cursor: pointer; font-family: inherit; backdrop-filter: blur(8px);
+}
+.wf-nd-btn-sm:hover { background: rgba(255,255,255,.12) !important; color: #fff !important; }
+
+/* ═══ 浮动 + 圆按钮（左右两侧） ═══ */
+.wf-nd-add {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.18);
+  color: rgba(255,255,255,.7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 300; line-height: 1;
+  cursor: pointer; user-select: none;
+  z-index: 4;
+  opacity: 0;
+  transition: all .2s var(--wf-ease);
+  backdrop-filter: blur(8px);
+}
+.wf-nd-add::before { content: '+'; }
+.wf-nd-add-left  { left: -42px; }
+.wf-nd-add-right { right: -42px; }
+.drawflow-node:hover .wf-nd-add,
+.drawflow-node.selected .wf-nd-add { opacity: 1; }
+.wf-nd-add:hover {
+  background: #fff; color: #0a0a0e;
+  border-color: #fff;
+  transform: translateY(-50%) scale(1.12);
+  box-shadow: 0 0 0 6px rgba(255,255,255,.08), 0 6px 18px rgba(255,255,255,.18);
+}
+
 .wf-nd-header-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
 .wf-nd-header-title { font-size: 13px; font-weight: 600; flex: 1; }
 .wf-nd-header-actions { display: flex; gap: 4px; }
