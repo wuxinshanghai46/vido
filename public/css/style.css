@@ -177,10 +177,20 @@ body {
   overflow: hidden;
   height: 100vh;
 }
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(var(--accent-rgb),.3); }
+/* Firefox 滚动条 */
+html { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent; }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent; }
+/* Studio 左面板内的滚动容器: 完全隐藏滚动条(仍可滚) */
+.sto-panel, .sto-panel-inner, .sto-tab-pane,
+.stp-scroll, .stp-list,
+.sto-panel *[class*="scroll"] { scrollbar-width: none; }
+.sto-panel ::-webkit-scrollbar,
+.stp-scroll::-webkit-scrollbar,
+.stp-list::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
 
 /* ═══ LAYOUT（侧边栏布局，参照原型） ═══ */
 .layout { display: flex; height: 100vh; overflow: hidden; }
