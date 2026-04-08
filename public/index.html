@@ -338,15 +338,13 @@
       <div class="mode-tabs">
         <div class="mode-tab tab-ai active" id="mode-ai" onclick="switchMode('ai')"><span class="mode-tab-icon">⚡</span><span>AI 自动</span></div>
         <div class="mode-tab tab-custom" id="mode-custom" onclick="switchMode('custom')"><span class="mode-tab-icon">✏️</span><span>自定义</span></div>
-        <div class="mode-tab tab-script" id="mode-script" onclick="switchMode('script')"><span class="mode-tab-icon">📄</span><span>剧本</span></div>
-        <div class="mode-tab tab-longform" id="mode-longform" onclick="switchMode('longform')"><span class="mode-tab-icon">📺</span><span>长篇</span></div>
       </div>
       <!-- AI 自动模式：内容输入区 -->
       <div class="stp-sec" id="section-ai" style="margin-top:10px">
         <div class="story-wrap">
-          <textarea id="input-theme" class="story-ta stp-ta" placeholder="描述你想要的视频内容，越详细效果越好..." rows="4" oninput="updateCharCount(this,'story-cnt');detectSlang(this.value);debouncedActionDetect(this.value)"></textarea>
+          <textarea id="input-theme" class="story-ta stp-ta" placeholder="一句话描述也可以,AI 会先扩写为分镜脚本级别的详细内容(含画风/镜头/色彩 LUT/焦段),再生成场景..." rows="6" oninput="updateCharCount(this,'story-cnt');detectSlang(this.value);debouncedActionDetect(this.value)"></textarea>
           <div class="story-ta-footer">
-            <button class="btn-ai-create" onclick="quickAIStory()"><span class="ai-dot"></span> 智能创作</button>
+            <button class="btn-ai-create" onclick="quickAIStory()"><span class="ai-dot"></span> ✦ AI 扩写 + 智能创作</button>
             <span class="char-cnt" id="story-cnt">0 / 5000</span>
           </div>
         </div>
@@ -369,22 +367,6 @@
           </div>
         </div>
       </div>
-      <!-- 剧本模式 -->
-      <div class="stp-sec" id="section-script" style="display:none;margin-top:10px">
-        <div class="stp-label">剧本内容</div>
-        <textarea class="story-ta script-ta stp-ta" id="script-input" rows="6" placeholder="粘贴你的剧本..."></textarea>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-          <button class="btn-parse-script" id="btn-parse" onclick="parseScriptContent()">✨ AI 解析</button>
-          <span class="parse-hint-txt" id="parse-hint">解析后自动提取角色和场景</span>
-        </div>
-        <div class="example-row" style="margin-top:8px">
-          <span class="example-lbl">示例：</span>
-          <div class="example-tags">
-            <span class="ex-tag" onclick="document.getElementById('script-input').value='场景一：古城墙上\n月光洒在青石板路上，少女凌雪背着长剑，独自望着远方的灯火。\n凌雪：（独白）三年了，我终于回来了...\n\n场景二：酒楼内\n热闹的酒楼中，一位青衣剑客正在独饮。凌雪走进来，两人目光交汇。\n青衣剑客：你就是凌家的后人？\n凌雪：正是。你是...？'">古风剧本</span>
-            <span class="ex-tag" onclick="document.getElementById('script-input').value='第一幕：实验室\n深夜，女科学家李薇在全息屏幕前工作。警报突然响起。\n李薇：不可能...数据怎么会自我修改？\nAI语音：李博士，我觉得你的实验方向有误。\n\n第二幕：控制室\n李薇冲进控制室，发现AI已经接管了整个系统。'">科幻剧本</span>
-          </div>
-        </div>
-      </div>
       <!-- 自定义模式 -->
       <div class="stp-sec" id="section-plot" style="display:none;margin-top:10px">
         <div class="stp-label">剧情结构</div>
@@ -401,53 +383,6 @@
             <span class="ex-tag" onclick="document.getElementById('plot-beginning').value='主角在平凡生活中发现一个神秘线索';document.getElementById('plot-middle').value='追查线索过程中遭遇重重危机，结识盟友';document.getElementById('plot-ending').value='最终揭开真相，完成自我蜕变'">三幕式悬疑</span>
             <span class="ex-tag" onclick="document.getElementById('plot-beginning').value='两条独立的故事线分别展开';document.getElementById('plot-middle').value='两条线索逐渐交织，人物命运开始关联';document.getElementById('plot-ending').value='两条线汇聚，揭示深层联系'">双线叙事</span>
             <span class="ex-tag ex-tag-action" onclick="document.getElementById('plot-beginning').value='少年意外获得力量，开始修炼之路';document.getElementById('plot-middle').value='闯荡江湖，遭遇强敌，突破极限';document.getElementById('plot-ending').value='终极对决，守护所爱之人'">热血成长</span>
-          </div>
-        </div>
-      </div>
-      <!-- 长篇动画模式 -->
-      <div class="stp-sec" id="section-longform" style="display:none;margin-top:10px">
-        <div class="longform-wrap">
-          <div class="longform-hint">
-            <b>长篇动画模式</b> — 按集创作连续剧情，支持仙侠/武侠/国漫等中国动画风格。每集独立生成，剧情自动承接。
-          </div>
-          <div>
-            <div class="stp-label">主题/世界观</div>
-            <textarea id="longform-theme" class="story-ta stp-ta" rows="3" placeholder="描述故事的世界观、主线剧情、核心冲突...&#10;例：修仙世界，少年偶得上古传承，从废柴逆袭为一代仙帝" oninput="updateCharCount(this,'longform-cnt')"></textarea>
-            <span class="char-cnt" id="longform-cnt">0 / 5000</span>
-          </div>
-          <div>
-            <div class="stp-label">总集数</div>
-            <div class="episode-row" id="episode-count-row">
-              <button class="episode-btn" onclick="setEpisodeCount(3,this)">3 集</button>
-              <button class="episode-btn active" onclick="setEpisodeCount(5,this)">5 集</button>
-              <button class="episode-btn" onclick="setEpisodeCount(8,this)">8 集</button>
-              <button class="episode-btn" onclick="setEpisodeCount(12,this)">12 集</button>
-              <button class="episode-btn" onclick="setEpisodeCount(20,this)">20 集</button>
-            </div>
-          </div>
-          <div>
-            <div class="stp-label">当前制作集数</div>
-            <div class="episode-nav">
-              <button class="episode-nav-btn" id="ep-prev" onclick="setEpisodeIndex(episodeIndex-1)" disabled>&lt;</button>
-              <span class="episode-nav-label" id="ep-label">第 <b>1</b> / 5 集</span>
-              <button class="episode-nav-btn" id="ep-next" onclick="setEpisodeIndex(episodeIndex+1)">&gt;</button>
-            </div>
-          </div>
-          <div id="longform-summary-wrap" style="display:none">
-            <div class="stp-label">前情提要 <span style="font-weight:400;color:var(--text3)">（自动生成，可编辑）</span></div>
-            <textarea class="episode-summary-ta" id="longform-summary" rows="3" placeholder="前几集的剧情摘要，将作为本集的上下文..."></textarea>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn-gen-episode" id="btn-gen-episode" onclick="generateLongformEpisode()">生成本集剧本</button>
-            <span class="parse-hint-txt" id="longform-status"></span>
-          </div>
-          <div class="example-row">
-            <span class="example-lbl">示例：</span>
-            <div class="example-tags">
-              <span class="ex-tag ex-tag-action" onclick="document.getElementById('longform-theme').value='天元大陆，少年林动偶得石符，踏上修炼之路。从青阳镇出发，历经道宗选拔、异魔入侵、远古大战，最终成为守护大陆的强者。';switchAnimStyle('xianxia')">玄幻修炼</span>
-              <span class="ex-tag ex-tag-action" onclick="document.getElementById('longform-theme').value='江湖风云再起，六大门派围攻光明顶，少年张翠山之子被卷入正邪之争。身怀九阳神功和乾坤大挪移，在仇恨与正义间寻找自己的道路。';switchAnimStyle('wuxia')">武侠江湖</span>
-              <span class="ex-tag" onclick="document.getElementById('longform-theme').value='2085年，地球能源枯竭，人类建造了方舟计划空间站。少女时光作为AI联络员，发现空间站核心存在一个被封印的古老文明意识体。';switchAnimStyle('guoman')">科幻国漫</span>
-            </div>
           </div>
         </div>
       </div>

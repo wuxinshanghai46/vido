@@ -3256,19 +3256,15 @@ function switchAnimStyle(id) {
 
 // ═══ 模式切换 ═══
 function switchMode(mode) {
+  // Phase 4: 仅保留 ai / custom 两种模式
+  if (mode !== 'ai' && mode !== 'custom') mode = 'ai';
   creationMode = mode;
-  ['ai', 'custom', 'script', 'longform'].forEach(m => {
+  ['ai', 'custom'].forEach(m => {
     const el = document.getElementById('mode-' + m);
     if (el) el.classList.toggle('active', m === mode);
   });
-  show('section-ai',       mode === 'ai');
-  show('section-script',   mode === 'script');
-  show('section-plot',     mode === 'custom');
-  show('section-longform', mode === 'longform');
-  // 长篇模式自动推荐中国风格
-  if (mode === 'longform' && !['xianxia','wuxia','guoman','guofeng_3d','ink_battle','ink'].includes(animStyle)) {
-    switchAnimStyle('xianxia');
-  }
+  show('section-ai',   mode === 'ai');
+  show('section-plot', mode === 'custom');
 }
 
 function show(id, visible) {
@@ -3585,16 +3581,40 @@ async function quickAIStory() {
   if (!theme) {
     ta.placeholder = '请先输入内容描述，再点击智能创作...';
     ta.focus();
-    setTimeout(() => { ta.placeholder = '描述你想要的视频内容，越详细效果越好...'; }, 3000);
+    setTimeout(() => { ta.placeholder = '一句话描述也可以,AI 会先扩写为分镜脚本级别的详细内容...'; }, 3000);
     return;
   }
   const btn = document.querySelector('.btn-ai-create');
-  btn.disabled = true; btn.innerHTML = '<span class="ai-dot spinning"></span> 生成中...';
+  btn.disabled = true; btn.innerHTML = '<span class="ai-dot spinning"></span> ✦ AI 扩写中...';
   try {
+    // Step 1: 短文本(<200 字)且不像分镜脚本时,先 expand-theme 扩写为详细描述
+    let scriptText = theme;
+    const looksLikeShotScript = /分镜|画面|镜头|焦段|LUT|场景\s*[一二三四五六七八九十1-9]/.test(theme);
+    if (theme.length < 200 && !looksLikeShotScript) {
+      try {
+        const expandRes = await authFetch('/api/story/expand-theme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme, scene_count: 8, style: typeof animStyle !== 'undefined' ? animStyle : '' })
+        });
+        const expandData = await expandRes.json();
+        if (expandData.success && expandData.data?.expanded_text) {
+          scriptText = expandData.data.expanded_text;
+          ta.value = scriptText;  // 把扩写后的详细描述显示在输入框
+          updateCharCount(ta, 'story-cnt');
+          showToast('✦ 已扩写为详细分镜描述,正在解析角色和场景...', 'ok');
+        }
+      } catch (e) {
+        console.warn('[quickAIStory] expand-theme 失败,直接 parseScript:', e);
+      }
+    }
+
+    // Step 2: 用扩写后(或原始)的文本走 parseScript 提取角色+场景
+    btn.innerHTML = '<span class="ai-dot spinning"></span> 解析角色场景...';
     const res = await authFetch('/api/story/parse-script', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: theme, genre: 'drama', duration: 60 })
+      body: JSON.stringify({ script: scriptText, genre: 'drama', duration: 60 })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);

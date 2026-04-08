@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const fs = require('fs');
-const { generateStory, generateLongStory, refineScene, parseScript } = require('../services/storyService');
+const { generateStory, generateLongStory, refineScene, parseScript, callLLM } = require('../services/storyService');
 const { generateCharacterImage, generateSceneImage, CHAR_IMG_DIR, SCENE_IMG_DIR } = require('../services/imageService');
 const { getAvailableVoices } = require('../services/ttsService');
 const motionService = require('../services/motionService');
@@ -90,6 +90,48 @@ router.post('/parse-script', async (req, res) => {
   try {
     const result = await parseScript({ script, genre, duration });
     res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/story/expand-theme — 把简短主题扩写为分镜脚本级别的详细描述
+// 参考 TapNow 的 prompt 详细度: 每个分镜都有具体画面 / 镜头 / 色彩 / 焦段
+router.post('/expand-theme', async (req, res) => {
+  const { theme, scene_count = 8, style = '' } = req.body;
+  if (!theme || !theme.trim()) {
+    return res.status(400).json({ success: false, error: '请提供主题描述' });
+  }
+  try {
+    const systemPrompt = `你是顶级的视频分镜师和摄影指导。用户会给你一个简短的主题或一句话描述,你要把它扩写为一份**分镜脚本级别的详细内容描述**。
+
+要求:
+- 输出结构: 一段总览(主题/类型/时长/基调) + 多个编号分镜段落(每段一个画面) + 末尾的画风/色彩/镜头规范
+- 每个分镜段落要写清: 镜头中谁在做什么、表情/动作细节、场景布置、光线、关键道具
+- 末尾的画面规范要包含:
+  * 画风 (例: "以冷蓝色为主基调,低饱和度,边缘轻微暖光")
+  * 色彩 LUT (例: "teal-deepblue desat")
+  * 镜头焦段 (例: "20-35mm 广角,透视感强")
+  * 体积雾/景深/颗粒等氛围标签
+- 整段长度控制在 400-700 字
+- 直接输出最终的扩写文本,不要加 "好的,这是扩写结果" 之类的话, 不要 markdown 标题, 不要代码块
+- 完全用中文`;
+
+    const userPrompt = `主题: ${theme.trim()}
+${style ? `画风偏好: ${style}\n` : ''}请扩写为 ${scene_count} 个分镜的详细内容描述。`;
+
+    const expanded = await callLLM(systemPrompt, userPrompt);
+    const text = (expanded || '').trim();
+
+    res.json({
+      success: true,
+      data: {
+        original_theme: theme,
+        expanded_text: text,
+        char_count: text.length,
+        scene_count,
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
