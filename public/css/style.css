@@ -3,16 +3,18 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root, [data-theme="purple"] {
-  --bg:       #0c0c12;
-  --bg2:      #12121a;
-  --bg3:      #1a1a24;
-  --bg4:      #222230;
-  --bg5:      #2a2a3c;
-  --border:   rgba(255,255,255,.07);
-  --border2:  rgba(255,255,255,.11);
+  /* 柔和深色: 略带蓝紫色调, 不再纯冷黑 */
+  --bg:       #0d0e15;
+  --bg2:      #14161f;
+  --bg3:      #1c1e29;
+  --bg4:      #262834;
+  --bg5:      #303245;
+  /* 更柔和的边框 */
+  --border:   rgba(255,255,255,.05);
+  --border2:  rgba(255,255,255,.09);
   --text:     #edeef2;
-  --text2:    rgba(237,238,242,.6);
-  --text3:    rgba(237,238,242,.32);
+  --text2:    rgba(237,238,242,.62);
+  --text3:    rgba(237,238,242,.34);
   --accent:   #7c6cf0;
   --accent2:  #9d8cf8;
   --cyan:     #7c6cf0;
@@ -24,13 +26,18 @@
   --success:  #00e5a0;
   --grad:     linear-gradient(135deg, #7c6cf0 0%, #5b8def 50%, #43cfb6 100%);
   --grad-btn: linear-gradient(135deg, #7c6cf0 0%, #5b8def 60%, #43cfb6 100%);
-  --glow:     0 0 28px rgba(var(--accent-rgb),.18);
-  --glow-sm:  0 0 14px rgba(var(--accent-rgb),.12);
-  --shadow:   0 24px 60px rgba(0,0,0,.7);
+  /* 多层柔和发光与阴影, 不再硬切 */
+  --glow:     0 0 32px rgba(var(--accent-rgb),.15), 0 0 8px rgba(var(--accent-rgb),.08);
+  --glow-sm:  0 0 14px rgba(var(--accent-rgb),.10);
+  --shadow:   0 1px 0 rgba(255,255,255,.04) inset, 0 12px 32px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.25);
+  --shadow-md: 0 1px 0 rgba(255,255,255,.04) inset, 0 8px 24px rgba(0,0,0,.35);
+  --shadow-sm: 0 1px 0 rgba(255,255,255,.03) inset, 0 4px 14px rgba(0,0,0,.25);
   --topnav-h: 48px;
-  --radius:   10px;
-  --radius-lg: 14px;
-  --transition: .18s ease;
+  --radius:   12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --ease:     cubic-bezier(.4,0,.2,1);
+  --transition: .22s cubic-bezier(.4,0,.2,1);
 }
 
 /* 青蓝主题 */
@@ -168,7 +175,12 @@
 [data-theme="light"] .nav-item.active { background: var(--bg3); }
 
 body {
-  background: var(--bg);
+  /* 柔和的多层渐变背景, 不再纯色平铺 */
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124,108,240,.05), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(124,108,240,.04), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: 'Inter', -apple-system, sans-serif;
   font-size: 13.5px;
@@ -176,6 +188,18 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   height: 100vh;
+}
+/* 全局柔和过渡: 所有元素都用平滑 easing */
+*, *::before, *::after {
+  transition-timing-function: cubic-bezier(.4,0,.2,1);
+}
+/* 全局图标/按钮悬停柔和上浮 */
+button, [role="button"], .btn, .card, .stat-card {
+  transition: background .25s cubic-bezier(.4,0,.2,1),
+              border-color .25s cubic-bezier(.4,0,.2,1),
+              color .25s cubic-bezier(.4,0,.2,1),
+              box-shadow .25s cubic-bezier(.4,0,.2,1),
+              transform .25s cubic-bezier(.4,0,.2,1);
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

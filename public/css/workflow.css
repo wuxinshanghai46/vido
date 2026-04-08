@@ -1,24 +1,26 @@
-/* ═══ VIDO Workflow Canvas ═══ */
+/* ═══ VIDO Workflow Canvas — 与主站(style.css)保持一致 ═══ */
 :root {
-  --wf-bg: #07070b;
-  --wf-bg2: #0f1016;
-  --wf-bg3: #181922;
-  --wf-bg4: #21222e;
-  --wf-text: #edeef2;
-  --wf-text2: rgba(237,238,242,.62);
-  --wf-text3: rgba(237,238,242,.34);
-  --wf-accent: #7c6cf0;
+  /* 与 style.css 主站完全一致的色彩 token */
+  --wf-bg:       #0c0c12;
+  --wf-bg2:      #12121a;
+  --wf-bg3:      #1a1a24;
+  --wf-bg4:      #222230;
+  --wf-text:     #edeef2;
+  --wf-text2:    rgba(237,238,242,.6);
+  --wf-text3:    rgba(237,238,242,.32);
+  /* 默认主题与主站 default 一致 (紫色) */
+  --wf-accent:   #7c6cf0;
   --wf-accent-rgb: 124,108,240;
-  --wf-accent2: #21d4fd;
+  --wf-accent2:  #21d4fd;
   --wf-accent2-rgb: 33,212,253;
-  --wf-border: rgba(255,255,255,.06);
-  --wf-border2: rgba(255,255,255,.12);
-  --wf-radius: 12px;
-  --wf-shadow-sm: 0 2px 8px rgba(0,0,0,.32);
-  --wf-shadow-md: 0 6px 24px rgba(0,0,0,.45);
-  --wf-shadow-lg: 0 16px 48px rgba(0,0,0,.55);
-  --wf-glow: 0 0 0 1px rgba(var(--wf-accent-rgb),.35), 0 0 24px rgba(var(--wf-accent-rgb),.18);
-  --wf-ease: cubic-bezier(.4,0,.2,1);
+  --wf-border:   rgba(255,255,255,.07);
+  --wf-border2:  rgba(255,255,255,.11);
+  --wf-radius:   12px;
+  --wf-shadow-sm: 0 2px 8px rgba(0,0,0,.3);
+  --wf-shadow-md: 0 6px 24px rgba(0,0,0,.4);
+  --wf-shadow-lg: 0 16px 48px rgba(0,0,0,.5);
+  --wf-glow:     0 0 0 1px rgba(var(--wf-accent-rgb),.35), 0 0 24px rgba(var(--wf-accent-rgb),.18);
+  --wf-ease:     cubic-bezier(.4,0,.2,1);
   --wf-node-text: #6ee7b7;
   --wf-node-image: #60a5fa;
   --wf-node-bg: #38bdf8;
@@ -35,10 +37,8 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 /* ═══ Topbar ═══ */
 .wf-topbar {
   height: 52px; min-height: 52px;
-  background: rgba(0,0,0,.82);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border-bottom: 1px solid rgba(255,255,255,.06);
+  background: var(--wf-bg2);
+  border-bottom: 1px solid var(--wf-border);
   display: flex; align-items: center; padding: 0 14px; gap: 12px; flex-shrink: 0; z-index: 100;
   overflow: hidden; white-space: nowrap; position: relative;
 }
@@ -48,24 +48,25 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 .wf-tb-right { flex: 1; justify-content: flex-end; flex-wrap: nowrap; }
 .wf-tb-btn {
   display: flex; align-items: center; gap: 6px;
-  padding: 7px 12px; background: transparent; border: 1px solid rgba(255,255,255,.08);
-  border-radius: 999px; color: rgba(255,255,255,.7); font-size: 12px; cursor: pointer;
-  transition: all .2s var(--wf-ease); font-family: inherit; font-weight: 500;
+  padding: 7px 12px; background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 999px; color: var(--wf-text2); font-size: 12px; cursor: pointer;
+  transition: all .25s var(--wf-ease); font-family: inherit; font-weight: 500;
 }
 .wf-tb-btn:hover {
-  background: rgba(255,255,255,.06); color: #fff;
-  border-color: rgba(255,255,255,.18);
+  background: rgba(var(--wf-accent-rgb),.08); color: var(--wf-text);
+  border-color: rgba(var(--wf-accent-rgb),.25);
 }
 .wf-tb-btn:active { transform: scale(.97); }
 .wf-tb-primary {
-  background: #fff !important;
-  color: #0a0a0e !important;
+  background: linear-gradient(135deg, var(--wf-accent), #6852e3) !important;
+  color: #fff !important;
   border-color: transparent !important; font-weight: 600;
-  box-shadow: 0 6px 20px rgba(255,255,255,.15) !important;
+  box-shadow: 0 4px 14px rgba(var(--wf-accent-rgb),.3), inset 0 1px 0 rgba(255,255,255,.18) !important;
 }
 .wf-tb-primary:hover {
-  background: rgba(255,255,255,.92) !important;
-  box-shadow: 0 8px 28px rgba(255,255,255,.22) !important;
+  filter: brightness(1.1);
+  box-shadow: 0 6px 22px rgba(var(--wf-accent-rgb),.45), inset 0 1px 0 rgba(255,255,255,.22) !important;
 }
 .wf-tb-title {
   background: none; border: 1px solid transparent; color: var(--wf-text); font-size: 15px; font-weight: 600;
@@ -85,10 +86,8 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 /* ═══ Sidebar ═══ */
 .wf-sidebar {
   width: 200px;
-  background: rgba(0,0,0,.78);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border-right: 1px solid rgba(255,255,255,.06);
+  background: var(--wf-bg2);
+  border-right: 1px solid var(--wf-border);
   display: flex; flex-direction: column; padding: 14px 12px; gap: 4px; overflow-y: auto; flex-shrink: 0;
   position: relative;
 }
@@ -131,35 +130,47 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 }
 .wf-sidebar-action:hover { background: var(--wf-bg3); color: var(--wf-text); }
 
-/* ═══ Canvas Wrapper ═══ */
+/* ═══ Canvas Wrapper — 与主站融合 + 柔和化 ═══ */
 .wf-canvas-wrap {
   flex: 1; position: relative; overflow: hidden;
-  background: #000;
+  /* 主站 #0c0c12 + 顶部柔光 */
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124,108,240,.06), transparent 70%),
+    var(--wf-bg);
 }
 
 /* ═══ Drawflow Overrides ═══ */
 #drawflow {
   width: 100%; height: 100%;
+  /* 极淡的圆点网格 + 透明背景让 .wf-canvas-wrap 的渐变透出来 */
   background:
-    radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1.2px) 0 0 / 22px 22px,
-    #000;
+    radial-gradient(circle, rgba(255,255,255,.04) 1px, transparent 1.2px) 0 0 / 24px 24px;
   position: relative;
 }
 .drawflow .drawflow-node {
-  background: #0d0d12 !important;
-  border: 1px solid rgba(255,255,255,.08) !important;
+  /* 柔和渐变背景, 不再纯黑 */
+  background: linear-gradient(180deg, rgba(28,30,42,.92), rgba(18,18,26,.96)) !important;
+  border: 1px solid rgba(255,255,255,.07) !important;
   border-radius: 18px !important;
   min-width: 240px !important; width: auto !important;
   padding: 0 !important;
-  box-shadow: 0 10px 32px rgba(0,0,0,.55), 0 0 0 .5px rgba(255,255,255,.02) inset !important;
+  /* 柔和的多层阴影, 减少硬切边感 */
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.04) inset,
+    0 8px 24px rgba(0,0,0,.4),
+    0 2px 6px rgba(0,0,0,.2) !important;
   color: var(--wf-text) !important;
   font-family: 'Inter', sans-serif !important;
   overflow: visible !important;
-  transition: border-color .25s var(--wf-ease), box-shadow .25s var(--wf-ease);
+  backdrop-filter: blur(8px);
+  transition: border-color .3s var(--wf-ease), box-shadow .3s var(--wf-ease), transform .3s var(--wf-ease);
 }
 .drawflow .drawflow-node:hover {
-  border-color: rgba(255,255,255,.18) !important;
-  box-shadow: 0 14px 40px rgba(0,0,0,.65), 0 0 0 .5px rgba(255,255,255,.04) inset !important;
+  border-color: rgba(var(--wf-accent-rgb),.32) !important;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.06) inset,
+    0 12px 32px rgba(0,0,0,.5),
+    0 0 24px rgba(var(--wf-accent-rgb),.1) !important;
 }
 .drawflow .drawflow-node.selected {
   border-color: rgba(255,255,255,.45) !important;
@@ -575,22 +586,22 @@ body { font-family: 'Inter', -apple-system, sans-serif; background: var(--wf-bg)
 .wf-bottombar {
   position: absolute; bottom: 16px; left: 16px; transform: none;
   display: flex; align-items: center; gap: 4px;
-  background: rgba(0,0,0,.7);
+  background: rgba(18,18,26,.7);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid var(--wf-border);
   border-radius: 999px; padding: 5px 10px; z-index: 50;
-  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
 }
 .wf-bb-btn {
-  padding: 6px 10px; background: none; border: none; color: rgba(255,255,255,.55);
+  padding: 6px 10px; background: none; border: none; color: var(--wf-text2);
   cursor: pointer; border-radius: 999px; font-size: 13px;
-  transition: all .2s var(--wf-ease);
+  transition: all .25s var(--wf-ease);
   display: flex; align-items: center; justify-content: center;
 }
 .wf-bb-btn:hover {
-  background: rgba(255,255,255,.08);
-  color: #fff;
+  background: rgba(var(--wf-accent-rgb),.1);
+  color: var(--wf-accent);
 }
 .wf-zoom-wrap { display: flex; align-items: center; gap: 2px; }
 .wf-zoom-val { font-size: 11px; color: var(--wf-text3); width: 38px; text-align: center; }
