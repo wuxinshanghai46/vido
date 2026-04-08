@@ -47,6 +47,7 @@ function initTabs() {
       if (tab.dataset.tab === 'contents') loadContents();
       if (tab.dataset.tab === 'system') loadStats();
       if (tab.dataset.tab === 'ai') loadProviders();
+      if (tab.dataset.tab === 'aicap') loadAICapData();
       if (tab.dataset.tab === 'sync') loadSyncConfig();
     });
   });
@@ -1265,4 +1266,516 @@ async function deleteContent(type, id) {
     if (data.success) { toast('已删除'); loadContents(); document.querySelectorAll('.ct-detail-overlay').forEach(e => e.remove()); }
     else toast(data.error, 'error');
   } catch (e) { toast('删除失败: ' + e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════
+//  AI 能力模块
+// ══════════════════════════════════════════════════
+
+let aiCapChars = [], aiCapScenes = [], aiCapStyles = [];
+let editingCharId = null, editingSceneId = null, editingStyleId = null;
+
+// ── 子 Tab 切换 ──
+function switchAICapTab(tab) {
+  ['chars', 'scenes', 'styles', 'workflow'].forEach(t => {
+    const pane = document.getElementById('aicap-pane-' + t);
+    const tabEl = document.getElementById('aicap-tab-' + t);
+    if (pane) pane.style.display = t === tab ? '' : 'none';
+    if (tabEl) tabEl.classList.toggle('active', t === tab);
+  });
+  if (tab === 'workflow') renderWorkflowCanvas();
+}
+
+// ── 加载全部数据 ──
+async function loadAICapData() {
+  await Promise.all([loadAICapChars(), loadAICapScenes(), loadAICapStyles()]);
+}
+
+// ════════════ 角色库 ════════════
+async function loadAICapChars() {
+  try {
+    const res = await authFetch('/api/ai-cap/characters');
+    const data = await res.json();
+    aiCapChars = data.data || [];
+    document.getElementById('aicap-char-stats').textContent = `共 ${aiCapChars.length} 个角色`;
+    renderCharGrid();
+  } catch (e) { console.error('加载角色库失败:', e); }
+}
+
+function renderCharGrid() {
+  const grid = document.getElementById('aicap-chars-grid');
+  if (!aiCapChars.length) { grid.innerHTML = '<div style="color:var(--text3);padding:40px;text-align:center;grid-column:1/-1">暂无角色，点击上方按钮新建</div>'; return; }
+  grid.innerHTML = aiCapChars.map(c => {
+    const thumb = c.ref_images?.length ? `<img src="${c.ref_images[0]}" alt="${esc(c.name)}" />` : '<div class="placeholder-icon">&#128100;</div>';
+    const tags = (c.tags || []).map(t => `<span class="aicap-tag">${esc(t)}</span>`).join('');
+    return `<div class="aicap-card" onclick="editChar('${c.id}')">
+      <div class="aicap-card-thumb">${thumb}</div>
+      <div class="aicap-card-body">
+        <div class="aicap-card-name">${esc(c.name)}</div>
+        <div class="aicap-card-meta">${esc(c.personality || c.appearance || '').substring(0, 40)}</div>
+        <div class="aicap-card-tags">${tags}</div>
+      </div>
+      <div class="aicap-card-actions" onclick="event.stopPropagation()">
+        <button onclick="editChar('${c.id}')">编辑</button>
+        <button onclick="aiGenCharImage('${c.id}')" title="AI 生成形象">生图</button>
+        <button onclick="genCharThreeView('${c.id}')" title="生成前/侧/后三视图">三视图</button>
+        <button onclick="genCharExpressions('${c.id}')" title="生成 6 种表情">表情包</button>
+        <button onclick="openCharCard('${c.id}')" title="查看角色卡">角色卡</button>
+        <button class="danger" onclick="deleteChar('${c.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showCharModal(id) {
+  editingCharId = id || null;
+  document.getElementById('modal-char-title').textContent = id ? '编辑角色' : '新建角色';
+  const c = id ? aiCapChars.find(x => x.id === id) : null;
+  document.getElementById('ac-name').value = c?.name || '';
+  document.getElementById('ac-gender').value = c?.gender || '';
+  document.getElementById('ac-age').value = c?.age_range || '';
+  document.getElementById('ac-personality').value = c?.personality || '';
+  document.getElementById('ac-appearance').value = c?.appearance || '';
+  document.getElementById('ac-prompt').value = c?.appearance_prompt || '';
+  document.getElementById('ac-tags').value = (c?.tags || []).join(',');
+  // 渲染已有参考图
+  const preview = document.getElementById('ac-ref-preview');
+  if (c?.ref_images?.length) {
+    preview.innerHTML = c.ref_images.map(url => `<div class="ref-thumb"><img src="${url}" /><div class="ref-remove" onclick="removeCharRef('${id}','${url}')">x</div></div>`).join('');
+  } else {
+    preview.innerHTML = '<div class="ref-empty">拖拽或上传参考图</div>';
+  }
+  document.getElementById('ac-ref-files').value = '';
+  document.getElementById('modal-aicap-char').style.display = 'flex';
+}
+
+function editChar(id) { showCharModal(id); }
+
+function closeCharModal() { document.getElementById('modal-aicap-char').style.display = 'none'; }
+
+async function saveChar() {
+  const fd = new FormData();
+  fd.append('name', document.getElementById('ac-name').value);
+  fd.append('gender', document.getElementById('ac-gender').value);
+  fd.append('age_range', document.getElementById('ac-age').value);
+  fd.append('personality', document.getElementById('ac-personality').value);
+  fd.append('appearance', document.getElementById('ac-appearance').value);
+  fd.append('appearance_prompt', document.getElementById('ac-prompt').value);
+  fd.append('tags', JSON.stringify(document.getElementById('ac-tags').value.split(',').map(s => s.trim()).filter(Boolean)));
+  const files = document.getElementById('ac-ref-files').files;
+  for (let i = 0; i < files.length; i++) fd.append('ref_images', files[i]);
+
+  try {
+    const url = editingCharId ? `/api/ai-cap/characters/${editingCharId}` : '/api/ai-cap/characters';
+    const method = editingCharId ? 'PUT' : 'POST';
+    const token = localStorage.getItem('vido-token');
+    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` }, body: fd });
+    const data = await res.json();
+    if (data.success) { toast(editingCharId ? '角色已更新' : '角色已创建'); closeCharModal(); loadAICapChars(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function deleteChar(id) {
+  if (!confirm('确定删除此角色？')) return;
+  try {
+    const res = await authFetch(`/api/ai-cap/characters/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) { toast('已删除'); loadAICapChars(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('删除失败', 'error'); }
+}
+
+async function removeCharRef(charId, imageUrl) {
+  try {
+    await authFetch(`/api/ai-cap/characters/${charId}/images`, { method: 'DELETE', body: JSON.stringify({ image_url: imageUrl }) });
+    loadAICapChars();
+    if (editingCharId === charId) showCharModal(charId);
+  } catch {}
+}
+
+async function aiGenCharImage(idFromCard) {
+  const id = idFromCard || editingCharId;
+  if (!id) { toast('请先保存角色', 'error'); return; }
+  const btn = idFromCard ? event.target : document.getElementById('btn-ai-gen-char');
+  btn.disabled = true; btn.textContent = '生成中...';
+  try {
+    const res = await authFetch(`/api/ai-cap/characters/${id}/generate-image`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) { toast('形象已生成'); loadAICapChars(); if (editingCharId === id) showCharModal(id); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('生成失败: ' + e.message, 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'AI 生成形象'; }
+}
+
+// ════════ 角色三视图 / 表情包 / 角色卡 (Phase 5) ════════
+async function genCharThreeView(idFromCard) {
+  const id = idFromCard || editingCharId;
+  if (!id) { toast('请先保存角色', 'error'); return; }
+  if (!confirm('生成前/侧/后三视图(将调用 3 次图片 API,约 30-60 秒). 继续?')) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  try {
+    const res = await authFetch(`/api/ai-cap/characters/${id}/generate-three-view`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast(`三视图已生成: ${data.data.generated}/3 张`);
+      loadAICapChars();
+      if (editingCharId === id) showCharModal(id);
+    } else toast(data.error, 'error');
+  } catch (e) { toast('生成失败: ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '三视图'; } }
+}
+
+async function genCharExpressions(idFromCard) {
+  const id = idFromCard || editingCharId;
+  if (!id) { toast('请先保存角色', 'error'); return; }
+  if (!confirm('生成 6 种表情(开心/悲伤/愤怒/惊讶/害羞/严肃),约 60-120 秒. 继续?')) return;
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  try {
+    const res = await authFetch(`/api/ai-cap/characters/${id}/generate-expressions`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast(`表情包已生成: ${data.data.generated}/6 张`);
+      loadAICapChars();
+      if (editingCharId === id) showCharModal(id);
+    } else toast(data.error, 'error');
+  } catch (e) { toast('生成失败: ' + e.message, 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '表情包'; } }
+}
+
+function openCharCard(id) {
+  // 角色卡 HTML 由后端渲染, 直接新窗口打开
+  const token = localStorage.getItem('vido-token');
+  // 后端 GET /api/ai-cap/characters/:id/card 走 authenticate 中间件,
+  // 浏览器地址栏请求无法带 Bearer header. 用 fetch + blob 方式打开
+  authFetch(`/api/ai-cap/characters/${id}/card`).then(async r => {
+    if (!r.ok) { toast('打开失败', 'error'); return; }
+    const html = await r.text();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }).catch(e => toast('打开失败: ' + e.message, 'error'));
+}
+
+// ════════════ 场景库 ════════════
+async function loadAICapScenes() {
+  try {
+    const res = await authFetch('/api/ai-cap/scenes');
+    const data = await res.json();
+    aiCapScenes = data.data || [];
+    document.getElementById('aicap-scene-stats').textContent = `共 ${aiCapScenes.length} 个场景`;
+    renderSceneGrid();
+  } catch (e) { console.error('加载场景库失败:', e); }
+}
+
+function renderSceneGrid() {
+  const grid = document.getElementById('aicap-scenes-grid');
+  if (!aiCapScenes.length) { grid.innerHTML = '<div style="color:var(--text3);padding:40px;text-align:center;grid-column:1/-1">暂无场景，点击上方按钮新建</div>'; return; }
+  grid.innerHTML = aiCapScenes.map(s => {
+    const thumb = s.ref_images?.length ? `<img src="${s.ref_images[0]}" alt="${esc(s.name)}" />` : '<div class="placeholder-icon">&#127968;</div>';
+    const typeMap = { indoor: '室内', outdoor: '室外', fantasy: '幻想', urban: '都市', nature: '自然' };
+    const tags = (s.tags || []).map(t => `<span class="aicap-tag">${esc(t)}</span>`).join('');
+    return `<div class="aicap-card" onclick="editScene('${s.id}')">
+      <div class="aicap-card-thumb">${thumb}</div>
+      <div class="aicap-card-body">
+        <div class="aicap-card-name">${esc(s.name)}</div>
+        <div class="aicap-card-meta">${typeMap[s.scene_type] || s.scene_type} · ${esc((s.description || '').substring(0, 30))}</div>
+        <div class="aicap-card-tags">${tags}</div>
+      </div>
+      <div class="aicap-card-actions" onclick="event.stopPropagation()">
+        <button onclick="editScene('${s.id}')">编辑</button>
+        <button onclick="aiGenSceneImageCard('${s.id}')">AI 生图</button>
+        <button class="danger" onclick="deleteScene('${s.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showSceneModal(id) {
+  editingSceneId = id || null;
+  document.getElementById('modal-scene-title').textContent = id ? '编辑场景' : '新建场景';
+  const s = id ? aiCapScenes.find(x => x.id === id) : null;
+  document.getElementById('as-name').value = s?.name || '';
+  document.getElementById('as-type').value = s?.scene_type || 'outdoor';
+  document.getElementById('as-desc').value = s?.description || '';
+  document.getElementById('as-prompt').value = s?.scene_prompt || '';
+  document.getElementById('as-tags').value = (s?.tags || []).join(',');
+  const preview = document.getElementById('as-ref-preview');
+  preview.innerHTML = (s?.ref_images?.length) ? s.ref_images.map(url => `<div class="ref-thumb"><img src="${url}" /></div>`).join('') : '<div class="ref-empty">拖拽或上传参考图</div>';
+  document.getElementById('as-ref-files').value = '';
+  document.getElementById('modal-aicap-scene').style.display = 'flex';
+}
+
+function editScene(id) { showSceneModal(id); }
+function closeSceneModal() { document.getElementById('modal-aicap-scene').style.display = 'none'; }
+
+async function saveScene() {
+  const fd = new FormData();
+  fd.append('name', document.getElementById('as-name').value);
+  fd.append('scene_type', document.getElementById('as-type').value);
+  fd.append('description', document.getElementById('as-desc').value);
+  fd.append('scene_prompt', document.getElementById('as-prompt').value);
+  fd.append('tags', JSON.stringify(document.getElementById('as-tags').value.split(',').map(s => s.trim()).filter(Boolean)));
+  const files = document.getElementById('as-ref-files').files;
+  for (let i = 0; i < files.length; i++) fd.append('ref_images', files[i]);
+
+  try {
+    const url = editingSceneId ? `/api/ai-cap/scenes/${editingSceneId}` : '/api/ai-cap/scenes';
+    const method = editingSceneId ? 'PUT' : 'POST';
+    const token = localStorage.getItem('vido-token');
+    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` }, body: fd });
+    const data = await res.json();
+    if (data.success) { toast(editingSceneId ? '场景已更新' : '场景已创建'); closeSceneModal(); loadAICapScenes(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function deleteScene(id) {
+  if (!confirm('确定删除此场景？')) return;
+  try {
+    const res = await authFetch(`/api/ai-cap/scenes/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) { toast('已删除'); loadAICapScenes(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('删除失败', 'error'); }
+}
+
+async function aiGenSceneImage() {
+  if (!editingSceneId) { toast('请先保存场景', 'error'); return; }
+  const btn = event.target; btn.disabled = true; btn.textContent = '生成中...';
+  try {
+    const res = await authFetch(`/api/ai-cap/scenes/${editingSceneId}/generate-image`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) { toast('场景图已生成'); loadAICapScenes(); showSceneModal(editingSceneId); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('生成失败', 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'AI 生成场景图'; }
+}
+
+async function aiGenSceneImageCard(id) {
+  const btn = event.target; btn.disabled = true; btn.textContent = '生成中...';
+  try {
+    const res = await authFetch(`/api/ai-cap/scenes/${id}/generate-image`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) { toast('场景图已生成'); loadAICapScenes(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('生成失败', 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'AI 生图'; }
+}
+
+// ════════════ 风格库 ════════════
+async function loadAICapStyles() {
+  try {
+    const res = await authFetch('/api/ai-cap/styles');
+    const data = await res.json();
+    aiCapStyles = data.data || [];
+    document.getElementById('aicap-style-stats').textContent = `共 ${aiCapStyles.length} 个风格（${aiCapStyles.filter(s => s.is_preset).length} 预设 + ${aiCapStyles.filter(s => !s.is_preset).length} 自定义）`;
+    renderStyleGrid();
+  } catch (e) { console.error('加载风格库失败:', e); }
+}
+
+function renderStyleGrid() {
+  const grid = document.getElementById('aicap-styles-grid');
+  if (!aiCapStyles.length) { grid.innerHTML = '<div style="color:var(--text3);padding:40px;text-align:center;grid-column:1/-1">暂无风格</div>'; return; }
+  const catMap = { manga: '漫画', comic: '西式漫画', cartoon: '卡通', traditional: '传统', realistic: '写实', scifi: '科幻', dark: '暗黑', soft: '治愈', stylized: '风格化', custom: '自定义' };
+  grid.innerHTML = aiCapStyles.map(s => {
+    const thumb = s.ref_image ? `<img src="${s.ref_image}" alt="${esc(s.name)}" />` : `<div class="placeholder-icon">&#127912;</div>`;
+    const badge = s.is_preset ? '<span class="aicap-preset-badge">预设</span>' : '';
+    return `<div class="aicap-card" onclick="editStyle('${s.id}')">
+      <div class="aicap-card-thumb">${thumb}${badge}</div>
+      <div class="aicap-card-body">
+        <div class="aicap-card-name">${esc(s.name)}</div>
+        <div class="aicap-card-meta">${catMap[s.category] || s.category} · ${esc((s.prompt_en || '').substring(0, 40))}</div>
+      </div>
+      <div class="aicap-card-actions" onclick="event.stopPropagation()">
+        <button onclick="editStyle('${s.id}')">编辑</button>
+        <button class="danger" onclick="deleteStyle('${s.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showStyleModal(id) {
+  editingStyleId = id || null;
+  document.getElementById('modal-style-title').textContent = id ? '编辑风格' : '新建风格';
+  const s = id ? aiCapStyles.find(x => x.id === id) : null;
+  document.getElementById('ast-name').value = s?.name || '';
+  document.getElementById('ast-prompt').value = s?.prompt_en || '';
+  document.getElementById('ast-category').value = s?.category || 'custom';
+  const preview = document.getElementById('ast-ref-preview');
+  preview.innerHTML = s?.ref_image ? `<div class="ref-thumb"><img src="${s.ref_image}" /></div>` : '<div class="ref-empty">可上传风格预览图</div>';
+  document.getElementById('ast-ref-file').value = '';
+  document.getElementById('modal-aicap-style').style.display = 'flex';
+}
+
+function editStyle(id) { showStyleModal(id); }
+function closeStyleModal() { document.getElementById('modal-aicap-style').style.display = 'none'; }
+
+async function saveStyle() {
+  const fd = new FormData();
+  fd.append('name', document.getElementById('ast-name').value);
+  fd.append('prompt_en', document.getElementById('ast-prompt').value);
+  fd.append('category', document.getElementById('ast-category').value);
+  const file = document.getElementById('ast-ref-file').files[0];
+  if (file) fd.append('ref_image', file);
+
+  try {
+    const url = editingStyleId ? `/api/ai-cap/styles/${editingStyleId}` : '/api/ai-cap/styles';
+    const method = editingStyleId ? 'PUT' : 'POST';
+    const token = localStorage.getItem('vido-token');
+    const res = await fetch(url, { method, headers: { 'Authorization': `Bearer ${token}` }, body: fd });
+    const data = await res.json();
+    if (data.success) { toast(editingStyleId ? '风格已更新' : '风格已创建'); closeStyleModal(); loadAICapStyles(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('保存失败: ' + e.message, 'error'); }
+}
+
+async function deleteStyle(id) {
+  if (!confirm('确定删除此风格？')) return;
+  try {
+    const res = await authFetch(`/api/ai-cap/styles/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) { toast('已删除'); loadAICapStyles(); }
+    else toast(data.error, 'error');
+  } catch (e) { toast('删除失败', 'error'); }
+}
+
+// ── 弹窗关闭 ──
+document.querySelectorAll('#modal-aicap-char, #modal-aicap-scene, #modal-aicap-style').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; });
+});
+
+// ══════════════════════════════════════════════════
+//  工作流可视化
+// ══════════════════════════════════════════════════
+
+const WF_PIPELINES = {
+  comic: {
+    label: '漫画生成流水线',
+    nodes: [
+      { id: 'input', icon: '📝', label: '输入', desc: '主题 / 故事 / 角色 / 风格', type: 'input',
+        detail: '用户输入漫画主题和故事内容。\n可从角色库选择预设角色，从风格库选择画风。\n支持小说/剧本导入（TXT/PDF → AI 自动拆解为分镜结构）。' },
+      { id: 'screenwriter', icon: '✍️', label: '编剧 Agent', desc: '剧情脚本创作', type: 'agent',
+        detail: '服务: comicService.js → agentScreenwriter()\n\n职责:\n· 构建完整叙事结构（起承转合）\n· 塑造角色性格和独特说话方式\n· 编写精炼对话（每句≤15字）\n· 设计旁白、音效（sfx）\n· 标注每格的情感基调（emotion）和叙事节奏（pacing: slow/normal/fast）\n· 标注每页的叙事目的（page_purpose）\n\n输入: 主题、风格、角色列表（含 appearance_prompt）\n输出: screenplay JSON\n  └ pages[] → panels[] → {description, dialogue, speaker, narrator, sfx, emotion, pacing}\nAI: callLLM() → DeepSeek / OpenAI / Anthropic' },
+      { id: 'director', icon: '🎬', label: '导演 Agent', desc: '分镜设计 + 视觉指令', type: 'agent',
+        detail: '服务: comicService.js → agentDirector()\n\n职责:\n· 为每个面板设计镜头语言和画面构图\n· 分配镜头类型：特写 / 中景 / 远景 / 仰角 / 俯角 / 鸟瞰 / 荷兰角\n· 设计面板布局比例：full / half / third / quarter\n· 规划镜头切换节奏：对话→正反打，情感→特写，动作→广角\n· 撰写 visual_prompt（英文，≤80词）\n· 指定对话气泡位置：top / bottom / left / right\n· 标注画面氛围关键词（mood）\n\n输入: 编剧脚本 + 画风 + 角色外貌描述\n输出: 在编剧脚本基础上增加 layout / camera / mood / dialogue_position / visual_prompt\nAI: callLLM() → DeepSeek / OpenAI / Anthropic' },
+      { id: 'storyboard', icon: '🎞️', label: '分镜脚本', desc: '结构化分镜数据', type: 'data',
+        detail: '编剧 + 导演协作输出的完整分镜脚本：\n\n数据结构:\n{\n  title, synopsis, style,\n  pages: [{\n    page_number, page_purpose,\n    panels: [{\n      index, layout, description,\n      dialogue, speaker, dialogue_position,\n      narrator, sfx, emotion, pacing,\n      mood, camera, visual_prompt\n    }]\n  }]\n}\n\n保存为 script.json，可在分镜编辑器中可视化调整。\n支持单格重抽（不影响其他面板）。' },
+      { id: 'imagegen', icon: '🖼️', label: '面板生图', desc: 'generatePanelImage() ×N', type: 'service',
+        detail: '服务: comicService.js → generatePanelImage()\n调用: imageService.generateCharacterImage()\n\n输入:\n· visual_prompt（导演Agent生成）\n· 风格库 prompt_en（自动注入）\n· 角色 appearance_prompt（自动嵌入）\n\n供应商优先级: mxapi > nanobanana > 智谱CogView > 即梦 > Replicate > Stability > OpenAI\n\n输出: panel_*.png（每面板一张图）' },
+      { id: 'compose', icon: '📄', label: '页面合成', desc: 'FFmpeg 网格拼接', type: 'service',
+        detail: '服务: comicService.js → composePage()\n工具: FFmpeg filter_complex\n\n功能:\n· 将面板图片按网格布局拼接为漫画页面\n· 自动计算布局：2×1 / 2×2 / 2×3 / 3×N\n· 每格 512×512，间距 8px\n· 统一深色背景 (#0e0e14)\n\n输出: page_N.png' },
+      { id: 'output', icon: '📖', label: '漫画作品', desc: '多页漫画 + 分镜数据', type: 'output',
+        detail: '输出文件:\n· result.json — 完整漫画数据\n· page_*.png — 每页合成图\n· panel_*.png — 每个面板原图\n· screenplay.json — 编剧脚本\n· script.json — 导演分镜脚本\n\n可操作:\n· 单格重抽 — POST /api/ai-cap/comic/:id/repaint\n· 页面预览 — GET /api/comic/tasks/:id/pages/:num\n· 面板预览 — GET /api/comic/tasks/:id/panels/:filename' }
+    ],
+    sideNodes: [
+      { id: 'charlib', icon: '👤', label: '角色库', target: 'screenwriter', detail: '管理后台维护的角色数据：\n· 名称、性格、外貌描述\n· appearance_prompt（英文，用于AI生图）\n· 参考图（最多5张）\n\n自动注入到编剧和导演 Agent 的 prompt 中，确保角色描述一致性。' },
+      { id: 'stylelib', icon: '🎨', label: '风格库', target: 'imagegen', detail: '14个预设风格 + 自定义风格：\n· 每个风格有 prompt_en（英文画风提示词）\n· 自动注入面板生图的 style suffix\n· 支持预览图上传\n\n预设: 日系动漫 / 美式漫画 / 韩国漫画 / 水墨漫画 / 赛博朋克 / 国风仙侠 / 迪士尼卡通 / 暗黑哥特 / 治愈系 等' },
+      { id: 'scenelib', icon: '🏞️', label: '场景库', target: 'director', detail: '管理后台维护的场景数据：\n· 名称、描述、场景类型（室内/室外/幻想/都市/自然）\n· scene_prompt（英文）\n· 参考图\n\n为导演 Agent 提供场景参考，提升画面一致性。' },
+      { id: 'scriptimport', icon: '📄', label: '小说导入', target: 'screenwriter', detail: '上传 TXT/PDF 文件 → AI 自动解析为分镜 JSON：\n· 自动提取角色信息\n· 按页/格拆解剧情\n· 生成 visual_prompt\n\nAPI: POST /api/ai-cap/import-script' },
+      { id: 'repaint', icon: '🔄', label: '单格重抽', target: 'imagegen', detail: '对已完成漫画的单个面板重新生成：\n· 支持自定义 prompt 微调\n· 不影响其他面板\n· 自动重新合成该页\n\nAPI: POST /api/ai-cap/comic/:taskId/repaint\n参数: { page_index, panel_index, custom_prompt }' }
+    ]
+  },
+  video: {
+    label: '视频生成流水线',
+    nodes: [
+      { id: 'input', icon: '📝', label: '输入', desc: '主题 / 角色 / 场景 / 风格', type: 'input',
+        detail: '用户输入视频主题。支持4种创作模式：\n· AI快速 — 一键全自动\n· 脚本解析 — 上传剧本，AI拆分场景\n· 自定义场景 — 手动编排每个场景\n· 长篇连续剧 — 多集承接，保持角色和剧情连续性\n\n可从角色库/场景库导入预设数据。' },
+      { id: 'story', icon: '📖', label: 'LLM 剧情', desc: '剧情脚本生成', type: 'agent',
+        detail: '服务: storyService.js → generateStory()\n\n职责: 根据主题生成完整剧情脚本\n输出:\n{\n  title, synopsis,\n  scenes: [{\n    scene_index, title, description,\n    dialogue, characters, visual_prompt,\n    timeOfDay, mood, location\n  }]\n}\n\nAI: callLLM() → DeepSeek / OpenAI / Anthropic\n支持: 长篇模式（多集剧情承接，通过 previous_summary 传递上集摘要）' },
+      { id: 'charimg', icon: '👤', label: '角色形象', desc: '角色转面图 / 肖像', type: 'service',
+        detail: '服务: imageService.js → generateCharacterImage()\n\n功能: 为每个角色生成形象图\n· 转面图模式（turnaround）— 正面/侧面/背面三视图\n· 肖像模式（portrait）— 单张全身立绘\n\n供应商: mxapi > nanobanana > 智谱CogView > 即梦 > Replicate > Stability > OpenAI\n\n角色一致性: 从角色库导入的角色直接使用参考图和 appearance_prompt\n并行: 限并发2个，避免 API 限流' },
+      { id: 'sceneimg', icon: '🏞️', label: '场景背景', desc: '场景背景图生成', type: 'service',
+        detail: '服务: imageService.js → generateSceneImage()\n\n功能: 为每个场景生成纯背景图（无人物）\n· 自动从场景描述中剥离人物内容\n· 注入负提示词（排除人物生成）\n\n供应商: 同角色形象\n场景库: 如果场景来自场景库，优先使用参考图\n并行: 与角色形象同时生成' },
+      { id: 'videogen', icon: '🎥', label: '视频生成', desc: '逐场景生成视频片段', type: 'service',
+        detail: '服务: videoService.js → generateVideoClip()\n\n核心流程:\n1. 增强 visual_prompt（注入角色外貌 + 画风前缀）\n2. 选择生成模式：\n   · T2V（文生视频）— 纯文字描述生成\n   · I2V（图生视频）— 角色形象图 + 场景背景图作为参考\n3. 调用视频生成 API\n\n供应商（48个模型）:\n· OpenAI Sora-2\n· 智谱 CogVideoX-Flash / Plus\n· FAL: Kling 2.1 / Wan 2.1 / Hunyuan\n· Runway Gen-3 / Gen-4 / Gen-4.5\n· Luma Ray-2 / Ray-3\n· MiniMax Hailuo\n· Vidu / Pika / Seedance / VEO\n\nI2V 是角色一致性的核心技巧。' },
+      { id: 'vfx', icon: '✨', label: '后处理特效', desc: 'applyPostVFX()', type: 'service',
+        detail: '服务: ffmpegService.js → applyPostVFX()\n\n根据场景的 action_type 和 vfx 标签自动应用后处理特效:\n· 战斗场景 — 色调偏暖、对比度增强、轻微抖动\n· 回忆场景 — 柔焦、褪色、慢动作\n· 紧张场景 — 暗角、色调偏冷\n· 浪漫场景 — 柔光、暖色调\n· 通用特效 — 淡入淡出\n\n工具: FFmpeg filter_complex' },
+      { id: 'tts', icon: '🔊', label: '语音配音', desc: '按角色分配声线', type: 'service', optional: true,
+        detail: '服务: ttsService.js → generateSpeech()\n\n供应商优先级:\n讯飞WebSocket > 火山引擎 > 百度 > 阿里 > Fish > MiniMax > ElevenLabs > OpenAI > SAPI\n\n功能:\n· 每个场景的对话转为语音\n· 支持指定声线、语速、性别\n· 自动混入对应场景视频\n\n配置: voice_enabled / voice_gender / voice_id / voice_speed' },
+      { id: 'subtitle', icon: '💬', label: '字幕烧录', desc: '对话字幕叠加', type: 'service', optional: true,
+        detail: '服务: editService.js → renderWithEdits()\n\n功能:\n· 将场景对话文本烧录为字幕\n· 支持字幕大小、位置、颜色自定义\n· 支持多行字幕和自动换行\n\n配置: subtitle_enabled / subtitle_size / subtitle_position / subtitle_color\n工具: FFmpeg drawtext 滤镜' },
+      { id: 'transition', icon: '🔀', label: '转场效果', desc: '交叉淡入淡出', type: 'service',
+        detail: '服务: ffmpegService.js → mergeVideoClips()\n\n转场效果:\n· 交叉淡入淡出（crossfade）— 场景间平滑过渡\n· 首尾淡入淡出 — 开头渐入、结尾渐出\n· 转场时长: 0.5-1秒\n\n工具: FFmpeg xfade 滤镜\n参数: transition=fade, duration=0.5' },
+      { id: 'bgm', icon: '🎵', label: 'BGM 混音', desc: '背景音乐 + 音量控制', type: 'service', optional: true,
+        detail: '服务: ffmpegService.js\n\n功能:\n· 混入用户上传或素材库选择的 BGM\n· 自动裁剪 BGM 到视频时长\n· 音量独立控制（0-100%）\n· 支持循环播放\n· 不覆盖角色配音\n\n配置: music_path / music_volume / music_loop / music_trim_start / music_trim_end' },
+      { id: 'merge', icon: '🎞️', label: '最终合成', desc: '全部片段合并', type: 'service',
+        detail: '服务: ffmpegService.js → mergeVideoClips()\n\n功能:\n· 按场景顺序拼接所有视频片段\n· 统一格式: 统一分辨率、帧率、编码\n· 应用转场效果\n· 混入 BGM\n· 叠加字幕\n\n输出: {projectId}_final.mp4\n工具: FFmpeg concat + filter_complex' },
+      { id: 'output', icon: '🎬', label: '最终视频', desc: '完整视频 + 元数据', type: 'output',
+        detail: '输出: {projectId}_final.mp4\n\n支持:\n· 在线流式播放 — GET /api/projects/:id/stream\n· 视频下载 — GET /api/projects/:id/download\n· 单场景预览 — GET /api/projects/:id/clips/:clipId/stream\n· 编辑器二次编辑 — /editor?id=xxx\n· 发布到社交媒体' }
+    ],
+    sideNodes: [
+      { id: 'charlib', icon: '👤', label: '角色库', target: 'charimg', detail: '角色库中的参考图直接用于 I2V 生图，保持角色一致性。\n角色的 appearance_prompt 注入到视频生成的 visual_prompt 中。' },
+      { id: 'scenelib', icon: '🏞️', label: '场景库', target: 'sceneimg', detail: '场景库参考图可作为背景图直接使用，减少生成时间。\nscene_prompt 自动注入场景描述。' },
+      { id: 'stylelib', icon: '🎨', label: '风格库', target: 'story', detail: '画风设置影响:\n· 剧情生成的 visual_prompt 风格前缀\n· 角色形象图的画风后缀\n· 场景背景图的风格注入' },
+      { id: 'musiclib', icon: '🎵', label: '音乐素材', target: 'bgm', detail: '用户可上传音乐或从素材库选择 BGM。\n支持裁剪、循环、音量控制。\nAPI: POST /api/projects/upload-music' },
+      { id: 'voicelib', icon: '🗣️', label: '声音库', target: 'tts', detail: '自定义声音库:\n· 系统预设声线\n· 用户克隆声音\n· 支持 15+ TTS 供应商\n\nAPI: GET /api/story/voice-list' }
+    ]
+  }
+};
+
+function renderWorkflowCanvas() {
+  const sel = document.getElementById('wf-pipeline-select');
+  const pipeline = WF_PIPELINES[sel?.value || 'comic'];
+  const canvas = document.getElementById('wf-canvas');
+  const detailEl = document.getElementById('wf-node-detail');
+  if (!canvas) return;
+
+  // 主流程节点
+  let html = '<div class="wf-pipeline">';
+  pipeline.nodes.forEach((n, i) => {
+    if (i > 0) html += '<div class="wf-arrow"></div>';
+    const optClass = n.optional ? ' optional' : '';
+    const typeLabel = { input: '输入', agent: 'AI Agent', service: '服务', output: '输出' }[n.type] || '';
+    html += `<div class="wf-node${optClass}" data-node-id="${n.id}" onclick="showWfNodeDetail('${sel?.value || 'comic'}','${n.id}')">
+      <div class="wf-node-icon">${n.icon}</div>
+      <div class="wf-node-label">${n.label}</div>
+      <div class="wf-node-type">${typeLabel}</div>
+    </div>`;
+  });
+  html += '</div>';
+
+  // 侧边库节点
+  if (pipeline.sideNodes?.length) {
+    html += '<div class="wf-side-nodes">';
+    pipeline.sideNodes.forEach(s => {
+      html += `<div class="wf-side-node" onclick="showWfNodeDetail('${sel?.value || 'comic'}','${s.id}')">
+        <span class="wf-side-icon">${s.icon}</span>
+        <span class="wf-side-label">${s.label}</span>
+        <span class="wf-side-arrow">→ ${s.target}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  canvas.innerHTML = html;
+  if (detailEl) { detailEl.style.display = 'none'; detailEl.innerHTML = ''; }
+}
+
+function showWfNodeDetail(pipelineKey, nodeId) {
+  const pipeline = WF_PIPELINES[pipelineKey];
+  const node = [...pipeline.nodes, ...(pipeline.sideNodes || [])].find(n => n.id === nodeId);
+  if (!node) return;
+
+  // 高亮
+  document.querySelectorAll('.wf-node, .wf-side-node').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`[data-node-id="${nodeId}"]`);
+  if (el) el.classList.add('active');
+
+  const detailEl = document.getElementById('wf-node-detail');
+  if (!detailEl) return;
+  detailEl.style.display = 'block';
+  detailEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <span style="font-size:28px">${node.icon}</span>
+      <div>
+        <div style="font-weight:600;font-size:15px">${node.label}</div>
+        <div style="font-size:12px;color:var(--text3)">${node.desc || ''}</div>
+      </div>
+    </div>
+    <pre style="font-size:12px;line-height:1.6;color:var(--text2);white-space:pre-wrap;margin:0">${esc(node.detail || '暂无详细信息')}</pre>
+  `;
 }

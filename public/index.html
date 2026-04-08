@@ -30,6 +30,7 @@
     <div class="nav-item" data-page="create"><div class="nav-icon">🎬</div>AI 视频</div>
     <div class="nav-item" data-page="avatar"><div class="nav-icon">🧑‍💼</div>AI 数字人</div>
     <div class="nav-item" data-page="comic"><div class="nav-icon">📚</div>AI 漫画</div>
+    <div class="nav-item" data-page="drama"><div class="nav-icon">🎭</div>AI 网剧</div>
     <div class="nav-item" data-page="novel"><div class="nav-icon">✍️</div>AI 小说</div>
     <div class="nav-item" data-page="workflow"><div class="nav-icon">🔗</div>工作流画布</div>
   </div>
@@ -628,6 +629,7 @@
                 </div>
                 <div class="stp-footer">
                   <button class="stp-footer-btn" onclick="addScene()">＋ 添加场景</button>
+                  <button class="stp-footer-btn" style="color:#21FFF3" onclick="importVideoSceneFromLibrary()">从场景库导入</button>
                   <button class="stp-footer-btn stp-footer-btn-gen" id="btn-preview-scenes" onclick="batchPreviewScenes()">预览全部</button>
                 </div>
               </div>
@@ -646,6 +648,7 @@
                 <div class="stp-list" id="characters-list"></div>
                 <div class="stp-footer">
                   <button class="stp-footer-btn" onclick="addCharacter()">＋ 添加角色</button>
+                  <button class="stp-footer-btn" style="color:#21FFF3" onclick="importVideoCharFromLibrary()">从角色库导入</button>
                   <button class="stp-footer-btn stp-footer-btn-gen" id="btn-gen-all-chars" onclick="genAllCharPortraits()">全部生成</button>
                 </div>
               </div>
@@ -1425,6 +1428,150 @@
         </div>
       </div>
 
+      <!-- ══ AI 网剧页面 ══ -->
+      <div id="page-drama" class="page">
+        <!-- ═══ 视图1：项目列表 ═══ -->
+        <div id="drama-view-projects" class="drama-projects-view">
+          <div class="drama-proj-header">
+            <span class="drama-proj-title">🎭 AI 网剧</span>
+            <button class="drama-btn-gen" style="width:auto;padding:8px 24px" onclick="showCreateDramaProject()">+ 新建网剧</button>
+          </div>
+          <div class="drama-proj-grid" id="drama-proj-grid">
+            <div style="color:rgba(255,255,255,.25);text-align:center;padding:60px;grid-column:1/-1;font-size:13px">暂无网剧项目，点击上方按钮创建</div>
+          </div>
+        </div>
+
+        <!-- ═══ 视图2：项目详情（剧集+分镜编辑） ═══ -->
+        <div id="drama-view-detail" class="drama-page" style="display:none">
+          <!-- 左面板：项目信息 + 剧集列表 -->
+          <div class="drama-left">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+              <button class="drama-btn-sm" onclick="backToDramaProjects()" style="padding:2px 8px">← 返回</button>
+              <div class="drama-left-header" style="margin:0;font-size:14px" id="drama-detail-title"></div>
+            </div>
+            <div id="drama-project-info" style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
+
+            <div class="drama-field">
+              <div class="drama-field-label">剧集列表</div>
+              <div id="drama-episode-list" style="display:flex;flex-direction:column;gap:4px"></div>
+              <button class="drama-btn-gen" style="margin-top:8px;font-size:12px;padding:7px" id="drama-new-ep-btn" onclick="createDramaEpisode()">+ 生成新一集</button>
+            </div>
+
+            <div class="drama-field" style="display:flex;gap:8px">
+              <div style="flex:1">
+                <div class="drama-field-label">画风</div>
+                <select class="drama-select" id="drama-detail-style" onchange="updateDramaProjectField('style',this.value)"></select>
+              </div>
+              <div style="flex:1">
+                <div class="drama-field-label">运镜预设</div>
+                <select class="drama-select" id="drama-detail-motion" onchange="updateDramaProjectField('motion_preset',this.value)">
+                  <option value="cinematic">电影感</option>
+                  <option value="documentary">纪录片</option>
+                  <option value="action">动作片</option>
+                  <option value="mv">MV风格</option>
+                  <option value="romance">浪漫</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="drama-field">
+              <div class="drama-field-label">本集剧本</div>
+              <textarea class="drama-textarea" id="drama-script" rows="4" placeholder="本集故事内容（留空则自动承接上集）"></textarea>
+            </div>
+
+            <div class="drama-field" style="display:flex;gap:8px">
+              <div style="flex:1"><div class="drama-field-label">场景数</div><select class="drama-select" id="drama-scene-count"><option value="4">4</option><option value="6" selected>6</option><option value="8">8</option><option value="12">12</option></select></div>
+              <div style="flex:1"><div class="drama-field-label">每镜时长</div><select class="drama-select" id="drama-duration"><option value="3">3s</option><option value="5">5s</option><option value="8" selected>8s</option><option value="10">10s</option></select></div>
+            </div>
+
+            <div class="drama-field">
+              <div class="drama-field-label">输出比例</div>
+              <select class="drama-select" id="drama-aspect-ratio" onchange="updateDramaProjectField('aspect_ratio',this.value)">
+                <option value="9:16" selected>9:16 (竖屏短视频)</option>
+                <option value="16:9">16:9 (横屏)</option>
+                <option value="1:1">1:1 (方形)</option>
+                <option value="4:3">4:3 (传统)</option>
+              </select>
+            </div>
+
+            <div class="drama-field" style="display:flex;gap:8px">
+              <div style="flex:1"><div class="drama-field-label">图片模型</div><select class="drama-select" id="drama-image-model"><option value="">自动</option></select></div>
+              <div style="flex:1"><div class="drama-field-label">视频模型</div><select class="drama-select" id="drama-video-model"><option value="">自动</option></select></div>
+            </div>
+
+            <div class="drama-field">
+              <div class="drama-field-label">生成进度</div>
+              <div class="drama-progress" id="drama-progress">
+                <div class="drama-p-step" id="dp-screenwriter"><span class="dp-dot"></span> 1. 编剧Agent</div>
+                <div class="drama-p-step" id="dp-director"><span class="dp-dot"></span> 2. 导演Agent</div>
+                <div class="drama-p-step" id="dp-motion"><span class="dp-dot"></span> 3. 运镜标注</div>
+                <div class="drama-p-step" id="dp-prompt"><span class="dp-dot"></span> 4. 提示词组装</div>
+                <div class="drama-p-step" id="dp-imagegen"><span class="dp-dot"></span> 5. 分镜图生成</div>
+                <div class="drama-p-step" id="dp-done"><span class="dp-dot"></span> 6. 完成</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中央：当前剧集的分镜列表 -->
+          <div class="drama-center">
+            <div class="drama-center-header">
+              <span class="drama-center-title" id="drama-ep-title">分镜时间轴</span>
+              <button class="drama-btn-sm" style="color:#00e5a0;border-color:rgba(0,229,160,.3)" onclick="saveDramaEpisode()">保存</button>
+              <button class="drama-btn-sm" onclick="exportDramaScript()">导出脚本</button>
+              <button class="drama-btn-sm" style="color:var(--accent-color)" onclick="generateAllDramaVideos()">全部生成视频</button>
+              <button class="drama-btn-sm" style="color:#fbbf24;border-color:rgba(251,191,36,.4)" onclick="composeDramaFinal()" id="drama-compose-btn">🎬 一键合成成片</button>
+              <span class="drama-center-count" id="drama-scene-info"></span>
+            </div>
+            <div class="drama-sb-list" id="drama-sb-list">
+              <div style="color:rgba(255,255,255,.25);text-align:center;padding:60px 20px;font-size:13px">选择左侧剧集或点击「生成新一集」</div>
+            </div>
+            <!-- 成片预览区(合成后显示) -->
+            <div id="drama-final-wrap" style="display:none;padding:14px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.3)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="font-size:13px;font-weight:700;color:#fff">🎬 成片预览</span>
+                <span id="drama-final-meta" style="font-size:11px;color:rgba(255,255,255,.5)"></span>
+                <a id="drama-final-download" href="#" download style="margin-left:auto;font-size:12px;color:#fbbf24;text-decoration:none;padding:4px 12px;border:1px solid rgba(251,191,36,.4);border-radius:999px">⬇ 下载</a>
+              </div>
+              <video id="drama-final-video" controls style="width:100%;max-height:60vh;border-radius:10px;background:#000"></video>
+            </div>
+          </div>
+
+          <!-- 右面板：属性 -->
+          <div class="drama-right" id="drama-right-panel">
+            <div style="color:rgba(255,255,255,.25);text-align:center;padding:40px 10px;font-size:13px">点击分镜查看属性</div>
+          </div>
+        </div>
+
+        <!-- 新建项目弹窗 -->
+        <div class="drama-modal-overlay" id="drama-create-modal" style="display:none">
+          <div class="drama-modal-box">
+            <div style="font-size:15px;font-weight:700;margin-bottom:14px">新建网剧</div>
+            <div class="drama-field"><div class="drama-field-label">网剧标题</div><input class="drama-textarea" style="min-height:0;padding:8px" id="dcp-title" placeholder="如：每个冬天的句号都是春暖花开" /></div>
+            <div class="drama-field"><div class="drama-field-label">故事简介</div><textarea class="drama-textarea" id="dcp-synopsis" rows="3" placeholder="整部网剧的故事大纲..."></textarea></div>
+            <div class="drama-field" style="display:flex;gap:8px">
+              <div style="flex:1"><div class="drama-field-label">画风</div><select class="drama-select" id="dcp-style"></select></div>
+              <div style="flex:1"><div class="drama-field-label">运镜预设</div><select class="drama-select" id="dcp-motion"><option value="cinematic">电影感</option><option value="documentary">纪录片</option><option value="action">动作片</option><option value="mv">MV风格</option><option value="romance">浪漫</option></select></div>
+            </div>
+            <div class="drama-field" style="display:flex;gap:8px">
+              <div style="flex:1"><div class="drama-field-label">计划集数</div><input class="drama-textarea" style="min-height:0;padding:8px;width:100%" id="dcp-episodes" type="number" value="10" min="1" max="100" /></div>
+              <div style="flex:1"><div class="drama-field-label">输出比例</div><select class="drama-select" id="dcp-aspect"><option value="9:16" selected>9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option><option value="4:3">4:3</option></select></div>
+            </div>
+            <div class="drama-field">
+              <div class="drama-field-label">角色</div>
+              <div class="drama-char-tags" id="dcp-char-tags"></div>
+              <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="drama-btn-sm" onclick="addDcpChar()">+ 手动添加</button>
+                <button class="drama-btn-sm" style="color:var(--accent-color)" onclick="importDcpCharFromLib()">从角色库导入</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button class="drama-btn-gen" style="flex:1;margin:0" onclick="submitCreateDramaProject()">创建网剧</button>
+              <button class="drama-btn-sm" style="padding:8px 16px" onclick="closeDramaCreateModal()">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ══ AI 小说页面（三栏布局，参照原型） ══ -->
       <div id="page-novel" class="page">
         <div class="nv-page">
@@ -1995,6 +2142,7 @@
             <button class="assets-tab" onclick="filterWorks('i2v',this)">图生视频</button>
             <button class="assets-tab" onclick="filterWorks('portrait',this)">AI 形象</button>
             <button class="assets-tab" onclick="filterWorks('comic',this)">AI 漫画</button>
+            <button class="assets-tab" onclick="filterWorks('drama',this)">AI 网剧</button>
             <button class="assets-tab" onclick="filterWorks('novel',this)">AI 小说</button>
           </div>
           <!-- 作品网格 -->
@@ -2832,15 +2980,8 @@
               <!-- 画风 -->
               <div class="comic-field">
                 <div class="comic-label">画风</div>
-                <div class="comic-style-grid">
-                  <button class="comic-style-btn active" data-style="日系动漫" onclick="selectComicStyle(this)">日系动漫</button>
-                  <button class="comic-style-btn" data-style="美式漫画" onclick="selectComicStyle(this)">美式漫画</button>
-                  <button class="comic-style-btn" data-style="韩国漫画" onclick="selectComicStyle(this)">韩国漫画</button>
-                  <button class="comic-style-btn" data-style="少年漫画" onclick="selectComicStyle(this)">少年漫画</button>
-                  <button class="comic-style-btn" data-style="少女漫画" onclick="selectComicStyle(this)">少女漫画</button>
-                  <button class="comic-style-btn" data-style="水墨漫画" onclick="selectComicStyle(this)">水墨漫画</button>
-                  <button class="comic-style-btn" data-style="赛博朋克" onclick="selectComicStyle(this)">赛博朋克</button>
-                  <button class="comic-style-btn" data-style="欧式漫画" onclick="selectComicStyle(this)">欧式漫画</button>
+                <div class="comic-style-grid" id="comic-style-grid">
+                  <!-- 动态从风格库加载 -->
                 </div>
               </div>
 
@@ -2887,6 +3028,7 @@
                   <div class="comic-label">角色 <span class="comic-optional">可选</span></div>
                   <div id="comic-characters"></div>
                   <button class="comic-add-char-btn" onclick="addComicCharacter()">+ 添加角色</button>
+                  <button class="comic-add-char-btn" style="background:rgba(33,255,243,.1);color:#21FFF3" onclick="importComicCharFromLibrary()">从角色库导入</button>
                 </div>
               </div><!-- end comic-advanced-body -->
 

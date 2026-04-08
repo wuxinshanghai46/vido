@@ -289,6 +289,7 @@ function switchPage(page, opts) {
   if (page === 'imggen') loadImgGenPage();
   if (page === 'novel') nvLoadPage();
   if (page === 'comic') loadComicPage();
+  if (page === 'drama') loadDramaPage();
   if (page === 'portrait') loadPortraitPage();
   if (page === 'works') loadWorksPage();
   if (page === 'assets') loadAssetsPage();
@@ -3256,7 +3257,7 @@ function switchAnimStyle(id) {
 
 // ═══ 模式切换 ═══
 function switchMode(mode) {
-  // Phase 4: 仅保留 ai / custom 两种模式
+  // 仅保留 ai / custom 两种模式 (Phase 4 简化)
   if (mode !== 'ai' && mode !== 'custom') mode = 'ai';
   creationMode = mode;
   ['ai', 'custom'].forEach(m => {
@@ -3587,7 +3588,7 @@ async function quickAIStory() {
   const btn = document.querySelector('.btn-ai-create');
   btn.disabled = true; btn.innerHTML = '<span class="ai-dot spinning"></span> ✦ AI 扩写中...';
   try {
-    // Step 1: 短文本(<200 字)且不像分镜脚本时,先 expand-theme 扩写为详细描述
+    // Step 1: 如果文本较短(<200 字)且不像分镜脚本(没有"分镜"/"画面"关键词), 先调 expand-theme 扩写
     let scriptText = theme;
     const looksLikeShotScript = /分镜|画面|镜头|焦段|LUT|场景\s*[一二三四五六七八九十1-9]/.test(theme);
     if (theme.length < 200 && !looksLikeShotScript) {
@@ -3713,6 +3714,49 @@ function addCharacter() {
   renderCharacters();
   switchStudioTab('character');
   setTimeout(() => selectCharacter(id), 50);
+}
+
+// 从角色库导入角色到视频项目
+function importVideoCharFromLibrary() {
+  showLibraryPicker('characters', {
+    multiple: true,
+    onSelect: (items) => {
+      for (const c of items) {
+        const id = ++charIdCounter;
+        characters.push({
+          id, name: c.name, role: 'main', charType: 'human',
+          description: c.appearance_prompt || c.appearance || c.personality || '',
+          imageUrl: c.ref_images?.[0] || '', theme: '古代',
+          gender: c.gender || 'female', race: '人', age: c.age_range || '青年',
+          species: '', subCategory: '', checked: false,
+          _libraryId: c.id
+        });
+      }
+      renderCharacters();
+      switchStudioTab('character');
+    }
+  });
+}
+
+// 从场景库导入场景到视频项目
+function importVideoSceneFromLibrary() {
+  showLibraryPicker('scenes', {
+    multiple: true,
+    onSelect: (items) => {
+      for (const s of items) {
+        addScene();
+        const last = customScenes[customScenes.length - 1];
+        if (last) {
+          last.title = s.name;
+          last.description = s.scene_prompt || s.description || '';
+          last.imageUrl = s.ref_images?.[0] || '';
+          last._libraryId = s.id;
+        }
+      }
+      renderScenes();
+      switchStudioTab('scene');
+    }
+  });
 }
 
 // 音乐预听
@@ -8098,11 +8142,11 @@ async function nvSelect(id) {
     // 渲染写作工作台
     nvRenderChapterTabs(novel);
 
-    // 自动选择有内容的章节
-    const firstWithContent = (novel.chapters || []).find(c => c.content && c.content.trim());
-    if (firstWithContent) {
-      const curCh = (novel.chapters || []).find(c => c.index === nvCurrentChapter);
-      if (!curCh?.content?.trim()) nvCurrentChapter = firstWithContent.index;
+    // 自动选择章节：仅在首次选择小说时跳到有内容的章节
+    // 手动切换章节时（非首次选择），保持用户选择的章节不变
+    if (isNewSelect) {
+      const firstWithContent = (novel.chapters || []).find(c => c.content && c.content.trim());
+      if (firstWithContent) nvCurrentChapter = firstWithContent.index;
     }
     nvShowChapter(nvCurrentChapter, novel);
 
@@ -8317,7 +8361,9 @@ function nvRenderChapterTabs(novel) {
     const active = i === nvCurrentChapter ? 'active' : '';
     const done = ch && ch.status === 'done' ? 'done' : '';
     const title = ch?.title || novel.outline?.chapters?.find(c => c.index === i)?.title || `第${i}章`;
-    html += `<button class="nv-ch-tab ${active} ${done}" onclick="nvSwitchChapter(${i})" oncontextmenu="event.preventDefault();nvDeleteChapter(${i})" title="${esc(title)}（右键删除）">第${i}章</button>`;
+    const outlineTitle = novel.outline?.chapters?.find(c => c.index === i)?.title || '';
+    const displayTitle = outlineTitle ? `第${i}章·${outlineTitle}` : `第${i}章`;
+    html += `<button class="nv-ch-tab ${active} ${done}" onclick="nvSwitchChapter(${i})" oncontextmenu="event.preventDefault();nvDeleteChapter(${i})" title="${esc(title)}（右键删除）">${esc(displayTitle)}</button>`;
   });
   html += `<button class="nv-ch-tab nv-ch-add" onclick="nvAddChapter()" title="添加章节">+</button>`;
   tabs.innerHTML = html;
@@ -9559,25 +9605,631 @@ function wbClearAudio() {
 }
 
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// AI 网剧（项目→剧集层级）
+// ═══════════════════════════════════════════════════
+
+let dramaProjects = [];
+let currentDramaProject = null;
+let currentDramaEpisode = null;
+let dramaResult = null;
+let dramaSelectedScene = -1;
+let dramaMotions = [];
+let dramaShotScales = [];
+let dcpChars = []; // 创建项目弹窗用的角色
+
+const DRAMA_MOTION_MAP = { '推进':'↗','后拉':'↙','左摇':'←','右摇':'→','上仰':'↑','下俯':'↓','环绕':'⟳','升镜':'⬆','降镜':'⬇','跟踪':'🏃','穿越':'✈','POV':'👁','荷兰角':'📐','甩镜':'💨','焦点转移':'🎯','手持':'🤳','稳定跟':'🎥','静止':'⏸','微推':'🔹','视差':'🔷','变焦推':'🔍','变焦拉':'🔎' };
+
+function loadDramaPage() {
+  loadDramaMotionLib();
+  loadDramaProjectsList();
+}
+
+async function loadDramaMotionLib() {
+  try { const r = await authFetch('/api/drama/motions'); const d = await r.json(); dramaMotions = d.data?.motions || []; dramaShotScales = d.data?.shot_scales || []; } catch {}
+}
+
+// ════════ 项目列表视图 ════════
+async function loadDramaProjectsList() {
+  document.getElementById('drama-view-projects').style.display = '';
+  document.getElementById('drama-view-detail').style.display = 'none';
+  try {
+    const r = await authFetch('/api/drama/projects'); const d = await r.json();
+    dramaProjects = d.data || [];
+    renderDramaProjectGrid();
+  } catch {}
+}
+
+function renderDramaProjectGrid() {
+  const grid = document.getElementById('drama-proj-grid');
+  if (!dramaProjects.length) { grid.innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px;grid-column:1/-1;font-size:13px">暂无网剧项目，点击上方按钮创建</div>'; return; }
+  grid.innerHTML = dramaProjects.map(p => {
+    const cover = p.cover_url ? `<img src="${p.cover_url}" />` : '<div class="ph">🎭</div>';
+    return `<div class="drama-proj-card" onclick="enterDramaProject('${p.id}')">
+      <div class="drama-proj-cover">${cover}<div class="drama-proj-ep-badge">${p.episodes_done || 0}/${p.episodes_total || 0} 集</div></div>
+      <div class="drama-proj-body">
+        <div class="drama-proj-name">${p.title || '未命名'}</div>
+        <div class="drama-proj-meta">${p.style || '日系动漫'} · ${p.episode_count || 10}集计划 · ${new Date(p.created_at).toLocaleDateString()}</div>
+      </div>
+      <div class="drama-proj-footer" onclick="event.stopPropagation()">
+        <button onclick="enterDramaProject('${p.id}')">进入</button>
+        <button class="danger" onclick="deleteDramaProject('${p.id}')">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ════════ 创建项目弹窗 ════════
+async function showCreateDramaProject() {
+  document.getElementById('drama-create-modal').style.display = 'flex';
+  dcpChars = [];
+  document.getElementById('dcp-char-tags').innerHTML = '';
+  document.getElementById('dcp-title').value = '';
+  document.getElementById('dcp-synopsis').value = '';
+  // 加载风格
+  try { const r = await authFetch('/api/ai-cap/styles'); const d = await r.json(); const sel = document.getElementById('dcp-style'); sel.innerHTML = (d.data||[]).map(s=>`<option value="${s.name}">${s.name}</option>`).join(''); } catch {}
+}
+function closeDramaCreateModal() { document.getElementById('drama-create-modal').style.display = 'none'; }
+
+function addDcpChar() { const n = prompt('角色名称'); if (!n) return; dcpChars.push({ name: n, description: '' }); renderDcpCharTags(); }
+function importDcpCharFromLib() { showLibraryPicker('characters', { multiple: true, onSelect: items => { for (const c of items) dcpChars.push({ id: c.id, name: c.name, appearance_prompt: c.appearance_prompt || '' }); renderDcpCharTags(); } }); }
+function renderDcpCharTags() { document.getElementById('dcp-char-tags').innerHTML = dcpChars.map((c,i) => `<div class="drama-char-tag">${c.name}<span class="remove" onclick="dcpChars.splice(${i},1);renderDcpCharTags()">&times;</span></div>`).join(''); }
+
+async function submitCreateDramaProject() {
+  const title = document.getElementById('dcp-title').value.trim();
+  if (!title) return alert('请输入网剧标题');
+  try {
+    const r = await authFetch('/api/drama/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      title, synopsis: document.getElementById('dcp-synopsis').value.trim(),
+      style: document.getElementById('dcp-style').value || '日系动漫',
+      motion_preset: document.getElementById('dcp-motion').value || 'cinematic',
+      episode_count: parseInt(document.getElementById('dcp-episodes').value || '10'),
+      aspect_ratio: document.getElementById('dcp-aspect')?.value || '9:16',
+      characters: dcpChars,
+    }) });
+    const d = await r.json();
+    if (d.success) { closeDramaCreateModal(); enterDramaProject(d.data.id); }
+    else alert(d.error);
+  } catch (e) { alert('创建失败: ' + e.message); }
+}
+
+async function deleteDramaProject(pid) {
+  if (!confirm('确定删除此网剧及所有剧集？')) return;
+  try { await authFetch(`/api/drama/projects/${pid}`, { method: 'DELETE' }); loadDramaProjectsList(); } catch {}
+}
+
+// ════════ 项目详情视图 ════════
+async function enterDramaProject(pid) {
+  try {
+    const r = await authFetch(`/api/drama/projects/${pid}`); const d = await r.json();
+    if (!d.success) return alert(d.error);
+    currentDramaProject = d.data;
+    currentDramaEpisode = null;
+    dramaResult = null;
+    dramaSelectedScene = -1;
+
+    document.getElementById('drama-view-projects').style.display = 'none';
+    document.getElementById('drama-view-detail').style.display = '';
+    document.getElementById('drama-detail-title').textContent = currentDramaProject.title;
+    // 显示项目基本信息
+    const motionLabels = { cinematic: '电影感', documentary: '纪录片', action: '动作片', mv: 'MV风格', romance: '浪漫' };
+    const infoEl = document.getElementById('drama-project-info');
+    if (infoEl) infoEl.innerHTML = [
+      currentDramaProject.style ? `<span style="background:rgba(33,255,243,.08);color:var(--accent-color);padding:1px 8px;border-radius:99px">画风：${currentDramaProject.style}</span>` : '',
+      currentDramaProject.motion_preset ? `<span style="background:rgba(255,246,0,.08);color:rgba(255,246,0,.7);padding:1px 8px;border-radius:99px">运镜：${motionLabels[currentDramaProject.motion_preset] || currentDramaProject.motion_preset}</span>` : '',
+      `<span style="background:rgba(255,255,255,.05);padding:1px 8px;border-radius:99px">计划${currentDramaProject.episode_count || 10}集</span>`,
+    ].filter(Boolean).join('');
+    document.getElementById('drama-ep-title').textContent = '分镜时间轴';
+    document.getElementById('drama-sb-list').innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px 20px;font-size:13px">选择左侧剧集或点击「生成新一集」</div>';
+    document.getElementById('drama-right-panel').innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:40px 10px;font-size:13px">点击分镜查看属性</div>';
+
+    renderDramaEpisodeList();
+    loadDramaModels();
+    loadDramaDetailStyles();
+
+    // 自动选中第一个已完成的剧集
+    const episodes = currentDramaProject.episodes || [];
+    const firstDone = episodes.find(e => e.status === 'done');
+    if (firstDone) {
+      selectDramaEpisode(firstDone.id);
+    }
+  } catch (e) { alert('加载失败: ' + e.message); }
+}
+
+function backToDramaProjects() { loadDramaProjectsList(); }
+
+async function loadDramaDetailStyles() {
+  try {
+    const r = await authFetch('/api/ai-cap/styles'); const d = await r.json();
+    const sel = document.getElementById('drama-detail-style');
+    if (!sel) return;
+    sel.innerHTML = (d.data || []).map(s => `<option value="${s.name}"${s.name === currentDramaProject?.style ? ' selected' : ''}>${s.name}</option>`).join('');
+  } catch {}
+  // 运镜预设
+  const motionSel = document.getElementById('drama-detail-motion');
+  if (motionSel && currentDramaProject?.motion_preset) motionSel.value = currentDramaProject.motion_preset;
+  // 输出比例
+  const arSel = document.getElementById('drama-aspect-ratio');
+  if (arSel && currentDramaProject?.aspect_ratio) arSel.value = currentDramaProject.aspect_ratio;
+}
+
+async function updateDramaProjectField(field, value) {
+  if (!currentDramaProject) return;
+  currentDramaProject[field] = value;
+  try {
+    await authFetch(`/api/drama/projects/${currentDramaProject.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value })
+    });
+  } catch {}
+}
+
+function renderDramaEpisodeList() {
+  const list = document.getElementById('drama-episode-list');
+  const episodes = currentDramaProject.episodes || [];
+  if (!episodes.length) { list.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,.25);padding:8px">暂无剧集</div>'; return; }
+  list.innerHTML = episodes.map(ep => {
+    const active = currentDramaEpisode?.id === ep.id ? ' active' : '';
+    const statusMap = { done: '已完成', processing: '生成中', error: '失败', pending: '待生成' };
+    return `<div class="drama-ep-item${active}" onclick="selectDramaEpisode('${ep.id}')">
+      <div class="drama-ep-idx">${ep.episode_index}</div>
+      <div class="drama-ep-name">${ep.title || '第' + ep.episode_index + '集'}</div>
+      <div class="drama-ep-status ${ep.status}">${statusMap[ep.status] || ep.status}</div>
+    </div>`;
+  }).join('');
+}
+
+async function selectDramaEpisode(eid) {
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${eid}`);
+    const d = await r.json();
+    if (!d.success) return;
+    currentDramaEpisode = d.data;
+    dramaResult = d.data.result;
+    dramaSelectedScene = -1;
+
+    document.getElementById('drama-ep-title').textContent = `${currentDramaEpisode.title || '第' + currentDramaEpisode.episode_index + '集'} — 分镜`;
+
+    if (dramaResult) renderDramaSBList();
+    else document.getElementById('drama-sb-list').innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px">此剧集尚未生成</div>';
+
+    document.getElementById('drama-right-panel').innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:40px 10px;font-size:13px">点击分镜查看属性</div>';
+    renderDramaEpisodeList();
+    // 渲染合成成片预览(如果之前已经合成过)
+    if (typeof renderDramaFinalVideo === 'function') renderDramaFinalVideo();
+  } catch {}
+}
+
+let _dramaGenerating = false;
+async function createDramaEpisode() {
+  if (!currentDramaProject || _dramaGenerating) return;
+  _dramaGenerating = true;
+  const btn = document.getElementById('drama-new-ep-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        theme: document.getElementById('drama-script')?.value?.trim() || '',
+        sceneCount: parseInt(document.getElementById('drama-scene-count')?.value || '6'),
+        durationPerScene: parseInt(document.getElementById('drama-duration')?.value || '8'),
+        image_model: document.getElementById('drama-image-model')?.value || '',
+        video_model: document.getElementById('drama-video-model')?.value || '',
+        aspect_ratio: document.getElementById('drama-aspect-ratio')?.value || currentDramaProject?.aspect_ratio || '9:16',
+      })
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+
+    // 轮询进度
+    pollDramaEpisodeProgress(d.data.id);
+  } catch (e) {
+    alert('生成失败: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '+ 生成新一集'; } _dramaGenerating = false;
+  }
+}
+
+function pollDramaEpisodeProgress(eid) {
+  const poll = async () => {
+    try {
+      const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${eid}`);
+      const d = await r.json();
+      if (!d.success) return;
+      updateDramaProgress(d.data);
+
+      if (d.data.status === 'done') {
+        // 刷新项目详情
+        const pr = await authFetch(`/api/drama/projects/${currentDramaProject.id}`);
+        const pd = await pr.json();
+        if (pd.success) { currentDramaProject = pd.data; renderDramaEpisodeList(); }
+        selectDramaEpisode(eid);
+        const btn = document.getElementById('drama-new-ep-btn');
+        if (btn) { btn.disabled = false; btn.textContent = '+ 生成新一集'; } _dramaGenerating = false;
+        return;
+      }
+      if (d.data.status === 'error') {
+        alert('生成失败: ' + (d.data.error_message || ''));
+        const btn = document.getElementById('drama-new-ep-btn');
+        if (btn) { btn.disabled = false; btn.textContent = '+ 生成新一集'; } _dramaGenerating = false;
+        return;
+      }
+      setTimeout(poll, 2000);
+    } catch { setTimeout(poll, 3000); }
+  };
+  poll();
+}
+
+async function loadDramaModels() {
+  try {
+    const res = await authFetch('/api/settings'); const data = await res.json(); if (!data.success) return;
+    const imgSel = document.getElementById('drama-image-model');
+    const vidSel = document.getElementById('drama-video-model');
+    if (!imgSel || !vidSel) return;
+    let imgH = '<option value="">自动</option>', vidH = '<option value="">自动</option>';
+    for (const p of (data.data.providers || [])) {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) continue;
+      for (const m of (p.models || [])) {
+        if (m.enabled === false) continue;
+        const l = `${p.name}/${m.name||m.id}`, v = `${p.id}::${m.id}`;
+        if (m.use === 'image') imgH += `<option value="${v}">${l}</option>`;
+        if (m.use === 'video') vidH += `<option value="${v}">${l}</option>`;
+      }
+    }
+    imgSel.innerHTML = imgH; vidSel.innerHTML = vidH;
+  } catch {}
+}
+
+function updateDramaProgress(task) {
+  const pct = task.progress || 0;
+  ['screenwriter', 'director', 'motion', 'prompt', 'imagegen', 'done'].forEach(s => {
+    const el = document.getElementById('dp-' + s); if (el) el.classList.remove('active', 'done');
+  });
+  if (pct >= 20) document.getElementById('dp-screenwriter')?.classList.add('done');
+  if (pct >= 40) document.getElementById('dp-director')?.classList.add('done');
+  if (pct >= 50) document.getElementById('dp-motion')?.classList.add('done');
+  if (pct >= 60) document.getElementById('dp-prompt')?.classList.add('done');
+  if (pct >= 95) document.getElementById('dp-imagegen')?.classList.add('done');
+  if (pct >= 100) document.getElementById('dp-done')?.classList.add('done');
+  if (pct < 20) document.getElementById('dp-screenwriter')?.classList.add('active');
+  else if (pct < 40) document.getElementById('dp-director')?.classList.add('active');
+  else if (pct < 50) document.getElementById('dp-motion')?.classList.add('active');
+  else if (pct < 60) document.getElementById('dp-prompt')?.classList.add('active');
+  else if (pct < 95) document.getElementById('dp-imagegen')?.classList.add('active');
+  else if (pct < 100) document.getElementById('dp-done')?.classList.add('active');
+}
+
+// ════════ 分镜列表+编辑（复用逻辑） ════════
+function renderDramaSBList() {
+  if (!dramaResult?.scenes?.length) return;
+  const list = document.getElementById('drama-sb-list');
+  const info = document.getElementById('drama-scene-info');
+  if (info) info.textContent = `${dramaResult.scenes.length} 个分镜 · 约 ${dramaResult.total_duration || 0}s`;
+  list.innerHTML = dramaResult.scenes.map((s, i) => {
+    const mi = DRAMA_MOTION_MAP[s.motion_name] || s.motion_icon || '→';
+    const hasVideo = !!s.video_url;
+    const thumb = s.image_url
+      ? `<img src="${s.image_url}" />${hasVideo ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3);font-size:20px;cursor:pointer" onclick="event.stopPropagation();previewDramaMedia(\'' + s.video_url + '\',\'video\')">▶</div>' : ''}`
+      : s.image_error ? `<div class="dr-thumb-ph" style="font-size:10px;color:#ff4d6d;padding:4px;text-align:center;opacity:1" title="${s.image_error}">失败<br><span style="font-size:8px;opacity:.6">点击重试</span></div>`
+      : '<div class="dr-thumb-ph">🎬</div>';
+    return `<div class="drama-row${dramaSelectedScene===i?' selected':''}" onclick="selectDramaScene(${i})">
+      <div class="dr-col-idx"><div class="dr-idx">${s.index||i+1}</div><div class="dr-dur">${s.duration||5}s</div></div>
+      <div class="dr-col-thumb" onclick="event.stopPropagation();${s.image_error || !s.image_url ? `genDramaSceneImage(${i})` : s.image_url && !s.video_url ? `previewDramaMedia('${s.image_url}','image')` : ''}" style="cursor:pointer">${thumb}<div class="dr-camera-badge">${s.shot_scale||'中景'}</div></div>
+      <div class="dr-col-content"><div class="dr-desc">${s.description||''}</div>${s.dialogue?`<div class="dr-dialogue">"${s.dialogue}"</div>`:''}${s.narrator?`<div class="dr-narrator">${s.narrator}</div>`:''}<div class="dr-tags"><span class="dr-tag motion">${mi} ${s.motion_name||''}</span>${s.emotion?`<span class="dr-tag emotion">${s.emotion}</span>`:''}${s.sfx?`<span class="dr-tag sfx">${s.sfx}</span>`:''}</div></div>
+      <div class="dr-col-motion"><div class="dr-motion-icon">${mi}</div><div class="dr-motion-name">${s.motion_name||''}</div></div>
+      <div class="dr-col-actions" onclick="event.stopPropagation()"><button class="dr-act-btn" onclick="selectDramaScene(${i})">编辑</button><button class="dr-act-btn" onclick="genDramaSceneImage(${i})">生图</button><button class="dr-act-btn primary" onclick="genDramaSceneVideo(${i})">视频</button></div>
+    </div>`;
+  }).join('');
+}
+
+function selectDramaScene(i) {
+  dramaSelectedScene = i;
+  document.querySelectorAll('.drama-row').forEach(r => r.classList.remove('selected'));
+  document.querySelectorAll('.drama-row')[i]?.classList.add('selected');
+  renderDramaRightPanel(i);
+}
+
+function renderDramaRightPanel(i) {
+  const s = dramaResult?.scenes?.[i]; if (!s) return;
+  const panel = document.getElementById('drama-right-panel');
+  panel.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:12px">分镜 #${s.index||i+1} 属性</div>
+    <div class="dr-section"><div class="dr-section-label">画面描述</div><textarea class="drama-textarea" style="min-height:50px" onchange="updateDramaScene(${i},'description',this.value)">${s.description||''}</textarea></div>
+    <div class="dr-section"><div class="dr-section-label">对话</div><input class="drama-textarea" style="min-height:0;padding:6px 8px" value="${(s.dialogue||'').replace(/"/g,'&quot;')}" onchange="updateDramaScene(${i},'dialogue',this.value)" /><div style="margin-top:4px"><div class="dr-section-label">旁白</div><input class="drama-textarea" style="min-height:0;padding:6px 8px" value="${(s.narrator||'').replace(/"/g,'&quot;')}" onchange="updateDramaScene(${i},'narrator',this.value)" /></div></div>
+    <div class="dr-section"><div class="dr-section-label">运镜</div><div class="dr-motion-grid">${dramaMotions.map(m=>`<div class="dr-motion-item${s.motion_id===m.id?' active':''}" onclick="setDramaMotion(${i},'${m.id}',this)"><div class="mi-icon">${m.icon}</div><div class="mi-name">${m.name}</div></div>`).join('')}</div><div style="margin-top:6px;background:var(--bg);padding:5px 8px;border-radius:6px;font-size:10px;color:var(--accent-color)">${s.motion_prompt||''}</div></div>
+    <div class="dr-section"><div class="dr-section-label">景别</div><div class="dr-shot-grid">${dramaShotScales.map(sh=>`<div class="dr-shot-item${s.shot_scale===sh.name?' active':''}" onclick="setDramaShot(${i},'${sh.name}',this)">${sh.name}</div>`).join('')}</div></div>
+    <div class="dr-section"><div class="dr-section-label">情感</div><div class="dr-shot-grid">${['孤独','忧伤','沉静','温暖','紧张','震惊','浪漫','震撼','欢快'].map(e=>`<div class="dr-shot-item${s.emotion===e?' active':''}" onclick="setDramaEmotion(${i},'${e}',this)">${e}</div>`).join('')}</div></div>
+    <div class="dr-section">
+      <div class="dr-section-label">中文提示词（可编辑）</div>
+      <textarea class="drama-textarea" style="min-height:100px;font-size:11px;line-height:1.7;white-space:pre-wrap" onchange="updateDramaScene(${i},'full_prompt_cn',this.value)">${(s.full_prompt_cn||'(未生成)').replace(/</g,'&lt;')}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:4px;gap:6px">
+        <button class="drama-btn-sm" onclick="navigator.clipboard.writeText(dramaResult.scenes[${i}].full_prompt_cn||'')">复制</button>
+        <button class="drama-btn-sm" onclick="refreshDramaPrompt(${i})">刷新提示词</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px"><button class="drama-btn-gen" style="flex:1;margin:0" onclick="genDramaSceneImage(${i})">生成分镜图</button><button class="drama-btn-gen" style="flex:1;margin:0;background:rgba(33,255,243,.15);color:var(--accent-color)" onclick="genDramaSceneVideo(${i})">生成视频</button></div>
+  `;
+}
+
+function _dramaApiBase() { return `/api/drama/projects/${currentDramaProject?.id}/episodes/${currentDramaEpisode?.id}`; }
+
+function updateDramaScene(i, field, value) {
+  if (!dramaResult?.scenes?.[i]) return;
+  dramaResult.scenes[i][field] = value;
+  authFetch(`${_dramaApiBase()}/scenes/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) }).catch(() => {});
+}
+
+function setDramaMotion(i, motionId, el) {
+  const m = dramaMotions.find(x => x.id === motionId); if (!m) return;
+  Object.assign(dramaResult.scenes[i], { motion_id: m.id, motion_name: m.name, motion_icon: m.icon, motion_prompt: m.prompt_en });
+  el.parentElement.querySelectorAll('.dr-motion-item').forEach(e => e.classList.remove('active')); el.classList.add('active');
+  authFetch(`${_dramaApiBase()}/scenes/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ motion_id: m.id, motion_name: m.name, motion_icon: m.icon, motion_prompt: m.prompt_en }) }).then(() => { renderDramaSBList(); renderDramaRightPanel(i); }).catch(() => {});
+}
+
+function setDramaShot(i, name, el) {
+  dramaResult.scenes[i].shot_scale = name;
+  el.parentElement.querySelectorAll('.dr-shot-item').forEach(e => e.classList.remove('active')); el.classList.add('active');
+  authFetch(`${_dramaApiBase()}/scenes/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shot_scale: name }) }).then(() => { renderDramaSBList(); renderDramaRightPanel(i); }).catch(() => {});
+}
+
+function setDramaEmotion(i, emotion, el) {
+  dramaResult.scenes[i].emotion = emotion;
+  el.parentElement.querySelectorAll('.dr-shot-item').forEach(e => e.classList.remove('active')); el.classList.add('active');
+  authFetch(`${_dramaApiBase()}/scenes/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emotion }) }).catch(() => {});
+}
+
+async function refreshDramaPrompt(i) {
+  try { const r = await authFetch(`${_dramaApiBase()}/scenes/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visual_prompt: dramaResult.scenes[i].visual_prompt }) }); const d = await r.json(); if (d.success && d.data) { dramaResult.scenes[i] = { ...dramaResult.scenes[i], ...d.data }; renderDramaRightPanel(i); renderDramaSBList(); } } catch {}
+}
+
+async function genDramaSceneImage(i) {
+  if (!currentDramaEpisode) return;
+  // 找到按钮并显示loading
+  const btns = document.querySelectorAll('.dr-act-btn');
+  const btn = btns.length > i * 3 + 1 ? btns[i * 3 + 1] : null;
+  if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+  try {
+    const r = await authFetch(`${_dramaApiBase()}/scenes/${i}/generate-video`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      dramaResult.scenes[i].image_url = d.data.image_url;
+      renderDramaSBList();
+      if (dramaSelectedScene === i) renderDramaRightPanel(i);
+    } else {
+      // 友好提示速率限制
+      if (d.error && d.error.includes('速率限制')) {
+        alert('图片生成API速率限制，请等待30秒后重试。\n\n建议：在管理后台配置多个图片供应商以避免限流。');
+      } else {
+        alert('生成失败: ' + d.error);
+      }
+    }
+  } catch (e) { alert('生成失败: ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '生图'; } }
+}
+
+async function genDramaSceneVideo(i) {
+  if (!currentDramaEpisode) return;
+  const scene = dramaResult?.scenes?.[i];
+  if (!scene?.image_url) return alert('请先生成分镜图，再生成视频');
+  // 找操作列的视频按钮
+  const allBtns = document.querySelectorAll('.dr-act-btn.primary');
+  const btn = allBtns[i] || event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+  // 状态提示
+  const statusEl = document.getElementById('drama-scene-info');
+  const origStatus = statusEl?.textContent;
+  if (statusEl) statusEl.textContent = `场景${i + 1} 视频生成中（约30秒-3分钟）...`;
+  try {
+    const r = await authFetch(`${_dramaApiBase()}/scenes/${i}/make-video`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_model: document.getElementById('drama-video-model')?.value || '' })
+    });
+    const d = await r.json();
+    if (d.success && d.data?.video_url) {
+      dramaResult.scenes[i].video_url = d.data.video_url;
+      renderDramaSBList();
+      if (dramaSelectedScene === i) renderDramaRightPanel(i);
+    } else alert('视频生成失败: ' + (d.error || '未知错误'));
+  } catch (e) { alert('视频生成失败: ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = '视频'; }
+    if (statusEl) statusEl.textContent = origStatus || '';
+  }
+}
+
+async function generateAllDramaVideos() {
+  if (!dramaResult?.scenes?.length || !currentDramaEpisode) return;
+  const noImage = dramaResult.scenes.filter(s => !s.image_url);
+  if (noImage.length) return alert(`还有 ${noImage.length} 个场景没有分镜图，请先生成全部分镜图`);
+
+  const pending = dramaResult.scenes.filter(s => !s.video_url);
+  if (!pending.length) return alert('所有场景已有视频');
+  if (!confirm(`即将为 ${pending.length} 个场景逐个生成视频（每个约30秒-3分钟），期间请勿离开页面。确认继续？`)) return;
+
+  const statusEl = document.getElementById('drama-scene-info');
+  const total = dramaResult.scenes.length;
+  let doneCount = dramaResult.scenes.filter(s => s.video_url).length;
+
+  for (let i = 0; i < total; i++) {
+    if (dramaResult.scenes[i].video_url) continue;
+    if (statusEl) statusEl.textContent = `视频生成中 ${doneCount + 1}/${total}：场景${i + 1}...`;
+
+    try {
+      const r = await authFetch(`${_dramaApiBase()}/scenes/${i}/make-video`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_model: document.getElementById('drama-video-model')?.value || '' })
+      });
+      const d = await r.json();
+      if (d.success && d.data?.video_url) {
+        dramaResult.scenes[i].video_url = d.data.video_url;
+        doneCount++;
+        renderDramaSBList();
+      } else {
+        console.warn(`场景 ${i + 1} 视频失败:`, d.error);
+        if (statusEl) statusEl.textContent = `场景${i + 1}失败: ${(d.error || '').substring(0, 30)}，继续下一个...`;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    } catch (e) {
+      console.error(`场景 ${i + 1} 视频异常:`, e.message);
+    }
+  }
+
+  if (statusEl) statusEl.textContent = `${total} 个分镜 · 约 ${dramaResult.total_duration || 0}s · 视频${doneCount}/${total}`;
+  alert(`批量视频生成完成：${doneCount}/${total} 个成功`);
+  renderDramaSBList();
+}
+
+// ════════ 一键合成成片 ════════
+async function composeDramaFinal() {
+  if (!dramaResult?.scenes?.length || !currentDramaEpisode) return;
+  const noVideo = dramaResult.scenes.filter(s => !s.video_url);
+  if (noVideo.length === dramaResult.scenes.length) {
+    return alert('还没有任何分镜视频。请先点击"全部生成视频"。');
+  }
+  if (noVideo.length > 0) {
+    if (!confirm(`有 ${noVideo.length} 个分镜还没视频，是否只合成已有的 ${dramaResult.scenes.length - noVideo.length} 段?`)) return;
+  }
+  const btn = document.getElementById('drama-compose-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '合成中...'; }
+  try {
+    const r = await authFetch(`${_dramaApiBase()}/compose`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    dramaResult.final_video_url = d.data.final_video_url;
+    dramaResult.composed_clips = d.data.composed_clips;
+    renderDramaFinalVideo();
+    showToast(`✓ 合成完成: ${d.data.composed_clips}/${d.data.total_scenes} 段`, 'ok');
+  } catch (e) {
+    alert('合成失败: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🎬 一键合成成片'; }
+  }
+}
+
+function renderDramaFinalVideo() {
+  const wrap = document.getElementById('drama-final-wrap');
+  const video = document.getElementById('drama-final-video');
+  const meta = document.getElementById('drama-final-meta');
+  const dl = document.getElementById('drama-final-download');
+  if (!wrap || !video) return;
+  if (!dramaResult?.final_video_url) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+  // 加 timestamp 防止浏览器缓存旧合成
+  const url = dramaResult.final_video_url + (dramaResult.composed_at ? `?t=${encodeURIComponent(dramaResult.composed_at)}` : '');
+  video.src = url;
+  if (meta) meta.textContent = `${dramaResult.composed_clips || 0} 段 · ${dramaResult.aspect_ratio || ''} · 约 ${dramaResult.total_duration || 0}s`;
+  if (dl) dl.href = (dramaResult.final_video_url || '').replace(/\/final$/, '/final/download');
+}
+
+// 预览弹层（图片/视频）
+function previewDramaMedia(url, type) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  overlay.onclick = () => overlay.remove();
+  if (type === 'video') {
+    overlay.innerHTML = `<video src="${url}" controls autoplay style="max-width:90vw;max-height:85vh;border-radius:12px" onclick="event.stopPropagation()"></video>`;
+  } else {
+    overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:85vh;border-radius:12px;object-fit:contain" />`;
+  }
+  document.body.appendChild(overlay);
+}
+
+async function saveDramaEpisode() {
+  if (!currentDramaEpisode || !dramaResult) return alert('没有可保存的内容');
+  try {
+    const r = await authFetch(`/api/drama/projects/${currentDramaProject.id}/episodes/${currentDramaEpisode.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ result: dramaResult })
+    });
+    const d = await r.json();
+    if (d.success) {
+      const btn = event?.target;
+      if (btn) { const orig = btn.textContent; btn.textContent = '已保存 ✓'; btn.style.color = '#00e5a0'; setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500); }
+    } else alert('保存失败: ' + d.error);
+  } catch (e) { alert('保存失败: ' + e.message); }
+}
+
+function exportDramaScript() { if (dramaResult) { const b = new Blob([JSON.stringify(dramaResult,null,2)],{type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `drama_${dramaResult.title||'script'}.json`; a.click(); } }
+
 // ═══ AI 漫画 ═══
 // ═══════════════════════════════════════════
 let comicStyle = '日系动漫';
+let comicSelectedStyleId = null;
 let comicPages = 4;
 let comicPanelsPerPage = 4;
 let comicCharacters = [];
+let comicSelectedCharIds = []; // 从角色库选中的 ID
 let comicCurrentTaskId = null;
 let comicImageModels = [];
 let comicSelectedModel = null; // null = auto
 
 function loadComicPage() {
   loadComicImageModels();
+  loadComicStyles();
   loadComicHistory();
+}
+
+// 动态加载风格库
+async function loadComicStyles() {
+  try {
+    const res = await authFetch('/api/ai-cap/styles');
+    const data = await res.json();
+    const styles = data.data || [];
+    const grid = document.getElementById('comic-style-grid');
+    if (!grid) return;
+    grid.innerHTML = styles.map((s, i) => {
+      const active = s.name === comicStyle ? ' active' : '';
+      return `<button class="comic-style-btn${active}" data-style="${escHtml(s.name)}" data-style-id="${s.id}" onclick="selectComicStyle(this)">${escHtml(s.name)}</button>`;
+    }).join('');
+    // 如果当前选中的不在列表中，选第一个
+    if (!styles.find(s => s.name === comicStyle) && styles.length) {
+      comicStyle = styles[0].name;
+      comicSelectedStyleId = styles[0].id;
+    }
+  } catch (e) {
+    // 回退硬编码
+    const grid = document.getElementById('comic-style-grid');
+    if (grid) grid.innerHTML = ['日系动漫','美式漫画','韩国漫画','少年漫画','少女漫画','水墨漫画','赛博朋克','欧式漫画']
+      .map((s, i) => `<button class="comic-style-btn${i===0?' active':''}" data-style="${s}" onclick="selectComicStyle(this)">${s}</button>`).join('');
+  }
 }
 
 function selectComicStyle(btn) {
   document.querySelectorAll('.comic-style-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   comicStyle = btn.dataset.style;
+  comicSelectedStyleId = btn.dataset.styleId || null;
+}
+
+// 从角色库导入角色
+function importComicCharFromLibrary() {
+  showLibraryPicker('characters', {
+    multiple: true,
+    onSelect: (items) => {
+      for (const c of items) {
+        if (comicSelectedCharIds.includes(c.id)) continue;
+        comicSelectedCharIds.push(c.id);
+        comicCharacters.push({ id: c.id, name: c.name, description: c.appearance_prompt || c.appearance || c.personality || '', _fromLibrary: true });
+      }
+      renderComicCharacters();
+    }
+  });
+}
+
+function renderComicCharacters() {
+  const list = document.getElementById('comic-char-list');
+  if (!list) return;
+  list.innerHTML = comicCharacters.map((c, i) => `
+    <div class="comic-char-item" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(255,255,255,.04);border-radius:8px;margin-bottom:4px">
+      <span style="flex:1;font-size:13px">${escHtml(c.name)}${c._fromLibrary ? ' <span style="color:#21FFF3;font-size:10px">库</span>' : ''}</span>
+      <button onclick="removeComicCharacter(${i})" style="background:none;border:none;color:rgba(255,255,255,.3);cursor:pointer;font-size:14px">&times;</button>
+    </div>
+  `).join('');
 }
 
 function setComicPages(n, btn) {
@@ -9754,9 +10406,11 @@ async function startComicGeneration() {
       body: JSON.stringify({
         theme,
         style: comicStyle,
+        styleId: comicSelectedStyleId,
         pages: comicPages,
         panels_per_page: comicPanelsPerPage,
-        characters: chars
+        characters: chars.filter(c => !c._fromLibrary),
+        character_ids: comicSelectedCharIds
       })
     });
     const data = await res.json();
@@ -10044,6 +10698,96 @@ async function deleteWork(type, id) {
     loadWorksPage();
   } catch {}
 }
+
+// ══════════════════════════════════════════════════════
+// AI 能力库 — 通用选择弹层
+// ══════════════════════════════════════════════════════
+
+let _libPickerCache = { characters: null, scenes: null, styles: null };
+
+/**
+ * 显示库选择弹层
+ * @param {'characters'|'scenes'|'styles'} type
+ * @param {Object} opts - { multiple: bool, onSelect: (items) => void }
+ */
+async function showLibraryPicker(type, opts = {}) {
+  const { multiple = true, onSelect } = opts;
+  const typeLabels = { characters: '角色库', scenes: '场景库', styles: '风格库' };
+  const icons = { characters: '&#128100;', scenes: '&#127968;', styles: '&#127912;' };
+
+  // 加载数据
+  if (!_libPickerCache[type]) {
+    try {
+      const res = await authFetch(`/api/ai-cap/${type}`);
+      const data = await res.json();
+      _libPickerCache[type] = data.data || [];
+    } catch { _libPickerCache[type] = []; }
+  }
+  const items = _libPickerCache[type];
+  const selected = new Set();
+
+  // 创建弹层
+  const overlay = document.createElement('div');
+  overlay.className = 'lib-picker-overlay';
+  overlay.innerHTML = `
+    <div class="lib-picker-box">
+      <div class="lib-picker-header">
+        <h3>从${typeLabels[type]}选择</h3>
+        <button class="lib-picker-close" onclick="this.closest('.lib-picker-overlay').remove()">&times;</button>
+      </div>
+      <div class="lib-picker-body">
+        ${items.length === 0
+          ? `<div class="lib-picker-empty">暂无数据，请在管理后台「AI 能力」中添加</div>`
+          : `<div class="lib-picker-grid">${items.map((item, i) => {
+              const thumb = (item.ref_images?.[0] || item.ref_image)
+                ? `<img src="${item.ref_images?.[0] || item.ref_image}" />`
+                : `<span class="placeholder">${icons[type]}</span>`;
+              const meta = type === 'characters' ? (item.personality || '').substring(0, 20)
+                : type === 'scenes' ? (item.scene_type || '')
+                : (item.category || '');
+              return `<div class="lib-picker-item" data-idx="${i}" onclick="toggleLibPickerItem(this, ${multiple})">
+                <div class="lib-picker-item-thumb">${thumb}</div>
+                <div class="lib-picker-item-name">${escHtml(item.name)}</div>
+                <div class="lib-picker-item-meta">${escHtml(meta)}</div>
+              </div>`;
+            }).join('')}</div>`
+        }
+      </div>
+      <div class="lib-picker-footer">
+        <button class="lib-picker-btn-cancel" onclick="this.closest('.lib-picker-overlay').remove()">取消</button>
+        <button class="lib-picker-btn-confirm" id="lib-picker-confirm">确认选择</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+  // 确认按钮
+  overlay.querySelector('#lib-picker-confirm').onclick = () => {
+    const selectedItems = [];
+    overlay.querySelectorAll('.lib-picker-item.selected').forEach(el => {
+      selectedItems.push(items[parseInt(el.dataset.idx)]);
+    });
+    if (onSelect) onSelect(selectedItems);
+    overlay.remove();
+  };
+}
+
+function toggleLibPickerItem(el, multiple) {
+  if (!multiple) {
+    el.parentElement.querySelectorAll('.lib-picker-item').forEach(e => e.classList.remove('selected'));
+  }
+  el.classList.toggle('selected');
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 刷新库缓存
+function invalidateLibCache(type) { if (type) _libPickerCache[type] = null; else _libPickerCache = { characters: null, scenes: null, styles: null }; }
 
 // 启动
 init();
