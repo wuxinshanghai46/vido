@@ -91,9 +91,9 @@ function renderEpisodes() {
       const dur = e.result?.duration ? formatDur(e.result.duration) : '--:--';
       const name = (e.title || `第${e.episode_index}集`).replace(/^第\d+集[：:]?/, '') || `第${e.episode_index}集`;
       return `
-        <div class="eps-chip ${isActive ? 'active' : ''}" onclick="loadEpisode('${e.id}')">
+        <div class="eps-chip ${isActive ? 'active' : ''}" onclick="loadEpisode('${e.id}')" ondblclick="event.stopPropagation();renameEpisode('${e.id}',this)">
           <span class="eps-num">EP ${String(e.episode_index).padStart(2,'0')}</span>
-          <span>${escapeHtml(name)}</span>
+          <span class="eps-name">${escapeHtml(name)}</span>
           <span class="eps-dur">${dur}</span>
         </div>
       `;
@@ -150,7 +150,7 @@ async function downloadEpisode(eid, name) {
 }
 window.downloadEpisode = downloadEpisode;
 
-// v15 fix #3: 上传 .txt/.md 剧本文件
+// v15 fix #3: 上传 .txt/.md 剧本文件（支持 GBK/GB2312/Big5 自动检测）
 function onScriptFileChosen(input) {
   const file = input.files?.[0];
   if (!file) return;
@@ -158,21 +158,49 @@ function onScriptFileChosen(input) {
     showToast('文件过大 (最大 5MB)', 'error');
     return;
   }
+
+  // 先用 ArrayBuffer 读取，自动检测编码
   const reader = new FileReader();
   reader.onload = (e) => {
+    const buf = e.target.result;
+    const bytes = new Uint8Array(buf);
+
+    // 尝试 UTF-8 解码，检查是否有乱码（replacement char U+FFFD）
+    let text = new TextDecoder('utf-8').decode(bytes);
+    const hasGarble = text.includes('\uFFFD') || /[\x80-\xFF]{4,}/.test(text.slice(0, 200));
+
+    if (hasGarble) {
+      // 尝试 GBK（覆盖 GB2312）
+      try {
+        const gbkText = new TextDecoder('gbk').decode(bytes);
+        if (!gbkText.includes('\uFFFD')) {
+          text = gbkText;
+        }
+      } catch {
+        // GBK 不支持时尝试 gb18030
+        try {
+          text = new TextDecoder('gb18030').decode(bytes);
+        } catch {}
+      }
+    }
+
+    // 去除 BOM
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
     const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
     if (ta) {
-      ta.value = e.target.result;
-      showToast(`✓ 已导入 ${file.name} (${e.target.result.length} 字)`, 'ok');
+      ta.value = text;
+      showToast(`✓ 已导入 ${file.name} (${text.length} 字)`, 'ok');
     }
   };
   reader.onerror = () => showToast('读取失败', 'error');
-  reader.readAsText(file, 'utf-8');
-  input.value = '';  // 清空，方便再次选同一文件
+  reader.readAsArrayBuffer(file);
+  input.value = '';
 }
 window.onScriptFileChosen = onScriptFileChosen;
 
-// v15 fix #3: 平台小说选择器
+// v15 fix #3: 平台小说选择器（修复：章节选择 + 内容显示）
+let _novelCache = {};  // 缓存已加载的小说详情
 async function openNovelPicker() {
   const modal = document.getElementById('novel-picker-modal');
   const list = document.getElementById('novel-picker-list');
@@ -182,20 +210,26 @@ async function openNovelPicker() {
   try {
     const r = await authFetch('/api/novel/');
     const j = await r.json();
-    const novels = j.data || j.novels || j || [];
+    const novels = j.novels || j.data || [];
     const items = Array.isArray(novels) ? novels : [];
     if (!items.length) {
       list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--c-text-3);font-size:12px;">暂无小说<br/><span style="font-size:10px;">先去 AI 小说创建一部</span></div>';
       return;
     }
     list.innerHTML = items.map(n => {
-      const wordCount = n.word_count || (n.chapters || []).reduce((s, c) => s + (c.content?.length || 0), 0);
+      const wordCount = n.total_words || n.word_count || (n.chapters || []).reduce((s, c) => s + (c.content?.length || 0), 0);
       const chapCount = (n.chapters || []).length;
+      const statusMap = { draft: '草稿', outline_done: '大纲完成', generating: '生成中', done: '已完成' };
+      const statusText = statusMap[n.status] || n.status || '未知';
+      const hasContent = chapCount > 0 && (n.chapters || []).some(c => c.content?.length > 0);
       return `
-        <div class="novel-pick-item" onclick="pickNovel('${n.id}')">
-          <div style="font-weight:600;font-size:13px;color:var(--c-text);margin-bottom:4px;">${escapeHtml(n.title || '未命名')}</div>
-          <div style="font-size:10px;color:var(--c-text-3);">${chapCount} 章 · ${wordCount} 字 · ${n.type || '短篇'}</div>
-          <div style="font-size:10px;color:var(--c-text-2);margin-top:4px;">${escapeHtml((n.synopsis || '').slice(0, 80))}${n.synopsis?.length > 80 ? '...' : ''}</div>
+        <div class="novel-pick-item" onclick="pickNovel('${n.id}')" style="padding:14px;border:1px solid var(--c-border-2);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all .2s;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-weight:600;font-size:13px;color:var(--c-text);">${escapeHtml(n.title || '未命名')}</span>
+            <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${hasContent ? 'rgba(16,185,129,.15)' : 'rgba(245,158,11,.15)'};color:${hasContent ? '#34d399' : '#fbbf24'};">${statusText}</span>
+          </div>
+          <div style="font-size:10px;color:var(--c-text-3);">${chapCount} 章 · ${wordCount} 字 · ${n.genre || n.type || '短篇'}</div>
+          <div style="font-size:10px;color:var(--c-text-2);margin-top:4px;line-height:1.5;">${escapeHtml((n.description || n.synopsis || '').slice(0, 120))}${(n.description || n.synopsis || '').length > 120 ? '...' : ''}</div>
         </div>
       `;
     }).join('');
@@ -211,66 +245,149 @@ function closeNovelPicker() {
 window.closeNovelPicker = closeNovelPicker;
 
 async function pickNovel(novelId) {
+  const list = document.getElementById('novel-picker-list');
   try {
+    // 显示加载状态
+    if (list) list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--c-text-3);">加载小说详情...</div>';
+
     const r = await authFetch('/api/novel/' + novelId);
     const j = await r.json();
     const novel = j.novel || j.data || j;
-    if (!novel || !novel.title) throw new Error('小说数据不完整');
+    if (!novel) throw new Error('小说数据为空');
+    const title = novel.title || '未命名小说';
+    _novelCache[novelId] = novel;
 
     const chapters = novel.chapters || [];
     const outline = novel.outline;
+    const hasChapterContent = chapters.some(c => c.content?.length > 0);
 
-    // 如果有章节内容，按章节分配到剧集
-    if (chapters.length > 0) {
-      // 将每个章节内容填入对应剧集的剧本区域
-      const eps = allEpisodes || [];
-      let importedCount = 0;
-      for (let i = 0; i < chapters.length && i < eps.length; i++) {
-        const chap = chapters[i];
-        const epText = `## ${chap.title || '第' + (i + 1) + '章'}\n\n${chap.content || ''}`;
-        if (epText.trim().length > 5) {
-          // 保存到后端
-          try {
-            await authFetch(`/api/drama/projects/${projectId}/episodes/${eps[i].id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ theme: epText }),
-            });
-            importedCount++;
-          } catch {}
-        }
+    if (chapters.length > 0 && hasChapterContent) {
+      // 显示章节选择界面，让用户选择导入哪些章节
+      if (list) {
+        list.innerHTML = `
+          <div style="padding:10px 14px;">
+            <div style="font-weight:700;font-size:14px;color:var(--c-text);margin-bottom:10px;">📖 《${escapeHtml(title)}》 共 ${chapters.length} 章</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+              <button class="mini-btn primary" onclick="importAndGenerate('${novelId}')" title="导入章节后自动用编剧Agent将小说转换为影视脚本">导入并生成影视脚本</button>
+              <button class="mini-btn" onclick="importAllChapters('${novelId}')">仅导入原文</button>
+              <button class="mini-btn" onclick="openNovelPicker()">← 返回列表</button>
+            </div>
+            <div style="font-size:9px;color:var(--c-cyan);margin-bottom:8px;line-height:1.5;">提示：「导入并生成影视脚本」会自动将小说内容交给编剧Agent转换为专业分镜脚本</div>
+            <div style="font-size:10px;color:var(--c-text-3);margin-bottom:8px;">点击章节可单独导入到当前剧集：</div>
+            <div style="max-height:40vh;overflow-y:auto;">
+              ${chapters.map((c, i) => {
+                const wordCount = (c.content || '').length;
+                const preview = (c.content || '').slice(0, 60).replace(/\n/g, ' ');
+                return `
+                  <div onclick="importSingleChapter('${novelId}',${i})" style="padding:10px;border:1px solid var(--c-border);border-radius:6px;margin-bottom:6px;cursor:pointer;transition:all .2s;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <span style="font-weight:600;font-size:12px;color:var(--c-text);">${escapeHtml(c.title || '第' + (i + 1) + '章')}</span>
+                      <span style="font-size:9px;color:${wordCount > 0 ? 'var(--c-text-3)' : '#f87171'};">${wordCount > 0 ? wordCount + '字' : '无内容'}</span>
+                    </div>
+                    ${preview ? `<div style="font-size:10px;color:var(--c-text-2);margin-top:4px;line-height:1.4;">${escapeHtml(preview)}...</div>` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
       }
-      // 当前集也填入文本框
-      if (currentEpisode) {
-        const curIdx = eps.findIndex(e => e.id === currentEpisode.id);
-        const curChap = curIdx >= 0 && curIdx < chapters.length ? chapters[curIdx] : chapters[0];
-        if (curChap) {
-          const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
-          if (ta) ta.value = `## ${curChap.title || '章节'}\n\n${curChap.content || ''}`;
-        }
-      }
-      showToast(`✓ 已导入《${novel.title}》${importedCount} 集章节内容`, 'ok');
+      return; // 不关闭 modal，等用户选择
     } else if (outline) {
-      // 没有章节内容但有大纲，导入大纲
+      // 有大纲但无章节内容
       const outlineText = typeof outline === 'string' ? outline : JSON.stringify(outline, null, 2);
       const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
       if (ta) ta.value = outlineText;
-      showToast(`✓ 已导入《${novel.title}》大纲`, 'ok');
+      showToast(`✓ 已导入《${title}》大纲`, 'ok');
     } else {
-      // 只有标题和描述
+      // 只有描述
       const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
-      if (ta) ta.value = novel.description || novel.title || '';
-      showToast(`✓ 已导入《${novel.title}》(无章节内容，请先生成章节)`, 'info');
+      if (ta) ta.value = novel.description || title;
+      showToast(`✓ 已导入《${title}》(无章节内容，请先在小说模块生成章节)`, 'info');
     }
 
     closeNovelPicker();
-    // 刷新当前集数据
     if (currentEpisode) await loadEpisode(currentEpisode.id);
   } catch (e) {
     showToast('导入失败: ' + e.message, 'error');
   }
 }
 window.pickNovel = pickNovel;
+
+// 全部章节导入到对应剧集
+async function importAllChapters(novelId, autoGenerate = false) {
+  const novel = _novelCache[novelId];
+  if (!novel) return showToast('请重新选择小说', 'error');
+  const chapters = novel.chapters || [];
+  const eps = allEpisodes || [];
+  let importedCount = 0;
+  showToast('正在导入章节...', 'info');
+  for (let i = 0; i < chapters.length && i < eps.length; i++) {
+    const chap = chapters[i];
+    if (!chap.content || chap.content.trim().length < 5) continue;
+    const epText = `## ${chap.title || '第' + (i + 1) + '章'}\n\n${chap.content}`;
+    try {
+      await authFetch(`/api/drama/projects/${projectId}/episodes/${eps[i].id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: epText }),
+      });
+      importedCount++;
+    } catch {}
+  }
+  // 当前集也更新 textarea
+  if (currentEpisode) {
+    const curIdx = eps.findIndex(e => e.id === currentEpisode.id);
+    const curChap = curIdx >= 0 && curIdx < chapters.length ? chapters[curIdx] : null;
+    if (curChap?.content) {
+      const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
+      if (ta) ta.value = `## ${curChap.title || '章节'}\n\n${curChap.content}`;
+    }
+  }
+  closeNovelPicker();
+  showToast(`✓ 已导入《${novel.title || '小说'}》${importedCount} 集章节`, 'ok');
+  if (currentEpisode) await loadEpisode(currentEpisode.id);
+
+  // 导入后自动触发当前集的编剧 AI 创作
+  if (autoGenerate && currentEpisode) {
+    showToast('正在自动将小说内容转换为影视脚本...', 'info');
+    setTimeout(() => generateCurrentEpisode(), 500);
+  }
+}
+window.importAllChapters = importAllChapters;
+
+// 导入并自动生成剧本
+async function importAndGenerate(novelId) {
+  await importAllChapters(novelId, true);
+}
+window.importAndGenerate = importAndGenerate;
+
+// 单个章节导入到当前剧集
+async function importSingleChapter(novelId, chapterIdx) {
+  const novel = _novelCache[novelId];
+  if (!novel) return showToast('请重新选择小说', 'error');
+  const chap = novel.chapters?.[chapterIdx];
+  if (!chap) return showToast('章节不存在', 'error');
+  if (!chap.content || chap.content.trim().length < 2) return showToast('该章节无内容', 'info');
+
+  const epText = `## ${chap.title || '第' + (chapterIdx + 1) + '章'}\n\n${chap.content}`;
+  const ta = document.querySelector('.center-body .section-card:first-child .prompt-ta');
+  if (ta) ta.value = epText;
+
+  // 保存到当前 episode
+  if (currentEpisode) {
+    try {
+      await authFetch(`/api/drama/projects/${projectId}/episodes/${currentEpisode.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: epText }),
+      });
+    } catch {}
+  }
+  closeNovelPicker();
+  showToast(`✓ 已导入《${chap.title || '章节'}》到当前集`, 'ok');
+}
+window.importSingleChapter = importSingleChapter;
 
 async function loadEpisode(eid) {
   try {
@@ -283,12 +400,62 @@ async function loadEpisode(eid) {
     renderShots();         // 渲染分镜列表
     renderCurrentScene();  // 渲染中央编辑区
     renderRightPanel();    // 渲染右侧角色/场景/物品/视频
+    // 滚动到当前 active 的 eps-chip
+    scrollActiveChipIntoView();
   } catch (e) {
     console.error('[loadEpisode] failed:', e);
     showToast('加载剧集失败: ' + e.message, 'error');
   }
 }
 window.loadEpisode = loadEpisode;
+
+function scrollActiveChipIntoView() {
+  requestAnimationFrame(() => {
+    const active = document.querySelector('.eps-chip.active');
+    if (active) active.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  });
+}
+
+async function renameEpisode(eid, chipEl) {
+  const ep = allEpisodes.find(e => e.id === eid);
+  if (!ep) return;
+  const nameSpan = chipEl.querySelector('.eps-name');
+  if (!nameSpan) return;
+  const oldName = ep.title || `第${ep.episode_index}集`;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'width:80px;background:var(--c-bg);border:1px solid var(--c-cyan);border-radius:4px;color:var(--c-text);font-size:11px;padding:2px 4px;outline:none;';
+  nameSpan.textContent = '';
+  nameSpan.appendChild(input);
+  input.focus();
+  input.select();
+  const commit = async () => {
+    const newName = input.value.trim() || oldName;
+    nameSpan.textContent = newName;
+    if (newName !== oldName) {
+      try {
+        await authFetch(`/api/drama/projects/${projectId}/episodes/${eid}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: newName }),
+        });
+        ep.title = newName;
+        if (currentEpisode?.id === eid) currentEpisode.title = newName;
+        renderEpisodes();
+      } catch (e) {
+        showToast('重命名失败: ' + e.message, 'error');
+        nameSpan.textContent = oldName;
+      }
+    }
+  };
+  input.addEventListener('blur', commit, { once: true });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = oldName; input.blur(); }
+  });
+}
+window.renameEpisode = renameEpisode;
 
 function renderShots() {
   const list = document.getElementById('shots-list');
@@ -336,12 +503,17 @@ function renderCurrentScene() {
       const desc = (scene.description || '').slice(0, 30);
       titleEl.innerHTML = `分镜 #${currentSceneIdx + 1} · ${escapeHtml(desc)}<span class="ratio">${currentEpisode.result?.aspect_ratio || '16:9'} · ${scene.duration || 5}s</span>`;
     } else {
-      titleEl.innerHTML = '请选择分镜<span class="ratio">--</span>';
+      titleEl.innerHTML = '请选择分镜 →<span class="ratio">--</span>';
     }
   }
 
   // 4 个画面 grid (首帧/通用/变体/尾帧)
   const frameGrid = document.querySelector('.frame-grid');
+  if (frameGrid && !scene) {
+    frameGrid.innerHTML = ['主图','变体 1','变体 2','尾帧'].map(l =>
+      `<div class="frame"><span class="frame-label">${l}</span><span class="frame-icon">+</span></div>`
+    ).join('');
+  }
   if (frameGrid && scene) {
     const imgUrl = scene.image_url;
     frameGrid.innerHTML = `
@@ -366,15 +538,20 @@ function renderCurrentScene() {
 
   // 提示词 textarea
   const promptTa = document.querySelectorAll('.prompt-ta')[0];
-  if (promptTa && scene) {
-    promptTa.value = scene.full_prompt_cn || scene.visual_prompt || scene.description || '';
-    promptTa.onchange = () => savePrompt(promptTa.value);
+  if (promptTa) {
+    if (scene) {
+      promptTa.value = scene.full_prompt_cn || scene.visual_prompt || scene.description || '';
+      promptTa.onchange = () => savePrompt(promptTa.value);
+    } else {
+      promptTa.value = '';
+      promptTa.onchange = null;
+    }
   }
 
   // 本集剧本 (第二个 textarea，如果存在)
   const epScriptTa = document.querySelectorAll('.prompt-ta')[1];
   if (epScriptTa) {
-    epScriptTa.value = currentEpisode.theme || '';
+    epScriptTa.value = currentEpisode?.theme || '';
   }
 
   // 对话列表
@@ -383,13 +560,17 @@ function renderCurrentScene() {
 
 function renderDialogues(scene) {
   const list = document.getElementById('dialogue-list');
-  if (!list || !scene) return;
+  if (!list) return;
+  if (!scene) { list.innerHTML = ''; return; }
 
   // 从场景中提取对话
   const items = [];
-  if (scene.dialogue) items.push({ time: '00:00', name: scene.speaker || '角色', tag: scene.emotion || '', text: scene.dialogue });
-  if (scene.narrator) items.push({ time: '00:03', name: '旁白', tag: '叙述', text: scene.narrator });
-  if (scene.sfx) items.push({ time: '00:05', name: '音效', tag: 'SFX', text: scene.sfx });
+  if (scene.dialogue) items.push({ type: 'dialogue', time: '00:00', name: scene.speaker || '角色', tag: scene.emotion || '', text: scene.dialogue });
+  if (scene.narrator) items.push({ type: 'narrator', time: '00:03', name: '旁白', tag: '叙述', text: scene.narrator });
+  if (scene.sfx) items.push({ type: 'sfx', time: '00:05', name: '音效', tag: 'SFX', text: scene.sfx });
+
+  // 检查本分镜是否有已生成的语音
+  const hasVoice = scene.voice_url;
 
   if (!items.length) {
     list.innerHTML = '<div style="padding:14px;text-align:center;color:var(--c-text-3);font-size:11px;">本镜头无台词，点击下方添加</div>';
@@ -404,11 +585,93 @@ function renderDialogues(scene) {
         <div class="dlg-name">${escapeHtml(d.name)}</div>
         <div class="dlg-name-tag">${escapeHtml(d.tag)}</div>
       </div>
-      <textarea class="dlg-text" rows="1">${escapeHtml(d.text)}</textarea>
+      <textarea class="dlg-text" rows="1" onchange="onDialogueEdit(${i},'${d.type}',this.value)">${escapeHtml(d.text)}</textarea>
+      <button class="dlg-play" title="试听" onclick="previewVoice(${i},'${d.type}')">
+        <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21"/></svg>
+      </button>
       <button class="dlg-del" title="删除" onclick="this.closest('.dialogue-row').remove()">×</button>
     </div>
   `).join('');
+
+  // 如果有已生成语音，显示全段播放按钮
+  if (hasVoice) {
+    list.insertAdjacentHTML('afterbegin', `
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:6px;background:rgba(16,185,129,.08);border-radius:6px;">
+        <button class="mini-btn" onclick="playSceneVoice()" style="font-size:10px;">▶ 播放本镜配音</button>
+        <span style="font-size:9px;color:var(--c-text-3);">已生成语音</span>
+      </div>
+    `);
+  }
 }
+
+// 试听单条对话/旁白 TTS
+let _previewAudio = null;
+async function previewVoice(idx, type) {
+  const scenes = currentEpisode?.result?.scenes || [];
+  const scene = scenes[currentSceneIdx];
+  if (!scene) return showToast('请先选择分镜', 'error');
+
+  const text = type === 'dialogue' ? scene.dialogue : type === 'narrator' ? scene.narrator : scene.sfx;
+  if (!text) return showToast('无文本可试听', 'info');
+
+  // 如果已有生成的语音文件，直接播放
+  if (scene.voice_url) {
+    if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
+    _previewAudio = new Audio(scene.voice_url);
+    _previewAudio.play().catch(() => showToast('播放失败', 'error'));
+    return;
+  }
+
+  // 否则调用 TTS 即时预览
+  showToast('生成试听语音中...', 'info');
+  try {
+    const r = await authFetch(`/api/drama/projects/${projectId}/episodes/${currentEpisode.id}/preview-voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, scene_idx: currentSceneIdx }),
+    });
+    if (r.ok) {
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
+      _previewAudio = new Audio(url);
+      _previewAudio.play().catch(() => showToast('播放失败', 'error'));
+      _previewAudio.onended = () => URL.revokeObjectURL(url);
+      showToast('▶ 播放中', 'ok');
+    } else {
+      showToast('试听生成失败', 'error');
+    }
+  } catch (e) {
+    showToast('试听失败: ' + e.message, 'error');
+  }
+}
+window.previewVoice = previewVoice;
+
+// 播放整个分镜的语音
+function playSceneVoice() {
+  const scene = (currentEpisode?.result?.scenes || [])[currentSceneIdx];
+  if (!scene?.voice_url) return showToast('该分镜尚未生成语音', 'info');
+  if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
+  _previewAudio = new Audio(scene.voice_url);
+  _previewAudio.play().catch(() => showToast('播放失败', 'error'));
+}
+window.playSceneVoice = playSceneVoice;
+
+// 编辑对话内容
+function onDialogueEdit(idx, type, value) {
+  const scene = (currentEpisode?.result?.scenes || [])[currentSceneIdx];
+  if (!scene) return;
+  if (type === 'dialogue') scene.dialogue = value;
+  else if (type === 'narrator') scene.narrator = value;
+  else if (type === 'sfx') scene.sfx = value;
+  // 自动保存
+  authFetch(`/api/drama/projects/${projectId}/episodes/${currentEpisode.id}/scenes/${currentSceneIdx}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [type]: value }),
+  }).catch(() => {});
+}
+window.onDialogueEdit = onDialogueEdit;
 
 function renderRightPanel() {
   // 角色 → 用 project.characters

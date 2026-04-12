@@ -32,54 +32,78 @@ if (!HOST || !PASSWORD) {
 // 要推送的文件清单（相对仓库根）
 // [ localPath, overwrite ]
 const FILES = [
+  // === 核心 ===
+  ['src/server.js', true],
+  ['CLAUDE.md', true],
+  // === 数据层 ===
   ['src/models/database.js', true],
-  ['src/services/knowledgeBaseService.js', true],
+  ['src/models/authStore.js', true],
+  // === 中间件 ===
+  ['src/middleware/auth.js', true],
+  ['src/middleware/streamAuth.js', true],
+  // === 路由 ===
+  ['src/routes/admin.js', true],
+  ['src/routes/auth.js', true],
+  ['src/routes/avatar.js', true],
+  ['src/routes/comic.js', true],
+  ['src/routes/dashboard.js', true],
+  ['src/routes/drama.js', true],
+  ['src/routes/editor.js', true],
+  ['src/routes/i2v.js', true],
+  ['src/routes/i2v-stream.js', true],
+  ['src/routes/novel.js', true],
+  ['src/routes/portrait.js', true],
+  ['src/routes/project-stream.js', true],
+  ['src/routes/projects.js', true],
+  ['src/routes/story.js', true],
+  ['src/routes/workflow.js', true],
+  ['src/routes/works.js', true],
+  ['src/routes/agent.js', true],
+  ['src/routes/aiTeam.js', true],
+  // === 服务层 ===
+  ['src/services/agentOrchestrator.js', true],
+  ['src/services/aiTeamService.js', true],
+  ['src/services/comicService.js', true],
+  ['src/services/dailyLearnService.js', true],
+  ['src/services/dramaService.js', true],
+  ['src/services/imageService.js', true],
   ['src/services/knowledgeBaseSeed.js', true],
-  // 分文件 seed（v2 + v3 + v4 + v5）
+  ['src/services/knowledgeBaseService.js', true],
+  ['src/services/knowledgeSources.js', true],
+  ['src/services/novelService.js', true],
+  ['src/services/portraitService.js', true],
+  ['src/services/projectService.js', true],
+  ['src/services/storyService.js', true],
+  ['src/services/tokenTracker.js', true],
+  ['src/services/videoService.js', true],
+  // === KB Seeds ===
   ['src/services/seeds/digital_human.js', true],
   ['src/services/seeds/drama.js', true],
   ['src/services/seeds/storyboard.js', true],
   ['src/services/seeds/atmosphere.js', true],
   ['src/services/seeds/production.js', true],
   ['src/services/seeds/engineering.js', true],
-  // CLAUDE.md + 会话日志
-  ['CLAUDE.md', true],
-  // AI 团队 v4 新增
-  ['src/services/aiTeamService.js', true],
-  ['src/routes/aiTeam.js', true],
-  // v6 新增：每日学习 + Agent 跨调用
-  ['src/services/knowledgeSources.js', true],
-  ['src/services/dailyLearnService.js', true],
-  ['src/services/agentOrchestrator.js', true],
-  // v8 新增：Token 追踪 + 服务器监控
-  ['src/services/tokenTracker.js', true],
-  // 其他代码
-  ['src/services/dramaService.js', true],
-  ['src/services/storyService.js', true],
-  ['src/services/imageService.js', true],   // v15: 三视图 helper
-  ['src/routes/admin.js', true],
-  ['src/routes/drama.js', true],
-  ['src/routes/story.js', true],            // v15: /generate-character-three-view 路由
-  ['src/server.js', true],
+  // === 前端 ===
+  ['public/index.html', true],
   ['public/admin.html', true],
-  ['public/js/admin.js', true],
+  ['public/home.html', true],
+  ['public/drama-studio.html', true],
+  ['public/drama-demo.html', true],
+  ['public/aicanvas.html', true],
+  ['public/home-prototype.html', true],
+  ['public/css/style.css', true],
   ['public/css/admin.css', true],
-  ['public/index.html', true],              // v15c: cache-bust
-  ['public/js/app.js', true],               // v15: 三视图 UI + parseScript 字段映射修复
-  ['public/css/style.css', true],           // v15: 三视图 CSS + sto-li-loading
-  ['public/home.html', true],               // v18: 新首页 (三色渐变 + 方形拼接)
-  ['public/css/home.css', true],            // v18: 首页 CSS
-  ['public/js/home.js', true],              // v18: 首页 JS (showcase + composer)
-  ['public/drama-studio.html', true],       // v15h: 网剧编辑器原型
-  ['public/js/drama-studio.js', true],      // v15h: 网剧编辑器 API 集成层
-  ['src/services/imageService.js', true],   // 包含 NanoBanana 接入
-  ['src/services/portraitService.js', true], // v16: 模型选择支持
-  ['src/services/projectService.js', true], // v16: 工作流集成
-  ['src/routes/comic.js', true],            // v16: 工作流集成
-  ['src/routes/novel.js', true],            // v16: 工作流集成
-  ['src/routes/portrait.js', true],         // v16: 模型选择支持
+  ['public/css/home.css', true],
+  ['public/css/aicanvas.css', true],
+  ['public/js/app.js', true],
+  ['public/js/admin.js', true],
+  ['public/js/home.js', true],
+  ['public/js/drama-studio.js', true],
+  ['public/js/aicanvas.js', true],
+  ['public/js/workflow.js', true],
+  // === 文档 ===
   ['docs/KB_VERIFICATION.md', true],
-  // KB 数据文件：不覆盖（仅当远端不存在时才上传；增量 seed 会在服务端启动时自动补齐新 id）
+  // === KB 数据：不覆盖 ===
   ['outputs/knowledge_base.json', false],
 ];
 

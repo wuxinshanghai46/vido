@@ -257,11 +257,15 @@ input, textarea { font-family: inherit; }
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-2) transparent;
   scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
   padding: 2px 0;
 }
-.eps-track::-webkit-scrollbar { display: none; }
+.eps-track::-webkit-scrollbar { height: 3px; }
+.eps-track::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 2px; }
+.eps-track::-webkit-scrollbar-track { background: transparent; }
 .eps-chip {
   flex-shrink: 0;
   display: inline-flex;
@@ -315,9 +319,9 @@ input, textarea { font-family: inherit; }
 
 /* —— 剧集下拉面板 —— */
 .eps-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
+  position: fixed;
+  top: 52px;
+  right: 80px;
   width: 360px;
   max-height: 460px;
   background: rgba(17,18,42,.98);
@@ -885,6 +889,16 @@ input, textarea { font-family: inherit; }
 }
 .dlg-text:hover { background: rgba(255,255,255,.03); }
 .dlg-text:focus { background: var(--c-bg-3); }
+.dlg-play {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: all var(--ease);
+  flex-shrink: 0;
+}
+.dlg-play:hover { color: var(--c-cyan); background: var(--c-cyan-soft); }
 .dlg-del {
   width: 22px; height: 22px;
   display: flex; align-items: center; justify-content: center;
@@ -893,6 +907,7 @@ input, textarea { font-family: inherit; }
   cursor: pointer;
   font-size: 14px;
   transition: all var(--ease);
+  flex-shrink: 0;
 }
 .dlg-del:hover { color: #f87171; background: rgba(248,113,113,.1); }
 
@@ -2194,8 +2209,14 @@ document.querySelector('.ai-switch')?.addEventListener('click', e => {
   const status = sw.querySelector('.ai-label-status');
   if (status) status.textContent = sw.classList.contains('on') ? '已开启' : '已关闭';
 });
-document.getElementById('eps-more-btn')?.addEventListener('click', () => {
-  document.getElementById('eps-dropdown')?.classList.toggle('show');
+document.getElementById('eps-more-btn')?.addEventListener('click', (e) => {
+  const dd = document.getElementById('eps-dropdown');
+  if (!dd) return;
+  // 动态定位到按钮下方
+  const rect = e.currentTarget.getBoundingClientRect();
+  dd.style.top = (rect.bottom + 6) + 'px';
+  dd.style.right = (window.innerWidth - rect.right) + 'px';
+  dd.classList.toggle('show');
 });
 document.addEventListener('click', e => {
   const wrap = document.querySelector('.eps-wrap');

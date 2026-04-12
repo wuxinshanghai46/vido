@@ -736,13 +736,6 @@ async function generateDrama(taskId, params, progressCallback) {
   const { generateDramaImage } = require('./imageService');
   const totalScenes = result.scenes.length;
 
-  // 如果用户指定了图片模型，临时指定供应商
-  const origImageProvider = process.env.IMAGE_PROVIDER;
-  if (image_model) {
-    const providerId = image_model.includes('::') ? image_model.split('::')[0] : image_model;
-    if (providerId) process.env.IMAGE_PROVIDER = providerId;
-  }
-
   for (let i = 0; i < totalScenes; i++) {
     const scene = result.scenes[i];
     const pct = 62 + Math.round((i / totalScenes) * 33);
@@ -764,6 +757,7 @@ async function generateDrama(taskId, params, progressCallback) {
         filename: `drama_${taskId}_s${i}`,
         aspectRatio: aspect_ratio,
         referenceImages: absRefImages,
+        image_model,
       });
       const imgDest = path.join(taskDir, `scene_${i}.png`);
       if (imgResult.filePath && fs.existsSync(imgResult.filePath)) {
@@ -776,10 +770,6 @@ async function generateDrama(taskId, params, progressCallback) {
       // 继续生成下一张，不中断流程
     }
   }
-
-  // 恢复环境变量
-  if (origImageProvider !== undefined) process.env.IMAGE_PROVIDER = origImageProvider;
-  else delete process.env.IMAGE_PROVIDER;
 
   // Step 6: 配音 (TTS, 可选)
   if (enable_voice) {

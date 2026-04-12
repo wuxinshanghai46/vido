@@ -969,20 +969,36 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt', async (r
 
   try {
     const { callLLM } = require('../services/storyService');
+
+    // 从角色 bible 中提取当前场景角色的锁定信息
+    const characterBible = ep.result.character_bible || {};
+    const lockChars = characterBible.characters || [];
+    const sceneText = `${scene.description || ''} ${scene.dialogue || ''} ${scene.speaker || ''} ${scene.visual_prompt || ''}`;
+    const presentChars = lockChars.filter(lc => sceneText.includes(lc.name));
+    const charLockInfo = presentChars.length > 0
+      ? `\n\n【本场景出现的角色锁定信息（必须严格使用以下描述）】\n${presentChars.map(c => `角色「${c.name}」:\n- 英文锁: ${c.full_lock_prompt_en || ''}\n- 中文锁: ${c.full_lock_prompt_cn || ''}\n- 标志特征: ${c.lock_distinguishing || ''}`).join('\n\n')}`
+      : '';
+
     const systemPrompt = `你是专业的 AI 影视分镜提示词专家。你需要将场景描述转换为适合 AI 图像/视频生成的提示词。
 
+【核心原则】
+1. 每个角色的外貌描述必须完全不同，根据角色锁定信息精确描述
+2. 如果有角色锁定信息，必须严格使用锁定的外貌关键词
+3. 禁止使用通用描述（如"一个人"），必须具体到发型/发色/服装/体型/表情
+4. 不同角色的提示词必须有明显区分
+
 【提示词要求】
-1. 描述画面中的人物外貌（具体的发型/发色/服装/体型/表情）
+1. 描述画面中的人物外貌（具体的发型/发色/服装/体型/表情）— 每个角色独一无二
 2. 描述场景环境（地点/天气/时间/背景元素）
 3. 描述物件和道具
 4. 描述光影和氛围（光线方向/色温/情绪）
 5. 描述镜头语言（景别/构图/运镜）
-6. 禁止使用小说化的叙述语句，只用视觉描述关键词
+6. 禁止使用小说化的叙述语句，只用视觉描述关键词${charLockInfo}
 
 【输出格式 JSON】
 {
-  "prompt_cn": "中文提示词（视觉描述，60-120字）",
-  "prompt_en": "英文提示词（视觉描述，40-80词）"
+  "prompt_cn": "中文提示词（视觉描述，60-120字，角色外貌必须精确到具体特征）",
+  "prompt_en": "英文提示词（视觉描述，40-80词，角色外貌必须使用锁定关键词）"
 }`;
 
     const userPrompt = `场景描述: ${scene.description || ''}
@@ -991,8 +1007,9 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt', async (r
 角色: ${scene.speaker || '未知'}
 情绪: ${scene.emotion || '未知'}
 景别: ${scene.shot_scale || '中景'}
+角色锁定: ${scene.char_lock_cn || '无'}
 
-请将上面的场景信息转换为 AI 生图/生视频的提示词。`;
+请将上面的场景信息转换为 AI 生图/生视频的提示词。每个角色的提示词必须是独一无二的，包含该角色特有的外貌特征。`;
 
     const raw = await callLLM(systemPrompt, userPrompt);
     let parsed;
@@ -1092,6 +1109,38 @@ router.post('/projects/:pid/episodes/:eid/generate-voice', async (req, res) => {
     const count = await dramaSvc.agentDramaVoice(ep.result.scenes, taskDir);
     db.updateDramaEpisode(ep.id, { result: ep.result });
     res.json({ success: true, data: { count } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// POST /api/drama/projects/:pid/episodes/:eid/preview-voice
+// TTS 试听（即时生成单条文本语音并返回音频流）
+// ═══════════════════════════════════════════
+router.post('/projects/:pid/episodes/:eid/preview-voice', async (req, res) => {
+  const { text, scene_idx } = req.body;
+  if (!text || text.trim().length < 1) return res.status(400).json({ success: false, error: '无文本' });
+
+  try {
+    const taskDir = path.join(DRAMA_DIR, '__preview');
+    fs.mkdirSync(taskDir, { recursive: true });
+    const outPath = path.join(taskDir, `preview_${Date.now()}.mp3`);
+
+    const { generateSpeech } = require('../services/ttsService');
+    await generateSpeech(text.trim(), outPath, { speed: 1.0 });
+
+    if (fs.existsSync(outPath)) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      const stream = fs.createReadStream(outPath);
+      stream.pipe(res);
+      stream.on('end', () => {
+        // 清理临时文件
+        setTimeout(() => { try { fs.unlinkSync(outPath); } catch {} }, 5000);
+      });
+    } else {
+      res.status(500).json({ success: false, error: 'TTS 生成失败' });
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

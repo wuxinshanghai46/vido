@@ -105,11 +105,11 @@ function buildJimengPrompt(name, role, description, dim = '2d', race = '人', sp
 
   const roleMap = { main: '主角', supporting: '配角', villain: '反派', mentor: '导师', other: '角色' };
   const roleLabel = roleMap[role] || '角色';
-  const parts = [`角色设定图，多角度转面图，${name}，${roleLabel}`];
+  const parts = [`一张高精度、干净极简的角色设定板/人物三视图参考页，${name}，${roleLabel}`];
   if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 250));
   parts.push(styleCN);
   parts.push(dimCN);
-  parts.push('角色360度多视角参考图，正面视图、3/4侧面视图、背面视图，同一角色三个角度并排排列，全身站立姿势，统一比例，精细面部和服装细节，纯白干净背景，专业角色设定参考');
+  parts.push('纯白背景，整体像游戏角色建模设定图，时装人物设定sheet，角色turnaround board，排版整齐清晰，信息分区明确，写实高级质感，统一光线，统一人物一致性。画面左侧为人物全身三视图，占据主要视觉区域，分别展示正面、侧面(3/4视角)、背面，三个角度并排排列，全身站立姿势从头到脚，统一比例和设计，精细面部和服装细节，专业角色设定参考，高质量，4K');
   return parts.join('，');
 }
 
@@ -128,11 +128,11 @@ function buildPrompt(name, role, description, dim = '2d', race = '人', species 
   }
   const roleMap = { main: 'protagonist', supporting: 'supporting character', villain: 'villain', mentor: 'mentor', other: 'character' };
   const roleLabel = roleMap[role] || 'character';
-  const parts = [`character turnaround reference sheet of ${name}, ${roleLabel}`];
+  const parts = [`A high-precision clean character design reference sheet / character turnaround board of ${name}, ${roleLabel}`];
   if (description) parts.push(description.replace(/\n/g, ' ').substring(0, 250));
   parts.push(STYLE_PROMPTS[styleKey]);
   if (dim && DIM_SUFFIX[dim]) parts.push(DIM_SUFFIX[dim]);
-  parts.push('360 degree multi-angle character model sheet, front view, 3/4 side view, back view, three poses of the same character arranged side by side, full body standing pose from head to feet, consistent proportions and design, detailed face and clothing, clean white background, professional character design reference');
+  parts.push('pure white background, game character model sheet style, fashion character design sheet, character turnaround board, neat layout, clear information zones, realistic high-quality rendering, uniform lighting, character consistency. Left side shows full-body three-view turnaround: front view, 3/4 side view, back view, three poses of the same character arranged side by side, full body standing pose from head to feet, consistent proportions and design, detailed face and clothing, professional concept art, 4K, 16:9');
   return parts.join(', ');
 }
 
@@ -925,9 +925,15 @@ async function generateSceneImageWithRetry(opts) {
 }
 
 // ——— 分镜图生成（prompt 原样传入，不加前缀/后缀） ———
-async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', resolution = '2K', referenceImages = [] }) {
+async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', resolution = '2K', referenceImages = [], image_model = '' }) {
   ensureDir();
-  const provider = resolveProvider('2d');
+  // 如果有明确的模型选择（格式 providerId::modelId），优先使用
+  let provider;
+  if (image_model && image_model !== 'auto') {
+    provider = image_model.includes('::') ? image_model.split('::')[0] : image_model;
+  } else {
+    provider = resolveProvider('2d');
+  }
   const destFilename = filename || `drama_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const refCount = (referenceImages || []).length;
 
