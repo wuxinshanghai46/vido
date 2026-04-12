@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>VIDO · AI 视频创作工作室</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* ═══════════════════════════════════════════════
+   VIDO 首页 v17 — 三色渐变绚丽版 (cyan + purple + pink)
+   参考: 用户提供的紫粉渐变设计稿
+   ═══════════════════════════════════════════════ */
+:root {
+  /* —— 三色品牌渐变 —— */
+  --c-cyan:        #21d4fd;
+  --c-cyan-d:      #0099d4;
+  --c-purple:      #8b5cf6;
+  --c-purple-d:    #6e2dd8;
+  --c-pink:        #ec4899;
+  --c-pink-d:      #db2777;
+
+  /* —— 主渐变 (用于按钮 / 标题 / 高光) —— */
+  --c-grad:        linear-gradient(135deg, #21d4fd 0%, #8b5cf6 50%, #ec4899 100%);
+  --c-grad-2:      linear-gradient(135deg, #8b5cf6 0%, #21d4fd 100%);   /* 紫青双色 */
+  --c-grad-pink:   linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);   /* 粉紫双色 */
+
+  /* —— Soft glow (半透明) —— */
+  --c-cyan-soft:   rgba(33,212,253,.14);
+  --c-purple-soft: rgba(139,92,246,.16);
+  --c-pink-soft:   rgba(236,72,153,.14);
+  --c-glow-purple: rgba(139,92,246,.45);
+  --c-glow-cyan:   rgba(33,212,253,.40);
+
+  /* —— Slate 中性色 (背景) —— */
+  --c-bg:          #08091a;       /* 比纯黑稍带紫调的深色 */
+  --c-bg-2:        #11122a;
+  --c-bg-3:        #1a1c3d;
+  --c-bg-4:        #232651;
+
+  /* —— 文字 —— */
+  --c-text:        #f1f5fc;
+  --c-text-2:      #a5acc9;
+  --c-text-3:      #6e7497;
+
+  /* —— 边框 —— */
+  --c-border:      rgba(255,255,255,.06);
+  --c-border-2:    rgba(165,172,201,.18);
+
+  /* —— 几何 —— */
+  --r:             10px;
+  --r-lg:          16px;
+  --r-pill:        999px;
+  --ease:          .25s cubic-bezier(.34,.69,.1,1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  scroll-behavior: smooth;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea { font-family: inherit; }
+
+/* ═════════ TOPBAR (60px, 极简) ═════════ */
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 64px;
+  background: rgba(10,15,26,.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-bottom: 1px solid var(--c-border);
+  z-index: 100;
+}
+.tb-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  height: 100%;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+.tb-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 800; font-size: 17px;
+  letter-spacing: .2px;
+}
+.tb-logo-mark {
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  background: var(--c-grad-2);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-weight: 900; font-size: 16px;
+  box-shadow: 0 4px 14px var(--c-glow-purple);
+}
+.tb-nav {
+  display: flex; gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+.tb-nav a {
+  padding: 8px 18px;
+  font-size: 14px; font-weight: 500;
+  color: var(--c-text-2);
+  border-radius: var(--r);
+  transition: color var(--ease);
+}
+.tb-nav a:hover { color: var(--c-text); }
+.tb-nav a.active {
+  color: var(--c-cyan);
+  background: var(--c-cyan-soft);
+}
+
+.tb-right { display: flex; align-items: center; gap: 10px; }
+.tb-link {
+  padding: 8px 16px;
+  font-size: 13px; font-weight: 500;
+  color: var(--c-text-2);
+  transition: color var(--ease);
+}
+.tb-link:hover { color: var(--c-text); }
+.tb-cta {
+  padding: 10px 22px;
+  background: var(--c-grad-2);
+  color: #fff;
+  border-radius: var(--r-pill);
+  font-size: 13px; font-weight: 700;
+  transition: all var(--ease);
+  box-shadow: 0 4px 16px var(--c-glow-purple);
+}
+.tb-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px var(--c-glow-purple);
+  filter: brightness(1.08);
+}
+
+/* ═════════ HERO (居中主舞台) ═════════ */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  padding: 140px 32px 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+/* 三色径向光晕 - 紫粉青 */
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 1300px; height: 1300px;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(circle at 30% 40%, var(--c-cyan-soft) 0%, transparent 35%),
+    radial-gradient(circle at 70% 60%, var(--c-purple-soft) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, var(--c-pink-soft) 0%, transparent 55%);
+  pointer-events: none;
+  animation: pulse-glow 10s ease-in-out infinite;
+  filter: blur(20px);
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: .65; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.05); }
+}
+/* 极淡网格底纹 */
+.hero::after {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 30%, transparent 90%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 30%, transparent 90%);
+  pointer-events: none;
+}
+
+.hero-inner {
+  position: relative;
+  max-width: 880px;
+  width: 100%;
+  text-align: center;
+}
+
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border: 1px solid var(--c-border-2);
+  background: rgba(255,255,255,.02);
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--c-text-2);
+  margin-bottom: 32px;
+  text-transform: uppercase;
+}
+.hero-eyebrow::before {
+  content: '';
+  width: 6px; height: 6px;
+  background: var(--c-grad);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--c-purple), 0 0 18px var(--c-pink);
+}
+
+.hero-title {
+  font-size: clamp(40px, 7vw, 72px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 22px;
+  color: var(--c-text);
+}
+.hero-title em {
+  font-style: normal;
+  background: var(--c-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  position: relative;
+  display: inline-block;
+}
+
+.hero-sub {
+  font-size: clamp(15px, 1.4vw, 18px);
+  line-height: 1.7;
+  color: var(--c-text-2);
+  max-width: 540px;
+  margin: 0 auto 48px;
+  font-weight: 400;
+}
+
+/* —— Composer (Hero 中央) —— */
+.composer {
+  background: rgba(26, 36, 56, .65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-lg);
+  padding: 8px 8px 8px 8px;
+  max-width: 720px;
+  margin: 0 auto 24px;
+  text-align: left;
+  transition: border-color var(--ease), box-shadow var(--ease), background var(--ease);
+}
+.composer:focus-within {
+  border-color: var(--c-purple);
+  background: rgba(26, 28, 61, .85);
+  box-shadow: 0 0 0 4px var(--c-purple-soft), 0 12px 40px var(--c-glow-purple);
+}
+.composer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.composer-add {
+  width: 44px; height: 44px;
+  border-radius: var(--r);
+  background: rgba(255,255,255,.04);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--c-text-2);
+  flex-shrink: 0;
+  transition: all var(--ease);
+}
+.composer-add:hover { color: var(--c-cyan); background: var(--c-cyan-soft); }
+.composer-add svg { width: 18px; height: 18px; }
+
+.composer-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--c-text);
+  font-size: 15px;
+  padding: 12px 4px;
+}
+.composer-input::placeholder { color: var(--c-text-3); }
+
+.composer-go {
+  height: 44px;
+  padding: 0 22px;
+  border-radius: var(--r-pill);
+  background: var(--c-grad-2);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all var(--ease);
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px var(--c-glow-purple);
+}
+.composer-go:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 8px 24px var(--c-glow-purple);
+  transform: translateY(-1px);
+}
+.composer-go svg { width: 16px; height: 16px; }
+
+/* —— 示例 chips —— */
+.examples {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 56px;
+}
+.example {
+  padding: 7px 16px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  color: var(--c-text-2);
+  transition: all var(--ease);
+  cursor: pointer;
+}
+.example:hover {
+  border-color: var(--c-purple);
+  color: var(--c-cyan);
+  background: var(--c-purple-soft);
+  transform: translateY(-1px);
+}
+
+/* —— Hero 底部数据指标 (3 个，极简) —— */
+.hero-stats {
+  display: flex;
+  justify-content: center;
+  gap: 56px;
+  padding-top: 32px;
+  border-top: 1px solid var(--c-border);
+  max-width: 600px;
+  margin: 0 auto;
+}
+.stat-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: -.5px;
+}
+.stat-num em {
+  font-style: normal;
+  background: var(--c-grad-2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.stat-label {
+  font-size: 11px;
+  color: var(--c-text-3);
+  margin-top: 2px;
+  font-weight: 500;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+/* ═════════ CASES (作品展示) ═════════ */
+.cases {
+  position: relative;
+  padding: 100px 32px 120px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+.cases-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 36px;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.cases-title h2 {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -.8px;
+  margin: 0 0 8px;
+  background: var(--c-grad-2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+.cases-title p {
+  color: var(--c-text-2);
+  font-size: 14px;
+}
+.cases-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--c-cyan);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+  transition: gap var(--ease);
+}
+.cases-more:hover { gap: 8px; color: var(--c-pink); }
+
+/* —— v18 方形/矩形拼接 grid (紧凑) —— */
+.cases-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 1fr;
+  grid-template-rows: 200px 200px;
+  gap: 14px;
+  height: 414px;   /* 580 → 414，缩小约 30% */
+}
+@media (max-width: 980px) {
+  .cases-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+    height: auto;
+  }
+  .case--big { grid-column: span 2; grid-row: span 1; height: 280px; }
+  .case--sq, .case--rect, .case--wide { grid-column: span 1; grid-row: span 1; height: 180px; }
+  .case--wide { grid-column: span 2; }
+}
+@media (max-width: 540px) {
+  .cases-grid { grid-template-columns: 1fr; }
+  .case--big, .case--sq, .case--rect, .case--wide { grid-column: span 1; }
+}
+
+.case {
+  position: relative;
+  overflow: hidden;
+  background: var(--c-bg-2);
+  cursor: pointer;
+  transition: all var(--ease);
+  border: 2px solid var(--c-border-2);
+}
+.case:hover { transform: translateY(-4px); }
+.case:hover video { transform: scale(1.06); }
+.case:hover .case-play {
+  background: var(--c-grad-2);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* 形状 1: 大方块 - 占左 1 列 × 2 行 */
+.case--big {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  border-radius: 22px;
+}
+.case--big:hover {
+  border-color: var(--c-cyan);
+  box-shadow: 0 16px 40px var(--c-glow-cyan);
+}
+
+/* 形状 2: 小方块 - 第 2 列 第 1 行 */
+.case--sq {
+  grid-column: 2;
+  grid-row: 1;
+  border-radius: 16px;
+}
+.case--sq:hover {
+  border-color: var(--c-purple);
+  box-shadow: 0 14px 36px var(--c-glow-purple);
+}
+
+/* 形状 3: 小方块 - 第 3 列 第 1 行 */
+.case--rect {
+  grid-column: 3;
+  grid-row: 1;
+  border-radius: 16px;
+}
+.case--rect:hover {
+  border-color: var(--c-pink);
+  box-shadow: 0 14px 36px rgba(236,72,153,.36);
+}
+
+/* 形状 4: 宽矩形 - 第 2-3 列 第 2 行 */
+.case--wide {
+  grid-column: 2 / span 2;
+  grid-row: 2;
+  border-radius: 18px;
+}
+.case--wide:hover {
+  border-color: var(--c-cyan);
+  box-shadow: 0 14px 36px var(--c-glow-cyan);
+}
+
+.case video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: transform .5s ease;
+  background: var(--c-bg-2);
+}
+.case-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 60%;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.92) 80%);
+  pointer-events: none;
+}
+.case-play {
+  position: absolute;
+  top: 14px; right: 14px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.18);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  z-index: 3;
+  transition: all var(--ease);
+}
+.case-meta {
+  position: absolute; left: 16px; right: 16px; bottom: 14px;
+  z-index: 2;
+}
+.case-meta h4 {
+  font-size: 13px; font-weight: 700;
+  margin-bottom: 3px;
+  color: #fff;
+}
+.case--big .case-meta h4 { font-size: 18px; margin-bottom: 5px; }
+.case--big .case-meta { left: 22px; right: 22px; bottom: 20px; }
+.case-meta span {
+  font-size: 10px;
+  color: rgba(255,255,255,.6);
+}
+.case--big .case-meta span { font-size: 12px; }
+.case-play { width: 30px; height: 30px; font-size: 11px; top: 12px; right: 12px; }
+
+.case-skel {
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg, var(--c-bg-2) 8%, var(--c-bg-3) 18%, var(--c-bg-2) 33%);
+  background-size: 200% 100%;
+  animation: skel 1.4s linear infinite;
+}
+@keyframes skel { to { background-position: -200% 0; } }
+
+/* ═════════ FOOTER (极简) ═════════ */
+.foot {
+  border-top: 1px solid var(--c-border);
+  padding: 40px 32px 32px;
+  text-align: center;
+  background: rgba(0,0,0,.2);
+}
+.foot-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+.foot-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+.foot-logo .tb-logo-mark { width: 26px; height: 26px; font-size: 13px; }
+.foot p {
+  color: var(--c-text-3);
+  font-size: 12px;
+  margin: 4px 0;
+}
+.foot a { color: var(--c-text-2); transition: color var(--ease); margin: 0 8px; }
+.foot a:hover { color: var(--c-cyan); }
+</style>
+</head>
+<body>
+
+<!-- ═════════ TOPBAR ═════════ -->
+<header class="topbar">
+  <div class="tb-inner">
+    <a href="#" class="tb-logo">
+      <div class="tb-logo-mark">V</div>
+      <span>VIDO</span>
+    </a>
+
+    <nav class="tb-nav">
+      <a href="#" class="active">创作</a>
+      <a href="#cases">案例</a>
+    </nav>
+
+    <div class="tb-right">
+      <a href="#" class="tb-link">登录</a>
+      <button class="tb-cta">免费开始</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═════════ HERO ═════════ -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">AI VIDEO STUDIO · v15</div>
+    <h1 class="hero-title">
+      把一句话<br/>
+      变成 <em>一段电影</em>
+    </h1>
+    <p class="hero-sub">
+      VIDO 集成 48+ 顶尖 AI 模型 与 21 人 AI 团队，<br/>
+      从文字到成片，一人即工作室。
+    </p>
+
+    <!-- Composer -->
+    <form class="composer" onsubmit="return false;">
+      <div class="composer-row">
+        <button type="button" class="composer-add" title="上传参考">
+          <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        </button>
+        <input class="composer-input" placeholder="描述你想要的视频，比如：一个少年在沙漠骑摩托车追逐落日…" />
+        <button type="submit" class="composer-go">
+          开始创作
+          <svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </form>
+
+    <!-- 示例提示 -->
+    <div class="examples">
+      <button class="example">古风短剧</button>
+      <button class="example">数字人主播</button>
+      <button class="example">产品广告</button>
+      <button class="example">旅行 vlog</button>
+      <button class="example">动画分镜</button>
+    </div>
+
+    <!-- 数据指标 -->
+    <div class="hero-stats">
+      <div>
+        <div class="stat-num"><em>48+</em></div>
+        <div class="stat-label">AI 模型</div>
+      </div>
+      <div>
+        <div class="stat-num"><em>21</em></div>
+        <div class="stat-label">Agent 团队</div>
+      </div>
+      <div>
+        <div class="stat-num"><em>10</em></div>
+        <div class="stat-label">创作工作流</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ CASES ═════════ -->
+<section class="cases" id="cases">
+  <div class="cases-head">
+    <div class="cases-title">
+      <h2>看作品</h2>
+      <p>真实创作者用 VIDO 生成 · 视频与数字人</p>
+    </div>
+    <a href="#" class="cases-more">查看全部 →</a>
+  </div>
+
+  <div class="cases-grid" id="cases-grid">
+    <div class="case case--big"><div class="case-skel"></div></div>
+    <div class="case case--sq"><div class="case-skel"></div></div>
+    <div class="case case--rect"><div class="case-skel"></div></div>
+    <div class="case case--wide"><div class="case-skel"></div></div>
+  </div>
+</section>
+
+<!-- ═════════ FOOTER ═════════ -->
+<footer class="foot">
+  <div class="foot-inner">
+    <div class="foot-logo">
+      <div class="tb-logo-mark">V</div>
+      VIDO
+    </div>
+    <p>AI 视频创作工作室 · 让每一个想法都能成为影片</p>
+    <p>
+      <a href="#">关于</a>·
+      <a href="#">文档</a>·
+      <a href="#">联系</a>·
+      <a href="#">隐私</a>
+    </p>
+    <p style="margin-top:12px;opacity:.5;">© 2026 VIDO AI Studio</p>
+  </div>
+</footer>
+
+<script>
+/* —— 加载真实生成视频 (1 大 + 3 小) —— */
+(async function loadCases() {
+  try {
+    const r = await fetch('/api/showcase/videos');
+    const j = await r.json();
+    if (!j.success || !j.videos?.length) return;
+
+    const titles = [
+      { title: '《重生之复仇千金》', author: '@剧场AI · Kling 2.1' },
+      { title: '《赛博古风志》',     author: '@像素老鬼 · Sora-2' },
+      { title: '《虚拟主播·小语》',  author: '@MiroBeauty · Runway' },
+      { title: '《一分钟漫剧》',     author: '@速更剧场 · Veo' },
+    ];
+
+    // 方形组合: 1 大方块 + 2 小方块 + 1 宽矩形
+    const shapes = ['case--big', 'case--sq', 'case--rect', 'case--wide'];
+    const grid = document.getElementById('cases-grid');
+    const html = j.videos.slice(0, 4).map((v, i) => {
+      const meta = titles[i] || titles[0];
+      const shape = shapes[i] || 'case--big';
+      return `
+        <div class="case ${shape}">
+          <video src="/api/showcase/stream/${encodeURIComponent(v.id)}#t=0.5"
+                 muted loop playsinline preload="metadata"></video>
+          <div class="case-fade"></div>
+          <div class="case-play">▶</div>
+          <div class="case-meta">
+            <h4>${meta.title}</h4>
+            <span>${meta.author}</span>
+          </div>
+        </div>`;
+    }).join('');
+    grid.innerHTML = html;
+
+    // Intersection Observer 节流播放
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        const v = e.target.querySelector('video');
+        if (!v) return;
+        if (e.isIntersecting) v.play().catch(()=>{});
+        else v.pause();
+      });
+    }, { threshold: 0.25 });
+    grid.querySelectorAll('.case').forEach(c => io.observe(c));
+  } catch (e) {
+    console.error('[cases] failed', e);
+  }
+})();
+
+/* 示例 chip 点击 → 填入 composer */
+document.querySelectorAll('.example').forEach(el => {
+  el.addEventListener('click', () => {
+    const input = document.querySelector('.composer-input');
+    if (input) {
+      input.value = el.textContent.trim();
+      input.focus();
+    }
+  });
+});
+</script>
+</body>
+</html>

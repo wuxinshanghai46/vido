@@ -9,6 +9,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const { generatePortrait, PORTRAIT_DIR } = require('../services/portraitService');
+const { ownedBy, scopeUserId } = require('../middleware/auth');
 
 // 上传目录
 const UPLOAD_DIR = path.join(PORTRAIT_DIR, 'uploads');
@@ -49,7 +50,7 @@ router.post('/upload', upload.single('photo'), (req, res) => {
 // POST /api/portrait/generate — 生成卡通形象
 router.post('/generate', async (req, res) => {
   try {
-    const { photo_filename, dim = '2d', name = '' } = req.body;
+    const { photo_filename, dim = '2d', name = '', image_model = 'auto' } = req.body;
     if (!photo_filename) return res.status(400).json({ success: false, error: '请先上传照片' });
 
     const photoPath = path.join(UPLOAD_DIR, path.basename(photo_filename));
@@ -63,6 +64,7 @@ router.post('/generate', async (req, res) => {
       photo_filename: photo_filename,
       photo_url: `/api/portrait/image/${photo_filename}`,
       dim,
+      image_model: image_model || 'auto',
       status: 'processing',
       progress: 0,
       message: '初始化...',
@@ -86,7 +88,7 @@ router.post('/generate', async (req, res) => {
                 ? Math.round(50 + update.progress / 2)
                 : update.progress;
             db.updatePortrait(taskId, { progress: scaledPct, message: `[${d.toUpperCase()}] ${update.message}` });
-          });
+          }, image_model);
 
           const field = d === '3d' ? 'result_3d' : 'result_2d';
           db.updatePortrait(taskId, {
@@ -107,7 +109,7 @@ router.post('/generate', async (req, res) => {
 
 // GET /api/portrait/list — 形象列表
 router.get('/list', (req, res) => {
-  const portraits = db.listPortraits(req.user?.id);
+  const portraits = db.listPortraits(scopeUserId(req));
   res.json({ success: true, data: portraits });
 });
 
@@ -116,14 +118,14 @@ router.get('/:id', (req, res) => {
   // 排除固定路由名
   if (['list', 'upload', 'generate', 'image'].includes(req.params.id)) return res.status(404).end();
   const portrait = db.getPortrait(req.params.id);
-  if (!portrait) return res.status(404).json({ success: false, error: '形象不存在' });
+  if (!portrait || !ownedBy(req, portrait)) return res.status(404).json({ success: false, error: '形象不存在' });
   res.json({ success: true, data: portrait });
 });
 
 // DELETE /api/portrait/:id — 删除形象
 router.delete('/:id', (req, res) => {
   const portrait = db.getPortrait(req.params.id);
-  if (!portrait) return res.status(404).json({ success: false, error: '形象不存在' });
+  if (!portrait || !ownedBy(req, portrait)) return res.status(404).json({ success: false, error: '形象不存在' });
   // 删除文件
   const filesToDelete = [
     portrait.result_2d?.filename,

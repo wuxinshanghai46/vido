@@ -6,7 +6,7 @@
   <title>VIDO - 管理后台</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="stylesheet" href="/css/admin.css?v=20260411b" />
 </head>
 <body>
 
@@ -21,7 +21,11 @@
 
     <nav class="sidebar-nav">
       <div class="nav-label">管理</div>
-      <button class="nav-item active" data-tab="users">
+      <button class="nav-item active" data-tab="dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span>仪表盘</span>
+      </button>
+      <button class="nav-item" data-tab="users">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span>用户管理</span>
       </button>
@@ -41,6 +45,22 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-2 2.83V18a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4v-4.17A3 3 0 0 1 4 11v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="10" cy="13" r="1"/><circle cx="14" cy="13" r="1"/></svg>
         <span>AI 配置</span>
       </button>
+      <button class="nav-item" data-tab="aicap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <span>AI 能力</span>
+      </button>
+      <button class="nav-item" data-tab="knowledgebase">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h8"/></svg>
+        <span>知识库</span>
+      </button>
+      <button class="nav-item" data-tab="aiteam">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>AI 团队</span>
+      </button>
+      <button class="nav-item" data-tab="monitor">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
+        <span>模型监控</span>
+      </button>
       <button class="nav-item" data-tab="sync">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
         <span>数据同步</span>
@@ -54,7 +74,7 @@
     <div class="sidebar-bottom">
       <div class="sidebar-user" id="topbar-user"></div>
       <div class="sidebar-actions">
-        <button class="sidebar-btn" onclick="location.href='/'">
+        <button class="sidebar-btn" onclick="location.href='/index.html'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3"/></svg>
           <span>返回前台</span>
         </button>
@@ -68,11 +88,27 @@
 
   <!-- ═══ MAIN CONTENT ═══ -->
   <main class="admin-main">
+    <!-- ── 仪表盘（默认首页） ── -->
+    <div class="admin-panel active" id="panel-dashboard">
+      <div class="panel-toolbar">
+        <span class="panel-title">📊 仪表盘 / Dashboard</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="dashboard-time" style="font-size:11px;color:var(--text3);"></span>
+          <button class="btn-sm" onclick="loadDashboard()">刷新</button>
+        </div>
+      </div>
+      <div id="dashboard-body"></div>
+    </div>
+
     <!-- ── 用户管理 ── -->
-    <div class="admin-panel active" id="panel-users">
+    <div class="admin-panel" id="panel-users">
       <div class="panel-toolbar">
         <span class="panel-title">用户管理</span>
         <button class="btn-primary" id="btn-new-user">+ 新建用户</button>
+      </div>
+      <div class="role-type-tabs" id="user-type-tabs">
+        <button class="role-type-tab active" data-type="enterprise" onclick="switchUserType('enterprise')">用户</button>
+        <button class="role-type-tab" data-type="platform" onclick="switchUserType('platform')">平台用户</button>
       </div>
       <div class="inline-form" id="form-new-user">
         <div class="form-title">新建用户</div>
@@ -99,11 +135,44 @@
 
     <!-- ── 角色管理 ── -->
     <div class="admin-panel" id="panel-roles">
-      <div class="panel-toolbar">
-        <span class="panel-title">角色管理</span>
-        <button class="btn-primary" id="btn-new-role">+ 新建角色</button>
+      <!-- 上半：角色列表（带 tab 切换） -->
+      <div class="role-section">
+        <div class="panel-toolbar">
+          <span class="panel-title">角色列表</span>
+          <button class="btn-primary" id="btn-new-role">+ 新建角色</button>
+        </div>
+        <div class="role-type-tabs">
+          <button class="role-type-tab active" data-type="platform" onclick="switchRoleType('platform')">平台角色</button>
+          <button class="role-type-tab" data-type="enterprise" onclick="switchRoleType('enterprise')">用户角色</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table role-list-table" id="roles-table">
+            <thead><tr>
+              <th>角色编码</th>
+              <th>角色名称</th>
+              <th>描述</th>
+              <th>类型</th>
+              <th>用户数</th>
+              <th>操作</th>
+            </tr></thead>
+            <tbody id="roles-tbody"></tbody>
+          </table>
+        </div>
       </div>
-      <div id="roles-container" class="roles-grid"></div>
+
+      <!-- 下半：权限矩阵概览（预览当前选中角色） -->
+      <div class="role-section" style="margin-top:20px">
+        <div class="panel-toolbar">
+          <span class="panel-title" id="matrix-title">权限矩阵概览</span>
+          <span style="font-size:12px;color:var(--text3);margin-left:12px" id="matrix-hint">点击上方任一角色查看其权限矩阵</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table permission-matrix" id="matrix-table">
+            <thead id="matrix-thead"></thead>
+            <tbody id="matrix-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ── 积分记录 ── -->
@@ -138,27 +207,34 @@
     <!-- ── 内容管理 ── -->
     <div class="admin-panel" id="panel-contents">
       <div class="panel-toolbar">
-        <span class="panel-title">内容管理</span>
-      </div>
-      <div class="filter-bar">
-        <div class="form-group"><label>类型</label>
-          <select id="ct-type">
-            <option value="">全部</option>
-            <option value="project">AI 视频项目</option>
-            <option value="i2v">图生视频</option>
-            <option value="novel">AI 小说</option>
+        <span class="panel-title">内容管理（按模块）</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="ct-user"><option value="">全部用户</option></select>
+          <select id="ct-view">
+            <option value="grid">卡片视图</option>
+            <option value="table">表格视图</option>
           </select>
+          <button class="btn-sm" onclick="loadContents()">刷新</button>
         </div>
-        <div class="form-group"><label>用户</label><select id="ct-user"><option value="">全部</option></select></div>
-        <button class="btn-primary" onclick="loadContents()" style="align-self:end;">查询</button>
       </div>
+
+      <!-- 模块切换 tab -->
+      <div class="content-modules" id="content-modules"></div>
+
       <div class="contents-stats" id="contents-stats"></div>
-      <div style="overflow-x:auto;">
+
+      <!-- 卡片视图 -->
+      <div id="content-grid" class="content-grid"></div>
+
+      <!-- 表格视图（保留） -->
+      <div id="content-table-wrap" style="display:none;overflow-x:auto;">
         <table class="data-table" id="contents-table">
           <thead><tr><th>类型</th><th>标题</th><th>用户</th><th>状态</th><th>详情</th><th>创建时间</th><th>操作</th></tr></thead>
           <tbody id="contents-tbody"></tbody>
         </table>
       </div>
+
+      <!-- 详情弹窗由 showContentDetail 动态创建，无需静态 HTML -->
     </div>
 
     <!-- ── AI 配置 ── -->
@@ -303,6 +379,156 @@
       </div>
     </div>
 
+    <!-- ── 知识库 ── -->
+    <div class="admin-panel" id="panel-knowledgebase">
+      <div class="panel-toolbar">
+        <span class="panel-title">知识库合集（数字人 / 网剧 / 分镜 / 氛围）</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="kb-search" class="kb-search-input" placeholder="搜索标题/内容/标签/关键词…" oninput="kbOnSearch()"/>
+          <select id="kb-applies-filter" onchange="kbLoadDocs()">
+            <option value="">全部 agent 范围</option>
+            <option value="screenwriter">编剧 screenwriter</option>
+            <option value="director">导演 director</option>
+            <option value="character_consistency">人物一致性 character_consistency</option>
+            <option value="atmosphere">氛围 atmosphere</option>
+            <option value="storyboard">分镜 storyboard</option>
+            <option value="digital_human">数字人 digital_human</option>
+          </select>
+          <button class="btn-primary" onclick="kbNewDoc()">+ 新建条目</button>
+          <button class="btn-sm" onclick="kbOpenPreview()">预览 Agent 注入</button>
+        </div>
+      </div>
+
+      <div class="kb-layout">
+        <!-- 左侧：合集树 -->
+        <aside class="kb-sidebar">
+          <div id="kb-collections"></div>
+        </aside>
+
+        <!-- 中间：条目列表 -->
+        <section class="kb-list-pane">
+          <div id="kb-doc-list" class="kb-doc-list"></div>
+        </section>
+
+        <!-- 右侧：编辑器 -->
+        <section class="kb-editor-pane">
+          <div id="kb-editor" class="kb-editor"><div class="kb-empty">← 选择或新建一条知识</div></div>
+        </section>
+      </div>
+
+      <!-- 预览 Agent 注入 现改为 showModal 动态弹窗，不再使用静态 HTML -->
+    </div>
+
+    <!-- ── AI 团队 ── -->
+    <div class="admin-panel" id="panel-aiteam">
+      <div class="panel-toolbar">
+        <span class="panel-title">VIDO AI 团队</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="aiteam-stats" class="aiteam-stats"></span>
+          <button class="btn-sm" onclick="aiteamRefresh()">刷新</button>
+          <button class="btn-primary" onclick="aiteamOpenNewAgent()">+ 新增 Agent</button>
+          <button class="btn-primary" onclick="aiteamOpenWorkflowAtlas()" style="background:linear-gradient(135deg,#21fff3,#fff600);color:#0D0E12;">🗺️ 工作流图谱</button>
+          <button class="btn-primary" onclick="aiteamOpenRunWorkflow()" style="background:linear-gradient(135deg,#7c6cf0,#21fff3);">▶ 执行任务</button>
+        </div>
+      </div>
+      <div class="aiteam-desc">每个 agent 只读取自己团队对应的知识库。点击 agent 查看其详细能力 + 对应 KB 条目。</div>
+      <div id="aiteam-teams" class="aiteam-teams"></div>
+
+      <!-- 项目日志 section -->
+      <div class="panel-toolbar" style="margin-top:24px;">
+        <span class="panel-title">📋 项目日志（由项目助理 agent 维护）</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="logs-stats" class="aiteam-stats"></span>
+          <button class="btn-sm" onclick="logsTreeRefresh()">刷新</button>
+          <button class="btn-sm" onclick="logsTriggerDailyLearn()">手动触发学习</button>
+        </div>
+      </div>
+      <div class="aiteam-desc">所有日志统一存储在 <code>docs/logs/</code>，按类型分目录，按天归档。每天 00:00 自动触发学习任务生成新的 digest。</div>
+      <div id="logs-tree" class="logs-tree"></div>
+    </div>
+
+    <!-- ── 模型监控 ── -->
+    <div class="admin-panel" id="panel-monitor">
+      <div class="panel-toolbar">
+        <span class="panel-title">📊 Token 使用 + 服务器监控</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="monitor-days" onchange="monitorRefresh()">
+            <option value="1">最近 1 天</option>
+            <option value="7" selected>最近 7 天</option>
+            <option value="30">最近 30 天</option>
+            <option value="90">最近 90 天</option>
+          </select>
+          <button class="btn-sm" onclick="monitorRefresh()">刷新</button>
+          <button class="btn-sm" onclick="monitorOpenBudget()">预算设置</button>
+        </div>
+      </div>
+
+      <div id="monitor-alerts"></div>
+
+      <!-- 总览卡片 -->
+      <div id="monitor-overview" class="monitor-cards"></div>
+
+      <!-- 服务器监控 -->
+      <div class="monitor-section">
+        <div class="monitor-section-title">🖥️ 服务器状态</div>
+        <div id="monitor-server" class="monitor-server"></div>
+      </div>
+
+      <!-- 按 Provider / Model / Agent 三列 -->
+      <div class="monitor-tables">
+        <div class="monitor-table-col">
+          <div class="monitor-section-title">📦 按 Provider</div>
+          <div id="monitor-by-provider"></div>
+        </div>
+        <div class="monitor-table-col">
+          <div class="monitor-section-title">🤖 按 Model</div>
+          <div id="monitor-by-model"></div>
+        </div>
+        <div class="monitor-table-col">
+          <div class="monitor-section-title">👥 按 Agent</div>
+          <div id="monitor-by-agent"></div>
+        </div>
+      </div>
+
+      <!-- 按天走势 -->
+      <div class="monitor-section">
+        <div class="monitor-section-title">📅 按天走势</div>
+        <div id="monitor-by-day"></div>
+      </div>
+
+      <!-- 最近调用 -->
+      <div class="monitor-section">
+        <div class="monitor-section-title">🕐 最近 50 次调用</div>
+        <div id="monitor-recent"></div>
+      </div>
+
+      <!-- 预算设置弹窗 -->
+      <div class="modal" id="budget-modal" style="display:none;">
+        <div class="modal-content" style="max-width:500px;">
+          <div class="modal-header">
+            <span>月度预算设置</span>
+            <button class="btn-sm" onclick="document.getElementById('budget-modal').style.display='none'">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>月度预算 (USD)</label>
+              <input type="number" id="budget-monthly" placeholder="0 = 无限制" min="0" step="0.01"/>
+              <small style="color:var(--text3);font-size:11px;">设置为 0 表示不限制</small>
+            </div>
+            <div class="form-group">
+              <label>告警阈值 (0-1)</label>
+              <input type="number" id="budget-threshold" value="0.8" min="0" max="1" step="0.1"/>
+              <small style="color:var(--text3);font-size:11px;">例如 0.8 = 达到预算 80% 时开始告警</small>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+              <button class="btn-primary" onclick="monitorSaveBudget()">保存</button>
+              <button class="btn-sm" onclick="document.getElementById('budget-modal').style.display='none'">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── 数据同步 ── -->
     <div class="admin-panel" id="panel-sync">
       <div class="panel-toolbar">
@@ -384,6 +610,133 @@
       </div>
     </div>
 
+    <!-- ── AI 能力 ── -->
+    <div class="admin-panel" id="panel-aicap">
+      <div class="panel-toolbar">
+        <span class="panel-title">AI 能力</span>
+      </div>
+
+      <!-- 子标签 -->
+      <div class="ai-sub-tabs">
+        <button class="ai-sub-tab active" id="aicap-tab-chars" onclick="switchAICapTab('chars')">角色库</button>
+        <button class="ai-sub-tab" id="aicap-tab-scenes" onclick="switchAICapTab('scenes')">场景库</button>
+        <button class="ai-sub-tab" id="aicap-tab-styles" onclick="switchAICapTab('styles')">风格库</button>
+      </div>
+
+      <!-- 角色库 -->
+      <div id="aicap-pane-chars">
+        <div class="ai-pane-toolbar">
+          <span class="aicap-stats" id="aicap-char-stats"></span>
+          <button class="btn-primary" onclick="showCharModal()">+ 新建角色</button>
+        </div>
+        <div class="aicap-grid" id="aicap-chars-grid"></div>
+      </div>
+
+      <!-- 场景库 -->
+      <div id="aicap-pane-scenes" style="display:none">
+        <div class="ai-pane-toolbar">
+          <span class="aicap-stats" id="aicap-scene-stats"></span>
+          <button class="btn-primary" onclick="showSceneModal()">+ 新建场景</button>
+        </div>
+        <div class="aicap-grid" id="aicap-scenes-grid"></div>
+      </div>
+
+      <!-- 风格库 -->
+      <div id="aicap-pane-styles" style="display:none">
+        <div class="ai-pane-toolbar">
+          <span class="aicap-stats" id="aicap-style-stats"></span>
+          <button class="btn-primary" onclick="showStyleModal()">+ 新建风格</button>
+        </div>
+        <div class="aicap-grid" id="aicap-styles-grid"></div>
+      </div>
+
+    </div>
+
+    <!-- AI 能力弹窗：角色 -->
+    <div class="modal-overlay" id="modal-aicap-char">
+      <div class="modal-box" style="max-width:560px">
+        <div class="form-title" id="modal-char-title">新建角色</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px">
+            <div class="form-group" style="flex:2"><label>角色名称</label><input id="ac-name" placeholder="如：小春" /></div>
+            <div class="form-group"><label>性别</label>
+              <select id="ac-gender"><option value="">未设定</option><option value="male">男</option><option value="female">女</option><option value="other">其他</option></select>
+            </div>
+            <div class="form-group"><label>年龄段</label>
+              <select id="ac-age"><option value="">未设定</option><option value="child">儿童</option><option value="teen">少年</option><option value="young">青年</option><option value="middle">中年</option><option value="old">老年</option></select>
+            </div>
+          </div>
+          <div class="form-group"><label>性格特征</label><input id="ac-personality" placeholder="温柔善良、内心坚强、不轻易放弃" /></div>
+          <div class="form-group"><label>外貌描述（中文）</label><textarea id="ac-appearance" rows="2" placeholder="黑色长发、蓝色瞳孔、身穿白色连衣裙" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+          <div class="form-group"><label>外貌 Prompt（英文，用于 AI 生图）</label><textarea id="ac-prompt" rows="2" placeholder="young woman with long black hair, blue eyes, white dress, gentle expression" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+          <div class="form-group"><label>标签</label><input id="ac-tags" placeholder="用逗号分隔，如：主角,女性,温柔" /></div>
+          <div class="form-group">
+            <label>参考图（最多5张）</label>
+            <div class="aicap-ref-images" id="ac-ref-preview"></div>
+            <input type="file" id="ac-ref-files" accept="image/*" multiple style="margin-top:6px" />
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveChar()">保存</button>
+          <button class="btn-sm accent" onclick="aiGenCharImage()" id="btn-ai-gen-char">AI 生成形象</button>
+          <button class="btn-sm" onclick="closeCharModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI 能力弹窗：场景 -->
+    <div class="modal-overlay" id="modal-aicap-scene">
+      <div class="modal-box" style="max-width:520px">
+        <div class="form-title" id="modal-scene-title">新建场景</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px">
+            <div class="form-group" style="flex:2"><label>场景名称</label><input id="as-name" placeholder="如：雪中花店" /></div>
+            <div class="form-group"><label>类型</label>
+              <select id="as-type"><option value="indoor">室内</option><option value="outdoor">室外</option><option value="fantasy">幻想</option><option value="urban">都市</option><option value="nature">自然</option></select>
+            </div>
+          </div>
+          <div class="form-group"><label>场景描述</label><textarea id="as-desc" rows="2" placeholder="被厚雪覆盖的小镇街道，花店门口挂着半掩的招牌" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+          <div class="form-group"><label>场景 Prompt（英文）</label><textarea id="as-prompt" rows="2" placeholder="snow-covered town street, flower shop with half-buried signboard, winter atmosphere" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+          <div class="form-group"><label>标签</label><input id="as-tags" placeholder="用逗号分隔，如：冬天,雪景,街道" /></div>
+          <div class="form-group">
+            <label>参考图</label>
+            <div class="aicap-ref-images" id="as-ref-preview"></div>
+            <input type="file" id="as-ref-files" accept="image/*" multiple style="margin-top:6px" />
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveScene()">保存</button>
+          <button class="btn-sm accent" onclick="aiGenSceneImage()">AI 生成场景图</button>
+          <button class="btn-sm" onclick="closeSceneModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI 能力弹窗：风格 -->
+    <div class="modal-overlay" id="modal-aicap-style">
+      <div class="modal-box" style="max-width:480px">
+        <div class="form-title" id="modal-style-title">新建风格</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px">
+            <div class="form-group" style="flex:2"><label>风格名称</label><input id="ast-name" placeholder="如：赛博朋克" /></div>
+            <div class="form-group"><label>分类</label>
+              <select id="ast-category"><option value="manga">漫画</option><option value="comic">漫画(西式)</option><option value="cartoon">卡通</option><option value="traditional">传统</option><option value="realistic">写实</option><option value="scifi">科幻</option><option value="dark">暗黑</option><option value="soft">治愈</option><option value="stylized">风格化</option><option value="custom">自定义</option></select>
+            </div>
+          </div>
+          <div class="form-group"><label>英文 Prompt（用于 AI 生图）</label><textarea id="ast-prompt" rows="3" placeholder="cyberpunk manga style, neon lights, dark atmosphere..." style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical"></textarea></div>
+          <div class="form-group">
+            <label>预览图（可选）</label>
+            <div class="aicap-ref-images" id="ast-ref-preview"></div>
+            <input type="file" id="ast-ref-file" accept="image/*" style="margin-top:6px" />
+          </div>
+        </div>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="btn-primary" onclick="saveStyle()">保存</button>
+          <button class="btn-sm" onclick="closeStyleModal()">取消</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── 系统设置 ── -->
     <div class="admin-panel" id="panel-system">
       <div class="panel-toolbar"><span class="panel-title">系统设置</span></div>
@@ -451,6 +804,11 @@
           </select>
         </div>
       </div>
+
+      <div style="padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text3);line-height:1.6">
+        <strong style="color:var(--text2)">ℹ 功能与模型由角色统一控制</strong> —
+        该账号可用的功能和模型取决于上方所选角色的权限配置。如需修改，请前往「角色管理」配置对应角色。
+      </div>
     </div>
     <div class="form-actions" style="margin-top:16px">
       <button class="btn-primary" onclick="saveUserDetail()">保存修改</button>
@@ -461,33 +819,49 @@
 
 <!-- ═══ ROLE MODAL ═══ -->
 <div class="modal-overlay" id="role-modal">
-  <div class="modal-box">
+  <div class="modal-box role-modal-box">
     <div class="form-title" id="role-modal-title">编辑角色</div>
     <div class="form-row">
-      <div class="form-group"><label>角色 ID</label><input id="rm-id" placeholder="role_id" /></div>
+      <div class="form-group"><label>角色 ID <span style="font-size:10px;color:var(--text3);font-weight:400">(自动生成)</span></label><input id="rm-id" placeholder="自动生成" readonly style="opacity:0.7;cursor:not-allowed" /></div>
       <div class="form-group"><label>角色名称</label><input id="rm-label" placeholder="显示名称" /></div>
+      <div class="form-group" style="flex:0.6">
+        <label>类型</label>
+        <select id="rm-type" onchange="onRoleTypeChange()">
+          <option value="platform">平台角色</option>
+          <option value="enterprise">用户角色</option>
+        </select>
+      </div>
     </div>
     <div class="form-row">
+      <div class="form-group" style="flex:2"><label>描述</label><input id="rm-description" placeholder="简短说明该角色的用途" /></div>
       <div class="form-group"><label>默认积分</label><input id="rm-credits" type="number" placeholder="100" /></div>
       <div class="form-group"><label>最大项目数</label><input id="rm-max-projects" type="number" placeholder="10" /></div>
     </div>
-    <div class="form-row">
+    <div class="form-row" id="rm-models-row">
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;">
           允许模型
-          <button class="btn-sm" type="button" onclick="toggleAllModels(true)" style="padding:1px 8px;font-size:11px">全选</button>
-          <button class="btn-sm" type="button" onclick="toggleAllModels(false)" style="padding:1px 8px;font-size:11px">全不选</button>
           <label style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--accent);cursor:pointer;margin-left:auto">
             <input type="checkbox" id="rm-models-wildcard" onchange="toggleModelsWildcard(this.checked)" /> 不限制 (*)
           </label>
         </label>
-        <div id="rm-models" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:180px;overflow-y:auto;padding:8px;background:var(--bg2);border-radius:8px;border:1px solid var(--border2)"></div>
+        <div class="transfer-list" id="rm-transfer"></div>
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label>权限</label>
-        <div id="rm-permissions" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;"></div>
+        <label style="display:flex;align-items:center;gap:8px;">
+          权限矩阵
+          <span id="rm-matrix-type-hint" style="font-size:11px;color:var(--text3);font-weight:400">（前后端权限完全独立）</span>
+          <button class="btn-sm" type="button" onclick="rmMatrixToggleAll(true)" style="padding:1px 8px;font-size:11px;margin-left:auto">全选</button>
+          <button class="btn-sm" type="button" onclick="rmMatrixToggleAll(false)" style="padding:1px 8px;font-size:11px">清空</button>
+        </label>
+        <div style="overflow-x:auto;margin-top:6px">
+          <table class="data-table permission-matrix" id="rm-matrix-table">
+            <thead id="rm-matrix-thead"></thead>
+            <tbody id="rm-matrix-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
     <div class="form-actions">
@@ -499,7 +873,7 @@
   </div>
 </div>
 
-<script src="/js/auth.js"></script>
-<script src="/js/admin.js"></script>
+<script src="/js/auth.js?v=20260411b"></script>
+<script src="/js/admin.js?v=20260411b"></script>
 </body>
 </html>

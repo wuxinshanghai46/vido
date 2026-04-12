@@ -1257,7 +1257,16 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
   // 构建 content 数组
   const content = [{ type: 'text', text: prompt.substring(0, 2000) }];
   if (image_url) {
-    content.push({ type: 'image_url', image_url: { url: image_url }, role: 'reference_image' });
+    let imgUrl = image_url;
+    // 本地文件路径转 base64 data URL
+    if (!imgUrl.startsWith('http') && !imgUrl.startsWith('data:') && fs.existsSync(imgUrl)) {
+      const imgBuf = fs.readFileSync(imgUrl);
+      const ext = path.extname(imgUrl).toLowerCase();
+      const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+      imgUrl = `data:${mime};base64,${imgBuf.toString('base64')}`;
+      console.log(`[Seedance2.0] 本地图片转base64: ${(imgBuf.length / 1024).toFixed(0)}KB`);
+    }
+    content.push({ type: 'image_url', image_url: { url: imgUrl }, role: 'reference_image' });
   }
 
   const body = JSON.stringify({

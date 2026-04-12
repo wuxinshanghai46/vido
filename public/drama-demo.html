@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDO - 网剧工作台 Demo</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0D0E12;--bg2:#141519;--bg3:#1E2025;--bg4:#282A30;--border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);--text:#edeef2;--text2:rgba(237,238,242,.6);--text3:rgba(237,238,242,.32);--accent:#21FFF3;--accent2:#FFF600;--grad:linear-gradient(135deg,#CBFFF8,#21FFF3,#FFF600);--error:#ff4d6d;--success:#00e5a0}
+html,body{height:100%;font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+
+/* 顶栏 */
+.topbar{height:48px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px}
+.topbar-logo{font-weight:800;font-size:16px;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar-title{font-size:14px;color:var(--text2)}
+.topbar-steps{display:flex;gap:4px;margin-left:auto}
+.step-chip{padding:4px 14px;border-radius:99px;font-size:12px;font-weight:500;background:var(--bg3);color:var(--text3);border:1px solid var(--border);cursor:pointer;transition:all .2s}
+.step-chip.active{background:rgba(33,255,243,.1);color:var(--accent);border-color:var(--accent)}
+.step-chip.done{background:rgba(0,229,160,.1);color:var(--success);border-color:rgba(0,229,160,.3)}
+
+/* 主布局 */
+.drama-layout{display:flex;height:calc(100vh - 48px);overflow:hidden}
+
+/* 左面板 */
+.panel-left{width:280px;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;padding:16px}
+.pl-section{margin-bottom:20px}
+.pl-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-weight:600}
+.pl-textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px;border-radius:10px;font-size:13px;resize:vertical;font-family:inherit;min-height:100px}
+.pl-textarea:focus{outline:none;border-color:var(--accent)}
+.pl-input{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px}
+.pl-input:focus{outline:none;border-color:var(--accent)}
+.pl-row{display:flex;gap:8px;margin-bottom:8px}
+.pl-select{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px;border-radius:8px;font-size:12px}
+.pl-btn{padding:8px 16px;border-radius:999px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+.pl-btn-primary{background:var(--grad);color:#000;width:100%}
+.pl-btn-primary:hover{filter:brightness(1.1)}
+.pl-btn-sm{padding:5px 12px;font-size:11px;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:6px}
+.pl-btn-sm:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 角色标签 */
+.char-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.char-tag{padding:3px 10px;border-radius:99px;font-size:11px;background:rgba(33,255,243,.08);color:var(--accent);border:1px solid rgba(33,255,243,.2);cursor:pointer}
+.char-tag .remove{margin-left:4px;opacity:.5;cursor:pointer}
+
+/* 进度指示 */
+.progress-bar{margin-top:12px}
+.progress-steps{display:flex;flex-direction:column;gap:4px}
+.p-step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);padding:4px 8px;border-radius:6px}
+.p-step.active{color:var(--accent);background:rgba(33,255,243,.06)}
+.p-step.done{color:var(--success)}
+.p-step-dot{width:8px;height:8px;border-radius:50%;background:var(--bg4);flex-shrink:0}
+.p-step.active .p-step-dot{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.p-step.done .p-step-dot{background:var(--success)}
+
+/* 中央画布 */
+.panel-center{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.timeline-header{display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);gap:8px}
+.tl-title{font-size:13px;font-weight:600}
+.tl-count{font-size:11px;color:var(--text3);margin-left:auto}
+.tl-actions{display:flex;gap:6px}
+
+/* 分镜表格列表 */
+.sb-list{flex:1;overflow-y:auto;padding:12px 16px}
+.sb-row{display:flex;align-items:stretch;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;margin-bottom:10px;transition:all .2s;cursor:pointer;overflow:hidden}
+.sb-row:hover{border-color:rgba(33,255,243,.3);box-shadow:0 0 16px rgba(33,255,243,.06)}
+.sb-row.selected{border-color:var(--accent);box-shadow:0 0 20px rgba(33,255,243,.12)}
+/* 序号列 */
+.sb-col-idx{width:36px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg3);flex-shrink:0;padding:8px 0;gap:4px}
+.sb-idx{font-size:13px;font-weight:700;color:var(--text)}
+.sb-duration{font-size:9px;color:var(--text3)}
+/* 缩略图列 */
+.sb-col-thumb{width:120px;flex-shrink:0;background:var(--bg3);position:relative;display:flex;align-items:center;justify-content:center}
+.sb-col-thumb img{width:100%;height:100%;object-fit:cover}
+.sb-thumb-ph{font-size:32px;opacity:.12}
+.sb-camera-badge{position:absolute;top:6px;right:6px;background:rgba(33,255,243,.9);color:#000;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700}
+/* 内容列 */
+.sb-col-content{flex:1;padding:10px 14px;display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0}
+.sb-desc{font-size:12px;line-height:1.5;color:var(--text2)}
+.sb-dialogue{font-size:12px;color:var(--accent);font-style:italic}
+.sb-narrator{font-size:11px;color:var(--text3)}
+.sb-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.sb-tag{font-size:10px;padding:1px 8px;border-radius:99px}
+.sb-tag.motion-tag{background:rgba(33,255,243,.1);color:var(--accent)}
+.sb-tag.emotion-tag{background:rgba(255,77,109,.1);color:#ff758f}
+.sb-tag.sfx-tag{background:rgba(255,246,0,.08);color:rgba(255,246,0,.7)}
+/* 运镜列 */
+.sb-col-motion{width:80px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-left:1px solid var(--border)}
+.sb-motion-icon{font-size:22px;color:var(--accent)}
+.sb-motion-name{font-size:10px;color:var(--accent);font-weight:600}
+/* 操作列 */
+.sb-col-actions{width:90px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-left:1px solid var(--border);padding:6px}
+.sb-act-btn{width:100%;padding:4px 0;font-size:10px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);cursor:pointer;transition:all .15s;text-align:center}
+.sb-act-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sb-act-btn.primary{background:rgba(33,255,243,.1);color:var(--accent);border-color:rgba(33,255,243,.3)}
+
+/* 右面板 */
+.panel-right{width:320px;background:var(--bg2);border-left:1px solid var(--border);overflow-y:auto;flex-shrink:0;padding:16px}
+.pr-title{font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.pr-section{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.pr-label{font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:500}
+.pr-value{font-size:13px;margin-bottom:8px}
+
+/* 运镜选择器 */
+.motion-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.motion-item{padding:6px 4px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);text-align:center;cursor:pointer;transition:all .15s;font-size:11px}
+.motion-item:hover{border-color:rgba(33,255,243,.3)}
+.motion-item.active{border-color:var(--accent);background:rgba(33,255,243,.08);color:var(--accent)}
+.motion-icon{font-size:16px;margin-bottom:2px}
+.motion-name{font-size:10px}
+
+/* 构图选择器 */
+.shot-grid{display:flex;gap:6px;flex-wrap:wrap}
+.shot-item{padding:4px 10px;border-radius:99px;border:1px solid var(--border2);font-size:11px;cursor:pointer;transition:all .15s}
+.shot-item:hover{border-color:rgba(33,255,243,.3)}
+.shot-item.active{border-color:var(--accent);color:var(--accent);background:rgba(33,255,243,.08)}
+
+/* 提示词预览 */
+.prompt-preview{background:var(--bg);border:1px solid var(--border2);border-radius:10px;padding:12px;font-size:12px;line-height:1.6}
+.prompt-en{color:var(--accent);margin-bottom:8px;word-break:break-all}
+.prompt-cn{color:var(--text2);font-size:11px}
+.prompt-copy{display:flex;justify-content:flex-end;margin-top:8px}
+.prompt-copy button{padding:3px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text3);font-size:10px;cursor:pointer}
+.prompt-copy button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 运镜预设库弹层 */
+.motion-lib{margin-top:8px}
+.motion-category{font-size:10px;color:var(--text3);margin:8px 0 4px;font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div class="topbar">
+  <div class="topbar-logo">VIDO</div>
+  <div class="topbar-title">网剧工作台</div>
+  <div class="topbar-steps">
+    <div class="step-chip done" onclick="setStep(1)">1 剧本</div>
+    <div class="step-chip done" onclick="setStep(2)">2 分镜</div>
+    <div class="step-chip active" onclick="setStep(3)">3 运镜</div>
+    <div class="step-chip" onclick="setStep(4)">4 提示词</div>
+    <div class="step-chip" onclick="setStep(5)">5 生成</div>
+  </div>
+</div>
+
+<div class="drama-layout">
+  <!-- 左面板：输入+进度 -->
+  <div class="panel-left">
+    <div class="pl-section">
+      <div class="pl-label">剧本内容</div>
+      <textarea class="pl-textarea" id="drama-script" rows="6" placeholder="粘贴或输入故事内容...">每个冬天的句号都是春暖花开：失去色彩感知的花店少女小春，与沉默的气象研究员冬树，在被漫长冬季笼罩的小镇相遇。冬树每天匿名送她一枝冰冻的花，附上简短的气象笔记。两人共同启动尘封的气象装置，融化了小镇的冰封冬天。</textarea>
+    </div>
+
+    <div class="pl-section">
+      <div class="pl-label">角色</div>
+      <div class="char-tags" id="char-tags">
+        <div class="char-tag">小春 <span class="remove" onclick="this.parentElement.remove()">&times;</span></div>
+        <div class="char-tag">冬树 <span class="remove" onclick="this.parentElement.remove()">&times;</span></div>
+      </div>
+      <div class="pl-row">
+        <button class="pl-btn-sm" onclick="alert('从角色库选择')">+ 角色库导入</button>
+        <button class="pl-btn-sm" onclick="alert('手动添加')">+ 手动添加</button>
+      </div>
+    </div>
+
+    <div class="pl-section">
+      <div class="pl-label">画风</div>
+      <select class="pl-select" style="width:100%">
+        <option>日系动漫</option><option>韩国漫画</option><option>水墨漫画</option><option>赛博朋克</option>
+        <option>国风仙侠</option><option>迪士尼卡通</option><option>油画写实</option><option>治愈系</option>
+      </select>
+    </div>
+
+    <div class="pl-section">
+      <div class="pl-label">运镜预设</div>
+      <select class="pl-select" style="width:100%">
+        <option>电影感（推拉+环绕+特写交替）</option>
+        <option>纪录片（稳定跟踪+缓慢推进）</option>
+        <option>动作片（快速切换+荷兰角+手持）</option>
+        <option>MV风格（升降+环绕+慢动作）</option>
+        <option>自定义（逐镜头手动选择）</option>
+      </select>
+    </div>
+
+    <div class="pl-section">
+      <div class="pl-row">
+        <select class="pl-select"><option>6 场景</option><option>4 场景</option><option>8 场景</option><option>12 场景</option></select>
+        <select class="pl-select"><option>5s/镜头</option><option>3s/镜头</option><option>8s/镜头</option></select>
+      </div>
+      <button class="pl-btn pl-btn-primary" onclick="generateDemo()">一键生成分镜</button>
+    </div>
+
+    <div class="pl-section">
+      <div class="pl-label">生成进度</div>
+      <div class="progress-steps">
+        <div class="p-step done"><div class="p-step-dot"></div> 1. 编剧Agent — 剧情脚本</div>
+        <div class="p-step done"><div class="p-step-dot"></div> 2. 导演Agent — 分镜设计</div>
+        <div class="p-step active"><div class="p-step-dot"></div> 3. 运镜标注 — 镜头语言</div>
+        <div class="p-step"><div class="p-step-dot"></div> 4. 提示词 — 生成 Prompt</div>
+        <div class="p-step"><div class="p-step-dot"></div> 5. 视频生成 — 逐镜头</div>
+        <div class="p-step"><div class="p-step-dot"></div> 6. 合成导出</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中央：分镜时间轴 -->
+  <div class="panel-center">
+    <div class="timeline-header">
+      <div class="tl-title">分镜时间轴</div>
+      <div class="tl-actions">
+        <button class="pl-btn-sm">导出脚本</button>
+        <button class="pl-btn-sm" style="color:var(--accent);border-color:rgba(33,255,243,.3)">全部生成视频</button>
+      </div>
+      <div class="tl-count">6 个分镜 · 约 30s</div>
+    </div>
+
+    <div class="sb-list" id="sb-grid"></div>
+  </div>
+
+  <!-- 右面板：选中分镜属性 -->
+  <div class="panel-right">
+    <div class="pr-title">分镜 #3 属性</div>
+
+    <div class="pr-section">
+      <div class="pr-label">画面描述</div>
+      <textarea class="pl-textarea" style="min-height:60px" id="pr-desc">特写：气象站内，冬树专注地看着布满雪花纹的监测屏幕，侧脸严肃。屏幕的冷蓝光映在他脸上。</textarea>
+    </div>
+
+    <div class="pr-section">
+      <div class="pr-label">对话</div>
+      <input class="pl-input" value="风雪数据…毫无变化。" />
+      <div style="margin-top:4px"><div class="pr-label">旁白</div><input class="pl-input" value="" placeholder="(无旁白)" /></div>
+      <div style="margin-top:4px"><div class="pr-label">音效</div><input class="pl-input" value="嘀…嘀…" /></div>
+    </div>
+
+    <div class="pr-section">
+      <div class="pr-label">运镜手法</div>
+      <div class="motion-grid" id="motion-grid">
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">↗</div><div class="motion-name">推进</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">↙</div><div class="motion-name">后拉</div></div>
+        <div class="motion-item active" onclick="selectMotion(this)"><div class="motion-icon">→</div><div class="motion-name">横摇</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">↕</div><div class="motion-name">俯仰</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">⟳</div><div class="motion-name">环绕</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">↑</div><div class="motion-name">升降</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">👁</div><div class="motion-name">POV</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">🏃</div><div class="motion-name">跟踪</div></div>
+        <div class="motion-item" onclick="selectMotion(this)"><div class="motion-icon">📐</div><div class="motion-name">荷兰角</div></div>
+      </div>
+      <div class="motion-lib">
+        <div class="motion-category">运镜提示词</div>
+        <div style="background:var(--bg);padding:6px 10px;border-radius:6px;font-size:11px;color:var(--accent)">slow horizontal pan from left to right, smooth steady camera movement</div>
+      </div>
+    </div>
+
+    <div class="pr-section">
+      <div class="pr-label">构图 / 景别</div>
+      <div class="shot-grid">
+        <div class="shot-item" onclick="selectShot(this)">远景</div>
+        <div class="shot-item" onclick="selectShot(this)">全景</div>
+        <div class="shot-item" onclick="selectShot(this)">中景</div>
+        <div class="shot-item" onclick="selectShot(this)">近景</div>
+        <div class="shot-item active" onclick="selectShot(this)">特写</div>
+        <div class="shot-item" onclick="selectShot(this)">大特写</div>
+        <div class="shot-item" onclick="selectShot(this)">仰角</div>
+        <div class="shot-item" onclick="selectShot(this)">俯角</div>
+        <div class="shot-item" onclick="selectShot(this)">鸟瞰</div>
+      </div>
+    </div>
+
+    <div class="pr-section">
+      <div class="pr-label">情感基调</div>
+      <div class="shot-grid">
+        <div class="shot-item" onclick="selectEmotion(this)">孤独</div>
+        <div class="shot-item active" onclick="selectEmotion(this)">沉静</div>
+        <div class="shot-item" onclick="selectEmotion(this)">温暖</div>
+        <div class="shot-item" onclick="selectEmotion(this)">紧张</div>
+        <div class="shot-item" onclick="selectEmotion(this)">震惊</div>
+        <div class="shot-item" onclick="selectEmotion(this)">浪漫</div>
+      </div>
+    </div>
+
+    <div class="pr-section">
+      <div class="pr-label">生成的提示词</div>
+      <div class="prompt-preview">
+        <div class="prompt-en" id="prompt-en">Close-up shot of a young man (Dongshu) with short dark hair, wearing a navy blue research coat, sitting in a dimly lit weather station, staring intently at a monitoring screen filled with snowflake patterns. Cool blue light from the screen illuminates his serious side profile. Slow horizontal pan from left to right. Japanese anime style, clean linework, dramatic shading, cinematic lighting, melancholic atmosphere, 4K high quality.</div>
+        <div class="prompt-cn" id="prompt-cn">特写镜头，年轻男子（冬树）短发，穿深蓝色研究服，坐在昏暗的气象站，专注地看着雪花纹监测屏幕。屏幕冷蓝光映照严肃的侧脸。缓慢横摇。日系动漫风格，电影光影，忧郁氛围。</div>
+        <div class="prompt-copy"><button onclick="copyPrompt()">复制英文 Prompt</button></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="pl-btn pl-btn-primary" style="flex:1" onclick="alert('生成此镜头视频')">生成视频</button>
+      <button class="pl-btn-sm" onclick="alert('重新生成提示词')">刷新</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Demo 分镜数据
+const DEMO_SCENES = [
+  { idx:1, desc:'远景：被厚雪覆盖的寂静小镇全貌，天空灰白一片。花店招牌半掩在雪中。', dialogue:'', narrator:'这个小镇的冬天，似乎永远不会结束。', sfx:'呼——', camera:'远景', motion:'推进', emotion:'孤独', motionPrompt:'slow dolly push forward toward the snow-covered town' },
+  { idx:2, desc:'中景：花店内，小春背对镜头，手指轻触一盆灰白色的花，表情落寞。窗外飘着细雪。', dialogue:'又是灰色……', narrator:'', sfx:'', camera:'中景', motion:'横摇', emotion:'忧伤', motionPrompt:'gentle horizontal pan following character movement' },
+  { idx:3, desc:'特写：气象站内，冬树专注地看着布满雪花纹的监测屏幕，侧脸严肃。屏幕的冷蓝光映在他脸上。', dialogue:'风雪数据…毫无变化。', narrator:'', sfx:'嘀…嘀…', camera:'特写', motion:'横摇', emotion:'沉静', motionPrompt:'slow horizontal pan from left to right, smooth steady camera movement' },
+  { idx:4, desc:'中景：空荡的图书馆。小春坐在窗边，指尖轻轻描摹旧相册里一朵彩色花朵的轮廓。冬树在远处书架旁，静静注视着她。', dialogue:'', narrator:'他们的相遇，始于一片寂静。', sfx:'', camera:'中景', motion:'推进', emotion:'温暖', motionPrompt:'slow zoom in capturing intimate moment between two characters' },
+  { idx:5, desc:'特写：一枝被冰晶包裹的玫瑰花，放在花店门口，晨光照耀下折射出彩虹光芒。', dialogue:'今日风速：温柔。', narrator:'', sfx:'', camera:'大特写', motion:'环绕', emotion:'浪漫', motionPrompt:'slow orbit around the frozen rose, revealing rainbow light reflections' },
+  { idx:6, desc:'远景：暴风雪之夜，小春和冬树站在山顶气象装置前。两人共同启动装置，漫天冰晶中隐约出现一抹淡粉色。', dialogue:'让我成为你的眼睛。', narrator:'春天，终于来了。', sfx:'轰——', camera:'远景', motion:'升降', emotion:'震撼', motionPrompt:'dramatic crane shot rising upward, revealing the couple against the aurora of ice crystals' }
+];
+
+const MOTION_MAP = { '推进':'↗', '后拉':'↙', '横摇':'→', '俯仰':'↕', '环绕':'⟳', '升降':'↑', 'POV':'👁', '跟踪':'🏃', '荷兰角':'📐' };
+
+function renderGrid() {
+  const grid = document.getElementById('sb-grid');
+  grid.innerHTML = DEMO_SCENES.map(s => `
+    <div class="sb-row${s.idx===3?' selected':''}" onclick="selectRow(this,${s.idx})">
+      <div class="sb-col-idx">
+        <div class="sb-idx">${s.idx}</div>
+        <div class="sb-duration">5s</div>
+      </div>
+      <div class="sb-col-thumb">
+        <div class="sb-thumb-ph">🎬</div>
+        <div class="sb-camera-badge">${s.camera}</div>
+      </div>
+      <div class="sb-col-content">
+        <div class="sb-desc">${s.desc}</div>
+        ${s.dialogue ? `<div class="sb-dialogue">"${s.dialogue}"</div>` : ''}
+        ${s.narrator ? `<div class="sb-narrator">${s.narrator}</div>` : ''}
+        <div class="sb-tags">
+          <span class="sb-tag motion-tag">${MOTION_MAP[s.motion]||'→'} ${s.motion}</span>
+          <span class="sb-tag emotion-tag">${s.emotion}</span>
+          ${s.sfx ? `<span class="sb-tag sfx-tag">${s.sfx}</span>` : ''}
+        </div>
+      </div>
+      <div class="sb-col-motion">
+        <div class="sb-motion-icon">${MOTION_MAP[s.motion]||'→'}</div>
+        <div class="sb-motion-name">${s.motion}</div>
+      </div>
+      <div class="sb-col-actions" onclick="event.stopPropagation()">
+        <button class="sb-act-btn">编辑</button>
+        <button class="sb-act-btn">重抽</button>
+        <button class="sb-act-btn primary">生成视频</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectRow(el, idx) {
+  document.querySelectorAll('.sb-row').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectMotion(el) {
+  el.parentElement.querySelectorAll('.motion-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+}
+function selectShot(el) {
+  el.parentElement.querySelectorAll('.shot-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+}
+function selectEmotion(el) {
+  el.parentElement.querySelectorAll('.shot-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function setStep(n) {
+  document.querySelectorAll('.step-chip').forEach((el,i) => {
+    el.classList.remove('active','done');
+    if (i+1 < n) el.classList.add('done');
+    if (i+1 === n) el.classList.add('active');
+  });
+}
+
+function copyPrompt() {
+  const text = document.getElementById('prompt-en').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('已复制'));
+}
+
+function generateDemo() {
+  alert('Demo: 一键生成分镜\n\n实际流程:\n1. 编剧Agent → 生成剧情脚本\n2. 导演Agent → 设计分镜+镜头\n3. 运镜Agent → 自动标注运镜提示词\n4. 提示词组装 → 主体+场景+运镜+构图+风格\n5. 批量生成视频片段\n6. 转场+配音+BGM → 合成导出');
+}
+
+renderGrid();
+</script>
+</body>
+</html>

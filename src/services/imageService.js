@@ -223,7 +223,13 @@ function resolveProvider(dim) {
   for (const pid of order) {
     if (hasImageModel(pid)) return pid;
   }
-  throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key（如 jimeng、mxapi、nanobanana、zhipu、openai 等）。`);
+  // 搜索所有自定义供应商（不在硬编码列表中的）
+  for (const p of (settings.providers || [])) {
+    if (!p.enabled || !p.api_key) continue;
+    if (order.includes(p.id)) continue;
+    if ((p.models || []).some(m => m.use === 'image')) return p.id;
+  }
+  throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key。`);
 }
 
 const DEMO_COLORS = {
@@ -647,7 +653,7 @@ function _jimengRequest(ak, sk, query, body) {
   });
 }
 
-async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '' }) {
+async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '', referenceImages = [] }) {
   const rawKey = getApiKey('jimeng') || process.env.JIMENG_API_KEY;
   if (!rawKey) throw new Error('未配置即梦AI Key');
   if (!rawKey.includes(':')) throw new Error('即梦AI Key 格式错误，应为 AccessKeyId:SecretAccessKey');
@@ -676,10 +682,13 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
     const reqJson = JSON.stringify({
       logo_info: { add_logo: false }
     });
+    // 即梦 3.0+: image_urls 用于参考图 (角色一致性), 仅传公网 URL
+    const refUrls = (referenceImages || []).filter(u => /^https?:\/\//.test(u));
     const submitBody = JSON.stringify({
       req_key: reqKey,
       prompt: prompt.substring(0, 800),
       ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+      ...(refUrls.length ? { image_urls: refUrls.slice(0, 3) } : {}),
       seed: -1,
       width: 1536,
       height: 768,
@@ -738,8 +747,8 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
 }
 
 // ——— 主入口 ———
-async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [] }) {
-  const provider = resolveProvider(dim);
+async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [], provider: explicitProvider = null, model: explicitModel = null }) {
+  const provider = explicitProvider || resolveProvider(dim);
   const dimTag = dim === '3d' ? '3d' : '2d';
   const filename = `char_${dimTag}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -772,9 +781,50 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
     case 'zhipu':      filePath = await generateZhipuImage({ name, role, description, filename, race, species });  break;
     case 'stability':  filePath = await generateStabilityImage({ name, role, description, dim, filename, race, species }); break;
     case 'replicate':  filePath = await generateReplicateImage({ name, role, description, dim, filename, race, species }); break;
-    default:           throw new Error(`不支持的图片生成供应商: ${provider}`);
+    default:
+      // 自定义供应商：尝试 OpenAI 兼容 images/generations 接口
+      filePath = await generateCustomProviderImage({ provider, prompt, filename, aspectRatio });
+      break;
   }
   return { filePath, filename: path.basename(filePath) };
+}
+
+// 自定义供应商通用图片生成（OpenAI 兼容接口）
+async function generateCustomProviderImage({ provider, prompt, filename, aspectRatio }) {
+  const apiKey = getApiKey(provider);
+  if (!apiKey) throw new Error(`供应商 ${provider} 无 API Key`);
+  const settings = require('./settingsService').loadSettings();
+  const providerConfig = (settings.providers || []).find(p => p.id === provider);
+  if (!providerConfig) throw new Error(`供应商 ${provider} 不存在`);
+
+  const baseURL = providerConfig.api_url;
+  const imageModel = (providerConfig.models || []).find(m => m.use === 'image');
+  const modelId = imageModel?.id || 'dall-e-3';
+
+  console.log(`[ImageService] 自定义供应商 ${provider} (${providerConfig.name}), model=${modelId}`);
+
+  const OpenAI = require('openai');
+  const client = new OpenAI({ apiKey, baseURL: baseURL || undefined });
+
+  try {
+    const resp = await client.images.generate({
+      model: modelId,
+      prompt: prompt.substring(0, 1000),
+      n: 1,
+      size: aspectRatio === '16:9' ? '1024x576' : '1024x1024',
+    });
+    const url = resp.data?.[0]?.url;
+    if (!url) throw new Error('未返回图片 URL');
+
+    const destDir = imgDir(filename);
+    ensureDir();
+    const destPath = path.join(destDir, `${filename}.png`);
+    await downloadFile(url, destPath);
+    return destPath;
+  } catch (err) {
+    console.error(`[ImageService] 自定义供应商 ${provider} 生图失败:`, err.message);
+    throw err;
+  }
 }
 
 // 即梦AI 专用中文场景 prompt — 纯环境，绝对无人物
@@ -874,4 +924,89 @@ async function generateSceneImageWithRetry(opts) {
   return withRetry(() => _origGenerateSceneImage(opts), `场景「${opts.title}」`);
 }
 
-module.exports = { generateCharacterImage: generateCharacterImageWithRetry, generateSceneImage: generateSceneImageWithRetry, CHAR_IMG_DIR, SCENE_IMG_DIR };
+// ——— 分镜图生成（prompt 原样传入，不加前缀/后缀） ———
+async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', resolution = '2K', referenceImages = [] }) {
+  ensureDir();
+  const provider = resolveProvider('2d');
+  const destFilename = filename || `drama_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const refCount = (referenceImages || []).length;
+
+  console.log(`[ImageService] 分镜图 → provider=${provider}, prompt长度=${prompt?.length}, 参考图=${refCount}`);
+
+  let filePath;
+  switch (provider) {
+    case 'jimeng':
+      filePath = await generateJimengImage({ prompt, filename: destFilename, dim: '2d', referenceImages });
+      break;
+    case 'mxapi':
+      filePath = await generateMxapiImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
+      break;
+    case 'nanobanana':
+      filePath = await generateNanoBananaImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages });
+      break;
+    case 'zhipu':
+      // CogView 不支持 reference image, 通过 prompt 注入
+      filePath = await generateZhipuImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
+      break;
+    case 'openai':
+      filePath = await generateOpenAIImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
+      break;
+    case 'stability':
+      filePath = await generateStabilityImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
+      break;
+    case 'replicate':
+      filePath = await generateReplicateImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
+      break;
+    default:
+      filePath = await generateCustomProviderImage({ provider, prompt, filename: destFilename, aspectRatio });
+      break;
+  }
+  return { filePath, filename: path.basename(filePath) };
+}
+
+// ——— 三视图生成：并行生成正/侧/背 3 张独立图，比依赖 LLM 在单图里画 3 角度更可靠 ———
+async function generateCharacterThreeView(opts) {
+  const { name, role, description, dim, race, species, animStyle, aspectRatio, resolution, referenceImages } = opts || {};
+  if (!name) throw new Error('name 必填');
+
+  const baseDesc = description || '';
+  const views = [
+    { key: 'front', cn: '正面视图', en: 'front view, facing camera, full body, T-pose, neutral expression, character reference sheet, white clean background' },
+    { key: 'side',  cn: '侧面视图', en: 'side view profile, full body, T-pose, neutral expression, character reference sheet, white clean background' },
+    { key: 'back',  cn: '背面视图', en: 'back view facing away, full body, T-pose, neutral expression, character reference sheet, white clean background' },
+  ];
+
+  const tasks = views.map(v => {
+    const suffixedDesc = baseDesc + (baseDesc ? '，' : '') + v.cn + '，' + v.en;
+    return generateCharacterImageWithRetry({
+      name: `${name}_${v.key}`,
+      role,
+      description: suffixedDesc,
+      dim, race, species, animStyle,
+      mode: 'portrait',  // 关键：每张都是单角度全身图，不是 turnaround 拼图
+      aspectRatio: aspectRatio || '1:1',
+      resolution,
+      referenceImages,
+    }).then(r => ({ key: v.key, label: v.cn, ...r }))
+      .catch(e => ({ key: v.key, label: v.cn, error: e.message }));
+  });
+
+  const results = await Promise.all(tasks);
+  const ok = results.filter(r => !r.error);
+  if (ok.length === 0) {
+    throw new Error('三视图全部失败: ' + results.map(r => r.error).join('; '));
+  }
+
+  // 整理成 { front: {filename}, side: {...}, back: {...}, succeeded: 3, failed: 0 }
+  const out = { succeeded: ok.length, failed: results.length - ok.length };
+  results.forEach(r => { out[r.key] = r; });
+  return out;
+}
+
+module.exports = {
+  generateCharacterImage: generateCharacterImageWithRetry,
+  generateCharacterThreeView,
+  generateSceneImage: generateSceneImageWithRetry,
+  generateDramaImage,
+  CHAR_IMG_DIR, SCENE_IMG_DIR
+};

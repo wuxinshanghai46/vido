@@ -21,6 +21,7 @@ function getStoryConfig() {
 }
 
 // Anthropic Messages API（非 OpenAI 兼容）
+// 返回 { text, usage: { input_tokens, output_tokens } }
 function callAnthropicLLM(config, systemPrompt, userPrompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
@@ -46,7 +47,13 @@ function callAnthropicLLM(config, systemPrompt, userPrompt) {
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString());
           if (data.error) return reject(new Error(`Anthropic: ${data.error.message}`));
-          resolve(data.content[0].text);
+          resolve({
+            text: data.content[0].text,
+            usage: {
+              input_tokens: data.usage?.input_tokens || 0,
+              output_tokens: data.usage?.output_tokens || 0,
+            },
+          });
         } catch (e) { reject(e); }
       });
     });
@@ -56,24 +63,69 @@ function callAnthropicLLM(config, systemPrompt, userPrompt) {
   });
 }
 
-async function callLLM(systemPrompt, userPrompt) {
+/**
+ * 统一 LLM 调用入口（自动记录到 tokenTracker）
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @param {object} [opts] - { agentId?, userId?, requestId? } 追踪上下文
+ * @returns {string} 响应文本
+ */
+async function callLLM(systemPrompt, userPrompt, opts = {}) {
   const config = getStoryConfig();
   if (!config) throw new Error('未配置 AI 供应商，请在「AI 配置」页面添加供应商并设置 story 模型');
-  if (config.providerId === 'anthropic') {
-    return callAnthropicLLM(config, systemPrompt, userPrompt);
+
+  const tracker = (() => { try { return require('./tokenTracker'); } catch { return null; } })();
+  const startTime = Date.now();
+  let inputTokens = 0, outputTokens = 0, status = 'success', errorMsg = null, text = '';
+
+  try {
+    if (config.providerId === 'anthropic') {
+      const { text: t, usage } = await callAnthropicLLM(config, systemPrompt, userPrompt);
+      text = t;
+      inputTokens = usage.input_tokens;
+      outputTokens = usage.output_tokens;
+    } else {
+      const sdkOpts = { apiKey: config.apiKey };
+      if (config.baseURL) sdkOpts.baseURL = config.baseURL;
+      const client = new OpenAI(sdkOpts);
+      const completion = await client.chat.completions.create({
+        model: config.model,
+        max_tokens: 4096,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      });
+      text = completion.choices[0].message.content;
+      inputTokens = completion.usage?.prompt_tokens || 0;
+      outputTokens = completion.usage?.completion_tokens || 0;
+    }
+    return text;
+  } catch (e) {
+    status = 'fail';
+    errorMsg = e.message;
+    // 失败也要估算一个 input token（用字符数/4 粗略估算）
+    inputTokens = Math.ceil((String(systemPrompt).length + String(userPrompt).length) / 4);
+    throw e;
+  } finally {
+    if (tracker) {
+      try {
+        tracker.record({
+          provider: config.providerId,
+          model: config.model,
+          category: 'llm',
+          inputTokens,
+          outputTokens,
+          durationMs: Date.now() - startTime,
+          status,
+          errorMsg,
+          userId: opts.userId,
+          agentId: opts.agentId,
+          requestId: opts.requestId,
+        });
+      } catch {}
+    }
   }
-  const opts = { apiKey: config.apiKey };
-  if (config.baseURL) opts.baseURL = config.baseURL;
-  const client = new OpenAI(opts);
-  const completion = await client.chat.completions.create({
-    model: config.model,
-    max_tokens: 4096,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ]
-  });
-  return completion.choices[0].message.content;
 }
 
 // 导出供 server.js health 使用
@@ -198,13 +250,27 @@ async function generateStory({ theme, genre, duration, language = '中文', scen
   let slangContext = '';
   try { const { buildSlangContext } = require('./slangService'); slangContext = buildSlangContext(theme); } catch {}
   const perScene = Math.round(duration / sceneCount);
+  // 知识库注入：编剧 + 艺术总监 + 氛围 + 分镜 + 文案 + 市场调研（6 层创作视角）
+  let kbContext = '';
+  try {
+    const kb = require('./knowledgeBaseService');
+    const parts = [
+      kb.buildAgentContext('screenwriter', { genre: genre || theme, maxDocs: 2 }),
+      kb.buildAgentContext('art_director', { genre: genre || theme, maxDocs: 1 }),
+      kb.buildAgentContext('atmosphere', { genre, maxDocs: 2 }),
+      kb.buildAgentContext('storyboard', { genre, maxDocs: 2 }),
+      kb.buildAgentContext('copywriter', { genre, maxDocs: 1 }),
+      kb.buildAgentContext('market_research', { genre: genre || theme, maxDocs: 1 }),
+    ].filter(Boolean);
+    if (parts.length) kbContext = '\n\n' + parts.join('\n\n');
+  } catch (e) { /* ignore */ }
   const systemPrompt = `你是专业影视编剧和概念美术师，严格按 JSON 格式输出，不要任何额外内容。
 
 关键规则：
 1. characters 的 appearance（外貌特征）: 必须详细描述发型发色、脸型五官、体型身高、服装款式颜色、配饰等可视化特征（80-150字），这是生成角色设定图的关键信息。
 2. background（背景）: 只描述纯粹的环境场景画面，绝对不能包含任何人物。要详细描绘：具体地点、时间、天气、光线方向和颜色、环境物体细节、氛围感（80-150字），像给画家看的场景说明。
 3. visual_prompt（视频画面描述）: 用中文详细描述镜头类型+运动、光影效果、人物动作、画面氛围（100-200字），直接用于视频生成。
-4. characters_action（角色动作）: 描述角色在该场景中的具体动作、肢体语言、表情、互动关系（50-100字）。`;
+4. characters_action（角色动作）: 描述角色在该场景中的具体动作、肢体语言、表情、互动关系（50-100字）。${kbContext}`;
   const userPrompt = `创作视频剧本：
 主题：${theme}
 风格：${genre}

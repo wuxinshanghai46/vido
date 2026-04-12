@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const { generateStory, generateLongStory, refineScene, parseScript, callLLM } = require('../services/storyService');
-const { generateCharacterImage, generateSceneImage, CHAR_IMG_DIR, SCENE_IMG_DIR } = require('../services/imageService');
+const { generateCharacterImage, generateCharacterThreeView, generateSceneImage, CHAR_IMG_DIR, SCENE_IMG_DIR } = require('../services/imageService');
 const { getAvailableVoices } = require('../services/ttsService');
 const motionService = require('../services/motionService');
 
@@ -237,15 +237,63 @@ router.post('/import-novel', novelUpload.single('file'), async (req, res) => {
   }
 });
 
-// 生成角色形象图
+// 生成角色形象图（默认还会附带 3 张三视图，前端可选择单图模式跳过）
 router.post('/generate-character-image', async (req, res) => {
-  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [] } = req.body;
+  const {
+    name, role = 'main', description = '', dim = '2d', race = '人', species = '',
+    mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [],
+    skipThreeView = false,  // 仅当调用方明确不需要三视图时设为 true
+  } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: '请先填写角色名称' });
   }
   try {
     const result = await generateCharacterImage({ name: name.trim(), role, description, dim, race, species, mode, aspectRatio, resolution, referenceImages });
-    res.json({ success: true, data: { imageUrl: `/api/story/character-image/${result.filename}`, dim } });
+    const data = { imageUrl: `/api/story/character-image/${result.filename}`, dim };
+
+    // 自动附带三视图（除非显式跳过）
+    if (!skipThreeView) {
+      try {
+        const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio: '1:1', referenceImages });
+        const toUrl = (r) => r && r.filename ? `/api/story/character-image/${r.filename}` : null;
+        data.threeView = {
+          front: toUrl(tv.front),
+          side: toUrl(tv.side),
+          back: toUrl(tv.back),
+          succeeded: tv.succeeded,
+          failed: tv.failed,
+        };
+      } catch (e) {
+        console.warn(`[generate-character-image] 三视图生成失败: ${e.message}`);
+        data.threeViewError = e.message;
+      }
+    }
+
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 单独生成三视图（不返回主图，纯三视图调用）
+router.post('/generate-character-three-view', async (req, res) => {
+  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', aspectRatio = '1:1', referenceImages = [] } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, error: '请先填写角色名称' });
+  }
+  try {
+    const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio, referenceImages });
+    const toUrl = (r) => r && r.filename ? `/api/story/character-image/${r.filename}` : null;
+    res.json({
+      success: true,
+      data: {
+        front: toUrl(tv.front),
+        side: toUrl(tv.side),
+        back: toUrl(tv.back),
+        succeeded: tv.succeeded,
+        failed: tv.failed,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

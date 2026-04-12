@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { hashPassword, verifyPassword, hashToken, generateToken } = require('../utils/crypto');
-const { getUserByUsername, getUserByEmail, createUser, updateUser, getUserById,
+const { getUserByUsername, getUserByEmail, createUser, updateUser, getUserById, getRoleById,
         saveRefreshToken, getRefreshToken, deleteRefreshToken, deleteUserRefreshTokens } = require('../models/authStore');
 const { signToken, authenticate } = require('../middleware/auth');
 
@@ -122,7 +122,24 @@ function issueRefresh(userId) {
 }
 
 function safeUser(u) {
-  return { id: u.id, username: u.username, email: u.email, role: u.role, credits: u.credits, status: u.status, created_at: u.created_at, last_login: u.last_login };
+  // 计算有效权限 = 角色权限 ∪ 用户个人权限（admin 角色返回 ['*']）
+  let effectivePermissions = [];
+  const role = u.role ? getRoleById(u.role) : null;
+  const rolePerms = Array.isArray(role && role.permissions) ? role.permissions : [];
+  const userPerms = Array.isArray(u.permissions) ? u.permissions : [];
+  if (u.role === 'admin' || rolePerms.includes('*') || userPerms.includes('*')) {
+    effectivePermissions = ['*'];
+  } else {
+    effectivePermissions = Array.from(new Set([...rolePerms, ...userPerms]));
+  }
+  return {
+    id: u.id, username: u.username, email: u.email,
+    role: u.role, role_type: role ? (role.type || 'enterprise') : 'enterprise',
+    credits: u.credits, status: u.status,
+    effective_permissions: effectivePermissions,
+    allowed_models: (u.allowed_models && u.allowed_models.length) ? u.allowed_models : (role && role.allowed_models) || [],
+    created_at: u.created_at, last_login: u.last_login
+  };
 }
 
 // 修改密码

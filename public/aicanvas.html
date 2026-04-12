@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIDO - AI 画布</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.css" />
+  <link rel="stylesheet" href="/css/aicanvas.css?v=20260410e" />
+  <script src="/js/auth.js?v=20260410e"></script>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<header class="ac-topbar">
+  <div class="ac-topbar-left">
+    <button class="ac-logo-btn" onclick="location.href='/index.html'" title="返回首页">
+      <div class="ac-logo">V</div>
+    </button>
+    <input class="ac-project-name" id="ac-project-name" value="Untitled" onchange="onProjectRename()" />
+  </div>
+  <div class="ac-topbar-right">
+    <span class="ac-save-status" id="ac-save-status">就绪</span>
+    <span class="ac-credits" title="积分"><span id="ac-credits-value">—</span></span>
+    <button class="ac-topbar-btn" onclick="location.href='/index.html'" title="返回首页">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ═══ LEFT TOOLBAR ═══ -->
+<aside class="ac-toolbar">
+  <button class="ac-tb-plus" onclick="openAddNodeMenu(event)" title="添加节点 (Ctrl+K)">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <button class="ac-tb-btn" onclick="openAddNodeMenu(event)" title="节点库">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/></svg>
+  </button>
+  <button class="ac-tb-btn" onclick="openTemplates()" title="模板">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+  </button>
+  <button class="ac-tb-btn" onclick="toggleAgent()" title="Agent 对话">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </button>
+  <button class="ac-tb-btn" onclick="openHistory()" title="历史">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+  </button>
+  <button class="ac-tb-btn" onclick="openAssets()" title="素材">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
+  </button>
+</aside>
+
+<!-- ═══ CANVAS ═══ -->
+<main class="ac-canvas-area">
+  <div id="drawflow" class="ac-canvas"></div>
+
+  <!-- 空画布引导 -->
+  <div class="ac-empty-guide" id="ac-empty-guide">
+    <div class="ac-empty-hint">
+      <span class="ac-dblclick-ico">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </span>
+      <span>双击 · 画布自由生成，或查看模板</span>
+    </div>
+    <div class="ac-quick-actions">
+      <button class="ac-quick-btn" onclick="quickCreate('text2video')">
+        <span class="ac-quick-ico">🎬</span> 文字生视频
+      </button>
+      <button class="ac-quick-btn" onclick="quickCreate('img2bg')">
+        <span class="ac-quick-ico">🖼️</span> 图片换背景
+      </button>
+      <button class="ac-quick-btn" onclick="quickCreate('i2v')">
+        <span class="ac-quick-ico">✨</span> 首帧生成视频
+      </button>
+      <button class="ac-quick-btn" onclick="quickCreate('music2video')">
+        <span class="ac-quick-ico">🎵</span> 音频生视频
+      </button>
+      <button class="ac-quick-btn" onclick="openTemplates()">
+        <span class="ac-quick-ico">▦</span> 模板
+      </button>
+    </div>
+  </div>
+</main>
+
+<!-- ═══ AGENT PANEL ═══ -->
+<aside class="ac-agent" id="ac-agent">
+  <div class="ac-agent-head">
+    <span class="ac-agent-title" id="ac-agent-title">VIDO Agent</span>
+    <button class="ac-agent-btn" onclick="newAgentChat()" title="新对话">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="ac-agent-btn" onclick="toggleAgent()" title="收起">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="ac-agent-body" id="ac-agent-body">
+    <!-- 欢迎态 -->
+    <div class="ac-agent-welcome" id="ac-agent-welcome">
+      <div class="ac-agent-logo-big">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#ac-grad)" stroke-width="1.5"><defs><linearGradient id="ac-grad" x1="0" x2="24" y1="0" y2="24"><stop offset="0" stop-color="#4a6fff"/><stop offset="1" stop-color="#c54dff"/></linearGradient></defs><path d="M12 2l2.5 7h7.5l-6 4.5L18.5 21 12 16.5 5.5 21l2.5-7.5L2 9h7.5z"/></svg>
+      </div>
+      <div class="ac-agent-hi">Hi <span id="ac-agent-username">...</span>!</div>
+      <div class="ac-agent-headline">今天一起创作点什么？</div>
+      <div class="ac-agent-starters">
+        <button class="ac-starter" onclick="agentStarter('给我几个有创意的短视频故事点子')">
+          <span class="ac-starter-icon">✨</span>
+          <span class="ac-starter-text">给我点灵感</span>
+        </button>
+        <button class="ac-starter" onclick="agentStarter('帮我构思一个主角，包括外形和性格')">
+          <span class="ac-starter-icon">🎭</span>
+          <span class="ac-starter-text">构思个角色</span>
+        </button>
+        <button class="ac-starter" onclick="agentStarter('给我推荐一些风格参考的关键词')">
+          <span class="ac-starter-icon">🎨</span>
+          <span class="ac-starter-text">找些参考</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ac-agent-input-area">
+    <div class="ac-context-chips" id="ac-context-chips" style="display:none"></div>
+    <textarea class="ac-agent-input" id="ac-agent-input" placeholder="描述想法，或框选节点添加上下文..." rows="2"></textarea>
+    <div class="ac-agent-input-toolbar">
+      <span class="ac-model-chip">Pro</span>
+      <div style="flex:1"></div>
+      <button class="ac-agent-send" id="ac-agent-send-btn" onclick="sendAgentMessage()" title="发送 (Enter)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ FLOATING AGENT RE-OPEN BUTTON（面板折叠后显示） ═══ -->
+<button class="ac-agent-fab" id="ac-agent-fab" onclick="toggleAgent()" title="打开 Agent 对话" style="display:none">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+</button>
+
+<!-- ═══ BOTTOM TOOLBAR ═══ -->
+<div class="ac-bottom-toolbar">
+  <button class="ac-bt-btn" onclick="toggleGrid()" title="网格">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+  </button>
+  <button class="ac-bt-btn" onclick="fitView()" title="适应画布">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3M20 16v3a1 1 0 0 1-1 1h-3"/></svg>
+  </button>
+  <div class="ac-zoom-wrap">
+    <input type="range" class="ac-zoom-slider" id="ac-zoom-slider" min="25" max="200" value="100" oninput="onZoomSlider(this.value)" />
+    <span class="ac-zoom-val" id="ac-zoom-val">100%</span>
+  </div>
+  <button class="ac-bt-btn" onclick="openHelp()" title="帮助">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/><circle cx="12" cy="17" r="0.5" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<!-- ═══ NODE PALETTE POPUP ═══ -->
+<div class="ac-node-palette" id="ac-node-palette">
+  <input class="ac-palette-search" id="ac-palette-search" placeholder="搜索节点类型..." oninput="filterNodePalette(this.value)" />
+  <div class="ac-palette-list" id="ac-palette-list"></div>
+</div>
+
+<!-- ═══ TOAST ═══ -->
+<div class="ac-toast-wrap" id="ac-toast-wrap"></div>
+
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.js"></script>
+<script src="/js/aicanvas.js?v=20260410e"></script>
+</body>
+</html>

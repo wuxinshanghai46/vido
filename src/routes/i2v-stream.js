@@ -1,9 +1,15 @@
 const path = require('path');
 const fs = require('fs');
+const db = require('../models/database');
+const { userFromRequest, ownsRow } = require('../middleware/streamAuth');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 
 module.exports = (req, res) => {
+  const user = userFromRequest(req);
+  if (!user) return res.status(401).json({ error: '未登录' });
   const taskId = req.params.id;
+  const task = db.getI2VTask(taskId);
+  if (!task || !ownsRow(user, task)) return res.status(404).json({ error: '视频不存在' });
   const videoPath = path.join(OUTPUT_DIR, 'i2v_videos', taskId, 'result.mp4');
   if (!fs.existsSync(videoPath)) return res.status(404).json({ error: '视频不存在' });
 

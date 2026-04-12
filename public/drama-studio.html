@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>VIDO · AI 网剧编辑器 (原型)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="/js/auth.js?v=20260412g"></script>
+<style>
+/* ═══════════════════════════════════════════════
+   VIDO AI 网剧编辑器 v1 (原型)
+   参考: 即梦 jianying drama studio + v18 三色配色
+   ═══════════════════════════════════════════════ */
+:root {
+  --c-cyan:        #21d4fd;
+  --c-cyan-d:      #0099d4;
+  --c-purple:      #8b5cf6;
+  --c-pink:        #ec4899;
+  --c-grad:        linear-gradient(135deg, #21d4fd 0%, #8b5cf6 50%, #ec4899 100%);
+  --c-grad-2:      linear-gradient(135deg, #8b5cf6 0%, #21d4fd 100%);
+  --c-cyan-soft:   rgba(33,212,253,.14);
+  --c-purple-soft: rgba(139,92,246,.16);
+  --c-glow-purple: rgba(139,92,246,.35);
+  --c-glow-cyan:   rgba(33,212,253,.32);
+
+  --c-bg:          #08091a;
+  --c-bg-2:        #11122a;
+  --c-bg-3:        #1a1c3d;
+  --c-bg-4:        #232651;
+  --c-bg-input:    #0c0e22;
+
+  --c-text:        #f1f5fc;
+  --c-text-2:      #a5acc9;
+  --c-text-3:      #6e7497;
+
+  --c-border:      rgba(255,255,255,.06);
+  --c-border-2:    rgba(165,172,201,.16);
+
+  --r:             8px;
+  --r-lg:          12px;
+  --r-pill:        999px;
+  --ease:          .2s cubic-bezier(.34,.69,.1,1);
+
+  --topbar-h:      48px;
+  --statusbar-h:   28px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, textarea { font-family: inherit; }
+
+/* ═════════ APP LAYOUT ═════════ */
+.app {
+  display: grid;
+  grid-template-rows: var(--topbar-h) 1fr auto var(--statusbar-h);
+  height: 100vh;
+}
+
+/* ═════════ TOPBAR 48px (横向滚动 v3) ═════════ */
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  background: rgba(17,18,42,.86);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--c-border);
+  gap: 8px;
+  font-size: 12px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+}
+.topbar::-webkit-scrollbar { display: none; }
+.tb-avatar, .tb-back { position: sticky; }
+
+/* 返回按钮 */
+.tb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r);
+  color: var(--c-text-2);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all var(--ease);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.tb-back:hover {
+  color: var(--c-cyan);
+  border-color: rgba(33,212,253,.3);
+  background: var(--c-cyan-soft);
+}
+.tb-back svg { width: 14px; height: 14px; }
+
+.tb-logo {
+  display: flex; align-items: center; gap: 6px;
+  font-weight: 800; font-size: 14px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+@media (max-width: 1280px) {
+  .tb-back span { display: none; }
+  .topbar { gap: 6px; padding: 0 10px; }
+}
+.tb-logo-mark {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: var(--c-grad-2);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 900; font-size: 13px;
+  box-shadow: 0 3px 10px var(--c-glow-purple);
+}
+
+/* —— AI 助手开关 (带 tooltip) —— */
+.ai-switch {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 8px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: all var(--ease);
+  flex-shrink: 0;
+  position: relative;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.ai-switch:hover { color: var(--c-text); border-color: var(--c-border-2); }
+.ai-switch.on {
+  background: var(--c-cyan-soft);
+  border-color: rgba(33,212,253,.45);
+  color: var(--c-cyan);
+}
+.ai-switch.on .ai-label-status { color: var(--c-cyan); }
+.ai-switch.on .ai-toggle { background: var(--c-cyan); }
+.ai-switch.on .ai-toggle::after { left: 14px; }
+
+.ai-toggle {
+  position: relative;
+  width: 26px; height: 14px;
+  background: #2a2d4d;
+  border-radius: 10px;
+  transition: background var(--ease);
+  flex-shrink: 0;
+}
+.ai-toggle::after {
+  content: '';
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 10px; height: 10px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left var(--ease);
+}
+
+.ai-label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ai-label-text::before { content: '✦'; font-size: 10px; }
+.ai-label-status {
+  font-size: 9px;
+  color: var(--c-text-3);
+  margin-left: 2px;
+  font-weight: 500;
+}
+
+/* tooltip 浮窗 */
+.ai-switch::before {
+  content: '点击开/关 AI 智能助手 — 自动补全提示词、场景描述、台词润色';
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 240px;
+  padding: 8px 12px;
+  background: rgba(8,9,26,.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r);
+  font-size: 10px;
+  color: var(--c-text-2);
+  letter-spacing: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all .18s ease;
+  pointer-events: none;
+  z-index: 200;
+  font-weight: 500;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.ai-switch:hover::before {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+@media (max-width: 1280px) {
+  .ai-switch .ai-label-status { display: none; }
+}
+
+.tb-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  background: var(--c-bg-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  color: var(--c-text-2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--ease);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tb-pill:hover { color: var(--c-text); border-color: var(--c-border-2); }
+.tb-pill svg { width: 12px; height: 12px; }
+.tb-pill .arrow { font-size: 9px; opacity: .6; }
+
+/* —— 剧集滑动选择器 —— */
+.eps-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  position: relative;
+}
+.eps-label {
+  font-size: 11px;
+  color: var(--c-text-3);
+  font-weight: 600;
+  flex-shrink: 0;
+  letter-spacing: .3px;
+}
+.eps-track {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  padding: 2px 0;
+}
+.eps-track::-webkit-scrollbar { display: none; }
+.eps-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--c-bg-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  font-size: 11px;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: all var(--ease);
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+.eps-chip:hover { color: var(--c-text); border-color: var(--c-border-2); }
+.eps-chip.active {
+  background: var(--c-cyan-soft);
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+  box-shadow: 0 0 0 1px var(--c-cyan-soft);
+}
+.eps-chip .eps-num {
+  font-weight: 700;
+  font-family: 'SF Mono', monospace;
+}
+.eps-chip .eps-dur {
+  font-size: 9px;
+  color: var(--c-text-3);
+  background: rgba(255,255,255,.04);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.eps-chip.active .eps-dur { color: var(--c-cyan); background: rgba(33,212,253,.1); }
+
+.eps-more {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c-bg-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: all var(--ease);
+  position: relative;
+}
+.eps-more:hover { color: var(--c-cyan); border-color: rgba(33,212,253,.3); }
+.eps-more svg { width: 14px; height: 14px; }
+
+/* —— 剧集下拉面板 —— */
+.eps-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-height: 460px;
+  background: rgba(17,18,42,.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-lg);
+  box-shadow: 0 16px 50px rgba(0,0,0,.6), 0 0 0 1px var(--c-purple-soft);
+  z-index: 200;
+  overflow: hidden;
+  display: none;
+  flex-direction: column;
+}
+.eps-dropdown.show { display: flex; }
+.eps-dd-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--c-border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.eps-dd-title { font-size: 12px; font-weight: 700; }
+.eps-dd-add {
+  font-size: 10px;
+  padding: 4px 12px;
+  background: var(--c-grad-2);
+  color: #fff;
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+.eps-dd-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  scrollbar-width: thin;
+}
+.eps-dd-item {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 12px;
+  padding: 8px;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: all var(--ease);
+  align-items: center;
+  margin-bottom: 4px;
+}
+.eps-dd-item:hover { background: rgba(255,255,255,.04); }
+.eps-dd-item.active {
+  background: var(--c-cyan-soft);
+  box-shadow: 0 0 0 1px var(--c-cyan);
+}
+.eps-dd-thumb {
+  aspect-ratio: 16/9;
+  background: linear-gradient(135deg, #2a1a4a, #1a2438);
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+.eps-dd-thumb::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 60%, rgba(139,92,246,.4), transparent 60%);
+}
+.eps-dd-info { min-width: 0; }
+.eps-dd-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.eps-dd-meta {
+  font-size: 10px;
+  color: var(--c-text-3);
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+}
+.eps-dd-meta b { color: var(--c-cyan); font-weight: 600; }
+.eps-dd-status {
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+.eps-dd-status.done { background: rgba(16,185,129,.15); color: #34d399; }
+.eps-dd-status.draft { background: rgba(245,158,11,.15); color: #fbbf24; }
+.eps-dd-status.empty { background: rgba(255,255,255,.06); color: var(--c-text-3); }
+.eps-dd-download {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  background: var(--c-cyan-soft);
+  border: 1px solid rgba(33,212,253,.35);
+  color: var(--c-cyan);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  margin-left: 8px;
+  flex-shrink: 0;
+  transition: all var(--ease);
+}
+.eps-dd-download:hover { background: var(--c-cyan); color: #08323a; }
+.eps-dd-item { grid-template-columns: 64px 1fr auto auto; }
+
+.tb-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px;
+  background: var(--c-bg-3);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  color: var(--c-text-2);
+  font-size: 11px;
+  transition: all var(--ease);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tb-btn:hover { color: var(--c-cyan); border-color: rgba(33,212,253,.3); }
+.tb-btn-grad {
+  background: var(--c-grad-2);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 3px 10px var(--c-glow-purple);
+}
+@media (max-width: 1440px) {
+  .tb-btn.hide-md { display: none; }
+}
+@media (max-width: 1280px) {
+  .tb-btn.hide-sm { display: none; }
+}
+.tb-btn-grad:hover {
+  filter: brightness(1.08);
+  color: #fff;
+  border-color: transparent;
+}
+
+.tb-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--c-grad-2);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 12px; font-weight: 700;
+  border: 2px solid var(--c-border-2);
+}
+
+/* ═════════ MAIN GRID (响应式 - v3 删左工具栏) ═════════ */
+.main {
+  display: grid;
+  grid-template-columns: 220px 1fr 340px;
+  height: 100%;
+  overflow: hidden;
+}
+@media (max-width: 1440px) {
+  .main { grid-template-columns: 200px 1fr 320px; }
+}
+@media (max-width: 1280px) {
+  .main { grid-template-columns: 180px 1fr 290px; }
+}
+@media (max-width: 1100px) {
+  .main { grid-template-columns: 160px 1fr 270px; }
+}
+
+/* —— 工具栏 56px —— */
+.tools {
+  background: var(--c-bg-2);
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+}
+.tool-btn {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  color: var(--c-text-2);
+  font-size: 9px;
+  transition: all var(--ease);
+  position: relative;
+}
+.tool-btn svg { width: 18px; height: 18px; }
+.tool-btn:hover { color: var(--c-text); background: rgba(255,255,255,.04); }
+.tool-btn.active {
+  color: var(--c-cyan);
+  background: var(--c-cyan-soft);
+}
+.tool-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -12px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 22px;
+  background: var(--c-cyan);
+  border-radius: 0 2px 2px 0;
+}
+.tool-divider {
+  width: 28px; height: 1px;
+  background: var(--c-border);
+  margin: 4px 0;
+}
+
+/* —— 分镜列表 220px —— */
+.shots {
+  background: var(--c-bg-2);
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.shots-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+.shots-title {
+  font-size: 12px; font-weight: 700;
+  color: var(--c-text);
+}
+.shots-count {
+  font-size: 10px;
+  padding: 2px 8px;
+  background: var(--c-cyan-soft);
+  color: var(--c-cyan);
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+.shots-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-2) transparent;
+}
+.shots-list::-webkit-scrollbar { width: 6px; }
+.shots-list::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 3px; }
+
+.shot-item {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--r);
+  cursor: pointer;
+  margin-bottom: 6px;
+  transition: all var(--ease);
+  border: 1px solid transparent;
+}
+.shot-item:hover { background: rgba(255,255,255,.03); }
+.shot-item.active {
+  background: var(--c-purple-soft);
+  border-color: var(--c-purple);
+  box-shadow: 0 0 0 1px var(--c-purple), 0 4px 16px var(--c-glow-purple);
+}
+.shot-num {
+  font-size: 11px;
+  color: var(--c-text-3);
+  font-weight: 700;
+  text-align: center;
+  padding-top: 18px;
+}
+.shot-item.active .shot-num { color: var(--c-cyan); }
+
+.shot-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--c-bg-3);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+}
+.shot-thumb-ph {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  color: var(--c-text-3);
+  background: linear-gradient(135deg, var(--c-bg-3), var(--c-bg-4));
+}
+.shot-thumb.has-img {
+  background: linear-gradient(135deg, #2a1a4a, #1a2438, #0e1a3d);
+}
+.shot-thumb.has-img::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 60%, rgba(139,92,246,.5), transparent 60%);
+}
+.shot-text {
+  font-size: 10px;
+  color: var(--c-text-2);
+  line-height: 1.4;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.shot-item.active .shot-text { color: var(--c-text); }
+
+/* —— 中央编辑区 —— */
+.center {
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  overflow: hidden;
+}
+.center-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg-2);
+}
+.center-title {
+  font-size: 12px; font-weight: 700;
+}
+.center-title .ratio {
+  font-size: 10px;
+  color: var(--c-text-3);
+  margin-left: 8px;
+  font-weight: 500;
+}
+.center-actions { display: flex; gap: 6px; }
+.center-icon-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: var(--c-text-2);
+  transition: all var(--ease);
+  border: 1px solid var(--c-border);
+  background: var(--c-bg-3);
+}
+.center-icon-btn:hover { color: var(--c-cyan); border-color: rgba(33,212,253,.3); }
+.center-icon-btn svg { width: 14px; height: 14px; }
+
+.center-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: thin;
+}
+@media (max-width: 1280px) {
+  .center-body { padding: 10px; gap: 10px; }
+}
+
+/* 4 个画面 grid - 响应式 4列/2列 */
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+@media (max-width: 1440px) {
+  .frame-grid { gap: 8px; }
+}
+@media (max-width: 1280px) {
+  .frame-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+}
+.frame {
+  aspect-ratio: 16/9;
+  background: var(--c-bg-2);
+  border: 1.5px dashed var(--c-border-2);
+  border-radius: var(--r);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 6px;
+  color: var(--c-text-3);
+  font-size: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.frame:hover { border-color: var(--c-cyan); color: var(--c-cyan); background: rgba(33,212,253,.04); }
+.frame .frame-label {
+  position: absolute;
+  top: 8px; left: 8px;
+  font-size: 9px;
+  color: var(--c-text-3);
+  background: rgba(0,0,0,.45);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.frame .frame-icon {
+  font-size: 26px;
+  opacity: .35;
+}
+.frame.has-img {
+  background: linear-gradient(135deg, #1f1448 0%, #0a1838 50%, #1a0a3d 100%);
+  border-style: solid;
+  border-color: var(--c-purple);
+  color: var(--c-text);
+}
+.frame.has-img::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(33,212,253,.3), transparent 60%);
+  pointer-events: none;
+}
+.frame.has-img .frame-icon { display: none; }
+
+/* 提示词区 */
+.section-card {
+  background: var(--c-bg-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+}
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-text-2);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.section-title::before {
+  content: '';
+  width: 3px; height: 12px;
+  background: var(--c-grad);
+  border-radius: 2px;
+}
+.section-actions { display: flex; gap: 6px; }
+.mini-btn {
+  font-size: 10px;
+  padding: 3px 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-pill);
+  color: var(--c-text-2);
+  transition: all var(--ease);
+}
+.mini-btn:hover { color: var(--c-cyan); border-color: rgba(33,212,253,.3); }
+.mini-btn.primary {
+  background: var(--c-grad-2);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.prompt-ta {
+  width: 100%;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  color: var(--c-text);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+  transition: border-color var(--ease);
+}
+.prompt-ta:focus { border-color: var(--c-purple); box-shadow: 0 0 0 3px var(--c-purple-soft); }
+
+.gen-row {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.gen-input-mini {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  font-size: 11px;
+  color: var(--c-text-2);
+}
+.gen-input-mini input {
+  width: 30px;
+  background: transparent;
+  border: none; outline: none;
+  color: var(--c-text);
+  text-align: center;
+}
+.gen-go {
+  margin-left: auto;
+  padding: 7px 22px;
+  background: var(--c-grad-2);
+  color: #fff;
+  font-size: 12px; font-weight: 700;
+  border-radius: var(--r-pill);
+  box-shadow: 0 4px 14px var(--c-glow-purple);
+  transition: all var(--ease);
+}
+.gen-go:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+/* —— 对话列表 (替代旧的 textarea 文案) —— */
+.dialogue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dialogue-row {
+  display: grid;
+  grid-template-columns: 56px 30px 90px 1fr 24px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  transition: all var(--ease);
+}
+.dialogue-row:hover { border-color: var(--c-border-2); }
+.dialogue-row.active {
+  border-color: var(--c-purple);
+  background: rgba(139,92,246,.06);
+  box-shadow: 0 0 0 1px var(--c-purple-soft);
+}
+.dlg-time {
+  font-size: 11px;
+  color: var(--c-cyan);
+  font-family: 'SF Mono', monospace;
+  font-weight: 600;
+  text-align: center;
+  background: var(--c-cyan-soft);
+  padding: 4px 0;
+  border-radius: 4px;
+}
+.dlg-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c-border-2);
+}
+.dlg-avatar.a1 { background: linear-gradient(135deg, #5fa8ff, #1e3a8a); }
+.dlg-avatar.a2 { background: linear-gradient(135deg, #f97316, #92400e); }
+.dlg-avatar.a3 { background: linear-gradient(135deg, #a78bfa, #6d28d9); }
+.dlg-avatar.a4 { background: linear-gradient(135deg, #34d399, #065f46); }
+.dlg-name {
+  font-size: 11px;
+  color: var(--c-text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dlg-name-tag {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--c-text-3);
+  margin-top: 1px;
+}
+.dlg-text {
+  font-size: 12px;
+  color: var(--c-text);
+  line-height: 1.5;
+  background: transparent;
+  border: none;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+  resize: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background var(--ease);
+}
+.dlg-text:hover { background: rgba(255,255,255,.03); }
+.dlg-text:focus { background: var(--c-bg-3); }
+.dlg-del {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+  color: var(--c-text-3);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--ease);
+}
+.dlg-del:hover { color: #f87171; background: rgba(248,113,113,.1); }
+
+.dialogue-add {
+  margin-top: 8px;
+  padding: 9px 0;
+  width: 100%;
+  background: rgba(255,255,255,.03);
+  border: 1px dashed var(--c-border-2);
+  border-radius: var(--r);
+  color: var(--c-text-3);
+  font-size: 11px;
+  transition: all var(--ease);
+}
+.dialogue-add:hover {
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+  background: var(--c-cyan-soft);
+}
+
+/* —— 已生成视频区 (v3) —— */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.video-card {
+  position: relative;
+  aspect-ratio: 9/16;
+  border-radius: var(--r);
+  overflow: hidden;
+  background: linear-gradient(180deg, #1a1c3d, #08091a);
+  border: 1px solid var(--c-border-2);
+  cursor: zoom-in;
+  transition: all var(--ease);
+}
+.video-card:hover {
+  border-color: var(--c-cyan);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px var(--c-glow-cyan);
+}
+.video-card-thumb {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(139,92,246,.4), transparent 60%),
+              linear-gradient(180deg, #2a1a4a 0%, #0c0e22 100%);
+}
+.video-card.v2 .video-card-thumb { background: radial-gradient(circle at 50% 40%, rgba(33,212,253,.4), transparent 60%), linear-gradient(180deg, #1e3a5a 0%, #0c0e22 100%); }
+.video-card.v3 .video-card-thumb { background: radial-gradient(circle at 50% 40%, rgba(236,72,153,.4), transparent 60%), linear-gradient(180deg, #4a1838 0%, #0c0e22 100%); }
+.video-card.v4 .video-card-thumb { background: radial-gradient(circle at 50% 40%, rgba(34,197,94,.35), transparent 60%), linear-gradient(180deg, #1a4a2a 0%, #0c0e22 100%); }
+.video-card-play {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid #fff;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  z-index: 2;
+}
+.video-card-info {
+  position: absolute;
+  left: 8px; right: 8px; bottom: 6px;
+  z-index: 3;
+}
+.video-card-info h5 {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 2px;
+  text-shadow: 0 1px 4px rgba(0,0,0,.8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.video-card-info span {
+  font-size: 9px;
+  color: rgba(255,255,255,.7);
+  font-family: 'SF Mono', monospace;
+}
+.video-card-fade {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 50%;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.8));
+}
+
+/* lightbox 放大 */
+.video-lightbox {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.92);
+  z-index: 2000;
+  align-items: center; justify-content: center;
+  padding: 40px;
+  cursor: zoom-out;
+}
+.video-lightbox.show { display: flex; }
+.video-lightbox-inner {
+  max-width: 90vw;
+  max-height: 90vh;
+  aspect-ratio: 9/16;
+  background: var(--c-bg-2);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 24px 80px rgba(0,0,0,.7), 0 0 0 1px var(--c-purple-soft);
+}
+.video-lightbox-inner .video-card-thumb { position: absolute; inset: 0; }
+.video-lightbox-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 36px; height: 36px;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* —— 右侧 380px —— */
+.right {
+  background: var(--c-bg-2);
+  border-left: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.right-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+@media (max-width: 1280px) {
+  .right-body { padding: 10px; gap: 10px; }
+}
+.right-section .section-card { padding: 12px; }
+
+/* —— 角色卡片 - 角色三视图样式 (取代圆形头像) —— */
+.char-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-2) transparent;
+  padding-bottom: 6px;
+  scroll-snap-type: x mandatory;
+}
+.char-grid::-webkit-scrollbar { height: 5px; }
+.char-grid::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 3px; }
+.char-grid::-webkit-scrollbar-track { background: transparent; }
+.char-card {
+  flex: 0 0 88px;
+  display: flex; flex-direction: column;
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: all var(--ease);
+  border: 1px solid var(--c-border-2);
+  scroll-snap-align: start;
+  overflow: hidden;
+  background: var(--c-bg-3);
+}
+.char-card:hover {
+  border-color: var(--c-cyan);
+  transform: translateY(-2px);
+}
+.char-card.active {
+  border-color: var(--c-purple);
+  box-shadow: 0 0 0 2px var(--c-purple), 0 8px 24px var(--c-glow-purple);
+}
+.char-portrait {
+  width: 100%;
+  aspect-ratio: 3/4;
+  position: relative;
+  overflow: hidden;
+}
+/* 角色全身像渐变模拟 (实际项目时替换为真实三视图 PNG) */
+.char-portrait.a1 { background: linear-gradient(180deg, #1e3a8a 0%, #3b82f6 35%, #1e3a8a 60%, #0c1e3d 100%); }
+.char-portrait.a2 { background: linear-gradient(180deg, #92400e 0%, #f97316 35%, #c2410c 60%, #431407 100%); }
+.char-portrait.a3 { background: linear-gradient(180deg, #6d28d9 0%, #a78bfa 35%, #7c3aed 60%, #2e1065 100%); }
+.char-portrait.a4 { background: linear-gradient(180deg, #065f46 0%, #34d399 35%, #059669 60%, #022c22 100%); }
+/* 简易角色剪影 (头 + 肩) 用伪元素叠加 */
+.char-portrait::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  width: 30%;
+  aspect-ratio: 1/1;
+  background: rgba(255,255,255,.18);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  filter: blur(0.5px);
+}
+.char-portrait::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 75%;
+  height: 50%;
+  background: rgba(255,255,255,.10);
+  border-radius: 40% 40% 0 0;
+  transform: translateX(-50%);
+  filter: blur(1px);
+}
+.char-name {
+  font-size: 11px;
+  color: var(--c-text);
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 4px;
+  background: rgba(0,0,0,.35);
+  border-top: 1px solid var(--c-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.char-card.active .char-name { color: var(--c-cyan); background: var(--c-purple-soft); }
+
+/* 旧 char-avatar (在 dialogue-row 里仍要用) —— 保留圆形 */
+.char-avatar {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--c-border-2);
+  position: relative;
+  overflow: hidden;
+}
+.char-card.active .char-avatar { border-color: var(--c-purple); box-shadow: 0 0 0 3px var(--c-purple-soft); }
+.char-avatar.a1 { background: linear-gradient(135deg, #5fa8ff, #1e3a8a); }
+.char-avatar.a2 { background: linear-gradient(135deg, #f97316, #92400e); }
+.char-avatar.a3 { background: linear-gradient(135deg, #a78bfa, #6d28d9); }
+.char-avatar.a4 { background: linear-gradient(135deg, #34d399, #065f46); }
+.char-name {
+  font-size: 10px;
+  color: var(--c-text-2);
+  text-align: center;
+  max-width: 64px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 场景 - 横向滑动 */
+.scene-grid {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-2) transparent;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+}
+.scene-grid::-webkit-scrollbar { height: 5px; }
+.scene-grid::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 3px; }
+.scene-card {
+  position: relative;
+  flex: 0 0 140px;
+  width: 140px;
+  height: 80px;
+  border-radius: var(--r);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--c-border-2);
+  transition: all var(--ease);
+  scroll-snap-align: start;
+}
+.scene-card:hover { border-color: var(--c-cyan); transform: translateY(-2px); }
+.scene-card.s1 { background: linear-gradient(135deg, #1e3a8a 0%, #0c0e22 100%); }
+.scene-card.s2 { background: linear-gradient(135deg, #6d28d9 0%, #1a1c3d 100%); }
+.scene-card.s3 { background: linear-gradient(135deg, #be185d 0%, #1a1c3d 100%); }
+.scene-card.s4 { background: linear-gradient(135deg, #047857 0%, #0c0e22 100%); }
+.scene-name {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 4px 8px;
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.85));
+  font-size: 10px;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 物品 - 横向滑动 */
+.item-grid {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-2) transparent;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+}
+.item-grid::-webkit-scrollbar { height: 5px; }
+.item-grid::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 3px; }
+.item-card {
+  flex: 0 0 60px;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  background: var(--c-bg-3);
+  border: 1px solid var(--c-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all var(--ease);
+  position: relative;
+  scroll-snap-align: start;
+}
+.item-card:hover { border-color: var(--c-cyan); }
+.item-card.i1 { background: linear-gradient(135deg, #b45309, #78350f); }
+.item-card.i2 { background: linear-gradient(135deg, #7c2d12, #431407); }
+.item-card.i3 { background: linear-gradient(135deg, #be185d, #500724); }
+.item-card.i4 { background: linear-gradient(135deg, #0e7490, #083344); }
+.item-card.i5 { background: linear-gradient(135deg, #4338ca, #1e1b4b); }
+.item-card.i6 { background: linear-gradient(135deg, #b91c1c, #450a0a); }
+.item-card.i7 { background: linear-gradient(135deg, #15803d, #052e16); }
+.item-card.i8 { background: linear-gradient(135deg, #a16207, #422006); }
+.item-name {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 2px 4px;
+  background: rgba(0,0,0,.6);
+  font-size: 8px;
+  color: #fff;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* ═════════ 设置弹窗 (集成画风/运镜/比例/模型) ═════════ */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(8,9,26,.78);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-card {
+  width: 540px;
+  max-width: 92vw;
+  max-height: 88vh;
+  background: linear-gradient(160deg, rgba(26,28,61,.96), rgba(17,18,42,.98));
+  border: 1px solid var(--c-border-2);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px var(--c-purple-soft);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--c-border);
+}
+.modal-title {
+  font-size: 14px; font-weight: 700;
+  background: var(--c-grad-2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.modal-close {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: var(--c-text-2);
+  transition: all var(--ease);
+}
+.modal-close:hover { background: rgba(255,255,255,.06); color: var(--c-text); }
+.modal-body {
+  padding: 18px;
+  overflow-y: auto;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.set-field {
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.set-field.full { grid-column: 1 / -1; }
+.set-label {
+  font-size: 11px;
+  color: var(--c-text-2);
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.set-select, .set-input {
+  padding: 9px 12px;
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-border-2);
+  border-radius: var(--r);
+  color: var(--c-text);
+  font-size: 12px;
+  outline: none;
+  transition: all var(--ease);
+  font-family: inherit;
+}
+.set-select:focus, .set-input:focus {
+  border-color: var(--c-purple);
+  box-shadow: 0 0 0 3px var(--c-purple-soft);
+}
+.modal-foot {
+  padding: 14px 18px;
+  border-top: 1px solid var(--c-border);
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.modal-btn {
+  padding: 9px 22px;
+  border-radius: var(--r);
+  font-size: 12px; font-weight: 700;
+  transition: all var(--ease);
+}
+.modal-btn.cancel {
+  background: rgba(255,255,255,.04);
+  color: var(--c-text-2);
+  border: 1px solid var(--c-border-2);
+}
+.modal-btn.cancel:hover { color: var(--c-text); }
+.modal-btn.save {
+  background: var(--c-grad-2);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--c-glow-purple);
+}
+.modal-btn.save:hover { filter: brightness(1.1); }
+
+/* 平台小说选择器 item */
+.novel-pick-item {
+  padding: 12px 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r);
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.novel-pick-item:hover {
+  border-color: var(--c-cyan);
+  background: var(--c-cyan-soft);
+  transform: translateY(-1px);
+}
+
+/* ═════════ ACTION BAR 64px (流水线 + 3 大 CTA) ═════════ */
+.actionbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(17,18,42,.92);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--c-border);
+  border-bottom: 1px solid var(--c-border);
+  min-height: 60px;
+}
+/* 6 步流水线 */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0;
+}
+.pipeline::-webkit-scrollbar { display: none; }
+.pipe-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+  transition: all var(--ease);
+  position: relative;
+  flex-shrink: 0;
+}
+.pipe-step .pipe-num {
+  width: 16px; height: 16px;
+  background: var(--c-bg-3);
+  border-radius: 50%;
+  font-size: 9px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--c-text-3);
+}
+.pipe-step.done {
+  background: rgba(16,185,129,.10);
+  border-color: rgba(16,185,129,.35);
+  color: #34d399;
+}
+.pipe-step.done .pipe-num { background: #10b981; color: #fff; }
+.pipe-step.active {
+  background: var(--c-cyan-soft);
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+  box-shadow: 0 0 0 2px var(--c-cyan-soft);
+}
+.pipe-step.active .pipe-num {
+  background: var(--c-cyan);
+  color: #08323a;
+  animation: pipe-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pipe-pulse { 50% { opacity: .6; } }
+.pipe-arrow {
+  color: var(--c-text-3);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* 3 大 CTA */
+.cta-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 700;
+  transition: all var(--ease);
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cta-btn:hover { transform: translateY(-1px); }
+.cta-btn.fast {
+  background: var(--c-cyan-soft);
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+}
+.cta-btn.fast:hover { background: rgba(33,212,253,.22); }
+.cta-btn.batch {
+  background: var(--c-purple-soft);
+  border-color: var(--c-purple);
+  color: var(--c-purple);
+}
+.cta-btn.batch:hover { background: rgba(139,92,246,.24); }
+.cta-btn.hi {
+  background: var(--c-grad-2);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--c-glow-purple);
+}
+.cta-btn.hi:hover { box-shadow: 0 8px 24px var(--c-glow-purple); filter: brightness(1.08); }
+.cta-btn svg { width: 14px; height: 14px; }
+@media (max-width: 1280px) {
+  .cta-btn { padding: 8px 14px; font-size: 11px; }
+  .cta-btn .cta-text { display: none; }
+  .cta-btn { padding: 8px 12px; }
+}
+
+/* ═════════ STATUS BAR 28px ═════════ */
+.statusbar {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: rgba(8,9,26,.92);
+  border-top: 1px solid var(--c-border);
+  font-size: 10px;
+  color: var(--c-text-3);
+  gap: 24px;
+}
+.stat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stat-item b {
+  color: var(--c-cyan);
+  font-weight: 600;
+  font-family: 'SF Mono', monospace;
+}
+.stat-item.warn b { color: #f59e0b; }
+.stat-item.ok b { color: #10b981; }
+.stat-spacer { flex: 1; }
+.proto-tag {
+  font-size: 9px;
+  color: var(--c-purple);
+  background: var(--c-purple-soft);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═════════ TOPBAR ═════════ -->
+  <header class="topbar">
+    <button class="tb-back" onclick="goBack()" title="返回工作台">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6"/></svg>
+      <span>返回工作台</span>
+    </button>
+    <div class="tb-logo">
+      <div class="tb-logo-mark">V</div>
+    </div>
+    <button class="ai-switch on" type="button">
+      <div class="ai-toggle"></div>
+      <span class="ai-label-text">AI 助手</span>
+      <span class="ai-label-status">已开启</span>
+    </button>
+    <button class="tb-pill">📁 重生千金 <span class="arrow">⌄</span></button>
+
+    <!-- 剧集滑动选择器 -->
+    <div class="eps-wrap">
+      <span class="eps-label">剧集</span>
+      <div class="eps-track" id="eps-track"></div>
+      <button class="eps-more" id="eps-more-btn" title="全部剧集">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <!-- 下拉面板 -->
+      <div class="eps-dropdown" id="eps-dropdown">
+        <div class="eps-dd-head">
+          <span class="eps-dd-title">📺 全部剧集 (12)</span>
+          <button class="eps-dd-add">+ 新建</button>
+        </div>
+        <div class="eps-dd-list" id="eps-dd-list"></div>
+      </div>
+    </div>
+
+    <button class="tb-btn" onclick="openSettings()" title="生成参数设置 (画风/运镜/比例/模型)">⚙ 设置</button>
+    <button class="tb-btn" onclick="generateAllVideos()" title="一键批量为本集所有分镜生成视频">🎬 生成分镜视频</button>
+    <button class="tb-btn" title="保存项目" onclick="saveProject()">💾 保存</button>
+    <button class="tb-btn tb-btn-grad" title="导出 (剧本/视频)">导出 ⌄</button>
+    <div class="tb-avatar">F</div>
+  </header>
+
+  <!-- ═════════ MAIN ═════════ -->
+  <div class="main">
+
+    <!-- 分镜列表 220px (v3: 移除左侧 56px 工具栏) -->
+    <aside class="shots">
+      <div class="shots-head">
+        <span class="shots-title">分镜列表</span>
+        <span class="shots-count">11 个</span>
+      </div>
+      <div class="shots-list" id="shots-list"></div>
+    </aside>
+
+    <!-- 中央编辑区 -->
+    <section class="center">
+      <div class="center-head">
+        <div class="center-title">请选择分镜<span class="ratio">--</span></div>
+        <div class="center-actions">
+          <button class="center-icon-btn" title="上一个">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button class="center-icon-btn" title="下一个">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+          <button class="center-icon-btn" title="重抽">
+            <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9M3 4v6h6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="center-body">
+
+        <!-- 本集剧本 -->
+        <div class="section-card">
+          <div class="section-head">
+            <span class="section-title">本集剧本 (可留空自动承接上集)</span>
+            <div class="section-actions">
+              <input type="file" id="script-file-input" accept=".txt,.md,.docx" style="display:none;" onchange="onScriptFileChosen(this)" />
+              <button class="mini-btn" onclick="document.getElementById('script-file-input').click()">📥 上传 .txt/.md</button>
+              <button class="mini-btn" onclick="openNovelPicker()">📚 使用平台小说</button>
+              <button class="mini-btn primary" onclick="runWorkflow()" title="将本集剧本电影化创作 (5 阶段 11 agent + 6 步出图)">✨ AI 智能创作</button>
+            </div>
+          </div>
+          <textarea class="prompt-ta" style="min-height:80px;" placeholder="本集故事内容...（留空则自动承接上集）"></textarea>
+        </div>
+
+        <!-- 4 个画面 grid (drama-studio.js 会动态填充) -->
+        <div class="frame-grid">
+          <div class="frame">
+            <span class="frame-label">主图</span>
+            <span class="frame-icon">+</span>
+          </div>
+          <div class="frame">
+            <span class="frame-label">变体 1</span>
+            <span class="frame-icon">+</span>
+          </div>
+          <div class="frame">
+            <span class="frame-label">变体 2</span>
+            <span class="frame-icon">+</span>
+          </div>
+          <div class="frame">
+            <span class="frame-label">尾帧</span>
+            <span class="frame-icon">+</span>
+          </div>
+        </div>
+
+        <!-- 提示词区 -->
+        <div class="section-card">
+          <div class="section-head">
+            <span class="section-title">提示词</span>
+            <div class="section-actions">
+              <button class="mini-btn" onclick="aiGeneratePrompt()">✦ AI 生成</button>
+              <button class="mini-btn" onclick="resetPrompt()">↻ 重置</button>
+              <button class="mini-btn" onclick="showPromptTemplate()">⊕ 模板</button>
+            </div>
+          </div>
+          <textarea class="prompt-ta" placeholder="选中分镜后显示提示词，可手动编辑..."></textarea>
+          <div class="gen-row">
+            <span class="gen-input-mini">批量 <input id="gen-batch" value="1" /></span>
+            <span class="gen-input-mini">视频口型</span>
+            <span class="gen-input-mini">时长 <input id="gen-duration" value="5" /> 秒</span>
+            <button class="gen-go" onclick="generateSingleImage()">✦ 生成画面</button>
+          </div>
+        </div>
+
+        <!-- 对话列表 (按时间 + 角色 + 台词结构化) -->
+        <div class="section-card">
+          <div class="section-head">
+            <span class="section-title">对话 / 旁白 (按时间)</span>
+            <div class="section-actions">
+              <button class="mini-btn" onclick="oneClickVoice()">🎙 一键配音</button>
+              <button class="mini-btn primary" onclick="aiRewriteDialogue()">✦ AI 改写</button>
+            </div>
+          </div>
+          <div class="dialogue-list" id="dialogue-list"></div>
+          <button class="dialogue-add" onclick="addDialogue()">+ 添加台词</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 右侧 380px -->
+    <aside class="right">
+      <div class="right-body">
+
+        <!-- 角色 -->
+        <div class="right-section">
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-title" id="char-title">角色 (0)</span>
+              <button class="mini-btn">+ 添加</button>
+            </div>
+            <div class="char-grid" id="char-grid"></div>
+          </div>
+        </div>
+
+        <!-- 场景 -->
+        <div class="right-section">
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-title" id="scene-title">场景 (0)</span>
+              <button class="mini-btn">+ 添加</button>
+            </div>
+            <div class="scene-grid" id="scene-grid"></div>
+          </div>
+        </div>
+
+        <!-- 物品 -->
+        <div class="right-section">
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-title" id="item-title">物品 (0)</span>
+              <button class="mini-btn">+ 添加</button>
+            </div>
+            <div class="item-grid" id="item-grid"></div>
+          </div>
+        </div>
+
+        <!-- v3: 已生成视频 (本集所有分镜的成品视频) -->
+        <div class="right-section">
+          <div class="section-card">
+            <div class="section-head">
+              <span class="section-title" id="vid-title">已生成视频 (0)</span>
+              <button class="mini-btn">⬇ 全部下载</button>
+            </div>
+            <div class="video-grid" id="video-grid"></div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ═════════ ACTION BAR (流水线 + 3 大 CTA) ═════════ -->
+  <section class="actionbar">
+    <div class="pipeline" id="pipeline">
+      <div class="pipe-step"><span class="pipe-num">1</span>编剧 Agent</div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-step"><span class="pipe-num">2</span>导演 Agent</div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-step"><span class="pipe-num">3</span>人物一致性</div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-step"><span class="pipe-num">4</span>运镜标注</div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-step"><span class="pipe-num">5</span>提示词组装</div>
+      <span class="pipe-arrow">→</span>
+      <div class="pipe-step"><span class="pipe-num">6</span>分镜图生成</div>
+    </div>
+
+    <div class="cta-group">
+      <button class="cta-btn fast" onclick="fastImageCompose()" title="只生成首帧图，速度快">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span class="cta-text">图片快速合成</span>
+      </button>
+      <button class="cta-btn batch" onclick="generateAllVideos()" title="为所有分镜批量生成视频">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span class="cta-text">全部生成视频</span>
+      </button>
+      <button class="cta-btn hi" onclick="hiQualityCompose()" title="高质量合成 + 配音 + 字幕 + BGM">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        <span class="cta-text">视频高质量合成</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ═════════ STATUS BAR ═════════ -->
+  <footer class="statusbar">
+    <span class="stat-item ok">● 已连接</span>
+    <span class="stat-item">延迟 <b>23ms</b></span>
+    <span class="stat-item">CPU <b>1.60%</b></span>
+    <span class="stat-item">码率 <b>1378kb/s</b></span>
+    <span class="stat-item">推流帧率 <b>30</b></span>
+    <span class="stat-spacer"></span>
+    <span class="stat-item">分镜 <b>9 / 11</b></span>
+    <span class="stat-item">总时长 <b>00:55</b></span>
+    <span class="proto-tag">PROTOTYPE v1</span>
+  </footer>
+
+</div>
+
+<!-- ═════════ 平台小说选择器 ═════════ -->
+<div class="modal-overlay" id="novel-picker-modal" onclick="if(event.target.id==='novel-picker-modal')closeNovelPicker()">
+  <div class="modal-card" style="width:640px;max-height:80vh;">
+    <div class="modal-head">
+      <span class="modal-title">📚 从平台小说提取剧本</span>
+      <button class="modal-close" onclick="closeNovelPicker()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="novel-picker-list" style="max-height:60vh;overflow-y:auto;">
+      <div style="padding:30px;text-align:center;color:var(--c-text-3);">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ 视频放大 lightbox ═════════ -->
+<div class="video-lightbox" id="video-lightbox" onclick="closeVideoLightbox()">
+  <div class="video-lightbox-inner" id="video-lightbox-inner">
+    <button class="video-lightbox-close" onclick="closeVideoLightbox()">×</button>
+  </div>
+</div>
+
+<!-- ═════════ 设置弹窗 ═════════ -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <span class="modal-title">⚙ 生成参数设置</span>
+      <button class="modal-close" onclick="closeSettings()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-grid">
+        <div class="set-field">
+          <label class="set-label">画风</label>
+          <select class="set-select">
+            <option>国风仙侠</option>
+            <option>日系动漫</option>
+            <option>韩国漫画</option>
+            <option>水墨漫画</option>
+            <option>赛博朋克</option>
+            <option>迪士尼卡通</option>
+            <option>油画写实</option>
+            <option>治愈系</option>
+            <option>电影写实</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">运镜预设</label>
+          <select class="set-select">
+            <option>电影感</option>
+            <option>动作冲击</option>
+            <option>纪实风格</option>
+            <option>慢镜头</option>
+            <option>POV 第一人称</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">输出比例</label>
+          <select class="set-select">
+            <option>9:16 (竖屏短视频)</option>
+            <option>16:9 (横屏)</option>
+            <option>1:1 (方形)</option>
+            <option>4:3 (传统电视)</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">每集时长</label>
+          <select class="set-select">
+            <option>30 秒</option>
+            <option>60 秒</option>
+            <option selected>90 秒</option>
+            <option>120 秒</option>
+            <option>180 秒</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">场景数</label>
+          <input class="set-input" type="number" value="6" min="3" max="20" />
+        </div>
+        <div class="set-field">
+          <label class="set-label">每镜时长</label>
+          <select class="set-select">
+            <option>5 秒</option>
+            <option selected>8 秒</option>
+            <option>10 秒</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">图片模型</label>
+          <select class="set-select">
+            <option>自动 (按画风优选)</option>
+            <option>Flux.1-schnell</option>
+            <option>SDXL</option>
+            <option>MidJourney v6</option>
+            <option>NanoBanana</option>
+            <option>智谱 CogView</option>
+          </select>
+        </div>
+        <div class="set-field">
+          <label class="set-label">视频模型</label>
+          <select class="set-select">
+            <option>自动 (按场景优选)</option>
+            <option>Sora-2</option>
+            <option>Kling 2.1</option>
+            <option>Runway Gen-4</option>
+            <option>Luma Ray-3</option>
+            <option>MiniMax Hailuo</option>
+            <option>Veo 3</option>
+          </select>
+        </div>
+        <div class="set-field full">
+          <label class="set-label">本集剧本 (可选 — 留空则自动承接上集)</label>
+          <textarea class="set-input" rows="4" placeholder="本集自定义故事内容..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeSettings()">取消</button>
+      <button class="modal-btn save" onclick="saveSettings()">✓ 保存设置</button>
+    </div>
+  </div>
+</div>
+
+<!-- v15: 全部 mock 数据 + render 函数已移除 (语法错误根因)，由 /js/drama-studio.js 接管 -->
+<script>
+// ═════════ INTERACTION BINDINGS (无 mock data) ═════════
+// 之前的 const _MOCK_EPISODES / SHOTS / EPISODES / CHARACTERS / SCENES / ITEMS / VIDEOS / DIALOGUES
+// 全部删除 — 它们造成 SyntaxError + 即使 display:none 也会被 JS 解析执行
+const __MOCK_REMOVED__ = true;
+/* 死代码占位 (绕过 syntax 解析的旧片段)
+const _OLD_DEAD = [
+  { idx: 1,  name: '初入皇宫',     duration: '02:14', status: 'done',  shots: 12 },
+  { idx: 2,  name: '太子陷害',     duration: '01:58', status: 'done',  shots: 10 },
+  { idx: 3,  name: '冤狱重生',     duration: '02:30', status: 'done',  shots: 14 },
+  { idx: 4,  name: '夜探御书房',   duration: '01:45', status: 'done',  shots: 9  },
+  { idx: 5,  name: '碧波殿夺权',   duration: '02:08', status: 'draft', shots: 11, active: true },
+  { idx: 6,  name: '边境驰援',     duration: '02:22', status: 'draft', shots: 13 },
+  { idx: 7,  name: '宫变之夜',     duration: '02:50', status: 'empty', shots: 0  },
+  { idx: 8,  name: '九宫格局',     duration: '01:30', status: 'empty', shots: 0  },
+  { idx: 9,  name: '太子归位',     duration: '02:15', status: 'empty', shots: 0  },
+  { idx: 10, name: '凤栖梧桐',     duration: '02:40', status: 'empty', shots: 0  },
+  { idx: 11, name: '决战午门',     duration: '03:10', status: 'empty', shots: 0  },
+  { idx: 12, name: '凤鸣天下',     duration: '02:55', status: 'empty', shots: 0  },
+];
+const ACTIVE_EP = EPISODES.find(e => e.active) || EPISODES[0];
+
+const SHOTS = [
+  { idx: 1,  title: '迎面到来。',                   hasImg: true },
+  { idx: 2,  title: '送出，一位大臣\n忧心忡忡地呢喃。',  hasImg: true },
+  { idx: 3,  title: '画面一转，碧波\n独立在百姓眼中。',  hasImg: true },
+  { idx: 4,  title: '就在这时，我听\n见旁人闪闪私语。',  hasImg: true },
+  { idx: 5,  title: '听到这些话，沉\n浸到顶端的太子。',  hasImg: true },
+  { idx: 6,  title: '云厉冷笑一声，正\n要上前与之...',   hasImg: true },
+  { idx: 7,  title: '我看着这一幕，皱\n了皱眉。',         hasImg: true },
+  { idx: 8,  title: '我端起头一笑，反\n而问："谁谓..."', hasImg: true },
+  { idx: 9,  title: '云厉脸色一沉，立\n即大喝。',         hasImg: true, active: true },
+  { idx: 10, title: '听到命令，我身边\n的宫女们竟然纷...', hasImg: true },
+  { idx: 11, title: '这一幕惊呆了，\n我也大约有点...',   hasImg: true },
+];
+
+const CHARACTERS = [
+  { id: 1, name: '云厉',     avatar: 'a1', active: true },
+  { id: 2, name: '皇帝',     avatar: 'a2' },
+  { id: 3, name: '太子',     avatar: 'a3' },
+  { id: 4, name: '六殿下',   avatar: 'a4' },
+  { id: 5, name: '丞相',     avatar: 'a1' },
+  { id: 6, name: '宫女小翠', avatar: 'a2' },
+  { id: 7, name: '禁军统领', avatar: 'a3' },
+  { id: 8, name: '太医',     avatar: 'a4' },
+  { id: 9, name: '画师',     avatar: 'a1' },
+];
+
+const SCENES = [
+  { id: 1, name: '碧波殿',     bg: 's1' },
+  { id: 2, name: '皇宫内院',   bg: 's2' },
+  { id: 3, name: '天牢',       bg: 's3' },
+  { id: 4, name: '边境',       bg: 's4' },
+  { id: 5, name: '御书房',     bg: 's1' },
+  { id: 6, name: '校场',       bg: 's2' },
+  { id: 7, name: '后花园',     bg: 's3' },
+  { id: 8, name: '城楼',       bg: 's4' },
+];
+
+const ITEMS = [
+  { id: 1, name: '长剑', icon: '⚔', bg: 'i1' },
+  { id: 2, name: '弓箭', icon: '🏹', bg: 'i2' },
+  { id: 3, name: '圣旨', icon: '📜', bg: 'i3' },
+  { id: 4, name: '玉佩', icon: '💎', bg: 'i4' },
+  { id: 5, name: '皇冠', icon: '👑', bg: 'i5' },
+  { id: 6, name: '火盆', icon: '🔥', bg: 'i6' },
+  { id: 7, name: '战马', icon: '🐎', bg: 'i7' },
+  { id: 8, name: '兵书', icon: '📕', bg: 'i8' },
+  { id: 9, name: '酒杯', icon: '🍷', bg: 'i1' },
+  { id: 10,name: '密函', icon: '✉', bg: 'i2' },
+  { id: 11,name: '令牌', icon: '🪙', bg: 'i3' },
+  { id: 12,name: '香炉', icon: '🏺', bg: 'i4' },
+];
+
+// v3: 已生成视频成品 (本集所有分镜)
+const VIDEOS = [
+  { id: 1, title: '分镜 #1', dur: '00:05', bg: 'v1' },
+  { id: 2, title: '分镜 #2', dur: '00:08', bg: 'v2' },
+  { id: 3, title: '分镜 #3', dur: '00:06', bg: 'v3' },
+  { id: 4, title: '分镜 #4', dur: '00:08', bg: 'v4' },
+  { id: 5, title: '分镜 #5', dur: '00:07', bg: 'v1' },
+  { id: 6, title: '分镜 #6', dur: '00:09', bg: 'v2' },
+];
+
+let DIALOGUES = [
+  { time: '00:00', charId: 1, name: '云厉',   tag: '愤怒', text: '来人！把这个图伊狗太子追反的逆贼给我押往天牢！' },
+  { time: '00:08', charId: 6, name: '宫女小翠', tag: '害怕', text: '是的，奴婢亲眼听到他和太子有所阴谋。' },
+  { time: '00:15', charId: 3, name: '太子',   tag: '怒喝', text: '六殿下还说，要找个机会替差土上夫……' },
+  { time: '00:22', charId: 1, name: '云厉',   tag: '冷酷', text: '听到命令，我身边的宫女们竟然纷纷站起。' },
+];
+
+// ═════════ RENDERERS ═════════
+function renderEpisodes() {
+  document.getElementById('eps-track').innerHTML = EPISODES.map(e => `
+    <div class="eps-chip ${e.idx === ACTIVE_EP.idx ? 'active' : ''}" onclick="selectEpisode(${e.idx})">
+      <span class="eps-num">EP ${String(e.idx).padStart(2,'0')}</span>
+      <span>${e.name}</span>
+      <span class="eps-dur">${e.duration}</span>
+    </div>
+  `).join('');
+
+  document.getElementById('eps-dd-list').innerHTML = EPISODES.map(e => {
+    const statusMap = { done: '已完成', draft: '草稿', empty: '未开始' };
+    return `
+      <div class="eps-dd-item ${e.idx === ACTIVE_EP.idx ? 'active' : ''}" onclick="selectEpisode(${e.idx});closeEpsDropdown();">
+        <div class="eps-dd-thumb"></div>
+        <div class="eps-dd-info">
+          <div class="eps-dd-name">EP ${String(e.idx).padStart(2,'0')} · ${e.name}</div>
+          <div class="eps-dd-meta">
+            <b>${e.duration}</b> · ${e.shots} 个分镜
+          </div>
+        </div>
+        <span class="eps-dd-status ${e.status}">${statusMap[e.status]}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderShots() {
+  document.getElementById('shots-list').innerHTML = SHOTS.map(s => `
+    <div class="shot-item ${s.active ? 'active' : ''}" onclick="selectShot(this)">
+      <div class="shot-num">${s.idx}</div>
+      <div>
+        <div class="shot-thumb ${s.hasImg ? 'has-img' : ''}">
+          ${s.hasImg ? '' : '<div class="shot-thumb-ph">+</div>'}
+        </div>
+        <div class="shot-text">${s.title.replace(/\n/g, '<br/>')}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCharacters() {
+  const grid = document.getElementById('char-grid');
+  if (!grid) return;
+  // v3: 三视图角色卡 (替代圆形头像)
+  grid.innerHTML = CHARACTERS.map(c => `
+    <div class="char-card ${c.active ? 'active' : ''}" onclick="selectChar(this)">
+      <div class="char-portrait ${c.avatar}"></div>
+      <div class="char-name">${c.name}</div>
+    </div>
+  `).join('');
+  const t = document.getElementById('char-title');
+  if (t) t.textContent = `角色 (${CHARACTERS.length})`;
+}
+
+function renderScenes() {
+  const grid = document.getElementById('scene-grid');
+  if (!grid) return;
+  grid.innerHTML = SCENES.map(s => `
+    <div class="scene-card ${s.bg}">
+      <div class="scene-name">${s.name}</div>
+    </div>
+  `).join('');
+  const t = document.getElementById('scene-title');
+  if (t) t.textContent = `场景 (${SCENES.length})`;
+}
+
+function renderItems() {
+  const grid = document.getElementById('item-grid');
+  if (!grid) return;
+  grid.innerHTML = ITEMS.map(i => `
+    <div class="item-card ${i.bg}">${i.icon}<div class="item-name">${i.name}</div></div>
+  `).join('');
+  const t = document.getElementById('item-title');
+  if (t) t.textContent = `物品 (${ITEMS.length})`;
+}
+
+// v3: 已生成视频
+function renderVideos() {
+  const grid = document.getElementById('video-grid');
+  if (!grid) return;
+  grid.innerHTML = VIDEOS.map(v => `
+    <div class="video-card ${v.bg}" onclick="openVideoLightbox('${v.bg}','${v.title}','${v.dur}')">
+      <div class="video-card-thumb"></div>
+      <div class="video-card-fade"></div>
+      <div class="video-card-play">▶</div>
+      <div class="video-card-info">
+        <h5>${v.title}</h5>
+        <span>${v.dur}</span>
+      </div>
+    </div>
+  `).join('');
+  const t = document.getElementById('vid-title');
+  if (t) t.textContent = `已生成视频 (${VIDEOS.length})`;
+}
+
+function openVideoLightbox(bg, title, dur) {
+  const inner = document.getElementById('video-lightbox-inner');
+  inner.innerHTML = `
+    <button class="video-lightbox-close" onclick="event.stopPropagation();closeVideoLightbox()">×</button>
+    <div class="video-card-thumb ${bg}" style="background:${getVideoBg(bg)}"></div>
+    <div class="video-card-fade"></div>
+    <div class="video-card-play" style="width:64px;height:64px;font-size:22px;">▶</div>
+    <div class="video-card-info" style="left:20px;right:20px;bottom:18px;">
+      <h5 style="font-size:16px;">${title}</h5>
+      <span style="font-size:12px;">${dur}</span>
+    </div>
+  `;
+  document.getElementById('video-lightbox').classList.add('show');
+}
+function closeVideoLightbox() {
+  document.getElementById('video-lightbox').classList.remove('show');
+}
+function getVideoBg(bg) {
+  const bgs = {
+    v1: 'radial-gradient(circle at 50% 40%, rgba(139,92,246,.4), transparent 60%), linear-gradient(180deg, #2a1a4a 0%, #0c0e22 100%)',
+    v2: 'radial-gradient(circle at 50% 40%, rgba(33,212,253,.4), transparent 60%), linear-gradient(180deg, #1e3a5a 0%, #0c0e22 100%)',
+    v3: 'radial-gradient(circle at 50% 40%, rgba(236,72,153,.4), transparent 60%), linear-gradient(180deg, #4a1838 0%, #0c0e22 100%)',
+    v4: 'radial-gradient(circle at 50% 40%, rgba(34,197,94,.35), transparent 60%), linear-gradient(180deg, #1a4a2a 0%, #0c0e22 100%)',
+  };
+  return bgs[bg] || bgs.v1;
+}
+window.openVideoLightbox = openVideoLightbox;
+window.closeVideoLightbox = closeVideoLightbox;
+
+function renderDialogues() {
+  document.getElementById('dialogue-list').innerHTML = DIALOGUES.map((d, i) => {
+    const ch = CHARACTERS.find(c => c.id === d.charId) || { avatar: 'a1' };
+    return `
+      <div class="dialogue-row ${i === 0 ? 'active' : ''}">
+        <span class="dlg-time">${d.time}</span>
+        <div class="dlg-avatar ${ch.avatar}"></div>
+        <div>
+          <div class="dlg-name">${d.name}</div>
+          <div class="dlg-name-tag">${d.tag || ''}</div>
+        </div>
+        <textarea class="dlg-text" rows="1">${d.text}</textarea>
+        <button class="dlg-del" title="删除" onclick="delDialogue(${i})">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function addDialogue() {
+  const lastTime = DIALOGUES[DIALOGUES.length - 1]?.time || '00:00';
+  const [m, s] = lastTime.split(':').map(Number);
+  const totalSec = m * 60 + s + 5;
+  const newTime = `${String(Math.floor(totalSec/60)).padStart(2,'0')}:${String(totalSec%60).padStart(2,'0')}`;
+  DIALOGUES.push({ time: newTime, charId: 1, name: '云厉', tag: '中性', text: '（新台词，点击编辑）' });
+  renderDialogues();
+}
+function delDialogue(i) {
+  DIALOGUES.splice(i, 1);
+  renderDialogues();
+}
+
+// ═════════ INTERACTIONS ═════════
+function selectShot(el) {
+  document.querySelectorAll('.shot-item').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+}
+function selectChar(el) {
+  document.querySelectorAll('.char-card').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+}
+function selectEpisode(idx) {
+  document.querySelectorAll('.eps-chip').forEach(c => c.classList.remove('active'));
+  const chip = document.querySelectorAll('.eps-chip')[idx - 1];
+  if (chip) {
+    chip.classList.add('active');
+    chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+  document.querySelectorAll('.eps-dd-item').forEach(c => c.classList.remove('active'));
+  const item = document.querySelectorAll('.eps-dd-item')[idx - 1];
+  if (item) item.classList.add('active');
+}
+
+function toggleEpsDropdown() {
+  document.getElementById('eps-dropdown').classList.toggle('show');
+}
+function closeEpsDropdown() {
+  document.getElementById('eps-dropdown').classList.remove('show');
+}
+window.toggleEpsDropdown = toggleEpsDropdown;
+window.closeEpsDropdown = closeEpsDropdown;
+window.addDialogue = addDialogue;
+window.delDialogue = delDialogue;
+window.selectEpisode = selectEpisode;
+
+// 返回工作台
+function goBack() {
+  if (document.referrer && new URL(document.referrer).origin === location.origin) {
+    history.back();
+  } else {
+    location.href = '/index.html';
+  }
+}
+window.goBack = goBack;
+
+// ═══════ 设置弹窗 ═══════
+function openSettings() {
+  document.getElementById('settings-modal').classList.add('show');
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('show');
+}
+window.openSettings = openSettings;
+window.closeSettings = closeSettings;
+
+// 保存项目 (模拟)
+function saveProject() {
+  alert('✓ 项目已保存\n(实际接入: POST /api/drama/project)');
+}
+window.saveProject = saveProject;
+
+// 一键运行 6-step 流水线 (模拟动画)
+function runWorkflow() {
+  const steps = document.querySelectorAll('.pipe-step');
+  let i = 0;
+  steps.forEach(s => s.classList.remove('done', 'active'));
+  const next = () => {
+    if (i > 0) {
+      steps[i-1].classList.remove('active');
+      steps[i-1].classList.add('done');
+    }
+    if (i < steps.length) {
+      steps[i].classList.add('active');
+      i++;
+      setTimeout(next, 1200);
+    }
+  };
+  next();
+}
+]; */
+// ═════════ 真正的交互绑定 (mock 数据由 drama-studio.js 接管) ═════════
+document.querySelector('.ai-switch')?.addEventListener('click', e => {
+  const sw = e.currentTarget;
+  sw.classList.toggle('on');
+  const status = sw.querySelector('.ai-label-status');
+  if (status) status.textContent = sw.classList.contains('on') ? '已开启' : '已关闭';
+});
+document.getElementById('eps-more-btn')?.addEventListener('click', () => {
+  document.getElementById('eps-dropdown')?.classList.toggle('show');
+});
+document.addEventListener('click', e => {
+  const wrap = document.querySelector('.eps-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('eps-dropdown')?.classList.remove('show');
+  }
+});
+window.closeEpsDropdown = () => document.getElementById('eps-dropdown')?.classList.remove('show');
+
+// 工具栏按钮交互 (已删除工具栏，但保留 generic toggle)
+document.querySelectorAll('.tool-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tool-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  });
+});
+
+// 设置弹窗
+window.openSettings = () => document.getElementById('settings-modal').classList.add('show');
+window.closeSettings = () => document.getElementById('settings-modal').classList.remove('show');
+window.closeVideoLightbox = () => document.getElementById('video-lightbox').classList.remove('show');
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    window.closeSettings();
+    window.closeVideoLightbox();
+  }
+});
+document.getElementById('settings-modal')?.addEventListener('click', e => {
+  if (e.target.id === 'settings-modal') window.closeSettings();
+});
+
+// 返回工作台 (sessionStorage + hash 双保险，让 index.html init 切到 drama tab)
+window.goBack = () => {
+  try { sessionStorage.setItem('vido-target-page', 'drama'); } catch {}
+  location.href = '/index.html#drama';
+};
+</script>
+<!-- v3: 真实 API 集成 -->
+<script src="/js/drama-studio.js?v=20260412g"></script>
+
+</body>
+</html>

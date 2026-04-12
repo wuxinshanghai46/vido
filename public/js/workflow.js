@@ -44,11 +44,25 @@ function nodeHTML(type, nodeId) {
             <button class="wf-nd-chip" onclick="importFromContentLib(this)">导入内容库</button>
           </div>
           <textarea class="wf-nd-ta" rows="4" placeholder="输入故事描述、台词或文案内容..." onchange="syncNodeData(this)" oninput="autoCalcSceneCount(this)"></textarea>
-          <div class="wf-nd-label">画面风格</div>
-          <div class="wf-nd-chips" data-group="style">
-            <button class="wf-nd-chip active" onclick="setChipGroup(this)">2D 动画</button>
-            <button class="wf-nd-chip" onclick="setChipGroup(this)">3D 动画</button>
-            <button class="wf-nd-chip" onclick="setChipGroup(this)">真人拟真</button>
+          <div class="wf-nd-row" style="gap:8px">
+            <div style="flex:1">
+              <div class="wf-nd-label">画风</div>
+              <select class="wf-nd-select wf-nd-style-select" onchange="syncNodeData(this)" style="font-size:11px;padding:4px 6px">
+                <option value="2d">2D 动画</option>
+                <option value="3d">3D 动画</option>
+                <option value="realistic">真人拟真</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <div class="wf-nd-label">运镜预设</div>
+              <select class="wf-nd-select wf-nd-motion-preset" onchange="syncNodeData(this)" style="font-size:11px;padding:4px 6px">
+                <option value="cinematic">电影感</option>
+                <option value="documentary">纪录片</option>
+                <option value="action">动作片</option>
+                <option value="mv">MV风格</option>
+                <option value="romance">浪漫</option>
+              </select>
+            </div>
           </div>
           <div class="wf-nd-row" style="gap:8px;align-items:center">
             <span class="wf-nd-label" style="margin:0;flex:0 0 auto">分镜数量</span>
@@ -135,7 +149,12 @@ function nodeHTML(type, nodeId) {
           <div class="wf-nd-preview" onclick="previewMedia(this)">
             <span class="wf-nd-preview-ph">点击生成人物图</span>
           </div>
+          <button class="wf-nd-action" style="background:rgba(33,212,253,.1);color:#21d4fd;border:1px solid rgba(33,212,253,.3);font-size:11px;padding:6px 8px" onclick="pickCharFromLib(this)">📚 从角色库选择(含三视图)</button>
           <textarea class="wf-nd-ta" rows="2" placeholder="人物外貌特征描述（发型、服装、体型等）..." onchange="syncNodeData(this)"></textarea>
+          <div class="wf-nd-three-view" style="display:none;margin-top:4px">
+            <div class="wf-nd-label">角色三视图(参考)</div>
+            <div class="wf-nd-tv-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px"></div>
+          </div>
           <select class="wf-nd-select" data-field="img-model" style="font-size:11px;padding:4px 6px" onchange="syncNodeData(this)">
             <option value="auto">自动选择模型</option>
           </select>
@@ -691,6 +710,37 @@ async function loadAllModels() {
   } catch(e) {
     console.warn('[Workflow] 加载模型失败:', e);
   }
+  // 加载风格库填充画风下拉
+  loadWorkflowStyles();
+}
+
+let _workflowStyles = [];
+async function loadWorkflowStyles() {
+  try {
+    const res = await authFetch('/api/ai-cap/styles');
+    const data = await res.json();
+    _workflowStyles = data.data || [];
+    populateStyleSelects();
+  } catch {}
+}
+// 把风格库填充到所有 .wf-nd-style-select (新节点也会调用)
+function populateStyleSelects(scope) {
+  const root = scope || document;
+  root.querySelectorAll('.wf-nd-style-select').forEach(sel => {
+    const currentValue = sel.value;
+    let html = '<option value="2d">2D 动画</option><option value="3d">3D 动画</option><option value="realistic">真人拟真</option>';
+    if (_workflowStyles.length) {
+      html += '<option disabled>── 风格库 ──</option>';
+      _workflowStyles.forEach(s => {
+        html += `<option value="style:${s.id}">${escapeHtml ? escapeHtml(s.name) : s.name}</option>`;
+      });
+    }
+    sel.innerHTML = html;
+    // 恢复之前选中的值
+    if (currentValue) {
+      try { sel.value = currentValue; } catch {}
+    }
+  });
 }
 
 // 填充图片模型下拉框
@@ -833,12 +883,12 @@ function initNodeDynamic(nodeId, type) {
   if (type === 'background' || type === 'character' || type === 'text') {
     node.querySelectorAll('[data-field="img-model"], .wf-nd-img-model-global').forEach(sel => fillImageModelSelect(sel));
   }
+  // 填充画风下拉(从风格库)
+  if (typeof populateStyleSelects === 'function') populateStyleSelects(node);
   // 数字人节点：自动加载语音包（不自动加载AI角色，保留预设形象）
   if (type === 'avatar') {
     initAvatarVoices(nodeId);
   }
-  // 填充画风下拉(风格库): 函数若存在(用户 pending feature)则调用
-  if (typeof populateStyleSelects === 'function') populateStyleSelects(node);
 }
 
 function dragNode(event, type) {
@@ -908,6 +958,71 @@ function syncNodeData(el) {
   try { editor.updateNodeDataFromId(nodeId, data); } catch(e) {}
 }
 
+// ═══ 从角色库选择 (含三视图引用) ═══
+async function pickCharFromLib(btn) {
+  const node = btn.closest('.drawflow-node');
+  if (!node) return;
+  // 用 picker dialog 从 /api/ai-cap/characters 选
+  openPicker({
+    title: '从角色库选择',
+    placeholder: '搜索角色...',
+    fetchUrl: '/api/ai-cap/characters',
+    emptyText: '角色库为空,请先在管理后台创建角色',
+    renderCard: (c) => ({
+      title: c.name,
+      desc: c.appearance || c.appearance_prompt || '',
+      meta: [
+        c.gender || '',
+        c.three_view ? `三视图✓` : '',
+        c.expression_pack ? `表情包✓` : ''
+      ].filter(Boolean),
+    }),
+    onPick: (c) => {
+      // 1) 填回外貌描述到 textarea
+      const ta = node.querySelector('textarea.wf-nd-ta');
+      if (ta) {
+        ta.value = c.appearance_prompt || c.appearance || c.name;
+        syncNodeData(ta);
+      }
+      // 2) 在节点 data 里存 char_id 和三视图 URL
+      const nodeId = node.id.replace('node-', '');
+      try {
+        const ndObj = editor.getNodeFromId(nodeId);
+        const data = ndObj.data || {};
+        data.char_id = c.id;
+        data.char_name = c.name;
+        data.three_view = c.three_view || null;
+        data.expression_pack = c.expression_pack || null;
+        editor.updateNodeDataFromId(nodeId, data);
+      } catch {}
+      // 3) 渲染三视图缩略图
+      const tvWrap = node.querySelector('.wf-nd-three-view');
+      const tvGrid = node.querySelector('.wf-nd-tv-grid');
+      if (tvWrap && tvGrid && c.three_view) {
+        const views = [
+          { k: 'front', label: '前' },
+          { k: 'side',  label: '侧' },
+          { k: 'back',  label: '后' },
+        ];
+        tvGrid.innerHTML = views.map(v => c.three_view[v.k]
+          ? `<div style="text-align:center"><img src="${c.three_view[v.k]}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${c.three_view[v.k]}','_blank')"/><div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:2px">${v.label}</div></div>`
+          : `<div style="aspect-ratio:1;background:rgba(255,255,255,.04);border:1px dashed rgba(255,255,255,.1);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:rgba(255,255,255,.3)">${v.label}</div>`
+        ).join('');
+        tvWrap.style.display = '';
+      } else if (tvWrap) {
+        tvWrap.style.display = 'none';
+      }
+      // 4) 角色名作为 title hint
+      const title = node.querySelector('.wf-nd-header-title');
+      if (title) title.textContent = `人物 · ${c.name}`;
+      if (typeof showToast === 'function') {
+        const tvCount = c.three_view ? Object.keys(c.three_view).length : 0;
+        showToast(`已引用 ${c.name}${tvCount ? ` (含 ${tvCount} 张三视图)` : ''}`, 'success');
+      }
+    },
+  });
+}
+
 function setTextMode(btn, mode) {
   btn.closest('.wf-nd-chips').querySelectorAll('.wf-nd-chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
@@ -952,10 +1067,20 @@ async function aiGenerateText(btn) {
   const sceneInput = node.querySelector('.wf-nd-scene-count-input');
   const sceneCount = sceneInput ? parseInt(sceneInput.value) || 6 : 6;
 
-  // 获取画面风格
-  const styleChips = node.querySelector('[data-group="style"]');
-  const activeStyle = styleChips?.querySelector('.wf-nd-chip.active')?.textContent?.trim() || '2D 动画';
-  const styleDim = activeStyle.includes('3D') ? '3d' : activeStyle.includes('真人') ? 'realistic' : '2d';
+  // 获取画面风格（兼容下拉和旧 chip 模式）
+  const styleSelect = node.querySelector('.wf-nd-style-select');
+  let styleDim = '2d';
+  let activeStyle = '2D 动画';
+  if (styleSelect) {
+    const val = styleSelect.value;
+    if (val === '3d') { styleDim = '3d'; activeStyle = '3D 动画'; }
+    else if (val === 'realistic') { styleDim = 'realistic'; activeStyle = '真人拟真'; }
+    else if (val.startsWith('style:')) { styleDim = '2d'; activeStyle = styleSelect.selectedOptions[0]?.textContent || '2D 动画'; }
+    else { styleDim = '2d'; activeStyle = '2D 动画'; }
+  }
+  // 获取运镜预设
+  const motionPresetSelect = node.querySelector('.wf-nd-motion-preset');
+  const motionPreset = motionPresetSelect?.value || 'cinematic';
 
   // 根据分镜数量计算时长（每段约10秒）
   const duration = sceneCount * 10;
@@ -1097,8 +1222,8 @@ function autoCreateSceneNodes(textNode, scenes, parsedData) {
   const rowHeight = 260;                  // 每场景行高
 
   // 获取风格
-  const styleChip = textNode.querySelector('[data-group="style"] .wf-nd-chip.active');
-  const styleText = styleChip?.textContent?.trim() || '2D 动画';
+  const styleSel = textNode.querySelector('.wf-nd-style-select');
+  const styleText = styleSel ? (styleSel.selectedOptions[0]?.textContent?.trim() || '2D 动画') : '2D 动画';
   const styleDim = styleText.includes('3D') ? '3d' : styleText.includes('真人') ? 'realistic' : '2d';
 
   // ═══ 第一步：提取唯一角色，创建共享人物节点 ═══
@@ -2126,9 +2251,10 @@ function injectAddButtons() {
         });
         tas.forEach(ta => ro.observe(ta));
       }
-      // textarea 拖拽 resize 角时阻止 drawflow 拖动节点
+      // textarea resize 时阻止 drawflow 的 mousedown 拖动节点
       tas.forEach(ta => {
         ta.addEventListener('mousedown', (e) => {
+          // 仅当点击在 resize 角(右下角 18x18 区域)时阻止冒泡
           const rect = ta.getBoundingClientRect();
           if (e.clientX > rect.right - 18 && e.clientY > rect.bottom - 18) {
             e.stopPropagation();
@@ -2180,6 +2306,7 @@ function showAddMenu(anchorEl, sourceNodeId, side) {
   menu.style.left = left + 'px';
   menu.style.top = top + 'px';
 
+  // 绑定点击
   menu.querySelectorAll('.wf-add-menu-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2188,6 +2315,7 @@ function showAddMenu(anchorEl, sourceNodeId, side) {
       closeAddMenu();
     });
   });
+  // 全局点击关闭
   setTimeout(() => document.addEventListener('click', closeAddMenuOutside), 0);
 }
 function closeAddMenu() {
@@ -2205,7 +2333,7 @@ function addLinkedNode(sourceNodeId, side, type) {
   let src;
   try { src = editor.getNodeFromId(sourceNodeId); } catch { return; }
   if (!src) return;
-  const offset = 360;
+  const offset = 360;  // 横向间距
   const newX = side === 'right' ? src.pos_x + offset : src.pos_x - offset;
   const newY = src.pos_y;
 
@@ -2215,7 +2343,7 @@ function addLinkedNode(sourceNodeId, side, type) {
   const html = nodeHTML(type, id);
   const newNodeId = editor.addNode(type, io.inputs, io.outputs, newX, newY, type, { type, nodeId: id }, html);
 
-  // 自动连接
+  // 自动连接: 右侧节点的 input ← 源节点的 output
   setTimeout(() => {
     try {
       if (side === 'right' && io.inputs > 0) {
@@ -2316,8 +2444,8 @@ async function executeWorkflow() {
   if (!text) { alert('请在文本节点中输入内容'); return; }
 
   // 获取配置
-  const styleChip = textNode.querySelector('[data-group="style"] .wf-nd-chip.active');
-  const styleText = styleChip?.textContent?.trim() || '2D 动画';
+  const styleSel = textNode.querySelector('.wf-nd-style-select');
+  const styleText = styleSel ? (styleSel.selectedOptions[0]?.textContent?.trim() || '2D 动画') : '2D 动画';
   const style = styleText.includes('3D') ? '3d' : styleText.includes('真人') ? 'realistic' : '2d';
   const sceneInput = textNode.querySelector('.wf-nd-scene-count-input');
   const sceneCount = sceneInput ? parseInt(sceneInput.value) || 6 : 6;
@@ -2406,8 +2534,8 @@ function buildCanvasFromPipeline(textNode, result) {
   const rowHeight = 260;
 
   // 获取风格
-  const styleChip = textNode.querySelector('[data-group="style"] .wf-nd-chip.active');
-  const styleText = styleChip?.textContent?.trim() || '2D 动画';
+  const styleSel = textNode.querySelector('.wf-nd-style-select');
+  const styleText = styleSel ? (styleSel.selectedOptions[0]?.textContent?.trim() || '2D 动画') : '2D 动画';
   const styleDim = styleText.includes('3D') ? '3d' : styleText.includes('真人') ? 'realistic' : '2d';
 
   // 更新文本节点的场景列表
@@ -2706,6 +2834,7 @@ async function importFromNovel(btn) {
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
 
+  // 弹出隐藏的 file input
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = '.txt,.docx';
@@ -2717,6 +2846,7 @@ async function importFromNovel(btn) {
     fileInput.remove();
     if (!file) return;
 
+    // 读取节点的分镜数量设置
     const sceneInput = node.querySelector('.wf-nd-scene-count-input');
     const sceneCount = sceneInput ? parseInt(sceneInput.value) || 6 : 6;
 
@@ -2731,6 +2861,7 @@ async function importFromNovel(btn) {
       const res = await authFetch('/api/story/import-novel', {
         method: 'POST',
         body: formData,
+        // 不要设置 Content-Type, 浏览器会自动加 boundary
       });
       const data = await res.json();
 
@@ -2740,11 +2871,13 @@ async function importFromNovel(btn) {
         return;
       }
 
+      // 填充原文到 textarea
       if (ta) {
         ta.value = data.data.text || '';
         if (typeof syncNodeData === 'function') syncNodeData(ta);
       }
 
+      // 如果 agent 解析成功, 渲染场景列表 + 自动创建场景节点
       const scenes = data.data.scenes || [];
       if (scenes.length > 0) {
         if (typeof renderScenesList === 'function') renderScenesList(node, scenes);
@@ -2992,8 +3125,8 @@ async function batchGenerateAllImages(btn) {
   btn.disabled = true;
 
   // 获取风格信息显示
-  const styleChip = textNode.querySelector('[data-group="style"] .wf-nd-chip.active');
-  const styleLabel = styleChip?.textContent?.trim() || '2D 动画';
+  const styleSel2 = textNode.querySelector('.wf-nd-style-select');
+  const styleLabel = styleSel2 ? (styleSel2.selectedOptions[0]?.textContent?.trim() || '2D 动画') : '2D 动画';
 
   // 先生成所有人物（作为参考图），再生成背景
   const charNodes = targetNodes.filter(t => t.type === 'character');
@@ -3055,11 +3188,11 @@ function generateImageAsync(btn, imgType) {
 // ═══ 获取上游文本节点的风格设置 ═══
 function getUpstreamStyle(node) {
   // 先检查自身是否有风格选择器（文本节点）
-  const selfChip = node.querySelector?.('[data-group="style"] .wf-nd-chip.active');
-  if (selfChip) {
-    const s = selfChip.textContent.trim();
-    if (s.includes('3D')) return '3d';
-    if (s.includes('真人')) return 'realistic';
+  const selfStyleSel = node.querySelector?.('.wf-nd-style-select');
+  if (selfStyleSel) {
+    const v = selfStyleSel.value;
+    if (v === '3d') return '3d';
+    if (v === 'realistic') return 'realistic';
     return '2d';
   }
   // 递归向上查找

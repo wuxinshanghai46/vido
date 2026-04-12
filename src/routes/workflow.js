@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const { isAdmin, ownedBy, scopeUserId } = require('../middleware/auth');
 
 const DB_PATH = path.resolve(process.env.OUTPUT_DIR || './outputs', 'workflow_db.json');
 
@@ -25,9 +26,10 @@ router.post('/save', (req, res) => {
   const userId = req.user?.id || null;
 
   if (id) {
-    // 更新已有工作流
+    // 更新已有工作流（仅所有者）
     const idx = db.workflows.findIndex(w => w.id === id);
     if (idx >= 0) {
+      if (!ownedBy(req, db.workflows[idx])) return res.status(404).json({ success: false, error: '工作流不存在' });
       db.workflows[idx].name = name || db.workflows[idx].name;
       db.workflows[idx].drawflow = drawflow;
       db.workflows[idx].updated_at = new Date().toISOString();
@@ -54,16 +56,16 @@ router.post('/save', (req, res) => {
 router.get('/:id', (req, res) => {
   const db = loadDB();
   const wf = db.workflows.find(w => w.id === req.params.id);
-  if (!wf) return res.status(404).json({ success: false, error: '工作流不存在' });
+  if (!wf || !ownedBy(req, wf)) return res.status(404).json({ success: false, error: '工作流不存在' });
   res.json({ success: true, data: wf });
 });
 
-// GET /api/workflow — 列表
+// GET /api/workflow — 列表（仅当前用户；admin 看全部）
 router.get('/', (req, res) => {
   const db = loadDB();
-  const userId = req.user?.id || null;
-  const list = userId
-    ? db.workflows.filter(w => w.user_id === userId || !w.user_id)
+  const uid = scopeUserId(req);
+  const list = uid
+    ? db.workflows.filter(w => w.user_id === uid)
     : db.workflows;
   res.json({ success: true, data: list.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).map(w => ({
     id: w.id, name: w.name, drawflow: w.drawflow,
@@ -76,6 +78,7 @@ router.delete('/:id', (req, res) => {
   const db = loadDB();
   const idx = db.workflows.findIndex(w => w.id === req.params.id);
   if (idx < 0) return res.status(404).json({ success: false, error: '不存在' });
+  if (!ownedBy(req, db.workflows[idx])) return res.status(404).json({ success: false, error: '不存在' });
   db.workflows.splice(idx, 1);
   saveDB(db);
   res.json({ success: true });

@@ -170,11 +170,49 @@ async function initAuth() {
   if (nameEl) nameEl.textContent = user.username;
   const avatarEl = document.getElementById('user-avatar');
   if (avatarEl) avatarEl.textContent = user.username[0].toUpperCase();
+  // 头像旁显示用户名
+  const labelEl = document.getElementById('user-name-label');
+  if (labelEl) labelEl.textContent = user.username;
   const creditsEl = document.getElementById('credits-display');
   if (creditsEl) creditsEl.textContent = user.credits;
   const adminEl = document.getElementById('admin-link');
   if (adminEl && user.role === 'admin') adminEl.style.display = '';
+  // 按权限过滤侧边栏 + 卡片入口
+  applyPermissionVisibility(user);
   return true;
+}
+
+// 根据用户的 effective_permissions 隐藏无权访问的模块
+// effective_permissions 是字符串数组：['*'] 表示全部；否则形如 ['enterprise:i2v:view', ...]
+function applyPermissionVisibility(user) {
+  const canSee = (k) => canSeeModule(user, k);
+
+  // 隐藏所有 data-perm 未授权的 nav-item
+  document.querySelectorAll('.sidebar .nav-item[data-perm]').forEach(el => {
+    el.style.display = canSee(el.dataset.perm) ? '' : 'none';
+  });
+
+  // 如果整组子项都被隐藏 → 隐藏分组标题和分隔线
+  document.querySelectorAll('.sidebar .sidebar-section[data-group]').forEach(section => {
+    const items = section.querySelectorAll('.nav-item[data-perm]');
+    const anyVisible = [...items].some(it => it.style.display !== 'none');
+    section.style.display = anyVisible ? '' : 'none';
+    const group = section.dataset.group;
+    const divider = document.querySelector('.sidebar .sidebar-divider[data-group="' + group + '"]');
+    if (divider) divider.style.display = anyVisible ? '' : 'none';
+  });
+
+  // 首页卡片入口：根据 onclick 参数判断
+  document.querySelectorAll('.hub-type-card').forEach(card => {
+    const onclick = card.getAttribute('onclick') || '';
+    const m = onclick.match(/switchPage\(['"]([^'"]+)['"]\)/);
+    if (m && !canSee(m[1])) card.style.display = 'none';
+  });
+
+  // 我的作品 Tab 按钮
+  document.querySelectorAll('#works-tabs .assets-tab[data-perm]').forEach(btn => {
+    btn.style.display = canSee(btn.dataset.perm) ? '' : 'none';
+  });
 }
 
 function updateCreditsDisplay() {
@@ -191,6 +229,7 @@ async function init() {
   if (!authed) return;
   loadTheme();
   renderStyleGrid();
+  loadPlatformStyles(); // v15: 异步从 /api/ai-cap/styles 加载平台真实风格库
   renderCharacters();
   renderScenes();
   updateDimHint();
@@ -206,6 +245,15 @@ async function init() {
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => switchPage(el.dataset.page));
   });
+
+  // v15 fix: 处理 URL hash / sessionStorage 跳转 (供 drama-studio 返回工作台用)
+  const hashTarget = (location.hash || '').replace('#', '').trim();
+  const ssTarget = sessionStorage.getItem('vido-target-page');
+  const target = ssTarget || hashTarget;
+  if (target) {
+    sessionStorage.removeItem('vido-target-page');
+    setTimeout(() => switchPage(target), 100);
+  }
 
   // 事件委托：点击角色/场景图片打开大图
   document.addEventListener('click', e => {
@@ -1764,7 +1812,8 @@ function renderCharacters() {
           <svg width="11" height="12" viewBox="0 0 11 12" fill="none"><path d="M1.5 3h8M3.5 3V2h4v1M4 5v4M7 5v4M2.5 3l.5 7h5l.5-7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div class="sto-li-desc">${isLoading ? '正在生成形象...' : esc(buildCharDesc(c))}</div>
+      <div class="sto-li-desc">${esc(buildCharDesc(c))}</div>
+      ${isLoading ? '<div class="sto-li-loading">⟳ 正在生成形象...</div>' : ''}
     </div>`;
   }).join('');
 }
@@ -1905,12 +1954,29 @@ function selectCharacter(id) {
     renderMonsterBreeds();
   }
 
-  // Portrait
+  // Portrait + 三视图 (v15)
   const portrait = document.getElementById('srp-char-portrait');
   if (portrait) {
-    portrait.innerHTML = c.imageUrl
+    let html = c.imageUrl
       ? `<img src="${esc(c.imageUrl)}" class="srp-portrait-img" onclick="openLightbox('${esc(c.imageUrl)}','${esc(c.name || '')}')" style="cursor:zoom-in" />`
       : `<div class="srp-portrait-ph"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M4 22c0-4.42 3.58-8 8-8s8 3.58 8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>暂无形象</span></div>`;
+
+    // 如果有三视图就追加 3 张缩略图
+    if (c.threeView && (c.threeView.front || c.threeView.side || c.threeView.back)) {
+      const thumbs = ['front', 'side', 'back'].map(k => {
+        const url = c.threeView[k];
+        const labelMap = { front: '正面', side: '侧面', back: '背面' };
+        if (!url) {
+          return `<div class="srp-tv-thumb srp-tv-empty" title="${labelMap[k]}（生成失败）">—</div>`;
+        }
+        return `<div class="srp-tv-thumb" title="${labelMap[k]}" onclick="openLightbox('${esc(url)}','${esc(c.name || '')} - ${labelMap[k]}')">
+          <img src="${esc(url)}" alt="${labelMap[k]}" />
+          <span>${labelMap[k]}</span>
+        </div>`;
+      }).join('');
+      html += `<div class="srp-three-view"><div class="srp-three-view-label">🎭 三视图</div><div class="srp-three-view-row">${thumbs}</div></div>`;
+    }
+    portrait.innerHTML = html;
   }
 }
 
@@ -3231,21 +3297,119 @@ function toggleAnimalFields() {
   // 兼容旧逻辑 — 现在通过 setCharType 处理
 }
 
-// ═══ 风格选择 ═══
+// ═══ 风格选择 (v15: 同步平台 /api/ai-cap/styles) ═══
+let platformStyles = [];   // 来自 /api/ai-cap/styles 的真实平台风格
+let selectedPlatformStyleId = null;
+
+// 类目 → 默认 dim 映射 (取代 2D/3D 切换)
+const STYLE_CATEGORY_DIM = {
+  realistic: '3d',  // 写实类用 3d 渲染管线
+  cartoon:   '3d',  // 3D 卡通
+  manga:     '2d',
+  comic:     '2d',
+  traditional:'2d', // 国风水墨
+  scifi:     '3d',  // 赛博朋克偏 3d
+  dark:      '2d',
+  soft:      '2d',
+  stylized:  '2d',
+};
+// 类目 → emoji 图标
+const STYLE_CATEGORY_ICON = {
+  realistic: '🎬',
+  cartoon:   '🌐',
+  manga:     '🎌',
+  comic:     '💥',
+  traditional:'🖌',
+  scifi:     '⚡',
+  dark:      '🌑',
+  soft:      '🌸',
+  stylized:  '🎨',
+};
+// 类目 → 主题色
+const STYLE_CATEGORY_COLOR = {
+  realistic: '#7888d8',
+  cartoon:   '#c4a535',
+  manga:     '#c06af0',
+  comic:     '#ff5040',
+  traditional:'#d4a020',
+  scifi:     '#00b4cc',
+  dark:      '#475569',
+  soft:      '#ff9ec0',
+  stylized:  '#a4e400',
+};
+
+async function loadPlatformStyles() {
+  try {
+    const r = await authFetch('/api/ai-cap/styles');
+    const j = await r.json();
+    if (j.success && Array.isArray(j.data)) {
+      platformStyles = j.data;
+    }
+  } catch (e) {
+    console.warn('[loadPlatformStyles] failed', e);
+  }
+  // 默认选第 1 个
+  if (platformStyles.length && !selectedPlatformStyleId) {
+    selectedPlatformStyleId = platformStyles[0].id;
+    applyStyleToDim(platformStyles[0]);
+  }
+  renderStyleGrid();
+}
+
+function applyStyleToDim(style) {
+  if (!style) return;
+  const dim = STYLE_CATEGORY_DIM[style.category] || '2d';
+  sceneDim = dim;
+  charDim = dim;
+  contentType = dim;
+  // 兼容旧的 animStyle 全局变量 (storyService 用)
+  animStyle = style.name || 'anime';
+}
+
 function renderStyleGrid() {
   const grid = document.getElementById('style-grid');
   if (!grid) return;
-  grid.innerHTML = ANIM_STYLES.map(s => {
-    const active = s.id === animStyle;
-    return `<div class="style-chip ${active ? 'active' : ''}" data-sid="${s.id}" onclick="switchAnimStyle('${s.id}')" style="--sc: ${s.color}">
-      <span class="sc-icon">${s.icon}</span>
-      <span class="sc-text">${esc(s.label)}</span>
+  // 如果还没有平台风格，回退到旧的 ANIM_STYLES
+  if (!platformStyles.length) {
+    grid.innerHTML = ANIM_STYLES.map(s => {
+      const active = s.id === animStyle;
+      return `<div class="style-chip ${active ? 'active' : ''}" data-sid="${s.id}" onclick="switchAnimStyle('${s.id}')" style="--sc: ${s.color}">
+        <span class="sc-icon">${s.icon}</span>
+        <span class="sc-text">${esc(s.label)}</span>
+      </div>`;
+    }).join('');
+    return;
+  }
+  // 使用平台风格库
+  grid.innerHTML = platformStyles.map(s => {
+    const active = s.id === selectedPlatformStyleId;
+    const icon = STYLE_CATEGORY_ICON[s.category] || '🎨';
+    const color = STYLE_CATEGORY_COLOR[s.category] || '#00b4cc';
+    return `<div class="style-chip ${active ? 'active' : ''}" data-sid="${s.id}" onclick="selectPlatformStyle('${s.id}')" style="--sc: ${color}" title="${esc(s.prompt_en || '')}">
+      <span class="sc-icon">${icon}</span>
+      <span class="sc-text">${esc(s.name)}</span>
     </div>`;
   }).join('');
 }
 
+function selectPlatformStyle(id) {
+  selectedPlatformStyleId = id;
+  const style = platformStyles.find(s => s.id === id);
+  if (style) applyStyleToDim(style);
+  document.querySelectorAll('#style-grid .style-chip').forEach(el => {
+    el.classList.toggle('active', el.dataset.sid === id);
+  });
+}
+
+// 兼容旧 ANIM_STYLES 路径
 function switchAnimStyle(id) {
   animStyle = id;
+  const s = ANIM_STYLES.find(x => x.id === id);
+  if (s) {
+    // 简单映射
+    const dim = ['3dcg', 'realistic', 'guofeng_3d'].includes(id) ? '3d' : '2d';
+    sceneDim = charDim = contentType = dim;
+  }
   document.querySelectorAll('#style-grid .style-chip').forEach(el => {
     el.classList.toggle('active', el.dataset.sid === id);
   });
@@ -3620,27 +3784,41 @@ async function quickAIStory() {
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
 
-    // 填充角色
+    // 填充角色 (合并 description + appearance, 后端两个字段都可能有内容)
     characters = []; charIdCounter = 0;
     (data.data.characters || []).forEach(c => {
+      const desc = [c.description, c.appearance].filter(Boolean).join('；');
       characters.push({
         id: ++charIdCounter, name: c.name || '', role: c.role || 'main',
-        charType: c.charType || 'human', description: c.description || '',
+        charType: c.charType || 'human', description: desc || '（待补充）',
         imageUrl: '', theme: c.theme || '古代', gender: c.gender || 'female',
         race: c.race || '人', age: c.age || '青年', species: '', subCategory: '', checked: false
       });
     });
     renderCharacters();
 
-    // 填充场景
+    // 填充场景 (后端 parseScript 返回 scenes 数组，字段是 background/characters_action/dialogue/camera/mood/duration)
     customScenes = []; sceneIdCounter = 0;
-    (data.data.custom_scenes || []).forEach(s => {
+    const sceneList = data.data.scenes || data.data.custom_scenes || [];
+    sceneList.forEach(s => {
       customScenes.push({
-        id: ++sceneIdCounter, title: s.title || '', location: s.location || '',
-        description: s.description || '', dialogue: s.dialogue || '',
-        mood: s.mood || '', theme: '魔幻', category: '室外', timeOfDay: '白天',
+        id: ++sceneIdCounter,
+        title: s.title || '',
+        location: s.location || '',
+        // 关键：把后端的 background + characters_action 合并到 description 字段
+        description: [s.background, s.characters_action].filter(Boolean).join('\n\n') || s.description || '',
+        dialogue: s.dialogue || '',
+        mood: s.mood || '',
+        theme: '魔幻',
+        category: '室外',
+        timeOfDay: s.timeOfDay || '白天',
         dim: '2d', imageUrl: null, video_provider: '', video_model: '',
-        duration: s.duration || 10, checked: false
+        duration: s.duration || 10, checked: false,
+        // 保留原始字段供 AI 视频生成使用
+        background: s.background || '',
+        characters_action: s.characters_action || '',
+        characters_in_scene: s.characters_in_scene || [],
+        camera: s.camera || '',
       });
     });
     renderScenes();
@@ -3653,14 +3831,66 @@ async function quickAIStory() {
     if (charDot && characters.length) charDot.style.display = '';
     if (sceneDot && customScenes.length) sceneDot.style.display = '';
 
-    showToast(`智能创作完成：${characters.length} 个角色 + ${customScenes.length} 个场景`, 'ok');
+    showToast(`智能创作完成：${characters.length} 个角色 + ${customScenes.length} 个场景，开始按画风生成形象...`, 'ok');
     if (customScenes.length) switchStudioTab('scene');
     detectActionContent(theme);
+
+    // 【v15 关键】按选定画风自动生成所有角色 + 场景图片
+    btn.innerHTML = '<span class="ai-dot spinning"></span> 按画风生图...';
+    autoGenerateAllAssets();  // 不 await — 后台并行生成，不阻塞 UI
   } catch (e) {
     showToast('智能创作失败: ' + e.message, 'error');
   } finally {
     btn.disabled = false; btn.innerHTML = '<span class="ai-dot"></span> 智能创作';
   }
+}
+
+// v15: 按当前选定的画风，并行生成所有角色 + 场景图片
+async function autoGenerateAllAssets() {
+  const charPromises = characters.map(async (c) => {
+    if (c.imageUrl) return; // 已有就跳过
+    if (!loadingCharIds) return;
+    loadingCharIds.add(c.id);
+    renderCharacters();
+    try {
+      await generateCharImage(c.id);
+    } catch (e) {
+      console.warn(`[autoGen char ${c.name}] failed:`, e.message);
+    } finally {
+      loadingCharIds.delete(c.id);
+      renderCharacters();
+    }
+  });
+
+  const scenePromises = customScenes.map(async (s) => {
+    if (s.imageUrl) return;
+    try {
+      const res = await authFetch('/api/story/generate-scene-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: s.title,
+          description: s.background || s.description,
+          theme: animStyle,
+          timeOfDay: s.timeOfDay,
+          category: s.category,
+          dim: sceneDim,
+          aspectRatio,
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data?.imageUrl) {
+        s.imageUrl = data.data.imageUrl;
+        renderScenes();
+      }
+    } catch (e) {
+      console.warn(`[autoGen scene ${s.title}] failed:`, e.message);
+    }
+  });
+
+  // 并行（最多 3 个并发，避免 API 限流）
+  await Promise.all([...charPromises, ...scenePromises]);
+  showToast(`✓ 所有素材生成完成 (${characters.length} 角色 + ${customScenes.length} 场景)`, 'ok');
 }
 
 // ═══ 剧本解析 ═══
@@ -3688,13 +3918,33 @@ async function parseScriptContent() {
 
     characters = []; charIdCounter = 0;
     (data.data.characters || []).forEach(c => {
-      characters.push({ id: ++charIdCounter, name: c.name||'', role: c.role||'main', description: c.description||'' });
+      const desc = [c.description, c.appearance].filter(Boolean).join('；');
+      characters.push({
+        id: ++charIdCounter,
+        name: c.name||'',
+        role: c.role||'main',
+        description: desc || '（待补充）',
+      });
     });
     renderCharacters();
 
     customScenes = []; sceneIdCounter = 0;
-    (data.data.custom_scenes || []).forEach(s => {
-      customScenes.push({ id: ++sceneIdCounter, title: s.title||'', location: s.location||'', description: s.description||'', mood: s.mood||'', video_provider: '', video_model: '' });
+    const sceneList = data.data.scenes || data.data.custom_scenes || [];
+    sceneList.forEach(s => {
+      customScenes.push({
+        id: ++sceneIdCounter,
+        title: s.title || '',
+        location: s.location || '',
+        description: [s.background, s.characters_action].filter(Boolean).join('\n\n') || s.description || '',
+        mood: s.mood || '',
+        video_provider: '',
+        video_model: '',
+        background: s.background || '',
+        characters_action: s.characters_action || '',
+        characters_in_scene: s.characters_in_scene || [],
+        camera: s.camera || '',
+        duration: s.duration || 10,
+      });
     });
     renderScenes();
 
@@ -3805,6 +4055,10 @@ async function generateCharImage(id) {
   const data = await res.json();
   if (!data.success) throw new Error(data.error);
   c.imageUrl = data.data.imageUrl;
+  // v15: 后端默认附带三视图，存到角色对象上供属性面板展示
+  if (data.data.threeView) {
+    c.threeView = data.data.threeView;
+  }
 }
 
 // ═══ 场景 ═══
@@ -6908,24 +7162,53 @@ async function loadIgModels() {
   try {
     const resp = await authFetch('/api/settings');
     const data = await resp.json();
-    const providers = data.providers || [];
-    const container = document.getElementById('ig-model-selector');
-    let html = `<div class="ig-model-opt active" data-model="auto" onclick="selectIgModel(this)">
-      <span class="ig-model-icon">A</span>
-      <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配最佳模型</div></div>
-    </div>`;
-    providers.forEach(p => {
-      (p.models || []).forEach(m => {
-        if (m.use === 'image') {
+    if (!data.success) return;
+    const providers = data.data?.providers || [];
+    // v15: 改成下拉 select
+    const sel = document.getElementById('ig-model-select');
+    if (!sel) {
+      // 旧版兼容：还在用 div 卡片
+      const container = document.getElementById('ig-model-selector');
+      if (!container) return;
+      let html = `<div class="ig-model-opt active" data-model="auto" onclick="selectIgModel(this)">
+        <span class="ig-model-icon">A</span>
+        <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配最佳模型</div></div>
+      </div>`;
+      providers.forEach(p => {
+        if (!p.enabled || !(p.api_key || p.api_key_masked)) return;
+        (p.models || []).forEach(m => {
+          if (m.enabled === false || m.use !== 'image') return;
+          const initial = (p.name || p.id || '?')[0].toUpperCase();
           html += `<div class="ig-model-opt" data-model="${m.id}" data-provider="${p.id}" onclick="selectIgModel(this)">
-            <span class="ig-model-icon">${(p.name || p.id)[0].toUpperCase()}</span>
+            <span class="ig-model-icon">${initial}</span>
             <div class="ig-model-info"><div class="ig-model-name">${esc(m.name || m.id)}</div><div class="ig-model-desc">${esc(p.name || p.id)}</div></div>
           </div>`;
-        }
+        });
       });
+      container.innerHTML = html;
+      return;
+    }
+    // 新版下拉
+    let html = `<option value="auto" data-provider="">自动选择 (按配置匹配)</option>`;
+    let count = 0;
+    // 按 provider 分组
+    providers.forEach(p => {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) return;
+      const imageModels = (p.models || []).filter(m => m.enabled !== false && m.use === 'image');
+      if (!imageModels.length) return;
+      html += `<optgroup label="${esc(p.name || p.id)}">`;
+      imageModels.forEach(m => {
+        count++;
+        const value = `${p.id}::${m.id}`;
+        html += `<option value="${esc(value)}" data-provider="${esc(p.id)}" data-model="${esc(m.id)}">${esc(m.name || m.id)}</option>`;
+      });
+      html += `</optgroup>`;
     });
-    container.innerHTML = html;
-  } catch {}
+    console.log(`[loadIgModels] 加载 ${count} 个图片模型 (下拉)`);
+    sel.innerHTML = html;
+  } catch (e) {
+    console.warn('[loadIgModels] failed:', e);
+  }
 }
 
 function selectIgModel(el) {
@@ -7003,9 +7286,18 @@ async function startImageGeneration() {
     </div>`;
 
   try {
-    const activeModel = document.querySelector('.ig-model-opt.active');
-    const modelId = activeModel?.dataset.model || 'auto';
-    const providerId = activeModel?.dataset.provider || '';
+    // v15: 优先读 select 下拉，回退到旧 ig-model-opt.active
+    let modelId = 'auto', providerId = '';
+    const sel = document.getElementById('ig-model-select');
+    if (sel && sel.value && sel.value !== 'auto') {
+      const [pid, mid] = sel.value.split('::');
+      providerId = pid || '';
+      modelId = mid || sel.value;
+    } else {
+      const activeModel = document.querySelector('.ig-model-opt.active');
+      modelId = activeModel?.dataset.model || 'auto';
+      providerId = activeModel?.dataset.provider || '';
+    }
     const negative = document.getElementById('ig-negative')?.value || '';
 
     const resp = await authFetch('/api/imggen/generate', {
@@ -8990,6 +9282,35 @@ let ptrDim = '2d';
 
 function loadPortraitPage() {
   loadPtrGallery();
+  loadPtrImageModels();
+}
+
+async function loadPtrImageModels() {
+  const sel = document.getElementById('ptr-model-select');
+  if (!sel) return;
+  try {
+    const resp = await authFetch('/api/settings');
+    const data = await resp.json();
+    if (!data.success) return;
+    const providers = data.data?.providers || [];
+    let html = '<option value="auto">自动选择（按配置匹配）</option>';
+    let count = 0;
+    providers.forEach(p => {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) return;
+      const imageModels = (p.models || []).filter(m => m.enabled !== false && m.use === 'image');
+      if (!imageModels.length) return;
+      html += `<optgroup label="${esc(p.name || p.id)}">`;
+      imageModels.forEach(m => {
+        count++;
+        html += `<option value="${esc(p.id + '::' + m.id)}">${esc(m.name || m.id)}</option>`;
+      });
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+    console.log(`[Portrait] 加载 ${count} 个图片模型`);
+  } catch (e) {
+    console.warn('[Portrait] 加载模型列表失败:', e);
+  }
 }
 
 // ── 照片上传 ──
@@ -9059,10 +9380,11 @@ async function startPortraitGeneration() {
   }
 
   try {
+    const imageModel = document.getElementById('ptr-model-select')?.value || 'auto';
     const res = await authFetch('/api/portrait/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photo_filename: ptrPhotoFilename, dim: ptrDim, name })
+      body: JSON.stringify({ photo_filename: ptrPhotoFilename, dim: ptrDim, name, image_model: imageModel })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
@@ -9645,19 +9967,128 @@ function renderDramaProjectGrid() {
   if (!dramaProjects.length) { grid.innerHTML = '<div style="color:rgba(255,255,255,.25);text-align:center;padding:60px;grid-column:1/-1;font-size:13px">暂无网剧项目，点击上方按钮创建</div>'; return; }
   grid.innerHTML = dramaProjects.map(p => {
     const cover = p.cover_url ? `<img src="${p.cover_url}" />` : '<div class="ph">🎭</div>';
-    return `<div class="drama-proj-card" onclick="enterDramaProject('${p.id}')">
-      <div class="drama-proj-cover">${cover}<div class="drama-proj-ep-badge">${p.episodes_done || 0}/${p.episodes_total || 0} 集</div></div>
+    const planned = p.episode_count || 10;
+    const done = p.episodes_done || 0;
+    // 全部生成完 (已完成集数 >= 计划集数) 就不显示编辑按钮
+    const allDone = done >= planned;
+    const editBtn = allDone
+      ? `<button title="已完结，不可编辑" disabled style="opacity:.4;cursor:not-allowed;">已完结</button>`
+      : `<button onclick="editDramaProject('${p.id}')">编辑</button>`;
+    return `<div class="drama-proj-card" onclick="openDramaStudio('${p.id}')">
+      <div class="drama-proj-cover">${cover}<div class="drama-proj-ep-badge">${done}/${p.episodes_total || 0} 集</div></div>
       <div class="drama-proj-body">
         <div class="drama-proj-name">${p.title || '未命名'}</div>
-        <div class="drama-proj-meta">${p.style || '日系动漫'} · ${p.episode_count || 10}集计划 · ${new Date(p.created_at).toLocaleDateString()}</div>
+        <div class="drama-proj-meta">${p.style || '日系动漫'} · ${planned}集计划 · ${new Date(p.created_at).toLocaleDateString()}</div>
       </div>
       <div class="drama-proj-footer" onclick="event.stopPropagation()">
-        <button onclick="enterDramaProject('${p.id}')">进入</button>
+        <button onclick="openDramaStudio('${p.id}')">进入</button>
+        ${editBtn}
         <button class="danger" onclick="deleteDramaProject('${p.id}')">删除</button>
       </div>
     </div>`;
   }).join('');
 }
+
+// 进入新版 drama-studio (替代旧 enterDramaProject)
+function openDramaStudio(pid) {
+  location.href = '/drama-studio.html?pid=' + encodeURIComponent(pid);
+}
+window.openDramaStudio = openDramaStudio;
+
+// ════════ 编辑项目弹窗 (复用创建弹窗) ════════
+let _editingDramaProjectId = null;
+async function editDramaProject(pid) {
+  try {
+    const r = await authFetch('/api/drama/projects/' + pid);
+    const j = await r.json();
+    if (!j.success) return alert(j.error || '加载失败');
+    const p = j.data;
+    _editingDramaProjectId = pid;
+
+    // 复用创建弹窗，预填值
+    document.getElementById('drama-create-modal').style.display = 'flex';
+    // 加载风格选项
+    try {
+      const r2 = await authFetch('/api/ai-cap/styles');
+      const d2 = await r2.json();
+      const sel = document.getElementById('dcp-style');
+      sel.innerHTML = (d2.data || []).map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    } catch {}
+    // 加载真实模型
+    await loadDcpModels();
+
+    document.getElementById('dcp-title').value = p.title || '';
+    document.getElementById('dcp-synopsis').value = p.synopsis || '';
+    document.getElementById('dcp-style').value = p.style || '日系动漫';
+    document.getElementById('dcp-motion').value = p.motion_preset || 'cinematic';
+    document.getElementById('dcp-episodes').value = p.episode_count || 10;
+    document.getElementById('dcp-aspect').value = p.aspect_ratio || '9:16';
+    if (document.getElementById('dcp-scenes')) document.getElementById('dcp-scenes').value = p.scene_count || 6;
+    if (document.getElementById('dcp-shot-dur')) document.getElementById('dcp-shot-dur').value = p.shot_duration || 8;
+    if (document.getElementById('dcp-img-model')) document.getElementById('dcp-img-model').value = p.image_model || 'auto';
+    if (document.getElementById('dcp-vid-model')) document.getElementById('dcp-vid-model').value = p.video_model || 'auto';
+    dcpChars = p.characters || [];
+    renderDcpCharTags();
+
+    // 切换标题 + 按钮文本
+    const modal = document.getElementById('drama-create-modal');
+    const titleEl = modal.querySelector('div[style*="font-weight:700"]');
+    if (titleEl) titleEl.textContent = '编辑网剧';
+    const submitBtn = modal.querySelector('button.drama-btn-gen');
+    if (submitBtn) {
+      submitBtn.textContent = '保存修改';
+      submitBtn.setAttribute('onclick', 'submitEditDramaProject()');
+    }
+  } catch (e) {
+    alert('加载失败: ' + e.message);
+  }
+}
+window.editDramaProject = editDramaProject;
+
+async function submitEditDramaProject() {
+  if (!_editingDramaProjectId) return;
+  try {
+    const fields = {
+      title: document.getElementById('dcp-title').value.trim(),
+      synopsis: document.getElementById('dcp-synopsis').value.trim(),
+      style: document.getElementById('dcp-style').value,
+      motion_preset: document.getElementById('dcp-motion').value,
+      episode_count: parseInt(document.getElementById('dcp-episodes').value || '10'),
+      aspect_ratio: document.getElementById('dcp-aspect').value,
+      scene_count: parseInt(document.getElementById('dcp-scenes')?.value || '6'),
+      shot_duration: parseInt(document.getElementById('dcp-shot-dur')?.value || '8'),
+      image_model: document.getElementById('dcp-img-model')?.value || 'auto',
+      video_model: document.getElementById('dcp-vid-model')?.value || 'auto',
+      characters: dcpChars,
+    };
+    const r = await authFetch('/api/drama/projects/' + _editingDramaProjectId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    const j = await r.json();
+    if (j.success) {
+      _editingDramaProjectId = null;
+      closeDramaCreateModal();
+      // 重置弹窗为创建模式
+      const modal = document.getElementById('drama-create-modal');
+      const titleEl = modal.querySelector('div[style*="font-weight:700"]');
+      if (titleEl) titleEl.textContent = '新建网剧';
+      const submitBtn = modal.querySelector('button.drama-btn-gen');
+      if (submitBtn) {
+        submitBtn.textContent = '创建网剧';
+        submitBtn.setAttribute('onclick', 'submitCreateDramaProject()');
+      }
+      loadDramaProjectsList();
+      showToast?.('✓ 已保存修改', 'ok');
+    } else {
+      alert(j.error || '保存失败');
+    }
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  }
+}
+window.submitEditDramaProject = submitEditDramaProject;
 
 // ════════ 创建项目弹窗 ════════
 async function showCreateDramaProject() {
@@ -9668,8 +10099,51 @@ async function showCreateDramaProject() {
   document.getElementById('dcp-synopsis').value = '';
   // 加载风格
   try { const r = await authFetch('/api/ai-cap/styles'); const d = await r.json(); const sel = document.getElementById('dcp-style'); sel.innerHTML = (d.data||[]).map(s=>`<option value="${s.name}">${s.name}</option>`).join(''); } catch {}
+  // 加载真实图片+视频模型 (Seedance/Sora/Kling/NanoBanana 等)
+  await loadDcpModels();
 }
-function closeDramaCreateModal() { document.getElementById('drama-create-modal').style.display = 'none'; }
+
+// 加载真实可用的图片/视频模型到 dcp 弹窗
+async function loadDcpModels() {
+  try {
+    const res = await authFetch('/api/settings');
+    const data = await res.json();
+    if (!data.success) return;
+    const imgSel = document.getElementById('dcp-img-model');
+    const vidSel = document.getElementById('dcp-vid-model');
+    if (!imgSel || !vidSel) return;
+    let imgH = '<option value="">自动 (按画风优选)</option>';
+    let vidH = '<option value="">自动 (按场景优选)</option>';
+    for (const p of (data.data.providers || [])) {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) continue;
+      for (const m of (p.models || [])) {
+        if (m.enabled === false) continue;
+        const label = `${p.name} / ${m.name || m.id}`;
+        const value = `${p.id}::${m.id}`;
+        if (m.use === 'image') imgH += `<option value="${value}">${label}</option>`;
+        if (m.use === 'video') vidH += `<option value="${value}">${label}</option>`;
+      }
+    }
+    imgSel.innerHTML = imgH;
+    vidSel.innerHTML = vidH;
+  } catch (e) {
+    console.warn('[loadDcpModels] failed:', e);
+  }
+}
+window.loadDcpModels = loadDcpModels;
+function closeDramaCreateModal() {
+  document.getElementById('drama-create-modal').style.display = 'none';
+  // 重置弹窗为创建模式 (关掉后下次打开是 + 新建)
+  _editingDramaProjectId = null;
+  const modal = document.getElementById('drama-create-modal');
+  const titleEl = modal?.querySelector('div[style*="font-weight:700"]');
+  if (titleEl) titleEl.textContent = '新建网剧';
+  const submitBtn = modal?.querySelector('button.drama-btn-gen');
+  if (submitBtn) {
+    submitBtn.textContent = '创建网剧';
+    submitBtn.setAttribute('onclick', 'submitCreateDramaProject()');
+  }
+}
 
 function addDcpChar() { const n = prompt('角色名称'); if (!n) return; dcpChars.push({ name: n, description: '' }); renderDcpCharTags(); }
 function importDcpCharFromLib() { showLibraryPicker('characters', { multiple: true, onSelect: items => { for (const c of items) dcpChars.push({ id: c.id, name: c.name, appearance_prompt: c.appearance_prompt || '' }); renderDcpCharTags(); } }); }
@@ -9680,15 +10154,21 @@ async function submitCreateDramaProject() {
   if (!title) return alert('请输入网剧标题');
   try {
     const r = await authFetch('/api/drama/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      title, synopsis: document.getElementById('dcp-synopsis').value.trim(),
+      title,
+      synopsis: document.getElementById('dcp-synopsis').value.trim(),
       style: document.getElementById('dcp-style').value || '日系动漫',
       motion_preset: document.getElementById('dcp-motion').value || 'cinematic',
       episode_count: parseInt(document.getElementById('dcp-episodes').value || '10'),
       aspect_ratio: document.getElementById('dcp-aspect')?.value || '9:16',
+      // v15: 创建时一次性确定所有生成参数
+      scene_count: parseInt(document.getElementById('dcp-scenes')?.value || '6'),
+      shot_duration: parseInt(document.getElementById('dcp-shot-dur')?.value || '8'),
+      image_model: document.getElementById('dcp-img-model')?.value || 'auto',
+      video_model: document.getElementById('dcp-vid-model')?.value || 'auto',
       characters: dcpChars,
     }) });
     const d = await r.json();
-    if (d.success) { closeDramaCreateModal(); enterDramaProject(d.data.id); }
+    if (d.success) { closeDramaCreateModal(); openDramaStudio(d.data.id); }
     else alert(d.error);
   } catch (e) { alert('创建失败: ' + e.message); }
 }
@@ -10819,21 +11299,37 @@ async function loadWorksPage() {
 
 function renderWorksStats(stats) {
   const el = document.getElementById('works-stats');
+  // 将作品类型映射到对应的权限模块 key（与侧边栏 data-perm 保持一致）
   const items = [
-    { key: 'all', label: '全部作品', count: Object.values(stats).reduce((s, n) => s + n, 0) },
-    { key: 'avatar', label: '数字人', count: stats.avatar || 0 },
-    { key: 'video', label: 'AI 视频', count: stats.video || 0 },
-    { key: 'i2v', label: '图生视频', count: stats.i2v || 0 },
-    { key: 'portrait', label: 'AI 形象', count: stats.portrait || 0 },
-    { key: 'comic', label: 'AI 漫画', count: stats.comic || 0 },
-    { key: 'novel', label: 'AI 小说', count: stats.novel || 0 },
+    { key: 'all',      label: '全部作品', perm: null,        count: Object.values(stats).reduce((s, n) => s + n, 0) },
+    { key: 'avatar',   label: '数字人',   perm: 'avatar',    count: stats.avatar || 0 },
+    { key: 'video',    label: 'AI 视频',  perm: 'create',    count: stats.video || 0 },
+    { key: 'i2v',      label: '图生视频', perm: 'i2v',       count: stats.i2v || 0 },
+    { key: 'portrait', label: 'AI 形象',  perm: 'portrait',  count: stats.portrait || 0 },
+    { key: 'comic',    label: 'AI 漫画',  perm: 'comic',     count: stats.comic || 0 },
+    { key: 'drama',    label: 'AI 网剧',  perm: 'drama',     count: stats.drama || 0 },
+    { key: 'novel',    label: 'AI 小说',  perm: 'novel',     count: stats.novel || 0 },
   ];
-  el.innerHTML = items.map(it => `
+  // 根据当前用户权限过滤
+  const user = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+  const visible = items.filter(it => !it.perm || canSeeModule(user, it.perm));
+  el.innerHTML = visible.map(it => `
     <div class="works-stat-card ${worksFilter === it.key ? 'active' : ''}" onclick="filterWorks('${it.key}',null)">
       <div class="works-stat-num">${it.count}</div>
       <div class="works-stat-label">${it.label}</div>
     </div>
   `).join('');
+}
+
+// 通用的模块可见性判断（同 applyPermissionVisibility 内的 canSee）
+function canSeeModule(user, moduleKey) {
+  if (!moduleKey) return true;
+  const isAdmin = user && user.role === 'admin';
+  const perms = user && Array.isArray(user.effective_permissions) ? user.effective_permissions : [];
+  if (isAdmin || perms.includes('*')) return true;
+  if (moduleKey === 'dashboard' || moduleKey === 'profile') return true;
+  const prefix = 'enterprise:' + moduleKey + ':';
+  return perms.some(p => p === moduleKey || (typeof p === 'string' && p.startsWith(prefix)));
 }
 
 function filterWorks(type, btn) {

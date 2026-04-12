@@ -85,23 +85,43 @@ async function generateOutline({ title, genre, style, chapterCount = 10, descrip
   const typeLabel = TYPE_LABELS[novelType] || '短篇小说';
   const typeHint = TYPE_HINTS[novelType] || '';
 
-  const systemPrompt = `你是一位专业的${typeLabel}作家和策划人。请根据用户的需求生成小说大纲。
-${typeHint ? `创作要求：${typeHint}。` : ''}
-输出必须是合法 JSON 格式，不要包含代码块标记，格式如下：
+  const systemPrompt = `你是一位顶级${typeLabel}作家和故事架构师，精通叙事结构和角色塑造。
+
+【大纲架构法则】
+- 故事脊柱：每个章节必须推动核心冲突向前发展，不能原地踏步
+- 三幕结构：开篇（建立世界观+核心悬念）→ 发展（层层升级冲突+角色成长）→ 高潮结局（最大冲突+情感爆发+余韵）
+- 人物弧线：主角必须有清晰的内在变化（从A状态到B状态）
+- 每章钩子：每章结尾必须有悬念或情感钩子，让读者想看下一章
+- 伏笔设计：前面章节埋下伏笔，后面章节回收，形成叙事闭环
+
+【章节摘要要求】
+- 每章摘要60-120字，必须包含：本章核心事件 + 角色情感变化 + 下章悬念
+- 标注本章的叙事功能（铺垫/冲突/转折/高潮/收束）
+
+${typeHint ? `【篇幅特点】${typeHint}` : ''}
+
+输出必须是合法 JSON 格式，不要包含代码块标记：
 {
-  "synopsis": "故事简介（50-100字）",
+  "synopsis": "故事简介（80-150字，包含世界观+核心冲突+主角困境）",
+  "characters": [
+    { "name": "角色名", "role": "主角/配角/反派", "personality": "性格特征", "arc": "角色变化弧线" }
+  ],
   "chapters": [
-    { "index": 1, "title": "章节标题", "summary": "该章主要剧情（30-60字）" }
+    { "index": 1, "title": "章节标题（有文学感）", "summary": "详细剧情摘要（60-120字）", "function": "叙事功能（铺垫/冲突/转折/高潮/收束）" }
   ]
 }`;
 
-  const userPrompt = `请为以下${typeLabel}生成 ${chapterCount} 章的详细大纲：
+  const userPrompt = `请为以下${typeLabel}生成 ${chapterCount} 章的专业大纲：
 - 标题：${title}
 - 题材：${genreLabel}
 - 文风：${styleLabel}
-${description ? `- 补充描述：${description}` : ''}
+${description ? `- 故事描述：${description}` : ''}
 
-请确保章节间剧情连贯递进，有清晰的起承转合。`;
+严格要求：
+1. 每章摘要60-120字，必须具体到事件和情感
+2. 章节间有因果逻辑链，不是松散的场景罗列
+3. 提取并列出主要角色（含性格和变化弧线）
+4. 前1/4章节建立世界观和冲突，中间1/2升级矛盾，最后1/4推向高潮和结局`;
 
   const client = createClient(config);
   const completion = await client.chat.completions.create({
@@ -132,29 +152,58 @@ async function generateChapterStream({ outline, chapterIndex, chapters = [], gen
   const typeLabel = TYPE_LABELS[novelType] || '短篇小说';
   const typeHint = TYPE_HINTS[novelType] || '';
 
-  // 构建前文摘要
+  // 构建完整上下文
+  const allChapterSummaries = (outline.chapters || []).map(c => `第${c.index}章「${c.title}」：${c.summary}`).join('\n');
+
+  // 前文内容（取最近2章，每章最多500字）
   let previousContext = '';
   if (chapters.length > 0) {
-    const recent = chapters.slice(-2);
-    previousContext = '前文摘要：\n' + recent.map(c => `第${c.index}章「${c.title}」：${(c.content || '').slice(0, 300)}...`).join('\n') + '\n\n';
+    const sorted = [...chapters].sort((a, b) => a.index - b.index);
+    const beforeCurrent = sorted.filter(c => c.index < chapterIndex && c.content);
+    const recent = beforeCurrent.slice(-2);
+    if (recent.length) {
+      previousContext = '【前文内容回顾】\n' + recent.map(c => `第${c.index}章「${c.title}」：\n${(c.content || '').slice(0, 500)}${(c.content || '').length > 500 ? '...' : ''}`).join('\n\n') + '\n\n';
+    }
   }
 
-  const systemPrompt = `你是一位擅长${typeLabel}的${genreLabel}题材资深作家，文风${styleLabel}。
-${typeHint ? `创作特点：${typeHint}。` : ''}
-请根据大纲和前文内容，撰写小说的指定章节。要求：
-- 字数约 ${chapterWords} 字
-- 文笔流畅自然，情节引人入胜
-- 保持与前文的连贯性
-- 对话和心理描写丰富
-- 直接输出正文内容，不要重复章节标题`;
+  // 角色信息
+  const charInfo = outline.characters?.length
+    ? '【角色设定】\n' + outline.characters.map(c => `- ${c.name}（${c.role || '角色'}）：${c.personality || ''}${c.arc ? '，变化弧线：' + c.arc : ''}`).join('\n') + '\n\n'
+    : '';
 
-  const userPrompt = `小说大纲简介：${outline.synopsis}
+  // 当前章节在全局中的位置
+  const totalChapters = outline.chapters?.length || chapterCount;
+  const position = chapterIndex <= Math.ceil(totalChapters * 0.25) ? '开篇阶段（建立世界观和人物）'
+    : chapterIndex <= Math.ceil(totalChapters * 0.75) ? '发展阶段（升级冲突和角色成长）'
+    : '高潮收束阶段（最大冲突+情感爆发）';
 
-${previousContext}当前要写的章节：
-第${chapter.index}章「${chapter.title}」
+  const systemPrompt = `你是一位顶级${typeLabel}作家，${genreLabel}题材大师，文风${styleLabel}。
+
+【写作法则】
+- 严格按照大纲的剧情要点展开，不偏离大纲设定
+- 展示而非叙述（Show, don't tell）：用场景、对话、动作展现情节，而非平铺直叙
+- 对话要有性格：每个角色说话方式不同，对话推动剧情
+- 环境描写服务情绪：景物描写要配合角色心理状态
+- 节奏控制：紧张段落用短句，抒情段落用长句
+- 章节末尾留钩子：让读者有继续阅读的冲动
+- 与前文保持绝对连贯：人名、地名、设定、伏笔不能矛盾
+${typeHint ? `- 篇幅特点：${typeHint}` : ''}
+
+字数要求：约 ${chapterWords} 字
+直接输出正文，不要章节标题，不要作者注释。`;
+
+  const userPrompt = `【故事简介】
+${outline.synopsis}
+
+${charInfo}【完整大纲】
+${allChapterSummaries}
+
+${previousContext}【当前任务】
+撰写第${chapter.index}章「${chapter.title}」（${position}）
 剧情要点：${chapter.summary}
+${chapter.function ? `叙事功能：${chapter.function}` : ''}
 
-请开始撰写正文：`;
+请严格按照上述剧情要点开始撰写正文：`;
 
   const client = createClient(config);
   const stream = await client.chat.completions.create({

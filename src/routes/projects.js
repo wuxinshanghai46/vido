@@ -4,6 +4,22 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const db = require('../models/database');
+const { isAdmin, ownedBy } = require('../middleware/auth');
+
+// 所有 :id 路由统一走归属检查（非所有者返回 404）
+router.param('id', (req, res, next, id) => {
+  const project = db.getProject(id);
+  if (!project || !ownedBy(req, project)) {
+    return res.status(404).json({ success: false, error: '项目不存在' });
+  }
+  req._project = project;
+  next();
+});
+
+// 兼容旧调用 — 保留 helper，但现在各路由都可以直接用 req._project
+function getOwnedProject(req, res, projectId) {
+  return req._project || null;
+}
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 
@@ -140,6 +156,7 @@ router.post('/', async (req, res) => {
 });
 
 router.get('/:id', (req, res) => {
+  if (!getOwnedProject(req, res, req.params.id)) return;
   const details = getProjectDetails(req.params.id);
   if (!details) return res.status(404).json({ success: false, error: '项目不存在' });
   res.json({ success: true, data: details });
@@ -147,6 +164,7 @@ router.get('/:id', (req, res) => {
 
 // 取消制作
 router.post('/:id/cancel', (req, res) => {
+  if (!getOwnedProject(req, res, req.params.id)) return;
   try {
     cancelPipeline(req.params.id);
     // 返回项目最后的错误信息
@@ -160,6 +178,7 @@ router.post('/:id/cancel', (req, res) => {
 
 // SSE 实时进度
 router.get('/:id/progress', (req, res) => {
+  if (!getOwnedProject(req, res, req.params.id)) return;
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -188,6 +207,7 @@ function resolveVideoPath(projectId) {
 
 // 下载最终视频（支持格式转换: ?format=mp4|webm|gif）
 router.get('/:id/download', async (req, res) => {
+  if (!getOwnedProject(req, res, req.params.id)) return;
   const filePath = resolveVideoPath(req.params.id);
   if (!filePath) return res.status(404).json({ success: false, error: '视频尚未生成完成' });
 
@@ -299,15 +319,9 @@ router.get('/:id/clips/:clipId/stream', (req, res) => {
 // 预览片段（兼容旧接口）
 // 删除项目
 router.delete('/:id', (req, res) => {
-  const project = db.getProject(req.params.id);
-  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
-  // 仅允许项目所有者或管理员删除
-  if (project.user_id && project.user_id !== req.user?.id && req.user?.role !== 'admin') {
-    return res.status(403).json({ success: false, error: '无权删除此项目' });
-  }
+  if (!getOwnedProject(req, res, req.params.id)) return;
   // 清理视频文件
   const projectDir = path.join(OUTPUT_DIR, 'projects');
-  const patterns = [`${req.params.id}_final.mp4`, `${req.params.id}_*.mp4`];
   try {
     const files = fs.readdirSync(projectDir).filter(f => f.startsWith(req.params.id));
     files.forEach(f => { try { fs.unlinkSync(path.join(projectDir, f)); } catch {} });
@@ -317,6 +331,7 @@ router.delete('/:id', (req, res) => {
 });
 
 router.get('/:id/clips/:clipId/preview', (req, res) => {
+  if (!getOwnedProject(req, res, req.params.id)) return;
   const clip = db.getClip(req.params.clipId, req.params.id);
   if (!clip?.file_path || !fs.existsSync(clip.file_path)) {
     return res.status(404).json({ success: false, error: '片段不存在' });

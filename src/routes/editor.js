@@ -6,6 +6,17 @@ const fs = require('fs');
 const { getEdit, saveEdit } = require('../models/editStore');
 const { renderWithEdits, getVideoDuration } = require('../services/editService');
 const db = require('../models/database');
+const { ownedBy } = require('../middleware/auth');
+
+// 编辑器所有 :id 路由都按项目归属保护 — 非所有者 → 404
+router.param('id', (req, res, next, id) => {
+  const project = db.getProject(id);
+  if (!project || !ownedBy(req, project)) {
+    return res.status(404).json({ success: false, error: '项目不存在' });
+  }
+  req._project = project;
+  next();
+});
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 
@@ -30,11 +41,9 @@ const uploadMusic = multer({
   }
 });
 
-// 获取项目编辑数据
+// 获取项目编辑数据（归属检查由 router.param 完成）
 router.get('/:id', (req, res) => {
-  const project = db.getProject(req.params.id);
-  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
-
+  const project = req._project;
   const clips = db.getClipsByProject(req.params.id).filter(c => c.status === 'done');
   const story = db.getStoryByProject(req.params.id);
   const edit = getEdit(req.params.id);

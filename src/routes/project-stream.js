@@ -1,17 +1,23 @@
 const path = require('path');
 const fs = require('fs');
 const db = require('../models/database');
+const { userFromRequest, ownsRow } = require('../middleware/streamAuth');
 
 module.exports = (req, res) => {
+  // 数据隔离：未登录或非所有者 → 404
+  const user = userFromRequest(req);
+  if (!user) return res.status(401).json({ error: '未登录' });
   const projectId = req.params.id;
+  const project = db.getProject(projectId);
+  if (!project || !ownsRow(user, project)) return res.status(404).json({ error: '视频不存在' });
+
   const clipId = req.params.clipId;
 
   let videoPath;
   if (clipId) {
     videoPath = path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'videos', projectId, `clip_${clipId}.mp4`);
   } else {
-    const project = db.getProject(projectId);
-    videoPath = project?.final_video || path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'videos', projectId, 'final.mp4');
+    videoPath = project.final_video || path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'videos', projectId, 'final.mp4');
   }
 
   if (!videoPath || !fs.existsSync(videoPath)) return res.status(404).json({ error: '视频不存在' });

@@ -165,8 +165,21 @@ router.post('/generate', async (req, res) => {
   }
 });
 
+// 归属检查辅助：内存任务 or 数据库都要校验 user_id
+function resolveOwnedAvatar(req) {
+  const id = req.params.id;
+  let task = avatarTasks.get(id);
+  if (!task) task = db.getAvatarTask(id);
+  if (!task) return null;
+  const isAdmin = req.user && req.user.role === 'admin';
+  if (!isAdmin && task.user_id && req.user && task.user_id !== req.user.id) return null;
+  return task;
+}
+
 // GET /api/avatar/tasks/:id/progress - SSE 进度
 router.get('/tasks/:id/progress', (req, res) => {
+  const task = resolveOwnedAvatar(req);
+  if (!task) return res.status(404).json({ error: '任务不存在' });
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
   res.write(`data: ${JSON.stringify({ step: 'connected' })}\n\n`);
   const list = avatarSSE.get(req.params.id) || [];
@@ -176,24 +189,23 @@ router.get('/tasks/:id/progress', (req, res) => {
     avatarSSE.set(req.params.id, updated);
   });
   // 如果任务已完成，立即发送结果
-  const task = avatarTasks.get(req.params.id);
-  if (task?.status === 'done') {
+  if (task.status === 'done') {
     res.write(`data: ${JSON.stringify({ step: 'done', videoUrl: task.videoUrl })}\n\n`);
-  } else if (task?.status === 'error') {
+  } else if (task.status === 'error') {
     res.write(`data: ${JSON.stringify({ step: 'error', message: task.error })}\n\n`);
   }
 });
 
 // GET /api/avatar/tasks/:id/status - REST 轮询任务状态（SSE 断线兜底）
 router.get('/tasks/:id/status', (req, res) => {
-  const task = avatarTasks.get(req.params.id);
+  const task = resolveOwnedAvatar(req);
   if (!task) return res.status(404).json({ error: '任务不存在' });
   res.json({ status: task.status, videoUrl: task.videoUrl || null, error: task.error || null });
 });
 
 // GET /api/avatar/tasks/:id/stream - 流式播放结果视频
 router.get('/tasks/:id/stream', (req, res) => {
-  const task = avatarTasks.get(req.params.id);
+  const task = resolveOwnedAvatar(req);
   if (!task?.videoPath || !fs.existsSync(task.videoPath)) {
     return res.status(404).json({ error: '视频不存在' });
   }
@@ -218,7 +230,7 @@ router.get('/tasks/:id/stream', (req, res) => {
 
 // GET /api/avatar/tasks/:id/download - 下载结果视频
 router.get('/tasks/:id/download', (req, res) => {
-  const task = avatarTasks.get(req.params.id);
+  const task = resolveOwnedAvatar(req);
   if (!task?.videoPath || !fs.existsSync(task.videoPath)) {
     return res.status(404).json({ error: '视频不存在' });
   }

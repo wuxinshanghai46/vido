@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../models/database');
 const { loadSettings } = require('../services/settingsService');
+const { scopeUserId } = require('../middleware/auth');
 
 // ---------- helpers ----------
 
@@ -34,11 +35,12 @@ function timeAgo(dateStr) {
 
 router.get('/stats', (req, res) => {
   try {
-    const projects    = db.listProjects();
-    const avatars     = db.listAvatarTasks();
-    const comics      = db.listComicTasks();
-    const portraits   = db.listPortraits();
-    const novels      = db.listNovels();
+    const uid = scopeUserId(req);
+    const projects    = db.listProjects(uid);
+    const avatars     = db.listAvatarTasks(uid);
+    const comics      = db.listComicTasks(uid);
+    const portraits   = db.listPortraits(uid);
+    const novels      = db.listNovels(uid);
 
     res.json({
       success: true,
@@ -62,9 +64,10 @@ router.get('/stats', (req, res) => {
 
 router.get('/recent-tasks', (req, res) => {
   try {
+    const uid = scopeUserId(req);
     const merged = [];
 
-    for (const p of db.listProjects()) {
+    for (const p of db.listProjects(uid)) {
       merged.push({
         id: p.id,
         title: p.title || p.theme || 'AI 视频',
@@ -75,7 +78,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const t of db.listAvatarTasks()) {
+    for (const t of db.listAvatarTasks(uid)) {
       merged.push({
         id: t.id,
         title: (t.text || '').slice(0, 30) || '数字人视频',
@@ -86,7 +89,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const c of db.listComicTasks()) {
+    for (const c of db.listComicTasks(uid)) {
       merged.push({
         id: c.id,
         title: c.title || 'AI 漫画',
@@ -97,7 +100,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const p of db.listPortraits()) {
+    for (const p of db.listPortraits(uid)) {
       merged.push({
         id: p.id,
         title: (p.prompt || '').slice(0, 30) || 'AI 图片',
@@ -108,7 +111,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const n of db.listNovels()) {
+    for (const n of db.listNovels(uid)) {
       merged.push({
         id: n.id,
         title: n.title || 'AI 小说',
@@ -119,7 +122,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const t of db.listI2VTasks()) {
+    for (const t of db.listI2VTasks(uid)) {
       merged.push({
         id: t.id,
         title: (t.prompt || '').slice(0, 30) || '图生视频',

@@ -29,7 +29,7 @@ app.use((req, res, next) => {
 });
 
 // 静态文件（登录页、admin页不需要 auth）
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
 // === 公开路由（无需认证） ===
 app.use('/api/auth', require('./routes/auth'));
@@ -37,25 +37,67 @@ app.use('/api/auth', require('./routes/auth'));
 // 登录页视频展示墙（公开，无需认证）
 app.get('/api/showcase/videos', (req, res) => {
   const fs = require('fs');
-  const projDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'), 'projects');
+  const root = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'));
+  const projDir = path.join(root, 'projects');
+  const avatarDir = path.join(root, 'avatar');
   try {
-    if (!fs.existsSync(projDir)) return res.json({ success: true, videos: [] });
-    const files = fs.readdirSync(projDir).filter(f => f.endsWith('_final.mp4'));
-    const videos = files
-      .map(f => {
-        const stat = fs.statSync(path.join(projDir, f));
-        return { id: f.replace('_final.mp4', ''), size: stat.size };
-      })
-      .filter(v => v.size > 100000) // 过滤太小的文件
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 12);
-    res.json({ success: true, videos });
+    const items = [];
+    // 1. 普通视频项目
+    if (fs.existsSync(projDir)) {
+      fs.readdirSync(projDir)
+        .filter(f => f.endsWith('_final.mp4'))
+        .forEach(f => {
+          const stat = fs.statSync(path.join(projDir, f));
+          if (stat.size > 100000) {
+            items.push({ id: 'v:' + f.replace('_final.mp4', ''), type: 'video', size: stat.size });
+          }
+        });
+    }
+    // 2. 数字人项目 (avatar/{id}/avatar_final.mp4)
+    if (fs.existsSync(avatarDir)) {
+      fs.readdirSync(avatarDir).forEach(taskId => {
+        const finalPath = path.join(avatarDir, taskId, 'avatar_final.mp4');
+        const rawPath = path.join(avatarDir, taskId, 'avatar_raw.mp4');
+        const candidate = fs.existsSync(finalPath) ? finalPath : (fs.existsSync(rawPath) ? rawPath : null);
+        if (candidate) {
+          const stat = fs.statSync(candidate);
+          if (stat.size > 100000) {
+            items.push({ id: 'a:' + taskId, type: 'avatar', size: stat.size });
+          }
+        }
+      });
+    }
+    // 按类型分桶随机，再交错合并保证两种类型都出现
+    const videos = items.filter(x => x.type === 'video').sort(() => Math.random() - 0.5);
+    const avatars = items.filter(x => x.type === 'avatar').sort(() => Math.random() - 0.5);
+    const mixed = [];
+    const targetVideo = Math.min(8, videos.length);
+    const targetAvatar = Math.min(4, avatars.length);
+    // 交错插入：vavavava…
+    for (let i = 0; i < Math.max(targetVideo, targetAvatar); i++) {
+      if (i < targetVideo) mixed.push(videos[i]);
+      if (i < targetAvatar) mixed.push(avatars[i]);
+    }
+    res.json({ success: true, videos: mixed.slice(0, 12) });
   } catch { res.json({ success: true, videos: [] }); }
 });
 app.get('/api/showcase/stream/:id', (req, res) => {
   const fs = require('fs');
-  const projDir = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'), 'projects');
-  const filePath = path.join(projDir, req.params.id + '_final.mp4');
+  const root = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../outputs'));
+  const raw = req.params.id;
+  // 解析类型前缀: v:xxx (项目视频) | a:xxx (数字人)
+  let filePath;
+  if (raw.startsWith('a:')) {
+    const taskId = raw.slice(2);
+    const finalPath = path.join(root, 'avatar', taskId, 'avatar_final.mp4');
+    const rawPath   = path.join(root, 'avatar', taskId, 'avatar_raw.mp4');
+    filePath = fs.existsSync(finalPath) ? finalPath : rawPath;
+  } else if (raw.startsWith('v:')) {
+    filePath = path.join(root, 'projects', raw.slice(2) + '_final.mp4');
+  } else {
+    // 兼容旧格式 (无前缀 = 项目视频)
+    filePath = path.join(root, 'projects', raw + '_final.mp4');
+  }
   if (!fs.existsSync(filePath)) return res.status(404).end();
   const stat = fs.statSync(filePath);
   res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=3600' });
@@ -110,6 +152,34 @@ app.get('/api/comic/image/:taskId/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 网剧场景视频（公开）
+app.get('/api/drama/tasks/:id/video/:idx', (req, res) => {
+  const fs = require('fs');
+  const filePath = path.join(__dirname, '../outputs/dramas', req.params.id, `video_${req.params.idx}.mp4`);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size });
+  fs.createReadStream(filePath).pipe(res);
+});
+
+// 网剧场景图片（公开）
+app.get('/api/drama/tasks/:id/image/:idx', (req, res) => {
+  const fs = require('fs');
+  const filePath = path.join(__dirname, '../outputs/dramas', req.params.id, `scene_${req.params.idx}.png`);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
+// AI 能力模块静态文件（公开，img 标签无法带 Authorization header）
+app.get('/api/ai-cap/file/:subDir/:filename', (req, res) => {
+  const fs = require('fs');
+  const subDir = path.basename(req.params.subDir);
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/ai_cap', subDir, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
 // 角色/场景图片（公开，img 标签无法带 Authorization header）
 app.get('/api/story/character-image/:filename', (req, res) => {
   const fs = require('fs');
@@ -117,6 +187,15 @@ app.get('/api/story/character-image/:filename', (req, res) => {
   // 先查角色目录，再查场景目录
   let filePath = path.join(__dirname, '../outputs/characters', filename);
   if (!fs.existsSync(filePath)) filePath = path.join(__dirname, '../outputs/scenes', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
+// i2v 上传图片的公开读取（img 标签预览）
+app.get('/api/i2v/images/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/i2v_images', filename);
   if (!fs.existsSync(filePath)) return res.status(404).end();
   res.sendFile(filePath);
 });
@@ -162,7 +241,10 @@ app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./rou
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));
+app.use('/api/drama', authenticate, require('./routes/drama'));
+app.use('/api/ai-cap', authenticate, require('./routes/aiCap'));
 app.use('/api/workflow', authenticate, require('./routes/workflow'));
+app.use('/api/agent', authenticate, require('./routes/agent'));
 app.use('/api/portrait', authenticate, requirePermission('portrait'), require('./routes/portrait'));
 app.use('/api/workbench', authenticate, require('./routes/workbench'));
 app.use('/api/works', authenticate, require('./routes/works'));
@@ -179,6 +261,9 @@ app.use('/api/sync', authenticate, requireRole('admin'), require('./routes/sync'
 
 // === 管理后台（仅 admin） ===
 app.use('/api/admin', authenticate, requireRole('admin'), require('./routes/admin'));
+
+// === AI 团队（登录即可用，所有 agent 岗位的可调用端点）===
+app.use('/api/ai-team', authenticate, require('./routes/aiTeam'));
 
 // 健康检查（公开）
 app.get('/api/health', (req, res) => {
@@ -198,7 +283,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 前端路由 — login/admin 直接返回对应页面
+// 前端路由 — 根路径 / 返回新的公开营销首页
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../public/home.html')));
+app.get('/home', (req, res) => res.sendFile(path.join(__dirname, '../public/home.html')));
+app.get('/home.html', (req, res) => res.sendFile(path.join(__dirname, '../public/home.html')));
+// 登录后工作台
+app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+// login / admin
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
@@ -209,7 +301,7 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ success: false, error: 'API 端点不存在' });
   }
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  res.sendFile(path.join(__dirname, '../public/home.html'));
 });
 
 app.listen(PORT, '0.0.0.0', async () => {
@@ -243,5 +335,14 @@ app.listen(PORT, '0.0.0.0', async () => {
     process.on('SIGTERM', cleanup);
   } catch (err) {
     console.error('  [MCP] 自动启动失败:', err.message);
+  }
+
+  // 【v6】注册每日 00:00 自动学习任务
+  try {
+    const dailyLearn = require('./services/dailyLearnService');
+    dailyLearn.scheduleDaily(0, 0);  // 每天 00:00 触发
+    console.log('  [DailyLearn] ✓ 已注册每日 00:00 自动学习任务');
+  } catch (err) {
+    console.error('  [DailyLearn] 注册失败:', err.message);
   }
 });

@@ -11,6 +11,7 @@ const { mergeVideoClips, getVideoDuration, applyPostVFX, burnSubtitle } = requir
 const { generateSpeech } = require('./ttsService');
 const { buildMotionPrompt } = require('./motionService');
 const { deductCredits } = require('../middleware/credits');
+const orchestrator = require('./agentOrchestrator');
 
 const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg') ? process.env.FFMPEG_PATH : ffmpegStatic;
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -442,6 +443,21 @@ async function runFullPipeline(projectId, userId = null) {
   if (!project) throw new Error('项目不存在');
 
   try {
+    // === 第0步：跑工作流分析 ===
+    let workflowAnalysis = null;
+    try {
+      emitProgress(projectId, { step: 'workflow', status: 'start', message: '🎬 调用 AI 视频工作流分析...' });
+      const wfResult = await orchestrator.runWorkflow(
+        `视频主题: ${project.theme}\n类型: ${project.genre || 'drama'}\n时长: ${project.duration}s\n风格: ${project.anim_style || 'anime'}`,
+        { taskType: 'business', workflowName: 'video' }
+      );
+      workflowAnalysis = wfResult;
+      emitProgress(projectId, { step: 'workflow', status: 'done', message: `🎬 工作流完成 (${wfResult.total_agents_involved} agent / ${(wfResult.total_duration_ms/1000).toFixed(0)}s)` });
+    } catch (wfErr) {
+      console.warn(`[Project ${projectId}] orchestrator workflow failed (non-fatal):`, wfErr.message);
+      emitProgress(projectId, { step: 'workflow', status: 'skip', message: '⚠️ 工作流分析跳过' });
+    }
+
     // === 第1步：生成剧情 ===
     updateProjectStatus(projectId, 'generating_story');
     emitProgress(projectId, { step: 'story', status: 'start', message: '正在生成剧情故事...' });
@@ -509,6 +525,26 @@ async function runFullPipeline(projectId, userId = null) {
         const custom = typeof project.custom_content === 'string' ? JSON.parse(project.custom_content) : project.custom_content;
         customChars = custom.characters || [];
         customScenesList = custom.custom_scenes || [];
+        // 从角色库填充完整信息（如果角色携带 _libraryId）
+        for (const c of customChars) {
+          if (c._libraryId) {
+            const dbChar = db.getAIChar(c._libraryId);
+            if (dbChar) {
+              if (!c.description && dbChar.appearance_prompt) c.description = dbChar.appearance_prompt;
+              if (!c.imageUrl && dbChar.ref_images?.length) c.imageUrl = dbChar.ref_images[0];
+            }
+          }
+        }
+        // 从场景库填充（如果场景携带 _libraryId）
+        for (const s of customScenesList) {
+          if (s._libraryId) {
+            const dbScene = db.getAIScene(s._libraryId);
+            if (dbScene) {
+              if (!s.description && dbScene.scene_prompt) s.description = dbScene.scene_prompt;
+              if (!s.imageUrl && dbScene.ref_images?.length) s.imageUrl = dbScene.ref_images[0];
+            }
+          }
+        }
       }
     } catch {}
 

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>VIDO · AI 视频创作工作室</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/home.css?v=20260411f" />
+</head>
+<body>
+
+<!-- ═════════ TOPBAR ═════════ -->
+<header class="topbar">
+  <div class="tb-inner">
+    <a href="/" class="tb-logo">
+      <div class="tb-logo-mark">V</div>
+      <span>VIDO</span>
+    </a>
+
+    <nav class="tb-nav">
+      <a href="/index.html" class="active">创作</a>
+      <a href="#cases">案例</a>
+    </nav>
+
+    <div class="tb-right" id="tb-auth-area">
+      <button type="button" class="tb-link" id="tb-login-btn" onclick="openAuthModal('login')">登录</button>
+      <button type="button" class="tb-cta" id="tb-cta-btn" onclick="openAuthModal('register')">免费开始</button>
+    </div>
+  </div>
+</header>
+
+<!-- ═════════ HERO ═════════ -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">AI VIDEO STUDIO</div>
+    <h1 class="hero-title">
+      把一句话<br/>
+      变成 <em>一段电影</em>
+    </h1>
+    <p class="hero-sub">
+      VIDO 集成 48+ 顶尖 AI 模型 与 21 人 AI 团队，<br/>
+      从文字到成片，一人即工作室。
+    </p>
+
+    <!-- Composer -->
+    <form class="composer" id="composer-form" onsubmit="return goCreate(event);">
+      <div class="composer-row">
+        <button type="button" class="composer-add" title="上传参考">
+          <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        </button>
+        <input class="composer-input" id="composer-input" placeholder="描述你想要的视频，比如：一个少年在沙漠骑摩托车追逐落日…" />
+        <button type="submit" class="composer-go">
+          开始创作
+          <svg fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </form>
+
+    <!-- 示例提示 -->
+    <div class="examples">
+      <button class="example">古风短剧</button>
+      <button class="example">数字人主播</button>
+      <button class="example">产品广告</button>
+      <button class="example">旅行 vlog</button>
+      <button class="example">动画分镜</button>
+    </div>
+
+    <!-- 数据指标 -->
+    <div class="hero-stats">
+      <div>
+        <div class="stat-num"><em>48+</em></div>
+        <div class="stat-label">AI 模型</div>
+      </div>
+      <div>
+        <div class="stat-num"><em>21</em></div>
+        <div class="stat-label">Agent 团队</div>
+      </div>
+      <div>
+        <div class="stat-num"><em>10</em></div>
+        <div class="stat-label">创作工作流</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ CASES ═════════ -->
+<section class="cases" id="cases">
+  <div class="cases-head">
+    <div class="cases-title">
+      <h2>看作品</h2>
+      <p>真实创作者用 VIDO 生成 · 视频与数字人</p>
+    </div>
+    <a href="/index.html" class="cases-more">查看全部 →</a>
+  </div>
+
+  <div class="cases-grid" id="cases-grid">
+    <div class="case case--big"><div class="case-skel"></div></div>
+    <div class="case case--sq"><div class="case-skel"></div></div>
+    <div class="case case--rect"><div class="case-skel"></div></div>
+    <div class="case case--wide"><div class="case-skel"></div></div>
+  </div>
+</section>
+
+<!-- ═════════ FOOTER ═════════ -->
+<footer class="foot">
+  <div class="foot-inner">
+    <div class="foot-logo">
+      <div class="tb-logo-mark">V</div>
+      VIDO
+    </div>
+    <p>AI 视频创作工作室 · 让每一个想法都能成为影片</p>
+    <p>
+      <a href="#">关于</a>·
+      <a href="#cases">案例</a>·
+      <a href="#">联系</a>·
+      <a href="#">隐私</a>
+    </p>
+    <p style="margin-top:12px;opacity:.5;">© 2026 VIDO AI Studio</p>
+  </div>
+</footer>
+
+<!-- ═════════ AUTH MODAL ═════════ -->
+<div class="auth-modal" id="auth-modal">
+  <div class="auth-card">
+    <button class="auth-close" type="button" onclick="closeAuthModal()" aria-label="关闭">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="auth-brand">
+      <div class="tb-logo-mark">V</div>
+    </div>
+    <h3 class="auth-title">开启你的 AI 创作之旅</h3>
+    <p class="auth-sub">登录或注册，立即进入创作工作室</p>
+
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">登录</button>
+      <button type="button" class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">注册</button>
+    </div>
+
+    <div class="auth-err" id="auth-err"></div>
+
+    <!-- 登录表单 -->
+    <form class="auth-form" id="auth-form-login" onsubmit="return doLogin(event);">
+      <div class="auth-field">
+        <input type="text" id="login-username" required autocomplete="username" placeholder=" " />
+        <label>用户名</label>
+      </div>
+      <div class="auth-field">
+        <input type="password" id="login-password" required autocomplete="current-password" placeholder=" " />
+        <label>密码</label>
+      </div>
+      <button type="submit" class="auth-submit">登录并进入工作室</button>
+    </form>
+
+    <!-- 注册表单 -->
+    <form class="auth-form" id="auth-form-register" style="display:none" onsubmit="return doRegister(event);">
+      <div class="auth-field">
+        <input type="text" id="reg-username" required autocomplete="username" placeholder=" " minlength="3" maxlength="20" />
+        <label>用户名 (3-20 位字母数字)</label>
+      </div>
+      <div class="auth-field">
+        <input type="email" id="reg-email" autocomplete="email" placeholder=" " />
+        <label>邮箱（选填）</label>
+      </div>
+      <div class="auth-field">
+        <input type="password" id="reg-password" required autocomplete="new-password" placeholder=" " minlength="6" />
+        <label>密码 (至少 6 位)</label>
+      </div>
+      <button type="submit" class="auth-submit">注册并开始创作</button>
+    </form>
+
+    <div class="auth-foot">登录后立即开始 AI 视频创作</div>
+  </div>
+</div>
+
+<script src="/js/home.js?v=20260411f"></script>
+</body>
+</html>

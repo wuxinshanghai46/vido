@@ -72,8 +72,15 @@ const MOTION_PRESETS = {
 // ═══════════════════════════════════════════════════
 // Agent 1：编剧 — 生成网剧剧情脚本
 // ═══════════════════════════════════════════════════
-async function agentDramaScreenwriter({ theme, style, sceneCount = 6, characters = [], episodeIndex = 1, episodeCount = 1, previousSummary = '' }) {
+async function agentDramaScreenwriter({ theme, style, sceneCount = 6, characters = [], episodeIndex = 1, episodeCount = 1, previousSummary = '', genre = '' }) {
   const { callLLM } = require('./storyService');
+  const kb = require('./knowledgeBaseService');
+
+  // 注入知识库上下文：编剧 + 市场调研 + 文案策划（更全面的创作视角）
+  const ctxScreenwriter = kb.buildAgentContext('screenwriter', { genre: genre || theme, maxDocs: 3 });
+  const ctxMarket = kb.buildAgentContext('market_research', { genre: genre || theme, maxDocs: 2 });
+  const ctxCopy = kb.buildAgentContext('copywriter', { genre: genre || theme, maxDocs: 1 });
+  const kbContext = [ctxScreenwriter, ctxMarket, ctxCopy].filter(Boolean).join('\n\n');
 
   const charDesc = characters.length
     ? `\n角色列表：\n${characters.map(c => `- ${c.name}：${c.appearance_prompt || c.description || '无描述'}`).join('\n')}`
@@ -121,7 +128,7 @@ async function agentDramaScreenwriter({ theme, style, sceneCount = 6, characters
 - 后续场景引用相同描述关键词，确保AI生图的角色一致性
 - 多角色场景明确标注每个角色的相对位置${episodeCount > 1 ? '\n\n【多集连续剧结构】\n- 共' + episodeCount + '集，当前第' + episodeIndex + '集\n- 每集结尾必须留"钩子"（悬念/反转/情感未完成感）\n- 集与集之间角色成长有递进\n- 复现上集关键视觉元素，形成系列感' : ''}
 
-严格输出 JSON，不要任何额外文字。`;
+严格输出 JSON，不要任何额外文字。${kbContext ? '\n\n' + kbContext : ''}`;
 
   const userPrompt = `创作网剧分场脚本：
 故事：${theme}
@@ -161,8 +168,18 @@ async function agentDramaScreenwriter({ theme, style, sceneCount = 6, characters
 // ═══════════════════════════════════════════════════
 // Agent 2：导演 — 分镜设计 + 景别
 // ═══════════════════════════════════════════════════
-async function agentDramaDirector(screenplay, style, characters = []) {
+async function agentDramaDirector(screenplay, style, characters = [], genre = '') {
   const { callLLM } = require('./storyService');
+  const kb = require('./knowledgeBaseService');
+
+  // 注入知识库：导演 + 艺术总监 + 氛围 + 分镜 + 剪辑 五档上下文
+  // 让导演同时拥有艺术总监的视觉锚点思维和剪辑师的节奏思维
+  const kbDirector = kb.buildAgentContext('director', { genre, maxDocs: 2 });
+  const kbArtDirector = kb.buildAgentContext('art_director', { genre, maxDocs: 2 });
+  const kbAtmosphere = kb.buildAgentContext('atmosphere', { genre, maxDocs: 2 });
+  const kbStoryboard = kb.buildAgentContext('storyboard', { genre, maxDocs: 2 });
+  const kbEditor = kb.buildAgentContext('editor', { genre, maxDocs: 1 });
+  const kbContext = [kbDirector, kbArtDirector, kbAtmosphere, kbStoryboard, kbEditor].filter(Boolean).join('\n\n');
 
   const charVisuals = characters.length
     ? `\n角色视觉参考：\n${characters.map(c => `- ${c.name}：${c.appearance_prompt || c.description || '无描述'}`).join('\n')}`
@@ -239,7 +256,7 @@ visual_prompt 结构：Cinematography + Subject + Action + Context + Style & Amb
 - Practical lights(实景光): 烛光/霓虹/屏幕光 → motivated lighting
 - Overcast diffused(阴天散射): 柔和/日常/平静 → soft even light
 
-保留编剧原文不做任何修改。严格输出 JSON。`;
+保留编剧原文不做任何修改。严格输出 JSON。${kbContext ? '\n\n' + kbContext : ''}`;
 
   const userPrompt = `作为导演，为以下网剧脚本的每个场景添加专业视觉指令：
 
@@ -379,9 +396,15 @@ function assemblePrompts(script, style = '日系动漫') {
 // 2) 把锁定表注入到每个 scene prompt 的开头
 // 3) 配合 reference image 双重锁定 (锁定 face + wardrobe + distinguishing tokens)
 // ═══════════════════════════════════════════════════
-async function agentCharacterConsistency({ screenplay, characters = [] }) {
+async function agentCharacterConsistency({ screenplay, characters = [], genre = '' }) {
   const { callLLM } = require('./storyService');
   const db = require('../models/database');
+  const kb = require('./knowledgeBaseService');
+
+  // 注入知识库：人物一致性 + 艺术总监（让角色锁定与艺术风格一致）
+  const ctxCC = kb.buildAgentContext('character_consistency', { genre, maxDocs: 2 });
+  const ctxAD = kb.buildAgentContext('art_director', { genre, maxDocs: 2 });
+  const kbContext = [ctxCC, ctxAD].filter(Boolean).join('\n\n');
 
   // 收集角色信息: 优先用编剧 Agent 生成的 character_profiles, 回退到传入的 characters
   const charProfiles = screenplay?.character_profiles || [];
@@ -461,7 +484,7 @@ async function agentCharacterConsistency({ screenplay, characters = [] }) {
     "color_palette": "5 个主色 (例如 'cream white, sage green, dusty rose, charcoal grey, warm amber')",
     "style_anchor": "整体画风锚点 (例如 'Studio Ghibli style, hand-painted watercolor texture')"
   }
-}`;
+}${kbContext ? '\n\n' + kbContext : ''}`;
 
   const userPrompt = `请为以下网剧角色生成视觉锁定表:
 
@@ -598,7 +621,7 @@ async function agentDramaVoice(scenes, taskDir) {
 // 全流程：生成网剧
 // ═══════════════════════════════════════════════════
 async function generateDrama(taskId, params, progressCallback) {
-  const { theme, style = '日系动漫', sceneCount = 6, durationPerScene = 5, characters = [], motionPreset = 'cinematic', styleId = null, character_ids = [], episodeIndex = 1, episodeCount = 1, previousSummary = '', image_model = '', video_model = '', aspect_ratio = '9:16', enable_voice = true } = params;
+  const { theme, style = '日系动漫', sceneCount = 6, durationPerScene = 5, characters = [], motionPreset = 'cinematic', styleId = null, character_ids = [], episodeIndex = 1, episodeCount = 1, previousSummary = '', image_model = '', video_model = '', aspect_ratio = '9:16', enable_voice = true, genre = '' } = params;
   const db = require('../models/database');
   const taskDir = path.join(DRAMA_DIR, taskId);
   ensureDir(taskDir);
@@ -627,7 +650,7 @@ async function generateDrama(taskId, params, progressCallback) {
   progress('screenwriter', 5, '✍️ 编剧Agent：正在构思网剧剧情...');
   let screenplay;
   try {
-    screenplay = await agentDramaScreenwriter({ theme, style: resolvedStyle, sceneCount, characters: enrichedChars, episodeIndex, episodeCount, previousSummary });
+    screenplay = await agentDramaScreenwriter({ theme, style: resolvedStyle, sceneCount, characters: enrichedChars, episodeIndex, episodeCount, previousSummary, genre });
   } catch (err) { throw new Error('编剧Agent失败: ' + err.message); }
   fs.writeFileSync(path.join(taskDir, 'screenplay.json'), JSON.stringify(screenplay, null, 2), 'utf8');
   progress('screenwriter', 20, `✍️ 编剧完成：「${screenplay.title || ''}」${screenplay.scenes?.length || 0}个场景`);
@@ -636,7 +659,7 @@ async function generateDrama(taskId, params, progressCallback) {
   progress('director', 22, '🎬 导演Agent：正在设计分镜与镜头...');
   let directed;
   try {
-    directed = await agentDramaDirector(screenplay, resolvedStyle, enrichedChars);
+    directed = await agentDramaDirector(screenplay, resolvedStyle, enrichedChars, genre);
   } catch (err) { throw new Error('导演Agent失败: ' + err.message); }
   fs.writeFileSync(path.join(taskDir, 'directed.json'), JSON.stringify(directed, null, 2), 'utf8');
   progress('director', 35, `🎬 导演完成：分镜设计就绪`);
@@ -645,7 +668,7 @@ async function generateDrama(taskId, params, progressCallback) {
   progress('consistency', 37, '🎭 人物一致性：生成 Character Bible 锁定外观...');
   let characterBible = { characters: [], global_rules: {} };
   try {
-    characterBible = await agentCharacterConsistency({ screenplay: directed, characters: enrichedChars });
+    characterBible = await agentCharacterConsistency({ screenplay: directed, characters: enrichedChars, genre });
     fs.writeFileSync(path.join(taskDir, 'character_bible.json'), JSON.stringify(characterBible, null, 2), 'utf8');
     progress('consistency', 42, `🎭 已锁定 ${characterBible.characters?.length || 0} 个角色外观`);
   } catch (err) {

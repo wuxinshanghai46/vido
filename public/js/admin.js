@@ -2,17 +2,12 @@
 //  VIDO Admin Panel
 // ═══════════════════════════════════════════════
 
-const ALL_PERMISSIONS = [
-  'create_project', 'view_project', 'delete_project',
-  'generate_video', 'generate_story', 'generate_image',
-  'use_tts', 'use_editor', 'use_i2v',
-  'manage_users', 'manage_roles', 'manage_settings',
-  'view_credits_log', 'adjust_credits'
-];
+// 用户的功能与模型权限完全由所选角色决定，不再在用户弹窗中重复配置
 
 let usersCache = [];
 let rolesCache = [];
 let editingRoleId = null; // null = create, string = edit
+let currentUserType = 'enterprise'; // 用户管理当前 Tab
 
 // ── Init ──
 (async function init() {
@@ -49,8 +44,16 @@ function initTabs() {
       if (tab.dataset.tab === 'ai') loadProviders();
       if (tab.dataset.tab === 'aicap') loadAICapData();
       if (tab.dataset.tab === 'sync') loadSyncConfig();
+      if (tab.dataset.tab === 'knowledgebase') kbInit();
+      if (tab.dataset.tab === 'aiteam') aiteamInit();
+      if (tab.dataset.tab === 'monitor') monitorRefresh();
+      if (tab.dataset.tab === 'dashboard') loadDashboard();
     });
   });
+  // 初始化时如果默认是 dashboard，立即加载
+  if (document.querySelector('.nav-item.active')?.dataset.tab === 'dashboard') {
+    setTimeout(loadDashboard, 100);
+  }
 }
 
 // ══════════════════════ EVENTS ══════════════════════
@@ -81,13 +84,34 @@ async function loadUsers() {
   renderUsers();
 }
 
+function getUserType(u) {
+  const role = rolesCache.find(r => r.id === u.role);
+  return role ? (role.type || 'enterprise') : 'enterprise';
+}
+
+function switchUserType(type) {
+  currentUserType = type;
+  document.querySelectorAll('#user-type-tabs .role-type-tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.type === type);
+  });
+  // 隐藏展开中的新建用户表单
+  toggleForm('form-new-user', false);
+  renderUsers();
+  populateRoleDropdowns();
+}
+
 function renderUsers() {
   const tbody = $('#users-tbody');
-  if (!usersCache.length) {
+  if (!tbody) return;
+  // 按当前 Tab 的类型过滤
+  const filtered = usersCache.filter(u => getUserType(u) === currentUserType);
+  // 当前 type 对应的角色列表（用于行内角色下拉）
+  const typeRoles = rolesCache.filter(r => (r.type || 'enterprise') === currentUserType);
+  if (!filtered.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无用户</td></tr>';
     return;
   }
-  tbody.innerHTML = usersCache.map(u => {
+  tbody.innerHTML = filtered.map(u => {
     const statusClass = u.status === 'active' ? 'badge-active' : u.status === 'disabled' ? 'badge-disabled' : 'badge-pending';
     const statusLabel = u.status === 'active' ? '正常' : u.status === 'disabled' ? '禁用' : u.status || '-';
     const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '-';
@@ -97,7 +121,7 @@ function renderUsers() {
         <td>${esc(u.email || '-')}</td>
         <td>
           <select class="role-select" onchange="changeUserRole('${u.id}', this.value)">
-            ${rolesCache.map(r => `<option value="${r.id}" ${r.id === u.role ? 'selected' : ''}>${esc(r.label || r.id)}</option>`).join('')}
+            ${typeRoles.map(r => `<option value="${esc(r.id)}" ${r.id === u.role ? 'selected' : ''}>${esc(r.label || r.id)}</option>`).join('')}
           </select>
         </td>
         <td>${u.credits ?? '-'}</td>
@@ -243,10 +267,12 @@ function openUserDetail(uid) {
   document.getElementById('ud-password').type = 'password';
   document.getElementById('ud-status-sel').value = u.status || 'active';
 
-  // 填充角色 select
+  // 填充角色 select — 仅展示与当前用户同类型的角色（避免跨类切换）
   const roleSel = document.getElementById('ud-role');
-  roleSel.innerHTML = rolesCache.map(r =>
-    `<option value="${r.id}" ${r.id === u.role ? 'selected' : ''}>${esc(r.label || r.id)}</option>`
+  const userType = getUserType(u);
+  const sameTypeRoles = rolesCache.filter(r => (r.type || 'enterprise') === userType);
+  roleSel.innerHTML = sameTypeRoles.map(r =>
+    `<option value="${esc(r.id)}" ${r.id === u.role ? 'selected' : ''}>${esc(r.label || r.id)}</option>`
   ).join('');
 
   document.getElementById('user-modal').classList.add('show');
@@ -279,10 +305,11 @@ async function saveUserDetail() {
   const uid = currentDetailUid;
   let changed = false;
 
-  // 1. 更新基本信息（邮箱/角色/状态）
+  // 1. 更新基本信息（邮箱/角色/状态） — 功能与模型完全由角色决定
   const email = document.getElementById('ud-email').value.trim();
   const role = document.getElementById('ud-role').value;
   const status = document.getElementById('ud-status-sel').value;
+
   try {
     const res = await authFetch(`/api/admin/users/${uid}`, {
       method: 'PUT', body: JSON.stringify({ email, role, status })
@@ -333,42 +360,136 @@ document.getElementById('user-modal')?.addEventListener('click', e => {
 });
 
 // ══════════════════════ ROLES ══════════════════════
+let currentRoleType = 'platform'; // platform | enterprise
+let selectedRoleId = null;
+let matrixCache = null; // { platform: {...}, enterprise: {...} }
+
 async function loadRoles() {
   try {
-    const res = await authFetch('/api/admin/roles');
-    const data = await res.json();
-    rolesCache = data.success ? (data.data || []) : [];
+    const [rRes, mRes] = await Promise.all([
+      authFetch('/api/admin/roles'),
+      matrixCache ? Promise.resolve(null) : authFetch('/api/admin/permissions-matrix')
+    ]);
+    const rData = await rRes.json();
+    rolesCache = rData.success ? (rData.data || []) : [];
+    if (mRes) {
+      const mData = await mRes.json();
+      matrixCache = mData.success ? mData.data : null;
+    }
   } catch { rolesCache = []; }
   renderRoles();
 }
 
+function switchRoleType(type) {
+  currentRoleType = type;
+  selectedRoleId = null;
+  document.querySelectorAll('.role-type-tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.type === type);
+  });
+  renderRoles();
+}
+
 function renderRoles() {
-  const container = $('#roles-container');
-  if (!rolesCache.length) {
-    container.innerHTML = '<div class="empty-state">暂无角色</div>';
+  const tbody = $('#roles-tbody');
+  if (!tbody) return;
+  const filtered = rolesCache.filter(r => (r.type || 'enterprise') === currentRoleType);
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无角色</td></tr>';
+    updateMatrixPreview(null);
     return;
   }
-  container.innerHTML = rolesCache.map(r => {
-    const perms = (r.permissions || []).map(p => `<span class="role-perm-tag">${esc(p)}</span>`).join('');
+  tbody.innerHTML = filtered.map(r => {
+    const typeLabel = (r.type === 'platform') ? '平台' : '用户';
+    const typeClass = (r.type === 'platform') ? 'role-type-badge' : 'role-type-badge enterprise';
+    const isSelected = r.id === selectedRoleId;
+    const builtinTag = r.builtin ? '<span style="font-size:10px;color:var(--text3);margin-left:6px">内置</span>' : '';
     return `
-      <div class="role-card">
-        <div class="role-card-header">
-          <span class="role-card-name">${esc(r.label || r.id)}</span>
-          <span class="role-card-id">${esc(r.id)}</span>
-        </div>
-        <div class="role-meta">
-          <div class="role-meta-row"><span class="role-meta-label">默认积分</span><span class="role-meta-value">${r.default_credits ?? '-'}</span></div>
-          <div class="role-meta-row"><span class="role-meta-label">最大项目</span><span class="role-meta-value">${r.max_projects ?? '-'}</span></div>
-          <div class="role-meta-row"><span class="role-meta-label">允许模型</span><span class="role-meta-value">${(r.allowed_models || []).join(', ') || '全部'}</span></div>
-          <div class="role-meta-row"><span class="role-meta-label">权限</span><div class="role-perms">${perms || '<span style="color:var(--text3)">无</span>'}</div></div>
-        </div>
-        <div class="role-card-actions">
-          <button class="btn-sm accent" onclick="openRoleModal('${esc(r.id)}')">编辑</button>
-          <button class="btn-sm danger" onclick="confirmDeleteRole('${esc(r.id)}','${esc(r.label || r.id)}')">删除</button>
-        </div>
-      </div>
+      <tr class="${isSelected ? 'selected' : ''}" data-rid="${esc(r.id)}" onclick="selectRole('${esc(r.id)}')">
+        <td style="font-family:monospace;font-size:12px;color:var(--text2)">${esc(r.id)}${builtinTag}</td>
+        <td><strong>${esc(r.label || r.id)}</strong></td>
+        <td style="color:var(--text3);font-size:12px">${esc(r.description || '-')}</td>
+        <td><span class="${typeClass}">${typeLabel}</span></td>
+        <td>${r.user_count ?? 0}</td>
+        <td class="actions-cell" onclick="event.stopPropagation()">
+          <button class="btn-sm accent" onclick="openRoleModal('${esc(r.id)}')">权限配置</button>
+          ${r.builtin ? '' : `<button class="btn-sm danger" onclick="confirmDeleteRole('${esc(r.id)}','${esc(r.label || r.id)}')">删除</button>`}
+        </td>
+      </tr>
     `;
   }).join('');
+
+  // 首次渲染 / 切换 tab 时自动选中第一个
+  if (!selectedRoleId && filtered.length) {
+    selectRole(filtered[0].id);
+  } else if (selectedRoleId) {
+    updateMatrixPreview(rolesCache.find(x => x.id === selectedRoleId));
+  }
+}
+
+function selectRole(id) {
+  selectedRoleId = id;
+  document.querySelectorAll('#roles-tbody tr').forEach(tr => {
+    tr.classList.toggle('selected', tr.dataset.rid === id);
+  });
+  const role = rolesCache.find(r => r.id === id);
+  updateMatrixPreview(role);
+}
+
+// 只读矩阵预览
+function updateMatrixPreview(role) {
+  const thead = $('#matrix-thead');
+  const tbody = $('#matrix-tbody');
+  const title = $('#matrix-title');
+  const hint = $('#matrix-hint');
+  if (!thead || !tbody) return;
+  if (!role || !matrixCache) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td style="text-align:center;padding:24px;color:var(--text3)">请选择角色查看权限矩阵</td></tr>';
+    if (title) title.textContent = '权限矩阵概览';
+    if (hint) hint.textContent = '点击上方任一角色查看其权限矩阵';
+    return;
+  }
+  const type = role.type || 'enterprise';
+  const matrix = matrixCache[type];
+  if (!matrix) { thead.innerHTML=''; tbody.innerHTML=''; return; }
+  if (title) title.textContent = `权限矩阵概览 — ${role.label || role.id}`;
+  if (hint) hint.textContent = `${type === 'platform' ? '平台角色' : '用户角色'} · 此为只读预览，点击"权限配置"进行编辑`;
+
+  // 表头
+  const colspan = matrix.actions.length + 1;
+  thead.innerHTML = `<tr><th>功能模块</th>${matrix.actions.map(a => `<th>${esc(a.label)}</th>`).join('')}</tr>`;
+  // 表体 — 按 group 分组插入标题行
+  const perms = new Set(role.permissions || []);
+  const wild = perms.has('*');
+  let lastGroup = null;
+  const rows = [];
+  matrix.modules.forEach(m => {
+    if (m.group && m.group !== lastGroup) {
+      rows.push(`<tr class="pm-group-row"><td colspan="${colspan}">${esc(m.group)}</td></tr>`);
+      lastGroup = m.group;
+    }
+    const cells = matrix.actions.map(a => {
+      const key = `${type}:${m.id}:${a.id}`;
+      const enabled = wild || perms.has(key);
+      return `<td>${enabled ? '<span style="color:var(--accent);font-size:16px">✓</span>' : '<span style="color:var(--border2)">-</span>'}</td>`;
+    }).join('');
+    rows.push(`<tr><td style="padding-left:28px">${esc(m.label)}</td>${cells}</tr>`);
+  });
+  tbody.innerHTML = rows.join('');
+}
+
+// 为指定 type 自动生成下一个角色 ID — 形如 platform_role_001 / enterprise_role_001
+function generateNextRoleId(type) {
+  const prefix = (type === 'platform' ? 'platform' : 'enterprise') + '_role_';
+  const re = new RegExp('^' + prefix + '(\\d+)$');
+  const nums = rolesCache
+    .map(r => {
+      const m = (r.id || '').match(re);
+      return m ? parseInt(m[1], 10) : null;
+    })
+    .filter(n => n !== null && !isNaN(n));
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return prefix + String(next).padStart(3, '0');
 }
 
 function openRoleModal(roleId) {
@@ -376,39 +497,114 @@ function openRoleModal(roleId) {
   const modal = $('#role-modal');
   const isNew = !roleId;
 
-  $('#role-modal-title').textContent = isNew ? '新建角色' : '编辑角色';
+  $('#role-modal-title').textContent = isNew ? '新建角色' : '权限配置';
   $('#btn-delete-role').style.display = isNew ? 'none' : 'inline-flex';
-  $('#rm-id').disabled = !isNew;
+  $('#btn-save-role').disabled = false; // 每次打开都重置保存按钮可用
+  // 新建时：ID 只读（自动生成）；编辑时：ID 只读（不可改）
+  $('#rm-id').readOnly = true;
 
+  let role = null;
   if (isNew) {
-    $('#rm-id').value = '';
+    // 自动生成 ID（基于当前 Tab 类型）
+    $('#rm-id').value = generateNextRoleId(currentRoleType);
     $('#rm-label').value = '';
+    $('#rm-description').value = '';
     $('#rm-credits').value = '100';
     $('#rm-max-projects').value = '10';
-    $('#rm-models').value = '';
+    $('#rm-type').value = currentRoleType;
+    $('#rm-type').disabled = false;
   } else {
-    const r = rolesCache.find(x => x.id === roleId);
-    if (!r) return;
-    $('#rm-id').value = r.id;
-    $('#rm-label').value = r.label || '';
-    $('#rm-credits').value = r.default_credits ?? '';
-    $('#rm-max-projects').value = r.max_projects ?? '';
-    $('#rm-models').value = (r.allowed_models || []).join(', ');
+    role = rolesCache.find(x => x.id === roleId);
+    if (!role) return;
+    $('#rm-id').value = role.id;
+    $('#rm-label').value = role.label || '';
+    $('#rm-description').value = role.description || '';
+    $('#rm-credits').value = role.default_credits ?? '';
+    $('#rm-max-projects').value = role.max_projects ?? '';
+    $('#rm-type').value = role.type || 'enterprise';
+    // 内置角色或已被使用的角色不可改类型
+    $('#rm-type').disabled = role.builtin || (role.user_count || 0) > 0;
+    $('#btn-delete-role').style.display = role.builtin ? 'none' : 'inline-flex';
+    if (role.id === 'admin') $('#btn-save-role').disabled = true;
+    else $('#btn-save-role').disabled = false;
   }
 
-  // Render permission checkboxes
-  const permsContainer = $('#rm-permissions');
-  const existingPerms = isNew ? [] : (rolesCache.find(x => x.id === roleId)?.permissions || []);
-  permsContainer.innerHTML = ALL_PERMISSIONS.map(p => `
-    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);cursor:pointer;">
-      <input type="checkbox" value="${p}" ${existingPerms.includes(p) ? 'checked' : ''} /> ${p}
-    </label>
-  `).join('');
-
-  // Render model checkboxes
   renderModelCheckboxes(roleId, isNew);
+  renderRoleMatrixEditor(role);
+  onRoleTypeChange(); // 根据类型决定是否显示允许模型行
 
   modal.classList.add('show');
+}
+
+// 类型切换：平台角色不涉及"允许模型"；新建时重新生成 ID
+function onRoleTypeChange() {
+  const type = $('#rm-type').value;
+  const modelsRow = document.getElementById('rm-models-row');
+  if (modelsRow) modelsRow.style.display = (type === 'platform') ? 'none' : '';
+  const hint = document.getElementById('rm-matrix-type-hint');
+  if (hint) hint.textContent = (type === 'platform')
+    ? '（平台权限 — 管理后台功能）'
+    : '（用户权限 — 前端平台所有模块的增删改查）';
+  // 新建模式下，类型变更时重新生成 ID
+  if (!editingRoleId) {
+    $('#rm-id').value = generateNextRoleId(type);
+  }
+  // 类型变更时重渲染矩阵
+  const role = editingRoleId ? rolesCache.find(x => x.id === editingRoleId) : null;
+  const mockRole = role
+    ? { ...role, type }
+    : { type, permissions: [] };
+  renderRoleMatrixEditor(mockRole);
+}
+
+function renderRoleMatrixEditor(role) {
+  const thead = $('#rm-matrix-thead');
+  const tbody = $('#rm-matrix-tbody');
+  if (!thead || !tbody || !matrixCache) return;
+  const type = (role && role.type) || $('#rm-type').value || 'enterprise';
+  const matrix = matrixCache[type];
+  if (!matrix) { thead.innerHTML=''; tbody.innerHTML=''; return; }
+
+  const colspan = matrix.actions.length + 1;
+  thead.innerHTML = `<tr><th>功能模块</th>${matrix.actions.map(a => `<th>${esc(a.label)}</th>`).join('')}</tr>`;
+  const perms = new Set((role && role.permissions) || []);
+  const wild = perms.has('*');
+  const isAdmin = role && role.id === 'admin';
+  let lastGroup = null;
+  const rows = [];
+  matrix.modules.forEach(m => {
+    if (m.group && m.group !== lastGroup) {
+      rows.push(`<tr class="pm-group-row" data-group="${esc(m.group)}">
+        <td colspan="${colspan}">
+          <span class="pm-group-label">${esc(m.group)}</span>
+          ${isAdmin ? '' : `<span class="pm-group-actions">
+            <button type="button" class="btn-sm" onclick="rmGroupToggle('${esc(m.group)}', true)">本组全选</button>
+            <button type="button" class="btn-sm" onclick="rmGroupToggle('${esc(m.group)}', false)">本组清空</button>
+          </span>`}
+        </td>
+      </tr>`);
+      lastGroup = m.group;
+    }
+    const cells = matrix.actions.map(a => {
+      const key = `${type}:${m.id}:${a.id}`;
+      const checked = wild || perms.has(key);
+      return `<td><input type="checkbox" data-key="${esc(key)}" data-group="${esc(m.group || '')}" ${checked ? 'checked' : ''} ${isAdmin ? 'disabled' : ''} /></td>`;
+    }).join('');
+    rows.push(`<tr data-group="${esc(m.group || '')}"><td style="padding-left:28px">${esc(m.label)}</td>${cells}</tr>`);
+  });
+  tbody.innerHTML = rows.join('');
+}
+
+function rmGroupToggle(group, checked) {
+  document.querySelectorAll(`#rm-matrix-tbody input[type="checkbox"][data-group="${group}"]`).forEach(cb => {
+    if (!cb.disabled) cb.checked = checked;
+  });
+}
+
+function rmMatrixToggleAll(checked) {
+  document.querySelectorAll('#rm-matrix-tbody input[type="checkbox"]').forEach(cb => {
+    if (!cb.disabled) cb.checked = checked;
+  });
 }
 
 function closeRoleModal() {
@@ -419,16 +615,24 @@ function closeRoleModal() {
 async function saveRole() {
   const id = $('#rm-id').value.trim();
   const label = $('#rm-label').value.trim();
+  const description = $('#rm-description').value.trim();
+  const type = $('#rm-type').value;
   const default_credits = parseInt($('#rm-credits').value) || 0;
   const max_projects = parseInt($('#rm-max-projects').value) || 10;
   const wildcard = $('#rm-models-wildcard')?.checked;
-  const allowed_models = wildcard ? ['*'] : [...$('#rm-models').querySelectorAll('input:checked')].map(cb => cb.value);
-  const permissions = [...$('#rm-permissions').querySelectorAll('input:checked')].map(cb => cb.value);
+  const allowed_models = type === 'platform'
+    ? [] // 平台角色不涉及模型分配
+    : (wildcard ? ['*'] : getTransferSelected('rm-transfer'));
+  // 从矩阵收集权限字符串（{type}:{module}:{action}）
+  const permissions = [...document.querySelectorAll('#rm-matrix-tbody input[type="checkbox"]:checked')].map(cb => cb.dataset.key);
 
   if (!id) return toast('角色 ID 必填', 'error');
+  if (!label) return toast('角色名称必填', 'error');
 
-  const body = { id, label, default_credits, max_projects, allowed_models, permissions };
+  const body = { id, label, description, type, default_credits, max_projects, allowed_models, permissions };
   const isNew = !editingRoleId;
+  // admin 内置角色锁定，不允许编辑
+  if (editingRoleId === 'admin') { toast('内置管理员角色不可编辑', 'error'); return; }
 
   try {
     const url = isNew ? '/api/admin/roles' : `/api/admin/roles/${editingRoleId}`;
@@ -540,10 +744,11 @@ function toggleForm(id, show) {
 }
 
 function populateRoleDropdowns() {
-  // New user role select
+  // New user role select — 只展示当前 Tab 对应 type 的角色
   const nuRole = $('#nu-role');
-  if (nuRole) {
-    nuRole.innerHTML = rolesCache.map(r =>
+  if (nuRole && rolesCache.length) {
+    const typeRoles = rolesCache.filter(r => (r.type || 'enterprise') === currentUserType);
+    nuRole.innerHTML = typeRoles.map(r =>
       `<option value="${esc(r.id)}">${esc(r.label || r.id)}</option>`
     ).join('');
   }
@@ -559,61 +764,148 @@ function populateRoleDropdowns() {
   renderUsers();
 }
 
-// ══════════════════════ MODEL CHECKBOXES ══════════════════════
-function renderModelCheckboxes(roleId, isNew) {
-  const container = $('#rm-models');
-  const wildcardCb = $('#rm-models-wildcard');
-  const role = isNew ? null : rolesCache.find(x => x.id === roleId);
-  const existing = role ? (role.allowed_models || []) : [];
-  const isWildcard = existing.includes('*');
+// ══════════════════════ 穿梭框（Transfer List）══════════════════════
+//
+// 为每个挂载点维护独立状态：#rm-transfer / #ud-transfer
+//   transferState[containerId] = { all: [], selected: Set<id>, filterL: '', filterR: '' }
+const transferState = {};
 
-  if (wildcardCb) wildcardCb.checked = isWildcard;
-
-  // Gather all models from settings providers
-  const allModels = [];
-  if (settingsData?.providers) {
+function getAllModelOptions() {
+  const all = [];
+  if (typeof settingsData !== 'undefined' && settingsData?.providers) {
     settingsData.providers.forEach(p => {
       (p.models || []).forEach(m => {
-        if (!allModels.find(x => x.id === m.id)) {
-          allModels.push({ id: m.id, name: m.name, provider: p.name, use: m.use });
+        if (!all.find(x => x.id === m.id)) {
+          all.push({ id: m.id, name: m.name || m.id, provider: p.name || p.id, use: m.use || '' });
         }
       });
     });
   }
-  // Also add special entries
-  ['demo', '*'].forEach(id => {
-    if (id === '*') return;
-    if (!allModels.find(x => x.id === id)) allModels.push({ id, name: id, provider: '内置', use: '' });
-  });
-
-  if (!allModels.length) {
-    container.innerHTML = '<div style="font-size:11px;color:var(--text3)">暂无可选模型，请先在 AI 配置中添加供应商和模型</div>';
-    return;
-  }
-
-  container.innerHTML = allModels.map(m => `
-    <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);cursor:pointer;min-width:160px;${isWildcard ? 'opacity:0.4;pointer-events:none' : ''}">
-      <input type="checkbox" value="${esc(m.id)}" ${isWildcard || existing.includes(m.id) ? 'checked' : ''} />
-      <span>${esc(m.name)}</span>
-      <span style="font-size:10px;color:var(--text3)">${esc(m.provider)}</span>
-    </label>
-  `).join('');
+  if (!all.find(x => x.id === 'demo')) all.push({ id: 'demo', name: 'demo', provider: '内置', use: '' });
+  return all;
 }
 
-function toggleAllModels(selectAll) {
-  const container = $('#rm-models');
+// 初始化穿梭框 — selectedIds 已选中的 id 数组（* 表示全选）
+function initTransfer(containerId, selectedIds) {
+  const container = document.getElementById(containerId);
   if (!container) return;
-  container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = selectAll);
+  const all = getAllModelOptions();
+  const wildcard = Array.isArray(selectedIds) && selectedIds.includes('*');
+  const selected = new Set(wildcard ? all.map(m => m.id) : (selectedIds || []));
+  transferState[containerId] = { all, selected, filterL: '', filterR: '', highlighted: new Set() };
+  renderTransfer(containerId);
+}
+
+function renderTransfer(containerId) {
+  const container = document.getElementById(containerId);
+  const state = transferState[containerId];
+  if (!container || !state) return;
+  const { all, selected, filterL, filterR, highlighted } = state;
+
+  const available = all.filter(m => !selected.has(m.id));
+  const chosen = all.filter(m => selected.has(m.id));
+  const filt = (list, q) => {
+    if (!q) return list;
+    const lq = q.toLowerCase();
+    return list.filter(m => m.id.toLowerCase().includes(lq) || m.name.toLowerCase().includes(lq) || (m.provider || '').toLowerCase().includes(lq));
+  };
+  const availableF = filt(available, filterL);
+  const chosenF = filt(chosen, filterR);
+
+  const renderCol = (side, list, count) => `
+    <div class="transfer-col">
+      <div class="transfer-header">
+        <span>${side === 'L' ? '可用模型' : '已选模型'}</span>
+        <span class="tl-count">${count}</span>
+      </div>
+      <input type="text" class="transfer-search" data-side="${side}" placeholder="搜索..." value="${esc(side === 'L' ? filterL : filterR)}" />
+      <div class="transfer-items" data-side="${side}">
+        ${list.length ? list.map(m => `
+          <div class="transfer-item ${highlighted.has(side + ':' + m.id) ? 'selected' : ''}" data-side="${side}" data-id="${esc(m.id)}" title="${esc(m.name)} · ${esc(m.provider)}">
+            <span class="tl-name">${esc(m.name)}</span>
+            <span class="tl-tag" title="${esc(m.provider)}">${esc(m.provider)}</span>
+          </div>
+        `).join('') : '<div class="transfer-empty">无</div>'}
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = `
+    ${renderCol('L', availableF, available.length)}
+    <div class="transfer-actions">
+      <button type="button" title="添加全部"     data-action="all-r"  ${available.length === 0 ? 'disabled' : ''}>»</button>
+      <button type="button" title="添加选中"     data-action="move-r" ${![...highlighted].some(k=>k.startsWith('L:')) ? 'disabled' : ''}>›</button>
+      <button type="button" title="移除选中"     data-action="move-l" ${![...highlighted].some(k=>k.startsWith('R:')) ? 'disabled' : ''}>‹</button>
+      <button type="button" title="移除全部"     data-action="all-l"  ${chosen.length === 0 ? 'disabled' : ''}>«</button>
+    </div>
+    ${renderCol('R', chosenF, chosen.length)}
+  `;
+
+  // 绑定事件
+  container.querySelectorAll('.transfer-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.side + ':' + el.dataset.id;
+      if (highlighted.has(key)) highlighted.delete(key);
+      else highlighted.add(key);
+      renderTransfer(containerId);
+    });
+    el.addEventListener('dblclick', () => {
+      const side = el.dataset.side;
+      const id = el.dataset.id;
+      if (side === 'L') selected.add(id);
+      else selected.delete(id);
+      highlighted.clear();
+      renderTransfer(containerId);
+    });
+  });
+  container.querySelectorAll('.transfer-search').forEach(el => {
+    el.addEventListener('input', e => {
+      const side = el.dataset.side;
+      if (side === 'L') state.filterL = e.target.value;
+      else state.filterR = e.target.value;
+      renderTransfer(containerId);
+    });
+  });
+  container.querySelectorAll('.transfer-actions button').forEach(el => {
+    el.addEventListener('click', () => {
+      const act = el.dataset.action;
+      if (act === 'all-r') all.forEach(m => selected.add(m.id));
+      else if (act === 'all-l') selected.clear();
+      else if (act === 'move-r') {
+        [...highlighted].forEach(k => { if (k.startsWith('L:')) selected.add(k.slice(2)); });
+      } else if (act === 'move-l') {
+        [...highlighted].forEach(k => { if (k.startsWith('R:')) selected.delete(k.slice(2)); });
+      }
+      highlighted.clear();
+      renderTransfer(containerId);
+    });
+  });
+}
+
+function getTransferSelected(containerId) {
+  const state = transferState[containerId];
+  if (!state) return [];
+  return [...state.selected];
+}
+
+function setTransferDisabled(containerId, disabled) {
+  const container = document.getElementById(containerId);
+  if (container) container.classList.toggle('disabled', !!disabled);
+}
+
+// 兼容原接口 — 角色弹窗调用
+function renderModelCheckboxes(roleId, isNew) {
+  const role = isNew ? null : rolesCache.find(x => x.id === roleId);
+  const existing = role ? (role.allowed_models || []) : [];
+  const wildcardCb = $('#rm-models-wildcard');
+  const isWildcard = existing.includes('*');
+  if (wildcardCb) wildcardCb.checked = isWildcard;
+  initTransfer('rm-transfer', existing);
+  setTransferDisabled('rm-transfer', isWildcard);
 }
 
 function toggleModelsWildcard(checked) {
-  const container = $('#rm-models');
-  if (!container) return;
-  container.querySelectorAll('label').forEach(l => {
-    l.style.opacity = checked ? '0.4' : '';
-    l.style.pointerEvents = checked ? 'none' : '';
-  });
-  if (checked) container.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+  setTransferDisabled('rm-transfer', checked);
 }
 
 function toast(msg, type = 'success') {
@@ -940,8 +1232,12 @@ async function deleteSkill(id) {
 
 // ══════════════════════ 内容管理 ══════════════════════
 let contentsLoaded = false;
+// v8: 当前激活的内容模块
+let ctActiveModule = 'all';
+let ctModules = [];
+
 async function loadContents() {
-  // 填充用户下拉
+  // 初始化一次
   if (!contentsLoaded) {
     const sel = document.getElementById('ct-user');
     usersCache.forEach(u => {
@@ -952,10 +1248,44 @@ async function loadContents() {
     contentsLoaded = true;
   }
 
-  const type = document.getElementById('ct-type').value;
-  const userId = document.getElementById('ct-user').value;
+  // 先加载模块元信息
+  try {
+    const mr = await authFetch('/api/admin/contents/modules');
+    const mj = await mr.json();
+    if (mj.success) {
+      ctModules = mj.data;
+      ctRenderModules();
+    }
+  } catch (e) { console.error('[CT] modules failed', e); }
+
+  // 再加载当前模块的内容
+  await ctLoadItems();
+}
+
+function ctRenderModules() {
+  const el = document.getElementById('content-modules');
+  if (!el) return;
+  el.innerHTML = ctModules.map(m => `
+    <button class="content-module-tab ${ctActiveModule === m.id ? 'active' : ''}" onclick="ctSwitchModule('${m.id}')">
+      <span class="ct-mod-emoji">${m.emoji}</span>
+      <span class="ct-mod-name">${esc(m.name)}</span>
+      <span class="ct-mod-count">${m.count}</span>
+    </button>
+  `).join('');
+}
+
+function ctSwitchModule(id) {
+  ctActiveModule = id;
+  ctRenderModules();
+  ctLoadItems();
+}
+
+async function ctLoadItems() {
+  const userId = document.getElementById('ct-user')?.value || '';
+  const view = document.getElementById('ct-view')?.value || 'grid';
+
   const params = new URLSearchParams();
-  if (type) params.set('type', type);
+  if (ctActiveModule !== 'all') params.set('type', ctActiveModule);
   if (userId) params.set('user_id', userId);
   params.set('limit', '200');
 
@@ -965,39 +1295,97 @@ async function loadContents() {
     if (!data.success) return;
 
     const items = data.data.items;
-    const tbody = document.getElementById('contents-tbody');
 
     // 统计
     const stats = document.getElementById('contents-stats');
-    const pCount = items.filter(i => i.type === 'project').length;
-    const iCount = items.filter(i => i.type === 'i2v').length;
-    const nCount = items.filter(i => i.type === 'novel').length;
-    stats.innerHTML = `<span class="ct-stat">共 <b>${data.data.total}</b> 条</span>` +
-      (pCount ? `<span class="ct-stat">视频项目 <b>${pCount}</b></span>` : '') +
-      (iCount ? `<span class="ct-stat">图生视频 <b>${iCount}</b></span>` : '') +
-      (nCount ? `<span class="ct-stat">小说 <b>${nCount}</b></span>` : '');
-
-    const TYPE_LABELS = { project: 'AI 视频', i2v: '图生视频', novel: 'AI 小说' };
-    const TYPE_COLORS = { project: '#7c6cf0', i2v: '#21fff3', novel: '#f5c518' };
-
-    if (!items.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">暂无内容</td></tr>';
-      return;
+    if (stats) {
+      stats.innerHTML = `<span class="ct-stat">共 <b>${data.data.total}</b> 条内容</span>`;
     }
 
-    tbody.innerHTML = items.map(item => `<tr>
-      <td><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${TYPE_COLORS[item.type]}18;color:${TYPE_COLORS[item.type]};border:1px solid ${TYPE_COLORS[item.type]}30">${TYPE_LABELS[item.type] || item.type}</span></td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.title)}">${esc(item.title)}</td>
-      <td>${esc(item.username)}</td>
-      <td><span style="font-size:12px;color:var(--text2)">${esc(item.status || '-')}</span></td>
-      <td style="font-size:12px;color:var(--text3)">${esc(item.detail || '')}</td>
-      <td style="font-size:12px;color:var(--text3);white-space:nowrap">${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</td>
-      <td class="actions-cell">
-        <button class="btn-sm" onclick="viewContent('${item.type}','${item.id}')">查看</button>
-        <button class="btn-sm danger" onclick="deleteContent('${item.type}','${item.id}')">删除</button>
-      </td>
-    </tr>`).join('');
-  } catch (e) { console.error('loadContents error', e); }
+    // 视图切换
+    document.getElementById('content-grid').style.display = view === 'grid' ? 'grid' : 'none';
+    document.getElementById('content-table-wrap').style.display = view === 'table' ? 'block' : 'none';
+
+    if (view === 'grid') {
+      ctRenderGrid(items);
+    } else {
+      ctRenderTable(items);
+    }
+  } catch (e) { console.error('ctLoadItems error', e); }
+}
+
+const CT_TYPE_LABELS = {
+  project: '🎬 视频项目',
+  drama: '📺 网剧',
+  i2v: '🎥 图生视频',
+  novel: '📖 小说',
+  comic: '🖼️ 漫画',
+  avatar: '👤 数字人',
+  portrait: '🎨 角色形象',
+};
+
+function ctRenderGrid(items) {
+  const el = document.getElementById('content-grid');
+  if (!items.length) {
+    el.innerHTML = '<div class="kb-empty" style="grid-column:1/-1;padding:40px;">暂无内容</div>';
+    return;
+  }
+  const token = getToken() || '';
+  el.innerHTML = items.map(item => {
+    // v11: 缩略图显示
+    // - 有 thumbnail URL: 用 <img loading="lazy"> 带 token
+    // - onerror: 如果是 project/drama/i2v/avatar，降级到 video poster，否则显示占位图
+    let thumb;
+    if (item.thumbnail) {
+      const thumbWithToken = item.thumbnail + (item.thumbnail.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+      thumb = `<img loading="lazy" src="${thumbWithToken}" onerror="this.onerror=null;this.parentElement.classList.add('ct-card-noimg-fallback');this.style.display='none';">`;
+    } else {
+      thumb = '<div class="ct-card-noimg">🎞️</div>';
+    }
+    const hasMedia = item.has_video || item.has_content;
+    return `
+      <div class="ct-card" onclick="viewContent('${item.type}','${item.id}')">
+        <div class="ct-card-thumb">
+          ${thumb}
+          ${hasMedia ? '<span class="ct-card-badge">✓ 已生成</span>' : ''}
+          <span class="ct-card-type">${CT_TYPE_LABELS[item.type] || item.type}</span>
+        </div>
+        <div class="ct-card-body">
+          <div class="ct-card-title" title="${esc(item.title)}">${esc(item.title)}</div>
+          <div class="ct-card-meta">
+            <span>${esc(item.username || '-')}</span>
+            <span class="ct-card-status">${esc(item.status || '-')}</span>
+          </div>
+          <div class="ct-card-detail">${esc(item.detail || '')}</div>
+          <div class="ct-card-time">${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</div>
+        </div>
+        <div class="ct-card-actions">
+          <button class="btn-sm" onclick="event.stopPropagation();viewContent('${item.type}','${item.id}')">查看</button>
+          <button class="btn-sm danger" onclick="event.stopPropagation();deleteContent('${item.type}','${item.id}')">删除</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function ctRenderTable(items) {
+  const tbody = document.getElementById('contents-tbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">暂无内容</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(item => `<tr>
+    <td>${CT_TYPE_LABELS[item.type] || item.type}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(item.title)}">${esc(item.title)}</td>
+    <td>${esc(item.username)}</td>
+    <td><span style="font-size:12px;color:var(--text2)">${esc(item.status || '-')}</span></td>
+    <td style="font-size:12px;color:var(--text3)">${esc(item.detail || '')}</td>
+    <td style="font-size:12px;color:var(--text3);white-space:nowrap">${item.created_at ? new Date(item.created_at).toLocaleString('zh-CN') : '-'}</td>
+    <td class="actions-cell">
+      <button class="btn-sm" onclick="viewContent('${item.type}','${item.id}')">查看</button>
+      <button class="btn-sm danger" onclick="deleteContent('${item.type}','${item.id}')">删除</button>
+    </td>
+  </tr>`).join('');
 }
 
 async function viewContent(type, id) {
@@ -1019,7 +1407,10 @@ function showContentDetail(item) {
 
   let body = '';
   const token = getToken() || '';
-  const TYPE_NAMES = { project: 'AI 视频项目', i2v: '图生视频', novel: 'AI 小说' };
+  const TYPE_NAMES = {
+    project: 'AI 视频项目', i2v: '图生视频', novel: 'AI 小说',
+    drama: '网剧', comic: '漫画', avatar: '数字人', portrait: '角色形象'
+  };
 
   if (item.type === 'project') {
     body = `
@@ -1068,7 +1459,92 @@ function showContentDetail(item) {
         </div>
       </div>` : '<div class="ct-section"><div class="ct-sec-title">正文</div><div class="ct-empty">尚未生成章节</div></div>'}
     `;
+  } else if (item.type === 'drama') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">状态</span><span>${esc(item.status || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">风格</span><span>${esc(item.style || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">集数</span><span>${item.episodes?.length || 0}/${item.episode_count || 0}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">比例</span><span>${esc(item.aspect_ratio || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">运镜</span><span>${esc(item.motion_preset || '-')}</span></div>
+      </div>
+      ${item.synopsis ? `<div class="ct-section"><div class="ct-sec-title">剧情简介</div><div class="ct-text-block">${esc(item.synopsis)}</div></div>` : ''}
+      ${item.cover_url ? `<div class="ct-section"><div class="ct-sec-title">封面</div><img class="ct-image" src="${item.cover_url}"/></div>` : ''}
+      ${item.characters?.length ? `<div class="ct-section"><div class="ct-sec-title">角色</div>${item.characters.map(c => `<div class="ct-scene-card"><b>${esc(c.name)}</b> <span style="color:var(--text3);font-size:11px">${esc(c.appearance_prompt || c.description || '')}</span></div>`).join('')}</div>` : ''}
+      ${item.episodes?.length ? `<div class="ct-section"><div class="ct-sec-title">剧集</div>${item.episodes.map(e => `
+        <div class="ct-scene-card">
+          <span class="ct-scene-idx">第${e.episode_index}集</span>
+          <span class="ct-scene-desc">${esc(e.title || '-')} · ${esc(e.status || '-')} ${e.progress ? '('+e.progress+'%)' : ''}</span>
+          ${e.has_video ? `<button class="btn-sm" onclick="ctPlayDrama('${e.id}','${token}')">▶ 播放</button>` : ''}
+        </div>
+      `).join('')}</div>` : ''}
+    `;
+  } else if (item.type === 'comic') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">状态</span><span>${esc(item.status || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">主题</span><span>${esc(item.theme || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">风格</span><span>${esc(item.style || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">格子数</span><span>${item.panels?.length || 0}</span></div>
+      </div>
+      ${item.panels?.length ? `<div class="ct-section"><div class="ct-sec-title">漫画内容</div>
+        <div class="ct-comic-panels">
+          ${item.panels.map(p => `
+            <div class="ct-comic-panel">
+              <div class="ct-comic-idx">#${p.index + 1}</div>
+              ${p.image_url ? `<img src="${p.image_url}" class="ct-image"/>` : '<div class="ct-empty">无图</div>'}
+              <div class="ct-comic-desc">${esc(p.description || '')}</div>
+              ${p.dialogue ? `<div class="ct-comic-dialog">"${esc(p.dialogue)}"</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>` : '<div class="ct-section"><div class="ct-empty">暂无漫画格</div></div>'}
+    `;
+  } else if (item.type === 'avatar') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">状态</span><span>${esc(item.status || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">供应商</span><span>${esc(item.provider || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">音色</span><span>${esc(item.voice || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">时长</span><span>${item.duration || '-'} 秒</span></div>
+      </div>
+      ${item.text ? `<div class="ct-section"><div class="ct-sec-title">台词</div><div class="ct-text-block">${esc(item.text)}</div></div>` : ''}
+      ${item.avatar_url ? `<div class="ct-section"><div class="ct-sec-title">数字人形象</div><img class="ct-image" src="${item.avatar_url}"/></div>` : ''}
+      ${item.video_url ? `<div class="ct-section"><div class="ct-sec-title">生成视频</div><video class="ct-video" controls src="${item.video_url}"></video></div>` : '<div class="ct-section"><div class="ct-empty">视频未生成</div></div>'}
+    `;
+  } else if (item.type === 'portrait') {
+    body = `
+      <div class="ct-detail-meta">
+        <div class="ct-meta-row"><span class="ct-meta-label">用户</span><span>${esc(item.username)}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">风格</span><span>${esc(item.style || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">性别</span><span>${esc(item.gender || '-')}</span></div>
+        <div class="ct-meta-row"><span class="ct-meta-label">年龄</span><span>${esc(item.age || '-')}</span></div>
+      </div>
+      ${item.prompt ? `<div class="ct-section"><div class="ct-sec-title">生成提示词</div><div class="ct-text-block">${esc(item.prompt)}</div></div>` : ''}
+      ${item.appearance ? `<div class="ct-section"><div class="ct-sec-title">外貌描述</div><div class="ct-text-block">${esc(item.appearance)}</div></div>` : ''}
+      ${item.images?.length ? `<div class="ct-section"><div class="ct-sec-title">生成图片 (${item.images.length})</div>
+        <div class="ct-portrait-grid">
+          ${item.images.map(img => `<img src="${img}" class="ct-portrait-img" onclick="window.open('${img}','_blank')"/>`).join('')}
+        </div>
+      </div>` : '<div class="ct-section"><div class="ct-empty">暂无图片</div></div>'}
+      ${item.three_view ? `<div class="ct-section"><div class="ct-sec-title">三视图</div>
+        <div class="ct-portrait-grid">
+          ${item.three_view.front ? `<img src="${item.three_view.front}" class="ct-portrait-img"/>` : ''}
+          ${item.three_view.side ? `<img src="${item.three_view.side}" class="ct-portrait-img"/>` : ''}
+          ${item.three_view.back ? `<img src="${item.three_view.back}" class="ct-portrait-img"/>` : ''}
+        </div>
+      </div>` : ''}
+    `;
   }
+
+  function ctPlayDrama(episodeId, token) {
+    const url = `/api/drama/tasks/${episodeId}/stream?token=${encodeURIComponent(token)}`;
+    window.open(url, '_blank');
+  }
+  window.ctPlayDrama = ctPlayDrama;
 
   overlay.innerHTML = `
     <div class="modal-box ct-detail-box">
@@ -1277,13 +1753,12 @@ let editingCharId = null, editingSceneId = null, editingStyleId = null;
 
 // ── 子 Tab 切换 ──
 function switchAICapTab(tab) {
-  ['chars', 'scenes', 'styles', 'workflow'].forEach(t => {
+  ['chars', 'scenes', 'styles'].forEach(t => {
     const pane = document.getElementById('aicap-pane-' + t);
     const tabEl = document.getElementById('aicap-tab-' + t);
     if (pane) pane.style.display = t === tab ? '' : 'none';
     if (tabEl) tabEl.classList.toggle('active', t === tab);
   });
-  if (tab === 'workflow') renderWorkflowCanvas();
 }
 
 // ── 加载全部数据 ──
@@ -1648,134 +2123,1631 @@ document.querySelectorAll('#modal-aicap-char, #modal-aicap-scene, #modal-aicap-s
   el.addEventListener('click', e => { if (e.target === el) el.style.display = 'none'; });
 });
 
-// ══════════════════════════════════════════════════
-//  工作流可视化
-// ══════════════════════════════════════════════════
 
-const WF_PIPELINES = {
-  comic: {
-    label: '漫画生成流水线',
-    nodes: [
-      { id: 'input', icon: '📝', label: '输入', desc: '主题 / 故事 / 角色 / 风格', type: 'input',
-        detail: '用户输入漫画主题和故事内容。\n可从角色库选择预设角色，从风格库选择画风。\n支持小说/剧本导入（TXT/PDF → AI 自动拆解为分镜结构）。' },
-      { id: 'screenwriter', icon: '✍️', label: '编剧 Agent', desc: '剧情脚本创作', type: 'agent',
-        detail: '服务: comicService.js → agentScreenwriter()\n\n职责:\n· 构建完整叙事结构（起承转合）\n· 塑造角色性格和独特说话方式\n· 编写精炼对话（每句≤15字）\n· 设计旁白、音效（sfx）\n· 标注每格的情感基调（emotion）和叙事节奏（pacing: slow/normal/fast）\n· 标注每页的叙事目的（page_purpose）\n\n输入: 主题、风格、角色列表（含 appearance_prompt）\n输出: screenplay JSON\n  └ pages[] → panels[] → {description, dialogue, speaker, narrator, sfx, emotion, pacing}\nAI: callLLM() → DeepSeek / OpenAI / Anthropic' },
-      { id: 'director', icon: '🎬', label: '导演 Agent', desc: '分镜设计 + 视觉指令', type: 'agent',
-        detail: '服务: comicService.js → agentDirector()\n\n职责:\n· 为每个面板设计镜头语言和画面构图\n· 分配镜头类型：特写 / 中景 / 远景 / 仰角 / 俯角 / 鸟瞰 / 荷兰角\n· 设计面板布局比例：full / half / third / quarter\n· 规划镜头切换节奏：对话→正反打，情感→特写，动作→广角\n· 撰写 visual_prompt（英文，≤80词）\n· 指定对话气泡位置：top / bottom / left / right\n· 标注画面氛围关键词（mood）\n\n输入: 编剧脚本 + 画风 + 角色外貌描述\n输出: 在编剧脚本基础上增加 layout / camera / mood / dialogue_position / visual_prompt\nAI: callLLM() → DeepSeek / OpenAI / Anthropic' },
-      { id: 'storyboard', icon: '🎞️', label: '分镜脚本', desc: '结构化分镜数据', type: 'data',
-        detail: '编剧 + 导演协作输出的完整分镜脚本：\n\n数据结构:\n{\n  title, synopsis, style,\n  pages: [{\n    page_number, page_purpose,\n    panels: [{\n      index, layout, description,\n      dialogue, speaker, dialogue_position,\n      narrator, sfx, emotion, pacing,\n      mood, camera, visual_prompt\n    }]\n  }]\n}\n\n保存为 script.json，可在分镜编辑器中可视化调整。\n支持单格重抽（不影响其他面板）。' },
-      { id: 'imagegen', icon: '🖼️', label: '面板生图', desc: 'generatePanelImage() ×N', type: 'service',
-        detail: '服务: comicService.js → generatePanelImage()\n调用: imageService.generateCharacterImage()\n\n输入:\n· visual_prompt（导演Agent生成）\n· 风格库 prompt_en（自动注入）\n· 角色 appearance_prompt（自动嵌入）\n\n供应商优先级: mxapi > nanobanana > 智谱CogView > 即梦 > Replicate > Stability > OpenAI\n\n输出: panel_*.png（每面板一张图）' },
-      { id: 'compose', icon: '📄', label: '页面合成', desc: 'FFmpeg 网格拼接', type: 'service',
-        detail: '服务: comicService.js → composePage()\n工具: FFmpeg filter_complex\n\n功能:\n· 将面板图片按网格布局拼接为漫画页面\n· 自动计算布局：2×1 / 2×2 / 2×3 / 3×N\n· 每格 512×512，间距 8px\n· 统一深色背景 (#0e0e14)\n\n输出: page_N.png' },
-      { id: 'output', icon: '📖', label: '漫画作品', desc: '多页漫画 + 分镜数据', type: 'output',
-        detail: '输出文件:\n· result.json — 完整漫画数据\n· page_*.png — 每页合成图\n· panel_*.png — 每个面板原图\n· screenplay.json — 编剧脚本\n· script.json — 导演分镜脚本\n\n可操作:\n· 单格重抽 — POST /api/ai-cap/comic/:id/repaint\n· 页面预览 — GET /api/comic/tasks/:id/pages/:num\n· 面板预览 — GET /api/comic/tasks/:id/panels/:filename' }
-    ],
-    sideNodes: [
-      { id: 'charlib', icon: '👤', label: '角色库', target: 'screenwriter', detail: '管理后台维护的角色数据：\n· 名称、性格、外貌描述\n· appearance_prompt（英文，用于AI生图）\n· 参考图（最多5张）\n\n自动注入到编剧和导演 Agent 的 prompt 中，确保角色描述一致性。' },
-      { id: 'stylelib', icon: '🎨', label: '风格库', target: 'imagegen', detail: '14个预设风格 + 自定义风格：\n· 每个风格有 prompt_en（英文画风提示词）\n· 自动注入面板生图的 style suffix\n· 支持预览图上传\n\n预设: 日系动漫 / 美式漫画 / 韩国漫画 / 水墨漫画 / 赛博朋克 / 国风仙侠 / 迪士尼卡通 / 暗黑哥特 / 治愈系 等' },
-      { id: 'scenelib', icon: '🏞️', label: '场景库', target: 'director', detail: '管理后台维护的场景数据：\n· 名称、描述、场景类型（室内/室外/幻想/都市/自然）\n· scene_prompt（英文）\n· 参考图\n\n为导演 Agent 提供场景参考，提升画面一致性。' },
-      { id: 'scriptimport', icon: '📄', label: '小说导入', target: 'screenwriter', detail: '上传 TXT/PDF 文件 → AI 自动解析为分镜 JSON：\n· 自动提取角色信息\n· 按页/格拆解剧情\n· 生成 visual_prompt\n\nAPI: POST /api/ai-cap/import-script' },
-      { id: 'repaint', icon: '🔄', label: '单格重抽', target: 'imagegen', detail: '对已完成漫画的单个面板重新生成：\n· 支持自定义 prompt 微调\n· 不影响其他面板\n· 自动重新合成该页\n\nAPI: POST /api/ai-cap/comic/:taskId/repaint\n参数: { page_index, panel_index, custom_prompt }' }
-    ]
-  },
-  video: {
-    label: '视频生成流水线',
-    nodes: [
-      { id: 'input', icon: '📝', label: '输入', desc: '主题 / 角色 / 场景 / 风格', type: 'input',
-        detail: '用户输入视频主题。支持4种创作模式：\n· AI快速 — 一键全自动\n· 脚本解析 — 上传剧本，AI拆分场景\n· 自定义场景 — 手动编排每个场景\n· 长篇连续剧 — 多集承接，保持角色和剧情连续性\n\n可从角色库/场景库导入预设数据。' },
-      { id: 'story', icon: '📖', label: 'LLM 剧情', desc: '剧情脚本生成', type: 'agent',
-        detail: '服务: storyService.js → generateStory()\n\n职责: 根据主题生成完整剧情脚本\n输出:\n{\n  title, synopsis,\n  scenes: [{\n    scene_index, title, description,\n    dialogue, characters, visual_prompt,\n    timeOfDay, mood, location\n  }]\n}\n\nAI: callLLM() → DeepSeek / OpenAI / Anthropic\n支持: 长篇模式（多集剧情承接，通过 previous_summary 传递上集摘要）' },
-      { id: 'charimg', icon: '👤', label: '角色形象', desc: '角色转面图 / 肖像', type: 'service',
-        detail: '服务: imageService.js → generateCharacterImage()\n\n功能: 为每个角色生成形象图\n· 转面图模式（turnaround）— 正面/侧面/背面三视图\n· 肖像模式（portrait）— 单张全身立绘\n\n供应商: mxapi > nanobanana > 智谱CogView > 即梦 > Replicate > Stability > OpenAI\n\n角色一致性: 从角色库导入的角色直接使用参考图和 appearance_prompt\n并行: 限并发2个，避免 API 限流' },
-      { id: 'sceneimg', icon: '🏞️', label: '场景背景', desc: '场景背景图生成', type: 'service',
-        detail: '服务: imageService.js → generateSceneImage()\n\n功能: 为每个场景生成纯背景图（无人物）\n· 自动从场景描述中剥离人物内容\n· 注入负提示词（排除人物生成）\n\n供应商: 同角色形象\n场景库: 如果场景来自场景库，优先使用参考图\n并行: 与角色形象同时生成' },
-      { id: 'videogen', icon: '🎥', label: '视频生成', desc: '逐场景生成视频片段', type: 'service',
-        detail: '服务: videoService.js → generateVideoClip()\n\n核心流程:\n1. 增强 visual_prompt（注入角色外貌 + 画风前缀）\n2. 选择生成模式：\n   · T2V（文生视频）— 纯文字描述生成\n   · I2V（图生视频）— 角色形象图 + 场景背景图作为参考\n3. 调用视频生成 API\n\n供应商（48个模型）:\n· OpenAI Sora-2\n· 智谱 CogVideoX-Flash / Plus\n· FAL: Kling 2.1 / Wan 2.1 / Hunyuan\n· Runway Gen-3 / Gen-4 / Gen-4.5\n· Luma Ray-2 / Ray-3\n· MiniMax Hailuo\n· Vidu / Pika / Seedance / VEO\n\nI2V 是角色一致性的核心技巧。' },
-      { id: 'vfx', icon: '✨', label: '后处理特效', desc: 'applyPostVFX()', type: 'service',
-        detail: '服务: ffmpegService.js → applyPostVFX()\n\n根据场景的 action_type 和 vfx 标签自动应用后处理特效:\n· 战斗场景 — 色调偏暖、对比度增强、轻微抖动\n· 回忆场景 — 柔焦、褪色、慢动作\n· 紧张场景 — 暗角、色调偏冷\n· 浪漫场景 — 柔光、暖色调\n· 通用特效 — 淡入淡出\n\n工具: FFmpeg filter_complex' },
-      { id: 'tts', icon: '🔊', label: '语音配音', desc: '按角色分配声线', type: 'service', optional: true,
-        detail: '服务: ttsService.js → generateSpeech()\n\n供应商优先级:\n讯飞WebSocket > 火山引擎 > 百度 > 阿里 > Fish > MiniMax > ElevenLabs > OpenAI > SAPI\n\n功能:\n· 每个场景的对话转为语音\n· 支持指定声线、语速、性别\n· 自动混入对应场景视频\n\n配置: voice_enabled / voice_gender / voice_id / voice_speed' },
-      { id: 'subtitle', icon: '💬', label: '字幕烧录', desc: '对话字幕叠加', type: 'service', optional: true,
-        detail: '服务: editService.js → renderWithEdits()\n\n功能:\n· 将场景对话文本烧录为字幕\n· 支持字幕大小、位置、颜色自定义\n· 支持多行字幕和自动换行\n\n配置: subtitle_enabled / subtitle_size / subtitle_position / subtitle_color\n工具: FFmpeg drawtext 滤镜' },
-      { id: 'transition', icon: '🔀', label: '转场效果', desc: '交叉淡入淡出', type: 'service',
-        detail: '服务: ffmpegService.js → mergeVideoClips()\n\n转场效果:\n· 交叉淡入淡出（crossfade）— 场景间平滑过渡\n· 首尾淡入淡出 — 开头渐入、结尾渐出\n· 转场时长: 0.5-1秒\n\n工具: FFmpeg xfade 滤镜\n参数: transition=fade, duration=0.5' },
-      { id: 'bgm', icon: '🎵', label: 'BGM 混音', desc: '背景音乐 + 音量控制', type: 'service', optional: true,
-        detail: '服务: ffmpegService.js\n\n功能:\n· 混入用户上传或素材库选择的 BGM\n· 自动裁剪 BGM 到视频时长\n· 音量独立控制（0-100%）\n· 支持循环播放\n· 不覆盖角色配音\n\n配置: music_path / music_volume / music_loop / music_trim_start / music_trim_end' },
-      { id: 'merge', icon: '🎞️', label: '最终合成', desc: '全部片段合并', type: 'service',
-        detail: '服务: ffmpegService.js → mergeVideoClips()\n\n功能:\n· 按场景顺序拼接所有视频片段\n· 统一格式: 统一分辨率、帧率、编码\n· 应用转场效果\n· 混入 BGM\n· 叠加字幕\n\n输出: {projectId}_final.mp4\n工具: FFmpeg concat + filter_complex' },
-      { id: 'output', icon: '🎬', label: '最终视频', desc: '完整视频 + 元数据', type: 'output',
-        detail: '输出: {projectId}_final.mp4\n\n支持:\n· 在线流式播放 — GET /api/projects/:id/stream\n· 视频下载 — GET /api/projects/:id/download\n· 单场景预览 — GET /api/projects/:id/clips/:clipId/stream\n· 编辑器二次编辑 — /editor?id=xxx\n· 发布到社交媒体' }
-    ],
-    sideNodes: [
-      { id: 'charlib', icon: '👤', label: '角色库', target: 'charimg', detail: '角色库中的参考图直接用于 I2V 生图，保持角色一致性。\n角色的 appearance_prompt 注入到视频生成的 visual_prompt 中。' },
-      { id: 'scenelib', icon: '🏞️', label: '场景库', target: 'sceneimg', detail: '场景库参考图可作为背景图直接使用，减少生成时间。\nscene_prompt 自动注入场景描述。' },
-      { id: 'stylelib', icon: '🎨', label: '风格库', target: 'story', detail: '画风设置影响:\n· 剧情生成的 visual_prompt 风格前缀\n· 角色形象图的画风后缀\n· 场景背景图的风格注入' },
-      { id: 'musiclib', icon: '🎵', label: '音乐素材', target: 'bgm', detail: '用户可上传音乐或从素材库选择 BGM。\n支持裁剪、循环、音量控制。\nAPI: POST /api/projects/upload-music' },
-      { id: 'voicelib', icon: '🗣️', label: '声音库', target: 'tts', detail: '自定义声音库:\n· 系统预设声线\n· 用户克隆声音\n· 支持 15+ TTS 供应商\n\nAPI: GET /api/story/voice-list' }
-    ]
-  }
+// ══════════════════════ KNOWLEDGE BASE ══════════════════════
+let kbState = {
+  collections: [],
+  agentTypes: [],
+  activeCollection: null,
+  activeSubcategory: null,
+  docs: [],
+  activeDoc: null,
+  loaded: false,
 };
 
-function renderWorkflowCanvas() {
-  const sel = document.getElementById('wf-pipeline-select');
-  const pipeline = WF_PIPELINES[sel?.value || 'comic'];
-  const canvas = document.getElementById('wf-canvas');
-  const detailEl = document.getElementById('wf-node-detail');
-  if (!canvas) return;
-
-  // 主流程节点
-  let html = '<div class="wf-pipeline">';
-  pipeline.nodes.forEach((n, i) => {
-    if (i > 0) html += '<div class="wf-arrow"></div>';
-    const optClass = n.optional ? ' optional' : '';
-    const typeLabel = { input: '输入', agent: 'AI Agent', service: '服务', output: '输出' }[n.type] || '';
-    html += `<div class="wf-node${optClass}" data-node-id="${n.id}" onclick="showWfNodeDetail('${sel?.value || 'comic'}','${n.id}')">
-      <div class="wf-node-icon">${n.icon}</div>
-      <div class="wf-node-label">${n.label}</div>
-      <div class="wf-node-type">${typeLabel}</div>
-    </div>`;
-  });
-  html += '</div>';
-
-  // 侧边库节点
-  if (pipeline.sideNodes?.length) {
-    html += '<div class="wf-side-nodes">';
-    pipeline.sideNodes.forEach(s => {
-      html += `<div class="wf-side-node" onclick="showWfNodeDetail('${sel?.value || 'comic'}','${s.id}')">
-        <span class="wf-side-icon">${s.icon}</span>
-        <span class="wf-side-label">${s.label}</span>
-        <span class="wf-side-arrow">→ ${s.target}</span>
-      </div>`;
-    });
-    html += '</div>';
+async function kbInit() {
+  if (kbState.loaded) return;
+  try {
+    const [rCol, rAgents] = await Promise.all([
+      authFetch('/api/admin/knowledgebase/collections'),
+      authFetch('/api/admin/knowledgebase/agent-types'),
+    ]);
+    const jCol = await rCol.json();
+    const jAgents = await rAgents.json();
+    kbState.collections = jCol.data || [];
+    kbState.agentTypes = jAgents.data || [];
+    kbState.loaded = true;
+    kbRenderCollections();
+    kbUpdatePreviewAgentDropdown();
+    await kbLoadDocs();
+  } catch (e) {
+    console.error('[KB] init failed', e);
   }
-
-  canvas.innerHTML = html;
-  if (detailEl) { detailEl.style.display = 'none'; detailEl.innerHTML = ''; }
 }
 
-function showWfNodeDetail(pipelineKey, nodeId) {
-  const pipeline = WF_PIPELINES[pipelineKey];
-  const node = [...pipeline.nodes, ...(pipeline.sideNodes || [])].find(n => n.id === nodeId);
-  if (!node) return;
+// 旧的 kbUpdatePreviewAgentDropdown 已弃用（预览现在用 showModal 动态生成）
+function kbUpdatePreviewAgentDropdown() { /* noop - 保留兼容性 */ }
 
-  // 高亮
-  document.querySelectorAll('.wf-node, .wf-side-node').forEach(el => el.classList.remove('active'));
-  const el = document.querySelector(`[data-node-id="${nodeId}"]`);
-  if (el) el.classList.add('active');
+function kbRenderCollections() {
+  const el = document.getElementById('kb-collections');
+  const all = `<div class="kb-col-item ${!kbState.activeCollection ? 'active' : ''}" onclick="kbSelectCollection(null,null)">
+    <div class="kb-col-name">全部合集</div>
+    <div class="kb-col-desc">跨 4 个合集搜索</div>
+  </div>`;
+  const items = kbState.collections.map(c => {
+    const sub = (c.subcategories || []).map(s => {
+      const active = kbState.activeCollection === c.id && kbState.activeSubcategory === s;
+      return `<div class="kb-col-sub ${active ? 'active' : ''}" onclick="event.stopPropagation();kbSelectCollection('${c.id}','${esc(s)}')">${esc(s)}</div>`;
+    }).join('');
+    const colActive = kbState.activeCollection === c.id && !kbState.activeSubcategory;
+    return `<div class="kb-col-block">
+      <div class="kb-col-item ${colActive ? 'active' : ''}" onclick="kbSelectCollection('${c.id}',null)">
+        <div class="kb-col-name">${esc(c.name)}</div>
+        <div class="kb-col-desc">${esc(c.desc || '')}</div>
+      </div>
+      <div class="kb-col-subs">${sub}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = all + items;
+}
 
-  const detailEl = document.getElementById('wf-node-detail');
-  if (!detailEl) return;
-  detailEl.style.display = 'block';
-  detailEl.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <span style="font-size:28px">${node.icon}</span>
-      <div>
-        <div style="font-weight:600;font-size:15px">${node.label}</div>
-        <div style="font-size:12px;color:var(--text3)">${node.desc || ''}</div>
+function kbSelectCollection(colId, sub) {
+  kbState.activeCollection = colId;
+  kbState.activeSubcategory = sub;
+  kbRenderCollections();
+  kbLoadDocs();
+}
+
+async function kbLoadDocs() {
+  const q = document.getElementById('kb-search')?.value || '';
+  const appliesTo = document.getElementById('kb-applies-filter')?.value || '';
+  const params = new URLSearchParams();
+  if (kbState.activeCollection) params.set('collection', kbState.activeCollection);
+  if (kbState.activeSubcategory) params.set('subcategory', kbState.activeSubcategory);
+  if (q) params.set('q', q);
+  if (appliesTo) params.set('appliesTo', appliesTo);
+  try {
+    const r = await authFetch('/api/admin/knowledgebase?' + params.toString());
+    const j = await r.json();
+    kbState.docs = j.data || [];
+    kbRenderDocList();
+  } catch (e) {
+    console.error('[KB] load docs failed', e);
+  }
+}
+
+let kbSearchTimer = null;
+function kbOnSearch() {
+  clearTimeout(kbSearchTimer);
+  kbSearchTimer = setTimeout(kbLoadDocs, 240);
+}
+
+function kbRenderDocList() {
+  const el = document.getElementById('kb-doc-list');
+  if (!kbState.docs.length) {
+    el.innerHTML = '<div class="kb-empty">没有匹配的条目</div>';
+    return;
+  }
+  el.innerHTML = kbState.docs.map(d => {
+    const active = kbState.activeDoc?.id === d.id;
+    const tags = (d.tags || []).slice(0, 4).map(t => `<span class="kb-tag">${esc(t)}</span>`).join('');
+    return `<div class="kb-doc-item ${active ? 'active' : ''} ${d.enabled === false ? 'disabled' : ''}" onclick="kbSelectDoc('${d.id}')">
+      <div class="kb-doc-title">${esc(d.title)}</div>
+      <div class="kb-doc-meta">${esc(d.collection)} · ${esc(d.subcategory || '通用')} ${d.enabled === false ? '· <span style="color:#f66">已禁用</span>' : ''}</div>
+      <div class="kb-doc-summary">${esc(d.summary || '').slice(0, 90)}</div>
+      <div class="kb-doc-tags">${tags}</div>
+    </div>`;
+  }).join('');
+}
+
+async function kbSelectDoc(id) {
+  const d = kbState.docs.find(x => x.id === id);
+  if (!d) return;
+  kbState.activeDoc = d;
+  kbRenderDocList();
+  kbRenderEditor(d, false);
+}
+
+function kbNewDoc() {
+  kbState.activeDoc = null;
+  kbRenderEditor({
+    id: '',
+    collection: kbState.activeCollection || 'drama',
+    subcategory: kbState.activeSubcategory || '',
+    title: '',
+    summary: '',
+    content: '',
+    tags: [],
+    keywords: [],
+    prompt_snippets: [],
+    applies_to: ['screenwriter', 'director'],
+    source: '',
+    lang: 'zh',
+    enabled: true,
+  }, true);
+}
+
+function kbRenderEditor(d, isNew) {
+  const el = document.getElementById('kb-editor');
+  // 动态从 kbState.agentTypes 生成 checkbox，按层级分组
+  const agents = kbState.agentTypes.length ? kbState.agentTypes : [
+    { id: 'screenwriter', name: '编剧', emoji: '✍️' },
+    { id: 'director', name: '导演', emoji: '🎬' },
+    { id: 'character_consistency', name: '人物一致性', emoji: '🎭' },
+    { id: 'storyboard', name: '分镜师', emoji: '🎥' },
+    { id: 'atmosphere', name: '氛围师', emoji: '🌫️' },
+    { id: 'digital_human', name: '数字人', emoji: '👤' },
+  ];
+  const layerOrder = ['creative', 'production', 'strategy', 'marketing', 'orchestration'];
+  const layerNames = {
+    creative: '创作层',
+    production: '制作层',
+    strategy: '战略层',
+    marketing: '营销层',
+    orchestration: '协调层',
+  };
+  const byLayer = {};
+  agents.forEach(a => {
+    const l = a.layer || 'creative';
+    if (!byLayer[l]) byLayer[l] = [];
+    byLayer[l].push(a);
+  });
+  const appliesHtml = layerOrder.filter(l => byLayer[l]).map(l => {
+    const items = byLayer[l].map(a => {
+      const checked = (d.applies_to || []).includes(a.id);
+      return `<label class="kb-check kb-check-agent" title="${a.id}"><input type="checkbox" value="${a.id}" ${checked ? 'checked' : ''} class="kb-applies-cb"/>${a.emoji || ''} ${a.name}</label>`;
+    }).join('');
+    return `<div class="kb-applies-group"><div class="kb-applies-layer">${layerNames[l] || l}</div>${items}</div>`;
+  }).join('');
+  const colOpts = ['digital_human', 'drama', 'storyboard', 'atmosphere', 'production']
+    .map(c => `<option value="${c}" ${d.collection === c ? 'selected' : ''}>${c}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="kb-editor-header">
+      <strong>${isNew ? '新建知识条目' : '编辑知识条目'}</strong>
+      <div style="display:flex;gap:6px">
+        <label class="kb-check"><input type="checkbox" id="kb-ed-enabled" ${d.enabled !== false ? 'checked' : ''}/>启用</label>
+        ${!isNew ? `<button class="btn-sm danger" onclick="kbDeleteDoc('${d.id}')">删除</button>` : ''}
+        <button class="btn-primary" onclick="kbSaveDoc(${isNew})">保存</button>
       </div>
     </div>
-    <pre style="font-size:12px;line-height:1.6;color:var(--text2);white-space:pre-wrap;margin:0">${esc(node.detail || '暂无详细信息')}</pre>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>标题</label><input id="kb-ed-title" value="${esc(d.title || '')}"/></div>
+      <div class="form-group" style="flex:0.5"><label>合集</label><select id="kb-ed-collection">${colOpts}</select></div>
+      <div class="form-group" style="flex:0.5"><label>子分类</label><input id="kb-ed-subcategory" value="${esc(d.subcategory || '')}"/></div>
+    </div>
+    <div class="form-group"><label>一句话摘要</label><input id="kb-ed-summary" value="${esc(d.summary || '')}"/></div>
+    <div class="form-group"><label>正文内容</label><textarea id="kb-ed-content" rows="10">${esc(d.content || '')}</textarea></div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>标签（逗号分隔）</label><input id="kb-ed-tags" value="${esc((d.tags || []).join(','))}"/></div>
+      <div class="form-group" style="flex:1"><label>关键词（逗号分隔）</label><input id="kb-ed-keywords" value="${esc((d.keywords || []).join(','))}"/></div>
+    </div>
+    <div class="form-group"><label>提示词片段（每行一条，注入 agent 时作为 reusable prompt）</label><textarea id="kb-ed-snippets" rows="4">${esc((d.prompt_snippets || []).join('\n'))}</textarea></div>
+    <div class="form-group">
+      <label>适用 Agent（被哪些 agent 注入）</label>
+      <div class="kb-applies">${appliesHtml}</div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>来源 / source</label><input id="kb-ed-source" value="${esc(d.source || '')}"/></div>
+      <div class="form-group" style="flex:0.4"><label>语言</label><input id="kb-ed-lang" value="${esc(d.lang || 'zh')}"/></div>
+      ${isNew ? '<div class="form-group" style="flex:0.6"><label>ID (可选,留空自动生成)</label><input id="kb-ed-id"/></div>' : ''}
+    </div>
   `;
 }
+
+async function kbSaveDoc(isNew) {
+  const applies = Array.from(document.querySelectorAll('.kb-applies-cb')).filter(x => x.checked).map(x => x.value);
+  const body = {
+    collection: document.getElementById('kb-ed-collection').value,
+    subcategory: document.getElementById('kb-ed-subcategory').value.trim(),
+    title: document.getElementById('kb-ed-title').value.trim(),
+    summary: document.getElementById('kb-ed-summary').value.trim(),
+    content: document.getElementById('kb-ed-content').value,
+    tags: document.getElementById('kb-ed-tags').value.split(',').map(s => s.trim()).filter(Boolean),
+    keywords: document.getElementById('kb-ed-keywords').value.split(',').map(s => s.trim()).filter(Boolean),
+    prompt_snippets: document.getElementById('kb-ed-snippets').value.split('\n').map(s => s.trim()).filter(Boolean),
+    applies_to: applies,
+    source: document.getElementById('kb-ed-source').value.trim(),
+    lang: document.getElementById('kb-ed-lang').value.trim() || 'zh',
+    enabled: document.getElementById('kb-ed-enabled').checked,
+  };
+  if (!body.title) return alert('标题必填');
+  try {
+    let r;
+    if (isNew) {
+      const idEl = document.getElementById('kb-ed-id');
+      if (idEl && idEl.value.trim()) body.id = idEl.value.trim();
+      r = await authFetch('/api/admin/knowledgebase', { method: 'POST', body: JSON.stringify(body) });
+    } else {
+      r = await authFetch('/api/admin/knowledgebase/' + kbState.activeDoc.id, { method: 'PUT', body: JSON.stringify(body) });
+    }
+    const j = await r.json();
+    if (!j.success) return alert('保存失败: ' + (j.error || ''));
+    await kbLoadDocs();
+    kbState.activeDoc = j.data;
+    kbRenderEditor(j.data, false);
+    kbRenderDocList();
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  }
+}
+
+async function kbDeleteDoc(id) {
+  if (!confirm('确定删除此条目？')) return;
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if (!j.success) return alert('删除失败: ' + (j.error || ''));
+    kbState.activeDoc = null;
+    document.getElementById('kb-editor').innerHTML = '<div class="kb-empty">← 选择或新建一条知识</div>';
+    await kbLoadDocs();
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+  }
+}
+
+function kbOpenPreview() {
+  // 用统一的 modal 系统弹窗，动态从 agentTypes 生成下拉
+  const agents = kbState.agentTypes.length ? kbState.agentTypes : [];
+  const agentOptions = agents.map(a =>
+    `<option value="${a.id}">${a.emoji || ''} ${a.name} (${a.id})</option>`
+  ).join('');
+
+  showModal({
+    title: '🔮 Agent 注入上下文预览',
+    subtitle: '模拟某个 agent 在当前题材下会拿到的知识库上下文',
+    maxWidth: '960px',
+    body: `
+      <div class="form-row" style="margin-bottom:14px;">
+        <div class="form-group">
+          <label>Agent 类型</label>
+          <select id="kb-preview-agent-modal" onchange="kbRunPreviewInModal()">${agentOptions}</select>
+        </div>
+        <div class="form-group">
+          <label>题材 genre（可选）</label>
+          <input id="kb-preview-genre-modal" placeholder="如：悬疑 / 爽文 / 甜宠 / 末日 / 仙侠" oninput="kbRunPreviewInModalDebounced()"/>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;" id="kb-preview-stats-modal">请选择 agent 类型</div>
+      <pre class="kb-preview-body" id="kb-preview-body-modal" style="max-height:55vh;overflow-y:auto;">点击下拉框选择 agent 类型后自动加载</pre>
+    `,
+    footer: `<button class="btn-sm" onclick="closeModal()">关闭</button>`,
+  });
+
+  // 自动加载一次
+  setTimeout(kbRunPreviewInModal, 50);
+}
+
+let _kbPrevTimer = null;
+function kbRunPreviewInModalDebounced() {
+  clearTimeout(_kbPrevTimer);
+  _kbPrevTimer = setTimeout(kbRunPreviewInModal, 300);
+}
+
+async function kbRunPreviewInModal() {
+  const agent = document.getElementById('kb-preview-agent-modal')?.value;
+  const genre = document.getElementById('kb-preview-genre-modal')?.value.trim() || '';
+  if (!agent) return;
+  const url = `/api/admin/knowledgebase/_preview/${encodeURIComponent(agent)}${genre ? '?genre=' + encodeURIComponent(genre) : ''}`;
+  const body = document.getElementById('kb-preview-body-modal');
+  const stats = document.getElementById('kb-preview-stats-modal');
+  body.textContent = '加载中…';
+  try {
+    const r = await authFetch(url);
+    const j = await r.json();
+    const ctx = j.data?.context || '';
+    if (ctx) {
+      stats.textContent = `agent: ${agent}${genre ? ' · genre: ' + genre : ''} · 共 ${j.data.length} 字符`;
+      body.textContent = ctx;
+    } else {
+      stats.textContent = `agent: ${agent} · 无匹配`;
+      body.textContent = '（无匹配条目，检查 applies_to 字段是否对应此 agent）';
+    }
+  } catch (e) {
+    body.textContent = '加载失败: ' + e.message;
+  }
+}
+
+// 保留旧的 kbRunPreview 作为兼容（旧弹窗如果还存在）
+async function kbRunPreview() {
+  return kbRunPreviewInModal();
+}
+
+// ══════════════════════ UNIFIED MODAL ══════════════════════
+// 统一弹窗系统 (v8+)
+// 使用：showModal({ title, subtitle, body, footer, maxWidth })
+// 关闭：closeModal() 或点击遮罩外
+let _modalStack = [];
+
+function showModal({ title = '', subtitle = '', body = '', footer = '', maxWidth = '720px', onClose = null }) {
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:1000;align-items:center;justify-content:center;padding:20px;';
+
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:${maxWidth};width:100%;">
+      <div class="modal-header">
+        <div>
+          <div>${title}</div>
+          ${subtitle ? `<div style="font-size:11px;color:var(--text3);margin-top:3px;font-weight:normal;">${subtitle}</div>` : ''}
+        </div>
+        <button class="btn-sm" onclick="closeModal()" style="font-size:18px;padding:2px 10px;">×</button>
+      </div>
+      <div class="modal-body">${body}</div>
+      ${footer ? `<div class="modal-footer" style="padding:12px 20px;border-top:1px solid var(--border2);display:flex;gap:8px;justify-content:flex-end;">${footer}</div>` : ''}
+    </div>
+  `;
+
+  // 点击遮罩外关闭
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.body.appendChild(modal);
+  _modalStack.push({ modal, onClose });
+
+  // ESC 关闭
+  const escHandler = (e) => { if (e.key === 'Escape') closeModal(); };
+  modal._escHandler = escHandler;
+  document.addEventListener('keydown', escHandler);
+
+  return modal;
+}
+
+function closeModal() {
+  const top = _modalStack.pop();
+  if (!top) return;
+  if (top.modal._escHandler) document.removeEventListener('keydown', top.modal._escHandler);
+  top.modal.remove();
+  if (top.onClose) top.onClose();
+}
+
+// ══════════════════════ AI TEAM ══════════════════════
+let aiteamState = { teams: [], loaded: false };
+
+async function aiteamInit() {
+  if (aiteamState.loaded) return;
+  await aiteamRefresh();
+}
+
+async function aiteamRefresh() {
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/teams');
+    const j = await r.json();
+    aiteamState.teams = j.data || [];
+    aiteamState.loaded = true;
+    aiteamRender();
+  } catch (e) {
+    console.error('[AI Team] failed', e);
+  }
+}
+
+function aiteamRender() {
+  const el = document.getElementById('aiteam-teams');
+  const stats = document.getElementById('aiteam-stats');
+
+  const totalAgents = aiteamState.teams.reduce((s, t) => s + t.total_agents, 0);
+  const totalDocs = aiteamState.teams.reduce((s, t) => s + t.total_docs, 0);
+  stats.textContent = `${aiteamState.teams.length} 个团队 · ${totalAgents} 名 agent · ${totalDocs} 条知识`;
+
+  el.innerHTML = aiteamState.teams.map(team => {
+    const agentsHtml = team.agents.map(a => {
+      const skills = (a.skills || []).map(s => `<span class="aiteam-skill">${esc(s)}</span>`).join('');
+      const colDocs = Object.entries(a.by_collection || {})
+        .map(([col, n]) => `<span class="aiteam-col" title="${esc(col)}">${esc(col)}:${n}</span>`)
+        .join('');
+      return `<div class="aiteam-agent" onclick="aiteamShowDetails('${a.id}')">
+        <div class="aiteam-agent-head">
+          <span class="aiteam-emoji">${a.emoji}</span>
+          <span class="aiteam-name">${esc(a.name)}</span>
+          <span class="aiteam-id">${esc(a.id)}</span>
+          <span class="aiteam-badge aiteam-layer-${a.layer}">${aiteamLayerName(a.layer)}</span>
+        </div>
+        <div class="aiteam-desc-line">${esc(a.desc || '')}</div>
+        <div class="aiteam-skills">${skills}</div>
+        <div class="aiteam-foot">
+          <span class="aiteam-count">📚 ${a.total_docs} 条</span>
+          <span class="aiteam-collections">${colDocs}</span>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="aiteam-team">
+      <div class="aiteam-team-head">
+        <span class="aiteam-team-emoji">${team.emoji}</span>
+        <span class="aiteam-team-name">${esc(team.name)}</span>
+        <span class="aiteam-team-meta">${team.total_agents} 名 · ${team.total_docs} 条知识</span>
+      </div>
+      <div class="aiteam-agents">${agentsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function aiteamLayerName(l) {
+  return ({
+    creative: '创作', production: '制作', engineering: '工程',
+    strategy: '战略', marketing: '营销', orchestration: '协调',
+  })[l] || l;
+}
+
+async function aiteamShowDetails(agentId) {
+  // v8 改为弹窗显示：在当前页直接显示该 agent 的能力 + KB 条目列表
+  // 找到 agent 元信息
+  let agent = null;
+  for (const team of aiteamState.teams) {
+    const found = team.agents.find(a => a.id === agentId);
+    if (found) { agent = { ...found, team: team.name, teamEmoji: team.emoji }; break; }
+  }
+  if (!agent) return;
+
+  // 加载该 agent 所有知识条目
+  let docs = [];
+  try {
+    const r = await authFetch('/api/admin/knowledgebase?appliesTo=' + encodeURIComponent(agentId));
+    const j = await r.json();
+    if (j.success) docs = j.data;
+  } catch (e) { console.error('[AI team] load docs failed', e); }
+
+  // 按合集分组
+  const byCollection = {};
+  docs.forEach(d => {
+    if (!byCollection[d.collection]) byCollection[d.collection] = [];
+    byCollection[d.collection].push(d);
+  });
+
+  // 构建弹窗
+  const skills = (agent.skills || []).map(s => `<span class="aiteam-skill">${esc(s)}</span>`).join('');
+  const docsHtml = Object.keys(byCollection).sort().map(col => {
+    const items = byCollection[col].map(d => `
+      <div class="agent-kb-item" onclick="kbQuickView('${esc(d.id)}')">
+        <div class="agent-kb-item-head">
+          <span class="agent-kb-sub">${esc(d.subcategory || '通用')}</span>
+          <span class="agent-kb-title">${esc(d.title)}</span>
+        </div>
+        ${d.summary ? `<div class="agent-kb-summary">${esc(d.summary)}</div>` : ''}
+      </div>
+    `).join('');
+    return `<div class="agent-kb-col">
+      <div class="agent-kb-col-head">📚 ${esc(col)} <span class="agent-kb-col-count">${byCollection[col].length}</span></div>
+      ${items}
+    </div>`;
+  }).join('');
+
+  showModal({
+    title: `${agent.emoji} ${agent.name} <span class="aiteam-badge aiteam-layer-${agent.layer}">${aiteamLayerName(agent.layer)}</span>`,
+    subtitle: `${agent.teamEmoji} ${agent.team} · <code>${agent.id}</code>`,
+    maxWidth: '900px',
+    body: `
+      <div class="agent-detail-meta">
+        <div class="agent-detail-desc">${esc(agent.desc || '')}</div>
+        <div class="agent-detail-skills"><strong>核心技能：</strong>${skills}</div>
+        <div class="agent-detail-stats">
+          📚 <strong>${docs.length}</strong> 条知识
+          ${agent.by_collection ? ' · 跨 <strong>' + Object.keys(agent.by_collection).length + '</strong> 个合集' : ''}
+        </div>
+      </div>
+      <div class="agent-kb-section">
+        <div class="agent-kb-section-title">此 Agent 可读取的知识库内容</div>
+        ${docs.length === 0 ? '<div class="kb-empty">暂无对应知识，请在知识库中新增或为已有条目勾选此 agent</div>' : `<div class="agent-kb-list">${docsHtml}</div>`}
+      </div>
+    `,
+    footer: `
+      <button class="btn-sm" onclick="aiteamGoToFilteredKB('${agentId}')">→ 在知识库中查看完整列表</button>
+      <button class="btn-sm" onclick="closeModal()">关闭</button>
+    `,
+  });
+}
+
+// 跳转到知识库 tab 并按 agent 过滤（用户从弹窗点"完整列表"时）
+async function aiteamGoToFilteredKB(agentId) {
+  closeModal();
+  const navKB = document.querySelector('.nav-item[data-tab="knowledgebase"]');
+  if (navKB) navKB.click();
+  await kbInit();
+  // 等待 dropdown 渲染完成
+  setTimeout(() => {
+    const sel = document.getElementById('kb-applies-filter');
+    if (sel) {
+      sel.value = agentId;
+      kbLoadDocs();
+    }
+  }, 100);
+}
+
+// 快速预览单个 KB 条目（从 agent 详情弹窗里点条目时）
+async function kbQuickView(docId) {
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/' + docId);
+    const j = await r.json();
+    if (!j.success) return;
+    const d = j.data;
+    showModal({
+      title: `📄 ${esc(d.title)}`,
+      subtitle: `<code>${esc(d.collection)}/${esc(d.subcategory || '通用')}</code> · ID: <code>${esc(d.id)}</code>`,
+      maxWidth: '800px',
+      body: `
+        ${d.summary ? `<div class="kb-view-section"><div class="kb-view-label">摘要</div><div class="kb-view-summary">${esc(d.summary)}</div></div>` : ''}
+        ${d.content ? `<div class="kb-view-section"><div class="kb-view-label">正文</div><pre class="kb-view-content">${esc(d.content)}</pre></div>` : ''}
+        ${(d.tags || []).length ? `<div class="kb-view-section"><div class="kb-view-label">标签</div>${d.tags.map(t => `<span class="kb-tag">${esc(t)}</span>`).join(' ')}</div>` : ''}
+        ${(d.keywords || []).length ? `<div class="kb-view-section"><div class="kb-view-label">关键词</div><div style="font-size:11px;color:var(--text3);">${d.keywords.map(k => esc(k)).join(', ')}</div></div>` : ''}
+        ${(d.prompt_snippets || []).length ? `<div class="kb-view-section"><div class="kb-view-label">提示词片段</div>${d.prompt_snippets.map(p => `<code class="kb-view-snippet">${esc(p)}</code>`).join('')}</div>` : ''}
+        <div class="kb-view-section"><div class="kb-view-label">注入到</div>${(d.applies_to || []).map(a => `<span class="kb-tag">${esc(a)}</span>`).join(' ') || '<span style="color:var(--text3);font-size:11px;">无</span>'}</div>
+      `,
+      footer: `<button class="btn-sm" onclick="closeModal()">关闭</button>`,
+    });
+  } catch (e) {
+    alert('加载失败: ' + e.message);
+  }
+}
+
+// ══════════════════════ LOGS TREE ══════════════════════
+async function aiteamInitWithLogs() {
+  await aiteamInit();
+  await logsTreeRefresh();
+}
+
+// 覆盖原来的 aiteamInit tab 点击：打开 AI 团队 tab 时也加载日志
+const _origAiteamInit = aiteamInit;
+aiteamInit = async function() {
+  await _origAiteamInit();
+  try { await logsTreeRefresh(); } catch (e) { console.warn('[Logs] refresh failed', e); }
+};
+
+async function logsTreeRefresh() {
+  try {
+    const r = await authFetch('/api/admin/logs/tree');
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    logsTreeRender(j.data);
+  } catch (e) {
+    const el = document.getElementById('logs-tree');
+    if (el) el.innerHTML = '<div class="kb-empty">加载失败: ' + esc(e.message) + '</div>';
+  }
+}
+
+function logsTreeRender(data) {
+  const el = document.getElementById('logs-tree');
+  const stats = document.getElementById('logs-stats');
+
+  if (stats && data.stats) {
+    stats.textContent = `${data.stats.total_sessions} 会话 · ${data.stats.total_learning_days} 学习日 · ${data.stats.total_changes} 修改 · ${data.stats.total_deployments} 部署`;
+  }
+
+  if (!data.exists) {
+    el.innerHTML = '<div class="kb-empty">docs/logs/ 目录不存在，请先部署 v7</div>';
+    return;
+  }
+
+  const icons = {
+    sessions: '💬',
+    learning: '🎓',
+    changes: '🔧',
+    deployments: '🚀',
+  };
+  const names = {
+    sessions: '会话日志',
+    learning: '每日学习',
+    changes: '修改日志',
+    deployments: '部署记录',
+  };
+
+  const html = data.categories.map(cat => {
+    const entriesHtml = cat.entries.slice(0, 10).map(e => {
+      if (e.type === 'directory') {
+        const filesList = (e.file_list || []).map(f =>
+          `<div class="log-subfile" onclick="logsViewFile('${esc(f.path)}')">📄 ${esc(f.name)} <span class="log-size">${(f.size/1024).toFixed(1)} KB</span></div>`
+        ).join('');
+        return `<div class="log-entry">
+          <div class="log-entry-head">📁 ${esc(e.name)} <span class="log-size">(${e.files} 文件)</span></div>
+          <div class="log-subfiles">${filesList}</div>
+        </div>`;
+      } else {
+        return `<div class="log-entry" onclick="logsViewFile('${esc(e.path)}')">
+          <div class="log-entry-head">📄 ${esc(e.name)} <span class="log-size">${(e.size/1024).toFixed(1)} KB</span></div>
+        </div>`;
+      }
+    }).join('');
+
+    return `<div class="log-category">
+      <div class="log-cat-head">${icons[cat.id] || '📂'} ${names[cat.id] || cat.id} <span class="log-cat-path">${esc(cat.path)}</span></div>
+      <div class="log-entries">${entriesHtml || '<div class="kb-empty" style="padding:10px;">（暂无日志）</div>'}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = html;
+}
+
+async function logsViewFile(filePath) {
+  try {
+    const r = await authFetch('/api/admin/logs/file?file=' + encodeURIComponent(filePath));
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+
+    showModal({
+      title: `📄 ${esc(filePath.split('/').pop())}`,
+      subtitle: `<code>${esc(filePath)}</code> · ${(j.data.size/1024).toFixed(1)} KB`,
+      maxWidth: '900px',
+      body: `<pre class="kb-preview-body" style="max-height:65vh;overflow-y:auto;">${esc(j.data.content)}</pre>`,
+      footer: `<button class="btn-sm" onclick="closeModal()">关闭</button>`,
+    });
+  } catch (e) {
+    alert('读取失败: ' + e.message);
+  }
+}
+
+// ══════════════════════ MODEL MONITOR ══════════════════════
+async function monitorRefresh() {
+  const days = parseInt(document.getElementById('monitor-days')?.value) || 7;
+  try {
+    const [overview, server, recent] = await Promise.all([
+      authFetch(`/api/admin/token-stats/overview?days=${days}`).then(r => r.json()),
+      authFetch('/api/admin/token-stats/server').then(r => r.json()),
+      authFetch('/api/admin/token-stats/recent?limit=50').then(r => r.json()),
+    ]);
+
+    if (overview.success) {
+      monitorRenderOverview(overview.data, days);
+    }
+    if (server.success) {
+      monitorRenderServer(server.data);
+    }
+    if (recent.success) {
+      monitorRenderRecent(recent.data);
+    }
+  } catch (e) {
+    console.error('[Monitor] refresh failed', e);
+  }
+}
+
+function monitorRenderOverview(data, days) {
+  const stats = data.stats;
+  const budget = data.budget;
+  const alerts = data.alerts || [];
+
+  // 告警条
+  const alertsEl = document.getElementById('monitor-alerts');
+  if (alerts.length > 0) {
+    alertsEl.innerHTML = alerts.map(a =>
+      `<div class="monitor-alert alert-${a.level}">
+        ${a.level === 'critical' ? '🔴' : '🟡'} <strong>${esc(a.type)}</strong>: ${esc(a.message)}
+      </div>`
+    ).join('');
+  } else {
+    alertsEl.innerHTML = '<div class="monitor-alert alert-ok">✅ 一切正常</div>';
+  }
+
+  // 总览卡片
+  const overviewEl = document.getElementById('monitor-overview');
+  const budgetCard = budget.has_budget ? `
+    <div class="monitor-card ${budget.alerting ? 'card-alert' : ''}">
+      <div class="monitor-card-label">本月预算</div>
+      <div class="monitor-card-value">$${budget.used_cost_usd.toFixed(2)} / $${budget.monthly_budget_usd}</div>
+      <div class="monitor-card-meta">
+        <div class="monitor-progress"><div class="monitor-progress-bar" style="width:${Math.min(100, budget.used_percent || 0)}%;background:${budget.alerting ? '#ff6b6b' : 'var(--accent)'}"></div></div>
+        <div style="font-size:10px;color:var(--text3);">剩余 $${(budget.remaining_usd || 0).toFixed(2)} · ${budget.used_percent || 0}%</div>
+      </div>
+    </div>
+  ` : `
+    <div class="monitor-card">
+      <div class="monitor-card-label">本月预算</div>
+      <div class="monitor-card-value" style="color:var(--text3);">未设置</div>
+      <div class="monitor-card-meta" style="font-size:11px;">
+        已用: $${budget.used_cost_usd.toFixed(2)}
+        <br><a href="#" onclick="monitorOpenBudget();return false;" style="color:var(--accent);">设置预算 →</a>
+      </div>
+    </div>
+  `;
+
+  overviewEl.innerHTML = `
+    <div class="monitor-card">
+      <div class="monitor-card-label">总调用 (${days}d)</div>
+      <div class="monitor-card-value">${stats.total_calls.toLocaleString()}</div>
+      <div class="monitor-card-meta">成功 ${stats.success_count} · 失败 ${stats.fail_count}</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-card-label">总 Tokens</div>
+      <div class="monitor-card-value">${stats.total_tokens.toLocaleString()}</div>
+      <div class="monitor-card-meta">输入 ${stats.total_input_tokens.toLocaleString()} · 输出 ${stats.total_output_tokens.toLocaleString()}</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-card-label">总成本</div>
+      <div class="monitor-card-value">$${stats.total_cost_usd.toFixed(4)}</div>
+      <div class="monitor-card-meta">近 ${days} 天累计</div>
+    </div>
+    ${budgetCard}
+    <div class="monitor-card">
+      <div class="monitor-card-label">视频生成</div>
+      <div class="monitor-card-value">${stats.total_video_seconds.toFixed(0)} 秒</div>
+      <div class="monitor-card-meta">图像 ${stats.total_image_count} 张</div>
+    </div>
+  `;
+
+  // 按 provider
+  document.getElementById('monitor-by-provider').innerHTML = monitorRenderTable(stats.by_provider, 'key', 'provider');
+  document.getElementById('monitor-by-model').innerHTML = monitorRenderTable(stats.by_model, 'key', 'model');
+  document.getElementById('monitor-by-agent').innerHTML = monitorRenderTable(stats.by_agent, 'key', 'agent');
+
+  // 按天
+  document.getElementById('monitor-by-day').innerHTML = monitorRenderDayChart(stats.by_day);
+}
+
+function monitorRenderTable(rows, keyField, label) {
+  if (!rows || rows.length === 0) {
+    return '<div class="monitor-empty">暂无数据</div>';
+  }
+  const maxCost = Math.max(...rows.map(r => r.cost_usd));
+  return `
+    <table class="monitor-table">
+      <thead>
+        <tr>
+          <th>${label}</th>
+          <th>调用</th>
+          <th>Tokens</th>
+          <th>成本</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.slice(0, 10).map(r => `
+          <tr>
+            <td class="monitor-key">${esc(r[keyField] || '-')}</td>
+            <td>${r.calls}</td>
+            <td>${(r.tokens || 0).toLocaleString()}</td>
+            <td>
+              <div class="monitor-cost-cell">
+                $${r.cost_usd.toFixed(4)}
+                <div class="monitor-mini-bar" style="width:${(r.cost_usd / maxCost * 100)}%;"></div>
+              </div>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function monitorRenderDayChart(days) {
+  if (!days || days.length === 0) return '<div class="monitor-empty">暂无数据</div>';
+  const maxCost = Math.max(...days.map(d => d.cost_usd));
+  const maxCalls = Math.max(...days.map(d => d.calls));
+  return `
+    <div class="monitor-day-chart">
+      ${days.map(d => `
+        <div class="monitor-day-bar">
+          <div class="monitor-day-label">${d.day.slice(5)}</div>
+          <div class="monitor-day-visual">
+            <div class="monitor-day-cost-bar" style="width:${maxCost ? (d.cost_usd / maxCost * 100) : 0}%;"></div>
+          </div>
+          <div class="monitor-day-meta">
+            <span>${d.calls} 次</span>
+            <span>${(d.tokens || 0).toLocaleString()} t</span>
+            <span>$${d.cost_usd.toFixed(4)}</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function monitorRenderServer(data) {
+  const el = document.getElementById('monitor-server');
+  el.innerHTML = `
+    <div class="monitor-server-grid">
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">CPU 使用率</div>
+        <div class="monitor-server-value ${data.cpu.usage_percent > 80 ? 'alert' : ''}">${data.cpu.usage_percent}%</div>
+        <div class="monitor-server-meta">${data.cpu.count} 核 · Load ${data.cpu.load_avg_1m.toFixed(2)} / ${data.cpu.load_avg_5m.toFixed(2)} / ${data.cpu.load_avg_15m.toFixed(2)}</div>
+      </div>
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">内存使用率</div>
+        <div class="monitor-server-value ${data.memory.used_percent > 90 ? 'alert' : ''}">${data.memory.used_percent}%</div>
+        <div class="monitor-server-meta">${data.memory.used_gb} / ${data.memory.total_gb} GB</div>
+      </div>
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">Node 进程内存</div>
+        <div class="monitor-server-value">${data.process_memory.rss_mb} MB</div>
+        <div class="monitor-server-meta">Heap ${data.process_memory.heap_used_mb} / ${data.process_memory.heap_total_mb} MB</div>
+      </div>
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">进程运行时间</div>
+        <div class="monitor-server-value">${formatUptime(data.uptime_seconds)}</div>
+        <div class="monitor-server-meta">系统已运行 ${formatUptime(data.system_uptime_seconds)}</div>
+      </div>
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">平台</div>
+        <div class="monitor-server-value" style="font-size:14px;">${esc(data.platform)} ${esc(data.arch)}</div>
+        <div class="monitor-server-meta">Node ${esc(data.node_version)}</div>
+      </div>
+      <div class="monitor-server-item">
+        <div class="monitor-server-label">CPU 型号</div>
+        <div class="monitor-server-value" style="font-size:12px;">${esc(data.cpu.model.slice(0, 30))}</div>
+        <div class="monitor-server-meta">主机名: ${esc(data.hostname)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function formatUptime(seconds) {
+  if (seconds < 60) return seconds + 's';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+  return Math.floor(seconds / 86400) + 'd ' + Math.floor((seconds % 86400) / 3600) + 'h';
+}
+
+function monitorRenderRecent(rows) {
+  const el = document.getElementById('monitor-recent');
+  if (!rows || rows.length === 0) {
+    el.innerHTML = '<div class="monitor-empty">暂无调用记录，触发一次 AI 调用后会出现在这里</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table class="monitor-table">
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>Provider</th>
+          <th>Model</th>
+          <th>Category</th>
+          <th>Agent</th>
+          <th>Tokens</th>
+          <th>成本</th>
+          <th>耗时</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr class="${r.status === 'fail' ? 'row-fail' : ''}">
+            <td>${r.timestamp?.slice(11, 19) || '-'}</td>
+            <td>${esc(r.provider || '-')}</td>
+            <td class="monitor-key">${esc(r.model || '-')}</td>
+            <td>${esc(r.category || '-')}</td>
+            <td>${esc(r.agent_id || '-')}</td>
+            <td>${(r.total_tokens || 0).toLocaleString()}</td>
+            <td>$${(r.cost_usd || 0).toFixed(6)}</td>
+            <td>${r.duration_ms}ms</td>
+            <td>${r.status === 'success' ? '✓' : '✗'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function monitorOpenBudget() {
+  try {
+    const r = await authFetch('/api/admin/token-stats/budget');
+    const j = await r.json();
+    if (j.success) {
+      document.getElementById('budget-monthly').value = j.data.monthly_budget_usd || '';
+      document.getElementById('budget-threshold').value = j.data.alert_threshold || 0.8;
+    }
+  } catch {}
+  document.getElementById('budget-modal').style.display = 'flex';
+}
+
+async function monitorSaveBudget() {
+  const monthly = parseFloat(document.getElementById('budget-monthly').value) || 0;
+  const threshold = parseFloat(document.getElementById('budget-threshold').value) || 0.8;
+  try {
+    const r = await authFetch('/api/admin/token-stats/budget', {
+      method: 'PUT',
+      body: JSON.stringify({ monthly_budget_usd: monthly, alert_threshold: threshold }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    document.getElementById('budget-modal').style.display = 'none';
+    alert('✓ 已保存');
+    await monitorRefresh();
+  } catch (e) {
+    alert('保存失败: ' + e.message);
+  }
+}
+
+async function logsTriggerDailyLearn() {
+  if (!confirm('手动触发每日学习任务？（会扫描所有 knowledgeSources + 为每个 agent 生成 digest）')) return;
+  try {
+    const r = await authFetch('/api/admin/daily-learn/trigger', { method: 'POST' });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    alert(`✓ 已完成\n耗时: ${j.data.duration_ms}ms\n新增: ${j.data.new_docs} 条\nAgent digest: ${j.data.agent_digests.length} 份`);
+    await logsTreeRefresh();
+  } catch (e) {
+    alert('触发失败: ' + e.message);
+  }
+}
+
+// ══════════════════════ DASHBOARD (v9) ══════════════════════
+async function loadDashboard() {
+  const body = document.getElementById('dashboard-body');
+  if (!body) return;
+  body.innerHTML = '<div class="kb-empty">加载中…</div>';
+
+  try {
+    const r = await authFetch('/api/admin/dashboard');
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    renderDashboard(j.data);
+    document.getElementById('dashboard-time').textContent = '更新于 ' + new Date(j.data.timestamp).toLocaleString('zh-CN');
+  } catch (e) {
+    body.innerHTML = `<div class="kb-empty">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderDashboard(d) {
+  const body = document.getElementById('dashboard-body');
+
+  // ——— 用户 + 内容 + 模型 + Token 四类总览卡片 ———
+  const overviewCards = `
+    <div class="dash-section-title">📊 核心指标</div>
+    <div class="dash-cards">
+      <div class="dash-card dash-card-primary">
+        <div class="dash-card-icon">👥</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">用户总数</div>
+          <div class="dash-card-value">${d.users.total}</div>
+          <div class="dash-card-meta">今日 +${d.users.today} · 本周 +${d.users.week} · 本月 +${d.users.month}</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-icon">📦</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">生成内容总数</div>
+          <div class="dash-card-value">${d.content._total.total}</div>
+          <div class="dash-card-meta">今日 +${d.content._total.today} · 本周 +${d.content._total.week}</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-icon">🤖</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">已接入模型</div>
+          <div class="dash-card-value">${d.models.enabled_models} / ${d.models.total_models}</div>
+          <div class="dash-card-meta">${d.models.enabled_providers} 个 provider · ${d.models.by_category.story || 0} story · ${d.models.by_category.video || 0} video</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-icon">💰</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">Token 总成本</div>
+          <div class="dash-card-value">$${d.tokens.total_cost_usd.toFixed(4)}</div>
+          <div class="dash-card-meta">今日 $${d.tokens.today.cost_usd.toFixed(4)} · 本月 $${d.tokens.month.cost_usd.toFixed(4)}</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-icon">🧠</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">知识库</div>
+          <div class="dash-card-value">${d.knowledge.total_docs}</div>
+          <div class="dash-card-meta">${d.knowledge.total_agents} 个 agent · 研发 ${d.knowledge.by_team.rd} · 运营 ${d.knowledge.by_team.ops}</div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-icon">⚙️</div>
+        <div class="dash-card-main">
+          <div class="dash-card-label">Token 调用次数</div>
+          <div class="dash-card-value">${d.tokens.total_calls}</div>
+          <div class="dash-card-meta">今日 ${d.tokens.today.calls} · 本月 ${d.tokens.month.calls}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // ——— 内容分模块统计表 ———
+  const contentRows = Object.entries(d.content)
+    .filter(([k]) => k !== '_total')
+    .map(([k, v]) => `
+      <tr>
+        <td class="dash-key">${esc(v.name)}</td>
+        <td>${v.total}</td>
+        <td>+${v.today}</td>
+        <td>+${v.week}</td>
+        <td>+${v.month}</td>
+      </tr>
+    `).join('');
+  const contentTable = `
+    <div class="dash-section-title">📂 内容模块统计</div>
+    <table class="monitor-table">
+      <thead><tr><th>模块</th><th>总数</th><th>今日</th><th>本周</th><th>本月</th></tr></thead>
+      <tbody>${contentRows}</tbody>
+    </table>
+  `;
+
+  // ——— 模型排行（日/月/季）———
+  function rankCard(label, ranking) {
+    const topRows = ranking.top.map(m => `
+      <tr>
+        <td class="dash-key">${esc(m.model || '-')}</td>
+        <td style="color:var(--text3);font-size:10px;">${esc(m.provider || '-')}</td>
+        <td>${m.calls}</td>
+        <td>$${m.cost_usd.toFixed(4)}</td>
+      </tr>
+    `).join('');
+    const bottomRows = ranking.bottom.map(m => `
+      <tr>
+        <td class="dash-key">${esc(m.model || '-')}</td>
+        <td style="color:var(--text3);font-size:10px;">${esc(m.provider || '-')}</td>
+        <td>${m.calls}</td>
+      </tr>
+    `).join('');
+    return `
+      <div class="dash-rank-card">
+        <div class="dash-rank-title">${label}</div>
+        <div class="dash-rank-body">
+          <div class="dash-rank-col">
+            <div class="dash-rank-sub">🔥 调用最多 Top 5</div>
+            ${ranking.top.length === 0 ? '<div class="monitor-empty">暂无数据</div>' : `
+              <table class="monitor-table"><thead><tr><th>模型</th><th>供应商</th><th>调用</th><th>成本</th></tr></thead>
+              <tbody>${topRows}</tbody></table>
+            `}
+          </div>
+          <div class="dash-rank-col">
+            <div class="dash-rank-sub">❄️ 调用最少 Bottom 5</div>
+            ${ranking.bottom.length === 0 ? '<div class="monitor-empty">暂无数据</div>' : `
+              <table class="monitor-table"><thead><tr><th>模型</th><th>供应商</th><th>调用</th></tr></thead>
+              <tbody>${bottomRows}</tbody></table>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  const modelRankings = `
+    <div class="dash-section-title">🏆 模型调用排行</div>
+    ${rankCard('今日排行', d.model_ranking.today)}
+    ${rankCard('本月排行', d.model_ranking.month)}
+    ${rankCard('本季排行', d.model_ranking.quarter)}
+  `;
+
+  // ——— Top 10 用户 Token 消耗 ———
+  const userRows = d.top_users.map((u, i) => `
+    <tr>
+      <td>#${i + 1}</td>
+      <td class="dash-key">${esc(u.username)}</td>
+      <td>${u.calls}</td>
+      <td>${u.tokens.toLocaleString()}</td>
+      <td>$${u.cost_usd.toFixed(4)}</td>
+    </tr>
+  `).join('');
+  const topUsersTable = `
+    <div class="dash-section-title">👥 Top 10 用户 Token 消耗</div>
+    ${d.top_users.length === 0 ? '<div class="monitor-empty">暂无调用数据</div>' : `
+      <table class="monitor-table">
+        <thead><tr><th>排名</th><th>用户</th><th>调用次数</th><th>Tokens</th><th>成本</th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    `}
+  `;
+
+  // ——— 已接入 provider 列表 ———
+  const providersList = d.models.provider_list.map(p => `
+    <div class="dash-provider-chip ${p.enabled ? '' : 'disabled'}">
+      <strong>${esc(p.name)}</strong>
+      <span class="dash-provider-count">${p.model_count} 模型</span>
+    </div>
+  `).join('');
+  const providersSection = `
+    <div class="dash-section-title">🔌 已接入供应商 (${d.models.provider_list.length})</div>
+    <div class="dash-providers">${providersList || '<div class="monitor-empty">尚未配置</div>'}</div>
+  `;
+
+  // ——— 最近注册用户 ———
+  const recentSignupsRows = d.users.recent_signups.map(u => `
+    <tr>
+      <td class="dash-key">${esc(u.username)}</td>
+      <td>${esc(u.role)}</td>
+      <td style="color:var(--text3);font-size:11px;">${u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-'}</td>
+    </tr>
+  `).join('');
+  const recentSignups = `
+    <div class="dash-section-title">🆕 最近注册用户</div>
+    ${d.users.recent_signups.length === 0 ? '<div class="monitor-empty">无</div>' : `
+      <table class="monitor-table">
+        <thead><tr><th>用户名</th><th>角色</th><th>注册时间</th></tr></thead>
+        <tbody>${recentSignupsRows}</tbody>
+      </table>
+    `}
+  `;
+
+  body.innerHTML = overviewCards + contentTable + modelRankings + topUsersTable + providersSection + recentSignups;
+}
+
+// ══════════════════════ NEW AGENT (v9) ══════════════════════
+function aiteamOpenNewAgent() {
+  showModal({
+    title: '🤖 新增 AI 团队成员',
+    subtitle: '创建后会自动学习对应岗位的高阶能力，生成 5 条 KB 并写入工作流',
+    maxWidth: '680px',
+    body: `
+      <div class="form-row">
+        <div class="form-group" style="flex:1;">
+          <label>Agent ID (英文，小写+下划线)</label>
+          <input id="new-agent-id" placeholder="如: seo_specialist / game_designer"/>
+          <small style="font-size:10px;color:var(--text3);">只能用小写字母、数字、下划线，以字母开头</small>
+        </div>
+        <div class="form-group" style="flex:0.3;">
+          <label>Emoji</label>
+          <input id="new-agent-emoji" value="🤖" maxlength="4"/>
+        </div>
+      </div>
+      <div class="form-group"><label>中文名称</label><input id="new-agent-name" placeholder="如: SEO 优化师"/></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>团队</label>
+          <select id="new-agent-team">
+            <option value="ops" selected>📣 市场运营团队</option>
+            <option value="rd">🔬 研发团队</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>层级</label>
+          <select id="new-agent-layer">
+            <option value="marketing">营销 marketing</option>
+            <option value="strategy">战略 strategy</option>
+            <option value="orchestration">协调 orchestration</option>
+            <option value="creative">创作 creative</option>
+            <option value="production">制作 production</option>
+            <option value="engineering">工程 engineering</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>核心技能 (逗号分隔)</label>
+        <input id="new-agent-skills" placeholder="如: SEO / 关键词研究 / 站内优化 / 外链建设"/>
+      </div>
+      <div class="form-group">
+        <label>职责描述</label>
+        <textarea id="new-agent-desc" rows="2" placeholder="一句话描述这个 agent 负责什么"></textarea>
+      </div>
+      <div class="form-group">
+        <label>岗位背景 (用于自动学习 - 越具体越好)</label>
+        <textarea id="new-agent-context" rows="4" placeholder="如: 负责 AI 视频平台的 SEO 工作，需要精通 Google/百度 搜索引擎算法、长尾关键词挖掘、技术 SEO (schema/sitemap)、内容 SEO、以及社交搜索 (TikTok SEO / 小红书 SEO) 等"></textarea>
+      </div>
+      <div style="background:var(--bg);border:1px dashed var(--border2);padding:10px 14px;border-radius:6px;font-size:11px;color:var(--text3);margin-bottom:8px;">
+        💡 <strong>创建后自动执行</strong>：<br>
+        1. 写入自定义 agent 存储<br>
+        2. 合并进 listAgentTypes（供所有路由/弹窗使用）<br>
+        3. 自动调用 LLM 为该岗位生成 5 条高阶能力 KB（~30-60s）<br>
+        4. KB 条目的 applies_to 自动设置为新 agent id<br>
+        5. 立即进入 orchestrator 的可调用列表
+      </div>
+    `,
+    footer: `
+      <button class="btn-sm" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="aiteamSubmitNewAgent()">创建 + 自动学习</button>
+    `,
+  });
+}
+
+// ══════════════════════ RUN WORKFLOW (v12) ══════════════════════
+function aiteamOpenRunWorkflow(presetWorkflow = 'auto') {
+  showModal({
+    title: '▶ 执行任务 / 工作流',
+    subtitle: '任务会经过完整的多阶段 pipeline，每个阶段由相关 agent 协作完成',
+    maxWidth: '720px',
+    body: `
+      <div class="form-group">
+        <label>任务描述</label>
+        <textarea id="wf-task" rows="4" placeholder="例如:
+- 研发任务: 优化 dashboard 的加载速度
+- 漫剧: 生成一部关于重生复仇的甜宠短剧
+- 数字人: 做一个美妆赛道的虚拟主播
+- 爆款复刻: 复刻抖音情感账号的爆款公式"></textarea>
+      </div>
+      <div class="form-group">
+        <label>选择工作流</label>
+        <select id="wf-name">
+          <option value="auto">🤖 自动识别（按关键词匹配）</option>
+          <optgroup label="—— 业务工作流 ——">
+            <option value="video">🎬 AI 视频生成</option>
+            <option value="drama">📺 漫剧 / 短剧</option>
+            <option value="comic">📖 漫画生成</option>
+            <option value="novel">📚 小说创作</option>
+            <option value="digital_human">👤 数字人</option>
+            <option value="viral_replicate">🔥 爆款复刻</option>
+            <option value="voice_clone">🎙️ 声音克隆</option>
+            <option value="image_gen">🖼️ 图片生成</option>
+            <option value="character_bg">🌅 角色与背景</option>
+          </optgroup>
+          <optgroup label="—— 研发工作流 ——">
+            <option value="rd_task">🛠️ 研发任务（PM→UI→Dev→Test→Deploy）</option>
+          </optgroup>
+        </select>
+      </div>
+      <div style="background:var(--bg);border:1px dashed var(--border2);padding:10px 14px;border-radius:6px;font-size:11px;color:var(--text3);margin-bottom:8px;">
+        ⏱️ <strong>预期耗时</strong>: 30-180 秒（阶段越多/agent 越多越久）<br>
+        💡 选错也没关系，"自动识别"会按关键词决定走哪条流水线
+      </div>
+    `,
+    footer: `
+      <button class="btn-sm" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="aiteamRunWorkflow()">▶ 开始执行</button>
+    `,
+  });
+  // 预选
+  setTimeout(() => {
+    const sel = document.getElementById('wf-name');
+    if (sel && presetWorkflow) sel.value = presetWorkflow;
+  }, 50);
+}
+
+async function aiteamRunWorkflow() {
+  const task = document.getElementById('wf-task').value.trim();
+  const wfName = document.getElementById('wf-name').value;
+  if (!task) return alert('请输入任务描述');
+  // 推断 task_type
+  const type = wfName === 'rd_task' ? 'rd' : (wfName === 'auto' ? 'auto' : 'business');
+
+  closeModal();
+
+  // 显示执行中弹窗
+  showModal({
+    title: '⏳ 工作流执行中...',
+    subtitle: `任务: ${task.slice(0, 80)}${task.length > 80 ? '...' : ''}`,
+    maxWidth: '900px',
+    body: `
+      <div id="wf-progress" style="padding:20px;text-align:center;">
+        <div class="wf-spinner"></div>
+        <div style="font-size:13px;color:var(--text2);margin-top:16px;">
+          正在调用 AI 团队执行完整工作流<br>
+          <span style="color:var(--text3);font-size:11px;">请耐心等待 (通常 30-90 秒)</span>
+        </div>
+        <div id="wf-elapsed" style="font-size:11px;color:var(--text3);margin-top:10px;">0s</div>
+      </div>
+    `,
+    footer: `<button class="btn-sm" onclick="closeModal()" id="wf-close-btn" disabled style="opacity:0.5;">执行中...</button>`,
+  });
+
+  // 计时器
+  const startTime = Date.now();
+  const timer = setInterval(() => {
+    const el = document.getElementById('wf-elapsed');
+    if (el) el.textContent = Math.floor((Date.now() - startTime) / 1000) + 's';
+  }, 1000);
+
+  try {
+    const r = await authFetch('/api/ai-team/run-workflow', {
+      method: 'POST',
+      body: JSON.stringify({ task, task_type: type, workflow_name: wfName }),
+    });
+    const j = await r.json();
+    clearInterval(timer);
+    if (!j.success) throw new Error(j.error);
+
+    // 渲染完整执行结果
+    aiteamRenderWorkflowResult(j.data);
+  } catch (e) {
+    clearInterval(timer);
+    const el = document.getElementById('wf-progress');
+    if (el) {
+      el.innerHTML = `<div style="color:#ff6b6b;padding:20px;">❌ 执行失败<br><span style="font-size:11px;color:var(--text3);">${esc(e.message)}</span></div>`;
+    }
+    const btn = document.getElementById('wf-close-btn');
+    if (btn) {
+      btn.textContent = '关闭';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }
+}
+
+function aiteamRenderWorkflowResult(data) {
+  const typeLabel = data.workflow_label || (data.task_type === 'rd' ? '🛠️ 研发任务' : '📣 业务工作流');
+  const totalSec = (data.total_duration_ms / 1000).toFixed(1);
+
+  const phasesHtml = data.phases.map((phase, idx) => `
+    <div class="wf-phase ${phase.status}">
+      <div class="wf-phase-head">
+        <span class="wf-phase-num">#${idx + 1}</span>
+        <span class="wf-phase-emoji">${phase.emoji}</span>
+        <span class="wf-phase-name">${esc(phase.name)}</span>
+        <span class="wf-phase-meta">${phase.participants.length} 参与 · ${(phase.duration_ms/1000).toFixed(1)}s</span>
+        <span class="wf-phase-status">${phase.status === 'done' ? '✅' : '⚠️'}</span>
+      </div>
+      <div class="wf-phase-body">
+        ${phase.participants.map(p => `
+          <div class="wf-agent ${p.error ? 'error' : ''}">
+            <div class="wf-agent-head">
+              <span class="wf-agent-emoji">${p.emoji}</span>
+              <span class="wf-agent-name">${esc(p.agent_name)}</span>
+              <span class="wf-agent-action">— ${esc(p.action)}</span>
+            </div>
+            ${p.error ? `<div class="wf-agent-error">❌ ${esc(p.error)}</div>` : `
+              <div class="wf-agent-field">
+                <div class="wf-field-label">📝 做了什么</div>
+                <div class="wf-field-value">${esc(p.summary || '-')}</div>
+              </div>
+              <div class="wf-agent-field">
+                <div class="wf-field-label">📦 产出</div>
+                <div class="wf-field-value wf-deliverable">${esc(p.deliverable || '-')}</div>
+              </div>
+              <div class="wf-agent-field">
+                <div class="wf-field-label">💭 决策理由</div>
+                <div class="wf-field-value wf-reasoning">${esc(p.reasoning || '-')}</div>
+              </div>
+              ${p.next_action ? `<div class="wf-agent-field">
+                <div class="wf-field-label">➡️ 下一步</div>
+                <div class="wf-field-value">${esc(p.next_action)}</div>
+              </div>` : ''}
+            `}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  const body = `
+    <div class="wf-result-header">
+      <div class="wf-result-stat">
+        <div class="wf-stat-label">任务类型</div>
+        <div class="wf-stat-value">${typeLabel}</div>
+      </div>
+      <div class="wf-result-stat">
+        <div class="wf-stat-label">总耗时</div>
+        <div class="wf-stat-value">${totalSec}s</div>
+      </div>
+      <div class="wf-result-stat">
+        <div class="wf-stat-label">阶段数</div>
+        <div class="wf-stat-value">${data.phases.length}</div>
+      </div>
+      <div class="wf-result-stat">
+        <div class="wf-stat-label">参与 agent</div>
+        <div class="wf-stat-value">${data.total_agents_involved}</div>
+      </div>
+    </div>
+
+    <div class="wf-task-box">
+      <div class="wf-task-label">原始任务</div>
+      <div class="wf-task-text">${esc(data.task)}</div>
+    </div>
+
+    <div class="wf-phases">${phasesHtml}</div>
+
+    <div style="margin-top:16px;padding:10px;background:var(--bg);border-left:3px solid var(--accent);border-radius:4px;font-size:11px;color:var(--text3);">
+      📋 <strong>项目助理已自动记录</strong>到 <code>docs/logs/changes/${new Date().toISOString().slice(0,10)}.md</code>
+      <br>workflow_id: <code>${data.workflow_id}</code>
+    </div>
+  `;
+
+  // 关闭当前弹窗，开新的结果弹窗
+  closeModal();
+  showModal({
+    title: `✅ 工作流执行完成`,
+    subtitle: `${typeLabel} · 完成于 ${totalSec}s`,
+    maxWidth: '960px',
+    body,
+    footer: `<button class="btn-sm" onclick="closeModal()">关闭</button>`,
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// 【v13】工作流图谱 - ComfyUI / Coze 风格可视化
+// ═══════════════════════════════════════════════════
+async function aiteamOpenWorkflowAtlas() {
+  // 兜底：关闭任何残留的 modal，避免 querySelector('.modal-body') 命中旧 modal
+  while (_modalStack && _modalStack.length) closeModal();
+
+  const myModal = showModal({
+    title: '🗺️ AI 工作流图谱',
+    subtitle: '加载所有工作流定义中...',
+    maxWidth: '1200px',
+    body: `<div style="padding:60px;text-align:center;color:var(--text3);"><div class="wf-spinner"></div><div style="margin-top:14px;">加载中...</div><div id="wfa-debug" style="font-size:10px;margin-top:8px;color:var(--text3);"></div></div>`,
+    footer: `<button class="btn-sm" onclick="closeModal()">关闭</button>`,
+  });
+
+  const dbg = (msg) => { const el = myModal.querySelector('#wfa-debug'); if (el) el.textContent = msg; };
+
+  // 准备 agent meta 缓存（从 aiteamState.teams 扁平化）
+  try {
+    if (typeof aiteamState !== 'undefined' && aiteamState && Array.isArray(aiteamState.teams)) {
+      window.__aiteamRoster = aiteamState.teams.flatMap(t => t.agents || []);
+    }
+  } catch (e) { console.warn('[atlas] roster prep failed:', e); }
+
+  try {
+    dbg('请求 /api/ai-team/workflows ...');
+    const r = await authFetch('/api/ai-team/workflows');
+    dbg('HTTP ' + r.status + ' 解析中 ...');
+    const text = await r.text();
+    let j;
+    try { j = JSON.parse(text); }
+    catch (pe) { throw new Error('返回非 JSON: ' + text.slice(0, 120)); }
+    if (!j.success) throw new Error(j.error || '后端 success=false');
+    if (!Array.isArray(j.data)) throw new Error('data 不是数组');
+    dbg('收到 ' + j.data.length + ' 条工作流，渲染中 ...');
+    try {
+      aiteamRenderWorkflowAtlas(j.data, myModal);
+    } catch (re) {
+      console.error('[atlas] render failed:', re);
+      throw new Error('渲染失败: ' + re.message);
+    }
+  } catch (e) {
+    console.error('[atlas] failed:', e);
+    const wrap = myModal.querySelector('.modal-body');
+    if (wrap) wrap.innerHTML = `<div style="padding:40px;text-align:center;color:#ff6b6b;">❌ 加载失败<br><span style="font-size:11px;color:var(--text3);">${esc(e.message)}</span><br><button class="btn-sm" style="margin-top:14px;" onclick="closeModal();aiteamOpenWorkflowAtlas()">重试</button></div>`;
+  }
+}
+
+function aiteamRenderWorkflowAtlas(workflows, ownerModal) {
+  console.log('[atlas] render start, workflows:', workflows?.length);
+  if (!Array.isArray(workflows)) workflows = [];
+  // 顶部 tab 切换 (业务 vs 研发)
+  const businessWfs = workflows.filter(w => w && w.type === 'business');
+  const rdWfs = workflows.filter(w => w && w.type === 'rd');
+  console.log('[atlas] business:', businessWfs.length, 'rd:', rdWfs.length);
+
+  const renderWorkflow = (wf) => {
+    const phases = Array.isArray(wf.phases) ? wf.phases : [];
+    const totalAgents = new Set(phases.flatMap(p => (p.agents || []).map(a => a.id))).size;
+    const phasesHtml = phases.map((phase, idx) => `
+      <div class="wfa-phase">
+        <div class="wfa-phase-head">
+          <span class="wfa-phase-num">${idx + 1}</span>
+          <span class="wfa-phase-emoji">${phase.emoji || '📍'}</span>
+          <div class="wfa-phase-name">${esc(phase.name || '')}</div>
+        </div>
+        <div class="wfa-phase-agents">
+          ${(phase.agents || []).map(a => {
+            const meta = (window.__aiteamRoster || []).find(x => x.id === a.id) || { emoji: '🤖', name: a.id };
+            return `<div class="wfa-agent" title="${esc(a.action || '')}">
+              <span class="wfa-agent-emoji">${meta.emoji || '🤖'}</span>
+              <span class="wfa-agent-name">${esc(meta.name || a.id)}</span>
+              <span class="wfa-agent-action">${esc(a.action || '')}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        ${idx < phases.length - 1 ? '<div class="wfa-arrow">→</div>' : ''}
+      </div>
+    `).join('');
+
+    return `
+      <div class="wfa-workflow" data-type="${wf.type}">
+        <div class="wfa-wf-head">
+          <div class="wfa-wf-title">
+            <span class="wfa-wf-emoji">${wf.emoji}</span>
+            <span class="wfa-wf-name">${esc(wf.name)}</span>
+            <span class="wfa-wf-meta">${wf.phases.length} 阶段 · ${totalAgents} agents</span>
+          </div>
+          <div class="wfa-wf-desc">${esc(wf.desc || '')}</div>
+          <button class="btn-sm wfa-run-btn" onclick="aiteamCloseAndRun('${wf.key}')">▶ 跑这条流水线</button>
+        </div>
+        <div class="wfa-pipeline">
+          ${phasesHtml}
+        </div>
+      </div>
+    `;
+  };
+
+  const body = `
+    <div class="wfa-tabs">
+      <button class="wfa-tab active" data-tab="business" onclick="wfaSwitchTab(this,'business')">📣 业务工作流 <span class="wfa-tab-count">${businessWfs.length}</span></button>
+      <button class="wfa-tab" data-tab="rd" onclick="wfaSwitchTab(this,'rd')">🛠️ 研发工作流 <span class="wfa-tab-count">${rdWfs.length}</span></button>
+    </div>
+    <div class="wfa-info">
+      💡 每个节点是一个工作流阶段，方框内是该阶段并行执行的 agent。点击"跑这条流水线"立即执行。横向滚动查看完整流程。
+    </div>
+    <div class="wfa-list" id="wfa-list-business">
+      ${businessWfs.map(renderWorkflow).join('')}
+    </div>
+    <div class="wfa-list" id="wfa-list-rd" style="display:none;">
+      ${rdWfs.map(renderWorkflow).join('')}
+    </div>
+  `;
+
+  // 用调用方传入的 ownerModal 直接定位 body，杜绝 querySelector 命中错误的 modal
+  console.log('[atlas] body length:', body.length, 'ownerModal?', !!ownerModal);
+  const modalBody = ownerModal
+    ? ownerModal.querySelector('.modal-body')
+    : document.querySelector('.modal-body');
+  if (modalBody) {
+    modalBody.innerHTML = body;
+    console.log('[atlas] innerHTML set OK');
+  } else {
+    console.error('[atlas] no .modal-body element found!');
+    throw new Error('未找到 modal-body 容器');
+  }
+}
+
+function wfaSwitchTab(btn, tab) {
+  document.querySelectorAll('.wfa-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('wfa-list-business').style.display = tab === 'business' ? 'block' : 'none';
+  document.getElementById('wfa-list-rd').style.display = tab === 'rd' ? 'block' : 'none';
+}
+
+function aiteamCloseAndRun(workflowKey) {
+  closeModal();
+  setTimeout(() => aiteamOpenRunWorkflow(workflowKey), 100);
+}
+
+async function aiteamSubmitNewAgent() {
+  const id = document.getElementById('new-agent-id').value.trim();
+  const name = document.getElementById('new-agent-name').value.trim();
+  const emoji = document.getElementById('new-agent-emoji').value.trim() || '🤖';
+  const team = document.getElementById('new-agent-team').value;
+  const layer = document.getElementById('new-agent-layer').value;
+  const skills = document.getElementById('new-agent-skills').value.trim();
+  const desc = document.getElementById('new-agent-desc').value.trim();
+  const role_context = document.getElementById('new-agent-context').value.trim();
+
+  if (!id || !name) {
+    alert('ID 和名称必填');
+    return;
+  }
+
+  closeModal();
+  // 显示进度弹窗
+  showModal({
+    title: '⏳ 正在创建 agent + 自动学习',
+    maxWidth: '560px',
+    body: `
+      <div id="new-agent-progress">
+        <div style="padding:20px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:10px;">${emoji}</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px;">${esc(name)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:16px;"><code>${esc(id)}</code> · ${team === 'rd' ? '研发' : '运营'}</div>
+          <div id="new-agent-step1" class="new-agent-step">⏳ Step 1: 创建 agent 记录...</div>
+          <div id="new-agent-step2" class="new-agent-step pending">⏳ Step 2: 调用 LLM 学习岗位能力...</div>
+          <div id="new-agent-step3" class="new-agent-step pending">⏳ Step 3: 生成 KB 条目并入库...</div>
+          <div id="new-agent-step4" class="new-agent-step pending">⏳ Step 4: 注入到工作流...</div>
+        </div>
+      </div>
+    `,
+    footer: `<button class="btn-sm" id="new-agent-close-btn" onclick="closeModal()" disabled style="opacity:0.5;">处理中...</button>`,
+  });
+
+  const setStep = (n, txt, done) => {
+    const el = document.getElementById('new-agent-step' + n);
+    if (el) {
+      el.textContent = (done ? '✅' : '⏳') + ' ' + txt;
+      el.className = 'new-agent-step' + (done ? ' done' : '');
+    }
+  };
+
+  try {
+    // Step 1: 创建 agent
+    const r1 = await authFetch('/api/admin/agents/custom', {
+      method: 'POST',
+      body: JSON.stringify({
+        id, name, emoji, team, layer, desc, role_context,
+        skills: skills.split(',').map(s => s.trim()).filter(Boolean),
+      }),
+    });
+    const j1 = await r1.json();
+    if (!j1.success) throw new Error(j1.error);
+    setStep(1, 'Agent 已创建', true);
+
+    // Step 2 + 3: 自动学习 (LLM 生成 KB)
+    setStep(2, '正在调用 LLM 生成高阶能力...', false);
+    const r2 = await authFetch(`/api/admin/agents/${id}/learn`, { method: 'POST' });
+    const j2 = await r2.json();
+    if (!j2.success) throw new Error('学习失败: ' + j2.error);
+    setStep(2, `LLM 返回（${(j2.data.duration_ms/1000).toFixed(1)}s）`, true);
+    setStep(3, `已生成 ${j2.data.inserted_count} 条 KB（合集: ${j2.data.collection}）`, true);
+
+    // Step 4: 注入工作流（其实 orchestrator 自动读 listAgentTypes，无需显式操作）
+    setStep(4, '已加入 orchestrator 路由列表', true);
+
+    // 显示生成的 KB 列表
+    const progressEl = document.getElementById('new-agent-progress');
+    progressEl.innerHTML += `
+      <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:6px;border:1px solid var(--border2);">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">✨ 自动学习生成的 KB 条目：</div>
+        ${j2.data.inserted.map(d => `<div style="font-size:12px;color:var(--text);padding:4px 0;">📄 ${esc(d.title)}</div>`).join('')}
+      </div>
+    `;
+
+    // 开启关闭按钮
+    const btn = document.getElementById('new-agent-close-btn');
+    if (btn) {
+      btn.textContent = '完成';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.className = 'btn-primary';
+    }
+
+    // 刷新 AI 团队 roster
+    aiteamState.loaded = false;
+    await aiteamInit();
+  } catch (e) {
+    const progressEl = document.getElementById('new-agent-progress');
+    if (progressEl) {
+      progressEl.innerHTML += `<div style="color:#ff6b6b;padding:10px;margin-top:10px;">❌ 失败: ${esc(e.message)}</div>`;
+    }
+    const btn = document.getElementById('new-agent-close-btn');
+    if (btn) {
+      btn.textContent = '关闭';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    }
+  }
+}
+

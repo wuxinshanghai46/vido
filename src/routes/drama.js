@@ -88,7 +88,12 @@ ${genre ? `类型: ${genre}\n` : ''}集数: ${episode_count}
 // POST /api/drama/projects — 创建网剧项目
 router.post('/projects', (req, res) => {
   try {
-    const { title, synopsis, style, motion_preset, characters, episode_count, aspect_ratio } = req.body;
+    const {
+      title, synopsis, style, motion_preset, characters,
+      episode_count, aspect_ratio,
+      // v15: 创建时一次性确定全部生成参数
+      scene_count, shot_duration, image_model, video_model,
+    } = req.body;
     if (!title) return res.status(400).json({ success: false, error: '请输入网剧标题' });
     const project = {
       id: uuidv4(),
@@ -100,17 +105,43 @@ router.post('/projects', (req, res) => {
       characters: characters || [],
       episode_count: episode_count || 10,
       aspect_ratio: aspect_ratio || '9:16',
+      // v15: 默认生成参数，后续每集 episode 自动继承
+      scene_count: scene_count || 6,
+      shot_duration: shot_duration || 8,
+      image_model: image_model || 'auto',
+      video_model: video_model || 'auto',
       cover_url: '',
       status: 'active',
     };
     db.insertDramaProject(project);
+
+    // v15 fix #5: 创建项目时预创建 N 个空 episode 占位
+    // 用户进入 drama-studio 直接看到 N 个剧集 chip,点击其中一个再触发生成
+    const N = project.episode_count;
+    for (let i = 1; i <= N; i++) {
+      db.insertDramaEpisode({
+        id: uuidv4(),
+        project_id: project.id,
+        user_id: req.user?.id,
+        episode_index: i,
+        title: `第${i}集`,
+        theme: '',
+        status: 'empty',     // 新增状态：空占位 (vs draft/processing/done/error)
+        progress: 0,
+        message: '未开始',
+        result: null,
+        error_message: null,
+      });
+    }
+
     res.json({ success: true, data: project });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 // GET /api/drama/projects — 项目列表
 router.get('/projects', (req, res) => {
-  const projects = db.listDramaProjects(req.user?.id);
+  const { scopeUserId } = require('../middleware/auth');
+  const projects = db.listDramaProjects(scopeUserId(req));
   // 附带每个项目的剧集数量
   const result = projects.map(p => {
     const episodes = db.listDramaEpisodes(p.id);
@@ -120,19 +151,28 @@ router.get('/projects', (req, res) => {
   res.json({ success: true, data: result });
 });
 
+// 归属检查辅助 — 用于 drama 的 :pid 路由（drama 路由参数名是 pid 而不是 id）
+const { ownedBy: _dramaOwnedBy } = require('../middleware/auth');
+router.param('pid', (req, res, next, pid) => {
+  const project = db.getDramaProject(pid);
+  if (!project || !_dramaOwnedBy(req, project)) {
+    return res.status(404).json({ success: false, error: '项目不存在' });
+  }
+  req._dramaProject = project;
+  next();
+});
+
 // GET /api/drama/projects/:pid — 项目详情
 router.get('/projects/:pid', (req, res) => {
-  const project = db.getDramaProject(req.params.pid);
-  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
+  const project = req._dramaProject;
   const episodes = db.listDramaEpisodes(project.id);
   res.json({ success: true, data: { ...project, episodes } });
 });
 
 // PUT /api/drama/projects/:pid — 更新项目
 router.put('/projects/:pid', (req, res) => {
-  const project = db.getDramaProject(req.params.pid);
-  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
-  const allowed = ['title', 'synopsis', 'style', 'motion_preset', 'characters', 'episode_count', 'aspect_ratio', 'cover_url', 'status', 'final_video_url'];
+  const project = req._dramaProject;
+  const allowed = ['title', 'synopsis', 'style', 'motion_preset', 'characters', 'episode_count', 'aspect_ratio', 'scene_count', 'shot_duration', 'image_model', 'video_model', 'cover_url', 'status', 'final_video_url'];
   const fields = {};
   for (const k of allowed) { if (req.body[k] !== undefined) fields[k] = req.body[k]; }
   db.updateDramaProject(req.params.pid, fields);
@@ -210,6 +250,7 @@ router.post('/projects/:pid/episodes', async (req, res) => {
       image_model: image_model || '',
       video_model: video_model || '',
       aspect_ratio: aspect_ratio || project.aspect_ratio || '9:16',
+      genre: project.genre || project.drama_type || req.body.genre || '',
     }, (update) => {
       db.updateDramaEpisode(episodeId, { progress: update.progress, message: update.message });
       const listener = progressListeners.get(episodeId);
@@ -288,6 +329,141 @@ router.put('/projects/:pid/episodes/:eid/scenes/:idx', (req, res) => {
   res.json({ success: true, data: scenes[idx] });
 });
 
+// ═══════════════════════════════════════════════════
+// 【v15 NEW】POST /api/drama/projects/:pid/episodes/:eid/generate
+// 在【已存在的空 episode】上触发生成 (而不是创建新 episode)
+// 流程：
+//   1. 先调 orchestrator.runWorkflow('drama', task) 跑团队 6 阶段分析（题材选品→大纲→人物→分镜→生成→投放）
+//   2. 把团队分析结果作为增强 context 传给 dramaService.generateDrama()
+//   3. 实际生成 scenes + 角色 bible + 分镜图
+// ═══════════════════════════════════════════════════
+router.post('/projects/:pid/episodes/:eid/generate', async (req, res) => {
+  const project = db.getDramaProject(req.params.pid);
+  if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep) return res.status(404).json({ success: false, error: '剧集不存在' });
+  if (ep.status === 'processing') return res.status(409).json({ success: false, error: '本集正在生成中' });
+
+  // 用户提供的本集剧本 (来自 textarea)
+  const customScript = (req.body.theme || req.body.script || '').trim();
+
+  // 获取前一集的摘要
+  const allEps = db.listDramaEpisodes(project.id).sort((a, b) => (a.episode_index || 0) - (b.episode_index || 0));
+  let previousSummary = '';
+  const prevEp = allEps.find(e => e.episode_index === (ep.episode_index - 1) && e.result);
+  if (prevEp?.result) {
+    previousSummary = prevEp.result.synopsis || prevEp.result.title || '';
+    const sceneDescs = (prevEp.result.scenes || []).map(s => s.description).join('；');
+    if (sceneDescs) previousSummary += '。剧情：' + sceneDescs.substring(0, 300);
+  }
+
+  // 标记 episode 状态
+  db.updateDramaEpisode(ep.id, {
+    status: 'processing',
+    progress: 0,
+    message: '初始化…',
+    theme: customScript || ep.theme || project.synopsis || project.title,
+    error_message: null,
+  });
+  res.json({ success: true, data: { id: ep.id, status: 'processing' } });
+
+  // ─── 异步执行 ───
+  const { generateDrama } = require('../services/dramaService');
+  const orchestrator = require('../services/agentOrchestrator');
+
+  const updateProgress = (update) => {
+    db.updateDramaEpisode(ep.id, { progress: update.progress, message: update.message });
+    const listener = progressListeners.get(ep.id);
+    if (listener) listener.write(`data: ${JSON.stringify(update)}\n\n`);
+  };
+
+  (async () => {
+    try {
+      // ── Phase A: 跑 orchestrator drama workflow (团队 6 阶段分析) ──
+      let workflowAnalysis = null;
+      try {
+        updateProgress({ step: 'workflow', progress: 3, message: '🎭 调用漫剧工作流 (6 阶段 12 agent)...' });
+        const taskDesc = `
+项目: ${project.title}
+画风: ${project.style || '日系动漫'}
+比例: ${project.aspect_ratio || '9:16'}
+当前是第 ${ep.episode_index} 集 / 共 ${project.episode_count} 集
+${previousSummary ? '前集摘要: ' + previousSummary + '\n' : ''}
+${customScript ? '本集剧本:\n' + customScript : '本集主题: 自动承接上集'}
+要求: 把上面的内容转换成专业的影视语言分镜方案。
+        `.trim();
+        const wfResult = await orchestrator.runWorkflow(taskDesc, {
+          taskType: 'business',
+          workflowName: 'drama',
+        });
+        workflowAnalysis = wfResult;
+        updateProgress({ step: 'workflow_done', progress: 12, message: `🎭 工作流完成 (${wfResult.total_agents_involved} agent / ${(wfResult.total_duration_ms/1000).toFixed(0)}s)` });
+      } catch (wfErr) {
+        console.error('[drama generate] orchestrator workflow failed:', wfErr.message, wfErr.stack);
+        updateProgress({ step: 'workflow_skip', progress: 12, message: `⚠️ 团队工作流失败: ${wfErr.message.slice(0, 80)}` });
+      }
+
+      // ── Phase B: 跑 dramaService 生成实际 scenes + 图片 ──
+      // 把 workflow 分析作为增强 previousSummary 注入
+      let enhancedSummary = previousSummary;
+      if (workflowAnalysis?.phases) {
+        const summaries = workflowAnalysis.phases
+          .flatMap(p => p.participants.map(pp => `[${p.name} · ${pp.agent_name}] ${pp.summary}`))
+          .filter(Boolean)
+          .join('\n');
+        enhancedSummary = (previousSummary ? previousSummary + '\n\n' : '') + '【团队工作流分析】\n' + summaries;
+      }
+
+      const result = await generateDrama(ep.id, {
+        theme: customScript || ep.theme || project.synopsis || project.title,
+        style: project.style,
+        sceneCount: project.scene_count || 6,
+        durationPerScene: project.shot_duration || 5,
+        characters: project.characters || [],
+        motionPreset: project.motion_preset || 'cinematic',
+        episodeIndex: ep.episode_index,
+        episodeCount: project.episode_count || 10,
+        previousSummary: enhancedSummary,
+        image_model: project.image_model || '',
+        video_model: project.video_model || '',
+        aspect_ratio: project.aspect_ratio || '9:16',
+        genre: project.genre || project.drama_type || '',
+      }, updateProgress);
+
+      // 把 workflow 分析也存到 result
+      if (workflowAnalysis) result.workflow_analysis = workflowAnalysis;
+
+      db.updateDramaEpisode(ep.id, {
+        status: 'done',
+        progress: 100,
+        result,
+        title: `第${ep.episode_index}集：${result.title || ''}`,
+      });
+
+      // 设置项目封面
+      if (ep.episode_index === 1 && !project.cover_url && result.scenes?.[0]?.image_url) {
+        db.updateDramaProject(project.id, { cover_url: result.scenes[0].image_url });
+      }
+
+      const listener = progressListeners.get(ep.id);
+      if (listener) {
+        listener.write(`data: ${JSON.stringify({ step: 'done', progress: 100, message: '完成', result })}\n\n`);
+        listener.end();
+        progressListeners.delete(ep.id);
+      }
+    } catch (err) {
+      console.error('[drama generate] failed:', err);
+      db.updateDramaEpisode(ep.id, { status: 'error', error_message: err.message });
+      const listener = progressListeners.get(ep.id);
+      if (listener) {
+        listener.write(`data: ${JSON.stringify({ step: 'error', message: err.message })}\n\n`);
+        listener.end();
+        progressListeners.delete(ep.id);
+      }
+    }
+  })();
+});
+
 // POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/generate-video — 单镜头生图(带角色一致性)
 router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (req, res) => {
   const ep = db.getDramaEpisode(req.params.eid);
@@ -344,7 +520,7 @@ router.post('/projects/:pid/episodes/:eid/regenerate-character-bible', async (re
       synopsis: ep.result.synopsis,
       character_profiles: ep.result.character_bible?.characters || [],
     };
-    const bible = await agentCharacterConsistency({ screenplay: screenplayLike, characters: enrichedChars });
+    const bible = await agentCharacterConsistency({ screenplay: screenplayLike, characters: enrichedChars, genre: project?.genre || project?.drama_type || '' });
     // 重新注入到所有 scene
     injectCharacterLocks(ep.result.scenes || [], bible);
     // 把注入后的字段写回 scene
@@ -778,6 +954,147 @@ router.get('/tasks/:id/image/:idx', (req, res) => {
   const filePath = path.join(DRAMA_DIR, req.params.id, `scene_${req.params.idx}.png`);
   if (!fs.existsSync(filePath)) return res.status(404).end();
   res.sendFile(filePath);
+});
+
+// ═══════════════════════════════════════════
+// POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt
+// AI 生成影视提示词（将小说描述转换为影视脚本提示词）
+// ═══════════════════════════════════════════
+router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+  const idx = parseInt(req.params.idx);
+  const scene = ep.result.scenes?.[idx];
+  if (!scene) return res.status(400).json({ success: false, error: '场景不存在' });
+
+  try {
+    const { callLLM } = require('../services/storyService');
+    const systemPrompt = `你是专业的 AI 影视分镜提示词专家。你需要将场景描述转换为适合 AI 图像/视频生成的提示词。
+
+【提示词要求】
+1. 描述画面中的人物外貌（具体的发型/发色/服装/体型/表情）
+2. 描述场景环境（地点/天气/时间/背景元素）
+3. 描述物件和道具
+4. 描述光影和氛围（光线方向/色温/情绪）
+5. 描述镜头语言（景别/构图/运镜）
+6. 禁止使用小说化的叙述语句，只用视觉描述关键词
+
+【输出格式 JSON】
+{
+  "prompt_cn": "中文提示词（视觉描述，60-120字）",
+  "prompt_en": "英文提示词（视觉描述，40-80词）"
+}`;
+
+    const userPrompt = `场景描述: ${scene.description || ''}
+对话: ${scene.dialogue || '无'}
+旁白: ${scene.narrator || '无'}
+角色: ${scene.speaker || '未知'}
+情绪: ${scene.emotion || '未知'}
+景别: ${scene.shot_scale || '中景'}
+
+请将上面的场景信息转换为 AI 生图/生视频的提示词。`;
+
+    const raw = await callLLM(systemPrompt, userPrompt);
+    let parsed;
+    try {
+      let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      const start = str.indexOf('{');
+      const end = str.lastIndexOf('}');
+      if (start !== -1 && end > start) str = str.slice(start, end + 1);
+      parsed = JSON.parse(str);
+    } catch {
+      throw new Error('AI 返回格式异常，请重试');
+    }
+
+    // 保存到 episode 数据
+    scene.full_prompt_cn = parsed.prompt_cn || scene.full_prompt_cn;
+    scene.full_prompt_en = parsed.prompt_en || scene.full_prompt_en;
+    db.updateDramaEpisode(ep.id, { result: ep.result });
+
+    res.json({ success: true, data: { prompt_cn: parsed.prompt_cn, prompt_en: parsed.prompt_en } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/rewrite-dialogue
+// AI 改写对话/旁白（优化为影视表达）
+// ═══════════════════════════════════════════
+router.post('/projects/:pid/episodes/:eid/scenes/:idx/rewrite-dialogue', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+  const idx = parseInt(req.params.idx);
+  const scene = ep.result.scenes?.[idx];
+  if (!scene) return res.status(400).json({ success: false, error: '场景不存在' });
+
+  try {
+    const { callLLM } = require('../services/storyService');
+    const { dialogue, narrator, speaker, description } = req.body;
+
+    const systemPrompt = `你是专业的短剧台词编剧。你需要将对话/旁白改写为更适合短视频的表达方式。
+
+【改写原则】
+1. 对话≤15字，要有冲击力，推动剧情
+2. 旁白≤20字，用于渲染氛围或内心独白
+3. 保持角色性格一致
+4. 语言要口语化、有画面感
+5. 适合配音朗读，节奏感强
+
+【输出格式 JSON】
+{
+  "dialogue": "改写后的对话（如果原文有对话）",
+  "narrator": "改写后的旁白（如果原文有旁白）"
+}`;
+
+    const userPrompt = `场景: ${description || ''}
+角色: ${speaker || '未知'}
+原对话: ${dialogue || '无'}
+原旁白: ${narrator || '无'}
+
+请改写得更有影视感和冲击力。`;
+
+    const raw = await callLLM(systemPrompt, userPrompt);
+    let parsed;
+    try {
+      let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+      const start = str.indexOf('{');
+      const end = str.lastIndexOf('}');
+      if (start !== -1 && end > start) str = str.slice(start, end + 1);
+      parsed = JSON.parse(str);
+    } catch {
+      throw new Error('AI 返回格式异常，请重试');
+    }
+
+    // 保存到 episode 数据
+    if (parsed.dialogue) scene.dialogue = parsed.dialogue;
+    if (parsed.narrator) scene.narrator = parsed.narrator;
+    db.updateDramaEpisode(ep.id, { result: ep.result });
+
+    res.json({ success: true, data: { dialogue: parsed.dialogue, narrator: parsed.narrator } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// POST /api/drama/projects/:pid/episodes/:eid/generate-voice
+// 一键配音（调用 TTS 为所有有对话的分镜生成语音）
+// ═══════════════════════════════════════════
+router.post('/projects/:pid/episodes/:eid/generate-voice', async (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep?.result) return res.status(404).json({ success: false, error: '剧集不存在或未完成' });
+
+  try {
+    const taskDir = path.join(DRAMA_DIR, ep.id);
+    fs.mkdirSync(taskDir, { recursive: true });
+    const dramaSvc = require('../services/dramaService');
+    const count = await dramaSvc.agentDramaVoice(ep.result.scenes, taskDir);
+    db.updateDramaEpisode(ep.id, { result: ep.result });
+    res.json({ success: true, data: { count } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

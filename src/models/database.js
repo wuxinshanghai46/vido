@@ -106,6 +106,23 @@ const monitorStore = createStore('monitor_db.json', 'accounts');
 const contentStore = createStore('content_db.json', 'contents');
 // 内容雷达 - 复刻任务
 const replicateStore = createStore('replicate_db.json', 'tasks');
+// AI 能力 - 角色库/场景库/风格库
+const aiCharStore  = createStore('ai_characters.json', 'characters');
+const aiSceneStore = createStore('ai_scenes.json', 'scenes');
+const aiStyleStore = createStore('ai_styles.json', 'styles');
+// 知识库（数字人/网剧/分镜/氛围）
+const knowledgeBaseStore = createStore('knowledge_base.json', 'documents');
+// Token 使用追踪（每次 LLM/image/video/tts 调用记录）
+const tokenUsageStore = createStore('token_usage.json', 'calls');
+// 网剧：多表（projects + episodes）
+const DRAMA_FILE = path.join(DB_DIR, 'drama_db.json');
+const DRAMA_DEFAULTS = { drama_projects: [], drama_episodes: [] };
+function readDramaDB() {
+  const data = readJSON(DRAMA_FILE, DRAMA_DEFAULTS);
+  for (const k of Object.keys(DRAMA_DEFAULTS)) { if (!data[k]) data[k] = []; }
+  return data;
+}
+function writeDramaDB(data) { writeJSON(DRAMA_FILE, data); }
 
 // ——— 数据迁移：从旧 vido_db.json 自动拆分 ———
 
@@ -177,8 +194,10 @@ const db = {
   getProject(id) {
     return readProjectDB().projects.find(p => p.id === id) || null;
   },
-  listProjects() {
-    return readProjectDB().projects.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  listProjects(userId) {
+    return readProjectDB().projects
+      .filter(p => !userId || p.user_id === userId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
   updateProject(id, fields) {
     const data = readProjectDB();
@@ -245,7 +264,7 @@ const db = {
   // ——— I2V Tasks（图生视频）———
   insertI2VTask(row)          { i2vStore.insert(row); },
   getI2VTask(id)              { return i2vStore.get(id); },
-  listI2VTasks()              { return i2vStore.list(); },
+  listI2VTasks(userId)        { return i2vStore.list(t => !userId || t.user_id === userId); },
   updateI2VTask(id, fields)   { i2vStore.update(id, fields); },
   deleteI2VTask(id)           { i2vStore.delete(id); },
 
@@ -319,7 +338,128 @@ const db = {
   getPublication(id)          { return publishStore.get(id); },
   listPublications()          { return publishStore.list(); },
   updatePublication(id, fields){ publishStore.update(id, fields); },
-  deletePublication(id)       { publishStore.delete(id); }
+  deletePublication(id)       { publishStore.delete(id); },
+
+  // ——— AI 能力：角色库 ———
+  insertAIChar(row)           { aiCharStore.insert(row); },
+  getAIChar(id)               { return aiCharStore.get(id); },
+  listAIChars(userId)         { return aiCharStore.list(c => !userId || c.user_id === userId); },
+  updateAIChar(id, fields)    { aiCharStore.update(id, fields); },
+  deleteAIChar(id)            { aiCharStore.delete(id); },
+
+  // ——— AI 能力：场景库 ———
+  insertAIScene(row)          { aiSceneStore.insert(row); },
+  getAIScene(id)              { return aiSceneStore.get(id); },
+  listAIScenes(userId)        { return aiSceneStore.list(s => !userId || s.user_id === userId); },
+  updateAIScene(id, fields)   { aiSceneStore.update(id, fields); },
+  deleteAIScene(id)           { aiSceneStore.delete(id); },
+
+  // ——— AI 能力：风格库 ———
+  insertAIStyle(row)          { aiStyleStore.insert(row); },
+  getAIStyle(id)              { return aiStyleStore.get(id); },
+  listAIStyles()              { return aiStyleStore.list(); },
+  updateAIStyle(id, fields)   { aiStyleStore.update(id, fields); },
+  deleteAIStyle(id)           { aiStyleStore.delete(id); },
+
+  // ——— 知识库（数字人 / 网剧 / 分镜 / 氛围）———
+  // 每条 document: { id, collection, subcategory, title, summary, content,
+  //                  tags[], keywords[], prompt_snippets[], applies_to[], source, lang, enabled }
+  // collection: 'digital_human' | 'drama' | 'storyboard' | 'atmosphere'
+  // applies_to: ['screenwriter','director','character_consistency','atmosphere','storyboard']
+  insertKnowledgeDoc(row)         { knowledgeBaseStore.insert(row); },
+  getKnowledgeDoc(id)             { return knowledgeBaseStore.get(id); },
+  listKnowledgeDocs(filter = {})  {
+    return knowledgeBaseStore.list(d => {
+      if (filter.collection && d.collection !== filter.collection) return false;
+      if (filter.subcategory && d.subcategory !== filter.subcategory) return false;
+      if (filter.appliesTo && !(d.applies_to || []).includes(filter.appliesTo)) return false;
+      if (filter.enabledOnly && d.enabled === false) return false;
+      if (filter.q) {
+        const q = String(filter.q).toLowerCase();
+        const hay = [d.title, d.summary, d.content, (d.tags || []).join(' '), (d.keywords || []).join(' ')]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  },
+  updateKnowledgeDoc(id, fields)  { knowledgeBaseStore.update(id, fields); },
+  deleteKnowledgeDoc(id)          { knowledgeBaseStore.delete(id); },
+  bulkInsertKnowledgeDocs(rows)   {
+    for (const r of rows) {
+      if (!knowledgeBaseStore.get(r.id)) knowledgeBaseStore.insert(r);
+    }
+  },
+
+  // ——— Token 使用追踪 ———
+  insertTokenUsage(row)       { tokenUsageStore.insert(row); },
+  listTokenUsage(filter = {}) {
+    return tokenUsageStore.list(r => {
+      if (filter.from && r.timestamp < filter.from) return false;
+      if (filter.to && r.timestamp > filter.to) return false;
+      if (filter.provider && r.provider !== filter.provider) return false;
+      if (filter.model && r.model !== filter.model) return false;
+      if (filter.category && r.category !== filter.category) return false;
+      if (filter.agent_id && r.agent_id !== filter.agent_id) return false;
+      if (filter.user_id && r.user_id !== filter.user_id) return false;
+      if (filter.status && r.status !== filter.status) return false;
+      return true;
+    });
+  },
+  getTokenUsage(id)           { return tokenUsageStore.get(id); },
+  deleteTokenUsage(id)        { tokenUsageStore.delete(id); },
+  // 用于快速清理：按时间截断
+  pruneTokenUsageBefore(ts) {
+    const data = tokenUsageStore._read();
+    const before = data.calls.length;
+    data.calls = data.calls.filter(r => r.timestamp >= ts);
+    tokenUsageStore._write(data);
+    return before - data.calls.length;
+  },
+
+  // ——— 网剧项目 ———
+  insertDramaProject(row) {
+    const data = readDramaDB(); row.created_at = row.created_at || new Date().toISOString(); row.updated_at = row.created_at;
+    data.drama_projects.push(row); writeDramaDB(data);
+  },
+  getDramaProject(id) { return readDramaDB().drama_projects.find(r => r.id === id) || null; },
+  listDramaProjects(userId) {
+    return readDramaDB().drama_projects.filter(r => !userId || r.user_id === userId).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  },
+  updateDramaProject(id, fields) {
+    const data = readDramaDB(); const idx = data.drama_projects.findIndex(r => r.id === id);
+    if (idx !== -1) { data.drama_projects[idx] = { ...data.drama_projects[idx], ...fields, updated_at: new Date().toISOString() }; writeDramaDB(data); }
+  },
+  deleteDramaProject(id) {
+    const data = readDramaDB();
+    data.drama_projects = data.drama_projects.filter(r => r.id !== id);
+    data.drama_episodes = data.drama_episodes.filter(r => r.project_id !== id);
+    writeDramaDB(data);
+  },
+
+  // ——— 网剧剧集 ———
+  insertDramaEpisode(row) {
+    const data = readDramaDB(); row.created_at = row.created_at || new Date().toISOString(); row.updated_at = row.created_at;
+    data.drama_episodes.push(row); writeDramaDB(data);
+  },
+  getDramaEpisode(id) { return readDramaDB().drama_episodes.find(r => r.id === id) || null; },
+  listDramaEpisodes(projectId) {
+    return readDramaDB().drama_episodes.filter(r => r.project_id === projectId).sort((a, b) => (a.episode_index || 0) - (b.episode_index || 0));
+  },
+  updateDramaEpisode(id, fields) {
+    const data = readDramaDB(); const idx = data.drama_episodes.findIndex(r => r.id === id);
+    if (idx !== -1) { data.drama_episodes[idx] = { ...data.drama_episodes[idx], ...fields, updated_at: new Date().toISOString() }; writeDramaDB(data); }
+  },
+  deleteDramaEpisode(id) {
+    const data = readDramaDB(); data.drama_episodes = data.drama_episodes.filter(r => r.id !== id); writeDramaDB(data);
+  },
+
+  // 兼容旧接口（works.js 等可能用到）
+  insertDramaTask(row) { this.insertDramaEpisode(row); },
+  getDramaTask(id) { return this.getDramaEpisode(id); },
+  listDramaTasks(userId) { return readDramaDB().drama_episodes.filter(r => !userId || r.user_id === userId).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')); },
+  updateDramaTask(id, fields) { this.updateDramaEpisode(id, fields); },
+  deleteDramaTask(id) { this.deleteDramaEpisode(id); }
 };
 
 module.exports = db;

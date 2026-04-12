@@ -4,6 +4,14 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const novelService = require('../services/novelService');
 const { deductCredits } = require('../middleware/credits');
+const { ownedBy, scopeUserId } = require('../middleware/auth');
+const orchestrator = require('../services/agentOrchestrator');
+
+function getOwnedNovel(req, res, id) {
+  const novel = db.getNovel(id);
+  if (!novel || !ownedBy(req, novel)) { res.status(404).json({ success: false, error: '小说不存在' }); return null; }
+  return novel;
+}
 
 // 获取可用模型
 router.get('/models', (req, res) => {
@@ -18,7 +26,7 @@ router.get('/models', (req, res) => {
 // 小说列表
 router.get('/', (req, res) => {
   try {
-    const novels = db.listNovels(req.user?.id);
+    const novels = db.listNovels(scopeUserId(req));
     res.json({ success: true, novels });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -27,8 +35,8 @@ router.get('/', (req, res) => {
 
 // 小说详情
 router.get('/:id', (req, res) => {
-  const novel = db.getNovel(req.params.id);
-  if (!novel) return res.status(404).json({ success: false, error: '小说不存在' });
+  const novel = getOwnedNovel(req, res, req.params.id);
+  if (!novel) return;
   res.json({ success: true, novel });
 });
 
@@ -64,8 +72,8 @@ router.post('/', (req, res) => {
 // 更新小说
 router.put('/:id', (req, res) => {
   try {
-    const novel = db.getNovel(req.params.id);
-    if (!novel) return res.status(404).json({ success: false, error: '小说不存在' });
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
     const { title, genre, style, novel_type, chapter_count, chapter_words, chapters, outline, description, provider } = req.body;
     const fields = {};
     if (title !== undefined) fields.title = title;
@@ -91,6 +99,7 @@ router.put('/:id', (req, res) => {
 // 删除小说
 router.delete('/:id', (req, res) => {
   try {
+    if (!getOwnedNovel(req, res, req.params.id)) return;
     db.deleteNovel(req.params.id);
     res.json({ success: true });
   } catch (e) {
@@ -101,10 +110,24 @@ router.delete('/:id', (req, res) => {
 // 生成大纲
 router.post('/:id/generate-outline', async (req, res) => {
   try {
-    const novel = db.getNovel(req.params.id);
-    if (!novel) return res.status(404).json({ success: false, error: '小说不存在' });
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
     db.updateNovel(req.params.id, { status: 'generating' });
     deductCredits(req.user?.id, 'novel_outline', `生成大纲: ${novel.title}`);
+
+    // 先跑小说工作流分析
+    let workflowAnalysis = null;
+    try {
+      const wfResult = await orchestrator.runWorkflow(
+        `小说标题: ${novel.title}\n类型: ${novel.genre || '通用'}\n风格: ${novel.style || '默认'}\n章节数: ${novel.chapter_count || 10}`,
+        { taskType: 'business', workflowName: 'novel' }
+      );
+      workflowAnalysis = wfResult;
+      console.log(`[Novel] 工作流完成 (${wfResult.total_agents_involved} agent / ${(wfResult.total_duration_ms/1000).toFixed(0)}s)`);
+    } catch (wfErr) {
+      console.warn('[Novel] orchestrator workflow failed (non-fatal):', wfErr.message);
+    }
+
     const outline = await novelService.generateOutline({
       title: novel.title,
       genre: novel.genre,
@@ -124,8 +147,8 @@ router.post('/:id/generate-outline', async (req, res) => {
 
 // SSE 流式生成章节
 router.get('/:id/generate-chapter-stream', async (req, res) => {
-  const novel = db.getNovel(req.params.id);
-  if (!novel) return res.status(404).json({ error: '小说不存在' });
+  const novel = getOwnedNovel(req, res, req.params.id);
+  if (!novel) return;
   if (!novel.outline) return res.status(400).json({ error: '请先生成大纲' });
 
   const chapterIndex = parseInt(req.query.chapter);
@@ -181,8 +204,8 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
 
 // SSE 流式优化文本
 router.get('/:id/refine-stream', async (req, res) => {
-  const novel = db.getNovel(req.params.id);
-  if (!novel) return res.status(404).json({ error: '小说不存在' });
+  const novel = getOwnedNovel(req, res, req.params.id);
+  if (!novel) return;
 
   const instruction = req.query.instruction;
   const text = req.query.text;
@@ -213,8 +236,8 @@ router.get('/:id/refine-stream', async (req, res) => {
 
 // 导出小说
 router.get('/:id/export', (req, res) => {
-  const novel = db.getNovel(req.params.id);
-  if (!novel) return res.status(404).json({ error: '小说不存在' });
+  const novel = getOwnedNovel(req, res, req.params.id);
+  if (!novel) return;
 
   let content = `# ${novel.title}\n\n`;
   if (novel.outline?.synopsis) content += `> ${novel.outline.synopsis}\n\n---\n\n`;

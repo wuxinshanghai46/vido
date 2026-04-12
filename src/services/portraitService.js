@@ -100,12 +100,13 @@ async function analyzePortrait(imagePath) {
   }
 }
 
-// 获取支持视觉的 LLM 配置
+// 获取支持视觉（multimodal image input）的 LLM 配置
+// 注意：deepseek-chat 不支持图片输入，不能用于视觉分析
 function getVisionConfig() {
   try {
     const { loadSettings } = require('./settingsService');
     const settings = loadSettings();
-    // 查找支持视觉的模型（GPT-4o, Claude, Qwen-VL 等）
+    // 只匹配真正支持图片输入的模型
     const visionModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5', 'qwen-vl-max', 'qwen-vl-plus', 'glm-4v', 'glm-4v-flash'];
     for (const provider of settings.providers) {
       if (!provider.enabled || !provider.api_key) continue;
@@ -115,14 +116,13 @@ function getVisionConfig() {
           return { apiKey: provider.api_key, baseURL: provider.api_url, model: model.id, providerId: provider.id };
         }
       }
-      // 如果供应商有 story 模型且是已知支持视觉的
       const storyModel = (provider.models || []).find(m => m.use === 'story' && m.enabled !== false);
       if (storyModel && visionModels.some(vm => storyModel.id.includes(vm))) {
         return { apiKey: provider.api_key, baseURL: provider.api_url, model: storyModel.id, providerId: provider.id };
       }
     }
   } catch {}
-  // env fallback
+  // env fallback (注意: 在国内服务器 OpenAI 可能被墙)
   if (process.env.OPENAI_API_KEY) return { apiKey: process.env.OPENAI_API_KEY, baseURL: null, model: 'gpt-4o-mini', providerId: 'openai' };
   if (process.env.CLAUDE_API_KEY) return { apiKey: process.env.CLAUDE_API_KEY, baseURL: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-6', providerId: 'anthropic' };
   return null;
@@ -245,7 +245,7 @@ async function generateStabilityImg2Img(imagePath, prompt, dim) {
 }
 
 // ——— 通用文本生成（基于描述） ———
-async function generateFromDescription(description, dim) {
+async function generateFromDescription(description, dim, forceProvider = null, forceModel = null) {
   const { generateCharacterImage } = require('./imageService');
   const style = dim === '3d' ? STYLE_3D : STYLE_2D;
   const fullDesc = `${description}, ${style.prompt}`;
@@ -257,7 +257,9 @@ async function generateFromDescription(description, dim) {
     dim: dim,
     race: '人',
     species: '',
-    animStyle: dim === '3d' ? '3dcg' : 'celulose'
+    animStyle: dim === '3d' ? '3dcg' : 'celulose',
+    provider: forceProvider || null,
+    model: forceModel || null,
   });
 
   // 复制到 portraits 目录
@@ -297,40 +299,58 @@ async function generateDemoPortrait(imagePath, dim) {
 }
 
 // ——— 主入口：生成卡通形象 ———
-async function generatePortrait(imagePath, dim = '2d', progressCallback) {
+async function generatePortrait(imagePath, dim = '2d', progressCallback, imageModel = 'auto') {
   const progress = (step, pct, msg) => {
     if (progressCallback) progressCallback({ step, progress: pct, message: msg });
   };
 
-  // 1. 分析照片
-  progress('analyze', 10, '正在分析照片中的人物特征...');
+  // 1. 分析照片（带 15 秒超时，避免 API 被墙时卡死）
+  progress('analyze', 5, '正在分析照片中的人物特征...');
   let analysis;
   try {
-    analysis = await analyzePortrait(imagePath);
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('分析超时(15s)，跳过视觉分析')), 15000));
+    analysis = await Promise.race([analyzePortrait(imagePath), timeoutPromise]);
   } catch (err) {
     console.error('[PortraitService] 分析失败:', err.message);
-    analysis = { description_en: 'a person', description_cn: '人物' };
+    analysis = { description_en: 'a young person, anime character design', description_cn: '人物角色' };
   }
   progress('analyze', 30, `识别完成：${analysis.description_cn?.substring(0, 50) || '人物'}...`);
 
   // 2. 生成卡通形象
   progress('generate', 40, `正在生成${dim === '3d' ? '3D' : '2D'}卡通形象...`);
 
-  let result;
-  // 优先尝试 Stability img2img
-  try {
-    result = await generateStabilityImg2Img(imagePath, analysis.description_en || '', dim);
-  } catch (err) {
-    console.log('[PortraitService] Stability img2img 不可用:', err.message);
+  // 解析用户选择的模型（格式: "providerId::modelId" 或 "auto"）
+  let selectedProvider = null, selectedModel = null;
+  if (imageModel && imageModel !== 'auto') {
+    const parts = imageModel.split('::');
+    if (parts.length === 2) {
+      selectedProvider = parts[0];
+      selectedModel = parts[1];
+    }
   }
 
-  // 回退到基于描述的文生图
-  if (!result) {
+  let result;
+
+  // 如果用户指定了具体模型，直接用该模型（失败则直接报错，不做替代）
+  if (selectedProvider) {
+    progress('generate', 45, `正在使用 ${selectedProvider}::${selectedModel || 'default'} 生成...`);
+    const desc = analysis.description_en || analysis.description_cn || 'a character';
+    result = await generateFromDescription(desc, dim, selectedProvider, selectedModel);
+  }
+
+  // 未指定模型 → 走自动流程
+  if (!result && !selectedProvider) {
+    // 优先尝试 Stability img2img
     try {
+      result = await generateStabilityImg2Img(imagePath, analysis.description_en || '', dim);
+    } catch (err) {
+      console.log('[PortraitService] Stability img2img 不可用:', err.message);
+    }
+
+    // 回退到基于描述的文生图
+    if (!result) {
       const desc = analysis.description_en || analysis.description_cn || 'a character';
       result = await generateFromDescription(desc, dim);
-    } catch (err) {
-      console.log('[PortraitService] 文生图失败:', err.message);
     }
   }
 

@@ -6,6 +6,18 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const { generateVideoClip } = require('../services/videoService');
+const { isAdmin, ownedBy, scopeUserId } = require('../middleware/auth');
+
+// 统一归属校验 — /tasks/:id 子路由全部受保护
+router.param('id', (req, res, next, id) => {
+  const task = db.getI2VTask(id);
+  if (!task || !ownedBy(req, task)) {
+    return res.status(404).json({ success: false, error: '任务不存在' });
+  }
+  req._task = task;
+  next();
+});
+function getOwnedI2VTask(req) { return req._task || null; }
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const I2V_IMG_DIR = path.join(OUTPUT_DIR, 'i2v_images');
@@ -119,22 +131,20 @@ router.post('/generate', async (req, res) => {
   });
 });
 
-// 任务列表
+// 任务列表（仅当前用户；admin 看全部）
 router.get('/tasks', (req, res) => {
-  res.json({ success: true, data: db.listI2VTasks() });
+  res.json({ success: true, data: db.listI2VTasks(scopeUserId(req)) });
 });
 
 // 任务详情
 router.get('/tasks/:id', (req, res) => {
-  const task = db.getI2VTask(req.params.id);
-  if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
-  res.json({ success: true, data: task });
+  res.json({ success: true, data: req._task });
 });
 
 // 视频流播放
 router.get('/tasks/:id/stream', (req, res) => {
-  const task = db.getI2VTask(req.params.id);
-  if (!task || !task.file_path || !fs.existsSync(task.file_path)) {
+  const task = req._task;
+  if (!task.file_path || !fs.existsSync(task.file_path)) {
     return res.status(404).json({ error: '视频不存在' });
   }
   const stat = fs.statSync(task.file_path);
@@ -158,8 +168,8 @@ router.get('/tasks/:id/stream', (req, res) => {
 
 // 下载视频
 router.get('/tasks/:id/download', (req, res) => {
-  const task = db.getI2VTask(req.params.id);
-  if (!task || !task.file_path || !fs.existsSync(task.file_path)) {
+  const task = req._task;
+  if (!task.file_path || !fs.existsSync(task.file_path)) {
     return res.status(404).json({ error: '视频不存在' });
   }
   res.download(task.file_path, `i2v_${task.id.slice(0, 8)}.mp4`);
@@ -167,8 +177,7 @@ router.get('/tasks/:id/download', (req, res) => {
 
 // 删除任务
 router.delete('/tasks/:id', (req, res) => {
-  const task = db.getI2VTask(req.params.id);
-  if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
+  const task = req._task;
   // 删除视频文件
   const vidDir = path.join(I2V_VID_DIR, task.id);
   if (fs.existsSync(vidDir)) fs.rmSync(vidDir, { recursive: true, force: true });
