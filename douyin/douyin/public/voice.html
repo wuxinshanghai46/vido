@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>声音克隆</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; min-height: 100vh; }
+    .container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+    nav { display: flex; gap: 16px; margin-bottom: 30px; padding-bottom: 16px; border-bottom: 1px solid #e0e0e0; }
+    nav a { text-decoration: none; color: #666; font-size: 15px; padding: 6px 16px; border-radius: 20px; transition: all 0.2s; }
+    nav a:hover, nav a.active { background: #333; color: #fff; }
+    h1 { text-align: center; margin-bottom: 8px; font-size: 28px; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 24px; font-size: 14px; }
+
+    .section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .section h2 { font-size: 17px; margin-bottom: 16px; color: #444; }
+
+    .upload-area { border: 2px dashed #ccc; border-radius: 10px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+    .upload-area:hover, .upload-area.dragover { border-color: #4a90d9; background: #f0f6ff; }
+    .upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-area .icon { font-size: 32px; margin-bottom: 8px; display: block; }
+    .upload-area p { color: #666; font-size: 14px; }
+    .upload-area .hint { color: #999; font-size: 12px; margin-top: 4px; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 14px; font-weight: 500; color: #555; margin-bottom: 6px; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    .form-group textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+    .voice-list { display: grid; gap: 12px; }
+    .voice-card { display: flex; align-items: center; gap: 12px; padding: 14px; background: #f8f9fa; border-radius: 10px; border: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+    .voice-card:hover { border-color: #ccc; }
+    .voice-card.selected { border-color: #4a90d9; background: #f0f6ff; }
+    .voice-card .voice-info { flex: 1; }
+    .voice-card .voice-name { font-weight: 600; font-size: 14px; }
+    .voice-card .voice-meta { font-size: 12px; color: #888; margin-top: 2px; }
+    .voice-card .voice-actions { display: flex; gap: 6px; }
+
+    .btn { padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #4a90d9; color: #fff; }
+    .btn-danger { background: #dc3545; color: #fff; font-size: 12px; padding: 4px 10px; }
+    .btn-outline { background: transparent; border: 1px solid #ccc; color: #555; font-size: 12px; padding: 4px 10px; }
+    .btn-lg { padding: 12px 32px; font-size: 16px; width: 100%; }
+
+    .result-box { margin-top: 16px; padding: 16px; background: #f8f9fa; border-radius: 10px; display: none; }
+    .result-box.show { display: block; }
+    .result-box audio { width: 100%; margin-top: 8px; }
+    .result-box .result-label { font-size: 13px; color: #888; margin-bottom: 8px; }
+
+    .loading { display: none; align-items: center; justify-content: center; gap: 8px; padding: 16px; color: #666; }
+    .loading.show { display: flex; }
+    .loading .spinner { width: 20px; height: 20px; border: 2px solid #ddd; border-top-color: #4a90d9; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .empty-state { text-align: center; padding: 30px; color: #aaa; font-size: 14px; }
+    .ref-text-hint { font-size: 12px; color: #999; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="/">音视频转文字</a>
+      <a href="/douyin.html">抖音分析</a>
+      <a href="/voice.html" class="active">声音克隆</a>
+    </nav>
+    <h1>声音克隆</h1>
+    <p class="subtitle">上传参考音频，用 F5-TTS 克隆声音合成任意文本</p>
+
+    <!-- 上传声音样本 -->
+    <div class="section">
+      <h2>1. 声音样本</h2>
+      <div class="upload-area" id="voiceUploadZone">
+        <span class="icon">🎙️</span>
+        <p>上传参考音频（5-30秒最佳）</p>
+        <p class="hint">支持 MP3, WAV, FLAC, M4A 等格式</p>
+        <input type="file" id="voiceFileInput" accept="audio/*">
+      </div>
+      <div class="form-group" style="margin-top: 12px;">
+        <label>声音名称（可选）</label>
+        <input type="text" id="voiceName" placeholder="给这个声音起个名字">
+      </div>
+      <div class="form-group">
+        <label>参考文本（可选，填写后效果更好）</label>
+        <textarea id="refText" placeholder="参考音频中说的内容..."></textarea>
+        <p class="ref-text-hint">填写参考音频对应的文字内容，可以显著提升克隆效果。留空则自动识别。</p>
+      </div>
+
+      <div class="voice-list" id="voiceList">
+        <div class="empty-state">暂无声音样本</div>
+      </div>
+    </div>
+
+    <!-- 合成文本 -->
+    <div class="section">
+      <h2>2. 输入要合成的文本</h2>
+      <div class="form-group">
+        <textarea id="genText" rows="4" placeholder="输入要用克隆声音朗读的文本..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>语速</label>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <input type="range" id="speedRange" min="0.5" max="2.0" step="0.1" value="1.0" style="flex: 1;">
+          <span id="speedValue" style="font-size: 14px; color: #666; min-width: 40px;">1.0x</span>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-lg" id="synthesizeBtn" disabled>合成语音</button>
+      <div class="loading" id="synthesizeLoading">
+        <div class="spinner"></div>
+        <span>正在合成，请稍候...</span>
+      </div>
+      <div class="result-box" id="resultBox">
+        <div class="result-label">合成结果</div>
+        <audio id="resultAudio" controls></audio>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let voices = [];
+    let selectedVoiceId = null;
+
+    const voiceFileInput = document.getElementById('voiceFileInput');
+    const voiceUploadZone = document.getElementById('voiceUploadZone');
+    const voiceList = document.getElementById('voiceList');
+    const synthesizeBtn = document.getElementById('synthesizeBtn');
+    const speedRange = document.getElementById('speedRange');
+    const speedValue = document.getElementById('speedValue');
+
+    speedRange.addEventListener('input', () => {
+      speedValue.textContent = parseFloat(speedRange.value).toFixed(1) + 'x';
+    });
+
+    // 拖放上传
+    voiceUploadZone.addEventListener('dragover', (e) => { e.preventDefault(); voiceUploadZone.classList.add('dragover'); });
+    voiceUploadZone.addEventListener('dragleave', () => voiceUploadZone.classList.remove('dragover'));
+    voiceUploadZone.addEventListener('drop', (e) => { e.preventDefault(); voiceUploadZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) uploadVoice(e.dataTransfer.files[0]); });
+    voiceFileInput.addEventListener('change', () => { if (voiceFileInput.files[0]) uploadVoice(voiceFileInput.files[0]); voiceFileInput.value = ''; });
+
+    async function uploadVoice(file) {
+      const formData = new FormData();
+      formData.append('audio', file);
+      const name = document.getElementById('voiceName').value.trim();
+      const refText = document.getElementById('refText').value.trim();
+      if (name) formData.append('name', name);
+      if (refText) formData.append('ref_text', refText);
+
+      try {
+        const res = await fetch('/api/voices/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('voiceName').value = '';
+        document.getElementById('refText').value = '';
+        refreshVoices();
+      } catch (err) {
+        alert('上传失败: ' + err.message);
+      }
+    }
+
+    async function refreshVoices() {
+      try {
+        const res = await fetch('/api/voices');
+        voices = await res.json();
+        renderVoices();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderVoices() {
+      if (!voices.length) {
+        voiceList.innerHTML = '<div class="empty-state">暂无声音样本，请上传参考音频</div>';
+        synthesizeBtn.disabled = true;
+        return;
+      }
+      voiceList.innerHTML = voices.map(v => {
+        const duration = v.duration_seconds ? formatDuration(v.duration_seconds) : '--';
+        const selected = v.id === selectedVoiceId;
+        return `<div class="voice-card ${selected ? 'selected' : ''}" onclick="selectVoice('${v.id}')">
+          <div class="voice-info">
+            <div class="voice-name">${esc(v.name)}</div>
+            <div class="voice-meta">时长: ${duration} · ${v.ref_text ? '已填参考文本' : '无参考文本'} · ${formatDate(v.created_at)}</div>
+          </div>
+          <div class="voice-actions">
+            <button class="btn btn-danger" onclick="event.stopPropagation(); deleteVoice('${v.id}')">删除</button>
+          </div>
+        </div>`;
+      }).join('');
+      updateSynthesizeBtn();
+    }
+
+    function selectVoice(id) {
+      selectedVoiceId = selectedVoiceId === id ? null : id;
+      renderVoices();
+    }
+
+    function updateSynthesizeBtn() {
+      const text = document.getElementById('genText').value.trim();
+      synthesizeBtn.disabled = !selectedVoiceId || !text;
+    }
+
+    document.getElementById('genText').addEventListener('input', updateSynthesizeBtn);
+
+    async function deleteVoice(id) {
+      if (!confirm('确定删除这个声音样本？')) return;
+      try {
+        await fetch(`/api/voices/${id}`, { method: 'DELETE' });
+        if (selectedVoiceId === id) selectedVoiceId = null;
+        refreshVoices();
+      } catch (err) {
+        alert('删除失败: ' + err.message);
+      }
+    }
+
+    synthesizeBtn.addEventListener('click', async () => {
+      if (!selectedVoiceId) { alert('请先选择一个声音样本'); return; }
+      const text = document.getElementById('genText').value.trim();
+      if (!text) { alert('请输入要合成的文本'); return; }
+
+      synthesizeBtn.disabled = true;
+      document.getElementById('synthesizeLoading').classList.add('show');
+      document.getElementById('resultBox').classList.remove('show');
+
+      try {
+        const res = await fetch('/api/voices/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            voiceId: selectedVoiceId,
+            text: text,
+            speed: parseFloat(speedRange.value),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const audio = document.getElementById('resultAudio');
+        audio.src = data.audioUrl;
+        document.getElementById('resultBox').classList.add('show');
+      } catch (err) {
+        alert('合成失败: ' + err.message);
+      } finally {
+        synthesizeBtn.disabled = false;
+        document.getElementById('synthesizeLoading').classList.remove('show');
+        updateSynthesizeBtn();
+      }
+    });
+
+    function formatDuration(s) {
+      const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+      return m > 0 ? `${m}分${sec}秒` : `${sec}秒`;
+    }
+    function formatDate(d) { return d ? new Date(d + 'Z').toLocaleString('zh-CN') : ''; }
+    function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    refreshVoices();
+  </script>
+</body>
+</html>

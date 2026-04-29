@@ -47,6 +47,30 @@ const PRICING = {
   'deepseek-chat':       [0.14, 0.28],
   'deepseek-reasoner':   [0.55, 2.19],
   'deepseek-v3':         [0.14, 0.28],
+  'deepseek-v3.1':       [0.14, 0.28],
+  'deepseek-v3.2-exp':   [0.14, 0.28],
+  'deepseek-r1':         [0.55, 2.19],   // 推理模型，按 reasoner 价位
+
+  // 漫路 KAT Coder（暂按 GPT-4o-mini 同档兜底）
+  'kat-coder-air-v1':              [0.15, 0.60],
+  'kat-coder-exp-72b-1010':        [0.50, 1.50],
+  'kat-coder-pro-v1':              [1.00, 3.00],
+
+  // 漫路 Kimi/Qwen（按官方公开价 ¥/M tokens → USD）
+  'kimi-k2-instruct':              [0.40, 2.00],
+  'qwen2.5-7b-instruct':           [0.10, 0.20],
+  'qwen3-8b':                      [0.10, 0.30],
+  'qwen3-30b-a3b':                 [0.30, 0.90],
+  'qwen3-32b':                     [0.40, 1.20],
+  'qwen3-235b-a22b-thinking-2507': [1.00, 3.00],
+  'qwen3-vl-235b-a22b-instruct':   [1.20, 3.50],
+  'qwen3-vl-235b-a22b-thinking':   [1.50, 4.00],
+  'gemini-3.1-flash-lite-preview': [0.10, 0.40],
+
+  // 漫路 海外通道 c35（OpenAI 兼容代理 — 价格按官方）
+  'claude-sonnet-4-6':             [3.00, 15.00],
+  'gemini-2.5-pro':                [1.25, 5.00],
+  'gemini-2.5-flash':              [0.075, 0.30],
 
   // 阿里通义
   'qwen-max':            [2.80, 8.40],
@@ -87,10 +111,13 @@ const PRICING = {
 };
 
 // 视频模型的单位价格（USD / 秒）
+// 价目来源：各厂商 2026-04 公开计费表；¥7.20 汇率换算回 USD
 const VIDEO_PRICING = {
   'kling-v1':       0.05,
   'kling-v2':       0.10,
   'kling-v2-master':0.15,
+  'kling-v1-5-pro': 0.10,
+  'kling-v1-5':     0.07,
   'sora-2':         0.50,
   'veo-3':          0.35,
   'veo-3.1':        0.35,
@@ -101,6 +128,49 @@ const VIDEO_PRICING = {
   'hailuo-01':      0.08,
   'cogvideox':      0,  // 免费
   'hunyuan-video':  0,  // 开源
+
+  // 火山即梦（2026-04 计费表，¥/秒 → USD/秒）
+  'jimeng_realman_avatar_picture_omni_v15': 0.10,  // ¥0.7/s 数字人 Omni v1.5
+  'jimeng_t2v_v30':            0.07,  // ¥0.5/s 文生视频
+  'jimeng_t2v_v31':            0.07,
+  'jimeng_i2v_first_v30':      0.07,  // ¥0.5/s 图生视频
+  'jimeng_i2v_v30':            0.07,
+  'doubao-seedance-2-0-260128':        0.10,  // ¥0.7/s 豆包 Seedance T2V
+  'doubao-seedance-1-0-pro-250528':    0.10,
+  'doubao-seedance-1-0-lite-i2v-250428': 0.06,
+  'doubao-seedance-1-0-lite-t2v-250428': 0.06,
+
+  // 阿里 Wan
+  'wan2.2-animate-move':       0.08,  // ¥0.6/s
+  'wan2.1-i2v':                0.07,
+
+  // 飞影（Hifly）— 用户报告基本走免费 Coze 通路 0 元；走 API 时按视频秒计费
+  'hifly-tts-video':           0,
+  'hifly-audio-video':         0,
+  'hifly-free':                0,
+
+  // Hedra（北美数字人）
+  'character-3':               0.10,
+  'character-2':               0.07,
+
+  // MiniMax 视频
+  'video-01':                  0.08,
+  'minimax-video-01':          0.08,
+  'hailuo-02':                 0.08,
+  'hailuo-02-fast':            0.05,
+
+  // 智谱 CogVideoX（免费）
+  'cogvideox-flash':           0,
+  'cogvideox-2':               0.05,
+
+  // 漫路（deyunai）聚合 — 视频
+  'sora-2-pro':                0.50,
+  'sora-2-mini':               0.30,
+  'kling-v2.5-turbo-pro':      0.10,
+  'kling-v1-6':                0.07,
+  'jimeng-t2v-v3':             0.07,
+  'jimeng-i2v-v3':             0.07,
+  'veo-3-fast':                0.20,
 };
 
 // TTS 模型按字符计费（USD / 1M chars）
@@ -123,6 +193,37 @@ const IMAGE_PRICING = {
   'flux-schnell':         0.003,
   'midjourney':           0.02,
   'seedream-5':           0.01,
+  // 火山方舟图像（2026-04）
+  'doubao-seedream-5-0-260128':        0.04,  // ¥0.30/张 Seedream 5.0
+  'doubao-seedream-4-0-250828':        0.04,
+  'doubao-seedream-3-0-t2i-250415':    0.02,
+  'jimeng_t2i_v30':                    0.005,  // ¥0.04/张 即梦图片 3.0
+  'jimeng_i2i_v30':                    0.005,
+  'jimeng_t2i_v40_pro':                0.05,
+  'nano-banana':                       0.005,
+  'nano-banana-pro':                   0.02,
+  'nano-banana-generate-2':            0.005,
+  // MXAPI 聚合（按各模型的市场价兜底）
+  'mxapi-gemini3pro':                  0.04,
+  'mxapi-draw':                        0.005,
+  'mxapi-draw-pro':                    0.02,
+  'mxapi-draw-4-5':                    0.04,
+  'mxapi-seedream':                    0.04,
+  // 漫路（deyunai）聚合 — 图像（USD/张，按官方价兜底）
+  'gpt-image-1':                       0.04,
+  'dall-e-3':                          0.04,
+  'dall-e-2':                          0.02,
+  'jimeng-t2i-v4':                     0.05,
+  'jimeng-t2i-v3':                     0.005,
+  'seedream-3.0':                      0.02,
+  'doubao-seedream-3.0':               0.02,
+  'gemini-2.0-flash-exp-image-generation': 0.005,
+  'gemini-2.5-flash-image':            0.02,
+  'imagen-4':                          0.04,
+  'imagen-3':                          0.03,
+  'flux-pro':                          0.05,
+  'flux-dev':                          0.025,
+  'flux-schnell':                      0.003,
 };
 
 // ═══════════════════════════════════════════════════
@@ -149,27 +250,40 @@ function record(p) {
   try {
     const {
       provider, model, category = 'llm',
-      inputTokens = 0, outputTokens = 0,
-      videoSeconds = 0, imageCount = 0, ttsChars = 0,
+      inputTokens: rawInputTokens = 0, outputTokens: rawOutputTokens = 0,
+      videoSeconds: rawVideoSeconds = 0, imageCount: rawImageCount = 0, ttsChars: rawTtsChars = 0,
       durationMs = 0, status = 'success',
       userId = null, agentId = null, requestId = null,
       errorMsg = null,
     } = p;
 
-    // 计算成本
+    // 关键规则：status=fail 时把所有计费量都归零
+    //   原因：失败调用上游不会扣费，但 input prompt 长度还可能被估算成 token 量；
+    //   如果照样写进 token_usage.json，会污染 dashboard（让人误以为有真实消耗）。
+    //   只保留 calls 计数和 error_msg，方便分析失败率。
+    const isFail = status === 'fail';
+    const inputTokens  = isFail ? 0 : rawInputTokens;
+    const outputTokens = isFail ? 0 : rawOutputTokens;
+    const videoSeconds = isFail ? 0 : rawVideoSeconds;
+    const imageCount   = isFail ? 0 : rawImageCount;
+    const ttsChars     = isFail ? 0 : rawTtsChars;
+
+    // 计算成本（fail 时上游不计费 → cost 直接 0）
     let cost = 0;
-    if (category === 'llm') {
-      const [inPrice, outPrice] = PRICING[model] || [0, 0];
-      cost = (inputTokens / 1_000_000) * inPrice + (outputTokens / 1_000_000) * outPrice;
-    } else if (category === 'video') {
-      const unitPrice = VIDEO_PRICING[model] || 0;
-      cost = videoSeconds * unitPrice;
-    } else if (category === 'image') {
-      const unitPrice = IMAGE_PRICING[model] || 0;
-      cost = imageCount * unitPrice;
-    } else if (category === 'tts') {
-      const unitPrice = TTS_PRICING[model] || 0;
-      cost = (ttsChars / 1_000_000) * unitPrice;
+    if (!isFail) {
+      if (category === 'llm') {
+        const [inPrice, outPrice] = PRICING[model] || [0, 0];
+        cost = (inputTokens / 1_000_000) * inPrice + (outputTokens / 1_000_000) * outPrice;
+      } else if (category === 'video') {
+        const unitPrice = VIDEO_PRICING[model] || 0;
+        cost = videoSeconds * unitPrice;
+      } else if (category === 'image') {
+        const unitPrice = IMAGE_PRICING[model] || 0;
+        cost = imageCount * unitPrice;
+      } else if (category === 'tts') {
+        const unitPrice = TTS_PRICING[model] || 0;
+        cost = (ttsChars / 1_000_000) * unitPrice;
+      }
     }
 
     const row = {
@@ -302,10 +416,17 @@ const fs = require('fs');
 function loadBudget() {
   try {
     if (fs.existsSync(BUDGET_FILE)) {
-      return JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8'));
+      const b = JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8'));
+      // 兼容旧数据
+      if (typeof b.usd_cny_rate !== 'number' || b.usd_cny_rate <= 0) b.usd_cny_rate = 7.20;
+      return b;
     }
   } catch {}
-  return { monthly_budget_usd: 0, alert_threshold: 0.8 };  // 0 = 无限
+  return { monthly_budget_usd: 0, alert_threshold: 0.8, usd_cny_rate: 7.20 };  // 0 = 无限；CNY 汇率默认 7.20
+}
+
+function getUSDtoCNY() {
+  return loadBudget().usd_cny_rate || 7.20;
 }
 
 function saveBudget(budget) {
@@ -322,12 +443,17 @@ function getBudgetStatus() {
   const usedCost = records.reduce((s, r) => s + (r.cost_usd || 0), 0);
 
   const hasBudget = budget.monthly_budget_usd > 0;
+  const rate = budget.usd_cny_rate || 7.20;
   return {
     monthly_budget_usd: budget.monthly_budget_usd,
+    monthly_budget_cny: Number((budget.monthly_budget_usd * rate).toFixed(2)),
     alert_threshold: budget.alert_threshold,
+    usd_cny_rate: rate,
     month_start: monthStart.toISOString(),
     used_cost_usd: Number(usedCost.toFixed(4)),
+    used_cost_cny: Number((usedCost * rate).toFixed(2)),
     remaining_usd: hasBudget ? Number((budget.monthly_budget_usd - usedCost).toFixed(4)) : null,
+    remaining_cny: hasBudget ? Number(((budget.monthly_budget_usd - usedCost) * rate).toFixed(2)) : null,
     used_percent: hasBudget ? Number((usedCost / budget.monthly_budget_usd * 100).toFixed(1)) : null,
     alerting: hasBudget && (usedCost / budget.monthly_budget_usd) >= budget.alert_threshold,
     has_budget: hasBudget,
@@ -457,6 +583,7 @@ module.exports = {
   saveBudget,
   getBudgetStatus,
   getServerMetrics,
+  getUSDtoCNY,
   checkAlerts,
   PRICING,
   VIDEO_PRICING,

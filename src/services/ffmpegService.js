@@ -69,6 +69,32 @@ async function getVideoDuration(filePath) {
   });
 }
 
+/**
+ * 提取视频首帧为 jpg（数字人作品列表的 poster 图）
+ *
+ * @param {string} videoPath  本地视频路径
+ * @param {string} outputJpgPath  输出 jpg 路径（建议 `${videoPath}.thumb.jpg`）
+ * @param {object} [opts] { atSec=0.1, width=480 }  时间点（默认 0.1s 避免黑帧）+ 宽度（保持比例）
+ * @returns {Promise<string>} 实际写入的 jpg 路径
+ */
+async function extractFirstFrame(videoPath, outputJpgPath, opts = {}) {
+  const atSec = typeof opts.atSec === 'number' ? opts.atSec : 0.1;
+  const width = opts.width || 480;
+  if (!fs.existsSync(videoPath)) throw new Error(`视频不存在: ${videoPath}`);
+  fs.mkdirSync(path.dirname(outputJpgPath), { recursive: true });
+  return new Promise((resolve, reject) => {
+    ffmpeg(videoPath)
+      .seekInput(atSec)
+      .frames(1)
+      .size(`${width}x?`)
+      .outputOptions(['-q:v', '3']) // 1=最佳 31=最差，3 是兼顾质量与体积
+      .output(outputJpgPath)
+      .on('end', () => resolve(outputJpgPath))
+      .on('error', (err) => reject(new Error(`首帧抽取失败 ${path.basename(videoPath)}: ${err.message}`)))
+      .run();
+  });
+}
+
 // 为动作场景片段添加后期视觉特效增强（FFmpeg filter chain）
 // vfxTags: 来自 scene.vfx 的标签数组
 // actionType: 来自 scene.action_type
@@ -303,4 +329,4 @@ async function composeImagesToVideo(clips, outputPath, opts = {}) {
   });
 }
 
-module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX, burnSubtitle, composeImagesToVideo };
+module.exports = { mergeVideoClips, addAudioToVideo, getVideoDuration, applyPostVFX, burnSubtitle, composeImagesToVideo, extractFirstFrame };

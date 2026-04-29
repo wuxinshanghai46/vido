@@ -298,10 +298,96 @@ function deleteUserRefreshTokens(userId) {
   save(db);
 }
 
+// === API 接口账号（第三方 AppID/AppKey 对接）===
+// 一个 api_account = { id, name, app_id, app_secret, allowed_apis[], allowed_models[], status, credits, created_at, last_used_at, call_count }
+function _ensureApiAccounts(db) {
+  if (!Array.isArray(db.api_accounts)) { db.api_accounts = []; save(db); }
+}
+
+function listApiAccounts() {
+  const db = init(); _ensureApiAccounts(db);
+  return db.api_accounts.slice().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+}
+
+function getApiAccountById(id) {
+  const db = init(); _ensureApiAccounts(db);
+  return db.api_accounts.find(a => a.id === id) || null;
+}
+
+function getApiAccountByAppId(appId) {
+  const db = init(); _ensureApiAccounts(db);
+  return db.api_accounts.find(a => a.app_id === appId) || null;
+}
+
+function createApiAccount({ name, allowed_apis = [], allowed_models = [], remark = '', credits = 0 }) {
+  const db = init(); _ensureApiAccounts(db);
+  const crypto = require('crypto');
+  const app_id = 'ak_' + crypto.randomBytes(8).toString('hex');
+  const app_secret = crypto.randomBytes(32).toString('hex');
+  const acc = {
+    id: uuidv4(),
+    name: name || '未命名接口账号',
+    app_id, app_secret,
+    allowed_apis: Array.isArray(allowed_apis) ? allowed_apis : [],
+    allowed_models: Array.isArray(allowed_models) ? allowed_models : [],
+    remark: remark || '',
+    status: 'active',
+    credits: Number.isFinite(credits) ? credits : 0,
+    call_count: 0,
+    last_used_at: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  db.api_accounts.push(acc);
+  save(db);
+  return acc;
+}
+
+function updateApiAccount(id, fields) {
+  const db = init(); _ensureApiAccounts(db);
+  const idx = db.api_accounts.findIndex(a => a.id === id);
+  if (idx < 0) return null;
+  // 禁止前端直接改 app_id / app_secret（要用专门 rotate 接口）
+  const safe = { ...fields }; delete safe.id; delete safe.app_id; delete safe.app_secret; delete safe.created_at;
+  Object.assign(db.api_accounts[idx], safe, { updated_at: new Date().toISOString() });
+  save(db);
+  return db.api_accounts[idx];
+}
+
+function rotateApiSecret(id) {
+  const db = init(); _ensureApiAccounts(db);
+  const idx = db.api_accounts.findIndex(a => a.id === id);
+  if (idx < 0) return null;
+  const crypto = require('crypto');
+  db.api_accounts[idx].app_secret = crypto.randomBytes(32).toString('hex');
+  db.api_accounts[idx].updated_at = new Date().toISOString();
+  save(db);
+  return db.api_accounts[idx];
+}
+
+function deleteApiAccount(id) {
+  const db = init(); _ensureApiAccounts(db);
+  const before = db.api_accounts.length;
+  db.api_accounts = db.api_accounts.filter(a => a.id !== id);
+  if (db.api_accounts.length !== before) { save(db); return true; }
+  return false;
+}
+
+function recordApiUsage(id) {
+  const db = init(); _ensureApiAccounts(db);
+  const idx = db.api_accounts.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  db.api_accounts[idx].call_count = (db.api_accounts[idx].call_count || 0) + 1;
+  db.api_accounts[idx].last_used_at = new Date().toISOString();
+  save(db);
+}
+
 module.exports = {
   init, getUsers, getUserById, getUserByUsername, getUserByEmail,
   createUser, updateUser, deleteUser,
   getRoles, getRoleById, getRolesByType, createRole, updateRole, deleteRole,
   addCreditsLog, getCreditsLog, modifyCredits,
-  saveRefreshToken, getRefreshToken, deleteRefreshToken, deleteUserRefreshTokens
+  saveRefreshToken, getRefreshToken, deleteRefreshToken, deleteUserRefreshTokens,
+  listApiAccounts, getApiAccountById, getApiAccountByAppId,
+  createApiAccount, updateApiAccount, rotateApiSecret, deleteApiAccount, recordApiUsage,
 };

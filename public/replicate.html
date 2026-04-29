@@ -1,0 +1,3861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>爆款复刻 · VIDO</title>
+<script src="/js/auth.js"></script>
+<style>
+:root {
+  --bg:    #0D0E12;
+  --bg2:   #141519;
+  --bg3:   #1E2025;
+  --bg4:   #2A2D34;
+  --border: #2D3038;
+  --border2:#3A3F4A;
+  --text:  #E8EAED;
+  --text2: #B8BCC4;
+  --text3: #6B7280;
+  --cyan:  #21FFF3;
+  --yellow:#FFF600;
+  --red:   #FF5470;
+  --orange:#FF8B3D;
+  --green: #10b981;
+  --purple:#7c6cf0;
+  --pink:  #ec4899;
+  --grad:  linear-gradient(135deg, #CBFFF8, #21FFF3, #FFF600);
+  --grad-warm: linear-gradient(135deg, #FF8B3D, #FF5470, #ec4899);
+  /* 平台色 */
+  --p-douyin:    #000000;
+  --p-douyin-bg: #FE2C55;
+  --p-kuaishou:  #FF6633;
+  --p-redbook:   #FF2442;
+  --p-weishi:    #00B0F0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Inter", sans-serif;
+  background: var(--bg); color: var(--text);
+  overflow: hidden;
+}
+
+/* ════════ 双栏布局 ════════ */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100vh;
+}
+
+/* ════════ Sidebar ════════ */
+.sb {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.sb-logo {
+  padding: 20px 22px 24px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.sb-logo-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--grad); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 16px;
+}
+.sb-logo-text { font-size: 16px; font-weight: 800; }
+.sb-logo-tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px;
+  background: rgba(124,108,240,0.2); color: var(--purple);
+  font-weight: 700;
+}
+.sb-section { padding: 18px 0 6px; }
+.sb-section-title {
+  font-size: 10px; color: var(--text3); padding: 0 22px 6px;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.sb-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 22px;
+  font-size: 13px; color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+  position: relative;
+}
+.sb-item:hover { background: var(--bg3); color: var(--text); }
+.sb-item.active {
+  background: linear-gradient(90deg, rgba(33,255,243,0.08), transparent);
+  color: var(--cyan);
+  border-left-color: var(--cyan);
+}
+.sb-item-icon { font-size: 16px; }
+.sb-item-badge {
+  margin-left: auto;
+  font-size: 10px; padding: 2px 7px; border-radius: 999px;
+  background: var(--bg3); color: var(--text3);
+}
+.sb-item.active .sb-item-badge { background: var(--cyan); color: var(--bg); font-weight: 700; }
+.sb-item-new {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px;
+  background: var(--grad-warm); color: white; font-weight: 700;
+  margin-left: auto;
+}
+.sb-foot {
+  margin-top: auto; padding: 16px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text3);
+  display: flex; align-items: center; gap: 8px;
+}
+.sb-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ════════ Main ════════ */
+.main {
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+
+/* topbar */
+.tp {
+  height: 56px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 26px; gap: 16px;
+  position: sticky; top: 0; z-index: 20;
+  backdrop-filter: blur(8px);
+}
+.tp-crumb {
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.tp-crumb .small {
+  font-size: 11px; font-weight: 400; color: var(--text3);
+  padding: 2px 8px; border-radius: 999px; background: var(--bg3);
+}
+.tp-spacer { flex: 1; }
+.tp-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  width: 280px;
+  font-size: 12px;
+}
+.tp-search input {
+  flex: 1; background: transparent; border: 0; outline: none;
+  color: var(--text); font-size: 12px;
+}
+.tp-icon-btn {
+  width: 34px; height: 34px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text2);
+  transition: all 0.2s;
+}
+.tp-icon-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.tp-user {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--grad); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  cursor: pointer;
+}
+
+/* 模块容器 */
+.mod {
+  display: none;
+  padding: 24px 28px 60px;
+  animation: fadeIn 0.3s ease;
+}
+.mod.active { display: block; }
+@keyframes fadeIn { from {opacity:0;transform:translateY(6px)} to {opacity:1;transform:translateY(0)} }
+
+.mod-head {
+  margin-bottom: 22px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+}
+.mod-head h1 {
+  font-size: 22px; font-weight: 800;
+  background: var(--grad);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 4px;
+}
+.mod-head p { font-size: 12px; color: var(--text3); }
+
+/* ════════════════════════════════════════════════
+   通用组件
+   ════════════════════════════════════════════════ */
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: 12px; color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip:hover { border-color: var(--cyan); color: var(--text); }
+.chip.selected {
+  background: var(--grad); color: var(--bg);
+  border-color: transparent; font-weight: 600;
+}
+.chip-warm.selected { background: var(--grad-warm); }
+
+.btn {
+  padding: 9px 18px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg3);
+  color: var(--text); font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 500; transition: all 0.2s;
+}
+.btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn-primary {
+  background: var(--grad); color: var(--bg);
+  border-color: transparent; font-weight: 700;
+}
+.btn-primary:hover { color: var(--bg); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(33,255,243,0.3); }
+.btn-warm { background: var(--grad-warm); color: white; border-color: transparent; }
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn-ghost { background: transparent; }
+
+/* 平台 pill */
+.plat {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 700;
+  color: white;
+}
+.plat-douyin    { background: var(--p-douyin-bg); }
+.plat-kuaishou  { background: var(--p-kuaishou); }
+.plat-redbook   { background: var(--p-redbook); }
+.plat-weishi    { background: var(--p-weishi); }
+.plat-douyin-lite, .plat-kuaishou-lite { background: rgba(254,44,85,0.2); color: #FE2C55; border: 1px solid rgba(254,44,85,0.4); }
+.plat-kuaishou-lite { background: rgba(255,102,51,0.2); color: var(--p-kuaishou); border-color: rgba(255,102,51,0.4); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 爆款搜索
+   ════════════════════════════════════════════════ */
+.search-bar {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin-bottom: 22px;
+  position: relative;
+  background: linear-gradient(135deg, rgba(33,255,243,0.05), rgba(124,108,240,0.05)), var(--bg2);
+}
+.search-input-wrap {
+  display: flex; gap: 10px; margin-bottom: 14px;
+}
+.search-input {
+  flex: 1; padding: 12px 18px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text); font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+.search-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(33,255,243,0.15); }
+.search-filter-row {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.search-filter-label {
+  font-size: 11px; color: var(--text3); margin-right: -8px;
+}
+.search-hot-tags {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.search-hot-label { font-size: 11px; color: var(--text3); }
+.hot-tag {
+  font-size: 11px; padding: 4px 12px; border-radius: 4px;
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.hot-tag:hover { color: var(--cyan); }
+.hot-tag-rank {
+  font-size: 10px; color: var(--red); font-weight: 700;
+}
+.hot-tag-rank.top { color: var(--yellow); }
+
+.search-result-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px;
+  font-size: 12px; color: var(--text3);
+}
+.search-result-bar b { color: var(--cyan); }
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.video-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.video-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border2);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+}
+.vc-thumb {
+  width: 100%; aspect-ratio: 9/16;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 38px;
+  overflow: hidden;
+}
+.vc-thumb-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.7) 100%);
+  pointer-events: none;
+}
+.vc-thumb-plat { position: absolute; top: 8px; left: 8px; z-index: 2; }
+.vc-thumb-duration {
+  position: absolute; bottom: 8px; right: 8px; z-index: 2;
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  background: rgba(0,0,0,0.7); color: white;
+}
+.vc-thumb-rank {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  font-size: 10px; padding: 3px 8px; border-radius: 999px;
+  background: var(--grad-warm); color: white; font-weight: 700;
+}
+.vc-info {
+  padding: 12px 14px;
+}
+.vc-title {
+  font-size: 13px; line-height: 1.5; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 8px; min-height: 40px;
+}
+.vc-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text3);
+  margin-bottom: 10px;
+}
+.vc-author {
+  display: flex; align-items: center; gap: 6px; flex: 1;
+  min-width: 0;
+}
+.vc-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--bg4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+}
+.vc-author-name {
+  color: var(--text2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vc-stats {
+  display: flex; gap: 12px;
+  font-size: 11px; color: var(--text3);
+  margin-bottom: 12px;
+}
+.vc-stat { display: inline-flex; align-items: center; gap: 3px; }
+.vc-stat b { color: var(--text2); font-weight: 600; }
+.vc-actions {
+  display: flex; gap: 6px;
+}
+.vc-actions .btn { flex: 1; justify-content: center; padding: 6px 8px; font-size: 11px; }
+
+/* ════════════════════════════════════════════════
+   MODULE: 我的关注
+   ════════════════════════════════════════════════ */
+.follow-layout {
+  display: grid; grid-template-columns: 280px 1fr; gap: 18px;
+  height: calc(100vh - 56px - 24px - 60px - 24px);
+  min-height: 500px;
+}
+.follow-side {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.follow-side-head {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.follow-side-head b { font-size: 13px; }
+.follow-side-search {
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: 11px; color: var(--text); outline: none;
+  width: 120px;
+}
+.follow-side-list {
+  flex: 1; overflow-y: auto;
+}
+.follow-plat-group {
+  padding: 8px 0;
+}
+.follow-plat-title {
+  padding: 6px 16px;
+  font-size: 10px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.follow-author {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+.follow-author:hover { background: var(--bg3); }
+.follow-author.active {
+  background: linear-gradient(90deg, rgba(33,255,243,0.06), transparent);
+  border-left-color: var(--cyan);
+}
+.follow-author-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  border: 2px solid var(--border);
+}
+.follow-author-meta { flex: 1; min-width: 0; }
+.follow-author-name {
+  font-size: 13px; color: var(--text); font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+  overflow: hidden;
+}
+.follow-author-name span {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.follow-author-stat {
+  font-size: 10px; color: var(--text3); margin-top: 2px;
+}
+.follow-author-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+}
+
+.follow-detail {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.follow-detail-head {
+  padding: 22px 26px;
+  background: linear-gradient(135deg, rgba(124,108,240,0.12), rgba(33,255,243,0.06));
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 18px;
+  align-items: center;
+}
+.fd-avatar {
+  width: 80px; height: 80px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 38px;
+  border: 3px solid var(--cyan);
+  flex-shrink: 0;
+}
+.fd-info { flex: 1; }
+.fd-name {
+  font-size: 22px; font-weight: 800; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 10px;
+}
+.fd-bio {
+  font-size: 12px; color: var(--text2); margin-bottom: 10px;
+  line-height: 1.6;
+}
+.fd-stats {
+  display: flex; gap: 24px;
+  font-size: 12px;
+}
+.fd-stat-num {
+  font-size: 16px; font-weight: 700; color: var(--cyan);
+  font-family: monospace;
+}
+.fd-stat-label { color: var(--text3); font-size: 11px; }
+.fd-actions {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.fd-section {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.fd-section:last-child { border-bottom: none; }
+.fd-section-head {
+  font-size: 13px; font-weight: 700; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.fd-works-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+}
+.fd-work {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  cursor: pointer; transition: all 0.2s;
+}
+.fd-work:hover { border-color: var(--cyan); transform: translateY(-2px); }
+.fd-work-thumb {
+  width: 100%; aspect-ratio: 9/16; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px;
+}
+.fd-work-info { padding: 8px 10px; }
+.fd-work-title {
+  font-size: 11px; line-height: 1.4; color: var(--text2);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 30px;
+}
+.fd-work-stat {
+  font-size: 10px; color: var(--text3); margin-top: 4px;
+  display: flex; gap: 8px;
+}
+
+/* ════════════════════════════════════════════════
+   MODULE: 热度排行
+   ════════════════════════════════════════════════ */
+.rank-tabs {
+  display: flex; gap: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: 18px;
+  width: fit-content;
+}
+.rank-tab {
+  padding: 8px 18px; border-radius: 999px;
+  font-size: 12px; cursor: pointer;
+  color: var(--text2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.rank-tab.active {
+  background: var(--grad); color: var(--bg); font-weight: 700;
+}
+
+.rank-filters {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.rank-board {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 60px 70px 1fr 120px 110px 90px 110px;
+  gap: 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  transition: all 0.15s;
+}
+.rank-row:hover { background: var(--bg3); }
+.rank-row:last-child { border-bottom: none; }
+.rank-row.head {
+  background: var(--bg3);
+  font-size: 11px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 10px 20px;
+  font-weight: 600;
+}
+.rank-num {
+  font-size: 18px; font-weight: 800; font-family: monospace;
+  text-align: center;
+  color: var(--text3);
+}
+.rank-num.t1 { color: var(--yellow); font-size: 22px; }
+.rank-num.t2 { color: #C0C0C0; font-size: 20px; }
+.rank-num.t3 { color: #CD7F32; font-size: 20px; }
+.rank-thumb {
+  width: 60px; aspect-ratio: 9/16;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  position: relative;
+}
+.rank-info {
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.rank-title {
+  font-size: 13px; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.4;
+}
+.rank-author-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text3);
+}
+.rank-views, .rank-likes {
+  font-size: 13px; font-weight: 700; font-family: monospace;
+  color: var(--cyan);
+}
+.rank-trend {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 700;
+}
+.rank-trend.up { color: var(--green); }
+.rank-trend.down { color: var(--red); }
+.rank-trend.new { color: var(--purple); }
+.rank-actions { display: flex; gap: 4px; }
+
+.rank-mini-section {
+  margin-top: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+.rank-mini-head {
+  font-size: 13px; font-weight: 700;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rank-mini-head .badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(33,255,243,0.15); color: var(--cyan);
+}
+.rank-mini-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+}
+.rank-mini-card {
+  display: flex; gap: 12px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px;
+  cursor: pointer; transition: all 0.2s;
+}
+.rank-mini-card:hover { border-color: var(--cyan); }
+.rank-mini-thumb {
+  width: 56px; aspect-ratio: 9/16;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.rank-mini-info { flex: 1; min-width: 0; }
+.rank-mini-title {
+  font-size: 12px; line-height: 1.4; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 4px;
+}
+.rank-mini-meta { font-size: 10px; color: var(--text3); }
+.rank-mini-meta b { color: var(--cyan); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 视频克隆（沿用之前的 5 步）
+   ════════════════════════════════════════════════ */
+.steps {
+  background: var(--bg2);
+  padding: 22px 0 26px;
+  border-bottom: 1px solid var(--border);
+  margin: -24px -28px 24px;
+  padding: 22px 28px 26px;
+}
+.steps-inner {
+  max-width: 1080px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  position: relative;
+}
+.steps-line {
+  position: absolute; top: 18px; left: 36px; right: 36px;
+  height: 2px; background: var(--border); z-index: 0;
+}
+.steps-line-fill {
+  position: absolute; top: 18px; left: 36px;
+  height: 2px; background: var(--grad);
+  z-index: 1; transition: width 0.6s ease;
+  width: 0%;
+}
+.step {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  cursor: pointer; flex: 1; max-width: 130px;
+}
+.step-dot {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg3); border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: var(--text3);
+  transition: all 0.3s;
+}
+.step.active .step-dot {
+  background: var(--grad); border-color: transparent;
+  color: var(--bg); box-shadow: 0 0 16px rgba(33,255,243,0.4);
+}
+.step.done .step-dot {
+  background: rgba(16,185,129,0.15); border-color: var(--green); color: var(--green);
+}
+.step-label { font-size: 12px; color: var(--text3); white-space: nowrap; }
+.step.active .step-label { color: var(--cyan); font-weight: 600; }
+.step.done .step-label { color: var(--green); }
+
+.spanel { display: none; }
+.spanel.active { display: block; animation: fadeIn 0.4s ease; }
+
+.upload-zone {
+  background: linear-gradient(135deg, rgba(33,255,243,0.04), rgba(124,108,240,0.04));
+  border: 2px dashed var(--border2);
+  border-radius: 16px;
+  padding: 54px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s;
+  margin-bottom: 22px;
+}
+.upload-zone:hover { border-color: var(--cyan); }
+.upload-icon { font-size: 44px; margin-bottom: 14px; }
+.upload-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.upload-sub { font-size: 12px; color: var(--text3); }
+
+.parse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.parse-col { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.parse-col-head { font-size: 13px; font-weight: 600; color: var(--cyan); margin-bottom: 12px; }
+.subtitle-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.subtitle-row { display: flex; gap: 10px; font-size: 12px; line-height: 1.5; padding: 6px 8px; border-radius: 6px; background: var(--bg3); }
+.subtitle-time { color: var(--cyan); font-family: monospace; font-size: 10px; white-space: nowrap; padding-top: 2px; }
+.subtitle-text { color: var(--text2); }
+.subtitle-row.new { animation: slideIn 0.3s ease; }
+@keyframes slideIn { from {opacity:0;transform:translateX(-8px)} to {opacity:1;transform:translateX(0)} }
+.frame-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 320px; overflow-y: auto; }
+.frame-cell { aspect-ratio: 16/9; background: linear-gradient(135deg, #2a2d34, #1e2025); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; border: 1px solid var(--border); }
+.frame-cell-time { position: absolute; bottom: 4px; right: 4px; font-size: 9px; padding: 2px 5px; border-radius: 3px; background: rgba(0,0,0,0.7); color: var(--text2); }
+
+.parse-progress { margin-top: 18px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+.pp-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.pp-row:last-child { margin-bottom: 0; }
+.pp-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text3); flex-shrink: 0; }
+.pp-row.done .pp-icon { background: rgba(16,185,129,0.15); border-color: var(--green); color: var(--green); }
+.pp-row.active .pp-icon { background: var(--grad); color: var(--bg); border-color: transparent; animation: spin 2s linear infinite; }
+@keyframes spin { to {transform:rotate(360deg)} }
+.pp-text { flex: 1; font-size: 13px; }
+.pp-text small { display: block; color: var(--text3); font-size: 11px; margin-top: 2px; }
+.pp-pct { font-size: 12px; font-weight: 700; color: var(--cyan); font-family: monospace; }
+
+.rewrite-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.rewrite-col { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.rewrite-col-head { font-size: 13px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+.rewrite-col-head .badge-orig { color: var(--text3); }
+.rewrite-col-head .badge-new { background: var(--grad); color: var(--bg); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.rewrite-block { font-size: 12px; line-height: 1.7; color: var(--text2); padding: 9px 11px; border-radius: 7px; background: var(--bg3); border-left: 3px solid var(--border2); margin-bottom: 7px; }
+.rewrite-block.changed { border-left-color: var(--cyan); }
+.rewrite-block-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+
+.rewrite-options { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 20px; }
+.rewrite-options h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+.opt-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.opt-row:last-child { margin-bottom: 0; }
+.opt-label { font-size: 12px; color: var(--text2); width: 90px; flex-shrink: 0; }
+
+.gen-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.gen-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 13px 16px; }
+.gen-stat-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+.gen-stat-value { font-size: 22px; font-weight: 800; color: var(--cyan); font-family: monospace; }
+.gen-stat-sub { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+.scene-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.scene-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; position: relative; }
+.scene-thumb { width: 100%; aspect-ratio: 16/9; background: linear-gradient(135deg, #2a2d34, #1e2025); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 8px; position: relative; overflow: hidden; }
+.scene-card.done .scene-thumb { background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(33,255,243,0.15)); }
+.scene-card.processing .scene-thumb::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(33,255,243,0.2), transparent); animation: shimmer 1.6s infinite; }
+@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+.scene-meta { font-size: 11px; color: var(--text2); }
+.scene-num { color: var(--cyan); font-weight: 700; }
+.scene-status { position: absolute; top: 18px; right: 18px; font-size: 9px; padding: 2px 7px; border-radius: 3px; }
+.scene-status.done { background: var(--green); color: white; }
+.scene-status.processing { background: var(--cyan); color: var(--bg); }
+.scene-status.pending { background: var(--bg4); color: var(--text3); }
+
+.result-hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; margin-bottom: 20px; }
+.result-player { background: #000; border-radius: 12px; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; font-size: 64px; position: relative; overflow: hidden; border: 1px solid var(--border); max-height: 580px; }
+.result-player::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(124,108,240,0.15), rgba(33,255,243,0.1)); }
+.result-player-controls { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.5); padding: 9px 13px; border-radius: 999px; backdrop-filter: blur(8px); }
+.result-player-play { width: 28px; height: 28px; border-radius: 50%; background: var(--cyan); color: var(--bg); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; }
+.result-player-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.2); border-radius: 2px; position: relative; }
+.result-player-bar::after { content: ''; position: absolute; left: 0; top: 0; width: 30%; height: 100%; background: var(--cyan); border-radius: 2px; }
+.result-player-time { font-size: 11px; color: white; font-family: monospace; }
+.result-info { display: flex; flex-direction: column; gap: 14px; }
+.result-info-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.result-info-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.diff-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+.diff-row:last-child { border-bottom: none; }
+.diff-key { color: var(--text3); }
+.diff-val-old { color: var(--text2); font-family: monospace; }
+.diff-val-new { color: var(--cyan); font-family: monospace; font-weight: 700; }
+.diff-arrow { color: var(--text3); margin: 0 8px; }
+
+.action-row { display: flex; gap: 10px; flex-wrap: wrap; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+
+.foot-bar { margin-top: 22px; display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--border); }
+.foot-hint { font-size: 12px; color: var(--text3); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 我的作品（占位）
+   ════════════════════════════════════════════════ */
+.works-empty {
+  background: var(--bg2); border: 1px dashed var(--border2);
+  border-radius: 16px; padding: 80px 40px; text-align: center;
+}
+.works-empty-icon { font-size: 56px; margin-bottom: 18px; opacity: 0.4; }
+.works-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.works-empty-sub { font-size: 12px; color: var(--text3); margin-bottom: 24px; }
+
+/* toast */
+.toast { position: fixed; top: 28px; left: 50%; transform: translateX(-50%); padding: 11px 22px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--cyan); color: var(--cyan); font-size: 13px; z-index: 99999; display: none; box-shadow: 0 12px 32px rgba(0,0,0,0.4); max-width: 90vw; text-align: center; }
+
+/* watermark */
+.proto-mark { position: fixed; bottom: 14px; right: 14px; font-size: 10px; padding: 5px 11px; border-radius: 999px; background: rgba(124,108,240,0.15); border: 1px solid rgba(124,108,240,0.4); color: var(--purple); font-weight: 600; pointer-events: none; }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══════════════════════════════════════
+       LEFT SIDEBAR
+       ═══════════════════════════════════════ -->
+  <aside class="sb">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">V</div>
+      <div>
+        <div class="sb-logo-text">VIDO</div>
+        <span class="sb-logo-tag">爆款复刻</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">爆款复刻中心</div>
+      <div class="sb-item active" data-mod="search">
+        <span class="sb-item-icon">🔍</span><span>爆款搜索</span>
+      </div>
+      <div class="sb-item" data-mod="follow">
+        <span class="sb-item-icon">⭐</span><span>我的关注</span>
+        <span class="sb-item-badge" id="sbFollowBadge">12</span>
+      </div>
+      <div class="sb-item" data-mod="rank">
+        <span class="sb-item-icon">📊</span><span>热度排行</span>
+        <span class="sb-item-new">HOT</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">创作工具</div>
+      <div class="sb-item" data-mod="clone">
+        <span class="sb-item-icon">🎬</span><span>视频克隆</span>
+      </div>
+      <div class="sb-item" data-mod="works">
+        <span class="sb-item-icon">📚</span><span>我的作品</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">账号 / 订阅</div>
+      <div class="sb-item" data-mod="platforms">
+        <span class="sb-item-icon">🔐</span><span>平台账号绑定</span>
+      </div>
+      <div class="sb-item" data-mod="subscriptions">
+        <span class="sb-item-icon">📡</span><span>关键字订阅</span>
+        <span class="sb-item-badge" id="sbSubBadge">0</span>
+      </div>
+    </div>
+
+    <div class="sb-foot">
+      <span class="sb-foot-dot"></span>
+      <span id="sbFootStatus">连接中...</span>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════
+       MAIN
+       ═══════════════════════════════════════ -->
+  <main class="main">
+    <div class="tp">
+      <div class="tp-crumb" id="tpCrumb">🔍 爆款搜索</div>
+      <div class="tp-spacer"></div>
+      <button class="btn btn-sm" onclick="window.location.href='/index.html'" style="margin-right:8px">← 返回工作台</button>
+      <div class="tp-icon-btn" id="tpUser" title="点击退出登录">U</div>
+    </div>
+
+    <!-- ─────────── MOD: 爆款搜索 ─────────── -->
+    <div class="mod active" data-mod="search">
+      <div class="mod-head">
+        <div>
+          <h1>🔍 爆款搜索</h1>
+          <p>聚合抖音 / 快手 / 小红书 / 微视 / 微博 · 按启用的数据源拉真实视频</p>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <!-- 搜索类型 tab -->
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button class="chip selected" id="searchTypeContent" onclick="switchSearchType('content')" style="cursor:pointer">🎬 搜内容</button>
+          <button class="chip" id="searchTypeBlogger" onclick="switchSearchType('blogger')" style="cursor:pointer">👤 搜博主</button>
+        </div>
+        <div class="search-input-wrap">
+          <input class="search-input" id="searchInput" placeholder="🔎 输入关键字（如：口红测评）或粘贴视频链接（自动识别） · 回车搜索" onkeydown="if(event.key==='Enter'){event.preventDefault();smartSearch();}" />
+          <button class="btn btn-primary" onclick="smartSearch()">🔍 搜索</button>
+        </div>
+        <div class="search-filter-row">
+          <span class="search-filter-label">平台：</span>
+          <div class="chip-row" id="platChips" data-multi="true">
+            <div class="chip selected" data-plat="all">全部</div>
+            <div class="chip" data-plat="douyin">📺 抖音</div>
+            <div class="chip" data-plat="kuaishou">📹 快手</div>
+            <div class="chip" data-plat="xiaohongshu">📕 小红书</div>
+            <div class="chip" data-plat="weishi">🎞 微视</div>
+            <div class="chip" data-plat="weibo">🐦 微博</div>
+            <div class="chip" data-plat="bilibili">📺 B站</div>
+            <div class="chip" data-plat="youtube">▶ YouTube</div>
+          </div>
+        </div>
+        <div class="search-filter-row" style="margin-top:10px">
+          <span class="search-filter-label">排序：</span>
+          <div class="chip-row" id="sortChips">
+            <div class="chip selected" data-sort="comprehensive">🔥 综合热度</div>
+            <div class="chip" data-sort="most_play">👁 点击最多</div>
+            <div class="chip" data-sort="most_like">❤️ 点赞最多</div>
+            <div class="chip" data-sort="newest">🆕 最新发布</div>
+            <div class="chip" data-sort="completion">⏱ 完播率</div>
+          </div>
+          <span class="search-filter-label" style="margin-left:8px">时间：</span>
+          <div class="chip-row" id="timeChips">
+            <div class="chip" data-time="1d">今天</div>
+            <div class="chip selected" data-time="7d">7 天</div>
+            <div class="chip" data-time="30d">30 天</div>
+            <div class="chip" data-time="all">全部</div>
+          </div>
+        </div>
+        <!-- 实时热搜行已移除 -->
+
+      </div>
+
+      <div class="search-result-bar" id="searchResultBar" style="display:none">
+        <span>找到 <b id="searchTotal">0</b> 条结果 · 关键字 <b id="searchKw"></b></span>
+      </div>
+
+      <div class="video-grid" id="searchGrid"></div>
+    </div>
+
+    <!-- ─────────── MOD: 我的关注 ─────────── -->
+    <div class="mod" data-mod="follow">
+      <div class="mod-head">
+        <div>
+          <h1>⭐ 我的关注</h1>
+          <p>跟踪 12 位博主 · 4 个平台 · 自动同步新作品 · 一键克隆爆款</p>
+        </div>
+        <div class="chip-row">
+          <button class="btn btn-sm">⚙️ 关注设置</button>
+          <button class="btn btn-sm">🔔 新作通知</button>
+        </div>
+      </div>
+
+      <div class="follow-layout">
+        <aside class="follow-side">
+          <div class="follow-side-head">
+            <b>关注列表</b>
+            <input class="follow-side-search" placeholder="过滤..." />
+          </div>
+          <div class="follow-side-list" id="followList"></div>
+        </aside>
+
+        <div class="follow-detail" id="followDetail">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 热度排行 ─────────── -->
+    <div class="mod" data-mod="rank">
+      <div class="mod-head">
+        <div>
+          <h1>📊 热度排行榜</h1>
+          <p>基于已抓取的真实视频数据（contents 库）聚合排行 · 移植自 douyin 工具集</p>
+        </div>
+        <button class="btn" onclick="loadTrending()">🔄 立即刷新</button>
+      </div>
+
+      <!-- 数据概览 -->
+      <div id="rankStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px"></div>
+
+      <div class="rank-filters">
+        <div class="chip-row" id="rankPlatChips">
+          <span class="search-filter-label">平台：</span>
+          <div class="chip selected" data-rank-plat="all">🌐 全平台</div>
+          <div class="chip" data-rank-plat="douyin">📺 抖音</div>
+          <div class="chip" data-rank-plat="kuaishou">📹 快手</div>
+          <div class="chip" data-rank-plat="xiaohongshu">📕 小红书</div>
+          <div class="chip" data-rank-plat="bilibili">🅱 B站</div>
+        </div>
+        <div class="chip-row" id="rankSortChips">
+          <span class="search-filter-label">排序：</span>
+          <div class="chip selected" data-rank-sort="likes">❤️ 点赞</div>
+          <div class="chip" data-rank-sort="views">👁 播放</div>
+          <div class="chip" data-rank-sort="comments">💬 评论</div>
+          <div class="chip" data-rank-sort="shares">🔁 转发</div>
+        </div>
+      </div>
+
+      <div class="rank-board">
+        <div class="rank-row head">
+          <div>排名</div>
+          <div></div>
+          <div>视频信息</div>
+          <div>播放量</div>
+          <div>点赞</div>
+          <div>趋势</div>
+          <div>操作</div>
+        </div>
+        <div id="rankList"></div>
+      </div>
+
+      <div class="rank-mini-section" id="rankMiniSection" style="display:none">
+        <div class="rank-mini-head">
+          🏆 博主榜（按总赞）
+          <span class="badge" id="rankMiniBadge"></span>
+        </div>
+        <div class="rank-mini-grid" id="rankMini"></div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 视频克隆（5 步流程） ─────────── -->
+    <div class="mod" data-mod="clone">
+      <div class="mod-head">
+        <div>
+          <h1>🎬 视频克隆工作台</h1>
+          <p>从搜索/关注/排行选中爆款 → 5 步生成全新原创版本</p>
+        </div>
+        <div class="chip-row">
+          <button class="btn btn-sm">📥 上传本地视频</button>
+          <button class="btn btn-sm" onclick="goMod('search')">🔍 去搜索选片</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="steps-inner">
+          <div class="steps-line"></div>
+          <div class="steps-line-fill" id="stepFill"></div>
+          <div class="step active" data-step="1" onclick="goStep(1)"><div class="step-dot">1</div><div class="step-label">选定素材</div></div>
+          <div class="step" data-step="2" onclick="goStep(2)"><div class="step-dot">2</div><div class="step-label">智能解析</div></div>
+          <div class="step" data-step="3" onclick="goStep(3)"><div class="step-dot">3</div><div class="step-label">改写预览</div></div>
+          <div class="step" data-step="4" onclick="goStep(4)"><div class="step-dot">4</div><div class="step-label">画面生成</div></div>
+          <div class="step" data-step="5" onclick="goStep(5)"><div class="step-dot">5</div><div class="step-label">成片输出</div></div>
+        </div>
+      </div>
+
+      <!-- Step 1: 选定视频 -->
+      <div class="spanel active" data-spanel="1">
+        <!-- ★ 复刻入口选择：去爆款搜索 / 从我的关注里面选 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+          <button type="button" onclick="goMod('search')" style="background:linear-gradient(135deg,rgba(33,255,243,0.10),rgba(33,255,243,0.02));border:1.5px solid rgba(33,255,243,0.35);border-radius:14px;padding:22px 20px;text-align:left;cursor:pointer;transition:all .15s;color:var(--text);font-family:inherit" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--cyan)'" onmouseout="this.style.transform='';this.style.borderColor='rgba(33,255,243,0.35)'">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="font-size:36px;flex-shrink:0">🔍</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:700;color:var(--cyan);margin-bottom:4px">去爆款搜索找爆款</div>
+                <div style="font-size:12px;color:var(--text3);line-height:1.5">关键字搜索抖音/快手/小红书/B站等真实数据 → 选爆款一键复刻</div>
+              </div>
+              <div style="color:var(--cyan);font-size:18px;flex-shrink:0">→</div>
+            </div>
+          </button>
+          <button type="button" onclick="goMod('follow')" style="background:linear-gradient(135deg,rgba(255,246,0,0.08),rgba(255,246,0,0.02));border:1.5px solid rgba(255,246,0,0.35);border-radius:14px;padding:22px 20px;text-align:left;cursor:pointer;transition:all .15s;color:var(--text);font-family:inherit" onmouseover="this.style.transform='translateY(-2px)';this.style.borderColor='var(--yellow,#FFF600)'" onmouseout="this.style.transform='';this.style.borderColor='rgba(255,246,0,0.35)'">
+            <div style="display:flex;align-items:center;gap:14px">
+              <div style="font-size:36px;flex-shrink:0">⭐</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:700;color:#FFF600;margin-bottom:4px">从我的关注里面选</div>
+                <div style="font-size:12px;color:var(--text3);line-height:1.5">浏览已关注的博主作品 → 找到合适的素材克隆</div>
+              </div>
+              <div style="color:#FFF600;font-size:18px;flex-shrink:0">→</div>
+            </div>
+          </button>
+        </div>
+
+        <div style="text-align:center;color:var(--text3);font-size:11px;margin-bottom:14px">— 或者直接粘贴视频链接 —</div>
+
+        <div class="upload-zone" style="padding:30px 32px">
+          <div class="upload-icon">🔗</div>
+          <div class="upload-title" style="margin-bottom:14px">粘贴视频链接开始爆款复刻</div>
+          <div style="display:flex;gap:8px;max-width:680px;margin:0 auto 12px">
+            <input id="cloneUrlInput" placeholder="抖音/快手/小红书/B站视频链接（支持分享文案）" style="flex:1;padding:10px 14px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none" />
+            <button class="btn btn-primary" onclick="cloneStartFromUrl()">解析 →</button>
+          </div>
+          <div class="upload-sub">支持抖音/快手/小红书/B站 · 已通过 MCP 爬虫接入</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-top:14px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)">📦 内容库（已抓取过的视频）</div>
+          <div id="cloneContentLib" style="font-size:12px;color:var(--text3)">加载中...</div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="spanel" data-spanel="2">
+        <div class="parse-grid">
+          <div class="parse-col">
+            <div class="parse-col-head">📝 口播识别（Whisper STT）</div>
+            <div class="subtitle-list" id="subtitleList"></div>
+          </div>
+          <div class="parse-col">
+            <div class="parse-col-head">🖼 画面抽帧（GPT-4V）</div>
+            <div class="frame-grid" id="frameGrid"></div>
+          </div>
+        </div>
+        <div class="parse-progress">
+          <div class="pp-row done"><div class="pp-icon">✓</div><div class="pp-text"><b>视频准备</b><small>美妆带货_60s · 18.4 MB · 1080×1920</small></div><div class="pp-pct">100%</div></div>
+          <div class="pp-row active" id="step2-stt"><div class="pp-icon">⟳</div><div class="pp-text"><b>口播识别</b><small id="sttHint">Whisper API 转录中…</small></div><div class="pp-pct" id="sttPct">0%</div></div>
+          <div class="pp-row" id="step2-frame"><div class="pp-icon">3</div><div class="pp-text"><b>画面分析</b><small id="frameHint">每 2s 抽帧 → GPT-4V 描述</small></div><div class="pp-pct" id="framePct">0%</div></div>
+          <div class="pp-row" id="step2-extract"><div class="pp-icon">4</div><div class="pp-text"><b>叙事结构提炼</b><small>识别钩子/痛点/转折/CTA</small></div><div class="pp-pct">—</div></div>
+        </div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(1)">‹ 返回</button>
+          <button class="btn btn-primary" id="step2NextBtn" disabled style="opacity:0.5;cursor:not-allowed">解析中…</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="spanel" data-spanel="3">
+        <div class="rewrite-grid" id="rewriteGrid"></div>
+        <div class="rewrite-options">
+          <h4>🎛 生成参数</h4>
+          <div class="opt-row">
+            <div class="opt-label">配音音色</div>
+            <div class="chip-row" id="voiceChips">
+              <div class="chip selected">⏳ 加载克隆音色...</div>
+            </div>
+          </div>
+          <div class="opt-row"><div class="opt-label">画面策略</div><div class="chip-row"><div class="chip selected">🎨 重新生成</div><div class="chip">🎬 直接生视频</div><div class="chip">👤 数字人替换</div></div></div>
+          <div class="opt-row"><div class="opt-label">字幕样式</div><div class="chip-row"><div class="chip selected">🟡 抖音黄字</div><div class="chip">⚫ 黑底白字</div><div class="chip">无字幕</div></div></div>
+          <div class="opt-row"><div class="opt-label">差异度</div><div class="chip-row"><div class="chip">轻 30%</div><div class="chip selected">中 60% 推荐</div><div class="chip">重 90%</div></div></div>
+        </div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(2)">‹ 返回</button>
+          <div style="display:flex;gap:10px"><button class="btn">🔄 重写一版</button><button class="btn btn-primary" onclick="goStep(4)">开始生成 →</button></div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="spanel" data-spanel="4">
+        <div class="gen-stats">
+          <div class="gen-stat"><div class="gen-stat-label">已完成</div><div class="gen-stat-value" id="genDone">0 / 8</div><div class="gen-stat-sub">并行 4 路</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">已用时</div><div class="gen-stat-value" id="genTime">00:00</div><div class="gen-stat-sub">预计 2-4 分</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">消耗</div><div class="gen-stat-value" id="genCost">¥0.00</div><div class="gen-stat-sub">画面+配音+合成</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">差异度</div><div class="gen-stat-value" id="genDiff">—</div><div class="gen-stat-sub">完成后给出</div></div>
+        </div>
+        <div class="scene-grid" id="sceneGrid"></div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(3)">‹ 返回改写</button>
+          <button class="btn btn-primary" id="step4NextBtn" disabled style="opacity:0.5;cursor:not-allowed">生成中…</button>
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="spanel" data-spanel="5">
+        <div class="result-hero">
+          <div class="result-player">
+            <span style="opacity:0.6">🎬</span>
+            <div class="result-player-controls">
+              <div class="result-player-play">▶</div>
+              <div class="result-player-bar"></div>
+              <div class="result-player-time">0:18 / 1:00</div>
+            </div>
+          </div>
+          <div class="result-info">
+            <div class="result-info-card">
+              <h4>📊 与原视频对比</h4>
+              <div class="diff-row"><span class="diff-key">视频时长</span><span><span class="diff-val-old">60.4s</span><span class="diff-arrow">→</span><span class="diff-val-new">60.2s</span></span></div>
+              <div class="diff-row"><span class="diff-key">字幕相似度</span><span><span class="diff-val-old">100%</span><span class="diff-arrow">→</span><span class="diff-val-new">23%</span></span></div>
+              <div class="diff-row"><span class="diff-key">画面感知哈希</span><span><span class="diff-val-old">原视频</span><span class="diff-arrow">→</span><span class="diff-val-new">已变 87%</span></span></div>
+              <div class="diff-row"><span class="diff-key">音频指纹</span><span><span class="diff-val-old">原配音</span><span class="diff-arrow">→</span><span class="diff-val-new">克隆音色</span></span></div>
+              <div class="diff-row"><span class="diff-key">叙事节奏匹配</span><span class="diff-val-new">98%</span></div>
+            </div>
+            <div class="result-info-card">
+              <h4>🛡 平台过审预测</h4>
+              <div class="diff-row"><span class="diff-key">抖音去重</span><span class="diff-val-new" style="color:var(--green)">✓ 低风险</span></div>
+              <div class="diff-row"><span class="diff-key">小红书原创</span><span class="diff-val-new" style="color:var(--green)">✓ 87 分</span></div>
+              <div class="diff-row"><span class="diff-key">视频号匹配</span><span class="diff-val-new" style="color:var(--green)">✓ 通过</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary">⬇ 下载 MP4</button>
+          <button class="btn">📋 复制 SRT</button>
+          <button class="btn">🔄 一键再克隆 5 个</button>
+          <button class="btn">📤 推送草稿箱</button>
+          <button class="btn">📊 详细报告</button>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="goStep(1)">↻ 克隆新视频</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 平台账号绑定 ─────────── -->
+    <div class="mod" data-mod="platforms">
+      <div class="mod-head">
+        <div>
+          <h1>🔐 平台账号绑定</h1>
+          <p>抖音 / 小红书 / 快手 等平台需要登录账号才能爬取数据 · 在这里查看绑定状态</p>
+        </div>
+        <button class="btn btn-sm" onclick="loadPlatforms()">🔄 刷新</button>
+      </div>
+      <div id="platformsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+    </div>
+
+    <!-- ─────────── MOD: 关键字订阅 ─────────── -->
+    <div class="mod" data-mod="subscriptions">
+      <div class="mod-head">
+        <div>
+          <h1>📡 关键字订阅</h1>
+          <p>用途：每隔 N 分钟，系统会用你设定的关键字（如「原神 / 减脂餐 / 副业」）去搜索抖音/小红书/快手等平台，自动把新视频抓到内容库。<br>等于一个「关键字爬虫机器人」，让你不用手动反复搜，新爆款视频会自动出现在爆款搜索结果里 → 直接点复刻即可。</p>
+        </div>
+        <div class="chip-row">
+          <button class="btn btn-sm" onclick="loadSubscriptions()">🔄 刷新</button>
+          <button class="btn btn-primary btn-sm" onclick="openAddSub()">+ 新建订阅</button>
+        </div>
+      </div>
+      <div id="subList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px"></div>
+    </div>
+
+    <!-- 数据源配置已移到管理后台（/admin.html → 数据源管理） -->
+    <div class="mod" data-mod="providers" style="display:none"></div>
+
+    <!-- ─────────── MOD: 我的作品 ─────────── -->
+    <div class="mod" data-mod="works">
+      <div class="mod-head">
+        <div>
+          <h1>📚 我的作品</h1>
+          <p>已生成的克隆成片 · 可下载 / 重新生成 / 推送到平台</p>
+        </div>
+      </div>
+      <div class="works-empty">
+        <div class="works-empty-icon">🎬</div>
+        <div class="works-empty-title">3 个克隆成片（演示数据）</div>
+        <div class="works-empty-sub">连接 VIDO 现有作品库 API 后将自动同步</div>
+        <button class="btn btn-primary" onclick="goMod('search')">🔍 去找新爆款克隆</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 视频详情弹窗 -->
+<div id="vidModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);justify-content:center;align-items:center;padding:20px" onclick="if(event.target===this)closeVidModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;max-width:920px;width:100%;max-height:90vh;overflow-y:auto;display:grid;grid-template-columns:380px 1fr;gap:0">
+    <div id="vidModalCover" style="background:#0a0a0a;border-radius:16px 0 0 16px;display:flex;align-items:center;justify-content:center;min-height:400px;position:relative;overflow:hidden">
+      <span style="font-size:80px;opacity:0.3">🎬</span>
+    </div>
+    <div style="padding:26px 28px;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span id="vidModalPlat" class="plat plat-douyin">📺 平台</span>
+          <span id="vidModalSource" style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(33,255,243,0.15);color:var(--cyan)">数据源</span>
+        </div>
+        <button onclick="closeVidModal()" style="background:transparent;border:0;color:var(--text2);cursor:pointer;font-size:24px;line-height:1">×</button>
+      </div>
+      <h2 id="vidModalTitle" style="font-size:18px;font-weight:700;line-height:1.5;margin-bottom:14px;color:var(--text)"></h2>
+      <div id="vidModalAuthor" style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);margin-bottom:14px"></div>
+      <div id="vidModalStats" style="display:flex;gap:18px;font-size:12px;margin-bottom:18px;padding:14px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)"></div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">📝 视频描述</div>
+      <div id="vidModalDesc" style="font-size:13px;color:var(--text2);line-height:1.7;background:var(--bg3);padding:12px 14px;border-radius:8px;max-height:160px;overflow-y:auto;margin-bottom:18px"></div>
+      <div id="vidModalTags" style="margin-bottom:18px"></div>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="vidModalClone()">🎬 一键复刻</button>
+        <button class="btn" onclick="vidModalFollow()">⭐ 关注作者</button>
+        <button class="btn" onclick="vidModalOpenOrigin()">🔗 打开原视频</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// 鉴权 + 真实数据集成（VIDO 标准流程）
+// ═══════════════════════════════════════════════
+(async function bootstrap() {
+  const ok = await requireAuth();
+  if (!ok) return;
+  const user = getCurrentUser();
+  if (user) {
+    const u = document.getElementById('tpUser');
+    if (u) {
+      u.textContent = (user.username || 'U').charAt(0).toUpperCase();
+      u.onclick = () => { if (confirm('退出登录？')) logout(); };
+    }
+  }
+  loadRealClonedVoices();
+  setSbFootStatus();
+})();
+
+async function setSbFootStatus() {
+  try {
+    const r = await fetch('/api/health');
+    const j = await r.json();
+    document.getElementById('sbFootStatus').textContent = j.status === 'ok'
+      ? '服务在线 · ' + (j.storyProvider || 'AI')
+      : '服务异常';
+  } catch {
+    document.getElementById('sbFootStatus').textContent = '离线';
+  }
+}
+
+// 拉取用户在数字人模块克隆的真实音色，渲染到 Step 3 配音音色 chip
+async function loadRealClonedVoices() {
+  const chipBox = document.getElementById('voiceChips');
+  if (!chipBox) return;
+  try {
+    const r = await authFetch('/api/workbench/voices');
+    const j = await r.json();
+    const voices = (j.voices || []).filter(v =>
+      v.cloned && v.status !== 'aliyun_failed' && v.status !== 'volc_failed' && v.status !== 'training_timeout'
+    );
+    const presetChips = [
+      { id: '__preset_xiaochun', label: '👩 知性女声 (longxiaochun)' },
+      { id: '__preset_shu',      label: '👨 商务男声 (longshu)' },
+      { id: '__preset_xiaomei',  label: '👧 活力少女 (longxiaomei)' },
+    ];
+
+    let html = '';
+    if (voices.length > 0) {
+      html += voices.map((v, i) => {
+        const provLabel = v.clone_provider === 'aliyun-tts' ? '阿里 CosyVoice' :
+                          v.clone_provider === 'volcengine' ? '火山复刻' : '克隆';
+        return `<div class="chip ${i === 0 ? 'selected' : ''}" data-voice-id="${escAttr(v.id)}" data-cloned="1" title="${escAttr(provLabel)}">🎤 ${escHtml(v.name || '我的克隆')} <span style="opacity:0.6;font-size:10px">· ${provLabel}</span></div>`;
+      }).join('');
+    } else {
+      html += `<div class="chip" style="opacity:0.6;cursor:default">🎤 暂无克隆音色</div>`;
+    }
+    html += presetChips.map(p =>
+      `<div class="chip ${voices.length === 0 && p.id === '__preset_xiaochun' ? 'selected' : ''}" data-voice-id="${escAttr(p.id)}" data-preset="1">${escHtml(p.label)}</div>`
+    ).join('');
+    html += `<div class="chip" onclick="window.location.href='/digital-human'" style="border-style:dashed;cursor:pointer">+ 去克隆我的声音</div>`;
+
+    chipBox.innerHTML = html;
+    if (voices.length > 0) toast(`已加载 ${voices.length} 个你的克隆音色`);
+  } catch (e) {
+    console.warn('[replicate] 加载克隆音色失败', e);
+    chipBox.innerHTML = `
+      <div class="chip selected">👩 知性女声 (longxiaochun)</div>
+      <div class="chip">👨 商务男声 (longshu)</div>
+      <div class="chip" onclick="window.location.href='/digital-human'" style="border-style:dashed;cursor:pointer">+ 去克隆我的声音</div>
+    `;
+  }
+}
+
+function escHtml(s) { return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function escAttr(s) { return String(s ?? '').replace(/"/g, '&quot;'); }
+
+// ════════════════════════════════════════════════════════════════════
+// 视频详情弹窗
+// ════════════════════════════════════════════════════════════════════
+let _vidModalCurrent = null;
+function openVidModal(item) {
+  _vidModalCurrent = item;
+  const m = document.getElementById('vidModal');
+  const cover = document.getElementById('vidModalCover');
+  const plat = (typeof PLAT_MAP !== 'undefined' && PLAT_MAP[item.platform]) || { name: item.platform_name || item.platform, cls: 'plat-douyin', icon: '🎬' };
+
+  if (item.cover && /^https?:\/\//.test(item.cover)) {
+    cover.innerHTML = `<img src="${escAttr(item.cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='<span style=&quot;font-size:80px;opacity:0.3&quot;>🎬</span>'" />`;
+  } else {
+    cover.innerHTML = `<span style="font-size:80px;opacity:0.3">🎬</span>`;
+  }
+
+  document.getElementById('vidModalPlat').className = 'plat ' + plat.cls;
+  document.getElementById('vidModalPlat').innerHTML = plat.icon + ' ' + escHtml(plat.name);
+  document.getElementById('vidModalSource').textContent = item.source || '-';
+  document.getElementById('vidModalTitle').textContent = item.title || '(无标题)';
+
+  const author = document.getElementById('vidModalAuthor');
+  author.innerHTML = `
+    <div style="width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-weight:700">${(item.author || '?').charAt(0)}</div>
+    <div>
+      <div style="color:var(--text);font-weight:600">${escHtml(item.author || '未知作者')}</div>
+      ${item.published_at ? `<div style="font-size:10px;color:var(--text3)">${new Date(item.published_at).toLocaleString('zh-CN')}</div>` : ''}
+    </div>
+  `;
+
+  const stats = document.getElementById('vidModalStats');
+  stats.innerHTML = `
+    <div><div style="font-size:18px;font-weight:700;color:var(--cyan);font-family:monospace">${fmtNum(item.views || 0)}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">👁 播放</div></div>
+    <div><div style="font-size:18px;font-weight:700;color:var(--cyan);font-family:monospace">${fmtNum(item.likes || 0)}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">❤️ 点赞</div></div>
+    <div><div style="font-size:18px;font-weight:700;color:var(--cyan);font-family:monospace">${fmtNum(item.comments || 0)}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">💬 评论</div></div>
+    ${item.duration ? `<div><div style="font-size:18px;font-weight:700;color:var(--cyan);font-family:monospace">${item.duration}</div><div style="color:var(--text3);font-size:10px;margin-top:2px">⏱ 时长</div></div>` : ''}
+  `;
+
+  document.getElementById('vidModalDesc').textContent = item.transcript || item.title || '(无描述)';
+
+  const tagsBox = document.getElementById('vidModalTags');
+  if (item.tags && item.tags.length) {
+    tagsBox.innerHTML = item.tags.map(t => `<span style="display:inline-block;background:rgba(33,255,243,.1);color:var(--cyan);padding:3px 10px;border-radius:4px;font-size:11px;margin:2px">#${escHtml(t)}</span>`).join('');
+  } else { tagsBox.innerHTML = ''; }
+
+  m.style.display = 'flex';
+}
+
+function closeVidModal() {
+  document.getElementById('vidModal').style.display = 'none';
+  _vidModalCurrent = null;
+}
+
+function vidModalClone() {
+  if (!_vidModalCurrent) return;
+  const it = _vidModalCurrent;
+  closeVidModal();
+  if (it.local_content_id) { cloneStartFromContent(it.local_content_id); return; }
+  if (!it.video_url) return toast('该视频无可用链接');
+  toast('正在抓取该视频...');
+  api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url: it.video_url }) })
+    .then(j => {
+      if (!j.success) throw new Error(j.error);
+      State.selectedContentId = j.content.id;
+      loadContents();
+      goMod('clone');
+      setTimeout(() => { goStep(2); realRunStep2(j.content); }, 200);
+    })
+    .catch(e => toast('抓取失败：' + e.message));
+}
+
+function vidModalFollow() {
+  if (!_vidModalCurrent) return;
+  const it = _vidModalCurrent;
+  if (!it.video_url) return toast('无可用链接');
+  api('/api/radar/monitors', { method: 'POST', body: JSON.stringify({ url: it.video_url, name: it.author }) })
+    .then(j => {
+      if (!j.success) throw new Error(j.error);
+      toast(`✅ 已关注 ${j.monitor.account_name}`);
+      loadMonitors();
+    })
+    .catch(e => toast('关注失败：' + e.message));
+}
+
+function vidModalOpenOrigin() {
+  if (_vidModalCurrent?.video_url) window.open(_vidModalCurrent.video_url, '_blank');
+}
+
+
+// ═══════════════════════════════════════════════
+// MOCK 数据
+// ═══════════════════════════════════════════════
+const PLATFORMS = {
+  douyin:        { name: '抖音',       cls: 'plat-douyin',       icon: '📺' },
+  'douyin-lite': { name: '抖音极速版', cls: 'plat-douyin-lite',  icon: '⚡' },
+  kuaishou:      { name: '快手',       cls: 'plat-kuaishou',     icon: '📹' },
+  'kuaishou-lite':{name: '快手极速版', cls: 'plat-kuaishou-lite',icon: '⚡' },
+  redbook:       { name: '小红书',     cls: 'plat-redbook',      icon: '📕' },
+  weishi:        { name: '微视',       cls: 'plat-weishi',       icon: '🎞' },
+};
+
+function fmtNum(n) {
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿';
+  if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+const COLORS = ['#FF5470', '#7c6cf0', '#21FFF3', '#FFF600', '#FF8B3D', '#10b981', '#ec4899', '#00B0F0'];
+function colorAt(i) { return COLORS[i % COLORS.length]; }
+
+const SEARCH_VIDEOS = [
+  { emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色，带杯柄都不沾', author: '阿琳的彩妆日常', avatar: '👩', plat: 'douyin',       views: 2300000, likes: 124000, dur: '0:58', time: '2 天前', rank: 1 },
+  { emoji: '👄', title: '99 元买了 7 只口红，这只 0 差评！纯欲挂 yyds', author: 'CC 的种草日记', avatar: '👧', plat: 'redbook',      views: 890000,  likes: 56000,  dur: '0:45', time: '3 天前', rank: 2 },
+  { emoji: '💋', title: '试色 12 支爆款口红 | 这只显白到发光！',         author: '美妆博主小鹿', avatar: '🦌', plat: 'douyin',       views: 1560000, likes: 82000,  dur: '1:20', time: '1 天前', rank: 3 },
+  { emoji: '🌹', title: '送女朋友千万别买这只口红…她会上瘾',                 author: '老王种草',     avatar: '👨', plat: 'kuaishou',     views: 678000,  likes: 41000,  dur: '0:38', time: '5 小时前', rank: 4 },
+  { emoji: '✨', title: '冷调显白红 vs 暖调温柔粉 | 一支搞定 4 季',       author: 'Lulu 的衣橱',  avatar: '👗', plat: 'redbook',      views: 432000,  likes: 28000,  dur: '1:05', time: '4 天前' },
+  { emoji: '💖', title: 'YSL vs MAC vs Tom Ford 三大热门口红横评',        author: '理性消费指南', avatar: '🤓', plat: 'douyin',       views: 925000,  likes: 67000,  dur: '2:14', time: '1 天前' },
+  { emoji: '🍒', title: '学生党宝藏！20 元真嘴唇感口红测评',              author: '平价美妆',     avatar: '🌸', plat: 'douyin-lite',  views: 234000,  likes: 19800,  dur: '0:52', time: '6 小时前' },
+  { emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',                author: '专业彩妆师 May', avatar: '💋', plat: 'douyin',       views: 1890000, likes: 156000, dur: '3:42', time: '5 天前' },
+  { emoji: '👑', title: '哑光雾面 vs 镜面镜光 | 哪种更显气质？',           author: '气质美学',     avatar: '👸', plat: 'redbook',      views: 312000,  likes: 24000,  dur: '0:48', time: '2 天前' },
+  { emoji: '🌷', title: '春天必入！4 只温柔豆沙色实测',                    author: 'Sunny 美妆',   avatar: '🌷', plat: 'kuaishou',     views: 156000,  likes: 12300,  dur: '1:18', time: '3 天前' },
+  { emoji: '🍑', title: '日常通勤 5 分钟妆 | 一支口红打天下',              author: '通勤美妆',     avatar: '👜', plat: 'weishi',       views: 87000,   likes: 7800,   dur: '0:42', time: '1 天前' },
+  { emoji: '💄', title: '哺乳期能用的口红有哪些？母婴博主实测',            author: '宝妈安安',     avatar: '👶', plat: 'redbook',      views: 245000,  likes: 18500,  dur: '1:30', time: '4 天前' },
+];
+
+const FOLLOWED = [
+  { id: 'f1', name: '阿琳的彩妆日常', avatar: '👩', plat: 'douyin',  fans: 2340000, works: 312, newCount: 3, bio: '专业彩妆师 8 年 · 种草不踩雷 · 每周三新品测评 · 商务合作私信', tags: ['美妆', '种草', '测评'], hot: true },
+  { id: 'f2', name: 'CC 的种草日记',   avatar: '👧', plat: 'redbook', fans: 856000,  works: 245, newCount: 1, bio: '小红书全平台美妆达人 · 95 后留学生 · 平价宝藏挖掘机', tags: ['美妆', '平价'] },
+  { id: 'f3', name: '通勤美妆',        avatar: '👜', plat: 'weishi',  fans: 432000,  works: 178, newCount: 0, bio: '5 分钟通勤妆 · 都市职场女性必备', tags: ['通勤', '快手妆'] },
+  { id: 'f4', name: '老王种草',        avatar: '👨', plat: 'kuaishou',fans: 1230000, works: 423, newCount: 2, bio: '北方爷们儿教你买好货 · 直男视角种草', tags: ['男性视角', '直白'] },
+  { id: 'f5', name: '理性消费指南',    avatar: '🤓', plat: 'douyin',  fans: 678000,  works: 156, newCount: 1, bio: '消费经济学教授 · 数据派种草 · 不被广告洗脑', tags: ['消费', '横评'] },
+  { id: 'f6', name: 'Sunny 美妆',      avatar: '🌷', plat: 'kuaishou',fans: 234000,  works: 89,  newCount: 0, bio: '清新少女风 · 大学校园美妆博主', tags: ['学生', '少女风'] },
+  { id: 'f7', name: '宝妈安安',        avatar: '👶', plat: 'redbook', fans: 189000,  works: 134, newCount: 1, bio: '二胎宝妈 · 母婴美妆测评 · 关注成分安全', tags: ['母婴', '安全'] },
+  { id: 'f8', name: '专业彩妆师 May',  avatar: '💋', plat: 'douyin',  fans: 3450000, works: 567, newCount: 4, bio: '中央戏剧学院化妆系毕业 · 明星御用化妆师', tags: ['专业', '化妆师'] },
+  { id: 'f9', name: '平价美妆',        avatar: '🌸', plat: 'douyin-lite', fans: 156000, works: 67, newCount: 2, bio: '20 元也能买好货 · 学生党最爱', tags: ['平价', '学生'] },
+  { id: 'f10', name: 'Lulu 的衣橱',    avatar: '👗', plat: 'redbook', fans: 567000,  works: 234, newCount: 0, bio: '穿搭+美妆全能博主 · INFP 文艺女生', tags: ['穿搭', '美妆'] },
+  { id: 'f11', name: '气质美学',       avatar: '👸', plat: 'redbook', fans: 423000,  works: 198, newCount: 1, bio: '淑女风 · 知性气质打造 · 30+ 女性必看', tags: ['气质', '知性'] },
+  { id: 'f12', name: '美妆博主小鹿',   avatar: '🦌', plat: 'douyin',  fans: 1230000, works: 345, newCount: 5, bio: '抖音 TOP 美妆达人 · 一支口红能聊半小时', tags: ['抖音', '深度评测'], hot: true },
+];
+
+const RANKING = [
+  { rank: 1, emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色，带杯柄都不沾', author: '阿琳的彩妆日常', plat: 'douyin', views: 2300000, likes: 124000, trend: 'new' },
+  { rank: 2, emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',                  author: '专业彩妆师 May', plat: 'douyin', views: 1890000, likes: 156000, trend: 'up', delta: 12 },
+  { rank: 3, emoji: '💋', title: '试色 12 支爆款口红 | 这只显白到发光！',           author: '美妆博主小鹿',   plat: 'douyin', views: 1560000, likes: 82000,  trend: 'up', delta: 5 },
+  { rank: 4, emoji: '👄', title: '99 元买了 7 只口红，这只 0 差评！纯欲挂 yyds',     author: 'CC 的种草日记', plat: 'redbook', views: 890000,  likes: 56000,  trend: 'down', delta: -2 },
+  { rank: 5, emoji: '💖', title: 'YSL vs MAC vs Tom Ford 三大热门口红横评',         author: '理性消费指南',   plat: 'douyin', views: 925000,  likes: 67000,  trend: 'up', delta: 8 },
+  { rank: 6, emoji: '🌹', title: '送女朋友千万别买这只口红…她会上瘾',                   author: '老王种草',       plat: 'kuaishou', views: 678000, likes: 41000, trend: 'new' },
+  { rank: 7, emoji: '✨', title: '冷调显白红 vs 暖调温柔粉 | 一支搞定 4 季',         author: 'Lulu 的衣橱',    plat: 'redbook', views: 432000,  likes: 28000,  trend: 'down', delta: -3 },
+  { rank: 8, emoji: '👑', title: '哑光雾面 vs 镜面镜光 | 哪种更显气质？',             author: '气质美学',       plat: 'redbook', views: 312000,  likes: 24000,  trend: 'up', delta: 4 },
+  { rank: 9, emoji: '🍒', title: '学生党宝藏！20 元真嘴唇感口红测评',                author: '平价美妆',       plat: 'douyin-lite', views: 234000, likes: 19800, trend: 'new' },
+  { rank: 10, emoji: '🌷', title: '春天必入！4 只温柔豆沙色实测',                    author: 'Sunny 美妆',     plat: 'kuaishou', views: 156000, likes: 12300, trend: 'up', delta: 2 },
+];
+
+const RANK_MINI = [
+  { emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色…', author: '阿琳的彩妆日常', plat: 'douyin', views: 2300000, time: '2 天前' },
+  { emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',     author: '专业彩妆师 May', plat: 'douyin', views: 1890000, time: '5 天前' },
+  { emoji: '💋', title: '试色 12 支爆款口红 | 这只显白…',     author: '美妆博主小鹿',  plat: 'douyin', views: 1560000, time: '1 天前' },
+  { emoji: '🌹', title: '送女朋友千万别买这只口红…',           author: '老王种草',      plat: 'kuaishou', views: 678000,  time: '5 小时前' },
+  { emoji: '👜', title: '通勤族必看！5 分钟出门妆',           author: '通勤美妆',      plat: 'weishi',  views: 87000,   time: '1 天前' },
+  { emoji: '👶', title: '哺乳期口红测评 | 母婴博主亲测',       author: '宝妈安安',      plat: 'redbook', views: 245000,  time: '4 天前' },
+];
+
+// ═══════════════════════════════════════════════
+// 模块切换
+// ═══════════════════════════════════════════════
+function goMod(name) {
+  document.querySelectorAll('.sb-item').forEach(el => el.classList.toggle('active', el.dataset.mod === name));
+  document.querySelectorAll('.mod').forEach(el => el.classList.toggle('active', el.dataset.mod === name));
+  const titles = {
+    search: '🔍 爆款搜索',
+    follow: '⭐ 我的关注',
+    rank:   '📊 热度排行',
+    clone:  '🎬 视频克隆',
+    works:  '📚 我的作品',
+  };
+  document.getElementById('tpCrumb').innerHTML = (titles[name] || name) + ' <span class="small">实时</span>';
+  document.querySelector('.main').scrollTop = 0;
+
+  if (name === 'follow' && !window._followInited) { renderFollow(); window._followInited = true; }
+  if (name === 'rank' && !window._rankInited) { renderRank(); window._rankInited = true; }
+  if (name === 'clone' && !window._cloneInited) { window._cloneInited = true; }
+}
+document.querySelectorAll('.sb-item[data-mod]').forEach(el => {
+  el.addEventListener('click', () => { if (el.dataset.mod) goMod(el.dataset.mod); });
+});
+
+// ═══════════════════════════════════════════════
+// MOD: 搜索
+// ═══════════════════════════════════════════════
+function renderSearch(items, kw) {
+  const grid = document.getElementById('searchGrid');
+  grid.innerHTML = items.map((v, i) => {
+    const p = PLATFORMS[v.plat] || PLATFORMS.douyin;
+    const c = colorAt(i);
+    return `
+      <div class="video-card">
+        <div class="vc-thumb" style="background:linear-gradient(135deg, ${c}40, ${c}10)">
+          <div class="vc-thumb-overlay"></div>
+          <span class="plat ${p.cls} vc-thumb-plat">${p.icon} ${p.name}</span>
+          ${v.rank ? `<span class="vc-thumb-rank">🔥 #${v.rank}</span>` : ''}
+          <span class="vc-thumb-duration">${v.dur}</span>
+          <span style="position:relative;z-index:1">${v.emoji}</span>
+        </div>
+        <div class="vc-info">
+          <div class="vc-title">${v.title}</div>
+          <div class="vc-meta">
+            <div class="vc-author">
+              <div class="vc-avatar">${v.avatar}</div>
+              <span class="vc-author-name">${v.author}</span>
+            </div>
+            <span>${v.time}</span>
+          </div>
+          <div class="vc-stats">
+            <span class="vc-stat">👁 <b>${fmtNum(v.views)}</b></span>
+            <span class="vc-stat">❤️ <b>${fmtNum(v.likes)}</b></span>
+            <span class="vc-stat">💬 <b>${fmtNum(Math.floor(v.likes * 0.05))}</b></span>
+          </div>
+          <div class="vc-actions">
+            <button class="btn btn-sm" onclick="event.stopPropagation();toast('已关注 ${v.author}')">⭐ 关注</button>
+            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();goMod('clone');toast('已选定该视频，进入克隆流程')">🎬 克隆</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function doSearch() {
+  const kw = document.getElementById('searchInput').value.trim();
+  document.getElementById('searchKw').textContent = `"${kw || '全部'}"`;
+  document.getElementById('searchTotal').textContent = (50 + Math.floor(Math.random() * 200));
+  renderSearch(SEARCH_VIDEOS, kw);
+  toast(`🔍 搜索 "${kw}" · 已聚合 6 个平台结果`);
+}
+function searchTag(tag) { document.getElementById('searchInput').value = tag; smartSearch(); }
+
+// chip 行为：单选（默认）/ 多选（data-multi="true"）
+document.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  const row = chip.parentElement;
+  if (!row?.classList.contains('chip-row')) return;
+  if (row.dataset.multi === 'true') {
+    // 多选模式（带 data-multi=true）
+    if (chip.dataset.plat === 'all') {
+      row.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+    } else {
+      const allChip = row.querySelector('.chip[data-plat="all"]');
+      allChip?.classList.remove('selected');
+      chip.classList.toggle('selected');
+      if (!row.querySelector('.chip.selected')) allChip?.classList.add('selected');
+    }
+  } else {
+    row.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+  }
+  // 自动重新搜索（仅当是平台/排序/时间 chip 且当前在 search 模块）
+  if ((chip.dataset.plat || chip.dataset.sort || chip.dataset.time) && document.querySelector('.mod[data-mod="search"].active')) {
+    if (window._searchTriggerTimer) clearTimeout(window._searchTriggerTimer);
+    window._searchTriggerTimer = setTimeout(() => smartSearch(), 200);
+  }
+});
+
+// ═══════════════════════════════════════════════
+// MOD: 关注
+// ═══════════════════════════════════════════════
+function renderFollow() {
+  // 按平台分组
+  const grouped = {};
+  FOLLOWED.forEach(f => {
+    if (!grouped[f.plat]) grouped[f.plat] = [];
+    grouped[f.plat].push(f);
+  });
+
+  const list = document.getElementById('followList');
+  list.innerHTML = Object.entries(grouped).map(([plat, arr]) => {
+    const p = PLATFORMS[plat];
+    return `
+      <div class="follow-plat-group">
+        <div class="follow-plat-title">${p.icon} ${p.name} · ${arr.length} 位</div>
+        ${arr.map((f, i) => `
+          <div class="follow-author ${plat === 'douyin' && i === 0 ? 'active' : ''}" onclick="selectFollow('${f.id}')">
+            <div class="follow-author-avatar" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+3)}40)">${f.avatar}</div>
+            <div class="follow-author-meta">
+              <div class="follow-author-name"><span>${f.name}</span>${f.hot ? '🔥' : ''}</div>
+              <div class="follow-author-stat">${fmtNum(f.fans)} 粉 · ${f.works} 作品</div>
+            </div>
+            ${f.newCount ? `<div class="follow-author-dot" title="${f.newCount} 个新作品"></div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
+
+  // 默认选中第一个
+  selectFollow(FOLLOWED[0].id);
+}
+
+function selectFollow(id) {
+  document.querySelectorAll('.follow-author').forEach(el => el.classList.remove('active'));
+  // 找到点击元素
+  const all = [...document.querySelectorAll('.follow-author')];
+  const f = FOLLOWED.find(x => x.id === id);
+  if (!f) return;
+  // 简单：标记包含该作者名的卡
+  all.forEach(el => {
+    if (el.querySelector('.follow-author-name span')?.textContent === f.name) el.classList.add('active');
+  });
+
+  const p = PLATFORMS[f.plat];
+  const detail = document.getElementById('followDetail');
+
+  // 生成 mock 作品列表
+  const works = Array.from({ length: 8 }).map((_, i) => ({
+    emoji: ['💄','👄','💋','🎀','👑','✨','🌷','💖'][i % 8],
+    title: `${f.name} 作品 #${f.works - i}`,
+    views: Math.floor(50000 + Math.random() * 2000000),
+    days: i + 1,
+  }));
+
+  detail.innerHTML = `
+    <div class="follow-detail-head">
+      <div class="fd-avatar" style="background:linear-gradient(135deg, ${colorAt(0)}40, ${colorAt(2)}40)">${f.avatar}</div>
+      <div class="fd-info">
+        <div class="fd-name">${f.name} <span class="plat ${p.cls}">${p.icon} ${p.name}</span></div>
+        <div class="fd-bio">${f.bio}</div>
+        <div class="fd-stats">
+          <div><div class="fd-stat-num">${fmtNum(f.fans)}</div><div class="fd-stat-label">粉丝</div></div>
+          <div><div class="fd-stat-num">${f.works}</div><div class="fd-stat-label">作品</div></div>
+          <div><div class="fd-stat-num">${(8 + Math.random() * 4).toFixed(1)}%</div><div class="fd-stat-label">互动率</div></div>
+          <div><div class="fd-stat-num" style="color:var(--green)">↑ ${(2 + Math.random() * 8).toFixed(1)}%</div><div class="fd-stat-label">7 天涨粉</div></div>
+        </div>
+      </div>
+      <div class="fd-actions">
+        <button class="btn btn-sm">🔔 开启新作通知</button>
+        <button class="btn btn-sm btn-warm">🎬 克隆 ta 的爆款</button>
+        <button class="btn btn-sm">取消关注</button>
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">
+        🎯 标签
+        <span class="chip-row">${f.tags.map(t => `<span class="chip btn-sm" style="background:rgba(33,255,243,0.1);color:var(--cyan);border-color:rgba(33,255,243,0.3)">${t}</span>`).join('')}</span>
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">
+        🎬 最近作品（${works.length}）
+        <button class="btn btn-sm">查看全部 ${f.works} 个 →</button>
+      </div>
+      <div class="fd-works-grid">
+        ${works.map((w, i) => `
+          <div class="fd-work">
+            <div class="fd-work-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">${w.emoji}</div>
+            <div class="fd-work-info">
+              <div class="fd-work-title">${w.title}</div>
+              <div class="fd-work-stat"><span>👁 ${fmtNum(w.views)}</span><span>${w.days} 天前</span></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">📈 数据趋势（最近 30 天）</div>
+      <div style="background:var(--bg3);border-radius:8px;padding:30px;text-align:center;color:var(--text3);font-size:12px">
+        📊 折线图占位（粉丝数 / 互动率 / 发布频率 等三条线）
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════
+// MOD: 排行
+// ═══════════════════════════════════════════════
+function renderRank() {
+  const list = document.getElementById('rankList');
+  list.innerHTML = RANKING.map(r => {
+    const p = PLATFORMS[r.plat];
+    const trendHtml = r.trend === 'new'  ? '<span class="rank-trend new">🆕 NEW</span>' :
+                      r.trend === 'up'   ? `<span class="rank-trend up">↑ ${r.delta}</span>` :
+                      r.trend === 'down' ? `<span class="rank-trend down">↓ ${Math.abs(r.delta)}</span>` :
+                      '<span class="rank-trend">—</span>';
+    const numCls = r.rank === 1 ? 't1' : r.rank === 2 ? 't2' : r.rank === 3 ? 't3' : '';
+    return `
+      <div class="rank-row">
+        <div class="rank-num ${numCls}">${r.rank}</div>
+        <div class="rank-thumb" style="background:linear-gradient(135deg, ${colorAt(r.rank)}40, ${colorAt(r.rank+2)}10)">${r.emoji}</div>
+        <div class="rank-info">
+          <div class="rank-title">${r.title}</div>
+          <div class="rank-author-row">
+            <span class="plat ${p.cls}">${p.icon} ${p.name}</span>
+            <span>· ${r.author}</span>
+          </div>
+        </div>
+        <div class="rank-views">${fmtNum(r.views)}</div>
+        <div class="rank-likes">${fmtNum(r.likes)}</div>
+        <div>${trendHtml}</div>
+        <div class="rank-actions">
+          <button class="btn btn-sm" onclick="toast('已关注')">⭐</button>
+          <button class="btn btn-sm btn-primary" onclick="goMod('clone');toast('已加载到克隆流程')">🎬</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const mini = document.getElementById('rankMini');
+  mini.innerHTML = RANK_MINI.map((r, i) => {
+    const p = PLATFORMS[r.plat];
+    return `
+      <div class="rank-mini-card" onclick="toast('已加载该视频到克隆流程')">
+        <div class="rank-mini-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">${r.emoji}</div>
+        <div class="rank-mini-info">
+          <div class="rank-mini-title">${r.title}</div>
+          <div class="rank-mini-meta">
+            <span class="plat ${p.cls}" style="font-size:9px">${p.icon}</span>
+            ${r.author} · <b>${fmtNum(r.views)}</b> 播放 · ${r.time}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// rank tabs
+document.querySelectorAll('.rank-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.rank-tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  toast('已切换排行维度：' + t.textContent.trim());
+}));
+
+// ═══════════════════════════════════════════════
+// MOD: 克隆 5 步流程
+// ═══════════════════════════════════════════════
+let currentStep = 1;
+function goStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.spanel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.spanel[data-spanel="${n}"]`)?.classList.add('active');
+  document.querySelectorAll('.step').forEach(el => {
+    const sn = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done');
+    if (sn === n) el.classList.add('active');
+    else if (sn < n) el.classList.add('done');
+  });
+  const fill = document.getElementById('stepFill');
+  if (fill) fill.style.width = `${((n - 1) / 4) * 100}%`;
+  document.querySelector('.main').scrollTop = 0;
+  // Step 2 已经由 realRunStep2(content) 直接渲染真实数据，不再跑 mock 动画（mock 会留下孤立 emoji 占位）
+  // if (n === 2) startParseAnimation();
+  if (n === 3) renderRewrite();
+  if (n === 4) startGenAnimation();
+}
+
+const MOCK_SUBTITLES = [
+  { t: '00:00', text: '姐妹们今天我必须给你们说这个口红！' },
+  { t: '00:03', text: '就是这一支，我用了整整 3 个月。' },
+  { t: '00:07', text: '从早上化妆一直到晚上下班完全不脱色。' },
+  { t: '00:11', text: '关键它还不显唇纹，平价学生党都买得起。' },
+  { t: '00:16', text: '上嘴显白显气色，黄黑皮也能驾驭。' },
+  { t: '00:20', text: '这质感你看，真的像唇釉一样水润。' },
+  { t: '00:25', text: '吃饭喝水都不会沾杯子上。' },
+  { t: '00:30', text: '我已经回购第三支了，姐妹们冲！' },
+  { t: '00:35', text: '小黄车第一个链接，前 100 名有赠品。' },
+  { t: '00:40', text: '原价 89 现在只要 39，全网最低！' },
+];
+const MOCK_FRAMES = ['🎬','👄','💄','🪞','👩','✨','🥤','💋','🛒','🎁','💰','👍','👀','🤳','👋','🌟']
+  .map((emoji, i) => ({ ts: `0:${(i*4).toString().padStart(2,'0')}`, emoji }));
+
+const MOCK_REWRITE = [
+  { label: 'HOOK · 钩子', orig: '姐妹们今天我必须给你们说这个口红！就是这一支，我用了整整 3 个月。', new: '不是我说，这只口红真的让我惊到了！连续用了 90 天我才敢推荐给你们。', changed: true },
+  { label: 'PAIN · 痛点', orig: '从早上化妆一直到晚上下班完全不脱色。关键它还不显唇纹，平价学生党都买得起。', new: '化完妆开早会、午饭、加班到晚上，居然完全不掉色。最重要的是不卡唇纹，价格还是日常水平能负担的。', changed: true },
+  { label: 'PROOF · 证明', orig: '上嘴显白显气色，黄黑皮也能驾驭。这质感你看，真的像唇釉一样水润。', new: '我是冷调黄一白，涂上瞬间提气色不挑肤色。质地像唇蜜一样滋润不拔干。', changed: true },
+  { label: 'CTA · 行动', orig: '我已经回购第三支了，姐妹们冲！小黄车第一个链接，前 100 名有赠品。', new: '我自己已经下单第三支备用了。点击屏幕下方第一个商品链接，今天前 100 单加送同色系唇笔。', changed: true },
+  { label: 'OUTRO · 收尾', orig: '我会一直给你们测好用的，记得点关注。我们下个视频见，拜拜！', new: '关注我每周三新品测评不迷路，下期我们聊春夏防晒。爱你们，下条视频见！', changed: true },
+];
+
+const MOCK_SCENES = ['👩','💄','👄','🥤','🛒','💰','👀','👋'].map((emoji, i) => ({ num: i + 1, label: `场景 #${i + 1}`, emoji }));
+
+let parseStarted = false;
+function startParseAnimation() {
+  if (parseStarted) return; parseStarted = true;
+  const subList = document.getElementById('subtitleList');
+  const frameGrid = document.getElementById('frameGrid');
+  subList.innerHTML = ''; frameGrid.innerHTML = '';
+
+  let si = 0;
+  const sttPct = document.getElementById('sttPct');
+  const sttHint = document.getElementById('sttHint');
+  const sttRow = document.getElementById('step2-stt');
+  const subTimer = setInterval(() => {
+    if (si >= MOCK_SUBTITLES.length) { clearInterval(subTimer); sttPct.textContent = '100%'; sttRow.classList.remove('active'); sttRow.classList.add('done'); sttRow.querySelector('.pp-icon').textContent = '✓'; sttHint.textContent = `已识别 ${MOCK_SUBTITLES.length} 条字幕`; return; }
+    const item = MOCK_SUBTITLES[si];
+    const row = document.createElement('div');
+    row.className = 'subtitle-row new';
+    row.innerHTML = `<span class="subtitle-time">${item.t}</span><span class="subtitle-text">${item.text}</span>`;
+    subList.appendChild(row); subList.scrollTop = subList.scrollHeight;
+    si++; sttPct.textContent = Math.round(si / MOCK_SUBTITLES.length * 100) + '%';
+  }, 380);
+
+  let fi = 0;
+  const framePct = document.getElementById('framePct');
+  const frameHint = document.getElementById('frameHint');
+  const frameRow = document.getElementById('step2-frame');
+  MOCK_FRAMES.forEach(f => { const cell = document.createElement('div'); cell.className = 'frame-cell'; cell.style.opacity = '0.15'; cell.innerHTML = `<span class="frame-cell-time">${f.ts}</span>`; frameGrid.appendChild(cell); });
+  setTimeout(() => {
+    frameRow.classList.add('active'); frameRow.querySelector('.pp-icon').textContent = '⟳';
+    const frameTimer = setInterval(() => {
+      if (fi >= MOCK_FRAMES.length) {
+        clearInterval(frameTimer); framePct.textContent = '100%'; frameRow.classList.remove('active'); frameRow.classList.add('done'); frameRow.querySelector('.pp-icon').textContent = '✓'; frameHint.textContent = `已分析 ${MOCK_FRAMES.length} 帧 · 8 个场景`;
+        const exRow = document.getElementById('step2-extract');
+        exRow.classList.add('active'); exRow.querySelector('.pp-icon').textContent = '⟳'; exRow.querySelector('.pp-pct').textContent = '0%';
+        let p = 0;
+        const exTimer = setInterval(() => {
+          p += 12;
+          if (p >= 100) { p = 100; exRow.classList.remove('active'); exRow.classList.add('done'); exRow.querySelector('.pp-icon').textContent = '✓';
+            const btn = document.getElementById('step2NextBtn'); btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = '查看改写结果 →'; btn.onclick = () => goStep(3);
+            clearInterval(exTimer);
+          }
+          exRow.querySelector('.pp-pct').textContent = p + '%';
+        }, 200);
+        return;
+      }
+      const cell = frameGrid.children[fi];
+      cell.style.opacity = '1'; cell.innerHTML = `${MOCK_FRAMES[fi].emoji}<span class="frame-cell-time">${MOCK_FRAMES[fi].ts}</span>`;
+      fi++; framePct.textContent = Math.round(fi / MOCK_FRAMES.length * 100) + '%';
+    }, 280);
+  }, 1500);
+}
+
+function renderRewrite() {
+  const grid = document.getElementById('rewriteGrid');
+  grid.innerHTML = `
+    <div class="rewrite-col">
+      <div class="rewrite-col-head"><span>📜 原始口播</span><span class="badge-orig">5 段 · 60s</span></div>
+      ${MOCK_REWRITE.map(r => `<div class="rewrite-block"><div class="rewrite-block-label">${r.label}</div>${r.orig}</div>`).join('')}
+    </div>
+    <div class="rewrite-col">
+      <div class="rewrite-col-head"><span>✨ AI 改写版</span><span class="badge-new">DeepSeek-V3</span></div>
+      ${MOCK_REWRITE.map(r => `<div class="rewrite-block ${r.changed ? 'changed' : ''}"><div class="rewrite-block-label">${r.label}</div>${r.new}</div>`).join('')}
+    </div>
+  `;
+}
+
+let genStarted = false;
+function startGenAnimation() {
+  if (genStarted) return; genStarted = true;
+  const grid = document.getElementById('sceneGrid');
+  grid.innerHTML = MOCK_SCENES.map(s => `<div class="scene-card pending" data-scene="${s.num}"><div class="scene-thumb">${s.emoji}</div><div class="scene-status pending">待处理</div><div class="scene-meta"><span class="scene-num">#${s.num}</span> · ${s.label}</div></div>`).join('');
+
+  let done = 0, elapsed = 0;
+  const total = MOCK_SCENES.length;
+  const timeEl = document.getElementById('genTime');
+  const costEl = document.getElementById('genCost');
+  const doneEl = document.getElementById('genDone');
+  const diffEl = document.getElementById('genDiff');
+  const tickTimer = setInterval(() => {
+    elapsed++;
+    timeEl.textContent = `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${(elapsed%60).toString().padStart(2,'0')}`;
+    costEl.textContent = '¥' + (elapsed * 0.18).toFixed(2);
+  }, 1000);
+
+  function processScene(i, delay) {
+    setTimeout(() => {
+      const card = grid.children[i];
+      card.classList.remove('pending'); card.classList.add('processing');
+      const status = card.querySelector('.scene-status');
+      status.classList.remove('pending'); status.classList.add('processing'); status.textContent = '生成中';
+      setTimeout(() => {
+        card.classList.remove('processing'); card.classList.add('done');
+        status.classList.remove('processing'); status.classList.add('done'); status.textContent = '✓ 完成';
+        done++; doneEl.textContent = `${done} / ${total}`;
+        if (done === total) {
+          clearInterval(tickTimer); diffEl.textContent = '87 分';
+          const btn = document.getElementById('step4NextBtn'); btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = '查看成片 →'; btn.onclick = () => goStep(5);
+        }
+      }, 1800 + Math.random() * 1200);
+    }, delay);
+  }
+  for (let i = 0; i < total; i++) processScene(i, Math.floor(i / 4) * 1500 + (i % 4) * 200);
+}
+
+// ═══════════════════════════════════════════════
+// 通用
+// ═══════════════════════════════════════════════
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.style.display = 'none', 2400);
+}
+
+// 初始化：默认搜索为空白态（不预加载 mock）
+(function clearInitialSearchGrid() {
+  const grid = document.getElementById('searchGrid');
+  if (grid) grid.innerHTML = `
+    <div style="grid-column:1/-1;padding:60px 32px;text-align:center;color:var(--text3);background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+      <div style="font-size:42px;margin-bottom:14px;opacity:0.4">🔍</div>
+      <div style="font-size:15px;color:var(--text2);font-weight:600;margin-bottom:8px">输入关键字开始搜索</div>
+      <div style="font-size:12px;line-height:1.6">支持「关键字」（如：口红测评 / 减脂餐）<br>或「视频链接」（自动抓取）</div>
+    </div>
+  `;
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// 真实 API 集成层（覆盖上方所有 mock 渲染函数）
+// ════════════════════════════════════════════════════════════════════
+
+// 全局 state
+const State = {
+  contents: [],     // 已抓取的视频内容
+  monitors: [],     // 关注的博主
+  trending: {},     // 各平台热门 { platform: [items] }
+  tasks: [],        // 复刻任务（我的作品）
+  selectedContentId: null,  // 当前 Step 1 选定的 content_id
+  selectedRewriteId: null,  // 当前改写后的内容
+  rewrittenText: '',
+  selectedVoiceId: null,
+  pollTimer: null,  // 任务轮询计时器
+};
+
+// ─── 平台映射（兼容 douyin/xiaohongshu/kuaishou/bilibili/wechat） ───
+const PLAT_MAP = {
+  douyin:       { name:'抖音',     cls:'plat-douyin',       icon:'📺' },
+  kuaishou:     { name:'快手',     cls:'plat-kuaishou',     icon:'📹' },
+  xiaohongshu:  { name:'小红书',   cls:'plat-redbook',      icon:'📕' },
+  redbook:      { name:'小红书',   cls:'plat-redbook',      icon:'📕' },
+  bilibili:     { name:'B站',      cls:'plat-weishi',       icon:'📺' },
+  weishi:       { name:'微视',     cls:'plat-weishi',       icon:'🎞' },
+  wechat:       { name:'视频号',   cls:'plat-weishi',       icon:'💬' },
+  other:        { name:'其他',     cls:'plat-douyin-lite',  icon:'🌐' },
+};
+function getPlatLabel(p) { return PLAT_MAP[p] || PLAT_MAP.other; }
+
+// ─── 通用 API 调用 ───
+async function api(path, opts = {}) {
+  const r = await authFetch(path, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：搜索模块 — URL 解析 + 内容库浏览
+// ════════════════════════════════════════════════════════════════════
+async function loadContents() {
+  try {
+    const j = await api('/api/radar/contents');
+    State.contents = j.contents || [];
+    renderRealSearch();
+    renderContentLib();
+  } catch (e) {
+    console.warn('[contents] 加载失败', e);
+  }
+}
+
+function renderRealSearch() {
+  const grid = document.getElementById('searchGrid');
+  if (!grid) return;
+  if (!State.contents.length) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;background:var(--bg2);border:1px dashed var(--border2);border-radius:12px;padding:64px 32px;text-align:center">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.4">🔍</div>
+        <div style="font-size:15px;color:var(--text2);font-weight:600;margin-bottom:6px">输入关键字开始搜索</div>
+        <div style="font-size:12px;color:var(--text3)">使用顶部搜索框，可输入关键词或直接粘贴视频链接</div>
+      </div>
+    `;
+    return;
+  }
+  grid.innerHTML = State.contents.map((c, i) => {
+    const p = getPlatLabel(c.platform);
+    const col = colorAt(i);
+    const emoji = ['🎬','💄','🍳','📱','✨','🎤','🎵','💖','🌟','👑','🎨','🚀'][i % 12];
+    const tagsHtml = (c.tags || []).slice(0, 3).map(t => `<span class="vc-stat" style="background:rgba(33,255,243,.1);color:var(--cyan);padding:2px 6px;border-radius:3px">#${escHtml(t)}</span>`).join(' ');
+    // 真封面优先，无则回退到色块 + emoji
+    const hasCover = c.cover && /^https?:\/\//.test(c.cover);
+    const thumbInner = hasCover
+      ? `<img src="${escAttr(c.cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;z-index:0" onerror="this.style.display='none';this.parentElement.querySelector('.vc-thumb-fallback').style.display='flex'"/>
+         <div class="vc-thumb-fallback" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;background:linear-gradient(135deg, ${col}40, ${col}10);font-size:38px;z-index:0">${emoji}</div>`
+      : `<div class="vc-thumb-fallback" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, ${col}40, ${col}10);font-size:38px;z-index:0">${emoji}</div>`;
+    // 头像：优先真实头像图
+    const hasAvatar = c.author_avatar && /^https?:\/\//.test(c.author_avatar);
+    const avatarHtml = hasAvatar
+      ? `<img class="vc-avatar" src="${escAttr(c.author_avatar)}" referrerpolicy="no-referrer" style="width:18px;height:18px;border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div class=&quot;vc-avatar&quot;>${(c.author || '?').charAt(0)}</div>'"/>`
+      : `<div class="vc-avatar">${(c.author || '?').charAt(0)}</div>`;
+    // 标题截断到 ~28 字
+    const shortTitle = (c.title || '(无标题)').length > 30 ? (c.title || '').slice(0, 28) + '…' : (c.title || '(无标题)');
+    return `
+      <div class="video-card" data-content-idx="${i}">
+        <div class="vc-thumb" style="position:relative;overflow:hidden">
+          ${thumbInner}
+          <div class="vc-thumb-overlay" style="z-index:1"></div>
+          <span class="plat ${p.cls} vc-thumb-plat" style="z-index:2">${p.icon} ${p.name}</span>
+          ${c.crawled ? '<span class="vc-thumb-rank" style="background:var(--green);z-index:2">✓ 已抓取</span>' : '<span class="vc-thumb-rank" style="background:var(--orange);z-index:2">⚠ AI 推测</span>'}
+        </div>
+        <div class="vc-info">
+          <div class="vc-title" title="${escAttr(c.title || '')}">${escHtml(shortTitle)}</div>
+          <div class="vc-meta">
+            <div class="vc-author">
+              ${avatarHtml}
+              <span class="vc-author-name">${escHtml(c.author || '未知作者')}</span>
+            </div>
+            <span style="font-size:10px">${c.style || ''}</span>
+          </div>
+          <div class="vc-stats" style="flex-wrap:wrap;gap:4px">${tagsHtml}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 卡片点击 → 弹窗
+  grid.querySelectorAll('.video-card[data-content-idx]').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = +card.dataset.contentIdx;
+      const c = State.contents[idx];
+      if (c) openVidModal({ ...c, local_content_id: c.id });
+    });
+  });
+}
+
+async function checkMcpStatus() {
+  try {
+    const j = await api('/api/radar/trending/douyin');
+    const el = document.getElementById('mcpStatus');
+    if (el) el.innerHTML = j.source === 'mcp' ? '<span style="color:var(--green)">✓ 已开通</span>' : '<span style="color:var(--orange)">未开通（需配置 media-crawler MCP）</span>';
+  } catch {}
+}
+
+async function extractFromInput() {
+  const inp = document.getElementById('searchUrlInput');
+  const url = (inp?.value || '').trim();
+  if (!url) return toast('请粘贴视频链接');
+  toast('正在抓取... 大约 5-30 秒');
+  try {
+    const j = await api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url }) });
+    if (!j.success) throw new Error(j.error || '抓取失败');
+    toast(`✅ 已抓取：${j.content.title || j.content.id}`);
+    await loadContents();
+  } catch (e) {
+    toast('抓取失败：' + e.message);
+  }
+}
+
+// 顶部主输入框抓取
+async function cloneStartFromUrl() {
+  const inp = document.getElementById('cloneUrlInput');
+  const url = (inp?.value || '').trim();
+  if (!url) return toast('请粘贴视频链接');
+  toast('正在抓取与解析视频内容...');
+  try {
+    const j = await api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url }) });
+    if (!j.success) throw new Error(j.error || '抓取失败');
+    State.selectedContentId = j.content.id;
+    await loadContents();
+    goStep(2);
+    realRunStep2(j.content);
+  } catch (e) {
+    toast('抓取失败：' + e.message);
+  }
+}
+
+function cloneStartFromContent(contentId) {
+  const c = State.contents.find(x => x.id === contentId);
+  if (!c) return toast('内容不存在');
+  State.selectedContentId = contentId;
+  goMod('clone');
+  setTimeout(() => { goStep(2); realRunStep2(c); }, 200);
+}
+
+function renderContentLib() {
+  const el = document.getElementById('cloneContentLib');
+  if (!el) return;
+  if (!State.contents.length) {
+    el.innerHTML = '<span>还没有抓取过视频。粘贴上方链接开始。</span>';
+    return;
+  }
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+      ${State.contents.slice(0, 6).map(c => {
+        const p = getPlatLabel(c.platform);
+        return `<div onclick="cloneStartFromContent('${escAttr(c.id)}')" style="cursor:pointer;background:var(--bg3);padding:8px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;display:flex;align-items:center;gap:6px">
+          <span class="plat ${p.cls}" style="font-size:9px">${p.icon}</span>
+          <span style="flex:1;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(c.title || '(无标题)')}</span>
+          <span style="color:var(--cyan);font-weight:600">复刻 →</span>
+        </div>`;
+      }).join('')}
+    </div>
+    ${State.contents.length > 6 ? `<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--text3)">还有 ${State.contents.length - 6} 个，去「爆款搜索」查看全部</div>` : ''}
+  `;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：关注模块 — /api/radar/monitors
+// ════════════════════════════════════════════════════════════════════
+async function loadMonitors() {
+  try {
+    const j = await api('/api/radar/monitors');
+    State.monitors = j.monitors || [];
+    document.getElementById('sbFollowBadge').textContent = State.monitors.length;
+    renderRealFollow();
+  } catch (e) {
+    console.warn('[monitors] 加载失败', e);
+  }
+}
+
+function renderRealFollow() {
+  const list = document.getElementById('followList');
+  if (!list) return;
+  if (!State.monitors.length) {
+    list.innerHTML = `
+      <div style="padding:30px 18px;text-align:center;color:var(--text3);font-size:12px">
+        <div style="font-size:36px;opacity:0.4;margin-bottom:12px">⭐</div>
+        <div style="margin-bottom:14px">还没关注任何博主</div>
+        <input id="addMonitorUrl" placeholder="粘贴博主主页或视频链接" style="width:100%;padding:8px 12px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:11px;outline:none;margin-bottom:8px" />
+        <button class="btn btn-primary btn-sm" onclick="addMonitor()" style="width:100%;justify-content:center">+ 添加关注</button>
+      </div>
+    `;
+    document.getElementById('followDetail').innerHTML = `<div style="padding:60px 30px;text-align:center;color:var(--text3)">←&nbsp;先添加关注的博主</div>`;
+    return;
+  }
+  // 按平台分组
+  const grouped = {};
+  State.monitors.forEach(m => {
+    if (!grouped[m.platform]) grouped[m.platform] = [];
+    grouped[m.platform].push(m);
+  });
+  list.innerHTML = `
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:6px">
+      <input id="addMonitorUrl" placeholder="粘贴博主链接添加关注" style="flex:1;padding:6px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-size:11px;outline:none" />
+      <button class="btn btn-primary btn-sm" onclick="addMonitor()">+</button>
+    </div>
+  ` + Object.entries(grouped).map(([plat, arr]) => {
+    const p = getPlatLabel(plat);
+    return `
+      <div class="follow-plat-group">
+        <div class="follow-plat-title">${p.icon} ${p.name} · ${arr.length} 位</div>
+        ${arr.map((m, i) => `
+          <div class="follow-author" data-monitor-id="${escAttr(m.id)}" onclick="selectMonitor('${escAttr(m.id)}')">
+            <div class="follow-author-avatar" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+3)}40)">${(m.account_name || '?').charAt(0)}</div>
+            <div class="follow-author-meta">
+              <div class="follow-author-name"><span>${escHtml(m.account_name || '(未命名)')}</span>${!m.is_active ? '⏸' : ''}</div>
+              <div class="follow-author-stat">${m.followers ? fmtNum(m.followers) + ' 粉' : '点击同步'}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
+  if (State.monitors[0]) selectMonitor(State.monitors[0].id);
+}
+
+async function addMonitor() {
+  const inp = document.getElementById('addMonitorUrl');
+  const url = (inp?.value || '').trim();
+  if (!url) return toast('请粘贴博主链接');
+  try {
+    toast('正在解析博主信息...');
+    const j = await api('/api/radar/monitors', { method: 'POST', body: JSON.stringify({ url }) });
+    if (!j.success) throw new Error(j.error);
+    toast(`✅ 已关注 ${j.monitor.account_name}`);
+    if (inp) inp.value = '';
+    await loadMonitors();
+  } catch (e) {
+    toast('添加失败：' + e.message);
+  }
+}
+
+// 从博主榜点击 → 跳关注页 + 选中（如未关注则先加关注）+ 自动抓作品
+async function goToBlogger(name, platform) {
+  if (!name) return toast('博主名为空');
+  goMod('follow');
+  // 等关注 tab 渲染好
+  await new Promise(r => setTimeout(r, 200));
+  if (!State.monitors?.length) await loadMonitors();
+  // 找已存在的 monitor（按名字 + 平台匹配）
+  let m = State.monitors.find(x => x.account_name === name && (!platform || x.platform === platform));
+  if (m) {
+    selectMonitor(m.id);
+    return;
+  }
+  toast(`「${name}」尚未在关注里，请先粘贴他的主页链接关注`);
+  // 滚动到添加输入框
+  const inp = document.getElementById('addMonitorUrl');
+  if (inp) { inp.focus(); inp.placeholder = `粘贴 ${name} 的主页链接`; }
+}
+window.goToBlogger = goToBlogger;
+
+async function selectMonitor(id) {
+  const m = State.monitors.find(x => x.id === id);
+  if (!m) return;
+  document.querySelectorAll('.follow-author').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`.follow-author[data-monitor-id="${id}"]`);
+  if (el) el.classList.add('active');
+
+  const p = getPlatLabel(m.platform);
+  const detail = document.getElementById('followDetail');
+  detail.innerHTML = `
+    <div class="follow-detail-head">
+      <div class="fd-avatar" style="background:linear-gradient(135deg, ${colorAt(0)}40, ${colorAt(2)}40)">${(m.account_name || '?').charAt(0)}</div>
+      <div class="fd-info">
+        <div class="fd-name">${escHtml(m.account_name || '(未命名)')} <span class="plat ${p.cls}">${p.icon} ${p.name}</span></div>
+        <div class="fd-bio">${escHtml(m.bio || '暂无简介')}</div>
+        <div class="fd-stats">
+          <div><div class="fd-stat-num">${fmtNum(m.followers || 0)}</div><div class="fd-stat-label">粉丝</div></div>
+          <div><div class="fd-stat-num" id="fdWorkCount">—</div><div class="fd-stat-label">作品</div></div>
+          <div><div class="fd-stat-num" style="color:${m.is_active?'var(--green)':'var(--text3)'}">${m.is_active?'监控中':'已暂停'}</div><div class="fd-stat-label">状态</div></div>
+          <div><div class="fd-stat-num">${m.last_sync_at?'已同步':'未同步'}</div><div class="fd-stat-label">数据</div></div>
+        </div>
+      </div>
+      <div class="fd-actions">
+        <button class="btn btn-sm" onclick="crawlMonitor('${escAttr(m.id)}')">🔄 重新抓取</button>
+        <button class="btn btn-sm" onclick="window.open('${escAttr(m.account_url)}','_blank')">🔗 主页</button>
+        <button class="btn btn-sm" onclick="removeMonitor('${escAttr(m.id)}')" style="color:var(--red);border-color:rgba(255,84,112,0.3)">取消关注</button>
+      </div>
+    </div>
+    <div class="fd-section">
+      <div class="fd-section-head">
+        🎬 该博主的作品
+        <button class="btn btn-sm" onclick="crawlMonitor('${escAttr(m.id)}')">🔄 重新抓取</button>
+      </div>
+      <div id="fdWorks" style="font-size:12px;color:var(--text3);padding:24px;text-align:center;background:var(--bg3);border-radius:8px">
+        ⏳ 正在自动拉取该博主最新作品...
+      </div>
+    </div>
+  `;
+  // 选中博主自动抓取一次（避免用户每次都要点）
+  crawlMonitor(m.id);
+}
+
+async function crawlMonitor(id) {
+  // 防重复：同一 monitor 一次只跑一个 crawl
+  window._crawlInflight = window._crawlInflight || new Set();
+  if (window._crawlInflight.has(id)) {
+    toast('该博主作品正在抓取中，请稍候...');
+    return;
+  }
+  window._crawlInflight.add(id);
+  // 禁用所有相关按钮
+  const allCrawlBtns = document.querySelectorAll(`button[onclick*="crawlMonitor('${id}')"]`);
+  allCrawlBtns.forEach(b => { b.disabled = true; b._origText = b.innerHTML; b.innerHTML = '⏳ 抓取中...'; });
+  const works = document.getElementById('fdWorks');
+  if (works) works.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text2)">
+    <div style="font-size:32px;margin-bottom:10px">⏳</div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">正在通过 MCP 爬虫抓取该博主作品</div>
+    <div style="font-size:11px;color:var(--text3)">通常 5-30 秒，需要爬虫服务在线</div>
+  </div>`;
+  try {
+    const j = await api(`/api/radar/monitors/${id}/crawl`);
+    if (!j.success) throw new Error(j.error);
+    const videos = j.videos || j.data?.videos || [];
+    if (works) {
+      if (videos.length === 0) {
+        works.innerHTML = `<div style="padding:24px"><div style="margin-bottom:8px">未抓取到作品</div><div style="font-size:11px">${j.message || '可能 MCP 爬虫未开通，或博主主页结构变化'}</div></div>`;
+      } else {
+        works.innerHTML = `
+          <div class="fd-works-grid">
+            ${videos.slice(0, 12).map((v, i) => {
+              const url = v.url || v;
+              const title = v.title || `作品 ${i+1}`;
+              return `<div class="fd-work" onclick="extractAndClone('${escAttr(url)}')">
+                <div class="fd-work-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">🎬</div>
+                <div class="fd-work-info">
+                  <div class="fd-work-title">${escHtml(title)}</div>
+                  <div class="fd-work-stat"><span style="color:var(--cyan)">点击复刻 →</span></div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--text3)">来源：${j.source || j.crawlSource || 'mcp'} · 共 ${videos.length} 个</div>
+        `;
+        document.getElementById('fdWorkCount').textContent = videos.length;
+      }
+    }
+    toast(videos.length > 0 ? `✅ 抓取到 ${videos.length} 个作品` : '⚠️ 未抓取到作品');
+  } catch (e) {
+    if (works) works.innerHTML = `<div style="color:var(--red);padding:24px;text-align:center">抓取失败：${e.message}</div>`;
+  } finally {
+    window._crawlInflight.delete(id);
+    allCrawlBtns.forEach(b => { b.disabled = false; if (b._origText) b.innerHTML = b._origText; });
+  }
+}
+
+async function reanalyzeContent(contentId) {
+  if (!contentId) return toast('contentId 为空');
+  toast('🤖 正在调 LLM 分析钩子/结构/爆款要素...');
+  try {
+    const j = await api(`/api/radar/contents/${contentId}/analyze`, { method: 'POST' });
+    if (!j.success) throw new Error(j.error || '分析失败');
+    // 同步到 State.contents
+    const idx = State.contents.findIndex(c => c.id === contentId);
+    if (idx >= 0) State.contents[idx] = j.content;
+    toast('✅ AI 分析完成');
+    realRunStep2(j.content);
+  } catch (e) {
+    toast('AI 分析失败：' + e.message);
+  }
+}
+window.reanalyzeContent = reanalyzeContent;
+
+async function extractAndClone(url) {
+  toast('正在解析视频...');
+  try {
+    const j = await api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url }) });
+    if (!j.success) throw new Error(j.error);
+    State.selectedContentId = j.content.id;
+    await loadContents();
+    goMod('clone');
+    setTimeout(() => { goStep(2); realRunStep2(j.content); }, 200);
+  } catch (e) {
+    toast('解析失败：' + e.message);
+  }
+}
+
+async function removeMonitor(id) {
+  if (!confirm('确认取消关注？')) return;
+  try {
+    await api(`/api/radar/monitors/${id}`, { method: 'DELETE' });
+    toast('已取消关注');
+    await loadMonitors();
+  } catch (e) {
+    toast('删除失败：' + e.message);
+  }
+}
+
+async function followFromContent(contentId) {
+  const c = State.contents.find(x => x.id === contentId);
+  if (!c?.video_url) return toast('找不到视频链接');
+  // 尝试用视频链接添加关注（后端会自动解析博主）
+  try {
+    const j = await api('/api/radar/monitors', { method: 'POST', body: JSON.stringify({ url: c.video_url, name: c.author }) });
+    if (!j.success) throw new Error(j.error);
+    toast(`✅ 已关注 ${j.monitor.account_name}`);
+    await loadMonitors();
+  } catch (e) {
+    toast('关注失败：' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：排行模块 — /api/radar/ranking/* (移植自 douyin 文件夹的实现)
+//   用本地 contents 库（已抓取的真实视频）做排行，按 likes/comments/views 排序
+//   再用 MCP /trending 做兜底（外部热门），两者合并
+// ════════════════════════════════════════════════════════════════════
+async function loadTrending() {
+  const list = document.getElementById('rankList');
+  const mini = document.getElementById('rankMini');
+  const statsBox = document.getElementById('rankStats');
+  if (list) list.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">⏳ 正在加载排行数据...</div>`;
+  if (mini) mini.innerHTML = '';
+  if (statsBox) statsBox.innerHTML = '';
+
+  // 收集 chip 状态
+  const platChip = document.querySelector('#rankPlatChips .chip.selected');
+  const platform = platChip?.dataset.rankPlat || 'all';
+  const sortChip = document.querySelector('#rankSortChips .chip.selected');
+  const sortBy = sortChip?.dataset.rankSort || 'likes';
+  const platQs = (platform && platform !== 'all') ? `&platform=${encodeURIComponent(platform)}` : '';
+
+  // 1) 数据概览（移植自 douyin /api/douyin/ranking/stats）
+  let stats = null;
+  try {
+    const sj = await api(`/api/radar/ranking/stats${platQs ? '?' + platQs.slice(1) : ''}`);
+    if (sj.success) stats = sj;
+  } catch {}
+  if (statsBox && stats) {
+    const cards = [
+      { icon: '🎬', label: '视频总数', value: fmtNum(stats.totalVideos), color: 'var(--cyan)' },
+      { icon: '👤', label: '博主数', value: fmtNum(stats.totalBloggers), color: '#FFF600' },
+      { icon: '👍', label: '总点赞', value: fmtNum(stats.totalLikes), color: '#ec4899' },
+      { icon: '💬', label: '总评论', value: fmtNum(stats.totalComments), color: '#a78bfa' },
+      { icon: '👁', label: '总播放', value: fmtNum(stats.totalViews), color: '#22c55e' },
+      { icon: '⏱', label: '平均时长', value: stats.avgDuration ? `${stats.avgDuration}s` : '-', color: 'var(--text2)' },
+    ];
+    statsBox.innerHTML = cards.map(c => `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${c.icon} ${c.label}</div>
+        <div style="font-size:18px;font-weight:700;color:${c.color}">${c.value}</div>
+      </div>
+    `).join('');
+  }
+
+  // 2) 视频排行（来自 contents 库已抓取的真实数据）
+  const all = [];
+  try {
+    const j = await api(`/api/radar/ranking/videos?sort=${encodeURIComponent(sortBy)}${platQs}`);
+    if (j.success) {
+      (j.videos || []).forEach(v => all.push({ ...v, url: v.video_url, source: 'local-rank' }));
+    }
+  } catch {}
+
+  // 3) 兜底：MCP trending（本地无数据时拉外部）
+  if (all.length === 0) {
+    const platforms = platform === 'all' ? ['douyin','kuaishou','xiaohongshu','bilibili'] : [platform];
+    for (const p of platforms) {
+      try {
+        const j = await api(`/api/radar/trending/${p}`);
+        (j.trending || []).forEach(it => all.push({ ...it, platform: p, source: j.source || 'mcp' }));
+      } catch {}
+    }
+  }
+  State.trending.all = all;
+
+  if (list) {
+    if (all.length === 0) {
+      list.innerHTML = `
+        <div style="padding:48px 32px;text-align:center;background:var(--bg3)">
+          <div style="font-size:42px;margin-bottom:14px;opacity:0.4">📊</div>
+          <div style="font-size:15px;color:var(--text2);margin-bottom:8px;font-weight:600">暂无有效排行数据</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:18px;line-height:1.7">排行基于已抓取的真实视频数据 · contents 库为空时显示空<br>去「爆款搜索」粘贴视频链接抓几条，或扫码登录平台账号拉取数据</div>
+          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="goMod('search')">🔍 去搜索抓视频</button>
+            <button class="btn btn-sm" onclick="goMod('platforms')">🔐 绑定平台账号</button>
+            <button class="btn btn-sm" onclick="goMod('subscriptions')">📡 设关键字订阅</button>
+          </div>
+        </div>
+      `;
+    } else {
+      list.innerHTML = all.slice(0, 30).map((r, i) => {
+        const p = getPlatLabel(r.platform);
+        const numCls = i === 0 ? 't1' : i === 1 ? 't2' : i === 2 ? 't3' : '';
+        const hasCover = r.cover && /^https?:\/\//.test(r.cover);
+        const thumbHtml = hasCover
+          ? `<div class="rank-thumb" style="background:#000;overflow:hidden;position:relative"><img src="${escAttr(r.cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"/></div>`
+          : `<div class="rank-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">🎬</div>`;
+        const avatarHtml = r.author_avatar
+          ? `<img src="${escAttr(r.author_avatar)}" referrerpolicy="no-referrer" style="width:18px;height:18px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'"/>`
+          : '';
+        const dur = r.duration ? `<span style="color:var(--text3);font-size:11px;margin-left:6px">⏱ ${r.duration}s</span>` : '';
+        return `
+          <div class="rank-row">
+            <div class="rank-num ${numCls}">${i + 1}</div>
+            ${thumbHtml}
+            <div class="rank-info">
+              <div class="rank-title">${escHtml(r.title || r.desc || '(无标题)')}${dur}</div>
+              <div class="rank-author-row">
+                <span class="plat ${p.cls}">${p.icon} ${p.name}</span>
+                <span>· ${avatarHtml}${escHtml(r.author || r.nickname || '未知')}</span>
+              </div>
+            </div>
+            <div class="rank-views">${fmtNum(r.views || r.play_count || 0)}</div>
+            <div class="rank-likes">${fmtNum(r.likes || r.digg_count || 0)}</div>
+            <div><span class="rank-trend new">${r.source === 'local-rank' ? '📁' : '🆕'}</span></div>
+            <div class="rank-actions">
+              <button class="btn btn-sm btn-primary" onclick="extractAndClone('${escAttr(r.url || r.video_url || r.share_url || '')}')">🎬 克隆</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // 博主排行迷你卡：移植自 douyin/ranking/bloggers
+  if (mini) {
+    try {
+      const j = await api(`/api/radar/ranking/bloggers${platQs ? '?' + platQs.slice(1) : ''}`);
+      const bloggers = (j.bloggers || []).slice(0, 6);
+      const sec = document.getElementById('rankMiniSection');
+      const badge = document.getElementById('rankMiniBadge');
+      if (bloggers.length > 0 && sec) {
+        sec.style.display = '';
+        if (badge) badge.textContent = `共 ${j.total} 位`;
+        mini.innerHTML = bloggers.map((b, i) => {
+          const p = getPlatLabel(b.platform);
+          const avatar = b.avatar
+            ? `<img src="${escAttr(b.avatar)}" referrerpolicy="no-referrer" style="width:32px;height:32px;border-radius:50%;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/><div style="display:none;width:32px;height:32px;border-radius:50%;background:${colorAt(i)};align-items:center;justify-content:center;color:#000;font-weight:700">${(b.name || '?').charAt(0)}</div>`
+            : `<div style="width:32px;height:32px;border-radius:50%;background:${colorAt(i)};display:flex;align-items:center;justify-content:center;color:#000;font-weight:700">${(b.name || '?').charAt(0)}</div>`;
+          return `<div class="vc" onclick="goToBlogger('${escAttr(b.name)}','${escAttr(b.platform || '')}')" style="padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--cyan)';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              ${avatar}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.name)} <span style="color:var(--cyan);font-weight:400;font-size:10px">→</span></div>
+                <div style="font-size:10px;color:var(--text3)"><span class="plat ${p.cls}">${p.icon}</span> · ${b.video_count} 条视频</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;font-size:11px;color:var(--text2)">
+              <span>👍 ${fmtNum(b.total_likes)}</span>
+              <span>💬 ${fmtNum(b.total_comments)}</span>
+              <span style="color:var(--cyan)">均赞 ${fmtNum(b.avg_likes)}</span>
+            </div>
+          </div>`;
+        }).join('');
+      } else if (sec) {
+        sec.style.display = 'none';
+      }
+    } catch {}
+  }
+}
+
+// 排行 chip 切换 → 重新加载
+document.addEventListener('click', (e) => {
+  const c = e.target.closest('#rankPlatChips .chip, #rankSortChips .chip');
+  if (!c) return;
+  const row = c.parentElement;
+  row.querySelectorAll('.chip').forEach(x => x.classList.remove('selected'));
+  c.classList.add('selected');
+  if (document.querySelector('.mod[data-mod="rank"].active')) loadTrending();
+});
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：5 步流程 — 真实 API
+// ════════════════════════════════════════════════════════════════════
+// 清洗 transcript：去 HTML/CSS/错误页噪音，只留真实文案
+function _cleanTranscript(raw) {
+  let s = String(raw || '');
+  // 去 HTML 标签
+  s = s.replace(/<[^>]+>/g, ' ');
+  // 去 CSS 块（包含 { ... }）
+  s = s.replace(/\{[^{}]*[a-z-]+\s*:[^{}]*\}/gi, ' ');
+  // 按行切，去掉明显的 HTML/CSS/错误页特征行
+  const lines = s.split(/\n+/);
+  const cleaned = lines.filter(line => {
+    const t = line.trim();
+    if (!t) return false;
+    if (t.length > 200 && /:\s*[#0-9a-z]+(?:px|%|em|rem)?[;,]/i.test(t)) return false; // CSS 长行
+    if (/出错啦|error.{0,3}page|网页未找到|404|noscript/i.test(t)) return false;
+    if (/^[a-z\-]+\s*:\s*[^;]+;\s*$/i.test(t)) return false; // 单行 CSS 属性
+    if (/margin\s*:|padding\s*:|font-size\s*:|background\s*:/i.test(t) && t.length < 200) return false;
+    return true;
+  });
+  return cleaned.join('\n').trim();
+}
+
+function realRunStep2(content) {
+  // Step 2 改为：直接显示抓取的真实数据，无解析动画
+  parseStarted = true; // 阻止 mock 动画
+  const subList = document.getElementById('subtitleList');
+  const frameGrid = document.getElementById('frameGrid');
+  const transcriptRaw = content.transcript || '';
+  const transcript = _cleanTranscript(transcriptRaw);
+  const isLikelyGarbage = transcriptRaw.length > 200 && transcript.length < transcriptRaw.length * 0.3;
+  const lines = transcript.split(/[。！？\n]/).filter(s => s.trim()).slice(0, 12);
+
+  if (subList) {
+    const garbageWarning = isLikelyGarbage ? `
+      <div style="background:rgba(255,77,109,0.10);border:1px solid var(--red);padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:11px;color:var(--red);line-height:1.7">
+        ⚠️ <b>这条记录的文案抓取失败</b>，里面混入了网页 HTML/CSS（已自动过滤）。<br>
+        建议点 <button onclick="reanalyzeContent('${escAttr(content.id || '')}')" style="background:var(--cyan);color:#000;border:0;padding:2px 8px;border-radius:4px;font-weight:600;cursor:pointer;font-size:11px;margin:0 4px">🤖 重新 AI 解析</button> 让 LLM 基于标题/标签重新生成文案，或回上一步重新粘贴有效视频链接。
+      </div>` : '';
+    const linesHtml = lines.length
+      ? lines.map((s, i) => `<div class="subtitle-row"><span class="subtitle-time">${i + 1}.</span><span class="subtitle-text">${escHtml(s.trim())}</span></div>`).join('')
+      : '<div style="color:var(--text3);text-align:center;padding:30px">无可用文案 — 抓取可能失败，建议点上方"重新 AI 解析"</div>';
+    subList.innerHTML = garbageWarning + linesHtml;
+  }
+
+  if (frameGrid) {
+    const tags = content.tags || [];
+    const highlights = content.highlights || [];
+    const cover = content.cover && /^https?:\/\//.test(content.cover) ? content.cover : null;
+    const hasAiAnalysis = !!(content.hook || content.structure || (highlights && highlights.length));
+    const coverHtml = cover
+      ? `<div style="grid-column:1/-1;margin-bottom:10px;border-radius:8px;overflow:hidden;background:#000;aspect-ratio:9/16;max-width:280px"><img src="${escAttr(cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.display='none'"/></div>`
+      : '';
+    const aiBlocks = hasAiAnalysis
+      ? `
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">🎯 钩子</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">${escHtml(content.hook || '(无)')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">📐 结构</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.5">${escHtml(content.structure || '(无)')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">🔥 爆款要素</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${highlights.map(h => `<div style="margin-bottom:3px">• ${escHtml(h)}</div>`).join('') || '(无)'}</div>`
+      : `<div style="margin:8px 0 12px;padding:10px 12px;background:rgba(255,246,0,0.08);border:1px solid rgba(255,246,0,0.3);border-radius:6px;font-size:11px;color:var(--text2);line-height:1.7">
+           ⚠️ <b>AI 内容分析未运行</b>（抖音 SSR 抓取直接拿到了元数据，跳过了 LLM）<br>
+           想看钩子/结构/爆款要素？点 <button onclick="reanalyzeContent('${escAttr(content.id || '')}')" style="background:var(--cyan);color:#000;border:0;padding:3px 10px;border-radius:4px;font-weight:600;cursor:pointer;font-size:11px;margin:0 4px">🤖 调 AI 分析</button> 让 LLM 重新解析
+         </div>`;
+    const stats = [
+      content.likes ? `<span>👍 ${fmtNum(content.likes)}</span>` : '',
+      content.comments ? `<span>💬 ${fmtNum(content.comments)}</span>` : '',
+      content.views ? `<span>👁 ${fmtNum(content.views)}</span>` : '',
+      content.duration ? `<span>⏱ ${content.duration}s</span>` : '',
+    ].filter(Boolean).join(' · ');
+    frameGrid.innerHTML = `
+      ${coverHtml}
+      <div style="grid-column:1/-1;padding:14px;background:var(--bg3);border-radius:8px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">📌 标题</div>
+        <div style="font-size:13px;color:var(--text);margin-bottom:8px;line-height:1.5">${escHtml(content.title || '')}</div>
+        ${stats ? `<div style="font-size:11px;color:var(--text3);margin-bottom:12px">${stats}</div>` : ''}
+        ${aiBlocks}
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">🏷 标签</div>
+        <div>${tags.length ? tags.map(t => `<span style="display:inline-block;background:rgba(33,255,243,.1);color:var(--cyan);padding:2px 8px;border-radius:3px;font-size:11px;margin:2px">#${escHtml(t)}</span>`).join('') : '<span style="color:var(--text3);font-size:11px">无</span>'}</div>
+      </div>
+    `;
+  }
+
+  // 进度行：标记完成
+  ['step2-stt','step2-frame','step2-extract'].forEach(id => {
+    const row = document.getElementById(id);
+    if (row) {
+      row.classList.remove('active');
+      row.classList.add('done');
+      const icon = row.querySelector('.pp-icon'); if (icon) icon.textContent = '✓';
+      const pct = row.querySelector('.pp-pct'); if (pct) pct.textContent = '100%';
+    }
+  });
+  document.getElementById('sttHint').textContent = `✓ 已识别 ${lines.length} 段文案`;
+  document.getElementById('frameHint').textContent = content.crawled ? `✓ 真实抓取数据` : `✓ AI 推测数据（页面未抓取到正文）`;
+
+  const btn = document.getElementById('step2NextBtn');
+  if (btn) {
+    btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+    btn.textContent = '查看 AI 改写结果 →';
+    btn.onclick = () => realRunStep3();
+  }
+}
+
+async function realRunStep3() {
+  goStep(3);
+  // 改写
+  const grid = document.getElementById('rewriteGrid');
+  if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">⏳ AI 正在改写文案...</div>`;
+  try {
+    const j = await api('/api/radar/rewrite', { method: 'POST', body: JSON.stringify({ content_id: State.selectedContentId, style: 'same' }) });
+    if (!j.success) throw new Error(j.error || '改写失败');
+    const orig = State.contents.find(c => c.id === State.selectedContentId);
+    State.rewrittenText = j.rewritten;
+    if (grid) {
+      grid.innerHTML = `
+        <div class="rewrite-col">
+          <div class="rewrite-col-head"><span>📜 原始口播</span><span class="badge-orig">抓取自原视频</span></div>
+          <div class="rewrite-block">
+            <div class="rewrite-block-label">完整文案</div>
+            ${escHtml((orig?.transcript || '').replace(/\n+/g, '<br>'))}
+          </div>
+        </div>
+        <div class="rewrite-col">
+          <div class="rewrite-col-head"><span>✨ AI 改写版</span><span class="badge-new">可编辑</span></div>
+          <textarea id="rewriteEditArea" style="width:100%;min-height:280px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:14px;border-radius:8px;font-size:13px;line-height:1.7;font-family:inherit;outline:none">${escHtml(j.rewritten || '')}</textarea>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="realRunStep3()">🔄 重新改写</button>
+            <span style="flex:1"></span>
+            <span style="font-size:11px;color:var(--text3);align-self:center">已用 LLM·若不满意可编辑或重写</span>
+          </div>
+        </div>
+      `;
+    }
+  } catch (e) {
+    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--red)">改写失败：${e.message}</div>`;
+  }
+}
+
+async function realRunStep4() {
+  // 拿当前选中的 voice id
+  const selectedChip = document.querySelector('#voiceChips .chip.selected');
+  const voiceId = selectedChip?.dataset.voiceId;
+  const isPreset = selectedChip?.dataset.preset === '1';
+  const finalVoiceId = (isPreset || !voiceId) ? null : voiceId; // null 走默认 TTS
+
+  // 取改写后的文案（用户可能编辑过）
+  const editArea = document.getElementById('rewriteEditArea');
+  const finalText = editArea ? editArea.value.trim() : State.rewrittenText;
+  if (!finalText) return toast('改写文案为空，请先完成 Step 3');
+
+  // 把编辑后的文案通过 rewrite 不行，需要 update content 或新增端点。
+  // 简化：直接调用 replicate（注：当前 replicate 内部会重新 rewrite，所以编辑被忽略）
+  // 如果用户编辑过，提示这一限制
+  if (editArea && editArea.value.trim() !== State.rewrittenText.trim()) {
+    if (!confirm('注意：当前后端会在合成时重新调用 AI 改写，你手动编辑的文字暂不会生效。是否继续？\n\n（按"取消"返回 Step 3 不做任何操作）')) return;
+  }
+
+  goStep(4);
+  // 重置 stats
+  document.getElementById('genDone').textContent = '0 / 1';
+  document.getElementById('genTime').textContent = '00:00';
+  document.getElementById('genCost').textContent = '¥0.00';
+  document.getElementById('genDiff').textContent = '—';
+  document.getElementById('sceneGrid').innerHTML = `
+    <div class="scene-card processing" style="grid-column:1/-1">
+      <div class="scene-thumb" style="aspect-ratio:auto;height:200px">🎬</div>
+      <div class="scene-status processing">合成中</div>
+      <div class="scene-meta"><span class="scene-num">#1</span> · TTS 配音 + 音频合成（如有数字人形象会一并生成视频）</div>
+    </div>
+  `;
+
+  try {
+    const j = await api('/api/radar/replicate', {
+      method: 'POST',
+      body: JSON.stringify({
+        content_id: State.selectedContentId,
+        voice_id: finalVoiceId,
+        style: 'same',
+        avatar_image: null, // MVP 不传形象，只 TTS
+      })
+    });
+    if (!j.success) throw new Error(j.error);
+    pollReplicateTask(j.taskId);
+  } catch (e) {
+    toast('启动失败：' + e.message);
+    goStep(3);
+  }
+}
+
+let pollStarted = 0;
+function pollReplicateTask(taskId) {
+  if (State.pollTimer) clearInterval(State.pollTimer);
+  pollStarted = Date.now();
+  State.pollTimer = setInterval(async () => {
+    const elapsed = Math.floor((Date.now() - pollStarted) / 1000);
+    document.getElementById('genTime').textContent = `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${(elapsed%60).toString().padStart(2,'0')}`;
+    document.getElementById('genCost').textContent = '¥' + (elapsed * 0.05).toFixed(2);
+    try {
+      const j = await api(`/api/radar/replicate/tasks/${taskId}`);
+      const t = j.task;
+      if (!t) throw new Error('任务不存在');
+      if (t.status === 'done') {
+        clearInterval(State.pollTimer);
+        document.getElementById('genDone').textContent = '1 / 1';
+        document.getElementById('genDiff').textContent = '✓';
+        document.querySelector('.scene-card').classList.remove('processing');
+        document.querySelector('.scene-card').classList.add('done');
+        document.querySelector('.scene-status').textContent = '✓ 完成';
+        document.querySelector('.scene-status').classList.remove('processing');
+        document.querySelector('.scene-status').classList.add('done');
+        const btn = document.getElementById('step4NextBtn');
+        btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = '查看成片 →';
+        btn.onclick = () => realRunStep5(t);
+        toast('✅ 复刻完成');
+      } else if (t.status === 'error') {
+        clearInterval(State.pollTimer);
+        toast('复刻失败：' + (t.error || ''));
+        document.querySelector('.scene-status').textContent = '失败';
+      }
+    } catch (e) {
+      console.warn('poll error', e);
+    }
+  }, 2000);
+}
+
+function realRunStep5(task) {
+  goStep(5);
+  const tokenQ = '?token=' + encodeURIComponent(getToken() || '');
+  const fileUrl = (type) => `/api/radar/replicate/tasks/${task.id}/file${tokenQ}&type=${type}`;
+  // 替换 Step 5 的 mock 内容为真实数据
+  const player = document.querySelector('.result-player');
+  if (player) {
+    if (task.video_path) {
+      player.innerHTML = `<video src="${fileUrl('video')}" controls playsinline style="width:100%;height:100%;object-fit:contain"></video>`;
+    } else if (task.audio_path) {
+      const audioUrl = fileUrl('audio');
+      player.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;padding:30px;text-align:center">
+          <div style="font-size:64px;margin-bottom:20px;opacity:0.7">🎵</div>
+          <div style="font-size:14px;color:white;margin-bottom:14px">仅生成了配音（未配置数字人形象）</div>
+          <audio src="${audioUrl}" controls style="width:100%;max-width:360px"></audio>
+          <div style="margin-top:16px;font-size:11px;color:rgba(255,255,255,0.6)">如需生成完整视频，请在 Step 3 配置数字人形象</div>
+        </div>
+      `;
+    }
+  }
+  // 替换右侧对比卡片
+  const orig = State.contents.find(c => c.id === task.content_id);
+  const info = document.querySelector('.result-info');
+  if (info && orig) {
+    info.innerHTML = `
+      <div class="result-info-card">
+        <h4>📊 复刻结果</h4>
+        <div class="diff-row"><span class="diff-key">原标题</span><span class="diff-val-old" style="max-width:200px;text-align:right;font-family:inherit">${escHtml(orig.title || '')}</span></div>
+        <div class="diff-row"><span class="diff-key">原作者</span><span class="diff-val-old" style="font-family:inherit">${escHtml(orig.author || '未知')}</span></div>
+        <div class="diff-row"><span class="diff-key">原平台</span><span class="diff-val-old" style="font-family:inherit">${getPlatLabel(orig.platform).name}</span></div>
+        <div class="diff-row"><span class="diff-key">改写文案长度</span><span class="diff-val-new">${(task.rewritten_text || '').length} 字</span></div>
+        <div class="diff-row"><span class="diff-key">配音文件</span><span class="diff-val-new" style="font-size:10px">${(task.audio_path || '').split(/[\\\/]/).pop()}</span></div>
+        <div class="diff-row"><span class="diff-key">数字人视频</span><span class="diff-val-new">${task.video_path ? '✓ 已生成' : '未生成'}</span></div>
+        <div class="diff-row"><span class="diff-key">任务状态</span><span class="diff-val-new" style="color:var(--green)">✓ ${task.status}</span></div>
+      </div>
+      <div class="result-info-card">
+        <h4>📝 改写后的文案</h4>
+        <div style="font-size:12px;line-height:1.7;color:var(--text2);max-height:200px;overflow-y:auto;background:var(--bg3);padding:12px;border-radius:6px">${escHtml((task.rewritten_text || '').replace(/\n+/g, '<br>'))}</div>
+      </div>
+    `;
+  }
+  // 替换 action row
+  const action = document.querySelector('.action-row');
+  if (action && task) {
+    const hasVideo = !!task.video_path;
+    const hasAudio = !!task.audio_path;
+    const downloadUrl = hasVideo ? fileUrl('video') : (hasAudio ? fileUrl('audio') : '');
+    action.innerHTML = `
+      ${downloadUrl ? `<a href="${downloadUrl}" download class="btn btn-primary">⬇ 下载${hasVideo?'视频':'音频'}</a>` : ''}
+      <button class="btn" onclick="navigator.clipboard.writeText(${JSON.stringify(task.rewritten_text || '')}).then(()=>toast('已复制改写文案'))">📋 复制改写文案</button>
+      <button class="btn" onclick="goMod('works')">📚 去作品库</button>
+      <div style="flex:1"></div>
+      <button class="btn" onclick="goStep(1);State.selectedContentId=null">↻ 复刻新视频</button>
+    `;
+  }
+  loadWorks();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：作品库（我的复刻任务）
+// ════════════════════════════════════════════════════════════════════
+async function loadWorks() {
+  try {
+    const j = await api('/api/radar/replicate/tasks');
+    State.tasks = j.tasks || [];
+    renderWorks();
+  } catch (e) {
+    console.warn('[works] 加载失败', e);
+  }
+}
+
+function renderWorks() {
+  const mod = document.querySelector('.mod[data-mod="works"]');
+  if (!mod) return;
+  if (!State.tasks.length) {
+    mod.innerHTML = `
+      <div class="mod-head">
+        <div>
+          <h1>📚 我的复刻作品</h1>
+          <p>从「爆款搜索」选爆款 → 点复刻 → 完成后在这里看到</p>
+        </div>
+      </div>
+      <div style="background:var(--bg2);border:1px dashed var(--border2);border-radius:16px;padding:80px 40px;text-align:center;color:var(--text3)">
+        <div style="font-size:54px;margin-bottom:14px;opacity:0.3">🎬</div>
+        <div style="font-size:14px;color:var(--text2);margin-bottom:8px">还没有复刻过任何视频</div>
+        <div style="font-size:12px;line-height:1.7;margin-bottom:20px">去搜索一段你想复刻的视频，点「🎬 复刻」开始</div>
+        <button class="btn btn-primary" onclick="goMod('search')">🔍 去搜索</button>
+      </div>
+    `;
+    return;
+  }
+  const tokenQ = '?token=' + encodeURIComponent(getToken() || '');
+  mod.innerHTML = `
+    <div class="mod-head">
+      <div>
+        <h1>📚 我的复刻作品</h1>
+        <p>共 ${State.tasks.length} 个任务 · 数据来自 /api/radar/replicate/tasks</p>
+      </div>
+      <button class="btn btn-sm" onclick="loadWorks()">🔄 刷新</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+      ${State.tasks.slice().reverse().map(t => {
+        const hasVideo = !!t.video_path;
+        const hasAudio = !!t.audio_path;
+        const dl = hasVideo || hasAudio;
+        const url = hasVideo ? `/api/radar/replicate/tasks/${t.id}/file${tokenQ}&type=video`
+                  : hasAudio ? `/api/radar/replicate/tasks/${t.id}/file${tokenQ}&type=audio` : '';
+        const orig = State.contents.find(c => c.id === t.content_id);
+        const statusColor = t.status === 'done' ? 'var(--green)' : t.status === 'error' ? 'var(--red)' : 'var(--cyan)';
+        return `
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span style="font-size:13px;font-weight:700">${escHtml(t.title || '复刻任务')}</span>
+              <span style="font-size:10px;color:${statusColor};padding:2px 8px;border-radius:3px;border:1px solid ${statusColor}">${t.status}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:10px">
+              ${orig ? `源：${escHtml(orig.title || '')}` : ''}<br>
+              ${t.rewritten_text ? '改写：' + escHtml(t.rewritten_text.slice(0, 80)) + '...' : ''}
+            </div>
+            <div style="display:flex;gap:6px">
+              ${url ? `<a href="${url}" download class="btn btn-sm btn-primary" style="flex:1;justify-content:center">⬇ 下载</a>` : '<span class="btn btn-sm" style="flex:1;opacity:0.4;justify-content:center">无文件</span>'}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：模块切换 — 进入对应 mod 时拉真实数据
+// ════════════════════════════════════════════════════════════════════
+const _origGoMod = window.goMod;
+window.goMod = function(name) {
+  _origGoMod(name);
+  if (name === 'search') loadContents();
+  if (name === 'follow') loadMonitors();
+  if (name === 'rank')   loadTrending();
+  if (name === 'works')  loadWorks();
+};
+
+// ════════════════════════════════════════════════════════════════════
+// 覆盖：Step 3 → Step 4 的开始按钮
+// ════════════════════════════════════════════════════════════════════
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (btn && /开始生成/.test(btn.textContent || '')) {
+    if (!State.selectedContentId) return;
+    e.preventDefault(); e.stopPropagation();
+    realRunStep4();
+  }
+}, true);
+
+// ════════════════════════════════════════════════════════════════════
+// 智能搜索：自动判断 URL or 关键字
+// ════════════════════════════════════════════════════════════════════
+function isUrl(str) {
+  return /^https?:\/\/|^www\.|douyin\.com|kuaishou\.com|xhslink|xiaohongshu|bilibili|b23\.tv|v\.douyin|v\.kuaishou/i.test(str);
+}
+
+// 搜索类型切换：内容 / 博主
+window._searchType = 'content';
+function switchSearchType(t) {
+  window._searchType = t;
+  document.getElementById('searchTypeContent').classList.toggle('selected', t === 'content');
+  document.getElementById('searchTypeBlogger').classList.toggle('selected', t === 'blogger');
+  const inp = document.getElementById('searchInput');
+  if (inp) inp.placeholder = t === 'blogger'
+    ? '👤 输入博主名（如：影视飓风、刘老师讲油画） · 回车搜索'
+    : '🔎 输入关键字（如：口红测评）或粘贴视频链接（自动识别） · 回车搜索';
+}
+window.switchSearchType = switchSearchType;
+
+async function searchBloggers() {
+  if (window._smartSearchInflight) { toast('上次搜索还在进行中...'); return; }
+  const inp = document.getElementById('searchInput');
+  const q = (inp?.value || '').trim();
+  if (!q) return toast('请输入博主名/关键字');
+  const grid = document.getElementById('searchGrid');
+  const platChips = [...document.querySelectorAll('#platChips .chip.selected')].map(c => c.dataset.plat).filter(p => p && p !== 'all');
+  document.getElementById('searchResultBar').style.display = 'flex';
+  document.getElementById('searchKw').textContent = `博主："${q}"`;
+  document.getElementById('searchTotal').textContent = '...';
+  if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">⏳ 正在搜索博主...</div>`;
+  window._smartSearchInflight = true;
+  try {
+    const j = await api('/api/radar/search-bloggers', {
+      method: 'POST', body: JSON.stringify({ keyword: q, platforms: platChips, limit: 12 })
+    });
+    if (!j.success) throw new Error(j.error);
+    document.getElementById('searchTotal').textContent = j.total;
+    renderBloggerResults(j.bloggers || [], j.sources || [], q);
+  } catch (e) {
+    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--red)">搜索失败：${escHtml(e.message)}</div>`;
+  } finally {
+    window._smartSearchInflight = false;
+  }
+}
+window.searchBloggers = searchBloggers;
+
+function renderBloggerResults(bloggers, sources, keyword) {
+  const grid = document.getElementById('searchGrid');
+  if (!grid) return;
+  if (!bloggers.length) {
+    const needLogin = (sources || []).filter(s => s.status === 'needs_login');
+    const okSources = (sources || []).filter(s => s.status === 'ok');
+    if (needLogin.length) {
+      const cards = needLogin.map(s => `<div style="background:var(--bg3);padding:12px 14px;border-radius:8px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:20px">🔐</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(s.message)}</div></div>
+        <button class="btn btn-sm btn-primary" onclick="goMod('platforms')">扫码登录</button>
+      </div>`).join('');
+      grid.innerHTML = `<div style="grid-column:1/-1;padding:32px;background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+        <div style="font-size:36px;text-align:center;margin-bottom:14px">🔐</div>
+        <div style="font-size:15px;font-weight:600;text-align:center;margin-bottom:14px">部分平台需登录账号才能搜博主</div>
+        ${okSources.length ? `<div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:10px">✅ 已尝试 ${okSources.map(s=>s.name).join('、')}，未匹配到博主</div>` : ''}
+        ${cards}
+      </div>`;
+      return;
+    }
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--text3)"><div style="font-size:42px;opacity:0.4;margin-bottom:10px">👤</div>未搜到匹配的博主</div>`;
+    return;
+  }
+  grid.innerHTML = bloggers.map(b => {
+    const p = getPlatLabel(b.platform);
+    const avatar = b.avatar
+      ? `<img src="${escAttr(b.avatar)}" referrerpolicy="no-referrer" style="width:64px;height:64px;border-radius:50%;object-fit:cover" onerror="this.style.display='none'"/>`
+      : `<div style="width:64px;height:64px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--cyan)">${escHtml((b.name||'?').charAt(0))}</div>`;
+    return `<div class="video-card" onclick="goToBloggerByUrl('${escAttr(b.account_url)}','${escAttr(b.platform)}','${escAttr(b.name)}')" style="cursor:pointer;padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px">
+      ${avatar}
+      <div style="font-size:14px;font-weight:600;color:var(--text);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${escHtml(b.name)}</div>
+      <span class="plat ${p.cls}" style="font-size:10px">${p.icon} ${p.name}</span>
+      <div style="font-size:11px;color:var(--text3);display:flex;gap:10px">
+        ${b.followers ? `<span>👥 ${fmtNum(b.followers)}</span>` : ''}
+        ${b.video_count ? `<span>🎬 ${fmtNum(b.video_count)}</span>` : ''}
+      </div>
+      ${b.signature ? `<div style="font-size:11px;color:var(--text3);text-align:center;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(b.signature)}</div>` : ''}
+      <button class="btn btn-sm btn-primary" style="width:100%;justify-content:center;margin-top:6px">⭐ 关注/查看作品</button>
+    </div>`;
+  }).join('');
+}
+window.renderBloggerResults = renderBloggerResults;
+
+// 从博主搜索结果点击 → 关注 + 跳详情
+async function goToBloggerByUrl(url, platform, name) {
+  toast('添加关注中...');
+  try {
+    const r = await api('/api/radar/monitors', { method: 'POST', body: JSON.stringify({ url, name }) });
+    if (!r.success) throw new Error(r.error);
+    toast(`✅ 已关注 ${r.monitor.account_name || name}`);
+    await loadMonitors();
+    goMod('follow');
+    setTimeout(() => selectMonitor(r.monitor.id), 200);
+  } catch (e) {
+    toast('关注失败：' + e.message);
+  }
+}
+window.goToBloggerByUrl = goToBloggerByUrl;
+
+async function smartSearch() {
+  // 博主搜索分流
+  if (window._searchType === 'blogger') {
+    return searchBloggers();
+  }
+  // 防重复点击：上次请求未完成时直接忽略
+  if (window._smartSearchInflight) {
+    toast('上次搜索还在进行中，请稍候...');
+    return;
+  }
+  const inp = document.getElementById('searchInput');
+  const q = (inp?.value || '').trim();
+  if (!q) return toast('请输入关键字或链接');
+
+  const grid = document.getElementById('searchGrid');
+  const searchBtn = document.querySelector('button[onclick="smartSearch()"]');
+  const restoreBtn = (() => {
+    if (!searchBtn) return () => {};
+    const orig = searchBtn.innerHTML;
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '⏳ 解析中...';
+    return () => { searchBtn.disabled = false; searchBtn.innerHTML = orig; };
+  })();
+  window._smartSearchInflight = true;
+
+  // 提取嵌入的 URL（兼容抖音"复制打开抖音 ... https://..."这种分享文案）
+  const urlMatch = q.match(/https?:\/\/[^\s<>"'，。！？、；：）》\]]+/i);
+  if (urlMatch || isUrl(q)) {
+    const url = urlMatch ? urlMatch[0].replace(/[.,;:!?]+$/, '') : q;
+    // 立即在结果区显示 loading 状态（不仅靠 toast）
+    document.getElementById('searchResultBar').style.display = 'flex';
+    document.getElementById('searchKw').textContent = `URL：${url.length > 40 ? url.slice(0, 40) + '...' : url}`;
+    document.getElementById('searchTotal').textContent = '...';
+    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">
+      <div style="font-size:36px;margin-bottom:12px">⏳</div>
+      <div style="font-size:14px;color:var(--text2);margin-bottom:6px">正在解析视频链接...</div>
+      <div style="font-size:12px;color:var(--text3)">抖音 SSR / MCP / 内置抓取 · 最长约 40 秒</div>
+    </div>`;
+    try {
+      const j = await api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url }) });
+      if (!j.success) throw new Error(j.error);
+      toast(`✅ 抓取成功：${j.content.title || j.content.id}`);
+      // 只刷新内存里的 contents 列表（供后续操作用）但不重新渲染整个搜索 grid
+      try {
+        const lc = await api('/api/radar/contents');
+        State.contents = lc.contents || [];
+        renderContentLib();
+      } catch {}
+      // ★ 只显示这次抓到的单条结果，不渲染整个 contents 历史
+      const c = j.content;
+      const p = getPlatLabel(c.platform);
+      const cover = c.cover && /^https?:\/\//.test(c.cover) ? c.cover : '';
+      const tagsHtml = (c.tags || []).slice(0, 5).map(t => `<span class="vc-stat" style="background:rgba(33,255,243,.1);color:var(--cyan);padding:2px 6px;border-radius:3px">#${escHtml(t)}</span>`).join(' ');
+      document.getElementById('searchTotal').textContent = '1';
+      // 找到内存里的 idx 让卡片点击能进 vidModal
+      const idx = State.contents.findIndex(x => x.id === c.id);
+      if (grid) grid.innerHTML = `
+        <div class="video-card" data-content-idx="${idx}" style="max-width:320px;cursor:pointer">
+          <div class="vc-thumb" style="position:relative;overflow:hidden;background:#000">
+            ${cover ? `<img src="${escAttr(cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0"/>` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:38px;background:linear-gradient(135deg,#3b3b50,#1a1a26)">🎬</div>`}
+            <div class="vc-thumb-overlay" style="z-index:1"></div>
+            <span class="plat ${p.cls} vc-thumb-plat" style="z-index:2">${p.icon} ${p.name}</span>
+            <span class="vc-thumb-rank" style="background:var(--green);z-index:2">✓ 已抓取</span>
+          </div>
+          <div class="vc-info">
+            <div class="vc-title" title="${escAttr(c.title || '')}">${escHtml((c.title || '(无标题)').slice(0, 30))}</div>
+            <div class="vc-meta"><div class="vc-author"><div class="vc-avatar">${(c.author || '?').charAt(0)}</div><span class="vc-author-name">${escHtml(c.author || '未知作者')}</span></div></div>
+            <div class="vc-stats" style="flex-wrap:wrap;gap:4px">${tagsHtml}</div>
+          </div>
+        </div>`;
+      // 重新绑定卡片点击 → 弹复刻窗
+      grid.querySelectorAll('.video-card[data-content-idx]').forEach(card => {
+        card.addEventListener('click', () => {
+          const i = +card.dataset.contentIdx;
+          const cc = State.contents[i];
+          if (cc) openVidModal({ ...cc, local_content_id: cc.id });
+        });
+      });
+    } catch (e) {
+      if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:48px 32px;background:var(--bg2);border:1px dashed var(--border2);border-radius:12px;color:var(--text3)">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.5">⚠️</div>
+        <div style="font-size:14px;color:var(--text2);margin-bottom:8px;font-weight:600">解析失败</div>
+        <div style="font-size:12px;margin-bottom:16px;line-height:1.7;max-width:520px;margin-left:auto;margin-right:auto">${escHtml(e.message)}</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-sm btn-primary" onclick="smartSearch()">🔄 重试</button>
+          <a class="btn btn-sm" href="/admin.html" target="_blank">⚙️ 检查 AI / 平台账号配置</a>
+        </div>
+      </div>`;
+      toast('抓取失败：' + e.message);
+    } finally {
+      window._smartSearchInflight = false;
+      restoreBtn();
+    }
+    return;
+  }
+
+  // 收集 chip 选中状态
+  const platChips = [...document.querySelectorAll('#platChips .chip.selected')]
+    .map(c => c.dataset.plat).filter(p => p && p !== 'all');
+  const sortChip = document.querySelector('#sortChips .chip.selected');
+  const sort = sortChip?.dataset.sort || 'comprehensive';
+
+  // 关键字搜索
+  document.getElementById('searchResultBar').style.display = 'flex';
+  document.getElementById('searchKw').textContent = `"${q}"`;
+  document.getElementById('searchTotal').textContent = '...';
+  if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text3)">⏳ 正在聚合搜索结果...</div>`;
+
+  try {
+    const j = await api('/api/radar/search', {
+      method: 'POST',
+      body: JSON.stringify({ keyword: q, platforms: platChips, sort })
+    });
+    if (!j.success) throw new Error(j.error);
+    document.getElementById('searchTotal').textContent = j.total;
+    renderSearchResults(j.results, j.sources, q, platChips);
+  } catch (e) {
+    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--red)">搜索失败：${escHtml(e.message)}</div>`;
+  } finally {
+    window._smartSearchInflight = false;
+    restoreBtn();
+  }
+}
+
+// 真实搜索结果渲染（B站真封面 + 真数据）
+function renderSearchResults(items, sources, keyword, platChips) {
+  const grid = document.getElementById('searchGrid');
+  if (!grid) return;
+
+  let html = '';
+
+  if (!items.length) {
+    const nonLocal = (sources || []).filter(s => s.provider_id !== 'local');
+    const okSources = nonLocal.filter(s => s.status === 'ok');
+    const enabledCount = okSources.length;
+    const errored = nonLocal.filter(s => s.status === 'error');
+    const needsLogin = nonLocal.filter(s => s.status === 'needs_login' || s.needs_login);
+    // ⚠️ 不再基于"用户勾选了哪些平台"瞎判要不要登录 — 必须看 sources 里 needs_login 的真实标记
+    const needLoginPlats = [];
+
+    // 优先显示"哪些平台需要登录"（最常见情况）
+    if (needsLogin.length > 0) {
+      const platNames = { douyin:'抖音', xiaohongshu:'小红书', kuaishou:'快手' };
+      const loginCards = needsLogin.map(s => {
+        const name = platNames[s.login_platform] || s.name;
+        return `<div style="background:var(--bg3);padding:12px 14px;border-radius:8px;display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:20px">🔐</span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(name)}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${escHtml(s.message)}</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="goMod('platforms')">扫码登录</button>
+        </div>`;
+      }).join('');
+      const okMsg = okSources.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:10px">✅ 其他数据源已工作但没匹配到结果（${okSources.map(s=>s.name).join('、')}）</div>` : '';
+      const html = `<div style="grid-column:1/-1;padding:32px;background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+        <div style="font-size:36px;text-align:center;margin-bottom:14px">🔐</div>
+        <div style="font-size:15px;color:var(--text2);font-weight:600;text-align:center;margin-bottom:14px">部分平台需要先扫码登录账号才能搜索</div>
+        ${okMsg}
+        ${loginCards}
+        <div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.7;text-align:center">💡 抖音/小红书/快手对未登录爬虫强反爬，<b>必须扫码登录账号</b>才能拿到搜索结果。<br>登录后 cookie 自动保存到服务器，所有搜索/抓取自动复用</div>
+      </div>`;
+      grid.innerHTML = html;
+      return;
+    }
+
+    if (enabledCount === 0 && errored.length === 0) {
+      // 真没有启用任何 provider
+      html += `<div style="grid-column:1/-1;text-align:center;padding:48px 32px;color:var(--text3);background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.4">⚙️</div>
+        <div style="font-size:15px;color:var(--text2);margin-bottom:8px;font-weight:600">还没启用任何数据源</div>
+        <div style="font-size:12px;margin-bottom:20px;line-height:1.7">默认所有 provider 都禁用 · 请联系管理员去后台启用至少一个数据源</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <a class="btn btn-primary btn-sm" href="/admin.html" target="_blank">⚙️ 打开管理后台</a>
+          <button class="btn btn-sm" onclick="document.getElementById('searchInput').focus()">🔗 改用 URL 抓取</button>
+        </div>
+      </div>`;
+    } else if (errored.length > 0 && enabledCount === 0) {
+      // 有 provider 但全部出错（最常见：Chrome 没装 / cookie 失效 / 反爬）
+      const errorList = errored.map(s => `<div style="margin-bottom:6px"><b>${escHtml(s.name)}</b> · <span style="color:var(--red)">${escHtml(s.message || '未知错误')}</span></div>`).join('');
+      html += `<div style="grid-column:1/-1;padding:32px;color:var(--text3);background:var(--bg2);border:1px dashed var(--border2);border-radius:12px;text-align:left">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.5;text-align:center">⚠️</div>
+        <div style="font-size:15px;color:var(--text2);margin-bottom:14px;font-weight:600;text-align:center">所有数据源都返回失败</div>
+        <div style="font-size:12px;line-height:1.8;background:var(--bg3);padding:12px 14px;border-radius:8px;margin-bottom:14px">${errorList}</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.7;margin-bottom:14px">
+          常见原因：①未装 Chrome（headless provider 需要）；②未在「平台账号绑定」扫码登录账号；③目标平台反爬封禁
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="goMod('platforms')">🔐 去扫码登录账号</button>
+          <a class="btn btn-sm" href="/admin.html" target="_blank">⚙️ 打开管理后台</a>
+          <button class="btn btn-sm" onclick="document.getElementById('searchInput').focus()">🔗 改用 URL 抓取</button>
+        </div>
+      </div>`;
+    } else if (needLoginPlats.length > 0) {
+      html += `<div style="grid-column:1/-1;text-align:center;padding:48px 32px;color:var(--text3);background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.5">🔐</div>
+        <div style="font-size:15px;color:var(--text2);margin-bottom:8px;font-weight:600">需要先绑定平台账号</div>
+        <div style="font-size:12px;margin-bottom:20px;line-height:1.7">
+          ${needLoginPlats.map(p => ({ douyin:'抖音', xiaohongshu:'小红书', kuaishou:'快手' })[p]).join(' / ')} 的内容需要登录账号才能抓取<br>
+          请去「平台账号绑定」扫码登录后再试
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="goMod('platforms')">🔐 去平台账号绑定</button>
+      </div>`;
+    } else {
+      html += `<div style="grid-column:1/-1;text-align:center;padding:48px 32px;color:var(--text3);background:var(--bg2);border:1px dashed var(--border2);border-radius:12px">
+        <div style="font-size:42px;margin-bottom:14px;opacity:0.4">🔍</div>
+        <div style="font-size:15px;color:var(--text2);margin-bottom:8px;font-weight:600">没找到匹配的视频</div>
+        <div style="font-size:12px;margin-bottom:20px">换个关键字 / 启用更多数据源 / 直接粘贴视频链接</div>
+        <button class="btn btn-sm" onclick="document.getElementById('searchInput').focus()">🔗 改用 URL 抓取</button>
+      </div>`;
+    }
+    grid.innerHTML = html;
+    return;
+  }
+
+  html += items.map((v, i) => {
+    const p = getPlatLabel(v.platform);
+    const col = colorAt(i);
+    const hasCover = v.cover && v.cover.startsWith('http');
+    const thumb = hasCover
+      ? `<img src="${escAttr(v.cover)}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="vc-thumb" style="display:none;background:linear-gradient(135deg, ${col}40, ${col}10);position:absolute;inset:0">🎬</div>`
+      : `<div style="background:linear-gradient(135deg, ${col}40, ${col}10);width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:38px">🎬</div>`;
+    const sourceBadge = v.source === 'bilibili-api' ? '<span class="vc-thumb-rank" style="background:var(--green)">真实</span>' :
+                        v.source === 'local-contents' ? '<span class="vc-thumb-rank" style="background:var(--purple)">本地</span>' : '';
+
+    // duration 处理：B站给的是 "MM:SS"
+    const dur = String(v.duration || '').replace(/^00:/, '');
+
+    return `
+      <div class="video-card" data-search-idx="${i}">
+        <div class="vc-thumb" style="background:var(--bg3);overflow:hidden">
+          <div class="vc-thumb-overlay" style="z-index:3"></div>
+          <span class="plat ${p.cls} vc-thumb-plat" style="z-index:4">${p.icon} ${p.name}</span>
+          ${sourceBadge}
+          ${dur ? `<span class="vc-thumb-duration" style="z-index:4">${dur}</span>` : ''}
+          ${thumb}
+        </div>
+        <div class="vc-info">
+          <div class="vc-title">${escHtml(v.title || '(无标题)')}</div>
+          <div class="vc-meta">
+            <div class="vc-author">
+              <div class="vc-avatar">${(v.author || '?').charAt(0)}</div>
+              <span class="vc-author-name">${escHtml(v.author || '未知')}</span>
+            </div>
+            ${v.published_at ? `<span style="font-size:10px">${new Date(v.published_at).toLocaleDateString('zh-CN')}</span>` : ''}
+          </div>
+          <div class="vc-stats">
+            <span class="vc-stat">👁 <b>${fmtNum(v.views || 0)}</b></span>
+            <span class="vc-stat">❤️ <b>${fmtNum(v.likes || 0)}</b></span>
+            ${v.comments ? `<span class="vc-stat">💬 <b>${fmtNum(v.comments)}</b></span>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  grid.innerHTML = html;
+
+  // 卡片点击 → 弹窗
+  window._lastSearchItems = items;
+  grid.querySelectorAll('.video-card[data-search-idx]').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = +card.dataset.searchIdx;
+      const v = (window._lastSearchItems || [])[idx];
+      if (v) openVidModal(v);
+    });
+  });
+}
+
+async function searchCardClick(id, videoUrl, localContentId) {
+  if (localContentId) {
+    // 本地已抓过的，直接进克隆
+    cloneStartFromContent(localContentId);
+    return;
+  }
+  if (!videoUrl) return toast('该结果无可用链接');
+  toast('正在抓取该视频内容...');
+  try {
+    const j = await api('/api/radar/extract', { method: 'POST', body: JSON.stringify({ url: videoUrl }) });
+    if (!j.success) throw new Error(j.error);
+    State.selectedContentId = j.content.id;
+    await loadContents();
+    goMod('clone');
+    setTimeout(() => { goStep(2); realRunStep2(j.content); }, 200);
+  } catch (e) {
+    toast('抓取失败：' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MOD: 关键字订阅
+// ════════════════════════════════════════════════════════════════════
+async function loadSubscriptions() {
+  try {
+    const j = await api('/api/radar/subscriptions');
+    const subs = j.subscriptions || [];
+    document.getElementById('sbSubBadge').textContent = subs.length;
+    const list = document.getElementById('subList');
+    if (!list) return;
+    if (!subs.length) {
+      list.innerHTML = `<div style="grid-column:1/-1;background:var(--bg2);border:1px dashed var(--border2);border-radius:12px;padding:48px;text-align:center;color:var(--text3)">
+        <div style="font-size:42px;margin-bottom:12px;opacity:0.4">📡</div>
+        <div style="margin-bottom:6px;font-size:14px">还没有订阅任何关键字</div>
+        <div style="font-size:11px;margin-bottom:16px">订阅后系统会每 N 分钟自动从所有启用的 provider 拉新视频入库</div>
+        <button class="btn btn-primary btn-sm" onclick="openAddSub()">+ 创建第一个订阅</button>
+      </div>`;
+      return;
+    }
+    list.innerHTML = subs.map(s => `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:16px;font-weight:700;margin-bottom:4px;color:${s.enabled?'var(--cyan)':'var(--text3)'}">${s.enabled?'🟢':'⚪'} ${escHtml(s.keyword)}</div>
+            <div style="font-size:11px;color:var(--text3)">每 ${s.interval_minutes} 分钟自动跑</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700;color:var(--cyan);font-family:monospace">${s.total_new || 0}</div>
+            <div style="font-size:10px;color:var(--text3)">总抓取数</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:14px">
+          上次：${s.last_run_at ? new Date(s.last_run_at).toLocaleString('zh-CN') + ` (新增 ${s.last_count || 0})` : '从未跑过'}<br>
+          下次：${s.next_run_at ? new Date(s.next_run_at).toLocaleString('zh-CN') : '—'}
+          ${s.last_error ? `<br><span style="color:var(--red)">错误：${escHtml(s.last_error)}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="runSub('${s.id}')">▶ 立即跑</button>
+          <button class="btn btn-sm" onclick="toggleSub('${s.id}', ${!s.enabled})">${s.enabled?'⏸ 暂停':'▶ 启用'}</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-sm" onclick="deleteSub('${s.id}')" style="color:var(--red);border-color:rgba(255,84,112,0.3)">删除</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) { toast('加载订阅失败：' + e.message); }
+}
+
+function openAddSub() { ReplicateModal.openAddSub(); }
+
+async function runSub(id) {
+  toast('正在执行订阅...');
+  try {
+    const j = await api(`/api/radar/subscriptions/${id}/run`, { method: 'POST' });
+    if (!j.success) throw new Error(j.error);
+    toast(`✅ 已运行，新增 ${j.new_count} 条`);
+    loadSubscriptions();
+  } catch (e) { toast('运行失败：' + e.message); }
+}
+
+async function toggleSub(id, enabled) {
+  try {
+    await api(`/api/radar/subscriptions/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+    loadSubscriptions();
+  } catch (e) { toast('操作失败：' + e.message); }
+}
+
+async function deleteSub(id) {
+  if (!confirm('确认删除订阅？已抓取的内容不会被删除。')) return;
+  try {
+    await api(`/api/radar/subscriptions/${id}`, { method: 'DELETE' });
+    toast('已删除');
+    loadSubscriptions();
+  } catch (e) { toast('删除失败：' + e.message); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MOD: 数据源配置
+// ════════════════════════════════════════════════════════════════════
+async function loadProviders() {
+  try {
+    const j = await api('/api/radar/providers');
+    const list = document.getElementById('providersList');
+    if (!list) return;
+    list.innerHTML = (j.providers || []).map(p => {
+      const enabled = p.config?.enabled;
+      const config = p.config || {};
+      const fields = Object.entries(p.config_schema || {}).map(([k, schema]) => {
+        const v = config[k] !== undefined ? config[k] : (schema.default || '');
+        const id = `prov_${p.id}_${k}`;
+        if (schema.type === 'select') {
+          return `<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">${escHtml(schema.label || k)}</label>
+            <select id="${id}" style="width:100%;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px">
+              ${(schema.options || []).map(o => `<option value="${escAttr(o)}" ${o===v?'selected':''}>${escHtml(o)}</option>`).join('')}
+            </select></div>`;
+        }
+        const inputType = schema.type === 'password' ? 'password' : (schema.type === 'number' ? 'number' : 'text');
+        return `<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">${escHtml(schema.label || k)}</label>
+          <input type="${inputType}" id="${id}" value="${escAttr(String(v||''))}" placeholder="${escAttr(schema.label||'')}" style="width:100%;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px;font-family:monospace" /></div>`;
+      }).join('');
+
+      return `
+        <div style="background:var(--bg2);border:1px solid ${enabled ? 'rgba(33,255,243,0.3)' : 'var(--border)'};border-radius:12px;padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;margin-bottom:4px">${escHtml(p.name)} ${p.requires_key?'<span style="font-size:10px;color:var(--orange);background:rgba(255,139,61,0.15);padding:2px 7px;border-radius:3px;margin-left:6px">需Key</span>':'<span style="font-size:10px;color:var(--green);background:rgba(16,185,129,0.15);padding:2px 7px;border-radius:3px;margin-left:6px">免Key</span>'}</div>
+              <div style="font-size:11px;color:var(--text3)">${escHtml(p.description || '')}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px">id: <code>${p.id}</code> · platform: <code>${p.platform}</code></div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
+              <input type="checkbox" id="prov_${p.id}_enabled" ${enabled?'checked':''} />
+              启用
+            </label>
+          </div>
+          ${fields}
+          <div style="display:flex;gap:6px;margin-top:14px">
+            <button class="btn btn-primary btn-sm" onclick="saveProvider('${p.id}')">💾 保存</button>
+            <button class="btn btn-sm" onclick="testProvider('${p.id}')">🩺 测试连通</button>
+          </div>
+          <div id="prov_${p.id}_status" style="font-size:11px;margin-top:8px;color:var(--text3)"></div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) { toast('加载 providers 失败：' + e.message); }
+}
+
+async function saveProvider(id) {
+  const enabled = document.getElementById('prov_' + id + '_enabled')?.checked;
+  // 收集所有配置字段
+  const config = { enabled };
+  document.querySelectorAll(`[id^="prov_${id}_"]`).forEach(el => {
+    if (el.id === 'prov_' + id + '_enabled') return;
+    const field = el.id.replace('prov_' + id + '_', '');
+    if (el.value !== undefined) config[field] = el.tagName === 'INPUT' && el.type === 'number' ? +el.value : el.value;
+  });
+  try {
+    await api(`/api/radar/providers/${id}`, { method: 'PUT', body: JSON.stringify(config) });
+    document.getElementById('prov_' + id + '_status').innerHTML = `<span style="color:var(--green)">✓ 已保存于 ${new Date().toLocaleTimeString('zh-CN')}</span>`;
+    toast(`✅ ${id} 配置已保存`);
+  } catch (e) {
+    document.getElementById('prov_' + id + '_status').innerHTML = `<span style="color:var(--red)">✗ ${e.message}</span>`;
+  }
+}
+
+async function testProvider(id) {
+  const status = document.getElementById('prov_' + id + '_status');
+  if (status) status.innerHTML = '⏳ 测试中...';
+  try {
+    const j = await api(`/api/radar/providers/${id}/health`, { method: 'POST' });
+    const h = j.health;
+    status.innerHTML = `<span style="color:${h.ok?'var(--green)':'var(--red)'}">${h.ok?'✓ 连通':'✗ 失败'} · ${escHtml(h.message || '')}</span>`;
+  } catch (e) {
+    status.innerHTML = `<span style="color:var(--red)">✗ ${e.message}</span>`;
+  }
+}
+
+// 扩展 goMod 添加新模块
+const _origGoMod2 = window.goMod;
+window.goMod = function(name) {
+  _origGoMod2(name);
+  if (name === 'subscriptions') loadSubscriptions();
+  if (name === 'platforms') loadPlatforms();
+};
+
+// ════════════════════════════════════════════════════════════════════
+// MOD: 平台账号绑定
+// ════════════════════════════════════════════════════════════════════
+// 复用 VIDO 的 /api/browser/* 平台登录（个人中心同款）
+async function loadPlatforms() {
+  try {
+    const r = await fetch('/api/browser/status', { headers: { Authorization: 'Bearer ' + getToken() } });
+    const data = await r.json();
+    const list = document.getElementById('platformsList');
+    if (!list) return;
+    if (!data.success) throw new Error(data.error || 'API 不可用');
+    const platforms = data.platforms || {};
+    const icons = { douyin: '📺', xiaohongshu: '📕', kuaishou: '📹' };
+    list.innerHTML = Object.entries(platforms).map(([id, p]) => {
+      const icon = icons[id] || '🌐';
+      const userName = p.username ? ` · ${escHtml(p.username)}` : '';
+      const bound = p.loggedIn;
+      const statusColor = bound ? 'var(--green)' : 'var(--text3)';
+      const statusIcon = bound ? `✓ 已登录${userName}` : '○ 未登录';
+      const chromeWarn = !data.hasChrome ? `<div style="font-size:10px;color:var(--orange);margin-top:6px">⚠ 服务器需安装 Chrome 浏览器才能扫码登录</div>` : '';
+      return `
+        <div style="background:var(--bg2);border:1px solid ${bound?'rgba(16,185,129,0.3)':'var(--border)'};border-radius:12px;padding:18px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:28px">${icon}</span>
+            <div style="flex:1">
+              <div style="font-size:15px;font-weight:700">${escHtml(p.name)}</div>
+              <div style="font-size:11px;color:${statusColor};margin-top:2px">${statusIcon}</div>
+            </div>
+          </div>
+          ${chromeWarn}
+          <div style="display:flex;gap:6px;margin-top:14px">
+            ${bound
+              ? `<button class="btn btn-sm danger" onclick="vrPlatformLogout('${id}')">退出</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="vrPlatformLogin('${id}')">📱 扫码登录</button>`}
+            <span style="flex:1"></span>
+            <a class="btn btn-sm" href="/index.html#profile" target="_blank" style="font-size:11px;color:var(--text3);text-decoration:none">个人中心</a>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    toast('加载失败：' + e.message);
+    document.getElementById('platformsList').innerHTML = `<div style="grid-column:1/-1;color:var(--red);text-align:center;padding:40px">加载平台列表失败：${escHtml(e.message)}</div>`;
+  }
+}
+
+// 扫码登录 - 复用 VIDO browserService
+let _vrQrPlatform = null;
+let _vrQrPollTimer = null;
+async function vrPlatformLogin(platform) {
+  _vrQrPlatform = platform;
+  const names = { douyin: '抖音', xiaohongshu: '小红书', kuaishou: '快手' };
+  const name = names[platform] || platform;
+
+  ReplicateModal.open({
+    title: `📱 扫码登录${name}`,
+    body: `<div id="vrQrBody" style="text-align:center;padding:20px"><div style="color:var(--text3)">⏳ 正在打开浏览器，请稍候...</div></div>`,
+    confirmText: '完成',
+    cancelText: '取消',
+    onConfirm: () => true,
+  });
+  // 关闭时清理
+  const oldClose = ReplicateModal.close;
+  ReplicateModal.close = function() {
+    if (_vrQrPollTimer) { clearInterval(_vrQrPollTimer); _vrQrPollTimer = null; }
+    if (_vrQrPlatform) {
+      fetch(`/api/browser/login/${_vrQrPlatform}/cancel`, { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() } }).catch(()=>{});
+      _vrQrPlatform = null;
+    }
+    ReplicateModal.close = oldClose;
+    oldClose();
+  };
+
+  try {
+    const r = await fetch(`/api/browser/login/${platform}`, { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() } });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error);
+    // startLogin 现在异步启动，立即开始 polling 拿截图
+    document.getElementById('vrQrBody').innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:32px;margin-bottom:12px">⏳</div><div>正在打开 ${name}（约 5-10 秒）...</div></div>`;
+    vrStartQrPoll(platform, name);
+  } catch (e) {
+    document.getElementById('vrQrBody').innerHTML = `
+      <div style="padding:30px;color:var(--red);text-align:center">
+        <div style="font-size:36px;margin-bottom:14px">❌</div>
+        <div style="font-size:14px;margin-bottom:8px">启动失败</div>
+        <div style="font-size:11px;color:var(--text3)">${escHtml(e.message)}</div>
+      </div>`;
+  }
+}
+
+function vrStartQrPoll(platform, name = '') {
+  if (_vrQrPollTimer) clearInterval(_vrQrPollTimer);
+  // 1s 间隔（之前 3s）— 让二维码尽快显示
+  _vrQrPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/browser/login/${platform}/poll`, { headers: { Authorization: 'Bearer ' + getToken() } });
+      const data = await r.json();
+      if (data.status === 'success') {
+        clearInterval(_vrQrPollTimer); _vrQrPollTimer = null;
+        renderVrQr(data.screenshot, `✅ 登录成功！cookies 已保存`);
+        setTimeout(() => { ReplicateModal.close(); loadPlatforms(); }, 1500);
+      } else if (['expired','error'].includes(data.status)) {
+        clearInterval(_vrQrPollTimer); _vrQrPollTimer = null;
+        renderVrQr(null, `❌ ${data.message || '会话过期'}`);
+      } else if (data.status === 'launching') {
+        // 启动中 — 显示进度提示
+        const body = document.getElementById('vrQrBody');
+        if (body) body.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text3)">
+          <div style="font-size:32px;margin-bottom:12px">⏳</div>
+          <div style="font-size:13px;margin-bottom:6px">${escHtml(data.message || '启动中')}</div>
+          <div style="font-size:11px;color:var(--text3)">已等 ${data.elapsed || 0}s · 通常 8-15 秒后显示二维码</div>
+        </div>`;
+      } else if (data.screenshot) {
+        renderVrQr(data.screenshot, `请用 ${name || 'APP'} 扫描二维码 · 已等 ${data.elapsed||'?'}s`);
+      }
+    } catch {}
+  }, 1000);
+}
+
+function renderVrQr(screenshot, hintText) {
+  const body = document.getElementById('vrQrBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">${hintText}</div>
+    ${screenshot ? `
+      <div style="background:white;border-radius:12px;padding:14px;display:inline-block;margin-bottom:14px">
+        <img src="${screenshot}" style="max-width:300px;width:100%;display:block" alt="QR"/>
+      </div>
+    ` : ''}
+    <div style="font-size:10px;color:var(--text3);line-height:1.6;margin-top:12px">
+      💡 登录成功后浏览器会自动关闭<br>cookies 保存到服务器，之后所有该平台搜索/抓取自动使用
+    </div>
+  `;
+}
+
+async function vrPlatformLogout(platform) {
+  const ok = confirm(`确定退出${platform}登录？`);
+  if (!ok) return;
+  try {
+    await fetch(`/api/browser/logout/${platform}`, { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() } });
+    toast('已退出');
+    loadPlatforms();
+  } catch (e) { toast('失败：' + e.message); }
+}
+
+// 抖音扫码登录流程
+let _qrPollTimer = null;
+async function startDouyinQRLogin() {
+  let sessionId = null;
+  // 先打开弹窗，显示 loading
+  ReplicateModal.open({
+    title: '📱 扫码登录抖音',
+    body: `
+      <div id="qrLoginBody" style="text-align:center">
+        <div style="padding:40px;color:var(--text3)">⏳ 正在启动浏览器，请稍候...</div>
+      </div>
+    `,
+    confirmText: '完成',
+    cancelText: '取消',
+    onConfirm: () => true,
+  });
+
+  try {
+    const r = await api('/api/platform-auth/douyin/login/start', { method: 'POST' });
+    if (!r.success) throw new Error(r.error);
+    sessionId = r.sessionId;
+    // 开始轮询
+    _qrPollTimer = setInterval(async () => {
+      try {
+        const s = await api(`/api/platform-auth/douyin/login/status/${sessionId}`);
+        if (!s.success) throw new Error(s.error);
+        renderQrLoginBody(sessionId, s);
+        if (s.status === 'logged_in') {
+          clearInterval(_qrPollTimer);
+          _qrPollTimer = null;
+          toast(`✅ 抖音绑定成功！cookies=${s.cookieCount} 条`);
+          loadPlatforms();
+        } else if (['timeout', 'error'].includes(s.status)) {
+          clearInterval(_qrPollTimer);
+          _qrPollTimer = null;
+          toast(`绑定失败：${s.status} ${s.lastError||''}`);
+        }
+      } catch (e) {
+        // 会话已结束 / 不存在
+        if (_qrPollTimer) clearInterval(_qrPollTimer);
+      }
+    }, 2000);
+  } catch (e) {
+    document.getElementById('qrLoginBody').innerHTML = `
+      <div style="padding:30px;color:var(--red);text-align:center">
+        <div style="font-size:36px;margin-bottom:14px">❌</div>
+        <div style="font-size:14px;margin-bottom:8px">启动登录失败</div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.7">${escHtml(e.message)}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:14px">
+          可能原因：<br>
+          ① 服务器没装 Python 或缺少 playwright<br>
+          ② douyin 包路径不对（应在项目根目录 douyin/douyin/）<br>
+          ③ 服务器是 headless 环境（生产 Linux 也可，但需要装 chromium-headless-shell + xvfb）
+        </div>
+      </div>
+    `;
+  }
+
+  // 弹窗关闭时取消会话
+  const mask = document.getElementById('__replicate_modal');
+  if (mask) {
+    const closeOrig = ReplicateModal.close;
+    ReplicateModal.close = function() {
+      if (_qrPollTimer) { clearInterval(_qrPollTimer); _qrPollTimer = null; }
+      if (sessionId) { api(`/api/platform-auth/douyin/login/cancel/${sessionId}`, { method: 'POST' }).catch(()=>{}); }
+      ReplicateModal.close = closeOrig;
+      closeOrig();
+    };
+  }
+}
+
+function renderQrLoginBody(sessionId, s) {
+  const body = document.getElementById('qrLoginBody');
+  if (!body) return;
+  const statusMap = {
+    starting: '⏳ 启动浏览器中...',
+    opening_browser: '🌐 浏览器已启动，正在打开抖音...',
+    waiting_scan: '📱 请用抖音 App 扫描下方二维码',
+    login_detected: '✓ 已检测到登录，保存 cookies 中...',
+    logged_in: '🎉 登录成功！',
+    timeout: '⏱ 等待超时（5 分钟未扫码）',
+    error: '❌ 出错：' + (s.lastError || ''),
+  };
+  const status = statusMap[s.status] || s.status;
+  const tokenQ = '?token=' + encodeURIComponent(getToken() || '') + '&t=' + Date.now();
+  const qrUrl = `/api/platform-auth/douyin/login/qrcode/${sessionId}${tokenQ}`;
+
+  body.innerHTML = `
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">${status}</div>
+    ${s.qrAvailable ? `
+      <div style="background:white;border-radius:12px;padding:14px;display:inline-block;margin-bottom:14px">
+        <img src="${qrUrl}" style="max-width:280px;width:100%;display:block" alt="QR 二维码"
+          onerror="this.style.display='none';this.nextElementSibling.style.display='block'" />
+        <div style="display:none;color:#000;font-size:12px;padding:30px">二维码加载中...</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6">每 2 秒刷新一次截图 · 已等 ${s.elapsedSec}s · 超时 300s</div>
+    ` : `
+      <div style="padding:30px;background:var(--bg3);border-radius:8px;color:var(--text3);font-size:12px">
+        ⏳ 等待截图（${s.elapsedSec}s）...
+      </div>
+    `}
+    <div style="margin-top:14px;font-size:10px;color:var(--text3);line-height:1.6">
+      💡 登录后会自动关闭浏览器并保存 cookies 到服务器<br>
+      之后所有抖音搜索 / 博主抓取都会用这个登录态
+    </div>
+  `;
+}
+
+async function unbindDouyin() {
+  if (!confirm('确认解绑抖音账号？\n\n当前 cookies 会被删除，下次搜索抖音内容前需要重新扫码。')) return;
+  try {
+    await api('/api/platform-auth/douyin', { method: 'DELETE' });
+    toast('已解绑');
+    loadPlatforms();
+  } catch (e) { toast('失败：' + e.message); }
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+// 通用模态框
+// ════════════════════════════════════════════════════════════════════
+const ReplicateModal = {
+  open({ title, body, confirmText = '确定', cancelText = '取消', onConfirm = null, large = false }) {
+    const old = document.getElementById('__replicate_modal');
+    if (old) old.remove();
+    const mask = document.createElement('div');
+    mask.id = '__replicate_modal';
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:5000;display:flex;align-items:center;justify-content:center;padding:24px;animation:vmf 0.18s ease';
+    mask.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;width:100%;max-width:${large?'620px':'480px'};max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.5)" onclick="event.stopPropagation()">
+        <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:15px;font-weight:700">${title}</div>
+          <button style="background:transparent;border:0;color:var(--text3);cursor:pointer;font-size:22px;padding:0 4px" onclick="ReplicateModal.close()">×</button>
+        </div>
+        <div style="padding:20px 22px;overflow-y:auto;flex:1" id="__replicate_modal_body">${body}</div>
+        <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn" onclick="ReplicateModal.close()">${cancelText}</button>
+          ${onConfirm ? `<button class="btn btn-primary" id="__replicate_modal_ok">${confirmText}</button>` : ''}
+        </div>
+      </div>
+    `;
+    mask.addEventListener('click', e => { if (e.target === mask) ReplicateModal.close(); });
+    document.body.appendChild(mask);
+    if (onConfirm) {
+      document.getElementById('__replicate_modal_ok').onclick = async () => {
+        const ok = await onConfirm();
+        if (ok !== false) ReplicateModal.close();
+      };
+    }
+  },
+  close() {
+    const m = document.getElementById('__replicate_modal');
+    if (m) m.remove();
+  },
+  // 新建订阅弹窗
+  openAddSub() {
+    this.open({
+      title: '📡 新建关键字订阅',
+      body: `
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:12px;color:var(--text2);font-weight:600">关键字 <span style="color:var(--red)">*</span></label>
+            <input type="text" id="__sub_kw" placeholder="例如：原神 / 减脂餐 / 副业" autofocus
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;outline:none" />
+            <div style="font-size:11px;color:var(--text3);line-height:1.5">系统每隔 N 分钟会用这个关键字搜全平台，新视频自动进内容库</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:12px;color:var(--text2);font-weight:600">抓取间隔</label>
+            <select id="__sub_interval"
+              style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;outline:none">
+              <option value="15">15 分钟（高频）</option>
+              <option value="30">30 分钟</option>
+              <option value="60" selected>60 分钟（推荐）</option>
+              <option value="180">3 小时</option>
+              <option value="360">6 小时</option>
+              <option value="720">12 小时</option>
+              <option value="1440">每天</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:12px;color:var(--text2);font-weight:600">数据源</label>
+            <div style="font-size:11px;color:var(--text3);line-height:1.6;background:var(--bg3);padding:10px 12px;border-radius:7px">
+              使用「数据源管理」中所有已启用的 provider 并行抓取。<br>
+              如果都没启用过，请联系管理员去后台「📡 数据源管理」开启至少一个。
+            </div>
+          </div>
+        </div>
+      `,
+      confirmText: '✓ 创建订阅',
+      onConfirm: async () => {
+        const kw = document.getElementById('__sub_kw').value.trim();
+        if (!kw) { toast('请输入关键字'); return false; }
+        const interval = +document.getElementById('__sub_interval').value;
+        try {
+          const j = await api('/api/radar/subscriptions', { method: 'POST', body: JSON.stringify({ keyword: kw, interval_minutes: interval }) });
+          if (!j.success) throw new Error(j.error);
+          toast('✅ 订阅已创建，30s 后第一次自动跑');
+          loadSubscriptions();
+          return true;
+        } catch (e) { toast('创建失败：' + e.message); return false; }
+      }
+    });
+    setTimeout(() => document.getElementById('__sub_kw')?.focus(), 80);
+  },
+};
+
+// ════════════════════════════════════════════════════════════════════
+// 启动只拉订阅徽章 + 关注列表，不主动拉 contents（默认空白搜索）
+// ════════════════════════════════════════════════════════════════════
+setTimeout(() => {
+  loadSubscriptions();
+  // 静默加载关注列表用于热度排行的「关注博主子板块」判断
+  api('/api/radar/monitors').then(j => { State.monitors = j.monitors || []; }).catch(() => {});
+}, 200);
+
+</script>
+</body>
+</html>

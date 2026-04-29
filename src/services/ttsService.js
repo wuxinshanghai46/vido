@@ -1,7 +1,8 @@
 /**
  * TTS 语音合成服务
- * 优先级: 火山引擎(豆包) > 百度语音 > 阿里云CosyVoice > Fish Audio > MiniMax > ElevenLabs > OpenAI > Windows SAPI
- * 中文语音优先，类似百度/高德地图的自然中文语音
+ * 优先级（2026-04-26 改版）：阿里云 CosyVoice → 阿里云 NLS
+ * 全平台统一只用阿里 TTS · 移除火山豆包/百度/讯飞/MiniMax/ElevenLabs/OpenAI/SAPI
+ * 自定义克隆音色：只走阿里 CosyVoice 真克隆（永久 voice_id），失败立即报错不回退默认女声
  */
 require('dotenv').config();
 const { execFile } = require('child_process');
@@ -23,55 +24,90 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
     const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
-    if (result) { console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`); return result; }
+    if (result) {
+      console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`);
+      return _postProcessAudio(result);
+    }
     // 不静默回退 — 用户明确选了自定义声音，失败就报错
-    throw new Error('自定义声音合成失败，请检查声音文件或配置 Fish Audio / 阿里云 CosyVoice API Key 以启用声音克隆');
+    throw new Error('自定义声音合成失败，请检查声音文件或配置 阿里 CosyVoice / 火山声音复刻 API Key 以启用声音克隆');
   }
 
-  // 供应商优先级链：每个失败后自动回退到下一个
+  // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
+  // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const chain = [
-    { id: 'zhipu',      name: '智谱',       fn: generateWithZhipu,      opts: { gender, speed, voiceId } },
-    { id: 'volcengine',  name: '火山引擎',   fn: generateWithVolcEngine,  opts: { gender, speed, voiceId } },
-    { id: 'baidu',       name: '百度',       fn: generateWithBaidu,       opts: { gender, speed, voiceId } },
-    { id: 'aliyun-tts',  name: '阿里云',     fn: generateWithAliyunTTS,   opts: { gender, speed, voiceId } },
-    { id: 'fishaudio',   name: 'FishAudio',  fn: generateWithFishAudio,   opts: { gender, speed } },
-    { id: 'minimax',     name: 'MiniMax',    fn: generateWithMiniMaxTTS,  opts: { gender, speed } },
-    { id: 'xunfei',      name: '讯飞',       fn: generateWithXunfei,      opts: { gender, speed, voiceId } },
-    { id: 'elevenlabs',  name: 'ElevenLabs', fn: generateWithElevenLabs,  opts: { gender, speed } },
+    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, voiceId } },
+    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, voiceId } },
   ];
 
+  const errors = [];
   for (const { id, name, fn, opts } of chain) {
     const apiKey = _getTTSKey(id);
-    if (!apiKey) continue;
+    if (!apiKey) { errors.push(`${name}: 未配置 API Key`); continue; }
+    const startedAt = Date.now();
     try {
       const result = await fn(text, outputPath, { ...opts, apiKey });
-      if (result) { console.log(`[TTS] 使用 ${name} 生成成功`); return result; }
+      if (result) {
+        console.log(`[TTS] 使用 ${name} 生成成功`);
+        // 埋点：阿里 CosyVoice / NLS 按字符计费
+        try {
+          require('./tokenTracker').record({
+            provider: id, model: id === 'aliyun-tts' ? 'cosyvoice-v3-flash' : 'aliyun-nls',
+            category: 'tts', ttsChars: (text || '').length,
+            durationMs: Date.now() - startedAt, status: 'success',
+          });
+        } catch {}
+        return _postProcessAudio(result);
+      }
+      errors.push(`${name}: 返回空结果`);
     } catch (err) {
-      console.warn(`[TTS] ${name} 失败，尝试下一个: ${err.message}`);
+      console.warn(`[TTS] ${name} 失败: ${err.message}`);
+      errors.push(`${name}: ${err.message}`);
+      try {
+        require('./tokenTracker').record({
+          provider: id, model: id === 'aliyun-tts' ? 'cosyvoice-v3-flash' : 'aliyun-nls',
+          category: 'tts', ttsChars: (text || '').length,
+          durationMs: Date.now() - startedAt, status: 'fail', errorMsg: err.message,
+        });
+      } catch {}
     }
   }
 
-  // OpenAI（支持 env 回退）
-  const oaiKey = _getTTSKey('openai') || process.env.OPENAI_API_KEY;
-  if (oaiKey) {
-    try {
-      const result = await generateWithOpenAI(text, outputPath, { gender, speed, apiKey: oaiKey });
-      if (result) { console.log('[TTS] 使用 OpenAI 生成成功'); return result; }
-    } catch (err) {
-      console.warn(`[TTS] OpenAI 失败: ${err.message}`);
-    }
-  }
-
-  // 最终兜底：Windows SAPI
-  try {
-    const result = await generateWithSAPI(text, outputPath, { gender, speed });
-    if (result) { console.log('[TTS] 使用 Windows SAPI 生成成功'); return result; }
-  } catch (err) {
-    console.warn(`[TTS] SAPI 失败: ${err.message}`);
-  }
-
-  console.warn('[TTS] 所有供应商均失败，无法生成语音');
+  console.warn('[TTS] 阿里 TTS 全部失败：' + errors.join(' | '));
+  // 返回 null 让上游决定是 throw 还是 fallback；不再用 SAPI/默认女声替代
   return null;
+}
+
+// 后处理：仅对开头可能的 click/beep 做一次短暂的淡入（30ms），不再主动 silenceremove。
+// 之前的 silenceremove 用 peak detection + -40dB 阈值，对部分低响度的克隆合成音频会误剪
+// 有效人声片段，导致听感"一开头就快进一段"或"滴声后半句没了"。
+// 改为：只加一个 30ms 的 fade-in，把硬边削掉，不删除任何样本。
+function _postProcessAudio(audioPath) {
+  if (!audioPath || !fs.existsSync(audioPath)) return audioPath;
+  try {
+    const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg')
+      ? process.env.FFMPEG_PATH : require('ffmpeg-static');
+    if (!ffmpegPath) return audioPath;
+    const { execSync } = require('child_process');
+    const ext = (path.extname(audioPath) || '.mp3').toLowerCase();
+    const dir = path.dirname(audioPath);
+    const base = path.basename(audioPath, ext);
+    const outPath = path.join(dir, `${base}_clean${ext}`);
+    const codec = ext === '.wav' ? 'pcm_s16le' : 'libmp3lame';
+    const codecArgs = codec === 'libmp3lame' ? `-c:a ${codec} -q:a 3` : `-c:a ${codec}`;
+    // 只做 30ms 淡入，消除开头硬边引起的 click / "滴"声；不剪样本、不改长度。
+    const af = 'afade=t=in:st=0:d=0.03';
+    execSync(
+      `"${ffmpegPath}" -y -i "${audioPath}" -af "${af}" ${codecArgs} "${outPath}"`,
+      { stdio: 'pipe', timeout: 15000 }
+    );
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 500) {
+      try { fs.unlinkSync(audioPath); } catch {}
+      fs.renameSync(outPath, audioPath);
+    }
+  } catch (err) {
+    console.warn('[TTS] 开头淡入后处理失败（用原音频）:', err.message);
+  }
+  return audioPath;
 }
 
 function _getTTSKey(providerId) {
@@ -80,6 +116,8 @@ function _getTTSKey(providerId) {
     const settings = loadSettings();
     const p = settings.providers.find(p => p.id === providerId && p.enabled && p.api_key);
     if (!p) return '';
+    // 健康检查：test_status === 'error' 的供应商一律屏蔽（UI 列表 / 备选链）
+    if (p.test_status === 'error') return '';
     const hasTTS = (p.models || []).some(m => m.enabled !== false && m.use === 'tts');
     return hasTTS ? p.api_key : '';
   } catch { return ''; }
@@ -159,149 +197,53 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     throw new Error(`自定义声音 ${voiceId} 文件不存在`);
   }
 
-  // 策略1: Fish Audio 声音克隆（效果最好）
-  const fishKey = _getTTSKey('fishaudio');
-  if (fishKey) {
-    try {
-      // 检查是否已有 Fish Audio reference_id
-      let refId = voice.fish_ref_id;
-      if (!refId) {
-        // 首次使用：上传音频到 Fish Audio 创建克隆
-        console.log(`[TTS] 首次使用自定义声音 "${voice.name}"，正在上传到 Fish Audio...`);
-        refId = await uploadVoiceToFishAudio(voice.file_path, voice.name, fishKey);
-        // 保存 reference_id 到数据库，后续直接复用
-        db.updateVoice(voiceId, { fish_ref_id: refId });
-      }
-      // 用 reference_id 生成 TTS
-      const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
-      const body = JSON.stringify({
-        text: text.substring(0, 10000),
-        reference_id: refId,
-        format: 'mp3',
-        latency: 'normal',
-        normalize: true,
-        streaming: false
-      });
-
-      const result = await new Promise((resolve, reject) => {
-        const req = https.request({
-          hostname: 'api.fish.audio',
-          path: '/v1/tts',
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + fishKey,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body)
-          }
-        }, (res) => {
-          if (res.statusCode >= 400) {
-            let errData = '';
-            res.on('data', c => errData += c);
-            res.on('end', () => reject(new Error(`Fish Audio TTS ${res.statusCode}: ${errData}`)));
-            return;
-          }
-          const chunks = [];
-          res.on('data', c => chunks.push(c));
-          res.on('end', () => {
-            fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
-            fs.writeFileSync(mp3Path, Buffer.concat(chunks));
-            resolve(mp3Path);
-          });
-        });
-        req.on('error', reject);
-        req.setTimeout(60000, () => { req.destroy(); reject(new Error('Fish Audio TTS 超时')); });
-        req.write(body);
-        req.end();
-      });
-
-      if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
-        console.log(`[TTS] Fish Audio 声音克隆生成成功: ${voice.name}`);
-        return result;
-      }
-    } catch (err) {
-      console.warn(`[TTS] Fish Audio 声音克隆失败: ${err.message}`);
-    }
+  // 守门（2026-04-26 精简）：只用阿里 CosyVoice 真克隆 · 没有 aliyun_voice_id 直接报错
+  // 不再 fallback 到火山 ICL / 默认女声，避免"选了我的声音却出来灿灿+嘟嘟"的歧义
+  const hasAliyunReady = !!voice.aliyun_voice_id;
+  if (!hasAliyunReady) {
+    const status = voice.status || 'unknown';
+    const reason = status === 'training'
+      ? '还在训练中（约 3-15 分钟），请稍后再试'
+      : `未完成阿里 CosyVoice 真克隆（aliyun_voice_id 为空，status=${status}）`;
+    throw new Error(`"${voice.name || voiceId}" ${reason}。请去「声音克隆」页面重新上传录音 → 走阿里 CosyVoice 真克隆通道。`);
   }
 
-  // 策略2: 阿里云 CosyVoice 声音克隆
-  const aliyunKey = _getTTSKey('aliyun-tts');
-  if (aliyunKey) {
-    try {
-      const result = await _cloneWithCosyVoice(text, outputPath, voice.file_path, { speed, apiKey: aliyunKey });
-      if (result) { console.log(`[TTS] 阿里云 CosyVoice 声音克隆成功: ${voice.name}`); return result; }
-    } catch (err) {
-      console.warn(`[TTS] 阿里云 CosyVoice 声音克隆失败: ${err.message}`);
-    }
-  }
-
-  // 策略3: MiniMax 声音克隆（用 voice_clone 上传参考音频）
-  const mmKey = _getTTSKey('minimax');
-  if (mmKey) {
-    try {
-      const result = await _cloneWithMiniMax(text, outputPath, voice.file_path, { speed, apiKey: mmKey });
-      if (result) { console.log(`[TTS] MiniMax 声音克隆成功: ${voice.name}`); return result; }
-    } catch (err) {
-      console.warn(`[TTS] MiniMax 声音克隆失败: ${err.message}`);
-    }
-  }
-
-  // 策略4: 回退 — 基础 TTS + FFmpeg 音色微调（仅调音高，非真正克隆）
-  console.warn(`[TTS] 无声音克隆 API，回退到 FFmpeg 音色微调`);
-  const baseGender = voice.gender || 'female';
-  const providers = [
-    { id: 'zhipu', fn: generateWithZhipu },
-    { id: 'xunfei', fn: generateWithXunfei },
-    { id: 'volcengine', fn: generateWithVolcEngine },
-  ];
-
-  let baseAudio = null;
-  for (const { id, fn } of providers) {
-    const apiKey = _getTTSKey(id);
-    if (!apiKey) continue;
-    try {
-      baseAudio = await fn(text, outputPath + '_base', { gender: baseGender, speed, apiKey });
-      if (baseAudio) break;
-    } catch { continue; }
-  }
-  if (!baseAudio) baseAudio = await generateWithSAPI(text, outputPath + '_base', { gender: baseGender, speed });
-  if (!baseAudio) throw new Error('基础语音生成失败');
-
-  // FFmpeg 微调音色
-  const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg')
-    ? process.env.FFMPEG_PATH : require('ffmpeg-static');
-  const { execSync } = require('child_process');
-  const finalPath = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
-
+  // 阿里 CosyVoice 2 定制音色 · 永久 voice_id（唯一通道）
   try {
-    const pitchShift = baseGender === 'male' ? 0.97 : 1.03;
-    execSync(
-      `"${ffmpegPath}" -i "${baseAudio}" -af "asetrate=44100*${pitchShift},aresample=44100,atempo=${1/pitchShift}" -y "${finalPath}"`,
-      { stdio: 'pipe', timeout: 30000 }
-    );
-    try { fs.unlinkSync(baseAudio); } catch {}
-    if (fs.existsSync(finalPath) && fs.statSync(finalPath).size > 100) return finalPath;
+    const aliyun = require('./aliyunVoiceService');
+    if (!aliyun.hasKey()) {
+      throw new Error('未配置阿里 CosyVoice API Key（去后台 AI 配置 → aliyun-tts 设置）');
+    }
+    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed });
+    if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
+      console.log(`[TTS] 阿里 CosyVoice 定制音色合成成功: ${voice.name} voice_id=${voice.aliyun_voice_id}`);
+      return result;
+    }
+    throw new Error('阿里 CosyVoice 返回空结果');
   } catch (err) {
-    console.warn('[TTS] FFmpeg 音色调整失败:', err.message);
+    throw new Error(`"${voice.name || voiceId}" 阿里克隆合成失败: ${err.message}`);
   }
-
-  // 最终：直接用基础语音
-  if (fs.existsSync(baseAudio)) return baseAudio;
-  return null;
 }
+
+// 注：原火山 ICL 2.0 / volc_speaker_id 路径 + 阿里零样本兜底，已下线
+//     （2026-04-26：用户要求全平台只用阿里 CosyVoice 真克隆，非真克隆直接报错）
 
 // ═══════════════════════════════════════════
 // 阿里云 CosyVoice 声音克隆（通过参考音频）
 // ═══════════════════════════════════════════
-async function _cloneWithCosyVoice(text, outputPath, refAudioPath, { speed = 1.0, apiKey }) {
+async function _cloneWithCosyVoice(text, outputPath, refAudioPath, { speed = 0.85, apiKey }) {
   const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
   const refAudioBuf = fs.readFileSync(refAudioPath);
   const refBase64 = refAudioBuf.toString('base64');
   const ext = path.extname(refAudioPath).slice(1) || 'wav';
 
+  // rate 限制 0.5-1.5，默认 0.85（中文自然语速）· 1.0 对中文会偏快
+  const safeSpeed = Math.min(1.5, Math.max(0.5, Number(speed) || 0.85));
+
   const body = JSON.stringify({
     model: 'cosyvoice-clone-v1',
     input: { text: text.substring(0, 5000) },
-    parameters: { voice: `data:audio/${ext};base64,${refBase64}`, format: 'mp3', rate: speed }
+    parameters: { voice: `data:audio/${ext};base64,${refBase64}`, format: 'mp3', rate: safeSpeed }
   });
 
   return new Promise((resolve, reject) => {
@@ -457,38 +399,38 @@ async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, api
 //         zh_female_rap（说唱女声）、zh_male_rap（说唱男声）
 //   童声：zh_child_girl（童声女）、zh_child_boy（童声男）
 // ═══════════════════════════════════════════
+// 豆包语音合成2.0 voice_type（BVxxx_streaming 格式）
 const VOLC_VOICES = {
-  female: 'zh_female_tianmei',
-  male: 'zh_male_chunhou',
-  // 扩展音色映射
-  'zh_female_tianmei': '甜美女声', 'zh_female_shuangkuai': '爽快女声',
-  'zh_female_qingxin': '清新女声', 'zh_female_wanwan': '温婉女声',
-  'zh_female_linjia': '知性邻家', 'zh_female_story': '故事女声',
-  'zh_male_chunhou': '醇厚男声', 'zh_male_yangguang': '阳光男声',
-  'zh_male_jingqiang': '京腔男声', 'zh_male_daxuesheng': '大学生',
-  'zh_male_shaonian': '少年音', 'zh_male_story': '故事男声',
-  'zh_child_girl': '童声女', 'zh_child_boy': '童声男',
+  female: 'BV700_streaming',   // 灿灿（默认女声）
+  male: 'BV002_streaming',     // 通用男声
+  child: 'BV061_streaming',    // 天才童声
+  // 前端预设映射
+  'female-sweet': 'BV700_streaming',   // 灿灿
+  'female-pro': 'BV009_streaming',     // 知性女声
+  'male-mature': 'BV006_streaming',    // 磁性男声
+  'male-young': 'BV004_streaming',     // 开朗青年
 };
 
 async function generateWithVolcEngine(text, outputPath, { gender, speed, voiceId, apiKey }) {
-  // Key 格式：AppId:AccessToken
+  // Key 格式：AppId:AccessToken（新版 Header 鉴权）
   const parts = apiKey.split(':');
   const appId = parts.length >= 2 ? parts[0] : '';
   const accessToken = parts.length >= 2 ? parts.slice(1).join(':') : apiKey;
 
   // 从 settings 读取音色
-  let voice = voiceId || VOLC_VOICES[gender] || 'zh_female_tianmei';
+  let voice = voiceId || VOLC_VOICES[voiceId] || VOLC_VOICES[gender] || 'BV700_streaming';
   const model = _getTTSModel('volcengine');
-  if (model?.id && model.id !== 'tts-mega' && !voiceId) voice = model.id;
+  if (model?.id && !voiceId) voice = model.id;
 
   const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
   const speedRatio = Math.min(2.0, Math.max(0.5, speed));
+  const { v4: uuidv4 } = require('uuid');
 
   const body = JSON.stringify({
-    app: { appid: appId, token: 'access_token', cluster: 'volcano_tts' },
+    app: { appid: appId, cluster: 'volcano_tts' },
     user: { uid: 'vido_user' },
     audio: { voice_type: voice, encoding: 'mp3', speed_ratio: speedRatio },
-    request: { reqid: Date.now().toString(), text: text.substring(0, 10000), operation: 'query' }
+    request: { reqid: uuidv4(), text: text.substring(0, 10000), operation: 'query' }
   });
 
   return new Promise((resolve, reject) => {
@@ -497,9 +439,11 @@ async function generateWithVolcEngine(text, outputPath, { gender, speed, voiceId
       path: '/api/v1/tts',
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer;' + accessToken,
+        'X-Api-App-Key': appId,
+        'X-Api-Access-Key': accessToken,
+        'X-Api-Resource-Id': 'seed-tts-1.0',
+        'X-Api-Connect-Id': uuidv4(),
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
       }
     }, (res) => {
       const chunks = [];
@@ -627,64 +571,26 @@ const ALI_VOICES = {
   male: 'longcheng',
 };
 
+// —— 阿里 NLS（智能语音交互）基础 TTS · 不支持克隆，只能预设音色 ——
+// 使用 AppKey + AccessToken（api_key 存成 "{AppKey}:{AccessToken}" 格式）
+async function generateWithAliyunNLS(text, outputPath, { gender, speed, voiceId }) {
+  const { synthesizeWithNLS, hasNLSCreds } = require('./aliyunVoiceService');
+  if (!hasNLSCreds()) return null;
+  // NLS TTS 的音色 ID 和 DashScope CosyVoice 不一样，单独映射
+  const NLS_VOICES = { female: 'xiaoyun', male: 'xiaogang', neutral: 'Aiqi' };
+  const voice = voiceId || NLS_VOICES[gender] || 'xiaoyun';
+  const model = _getTTSModel('aliyun-nls');
+  const finalVoice = (model?.id && !voiceId) ? model.id : voice;
+  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed });
+}
+
+// 阿里 TTS 现在统一走 aliyunVoiceService.synthesize（CosyVoice WebSocket）
+// CosyVoice 已经不支持 HTTP REST 了，旧的 cosyvoice-v1 HTTP 端点已停服
 async function generateWithAliyunTTS(text, outputPath, { gender, speed, voiceId, apiKey }) {
-  let voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
-  const model = _getTTSModel('aliyun-tts');
-  if (model?.id && model.id !== 'cosyvoice-v1' && !voiceId) voice = model.id;
-
-  const mp3Path = outputPath.replace(/\.[^.]+$/, '') + '.mp3';
-
-  const body = JSON.stringify({
-    model: 'cosyvoice-v1',
-    input: { text: text.substring(0, 10000) },
-    parameters: {
-      voice: voice,
-      format: 'mp3',
-      sample_rate: 22050,
-      rate: speed
-    }
-  });
-
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'dashscope.aliyuncs.com',
-      path: '/api/v1/services/aigc/text2audio/text-synthesis',
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'X-DashScope-DataInspection': 'disable'
-      }
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks);
-        const ct = res.headers['content-type'] || '';
-        if (ct.includes('audio')) {
-          fs.mkdirSync(path.dirname(mp3Path), { recursive: true });
-          fs.writeFileSync(mp3Path, buf);
-          resolve(mp3Path);
-        } else {
-          try {
-            const json = JSON.parse(buf.toString());
-            // DashScope 异步任务模式
-            if (json.output?.task_id) {
-              return pollAliyunTTSTask(json.output.task_id, apiKey, mp3Path).then(resolve).catch(reject);
-            }
-            reject(new Error('阿里云 TTS: ' + (json.message || json.code || '未知错误')));
-          } catch {
-            reject(new Error('阿里云 TTS 返回格式错误'));
-          }
-        }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(60000, () => { req.destroy(); reject(new Error('阿里云 TTS 连接超时')); });
-    req.write(body);
-    req.end();
-  });
+  const voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
+  const aliyun = require('./aliyunVoiceService');
+  // aliyunVoiceService.synthesize 自动从 voice id 推断 model（v3-flash for 预设/v3.5-plus for 真克隆）
+  return aliyun.synthesize(text, voice, outputPath, { speed });
 }
 
 async function pollAliyunTTSTask(taskId, apiKey, mp3Path) {
@@ -1243,4 +1149,46 @@ function getAvailableVoices() {
   return voices;
 }
 
-module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio };
+// 体检用：直接对某个供应商跑一次最小合成（绕过备选链）
+async function testProviderSynthesis(providerId, outputPath) {
+  const apiKey = _getTTSKey(providerId);
+  if (!apiKey) {
+    // test 模式下 test_status=error 会让 _getTTSKey 返回空；这里直接读 settings 避免自引用
+    const { loadSettings } = require('./settingsService');
+    const s = loadSettings();
+    const p = (s.providers || []).find(x => x.id === providerId && x.enabled && x.api_key);
+    if (!p) throw new Error('供应商未配置或已停用');
+    if (!(p.models || []).some(m => m.enabled !== false && m.use === 'tts')) throw new Error('未启用 TTS 模型');
+    // 绕过 test_status 的屏蔽，直接用 api_key
+    const map = {
+      volcengine: () => generateWithVolcEngine('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      baidu:       () => generateWithBaidu('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      'aliyun-nls':() => generateWithAliyunNLS('测试', outputPath, { gender: 'female', speed: 1.0 }),
+      minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+      openai:      () => generateWithOpenAI('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),
+    };
+    const fn = map[providerId];
+    if (!fn) throw new Error('未支持的 TTS 供应商 id');
+    return await fn();
+  }
+  const map = {
+    volcengine: () => generateWithVolcEngine('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    zhipu:       () => generateWithZhipu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    baidu:       () => generateWithBaidu('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    'aliyun-tts':() => generateWithAliyunTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    'aliyun-nls':() => generateWithAliyunNLS('测试', outputPath, { gender: 'female', speed: 1.0 }),
+    minimax:     () => generateWithMiniMaxTTS('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    xunfei:      () => generateWithXunfei('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    elevenlabs:  () => generateWithElevenLabs('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+    openai:      () => generateWithOpenAI('测试', outputPath, { apiKey, gender: 'female', speed: 1.0 }),
+  };
+  const fn = map[providerId];
+  if (!fn) throw new Error('未支持的 TTS 供应商 id');
+  return await fn();
+}
+
+module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio, testProviderSynthesis };

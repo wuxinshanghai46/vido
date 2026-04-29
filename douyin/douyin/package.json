@@ -1,0 +1,31 @@
+{
+  "name": "audio-video-transcriber",
+  "version": "0.1.0",
+  "description": "音视频转文字服务 - 基于 VibeVoice-ASR",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "setup:python": "cd python && pip install -r requirements.txt"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "express": "^5.1.0",
+    "json5": "^2.2.3",
+    "multer": "^1.4.5-lts.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

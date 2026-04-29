@@ -478,9 +478,106 @@ function readRecentDigests(days = 3) {
   });
 }
 
+// ———————————————————————————————————————————————
+// 强制全量学习：让所有 Agent 一次性学习全部 KB
+// 生成精简摘要并缓存到 outputs/agent_kb_cache.json
+// 后续每次 buildAgentContext 可以自动附加这个缓存
+// ———————————————————————————————————————————————
+async function forceFullStudy() {
+  const kb = require('./knowledgeBaseService');
+  const today = new Date().toISOString().slice(0, 10);
+  console.log(`[ForceStudy] 🎓 开始强制全量学习...`);
+
+  const agentTypes = kb.listAgentTypes();
+  const allDocs = kb.listDocs({ enabledOnly: true });
+  const digestDir = path.join(LEARNING_DIR, today);
+  fs.mkdirSync(digestDir, { recursive: true });
+
+  const results = [];
+  for (const agent of agentTypes) {
+    const agentDocs = allDocs.filter(d => (d.applies_to || []).includes(agent.id));
+    // 生成全量 digest（包含所有知识的完整内容）
+    const digest = generateFullStudyDigest(agent, agentDocs);
+    const filePath = path.join(digestDir, `${agent.id}_full.md`);
+    fs.writeFileSync(filePath, digest, 'utf8');
+
+    results.push({
+      agent_id: agent.id,
+      agent_name: agent.name,
+      total_docs: agentDocs.length,
+      digest_file: filePath,
+    });
+    console.log(`[ForceStudy] ✓ ${agent.name}: ${agentDocs.length} 条知识已学习`);
+  }
+
+  // 保存学习缓存：每个 agent 的知识摘要
+  const cacheFile = path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'agent_kb_cache.json');
+  const cache = {};
+  for (const agent of agentTypes) {
+    const agentDocs = allDocs.filter(d => (d.applies_to || []).includes(agent.id));
+    cache[agent.id] = {
+      total_docs: agentDocs.length,
+      last_study: new Date().toISOString(),
+      // 存储每条知识的核心内容（title + summary）供快速注入
+      knowledge: agentDocs.map(d => ({
+        id: d.id,
+        title: d.title,
+        collection: d.collection,
+        summary: d.summary || '',
+        key_points: (d.prompt_snippets || []).slice(0, 5),
+      })),
+    };
+  }
+  fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2), 'utf8');
+
+  console.log(`[ForceStudy] 🎓 全量学习完成: ${agentTypes.length} 个 Agent / ${allDocs.length} 条知识`);
+  return {
+    success: true,
+    agent_count: agentTypes.length,
+    total_docs: allDocs.length,
+    results,
+    cache_file: cacheFile,
+  };
+}
+
+function generateFullStudyDigest(agent, docs) {
+  const today = new Date().toISOString().slice(0, 10);
+  const lines = [];
+  lines.push(`# ${agent.emoji} ${agent.name} 全量知识学习报告`);
+  lines.push(`> 日期: ${today} · 强制全量学习模式`);
+  lines.push(`> 总知识条数: ${docs.length}`);
+  lines.push('');
+
+  // 按 collection 分组
+  const groups = {};
+  docs.forEach(d => {
+    const key = d.collection || 'unknown';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(d);
+  });
+
+  for (const [collection, collDocs] of Object.entries(groups)) {
+    lines.push(`## 📚 ${collection} (${collDocs.length} 条)`);
+    lines.push('');
+    collDocs.forEach((d, i) => {
+      lines.push(`### ${i + 1}. ${d.title}`);
+      if (d.summary) lines.push(`**摘要**: ${d.summary}`);
+      if (d.content) lines.push(`**内容**: ${d.content}`);
+      if ((d.prompt_snippets || []).length) lines.push(`**提示词**: ${d.prompt_snippets.join(' | ')}`);
+      if ((d.keywords || []).length) lines.push(`**关键词**: ${d.keywords.join(', ')}`);
+      lines.push('');
+    });
+  }
+
+  lines.push('---');
+  lines.push(`*强制全量学习 · ${today} · VIDO AI 团队*`);
+  return lines.join('\n');
+}
+
 module.exports = {
   runDailyLearn,
   scheduleDaily,
   readRecentDigests,
   generateAgentDigest,
+  forceFullStudy,
 };

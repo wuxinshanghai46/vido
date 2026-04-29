@@ -214,12 +214,15 @@ function resolveProvider(dim) {
   const settings = require('./settingsService').loadSettings();
   const hasImageModel = (pid) => {
     const p = (settings.providers || []).find(p => p.id === pid);
-    return p && (p.models || []).some(m => m.use === 'image') && getApiKey(pid);
+    return p && p.enabled !== false && (p.models || []).some(m => m.use === 'image' && m.enabled !== false) && getApiKey(pid);
   };
-  // 优先级：mxapi(NANO) > zhipu > jimeng > 其他
+  // 优先级（全局默认，用户未显式选择时生效）：
+  //   1. 漫路聚合（deyunai）里的 NanoBanana Pro / NanoBanana / 其他图像模型
+  //   2. 独立 NanoBanana provider
+  //   3. mxapi > zhipu > jimeng > 其他
   const order = dim === '3d'
-    ? ['mxapi', 'nanobanana', 'zhipu', 'jimeng', 'stability', 'openai', 'replicate']
-    : ['mxapi', 'nanobanana', 'zhipu', 'jimeng', 'replicate', 'stability', 'openai'];
+    ? ['deyunai', 'nanobanana', 'mxapi', 'zhipu', 'jimeng', 'stability', 'openai', 'replicate']
+    : ['deyunai', 'nanobanana', 'mxapi', 'zhipu', 'jimeng', 'replicate', 'stability', 'openai'];
   for (const pid of order) {
     if (hasImageModel(pid)) return pid;
   }
@@ -227,9 +230,30 @@ function resolveProvider(dim) {
   for (const p of (settings.providers || [])) {
     if (!p.enabled || !p.api_key) continue;
     if (order.includes(p.id)) continue;
-    if ((p.models || []).some(m => m.use === 'image')) return p.id;
+    if ((p.models || []).some(m => m.use === 'image' && m.enabled !== false)) return p.id;
   }
   throw new Error(`无可用的图片生成供应商（dim=${dim}）。请在管理后台配置至少一个图片生成API Key。`);
+}
+
+/**
+ * 为某个 provider 挑一个图像模型 id（自动偏好 NanoBanana Pro → NanoBanana）
+ * 给 generateCustomProviderImage 和 generateMxapi 使用
+ */
+function pickPreferredImageModel(providerConfig) {
+  const models = (providerConfig?.models || []).filter(m => m.enabled !== false && m.use === 'image');
+  if (!models.length) return null;
+  // 关键词匹配优先级
+  const preferredKeywords = [
+    /nano.?banana.?pro/i,
+    /nano.?banana/i,
+    /gpt.?image|gpt-4.?image/i,
+    /flux.?pro/i,
+  ];
+  for (const re of preferredKeywords) {
+    const m = models.find(x => re.test(x.id + ' ' + (x.name || '')));
+    if (m) return m;
+  }
+  return models[0];
 }
 
 const DEMO_COLORS = {
@@ -319,7 +343,7 @@ async function generateOpenAIImage({ name, role, description, filename, race, sp
 }
 
 // NanoBanana AI — generate-2 API (async task + polling)
-async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', referenceImages = [] }) {
+async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', referenceImages = [], userId = null, agentId = null }) {
   const apiKey = getApiKey('nanobanana') || process.env.NANOBANANA_API_KEY;
   if (!apiKey) throw new Error('未配置 NANOBANANA_API_KEY');
   ensureDir();
@@ -329,56 +353,74 @@ async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', 
   const imageUrls = (referenceImages || []).slice(0, 14);
   console.log(`[ImageService] NanoBanana generate-2 → refs=${imageUrls.length}, ratio=${aspectRatio}, prompt: ${prompt.substring(0, 100)}`);
 
-  // Step 1: Submit generation task
-  const axios = require('axios');
-  const submitRes = await axios.post('https://api.nanobananaapi.ai/api/v1/nanobanana/generate-2', {
-    prompt,
-    imageUrls,
-    aspectRatio,
-    resolution,
-    outputFormat: 'png',
-  }, {
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    timeout: 30000,
-  });
+  const _started = Date.now();
+  let _ok = false; let _err = null; let _taskId = null;
 
-  if (submitRes.data?.code !== 200 || !submitRes.data?.data?.taskId) {
-    throw new Error(`NanoBanana 提交失败: ${submitRes.data?.message || JSON.stringify(submitRes.data)}`);
-  }
-
-  const taskId = submitRes.data.data.taskId;
-  console.log(`[ImageService] NanoBanana taskId=${taskId}, polling...`);
-
-  // Step 2: Poll for completion (max 120s)
-  const maxWait = 120000;
-  const interval = 3000;
-  const start = Date.now();
-
-  while (Date.now() - start < maxWait) {
-    await new Promise(r => setTimeout(r, interval));
-    const pollRes = await axios.get('https://api.nanobananaapi.ai/api/v1/nanobanana/record-info', {
-      params: { taskId },
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      timeout: 15000,
+  try {
+    // Step 1: Submit generation task
+    const axios = require('axios');
+    const submitRes = await axios.post('https://api.nanobananaapi.ai/api/v1/nanobanana/generate-2', {
+      prompt,
+      imageUrls,
+      aspectRatio,
+      resolution,
+      outputFormat: 'png',
+    }, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 30000,
     });
 
-    const data = pollRes.data?.data;
-    if (!data) continue;
-
-    if (data.successFlag === 1) {
-      // Success — download the image
-      const imageUrl = data.response?.resultImageUrl || data.response?.originImageUrl;
-      if (!imageUrl) throw new Error('NanoBanana 成功但无图片URL');
-      console.log(`[ImageService] NanoBanana 完成, 下载图片...`);
-      await downloadFile(imageUrl, outputPath);
-      return outputPath;
-    } else if (data.successFlag === 2 || data.successFlag === 3) {
-      throw new Error(`NanoBanana 生成失败: ${data.errorMessage || `flag=${data.successFlag}`}`);
+    if (submitRes.data?.code !== 200 || !submitRes.data?.data?.taskId) {
+      throw new Error(`NanoBanana 提交失败: ${submitRes.data?.message || JSON.stringify(submitRes.data)}`);
     }
-    // successFlag === 0 — still generating, continue polling
-  }
 
-  throw new Error('NanoBanana 生成超时（120秒）');
+    _taskId = submitRes.data.data.taskId;
+    console.log(`[ImageService] NanoBanana taskId=${_taskId}, polling...`);
+
+    // Step 2: Poll for completion (max 120s)
+    const maxWait = 120000;
+    const interval = 3000;
+    const start = Date.now();
+
+    while (Date.now() - start < maxWait) {
+      await new Promise(r => setTimeout(r, interval));
+      const pollRes = await axios.get('https://api.nanobananaapi.ai/api/v1/nanobanana/record-info', {
+        params: { taskId: _taskId },
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        timeout: 15000,
+      });
+
+      const data = pollRes.data?.data;
+      if (!data) continue;
+
+      if (data.successFlag === 1) {
+        // Success — download the image
+        const imageUrl = data.response?.resultImageUrl || data.response?.originImageUrl;
+        if (!imageUrl) throw new Error('NanoBanana 成功但无图片URL');
+        console.log(`[ImageService] NanoBanana 完成, 下载图片...`);
+        await downloadFile(imageUrl, outputPath);
+        _ok = true;
+        return outputPath;
+      } else if (data.successFlag === 2 || data.successFlag === 3) {
+        throw new Error(`NanoBanana 生成失败: ${data.errorMessage || `flag=${data.successFlag}`}`);
+      }
+      // successFlag === 0 — still generating, continue polling
+    }
+
+    throw new Error('NanoBanana 生成超时（120秒）');
+  } catch (e) {
+    _err = e.message; throw e;
+  } finally {
+    try {
+      require('./tokenTracker').record({
+        provider: 'nanobanana', model: 'nano-banana-generate-2',
+        category: 'image', imageCount: 1,
+        durationMs: Date.now() - _started,
+        status: _ok ? 'success' : 'fail', errorMsg: _err,
+        userId, agentId, requestId: _taskId,
+      });
+    } catch {}
+  }
 }
 
 // MXAPI 聚合平台 — 图片生成（NANO/Gemini3Pro/即梦4.5/豆包Seedream）
@@ -399,14 +441,28 @@ async function generateMxapiImage({ prompt, filename, aspectRatio = '1:1', resol
 
   // Gemini 3 Pro — 同步接口（需长超时）
   if (model === 'mxapi-gemini3pro') {
-    console.log(`[ImageService] MXAPI Gemini 3 Pro → prompt: ${finalPrompt.substring(0, 80)}`);
-    const res = await axios.post(`${baseUrl}/images/gemini3pro`, {
-      prompt: finalPrompt, image_size: resolution === '4K' ? '2048x2048' : '1024x1024', aspect_ratio: aspectRatio,
-    }, { headers, timeout: 600000 });
-    const imgUrl = res.data?.data?.url || res.data?.url || res.data?.data?.[0]?.url;
-    if (!imgUrl) throw new Error('MXAPI Gemini 3 Pro 未返回图片: ' + JSON.stringify(res.data).substring(0, 300));
-    await downloadFile(imgUrl, outputPath);
-    return outputPath;
+    const _started = Date.now(); let _ok = false; let _err = null;
+    try {
+      console.log(`[ImageService] MXAPI Gemini 3 Pro → prompt: ${finalPrompt.substring(0, 80)}`);
+      const res = await axios.post(`${baseUrl}/images/gemini3pro`, {
+        prompt: finalPrompt, image_size: resolution === '4K' ? '2048x2048' : '1024x1024', aspect_ratio: aspectRatio,
+      }, { headers, timeout: 600000 });
+      const imgUrl = res.data?.data?.url || res.data?.url || res.data?.data?.[0]?.url;
+      if (!imgUrl) throw new Error('MXAPI Gemini 3 Pro 未返回图片: ' + JSON.stringify(res.data).substring(0, 300));
+      await downloadFile(imgUrl, outputPath);
+      _ok = true;
+      return outputPath;
+    } catch (e) { _err = e.message; throw e; }
+    finally {
+      try {
+        require('./tokenTracker').record({
+          provider: 'mxapi', model: 'mxapi-gemini3pro',
+          category: 'image', imageCount: 1,
+          durationMs: Date.now() - _started,
+          status: _ok ? 'success' : 'fail', errorMsg: _err,
+        });
+      } catch {}
+    }
   }
 
   // 其他模型 — 通过 messages 流式/异步接口
@@ -418,25 +474,39 @@ async function generateMxapiImage({ prompt, filename, aspectRatio = '1:1', resol
   };
   const endpoint = endpointMap[model] || '/draw';
 
-  console.log(`[ImageService] MXAPI ${model} → endpoint=${endpoint}, prompt: ${finalPrompt.substring(0, 80)}`);
-  const res = await axios.post(`${baseUrl}${endpoint}`, {
-    messages: [{ role: 'user', content: finalPrompt }],
-    stream: false,
-  }, { headers, timeout: 120000 });
+  const _started = Date.now(); let _ok = false; let _err = null;
+  try {
+    console.log(`[ImageService] MXAPI ${model} → endpoint=${endpoint}, prompt: ${finalPrompt.substring(0, 80)}`);
+    const res = await axios.post(`${baseUrl}${endpoint}`, {
+      messages: [{ role: 'user', content: finalPrompt }],
+      stream: false,
+    }, { headers, timeout: 120000 });
 
-  // 返回可能在 data.data.url / data.choices[0].message.content (含图片URL) / data.url
-  const data = res.data?.data || res.data;
-  let imgUrl = data?.url || data?.image_url;
-  if (!imgUrl && data?.choices?.[0]?.message?.content) {
-    // 从 markdown 图片语法中提取 URL
-    const match = data.choices[0].message.content.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
-    if (match) imgUrl = match[1];
-    // 或直接是 URL
-    if (!imgUrl && data.choices[0].message.content.startsWith('http')) imgUrl = data.choices[0].message.content.trim();
+    // 返回可能在 data.data.url / data.choices[0].message.content (含图片URL) / data.url
+    const data = res.data?.data || res.data;
+    let imgUrl = data?.url || data?.image_url;
+    if (!imgUrl && data?.choices?.[0]?.message?.content) {
+      // 从 markdown 图片语法中提取 URL
+      const match = data.choices[0].message.content.match(/!\[.*?\]\((https?:\/\/[^\s)]+)\)/);
+      if (match) imgUrl = match[1];
+      // 或直接是 URL
+      if (!imgUrl && data.choices[0].message.content.startsWith('http')) imgUrl = data.choices[0].message.content.trim();
+    }
+    if (!imgUrl) throw new Error('MXAPI 图片 未返回图片 URL: ' + JSON.stringify(res.data).substring(0, 300));
+    await downloadFile(imgUrl, outputPath);
+    _ok = true;
+    return outputPath;
+  } catch (e) { _err = e.message; throw e; }
+  finally {
+    try {
+      require('./tokenTracker').record({
+        provider: 'mxapi', model,
+        category: 'image', imageCount: 1,
+        durationMs: Date.now() - _started,
+        status: _ok ? 'success' : 'fail', errorMsg: _err,
+      });
+    } catch {}
   }
-  if (!imgUrl) throw new Error('MXAPI 图片 未返回图片 URL: ' + JSON.stringify(res.data).substring(0, 300));
-  await downloadFile(imgUrl, outputPath);
-  return outputPath;
 }
 
 // 智谱 CogView-3-Flash
@@ -653,7 +723,7 @@ function _jimengRequest(ak, sk, query, body) {
   });
 }
 
-async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '', referenceImages = [] }) {
+async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '', referenceImages = [], aspectRatio = '' }) {
   const rawKey = getApiKey('jimeng') || process.env.JIMENG_API_KEY;
   if (!rawKey) throw new Error('未配置即梦AI Key');
   if (!rawKey.includes(':')) throw new Error('即梦AI Key 格式错误，应为 AccessKeyId:SecretAccessKey');
@@ -661,15 +731,18 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
   ensureDir();
   const outputPath = path.join(imgDir(filename), `${filename}.png`);
 
-  // 选择模型：从 settings 读取 use=image 的模型，否则用默认 3.0
-  let reqKey = 'jimeng_t2i_v30';
-  try {
-    const { loadSettings } = require('./settingsService');
-    const settings = loadSettings();
-    const p = settings.providers.find(p => p.id === 'jimeng' && p.enabled);
-    const m = (p?.models || []).find(m => m.enabled !== false && m.use === 'image');
-    if (m?.id) reqKey = m.id;
-  } catch {}
+  // 选择模型：有参考图 → 强制 i2i v30（保证角色一致性）；否则从 settings 读首个 use=image
+  const hasRefs = (referenceImages || []).filter(u => /^https?:\/\//.test(u)).length > 0;
+  let reqKey = hasRefs ? 'jimeng_i2i_v30' : 'jimeng_t2i_v30';
+  if (!hasRefs) {
+    try {
+      const { loadSettings } = require('./settingsService');
+      const settings = loadSettings();
+      const p = settings.providers.find(p => p.id === 'jimeng' && p.enabled);
+      const m = (p?.models || []).find(m => m.enabled !== false && m.use === 'image');
+      if (m?.id) reqKey = m.id;
+    } catch {}
+  }
 
   // 判断是否 3.0+ 异步接口（jimeng_ 开头）还是旧版同步接口
   const isAsync = reqKey.startsWith('jimeng_');
@@ -684,14 +757,25 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
     });
     // 即梦 3.0+: image_urls 用于参考图 (角色一致性), 仅传公网 URL
     const refUrls = (referenceImages || []).filter(u => /^https?:\/\//.test(u));
+    // 按 aspectRatio 决定画面尺寸
+    const ratioMap = {
+      '9:16': [768, 1344],
+      '16:9': [1344, 768],
+      '1:1':  [1024, 1024],
+      '4:3':  [1216, 912],
+      '3:4':  [912, 1216],
+      '2:3':  [832, 1248],
+      '3:2':  [1248, 832],
+    };
+    const [imgW, imgH] = ratioMap[aspectRatio] || [1344, 768];
     const submitBody = JSON.stringify({
       req_key: reqKey,
       prompt: prompt.substring(0, 800),
       ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
       ...(refUrls.length ? { image_urls: refUrls.slice(0, 3) } : {}),
       seed: -1,
-      width: 1536,
-      height: 768,
+      width: imgW,
+      height: imgH,
       use_pre_llm: true,
       return_url: true,
       req_json: reqJson
@@ -747,8 +831,13 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
 }
 
 // ——— 主入口 ———
-async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [], provider: explicitProvider = null, model: explicitModel = null }) {
-  const provider = explicitProvider || resolveProvider(dim);
+async function generateCharacterImage({ name, role = 'main', description = '', dim = '2d', race = '人', species = '', animStyle = '', mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [], provider: explicitProvider = null, model: explicitModel = null, image_model = '' }) {
+  // 优先使用明确传入的 image_model（格式 providerId 或 providerId::modelId）
+  let provider = explicitProvider;
+  if (!provider && image_model && image_model !== 'auto') {
+    provider = image_model.includes('::') ? image_model.split('::')[0] : image_model;
+  }
+  if (!provider) provider = resolveProvider(dim);
   const dimTag = dim === '3d' ? '3d' : '2d';
   const filename = `char_${dimTag}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
@@ -774,7 +863,8 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
 
   let filePath;
   switch (provider) {
-    case 'jimeng':      filePath = await generateJimengImage({ prompt, filename, dim }); break;
+    case 'deyunai':    filePath = await generateDeyunaiImage({ prompt, filename, aspectRatio, resolution, referenceImages, providerConfig: null, userId: null }); break;
+    case 'jimeng':      filePath = await generateJimengImage({ prompt, filename, dim, referenceImages, aspectRatio }); break;
     case 'mxapi':      filePath = await generateMxapiImage({ prompt, filename, aspectRatio, resolution, referenceImages, name, role, description, race, species, imageType: 'character' }); break;
     case 'nanobanana': filePath = await generateNanoBananaImage({ prompt, filename, aspectRatio, resolution, referenceImages }); break;
     case 'openai':     filePath = await generateOpenAIImage({ name, role, description, filename, race, species }); break;
@@ -789,6 +879,65 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
   return { filePath, filename: path.basename(filePath) };
 }
 
+// ════════════════════════════════════════════════
+// 漫路（DeyunAI）聚合 — 图像生成
+// 通过 deyunaiService 统一封装，自动埋点 + 双通道路由
+// ════════════════════════════════════════════════
+async function generateDeyunaiImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', referenceImages = [], userId = null, agentId = null }) {
+  const dy = require('./deyunaiService');
+  ensureDir();
+  const outputPath = path.join(imgDir(filename), `${filename}.png`);
+
+  // 从 settings 挑漫路下偏好的图像模型（优先 nano-banana-pro / nano-banana / gemini-2.5-flash-image）
+  const settings = require('./settingsService').loadSettings();
+  const dyP = (settings.providers || []).find(p => p.id === 'deyunai' && p.enabled);
+  if (!dyP) throw new Error('未启用漫路（deyunai）供应商');
+  const imgModels = (dyP.models || []).filter(m => m.use === 'image' && m.enabled !== false);
+  if (!imgModels.length) throw new Error('漫路无启用的图像模型');
+  const preferred = [
+    /nano.?banana.?pro/i,
+    /nano.?banana\b/i,
+    /gemini-2\.5-flash-image/i,
+    /imagen-4/i,
+    /flux-pro/i,
+    /jimeng-t2i-v4/i,
+    /seedream/i,
+    /gpt-image-1/i,
+    /dall-e-3/i,
+  ];
+  let chosen = null;
+  for (const re of preferred) {
+    chosen = imgModels.find(m => re.test(m.id + ' ' + (m.name || '')));
+    if (chosen) break;
+  }
+  chosen = chosen || imgModels[0];
+
+  // size 取决于 aspectRatio
+  const sizeMap = {
+    '1:1': '1024x1024', '16:9': '1280x720', '9:16': '720x1280',
+    '4:3': '1024x768', '3:4': '768x1024',
+  };
+  const size = sizeMap[aspectRatio] || '1024x1024';
+  console.log(`[ImageService] 漫路图像 model=${chosen.id} size=${size} refs=${referenceImages.length}`);
+
+  const r = await dy.generateImage({
+    model: chosen.id,
+    prompt,
+    n: 1,
+    size,
+    referenceImages,
+    timeoutMs: 180000,
+    userId,
+    agentId: agentId || 'image_gen',
+  });
+  if (!r.urls?.length) throw new Error('漫路图像生成无 URL 返回');
+
+  // 下载到本地
+  await downloadFile(r.urls[0], outputPath);
+  console.log(`[ImageService] 漫路图像下载完成: ${outputPath} (${(fs.statSync(outputPath).size / 1024).toFixed(0)}KB)`);
+  return outputPath;
+}
+
 // 自定义供应商通用图片生成（OpenAI 兼容接口）
 async function generateCustomProviderImage({ provider, prompt, filename, aspectRatio }) {
   const apiKey = getApiKey(provider);
@@ -798,7 +947,8 @@ async function generateCustomProviderImage({ provider, prompt, filename, aspectR
   if (!providerConfig) throw new Error(`供应商 ${provider} 不存在`);
 
   const baseURL = providerConfig.api_url;
-  const imageModel = (providerConfig.models || []).find(m => m.use === 'image');
+  // 在该供应商下自动挑最好的模型（NanoBanana Pro > NanoBanana > 其他）
+  const imageModel = pickPreferredImageModel(providerConfig) || (providerConfig.models || []).find(m => m.use === 'image');
   const modelId = imageModel?.id || 'dall-e-3';
 
   console.log(`[ImageService] 自定义供应商 ${provider} (${providerConfig.name}), model=${modelId}`);
@@ -848,9 +998,13 @@ function buildJimengScenePrompt(title, description, theme, timeOfDay, category, 
 
 // ——— 场景图片生成（复用 provider，但使用场景 prompt） ———
 
-async function generateSceneImage({ title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', animStyle = '', aspectRatio = '16:9', resolution = '2K', referenceImages = [] }) {
+async function generateSceneImage({ title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', animStyle = '', aspectRatio = '16:9', resolution = '2K', referenceImages = [], image_model = '' }) {
   ensureDir();
-  const provider = resolveProvider(dim);
+  // 用户指定 → 严格使用；否则 auto 解析
+  const userSpecifiedScene = image_model && image_model !== 'auto';
+  const provider = userSpecifiedScene
+    ? (image_model.includes('::') ? image_model.split('::')[0] : image_model)
+    : resolveProvider(dim);
   const filename = `scene_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const prompt = provider === 'jimeng'
     ? buildJimengScenePrompt(title, description, theme, timeOfDay, category, dim, animStyle)
@@ -927,86 +1081,215 @@ async function generateSceneImageWithRetry(opts) {
 // ——— 分镜图生成（prompt 原样传入，不加前缀/后缀） ———
 async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', resolution = '2K', referenceImages = [], image_model = '' }) {
   ensureDir();
-  // 如果有明确的模型选择（格式 providerId::modelId），优先使用
-  let provider;
-  if (image_model && image_model !== 'auto') {
-    provider = image_model.includes('::') ? image_model.split('::')[0] : image_model;
-  } else {
-    provider = resolveProvider('2d');
-  }
-  const destFilename = filename || `drama_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const refCount = (referenceImages || []).length;
-
-  console.log(`[ImageService] 分镜图 → provider=${provider}, prompt长度=${prompt?.length}, 参考图=${refCount}`);
-
-  let filePath;
-  switch (provider) {
-    case 'jimeng':
-      filePath = await generateJimengImage({ prompt, filename: destFilename, dim: '2d', referenceImages });
-      break;
-    case 'mxapi':
-      filePath = await generateMxapiImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
-      break;
-    case 'nanobanana':
-      filePath = await generateNanoBananaImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages });
-      break;
-    case 'zhipu':
-      // CogView 不支持 reference image, 通过 prompt 注入
-      filePath = await generateZhipuImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
-      break;
-    case 'openai':
-      filePath = await generateOpenAIImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
-      break;
-    case 'stability':
-      filePath = await generateStabilityImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
-      break;
-    case 'replicate':
-      filePath = await generateReplicateImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
-      break;
-    default:
-      filePath = await generateCustomProviderImage({ provider, prompt, filename: destFilename, aspectRatio });
-      break;
+  // 构造尝试序列
+  const providers = [];
+  const userSpecified = image_model && image_model !== 'auto';
+  if (userSpecified) {
+    // 【严格模式】用户显式指定了模型 → 只用这一个，不 fallback 到其他 provider
+    const pid = image_model.includes('::') ? image_model.split('::')[0] : image_model;
+    providers.push(pid);
+  } else {
+    // 【auto 模式】从 settings 解析 + 内置回退链
+    try { const auto = resolveProvider('2d'); if (!providers.includes(auto)) providers.push(auto); } catch {}
+    const fallback = refCount > 0
+      ? ['mxapi', 'jimeng', 'openai']
+      : ['mxapi', 'zhipu', 'jimeng', 'openai'];
+    for (const pid of fallback) {
+      if (!providers.includes(pid) && getApiKey(pid)) providers.push(pid);
+    }
+    // auto 模式下，refs>0 时剔除 zhipu（纯 t2i 会忽略 reference）
+    if (refCount > 0) {
+      const idx = providers.indexOf('zhipu');
+      if (idx >= 0) providers.splice(idx, 1);
+    }
   }
-  return { filePath, filename: path.basename(filePath) };
+
+  const destFilename = filename || `drama_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+  const runOne = async (provider) => {
+    console.log(`[ImageService] 分镜图 → provider=${provider}, prompt长度=${prompt?.length}, 参考图=${refCount}`);
+    switch (provider) {
+      case 'jimeng':
+        return await generateJimengImage({ prompt, filename: destFilename, dim: '2d', referenceImages, aspectRatio });
+      case 'mxapi':
+        return await generateMxapiImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
+      case 'nanobanana':
+        return await generateNanoBananaImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages });
+      case 'zhipu':
+        return await generateZhipuImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
+      case 'openai':
+        return await generateOpenAIImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
+      case 'stability':
+        return await generateStabilityImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
+      case 'replicate':
+        return await generateReplicateImage({ name: destFilename, role: '', description: prompt, dim: '2d', filename: destFilename, race: '', species: '' });
+      default:
+        return await generateCustomProviderImage({ provider, prompt, filename: destFilename, aspectRatio });
+    }
+  };
+
+  const errs = [];
+  for (const pid of providers) {
+    try {
+      const filePath = await runOne(pid);
+      return { filePath, filename: path.basename(filePath), provider_used: pid };
+    } catch (e) {
+      console.warn(`[DramaImage] provider=${pid} 失败: ${e.message}`);
+      errs.push(`${pid}: ${e.message}`);
+    }
+  }
+  throw new Error('分镜图生成失败（已尝试 ' + providers.join(' → ') + '）: ' + errs.join('; '));
 }
 
-// ——— 三视图生成：并行生成正/侧/背 3 张独立图，比依赖 LLM 在单图里画 3 角度更可靠 ———
+// ——— 三视图生成：连续 i2i（正面→侧面用正面ref→背面用正面+侧面ref→面部用正面ref） ———
+// 这样能最大化人物一致性：每个视角都参考前面已生成的视角，发型/瞳色/服饰不漂移
+// 优先 jimeng_i2i_v30（自动识别 refs）；mxapi / nanobanana 支持 ref；openai/zhipu 当 t2i 回退
 async function generateCharacterThreeView(opts) {
-  const { name, role, description, dim, race, species, animStyle, aspectRatio, resolution, referenceImages } = opts || {};
+  const {
+    name, role, description, dim, race, species, animStyle,
+    aspectRatio, resolution, referenceImages = [], image_model = '',
+    lockPromptEn = '', lockPromptCn = '',
+  } = opts || {};
   if (!name) throw new Error('name 必填');
 
+  const sharp = require('sharp');
   const baseDesc = description || '';
+  // Bible 的 full_lock_prompt 优先；否则用 description 兜底
+  const lockEn = lockPromptEn || baseDesc;
+  const lockCn = lockPromptCn || baseDesc;
+
   const views = [
-    { key: 'front', cn: '正面视图', en: 'front view, facing camera, full body, T-pose, neutral expression, character reference sheet, white clean background' },
-    { key: 'side',  cn: '侧面视图', en: 'side view profile, full body, T-pose, neutral expression, character reference sheet, white clean background' },
-    { key: 'back',  cn: '背面视图', en: 'back view facing away, full body, T-pose, neutral expression, character reference sheet, white clean background' },
+    {
+      key: 'front',
+      label: '正面',
+      hintEn: 'full-body front view, facing camera straight, arms naturally at sides, neutral standing pose, pure clean white background, studio three-point lighting, high detail character design reference',
+      hintCn: '全身正面视角，正对镜头，双臂自然垂下，中立站姿，纯白干净背景，三点布光，高清角色设定参考图',
+      useRefs: 'initial',  // 使用 Bible reference（如外部带进来的 referenceImages）
+    },
+    {
+      key: 'side',
+      label: '侧面',
+      hintEn: 'full-body 3/4 side profile view, character facing left at 45 degrees, same outfit and hairstyle and face as the reference image, neutral pose, pure clean white background, identical character design',
+      hintCn: '全身 3/4 侧面视角，人物向左转 45 度，服装发型面孔与参考图完全一致，中立姿态，纯白干净背景，角色设计严格一致',
+      useRefs: 'front',
+    },
+    {
+      key: 'back',
+      label: '背面',
+      hintEn: 'full-body back view, character facing away from camera, same outfit and hairstyle as the reference images, neutral standing pose, pure clean white background, identical character design',
+      hintCn: '全身背面视角，人物背对镜头，服装发型与参考图完全一致，中立站姿，纯白干净背景，角色设计严格一致',
+      useRefs: 'front_side',
+    },
+    {
+      key: 'face',
+      label: '面部特写',
+      hintEn: 'head and shoulders close-up portrait, front view, same face and hairstyle as reference image, neutral calm expression, pure clean white background, sharp focus on facial features for character identity locking',
+      hintCn: '头部和肩部特写肖像，正面视角，面孔发型与参考图完全一致，中立平静表情，纯白干净背景，五官细节清晰，用于角色身份锁定',
+      useRefs: 'front',
+    },
   ];
 
-  const tasks = views.map(v => {
-    const suffixedDesc = baseDesc + (baseDesc ? '，' : '') + v.cn + '，' + v.en;
-    return generateCharacterImageWithRetry({
-      name: `${name}_${v.key}`,
-      role,
-      description: suffixedDesc,
-      dim, race, species, animStyle,
-      mode: 'portrait',  // 关键：每张都是单角度全身图，不是 turnaround 拼图
-      aspectRatio: aspectRatio || '1:1',
-      resolution,
-      referenceImages,
-    }).then(r => ({ key: v.key, label: v.cn, ...r }))
-      .catch(e => ({ key: v.key, label: v.cn, error: e.message }));
-  });
+  // provider 优先级：用户指定 > jimeng（i2i 强）> mxapi > nanobanana > openai/zhipu（t2i 回退）
+  const userSpecifiedTV = image_model && image_model !== 'auto';
+  const providerChain = userSpecifiedTV
+    ? [image_model.includes('::') ? image_model.split('::')[0] : image_model]
+    : ['jimeng', 'mxapi', 'nanobanana', 'openai', 'zhipu'];
 
-  const results = await Promise.all(tasks);
-  const ok = results.filter(r => !r.error);
-  if (ok.length === 0) {
-    throw new Error('三视图全部失败: ' + results.map(r => r.error).join('; '));
+  const partResults = {};
+  const partErrs = [];
+
+  for (const v of views) {
+    // 构造本视角的 reference 图（前置视角的 filePath）
+    let vRefs = [];
+    if (v.useRefs === 'initial') vRefs = referenceImages || [];
+    else if (v.useRefs === 'front' && partResults.front?.filePath) vRefs = [partResults.front.filePath];
+    else if (v.useRefs === 'front_side') vRefs = [partResults.front?.filePath, partResults.side?.filePath].filter(Boolean);
+
+    // prompt：锁定 prompt 前置 + 本视角提示
+    const promptEn = `${lockEn}${lockEn ? ', ' : ''}${v.hintEn}`;
+    const promptCn = `${lockCn}${lockCn ? '，' : ''}${v.hintCn}`;
+    const fullDesc = promptCn + '。' + promptEn;
+
+    let success = null;
+    for (const pid of providerChain) {
+      if (!getApiKey(pid)) continue;
+      // t2i-only provider 且本视角需要 refs 时跳过（保证 refs 得到尊重）
+      if (vRefs.length > 0 && (pid === 'zhipu')) continue;
+      try {
+        const r = await generateCharacterImageWithRetry({
+          name: `${name}_${v.key}`,
+          role, description: fullDesc,
+          dim, race, species, animStyle,
+          mode: 'portrait',
+          aspectRatio: '3:4',
+          resolution,
+          referenceImages: vRefs,
+          provider: pid,
+        });
+        success = { ...r, provider_used: pid, used_refs: vRefs.length };
+        console.log(`[ThreeView] ${name}/${v.key} → ${pid} (refs=${vRefs.length}) ✓`);
+        break;
+      } catch (e) {
+        console.warn(`[ThreeView] ${name}/${v.key} provider=${pid} 失败: ${e.message}`);
+        partErrs.push(`${v.key}/${pid}: ${e.message}`);
+      }
+    }
+    if (!success) {
+      throw new Error(`三视图 ${v.key} 全部 provider 失败：${partErrs.slice(-providerChain.length).join('; ')}`);
+    }
+    partResults[v.key] = success;
   }
 
-  // 整理成 { front: {filename}, side: {...}, back: {...}, succeeded: 3, failed: 0 }
-  const out = { succeeded: ok.length, failed: results.length - ok.length };
-  results.forEach(r => { out[r.key] = r; });
-  return out;
+  // 用 sharp 将 4 张图横向拼接成一张 reference sheet（白背景，统一高度 1024）
+  const targetH = 1024;
+  const processed = [];
+  for (const v of views) {
+    const src = partResults[v.key].filePath;
+    const buf = await sharp(src)
+      .resize({ height: targetH, fit: 'contain', background: { r: 255, g: 255, b: 255 } })
+      .png()
+      .toBuffer();
+    const meta = await sharp(buf).metadata();
+    processed.push({ key: v.key, buf, w: meta.width, h: meta.height });
+  }
+  const totalW = processed.reduce((s, p) => s + p.w, 0) + (processed.length - 1) * 16;
+  const composites = [];
+  let x = 0;
+  for (const p of processed) {
+    composites.push({ input: p.buf, left: x, top: 0 });
+    x += p.w + 16;
+  }
+  const sheetFile = path.join(imgDir(`${name}_sheet`), `${name}_sheet.png`);
+  await sharp({
+    create: { width: totalW, height: targetH, channels: 3, background: { r: 255, g: 255, b: 255 } },
+  }).composite(composites).png().toFile(sheetFile);
+
+  const toEntry = (key, r) => ({
+    key,
+    label: views.find(v => v.key === key)?.label || key,
+    filePath: r.filePath,
+    filename: path.basename(r.filePath),
+    url: `/api/story/character-image/${path.basename(r.filePath)}`,
+    provider_used: r.provider_used,
+    used_refs: r.used_refs,
+  });
+
+  return {
+    succeeded: 1, failed: 0,
+    front: toEntry('front', partResults.front),
+    side:  toEntry('side',  partResults.side),
+    back:  toEntry('back',  partResults.back),
+    face:  toEntry('face',  partResults.face),
+    sheet: {
+      key: 'sheet', label: '拼贴参考图',
+      filePath: sheetFile,
+      filename: path.basename(sheetFile),
+      url: `/api/story/character-image/${path.basename(sheetFile)}`,
+    },
+    provider_used: 'sequential_i2i',
+    assembly_mode: 'sequential_i2i',
+  };
 }
 
 module.exports = {
@@ -1014,5 +1297,8 @@ module.exports = {
   generateCharacterThreeView,
   generateSceneImage: generateSceneImageWithRetry,
   generateDramaImage,
+  generateJimengImage,
+  pickPreferredImageModel,
+  resolveProvider,
   CHAR_IMG_DIR, SCENE_IMG_DIR
 };

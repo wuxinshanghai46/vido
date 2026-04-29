@@ -243,18 +243,19 @@ router.post('/generate-character-image', async (req, res) => {
     name, role = 'main', description = '', dim = '2d', race = '人', species = '',
     mode = 'turnaround', aspectRatio = '1:1', resolution = '2K', referenceImages = [],
     skipThreeView = false,  // 仅当调用方明确不需要三视图时设为 true
+    image_model = '',  // 用户选择的图片模型（providerId 或 providerId::modelId），严格模式下只用它不 fallback
   } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: '请先填写角色名称' });
   }
   try {
-    const result = await generateCharacterImage({ name: name.trim(), role, description, dim, race, species, mode, aspectRatio, resolution, referenceImages });
+    const result = await generateCharacterImage({ name: name.trim(), role, description, dim, race, species, mode, aspectRatio, resolution, referenceImages, image_model });
     const data = { imageUrl: `/api/story/character-image/${result.filename}`, dim };
 
     // 自动附带三视图（除非显式跳过）
     if (!skipThreeView) {
       try {
-        const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio: '1:1', referenceImages });
+        const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio: '1:1', referenceImages, image_model });
         const toUrl = (r) => r && r.filename ? `/api/story/character-image/${r.filename}` : null;
         data.threeView = {
           front: toUrl(tv.front),
@@ -277,12 +278,12 @@ router.post('/generate-character-image', async (req, res) => {
 
 // 单独生成三视图（不返回主图，纯三视图调用）
 router.post('/generate-character-three-view', async (req, res) => {
-  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', aspectRatio = '1:1', referenceImages = [] } = req.body;
+  const { name, role = 'main', description = '', dim = '2d', race = '人', species = '', aspectRatio = '1:1', referenceImages = [], image_model = '' } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, error: '请先填写角色名称' });
   }
   try {
-    const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio, referenceImages });
+    const tv = await generateCharacterThreeView({ name: name.trim(), role, description, dim, race, species, aspectRatio, referenceImages, image_model });
     const toUrl = (r) => r && r.filename ? `/api/story/character-image/${r.filename}` : null;
     res.json({
       success: true,
@@ -321,12 +322,12 @@ router.post('/generate-character-images', async (req, res) => {
 
 // 生成场景概念图
 router.post('/generate-scene-image', async (req, res) => {
-  const { title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', aspectRatio = '16:9', resolution = '2K', referenceImages = [] } = req.body;
+  const { title = '', description = '', theme = '', timeOfDay = '', category = '', dim = '2d', aspectRatio = '16:9', resolution = '2K', referenceImages = [], image_model = '' } = req.body;
   if (!title.trim() && !description.trim()) {
     return res.status(400).json({ success: false, error: '请填写场景名称或描述' });
   }
   try {
-    const result = await generateSceneImage({ title: title.trim(), description: description.trim(), theme, timeOfDay, category, dim, aspectRatio, resolution, referenceImages });
+    const result = await generateSceneImage({ title: title.trim(), description: description.trim(), theme, timeOfDay, category, dim, aspectRatio, resolution, referenceImages, image_model });
     res.json({ success: true, data: { imageUrl: `/api/story/character-image/${result.filename}` } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -65,6 +65,18 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
         <span>数据同步</span>
       </button>
+      <button class="nav-item" data-tab="apiaccounts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        <span>接口账号</span>
+      </button>
+      <button class="nav-item" data-tab="datasource">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8M5 12h14M5 12v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8M9 7h6M9 17h6"/></svg>
+        <span>数据源管理</span>
+      </button>
+      <button class="nav-item" data-tab="modelpipeline">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 6h6M9 18h6M6 9v6M18 9v6"/></svg>
+        <span>模型调用管理</span>
+      </button>
       <button class="nav-item" data-tab="system">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>系统设置</span>
@@ -396,6 +408,55 @@
           </select>
           <button class="btn-primary" onclick="kbNewDoc()">+ 新建条目</button>
           <button class="btn-sm" onclick="kbOpenPreview()">预览 Agent 注入</button>
+          <button class="btn-sm" onclick="kbOpenImportModal()" style="background:linear-gradient(135deg,#7c6cf0,#21fff3);color:#0D0E12;font-weight:600">📥 飞书提示词同步</button>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);background:var(--bg2);padding:6px 10px;border-radius:6px;cursor:pointer">
+            <input type="checkbox" id="kb-force-toggle" onchange="kbToggleForce(this.checked)" style="margin:0">
+            <span>强制使用 KB</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 飞书提示词导入 Modal -->
+      <div class="modal" id="kb-import-modal" style="display:none;">
+        <div class="modal-content" style="max-width:720px;">
+          <div class="modal-header">
+            <span>📥 飞书提示词同步到知识库</span>
+            <button class="btn-sm" onclick="document.getElementById('kb-import-modal').style.display='none'">×</button>
+          </div>
+          <div class="modal-body">
+            <div style="background:var(--bg2);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6">
+              💡 飞书 wiki 受私有访问控制，服务器无法直接抓取。请：<br>
+              <b>方案 A</b>：在飞书页面按 Ctrl+A 全选 → 复制 → 粘贴到下方"提示词内容"框 → 选择目标合集 → 一键导入<br>
+              <b>方案 B</b>：粘贴飞书 doc-token，并提供你的 user_access_token（个人开发者 token），由服务器调用 Open API 抓取
+            </div>
+            <div class="form-group">
+              <label>来源标签 (会写入 source 字段)</label>
+              <input type="text" id="kbi-source" value="飞书 wiki: SUgDwo3PliqMebkq0LKcISn3nvd" placeholder="例：飞书 wiki: SUgDwo3PliqMebkq0LKcISn3nvd"/>
+            </div>
+            <div class="form-group">
+              <label>目标合集</label>
+              <select id="kbi-collection">
+                <option value="storyboard">分镜库 (storyboard)</option>
+                <option value="atmosphere">氛围词库 (atmosphere)</option>
+                <option value="drama">网剧库 (drama)</option>
+                <option value="digital_human">数字人库 (digital_human)</option>
+                <option value="production">制作库 (production)</option>
+                <option value="engineering">工程库 (engineering)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>适用 Agent (逗号分隔，留空= screenwriter,director,storyboard,atmosphere)</label>
+              <input type="text" id="kbi-applies" placeholder="screenwriter, director, storyboard, atmosphere"/>
+            </div>
+            <div class="form-group">
+              <label>提示词内容（Markdown 或纯文本，会按二级标题 ## 自动拆分为多条 KB）</label>
+              <textarea id="kbi-content" rows="14" placeholder="## 标题1&#10;内容1...&#10;&#10;## 标题2&#10;内容2..." style="font-family:Consolas,monospace;font-size:12px;width:100%"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+              <button class="btn-primary" onclick="kbDoImport()">📥 导入</button>
+              <button class="btn-sm" onclick="document.getElementById('kb-import-modal').style.display='none'">取消</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -513,12 +574,17 @@
             <div class="form-group">
               <label>月度预算 (USD)</label>
               <input type="number" id="budget-monthly" placeholder="0 = 无限制" min="0" step="0.01"/>
-              <small style="color:var(--text3);font-size:11px;">设置为 0 表示不限制</small>
+              <small style="color:var(--text3);font-size:11px;">设置为 0 表示不限制 · 折算人民币会按下面的汇率显示</small>
             </div>
             <div class="form-group">
               <label>告警阈值 (0-1)</label>
               <input type="number" id="budget-threshold" value="0.8" min="0" max="1" step="0.1"/>
               <small style="color:var(--text3);font-size:11px;">例如 0.8 = 达到预算 80% 时开始告警</small>
+            </div>
+            <div class="form-group">
+              <label>USD → CNY 汇率</label>
+              <input type="number" id="budget-rate" value="7.20" min="1" max="20" step="0.01"/>
+              <small style="color:var(--text3);font-size:11px;">用于把 USD 成本换算为人民币显示，默认 7.20</small>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
               <button class="btn-primary" onclick="monitorSaveBudget()">保存</button>
@@ -737,6 +803,82 @@
       </div>
     </div>
 
+    <!-- ── 接口账号管理 ── -->
+    <div class="admin-panel" id="panel-apiaccounts">
+      <div class="panel-toolbar">
+        <span class="panel-title">🔑 接口账号（AppID / AppKey 对接）</span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <a class="btn-sm" href="/api-docs.html" target="_blank">📖 查看接口文档</a>
+          <button class="btn-primary" onclick="openApiAcctModal()">+ 新建接口账号</button>
+        </div>
+      </div>
+      <table class="data-table" id="api-accounts-table">
+        <thead><tr>
+          <th>名称</th><th>AppID</th><th>AppSecret</th><th>可调接口</th>
+          <th>状态</th><th>调用次数</th><th>最后使用</th><th>操作</th>
+        </tr></thead>
+        <tbody id="api-accounts-body"></tbody>
+      </table>
+    </div>
+
+    <!-- 接口账号编辑弹窗 -->
+    <div class="modal" id="api-acct-modal" style="display:none">
+      <div class="modal-overlay" onclick="closeApiAcctModal()"></div>
+      <div class="modal-box" style="max-width:720px;max-height:85vh;overflow:auto">
+        <div class="modal-head">
+          <span class="modal-title" id="api-acct-modal-title">新建接口账号</span>
+          <button class="modal-close" onclick="closeApiAcctModal()">×</button>
+        </div>
+        <div class="modal-body" style="padding:18px">
+          <div class="form-row"><div class="form-group" style="flex:1"><label>账号名称</label><input id="apa-name" placeholder="如：合作方A / 内部系统" /></div></div>
+          <div class="form-row"><div class="form-group" style="flex:1"><label>备注</label><input id="apa-remark" placeholder="用途说明" /></div></div>
+          <div class="form-row">
+            <div class="form-group"><label>状态</label><select id="apa-status"><option value="active">启用</option><option value="disabled">停用</option></select></div>
+            <div class="form-group"><label>配额积分</label><input id="apa-credits" type="number" value="0" min="0" /></div>
+          </div>
+          <div id="apa-secret-box" style="display:none;margin:10px 0;padding:12px;background:rgba(100,200,255,.08);border:1px solid rgba(100,200,255,.3);border-radius:8px">
+            <div style="font-size:12px;color:#8cb4d0;margin-bottom:6px;">请立即保存以下密钥（只在创建/重置时显示一次）：</div>
+            <div style="font-family:monospace;font-size:12px"><b>AppID：</b><code id="apa-show-appid"></code></div>
+            <div style="font-family:monospace;font-size:12px"><b>AppKey：</b><code id="apa-show-secret" style="word-break:break-all"></code></div>
+            <div style="margin-top:8px;display:flex;gap:8px">
+              <button class="btn-sm" onclick="copyApaSecret()">📋 复制 AppKey</button>
+            </div>
+          </div>
+          <div class="form-row" style="margin-top:14px">
+            <div class="form-group" style="flex:1">
+              <label style="display:flex;align-items:center;justify-content:space-between">
+                <span>可调用 AI 模型 <span style="font-size:10px;color:var(--text3);font-weight:400">（勾选该账号可调用的模型，按供应商分组）</span></span>
+                <label style="font-size:11px;color:var(--text2);cursor:pointer"><input type="checkbox" id="apa-select-all" onchange="apaToggleAllApis(this)" /> 全选</label>
+              </label>
+              <div id="apa-apis-list" style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-sm" onclick="closeApiAcctModal()">关闭</button>
+          <button class="btn-primary" onclick="saveApiAcct()">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 数据源管理（爆款复刻搜索 providers）── -->
+    <div class="admin-panel" id="panel-datasource">
+      <div class="panel-toolbar">
+        <span class="panel-title">📡 数据源管理 <span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:8px">爆款复刻 / 多平台搜索 的数据来源 provider 配置</span></span>
+        <button class="btn-sm" onclick="loadDatasources()">🔄 刷新</button>
+      </div>
+      <div id="datasource-list" style="display:flex;flex-direction:column;gap:14px"></div>
+    </div>
+
+    <!-- ── 模型调用管理（Pipeline 模型路由）── -->
+    <div class="admin-panel" id="panel-modelpipeline">
+      <div class="panel-toolbar">
+        <span class="panel-title">🔀 模型调用管理 <span style="font-size:11px;color:var(--text3);font-weight:400;margin-left:8px">数字人 / 网剧 / 爆款复刻 各环节用哪些模型 + 优先级</span></span>
+        <button class="btn-sm" onclick="loadModelPipeline()">🔄 刷新</button>
+      </div>
+      <div id="model-pipeline-body"></div>
+    </div>
+
     <!-- ── 系统设置 ── -->
     <div class="admin-panel" id="panel-system">
       <div class="panel-toolbar"><span class="panel-title">系统设置</span></div>
@@ -875,5 +1017,6 @@
 
 <script src="/js/auth.js?v=20260411b"></script>
 <script src="/js/admin.js?v=20260411b"></script>
+<script src="/js/admin-api-accounts.js?v=20260415b"></script>
 </body>
 </html>

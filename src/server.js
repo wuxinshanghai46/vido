@@ -14,6 +14,10 @@ authStore.init();
 const { authenticate, requireRole, requirePermission } = require('./middleware/auth');
 
 app.use(cors({ origin: true, credentials: true }));
+// 保留原始 body（签名验证用）仅对 /openapi/* 生效，避免影响其他路由的 JSON 解析
+app.use('/openapi', express.json({
+  verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); },
+}));
 app.use(express.json());
 // 手动解析 cookie（不引入 cookie-parser 依赖）
 app.use((req, res, next) => {
@@ -200,6 +204,24 @@ app.get('/api/i2v/images/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 即梦数字人 Omni 临时素材（图片/音频）— 必须公网可访问供火山 API 拉取
+app.get('/public/jimeng-assets/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/jimeng-assets', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  const ext = path.extname(filename).toLowerCase();
+  const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+                    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+  res.writeHead(200, {
+    'Content-Type': mimeMap[ext] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    'Cache-Control': 'public, max-age=3600',
+  });
+  fs.createReadStream(filePath).pipe(res);
+});
+
 // 用户主题偏好
 app.put('/api/user/theme', authenticate, (req, res) => {
   const { theme } = req.body;
@@ -218,6 +240,9 @@ app.get('/api/user/theme', authenticate, (req, res) => {
 // === 需认证的路由 ===
 app.use('/api/dashboard', authenticate, require('./routes/dashboard'));
 app.use('/api/radar', authenticate, require('./routes/radar'));
+// 平台账号绑定 — 复用 VIDO 已有的 /api/browser 路由（browserService）
+// 启动关键字订阅调度器
+try { require('./services/subscriptionScheduler').start(); } catch (e) { console.warn('[server] subscription scheduler start failed:', e.message); }
 app.use('/api/projects', authenticate, require('./routes/projects'));
 app.use('/api/story', authenticate, require('./routes/story'));
 app.use('/api/editor', authenticate, require('./routes/editor'));
@@ -237,7 +262,88 @@ app.get('/api/projects/:id/clips/:clipId/stream', require('./routes/project-stre
 app.use('/api/i2v', authenticate, requirePermission('i2v'), require('./routes/i2v'));
 // 预设图片公开访问（img 标签不带 token）
 app.use('/api/avatar/preset-img', require('./routes/avatar-preset-img'));
-app.use('/api/avatar', authenticate, requirePermission('avatar'), require('./routes/avatar'));
+// prompt-preview / translate-prompt 是纯文本工具，不消耗模型/不返回敏感数据
+//   登录即可使用，不要求 'avatar' 权限，避免普通用户进首页时被 401 / 403 弹回
+const _avatarPublicPaths = new Set(['/prompt-preview', '/translate-prompt', '/smart-camera']);
+function _avatarPermGate(req, res, next) {
+  if (_avatarPublicPaths.has(req.path)) return next();
+  return requirePermission('avatar')(req, res, next);
+}
+app.use('/api/avatar', authenticate, _avatarPermGate, require('./routes/avatar'));
+app.use('/api/hifly', authenticate, requirePermission('avatar'), require('./routes/hifly'));
+// 数字人作品缩略图 — 公开端点（在 authenticate 之前注册）
+//   <video poster> 不能带 Authorization header；task id 是 uuid 不可枚举，安全 OK
+app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const db = require('./models/database');
+    const ffmpegService = require('./services/ffmpegService');
+    const t = db.getAvatarTask(req.params.id);
+    if (!t) return res.status(404).end();
+    const localPath = t.videoPath || t.local_path;
+    if (!localPath || !fs.existsSync(localPath)) return res.status(204).end();
+    const thumbPath = localPath.replace(/\.(mp4|mov|webm|mkv|avi)$/i, '') + '.thumb.jpg';
+    const send = () => {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      fs.createReadStream(thumbPath).pipe(res);
+    };
+    if (fs.existsSync(thumbPath)) return send();
+    ffmpegService.extractFirstFrame(localPath, thumbPath, { atSec: 0.5, width: 480 })
+      .then(send)
+      .catch(err => {
+        console.warn('[DH/thumbnail] 抽帧失败:', err.message);
+        res.status(204).end();
+      });
+  } catch (err) {
+    console.warn('[DH/thumbnail] err:', err.message);
+    res.status(500).end();
+  }
+});
+
+// 我的形象（portrait）样片视频首帧 — 公开端点（同上理由）
+app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const db = require('./models/database');
+    const ffmpegService = require('./services/ffmpegService');
+    const p = db.getPortrait(req.params.id);
+    if (!p) return res.status(404).end();
+    if (p.image_url && /^\/public\//.test(p.image_url)) {
+      const local = path.resolve(__dirname, '..' + p.image_url);
+      if (fs.existsSync(local)) {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return fs.createReadStream(local).pipe(res);
+      }
+    }
+    const sample = p.sample_video_url || '';
+    let localVideo = null;
+    if (sample.includes('/public/jimeng-assets/')) {
+      const name = path.basename(sample.split('?')[0]);
+      const candidate = path.resolve(__dirname, '../outputs/jimeng-assets', name);
+      if (fs.existsSync(candidate)) localVideo = candidate;
+    }
+    if (!localVideo) return res.status(204).end();
+    const thumbPath = localVideo.replace(/\.(mp4|mov|webm|mkv)$/i, '') + '.thumb.jpg';
+    const send = () => {
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      fs.createReadStream(thumbPath).pipe(res);
+    };
+    if (fs.existsSync(thumbPath)) return send();
+    ffmpegService.extractFirstFrame(localVideo, thumbPath, { atSec: 0.5, width: 480 })
+      .then(send)
+      .catch(err => { console.warn('[DH/avatar-thumb] 抽帧失败:', err.message); res.status(204).end(); });
+  } catch (err) {
+    console.warn('[DH/avatar-thumb] err:', err.message);
+    res.status(500).end();
+  }
+});
+
+app.use('/api/dh', authenticate, requirePermission('avatar'), require('./routes/digitalHuman'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));
@@ -261,6 +367,18 @@ app.use('/api/sync', authenticate, requireRole('admin'), require('./routes/sync'
 
 // === 管理后台（仅 admin） ===
 app.use('/api/admin', authenticate, requireRole('admin'), require('./routes/admin'));
+
+// === OpenAPI 开放接口（AppID/AppKey 签名验证，对外分发） ===
+const { apiAuth } = require('./middleware/apiAuth');
+app.use('/openapi', apiAuth, require('./routes/openapi'));
+
+// === 公开接口目录（给 /api-docs.html 用，无需认证） ===
+app.get('/api/public/openapi-catalog', (_req, res) => {
+  try {
+    const { listCatalog } = require('./services/apiCatalog');
+    res.json({ success: true, data: listCatalog() });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
 
 // === AI 团队（登录即可用，所有 agent 岗位的可调用端点）===
 app.use('/api/ai-team', authenticate, require('./routes/aiTeam'));
@@ -290,7 +408,9 @@ app.get('/home.html', (req, res) => res.sendFile(path.join(__dirname, '../public
 // 登录后工作台
 app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
-// login / admin
+app.get('/digital-human', (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+app.get('/digital-human.html', (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+// /login.html — admin 独立登录入口（user 端继续走首页 modal 登录，互不干扰）
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));

@@ -51,7 +51,7 @@ router.post('/chat', async (req, res) => {
     }
     const systemPrompt = buildSystemPrompt(context);
     const userPrompt = buildUserPrompt(String(message).trim(), history);
-    const reply = await callLLM(systemPrompt, userPrompt);
+    const reply = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'copy', query: String(message).slice(0, 200), limit: 3 } });
     res.json({ success: true, reply: (reply || '').trim() });
   } catch (e) {
     console.error('[Agent] chat failed:', e.message);
@@ -67,7 +67,7 @@ router.post('/run-text', async (req, res) => {
       return res.status(400).json({ success: false, error: '请填写提示词' });
     }
     const systemPrompt = '你是一位专业的内容创作助手。根据用户的提示词生成自然流畅、富有画面感的文字。直接输出结果，不要解释、前言、后记。' + (style ? `风格：${style}` : '');
-    const reply = await callLLM(systemPrompt, String(prompt).trim());
+    const reply = await callLLM(systemPrompt, String(prompt).trim(), { kb: { scene: 'copy', query: String(prompt).slice(0, 200), limit: 2 } });
     res.json({ success: true, text: (reply || '').trim() });
   } catch (e) {
     console.error('[Agent] run-text failed:', e.message);

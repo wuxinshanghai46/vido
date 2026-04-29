@@ -1088,7 +1088,8 @@ async function runBackground(prompt, fields) {
       title: prompt.slice(0, 30),
       description: cleanTime ? `${prompt}，${cleanTime}时段` : prompt,
       aspectRatio: fields.aspect || '16:9',
-      timeOfDay: cleanTime
+      timeOfDay: cleanTime,
+      image_model: _canvasModelToProvider(fields?.model),
     })
   });
   if (!data.success) throw new Error(data.error || '场景生成失败');
@@ -1106,10 +1107,25 @@ const CHARACTER_VIEWS = [
   { key: 'action',    label: '动作姿势',   modifier: '充满张力的动作姿势，动感十足，电影感' }
 ];
 
+// Canvas UI 模型 id → 真实 provider id 映射（严格模式，避免 fallback）
+function _canvasModelToProvider(m) {
+  const map = {
+    'flux-pro':    'mxapi',
+    'sd3':         'stability',
+    'dalle3':      'openai',
+    'jimeng-4':    'jimeng',
+    'cogview':     'zhipu',
+    'nano-banana': 'nanobanana',
+  };
+  return map[m] || m || '';
+}
+
 async function runCharacter(prompt, fields, nodeId) {
   if (!prompt) throw new Error('请填写角色描述');
   // 在节点 result 区域先挂占位 6 格骨架
   if (nodeId != null) renderCharacterSlots(nodeId, CHARACTER_VIEWS.length);
+
+  const chosenModel = _canvasModelToProvider(fields?.model);
 
   // 并行生成 6 张
   const tasks = CHARACTER_VIEWS.map((v, i) =>
@@ -1118,8 +1134,10 @@ async function runCharacter(prompt, fields, nodeId) {
       body: JSON.stringify({
         name: prompt.slice(0, 20) || '角色',
         description: prompt + '，' + v.modifier,
-        aspectRatio: '1:1',
-        mode: 'single'
+        aspectRatio: (fields?.aspect) || '1:1',
+        mode: 'single',
+        skipThreeView: true,
+        image_model: chosenModel,
       })
     }).then(data => {
       if (!data.success) throw new Error(data.error || '生成失败');

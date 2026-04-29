@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>即梦数字人 Omni · 照片+文案/音频 一键生成口播</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    body { background: #0D0E12; color: #E8E9ED; font-family: -apple-system, 'PingFang SC', 'Segoe UI', sans-serif; padding: 24px; }
+    .wrap { max-width: 920px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    .sub { color: #8a8f9c; font-size: 13px; margin-bottom: 24px; }
+    .card { background: #141519; border: 1px solid #1E2025; border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: #c1c5d0; margin-bottom: 6px; }
+    input[type=text], textarea, select {
+      width: 100%; background: #0D0E12; border: 1px solid #2a2d36; color: #E8E9ED;
+      padding: 10px 12px; border-radius: 10px; font-size: 14px; outline: none; box-sizing: border-box;
+    }
+    textarea { min-height: 96px; resize: vertical; font-family: inherit; }
+    .row { display: flex; gap: 12px; align-items: flex-start; }
+    .col { flex: 1; }
+    .btn {
+      background: linear-gradient(90deg,#CBFFF8,#21FFF3,#FFF600);
+      color: #0D0E12; font-weight: 600; border: none; padding: 12px 24px; border-radius: 999px;
+      cursor: pointer; font-size: 14px;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: #21FFF320; color: #21FFF3; }
+    .imgbox { width: 100%; aspect-ratio: 3/4; background: #0D0E12; border: 1px dashed #2a2d36; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .imgbox img { width: 100%; height: 100%; object-fit: cover; }
+    .log { background: #0D0E12; border-radius: 10px; padding: 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #8a8f9c; max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; background: #21FFF320; color: #21FFF3; margin-left: 8px; }
+    .pill.err { background: #ff4d4f30; color: #ff7875; }
+    .pill.ok { background: #52c41a30; color: #73d13d; }
+    video { width: 100%; border-radius: 12px; background: #000; }
+    .file-btn { display: inline-block; padding: 8px 14px; background: #1E2025; border: 1px solid #2a2d36; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    input[type=file] { display: none; }
+    .mode-toggle { display: inline-flex; gap: 4px; background: #0D0E12; padding: 3px; border-radius: 999px; margin-bottom: 8px; }
+    .mode-toggle button { background: transparent; border: none; color: #8a8f9c; padding: 6px 14px; border-radius: 999px; cursor: pointer; font-size: 12px; }
+    .mode-toggle button.active { background: #21FFF3; color: #0D0E12; font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>即梦数字人 Omni · 照片驱动口播 <span class="pill" id="authPill">检查登录中…</span></h1>
+  <div class="sub">上传一张人脸照片 + 输入文案（自动 TTS）或上传音频 → 生成数字人说话视频 · 底层: 火山引擎 jimeng_realman_avatar_picture_omni_v15</div>
+
+  <div class="card" style="border: 1px solid #21FFF350;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <strong>🚀 一键生成（自动模式）</strong>
+      <span style="color:#8a8f9c;font-size:12px;">主题 → 人像 + 文案 + 语音 + 数字人视频</span>
+    </div>
+    <div class="row">
+      <div class="col">
+        <label>视频主题</label>
+        <input type="text" id="autoTopic" placeholder="例：AI 数字人 3 秒钩子 · 让口播视频不再被划走" />
+      </div>
+      <div class="col" style="max-width:140px;">
+        <label>时长</label>
+        <select id="autoDuration">
+          <option value="15">15 秒</option>
+          <option value="20" selected>20 秒</option>
+          <option value="30">30 秒</option>
+          <option value="45">45 秒</option>
+          <option value="60">60 秒</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:10px;">
+      <label>人像风格 prompt（留空用默认：真实系科技博主）</label>
+      <input type="text" id="autoPortrait" placeholder="可留空" />
+    </div>
+    <div style="margin-top:10px;">
+      <label>音色（留空自动选）</label>
+      <select id="autoVoice"><option value="">自动</option></select>
+    </div>
+    <div style="margin-top: 16px; text-align: center;">
+      <button class="btn" id="autoBtn" onclick="autoGo()">🎬 一键生成</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="margin-bottom:10px;"><strong>🔧 手动模式（上传自己的图/音频）</strong></div>
+    <div class="row">
+      <div class="col">
+        <label>1. 人物照片（JPG/PNG）</label>
+        <label class="imgbox" id="imgbox">
+          <span id="imgHint" style="color:#666;font-size:13px;">点击选择图片</span>
+          <img id="imgPreview" style="display:none" />
+          <input type="file" id="imgFile" accept="image/*" />
+        </label>
+      </div>
+      <div class="col">
+        <label>2. 驱动方式</label>
+        <div class="mode-toggle">
+          <button id="modeText" class="active" onclick="switchMode('text')">📝 文案 (TTS)</button>
+          <button id="modeAudio" onclick="switchMode('audio')">🎵 上传音频</button>
+        </div>
+
+        <div id="textMode">
+          <label style="margin-top:12px;">文案</label>
+          <textarea id="text" placeholder="他（她）要说的话，建议 10-60 秒对应字数（25-150 字）…"></textarea>
+          <label style="margin-top:8px;">音色（留空则用默认）</label>
+          <select id="voiceId"><option value="">自动</option></select>
+        </div>
+
+        <div id="audioMode" style="display:none;">
+          <label style="margin-top:12px;">音频文件（MP3/WAV）</label>
+          <label class="file-btn" style="display:block;text-align:center;">
+            <span id="audioName">点击选择音频</span>
+            <input type="file" id="audioFile" accept="audio/*" />
+          </label>
+        </div>
+
+        <label style="margin-top:12px;">Prompt（可选，控制表情/稳定性）</label>
+        <input type="text" id="prompt" placeholder="例如：自然表情，嘴型清晰，稳定人脸" />
+
+        <label style="margin-top:12px;"><input type="checkbox" id="autoDetect" /> 启用主体检测（多人时更准，会慢 3-5s）</label>
+      </div>
+    </div>
+    <div style="margin-top: 20px; text-align: center;">
+      <button class="btn" id="goBtn" onclick="go()">🎬 生成数字人视频</button>
+    </div>
+  </div>
+
+  <div class="card" id="progressCard" style="display:none;">
+    <div><strong>任务进度</strong> <span id="statusPill" class="pill">准备中</span></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none;">
+    <label>✅ 生成结果</label>
+    <video id="resultVideo" controls></video>
+    <div style="margin-top: 12px;">
+      <a id="dlLink" class="btn btn-secondary" style="text-decoration:none;display:inline-block;" download>📥 下载 MP4</a>
+    </div>
+
+    <!-- 背景替换面板 -->
+    <div style="margin-top:24px;padding-top:20px;border-top:1px dashed #2a2d36;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <strong>🖼 替换背景（百度抠像 + FFmpeg 合成）</strong>
+        <span style="font-size:11px;color:#8a8f9c;">~2 分钟/次 · 背景变 matte 不变</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;" id="bgPresets"></div>
+      <label style="margin-top:10px;">或上传自定义背景（图片/视频）</label>
+      <label class="file-btn" style="display:block;text-align:center;">
+        <span id="bgFileName">点击选择图片或视频</span>
+        <input type="file" id="bgFile" accept="image/*,video/*" />
+      </label>
+      <label style="margin-top:10px;">画面尺寸</label>
+      <select id="bgSize">
+        <option value="720x1280">竖屏 720×1280（抖音/小红书）</option>
+        <option value="1080x1920">竖屏 1080×1920（高清）</option>
+        <option value="1280x720">横屏 1280×720</option>
+        <option value="1080x1080">方形 1080×1080</option>
+      </select>
+      <div style="margin-top:14px;text-align:center;">
+        <button class="btn" id="composeBtn" onclick="doCompose()">🎬 开始抠像合成</button>
+      </div>
+      <div id="composeLog" class="log" style="margin-top:12px;display:none;"></div>
+      <video id="composedVideo" controls style="display:none;margin-top:12px;"></video>
+      <div id="composedActions" style="display:none;margin-top:12px;">
+        <a id="composedDl" class="btn btn-secondary" style="text-decoration:none;display:inline-block;" download>📥 下载合成版 MP4</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const token = () => localStorage.getItem('token') || '';
+const authHeaders = () => token() ? { 'Authorization': 'Bearer ' + token() } : {};
+let imageFile = null, audioFile = null, mode = 'text';
+let currentSourceVideoUrl = null;
+let bgFile = null, selectedBgPresetUrl = null;
+
+// 背景预设
+const BG_PRESETS = [
+  { id: 'gradient-cyan', name: '青色渐变', css: 'linear-gradient(135deg,#0d3a4d,#21FFF3,#CBFFF8)' },
+  { id: 'gradient-purple', name: '紫色渐变', css: 'linear-gradient(135deg,#2E1065,#7C3AED,#EC4899)' },
+  { id: 'gradient-warm', name: '暖色渐变', css: 'linear-gradient(135deg,#7C2D12,#F59E0B,#FEF3C7)' },
+  { id: 'solid-dark', name: '深色纯色', css: '#0D0E12' },
+  { id: 'bokeh-office', name: '虚化办公室', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=720&q=80' },
+  { id: 'bokeh-studio', name: '虚化工作室', url: 'https://images.unsplash.com/photo-1558346490-a72e53ae2d4f?w=720&q=80' },
+  { id: 'bokeh-tech', name: '科技感', url: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=720&q=80' },
+  { id: 'bokeh-minimal', name: '极简白', url: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=720&q=80' },
+];
+
+function log(msg) {
+  const el = document.getElementById('log');
+  const t = new Date().toLocaleTimeString();
+  el.textContent += `[${t}] ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(text, type='') {
+  const p = document.getElementById('statusPill');
+  p.textContent = text;
+  p.className = 'pill ' + type;
+}
+
+// 检查登录 + 加载音色列表
+(async () => {
+  try {
+    const r = await fetch('/api/auth/me', { headers: authHeaders() });
+    const data = await r.json();
+    if (data?.user) document.getElementById('authPill').textContent = '已登录 ' + (data.user.username || data.user.email || '');
+    else { document.getElementById('authPill').textContent = '未登录'; document.getElementById('authPill').className = 'pill err'; }
+  } catch { document.getElementById('authPill').textContent = '登录状态未知'; }
+
+  try {
+    const r = await fetch('/api/avatar/voice-list', { headers: authHeaders() });
+    const data = await r.json();
+    const sel1 = document.getElementById('voiceId');
+    const sel2 = document.getElementById('autoVoice');
+    (data.voices || []).forEach(v => {
+      const opt1 = document.createElement('option');
+      opt1.value = v.id;
+      opt1.textContent = `${v.name} · ${v.provider}`;
+      sel1.appendChild(opt1);
+      const opt2 = opt1.cloneNode(true);
+      sel2.appendChild(opt2);
+    });
+  } catch {}
+})();
+
+document.getElementById('imgFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  imageFile = f;
+  const img = document.getElementById('imgPreview');
+  img.src = URL.createObjectURL(f);
+  img.style.display = 'block';
+  document.getElementById('imgHint').style.display = 'none';
+});
+document.getElementById('audioFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  audioFile = f;
+  document.getElementById('audioName').textContent = f.name;
+});
+
+function switchMode(m) {
+  mode = m;
+  document.getElementById('modeText').classList.toggle('active', m === 'text');
+  document.getElementById('modeAudio').classList.toggle('active', m === 'audio');
+  document.getElementById('textMode').style.display = m === 'text' ? '' : 'none';
+  document.getElementById('audioMode').style.display = m === 'audio' ? '' : 'none';
+}
+
+async function autoGo() {
+  const topic = document.getElementById('autoTopic').value.trim();
+  if (!topic) { alert('请输入主题'); return; }
+  const btn = document.getElementById('autoBtn');
+  btn.disabled = true;
+  document.getElementById('progressCard').style.display = '';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('log').textContent = '';
+  setStatus('提交自动生成任务…');
+
+  try {
+    const body = {
+      topic,
+      duration_sec: parseInt(document.getElementById('autoDuration').value, 10),
+      portrait_prompt: document.getElementById('autoPortrait').value.trim(),
+      voiceId: document.getElementById('autoVoice').value || '',
+    };
+    log('提交: ' + JSON.stringify(body));
+    const r = await fetch('/api/avatar/jimeng-omni/auto-produce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || '提交失败');
+    const taskId = data.taskId;
+    log('任务 ID: ' + taskId);
+    setStatus('AI 生成人像+文案+语音…');
+
+    for (let i = 0; i < 400; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const r2 = await fetch('/api/avatar/jimeng-omni/tasks/' + taskId, { headers: authHeaders() });
+      const d = await r2.json();
+      const t = d.task || {};
+      setStatus(`${t.stage || ''} · ${t.cv_status || t.status}`);
+      if (i % 4 === 0) log(`[${i*3}s] stage=${t.stage} status=${t.status} cv=${t.cv_status || ''}`);
+      if (t.script_preview && !log.__printed) { log('📝 文案: ' + t.script_preview + '…'); log.__printed = true; }
+      if (t.status === 'done') {
+        log('✅ 完成: ' + t.video_url);
+        setStatus('完成', 'ok');
+        document.getElementById('resultCard').style.display = '';
+        document.getElementById('resultVideo').src = t.video_url;
+        currentSourceVideoUrl = t.video_url;
+        const dl = document.getElementById('dlLink');
+        dl.href = t.video_url;
+        dl.setAttribute('download', 'tutorial_' + taskId + '.mp4');
+        renderBgPresets();
+        // 展示文案（唯一）
+        if (t.script) {
+          const existing = document.getElementById('scriptBox');
+          if (existing) existing.remove();
+          const scriptBox = document.createElement('div');
+          scriptBox.id = 'scriptBox';
+          scriptBox.style.cssText = 'margin-top:12px;padding:12px;background:#0D0E12;border-radius:8px;font-size:13px;color:#c1c5d0;line-height:1.6;';
+          scriptBox.textContent = '口播稿：' + t.script;
+          document.getElementById('resultCard').appendChild(scriptBox);
+        }
+        return;
+      }
+      if (t.status === 'error') throw new Error(t.error || '任务失败');
+    }
+    throw new Error('轮询超时');
+  } catch (err) {
+    log('❌ 错误: ' + err.message);
+    setStatus('失败: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderBgPresets() {
+  const wrap = document.getElementById('bgPresets');
+  wrap.innerHTML = '';
+  BG_PRESETS.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'bg-card';
+    card.dataset.bgId = p.id;
+    card.style.cssText = `height:90px;border-radius:10px;cursor:pointer;border:2px solid transparent;background:${p.css || '#333'};display:flex;align-items:flex-end;padding:6px;color:#fff;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,0.8);background-size:cover;background-position:center;`;
+    if (p.url) card.style.backgroundImage = `url(${p.url})`;
+    card.textContent = p.name;
+    card.onclick = () => {
+      document.querySelectorAll('#bgPresets .bg-card').forEach(c => c.style.borderColor = 'transparent');
+      card.style.borderColor = '#21FFF3';
+      selectedBgPresetUrl = p.url || null;
+      if (!p.url) {
+        // 纯色 / 渐变：前端渲染一张 canvas 作为本地图源
+        const canvas = document.createElement('canvas');
+        canvas.width = 720; canvas.height = 1280;
+        const ctx = canvas.getContext('2d');
+        if (p.css && p.css.includes('gradient')) {
+          const colors = [...p.css.matchAll(/#[0-9a-fA-F]{6}/g)].map(m => m[0]);
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          colors.forEach((c, i) => grad.addColorStop(i / (colors.length - 1 || 1), c));
+          ctx.fillStyle = grad;
+        } else {
+          ctx.fillStyle = p.css || '#000';
+        }
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          bgFile = new File([blob], 'preset-' + p.id + '.png', { type: 'image/png' });
+        }, 'image/png');
+      } else {
+        bgFile = null;
+      }
+    };
+    wrap.appendChild(card);
+  });
+}
+
+document.getElementById('bgFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  bgFile = f;
+  selectedBgPresetUrl = null;
+  document.getElementById('bgFileName').textContent = f.name;
+  document.querySelectorAll('#bgPresets .bg-card').forEach(c => c.style.borderColor = 'transparent');
+});
+
+async function doCompose() {
+  if (!currentSourceVideoUrl) { alert('请先生成一条数字人视频'); return; }
+  if (!bgFile && !selectedBgPresetUrl) { alert('请选背景或上传一张'); return; }
+  const btn = document.getElementById('composeBtn');
+  btn.disabled = true;
+  const logBox = document.getElementById('composeLog');
+  logBox.style.display = '';
+  logBox.textContent = '';
+  document.getElementById('composedVideo').style.display = 'none';
+  document.getElementById('composedActions').style.display = 'none';
+
+  const clog = (m) => { const t = new Date().toLocaleTimeString(); logBox.textContent += `[${t}] ${m}\n`; logBox.scrollTop = logBox.scrollHeight; };
+
+  try {
+    let bgUrl = selectedBgPresetUrl;
+    if (bgFile) {
+      clog('上传背景到服务器…');
+      const fd = new FormData();
+      fd.append('bg', bgFile);
+      const r = await fetch('/api/avatar/jimeng-omni/upload-matte', { method: 'POST', body: fd, headers: authHeaders() });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || '上传失败');
+      bgUrl = d.bg_url;
+      clog('背景 URL: ' + bgUrl);
+    }
+
+    const [w, h] = document.getElementById('bgSize').value.split('x').map(Number);
+    const body = { source: currentSourceVideoUrl, bg: bgUrl, width: w, height: h, scaleMode: 'cover' };
+    clog('提交抠像合成…');
+    const r2 = await fetch('/api/avatar/jimeng-omni/compose', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body),
+    });
+    const d2 = await r2.json();
+    if (!d2.success) throw new Error(d2.error || '提交失败');
+    const taskId = d2.taskId;
+    clog('任务: ' + taskId);
+
+    for (let i = 0; i < 400; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const r3 = await fetch('/api/avatar/jimeng-omni/matte-tasks/' + taskId, { headers: authHeaders() });
+      const d3 = await r3.json();
+      const t = d3.task || {};
+      if (i % 3 === 0) clog(`[${i*3}s] stage=${t.stage} ${t.matte_done ? `抠${t.matte_done}/${t.matte_total}` : ''}`);
+      if (t.status === 'done') {
+        clog('✅ 完成: ' + t.output_url);
+        const v = document.getElementById('composedVideo');
+        v.src = t.output_url; v.style.display = '';
+        const dl = document.getElementById('composedDl');
+        dl.href = t.output_url;
+        dl.setAttribute('download', 'composed_' + taskId + '.mp4');
+        document.getElementById('composedActions').style.display = '';
+        return;
+      }
+      if (t.status === 'error') throw new Error(t.error || '任务失败');
+    }
+    throw new Error('轮询超时');
+  } catch (err) {
+    clog('❌ 错误: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function go() {
+  if (!imageFile) { alert('请先上传人物照片'); return; }
+  if (mode === 'text' && !document.getElementById('text').value.trim()) { alert('请输入文案'); return; }
+  if (mode === 'audio' && !audioFile) { alert('请上传音频文件'); return; }
+
+  const btn = document.getElementById('goBtn');
+  btn.disabled = true;
+  document.getElementById('progressCard').style.display = '';
+  document.getElementById('resultCard').style.display = 'none';
+  document.getElementById('log').textContent = '';
+  setStatus('上传素材中…');
+
+  try {
+    // 1. 上传 image（和 audio 如有）
+    const fd = new FormData();
+    fd.append('image', imageFile);
+    if (mode === 'audio') fd.append('audio', audioFile);
+
+    log('上传素材到服务器…');
+    const upRes = await fetch('/api/avatar/jimeng-omni/upload', { method: 'POST', body: fd, headers: authHeaders() });
+    const upData = await upRes.json();
+    if (!upData.success) throw new Error(upData.error || '上传失败');
+    log('图片公网 URL: ' + upData.image_url);
+    if (upData.audio_url) log('音频公网 URL: ' + upData.audio_url);
+
+    // 2. 提交生成
+    setStatus('提交生成任务…');
+    const body = {
+      image_url: upData.image_url,
+      prompt: document.getElementById('prompt').value || '',
+      auto_detect: document.getElementById('autoDetect').checked,
+    };
+    if (mode === 'text') {
+      body.text = document.getElementById('text').value;
+      body.voiceId = document.getElementById('voiceId').value || '';
+    } else {
+      body.audio_url = upData.audio_url;
+    }
+
+    log('提交生成: ' + JSON.stringify(body).slice(0, 200) + '…');
+    const genRes = await fetch('/api/avatar/jimeng-omni/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+    const genData = await genRes.json();
+    if (!genData.success) throw new Error(genData.error || '提交失败');
+    const taskId = genData.taskId;
+    log('任务 ID: ' + taskId);
+
+    // 3. 轮询
+    setStatus('即梦处理中…');
+    for (let i = 0; i < 300; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const r = await fetch('/api/avatar/jimeng-omni/tasks/' + taskId, { headers: authHeaders() });
+      const data = await r.json();
+      const t = data.task || {};
+      setStatus(`${t.stage || ''} · ${t.cv_status || t.status}`);
+      if (i % 5 === 0) log(`[${i*3}s] stage=${t.stage} status=${t.status} cv=${t.cv_status || ''}`);
+      if (t.status === 'done') {
+        log('✅ 完成: ' + t.video_url);
+        setStatus('完成', 'ok');
+        document.getElementById('resultCard').style.display = '';
+        document.getElementById('resultVideo').src = t.video_url;
+        const dl = document.getElementById('dlLink');
+        dl.href = t.video_url;
+        dl.setAttribute('download', 'jimeng_avatar_' + taskId + '.mp4');
+        return;
+      }
+      if (t.status === 'error') throw new Error(t.error || '任务失败');
+    }
+    throw new Error('轮询超时');
+  } catch (err) {
+    log('❌ 错误: ' + err.message);
+    setStatus('失败: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

@@ -283,7 +283,7 @@ async function generateComicScript({ theme, style, pages = 4, panelsPerPage = 4,
 }
 
 // ——— 生成单个面板图片 ———
-async function generatePanelImage(panel, style, taskDir) {
+async function generatePanelImage(panel, style, taskDir, image_model = '') {
   const { generateCharacterImage } = require('./imageService');
   const db = require('../models/database');
 
@@ -318,7 +318,8 @@ async function generatePanelImage(panel, style, taskDir) {
       dim: '2d',
       race: '人',
       species: '',
-      animStyle: ''
+      animStyle: '',
+      image_model,
     });
     // 复制到漫画任务目录
     const destPath = path.join(taskDir, `${filename}.png`);

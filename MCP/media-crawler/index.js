@@ -394,7 +394,116 @@ server.tool(
   }
 );
 
-// 5. 平台检测
+// 5. 关键字搜索（多平台 fallback）
+server.tool(
+  'search_keyword',
+  '按关键字搜索平台公开内容（不需要登录的部分）',
+  {
+    keyword: z.string().describe('关键字'),
+    platform: z.enum(['douyin', 'xiaohongshu', 'bilibili', 'weibo', 'all']).default('all').describe('平台，all=并行所有'),
+    limit: z.number().default(20).describe('每平台最多返回数')
+  },
+  async ({ keyword, platform, limit }) => {
+    const platforms = platform === 'all' ? ['bilibili', 'douyin', 'xiaohongshu', 'weibo'] : [platform];
+    const results = [];
+    const sources = [];
+
+    for (const p of platforms) {
+      try {
+        let items = [];
+        if (p === 'bilibili') {
+          // B站 search 接口（不需登录、最稳定）
+          const j = await axios.get('https://api.bilibili.com/x/web-interface/wbi/search/type', {
+            params: { search_type: 'video', keyword, page: 1, page_size: Math.min(limit, 20) },
+            timeout: 12000,
+            headers: {
+              'User-Agent': PC_UA,
+              'Referer': 'https://www.bilibili.com/',
+              'Cookie': 'buvid3=ABC; b_nut=' + Date.now()
+            },
+            validateStatus: () => true
+          });
+          const list = j.data?.data?.result || [];
+          items = list.slice(0, limit).map(v => ({
+            id: 'bili_' + v.bvid,
+            platform: 'bilibili', platform_name: 'B站',
+            title: (v.title || '').replace(/<[^>]+>/g, ''),
+            author: v.author, author_avatar: v.upic ? `https:${v.upic}` : '',
+            cover: v.pic ? (v.pic.startsWith('http') ? v.pic : `https:${v.pic}`) : '',
+            video_url: v.arcurl,
+            views: v.play || 0, likes: v.like || 0,
+            comments: v.video_review || 0,
+            duration: v.duration,
+            published_at: v.pubdate ? new Date(v.pubdate * 1000).toISOString() : null,
+          }));
+        } else if (p === 'douyin') {
+          // 抖音 search 移动 H5（不带签名只能拿首屏）
+          const html = await fetchPage(`https://www.douyin.com/search/${encodeURIComponent(keyword)}`, { mobile: false });
+          const idMatches = [...html.matchAll(/\/video\/(\d{15,25})/g)];
+          const seen = new Set();
+          for (const m of idMatches.slice(0, limit * 2)) {
+            const id = m[1];
+            if (seen.has(id)) continue;
+            seen.add(id);
+            items.push({
+              id: 'dy_' + id, platform: 'douyin', platform_name: '抖音',
+              title: '', author: '', cover: '', video_url: `https://www.douyin.com/video/${id}`,
+              views: 0, likes: 0, comments: 0,
+            });
+            if (items.length >= limit) break;
+          }
+        } else if (p === 'xiaohongshu') {
+          const html = await fetchPage(`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}`);
+          const idMatches = [...html.matchAll(/\/(?:explore|discovery\/item)\/([0-9a-f]{20,})/g)];
+          const seen = new Set();
+          for (const m of idMatches.slice(0, limit * 2)) {
+            const id = m[1];
+            if (seen.has(id)) continue;
+            seen.add(id);
+            items.push({
+              id: 'xhs_' + id, platform: 'xiaohongshu', platform_name: '小红书',
+              title: '', author: '', cover: '', video_url: `https://www.xiaohongshu.com/explore/${id}`,
+              views: 0, likes: 0, comments: 0,
+            });
+            if (items.length >= limit) break;
+          }
+        } else if (p === 'weibo') {
+          // 微博 m 站搜索（不需要登录）
+          const j = await axios.get('https://m.weibo.cn/api/container/getIndex', {
+            params: { containerid: '100103type=1&q=' + keyword, page: 1 },
+            timeout: 12000,
+            headers: { 'User-Agent': MOBILE_UA, 'Referer': 'https://m.weibo.cn/' },
+            validateStatus: () => true
+          });
+          const cards = j.data?.data?.cards || [];
+          for (const c of cards) {
+            const mblog = c.mblog;
+            if (!mblog) continue;
+            items.push({
+              id: 'weibo_' + mblog.id,
+              platform: 'weibo', platform_name: '微博',
+              title: (mblog.text || '').replace(/<[^>]+>/g, '').slice(0, 80),
+              author: mblog.user?.screen_name || '',
+              author_avatar: mblog.user?.profile_image_url || '',
+              cover: mblog.thumbnail_pic || mblog.original_pic || '',
+              video_url: `https://m.weibo.cn/detail/${mblog.id}`,
+              likes: mblog.attitudes_count || 0, comments: mblog.comments_count || 0,
+            });
+            if (items.length >= limit) break;
+          }
+        }
+        results.push(...items);
+        sources.push({ platform: p, count: items.length, status: 'ok' });
+      } catch (err) {
+        sources.push({ platform: p, count: 0, status: 'error', message: err.message });
+      }
+    }
+
+    return { content: [{ type: 'text', text: JSON.stringify({ success: true, keyword, total: results.length, results, sources }) }] };
+  }
+);
+
+// 6. 平台检测
 server.tool(
   'detect_platform',
   '检测链接属于哪个平台',

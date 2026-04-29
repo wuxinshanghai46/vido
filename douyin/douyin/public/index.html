@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>音视频创作工作台</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- ===== 侧边栏 ===== -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-text">创作工作台</span>
+      <button class="sidebar-toggle" onclick="toggleSidebar()" title="收起/展开">☰</button>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="active" onclick="showPage('workspace')"><span class="nav-icon">▶</span><span class="nav-text">工作台</span></a>
+      <a onclick="showPage('assets')"><span class="nav-icon">📁</span><span class="nav-text">素材库</span></a>
+      <a onclick="showPage('voicelib')"><span class="nav-icon">🎙️</span><span class="nav-text">音色库</span></a>
+      <a onclick="showPage('ranking')"><span class="nav-icon">🏆</span><span class="nav-text">龙虎榜</span></a>
+    </nav>
+  </div>
+
+  <div class="main">
+    <!-- ==================== 页面 1: 工作台 ==================== -->
+    <div class="page active" id="page-workspace">
+      <div class="page-title">音视频创作工作台</div>
+      <div class="page-desc">粘贴链接解析 → 提取文案 → AI 仿写 → 声音克隆配音</div>
+
+      <!-- Step 1: 素材获取 -->
+      <div class="card">
+        <div class="card-title"><span class="step-badge">Step 1</span> 素材获取与解析</div>
+
+        <!-- 登录状态 -->
+        <div id="cookieBar" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 14px;background:#f8f9fa;border-radius:8px;font-size:13px;flex-wrap:wrap;">
+          <span id="cookieStatus" style="color:#888;">检查登录状态...</span>
+          <button class="btn btn-primary btn-sm" id="loginBtn" style="display:none;" onclick="doLogin()">登录抖音</button>
+          <span id="loginMsg" style="font-size:12px;color:#888;"></span>
+          <div id="bloggerChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center;"></div>
+        </div>
+        <!-- 远程扫码弹窗 -->
+        <div id="qrcodeModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999;align-items:center;justify-content:center;">
+          <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:90%;text-align:center;">
+            <h3 style="margin-bottom:8px;">扫码登录抖音</h3>
+            <p style="font-size:13px;color:#888;margin-bottom:16px;">请用抖音 APP 扫描下方二维码</p>
+            <img id="qrcodeImg" src="" style="width:100%;max-width:360px;border-radius:8px;border:1px solid #eee;" alt="加载中...">
+            <p id="qrcodeStatus" style="font-size:13px;color:#4a90d9;margin-top:12px;">等待二维码加载...</p>
+            <button class="btn btn-outline" style="margin-top:12px;" onclick="closeQrcodeModal()">取消</button>
+          </div>
+        </div>
+
+        <div class="input-row">
+          <textarea id="shareInput" placeholder="粘贴抖音分享文本、视频链接，或作者主页链接..."></textarea>
+          <button class="btn btn-douyin" id="parseBtn" onclick="parseShare()">解析</button>
+        </div>
+
+        <div class="author-card" id="authorCard">
+          <img id="authorAvatar" src="" alt="">
+          <div>
+            <div class="author-name" id="authorName"></div>
+            <div class="author-meta" id="authorMeta"></div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="followBtn" onclick="followAuthor()" style="display:none;margin-left:8px;">+ 关注</button>
+          <div class="author-actions">
+            <button class="btn btn-primary btn-sm" id="loadAllVideosBtn" style="display:none;" onclick="loadAuthorVideos()">获取全部视频</button>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('shareInput').value='';document.getElementById('shareInput').focus();">继续粘贴链接</button>
+          </div>
+        </div>
+
+        <!-- 排序栏 -->
+        <div id="sortBar" style="display:none;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;">
+          <span style="color:#888;">排序:</span>
+          <div id="sortBtns" style="display:flex;gap:4px;flex-wrap:wrap;">
+            <span class="sort-chip active" data-sort="date_desc" onclick="clickSort(this)">最新发布</span>
+            <span class="sort-chip" data-sort="likes_desc" onclick="clickSort(this)">点赞最多</span>
+            <span class="sort-chip" data-sort="views_desc" onclick="clickSort(this)">播放最多</span>
+            <span class="sort-chip" data-sort="comments_desc" onclick="clickSort(this)">评论最多</span>
+            <span class="sort-chip" data-sort="duration_desc" onclick="clickSort(this)">时长最长</span>
+            <span class="sort-chip" data-sort="duration_asc" onclick="clickSort(this)">时长最短</span>
+          </div>
+          <span id="videoCountLabel" style="color:#888;margin-left:8px;"></span>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button class="btn btn-outline btn-sm" onclick="selectAllVideos()">全选</button>
+            <button class="btn btn-primary btn-sm" id="batchDlBtn" onclick="batchDownloadSelected()">下载选中</button>
+          </div>
+        </div>
+
+        <!-- 批量下载整体进度 -->
+        <div id="batchProgress" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 14px;background:#e8f0fe;border-radius:8px;font-size:13px;">
+          <span class="spinner"></span>
+          <div class="progress-bar" style="max-width:200px;"><div class="fill" style="width:0%;"></div></div>
+          <span class="batch-label" style="color:#1a73e8;font-weight:500;">0/0 完成</span>
+        </div>
+
+        <div id="videoContainer"></div>
+
+        <div class="upload-zone" id="uploadZone">
+          <p>没有链接？直接拖拽或点击上传本地音视频文件</p>
+          <p class="hint">支持 MP3, WAV, FLAC, MP4, MKV, AVI, MOV 等格式</p>
+          <input type="file" id="fileInput" accept="audio/*,video/*">
+        </div>
+      </div>
+
+      <!-- Step 2: 文案提取与 AI 引擎 -->
+      <div class="card">
+        <div class="card-title"><span class="step-badge">Step 2</span> 文案提取与 AI 引擎</div>
+
+        <input type="text" id="taskSearch" placeholder="搜索任务..." oninput="taskSearchKey=this.value.trim().toLowerCase();taskPage=1;renderTaskPage();" style="width:100%;padding:8px 14px;border:1px solid #dadce0;border-radius:8px;font-size:13px;margin-bottom:12px;">
+
+        <div class="task-queue" id="taskQueue">
+          <div class="empty-state" id="taskEmpty">暂无任务，请先在上方获取素材</div>
+        </div>
+
+        <div class="dual-pane" id="dualPane" style="display:none;">
+          <div class="pane-switch" id="paneSwitch">
+            <button class="active" onclick="switchPane('original',this)">原始文案</button>
+            <button onclick="switchPane('rewritten',this)">AI 文案</button>
+          </div>
+          <div class="pane" id="paneOriginal">
+            <div class="pane-header">
+              <span>原始文案</span>
+              <div style="display:flex;gap:4px;">
+                <button class="btn btn-outline btn-sm" onclick="copyText('originalText')">复制</button>
+                <button class="btn btn-outline btn-sm" onclick="exportCurrentSRT()">导出字幕</button>
+              </div>
+            </div>
+            <textarea id="originalText" placeholder="Whisper 识别的原始文本将显示在这里..." oninput="updateCharCount('originalText','charCountOriginal')"></textarea>
+            <div style="text-align:right;padding-top:4px;"><span id="charCountOriginal" style="font-size:11px;color:#80868b;">0 字</span></div>
+          </div>
+          <div class="ai-toolbar">
+            <select id="styleSelect">
+              <option value="">默认风格</option>
+            </select>
+            <input type="text" id="customPrompt" placeholder="自定义指令..." maxlength="500">
+            <button class="btn btn-success" id="rewriteBtn" onclick="doRewrite()">AI 仿写</button>
+            <div id="rewriteLoading" style="display:none;"><div class="spinner"></div></div>
+          </div>
+          <div class="pane" id="paneRewritten">
+            <div class="pane-header">
+              <span>AI 生成文案</span>
+              <button class="btn btn-outline btn-sm" onclick="copyText('rewrittenText')">复制</button>
+            </div>
+            <textarea id="rewrittenText" placeholder="AI 优化后的文案将显示在这里..." oninput="updateCharCount('rewrittenText','charCountRewritten')"></textarea>
+            <div style="text-align:right;padding-top:4px;"><span id="charCountRewritten" style="font-size:11px;color:#80868b;">0 字</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: 声音克隆与配音 -->
+      <div class="card">
+        <div class="card-title"><span class="step-badge">Step 3</span> 声音克隆与自动配音</div>
+
+        <div style="font-size:13px;color:#666;margin-bottom:8px;">选择音色</div>
+        <div class="voice-picker" id="voicePicker">
+          <span class="voice-chip add-voice" onclick="showPage('voicelib')">+ 添加我的声音</span>
+        </div>
+
+        <div style="font-size:13px;color:#666;margin-bottom:8px;">或使用系统声音</div>
+        <div class="voice-picker" id="sysVoicePicker">
+          <span class="voice-chip selected" data-voice="zh-CN-YunxiNeural" onclick="selectSysVoice(this)">男声-云希</span>
+          <span class="voice-chip" data-voice="zh-CN-YunjianNeural" onclick="selectSysVoice(this)">男声-云健</span>
+          <span class="voice-chip" data-voice="zh-CN-XiaoxiaoNeural" onclick="selectSysVoice(this)">女声-晓晓</span>
+          <span class="voice-chip" data-voice="zh-CN-XiaohanNeural" onclick="selectSysVoice(this)">女声-晓涵</span>
+        </div>
+
+        <div class="speed-row">
+          <span style="font-size:13px;color:#666;">语速</span>
+          <input type="range" id="speedRange" min="0.5" max="2.0" step="0.1" value="1.0">
+          <span id="speedValue" style="font-size:13px;color:#666;">1.0x</span>
+        </div>
+
+        <div style="font-size:13px;color:#666;margin-bottom:8px;">配音文本 <span style="color:#aaa;font-size:11px;">(自动同步 AI 文案)</span></div>
+        <textarea id="ttsText" rows="3" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px;line-height:1.6;font-family:inherit;margin-bottom:14px;" placeholder="配音文本将自动从 AI 文案同步..."></textarea>
+
+        <button class="btn btn-purple btn-lg" id="synthBtn" onclick="doSynthesize()">一键合成配音</button>
+        <div id="synthLoading" class="loading-msg" style="display:none;"><div class="spinner"></div> 正在合成，请稍候...</div>
+
+        <div id="synthHistoryList" style="margin-top:10px;"></div>
+        <div class="audio-result" id="audioResult">
+          <div style="font-size:13px;color:#888;display:flex;justify-content:space-between;align-items:center;">
+            <span>合成结果</span>
+            <button class="btn btn-outline btn-sm" style="color:#dc3545;border-color:#dc3545;" onclick="clearAudioResult()">删除</button>
+          </div>
+          <audio id="audioPlayer" controls></audio>
+          <div style="margin-top:8px;">
+            <a id="audioDownload" class="btn btn-outline btn-sm" download>下载音频</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模型设置 -->
+      <div class="card" style="padding:14px 20px;">
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+          <span style="color:#888;">Whisper 模型:</span>
+          <span style="color:#4a90d9;font-weight:600;" id="currentModel">-</span>
+          <select id="modelSelect" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+            <option value="medium">medium</option>
+            <option value="small">small</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="switchModel()">切换</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 页面 2: 素材库 ==================== -->
+    <div class="page" id="page-assets">
+      <div class="page-title">我的素材库</div>
+      <div class="page-desc">所有历史资产：下载的视频、提取的文案、合成的配音</div>
+
+      <div class="search-bar">
+        <input type="text" id="assetSearch" placeholder="搜索文件名、文案关键词..." oninput="refreshTaskHistory()">
+      </div>
+
+      <div class="tab-bar">
+        <a class="active" onclick="switchAssetTab('all', this)">全部</a>
+        <a onclick="switchAssetTab('blogger', this)">👤 博主</a>
+        <a onclick="switchAssetTab('video', this)">📋 解析</a>
+        <a onclick="switchAssetTab('downloaded', this)">📥 下载</a>
+        <a onclick="switchAssetTab('text', this)">📝 文案</a>
+        <a onclick="switchAssetTab('audio', this)">🎵 配音</a>
+      </div>
+
+      <div id="assetContainer">
+        <div class="empty-state">素材库功能开发中，当前任务记录可在工作台查看</div>
+      </div>
+
+      <h3 style="font-size:16px;margin:24px 0 12px;color:#555;">转录任务历史</h3>
+      <div id="taskHistoryContainer"><div class="empty-state">暂无历史任务</div></div>
+    </div>
+
+    <!-- ==================== 页面 3: 音色库 ==================== -->
+    <!-- ==================== 页面 4: 龙虎榜 ==================== -->
+    <div class="page" id="page-ranking">
+      <div class="page-title">龙虎榜</div>
+      <div class="page-desc">视频数据分析 · 博主排行 · 增长趋势</div>
+
+      <!-- 数据概览 -->
+      <div class="card">
+        <div class="card-title">📊 数据概览</div>
+        <div id="rankStatsOverview"><div class="empty-state">加载中...</div></div>
+      </div>
+
+      <!-- 今日新增 -->
+      <div class="card">
+        <div class="card-title">🆕 今日新增视频</div>
+        <div id="rankTodayList"><div class="empty-state">加载中...</div></div>
+      </div>
+
+      <!-- 博主排行 -->
+      <div class="card">
+        <div class="card-title">👑 博主排行</div>
+        <div id="rankBloggerList"><div class="empty-state">加载中...</div></div>
+      </div>
+
+      <!-- 视频热度榜 -->
+      <div class="card">
+        <div class="card-title">🔥 视频热度榜</div>
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+          <span class="sort-chip active" data-rank="likes" onclick="switchRank(this)">按点赞</span>
+          <span class="sort-chip" data-rank="comments" onclick="switchRank(this)">按评论</span>
+          <span class="sort-chip" data-rank="collects" onclick="switchRank(this)">按收藏</span>
+          <span class="sort-chip" data-rank="duration" onclick="switchRank(this)">按时长</span>
+        </div>
+        <div id="rankVideoList"><div class="empty-state">加载中...</div></div>
+      </div>
+
+      <!-- 数据趋势 -->
+      <div class="card">
+        <div class="card-title">📈 数据趋势图表</div>
+        <div class="page-desc" style="margin-bottom:12px;">每次解析视频时自动记录数据，可视化增长趋势</div>
+        <div id="rankSnapshotList"><div class="empty-state">加载中...</div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-voicelib">
+      <div class="page-title">我的音色库</div>
+      <div class="page-desc">管理克隆的声音样本</div>
+
+      <button class="btn btn-primary" onclick="toggleVoiceForm()" id="addVoiceBtn">+ 添加我的声音</button>
+
+      <div class="upload-voice-form" id="voiceForm">
+        <div class="form-group">
+          <label>声音名称</label>
+          <input type="text" id="voiceName" placeholder="例如：我的声音、客服小美">
+        </div>
+        <div class="form-group">
+          <label>上传参考音频（5-30秒最佳）</label>
+          <input type="file" id="voiceFileInput" accept="audio/*">
+        </div>
+        <div class="form-group">
+          <label>参考文本（选填，填写后效果更好）</label>
+          <textarea id="refText" placeholder="参考音频中说的内容..."></textarea>
+        </div>
+        <button class="btn btn-success" onclick="uploadVoice()">上传保存</button>
+        <button class="btn btn-outline" onclick="toggleVoiceForm()" style="margin-left:8px;">取消</button>
+      </div>
+
+      <div id="voiceLibContainer" style="margin-top:16px;">
+        <div class="empty-state">暂无声音样本</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局图片预览弹窗 -->
+  <div id="imagePreviewModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;cursor:pointer;align-items:center;justify-content:center;">
+    <button id="previewPrev" onclick="event.stopPropagation();previewNav(-1)" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:32px;width:48px;height:48px;border-radius:50%;cursor:pointer;display:none;">‹</button>
+    <img id="imagePreviewImg" style="max-width:90%;max-height:90%;border-radius:8px;object-fit:contain;transition:transform 0.2s;" onclick="event.stopPropagation()" />
+    <button id="previewNext" onclick="event.stopPropagation();previewNav(1)" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:32px;width:48px;height:48px;border-radius:50%;cursor:pointer;display:none;">›</button>
+    <div id="previewCounter" style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:#fff;font-size:14px;background:rgba(0,0,0,0.5);padding:4px 14px;border-radius:16px;"></div>
+    <div onclick="document.getElementById('imagePreviewModal').style.display='none'" style="position:absolute;top:16px;right:20px;color:#fff;font-size:28px;cursor:pointer;">✕</div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    // 从原始文案面板直接导出 SRT
+    function exportCurrentSRT() {
+      const text = document.getElementById('originalText').value;
+      if (!text.trim()) return toast('暂无文案内容','warning');
+      const srt = convertToSRT(text);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([srt], {type:'text/plain;charset=utf-8'}));
+      a.download = 'subtitle.srt';
+      a.click();
+      toast('字幕文件已导出','success',2000);
+    }
+
+    // 移动端双栏切换
+    function switchPane(which, btn) {
+      document.querySelectorAll('#paneSwitch button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const orig = document.getElementById('paneOriginal');
+      const rewr = document.getElementById('paneRewritten');
+      const toolbar = document.querySelector('.ai-toolbar');
+      if (which === 'original') {
+        if (orig) orig.style.display = '';
+        if (rewr) rewr.style.display = 'none';
+        if (toolbar) toolbar.style.display = '';
+      } else {
+        if (orig) orig.style.display = 'none';
+        if (rewr) rewr.style.display = '';
+        if (toolbar) toolbar.style.display = '';
+      }
+    }
+  </script>
+</body>
+</html>

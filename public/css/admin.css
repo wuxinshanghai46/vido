@@ -876,7 +876,7 @@ body {
 .sp-cnt-label { font-size: 10px; color: var(--text3); }
 .sp-prov-tested { font-size: 11px; color: var(--text3); min-width: 80px; text-align: center; }
 .sp-tested-label { display: block; font-size: 9px; color: var(--text3); }
-.sp-prov-actions { display: flex; gap: 5px; }
+.sp-prov-actions { display: flex; gap: 5px; align-items: center; }
 .sp-expand-icon { font-size: 10px; color: var(--text3); transition: transform .2s; }
 .sp-prov-main.expanded .sp-expand-icon { transform: rotate(90deg); }
 
@@ -886,6 +886,14 @@ body {
 .sp-btn.danger:hover { background: rgba(255,77,109,.1); }
 .sp-btn.primary-btn { color: var(--accent); border-color: rgba(var(--accent-rgb),.3); }
 .sp-btn.primary-btn:hover { background: rgba(var(--accent-rgb),.1); }
+
+/* 启用/禁用 滑动开关（AI 配置页） */
+.sp-toggle { position: relative; display: inline-block; width: 36px; height: 20px; cursor: pointer; flex-shrink: 0; }
+.sp-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.sp-toggle-slider { position: absolute; inset: 0; background: rgba(255,255,255,.12); border-radius: 999px; transition: .2s; }
+.sp-toggle-slider::before { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; background: #888; border-radius: 50%; transition: .2s; }
+.sp-toggle input:checked + .sp-toggle-slider { background: linear-gradient(135deg, #21FFF3, #7C6CF0); }
+.sp-toggle input:checked + .sp-toggle-slider::before { transform: translateX(16px); background: #fff; }
 
 .sp-status-badge { font-size: 10px; padding: 1px 8px; border-radius: 999px; font-weight: 600; }
 .sp-status-badge.active { background: rgba(0,229,160,.12); color: var(--success); }
@@ -1990,3 +1998,168 @@ body {
   justify-content: center;
   border-radius: 999px;
 }
+
+/* ──────────── Toggle Switch (iOS 风格) — 修复点击 ──────────── */
+.vido-toggle {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  user-select: none;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.vido-toggle input[type=checkbox] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+.vido-toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: #3A3F4A;
+  border-radius: 999px;
+  transition: background 0.2s;
+  pointer-events: none;
+}
+.vido-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.vido-toggle input[type=checkbox]:checked + .vido-toggle-slider {
+  background: linear-gradient(135deg, #21FFF3, #FFF600);
+}
+.vido-toggle input[type=checkbox]:checked + .vido-toggle-slider::after {
+  transform: translateX(20px);
+  background: #0D0E12;
+}
+.vido-toggle-label { display: none; }
+
+/* danger 按钮变体 */
+.btn-sm.danger { color: #FF5470; border-color: rgba(255,84,112,0.3); }
+.btn-sm.danger:hover { background: rgba(255,84,112,0.1); }
+.btn-sm.warn { color: #FF8B3D; border-color: rgba(255,139,61,0.3); }
+
+/* ──────────── 模型调用 Pipeline 工作流式 ──────────── */
+.pms-flow {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 8px 4px 16px;
+}
+.pms-flow::-webkit-scrollbar { height: 6px; }
+.pms-flow::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.pms-flow-stage {
+  flex-shrink: 0;
+  width: 220px;
+  min-height: 150px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  flex-direction: column;
+}
+.pms-flow-stage:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+.pms-flow-stage.configured { border-color: rgba(33,255,243,0.4); background: linear-gradient(135deg, rgba(33,255,243,0.05), var(--bg3)); }
+.pms-flow-arrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 22px;
+  color: var(--accent);
+  opacity: 0.5;
+}
+.pms-stage-num {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: monospace;
+}
+.pms-stage-title { font-size: 13px; font-weight: 700; color: var(--text); margin: 6px 0 4px; line-height: 1.4; }
+.pms-stage-type { font-size: 9px; color: var(--text3); background: rgba(255,255,255,0.04); padding: 1px 6px; border-radius: 3px; display: inline-block; margin-bottom: 8px; align-self: flex-start; }
+.pms-stage-models { flex: 1; font-size: 11px; color: var(--text2); line-height: 1.6; }
+.pms-stage-models .first { color: var(--accent); font-weight: 600; word-break: break-all; }
+.pms-stage-models .empty { color: var(--text3); font-style: italic; }
+.pms-stage-foot { margin-top: 8px; font-size: 10px; color: var(--text3); display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px dashed var(--border); }
+.pms-stage-edit { color: var(--accent); font-weight: 600; }
+
+/* ──────────── 通用模态框 ──────────── */
+.vido-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(4px);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: vmf 0.18s ease;
+}
+@keyframes vmf { from{opacity:0} to{opacity:1} }
+.vido-modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 88vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: vmp 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes vmp { from{transform:scale(0.92);opacity:0} to{transform:scale(1);opacity:1} }
+.vido-modal.lg { max-width: 760px; }
+.vido-modal-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.vido-modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.vido-modal-close { background: transparent; border: 0; color: var(--text3); cursor: pointer; font-size: 22px; line-height: 1; padding: 0 4px; }
+.vido-modal-close:hover { color: var(--text); }
+.vido-modal-body { padding: 20px 22px; overflow-y: auto; flex: 1; }
+.vido-modal-foot { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+.vido-mf { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.vido-mf label { font-size: 12px; color: var(--text2); font-weight: 600; }
+.vido-mf input, .vido-mf select, .vido-mf textarea {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  padding: 9px 12px; border-radius: 7px; font-size: 13px; font-family: inherit; outline: none;
+  transition: border-color 0.15s;
+}
+.vido-mf input:focus, .vido-mf select:focus { border-color: var(--accent); }
+.vido-mf-hint { font-size: 11px; color: var(--text3); line-height: 1.5; margin-top: 4px; }
+.vido-model-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+.vido-model-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+  cursor: pointer; transition: all 0.15s; background: var(--bg3);
+}
+.vido-model-item:hover { border-color: var(--accent); background: rgba(33,255,243,0.06); }
+.vido-model-item.selected { border-color: var(--accent); background: rgba(33,255,243,0.12); }
+.vido-model-item-info { flex: 1; min-width: 0; }
+.vido-model-item-id { font-size: 13px; font-weight: 600; color: var(--text); font-family: monospace; word-break: break-all; }
+.vido-model-item-meta { font-size: 10px; color: var(--text3); margin-top: 2px; }

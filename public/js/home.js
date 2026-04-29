@@ -223,16 +223,54 @@ document.addEventListener('click', (e) => {
 // ═══════════════════════════════════════
 // 检查登录状态 — 已登录则更新顶栏按钮
 // ═══════════════════════════════════════
-(function checkLoginState() {
+(async function checkLoginState() {
   // 从 sessionStorage 或 localStorage 恢复 token（支持跨 tab、关闭浏览器后保持登录）
   let token = sessionStorage.getItem('vido_token');
+  let cleared = false;
+
   if (!token) {
-    token = localStorage.getItem('vido_token');
-    if (token) {
-      // 从 localStorage 恢复到 sessionStorage（供 authFetch 使用）
-      sessionStorage.setItem('vido_token', token);
-      const user = localStorage.getItem('vido_user');
-      if (user) sessionStorage.setItem('vido_user', user);
+    const lsToken = localStorage.getItem('vido_token');
+    if (lsToken) {
+      // 从 localStorage 恢复前先验证 token 是否仍有效，避免 stale token 引发"工作台 ↔ 首页"死循环
+      try {
+        const r = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + lsToken } });
+        if (r.ok) {
+          sessionStorage.setItem('vido_token', lsToken);
+          const userStr = localStorage.getItem('vido_user');
+          if (userStr) sessionStorage.setItem('vido_user', userStr);
+          // 用最新 user 数据刷新两边缓存
+          try {
+            const j = await r.json();
+            if (j && j.success && j.data) {
+              const fresh = JSON.stringify(j.data);
+              sessionStorage.setItem('vido_user', fresh);
+              localStorage.setItem('vido_user', fresh);
+            }
+          } catch {}
+          token = lsToken;
+        } else {
+          // token 失效（401/403）→ 清掉 localStorage，按未登录处理
+          localStorage.removeItem('vido_token');
+          localStorage.removeItem('vido_user');
+          cleared = true;
+        }
+      } catch {
+        // 网络错误：保守恢复，不清 localStorage（让用户离线/网络抖动时不掉登录态）
+        sessionStorage.setItem('vido_token', lsToken);
+        const userStr = localStorage.getItem('vido_user');
+        if (userStr) sessionStorage.setItem('vido_user', userStr);
+        token = lsToken;
+      }
+    }
+  }
+
+  const params = new URLSearchParams(location.search);
+
+  // 已登录用户访问首页 → 自动跳工作台（除非显式 ?home=1 想看营销页 或 ?login=1 刚退出）
+  if (token) {
+    if (params.get('home') !== '1' && params.get('login') !== '1') {
+      location.replace('/index.html');
+      return;
     }
   }
 
@@ -246,9 +284,29 @@ document.addEventListener('click', (e) => {
     ctaBtn.textContent = '进入工作台';
     ctaBtn.onclick = () => { location.href = '/index.html'; };
   }
+
+  // 清掉 stale token 后如果带 ?login=1，主动弹登录框（同步版的 autoOpenLoginFromQuery 在我们清 storage 之前已跑过，错过了）
+  if (cleared && params.get('login') === '1') {
+    const fire = () => { if (typeof openAuthModal === 'function') openAuthModal('login'); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fire);
+    else fire();
+  }
 })();
 // ESC 关闭
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeAuthModal();
 });
+
+// 从其它页面跳转回来带 ?login=1 时自动弹登录框
+(function autoOpenLoginFromQuery() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('login') === '1' && !sessionStorage.getItem('vido_token') && !localStorage.getItem('vido_token')) {
+      // 等 DOM 就绪
+      const fire = () => { if (typeof openAuthModal === 'function') openAuthModal('login'); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fire);
+      else fire();
+    }
+  } catch {}
+})();
 

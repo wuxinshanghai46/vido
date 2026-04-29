@@ -523,9 +523,20 @@ async function generateKlingClip({ prompt, negative_prompt = '', duration = 5, o
   const hasImage = !!image_url;
   let useI2V = hasImage;
   let apiPath = useI2V ? '/v1/videos/image2video' : '/v1/videos/text2video';
-  // Kling V3 支持更长时长（最长120秒）和 professional 模式
+  // 模型名映射：前端名 → Kling API 实际接受的 model_name
+  // 2026-04 实测：API 接受 kling-v1/v1-5/v1-6/v2-master/v2-1-master
+  // 不接受 kling-v2 / kling-v2-1（必须 -master 后缀）
+  const klingModelMap = {
+    'kling-v3': 'kling-v2-1-master',
+    'kling-v2.5-turbo-pro': 'kling-v2-master',
+    'kling-v2-master': 'kling-v2-master',
+    'kling-v1-6': 'kling-v1-6',
+    'kling-v1-5': 'kling-v1-5',
+    'kling-v1': 'kling-v1',
+  };
   const isV3 = modelName === 'kling-v3';
-  const isV25 = modelName === 'kling-v2.5-turbo-pro';
+  const isV25 = modelName === 'kling-v2.5-turbo-pro' || modelName === 'kling-v2-master';
+  const apiModelName = klingModelMap[modelName] || modelName;
   let clipDuration;
   if (isV3) {
     // V3 支持 5/10/15/20/30/60/120 秒
@@ -536,7 +547,7 @@ async function generateKlingClip({ prompt, negative_prompt = '', duration = 5, o
   }
 
   const bodyObj = {
-    model_name: modelName,
+    model_name: apiModelName,
     prompt: prompt.substring(0, isV3 ? 4000 : 2500),
     negative_prompt: negative_prompt || '',
     cfg_scale: 0.5,
@@ -1439,7 +1450,7 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
 }
 
 // ——— MXAPI 聚合平台（即梦/Sora/Veo 代理）———
-async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model }) {
+async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
   const { getApiKey } = require('./settingsService');
   const apiKey = getApiKey('mxapi') || process.env.MXAPI_API_KEY;
   if (!apiKey) throw new Error('未配置 MXAPI API Key，请在「AI 配置」页面添加 MXAPI 聚合平台供应商');
@@ -1451,105 +1462,131 @@ async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, as
   const outputPath = path.join(outputDir, `${filename}.mp4`);
   const model = video_model || 'mxapi-jimeng-t2v';
 
-  // ——— Sora 路由 ———
-  if (model.includes('sora')) {
-    const isPro = model.includes('pro');
-    const body = {
-      prompt: prompt.substring(0, 2000),
-      aspect_ratio: aspectRatio === '9:16' ? '9:16' : '16:9',
-      duration: Math.min(duration, 15),
-    };
-    if (isPro) body.model = 'sora-2-pro';
-    if (image_url && !image_url.startsWith('data:')) body.reference_image = image_url;
+  const _started = Date.now();
+  let _ok = false; let _err = null; let _taskId = null;
+  let _trackerModel = model;  // 用于精确埋点的最终 model 名
+  let _videoSeconds = Math.max(3, Math.min(15, Math.round(duration)));  // 默认按用户请求的 duration
 
-    console.log(`[MXAPI Sora] model=${isPro ? 'sora-2-pro' : 'sora-2'}, prompt长度=${prompt.length}`);
-    const submit = await axios.post(`${baseUrl}/sora/generate`, body, { headers });
-    const taskId = submit.data?.task_id || submit.data?.data?.task_id;
-    if (!taskId) throw new Error('MXAPI Sora 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+  try {
+    // ——— Sora 路由 ———
+    if (model.includes('sora')) {
+      const isPro = model.includes('pro');
+      _trackerModel = isPro ? 'sora-2-pro' : 'sora-2';
+      const body = {
+        prompt: prompt.substring(0, 2000),
+        aspect_ratio: aspectRatio === '9:16' ? '9:16' : '16:9',
+        duration: Math.min(duration, 15),
+      };
+      if (isPro) body.model = 'sora-2-pro';
+      if (image_url && !image_url.startsWith('data:')) body.reference_image = image_url;
 
-    // 轮询
+      console.log(`[MXAPI Sora] model=${_trackerModel}, prompt长度=${prompt.length}`);
+      const submit = await axios.post(`${baseUrl}/sora/generate`, body, { headers });
+      _taskId = submit.data?.task_id || submit.data?.data?.task_id;
+      if (!_taskId) throw new Error('MXAPI Sora 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
+      // 轮询
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const poll = await axios.get(`${baseUrl}/sora/query?task_id=${_taskId}`, { headers });
+        const d = poll.data?.data || poll.data;
+        if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
+          const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
+          if (!videoUrl) throw new Error('MXAPI Sora 未返回视频 URL');
+          await downloadFile(videoUrl, outputPath);
+          _ok = true;
+          return { filePath: outputPath };
+        }
+        if (d?.status === 'failed' || d?.status === 'fail') {
+          throw new Error('MXAPI Sora 生成失败: ' + (d.message || d.error || '未知错误'));
+        }
+      }
+      throw new Error('MXAPI Sora 生成超时（10 分钟）');
+    }
+
+    // ——— Veo 路由 ———
+    if (model.includes('veo')) {
+      const veoModel = model.includes('3-fast') || model.includes('veo3-fast') ? 'veo3-fast' : 'veo31';
+      _trackerModel = veoModel === 'veo3-fast' ? 'veo-3-fast' : 'veo-3.1';
+      const body = { model: veoModel, prompt: prompt.substring(0, 2000), aspectRatio: aspectRatio === '9:16' ? '9:16' : '16:9' };
+      if (image_url && !image_url.startsWith('data:')) body.images = [image_url];
+
+      console.log(`[MXAPI Veo] model=${veoModel}, prompt长度=${prompt.length}`);
+      const submit = await axios.post(`${baseUrl}/veo/generate`, body, { headers });
+      _taskId = submit.data?.task_id || submit.data?.data?.task_id;
+      if (!_taskId) throw new Error('MXAPI Veo 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const poll = await axios.get(`${baseUrl}/veo/task?task_id=${_taskId}`, { headers });
+        const d = poll.data?.data || poll.data;
+        if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
+          const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
+          if (!videoUrl) throw new Error('MXAPI Veo 未返回视频 URL');
+          await downloadFile(videoUrl, outputPath);
+          _ok = true;
+          return { filePath: outputPath };
+        }
+        if (d?.status === 'failed' || d?.status === 'fail') {
+          throw new Error('MXAPI Veo 生成失败: ' + (d.message || d.error || '未知错误'));
+        }
+      }
+      throw new Error('MXAPI Veo 生成超时（10 分钟）');
+    }
+
+    // ——— 即梦视频路由（默认）———
+    const isI2V = model.includes('i2v') || (image_url && !model.includes('t2v'));
+    _trackerModel = isI2V ? 'jimeng_i2v_first_v30' : 'jimeng_t2v_v30';
+    const ratioFlag = aspectRatio === '9:16' ? '9:16' : (aspectRatio === '1:1' ? '1:1' : '16:9');
+    const durSec = Math.min(Math.max(Math.round(duration), 3), 10);
+    _videoSeconds = durSec;
+    // MXAPI 即梦视频通过 content 字段传 prompt + flags
+    let content = prompt.substring(0, 2000) + ` --ratio ${ratioFlag} --dur ${durSec}`;
+    if (isI2V) content += ' --rs 1080p';
+
+    const body = { model: 'jimeng', content };
+    if (isI2V && image_url && !image_url.startsWith('data:')) body.image = image_url;
+
+    console.log(`[MXAPI Jimeng] ${isI2V ? 'i2v' : 't2v'}, prompt长度=${prompt.length}, ratio=${ratioFlag}`);
+    const submit = await axios.post(`${baseUrl}/video/generate`, body, { headers });
+    _taskId = submit.data?.task_id || submit.data?.data?.task_id;
+    if (!_taskId) throw new Error('MXAPI 即梦视频 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
+
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 5000));
-      const poll = await axios.get(`${baseUrl}/sora/query?task_id=${taskId}`, { headers });
+      const poll = await axios.get(`${baseUrl}/video/task?task_id=${_taskId}`, { headers });
       const d = poll.data?.data || poll.data;
       if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
         const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
-        if (!videoUrl) throw new Error('MXAPI Sora 未返回视频 URL');
+        if (!videoUrl) throw new Error('MXAPI 即梦视频 未返回视频 URL');
         await downloadFile(videoUrl, outputPath);
+        _ok = true;
         return { filePath: outputPath };
       }
       if (d?.status === 'failed' || d?.status === 'fail') {
-        throw new Error('MXAPI Sora 生成失败: ' + (d.message || d.error || '未知错误'));
+        throw new Error('MXAPI 即梦视频 生成失败: ' + (d.message || d.error || '未知错误'));
       }
     }
-    throw new Error('MXAPI Sora 生成超时（10 分钟）');
+    throw new Error('MXAPI 即梦视频 生成超时（10 分钟）');
+  } catch (e) {
+    _err = e.message; throw e;
+  } finally {
+    try {
+      require('./tokenTracker').record({
+        provider: 'mxapi', model: _trackerModel,
+        category: 'video', videoSeconds: _videoSeconds,
+        durationMs: Date.now() - _started,
+        status: _ok ? 'success' : 'fail', errorMsg: _err,
+        userId, agentId, requestId: _taskId,
+      });
+    } catch {}
   }
-
-  // ——— Veo 路由 ———
-  if (model.includes('veo')) {
-    const veoModel = model.includes('3-fast') || model.includes('veo3-fast') ? 'veo3-fast' : 'veo31';
-    const body = { model: veoModel, prompt: prompt.substring(0, 2000), aspectRatio: aspectRatio === '9:16' ? '9:16' : '16:9' };
-    if (image_url && !image_url.startsWith('data:')) body.images = [image_url];
-
-    console.log(`[MXAPI Veo] model=${veoModel}, prompt长度=${prompt.length}`);
-    const submit = await axios.post(`${baseUrl}/veo/generate`, body, { headers });
-    const taskId = submit.data?.task_id || submit.data?.data?.task_id;
-    if (!taskId) throw new Error('MXAPI Veo 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
-
-    for (let i = 0; i < 120; i++) {
-      await new Promise(r => setTimeout(r, 5000));
-      const poll = await axios.get(`${baseUrl}/veo/task?task_id=${taskId}`, { headers });
-      const d = poll.data?.data || poll.data;
-      if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
-        const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
-        if (!videoUrl) throw new Error('MXAPI Veo 未返回视频 URL');
-        await downloadFile(videoUrl, outputPath);
-        return { filePath: outputPath };
-      }
-      if (d?.status === 'failed' || d?.status === 'fail') {
-        throw new Error('MXAPI Veo 生成失败: ' + (d.message || d.error || '未知错误'));
-      }
-    }
-    throw new Error('MXAPI Veo 生成超时（10 分钟）');
-  }
-
-  // ——— 即梦视频路由（默认）———
-  const isI2V = model.includes('i2v') || (image_url && !model.includes('t2v'));
-  const ratioFlag = aspectRatio === '9:16' ? '9:16' : (aspectRatio === '1:1' ? '1:1' : '16:9');
-  const durSec = Math.min(Math.max(Math.round(duration), 3), 10);
-  // MXAPI 即梦视频通过 content 字段传 prompt + flags
-  let content = prompt.substring(0, 2000) + ` --ratio ${ratioFlag} --dur ${durSec}`;
-  if (isI2V) content += ' --rs 1080p';
-
-  const body = { model: 'jimeng', content };
-  if (isI2V && image_url && !image_url.startsWith('data:')) body.image = image_url;
-
-  console.log(`[MXAPI Jimeng] ${isI2V ? 'i2v' : 't2v'}, prompt长度=${prompt.length}, ratio=${ratioFlag}`);
-  const submit = await axios.post(`${baseUrl}/video/generate`, body, { headers });
-  const taskId = submit.data?.task_id || submit.data?.data?.task_id;
-  if (!taskId) throw new Error('MXAPI 即梦视频 未返回 task_id: ' + JSON.stringify(submit.data).substring(0, 300));
-
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    const poll = await axios.get(`${baseUrl}/video/task?task_id=${taskId}`, { headers });
-    const d = poll.data?.data || poll.data;
-    if (d?.status === 'completed' || d?.status === 'done' || d?.status === 'succeed') {
-      const videoUrl = d.video_url || d.videos?.[0]?.url || d.output?.video_url;
-      if (!videoUrl) throw new Error('MXAPI 即梦视频 未返回视频 URL');
-      await downloadFile(videoUrl, outputPath);
-      return { filePath: outputPath };
-    }
-    if (d?.status === 'failed' || d?.status === 'fail') {
-      throw new Error('MXAPI 即梦视频 生成失败: ' + (d.message || d.error || '未知错误'));
-    }
-  }
-  throw new Error('MXAPI 即梦视频 生成超时（10 分钟）');
 }
 
 // ——— 自动检测视频 provider（settings > env > demo）———
 // 视频供应商优先级（质量+稳定性排序，即梦/Kling 优先于免费的智谱）
 const VIDEO_PROVIDER_PRIORITY = [
-  'jimeng', 'mxapi', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
+  'deyunai', 'jimeng', 'mxapi', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
   'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
 ];
 const PROVIDER_ID_MAP = { openai: 'sora' };
@@ -1603,6 +1640,7 @@ async function generateVideoClip(options) {
   }
 
   switch (provider) {
+    case 'deyunai':     return generateDeyunaiClip(options);
     case 'pika':        return generatePikaClip(options);
     case 'sora':
     case 'openai':      return generateSoraClip(options);
@@ -1621,6 +1659,57 @@ async function generateVideoClip(options) {
     case 'demo':
     default:            return generateDemoClip(options);
   }
+}
+
+// ════════════════════════════════════════════════
+// 漫路（DeyunAI）聚合 — 视频生成
+// 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
+// ════════════════════════════════════════════════
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
+  const dy = require('./deyunaiService');
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `${filename}.mp4`);
+
+  // 选模型
+  const settings = require('./settingsService').loadSettings();
+  const dyP = (settings.providers || []).find(p => p.id === 'deyunai' && p.enabled);
+  if (!dyP) throw new Error('未启用漫路（deyunai）供应商');
+  let chosen;
+  if (video_model) {
+    chosen = (dyP.models || []).find(m => m.id === video_model && m.use === 'video');
+  }
+  if (!chosen) {
+    const vidModels = (dyP.models || []).filter(m => m.use === 'video' && m.enabled !== false);
+    if (!vidModels.length) throw new Error('漫路无启用的视频模型（请去漫路控制台开通对应渠道）');
+    // 偏好 sora-2 > kling > veo > jimeng
+    const preferred = [/^sora-2$/i, /^sora-2-pro/i, /^kling/i, /^veo-3$/i, /^veo-3-fast/i, /^hailuo/i, /^minimax/i, /^jimeng/i];
+    for (const re of preferred) {
+      chosen = vidModels.find(m => re.test(m.id));
+      if (chosen) break;
+    }
+    chosen = chosen || vidModels[0];
+  }
+
+  // size: sora-2 仅支持 1280x720 / 720x1280
+  const sizeMap = {
+    '16:9': '1280x720', '9:16': '720x1280', '1:1': '1024x1024',
+  };
+  const size = sizeMap[aspectRatio] || '720x1280';
+  console.log(`[VideoService] 漫路视频 model=${chosen.id} size=${size} duration=${duration}s`);
+
+  const r = await dy.generateVideo({
+    model: chosen.id,
+    prompt,
+    duration: Math.max(3, Math.min(15, parseInt(duration) || 5)),
+    size,
+    imageUrl: image_url && !image_url.startsWith('data:') ? image_url : undefined,
+    timeoutMs: 600000,
+    userId,
+    agentId: agentId || 'video_gen',
+  });
+  if (!r.url) throw new Error('漫路视频生成无 URL');
+  await downloadFile(r.url, outputPath);
+  return { filePath: outputPath };
 }
 
 module.exports = { generateVideoClip };

@@ -150,7 +150,18 @@ async function handleLogin(e) {
     const data = await res.json();
     if (!data.success) { showError(data.error); return; }
     sessionStorage.setItem('vido_token', data.data.access_token);
-    window.location.href = data.data.user.role === 'admin' ? '/admin.html' : '/';
+    localStorage.setItem('vido_token', data.data.access_token);
+    if (data.data.user) {
+      sessionStorage.setItem('vido_user', JSON.stringify(data.data.user));
+      localStorage.setItem('vido_user', JSON.stringify(data.data.user));
+    }
+    // 优先按 ?redirect= 参数跳，否则按 role 跳
+    const redirect = new URLSearchParams(location.search).get('redirect');
+    if (redirect && /^\/[a-zA-Z0-9_\-/.?=&]*$/.test(redirect)) {
+      window.location.href = redirect;
+    } else {
+      window.location.href = data.data.user.role === 'admin' ? '/admin.html' : '/index.html';
+    }
   } catch (err) { showError('网络错误: ' + err.message); }
   finally { btn.disabled = false; btn.querySelector('.btn-text').textContent = '立即创作'; }
 }
@@ -173,7 +184,13 @@ async function handleRegister(e) {
     const data = await res.json();
     if (!data.success) { showError(data.error); return; }
     sessionStorage.setItem('vido_token', data.data.access_token);
-    window.location.href = '/';
+    localStorage.setItem('vido_token', data.data.access_token);
+    if (data.data.user) {
+      sessionStorage.setItem('vido_user', JSON.stringify(data.data.user));
+      localStorage.setItem('vido_user', JSON.stringify(data.data.user));
+    }
+    const redirect = new URLSearchParams(location.search).get('redirect');
+    window.location.href = (redirect && /^\/[a-zA-Z0-9_\-/.?=&]*$/.test(redirect)) ? redirect : '/index.html';
   } catch (err) { showError('网络错误: ' + err.message); }
   finally { btn.disabled = false; btn.querySelector('.btn-text').textContent = '立即注册'; }
 }

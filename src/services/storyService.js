@@ -1,15 +1,115 @@
 require('dotenv').config();
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 const OpenAI = require('openai');
+
+// ───────────────────────────────────────────────
+// 强制 KB 全局开关（落盘 outputs/kb_force.json，默认开）
+// 与 admin.js 「强制使用 KB」复选框 + /api/admin/knowledgebase/_force 同源
+// ───────────────────────────────────────────────
+const _KB_FORCE_FILE = path.resolve(__dirname, '../../outputs/kb_force.json');
+let _kbForceCache = { val: true, ts: 0 };
+function _isKBForced() {
+  // 1s 缓存避免 hot path 频繁读盘
+  if (Date.now() - _kbForceCache.ts < 1000) return _kbForceCache.val;
+  let v = true; // 默认开启（CLAUDE.md 要求"AI 创作时需要强制使用知识库"）
+  try {
+    if (fs.existsSync(_KB_FORCE_FILE)) {
+      v = JSON.parse(fs.readFileSync(_KB_FORCE_FILE, 'utf8')).enabled !== false;
+    }
+  } catch {}
+  _kbForceCache = { val: v, ts: Date.now() };
+  return v;
+}
+
+// 启发式：根据 systemPrompt 关键词推断 KB scene
+function _guessKBScene(sp) {
+  if (!sp) return null;
+  const s = String(sp);
+  if (/分镜|shot ?list|镜头清单|storyboard/i.test(s)) return 'storyboard';
+  if (/视频提示词|视频生成|文生视频|i2v|t2v|video.*prompt/i.test(s)) return 'video_prompt';
+  if (/导演|镜头|运镜|景别|director/i.test(s)) return 'director';
+  if (/角色形象|人物一致|character.*consistency|character.*image/i.test(s)) return 'character_image';
+  if (/背景图|场景图|background|环境画/i.test(s)) return 'background_image';
+  if (/氛围|atmosphere|颗粒|质感|去 ?ai 味/i.test(s)) return 'image';
+  if (/数字人|口播|配音稿|avatar/i.test(s)) return 'digital_human';
+  if (/网剧|短剧|集数|多集|episode|drama/i.test(s)) return 'drama';
+  if (/编剧|剧本|对白|screenwriter/i.test(s)) return 'screenwriter';
+  if (/标题|hashtag|文案|爆款|copy/i.test(s)) return 'copy';
+  if (/剪辑|节奏|转场|editor/i.test(s)) return 'editor';
+  if (/本地化|海外|localiz/i.test(s)) return 'localize';
+  // 视频/图像/通用兜底
+  if (/视频/.test(s)) return 'video';
+  if (/图像|绘画|插画/.test(s)) return 'image';
+  return 'story';
+}
+
+// 全局默认文本模型优先级（用户未显式指定模型时生效）
+//   1. 漫路（deyunai）聚合平台 · ChatGPT 系列（gpt-4o 优先）
+//   2. deepseek
+//   3. openai / anthropic / 其他
+const PREFERRED_TEXT_PROVIDERS = [
+  /^deyunai$|漫路/i,
+  /^deepseek$/i,
+  /^openai$/i,
+  /^anthropic$|claude/i,
+  /^zhipu$|智谱/i,
+];
+
+// 为一个 provider 挑最好的 story 模型
+//   漫路 deyunai 实测可用：qwen3-32b > gemini-3.1-flash-lite-preview > deepseek-r1
+//   注意：R1 是推理模型，输出在 reasoning_content（业务层不一定能解析），
+//        qwen3-32b 是普通模型 content 直接有内容，优先级最高
+function _pickPreferredStoryModel(p) {
+  const models = (p.models || []).filter(m => m.enabled !== false && m.use === 'story');
+  if (!models.length) return null;
+  // 注意：models.find 里拼接的是 "id name"（如 "qwen3-32b Qwen3 32B"），
+  //       所以正则不能用 ^...$ 全行锚定，要用 \b 单词边界匹配
+  // 漫路实测可用 9 个，按"输出标准 + 速度 + 成本"综合排序：
+  const preferred = [
+    /^gpt-4o-mini\b/i,                       // 最快+最便宜，默认首选
+    /^qwen3-32b\b/i,                         // 国内通道最稳
+    /^gpt-4o\b/i,                            // OpenAI 旗舰
+    /^claude.*sonnet.*4-6\b/i,               // Claude 4.6
+    /^gemini-2\.5-flash\b/i,                 // Gemini Flash
+    /^gemini-2\.5-pro\b/i,                   // Gemini Pro
+    /^gemini-2\.0-flash\b/i,
+    /^gemini-3\.1-flash-lite-preview\b/i,    // 国内通道 Gemini
+    /^deepseek-r1\b/i,                       // R1 推理慢，兜底
+    // 其他 provider 偏好（非 deyunai 时）
+    /chatgpt/i,
+    /^deepseek-chat\b/i,
+    /^deepseek-v3\b/i,
+    /^kimi-k2-instruct\b/i,
+    /^claude.*sonnet/i,
+  ];
+  for (const re of preferred) {
+    const m = models.find(x => re.test(x.id + ' ' + (x.name || '')));
+    if (m) return m;
+  }
+  return models[0];
+}
 
 // 动态获取故事生成配置：优先读取 settings 中配置的 story 模型，回退到 env vars
 function getStoryConfig() {
   try {
     const { loadSettings } = require('./settingsService');
     const settings = loadSettings();
-    for (const provider of settings.providers) {
-      if (!provider.enabled || !provider.api_key) continue;
-      const model = (provider.models || []).find(m => m.enabled !== false && m.use === 'story');
+    const candidates = (settings.providers || []).filter(p => p.enabled && p.api_key && (p.models || []).some(m => m.enabled !== false && m.use === 'story'));
+    // 按优先级关键词排序
+    candidates.sort((a, b) => {
+      const scoreOf = (p) => {
+        const hay = (p.id || '') + ' ' + (p.preset || '') + ' ' + (p.name || '');
+        for (let i = 0; i < PREFERRED_TEXT_PROVIDERS.length; i++) {
+          if (PREFERRED_TEXT_PROVIDERS[i].test(hay)) return i;
+        }
+        return 999;
+      };
+      return scoreOf(a) - scoreOf(b);
+    });
+    for (const provider of candidates) {
+      const model = _pickPreferredStoryModel(provider);
       if (model) return { apiKey: provider.api_key, baseURL: provider.api_url, model: model.id, providerId: provider.id };
     }
   } catch {}
@@ -74,6 +174,40 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   const config = getStoryConfig();
   if (!config) throw new Error('未配置 AI 供应商，请在「AI 配置」页面添加供应商并设置 story 模型');
 
+  // v9: 自动注入 KB 上下文
+  //   模式1: 显式 opts.kb = { scene, query } → 按 scene 映射 agents 注入
+  //   模式2: 仅 opts.agentId → 按该 agent 的 KB 注入（向后兼容 agentOrchestrator）
+  //   模式3 [v12 强制 KB]：无 opts.kb / opts.agentId 时按 systemPrompt 关键词启发式注入
+  try {
+    const kb = require('./knowledgeBaseService');
+    let kbCtx = '';
+    const alreadyInjected = /【(?:知识库上下文|动态检索到的知识|[^】]+?全量知识库)/.test(systemPrompt);
+
+    if (opts.kb && opts.kb.scene) {
+      kbCtx = kb.injectKB({
+        scene: opts.kb.scene,
+        query: opts.kb.query || userPrompt,
+        limit: opts.kb.limit || 4,
+        maxCharsPerDoc: opts.kb.maxCharsPerDoc || 500,
+      });
+    } else if (opts.agentId) {
+      if (!alreadyInjected) {
+        kbCtx = kb.searchForAgent(opts.agentId, userPrompt, { limit: 3, maxCharsPerDoc: 400 }) || '';
+      }
+    } else if (!alreadyInjected && opts.skipKB !== true && _isKBForced()) {
+      // 强制使用 KB：根据 systemPrompt 启发式选 scene
+      const scene = _guessKBScene(systemPrompt);
+      if (scene) {
+        kbCtx = kb.injectKB({ scene, query: userPrompt, limit: 4, maxCharsPerDoc: 500 }) || '';
+      }
+    }
+    if (kbCtx) {
+      systemPrompt = `${kbCtx}\n\n${systemPrompt}\n\n（请深度学习上方知识库内容，在你的输出中自然体现这些专业手法和专业术语）`;
+    }
+  } catch (e) {
+    console.warn('[callLLM] KB 注入失败:', e.message);
+  }
+
   const tracker = (() => { try { return require('./tokenTracker'); } catch { return null; } })();
   const startTime = Date.now();
   let inputTokens = 0, outputTokens = 0, status = 'success', errorMsg = null, text = '';
@@ -87,8 +221,30 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
     } else {
       const sdkOpts = { apiKey: config.apiKey };
       if (config.baseURL) sdkOpts.baseURL = config.baseURL;
+
+      // 漫路（deyunai）双通道路由：
+      //   - 国内模型走 /v1（默认 baseURL = https://api.deyunai.com/v1）
+      //   - 海外模型走 /c35/v1（OpenAI/Claude/Gemini 等需走中转通道，并加 vendor header）
+      // 模型 channel 由 settings.json 模型项的 'channel' 字段标注（'cn' / 'overseas'）
+      const _isDeyunai = config.providerId === 'deyunai' || /deyunai|漫路/i.test(config.providerId || '');
+      let _vendorHeader = null;
+      if (_isDeyunai) {
+        // 模型名启发式：含 gpt/claude/gemini/o1/grok 等海外品牌 → 走 c35
+        const m = String(config.model || '').toLowerCase();
+        const isOverseas = config.channel === 'overseas'
+          || /^gpt-|^o[1-9]|^claude-|^gemini-(?!3\.1-flash-lite-preview)|^grok-/i.test(m);
+        if (isOverseas && config.baseURL && !config.baseURL.includes('/c35/')) {
+          // 把 https://api.deyunai.com/v1 → https://api.deyunai.com/c35/v1
+          sdkOpts.baseURL = config.baseURL.replace(/\/v1\/?$/, '/c35/v1');
+          _vendorHeader = { vendor: 'API_VENDOR' };
+          console.log(`[deyunai] 海外模型 ${config.model} 切到 ${sdkOpts.baseURL}`);
+        }
+      }
+      // 把 vendor header 注入 SDK（OpenAI SDK v4 支持 defaultHeaders）
+      if (_vendorHeader) sdkOpts.defaultHeaders = _vendorHeader;
+
       const client = new OpenAI(sdkOpts);
-      const completion = await client.chat.completions.create({
+      let completion = await client.chat.completions.create({
         model: config.model,
         max_tokens: 4096,
         messages: [
@@ -96,7 +252,21 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           { role: 'user', content: userPrompt }
         ]
       });
-      text = completion.choices[0].message.content;
+      // 漫路 (deyunai) 等聚合平台有时把 chat.completions 返回成"字符串化的 JSON"而不是对象
+      //   ↓ 检测到字符串先 JSON.parse 一下，恢复成标准结构
+      if (typeof completion === 'string') {
+        try { completion = JSON.parse(completion); }
+        catch (_) { /* 留给下面 defensive 检查抛错 */ }
+      }
+      // 推理类模型（DeepSeek-R1 / Gemini-3.x-thinking）输出在 reasoning_content 而非 content
+      // → fallback 同时读 content + reasoning_content
+      const _msg = completion?.choices?.[0]?.message;
+      const _content = _msg?.content || _msg?.reasoning_content || '';
+      if (!completion?.choices?.length || !_content) {
+        const raw = (typeof completion === 'string' ? completion : JSON.stringify(completion || {})).slice(0, 300);
+        throw new Error(`LLM 返回异常（${config.providerId}/${config.model}），无 choices 内容。原始响应: ${raw}`);
+      }
+      text = _content;
       inputTokens = completion.usage?.prompt_tokens || 0;
       outputTokens = completion.usage?.completion_tokens || 0;
     }
@@ -362,7 +532,8 @@ ${custom_scenes?.length ? `【再次强调】scenes 数组必须恰好 ${custom_
 ${SCENE_JSON_SCHEMA}`;
 
   try {
-    const result = parseJSON(await callLLM(systemPrompt, userPrompt));
+    const kbQuery = [title, genre, plot, style_notes].filter(Boolean).join(' ');
+    const result = parseJSON(await callLLM(systemPrompt, userPrompt, { kb: { scene: 'story', query: kbQuery, limit: 4 } }));
     // 后处理：强制修正场景标题、数量和角色名，防止 AI 擅自修改
     if (custom_scenes?.length && result.scenes?.length) {
       // 修正场景数量：截断多余
@@ -421,7 +592,8 @@ ${SCENE_JSON_SCHEMA}`;
 async function refineScene(scene, userFeedback) {
   const raw = await callLLM(
     `专业影视编剧，根据反馈优化场景，直接输出 JSON。`,
-    `原场景：\n${JSON.stringify(scene, null, 2)}\n\n反馈：${userFeedback}\n\n输出修改后 JSON：`
+    `原场景：\n${JSON.stringify(scene, null, 2)}\n\n反馈：${userFeedback}\n\n输出修改后 JSON：`,
+    { kb: { scene: 'story', query: `${scene.title || ''} ${userFeedback}`, limit: 3 } }
   );
   return parseJSON(raw);
 }
@@ -594,7 +766,8 @@ ${style_notes ? `创作要求：${style_notes}` : ''}${chineseStylePrompt}${epis
 ${SCENE_JSON_SCHEMA}`;
 
   try {
-    const result = parseJSON(await callLLM(systemPrompt, userPrompt));
+    const kbQuery = [theme, genre, anim_style, style_notes].filter(Boolean).join(' ');
+    const result = parseJSON(await callLLM(systemPrompt, userPrompt, { kb: { scene: 'drama', query: kbQuery, limit: 5 } }));
     // 添加集数元信息
     if (isMultiEpisode) {
       result.episode = episode_index;

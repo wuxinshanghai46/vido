@@ -9,6 +9,21 @@ outputs/
 
 # Large binary assets
 *.mp3
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.zip
+*.7z
+*.rar
 参考样式/
 seedance2.0/
 
@@ -20,6 +35,19 @@ logs/
 
 # Large binary assets
 动作资源包/
+
+# Local sync/backup artifacts
+_server_sync/
+
+# Douyin crawler local artifacts (keep source, ignore cache/binaries)
+douyin/__MACOSX/
+douyin/dl/
+
+# Local scratch
+tmp/
+
+# Docs reports binaries
+docs/reports/*.pptx
 
 # OS
 Thumbs.db

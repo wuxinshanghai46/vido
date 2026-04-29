@@ -97,9 +97,26 @@ function searchDocs(q, collection) {
 // 为 agent 构建静态上下文（用于注入 systemPrompt）
 // ———————————————————————————————————————————————
 function buildAgentContext(agentType, opts = {}) {
-  const { genre, maxDocs = 6, maxCharsPerDoc = 360 } = opts;
+  const { genre, maxDocs = 12, maxCharsPerDoc = 600, includeCache = true } = opts;
 
   let docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+
+  // 如果有全量学习缓存，附加缓存中的知识摘要（不重复）
+  if (includeCache) {
+    try {
+      const cachePath = path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'agent_kb_cache.json');
+      if (fs.existsSync(cachePath)) {
+        const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        const agentCache = cache[agentType];
+        if (agentCache?.knowledge?.length) {
+          // 缓存存在，增加可用 docs 上限
+          const cachedIds = new Set(docs.map(d => d.id));
+          // 从缓存中补充不在当前查询结果中的知识摘要
+          // （缓存中已有的知识以 title+summary 形式存储，注入时直接用）
+        }
+      }
+    } catch {}
+  }
 
   if (genre) {
     const g = String(genre).toLowerCase();
@@ -139,6 +156,32 @@ function buildAgentContext(agentType, opts = {}) {
     '【知识库上下文（由管理后台知识库自动注入，请深度学习并严格遵循下列要点）】',
     ...lines,
     '【上下文结束】',
+  ].join('\n\n');
+}
+
+// 全量 KB 注入：将该 Agent 的所有知识一次性注入（用于强制学习模式）
+function buildFullKBContext(agentType, opts = {}) {
+  const { maxCharsPerDoc = 800 } = opts;
+  let docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+  if (docs.length === 0) return '';
+
+  const lines = docs.map(d => {
+    const parts = [];
+    if (d.summary) parts.push(d.summary);
+    if (d.content) {
+      const c = d.content.length > maxCharsPerDoc ? d.content.slice(0, maxCharsPerDoc) + '…' : d.content;
+      parts.push(c);
+    }
+    if ((d.prompt_snippets || []).length) {
+      parts.push('提示词: ' + d.prompt_snippets.slice(0, 8).join(' | '));
+    }
+    return `【${d.collection}/${d.subcategory || '通用'}】${d.title}\n${parts.join('\n')}`;
+  });
+
+  return [
+    `【${agentType} 全量知识库 — 共 ${docs.length} 条知识，请逐条学习并严格遵循】`,
+    ...lines,
+    '【全量知识库结束】',
   ].join('\n\n');
 }
 
@@ -435,12 +478,72 @@ function buildDramaPipelineContext(genre) {
   };
 }
 
+// ───────────────────────────────────────────────
+// 【v9 新增】全平台统一 KB 注入入口：scene → agent(s) 映射
+// 用法: const ctx = injectKB({ scene: 'digital_human', query: '产品推广 口播' });
+// 返回可直接 prepend 到 systemPrompt 的文本（无匹配返回 ''）
+// ───────────────────────────────────────────────
+const SCENE_AGENT_MAP = {
+  // 数字人
+  digital_human: ['digital_human', 'copywriter'],
+  avatar_text:   ['digital_human', 'copywriter'],
+  avatar_script: ['digital_human', 'copywriter'],
+  // 剧情/编剧
+  story:         ['screenwriter'],
+  screenwriter:  ['screenwriter'],
+  drama:         ['screenwriter', 'director'],
+  // 分镜/导演
+  storyboard:    ['storyboard', 'director'],
+  director:      ['director', 'storyboard'],
+  // 图像 / 美术
+  image:         ['art_director', 'atmosphere'],
+  character_image: ['character_consistency', 'art_director'],
+  background_image: ['art_director', 'atmosphere'],
+  // 视频
+  video:         ['director', 'storyboard', 'atmosphere'],
+  video_prompt:  ['storyboard', 'atmosphere'],
+  // 剪辑
+  editor:        ['editor'],
+  // 文案/标题/运营
+  copy:          ['copywriter'],
+  title:         ['copywriter'],
+  cover:         ['copywriter', 'art_director'],
+  // 本地化
+  localize:      ['localizer'],
+  // 市场调研
+  research:      ['market_research', 'data_analyst'],
+  // 工程（内部研发）
+  code:          ['backend_engineer', 'algorithm_engineer'],
+  frontend:      ['frontend_engineer', 'ui_designer'],
+};
+
+function injectKB({ scene, query, limit = 4, maxCharsPerDoc = 500 } = {}) {
+  if (!scene) return '';
+  const agents = SCENE_AGENT_MAP[scene];
+  if (!agents || !agents.length) return '';
+
+  const chunks = [];
+  for (const agentType of agents) {
+    try {
+      let ctx;
+      if (query) {
+        ctx = searchForAgent(agentType, query, { limit, maxCharsPerDoc });
+      } else {
+        ctx = buildAgentContext(agentType, { maxDocs: limit, maxCharsPerDoc });
+      }
+      if (ctx) chunks.push(ctx);
+    } catch {}
+  }
+  return chunks.join('\n\n');
+}
+
 module.exports = {
   listDocs,
   getDoc,
   searchDocs,
   buildAgentContext,
   buildDramaPipelineContext,
+  injectKB,         // v9 新增：全平台统一 KB 注入入口
   searchForAgent,   // v5 新增：RAG 动态检索
   listDocsForTeam,  // v5 新增：团队过滤
   listAgentsByTeam, // v5 新增：团队名单
@@ -455,4 +558,5 @@ module.exports = {
   addCustomAgent,
   removeCustomAgent,
   getCustomAgent,
+  buildFullKBContext,  // 全量 KB 注入（强制学习模式）
 };

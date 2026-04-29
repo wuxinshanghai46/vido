@@ -10,6 +10,29 @@ const db = require('../models/database');
 const { generateDrama, CAMERA_MOTIONS, SHOT_SCALES, MOTION_PRESETS, DRAMA_DIR } = require('../services/dramaService');
 
 const progressListeners = new Map();
+const cancelledEpisodes = new Set(); // 标记被用户取消的剧集
+
+// 启动时：把上次进程遗留的 processing 剧集重置为 draft（PM2 reload 会中断异步任务，
+// 如果不重置，用户会看到旧的 40% + 旧提示词，且无法重新生成）
+(function recoverOrphanedEpisodes() {
+  try {
+    const allProjects = db.listDramaProjects ? db.listDramaProjects() : [];
+    for (const p of allProjects) {
+      const eps = db.listDramaEpisodes(p.id) || [];
+      for (const ep of eps) {
+        if (ep.status === 'processing') {
+          db.updateDramaEpisode(ep.id, {
+            status: 'draft',
+            progress: 0,
+            message: '',
+            current_step: '',
+            error_message: '任务中断，请重新生成',
+          });
+        }
+      }
+    }
+  } catch (e) { console.warn('[drama] recoverOrphanedEpisodes:', e.message); }
+})();
 
 // ═══════════════════════════════════════════
 // 运镜库
@@ -61,7 +84,7 @@ router.post('/generate-outline', async (req, res) => {
 ${genre ? `类型: ${genre}\n` : ''}集数: ${episode_count}
 请输出大纲 JSON。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt);
+    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'drama', query: `${theme} ${style} ${genre}`, limit: 5 } });
     // 复用 dramaService 的 JSON 修复逻辑
     let outline;
     try {
@@ -81,12 +104,64 @@ ${genre ? `类型: ${genre}\n` : ''}集数: ${episode_count}
   }
 });
 
+// POST /api/drama/suggest-scene-params — 根据故事简介智能推荐场景数 + 每镜时长
+router.post('/suggest-scene-params', async (req, res) => {
+  const { synopsis = '', title = '', genre = '', style = '' } = req.body || {};
+  const content = (synopsis || title || '').trim();
+  if (!content) return res.status(400).json({ success: false, error: '请先填写故事简介或标题' });
+  try {
+    const { callLLM } = require('../services/storyService');
+    const systemPrompt = `你是资深短剧节奏顾问。根据用户给的故事简介，推荐**每集**需要多少场景、每场多长，让整集节奏合理。
+输出严格 JSON：
+{
+  "scene_count": 整数 4-15,
+  "shot_duration": 整数 3/5/8/10/12 之一,
+  "total_episode_seconds": 整数（= scene_count × shot_duration，仅参考）,
+  "reasoning": "20 字以内的一句话理由"
+}
+
+节奏参考：
+- 强情节/反转密集 → 场景 8-12 × 5-8 秒
+- 情感慢热/氛围流 → 场景 5-7 × 8-10 秒
+- 悬疑/推理 → 场景 6-10 × 8 秒
+- 搞笑/生活 → 场景 10-15 × 3-5 秒
+- 史诗/奇幻 → 场景 6-8 × 10-12 秒
+严格 JSON，无额外文字。`;
+    const userPrompt = `故事简介/主题：${content}\n${title ? '标题：' + title + '\n' : ''}${genre ? '类型：' + genre + '\n' : ''}${style ? '画风：' + style + '\n' : ''}请给出推荐参数。`;
+    const raw = await callLLM(systemPrompt, userPrompt);
+    let str = raw.trim();
+    const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (m) str = m[1].trim();
+    const sIdx = str.indexOf('{'); const eIdx = str.lastIndexOf('}');
+    if (sIdx !== -1 && eIdx > sIdx) str = str.slice(sIdx, eIdx + 1);
+    const out = JSON.parse(str);
+    const scene_count = Math.max(3, Math.min(30, parseInt(out.scene_count) || 6));
+    const allowedDur = [3, 5, 8, 10, 12];
+    let shot_duration = parseInt(out.shot_duration) || 8;
+    if (!allowedDur.includes(shot_duration)) {
+      shot_duration = allowedDur.reduce((a, b) => Math.abs(b - shot_duration) < Math.abs(a - shot_duration) ? b : a);
+    }
+    res.json({
+      success: true,
+      data: {
+        scene_count,
+        shot_duration,
+        total_episode_seconds: scene_count * shot_duration,
+        reasoning: (out.reasoning || '').slice(0, 40),
+      },
+    });
+  } catch (err) {
+    console.error('[suggest-scene-params]', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ═══════════════════════════════════════════
 // 项目级 CRUD
 // ═══════════════════════════════════════════
 
 // POST /api/drama/projects — 创建网剧项目
-router.post('/projects', (req, res) => {
+router.post('/projects', async (req, res) => {
   try {
     const {
       title, synopsis, style, motion_preset, characters,
@@ -95,6 +170,29 @@ router.post('/projects', (req, res) => {
       scene_count, shot_duration, image_model, video_model,
     } = req.body;
     if (!title) return res.status(400).json({ success: false, error: '请输入网剧标题' });
+
+    // 如果用户没指定场景数/时长，用 AI 根据简介推断
+    let finalSceneCount = scene_count;
+    let finalShotDur = shot_duration;
+    if ((!finalSceneCount || !finalShotDur) && (synopsis || title)) {
+      try {
+        const { callLLM } = require('../services/storyService');
+        const sys = `根据故事简介推荐每集场景数和每镜时长。严格 JSON：{"scene_count":整数4-15,"shot_duration":3|5|8|10|12}`;
+        const raw = await callLLM(sys, `简介：${synopsis || title}\n画风：${style || ''}`);
+        let str = raw.trim();
+        const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (m) str = m[1].trim();
+        const s = str.indexOf('{'); const e = str.lastIndexOf('}');
+        if (s !== -1 && e > s) str = str.slice(s, e + 1);
+        const out = JSON.parse(str);
+        if (!finalSceneCount) finalSceneCount = Math.max(3, Math.min(20, parseInt(out.scene_count) || 6));
+        if (!finalShotDur) finalShotDur = [3,5,8,10,12].includes(parseInt(out.shot_duration)) ? parseInt(out.shot_duration) : 8;
+        console.log(`[drama/create] AI 推断参数 scene=${finalSceneCount}, dur=${finalShotDur}`);
+      } catch (e) {
+        console.warn('[drama/create] AI 推断失败，用默认值:', e.message);
+      }
+    }
+
     const project = {
       id: uuidv4(),
       user_id: req.user?.id,
@@ -105,9 +203,8 @@ router.post('/projects', (req, res) => {
       characters: characters || [],
       episode_count: episode_count || 10,
       aspect_ratio: aspect_ratio || '9:16',
-      // v15: 默认生成参数，后续每集 episode 自动继承
-      scene_count: scene_count || 6,
-      shot_duration: shot_duration || 8,
+      scene_count: finalSceneCount || 6,
+      shot_duration: finalShotDur || 8,
       image_model: image_model || 'auto',
       video_model: video_model || 'auto',
       cover_url: '',
@@ -291,7 +388,7 @@ router.get('/projects/:pid/episodes/:eid/progress', (req, res) => {
   if (!ep) return res.status(404).json({ success: false, error: '剧集不存在' });
   if (ep.status === 'done' || ep.status === 'error') return res.json({ success: true, data: ep });
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
-  res.write(`data: ${JSON.stringify({ step: 'init', progress: ep.progress || 0, message: ep.message || '处理中...' })}\n\n`);
+  res.write(`data: ${JSON.stringify({ step: ep.current_step || 'init', progress: ep.progress || 0, message: ep.message || '处理中...' })}\n\n`);
   progressListeners.set(req.params.eid, res);
   req.on('close', () => progressListeners.delete(req.params.eid));
 });
@@ -342,7 +439,13 @@ router.post('/projects/:pid/episodes/:eid/generate', async (req, res) => {
   if (!project) return res.status(404).json({ success: false, error: '项目不存在' });
   const ep = db.getDramaEpisode(req.params.eid);
   if (!ep) return res.status(404).json({ success: false, error: '剧集不存在' });
-  if (ep.status === 'processing') return res.status(409).json({ success: false, error: '本集正在生成中' });
+  if (ep.status === 'processing') {
+    // 如果没有活跃的 SSE 监听器，视为僵尸任务 → 允许覆盖
+    if (progressListeners.has(ep.id)) {
+      return res.status(409).json({ success: false, error: '本集正在生成中' });
+    }
+    console.log(`[drama] 覆盖僵尸 processing 任务 ep=${ep.id}`);
+  }
 
   // 用户提供的本集剧本 (来自 textarea)
   const customScript = (req.body.theme || req.body.script || '').trim();
@@ -372,7 +475,10 @@ router.post('/projects/:pid/episodes/:eid/generate', async (req, res) => {
   const orchestrator = require('../services/agentOrchestrator');
 
   const updateProgress = (update) => {
-    db.updateDramaEpisode(ep.id, { progress: update.progress, message: update.message });
+    if (cancelledEpisodes.has(ep.id)) {
+      throw new Error('CANCELLED_BY_USER');
+    }
+    db.updateDramaEpisode(ep.id, { progress: update.progress, message: update.message, current_step: update.step });
     const listener = progressListeners.get(ep.id);
     if (listener) listener.write(`data: ${JSON.stringify(update)}\n\n`);
   };
@@ -452,16 +558,41 @@ ${customScript ? '本集剧本:\n' + customScript : '本集主题: 自动承接�
         progressListeners.delete(ep.id);
       }
     } catch (err) {
-      console.error('[drama generate] failed:', err);
-      db.updateDramaEpisode(ep.id, { status: 'error', error_message: err.message });
+      const isCancel = err.message === 'CANCELLED_BY_USER' || cancelledEpisodes.has(ep.id);
+      if (isCancel) {
+        console.log(`[drama generate] 已被用户取消 ep=${ep.id}`);
+        db.updateDramaEpisode(ep.id, {
+          status: 'draft', progress: 0, message: '', current_step: '', error_message: null,
+        });
+        cancelledEpisodes.delete(ep.id);
+      } else {
+        console.error('[drama generate] failed:', err);
+        db.updateDramaEpisode(ep.id, { status: 'error', error_message: err.message });
+      }
       const listener = progressListeners.get(ep.id);
       if (listener) {
-        listener.write(`data: ${JSON.stringify({ step: 'error', message: err.message })}\n\n`);
+        listener.write(`data: ${JSON.stringify({ step: isCancel ? 'cancelled' : 'error', message: isCancel ? '已取消' : err.message })}\n\n`);
         listener.end();
         progressListeners.delete(ep.id);
       }
     }
   })();
+});
+
+// POST /api/drama/projects/:pid/episodes/:eid/cancel — 取消当前正在生成的剧集
+router.post('/projects/:pid/episodes/:eid/cancel', (req, res) => {
+  const ep = db.getDramaEpisode(req.params.eid);
+  if (!ep) return res.status(404).json({ success: false, error: '剧集不存在' });
+  cancelledEpisodes.add(ep.id);
+  // 立即把 DB 状态改为 draft，让前端马上看到停下
+  db.updateDramaEpisode(ep.id, { status: 'draft', progress: 0, message: '正在取消…', current_step: '' });
+  // 主动断开 SSE 监听
+  const listener = progressListeners.get(ep.id);
+  if (listener) {
+    try { listener.write(`data: ${JSON.stringify({ step: 'cancelled', message: '已取消' })}\n\n`); listener.end(); } catch {}
+    progressListeners.delete(ep.id);
+  }
+  res.json({ success: true, data: { id: ep.id, cancelled: true } });
 });
 
 // POST /api/drama/projects/:pid/episodes/:eid/scenes/:idx/generate-video — 单镜头生图(带角色一致性)
@@ -948,10 +1079,110 @@ router.delete('/projects/:pid/episodes/:eid', (req, res) => {
 });
 
 // ═══════════════════════════════════════════
+// 角色三视图确认 API
+// ═══════════════════════════════════════════
+
+// POST /api/drama/projects/:pid/episodes/:eid/confirm-characters — 用户确认角色三视图
+router.post('/projects/:pid/episodes/:eid/confirm-characters', (req, res) => {
+  const taskDir = path.join(DRAMA_DIR, req.params.eid);
+  const confirmFile = path.join(taskDir, 'confirm_data.json');
+  try {
+    if (!fs.existsSync(confirmFile)) return res.status(404).json({ success: false, error: '没有待确认的数据' });
+    const data = JSON.parse(fs.readFileSync(confirmFile, 'utf8'));
+    data.confirmed = true;
+    // 如果用户修改了 bible，合并
+    if (req.body.updated_bible) data.updated_bible = req.body.updated_bible;
+    fs.writeFileSync(confirmFile, JSON.stringify(data, null, 2), 'utf8');
+    res.json({ success: true, message: '角色已确认，继续生成分镜' });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// GET /api/drama/projects/:pid/episodes/:eid/confirm-data — 获取待确认数据
+router.get('/projects/:pid/episodes/:eid/confirm-data', (req, res) => {
+  const taskDir = path.join(DRAMA_DIR, req.params.eid);
+  const confirmFile = path.join(taskDir, 'confirm_data.json');
+  try {
+    if (!fs.existsSync(confirmFile)) return res.status(404).json({ success: false, error: '没有待确认的数据' });
+    const data = JSON.parse(fs.readFileSync(confirmFile, 'utf8'));
+    res.json({ success: true, data });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// POST /api/drama/projects/:pid/episodes/:eid/regen-character-view/:charName — 重新生成单个角色三视图
+router.post('/projects/:pid/episodes/:eid/regen-character-view/:charName', async (req, res) => {
+  const charName = decodeURIComponent(req.params.charName);
+  const taskDir = path.join(DRAMA_DIR, req.params.eid);
+  const confirmFile = path.join(taskDir, 'confirm_data.json');
+  try {
+    if (!fs.existsSync(confirmFile)) return res.status(404).json({ success: false, error: '没有待确认数据' });
+    const data = JSON.parse(fs.readFileSync(confirmFile, 'utf8'));
+    const description = req.body.description || '';
+    // 找到角色在 bible 中的描述
+    const bibleChar = (data.character_bible?.characters || []).find(c => c.name === charName);
+    const desc = description || bibleChar?.full_lock_prompt_en || bibleChar?.lock_face || charName;
+
+    const { generateCharacterThreeView } = require('../services/imageService');
+    const tvResult = await generateCharacterThreeView({
+      name: charName,
+      role: bibleChar?.lock_expression_default || '',
+      description: desc,
+      dim: '2d',
+      aspectRatio: '1:1',
+    });
+    if (tvResult.front?.filename) tvResult.front.url = `/api/story/character-image/${tvResult.front.filename}`;
+    if (tvResult.side?.filename) tvResult.side.url = `/api/story/character-image/${tvResult.side.filename}`;
+    if (tvResult.back?.filename) tvResult.back.url = `/api/story/character-image/${tvResult.back.filename}`;
+
+    // 更新 confirm_data
+    data.three_views[charName] = tvResult;
+    fs.writeFileSync(confirmFile, JSON.stringify(data, null, 2), 'utf8');
+    // 也更新独立的 three_views.json
+    const tvFile = path.join(taskDir, 'three_views.json');
+    if (fs.existsSync(tvFile)) {
+      const allTv = JSON.parse(fs.readFileSync(tvFile, 'utf8'));
+      allTv[charName] = tvResult;
+      fs.writeFileSync(tvFile, JSON.stringify(allTv, null, 2), 'utf8');
+    }
+
+    res.json({ success: true, data: tvResult });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PUT /api/drama/projects/:pid/episodes/:eid/character-desc/:charName — 修改角色描述
+router.put('/projects/:pid/episodes/:eid/character-desc/:charName', (req, res) => {
+  const charName = decodeURIComponent(req.params.charName);
+  const taskDir = path.join(DRAMA_DIR, req.params.eid);
+  const confirmFile = path.join(taskDir, 'confirm_data.json');
+  try {
+    if (!fs.existsSync(confirmFile)) return res.status(404).json({ success: false, error: '没有待确认数据' });
+    const data = JSON.parse(fs.readFileSync(confirmFile, 'utf8'));
+    const bibleChar = (data.character_bible?.characters || []).find(c => c.name === charName);
+    if (!bibleChar) return res.status(404).json({ success: false, error: '角色不存在' });
+    // 更新描述字段
+    const { lock_face, lock_body, lock_wardrobe, lock_distinguishing, full_lock_prompt_en, full_lock_prompt_cn } = req.body;
+    if (lock_face !== undefined) bibleChar.lock_face = lock_face;
+    if (lock_body !== undefined) bibleChar.lock_body = lock_body;
+    if (lock_wardrobe !== undefined) bibleChar.lock_wardrobe = lock_wardrobe;
+    if (lock_distinguishing !== undefined) bibleChar.lock_distinguishing = lock_distinguishing;
+    if (full_lock_prompt_en !== undefined) bibleChar.full_lock_prompt_en = full_lock_prompt_en;
+    if (full_lock_prompt_cn !== undefined) bibleChar.full_lock_prompt_cn = full_lock_prompt_cn;
+    fs.writeFileSync(confirmFile, JSON.stringify(data, null, 2), 'utf8');
+    res.json({ success: true, data: bibleChar });
+  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// ═══════════════════════════════════════════
 // 兼容旧端点（图片服务等）
 // ═══════════════════════════════════════════
 router.get('/tasks/:id/image/:idx', (req, res) => {
   const filePath = path.join(DRAMA_DIR, req.params.id, `scene_${req.params.idx}.png`);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  res.sendFile(filePath);
+});
+
+// GET /api/drama/tasks/:id/prop/:idx — 物品专属图
+router.get('/tasks/:id/prop/:idx', (req, res) => {
+  const filePath = path.join(DRAMA_DIR, req.params.id, `prop_${req.params.idx}.png`);
   if (!fs.existsSync(filePath)) return res.status(404).end();
   res.sendFile(filePath);
 });
@@ -1011,7 +1242,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt', async (r
 
 请将上面的场景信息转换为 AI 生图/生视频的提示词。每个角色的提示词必须是独一无二的，包含该角色特有的外貌特征。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt);
+    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'video_prompt', query: `${scene.description||''} ${scene.emotion||''} ${scene.shot_scale||''}`, limit: 3 } });
     let parsed;
     try {
       let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
@@ -1071,7 +1302,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/rewrite-dialogue', async (
 
 请改写得更有影视感和冲击力。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt);
+    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'copy', query: `${description||''} ${dialogue||''} ${narrator||''}`, limit: 2 } });
     let parsed;
     try {
       let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();

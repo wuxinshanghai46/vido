@@ -36,7 +36,7 @@ router.post('/ai-story', async (req, res) => {
 根据标题创作漫画故事大纲，200-400字，包含：世界观背景、主要角色（含性格特点）、核心冲突、起承转合。只输出故事内容，不要标题或格式标记。`;
     const userPrompt = `漫画标题：${title}\n画风：${style || '日系动漫'}\n\n请以编剧的专业视角，为这部漫画创作故事内容。注意角色要有鲜明性格，情节要有悬念和转折：`;
 
-    const content = await callLLM(systemPrompt, userPrompt);
+    const content = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'drama', query: `${title} ${style||''}`, limit: 4 } });
     res.json({ success: true, data: { content: content.trim() } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

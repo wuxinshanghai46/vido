@@ -13,11 +13,12 @@ router.get('/status', (req, res) => {
   res.json({ success: true, platforms: status, hasChrome });
 });
 
-// POST /api/browser/login/:platform - 启动扫码登录
+// POST /api/browser/login/:platform - 异步启动扫码登录（立即返回，前端 polling 拿截图）
 router.post('/login/:platform', async (req, res) => {
   try {
-    const screenshot = await browserService.startLogin(req.params.platform);
-    res.json({ success: true, screenshot: `data:image/jpeg;base64,${screenshot}` });
+    const r = await browserService.startLogin(req.params.platform);
+    // 不再返回 screenshot — 前端立即开始 polling，第一次 poll 就能拿到 launching 状态
+    res.json({ success: true, ...r });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

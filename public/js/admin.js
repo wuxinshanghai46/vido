@@ -48,6 +48,8 @@ function initTabs() {
       if (tab.dataset.tab === 'aiteam') aiteamInit();
       if (tab.dataset.tab === 'monitor') monitorRefresh();
       if (tab.dataset.tab === 'dashboard') loadDashboard();
+      if (tab.dataset.tab === 'datasource') loadDatasources();
+      if (tab.dataset.tab === 'modelpipeline') loadModelPipeline();
     });
   });
   // 初始化时如果默认是 dashboard，立即加载
@@ -983,6 +985,10 @@ function renderProviders() {
         <div class="sp-prov-model-count"><span class="sp-cnt-num">${models.length}</span><span class="sp-cnt-label">模型</span></div>
         <div class="sp-prov-tested">${testedAt !== '-' ? `<span class="sp-tested-label">最近测试</span>` : ''}<span class="sp-tested-time">${testedAt}</span></div>
         <div class="sp-prov-actions" onclick="event.stopPropagation()">
+          <label class="sp-toggle" title="${p.enabled ? '点击禁用：所有 service 跳过此供应商' : '点击启用'}">
+            <input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="toggleProvider('${esc(p.id)}', this.checked)">
+            <span class="sp-toggle-slider"></span>
+          </label>
           <button class="sp-btn" onclick="editProviderKey('${esc(p.id)}')">编辑</button>
           <button class="sp-btn" id="sptest-${esc(p.id)}" onclick="testProvider('${esc(p.id)}')" ${!p.enabled?'disabled':''}>测试</button>
           <button class="sp-btn danger" onclick="deleteProvider('${esc(p.id)}')">删除</button>
@@ -1094,6 +1100,25 @@ async function deleteProvider(id) {
   await authFetch(`/api/settings/providers/${id}`, { method: 'DELETE' });
   await loadProviders(); toast('已删除');
 }
+// 启用/禁用供应商
+async function toggleProvider(id, enabled) {
+  try {
+    const res = await authFetch(`/api/settings/providers/${id}/toggle`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '切换失败');
+    // 本地更新（避免 race），再 reload 数据
+    const p = settingsData?.providers?.find(p => p.id === id);
+    if (p) p.enabled = data.data.enabled;
+    await loadProviders();
+    // 同步刷新「模型调用管理」缓存：禁用的供应商不应再出现在候选列表
+    try { _pmsCache = null; await loadModelPipeline(); } catch {}
+    toast(enabled ? '已启用' : '已禁用');
+  } catch (e) {
+    toast('切换失败: ' + e.message, 'error');
+    await loadProviders();  // 回滚 UI
+  }
+}
+window.toggleProvider = toggleProvider;
 async function testProvider(id) {
   const btn = document.getElementById('sptest-' + id);
   if (btn) { btn.disabled = true; btn.textContent = '测试中...'; }
@@ -2150,8 +2175,65 @@ async function kbInit() {
     kbRenderCollections();
     kbUpdatePreviewAgentDropdown();
     await kbLoadDocs();
+    await kbLoadForceState();
   } catch (e) {
     console.error('[KB] init failed', e);
+  }
+}
+
+// ── 强制使用 KB 全局开关 ──
+async function kbLoadForceState() {
+  const el = document.getElementById('kb-force-toggle');
+  if (!el) return;
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/_force');
+    const j = await r.json();
+    if (j.success) el.checked = j.data?.enabled !== false;
+  } catch {}
+}
+async function kbToggleForce(enabled) {
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/_force', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: !!enabled }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '保存失败');
+    toast(enabled ? '✅ 已开启：所有 AI 创作必走知识库' : '⚠ 已关闭：AI 创作不再强制注入 KB', enabled ? 'success' : 'warning');
+  } catch (e) {
+    toast('保存失败：' + e.message, 'error');
+    const el = document.getElementById('kb-force-toggle');
+    if (el) el.checked = !enabled;
+  }
+}
+
+// ── 飞书提示词同步 Modal ──
+function kbOpenImportModal() {
+  const m = document.getElementById('kb-import-modal');
+  if (m) m.style.display = 'flex';
+}
+async function kbDoImport() {
+  const source = document.getElementById('kbi-source').value.trim() || '飞书 wiki';
+  const collection = document.getElementById('kbi-collection').value;
+  const appliesRaw = document.getElementById('kbi-applies').value.trim();
+  const content = document.getElementById('kbi-content').value;
+  if (!content || !content.trim()) return toast('请粘贴提示词内容', 'error');
+  const applies_to = appliesRaw
+    ? appliesRaw.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+    : ['screenwriter', 'director', 'storyboard', 'atmosphere'];
+  try {
+    const r = await authFetch('/api/admin/knowledgebase/import-prompts', {
+      method: 'POST',
+      body: JSON.stringify({ source, collection, applies_to, content }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '导入失败');
+    toast(`✅ 已导入 ${j.data.inserted} 条到知识库`, 'success');
+    document.getElementById('kbi-content').value = '';
+    document.getElementById('kb-import-modal').style.display = 'none';
+    await kbLoadDocs();
+  } catch (e) {
+    toast('导入失败：' + e.message, 'error');
   }
 }
 
@@ -2793,6 +2875,10 @@ function monitorRenderOverview(data, days) {
   const budget = data.budget;
   const alerts = data.alerts || [];
 
+  // 汇率 USD→CNY，从 budget 读
+  const rate = (budget && budget.usd_cny_rate) || 7.20;
+  const cny = (usd) => '¥' + (Number(usd || 0) * rate).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   // 告警条
   const alertsEl = document.getElementById('monitor-alerts');
   if (alerts.length > 0) {
@@ -2810,10 +2896,10 @@ function monitorRenderOverview(data, days) {
   const budgetCard = budget.has_budget ? `
     <div class="monitor-card ${budget.alerting ? 'card-alert' : ''}">
       <div class="monitor-card-label">本月预算</div>
-      <div class="monitor-card-value">$${budget.used_cost_usd.toFixed(2)} / $${budget.monthly_budget_usd}</div>
+      <div class="monitor-card-value">${cny(budget.used_cost_usd)} / ${cny(budget.monthly_budget_usd)}</div>
       <div class="monitor-card-meta">
         <div class="monitor-progress"><div class="monitor-progress-bar" style="width:${Math.min(100, budget.used_percent || 0)}%;background:${budget.alerting ? '#ff6b6b' : 'var(--accent)'}"></div></div>
-        <div style="font-size:10px;color:var(--text3);">剩余 $${(budget.remaining_usd || 0).toFixed(2)} · ${budget.used_percent || 0}%</div>
+        <div style="font-size:10px;color:var(--text3);">剩余 ${cny(budget.remaining_usd || 0)} · ${budget.used_percent || 0}% · ($${budget.used_cost_usd.toFixed(2)} / $${budget.monthly_budget_usd})</div>
       </div>
     </div>
   ` : `
@@ -2821,7 +2907,7 @@ function monitorRenderOverview(data, days) {
       <div class="monitor-card-label">本月预算</div>
       <div class="monitor-card-value" style="color:var(--text3);">未设置</div>
       <div class="monitor-card-meta" style="font-size:11px;">
-        已用: $${budget.used_cost_usd.toFixed(2)}
+        已用: ${cny(budget.used_cost_usd)} ($${budget.used_cost_usd.toFixed(2)})
         <br><a href="#" onclick="monitorOpenBudget();return false;" style="color:var(--accent);">设置预算 →</a>
       </div>
     </div>
@@ -2839,9 +2925,9 @@ function monitorRenderOverview(data, days) {
       <div class="monitor-card-meta">输入 ${stats.total_input_tokens.toLocaleString()} · 输出 ${stats.total_output_tokens.toLocaleString()}</div>
     </div>
     <div class="monitor-card">
-      <div class="monitor-card-label">总成本</div>
-      <div class="monitor-card-value">$${stats.total_cost_usd.toFixed(4)}</div>
-      <div class="monitor-card-meta">近 ${days} 天累计</div>
+      <div class="monitor-card-label">总成本（人民币）</div>
+      <div class="monitor-card-value" style="color:var(--accent)">${cny(stats.total_cost_usd)}</div>
+      <div class="monitor-card-meta">$${stats.total_cost_usd.toFixed(4)} · 近 ${days} 天 · 1$≈¥${rate.toFixed(2)}</div>
     </div>
     ${budgetCard}
     <div class="monitor-card">
@@ -2850,6 +2936,9 @@ function monitorRenderOverview(data, days) {
       <div class="monitor-card-meta">图像 ${stats.total_image_count} 张</div>
     </div>
   `;
+
+  // 暴露给 monitorRenderTable 使用
+  window._monitorRate = rate;
 
   // 按 provider
   document.getElementById('monitor-by-provider').innerHTML = monitorRenderTable(stats.by_provider, 'key', 'provider');
@@ -2865,6 +2954,8 @@ function monitorRenderTable(rows, keyField, label) {
     return '<div class="monitor-empty">暂无数据</div>';
   }
   const maxCost = Math.max(...rows.map(r => r.cost_usd));
+  const rate = window._monitorRate || 7.20;
+  const cny = (usd) => '¥' + (Number(usd || 0) * rate).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `
     <table class="monitor-table">
       <thead>
@@ -2872,7 +2963,7 @@ function monitorRenderTable(rows, keyField, label) {
           <th>${label}</th>
           <th>调用</th>
           <th>Tokens</th>
-          <th>成本</th>
+          <th>消耗 (CNY/USD)</th>
         </tr>
       </thead>
       <tbody>
@@ -2883,7 +2974,7 @@ function monitorRenderTable(rows, keyField, label) {
             <td>${(r.tokens || 0).toLocaleString()}</td>
             <td>
               <div class="monitor-cost-cell">
-                $${r.cost_usd.toFixed(4)}
+                <span style="color:var(--accent);font-weight:700">${cny(r.cost_usd)}</span> <span style="font-size:10px;color:var(--text3)">$${r.cost_usd.toFixed(4)}</span>
                 <div class="monitor-mini-bar" style="width:${(r.cost_usd / maxCost * 100)}%;"></div>
               </div>
             </td>
@@ -2898,6 +2989,8 @@ function monitorRenderDayChart(days) {
   if (!days || days.length === 0) return '<div class="monitor-empty">暂无数据</div>';
   const maxCost = Math.max(...days.map(d => d.cost_usd));
   const maxCalls = Math.max(...days.map(d => d.calls));
+  const rate = window._monitorRate || 7.20;
+  const cny = (usd) => '¥' + (Number(usd || 0) * rate).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `
     <div class="monitor-day-chart">
       ${days.map(d => `
@@ -2909,7 +3002,8 @@ function monitorRenderDayChart(days) {
           <div class="monitor-day-meta">
             <span>${d.calls} 次</span>
             <span>${(d.tokens || 0).toLocaleString()} t</span>
-            <span>$${d.cost_usd.toFixed(4)}</span>
+            <span style="color:var(--accent);font-weight:700">${cny(d.cost_usd)}</span>
+            <span style="color:var(--text3);font-size:10px">$${d.cost_usd.toFixed(4)}</span>
           </div>
         </div>
       `).join('')}
@@ -2968,6 +3062,8 @@ function monitorRenderRecent(rows) {
     el.innerHTML = '<div class="monitor-empty">暂无调用记录，触发一次 AI 调用后会出现在这里</div>';
     return;
   }
+  const rate = window._monitorRate || 7.20;
+  const cny = (usd) => '¥' + (Number(usd || 0) * rate).toLocaleString('zh-CN', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
   el.innerHTML = `
     <table class="monitor-table">
       <thead>
@@ -2978,7 +3074,7 @@ function monitorRenderRecent(rows) {
           <th>Category</th>
           <th>Agent</th>
           <th>Tokens</th>
-          <th>成本</th>
+          <th>消耗 (CNY/USD)</th>
           <th>耗时</th>
           <th>状态</th>
         </tr>
@@ -2992,7 +3088,7 @@ function monitorRenderRecent(rows) {
             <td>${esc(r.category || '-')}</td>
             <td>${esc(r.agent_id || '-')}</td>
             <td>${(r.total_tokens || 0).toLocaleString()}</td>
-            <td>$${(r.cost_usd || 0).toFixed(6)}</td>
+            <td><span style="color:var(--accent);font-weight:700">${cny(r.cost_usd)}</span> <span style="font-size:10px;color:var(--text3)">$${(r.cost_usd || 0).toFixed(6)}</span></td>
             <td>${r.duration_ms}ms</td>
             <td>${r.status === 'success' ? '✓' : '✗'}</td>
           </tr>
@@ -3009,6 +3105,8 @@ async function monitorOpenBudget() {
     if (j.success) {
       document.getElementById('budget-monthly').value = j.data.monthly_budget_usd || '';
       document.getElementById('budget-threshold').value = j.data.alert_threshold || 0.8;
+      const rateEl = document.getElementById('budget-rate');
+      if (rateEl) rateEl.value = j.data.usd_cny_rate || 7.20;
     }
   } catch {}
   document.getElementById('budget-modal').style.display = 'flex';
@@ -3017,10 +3115,12 @@ async function monitorOpenBudget() {
 async function monitorSaveBudget() {
   const monthly = parseFloat(document.getElementById('budget-monthly').value) || 0;
   const threshold = parseFloat(document.getElementById('budget-threshold').value) || 0.8;
+  const rateEl = document.getElementById('budget-rate');
+  const rate = rateEl ? (parseFloat(rateEl.value) || 7.20) : 7.20;
   try {
     const r = await authFetch('/api/admin/token-stats/budget', {
       method: 'PUT',
-      body: JSON.stringify({ monthly_budget_usd: monthly, alert_threshold: threshold }),
+      body: JSON.stringify({ monthly_budget_usd: monthly, alert_threshold: threshold, usd_cny_rate: rate }),
     });
     const j = await r.json();
     if (!j.success) throw new Error(j.error);
@@ -3065,9 +3165,15 @@ async function loadDashboard() {
 function renderDashboard(d) {
   const body = document.getElementById('dashboard-body');
 
+  // 汇率（USD→CNY），来自后端 budget 配置
+  const rate = (d.currency && d.currency.usd_cny_rate) || 7.20;
+  const fmtCNY = (usd) => '¥' + (Number(usd || 0) * rate).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtUSD = (usd) => '$' + Number(usd || 0).toFixed(4);
+  const dualCost = (usd) => `<span style="font-weight:700;color:var(--accent)">${fmtCNY(usd)}</span> <span style="font-size:11px;color:var(--text3)">(${fmtUSD(usd)})</span>`;
+
   // ——— 用户 + 内容 + 模型 + Token 四类总览卡片 ———
   const overviewCards = `
-    <div class="dash-section-title">📊 核心指标</div>
+    <div class="dash-section-title">📊 核心指标 <span style="font-size:11px;color:var(--text3);font-weight:400">· 汇率 1$ ≈ ¥${rate.toFixed(2)}</span></div>
     <div class="dash-cards">
       <div class="dash-card dash-card-primary">
         <div class="dash-card-icon">👥</div>
@@ -3075,6 +3181,7 @@ function renderDashboard(d) {
           <div class="dash-card-label">用户总数</div>
           <div class="dash-card-value">${d.users.total}</div>
           <div class="dash-card-meta">今日 +${d.users.today} · 本周 +${d.users.week} · 本月 +${d.users.month}</div>
+          ${typeof d.users.dau === 'number' ? `<div class="dash-card-meta" style="margin-top:4px">活跃 DAU ${d.users.dau} · WAU ${d.users.wau} · MAU ${d.users.mau}</div>` : ''}
         </div>
       </div>
       <div class="dash-card">
@@ -3096,9 +3203,9 @@ function renderDashboard(d) {
       <div class="dash-card">
         <div class="dash-card-icon">💰</div>
         <div class="dash-card-main">
-          <div class="dash-card-label">Token 总成本</div>
-          <div class="dash-card-value">$${d.tokens.total_cost_usd.toFixed(4)}</div>
-          <div class="dash-card-meta">今日 $${d.tokens.today.cost_usd.toFixed(4)} · 本月 $${d.tokens.month.cost_usd.toFixed(4)}</div>
+          <div class="dash-card-label">累计消耗（人民币）</div>
+          <div class="dash-card-value" style="color:var(--accent)">${fmtCNY(d.tokens.total_cost_usd)}</div>
+          <div class="dash-card-meta">${fmtUSD(d.tokens.total_cost_usd)} · 今日 ${fmtCNY(d.tokens.today.cost_usd)} · 本月 ${fmtCNY(d.tokens.month.cost_usd)}</div>
         </div>
       </div>
       <div class="dash-card">
@@ -3114,10 +3221,92 @@ function renderDashboard(d) {
         <div class="dash-card-main">
           <div class="dash-card-label">Token 调用次数</div>
           <div class="dash-card-value">${d.tokens.total_calls}</div>
-          <div class="dash-card-meta">今日 ${d.tokens.today.calls} · 本月 ${d.tokens.month.calls}</div>
+          <div class="dash-card-meta">今日 ${d.tokens.today.calls} · 本月 ${d.tokens.month.calls}${typeof d.tokens.success_rate === 'number' ? ` · 成功率 ${d.tokens.success_rate}%` : ''}</div>
         </div>
       </div>
     </div>
+  `;
+
+  // ——— 按品类拆分（LLM / 视频 / 图片 / TTS）以人民币优先 ———
+  const cat = d.tokens.total_by_category || null;
+  const todayCat = d.tokens.today?.by_category || null;
+  const monthCat = d.tokens.month?.by_category || null;
+  const categoryBlock = cat ? `
+    <div class="dash-section-title">🧩 按品类消耗拆分（人民币优先）</div>
+    <table class="monitor-table">
+      <thead><tr>
+        <th>品类</th>
+        <th>累计调用</th>
+        <th>累计消耗（CNY）</th>
+        <th>累计消耗（USD）</th>
+        <th>本月调用</th>
+        <th>本月消耗（CNY）</th>
+        <th>今日调用</th>
+        <th>今日消耗（CNY）</th>
+        <th>用量</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="dash-key">🧠 LLM (剧情/对白)</td>
+          <td>${cat.llm.calls}</td>
+          <td style="color:var(--accent);font-weight:700">${fmtCNY(cat.llm.cost_usd)}</td>
+          <td style="color:var(--text3)">${fmtUSD(cat.llm.cost_usd)}</td>
+          <td>${monthCat?.llm?.calls || 0}</td>
+          <td>${fmtCNY(monthCat?.llm?.cost_usd || 0)}</td>
+          <td>${todayCat?.llm?.calls || 0}</td>
+          <td>${fmtCNY(todayCat?.llm?.cost_usd || 0)}</td>
+          <td style="color:var(--text3);font-size:11px">${(cat.llm.tokens || 0).toLocaleString()} tokens</td>
+        </tr>
+        <tr>
+          <td class="dash-key">🎬 视频生成</td>
+          <td>${cat.video.calls}</td>
+          <td style="color:var(--accent);font-weight:700">${fmtCNY(cat.video.cost_usd)}</td>
+          <td style="color:var(--text3)">${fmtUSD(cat.video.cost_usd)}</td>
+          <td>${monthCat?.video?.calls || 0}</td>
+          <td>${fmtCNY(monthCat?.video?.cost_usd || 0)}</td>
+          <td>${todayCat?.video?.calls || 0}</td>
+          <td>${fmtCNY(todayCat?.video?.cost_usd || 0)}</td>
+          <td style="color:var(--text3);font-size:11px">${cat.video.seconds || 0} s</td>
+        </tr>
+        <tr>
+          <td class="dash-key">🎨 图像生成</td>
+          <td>${cat.image.calls}</td>
+          <td style="color:var(--accent);font-weight:700">${fmtCNY(cat.image.cost_usd)}</td>
+          <td style="color:var(--text3)">${fmtUSD(cat.image.cost_usd)}</td>
+          <td>${monthCat?.image?.calls || 0}</td>
+          <td>${fmtCNY(monthCat?.image?.cost_usd || 0)}</td>
+          <td>${todayCat?.image?.calls || 0}</td>
+          <td>${fmtCNY(todayCat?.image?.cost_usd || 0)}</td>
+          <td style="color:var(--text3);font-size:11px">${cat.image.count || 0} 张</td>
+        </tr>
+        <tr>
+          <td class="dash-key">🔊 TTS / 语音</td>
+          <td>${cat.tts.calls}</td>
+          <td style="color:var(--accent);font-weight:700">${fmtCNY(cat.tts.cost_usd)}</td>
+          <td style="color:var(--text3)">${fmtUSD(cat.tts.cost_usd)}</td>
+          <td>${monthCat?.tts?.calls || 0}</td>
+          <td>${fmtCNY(monthCat?.tts?.cost_usd || 0)}</td>
+          <td>${todayCat?.tts?.calls || 0}</td>
+          <td>${fmtCNY(todayCat?.tts?.cost_usd || 0)}</td>
+          <td style="color:var(--text3);font-size:11px">${(cat.tts.chars || 0).toLocaleString()} 字符</td>
+        </tr>
+      </tbody>
+    </table>
+  ` : '';
+
+  // ——— 平台消耗分时段（人民币 + 美元 双显）———
+  const usageBlock = `
+    <div class="dash-section-title">💴 平台消耗清单（人民币优先）</div>
+    <table class="monitor-table">
+      <thead><tr><th>时段</th><th>调用次数</th><th>Tokens</th><th>消耗（CNY）</th><th>消耗（USD）</th></tr></thead>
+      <tbody>
+        <tr><td class="dash-key">今日</td><td>${d.tokens.today.calls}</td><td>${(d.tokens.today.tokens || 0).toLocaleString()}</td><td style="color:var(--accent);font-weight:700">${fmtCNY(d.tokens.today.cost_usd)}</td><td style="color:var(--text3)">${fmtUSD(d.tokens.today.cost_usd)}</td></tr>
+        <tr><td class="dash-key">本周</td><td>${d.tokens.week.calls}</td><td>${(d.tokens.week.tokens || 0).toLocaleString()}</td><td style="color:var(--accent);font-weight:700">${fmtCNY(d.tokens.week.cost_usd)}</td><td style="color:var(--text3)">${fmtUSD(d.tokens.week.cost_usd)}</td></tr>
+        <tr><td class="dash-key">本月</td><td>${d.tokens.month.calls}</td><td>${(d.tokens.month.tokens || 0).toLocaleString()}</td><td style="color:var(--accent);font-weight:700">${fmtCNY(d.tokens.month.cost_usd)}</td><td style="color:var(--text3)">${fmtUSD(d.tokens.month.cost_usd)}</td></tr>
+        <tr><td class="dash-key">本季</td><td>${d.tokens.quarter.calls}</td><td>${(d.tokens.quarter.tokens || 0).toLocaleString()}</td><td style="color:var(--accent);font-weight:700">${fmtCNY(d.tokens.quarter.cost_usd)}</td><td style="color:var(--text3)">${fmtUSD(d.tokens.quarter.cost_usd)}</td></tr>
+        <tr style="background:var(--bg2);font-weight:700"><td class="dash-key">累计</td><td>${d.tokens.total_calls}</td><td>${(d.tokens.total_tokens || 0).toLocaleString()}</td><td style="color:var(--accent)">${fmtCNY(d.tokens.total_cost_usd)}</td><td style="color:var(--text3)">${fmtUSD(d.tokens.total_cost_usd)}</td></tr>
+      </tbody>
+    </table>
   `;
 
   // ——— 内容分模块统计表 ———
@@ -3147,7 +3336,7 @@ function renderDashboard(d) {
         <td class="dash-key">${esc(m.model || '-')}</td>
         <td style="color:var(--text3);font-size:10px;">${esc(m.provider || '-')}</td>
         <td>${m.calls}</td>
-        <td>$${m.cost_usd.toFixed(4)}</td>
+        <td>${dualCost(m.cost_usd)}</td>
       </tr>
     `).join('');
     const bottomRows = ranking.bottom.map(m => `
@@ -3194,7 +3383,7 @@ function renderDashboard(d) {
       <td class="dash-key">${esc(u.username)}</td>
       <td>${u.calls}</td>
       <td>${u.tokens.toLocaleString()}</td>
-      <td>$${u.cost_usd.toFixed(4)}</td>
+      <td>${dualCost(u.cost_usd)}</td>
     </tr>
   `).join('');
   const topUsersTable = `
@@ -3237,7 +3426,7 @@ function renderDashboard(d) {
     `}
   `;
 
-  body.innerHTML = overviewCards + contentTable + modelRankings + topUsersTable + providersSection + recentSignups;
+  body.innerHTML = overviewCards + usageBlock + categoryBlock + contentTable + modelRankings + topUsersTable + providersSection + recentSignups;
 }
 
 // ══════════════════════ NEW AGENT (v9) ══════════════════════
@@ -3749,5 +3938,529 @@ async function aiteamSubmitNewAgent() {
       btn.style.opacity = '1';
     }
   }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 通用模态框（VidoModal）
+// ════════════════════════════════════════════════════════════════════
+const VidoModal = {
+  open({ title = '', body = '', large = false, onConfirm = null, confirmText = '确定', cancelText = '取消', hideFoot = false } = {}) {
+    const old = document.getElementById('__vido_modal_mask');
+    if (old) old.remove();
+    const mask = document.createElement('div');
+    mask.id = '__vido_modal_mask';
+    mask.className = 'vido-modal-mask';
+    mask.innerHTML = `
+      <div class="vido-modal ${large ? 'lg' : ''}" onclick="event.stopPropagation()">
+        <div class="vido-modal-head">
+          <div class="vido-modal-title">${title}</div>
+          <button class="vido-modal-close" onclick="VidoModal.close()">×</button>
+        </div>
+        <div class="vido-modal-body">${body}</div>
+        ${hideFoot ? '' : `<div class="vido-modal-foot">
+          <button class="btn-sm" onclick="VidoModal.close()">${cancelText}</button>
+          ${onConfirm ? `<button class="btn-primary btn-sm" id="__vmConfirm">${confirmText}</button>` : ''}
+        </div>`}
+      </div>
+    `;
+    mask.addEventListener('click', e => { if (e.target === mask) VidoModal.close(); });
+    document.body.appendChild(mask);
+    if (onConfirm) {
+      document.getElementById('__vmConfirm').onclick = async () => {
+        const ok = await onConfirm();
+        if (ok !== false) VidoModal.close();
+      };
+    }
+    return mask.querySelector('.vido-modal-body');
+  },
+  close() {
+    const m = document.getElementById('__vido_modal_mask');
+    if (m) m.remove();
+  },
+};
+
+// ════════════════════════════════════════════════════════════════════
+// 数据源管理（爆款复刻 search providers）
+// ════════════════════════════════════════════════════════════════════
+async function loadDatasources() {
+  try {
+    const r = await authFetch('/api/admin/datasources');
+    const j = await r.json();
+    const list = document.getElementById('datasource-list');
+    if (!list) return;
+    list.innerHTML = (j.providers || []).map(p => {
+      const enabled = !!p.config?.enabled;
+      const config = p.config || {};
+      const fields = Object.entries(p.config_schema || {}).map(([k, schema]) => {
+        const v = config[k] !== undefined ? config[k] : (schema.default || '');
+        const id = `ds_${p.id}_${k}`;
+        if (schema.type === 'select') {
+          return `<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">${esc(schema.label || k)}</label>
+            <select id="${id}" style="width:100%;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px">
+              ${(schema.options || []).map(o => `<option value="${o}" ${o===v?'selected':''}>${o}</option>`).join('')}
+            </select></div>`;
+        }
+        const inputType = schema.type === 'password' ? 'password' : (schema.type === 'number' ? 'number' : 'text');
+        return `<div style="margin-top:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">${esc(schema.label || k)}</label>
+          <input type="${inputType}" id="${id}" value="${esc(String(v||''))}" placeholder="${esc(schema.label||'')}" style="width:100%;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px;font-family:monospace" /></div>`;
+      }).join('');
+      return `
+        <div id="ds_card_${p.id}" style="background:var(--bg2);border:1px solid ${enabled ? 'rgba(33,255,243,0.4)' : 'var(--border)'};border-radius:12px;padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px">
+                <span>${esc(p.name)}</span>
+                ${p.requires_key ? '<span style="font-size:10px;color:#FF8B3D;background:rgba(255,139,61,0.15);padding:2px 7px;border-radius:3px">需 Key</span>' : '<span style="font-size:10px;color:#10b981;background:rgba(16,185,129,0.15);padding:2px 7px;border-radius:3px">免 Key</span>'}
+                <span style="font-size:11px;color:${enabled?'#10b981':'var(--text3)'};font-weight:500">${enabled?'● 已启用':'○ 已禁用'}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text3)">${esc(p.description || '')}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px">id: <code>${p.id}</code> · platform: <code>${p.platform}</code></div>
+            </div>
+            <label class="vido-toggle">
+              <input type="checkbox" id="ds_${p.id}_enabled" ${enabled?'checked':''} onchange="saveDatasource('${p.id}', true)" />
+              <span class="vido-toggle-slider"></span>
+            </label>
+          </div>
+          ${fields}
+          <div style="display:flex;gap:6px;margin-top:14px;align-items:center">
+            <button class="btn-primary btn-sm" onclick="saveDatasource('${p.id}')">💾 保存配置</button>
+            <button class="btn-sm" onclick="testDatasource('${p.id}')">🩺 测试连通</button>
+            <span style="flex:1"></span>
+            <button class="btn-sm danger" onclick="resetDatasource('${p.id}')" title="清空所有配置 + 禁用">🗑 重置</button>
+          </div>
+          <div id="ds_${p.id}_status" style="font-size:11px;margin-top:8px;color:var(--text3)"></div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) { toast('加载失败：' + e.message); }
+}
+
+async function resetDatasource(id) {
+  if (!confirm(`重置数据源 ${id}？\n\n会清空所有 API Key/Cookie 等配置并禁用该 provider`)) return;
+  try {
+    const r = await authFetch(`/api/admin/datasources/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: false, api_key: '', cookie: '', region: '', timeout: undefined })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    toast('已重置');
+    loadDatasources();
+  } catch (e) { toast('重置失败：' + e.message); }
+}
+
+async function saveDatasource(id, silent) {
+  const enabled = document.getElementById('ds_' + id + '_enabled')?.checked;
+  const config = { enabled };
+  document.querySelectorAll(`[id^="ds_${id}_"]`).forEach(el => {
+    if (el.id === 'ds_' + id + '_enabled') return;
+    const field = el.id.replace('ds_' + id + '_', '');
+    config[field] = el.tagName === 'INPUT' && el.type === 'number' ? +el.value : el.value;
+  });
+  try {
+    const r = await authFetch(`/api/admin/datasources/${id}`, { method: 'PUT', body: JSON.stringify(config) });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    const stat = document.getElementById('ds_' + id + '_status');
+    if (stat) stat.innerHTML = `<span style="color:#10b981">✓ 已保存 ${new Date().toLocaleTimeString('zh-CN')}</span>`;
+    if (!silent) toast('已保存');
+    // 切换 toggle 时同步刷新顶部状态显示
+    if (silent) {
+      const card = document.getElementById('ds_card_' + id);
+      if (card) card.style.borderColor = enabled ? 'rgba(33,255,243,0.4)' : 'var(--border)';
+      const statusText = card?.querySelector('div[style*="color:"]');
+      // simpler: 直接 reload 整个面板
+      setTimeout(loadDatasources, 200);
+    }
+  } catch (e) {
+    const stat = document.getElementById('ds_' + id + '_status');
+    if (stat) stat.innerHTML = `<span style="color:#FF5470">✗ ${e.message}</span>`;
+  }
+}
+
+async function testDatasource(id) {
+  const status = document.getElementById('ds_' + id + '_status');
+  if (status) status.innerHTML = '⏳ 测试中...';
+  try {
+    const r = await authFetch(`/api/admin/datasources/${id}/health`, { method: 'POST' });
+    const j = await r.json();
+    const h = j.health;
+    status.innerHTML = `<span style="color:${h.ok?'#10b981':'#FF5470'}">${h.ok?'✓ 连通':'✗ 失败'} · ${esc(h.message || '')}</span>`;
+  } catch (e) {
+    status.innerHTML = `<span style="color:#FF5470">✗ ${e.message}</span>`;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 模型调用管理（Pipeline 模型路由）
+// ════════════════════════════════════════════════════════════════════
+let _pmsCache = null;
+
+// 模型 ID → 中文展示名（兜底字典；优先使用 settings.providers.models[].name）
+const _MODEL_I18N = {
+  'jimeng_realman_avatar_picture_omni_v15': '即梦 Omni v1.5（照片+音频驱动）',
+  'jimeng_realman_avatar_object_detection': '即梦主体检测',
+  'jimeng_t2i_v30': '即梦图片 3.0（文生图）',
+  'jimeng_i2i_v30': '即梦图片 3.0（参考图）',
+  'jimeng_t2i_v40_pro': '即梦图片 4.0 Pro',
+  'jimeng_t2v_v30': '即梦视频 3.0（文生视频）',
+  'jimeng_i2v_first_v30': '即梦视频 3.0（图生视频）',
+  'doubao-seedream-5-0-260128': '豆包 Seedream 5.0 文生图',
+  'doubao-seedream-4-0-250828': '豆包 Seedream 4.0',
+  'doubao-seedance-2-0-260128': '豆包 Seedance 2.0 文生视频',
+  'doubao-seedance-1-0-pro-250528': '豆包 Seedance 1.0 Pro',
+  'doubao-seedance-1-0-lite-i2v-250428': '豆包 Seedance 1.0 Lite 图生视频',
+  'doubao-seedance-1-0-lite-t2v-250428': '豆包 Seedance 1.0 Lite 文生视频',
+  'doubao-1-5-vision-pro': '豆包视觉 1.5 Pro',
+  'wan2.2-animate-move': '通义万相动作迁移 2.2',
+  'wan2.1-i2v': '通义万相 2.1 图生视频',
+  'cosyvoice-v3.5-plus': '阿里 CosyVoice 3.5 Plus',
+  'cosyvoice-v3-flash': '阿里 CosyVoice 3 Flash',
+  'gpt-4o': 'GPT-4o',
+  'gpt-4o-mini': 'GPT-4o Mini',
+  'sora-2': 'Sora 2（OpenAI 旗舰）',
+  'kling-v1-5-pro': 'Kling 1.5 Pro 高质量视频',
+  'kling-v1-5': 'Kling 1.5',
+  'kling-v2': 'Kling 2.0',
+  'deepseek-chat': 'DeepSeek Chat V3',
+  'deepseek-reasoner': 'DeepSeek R1（推理模型）',
+  'glm-4-plus': '智谱 GLM-4 Plus',
+  'glm-4-flash': '智谱 GLM-4 Flash',
+  'cogview-3-flash': '智谱 CogView-3 Flash',
+  'cogvideox-flash': '智谱 CogVideoX Flash',
+  'nano-banana': 'Nano Banana 文生图',
+};
+const _PROVIDER_I18N = {
+  'volcengine': '火山引擎',
+  'jimeng': '即梦 AI',
+  'dashscope': '阿里百炼',
+  'aliyun-tts': '阿里 TTS',
+  'aliyun-nls': '阿里 NLS',
+  'deepseek': 'DeepSeek',
+  'openai': 'OpenAI',
+  'anthropic': 'Anthropic Claude',
+  'zhipu': '智谱 AI',
+  'kling': '可灵 AI',
+  'pika': 'Pika',
+  'minimax': 'MiniMax',
+  'elevenlabs': 'ElevenLabs',
+  'fishaudio': 'Fish Audio',
+  'huggingface': 'HuggingFace',
+  'replicate': 'Replicate',
+  'stability': 'Stability AI',
+  'runway': 'Runway',
+  'luma': 'Luma',
+  'vidu': 'Vidu',
+  'seedance': 'Seedance',
+  'veo': 'Google Veo',
+  'baidu': '百度',
+  'xunfei': '科大讯飞',
+  'qwen': '通义千问',
+  'fal': 'FAL',
+  'hifly': '飞影',
+  'hedra': 'Hedra',
+  'deyunai': '得云 AI',
+};
+function _i18nModelName(id) { return _MODEL_I18N[id] || ''; }
+function _i18nProviderName(id) { return _PROVIDER_I18N[id] || ''; }
+
+async function loadModelPipeline() {
+  try {
+    const r = await authFetch('/api/admin/pipeline-models');
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    _pmsCache = j;
+    renderModelPipeline();
+  } catch (e) { toast('加载失败：' + e.message); }
+}
+
+function renderModelPipeline() {
+  const body = document.getElementById('model-pipeline-body');
+  if (!body || !_pmsCache) return;
+  const { schema, config, available } = _pmsCache;
+
+  const groupHtml = Object.entries(schema).map(([groupName, stages]) => {
+    const stageNodes = stages.map((stage, sIdx) => {
+      const models = config[stage.id] || [];
+      const enabledModels = models.filter(m => m.enabled);
+      const firstModel = enabledModels[0];
+      const isConfigured = models.length > 0;
+      return `
+        <div class="pms-flow-stage ${isConfigured ? 'configured' : ''}" onclick="openStageEditModal('${stage.id}', '${stage.type}')">
+          <div class="pms-stage-num">#${sIdx + 1}</div>
+          <div class="pms-stage-title">${esc(stage.name)}</div>
+          <div class="pms-stage-type">${stage.type}</div>
+          <div class="pms-stage-models">
+            ${firstModel
+              ? (() => {
+                  const meta = (available[stage.type] || []).find(a => a.provider_id === firstModel.provider_id && a.model_id === firstModel.model_id);
+                  const dispName = meta?.model_name || _i18nModelName(firstModel.model_id) || firstModel.model_id;
+                  const provName = meta?.provider_name || _i18nProviderName(firstModel.provider_id) || firstModel.provider_id;
+                  const stale = !meta;
+                  const trim = (s) => s.length > 22 ? s.slice(0, 20) + '…' : s;
+                  return `<div class="first" ${stale ? 'style="opacity:.5"' : ''}>${esc(trim(dispName))}</div>
+                          <div style="font-size:10px;color:var(--text3);margin-top:2px">${esc(provName)}${stale ? ' · 已禁用' : ''}</div>
+                          ${enabledModels.length > 1 ? `<div style="font-size:10px;color:var(--text3);margin-top:2px">+${enabledModels.length - 1} 备选</div>` : ''}`;
+                })()
+              : `<div class="empty">未配置</div>`
+            }
+          </div>
+          <div class="pms-stage-foot">
+            <span>${models.length} 个模型 · ${enabledModels.length} 启用</span>
+            <span class="pms-stage-edit">编辑 →</span>
+          </div>
+        </div>
+      `;
+    });
+    // 在 stage 之间插入箭头
+    const flowItems = [];
+    stageNodes.forEach((node, i) => {
+      flowItems.push(node);
+      if (i < stageNodes.length - 1) flowItems.push(`<div class="pms-flow-arrow">→</div>`);
+    });
+    return `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--accent);display:flex;align-items:center;gap:8px">
+          <span>🔀 ${esc(groupName)}</span>
+          <span style="font-size:10px;color:var(--text3);font-weight:400">${stages.length} 个环节</span>
+        </div>
+        <div class="pms-flow">${flowItems.join('')}</div>
+      </div>
+    `;
+  }).join('');
+
+  const totalStages = Object.values(schema).reduce((s, a) => s + a.length, 0);
+  const configuredStages = Object.values(config).filter(v => v && v.length > 0).length;
+
+  // 固定工具链（不走 AI 模型路由，但用户也想知道用了什么）
+  const fixedToolChain = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:10px;color:#FFF600;display:flex;align-items:center;gap:8px">
+        <span>🛠️ 固定工具链路（不走 AI 模型路由 · 仅展示）</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;font-size:12px">
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--cyan)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">📺 视频链接抓取</div>
+          <div style="color:var(--text2);line-height:1.7">① iesdouyin SSR（抖音）<br>② yt-dlp 2026.03（B站/通用）<br>③ MCP media-crawler<br>④ axios + 移动端 UA 兜底</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--cyan)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">🔍 关键字搜索</div>
+          <div style="color:var(--text2);line-height:1.7">① B站 wbi/search/type API<br>② 抖音/小红书 puppeteer headless（要扫码 cookie）<br>③ MCP search_keyword 兜底</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--cyan)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">👤 博主主页爬取</div>
+          <div style="color:var(--text2);line-height:1.7">① yt-dlp + 扫码 cookie<br>② puppeteer + cookie + scroll 全量<br>③ MCP crawl_creator<br>④ axios 移动 UA</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--yellow,#FFF600)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">🔐 平台扫码登录</div>
+          <div style="color:var(--text2);line-height:1.7">puppeteer-core + chromium 126（CentOS 7 EPEL）<br>cookies 存 outputs/cookies/{platform}_cookies.json</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--yellow,#FFF600)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">📝 字幕烧录</div>
+          <div style="color:var(--text2);line-height:1.7">FFmpeg drawtext filter<br>字体：Linux NotoSansCJK / Windows msyh.ttc</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid var(--yellow,#FFF600)">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">🎬 视频抠像合成</div>
+          <div style="color:var(--text2);line-height:1.7">① 百度 body_seg API<br>② videoMattingPipeline（FFmpeg + 自研）</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid #ec4899">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">🎙️ TTS 语音合成</div>
+          <div style="color:var(--text2);line-height:1.7">2026-04-26 全平台统一阿里 TTS：<br>① 阿里 CosyVoice 2 真克隆 voice_id<br>② 阿里 NLS 预设音色<br>（已禁用：火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI）</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid #ec4899">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">🤖 数字人驱动（核心）</div>
+          <div style="color:var(--text2);line-height:1.7">火山即梦 Omni v1.5：<code style="background:var(--bg2);padding:1px 4px;border-radius:3px;font-size:11px">jimeng_realman_avatar_picture_omni_v15</code><br>主体检测：<code style="background:var(--bg2);padding:1px 4px;border-radius:3px;font-size:11px">jimeng_realman_avatar_object_detection</code><br>备用：阿里 Wan-Animate / 飞影 free</div>
+        </div>
+        <div style="background:var(--bg3);padding:10px 12px;border-radius:8px;border-left:3px solid #a78bfa">
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px">👁 视觉理解</div>
+          <div style="color:var(--text2);line-height:1.7">性别检测/封面分析：智谱 glm-4v → OpenAI gpt-4o-mini<br>视频内容分析：豆包 doubao-1-5-vision-pro</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text3);line-height:1.7">
+        💡 上述工具链路是代码硬编码的多级 fallback，<b>不能在此 tab 路由</b>。下面 ↓ 是<b>可路由的 AI 模型环节</b>，每个环节可设置多个备选 + 优先级。
+      </div>
+    </div>
+  `;
+
+  body.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:13px;color:var(--text2)">可路由模型环节：已配置 <b style="color:var(--accent);font-size:18px;font-family:monospace">${configuredStages}</b> / ${totalStages}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">点击任一环节卡片，弹窗里挑选模型并设置优先级</div>
+      </div>
+    </div>
+    ${fixedToolChain}
+    ${groupHtml}
+  `;
+}
+
+// 弹窗：编辑某 stage 的模型链
+function openStageEditModal(stageId, type) {
+  if (!_pmsCache) return;
+  const stage = Object.values(_pmsCache.schema).flat().find(s => s.id === stageId);
+  let cur = (_pmsCache.config[stageId] || []).slice();
+  // 没用户配置时用代码默认 fallback 链路预填（让用户看到"系统默认"的链）
+  let usingDefaults = false;
+  if (cur.length === 0) {
+    const defaults = (_pmsCache.defaults && _pmsCache.defaults[stageId]) || [];
+    if (defaults.length) {
+      cur = defaults.map(d => ({ ...d }));
+      usingDefaults = true;
+    }
+  }
+  const avail = _pmsCache.available[type] || [];
+
+  const renderBody = () => {
+    const inUseSet = new Set(cur.map(m => m.provider_id + '::' + m.model_id));
+    const candidates = avail.filter(a => !inUseSet.has(a.provider_id + '::' + a.model_id));
+
+    const defaultsBanner = usingDefaults
+      ? `<div style="background:rgba(255,246,0,0.08);border:1px solid rgba(255,246,0,0.3);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#FFF600;line-height:1.6">💡 当前显示的是<b>系统代码默认 fallback 链路</b>（仅作建议，未保存）。点保存后即生效；点删除可清空恢复"未配置"状态。</div>`
+      : '';
+
+    const inUseHtml = cur.length === 0
+      ? `<div style="text-align:center;color:var(--text3);font-size:12px;padding:24px;background:var(--bg3);border:1px dashed var(--border);border-radius:8px">还没添加模型 · 从下方候选添加</div>`
+      : `<div class="vido-model-list">${cur.map((m, idx) => {
+          const meta = avail.find(a => a.provider_id === m.provider_id && a.model_id === m.model_id);
+          // 优先用 settings 里的中文 model_name；如果该 provider 已被禁用 / 模型已删除 → meta 是 undefined
+          let isStale = !meta;
+          // 二阶放行：STAGE_DEFAULTS 里写的 model_id 可能是「模型版本」（如 cosyvoice-v3.5-plus），
+          // 而 settings.providers[].models[] 存的是「音色 ID」（如 longxiaochun）——名字体系不一致会被误标 stale。
+          // 只要同 provider_id 在 avail 里有任意一个模型（说明 provider 自身 enabled），就不再标 stale。
+          if (isStale) {
+            const sameProvHasModels = avail.some(a => a.provider_id === m.provider_id);
+            if (sameProvHasModels) isStale = false;
+          }
+          const displayName = meta?.model_name || _i18nModelName(m.model_id) || m.model_id;
+          const provName = meta?.provider_name || _i18nProviderName(m.provider_id) || m.provider_id;
+          return `
+            <div class="vido-model-item ${m.enabled?'selected':''}" ${isStale ? 'style="opacity:.5"' : ''}>
+              <span style="font-family:monospace;font-size:14px;color:var(--accent);min-width:28px;text-align:center">#${idx+1}</span>
+              <div class="vido-model-item-info">
+                <div class="vido-model-item-id" style="font-weight:600">${esc(displayName)}${isStale ? ' <span style="color:#ff5050;font-weight:400;font-size:10px">(已禁用/已删除)</span>' : ''}</div>
+                <div class="vido-model-item-meta" style="opacity:.7">${esc(provName)} · <code style="font-size:10px">${esc(m.model_id)}</code></div>
+              </div>
+              <label class="vido-toggle" title="启用/禁用">
+                <input type="checkbox" ${m.enabled?'checked':''} onchange="_stageEditToggle(${idx})" />
+                <span class="vido-toggle-slider"></span>
+              </label>
+              <button class="btn-sm" onclick="_stageEditMove(${idx},-1)" ${idx===0?'disabled':''} title="上移">▲</button>
+              <button class="btn-sm" onclick="_stageEditMove(${idx},1)" ${idx===cur.length-1?'disabled':''} title="下移">▼</button>
+              <button class="btn-sm danger" onclick="_stageEditRemove(${idx})">删除</button>
+            </div>
+          `;
+        }).join('')}</div>`;
+
+    const candHtml = candidates.length === 0
+      ? `<div style="text-align:center;color:var(--text3);font-size:11px;padding:14px">没有更多可选的「${type}」类型模型（请先在「AI 配置」里启用对应的供应商和模型）</div>`
+      : `<div class="vido-model-list">${candidates.map((c, i) => `
+          <div class="vido-model-item" onclick="_stageEditAdd(${i})">
+            <span style="font-size:18px;color:var(--accent)">+</span>
+            <div class="vido-model-item-info">
+              <div class="vido-model-item-id" style="font-weight:600">${esc(c.model_name || c.model_id)}</div>
+              <div class="vido-model-item-meta" style="opacity:.7">${esc(c.provider_name || c.provider_id)} · <code style="font-size:10px">${esc(c.model_id)}</code></div>
+            </div>
+          </div>
+        `).join('')}</div>`;
+
+    return `
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+        ${esc(stage.desc || '')} · stage_id: <code>${stageId}</code> · 业务方按 #1 → #2 顺序取第一个启用的
+      </div>
+      ${defaultsBanner}
+      <div style="font-size:12px;color:var(--text2);font-weight:600;margin-bottom:8px">已配置（按优先级）${usingDefaults ? '<span style="font-weight:400;color:var(--text3);font-size:11px;margin-left:6px">— 系统默认链路</span>' : ''}</div>
+      ${inUseHtml}
+      <div style="font-size:12px;color:var(--text2);font-weight:600;margin:18px 0 8px">候选模型（点击添加）</div>
+      ${candHtml}
+    `;
+  };
+
+  // 把临时编辑状态挂在 window
+  window._stageEditCur = cur;
+  window._stageEditId = stageId;
+  window._stageEditType = type;
+
+  const bodyEl = VidoModal.open({
+    title: `编辑环节：${stage.name}`,
+    body: renderBody(),
+    large: true,
+    confirmText: '保存',
+    onConfirm: async () => {
+      try {
+        await saveStage(stageId, window._stageEditCur);
+        return true;
+      } catch (e) { toast('保存失败：' + e.message); return false; }
+    }
+  });
+
+  // 子操作：刷新弹窗体
+  window._stageEditRefresh = () => { bodyEl.innerHTML = renderBody(); };
+}
+
+window._stageEditAdd = function(candIdx) {
+  const avail = _pmsCache.available[window._stageEditType] || [];
+  const cur = window._stageEditCur;
+  const inUseSet = new Set(cur.map(m => m.provider_id + '::' + m.model_id));
+  const candidates = avail.filter(a => !inUseSet.has(a.provider_id + '::' + a.model_id));
+  const m = candidates[candIdx];
+  if (!m) return;
+  cur.push({ provider_id: m.provider_id, model_id: m.model_id, priority: cur.length + 1, enabled: true });
+  window._stageEditRefresh();
+};
+window._stageEditToggle = function(idx) {
+  const cur = window._stageEditCur;
+  if (cur[idx]) cur[idx].enabled = !cur[idx].enabled;
+  window._stageEditRefresh();
+};
+window._stageEditMove = function(idx, dir) {
+  const cur = window._stageEditCur;
+  const t = idx + dir;
+  if (t < 0 || t >= cur.length) return;
+  [cur[idx], cur[t]] = [cur[t], cur[idx]];
+  cur.forEach((m, i) => m.priority = i + 1);
+  window._stageEditRefresh();
+};
+window._stageEditRemove = function(idx) {
+  const cur = window._stageEditCur;
+  cur.splice(idx, 1);
+  cur.forEach((m, i) => m.priority = i + 1);
+  window._stageEditRefresh();
+};
+
+function addModelToStage(stageId, type) { openStageEditModal(stageId, type); } // 兼容旧调用
+
+function toggleStageModel(stageId, idx, enabled) {
+  const cur = (_pmsCache.config[stageId] || []).slice();
+  if (cur[idx]) { cur[idx].enabled = enabled; saveStage(stageId, cur); }
+}
+
+function removeStageModel(stageId, idx) {
+  if (!confirm('删除此模型？')) return;
+  const cur = (_pmsCache.config[stageId] || []).slice();
+  cur.splice(idx, 1);
+  cur.forEach((m, i) => m.priority = i + 1);
+  saveStage(stageId, cur);
+}
+
+function moveStageModel(stageId, idx, dir) {
+  const cur = (_pmsCache.config[stageId] || []).slice();
+  const target = idx + dir;
+  if (target < 0 || target >= cur.length) return;
+  [cur[idx], cur[target]] = [cur[target], cur[idx]];
+  cur.forEach((m, i) => m.priority = i + 1);
+  saveStage(stageId, cur);
+}
+
+async function saveStage(stageId, models) {
+  try {
+    const r = await authFetch(`/api/admin/pipeline-models/${encodeURIComponent(stageId)}`, {
+      method: 'PUT', body: JSON.stringify({ models })
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    _pmsCache.config[stageId] = j.models;
+    renderModelPipeline();
+    toast('已保存');
+  } catch (e) { toast('保存失败：' + e.message); }
 }
 

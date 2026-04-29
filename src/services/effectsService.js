@@ -25,21 +25,54 @@ const ASSETS_DIR = path.join(OUTPUT_DIR, 'effects_assets');
 [EFFECTS_DIR, ASSETS_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
 
 // ═══ 字体查找 ═══
+// 项目自带 NotoSansSC 是首选 — 保证 Windows/Linux 烧字幕一致；不需依赖系统字体
 const FONT_CANDIDATES = [
+  // 项目自带（优先：保证跨平台一致）
+  path.resolve(__dirname, '../../public/fonts/NotoSansSC-Regular.otf'),
+  path.resolve(__dirname, '../../public/fonts/NotoSansSC-Regular.ttf'),
+  path.resolve(__dirname, '../../public/fonts/SourceHanSansCN-Regular.otf'),
+  // Windows
   'C:/Windows/Fonts/msyh.ttc',
   'C:/Windows/Fonts/msyhbd.ttc',
   'C:/Windows/Fonts/simhei.ttf',
   'C:/Windows/Fonts/simsun.ttc',
+  // Linux Noto
   '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+  '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc',
+  // Linux 文泉驿（常见发行版默认中文字体）
+  '/usr/share/fonts/wqy-microhei/wqy-microhei.ttc',
+  '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+  '/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc',
+  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+  // 思源黑体（CentOS/RHEL 等常装）
+  '/usr/share/fonts/opentype/source-han-sans/SourceHanSansCN-Regular.otf',
+  '/usr/share/fonts/adobe-source-han-sans/SourceHanSansCN-Regular.otf',
+  // macOS
+  '/System/Library/Fonts/PingFang.ttc',
+  '/System/Library/Fonts/STHeiti Medium.ttc',
 ];
-const FONT_FILE = FONT_CANDIDATES.find(f => fs.existsSync(f)) || '';
+const FONT_FILE = FONT_CANDIDATES.find(f => f && fs.existsSync(f)) || '';
 const FONT_BOLD_CANDIDATES = [
+  path.resolve(__dirname, '../../public/fonts/NotoSansSC-Bold.otf'),
+  path.resolve(__dirname, '../../public/fonts/NotoSansSC-Bold.ttf'),
   'C:/Windows/Fonts/msyhbd.ttc',
   'C:/Windows/Fonts/simhei.ttf',
+  '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc',
+  '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
   FONT_FILE
 ];
 const FONT_BOLD = FONT_BOLD_CANDIDATES.find(f => f && fs.existsSync(f)) || FONT_FILE;
+
+// 启动时显式日志 — 生产环境缺字体会直接导致 drawtext 渲染中文失败，字幕不上视频
+if (FONT_FILE) {
+  console.log(`[effectsService] 中文字体已就绪: ${FONT_FILE}`);
+} else {
+  console.error('[effectsService] ⚠️ 未找到中文字体！drawtext 渲染中文字幕会失败！');
+  console.error('[effectsService] Linux 安装：apt install fonts-noto-cjk  (Debian/Ubuntu) 或 yum install google-noto-sans-cjk-fonts (CentOS/RHEL)');
+  console.error('[effectsService] 或把字体文件放到 public/fonts/NotoSansSC-Regular.ttf');
+}
 
 function fontOpt(bold = false) {
   const f = bold ? FONT_BOLD : FONT_FILE;
@@ -387,8 +420,15 @@ async function applyEffects(config) {
       outputOpts.push('-c:a', 'aac', '-shortest');
     }
 
+    // 完整 stderr 捕获 — 字幕烧录失败时这是唯一调试线索
+    let stderrBuf = '';
     cmd.outputOptions(outputOpts)
       .output(outputPath)
+      .on('start', (cmdline) => {
+        // 详细日志（仅前 1500 字符，避免刷屏）
+        console.log('[Effects] FFmpeg cmd:', String(cmdline).slice(0, 1500));
+      })
+      .on('stderr', (line) => { stderrBuf += line + '\n'; })
       .on('progress', (p) => {
         const pct = p.percent ? Math.min(90, 30 + p.percent * 0.6) : 50;
         onProgress({ step: 'rendering', detail: `渲染中 ${Math.round(pct)}%`, progress: Math.round(pct) });
@@ -399,7 +439,11 @@ async function applyEffects(config) {
       })
       .on('error', (err) => {
         console.error('[Effects] FFmpeg 错误:', err.message);
-        reject(new Error('特效渲染失败: ' + err.message));
+        if (stderrBuf) console.error('[Effects] FFmpeg stderr (tail):', stderrBuf.slice(-1500));
+        if (!FONT_FILE) console.error('[Effects] ⚠️ 中文字体缺失！请把 NotoSansSC-Regular.otf 放到 public/fonts/ 或在 Linux 服务器上 apt install fonts-noto-cjk');
+        const e = new Error('特效渲染失败: ' + err.message);
+        e.stderr = stderrBuf;
+        reject(e);
       })
       .run();
   });

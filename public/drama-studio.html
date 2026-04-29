@@ -301,6 +301,25 @@ input, textarea { font-family: inherit; }
   border-radius: 3px;
 }
 .eps-chip.active .eps-dur { color: var(--c-cyan); background: rgba(33,212,253,.1); }
+/* 编辑按钮：只在 active chip 上显示 */
+.eps-edit-btn {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(33,212,253,.15);
+  border: 1px solid rgba(33,212,253,.35);
+  border-radius: 5px;
+  color: var(--c-cyan);
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 2px;
+  transition: all var(--ease);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.eps-edit-btn:hover {
+  background: rgba(33,212,253,.3);
+  transform: scale(1.1);
+}
 
 .eps-more {
   flex-shrink: 0;
@@ -655,6 +674,111 @@ input, textarea { font-family: inherit; }
 .center-icon-btn:hover { color: var(--c-cyan); border-color: rgba(33,212,253,.3); }
 .center-icon-btn svg { width: 14px; height: 14px; }
 
+/* ═══ 生成进度面板 ═══ */
+.gen-progress-panel {
+  background: linear-gradient(135deg, rgba(33,212,253,.06), rgba(124,108,240,.08));
+  border: 1px solid rgba(33,212,253,.25);
+  border-radius: 12px;
+  margin: 10px 14px 0;
+  padding: 18px 20px;
+  animation: gen-fade-in .3s ease;
+}
+@keyframes gen-fade-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+.gen-progress-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.gen-cancel-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ff6a6a;
+  background: rgba(255,106,106,.08);
+  border: 1px solid rgba(255,106,106,.35);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.gen-cancel-btn:hover { background: rgba(255,106,106,.18); border-color: #ff6a6a; color: #fff; }
+.gen-cancel-btn:disabled { opacity: .4; cursor: not-allowed; }
+.gen-progress-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(33,212,253,.15);
+  border-top-color: var(--c-cyan);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.gen-progress-info { flex: 1; min-width: 0; }
+.gen-progress-step {
+  font-size: 14px; font-weight: 700; color: #fff;
+  margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gen-progress-msg {
+  font-size: 11px; color: var(--c-text-2);
+  margin-bottom: 8px;
+  min-height: 14px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gen-progress-bar-wrap {
+  height: 4px;
+  background: rgba(255,255,255,.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.gen-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--c-cyan), #7c6cf0);
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+.gen-progress-pct {
+  font-size: 10px; color: var(--c-cyan); margin-top: 4px;
+  font-family: 'SF Mono', monospace;
+}
+.gen-progress-steps {
+  display: flex; flex-wrap: wrap; gap: 4px 6px;
+  margin-top: 12px;
+  font-size: 10px;
+}
+.gen-progress-steps .gp-step {
+  padding: 3px 8px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  color: var(--c-text-3);
+  transition: all .2s;
+}
+.gen-progress-steps .gp-step.done {
+  background: rgba(16,185,129,.1);
+  border-color: rgba(16,185,129,.35);
+  color: #34d399;
+}
+.gen-progress-steps .gp-step.active {
+  background: rgba(33,212,253,.1);
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+  font-weight: 600;
+}
+.gen-progress-steps .gp-step.waiting {
+  background: rgba(251,191,36,.1);
+  border-color: rgba(251,191,36,.4);
+  color: #fbbf24;
+}
+/* 完成态：隐藏 spinner，显示打勾 */
+.gen-progress-panel.completed .gen-progress-spinner {
+  border: none;
+  animation: none;
+  background: #10b981;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 18px;
+}
+.gen-progress-panel.completed .gen-progress-spinner::after { content: '✓'; }
+
 .center-body {
   flex: 1;
   overflow-y: auto;
@@ -783,6 +907,10 @@ input, textarea { font-family: inherit; }
   transition: border-color var(--ease);
 }
 .prompt-ta:focus { border-color: var(--c-purple); box-shadow: 0 0 0 3px var(--c-purple-soft); }
+.prompt-split { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.prompt-split-col { display: flex; flex-direction: column; gap: 6px; }
+.prompt-split-label { font-size: 11px; color: var(--c-text-2); font-weight: 600; }
+.prompt-ta-sub { min-height: 120px; font-size: 11px; }
 
 .gen-row {
   display: flex; align-items: center; gap: 12px;
@@ -1187,6 +1315,7 @@ input, textarea { font-family: inherit; }
 .scene-card.s2 { background: linear-gradient(135deg, #6d28d9 0%, #1a1c3d 100%); }
 .scene-card.s3 { background: linear-gradient(135deg, #be185d 0%, #1a1c3d 100%); }
 .scene-card.s4 { background: linear-gradient(135deg, #047857 0%, #0c0e22 100%); }
+.scene-thumb { position: absolute; inset: 0; background-color: #0c0e22; }
 .scene-name {
   position: absolute; left: 0; right: 0; bottom: 0;
   padding: 4px 8px;
@@ -1195,6 +1324,56 @@ input, textarea { font-family: inherit; }
   color: #fff;
   font-weight: 600;
 }
+
+/* 扩展：卡片 meta 小字行（面部锁/服饰锁/光影/色调/物品属性） */
+.meta-line {
+  font-size: 9px;
+  color: var(--c-text-3);
+  line-height: 1.3;
+  padding: 1px 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.char-card .meta-line {
+  text-align: left;
+  padding-left: 4px;
+  padding-right: 4px;
+  max-width: 100%;
+}
+.scene-card .meta-line {
+  position: absolute;
+  bottom: 16px;
+  left: 4px;
+  right: 4px;
+  color: #ddd;
+  background: rgba(0,0,0,.55);
+  padding: 1px 4px;
+  border-radius: 3px;
+  max-width: calc(100% - 8px);
+}
+.scene-card .meta-line + .meta-line { bottom: 30px; }
+.scene-card .meta-line + .meta-line + .meta-line { bottom: 44px; }
+
+/* 三视图 4 张 mini 缩略排成一行 */
+.tv-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-top: 4px;
+  padding: 0 4px 2px;
+}
+.tv-mini {
+  height: 28px;
+  border-radius: 3px;
+  background-color: #151722;
+  background-size: cover;
+  background-position: center top;
+  border: 1px solid rgba(255,255,255,.06);
+  cursor: pointer;
+  transition: transform var(--ease);
+}
+.tv-mini:hover { transform: scale(1.08); border-color: var(--c-cyan); }
 
 /* 物品 - 横向滑动 */
 .item-grid {
@@ -1384,8 +1563,8 @@ input, textarea { font-family: inherit; }
 .pipe-step {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
+  gap: 4px;
+  padding: 4px 8px;
   background: rgba(255,255,255,.03);
   border: 1px solid var(--c-border);
   border-radius: var(--r-pill);
@@ -1396,6 +1575,17 @@ input, textarea { font-family: inherit; }
   position: relative;
   flex-shrink: 0;
 }
+.pipe-step small { font-size: 8px; opacity: .55; }
+.pipe-step.active small, .pipe-step.done small { opacity: .8; }
+/* 确认步骤特殊样式 */
+.pipe-step.waiting {
+  background: rgba(251,191,36,.12);
+  border-color: rgba(251,191,36,.5);
+  color: #fbbf24;
+  animation: pipe-blink 1.5s ease-in-out infinite;
+}
+.pipe-step.waiting .pipe-num { background: #f59e0b; color: #000; }
+@keyframes pipe-blink { 50% { opacity: .7; } }
 .pipe-step .pipe-num {
   width: 16px; height: 16px;
   background: var(--c-bg-3);
@@ -1581,9 +1771,26 @@ input, textarea { font-family: inherit; }
         </div>
       </div>
 
+      <!-- ═══ 生成进度面板（生成时显示） ═══ -->
+      <div class="gen-progress-panel" id="gen-progress-panel" style="display:none;">
+        <div class="gen-progress-inner">
+          <div class="gen-progress-spinner"></div>
+          <div class="gen-progress-info">
+            <div class="gen-progress-step" id="gen-progress-step">准备中...</div>
+            <div class="gen-progress-msg" id="gen-progress-msg"></div>
+            <div class="gen-progress-bar-wrap">
+              <div class="gen-progress-bar" id="gen-progress-bar" style="width:0%"></div>
+            </div>
+            <div class="gen-progress-pct" id="gen-progress-pct">0%</div>
+          </div>
+          <button class="gen-cancel-btn" id="gen-cancel-btn" onclick="cancelGeneration()" title="立即停止本次生成">✕ 取消生成</button>
+        </div>
+        <div class="gen-progress-steps" id="gen-progress-steps"></div>
+      </div>
+
       <div class="center-body">
 
-        <!-- 本集剧本 -->
+        <!-- 本集剧本（小说原文 → 编剧改编的剧本） -->
         <div class="section-card">
           <div class="section-head">
             <span class="section-title">本集剧本 (可留空自动承接上集)</span>
@@ -1591,10 +1798,10 @@ input, textarea { font-family: inherit; }
               <input type="file" id="script-file-input" accept=".txt,.md,.docx" style="display:none;" onchange="onScriptFileChosen(this)" />
               <button class="mini-btn" onclick="document.getElementById('script-file-input').click()">📥 上传 .txt/.md</button>
               <button class="mini-btn" onclick="openNovelPicker()">📚 使用平台小说</button>
-              <button class="mini-btn primary" onclick="runWorkflow()" title="将本集剧本电影化创作 (5 阶段 11 agent + 6 步出图)">✨ AI 智能创作</button>
+              <button class="mini-btn primary" onclick="runWorkflow()" title="10步流水线: 剧本生成→分镜生成→提示词生成→对白生成→对白语音合成→人物/物品图像生成→人物/场景固定→确认→分镜→成片">✨ AI 智能创作</button>
             </div>
           </div>
-          <textarea class="prompt-ta" style="min-height:80px;" placeholder="本集故事内容...（留空则自动承接上集）"></textarea>
+          <textarea class="prompt-ta" id="ta-episode-script" style="min-height:80px;" placeholder="本集故事内容...（留空则自动承接上集）"></textarea>
         </div>
 
         <!-- 4 个画面 grid (drama-studio.js 会动态填充) -->
@@ -1617,7 +1824,7 @@ input, textarea { font-family: inherit; }
           </div>
         </div>
 
-        <!-- 提示词区 -->
+        <!-- 提示词（人物 / 物品 / 背景 分栏） -->
         <div class="section-card">
           <div class="section-head">
             <span class="section-title">提示词</span>
@@ -1627,7 +1834,21 @@ input, textarea { font-family: inherit; }
               <button class="mini-btn" onclick="showPromptTemplate()">⊕ 模板</button>
             </div>
           </div>
-          <textarea class="prompt-ta" placeholder="选中分镜后显示提示词，可手动编辑..."></textarea>
+          <div class="prompt-split">
+            <div class="prompt-split-col">
+              <div class="prompt-split-label">👤 人物</div>
+              <textarea class="prompt-ta prompt-ta-sub" id="ta-prompt-character" placeholder="选中分镜后显示人物外貌描述..."></textarea>
+            </div>
+            <div class="prompt-split-col">
+              <div class="prompt-split-label">🎁 物品</div>
+              <textarea class="prompt-ta prompt-ta-sub" id="ta-prompt-props" placeholder="场景中的道具、武器、服饰配件..."></textarea>
+            </div>
+            <div class="prompt-split-col">
+              <div class="prompt-split-label">🏞 背景</div>
+              <textarea class="prompt-ta prompt-ta-sub" id="ta-prompt-environment" placeholder="环境/场景/光影/氛围..."></textarea>
+            </div>
+          </div>
+          <textarea class="prompt-ta" id="ta-visual-prompt" style="display:none;"></textarea>
           <div class="gen-row">
             <span class="gen-input-mini">批量 <input id="gen-batch" value="1" /></span>
             <span class="gen-input-mini">视频口型</span>
@@ -1705,22 +1926,8 @@ input, textarea { font-family: inherit; }
 
   </div>
 
-  <!-- ═════════ ACTION BAR (流水线 + 3 大 CTA) ═════════ -->
+  <!-- ═════════ ACTION BAR (3 大 CTA) ═════════ -->
   <section class="actionbar">
-    <div class="pipeline" id="pipeline">
-      <div class="pipe-step"><span class="pipe-num">1</span>编剧 Agent</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step"><span class="pipe-num">2</span>导演 Agent</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step"><span class="pipe-num">3</span>人物一致性</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step"><span class="pipe-num">4</span>运镜标注</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step"><span class="pipe-num">5</span>提示词组装</div>
-      <span class="pipe-arrow">→</span>
-      <div class="pipe-step"><span class="pipe-num">6</span>分镜图生成</div>
-    </div>
-
     <div class="cta-group">
       <button class="cta-btn fast" onclick="fastImageCompose()" title="只生成首帧图，速度快">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
@@ -1771,6 +1978,24 @@ input, textarea { font-family: inherit; }
 <div class="video-lightbox" id="video-lightbox" onclick="closeVideoLightbox()">
   <div class="video-lightbox-inner" id="video-lightbox-inner">
     <button class="video-lightbox-close" onclick="closeVideoLightbox()">×</button>
+  </div>
+</div>
+
+<!-- ═════════ 角色三视图确认弹窗 ═════════ -->
+<div class="modal-overlay" id="char-confirm-modal" style="display:none" onclick="if(event.target.id==='char-confirm-modal'){}">
+  <div class="modal-card" style="width:840px;max-height:88vh;">
+    <div class="modal-head">
+      <span class="modal-title">🎭 角色三视图确认</span>
+      <span style="font-size:11px;color:var(--c-text-3);margin-left:8px">确认后继续生成分镜</span>
+    </div>
+    <div class="modal-body" id="char-confirm-body" style="max-height:68vh;overflow-y:auto;padding:16px;">
+      <div style="padding:30px;text-align:center;color:var(--c-text-3);">加载中...</div>
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--c-border);">
+      <button class="cta-btn fast" onclick="confirmCharacters()" style="padding:8px 24px;font-size:13px;">
+        ✅ 全部确认，继续生成分镜
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1842,25 +2067,14 @@ input, textarea { font-family: inherit; }
         </div>
         <div class="set-field">
           <label class="set-label">图片模型</label>
-          <select class="set-select">
-            <option>自动 (按画风优选)</option>
-            <option>Flux.1-schnell</option>
-            <option>SDXL</option>
-            <option>MidJourney v6</option>
-            <option>NanoBanana</option>
-            <option>智谱 CogView</option>
+          <select class="set-select" id="ds-img-model">
+            <option value="">自动 (按画风优选)</option>
           </select>
         </div>
         <div class="set-field">
           <label class="set-label">视频模型</label>
-          <select class="set-select">
-            <option>自动 (按场景优选)</option>
-            <option>Sora-2</option>
-            <option>Kling 2.1</option>
-            <option>Runway Gen-4</option>
-            <option>Luma Ray-3</option>
-            <option>MiniMax Hailuo</option>
-            <option>Veo 3</option>
+          <select class="set-select" id="ds-vid-model">
+            <option value="">自动 (按场景优选)</option>
           </select>
         </div>
         <div class="set-field full">
@@ -2168,8 +2382,41 @@ function goBack() {
 window.goBack = goBack;
 
 // ═══════ 设置弹窗 ═══════
+async function loadDsSettingsModels() {
+  try {
+    const res = await authFetch('/api/settings');
+    const data = await res.json();
+    if (!data.success) return;
+    const imgSel = document.getElementById('ds-img-model');
+    const vidSel = document.getElementById('ds-vid-model');
+    if (!imgSel || !vidSel) return;
+    let imgH = '<option value="">自动 (按画风优选)</option>';
+    let vidH = '<option value="">自动 (按场景优选)</option>';
+    for (const p of (data.data.providers || [])) {
+      if (!p.enabled || !(p.api_key || p.api_key_masked)) continue;
+      for (const m of (p.models || [])) {
+        if (m.enabled === false) continue;
+        const label = `${p.name} / ${m.name || m.id}`;
+        const value = `${p.id}::${m.id}`;
+        if (m.use === 'image') imgH += `<option value="${value}">${label}</option>`;
+        if (m.use === 'video') vidH += `<option value="${value}">${label}</option>`;
+      }
+    }
+    imgSel.innerHTML = imgH;
+    vidSel.innerHTML = vidH;
+    // 回填当前项目已选值
+    const proj = (typeof currentProject !== 'undefined') ? currentProject : null;
+    if (proj) {
+      if (proj.image_model) imgSel.value = proj.image_model;
+      if (proj.video_model) vidSel.value = proj.video_model;
+    }
+  } catch (e) { console.warn('[loadDsSettingsModels]', e); }
+}
+window.loadDsSettingsModels = loadDsSettingsModels;
+
 function openSettings() {
   document.getElementById('settings-modal').classList.add('show');
+  loadDsSettingsModels();
 }
 function closeSettings() {
   document.getElementById('settings-modal').classList.remove('show');

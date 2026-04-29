@@ -100,6 +100,21 @@ router.delete('/providers/:id', (req, res) => {
   res.json({ success: true });
 });
 
+// 启用/禁用供应商（一键切换；禁用后所有 service 跳过该 provider 的所有模型）
+router.put('/providers/:id/toggle', (req, res) => {
+  const settings = loadSettings();
+  const p = settings.providers.find(p => p.id === req.params.id);
+  if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
+  // 显式 body.enabled 优先；否则取反当前状态
+  if (typeof req.body?.enabled === 'boolean') {
+    p.enabled = req.body.enabled;
+  } else {
+    p.enabled = !p.enabled;
+  }
+  saveSettings(settings);
+  res.json({ success: true, data: { enabled: p.enabled } });
+});
+
 // ——— 模型 CRUD ———
 
 // 添加模型到供应商
@@ -135,6 +150,48 @@ router.put('/providers/:id/models/:modelId/toggle', (req, res) => {
   m.enabled = !m.enabled;
   saveSettings(settings);
   res.json({ success: true, data: { enabled: m.enabled } });
+});
+
+// ——— TTS 批量体检 ———
+// POST /api/settings/tts-health-check — 真合成一次短语，按结果更新 test_status
+router.post('/tts-health-check', async (req, res) => {
+  const { testProviderSynthesis } = require('../services/ttsService');
+  const fs = require('fs');
+  const path = require('path');
+  const settings = loadSettings();
+  const TTS_IDS = ['volcengine', 'zhipu', 'baidu', 'aliyun-tts', 'aliyun-nls', 'minimax', 'xunfei', 'elevenlabs', 'openai'];
+  const outDir = path.join(__dirname, '../../outputs/tts-health');
+  fs.mkdirSync(outDir, { recursive: true });
+  const results = [];
+  for (const pid of TTS_IDS) {
+    const p = (settings.providers || []).find(x => x.id === pid);
+    if (!p || !p.enabled || !p.api_key) { results.push({ id: pid, skipped: true, reason: '未配置或已停用' }); continue; }
+    const hasTTS = (p.models || []).some(m => m.enabled !== false && m.use === 'tts');
+    if (!hasTTS) { results.push({ id: pid, skipped: true, reason: '无 TTS 模型' }); continue; }
+    const outPath = path.join(outDir, `test_${pid}_${Date.now()}`);
+    const started = Date.now();
+    try {
+      const r = await Promise.race([
+        testProviderSynthesis(pid, outPath),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 15s')), 15000)),
+      ]);
+      const latency = Date.now() - started;
+      const ok = !!r && fs.existsSync(r) && fs.statSync(r).size > 200;
+      try { if (r && fs.existsSync(r)) fs.unlinkSync(r); } catch {}
+      if (ok) {
+        p.test_status = 'ok'; p.last_tested = new Date().toISOString(); p.test_error = null;
+        results.push({ id: pid, ok: true, latency });
+      } else {
+        p.test_status = 'error'; p.last_tested = new Date().toISOString(); p.test_error = '输出为空';
+        results.push({ id: pid, ok: false, latency, error: '输出为空' });
+      }
+    } catch (err) {
+      p.test_status = 'error'; p.last_tested = new Date().toISOString(); p.test_error = err.message;
+      results.push({ id: pid, ok: false, latency: Date.now() - started, error: err.message });
+    }
+  }
+  saveSettings(settings);
+  res.json({ success: true, results });
 });
 
 // ——— 测试连接 ———

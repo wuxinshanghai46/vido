@@ -19,6 +19,8 @@ const storyboard   = require('./seeds/storyboard');
 const atmosphere   = require('./seeds/atmosphere');
 const production   = require('./seeds/production');
 const engineering  = require('./seeds/engineering');
+const eraAnchors   = require('./seeds/era_anchors');
+const vidoPremium  = require('./seeds/vido_premium_prompts'); // 2026-04-25 飞书 wiki 同源 fallback 包
 
 const seedDocs = [
   ...digitalHuman,
@@ -27,6 +29,8 @@ const seedDocs = [
   ...atmosphere,
   ...production,
   ...engineering,
+  ...eraAnchors,
+  ...vidoPremium,
 ];
 
 module.exports = seedDocs;

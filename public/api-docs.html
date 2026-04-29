@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>VIDO OpenAPI 接口文档</title>
+<style>
+  :root {
+    --bg: #0d0f15; --bg2: #151822; --bg3: #1e2230; --bg4: #262b3b;
+    --border: rgba(255,255,255,.08); --border2: rgba(255,255,255,.14);
+    --text: #e6e8ef; --text2: #9da3b5; --text3: #6a7085;
+    --accent: #21d4fd; --accent2: #b388ff; --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.6; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre { font-family: "JetBrains Mono", Menlo, Consolas, monospace; }
+  pre { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; }
+  code.inline { background: var(--bg3); padding: 2px 6px; border-radius: 4px; font-size: 12.5px; color: #ffe0b3; }
+  .container { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  aside { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; background: var(--bg2); border-right: 1px solid var(--border); padding: 24px 14px; }
+  aside h1 { font-size: 17px; margin: 0 0 16px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  aside nav a { display: block; padding: 6px 12px; border-radius: 6px; color: var(--text2); font-size: 13px; margin-bottom: 2px; }
+  aside nav a:hover { background: var(--bg3); color: var(--text); text-decoration: none; }
+  aside nav .nav-group { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .8px; padding: 10px 12px 4px; font-weight: 600; }
+  main { padding: 40px 50px; max-width: 1100px; }
+  h2 { font-size: 24px; margin: 40px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); color: var(--text); }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 18px; margin: 28px 0 10px; color: var(--accent); }
+  h4 { font-size: 14px; margin: 16px 0 6px; color: var(--accent2); font-weight: 600; }
+  p { margin: 8px 0; color: var(--text2); }
+  .method { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-right: 8px; }
+  .method-GET { background: rgba(74,222,128,.15); color: var(--ok); }
+  .method-POST { background: rgba(33,212,253,.15); color: var(--accent); }
+  .method-PUT { background: rgba(251,191,36,.15); color: var(--warn); }
+  .method-DELETE { background: rgba(248,113,113,.15); color: var(--err); }
+  .endpoint {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; margin-bottom: 14px;
+  }
+  .endpoint-path { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--text); }
+  .endpoint-desc { color: var(--text2); font-size: 13px; margin-top: 6px; }
+  .endpoint-key { font-size: 11px; color: var(--text3); margin-top: 4px; }
+  .endpoint-key code { font-size: 11px; color: #ffb9b9; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--bg3); color: var(--text2); font-size: 10px; margin-left: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text2); font-weight: 600; font-size: 12px; background: var(--bg2); }
+  .note { background: rgba(33,212,253,.08); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 13px; color: var(--text2); }
+  .warn { background: rgba(251,191,36,.08); border-left: 3px solid var(--warn); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 13px; color: #f0dfb3; }
+  .lang-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .lang-tab { padding: 5px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px 6px 0 0; font-size: 11px; cursor: pointer; color: var(--text2); }
+  .lang-tab.active { background: var(--bg4); color: var(--accent); border-color: var(--accent); border-bottom-color: var(--bg4); }
+  .hero { padding: 30px; background: linear-gradient(135deg, rgba(33,212,253,.1), rgba(179,136,255,.08)); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 30px; }
+  .hero h1 { margin: 0 0 8px; font-size: 28px; background: linear-gradient(135deg, #21d4fd, #b388ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero p { color: var(--text2); margin: 4px 0; }
+  .meta-line { font-size: 12px; color: var(--text3); }
+  .meta-line code { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <aside>
+    <h1>🔑 VIDO OpenAPI</h1>
+    <nav>
+      <div class="nav-group">入门</div>
+      <a href="#overview">概览</a>
+      <a href="#auth">签名认证</a>
+      <a href="#signature">签名算法</a>
+      <a href="#examples">示例代码</a>
+      <a href="#errors">错误码</a>
+      <div class="nav-group">接口清单</div>
+      <div id="nav-catalog"></div>
+    </nav>
+  </aside>
+  <main>
+    <div class="hero">
+      <h1>VIDO 开放接口文档</h1>
+      <p>面向合作方 / 内部系统的对接文档。通过 <b>AppID + AppKey</b> 签名访问平台全部核心能力：网剧生成、图生视频、数字人、剧情创作、声音克隆。</p>
+      <p class="meta-line">Base URL：<code>/openapi</code> · 协议：HTTPS · 编码：UTF-8 · 签名：HMAC-SHA256</p>
+    </div>
+
+    <section id="overview">
+      <h2>概览</h2>
+      <p>所有对外开放接口的 URL 以 <code class="inline">/openapi</code> 为前缀，对应内部 <code class="inline">/api</code> 的能力。每次请求必须携带签名 header：<code class="inline">X-App-Id</code>、<code class="inline">X-Timestamp</code>、<code class="inline">X-Nonce</code>、<code class="inline">X-Signature</code>。</p>
+      <p>账号由平台管理员在管理后台「接口账号」中创建，创建时勾选可调用的接口范围。每个账号独立的 AppID/AppKey + 独立的接口权限 + 调用配额。</p>
+    </section>
+
+    <section id="auth">
+      <h2>签名认证</h2>
+      <h3>请求 Header</h3>
+      <table>
+        <thead><tr><th>Header</th><th>说明</th><th>示例</th></tr></thead>
+        <tbody>
+          <tr><td><code>X-App-Id</code></td><td>管理后台分配的 AppID</td><td><code>ak_0c8d…</code></td></tr>
+          <tr><td><code>X-Timestamp</code></td><td>UNIX 秒级时间戳（±300 秒内有效）</td><td><code>1776180000</code></td></tr>
+          <tr><td><code>X-Nonce</code></td><td>客户端生成的随机字符串（16-32 字节，五分钟内不重复）</td><td><code>a1b2c3d4e5…</code></td></tr>
+          <tr><td><code>X-Signature</code></td><td>HMAC-SHA256 签名结果（见下）</td><td><code>f27b3a…</code></td></tr>
+          <tr><td><code>Content-Type</code></td><td>JSON 请求需为 <code>application/json</code></td><td><code>application/json</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="signature">
+      <h2>签名算法</h2>
+      <p>拼接待签名字符串 <code class="inline">payload</code>：</p>
+<pre>payload = METHOD + "\n" + PATH + "\n" + TIMESTAMP + "\n" + NONCE + "\n" + BODY_HASH</pre>
+      <ul style="color:var(--text2);font-size:13px">
+        <li><code class="inline">METHOD</code> — 大写 HTTP 方法：GET / POST / PUT / DELETE</li>
+        <li><code class="inline">PATH</code> — 原始请求路径（含 <code>/openapi</code>，不含 query string），例 <code>/openapi/drama/projects</code></li>
+        <li><code class="inline">TIMESTAMP</code> — 与 header <code>X-Timestamp</code> 一致</li>
+        <li><code class="inline">NONCE</code> — 与 header <code>X-Nonce</code> 一致</li>
+        <li><code class="inline">BODY_HASH</code> — <code>SHA-256(raw_body).hex()</code>；GET / 无 body 请求传空字符串 <code>""</code></li>
+      </ul>
+      <p>签名：</p>
+<pre>signature = HMAC_SHA256( app_secret, payload ).hex()</pre>
+      <div class="warn">⚠️ AppKey 仅在创建/重置时显示一次，请立即妥善保存。AppKey 泄露会导致账号被盗用，可在管理后台「重置 AppKey」。</div>
+    </section>
+
+    <section id="examples">
+      <h2>示例代码</h2>
+
+      <h3>Node.js</h3>
+<pre>const crypto = require('crypto');
+const axios = require('axios');
+
+const APP_ID  = 'ak_xxx';
+const APP_KEY = 'xxxxxxxx';
+const BASE    = 'https://your-domain.com';
+
+async function callApi(method, path, body) {
+  const ts = Math.floor(Date.now() / 1000).toString();
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const rawBody = body ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0);
+  const bodyHash = rawBody.length ? crypto.createHash('sha256').update(rawBody).digest('hex') : '';
+  const payload = [method.toUpperCase(), path, ts, nonce, bodyHash].join('\n');
+  const signature = crypto.createHmac('sha256', APP_KEY).update(payload).digest('hex');
+
+  return axios({
+    method, url: BASE + path, data: body || undefined,
+    headers: {
+      'X-App-Id': APP_ID, 'X-Timestamp': ts, 'X-Nonce': nonce,
+      'X-Signature': signature, 'Content-Type': 'application/json',
+    }
+  }).then(r =&gt; r.data);
+}
+
+// 示例：创建网剧
+callApi('POST', '/openapi/drama/projects', {
+  title: '朔风惊魂', synopsis: '古代将军穿越现代...', episode_count: 10
+}).then(console.log);</pre>
+
+      <h3>Python</h3>
+<pre>import hmac, hashlib, time, secrets, json, requests
+
+APP_ID  = 'ak_xxx'
+APP_KEY = 'xxxxxxxx'
+BASE    = 'https://your-domain.com'
+
+def call_api(method, path, body=None):
+    ts = str(int(time.time()))
+    nonce = secrets.token_hex(16)
+    raw = json.dumps(body, separators=(',', ':'), ensure_ascii=False).encode('utf-8') if body else b''
+    body_hash = hashlib.sha256(raw).hexdigest() if raw else ''
+    payload = '\n'.join([method.upper(), path, ts, nonce, body_hash])
+    signature = hmac.new(APP_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    headers = {
+        'X-App-Id': APP_ID, 'X-Timestamp': ts, 'X-Nonce': nonce,
+        'X-Signature': signature, 'Content-Type': 'application/json'
+    }
+    return requests.request(method, BASE + path, data=raw if raw else None, headers=headers).json()
+
+print(call_api('POST', '/openapi/drama/projects', {
+    'title': '朔风惊魂', 'synopsis': '古代将军穿越现代...', 'episode_count': 10
+}))</pre>
+
+      <h3>cURL</h3>
+<pre># 准备变量
+APP_ID="ak_xxx"
+APP_KEY="xxxxxxxx"
+PATH_="/openapi/drama/suggest-scene-params"
+METHOD="POST"
+TS=$(date +%s)
+NONCE=$(openssl rand -hex 16)
+BODY='{"synopsis":"古代将军穿越现代","style":"水彩手绘"}'
+BODY_HASH=$(printf '%s' "$BODY" | openssl dgst -sha256 -hex | awk '{print $2}')
+PAYLOAD="${METHOD}
+${PATH_}
+${TS}
+${NONCE}
+${BODY_HASH}"
+SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$APP_KEY" -hex | awk '{print $2}')
+
+curl -X $METHOD "https://your-domain.com${PATH_}" \
+  -H "X-App-Id: $APP_ID" \
+  -H "X-Timestamp: $TS" \
+  -H "X-Nonce: $NONCE" \
+  -H "X-Signature: $SIG" \
+  -H "Content-Type: application/json" \
+  -d "$BODY"</pre>
+    </section>
+
+    <section id="errors">
+      <h2>错误码</h2>
+      <table>
+        <thead><tr><th>HTTP</th><th>含义</th><th>排查</th></tr></thead>
+        <tbody>
+          <tr><td>401</td><td>签名错误 / AppID 不存在 / 时间戳过期</td><td>检查 payload 拼接、时间戳同步、nonce 是否重复</td></tr>
+          <tr><td>403</td><td>账号已停用 / 接口无权限</td><td>管理后台确认账号状态和接口勾选</td></tr>
+          <tr><td>404</td><td>未知接口路径</td><td>参考下方接口清单</td></tr>
+          <tr><td>429</td><td>速率限制（上游）</td><td>退避重试</td></tr>
+          <tr><td>500</td><td>服务内部错误</td><td>查看响应 body 的 <code>error</code> 字段</td></tr>
+        </tbody>
+      </table>
+      <div class="note">统一返回格式：<code class="inline">{ success: boolean, data?: any, error?: string }</code></div>
+    </section>
+
+    <section id="catalog">
+      <h2>接口清单</h2>
+      <div id="catalog-body">加载中…</div>
+    </section>
+  </main>
+</div>
+
+<script>
+async function loadCatalog() {
+  try {
+    const r = await fetch('/api/public/openapi-catalog');
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    const body = document.getElementById('catalog-body');
+    const nav = document.getElementById('nav-catalog');
+    let html = '', navHtml = '';
+    for (const g of j.data) {
+      const anchor = 'grp-' + g.group;
+      navHtml += '<a href="#' + anchor + '">' + escape(g.groupLabel) + '</a>';
+      html += '<div id="' + anchor + '"><h3>' + escape(g.groupLabel) + '</h3>';
+      for (const it of g.items) {
+        html += '<div class="endpoint">'
+          + '<div><span class="method method-' + it.method + '">' + it.method + '</span>'
+          + '<span class="endpoint-path">/openapi' + escape(it.path) + '</span>'
+          + '<span class="tag">' + escape(it.key) + '</span></div>'
+          + '<div class="endpoint-desc">' + escape(it.label) + '</div>'
+          + '<div class="endpoint-key">内部映射: <code>' + escape(it.target) + '</code></div>'
+          + '</div>';
+      }
+      html += '</div>';
+    }
+    body.innerHTML = html;
+    nav.innerHTML = navHtml;
+  } catch (e) {
+    document.getElementById('catalog-body').innerHTML = '<div class="warn">加载失败: ' + escape(e.message) + '</div>';
+  }
+}
+function escape(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+loadCatalog();
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ let _videoModels = [];  // 从 settings 动态加载的视频模型列表
 // 页面加载时检查登录状态
 (function checkAuth() {
   if (!getToken || !getToken()) {
-    window.location.href = '/login.html';
+    window.location.href = '/?login=1';
   }
 })();
 
@@ -338,8 +338,11 @@ function nodeHTML(type, nodeId) {
             ✦ AI 生成背景图
           </button>
           <div class="wf-nd-sep"></div>
-          <div class="wf-nd-label">台词</div>
-          <textarea class="wf-nd-ta" rows="3" placeholder="输入数字人要说的台词..." onchange="syncNodeData(this)"></textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <div class="wf-nd-label" style="margin:0">台词</div>
+            <button class="wf-nd-btn-sm" style="font-size:10px;padding:3px 8px;background:var(--wf-bg);border:1px solid var(--wf-border);color:var(--wf-accent);border-radius:4px;cursor:pointer;" onclick="aiWriteAvatarScript(this)" title="按主题 AI 写 20 秒黄金结构口播稿">✨ AI 写</button>
+          </div>
+          <textarea class="wf-nd-ta" rows="3" placeholder="输入数字人要说的台词，或点「AI 写」按主题自动生成..." onchange="syncNodeData(this)"></textarea>
           <div class="wf-nd-sep"></div>
           <div class="wf-nd-label">音色</div>
           <select class="wf-nd-select" data-field="avatar-voice" onchange="syncNodeData(this)">
@@ -359,11 +362,15 @@ function nodeHTML(type, nodeId) {
           <div class="wf-nd-sep"></div>
           <div class="wf-nd-label">数字人模型</div>
           <select class="wf-nd-select" data-field="avatar-model" onchange="syncNodeData(this)">
-            <optgroup label="⭐ 推荐">
+            <optgroup label="⭐ 即梦 Omni（照片级·推荐）">
+              <option value="jimeng-omni-matte" selected>即梦 Omni + 百度抠像（换任意背景·4-6 分钟）</option>
+              <option value="jimeng-omni-raw">即梦 Omni 原片（即梦自选背景·4-5 分钟）</option>
+            </optgroup>
+            <optgroup label="其他模型（老 pipeline）">
               <option value="I2V-01-live">Hailuo I2V Live — 口播推荐</option>
               <option value="kling-v3">Kling 3.0 — 4K旗舰</option>
               <option value="MiniMax-Hailuo-2.3">Hailuo 2.3 — 最新旗舰</option>
-              <option value="cogvideox-flash" selected>CogVideoX Flash — 快速免费</option>
+              <option value="cogvideox-flash">CogVideoX Flash — 快速免费</option>
             </optgroup>
             <optgroup label="Kling AI">
               <option value="kling-v2.5-turbo-pro">Kling 2.5 Turbo Pro</option>
@@ -1560,6 +1567,14 @@ async function generateAvatar(btn) {
   const node = btn.closest('.drawflow-node');
   const ta = node.querySelector('textarea');
   const text = ta?.value?.trim();
+  const modelSelEarly = node.querySelector('[data-field="avatar-model"]');
+  const modelEarly = modelSelEarly?.value || 'cogvideox-flash';
+
+  // —— 新 pipeline 分支（即梦 Omni + 可选抠像+换背景）——
+  if (modelEarly === 'jimeng-omni-matte' || modelEarly === 'jimeng-omni-raw') {
+    return generateAvatarJimengOmni(btn, node, { doMatting: modelEarly === 'jimeng-omni-matte' });
+  }
+
   if (!text) { if(ta) ta.focus(); setNodeStatus(btn, 'error', '请输入台词'); return; }
 
   // 获取形象
@@ -1870,6 +1885,207 @@ async function initAvatarVoices(nodeId) {
       });
     }
   } catch(e) {}
+}
+
+// ═══ 即梦 Omni 新 pipeline（照片级抠像 + 换背景）═══
+
+// 把数字人节点选中的 bgType 转成公网 URL（供 /compose 调用）
+async function _avatarBgToUrl(node) {
+  const activeBgCard = node.querySelector('.wf-nd-bg-card.active');
+  if (!activeBgCard) return null;
+  const bgType = activeBgCard.dataset?.bg || 'office';
+  const customUrl = activeBgCard.dataset?.customUrl;
+  const origin = window.location.origin;
+
+  if (customUrl) {
+    // 已上传/AI 生成的 URL
+    return customUrl.startsWith('http') ? customUrl : (origin + customUrl);
+  }
+  if (bgType === 'green') {
+    // 客户端画一张 720x1280 绿幕，上传
+    const canvas = document.createElement('canvas');
+    canvas.width = 720; canvas.height = 1280;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#00b140';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    const fd = new FormData();
+    fd.append('bg', new File([blob], 'green.png', { type: 'image/png' }));
+    const r = await authFetch('/api/avatar/jimeng-omni/upload-matte', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.success) throw new Error('绿幕背景上传失败');
+    return d.bg_url;
+  }
+  // 预设 office/studio/classroom/outdoor → /api/avatar/preset-img/bg_*.png
+  const presetMap = { office: 'bg_office', studio: 'bg_studio', classroom: 'bg_classroom', outdoor: 'bg_outdoor' };
+  const presetName = presetMap[bgType];
+  if (presetName) return `${origin}/api/avatar/preset-img/${presetName}.png`;
+  return null;
+}
+
+async function generateAvatarJimengOmni(btn, node, { doMatting }) {
+  const ta = node.querySelector('textarea');
+  const text = ta?.value?.trim();
+  if (!text) { ta?.focus(); setNodeStatus(btn, 'error', '请输入台词或点 ✨AI 写'); return; }
+
+  // 形象
+  const activeAvatar = node.querySelector('.wf-nd-avatar-item.active');
+  if (!activeAvatar) { setNodeStatus(btn, 'error', '请选择形象'); return; }
+  const avatarImg = activeAvatar.querySelector('img');
+  let imageUrl = '';
+  if (avatarImg?.src) {
+    if (avatarImg.src.startsWith('blob:')) {
+      // 先上传
+      setNodeStatus(btn, 'running', '上传形象图...');
+      try {
+        const resp = await fetch(avatarImg.src);
+        const blob = await resp.blob();
+        const fd = new FormData();
+        fd.append('image', blob, 'avatar.png');
+        const up = await authFetch('/api/avatar/upload-image', { method: 'POST', body: fd });
+        const upd = await up.json();
+        imageUrl = upd.path || (upd.filename ? `/api/avatar/images/${upd.filename}` : '');
+        if (!imageUrl) throw new Error('形象图上传失败');
+      } catch(e) { setNodeStatus(btn, 'error', '形象图上传失败: ' + e.message); return; }
+    } else {
+      imageUrl = avatarImg.src;
+    }
+    // 确保传的是完整 URL
+    if (imageUrl.startsWith('/')) imageUrl = window.location.origin + imageUrl;
+  }
+
+  const voiceSel = node.querySelector('[data-field="avatar-voice"]');
+  const voiceId = voiceSel?.value || '';
+
+  btn.disabled = true;
+  setNodeStatus(btn, 'running', '提交生成任务...');
+  try {
+    const body = { image_url: imageUrl, text, voiceId };
+    const res = await authFetch('/api/avatar/jimeng-omni/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success || !data.taskId) throw new Error(data.error || '提交失败');
+    setNodeStatus(btn, 'running', doMatting ? 'Omni 生成中（约 5 分钟）...' : '生成中...');
+    pollJimengOmniStatus(btn, data.taskId, node, { doMatting });
+  } catch(e) {
+    setNodeStatus(btn, 'error', '失败: ' + (e.message || '').slice(0, 60));
+    btn.disabled = false;
+  }
+}
+
+async function pollJimengOmniStatus(btn, taskId, node, { doMatting }) {
+  try {
+    const res = await authFetch(`/api/avatar/jimeng-omni/tasks/${taskId}`);
+    const data = await res.json();
+    const t = data.task || {};
+    if (t.status === 'done' && t.video_url) {
+      if (doMatting) {
+        // 进入抠像 + 合成阶段
+        setNodeStatus(btn, 'running', 'Omni 完成，开始抠像+换背景...');
+        startAvatarCompose(btn, node, t.video_url);
+      } else {
+        setNodeStatus(btn, 'done', '已完成');
+        const preview = node.querySelector('.wf-nd-preview');
+        if (preview) {
+          preview.innerHTML = `<video src="${t.video_url}" controls preload="auto" playsinline></video>`;
+          if (typeof addExpandButton === 'function') addExpandButton(preview);
+        }
+        btn.disabled = false;
+      }
+      return;
+    }
+    if (t.status === 'error') {
+      setNodeStatus(btn, 'error', (t.error || '失败').slice(0, 60));
+      btn.disabled = false;
+      return;
+    }
+    const hint = t.cv_status ? `即梦 ${t.cv_status}` : (t.stage || '处理中');
+    setNodeStatus(btn, 'running', hint);
+    setTimeout(() => pollJimengOmniStatus(btn, taskId, node, { doMatting }), 3000);
+  } catch(e) {
+    setTimeout(() => pollJimengOmniStatus(btn, taskId, node, { doMatting }), 5000);
+  }
+}
+
+async function startAvatarCompose(btn, node, sourceVideoUrl) {
+  try {
+    const bgUrl = await _avatarBgToUrl(node);
+    if (!bgUrl) {
+      // 没选背景，直接当完成
+      setNodeStatus(btn, 'done', '已完成（未选背景）');
+      const preview = node.querySelector('.wf-nd-preview');
+      if (preview) preview.innerHTML = `<video src="${sourceVideoUrl}" controls playsinline></video>`;
+      btn.disabled = false;
+      return;
+    }
+    const body = { source: sourceVideoUrl, bg: bgUrl, width: 720, height: 1280, scaleMode: 'cover' };
+    const res = await authFetch('/api/avatar/jimeng-omni/compose', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success || !data.taskId) throw new Error(data.error || '提交抠像失败');
+    pollComposeStatus(btn, data.taskId, node);
+  } catch(e) {
+    setNodeStatus(btn, 'error', '抠像提交失败: ' + (e.message || '').slice(0, 50));
+    btn.disabled = false;
+  }
+}
+
+async function pollComposeStatus(btn, taskId, node) {
+  try {
+    const res = await authFetch(`/api/avatar/jimeng-omni/matte-tasks/${taskId}`);
+    const data = await res.json();
+    const t = data.task || {};
+    if (t.status === 'done' && t.output_url) {
+      setNodeStatus(btn, 'done', '成片已生成');
+      const preview = node.querySelector('.wf-nd-preview');
+      if (preview) {
+        preview.innerHTML = `<video src="${t.output_url}" controls preload="auto" playsinline></video>`;
+        if (typeof addExpandButton === 'function') addExpandButton(preview);
+      }
+      btn.disabled = false;
+      return;
+    }
+    if (t.status === 'error') {
+      setNodeStatus(btn, 'error', (t.error || '失败').slice(0, 60));
+      btn.disabled = false;
+      return;
+    }
+    const hint = t.matte_done ? `抠像 ${t.matte_done}/${t.matte_total}` : (t.stage || '处理中');
+    setNodeStatus(btn, 'running', hint);
+    setTimeout(() => pollComposeStatus(btn, taskId, node), 3000);
+  } catch(e) {
+    setTimeout(() => pollComposeStatus(btn, taskId, node), 5000);
+  }
+}
+
+// ✨ AI 按主题写 20 秒口播稿（黄金 4 段结构）
+async function aiWriteAvatarScript(btn) {
+  const node = btn.closest('.drawflow-node');
+  const ta = node.querySelector('textarea');
+  const topic = prompt('输入视频主题（AI 会按黄金 4 段结构写 ~20 秒口播稿）：', ta?.value || '');
+  if (!topic || !topic.trim()) return;
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = '生成中...';
+  try {
+    const res = await authFetch('/api/avatar/jimeng-omni/write-script', {
+      method: 'POST',
+      body: JSON.stringify({ topic: topic.trim(), duration_sec: 20 }),
+    });
+    const data = await res.json();
+    if (!data.success || !data.script) throw new Error(data.error || 'AI 未返回文案');
+    ta.value = data.script;
+    ta.dispatchEvent(new Event('change'));
+  } catch(e) {
+    alert('AI 生成失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
 }
 
 async function pollAvatarStatus(btn, taskId, node) {

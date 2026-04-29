@@ -163,9 +163,9 @@ document.addEventListener('click', e => {
 });
 
 async function initAuth() {
-  if (!getToken()) { window.location.href = '/login.html'; return false; }
+  if (!getToken()) { window.location.href = '/?login=1'; return false; }
   const user = await fetchCurrentUser();
-  if (!user) { clearToken(); window.location.href = '/login.html'; return false; }
+  if (!user) { clearToken(); window.location.href = '/?login=1'; return false; }
   const nameEl = document.getElementById('user-name');
   if (nameEl) nameEl.textContent = user.username;
   const avatarEl = document.getElementById('user-avatar');
@@ -553,10 +553,8 @@ async function platformLogin(platform) {
     const resp = await authFetch(`/api/browser/login/${platform}`, { method: 'POST' });
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
-    img.src = data.screenshot;
-    hint.textContent = `请用${names[platform] || ''}APP 扫描页面中的二维码`;
-    // 开始轮询
-    startQrPoll(platform);
+    hint.textContent = '正在打开浏览器（约 5-10 秒）...';
+    startQrPoll(platform);  // 立即开始 1s polling 拿截图
   } catch (err) {
     hint.textContent = '启动失败: ' + err.message;
   }
@@ -564,6 +562,7 @@ async function platformLogin(platform) {
 
 function startQrPoll(platform) {
   if (_qrPollTimer) clearInterval(_qrPollTimer);
+  // 1s 间隔（之前 3s）— 浏览器异步启动后第一次 polling 就能拿到二维码
   _qrPollTimer = setInterval(async () => {
     try {
       const resp = await authFetch(`/api/browser/login/${platform}/poll`);
@@ -576,11 +575,14 @@ function startQrPoll(platform) {
       } else if (data.status === 'expired' || data.status === 'error') {
         clearInterval(_qrPollTimer); _qrPollTimer = null;
         document.getElementById('qr-login-hint').textContent = data.message || '会话过期';
+      } else if (data.status === 'launching') {
+        document.getElementById('qr-login-hint').textContent = `${data.message || '启动中'} · 已等 ${data.elapsed || 0}s`;
       } else if (data.screenshot) {
         document.getElementById('qr-login-img').src = data.screenshot;
+        document.getElementById('qr-login-hint').textContent = `请用 APP 扫描二维码 · 已等 ${data.elapsed || '?'}s`;
       }
     } catch {}
-  }, 3000);
+  }, 1000);
 }
 
 function cancelPlatformLogin() {
@@ -6057,6 +6059,7 @@ async function deleteI2VTask(taskId) {
 // ═══ 工具 ═══
 const g = id => (document.getElementById(id)?.value || '').trim();
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const escapeHtml = esc;
 
 // ═══ 长篇动画模式 ═══
 function setEpisodeCount(n, btn) {
@@ -6332,9 +6335,15 @@ const avatarHistory = [];
 async function loadAvatarPage() {
   loadAvModels();
   loadAvatarPresets();
+  // 从模板初始化完整流程卡片
+  restoreAvatarPipeline();
   // 从数据库加载历史记录
   await loadAvatarHistoryFromDB();
   renderAvatarHistory();
+  // 加载用户自定义素材（人物/背景）
+  await loadCustomItems();
+  // 后台补生缺失的预设头像（3 并发，不阻塞页面）
+  setTimeout(() => autoBackfillMissingPresets().catch(() => {}), 3000);
 }
 
 async function loadAvatarHistoryFromDB() {
@@ -6367,45 +6376,151 @@ async function loadAvModels() {
   try {
     const resp = await authFetch('/api/settings');
     const data = await resp.json();
-    const providers = data.providers || [];
+    // 注意：后端 /api/settings 会把 api_key 抹掉为 undefined（仅返回 api_key_masked），
+    // 这里只能按 enabled 过滤；后端在保存时已确保 enabled = !!api_key
+    const providers = (data.data?.providers || data.providers || [])
+      .filter(p => p.enabled && (p.api_key || p.api_key_masked))
+      .filter(p => p.test_status !== 'error'); // 屏蔽测试失败的供应商
     const sel = document.getElementById('av-model-selector');
-    // 从 settings 追加 use=avatar 的模型到下拉框
-    const existingValues = new Set([...sel.options].map(o => o.value));
-    let extra = '';
-    providers.forEach(p => {
-      (p.models || []).forEach(m => {
-        if (m.use === 'avatar' && !existingValues.has(m.id)) {
-          extra += `<option value="${m.id}">${esc(m.name || m.id)} — ${esc(p.name || p.id)}</option>`;
-        }
-      });
-    });
-    if (extra) {
-      const group = document.createElement('optgroup');
-      group.label = '更多模型';
-      group.innerHTML = extra;
-      sel.appendChild(group);
+    if (!sel) return;
+
+    // 视频模型数据库（id → 描述）
+    const modelInfo = {
+      'cogvideox-flash': { name: 'CogVideoX Flash', desc: '快速免费', rec: true },
+      'cogvideox-3': { name: 'CogVideoX 3', desc: '高质量' },
+      'I2V-01-live': { name: 'Hailuo I2V Live', desc: '口播推荐', rec: true },
+      'I2V-01': { name: 'Hailuo I2V-01', desc: '标准图生视频' },
+      'MiniMax-Hailuo-2.3': { name: 'Hailuo 2.3', desc: '最新旗舰', rec: true },
+      'MiniMax-Hailuo-2.3-Fast': { name: 'Hailuo 2.3 Fast', desc: '快速低价' },
+      'kling-v3': { name: 'Kling 3.0', desc: '4K旗舰', rec: true },
+      'kling-v2.5-turbo-pro': { name: 'Kling 2.5 Turbo', desc: '快速' },
+      'kling-v2-master': { name: 'Kling V2 Master', desc: '旗舰' },
+      'kling-v1-6': { name: 'Kling v1.6', desc: '经典' },
+    };
+
+    // 按供应商收集可用的视频模型
+    const providerMap = {
+      zhipu: '智谱AI', minimax: 'MiniMax', kling: 'Kling AI', fal: 'FAL',
+      runway: 'Runway', luma: 'Luma', vidu: 'Vidu', jimeng: '即梦',
+    };
+    // 数字人必须是 i2v（image-to-video）模型；过滤掉 t2v 文生视频
+    // 黑名单：模型名/id 中含以下关键词 = 文生视频，数字人用不上
+    const T2V_KEYWORDS = ['t2v', 'text2video', '文生视频', 'text-to-video', 'text_to_video', '运镜视频'];
+    function isT2VOnly(m, info) {
+      const haystack = [(m.id||''), (m.name||''), (info.name||'')].join(' ').toLowerCase();
+      // 含 i2v 或"图生"或"图生视频"或"首帧"= 一定是 i2v，保留
+      if (/i2v|image2video|图生|首帧|image-to-video|first[-_ ]?frame/i.test(haystack)) return false;
+      // 命中 t2v 关键词 = 不要
+      return T2V_KEYWORDS.some(kw => haystack.includes(kw.toLowerCase()));
     }
-  } catch {}
+
+    const available = []; // { id, name, provider, rec }
+    const filtered = []; // 已过滤的 t2v 模型，仅日志
+    for (const p of providers) {
+      const videoModels = (p.models || []).filter(m => m.use === 'video' && m.enabled !== false);
+      for (const m of videoModels) {
+        const info = modelInfo[m.id] || {};
+        if (isT2VOnly(m, info)) {
+          filtered.push(`${p.id}/${m.id}`);
+          continue;
+        }
+        available.push({
+          id: m.id,
+          name: info.name || m.name || m.id,
+          desc: info.desc || '',
+          provider: p.name || providerMap[p.id] || p.id,
+          rec: info.rec || false,
+        });
+      }
+    }
+    if (filtered.length) console.log('[Avatar] 过滤掉的 t2v 模型（数字人不支持）:', filtered.join(', '));
+
+    // 智谱免费模型始终可用（即使没在 settings 里配置视频模型）
+    if (!available.find(a => a.id === 'cogvideox-flash')) {
+      const zhipu = providers.find(p => p.id === 'zhipu');
+      if (zhipu) available.unshift({ id: 'cogvideox-flash', name: 'CogVideoX Flash', desc: '快速免费', provider: '智谱AI', rec: true });
+    }
+
+    if (available.length === 0) {
+      sel.innerHTML = '<option value="cogvideox-flash">CogVideoX Flash — 智谱AI · 快速免费</option>';
+      return;
+    }
+
+    // 推荐在前
+    const recommended = available.filter(a => a.rec);
+    const others = available.filter(a => !a.rec);
+
+    // ⭐ 即梦 Omni 选项（照片级抠像版）— 当 jimeng provider 有 key 时注入
+    const hasJimeng = providers.some(p => (p.id === 'jimeng' || p.preset === 'jimeng'));
+    const hasBaidu = providers.some(p => (p.id === 'baidu-aip' || p.preset === 'baidu-aip'));
+
+    let html = '';
+    if (hasJimeng) {
+      html += '<optgroup label="⭐ 即梦 Omni（照片级·口型最准）">';
+      if (hasBaidu) {
+        html += '<option value="jimeng-omni-matte" selected>即梦 Omni + 百度抠像（换任意背景·5-7 分钟）</option>';
+      }
+      html += '<option value="jimeng-omni-raw">即梦 Omni 原片（即梦自选背景·4-5 分钟）</option>';
+      html += '</optgroup>';
+    }
+
+    if (recommended.length) {
+      html += '<optgroup label="其他推荐">';
+      recommended.forEach(a => { html += `<option value="${a.id}">${esc(a.name)} — ${esc(a.provider)}${a.desc ? ' · '+a.desc : ''}</option>`; });
+      html += '</optgroup>';
+    }
+    // 其余按供应商分组
+    const groups = {};
+    others.forEach(a => { if (!groups[a.provider]) groups[a.provider] = []; groups[a.provider].push(a); });
+    for (const [prov, models] of Object.entries(groups)) {
+      html += `<optgroup label="${esc(prov)}">`;
+      models.forEach(a => { html += `<option value="${a.id}">${esc(a.name)}${a.desc ? ' — '+a.desc : ''}</option>`; });
+      html += '</optgroup>';
+    }
+    sel.innerHTML = html;
+    // 立刻触发一次 hint 同步，让默认选中项的 hint 正确显示
+    if (typeof selectAvModel === 'function') selectAvModel(sel);
+  } catch (e) { console.warn('[Avatar] loadAvModels:', e.message); }
 }
+
+let _lastAvModelHint = '智谱 CogVideoX · 预计 1~3 分钟';
 
 function selectAvModel(sel) {
   const model = sel.value || '';
-  const hint = document.getElementById('av-gen-hint');
-  if (hint) {
-    const isMM = model.startsWith('I2V-') || model.startsWith('MiniMax-');
-    const isKling = model.startsWith('kling-');
-    hint.textContent = isKling
-      ? `Kling AI ${model === 'kling-v3' ? '4K旗舰' : '图生视频'} · 预计 1~3 分钟`
-      : isMM
-      ? `MiniMax Hailuo ${model.includes('Fast') ? '快速模式' : '图生视频'} · 预计 1~3 分钟`
-      : `智谱 CogVideoX 图生视频 · 预计 1~3 分钟`;
+  let hintText;
+  if (model === 'jimeng-omni-matte') {
+    hintText = '即梦 Omni + 百度抠像 · 5-7 分钟（含换背景）';
+  } else if (model === 'jimeng-omni-raw') {
+    hintText = '即梦 Omni 原片 · 4-5 分钟';
+  } else if (model.startsWith('kling-')) {
+    hintText = `Kling AI ${model === 'kling-v3' ? '4K旗舰' : '图生视频'} · 预计 1~3 分钟`;
+  } else if (model.startsWith('I2V-') || model.startsWith('MiniMax-')) {
+    hintText = `MiniMax Hailuo ${model.includes('Fast') ? '快速模式' : '图生视频'} · 预计 1~3 分钟`;
+  } else {
+    hintText = '智谱 CogVideoX 图生视频 · 预计 1~3 分钟';
   }
+  _lastAvModelHint = hintText;
+  const hint = document.getElementById('av-gen-hint');
+  if (hint) hint.textContent = hintText;
+  // 即梦 Omni 场景限制提示：只在选了 Omni 任一变体时显示
+  const omniNote = document.getElementById('av-omni-prompt-note');
+  if (omniNote) omniNote.style.display = (model === 'jimeng-omni-matte' || model === 'jimeng-omni-raw') ? 'block' : 'none';
 }
 
 function selectAvatar(el) {
   document.querySelectorAll('.av-avatar-card').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
   avatarSelected = el.dataset.avatar;
+
+  // 仅当"预设卡片且从未生成过图片"才自动生成（双重兜底：generated 标记 + has-img class + 已有 img 子元素）
+  const imgEl = el.querySelector('.av-preset-avatar');
+  if (!imgEl || !el.dataset.avatar) return;
+  const alreadyHasImage = imgEl.dataset.generated === 'true'
+    || imgEl.classList.contains('has-img')
+    || imgEl.querySelector('img');
+  if (!alreadyHasImage) {
+    generateSinglePreset('avatar', el.dataset.avatar, imgEl);
+  }
 }
 
 function switchAvatarDrive(mode, btn) {
@@ -6472,15 +6587,93 @@ function removeAvatarAudio() {
   document.getElementById('av-audio-input').value = '';
 }
 
+let _bgRewriteTimer = null;
+const _BG_NAME_MAP = {
+  office: '办公室', studio: '演播室', classroom: '教室',
+  outdoor: '户外', green: '绿幕/纯色', custom: '自定义背景',
+};
+
 function selectAvatarBg(el) {
   document.querySelectorAll('.av-bg-card').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
+  const prevBg = avatarBg;
   avatarBg = el.dataset.bg;
+
+  // 非"即梦 Omni + 百度抠像"模型时，背景不会真正合成 — 弹窗让用户选：切模型 or 继续
+  const modelSel = document.getElementById('av-model-selector');
+  const curModel = modelSel?.value || '';
+  if (curModel && curModel !== 'jimeng-omni-matte' && el.dataset.bg !== 'office') {
+    // 默认办公室不弹（避免打扰），其它 bg 切换时才弹
+    setTimeout(() => {
+      const hasMatte = modelSel && [...modelSel.options].some(o => o.value === 'jimeng-omni-matte');
+      if (!hasMatte) return; // 没有抠像选项就算了
+      const ok = confirm('你选了"' + (_BG_NAME_MAP[avatarBg] || avatarBg) + '"背景。\n\n当前模型不会真正合成背景，会是原图的背景。\n\n是否切换到「即梦 Omni + 百度抠像」让背景真实替换？');
+      if (ok) {
+        modelSel.value = 'jimeng-omni-matte';
+        modelSel.dispatchEvent(new Event('change'));
+        if (typeof selectAvModel === 'function') selectAvModel(modelSel);
+        if (typeof showToast === 'function') showToast('已切换到「即梦 Omni + 百度抠像」', 'success');
+      }
+    }, 50);
+  }
+
+  // 台词已存在且背景真的变了 → debounce 1.5s 按新背景自动改写
+  const ta = document.getElementById('av-text-input');
+  const currentText = ta?.value?.trim() || '';
+  if (currentText.length >= 20 && prevBg && prevBg !== avatarBg) {
+    if (_bgRewriteTimer) clearTimeout(_bgRewriteTimer);
+    _bgRewriteTimer = setTimeout(() => {
+      _rewriteAvatarTextForBg(currentText, avatarBg);
+    }, 1500);
+  }
+
+  // bg 改变时同步刷新"最终 prompt"（除非用户手动编辑过）
+  if (prevBg && prevBg !== avatarBg && typeof refreshPromptPreview === 'function') {
+    refreshPromptPreview(true);
+  }
+
+  // 仅当预设背景且从未生成过才自动生成
+  const preview = el.querySelector('.av-preset-bg');
+  if (!preview || !el.dataset.bg || el.dataset.bg === 'green' || el.dataset.bg === 'custom') return;
+  const alreadyHasImage = preview.dataset.generated === 'true' || preview.classList.contains('has-img') || preview.querySelector('img');
+  if (!alreadyHasImage) {
+    generateSinglePreset('background', el.dataset.bg, preview);
+  }
 }
 
-function handleAvatarBgUpload(input) {
+async function _rewriteAvatarTextForBg(oldText, newBg) {
+  const bgName = _BG_NAME_MAP[newBg] || newBg;
+  if (typeof showToast === 'function') showToast(`正在按「${bgName}」重写文案...`, 'info');
+  try {
+    const r = await authFetch('/api/avatar/generate-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar_name: '数字人', bg_name: bgName, draft: oldText, template: (typeof avatarTemplate !== 'undefined' ? avatarTemplate : '') }),
+    });
+    const j = await r.json();
+    if (j.success && j.text) {
+      const ta = document.getElementById('av-text-input');
+      if (ta) {
+        ta.value = j.text.trim();
+        ta.dispatchEvent(new Event('input'));
+        ta.dispatchEvent(new Event('change'));
+      }
+      // 文案变了 → 最终 prompt 也跟着更新
+      if (typeof refreshPromptPreview === 'function') refreshPromptPreview(true);
+      if (typeof showToast === 'function') showToast(`文案已按「${bgName}」调整`, 'success');
+    } else {
+      if (typeof showToast === 'function') showToast('自动改写失败，保留原文案', 'warning');
+    }
+  } catch (e) {
+    console.warn('[bg-rewrite]', e.message);
+  }
+}
+
+async function handleAvatarBgUpload(input) {
   if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
   const card = input.closest('.av-bg-card');
+  // 本地预览
   const reader = new FileReader();
   reader.onload = function(e) {
     const preview = card.querySelector('.av-bg-preview');
@@ -6490,13 +6683,283 @@ function handleAvatarBgUpload(input) {
       preview.classList.remove('av-bg-upload-ph');
     }
   };
-  reader.readAsDataURL(input.files[0]);
+  reader.readAsDataURL(file);
   selectAvatarBg(card);
+
+  // 上传到服务端，拿到可供 /compose 使用的公网 URL
+  try {
+    const fd = new FormData();
+    fd.append('bg', file);
+    const r = await authFetch('/api/avatar/jimeng-omni/upload-matte', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d?.bg_url) {
+      avatarBgImageUrl = d.bg_url;
+      if (typeof showToast === 'function') showToast('背景图已上传，生成时会自动抠像合成', 'success');
+    } else {
+      console.warn('[bg-upload] 没有 bg_url 返回', d);
+    }
+  } catch (e) {
+    console.warn('[bg-upload] 上传失败', e);
+    if (typeof showToast === 'function') showToast('背景图上传失败，将只在提示词里提到背景', 'warning');
+  }
 }
 
 function selectAvatarVoice(el) {
   document.querySelectorAll('.av-voice-chip').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
+  _avSelected = {
+    id: el.dataset.voice || '',
+    name: el.dataset.name || el.textContent.trim(),
+    gender: el.dataset.gender || 'auto'
+  };
+}
+
+// ═══ 音色列表加载 + 试听 ═══
+let avVoiceListLoaded = false;
+const AV_DEFAULT_VOICES = [
+  { id: '', name: '自动', gender: 'auto', provider: '系统' },
+  { id: 'BV700_streaming', name: '灿灿（甜美）', gender: 'female', provider: '火山引擎' },
+  { id: 'BV009_streaming', name: '知性女声', gender: 'female', provider: '火山引擎' },
+  { id: 'BV006_streaming', name: '磁性男声', gender: 'male', provider: '火山引擎' },
+  { id: 'BV004_streaming', name: '开朗青年', gender: 'male', provider: '火山引擎' },
+  { id: 'BV061_streaming', name: '天才童声', gender: 'male', provider: '火山引擎' },
+];
+
+// ═══════════ 新版音色选择器（2026-04-13） ═══════════
+// 设计：只加载"当前可调用"的音色（后端已过滤未配 key 的供应商）
+//       顶部 quick chips 显示 6 个常用；"更多音色"打开抽屉，含搜索/性别筛选/分组
+
+let _avAllVoices = null;
+let _avSelected = { id: '', name: '自动', gender: 'auto' };
+
+function renderAvatarVoiceChips(voices) {
+  const container = document.getElementById('av-voice-chips');
+  if (!container) return;
+
+  // 顶部只展示 6 个 quick chips（自动 + 5 个常用）
+  const quick = [
+    voices.find(v => v.id === '') || { id: '', name: '自动', gender: 'auto' },
+    ...voices.filter(v => v.id !== '').slice(0, 5)
+  ];
+
+  container.innerHTML = quick.map(v => {
+    const isActive = v.id === _avSelected.id ? 'active' : '';
+    const gIcon = v.gender === 'male' ? '♂' : v.gender === 'female' ? '♀' : v.gender === 'child' ? '👶' : '';
+    return `<span class="av-voice-chip ${isActive}" data-voice="${esc(v.id)}" data-gender="${esc(v.gender||'')}" data-name="${esc(v.name)}" onclick="selectAvatarVoice(this)">
+      ${gIcon ? `<span class="av-vc-gender">${gIcon}</span>` : ''}${esc(v.name)}
+      ${v.id ? `<button class="av-voice-preview-btn" onclick="event.stopPropagation();previewAvatarVoice('${esc(v.id)}','${esc(v.gender || 'female')}',this)" title="试听">▶</button>` : ''}
+    </span>`;
+  }).join('');
+}
+
+// 页面加载时：先渲染内置兜底，再异步加载真实可用列表
+const AV_FALLBACK_QUICK = [
+  { id: '', name: '自动', gender: 'auto' },
+];
+document.addEventListener('DOMContentLoaded', () => {
+  renderAvatarVoiceChips(AV_FALLBACK_QUICK);
+  preloadAvatarVoices();
+});
+if (document.readyState !== 'loading') { setTimeout(() => { renderAvatarVoiceChips(AV_FALLBACK_QUICK); preloadAvatarVoices(); }, 100); }
+
+async function preloadAvatarVoices() {
+  try {
+    const r = await authFetch('/api/avatar/voice-list');
+    const j = await r.json();
+    if (j.success && j.voices?.length) {
+      _avAllVoices = j.voices;
+      renderAvatarVoiceChips(j.voices);
+    }
+  } catch {}
+}
+
+// 打开音色抽屉
+async function loadMoreVoices() {
+  if (!_avAllVoices) {
+    try {
+      const r = await authFetch('/api/avatar/voice-list');
+      const j = await r.json();
+      if (j.success) _avAllVoices = j.voices || [];
+    } catch (e) { showToast('加载音色失败: ' + e.message, 'error'); return; }
+  }
+  if (!_avAllVoices || _avAllVoices.length <= 1) {
+    showToast('未检测到可用音色。请到 AI 配置中启用 TTS 供应商（讯飞 / 火山 / 阿里 / MiniMax 等）', 'warning');
+    return;
+  }
+  openVoicePicker();
+}
+
+function openVoicePicker() {
+  // 复用或创建抽屉
+  let modal = document.getElementById('av-voice-picker');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'av-voice-picker';
+    modal.className = 'av-voice-modal';
+    modal.innerHTML = `
+      <div class="av-voice-modal-backdrop" onclick="closeVoicePicker()"></div>
+      <div class="av-voice-modal-panel">
+        <div class="av-voice-modal-hd">
+          <span>选择音色</span>
+          <button class="av-voice-modal-close" onclick="closeVoicePicker()">×</button>
+        </div>
+        <div class="av-voice-modal-tools">
+          <input type="text" id="vpk-search" placeholder="搜索音色名称 / 标签..." oninput="filterVoicePicker()" />
+          <div class="vpk-filter-row">
+            <button class="vpk-f active" data-f="all" onclick="setVoicePickerFilter(this)">全部</button>
+            <button class="vpk-f" data-f="female" onclick="setVoicePickerFilter(this)">♀ 女声</button>
+            <button class="vpk-f" data-f="male" onclick="setVoicePickerFilter(this)">♂ 男声</button>
+            <button class="vpk-f" data-f="child" onclick="setVoicePickerFilter(this)">👶 童声</button>
+          </div>
+        </div>
+        <div class="av-voice-modal-body" id="vpk-body"></div>
+        <div class="av-voice-modal-ft">
+          <span style="font-size:11px;color:var(--text3)">共 <b id="vpk-count">0</b> 个可用音色</span>
+          <button class="av-voice-modal-done" onclick="closeVoicePicker()">完成</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+  renderVoicePicker();
+  modal.classList.add('open');
+}
+
+function closeVoicePicker() {
+  document.getElementById('av-voice-picker')?.classList.remove('open');
+}
+
+let _vpkFilter = 'all';
+function setVoicePickerFilter(btn) {
+  document.querySelectorAll('#av-voice-picker .vpk-f').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _vpkFilter = btn.dataset.f;
+  renderVoicePicker();
+}
+
+function filterVoicePicker() { renderVoicePicker(); }
+
+function renderVoicePicker() {
+  const body = document.getElementById('vpk-body');
+  if (!body || !_avAllVoices) return;
+  const q = (document.getElementById('vpk-search')?.value || '').trim().toLowerCase();
+
+  let list = _avAllVoices.filter(v => v.id !== ''); // 排除"自动"
+  if (_vpkFilter !== 'all') list = list.filter(v => v.gender === _vpkFilter);
+  if (q) list = list.filter(v => (v.name || '').toLowerCase().includes(q) || (v.tag || '').toLowerCase().includes(q) || (v.id || '').toLowerCase().includes(q));
+
+  document.getElementById('vpk-count').textContent = list.length;
+
+  // 我的克隆音色单独一组置顶
+  const cloned = list.filter(v => v.isCloned);
+  const rest = list.filter(v => !v.isCloned);
+
+  // 其余按供应商分组
+  const groups = {};
+  rest.forEach(v => {
+    const p = v.provider || '其他';
+    (groups[p] = groups[p] || []).push(v);
+  });
+
+  const provIcons = { '科大讯飞':'🎙️','火山引擎':'🌋','阿里云':'☁️','百度':'🔍','MiniMax':'🎭','ElevenLabs':'🔊','智谱':'🔮','Fish Audio':'🐟','OpenAI':'⚡','火山复刻':'🎤' };
+  const renderVoiceCard = (v, isCloned) => {
+    const gIcon = v.gender === 'male' ? '♂' : v.gender === 'female' ? '♀' : v.gender === 'child' ? '👶' : '';
+    const isActive = v.id === _avSelected.id ? 'active' : '';
+    return `<div class="vpk-card ${isActive} ${isCloned ? 'vpk-card-cloned' : ''}" onclick="pickVoiceFromModal('${esc(v.id)}','${esc(v.name)}','${esc(v.gender||'')}')">
+      <div class="vpk-card-top">
+        <span class="vpk-card-gender">${gIcon}</span>
+        <span class="vpk-card-name">${esc(v.name)}</span>
+        <button class="vpk-preview" onclick="event.stopPropagation();previewAvatarVoice('${esc(v.id)}','${esc(v.gender || 'female')}',this)">▶</button>
+      </div>
+      ${isCloned ? '<div class="vpk-card-badge">我的克隆</div>' : ''}
+      ${v.tag ? `<div class="vpk-card-tag">${esc(v.tag)}</div>` : ''}
+    </div>`;
+  };
+
+  let html = '';
+  if (cloned.length) {
+    html += `<div class="vpk-group vpk-group-mine">
+      <div class="vpk-group-hd">🎤 我的音色（克隆） <span class="vpk-group-cnt">${cloned.length}</span>
+        <a class="vpk-goto-clone" href="#" onclick="event.preventDefault();switchPage('workbench')">+ 克隆新音色</a>
+      </div>
+      <div class="vpk-grid">${cloned.map(v => renderVoiceCard(v, true)).join('')}</div>
+    </div>`;
+  } else {
+    html += `<div class="vpk-empty-clone">
+      <div>🎤 还没有克隆音色</div>
+      <a href="#" onclick="event.preventDefault();closeVoicePicker();switchPage('workbench')">前往「声音克隆」工作台 →</a>
+    </div>`;
+  }
+
+  for (const [prov, items] of Object.entries(groups)) {
+    const icon = Object.entries(provIcons).find(([k]) => prov.includes(k))?.[1] || '🎤';
+    html += `<div class="vpk-group">
+      <div class="vpk-group-hd">${icon} ${esc(prov)} <span class="vpk-group-cnt">${items.length}</span></div>
+      <div class="vpk-grid">`;
+    items.forEach(v => { html += renderVoiceCard(v, false); });
+    html += '</div></div>';
+  }
+  body.innerHTML = html || '<div style="padding:40px;text-align:center;color:var(--text3)">未找到匹配的音色</div>';
+}
+
+function pickVoiceFromModal(id, name, gender) {
+  _avSelected = { id, name, gender };
+  // 更新顶部 chips 高亮
+  renderAvatarVoiceChips(_avAllVoices || AV_FALLBACK_QUICK);
+  // 如果 quick chips 里没有此音色，加到最前
+  const topIds = new Set([...document.querySelectorAll('#av-voice-chips .av-voice-chip')].map(c => c.dataset.voice));
+  if (!topIds.has(id) && id !== '') {
+    const voices = _avAllVoices || [];
+    const picked = voices.find(v => v.id === id);
+    if (picked) {
+      // 把 picked 置顶
+      const reordered = [voices.find(v => v.id === '') || { id:'', name:'自动' }, picked, ...voices.filter(v => v.id !== '' && v.id !== id)];
+      renderAvatarVoiceChips(reordered);
+    }
+  }
+  closeVoicePicker();
+  showToast(`已选择音色：${name}`, 'success');
+}
+
+let avPreviewAudioPlaying = false;
+async function previewAvatarVoice(voiceId, gender, btnEl) {
+  if (avPreviewAudioPlaying) {
+    const audio = document.getElementById('av-voice-preview-audio');
+    if (audio) { audio.pause(); audio.currentTime = 0; }
+    document.querySelectorAll('.av-voice-preview-btn.playing').forEach(b => { b.textContent = '▶'; b.classList.remove('playing'); });
+    avPreviewAudioPlaying = false;
+    return;
+  }
+  btnEl.textContent = '...';
+  btnEl.classList.add('playing');
+  try {
+    const r = await authFetch('/api/avatar/preview-voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voiceId, gender, text: '大家好，欢迎来到我的频道。' }),
+    });
+    if (!r.ok) {
+      let errMsg = '试听失败';
+      try { const j = await r.json(); errMsg = j.error || errMsg; } catch {}
+      throw new Error(errMsg);
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = document.getElementById('av-voice-preview-audio');
+    audio.src = url;
+    audio.play();
+    avPreviewAudioPlaying = true;
+    btnEl.textContent = '⏹';
+    audio.onended = () => {
+      avPreviewAudioPlaying = false;
+      btnEl.textContent = '▶';
+      btnEl.classList.remove('playing');
+      URL.revokeObjectURL(url);
+    };
+  } catch (e) {
+    showToast('试听失败: ' + e.message, 'error');
+    btnEl.textContent = '▶';
+    btnEl.classList.remove('playing');
+  }
 }
 
 // 自定义声音上传
@@ -6601,7 +7064,7 @@ function renderProgressUI(currentStep, statusMsg, segmentInfo) {
   const isMulti = avatarSegments && avatarSegments.length > 1;
   const subText = isMulti
     ? `多段模式 · ${avatarSegments.length} 个片段`
-    : '智谱 CogVideoX · 预计 1~3 分钟';
+    : (_lastAvModelHint || '智谱 CogVideoX · 预计 1~3 分钟');
 
   return `<div class="av-progress-wrap">
     <div class="av-spinner"></div>
@@ -6610,6 +7073,252 @@ function renderProgressUI(currentStep, statusMsg, segmentInfo) {
     ${segProgressHTML}
     <div class="av-progress-steps">${stepsHTML}</div>
   </div>`;
+}
+
+// ═══ 背景音乐 ═══
+let avatarBgmFile = null;
+let avatarBgmUrl = null;
+
+async function handleAvatarBgm(input) {
+  if (!input.files?.[0]) return;
+  const file = input.files[0];
+  avatarBgmFile = file;
+
+  // 上传到服务器
+  const fd = new FormData();
+  fd.append('audio', file);
+  try {
+    const r = await authFetch('/api/avatar/upload-audio', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (j.filename || j.path) {
+      avatarBgmUrl = j.path || `/api/avatar/audios/${j.filename}`;
+      document.getElementById('av-bgm-area').style.display = 'none';
+      document.getElementById('av-bgm-loaded').style.display = '';
+      document.getElementById('av-bgm-name').textContent = file.name;
+    }
+  } catch (e) { showToast('BGM 上传失败: ' + e.message, 'error'); }
+  input.value = '';
+}
+
+function removeAvatarBgm() {
+  avatarBgmFile = null;
+  avatarBgmUrl = null;
+  document.getElementById('av-bgm-area').style.display = '';
+  document.getElementById('av-bgm-loaded').style.display = 'none';
+}
+
+// ═══ 花字特效 ═══
+let avTextEffects = [];
+
+// 自定义花字输入 modal
+function openTextEffectModal({ title, defaultText, style, position }) {
+  return new Promise(resolve => {
+    let modal = document.getElementById('te-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'te-modal';
+    modal.className = 'te-modal';
+    const styleOptions = [
+      { v: 'title',    name: '标题花字',   icon: '📝', desc: '大号·描边·阴影' },
+      { v: 'price',    name: '价格标签',   icon: '💰', desc: '红色·醒目' },
+      { v: 'promo',    name: '促销文字',   icon: '🔥', desc: '橙色·带框' },
+      { v: 'subtitle', name: '字幕',       icon: '💬', desc: '底部·半透明框' },
+      { v: 'emphasis', name: '强调',       icon: '⚡', desc: '闪光·描边' },
+    ];
+    const posOptions = [
+      { v: 'top',    name: '顶部', icon: '⬆️' },
+      { v: 'center', name: '中央', icon: '⏺️' },
+      { v: 'bottom', name: '底部', icon: '⬇️' },
+    ];
+    modal.innerHTML = `
+      <div class="te-backdrop"></div>
+      <div class="te-panel">
+        <div class="te-hd">
+          <span class="te-title">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="color:var(--accent)"><path d="M2 3h10M4 3v8M7 3v8M10 3v8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            ${title || '添加花字特效'}
+          </span>
+          <button class="te-close" onclick="closeTextEffectModal(null)">×</button>
+        </div>
+        <div class="te-body">
+          <label class="te-label">文字内容</label>
+          <input type="text" class="te-input" id="te-text" value="${escapeHtml(defaultText || '')}" placeholder="输入要显示的文字..." />
+
+          <label class="te-label">样式</label>
+          <div class="te-grid">
+            ${styleOptions.map(o => `
+              <div class="te-card ${o.v === (style||'title') ? 'active' : ''}" data-style="${o.v}">
+                <div class="te-card-icon">${o.icon}</div>
+                <div class="te-card-name">${o.name}</div>
+                <div class="te-card-desc">${o.desc}</div>
+              </div>
+            `).join('')}
+          </div>
+
+          <label class="te-label">位置</label>
+          <div class="te-pos-row">
+            ${posOptions.map(o => `
+              <div class="te-pos ${o.v === (position||'top') ? 'active' : ''}" data-pos="${o.v}">
+                ${o.icon} ${o.name}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="te-ft">
+          <button class="te-btn-cancel" onclick="closeTextEffectModal(null)">取消</button>
+          <button class="te-btn-ok" onclick="submitTextEffect()">添加</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    // 样式卡片点击
+    modal.querySelectorAll('.te-card').forEach(c => {
+      c.addEventListener('click', () => {
+        modal.querySelectorAll('.te-card').forEach(x => x.classList.remove('active'));
+        c.classList.add('active');
+      });
+    });
+    // 位置切换
+    modal.querySelectorAll('.te-pos').forEach(p => {
+      p.addEventListener('click', () => {
+        modal.querySelectorAll('.te-pos').forEach(x => x.classList.remove('active'));
+        p.classList.add('active');
+      });
+    });
+    modal.querySelector('.te-backdrop').addEventListener('click', () => closeTextEffectModal(null));
+    document.addEventListener('keydown', teEscHandler);
+
+    requestAnimationFrame(() => { modal.classList.add('open'); document.getElementById('te-text')?.focus(); });
+
+    window._teResolve = resolve;
+  });
+}
+function teEscHandler(e) {
+  if (e.key === 'Escape') closeTextEffectModal(null);
+  if (e.key === 'Enter' && e.target.id === 'te-text') submitTextEffect();
+}
+function submitTextEffect() {
+  const modal = document.getElementById('te-modal');
+  if (!modal) return;
+  const text = (document.getElementById('te-text')?.value || '').trim();
+  const style = modal.querySelector('.te-card.active')?.dataset?.style || 'title';
+  const position = modal.querySelector('.te-pos.active')?.dataset?.pos || 'top';
+  closeTextEffectModal(text ? { text, style, position } : null);
+}
+function closeTextEffectModal(result) {
+  const modal = document.getElementById('te-modal');
+  if (modal) { modal.classList.remove('open'); setTimeout(() => modal.remove(), 200); }
+  document.removeEventListener('keydown', teEscHandler);
+  if (window._teResolve) { window._teResolve(result); window._teResolve = null; }
+}
+
+async function addAvatarTextEffect() {
+  const r = await openTextEffectModal({ title: '添加花字特效', defaultText: '', style: 'title', position: 'top' });
+  if (!r) return;
+  avTextEffects.push({ text: r.text, style: r.style, position: r.position === 'top' ? 'top-center' : (r.position === 'bottom' ? 'bottom-center' : 'center') });
+  renderTextEffects();
+}
+async function addTextEffectPreset(type) {
+  const presets = {
+    title:    { text: '标题文字',  style: 'title',    position: 'top' },
+    price:    { text: '¥99.9',     style: 'price',    position: 'center' },
+    promo:    { text: '限时 5 折', style: 'promo',    position: 'top' },
+    subtitle: { text: '字幕内容',  style: 'subtitle', position: 'bottom' },
+    emphasis: { text: '重点强调',  style: 'emphasis', position: 'center' },
+  };
+  const p = presets[type] || presets.title;
+  const r = await openTextEffectModal({ title: `添加 ${p.text}`, defaultText: p.text, style: p.style, position: p.position });
+  if (!r) return;
+  avTextEffects.push({ text: r.text, style: r.style, position: r.position === 'top' ? 'top-center' : (r.position === 'bottom' ? 'bottom-center' : 'center') });
+  renderTextEffects();
+}
+function renderTextEffects() {
+  const el = document.getElementById('av-text-effects');
+  if (!el) return;
+  if (!avTextEffects.length) { el.innerHTML = '<div class="av-fx-hint">点击添加花字、价格标签、促销文字</div>'; return; }
+  el.innerHTML = avTextEffects.map((e, i) => `
+    <div class="av-fx-item"><span style="font-weight:700">${e.style}</span> ${escapeHtml(e.text)} <span class="av-fx-item-del" onclick="avTextEffects.splice(${i},1);renderTextEffects()">×</span></div>
+  `).join('');
+}
+
+// ═══ 产品贴图 ═══
+let avProductStickers = [];
+function handleProductUpload(input) {
+  if (!input.files?.length) return;
+  for (const file of input.files) {
+    const url = URL.createObjectURL(file);
+    avProductStickers.push({ name: file.name, url, file });
+  }
+  renderProductStickers();
+  input.value = '';
+}
+function renderProductStickers() {
+  const el = document.getElementById('av-product-stickers');
+  if (!el) return;
+  if (!avProductStickers.length) { el.innerHTML = '<div class="av-fx-hint">上传产品图片叠加到视频上</div>'; return; }
+  el.innerHTML = avProductStickers.map((s, i) => `
+    <div class="av-fx-item"><img src="${s.url}" style="width:24px;height:24px;border-radius:4px;object-fit:cover"> ${escapeHtml(s.name.slice(0,15))} <span class="av-fx-item-del" onclick="avProductStickers.splice(${i},1);renderProductStickers()">×</span></div>
+  `).join('');
+}
+
+// ═══ 招引动画 ═══
+let avGuideAnims = [];
+// 每种类型的默认位置（更合理的 UI 位置）
+const GUIDE_DEFAULT_POS = {
+  arrow:   'bottom-center',  // 箭头指向下方 CTA
+  finger:  'bottom-center',  // 手指指下方
+  fire:    'top-center',     // 火焰贴在顶部标题旁
+  sparkle: 'top-center',     // 闪光点缀标题
+  circle:  'center',         // 圈注主体
+};
+const GUIDE_LABELS = { arrow: '⬇ 箭头', finger: '👆 手指', fire: '🔥 火焰', sparkle: '✨ 闪光', circle: '⭕ 圈注' };
+const POS_LABELS = {
+  'top-left': '左上', 'top-center': '顶部', 'top-right': '右上',
+  'center': '中央', 'bottom-left': '左下', 'bottom-center': '底部', 'bottom-right': '右下',
+};
+
+function addGuideAnimation() {
+  addGuidePreset('arrow');
+}
+function addGuidePreset(type) {
+  avGuideAnims.push({
+    type,
+    label: GUIDE_LABELS[type] || type,
+    position: GUIDE_DEFAULT_POS[type] || 'bottom-center',
+  });
+  renderGuideAnims();
+}
+function renderGuideAnims() {
+  const el = document.getElementById('av-guide-anims');
+  if (!el) return;
+  if (!avGuideAnims.length) { el.innerHTML = '<div class="av-fx-hint">添加箭头、手指、火焰等招引动画</div>'; return; }
+  el.innerHTML = avGuideAnims.map((a, i) => {
+    // 兜底：老数据可能没 position，补默认
+    if (!a.position) a.position = GUIDE_DEFAULT_POS[a.type] || 'bottom-center';
+    const posZh = POS_LABELS[a.position] || a.position;
+    return `<div class="av-fx-item">${a.label} <span style="font-size:9px;color:var(--text3)">位置: ${posZh}</span> <span class="av-fx-item-del" onclick="avGuideAnims.splice(${i},1);renderGuideAnims()">×</span></div>`;
+  }).join('');
+}
+
+// ═══ 快捷模板 ═══
+function applyAvatarTemplate(type) {
+  const templates = {
+    sell: { text: '家人们看过来！这款产品真的太好用了，原价199现在只要99！赶紧下单，库存不多了！点击下方链接购买。', effects: [{ text: '¥99', style: 'price' }, { text: '原价¥199', style: 'promo' }], guide: [{ type: 'finger', label: '👆 手指', position: 'bottom-center' }] },
+    promo: { text: '限时活动来了！全场5折起，满200减50！活动仅限今天，错过就没了！', effects: [{ text: '限时5折', style: 'promo' }, { text: '满200减50', style: 'emphasis' }], guide: [{ type: 'fire', label: '🔥 火焰', position: 'top-center' }] },
+    tutorial: { text: '大家好，今天教大家一个非常实用的技巧。首先打开设置，然后找到这个选项，按照我的步骤操作就可以了。', effects: [{ text: '实用教程', style: 'title' }], guide: [{ type: 'arrow', label: '⬇ 箭头', position: 'bottom-center' }] },
+  };
+  const tpl = templates[type];
+  if (!tpl) return;
+  // 填充文字
+  const ta = document.querySelector('#av-drive-text textarea');
+  if (ta) ta.value = tpl.text;
+  // 填充花字
+  avTextEffects = tpl.effects || [];
+  renderTextEffects();
+  // 填充招引动画
+  avGuideAnims = tpl.guide || [];
+  renderGuideAnims();
+  showToast(`已应用${type === 'sell' ? '带货' : type === 'promo' ? '促销' : '教程'}模板`, 'ok');
 }
 
 async function startAvatarGeneration() {
@@ -6639,6 +7348,29 @@ async function startAvatarGeneration() {
   // 从下拉选择器取模型 ID
   const model = document.getElementById('av-model-selector')?.value || 'cogvideox-flash';
 
+  // —— 新 pipeline 分支：即梦 Omni（+ 可选百度抠像换背景）——
+  if (model === 'jimeng-omni-matte' || model === 'jimeng-omni-raw') {
+    // 用户上传了自定义背景（图或视频）→ 不管选的哪个 Omni 变体，都强制走抠像合成，
+    // 否则背景上传了却不体现在成片里（之前的 bug）
+    const userHasCustomBg = (avatarBg === 'custom') && (avatarBgImageUrl || avatarBgVideoUrl);
+    // 同理：用户选了非 office 预设背景（studio/classroom/outdoor）也应该 compose 进去
+    const nonDefaultPresetBg = ['studio', 'classroom', 'outdoor'].includes(avatarBg);
+    const doMatting = model === 'jimeng-omni-matte' || userHasCustomBg || nonDefaultPresetBg;
+    return startAvatarJimengOmni({
+      text, avatar, voiceId, btn, resetBtn,
+      doMatting,
+    });
+  }
+
+  // 非 Omni 路径：如果用户上传了自定义背景却选了 Hedra/Kling/CogVideoX 等普通模型，
+  // 这些模型只能把背景写进 prompt，不会真的抠像合成。给个一次性提示，避免用户不知道。
+  if (avatarBg === 'custom' && (avatarBgImageUrl || avatarBgVideoUrl)) {
+    if (!window._warnedNonOmniBg) {
+      window._warnedNonOmniBg = true;
+      alert('检测到你上传了自定义背景，但当前选的是非即梦-Omni 模型 —— 这类模型只会把背景描述进提示词，不会做真实抠像合成。\n\n要把背景真正替换到成片里，请在"数字人模型"里改选 ⭐ 即梦 Omni（照片级·口型最准）');
+    }
+  }
+
   const previewBox = document.getElementById('av-preview-box');
   previewBox.innerHTML = renderProgressUI('start', '正在提交生成任务...');
 
@@ -6663,6 +7395,24 @@ async function startAvatarGeneration() {
   }
 
   try {
+    // 预上传产品贴图文件（blob URL 不能发给后端）
+    const uploadedStickers = [];
+    for (const s of (avProductStickers || [])) {
+      if (s.uploaded_path) { uploadedStickers.push({ path: s.uploaded_path, name: s.name }); continue; }
+      if (!s.file) continue;
+      try {
+        const fd = new FormData();
+        fd.append('image', s.file);
+        const upResp = await authFetch('/api/avatar/upload-image', { method: 'POST', body: fd });
+        const upData = await upResp.json();
+        if (upData.filename) {
+          s.uploaded_path = upData.path; // 缓存避免重复上传
+          uploadedStickers.push({ path: upData.path, name: s.name });
+        }
+      } catch (e) { console.warn('[sticker upload]', e.message); }
+    }
+
+    const emotionIntensityPct = parseInt(document.getElementById('av-emotion-intensity')?.value || '50');
     const res = await authFetch('/api/avatar/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6671,7 +7421,26 @@ async function startAvatarGeneration() {
         title: document.getElementById('av-title-input')?.value?.trim() || '',
         expression: document.getElementById('av-expression')?.value || 'natural',
         background: avatarBg || 'office',
-        segments: (avatarSegments && avatarSegments.length > 1) ? avatarSegments : undefined
+        segments: (avatarSegments && avatarSegments.length > 1) ? avatarSegments : undefined,
+        bgm: avatarBgmUrl || undefined,
+        voiceVolume: parseFloat(document.getElementById('av-voice-vol')?.value || '1.0'),
+        bgmVolume: parseFloat(document.getElementById('av-bgm-vol')?.value || '0.15'),
+        // 后期特效（花字 / 产品贴图 / 招引动画）
+        textEffects: avTextEffects || [],
+        stickers: uploadedStickers,
+        pointers: avGuideAnims || [],
+        // P1/P2: 结构化运镜 + 情绪数值 + 视频背景抠像
+        camera: avatarCamera || 'medium',
+        emotion: avatarEmotion || 'neutral',
+        emotion_intensity: emotionIntensityPct / 100,
+        backgroundVideo: (avatarBg === 'green' && avatarBgVideoUrl) ? avatarBgVideoUrl : undefined,
+        // P8: 用户追加的 prompt 片段
+        customPromptSuffix: document.getElementById('av-custom-prompt-suffix')?.value?.trim() || '',
+        // P0: 身位构图 + 多机位参考图
+        bodyFrame: avatarBodyFrame || 'head_shoulders',
+        multiAngleImages: (avatarMultiAngleImages && Object.keys(avatarMultiAngleImages).length > 0) ? avatarMultiAngleImages : undefined,
+        // 用户在中文 prompt 框里编辑过 → 送 EN（LLM 翻译结果）给 I2V
+        promptOverride: _promptUserEdited && avatarPromptEn ? avatarPromptEn : undefined,
       })
     });
     const data = await res.json();
@@ -6790,6 +7559,1487 @@ async function startAvatarGeneration() {
         <button class="av-error-retry" style="border-color:var(--accent);color:var(--accent)" onclick="startAvatarGeneration()">重试</button>
       </div>`;
     resetBtn();
+  }
+}
+
+// ═══════════════════════════════════════════════
+// 即梦 Omni 新 pipeline（照片级抠像 + 换背景）
+// ═══════════════════════════════════════════════
+
+// 把主 Studio 的 avatarSelected（预设 ID 或 /api/avatar/images/... 路径）转成完整 URL
+function _avatarToImageUrl(avatarValue) {
+  if (!avatarValue) return '';
+  if (/^https?:\/\//i.test(avatarValue)) return avatarValue;
+  if (avatarValue.startsWith('/')) return window.location.origin + avatarValue;
+  // 预设 ID，如 female-1 → /api/avatar/preset-img/avatar_female-1.png
+  return `${window.location.origin}/api/avatar/preset-img/avatar_${avatarValue}.png`;
+}
+
+// 把主 Studio 的 avatarBg（office/studio/classroom/outdoor/green/custom）转成公网 URL 供 /compose 使用
+async function _avatarBgToUrlMain() {
+  const bg = (typeof avatarBg !== 'undefined' && avatarBg) ? avatarBg : 'office';
+  const origin = window.location.origin;
+
+  // green 绿幕 → 客户端画一张 720×1280 纯绿 PNG 上传
+  if (bg === 'green') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 720; canvas.height = 1280;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#00b140';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    const fd = new FormData();
+    fd.append('bg', new File([blob], 'green.png', { type: 'image/png' }));
+    const r = await authFetch('/api/avatar/jimeng-omni/upload-matte', { method: 'POST', body: fd });
+    const d = await r.json();
+    return d?.bg_url || null;
+  }
+  // 自定义（已上传视频/图片）：优先用视频，再用图片
+  if (bg === 'custom') {
+    if (typeof avatarBgVideoUrl !== 'undefined' && avatarBgVideoUrl) {
+      return avatarBgVideoUrl.startsWith('http') ? avatarBgVideoUrl : (origin + avatarBgVideoUrl);
+    }
+    if (typeof avatarBgImageUrl !== 'undefined' && avatarBgImageUrl) {
+      return avatarBgImageUrl.startsWith('http') ? avatarBgImageUrl : (origin + avatarBgImageUrl);
+    }
+    return null; // 还没上传就跳过背景（不至于崩）
+  }
+  const presetMap = { office: 'bg_office', studio: 'bg_studio', classroom: 'bg_classroom', outdoor: 'bg_outdoor' };
+  const name = presetMap[bg];
+  if (name) return `${origin}/api/avatar/preset-img/${name}.png`;
+  return null;
+}
+
+async function startAvatarJimengOmni({ text, avatar, voiceId, btn, resetBtn, doMatting }) {
+  const previewBox = document.getElementById('av-preview-box');
+  // 即梦 Omni 不走老 pipeline 的分段，清掉分段状态避免 UI hint 混淆
+  if (typeof avatarSegments !== 'undefined') { avatarSegments = null; if (typeof renderAvatarSegments === 'function') renderAvatarSegments(); if (typeof updateAvatarGenHint === 'function') updateAvatarGenHint(); }
+  // Omni 对音频时长敏感，~150 字以上易触发 504 网关超时
+  if (text && text.length > 200) {
+    const ok = confirm(`⚠️ 文案 ${text.length} 字（约 ${Math.round(text.length / 4)} 秒），即梦 Omni 对 60 秒以上音频成功率下降。\n\n建议用 ✨ AI 写稿 选 30/45 秒时长重写。\n\n继续用当前文案提交？`);
+    if (!ok) { resetBtn(); return; }
+  }
+  previewBox.innerHTML = renderProgressUI('start', '即梦 Omni：提交生成任务...');
+  try {
+    // 全身构图优先用扩图后的全身版（avatarFullBodyUrl），否则回退到原图
+    let imageUrl;
+    if ((typeof avatarBodyFrame !== 'undefined' && avatarBodyFrame === 'full_body') && avatarFullBodyUrl) {
+      imageUrl = avatarFullBodyUrl.startsWith('http') ? avatarFullBodyUrl : (window.location.origin + avatarFullBodyUrl);
+      console.log('[Omni] 使用全身扩图版:', imageUrl);
+    } else {
+      imageUrl = _avatarToImageUrl(avatar);
+    }
+    if (!imageUrl) throw new Error('无法解析形象图 URL');
+    // 如果用户选了 full_body 但扩图没好，给个提示（避免用户看到半身结果懵）
+    if (avatarBodyFrame === 'full_body' && !avatarFullBodyUrl) {
+      const ok = confirm('⚠️ 你选了"全身"构图，但全身扩图还没生成好。\n\n即梦 Omni 不会自动扩图，现在继续的话，输入图是半身照就只会出半身视频（没有腿）。\n\n点"确定"继续用原图，点"取消"后我帮你等扩图完成');
+      if (!ok) {
+        resetBtn();
+        ensureFullBodyOutpaint();
+        return;
+      }
+    }
+    // 读取速度 + 身位 + 自定义 prompt 后缀，一并传给后端
+    const speed = parseFloat(document.getElementById('av-speed-range')?.value) || 1.0;
+    const bodyFrameHintMap = {
+      head_shoulders: '头肩特写镜头，面部占画面 60% 以上',
+      half_body: '半身镜头，腰部以上可见，双手偶尔入画',
+      full_body: '全身镜头，整个人物从头到脚在画面中，看到身体动作',
+    };
+    const bodyFrame = typeof avatarBodyFrame !== 'undefined' ? avatarBodyFrame : 'head_shoulders';
+    const customSuffix = document.getElementById('av-custom-prompt-suffix')?.value?.trim() || '';
+    const promptHint = [bodyFrameHintMap[bodyFrame], customSuffix].filter(Boolean).join('，');
+    // 预上传产品贴图（blob: URL 不能发给后端）
+    const uploadedStickers = [];
+    for (const s of (typeof avProductStickers !== 'undefined' ? (avProductStickers || []) : [])) {
+      if (s.uploaded_path) { uploadedStickers.push({ path: s.uploaded_path, name: s.name }); continue; }
+      if (!s.file) continue;
+      try {
+        const fd = new FormData();
+        fd.append('image', s.file);
+        const upResp = await authFetch('/api/avatar/upload-image', { method: 'POST', body: fd });
+        const upData = await upResp.json();
+        if (upData.filename) {
+          s.uploaded_path = upData.path;
+          uploadedStickers.push({ path: upData.path, name: s.name });
+        }
+      } catch (e) { console.warn('[sticker upload]', e.message); }
+    }
+    const body = {
+      image_url: imageUrl, text, voiceId, speed, prompt: promptHint,
+      // 后期特效透传（Omni 原生成片后 OR 抠像合成后会再叠一层 FFmpeg）
+      textEffects: (typeof avTextEffects !== 'undefined' ? (avTextEffects || []) : []),
+      stickers: uploadedStickers,
+      pointers: (typeof avGuideAnims !== 'undefined' ? (avGuideAnims || []) : []),
+    };
+    const res = await authFetch('/api/avatar/jimeng-omni/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success || !data.taskId) throw new Error(data.error || '提交失败');
+    previewBox.innerHTML = renderProgressUI('run', doMatting ? '即梦 Omni 生成中（约 4-5 分钟）...' : '即梦 Omni 生成中...');
+    pollAvatarJimengOmni(data.taskId, { doMatting, btn, resetBtn, previewBox, text, omniTaskId: data.taskId, uploadedStickers });
+  } catch (err) {
+    previewBox.innerHTML = `<div class="av-error-box">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" stroke="var(--accent)" stroke-width="1.5"/><path d="M20 12v10M20 26v1" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/></svg>
+      <div class="av-error-msg">${esc(err.message)}</div>
+      <button class="av-error-retry" onclick="restoreAvatarPipeline && restoreAvatarPipeline()">关闭</button>
+      <button class="av-error-retry" style="border-color:var(--accent);color:var(--accent)" onclick="startAvatarGeneration()">重试</button>
+    </div>`;
+    resetBtn();
+  }
+}
+
+async function pollAvatarJimengOmni(taskId, ctx) {
+  try {
+    const res = await authFetch(`/api/avatar/jimeng-omni/tasks/${taskId}`);
+    const data = await res.json();
+    const t = data.task || {};
+    if (t.status === 'done' && t.video_url) {
+      if (ctx.doMatting) {
+        ctx.previewBox.innerHTML = renderProgressUI('tts', '即梦 Omni 完成，开始百度抠像...');
+        return startAvatarComposeMain(t.video_url, ctx);
+      }
+      return _renderAvatarOmniResult(t.video_url, ctx);
+    }
+    if (t.status === 'error') {
+      ctx.previewBox.innerHTML = `<div class="av-error-box">
+        <div class="av-error-msg">${esc(t.error || '失败')}</div>
+        <button class="av-error-retry" onclick="startAvatarGeneration()">重试</button>
+      </div>`;
+      ctx.resetBtn();
+      return;
+    }
+    // 阶段映射：prepare_* → start（准备），submitting/processing/generating → video（生成）
+    const stage = t.stage || '';
+    let stepKey = 'start';
+    if (stage.startsWith('prepare_') || stage === 'detecting' || stage === 'submitting') stepKey = 'start';
+    else if (t.cv_status === 'generating' || t.cv_status === 'processing' || t.cv_status === 'in_queue') stepKey = 'video';
+    else stepKey = 'video';
+    const hint = t.cv_status ? `即梦 ${t.cv_status}` : (stage || '处理中');
+    ctx.previewBox.innerHTML = renderProgressUI(stepKey, `即梦 Omni：${esc(hint)}`);
+    setTimeout(() => pollAvatarJimengOmni(taskId, ctx), 3000);
+  } catch (e) {
+    setTimeout(() => pollAvatarJimengOmni(taskId, ctx), 5000);
+  }
+}
+
+async function startAvatarComposeMain(sourceVideoUrl, ctx) {
+  try {
+    const bgUrl = await _avatarBgToUrlMain();
+    if (!bgUrl) {
+      // 没选背景 → 直接作为完成
+      return _renderAvatarOmniResult(sourceVideoUrl, ctx);
+    }
+    // 把 omni_task_id 传给 compose，让它继承 post_effects；同时也直接塞一份（双保险）
+    const body = {
+      source: sourceVideoUrl,
+      bg: bgUrl, width: 720, height: 1280, scaleMode: 'cover',
+      omni_task_id: ctx.omniTaskId || undefined,
+      textEffects: (typeof avTextEffects !== 'undefined' ? (avTextEffects || []) : []),
+      stickers: (ctx.uploadedStickers || []),
+      pointers: (typeof avGuideAnims !== 'undefined' ? (avGuideAnims || []) : []),
+    };
+    const res = await authFetch('/api/avatar/jimeng-omni/compose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success || !data.taskId) throw new Error(data.error || '抠像提交失败');
+    ctx.matteTaskId = data.taskId;
+    ctx.previewBox.innerHTML = renderProgressUI('run', '开始抠像，约 2 分钟...');
+    pollAvatarComposeMain(data.taskId, ctx);
+  } catch (err) {
+    ctx.previewBox.innerHTML = `<div class="av-error-box">
+      <div class="av-error-msg">抠像合成失败：${esc(err.message)}</div>
+      <button class="av-error-retry" onclick="startAvatarGeneration()">重试</button>
+    </div>`;
+    ctx.resetBtn();
+  }
+}
+
+async function pollAvatarComposeMain(taskId, ctx) {
+  try {
+    const res = await authFetch(`/api/avatar/jimeng-omni/matte-tasks/${taskId}`);
+    const data = await res.json();
+    const t = data.task || {};
+    if (t.status === 'done' && t.output_url) {
+      return _renderAvatarOmniResult(t.output_url, ctx);
+    }
+    if (t.status === 'error') {
+      ctx.previewBox.innerHTML = `<div class="av-error-box">
+        <div class="av-error-msg">${esc(t.error || '失败')}</div>
+        <button class="av-error-retry" onclick="startAvatarGeneration()">重试</button>
+      </div>`;
+      ctx.resetBtn();
+      return;
+    }
+    // 抠像走 "tts" 槽位（借用作为"抠像"阶段，视觉上是第 3 步）
+    // compose_start / composing → "merge" 槽位（第 4 步：合成）
+    const stage = t.stage || '';
+    let stepKey = 'tts';
+    if (stage === 'encoding_matte_mov' || stage === 'composing' || stage === 'compose_start') stepKey = 'merge';
+    const hint = t.matte_done
+      ? `抠像 ${t.matte_done}/${t.matte_total}`
+      : (stage === 'composing' ? 'FFmpeg 合成背景...' : (stage || '处理中'));
+    ctx.previewBox.innerHTML = renderProgressUI(stepKey, `合成：${esc(hint)}`);
+    setTimeout(() => pollAvatarComposeMain(taskId, ctx), 3000);
+  } catch (e) {
+    setTimeout(() => pollAvatarComposeMain(taskId, ctx), 5000);
+  }
+}
+
+function _renderAvatarOmniResult(videoUrl, ctx) {
+  // Omni 的 video_url 已经是 /public/jimeng-assets/xxx.mp4，直接可下载不需要 token
+  // 同时给个"保存到我的作品"提示（实际上后端已经持久化到 avatar_db 了）
+  const taskId = ctx.matteTaskId || ctx.omniTaskId || '';
+  ctx.previewBox.innerHTML = `
+    <div class="av-result-wrap">
+      <video class="av-result-video" controls autoplay playsinline>
+        <source src="${videoUrl}" type="video/mp4" />
+      </video>
+      <div style="font-size:10px;color:#22c55e;margin:6px 2px 2px;padding:5px 8px;background:rgba(34,197,94,.08);border-radius:6px;">
+        ✓ 已自动保存到"我的作品"（任务ID ${taskId ? taskId.slice(0,8) : '—'}）
+      </div>
+      <div class="av-result-actions">
+        <a href="${videoUrl}" download="avatar_${taskId.slice(0,8) || Date.now()}.mp4" class="av-action-btn av-action-btn-primary">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 6.5l3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          下载视频
+        </a>
+        <a href="#works" onclick="event.preventDefault();if(typeof switchPage==='function')switchPage('works');" class="av-action-btn av-action-btn-ghost">
+          📁 去"我的作品"
+        </a>
+        <button class="av-action-btn av-action-btn-regen" onclick="startAvatarGeneration()">
+          重新生成
+        </button>
+      </div>
+    </div>`;
+  if (typeof addAvatarHistory === 'function') {
+    try { addAvatarHistory({ taskId, text: ctx.text, videoUrl, voiceId: '', ratio: avatarRatio, model: ctx.doMatting ? 'jimeng-omni-matte' : 'jimeng-omni-raw' }); } catch {}
+  }
+  ctx.resetBtn();
+}
+
+// ✨ AI 按主题写口播稿（黄金 4 段结构）— 主题风格浮窗
+function aiWriteAvatarScriptMain(btn) {
+  // 防止重复打开
+  if (document.getElementById('omni-write-modal')) return;
+
+  const ta = document.getElementById('av-text-input');
+  const existingDraft = ta?.value?.trim() || '';
+  // 从当前活跃的模板 chip 推断默认题材
+  const activeTpl = document.querySelector('.av-tpl-chip.active')?.dataset?.tpl || '';
+
+  // 样式（只注入一次）
+  if (!document.getElementById('omni-write-modal-style')) {
+    const style = document.createElement('style');
+    style.id = 'omni-write-modal-style';
+    style.textContent = `
+      .omni-modal-mask {
+        position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,.58); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center; animation: omniFadeIn .18s ease;
+      }
+      @keyframes omniFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes omniSlideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .omni-modal {
+        background: var(--bg2, #14151a); border: 1px solid var(--border2, rgba(255,255,255,.09));
+        border-radius: 14px; width: 520px; max-width: calc(100vw - 32px);
+        box-shadow: 0 20px 60px rgba(0,0,0,.5); overflow: hidden; animation: omniSlideUp .22s ease;
+      }
+      .omni-modal-head {
+        padding: 16px 20px 12px; display: flex; align-items: center; justify-content: space-between;
+        border-bottom: 1px solid var(--border, rgba(255,255,255,.05));
+      }
+      .omni-modal-title { font-size: 15px; font-weight: 600; color: var(--text, #E8E9ED); display: flex; align-items: center; gap: 8px; }
+      .omni-modal-sub { font-size: 11px; color: var(--text3, #666); margin-top: 2px; }
+      .omni-modal-close { background: transparent; border: none; color: var(--text3); font-size: 20px; cursor: pointer; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+      .omni-modal-close:hover { background: var(--bg3); color: var(--text); }
+      .omni-modal-body { padding: 16px 20px; }
+      .omni-field-label { font-size: 12px; color: var(--text2, #c1c5d0); margin-bottom: 6px; font-weight: 500; }
+      .omni-field-label .req { color: #ff6b9a; margin-left: 3px; }
+      .omni-input, .omni-select {
+        width: 100%; background: var(--bg, #0D0E12); border: 1px solid var(--border2);
+        color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 13px;
+        outline: none; box-sizing: border-box; transition: border-color .15s;
+      }
+      .omni-input:focus, .omni-select:focus { border-color: var(--accent, #7c6cf0); }
+      .omni-row { display: flex; gap: 10px; }
+      .omni-row > * { flex: 1; }
+      .omni-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+      .omni-chip {
+        padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border2);
+        background: var(--bg3, #1c1e29); color: var(--text2); font-size: 11px; cursor: pointer; transition: all .15s;
+      }
+      .omni-chip:hover { border-color: rgba(var(--accent-rgb,124,108,240),.5); color: var(--text); }
+      .omni-chip.active { background: rgba(var(--accent-rgb,124,108,240),.18); border-color: var(--accent); color: var(--accent2, #9d8cf8); }
+      .omni-modal-foot {
+        padding: 12px 20px 16px; display: flex; gap: 8px; justify-content: flex-end;
+        border-top: 1px solid var(--border); background: rgba(0,0,0,.15);
+      }
+      .omni-btn {
+        padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border2);
+        background: var(--bg3); color: var(--text); font-size: 12px; cursor: pointer; transition: all .15s;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .omni-btn:hover:not(:disabled) { border-color: var(--border2); background: var(--bg2); }
+      .omni-btn:disabled { opacity: .5; cursor: not-allowed; }
+      .omni-btn-primary {
+        background: linear-gradient(135deg, var(--accent, #7c6cf0), var(--accent2, #9d8cf8));
+        border-color: transparent; color: #fff; font-weight: 500;
+      }
+      .omni-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+      .omni-spinner {
+        width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff;
+        border-radius: 50%; animation: omniSpin .7s linear infinite;
+      }
+      @keyframes omniSpin { to { transform: rotate(360deg); } }
+      .omni-hint { font-size: 11px; color: var(--text3); margin-top: 10px; line-height: 1.6; }
+      .omni-preview {
+        margin-top: 12px; padding: 10px 12px; background: var(--bg, #0D0E12); border-radius: 8px;
+        font-size: 12px; color: var(--text2); line-height: 1.6; max-height: 160px; overflow-y: auto;
+        border-left: 2px solid var(--accent); display: none;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // DOM
+  const mask = document.createElement('div');
+  mask.className = 'omni-modal-mask';
+  mask.id = 'omni-write-modal';
+  mask.innerHTML = `
+    <div class="omni-modal" role="dialog">
+      <div class="omni-modal-head">
+        <div>
+          <div class="omni-modal-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12.3 3.8 14.5l.8-4.7L1.2 6.5l4.7-.7z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            AI 写稿向导
+          </div>
+          <div class="omni-modal-sub">按「钩子→立论→证据→CTA」黄金 4 段结构 · 可选时长与风格</div>
+        </div>
+        <button class="omni-modal-close" onclick="_closeOmniModal()" title="关闭">×</button>
+      </div>
+      <div class="omni-modal-body">
+        <div class="omni-field-label">视频主题<span class="req">*</span></div>
+        <input id="omni-topic-input" class="omni-input" placeholder="例如：3 招让 AI 数字人 3 秒涨粉·抖音实测有效" />
+        <div class="omni-hint">💡 写清楚"给谁看 + 讲什么 + 想达到什么"，AI 会按 20s 口播节奏展开</div>
+
+        <div style="margin-top:14px;" class="omni-row">
+          <div>
+            <div class="omni-field-label">时长</div>
+            <select id="omni-duration" class="omni-select">
+              <option value="15">15 秒（~60 字）</option>
+              <option value="20" selected>20 秒（~80 字）</option>
+              <option value="30">30 秒（~120 字）</option>
+              <option value="45">45 秒（~180 字）</option>
+              <option value="60">60 秒（~240 字）</option>
+            </select>
+          </div>
+          <div>
+            <div class="omni-field-label">语气风格</div>
+            <select id="omni-style" class="omni-select">
+              <option value="tutorial" ${activeTpl === 'knowledge' || activeTpl === 'tutorial' ? 'selected' : ''}>🎓 知识教程（理性、有节奏）</option>
+              <option value="promo" ${activeTpl === 'promo' ? 'selected' : ''}>🛒 带货推广（有张力、催单感）</option>
+              <option value="news" ${activeTpl === 'news' ? 'selected' : ''}>📰 新闻播报（客观、稳重）</option>
+              <option value="story" ${activeTpl === 'story' ? 'selected' : ''}>📖 故事叙述（有情绪、有画面）</option>
+              <option value="daily">💬 日常口语（亲切、轻松）</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;">
+          <div class="omni-field-label">快选主题</div>
+          <div class="omni-chips" id="omni-preset-chips">
+            <div class="omni-chip" data-topic="3 招让 AI 数字人 3 秒涨粉·抖音实测有效">3 招涨粉</div>
+            <div class="omni-chip" data-topic="90% 的人都不知道的 AI 提示词秘笈">反常识秘笈</div>
+            <div class="omni-chip" data-topic="新手 30 天学会 AI 视频剪辑路径">学习路径</div>
+            <div class="omni-chip" data-topic="这款产品原价 199 现在 99 限时 3 天">限时带货</div>
+            <div class="omni-chip" data-topic="为什么你拍的短视频没人看">痛点揭秘</div>
+          </div>
+        </div>
+
+        <div id="omni-script-preview" class="omni-preview"></div>
+      </div>
+      <div class="omni-modal-foot">
+        <button class="omni-btn" onclick="_closeOmniModal()">取消</button>
+        <button class="omni-btn omni-btn-primary" id="omni-generate-btn" onclick="_submitOmniScript()">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l2 2 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          生成并填入
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(mask);
+  // ESC 关闭
+  mask.addEventListener('click', (e) => { if (e.target === mask) _closeOmniModal(); });
+  // 快选主题
+  mask.querySelectorAll('.omni-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      mask.querySelectorAll('.omni-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      document.getElementById('omni-topic-input').value = chip.dataset.topic;
+    });
+  });
+  // 初始 focus
+  setTimeout(() => document.getElementById('omni-topic-input')?.focus(), 100);
+  // 记 ESC
+  const escHandler = (e) => { if (e.key === 'Escape') _closeOmniModal(); };
+  document.addEventListener('keydown', escHandler);
+  mask._escHandler = escHandler;
+  // 预填现有草稿到主题里（若用户之前在台词里写了东西）
+  if (existingDraft && existingDraft.length < 80) {
+    document.getElementById('omni-topic-input').value = existingDraft;
+  }
+}
+
+function _closeOmniModal() {
+  const m = document.getElementById('omni-write-modal');
+  if (!m) return;
+  if (m._escHandler) document.removeEventListener('keydown', m._escHandler);
+  m.remove();
+}
+
+async function _submitOmniScript() {
+  const topic = document.getElementById('omni-topic-input')?.value?.trim();
+  const duration = parseInt(document.getElementById('omni-duration')?.value || '20', 10);
+  const style = document.getElementById('omni-style')?.value || 'tutorial';
+  if (!topic) {
+    const inp = document.getElementById('omni-topic-input');
+    inp?.focus();
+    if (inp) { inp.style.borderColor = '#ff6b9a'; setTimeout(() => inp.style.borderColor = '', 1200); }
+    return;
+  }
+  const genBtn = document.getElementById('omni-generate-btn');
+  const preview = document.getElementById('omni-script-preview');
+  genBtn.disabled = true;
+  genBtn.innerHTML = '<span class="omni-spinner"></span> 生成中...';
+  try {
+    const r = await authFetch('/api/avatar/jimeng-omni/write-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, duration_sec: duration, style }),
+    });
+    const d = await r.json();
+    if (!d.success || !d.script) throw new Error(d.error || 'AI 未返回');
+    // 先显示预览 0.4s 再关窗
+    if (preview) { preview.style.display = 'block'; preview.textContent = d.script; }
+    // 填入台词
+    const ta = document.getElementById('av-text-input');
+    if (ta) {
+      ta.value = d.script;
+      ta.dispatchEvent(new Event('input'));
+      ta.dispatchEvent(new Event('change'));
+    }
+    genBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l2 2 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 已填入·正在分段...';
+    // 关窗前自动触发智能分段（文字 > 30 时后端会拆）
+    if (d.script.length >= 30 && typeof segmentAvatarScript === 'function') {
+      try { await segmentAvatarScript(); } catch (e) { console.warn('自动分段失败', e); }
+    }
+    setTimeout(_closeOmniModal, 600);
+  } catch (e) {
+    genBtn.disabled = false;
+    genBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l2 2 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 重试';
+    alert('AI 生成失败：' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// 升级版 Avatar Studio 状态（2026-04-17）
+// ═══════════════════════════════════════════════
+
+// 结构化运镜当前值
+let avatarCamera = 'medium'; // 字符串预设 or 对象 {type, config, simple}
+let avatarEmotion = 'neutral';
+let avatarBgVideoUrl = ''; // 上传的背景视频 URL
+let avatarBgImageUrl = ''; // 上传的背景静态图 URL（由 handleAvatarBgUpload 写入）
+let avatarMode = 'single'; // 'single' | 'multi'
+// P0: 身位构图 + 多机位参考图
+let avatarBodyFrame = 'head_shoulders'; // 'head_shoulders' | 'half_body' | 'full_body'
+let avatarMultiAngleImages = {};  // { front_medium?, side_45?, front_closeup? } URL 映射
+let multiAnglePollTimer = null;
+let avatarFullBodyUrl = '';  // 当 bodyFrame='full_body' 时，通过 i2i 扩图得到的全身版 avatar URL（给 Omni 用）
+let _fullBodyInFlight = false;
+
+function selectBodyFrame(btn, bf) {
+  document.querySelectorAll('#av-body-frame-grid .av-cam-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  avatarBodyFrame = bf;
+  // 切换身位后清掉之前的多机位缓存（旧身位的图不匹配了）
+  if (Object.keys(avatarMultiAngleImages).length > 0) {
+    const keep = confirm('切换身位后，已生成的多机位参考图可能不再匹配。是否保留？\n\n确定=保留；取消=清除并重新生成');
+    if (!keep) clearMultiAngle();
+  }
+  if (bf === 'full_body') {
+    ensureFullBodyOutpaint();
+  } else {
+    // 切回非 full_body，清掉扩图引用（避免误用）+ 隐藏进度块
+    avatarFullBodyUrl = '';
+    _updateFullBodyStatus({ show: false });
+  }
+  if (typeof refreshPromptPreview === 'function') refreshPromptPreview();
+}
+
+// UI helper：更新全身扩图状态块
+function _updateFullBodyStatus({ show, title, icon, msg, pct, elapsed, thumbUrl, finalSuccess, finalError }) {
+  const box = document.getElementById('av-fullbody-status');
+  if (!box) return;
+  if (show === false) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  const t = document.getElementById('av-fullbody-title'); if (t && title != null) t.textContent = title;
+  const i = document.getElementById('av-fullbody-icon'); if (i && icon != null) i.textContent = icon;
+  const m = document.getElementById('av-fullbody-msg'); if (m && msg != null) m.textContent = msg;
+  const e = document.getElementById('av-fullbody-elapsed'); if (e && elapsed != null) e.textContent = elapsed + 's';
+  const bar = document.getElementById('av-fullbody-bar');
+  if (bar && pct != null) { bar.style.animation = 'none'; bar.style.width = Math.min(100, Math.max(5, pct)) + '%'; }
+  const thumbWrap = document.getElementById('av-fullbody-thumb-wrap');
+  const thumb = document.getElementById('av-fullbody-thumb');
+  if (thumbUrl && thumbWrap && thumb) {
+    thumb.src = thumbUrl.startsWith('http') ? thumbUrl : (window.location.origin + thumbUrl);
+    thumbWrap.style.display = '';
+  }
+  if (finalSuccess) {
+    box.style.borderColor = 'rgba(34,197,94,.4)';
+    box.style.background = 'rgba(34,197,94,.08)';
+    if (t) t.style.color = '#22c55e';
+  } else if (finalError) {
+    box.style.borderColor = 'rgba(239,68,68,.4)';
+    box.style.background = 'rgba(239,68,68,.08)';
+    if (t) t.style.color = '#ef4444';
+  } else {
+    box.style.borderColor = 'rgba(124,108,240,.25)';
+    box.style.background = 'rgba(124,108,240,.08)';
+    if (t) t.style.color = 'var(--accent)';
+  }
+}
+
+// 触发/确保 avatar 的全身扩图完成（Omni 不会扩图，必须前置）
+async function ensureFullBodyOutpaint() {
+  const avatar = (typeof avatarSelected !== 'undefined' ? avatarSelected : '') ||
+                 document.querySelector('.av-avatar-card.active')?.dataset?.avatar || '';
+  if (!avatar || avatar === 'custom') return;
+  if (_fullBodyInFlight) return;
+  _fullBodyInFlight = true;
+  const t0 = Date.now();
+  _updateFullBodyStatus({ show: true, icon: '🦵', title: '全身扩图', msg: '准备提交任务...', pct: 5, elapsed: 0 });
+  try {
+    const r = await authFetch('/api/avatar/outpaint-fullbody', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '扩图启动失败');
+    if (j.cached && j.image_url) {
+      avatarFullBodyUrl = j.image_url;
+      _updateFullBodyStatus({
+        icon: '⚡', title: '全身扩图（缓存命中）', msg: '已复用之前生成的全身版，无需重跑',
+        pct: 100, elapsed: 0, thumbUrl: j.image_url, finalSuccess: true,
+      });
+      _fullBodyInFlight = false;
+      return;
+    }
+    // 轮询
+    const taskId = j.taskId;
+    _updateFullBodyStatus({ msg: '已提交到 Seedream i2i，排队中...', pct: 15 });
+    let tries = 0;
+    const poll = async () => {
+      tries++;
+      const elapsed = Math.round((Date.now() - t0) / 1000);
+      try {
+        const pr = await authFetch(`/api/avatar/outpaint-fullbody/${taskId}`);
+        const pj = await pr.json();
+        if (pj.task?.status === 'done' && pj.task.image_url) {
+          avatarFullBodyUrl = pj.task.image_url;
+          _updateFullBodyStatus({
+            icon: '✅', title: `全身扩图完成 (${elapsed}s)`,
+            msg: 'Omni 生成时将用这张扩图结果作为输入，成片会有完整的腿和脚',
+            pct: 100, elapsed, thumbUrl: pj.task.image_url, finalSuccess: true,
+          });
+          _fullBodyInFlight = false;
+          return;
+        }
+        if (pj.task?.status === 'error') {
+          _updateFullBodyStatus({
+            icon: '⚠️', title: '全身扩图失败',
+            msg: (pj.task.error || '未知原因') + ' · 点"全身"可重试',
+            pct: 100, elapsed, finalError: true,
+          });
+          _fullBodyInFlight = false;
+          return;
+        }
+        // 进度条基于时间（典型 30-60s）估算推进
+        const estPct = Math.min(85, 15 + elapsed * 1.5);
+        _updateFullBodyStatus({ msg: `Seedream 5.0 i2i 处理中，保持脸部和服装不变...`, pct: estPct, elapsed });
+      } catch (pollErr) {
+        console.warn('[fullbody-poll]', pollErr);
+      }
+      if (tries > 40) {
+        _updateFullBodyStatus({
+          icon: '⏱', title: '扩图超时（>2 分钟）',
+          msg: 'Seedream API 可能繁忙，可稍后重新点"全身"重试',
+          pct: 100, elapsed, finalError: true,
+        });
+        _fullBodyInFlight = false;
+        return;
+      }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 2000);
+  } catch (err) {
+    _fullBodyInFlight = false;
+    _updateFullBodyStatus({
+      icon: '⚠️', title: '扩图请求失败',
+      msg: err.message, pct: 100, elapsed: Math.round((Date.now() - t0) / 1000), finalError: true,
+    });
+  }
+}
+
+async function generateMultiAngleSet() {
+  const selectedAvEl = document.querySelector('.av-avatar-card.active');
+  const avatar = selectedAvEl?.dataset?.avatar || (typeof avatarSelected !== 'undefined' ? avatarSelected : '');
+  if (!avatar || avatar === 'custom') {
+    showToast('请先选择数字人形象', 'warning');
+    return;
+  }
+  const btn = document.getElementById('av-multi-angle-btn');
+  const status = document.getElementById('av-multi-angle-status');
+  btn.disabled = true;
+  const origHtml = btn.innerHTML;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block;margin-right:4px"></span>生成中 (约 30s)...';
+  status.style.display = 'block';
+  status.textContent = '发起任务...';
+
+  try {
+    const r = await authFetch('/api/avatar/generate-multi-angle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar, bodyFrame: avatarBodyFrame, aspectRatio: (typeof avatarRatio !== 'undefined' ? avatarRatio : '9:16') }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '启动失败');
+    // 轮询
+    if (multiAnglePollTimer) clearInterval(multiAnglePollTimer);
+    let tries = 0;
+    multiAnglePollTimer = setInterval(async () => {
+      tries++;
+      try {
+        const pr = await authFetch(`/api/avatar/multi-angle/${j.taskId}`);
+        const pj = await pr.json();
+        if (!pj.success) throw new Error(pj.error || '查询失败');
+        const latestProgress = pj.progress?.[pj.progress.length - 1]?.message || '生成中...';
+        status.textContent = `${latestProgress} (${tries * 3}s)`;
+        if (pj.status === 'done') {
+          clearInterval(multiAnglePollTimer);
+          multiAnglePollTimer = null;
+          avatarMultiAngleImages = pj.images || {};
+          const successCount = Object.keys(avatarMultiAngleImages).length;
+          const failedCount = (pj.failed || []).length;
+          status.textContent = `完成：${successCount}/3 机位${failedCount ? `（${failedCount} 失败）` : ''}`;
+          renderMultiAngleGrid();
+          document.getElementById('av-multi-angle-clear').style.display = successCount > 0 ? 'inline-block' : 'none';
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          if (successCount > 0) showToast(`多机位 ${successCount}/3 张生成完成`, 'success');
+          else showToast('多机位生成失败，请重试', 'error');
+          if (typeof refreshPromptPreview === 'function') refreshPromptPreview();
+        } else if (pj.status === 'error') {
+          clearInterval(multiAnglePollTimer);
+          multiAnglePollTimer = null;
+          throw new Error(pj.error || '生成失败');
+        } else if (tries > 160) {
+          // 8 分钟还没完成（原来 3 分钟太短，即梦并发被占时会超时）
+          clearInterval(multiAnglePollTimer);
+          multiAnglePollTimer = null;
+          throw new Error('超时（>8 分钟）— 即梦 API 可能并发被占');
+        }
+      } catch (pollErr) {
+        clearInterval(multiAnglePollTimer);
+        multiAnglePollTimer = null;
+        status.textContent = '失败：' + pollErr.message;
+        showToast('多机位失败：' + pollErr.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }, 3000);
+  } catch (err) {
+    status.textContent = '失败：' + err.message;
+    showToast('多机位失败：' + err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+function renderMultiAngleGrid() {
+  const grid = document.getElementById('av-multi-angle-grid');
+  if (!grid) return;
+  const ANGLES = [
+    { key: 'front_medium',  label: '正面中景', icon: '👤' },
+    { key: 'side_45',       label: '45°侧面', icon: '↗️' },
+    { key: 'front_closeup', label: '正面特写', icon: '🔍' },
+  ];
+  grid.innerHTML = ANGLES.map(a => {
+    const url = avatarMultiAngleImages[a.key];
+    if (url) {
+      return `<div style="position:relative;aspect-ratio:3/4;background:var(--bg2);border:1px solid rgba(124,108,240,.35);border-radius:7px;overflow:hidden;cursor:pointer" title="${a.label}：此机位将在 ${a.key === 'front_closeup' ? '特写/推镜' : a.key === 'side_45' ? '左右摇/环绕' : '中景/全景'} 镜头时自动使用">
+        <img src="${url}" style="width:100%;height:100%;object-fit:cover;display:block" />
+        <div style="position:absolute;top:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:2px 5px;border-radius:3px">${a.icon} ${a.label}</div>
+        <button onclick="regenerateAngle('${a.key}')" title="换一张" style="position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:3px;padding:3px 6px;font-size:9px;cursor:pointer">🔄</button>
+      </div>`;
+    } else {
+      return `<div style="aspect-ratio:3/4;background:var(--bg2);border:1px dashed rgba(255,255,255,.1);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;color:var(--text3);font-size:10px">
+        <div style="font-size:18px;opacity:.4">${a.icon}</div>
+        <div>${a.label}</div>
+        <div style="font-size:9px">待生成</div>
+      </div>`;
+    }
+  }).join('');
+}
+
+async function regenerateAngle(angle) {
+  const selectedAvEl = document.querySelector('.av-avatar-card.active');
+  const avatar = selectedAvEl?.dataset?.avatar || (typeof avatarSelected !== 'undefined' ? avatarSelected : '');
+  if (!avatar) { showToast('请先选择形象', 'warning'); return; }
+  showToast(`重新生成 ${angle}...`, 'info');
+  try {
+    const r = await authFetch('/api/avatar/regenerate-angle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatar, angle, bodyFrame: avatarBodyFrame, aspectRatio: (typeof avatarRatio !== 'undefined' ? avatarRatio : '9:16') }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    avatarMultiAngleImages[angle] = j.imageUrl;
+    renderMultiAngleGrid();
+    showToast(`${angle} 已更新`, 'success');
+  } catch (e) {
+    showToast('换图失败：' + e.message, 'error');
+  }
+}
+
+function clearMultiAngle() {
+  avatarMultiAngleImages = {};
+  renderMultiAngleGrid();
+  document.getElementById('av-multi-angle-clear').style.display = 'none';
+  const status = document.getElementById('av-multi-angle-status');
+  if (status) { status.style.display = 'none'; status.textContent = ''; }
+}
+
+// 初始渲染空 grid（提示用户点击按钮）
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('av-multi-angle-grid')) renderMultiAngleGrid();
+});
+
+// 多人对话状态
+let multiSpeakers = []; // [{ id, avatar, voiceId, voiceName, name, emotion }]
+let multiDialogue = []; // [{ speakerId, text, emotion?, emotion_intensity?, camera? }]
+let multiLayout = 'cut-to-speaker';
+
+function switchAvatarMode(mode) {
+  avatarMode = mode;
+  const panel = document.getElementById('av-multi-panel');
+  document.getElementById('av-mode-single').classList.toggle('active', mode === 'single');
+  document.getElementById('av-mode-multi').classList.toggle('active', mode === 'multi');
+  if (mode === 'multi') {
+    panel.style.display = 'block';
+    renderMultiSpeakers();
+    renderMultiDialogue();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function selectAvatarCamera(btn, camId) {
+  document.querySelectorAll('#av-camera-grid .av-cam-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  avatarCamera = camId;
+  // 同步自定义滑杆到预设值
+  const PRESET_TO_SLIDERS = {
+    medium:    { zoom: 0, pan: 0,  tilt: 0,  roll: 0 },
+    close_up:  { zoom: 3, pan: 0,  tilt: 0,  roll: 0 },
+    full:      { zoom: -3, pan: 0, tilt: 0,  roll: 0 },
+    zoom_in:   { zoom: 5, pan: 0,  tilt: 0,  roll: 0 },
+    zoom_out:  { zoom: -5, pan: 0, tilt: 0,  roll: 0 },
+    pan_left:  { zoom: 0, pan: -5, tilt: 0,  roll: 0 },
+    pan_right: { zoom: 0, pan: 5,  tilt: 0,  roll: 0 },
+    orbit:     { zoom: 0, pan: 0,  tilt: 0,  roll: 5 },
+  };
+  const v = PRESET_TO_SLIDERS[camId] || PRESET_TO_SLIDERS.medium;
+  ['zoom','pan','tilt','roll'].forEach(k => {
+    const el = document.getElementById('av-cc-'+k);
+    const vEl = document.getElementById('av-cc-'+k+'-v');
+    if (el) el.value = v[k];
+    if (vEl) vEl.textContent = v[k];
+  });
+}
+
+// ═══ 智能镜头推荐（P4：AI 根据内容+业务场景推荐镜头组合） ═══
+let smartCameraShots = null; // 最后一次 AI 推荐的镜头序列
+
+async function recommendSmartCamera() {
+  const text = document.getElementById('av-text-input')?.value?.trim();
+  if (!text || text.length < 10) { showToast('请先输入至少 10 字的台词', 'warning'); return; }
+  const scenario = document.getElementById('av-smart-scenario')?.value || 'live';
+  const btn = document.getElementById('av-smart-cam-btn');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block;margin-right:4px"></span>思考中...';
+  try {
+    const r = await authFetch('/api/avatar/smart-camera', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, scenario }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    smartCameraShots = j.shots || [];
+    renderSmartCameraShots();
+    document.getElementById('av-smart-cam-result').style.display = 'block';
+    // 自动应用（不再需要手动点"应用"）
+    if (smartCameraShots.length && typeof applySmartCameraToSegments === 'function') {
+      applySmartCameraToSegments();
+    }
+    showToast(`AI 推荐 ${smartCameraShots.length} 个镜头·已自动应用`, 'success');
+  } catch (e) {
+    showToast('推荐失败：' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+function renderSmartCameraShots() {
+  const box = document.getElementById('av-smart-cam-list');
+  if (!box || !smartCameraShots) return;
+  const CAM_ICONS = { medium:'📷', close_up:'🔍', full:'🌄', zoom_in:'➡️', zoom_out:'⬅️', pan_left:'⬅', pan_right:'➡', orbit:'🔄', tilt_up:'⬆', tilt_down:'⬇' };
+  box.innerHTML = smartCameraShots.map((s, i) => `
+    <div style="display:flex;gap:6px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <span style="font-size:11px;color:var(--accent);font-weight:600;width:34px;flex-shrink:0">${CAM_ICONS[s.camera]||'📷'} ${i+1}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10.5px;color:var(--text);line-height:1.4">${esc(s.text)}</div>
+        <div style="font-size:9px;color:var(--text3);margin-top:2px"><b style="color:var(--accent)">${esc(s.camera)}</b>${s.reason ? ' · ' + esc(s.reason) : ''}</div>
+      </div>
+    </div>`).join('');
+}
+
+function applySmartCameraToSegments() {
+  if (!smartCameraShots?.length) return;
+  // 把推荐结果作为 segments（每段 text + camera + 默认 emotion 为 neutral 0.5）
+  avatarSegments = smartCameraShots.map(s => ({
+    text: s.text,
+    camera: s.camera,
+    emotion: 'neutral',
+    emotion_intensity: 0.5,
+    motion: '',
+  }));
+  if (typeof renderAvatarSegments === 'function') renderAvatarSegments();
+  // 把所有 text 重新拼回输入框
+  const ta = document.getElementById('av-text-input');
+  if (ta) ta.value = smartCameraShots.map(s => s.text).join('');
+  showToast(`已应用 ${avatarSegments.length} 段智能镜头组合（每段独立镜头）`, 'success');
+  refreshPromptPreview();
+}
+
+// ═══ Prompt 预览（P8：提示词可视化 + 中文编辑自动同步英文） ═══
+let _promptPreviewTimer = null;
+let avatarPromptEn = '';   // 隐藏：最终送给 I2V 模型的英文
+let avatarPromptZh = '';   // 可见：默认显示的中文（用户可编辑）
+let _promptUserEdited = false; // 用户是否手改过中文（改过就别被自动覆盖）
+
+async function refreshPromptPreview(forceNow) {
+  clearTimeout(_promptPreviewTimer);
+  const run = async () => {
+    const text = document.getElementById('av-text-input')?.value?.trim() || '';
+    const emotion = avatarEmotion || document.getElementById('av-emotion')?.value || 'neutral';
+    const intensity = parseInt(document.getElementById('av-emotion-intensity')?.value || '50') / 100;
+    const customSuffix = document.getElementById('av-custom-prompt-suffix')?.value?.trim() || '';
+    const box = document.getElementById('av-prompt-preview');
+    const status = document.getElementById('av-prompt-sync-status');
+    if (!box) return;
+    // forceNow 时先显示"加载中"视觉反馈，让用户知道按钮响应了
+    if (forceNow && status) status.textContent = '🔄 正在重新生成 prompt...';
+    try {
+      const r = await authFetch('/api/avatar/prompt-preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, emotion, emotion_intensity: intensity, camera: avatarCamera || 'medium', background: avatarBg || 'office', customSuffix, bodyFrame: avatarBodyFrame || 'head_shoulders' }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || '服务端返回 success=false');
+      avatarPromptEn = j.prompt || '';
+      avatarPromptZh = j.prompt_zh || j.prompt || '';
+      // forceNow=true 强制覆盖 textarea（用户显式点"重置/刷新"）
+      // forceNow=false 只在用户没手改时覆盖（避免覆盖用户正在打字的内容）
+      if (!_promptUserEdited || forceNow) {
+        // 临时取消 oninput 处理，防止赋值触发误报"用户已编辑"
+        const prev = box.oninput; box.oninput = null;
+        box.value = avatarPromptZh;
+        setTimeout(() => { box.oninput = prev; }, 50);
+        _promptUserEdited = false;
+      }
+      if (status) status.textContent = `自动生成 · ${avatarPromptZh.length} 字 (英文 ${avatarPromptEn.length} 字符)`;
+    } catch (e) {
+      console.warn('[prompt-preview]', e);
+      if (status) status.textContent = '⚠️ 预览失败: ' + e.message;
+      if (forceNow && typeof showToast === 'function') showToast('prompt 预览失败：' + e.message, 'error');
+    }
+  };
+  if (forceNow) run();
+  else _promptPreviewTimer = setTimeout(run, 500);
+}
+
+// 硬重置：用户点"重置为自动生成"时调用
+// 清空编辑标志 → 拉新 prompt → 无条件覆盖 textarea
+function resetPromptPreview() {
+  _promptUserEdited = false;
+  const box = document.getElementById('av-prompt-preview');
+  const status = document.getElementById('av-prompt-sync-status');
+  if (box) box.value = '';  // 先清空，避免视觉残留
+  if (status) status.textContent = '🔄 正在重置为自动生成...';
+  refreshPromptPreview(true);
+}
+
+// 用户手改了中文 textarea → debounce 翻译成英文同步到 avatarPromptEn
+let _promptZhTranslateTimer = null;
+function onPromptZhEdited() {
+  _promptUserEdited = true;
+  clearTimeout(_promptZhTranslateTimer);
+  const status = document.getElementById('av-prompt-sync-status');
+  const zh = document.getElementById('av-prompt-preview')?.value || '';
+  avatarPromptZh = zh;
+  if (status) status.textContent = '✍️ 已编辑（1.2s 后自动翻译到英文）';
+  _promptZhTranslateTimer = setTimeout(async () => {
+    if (!zh.trim()) { avatarPromptEn = ''; if (status) status.textContent = '（已清空）'; return; }
+    if (status) status.textContent = '🔄 正在翻译到英文...';
+    try {
+      const r = await authFetch('/api/avatar/translate-prompt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_zh: zh }),
+      });
+      const j = await r.json();
+      if (j.success && j.prompt) {
+        avatarPromptEn = j.prompt;
+        if (status) status.textContent = `✓ 已同步到英文 ${avatarPromptEn.length} 字符（实际送给 I2V 模型）`;
+      } else throw new Error(j.error || 'LLM 失败');
+    } catch (e) {
+      // 翻译失败 → 直接用中文作为 EN（模型都支持中文 prompt）
+      avatarPromptEn = zh;
+      if (status) status.textContent = '⚠️ 翻译失败，直接用中文送给模型 (' + e.message + ')';
+    }
+  }, 1200);
+}
+// 监听各种参数变化 → 自动刷新 Prompt 预览
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const hook = (id) => document.getElementById(id)?.addEventListener('change', () => refreshPromptPreview());
+    const hookInput = (id) => document.getElementById(id)?.addEventListener('input', () => refreshPromptPreview());
+    hook('av-emotion'); hook('av-expression'); hook('av-smart-scenario'); hook('av-model-selector');
+    hookInput('av-emotion-intensity');
+    hookInput('av-text-input');             // 台词输入 → 立即刷
+    hookInput('av-custom-prompt-suffix');   // 已经有 oninput，但双保险
+    // 首次进入页面就拉一次（即使 text 为空也显示模板 prompt）
+    setTimeout(() => refreshPromptPreview(true), 800);
+  }, 500);
+});
+
+function updateCustomCamera() {
+  const zoom = +(document.getElementById('av-cc-zoom')?.value || 0);
+  const pan  = +(document.getElementById('av-cc-pan')?.value || 0);
+  const tilt = +(document.getElementById('av-cc-tilt')?.value || 0);
+  const roll = +(document.getElementById('av-cc-roll')?.value || 0);
+  ['zoom','pan','tilt','roll'].forEach(k => {
+    const vEl = document.getElementById('av-cc-'+k+'-v');
+    if (vEl) vEl.textContent = ({zoom,pan,tilt,roll})[k];
+  });
+  // 任意非零 → 启用结构化 camera_control
+  if (zoom || pan || tilt || roll) {
+    // Kling camera_control 要求 type 是单一类型 → 挑主导轴
+    const abs = { zoom: Math.abs(zoom), pan: Math.abs(pan), tilt: Math.abs(tilt), roll: Math.abs(roll) };
+    const dominant = Object.keys(abs).reduce((a, b) => abs[a] >= abs[b] ? a : b);
+    avatarCamera = {
+      type: dominant,
+      config: { zoom, pan, tilt, roll },
+      simple: dominant === 'zoom' ? (zoom > 0 ? 'zoom_in' : 'zoom_out')
+            : dominant === 'pan' ? (pan > 0 ? 'pan_right' : 'pan_left')
+            : 'medium',
+    };
+    // 取消预设选中（进入自定义模式）
+    document.querySelectorAll('#av-camera-grid .av-cam-btn').forEach(b => b.classList.remove('active'));
+  }
+}
+
+// ═══ P1: 背景视频上传 ═══
+async function uploadAvatarBgVideo(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const nameEl = document.getElementById('av-bg-video-name');
+  const preview = document.getElementById('av-bg-video-preview');
+  const videoEl = document.getElementById('av-bg-video-el');
+  if (nameEl) nameEl.textContent = '上传中...';
+  try {
+    const fd = new FormData();
+    fd.append('video', file);
+    const r = await authFetch('/api/avatar/upload-bg-video', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '上传失败');
+    avatarBgVideoUrl = j.path;
+    if (videoEl) {
+      videoEl.src = authUrl(j.path);
+      videoEl.play().catch(() => {});
+    }
+    if (nameEl) nameEl.textContent = file.name;
+    if (preview) preview.style.display = 'block';
+    showToast('背景视频已上传，生成时将自动抠像合成', 'success');
+  } catch (e) {
+    if (nameEl) nameEl.textContent = '上传失败：' + e.message;
+    showToast('背景视频上传失败: ' + e.message, 'error');
+  }
+}
+
+function clearAvatarBgVideo() {
+  avatarBgVideoUrl = '';
+  const preview = document.getElementById('av-bg-video-preview');
+  const videoEl = document.getElementById('av-bg-video-el');
+  if (videoEl) videoEl.src = '';
+  if (preview) preview.style.display = 'none';
+  const input = document.getElementById('av-bg-video-input');
+  if (input) input.value = '';
+}
+
+// 当选择 bg=green，自动显示背景视频面板
+const _origSelectBg = typeof selectAvatarBg === 'function' ? selectAvatarBg : null;
+if (_origSelectBg) {
+  window.selectAvatarBg = function(el) {
+    _origSelectBg(el);
+    const bgVidPanel = document.getElementById('av-bg-video-panel');
+    if (bgVidPanel) bgVidPanel.style.display = avatarBg === 'green' ? 'block' : 'none';
+  };
+}
+
+// ═══ P0: 多人对话 UI ═══
+
+function addMultiSpeaker() {
+  const id = 's' + (multiSpeakers.length + 1);
+  multiSpeakers.push({
+    id,
+    avatar: avatarSelected, // 默认复用主界面选中的
+    voiceId: _avSelected?.id || '',
+    voiceName: _avSelected?.name || '自动',
+    name: '角色 ' + (multiSpeakers.length + 1),
+    emotion: 'neutral',
+  });
+  renderMultiSpeakers();
+  updateMultiStat();
+}
+
+function removeMultiSpeaker(idx) {
+  const removed = multiSpeakers.splice(idx, 1)[0];
+  // 清除引用这个 speaker 的对话
+  multiDialogue = multiDialogue.filter(d => d.speakerId !== removed.id);
+  renderMultiSpeakers();
+  renderMultiDialogue();
+  updateMultiStat();
+}
+
+// 通用选择器样式（只注一次）
+function _ensureMultiPickerStyle() {
+  if (document.getElementById('multi-picker-style')) return;
+  const s = document.createElement('style');
+  s.id = 'multi-picker-style';
+  s.textContent = `
+    .mp-mask { position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; animation:mpFade .16s ease; }
+    @keyframes mpFade { from { opacity:0 } to { opacity:1 } }
+    @keyframes mpSlide { from { transform:translateY(10px); opacity:0 } to { transform:translateY(0); opacity:1 } }
+    .mp-panel { background:var(--bg2,#14151a); border:1px solid var(--border2,rgba(255,255,255,.09)); border-radius:14px; width:760px; max-width:calc(100vw - 32px); max-height:80vh; display:flex; flex-direction:column; animation:mpSlide .22s ease; overflow:hidden; }
+    .mp-hd { padding:14px 20px; border-bottom:1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between; }
+    .mp-title { font-size:15px; font-weight:600; color:var(--text); }
+    .mp-close { background:none; border:none; color:var(--text3); font-size:20px; cursor:pointer; padding:4px 8px; border-radius:5px; }
+    .mp-close:hover { background:var(--bg3); color:var(--text); }
+    .mp-tools { padding:10px 20px; border-bottom:1px solid rgba(255,255,255,.04); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .mp-search { flex:1; min-width:140px; height:30px; padding:0 10px; background:var(--bg3); border:1px solid rgba(255,255,255,.06); border-radius:6px; color:var(--text); font-size:12px; outline:none; }
+    .mp-cat { padding:4px 10px; background:var(--bg3); border:1px solid rgba(255,255,255,.06); color:var(--text2); border-radius:999px; font-size:11px; cursor:pointer; }
+    .mp-cat.active { background:var(--accent); color:#000; border-color:var(--accent); }
+    .mp-body { flex:1; overflow-y:auto; padding:14px 20px; }
+    .mp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px; }
+    .mp-card { cursor:pointer; border-radius:8px; border:1px solid rgba(255,255,255,.06); background:var(--bg3); overflow:hidden; transition:transform .1s, border-color .1s; position:relative; }
+    .mp-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+    .mp-card.active { border-color:var(--accent); box-shadow:0 0 0 2px rgba(124,108,240,.35); }
+    .mp-card-img { width:100%; aspect-ratio:1/1; background:var(--bg4); background-size:cover; background-position:center; }
+    .mp-card-label { padding:6px 8px; font-size:11px; color:var(--text); text-align:center; }
+    .mp-list { display:flex; flex-direction:column; gap:4px; }
+    .mp-list-row { padding:8px 12px; background:var(--bg3); border:1px solid rgba(255,255,255,.04); border-radius:6px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:border-color .1s; }
+    .mp-list-row:hover { border-color:var(--accent); }
+    .mp-list-row.active { border-color:var(--accent); background:rgba(124,108,240,.1); }
+    .mp-list-icon { width:24px; text-align:center; font-size:14px; }
+    .mp-list-name { flex:1; font-size:12px; color:var(--text); }
+    .mp-list-meta { font-size:10px; color:var(--text3); }
+    .mp-empty { padding:40px 20px; text-align:center; color:var(--text3); font-size:12px; }
+  `;
+  document.head.appendChild(s);
+}
+
+function _closeMultiPicker() { document.getElementById('multi-picker')?.remove(); }
+
+async function pickMultiSpeakerAvatar(idx) {
+  _ensureMultiPickerStyle();
+  const resp = await authFetch('/api/avatar/presets');
+  const data = await resp.json();
+  const avatars = data.avatars || {};
+  const meta = data.avatarMeta || {};
+  const categories = data.categories || [];
+  const keys = Object.keys(avatars).filter(k => avatars[k]);
+  if (!keys.length) { alert('请先在"选择形象"里生成预设头像'); return; }
+
+  const current = multiSpeakers[idx]?.avatar;
+  let catFilter = ''; let search = '';
+
+  const renderGrid = () => {
+    const body = document.getElementById('mp-body');
+    const filtered = keys.filter(k => {
+      if (catFilter && (meta[k]?.category !== catFilter)) return false;
+      if (search && !(meta[k]?.name || k).toLowerCase().includes(search.toLowerCase()) && !k.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+    if (!filtered.length) { body.innerHTML = `<div class="mp-empty">没有匹配的形象</div>`; return; }
+    body.innerHTML = `<div class="mp-grid">${filtered.map(k => `
+      <div class="mp-card ${k === current ? 'active' : ''}" data-key="${esc(k)}" onclick="__mpPickAvatar(${idx}, '${esc(k)}')">
+        <div class="mp-card-img" style="background-image:url('${esc(avatars[k])}')"></div>
+        <div class="mp-card-label">${esc(meta[k]?.name || k)}</div>
+      </div>`).join('')}</div>`;
+  };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mp-mask';
+  overlay.id = 'multi-picker';
+  overlay.onclick = (e) => { if (e.target === overlay) _closeMultiPicker(); };
+  overlay.innerHTML = `
+    <div class="mp-panel">
+      <div class="mp-hd">
+        <span class="mp-title">🎭 为角色选择形象</span>
+        <button class="mp-close" onclick="_closeMultiPicker()">×</button>
+      </div>
+      <div class="mp-tools">
+        <input class="mp-search" id="mp-search" placeholder="搜索形象名或 id..." />
+        <div id="mp-cats" style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="mp-cat active" data-cat="">全部</span>
+          ${categories.map(c => `<span class="mp-cat" data-cat="${esc(c.id)}">${esc(c.name)}</span>`).join('')}
+        </div>
+      </div>
+      <div class="mp-body" id="mp-body"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderGrid();
+  document.getElementById('mp-search').addEventListener('input', (e) => { search = e.target.value; renderGrid(); });
+  document.querySelectorAll('#mp-cats .mp-cat').forEach(el => el.addEventListener('click', () => {
+    catFilter = el.dataset.cat;
+    document.querySelectorAll('#mp-cats .mp-cat').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    renderGrid();
+  }));
+}
+
+// 供 onclick 调用（全局）
+function __mpPickAvatar(idx, key) {
+  const cardData = window._mpAvatarDataCache;
+  // meta 在 picker 函数闭包里，我们直接更新 model state
+  fetch('/api/avatar/presets').then(() => {}).catch(() => {}); // fire-and-forget noop
+  // 读最新元数据
+  authFetch('/api/avatar/presets').then(r => r.json()).then(data => {
+    const meta = data.avatarMeta || {};
+    multiSpeakers[idx].avatar = key;
+    multiSpeakers[idx].name = meta[key]?.name || key;
+    renderMultiSpeakers();
+    _closeMultiPicker();
+  }).catch(() => {
+    multiSpeakers[idx].avatar = key;
+    multiSpeakers[idx].name = key;
+    renderMultiSpeakers();
+    _closeMultiPicker();
+  });
+}
+
+function renderMultiSpeakers() {
+  const box = document.getElementById('av-multi-speakers');
+  if (!box) return;
+  if (!multiSpeakers.length) {
+    box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">还没有角色，点右上"+ 添加"</div>';
+    return;
+  }
+  box.innerHTML = multiSpeakers.map((s, i) => {
+    const avatarImg = s.avatar && typeof s.avatar === 'string' && !s.avatar.startsWith('/')
+      ? `/api/avatar/preset-img/avatar_${s.avatar}.png`
+      : (s.avatar || '');
+    return `<div class="av-multi-speaker-card">
+      <div class="av-multi-speaker-avatar" onclick="pickMultiSpeakerAvatar(${i})" style="cursor:pointer">
+        ${avatarImg ? `<img src="${esc(avatarImg)}" onerror="this.style.display='none'" />` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:9px">选头像</div>'}
+      </div>
+      <div class="av-multi-speaker-info">
+        <input type="text" value="${esc(s.name)}" oninput="multiSpeakers[${i}].name=this.value" style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.1);color:var(--text);font-size:11px;width:100%;padding:2px 0;outline:none" />
+        <div class="av-multi-speaker-role">${esc(s.id)} · ${esc(s.voiceName || '自动')}</div>
+      </div>
+      <button onclick="changeMultiSpeakerVoice(${i})" style="background:var(--bg2);border:1px solid rgba(255,255,255,.08);color:var(--text2);border-radius:5px;height:22px;padding:0 6px;font-size:10px;cursor:pointer">音色</button>
+      <button onclick="removeMultiSpeaker(${i})" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:4px">×</button>
+    </div>`;
+  }).join('');
+}
+
+async function changeMultiSpeakerVoice(idx) {
+  _ensureMultiPickerStyle();
+  if (!_avAllVoices) {
+    try { const r = await authFetch('/api/avatar/voice-list'); const j = await r.json(); _avAllVoices = j.voices || []; } catch {}
+  }
+  if (!_avAllVoices?.length) { alert('无可用音色，请到 AI 配置中启用 TTS'); return; }
+
+  const current = multiSpeakers[idx]?.voiceId || '';
+  let search = '', genderFilter = '';
+
+  const renderList = () => {
+    const body = document.getElementById('mp-body');
+    const filtered = _avAllVoices.filter(v => {
+      if (genderFilter && v.gender !== genderFilter && v.gender !== 'auto') return false;
+      if (search) {
+        const key = (v.name + ' ' + (v.id || '') + ' ' + (v.provider || '')).toLowerCase();
+        if (!key.includes(search.toLowerCase())) return false;
+      }
+      return true;
+    });
+    if (!filtered.length) { body.innerHTML = `<div class="mp-empty">没有匹配的音色</div>`; return; }
+    body.innerHTML = `<div class="mp-list">${filtered.map(v => {
+      const vid = v.id || '';
+      const active = vid === current;
+      const icon = v.providerIcon || (v.gender === 'female' ? '👩' : v.gender === 'male' ? '👨' : v.gender === 'child' ? '🧒' : '🔊');
+      return `<div class="mp-list-row ${active ? 'active' : ''}" onclick="__mpPickVoice(${idx}, '${esc(vid)}', '${esc(v.name)}')">
+        <div class="mp-list-icon">${icon}</div>
+        <div class="mp-list-name">${esc(v.name)}${v.tag ? ` <span style="font-size:9px;padding:1px 5px;background:rgba(124,108,240,.2);color:var(--accent);border-radius:4px;margin-left:4px">${esc(v.tag)}</span>` : ''}</div>
+        <div class="mp-list-meta">${esc(v.provider || '')} · ${esc(vid || 'auto')}</div>
+        ${vid ? `<button onclick="event.stopPropagation();__mpPreviewVoice('${esc(vid)}', this)" style="background:var(--bg4);border:1px solid rgba(255,255,255,.08);color:var(--text2);border-radius:4px;height:22px;padding:0 8px;font-size:10px;cursor:pointer">▶ 试听</button>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+  };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mp-mask';
+  overlay.id = 'multi-picker';
+  overlay.onclick = (e) => { if (e.target === overlay) _closeMultiPicker(); };
+  overlay.innerHTML = `
+    <div class="mp-panel">
+      <div class="mp-hd">
+        <span class="mp-title">🎵 为"${esc(multiSpeakers[idx]?.name || '角色')}"选择音色</span>
+        <button class="mp-close" onclick="_closeMultiPicker()">×</button>
+      </div>
+      <div class="mp-tools">
+        <input class="mp-search" id="mp-search" placeholder="搜索音色名 / 提供商（火山/智谱/百度）..." />
+        <div style="display:flex;gap:6px">
+          <span class="mp-cat active" data-gender="">全部</span>
+          <span class="mp-cat" data-gender="female">女声</span>
+          <span class="mp-cat" data-gender="male">男声</span>
+          <span class="mp-cat" data-gender="child">童声</span>
+        </div>
+      </div>
+      <div class="mp-body" id="mp-body"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  renderList();
+  document.getElementById('mp-search').addEventListener('input', (e) => { search = e.target.value; renderList(); });
+  overlay.querySelectorAll('.mp-cat[data-gender]').forEach(el => el.addEventListener('click', () => {
+    genderFilter = el.dataset.gender;
+    overlay.querySelectorAll('.mp-cat[data-gender]').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    renderList();
+  }));
+}
+
+function __mpPickVoice(idx, voiceId, voiceName) {
+  multiSpeakers[idx].voiceId = voiceId || '';
+  multiSpeakers[idx].voiceName = voiceName || '自动';
+  renderMultiSpeakers();
+  _closeMultiPicker();
+}
+
+async function __mpPreviewVoice(voiceId, btn) {
+  const origLabel = btn.textContent;
+  btn.textContent = '⏳'; btn.disabled = true;
+  try {
+    if (_globalAudio) { _globalAudio.pause(); _globalAudio.src = ''; _globalAudio = null; }
+    const r = await authFetch('/api/avatar/preview-voice', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voiceId, text: '你好，这是我的音色试听。' }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    _globalAudio = new Audio(url);
+    _globalAudio.onended = () => { URL.revokeObjectURL(url); _globalAudio = null; };
+    await _globalAudio.play();
+  } catch (e) {
+    alert('试听失败：' + e.message);
+  } finally {
+    btn.textContent = origLabel; btn.disabled = false;
+  }
+}
+
+function addMultiDialogue() {
+  if (!multiSpeakers.length) { alert('请先添加至少一个角色'); return; }
+  multiDialogue.push({
+    speakerId: multiSpeakers[0].id,
+    text: '',
+    emotion: 'neutral',
+    emotion_intensity: 0.5,
+    camera: 'medium',
+  });
+  renderMultiDialogue();
+  updateMultiStat();
+}
+
+function removeMultiDialogue(idx) {
+  multiDialogue.splice(idx, 1);
+  renderMultiDialogue();
+  updateMultiStat();
+}
+
+function renderMultiDialogue() {
+  const box = document.getElementById('av-multi-dialogue');
+  if (!box) return;
+  if (!multiDialogue.length) {
+    box.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3);font-size:11px">还没有对话<br><br>点击右上"+ 添加发言"或"AI 生成对话"</div>';
+    return;
+  }
+  const CAM_OPTS = ['medium','close_up','full','zoom_in','zoom_out','pan_left','pan_right','orbit'];
+  const EMOT_OPTS = ['neutral','happy','warm','confident','excited','serious','sad','surprised'];
+  box.innerHTML = multiDialogue.map((d, i) => {
+    const spOptions = multiSpeakers.map(s => `<option value="${esc(s.id)}" ${s.id === d.speakerId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+    const camOptions = CAM_OPTS.map(c => `<option value="${c}" ${c === d.camera ? 'selected' : ''}>${c}</option>`).join('');
+    const emotOptions = EMOT_OPTS.map(e => `<option value="${e}" ${e === d.emotion ? 'selected' : ''}>${e}</option>`).join('');
+    return `<div class="av-multi-dialogue-row">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <span style="font-size:10px;color:var(--text3);width:20px">#${i+1}</span>
+        <select onchange="multiDialogue[${i}].speakerId=this.value;updateMultiStat()" style="background:var(--bg2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:5px;height:24px;font-size:11px;padding:0 4px">${spOptions}</select>
+        <select onchange="multiDialogue[${i}].emotion=this.value" style="background:var(--bg2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:5px;height:24px;font-size:11px;padding:0 4px">${emotOptions}</select>
+        <select onchange="multiDialogue[${i}].camera=this.value" style="background:var(--bg2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:5px;height:24px;font-size:11px;padding:0 4px">${camOptions}</select>
+        <input type="range" min="0" max="100" value="${Math.round((d.emotion_intensity||0.5)*100)}" oninput="multiDialogue[${i}].emotion_intensity=parseInt(this.value)/100" style="flex:1;max-width:80px" title="情绪强度" />
+        <button onclick="removeMultiDialogue(${i})" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button>
+      </div>
+      <textarea oninput="multiDialogue[${i}].text=this.value" placeholder="输入台词..." rows="2" style="width:100%;background:var(--bg2);border:1px solid rgba(255,255,255,.08);color:var(--text);border-radius:5px;padding:6px 8px;font-size:11px;resize:vertical;font-family:inherit;box-sizing:border-box">${esc(d.text || '')}</textarea>
+    </div>`;
+  }).join('');
+}
+
+function updateMultiStat() {
+  const el = document.getElementById('av-multi-stat');
+  if (el) el.textContent = `${multiSpeakers.length} 个角色 · ${multiDialogue.length} 条发言`;
+}
+
+function selectMultiLayout(layout) {
+  multiLayout = layout;
+  document.getElementById('av-layout-cut').classList.toggle('active', layout === 'cut-to-speaker');
+  document.getElementById('av-layout-side').classList.toggle('active', layout === 'side-by-side');
+}
+
+async function aiGenerateMultiDialogue() {
+  if (!multiSpeakers.length) { alert('请先添加至少 1 个角色'); return; }
+  const topic = prompt('对话主题（例如："主持人和嘉宾讨论 AI 未来"）：', 'AI 技术对话');
+  if (!topic) return;
+  const names = multiSpeakers.map(s => s.name).join('、');
+  const sys = '你是资深影视编剧。输出 JSON 数组，每项 {speakerId, text, emotion, camera}。emotion: neutral/happy/warm/confident/excited/serious. camera: medium/close_up/zoom_in/zoom_out. 只输出纯 JSON，不要 markdown。';
+  const user = `角色：${multiSpeakers.map(s => `${s.id}=${s.name}`).join(', ')}\n主题：${topic}\n\n生成 6-10 条对话，每条 20-50 字，口语自然。按 speakerId 字段标明是谁在说。直接返回 JSON 数组。`;
+  try {
+    const btn = event?.target?.closest('button'); if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+    const r = await authFetch('/api/story/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: user, systemPrompt: sys, rawOutput: true }),
+    });
+    const j = await r.json();
+    const txt = j.content || j.text || j.result || '';
+    const match = txt.match(/\[[\s\S]*\]/);
+    const arr = JSON.parse(match ? match[0] : txt);
+    if (!Array.isArray(arr)) throw new Error('AI 返回非数组');
+    multiDialogue = arr.map(d => ({
+      speakerId: d.speakerId || multiSpeakers[0].id,
+      text: d.text || '',
+      emotion: d.emotion || 'neutral',
+      emotion_intensity: d.emotion_intensity ?? 0.5,
+      camera: d.camera || 'medium',
+    })).filter(d => d.text);
+    renderMultiDialogue();
+    updateMultiStat();
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="vertical-align:middle;margin-right:3px"><path d="M5 1l.8 2.6H8.5L6.4 5l.8 2.5L5 6 2.8 7.5l.8-2.5L1.5 3.6h2.7z" stroke="currentColor" stroke-width=".8" stroke-linejoin="round"/></svg>AI 生成对话'; }
+  } catch (e) {
+    alert('AI 生成失败: ' + e.message);
+    const btn = event?.target?.closest('button'); if (btn) { btn.disabled = false; btn.innerHTML = 'AI 生成对话'; }
+  }
+}
+
+async function startMultiSpeakerGeneration() {
+  if (!multiSpeakers.length) { alert('至少需要 1 个角色'); return; }
+  if (!multiDialogue.length || !multiDialogue.every(d => d.text?.trim())) { alert('每条发言必须有台词'); return; }
+
+  const btn = document.getElementById('av-multi-gen-btn');
+  btn.disabled = true;
+  const origHtml = btn.innerHTML;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block;margin-right:6px"></span>生成中...';
+
+  const resultBox = document.getElementById('av-multi-result');
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2)">提交任务...</div>';
+
+  try {
+    const body = {
+      speakers: multiSpeakers.map(s => ({
+        id: s.id, name: s.name, avatar: s.avatar, voiceId: s.voiceId || '',
+        emotion: s.emotion || 'neutral',
+      })),
+      dialogue: multiDialogue.map(d => ({
+        speakerId: d.speakerId,
+        text: d.text,
+        emotion: d.emotion,
+        emotion_intensity: d.emotion_intensity,
+        camera: d.camera,
+      })),
+      layout: multiLayout,
+      background: document.getElementById('av-multi-bg')?.value || 'studio',
+      ratio: document.getElementById('av-multi-ratio')?.value || '16:9',
+      model: document.getElementById('av-model-selector')?.value || 'cogvideox-flash',
+      speed: parseFloat(document.getElementById('av-multi-speed')?.value) || 1.0,
+      title: '多人对话 ' + new Date().toLocaleTimeString(),
+    };
+    const r = await authFetch('/api/avatar/multi-speaker', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || '提交失败');
+
+    // SSE 进度
+    const sse = new EventSource(authUrl(`/api/avatar/tasks/${j.taskId}/progress`));
+    sse.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.step === 'connected') return;
+      if (d.step === 'done') {
+        sse.close();
+        const src = authUrl(d.videoUrl);
+        const dl = authUrl(`/api/avatar/tasks/${j.taskId}/download`);
+        resultBox.innerHTML = `<video controls autoplay playsinline style="width:100%;max-height:400px;border-radius:6px;background:#000"><source src="${src}" type="video/mp4" /></video>
+          <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+            <a href="${dl}" download style="background:var(--accent);border-radius:6px;color:#0a0a0f;padding:8px 16px;text-decoration:none;font-size:12px;font-weight:600">下载视频</a>
+          </div>`;
+        btn.disabled = false; btn.innerHTML = origHtml;
+        addAvatarHistory({ taskId: j.taskId, text: `多人对话 (${multiSpeakers.length}×${multiDialogue.length})`, videoUrl: d.videoUrl, ratio: body.ratio, model: body.model, title: body.title });
+        return;
+      }
+      if (d.step === 'error') {
+        sse.close();
+        resultBox.innerHTML = `<div style="padding:16px;color:var(--error);font-size:12px">⚠ ${esc(d.message || '未知错误')}</div>`;
+        btn.disabled = false; btn.innerHTML = origHtml;
+        return;
+      }
+      // 进度
+      const cur = d.current ? `[${d.current}/${d.total}]` : '';
+      resultBox.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text2);font-size:12px"><div style="margin-bottom:10px"><span class="av-spinner" style="display:inline-block"></span></div>${esc(d.message || d.step)} ${cur}</div>`;
+    };
+    sse.onerror = () => { /* 静默重连 */ };
+  } catch (e) {
+    resultBox.innerHTML = `<div style="padding:16px;color:var(--error);font-size:12px">⚠ ${esc(e.message)}</div>`;
+    btn.disabled = false; btn.innerHTML = origHtml;
   }
 }
 
@@ -6918,7 +9168,8 @@ function selectAvatarTemplate(el) {
 function onAvatarTextChange() {
   const text = document.getElementById('av-text-input')?.value || '';
   const segBtn = document.getElementById('av-seg-btn');
-  if (segBtn) segBtn.style.display = text.length > 100 ? '' : 'none';
+  // 短到 30 字也允许手动分段（AI 写的 20s 口播 ~80 字，但 15s 的可能 60 字）
+  if (segBtn) segBtn.style.display = text.length >= 30 ? '' : 'none';
   // 文本改变后清除旧分段
   if (avatarSegments) {
     avatarSegments = null;
@@ -6967,20 +9218,30 @@ function renderAvatarSegments() {
   countEl.textContent = `${avatarSegments.length} 段`;
 
   const exprLabels = { natural: '自然', smile: '微笑', serious: '严肃', excited: '兴奋', calm: '平静' };
+  // 按中文语速约 4 字/秒估算每段时间
+  let accTime = 0;
   list.innerHTML = avatarSegments.map((seg, i) => {
     const charCount = seg.text.length;
+    const durSec = Math.max(2, Math.round(charCount / 4));
+    const startSec = accTime;
+    const endSec = accTime + durSec;
+    accTime = endSec;
+    const fmt = (s) => { const m = Math.floor(s/60); const ss = s%60; return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); };
     const exprLabel = exprLabels[seg.expression] || seg.expression;
     return `<div class="av-seg-item">
       <div class="av-seg-idx">${i + 1}</div>
       <div class="av-seg-body">
+        <div class="av-seg-time" style="font-size:10px;color:var(--accent);font-family:'SF Mono',monospace;margin-bottom:2px">${fmt(startSec)} - ${fmt(endSec)}</div>
         <div class="av-seg-text">${esc(seg.text)}</div>
         <div class="av-seg-meta">
-          <span class="av-seg-tag">${charCount}字</span>
+          <span class="av-seg-tag">${charCount}字 · ${durSec}s</span>
           <span class="av-seg-tag expr">${exprLabel}</span>
         </div>
       </div>
     </div>`;
   }).join('');
+  // 更新总时长
+  countEl.textContent = `${avatarSegments.length} 段 · 约${Math.floor(accTime/60)}分${accTime%60}秒`;
 }
 
 function clearAvatarSegments() {
@@ -7088,19 +9349,86 @@ function selectPortraitAsAvatar(imgUrl, name) {
 
 // ═══════ 预设图片加载与生成 ═══════
 
+let _avatarPresetsData = null; // { avatars, avatarMeta, backgrounds, categories }
+let _avatarCatFilter = '';
+
 async function loadAvatarPresets() {
   try {
     const resp = await authFetch('/api/avatar/presets');
     const data = await resp.json();
     if (!data.success) return;
-    for (const [key, url] of Object.entries(data.avatars || {})) {
-      if (url) applyPresetImage('.av-preset-avatar', key, url);
-    }
+    _avatarPresetsData = data;
+    renderAvatarGrid();
+    // 背景预设沿用老逻辑
     for (const [key, url] of Object.entries(data.backgrounds || {})) {
       if (url) applyPresetImage('.av-preset-bg', key, url);
     }
   } catch {}
 }
+
+function renderAvatarGrid() {
+  const grid = document.getElementById('av-avatar-grid');
+  if (!grid || !_avatarPresetsData) return;
+  const meta = _avatarPresetsData.avatarMeta || {};
+  const urls = _avatarPresetsData.avatars || {};
+
+  // 清掉现有预设卡（保留 data-fixed="1" 的上传/形象库卡）
+  [...grid.querySelectorAll('.av-avatar-card[data-avatar]')].forEach(c => c.remove());
+
+  const gradientPool = [
+    'linear-gradient(135deg,#667eea,#764ba2)',
+    'linear-gradient(135deg,#3a7bd5,#00d2ff)',
+    'linear-gradient(135deg,#4facfe,#00f2fe)',
+    'linear-gradient(135deg,#43e97b,#38f9d7)',
+    'linear-gradient(135deg,#fa709a,#fee140)',
+    'linear-gradient(135deg,#ff9a9e,#fad0c4)',
+    'linear-gradient(135deg,#a1c4fd,#c2e9fb)',
+    'linear-gradient(135deg,#ffecd2,#fcb69f)',
+    'linear-gradient(135deg,#84fab0,#8fd3f4)',
+    'linear-gradient(135deg,#fbc2eb,#a6c1ee)',
+  ];
+
+  const fragments = [];
+  Object.entries(meta).forEach(([key, m], i) => {
+    const cat = m.category || 'general';
+    if (_avatarCatFilter && cat !== _avatarCatFilter) return;
+    const grad = gradientPool[i % gradientPool.length];
+    fragments.push(`
+      <div class="av-avatar-card" data-avatar="${key}" data-cat="${cat}" onclick="selectAvatar(this)">
+        <div class="av-avatar-img av-preset-avatar" data-preset="${key}" style="background:${grad}">
+          <svg class="av-avatar-fallback" width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="#fff" stroke-width="1.2" opacity=".9"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#fff" stroke-width="1.2" opacity=".7" stroke-linecap="round"/></svg>
+        </div>
+        <span>${m.name || key}</span>
+      </div>
+    `);
+  });
+
+  // 固定卡（上传/形象库）保留在最前，预设卡追加到后面
+  const fixed = [...grid.querySelectorAll('.av-avatar-card[data-fixed="1"]')];
+  grid.innerHTML = fixed.map(el => el.outerHTML).join('') + fragments.join('');
+
+  // 异步回填已生成的预设图
+  for (const [key, url] of Object.entries(urls)) {
+    if (url) applyPresetImage('.av-preset-avatar', key, url);
+  }
+
+  // 默认选第一个预设卡（若当前未选中任何 avatar）
+  if (!avatarSelected) {
+    const first = grid.querySelector('.av-avatar-card[data-avatar]');
+    if (first) { first.classList.add('active'); avatarSelected = first.dataset.avatar; }
+  } else {
+    const restore = grid.querySelector(`.av-avatar-card[data-avatar="${avatarSelected}"]`);
+    if (restore) restore.classList.add('active');
+  }
+}
+
+function filterAvatarGrid(btn, cat) {
+  _avatarCatFilter = cat || '';
+  document.querySelectorAll('#av-avatar-cats .av-cat-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAvatarGrid();
+}
+window.filterAvatarGrid = filterAvatarGrid;
 
 function applyPresetImage(selector, key, url) {
   const el = document.querySelector(`${selector}[data-preset="${key}"]`);
@@ -7111,15 +9439,317 @@ function applyPresetImage(selector, key, url) {
   img.onload = () => {
     el.classList.add('has-img');
     el.style.background = 'none';
+    // 清除可能残留的文字节点，再插入图片
+    [...el.childNodes].forEach(n => { if (n.nodeType === 3 || (n.nodeType === 1 && !n.tagName?.match(/^IMG$/i))) { if (n.tagName !== 'SPAN' || !n.className?.includes('av-bg-fallback')) n.remove(); } });
     el.insertBefore(img, el.firstChild);
+    el.dataset.generated = 'true';
   };
   img.src = fullUrl;
+}
+
+// 单个预设图片自动生成（点击预设卡时触发）
+async function generateSinglePreset(type, key, imgEl) {
+  if (imgEl.dataset.generating) return; // 防重复
+  imgEl.dataset.generating = 'true';
+  // 显示加载指示
+  const origBg = imgEl.style.background;
+  imgEl.innerHTML = '<span style="font-size:10px;color:rgba(255,255,255,.7)">生成中...</span>';
+
+  try {
+    const resp = await authFetch('/api/avatar/generate-presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, keys: [key] })
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error);
+
+    const results = type === 'avatar' ? data.results?.avatars : data.results?.backgrounds;
+    const url = results?.[key];
+    if (url) {
+      imgEl.style.backgroundImage = `url(${url})`;
+      imgEl.style.backgroundSize = 'cover';
+      imgEl.style.backgroundPosition = 'center';
+      imgEl.innerHTML = '';
+      imgEl.dataset.generated = 'true';
+    } else {
+      imgEl.innerHTML = '';
+      imgEl.style.background = origBg;
+    }
+  } catch (e) {
+    console.warn(`[Preset] ${key} 生成失败:`, e.message);
+    imgEl.innerHTML = '';
+    imgEl.style.background = origBg;
+  } finally {
+    delete imgEl.dataset.generating;
+  }
+}
+
+// AI 生成新素材（背景/人物）通用 dialog — 单张生成并入库成为新卡片
+// type: 'background' | 'avatar'
+function openCustomGenModal(type) {
+  return new Promise(resolve => {
+    const isBg = type === 'background';
+    const title = isBg ? 'AI 生成背景图' : 'AI 生成新人物形象';
+    const examples = isBg ? [
+      { ico: '🏖️', name: '海边咖啡馆', text: '海边咖啡馆的露台，黄昏时分，有绿植、藤椅和远处海景' },
+      { ico: '💻', name: '科技办公室', text: '科技感未来办公室，深蓝色调，大屏幕显示代码和数据，悬浮全息UI' },
+      { ico: '🍵', name: '中式茶室', text: '中式茶室，木质桌椅和山水画，温暖灯光，传统屏风' },
+      { ico: '🏠', name: '北欧客厅', text: '北欧风格客厅，白色木地板，灰色沙发，绿植，落地窗，柔和自然光' },
+      { ico: '📚', name: '复古书房', text: '复古书房，深色木质书架，皮质沙发，台灯，温暖琥珀色调' },
+      { ico: '🌃', name: '赛博朋克', text: '赛博朋克霓虹街道，雨天，全息广告牌，紫色和青色光影' },
+    ] : [
+      { ico: '👔', name: '金融分析师', text: '30岁华人男性金融分析师，灰色定制西装，白衬衫，精致眼镜，专业自信的表情，落地窗办公室背景虚化' },
+      { ico: '🧪', name: '科研女学者', text: '35岁亚洲女性科研学者，白色实验袍，知性短发，细框眼镜，温和坚定的微笑，实验室背景虚化' },
+      { ico: '💪', name: '健身达人', text: '27岁亚洲男性健身教练，紧身黑色运动背心，阳光健康的笑容，健身房背景虚化' },
+      { ico: '🎤', name: '综艺 MC', text: '28岁亚洲女性综艺主持人，亮色职业装，活力灿烂笑容，大爱心耳环，演播室背景' },
+      { ico: '🎨', name: '艺术家', text: '35岁男性艺术家，休闲衬衫配围裙，沾有颜料，创作专注眼神，画室背景' },
+      { ico: '🍳', name: '厨师', text: '40岁华人大厨，白色厨师服，自信和善笑容，厨房背景' },
+    ];
+    let modal = document.getElementById('custom-gen-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'custom-gen-modal';
+    modal.className = 'bgpm-modal';
+    modal.innerHTML = `
+      <div class="bgpm-backdrop"></div>
+      <div class="bgpm-panel">
+        <div class="bgpm-hd">
+          <div class="bgpm-title">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="color:var(--accent)"><path d="M8 1l1.8 4.6L14 6l-3.4 3.2L11.4 14 8 11.6 4.6 14l.8-4.8L2 6l4.2-.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            ${title}
+          </div>
+          <button class="bgpm-close" onclick="closeCustomGenModal(null)">×</button>
+        </div>
+        <div class="bgpm-body">
+          <label class="bgpm-label">名称（显示在卡片下方，可选）</label>
+          <input class="bgpm-textarea" id="cgm-name" style="height:30px;padding:4px 10px" placeholder="例：我的海边咖啡馆" maxlength="12" />
+          <label class="bgpm-label" style="margin-top:10px">详细描述 *必填</label>
+          <textarea class="bgpm-textarea" id="cgm-desc" rows="3" placeholder="${isBg ? '描述你想要的背景图场景，越细越好（光线/色调/物品/氛围）' : '描述人物（年龄/性别/服装/发型/表情/职业场景）'}"></textarea>
+          <div class="bgpm-hint">参考示例（点击填入）：</div>
+          <div class="bgpm-examples">
+            ${examples.map(e => `<span class="bgpm-chip" data-ex="${e.text.replace(/"/g, '&quot;')}">${e.ico} ${e.name}</span>`).join('')}
+          </div>
+          <div id="cgm-status" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
+        </div>
+        <div class="bgpm-ft">
+          <button class="bgpm-btn-cancel" onclick="closeCustomGenModal(null)">取消</button>
+          <button class="bgpm-btn-ok" id="cgm-ok-btn" onclick="submitCustomGen('${type}')">生成</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('.bgpm-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const ta = document.getElementById('cgm-desc');
+        ta.value = chip.dataset.ex;
+        ta.focus();
+      });
+    });
+    modal.querySelector('.bgpm-backdrop').addEventListener('click', () => closeCustomGenModal(null));
+    const handler = (e) => {
+      if (e.key === 'Escape') { closeCustomGenModal(null); document.removeEventListener('keydown', handler); }
+    };
+    document.addEventListener('keydown', handler);
+    requestAnimationFrame(() => { modal.classList.add('open'); document.getElementById('cgm-desc')?.focus(); });
+    window._customGenResolve = (val) => { resolve(val); };
+  });
+}
+
+async function submitCustomGen(type) {
+  const desc = document.getElementById('cgm-desc').value.trim();
+  const name = document.getElementById('cgm-name').value.trim();
+  if (!desc || desc.length < 5) {
+    const s = document.getElementById('cgm-status');
+    if (s) { s.style.color = 'var(--error)'; s.textContent = '⚠ 请输入至少 5 个字的描述'; }
+    return;
+  }
+  const btn = document.getElementById('cgm-ok-btn');
+  const status = document.getElementById('cgm-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block;margin-right:4px"></span>生成中...';
+  status.style.color = 'var(--text3)';
+  status.textContent = '🎨 AI 正在生成（10-30 秒）...';
+  try {
+    const r = await authFetch('/api/avatar/generate-custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, name, description: desc }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    status.style.color = 'var(--accent)';
+    status.textContent = '✓ 生成成功';
+    setTimeout(() => closeCustomGenModal(j.item), 400);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '重试';
+    status.style.color = 'var(--error)';
+    status.textContent = '⚠ ' + e.message;
+  }
+}
+
+function closeCustomGenModal(item) {
+  const modal = document.getElementById('custom-gen-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    setTimeout(() => modal.remove(), 200);
+  }
+  if (window._customGenResolve) {
+    window._customGenResolve(item);
+    window._customGenResolve = null;
+  }
+}
+
+// 兼容旧调用
+function openBgPromptModal() { return openCustomGenModal('background').then(item => item?.description || null); }
+function closeBgPromptModal() { closeCustomGenModal(null); }
+
+// 生成自定义素材 → 添加到 UI
+async function generateCustomAvatar() {
+  const item = await openCustomGenModal('avatar');
+  if (!item) return;
+  addCustomAvatarCard(item);
+  showToast('新人物形象已添加：' + item.name, 'success');
+}
+async function generateCustomBackground() {
+  const item = await openCustomGenModal('background');
+  if (!item) return;
+  addCustomBackgroundCard(item);
+  showToast('新背景已添加：' + item.name, 'success');
+}
+
+function addCustomAvatarCard(item) {
+  const grid = document.getElementById('av-avatar-grid');
+  if (!grid) return;
+  // 避免重复
+  if (grid.querySelector(`[data-avatar="${item.id}"]`)) return;
+  const card = document.createElement('div');
+  card.className = 'av-avatar-card';
+  card.dataset.avatar = item.id;
+  card.dataset.category = 'custom';
+  card.dataset.gender = 'neutral';
+  card.title = item.description;
+  card.innerHTML = `
+    <div class="av-avatar-img av-preset-avatar has-img" data-generated="true" style="background-image:url(${authUrl(item.imgPath)});background-size:cover;background-position:center"></div>
+    <span>${esc(item.name)}</span>
+    <button onclick="event.stopPropagation();deleteCustomItem('${item.id}',this,'avatar')" style="position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;cursor:pointer;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;opacity:.5" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.5">×</button>
+  `;
+  card.style.position = 'relative';
+  card.onclick = () => selectAvatar(card);
+  grid.appendChild(card);
+}
+
+function addCustomBackgroundCard(item) {
+  const grid = document.getElementById('av-bg-grid');
+  if (!grid) return;
+  if (grid.querySelector(`[data-bg="${item.id}"]`)) return;
+  const card = document.createElement('div');
+  card.className = 'av-bg-card';
+  card.dataset.bg = item.id;
+  card.title = item.description;
+  card.style.position = 'relative';
+  card.innerHTML = `
+    <div class="av-bg-preview av-preset-bg has-img" data-generated="true" style="background-image:url(${authUrl(item.imgPath)});background-size:cover;background-position:center"></div>
+    <span>${esc(item.name)}</span>
+    <button onclick="event.stopPropagation();deleteCustomItem('${item.id}',this,'background')" style="position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;cursor:pointer;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;opacity:.5" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.5">×</button>
+  `;
+  card.onclick = () => selectAvatarBg(card);
+  grid.appendChild(card);
+}
+
+async function deleteCustomItem(id, btn, type) {
+  if (!confirm('删除这个自定义素材？')) return;
+  try {
+    await authFetch('/api/avatar/custom-items/' + encodeURIComponent(id), { method: 'DELETE' });
+    const card = btn.closest(type === 'avatar' ? '.av-avatar-card' : '.av-bg-card');
+    if (card) card.remove();
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+  }
+}
+
+// 页面加载时拉取已生成的自定义素材
+async function loadCustomItems() {
+  try {
+    const r = await authFetch('/api/avatar/custom-items');
+    const j = await r.json();
+    if (!j.success) return;
+    (j.avatars || []).forEach(addCustomAvatarCard);
+    (j.backgrounds || []).forEach(addCustomBackgroundCard);
+  } catch (e) { console.warn('[Avatar] loadCustomItems:', e.message); }
+}
+
+// 批量补生缺失预设 — 3 并发 + 进度提示
+let _backfillInProgress = false;
+async function autoBackfillMissingPresets(force = false) {
+  if (_backfillInProgress) return;
+  const missingAvatars = [];
+  document.querySelectorAll('#av-avatar-grid .av-avatar-card[data-avatar]').forEach(card => {
+    if (card.dataset.fixed === '1') return;
+    const id = card.dataset.avatar;
+    const img = card.querySelector('.av-preset-avatar');
+    if (!img) return;
+    const hasImg = img.dataset.generated === 'true' || img.classList.contains('has-img') || img.querySelector('img');
+    if (!hasImg && !id.startsWith('custom_')) missingAvatars.push({ id, img });
+  });
+  if (!missingAvatars.length) return;
+  _backfillInProgress = true;
+
+  console.log(`[Avatar] 检测到 ${missingAvatars.length} 个未生成的预设头像，3 并发补生...`);
+  if (typeof showToast === 'function') showToast(`正在 AI 补生 ${missingAvatars.length} 个头像...`, 'info');
+
+  // 显示全局进度条
+  let progressEl = document.getElementById('av-backfill-progress');
+  if (!progressEl) {
+    progressEl = document.createElement('div');
+    progressEl.id = 'av-backfill-progress';
+    progressEl.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:200;background:var(--bg2);border:1px solid rgba(var(--accent-rgb),.3);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,.3);display:flex;align-items:center;gap:8px';
+    document.body.appendChild(progressEl);
+  }
+  let done = 0, failed = 0;
+  const updateProgress = () => {
+    progressEl.innerHTML = `<span class="av-spinner av-spinner-sm" style="display:inline-block"></span>
+      <span>AI 补生头像 ${done}/${missingAvatars.length}${failed ? ` · <span style="color:var(--error)">${failed} 失败</span>` : ''}</span>`;
+  };
+  updateProgress();
+
+  const CONCURRENCY = 3;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < missingAvatars.length) {
+      const my = missingAvatars[cursor++];
+      if (!my || my.img.dataset.generating || my.img.dataset.generated === 'true') continue;
+      try {
+        await generateSinglePreset('avatar', my.id, my.img);
+        // 检查是否真的生成了
+        if (my.img.dataset.generated === 'true') done++;
+        else failed++;
+      } catch { failed++; }
+      updateProgress();
+      // 相邻同一 worker 间轻微延迟避免触发并发限流
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+
+  progressEl.innerHTML = `<span style="color:var(--accent)">✓</span> 完成 ${done}/${missingAvatars.length}${failed ? ` · <span style="color:var(--error)">${failed} 失败</span>` : ''}`;
+  setTimeout(() => progressEl.remove(), 5000);
+  _backfillInProgress = false;
+  if (failed > 0) console.warn(`[Avatar] ${failed} 个预设补生失败。点击对应卡片会触发单独重试，或检查 AI 配置中的图像模型。`);
 }
 
 async function generateAvatarPresets(type) {
   const btnId = type === 'background' ? 'av-gen-bg-btn' : 'av-gen-presets-btn';
   const btn = document.getElementById(btnId);
   if (!btn) return;
+
+  // 背景图：先用自定义模态框问用户描述
+  let customPrompt = '';
+  if (type === 'background') {
+    customPrompt = await openBgPromptModal();
+    if (customPrompt === null) return; // 用户取消
+  }
+
   const origHTML = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<span class="av-spinner av-spinner-sm" style="display:inline-block"></span> 生成中...';
@@ -7128,7 +9758,7 @@ async function generateAvatarPresets(type) {
     const resp = await authFetch('/api/avatar/generate-presets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: type || 'avatar' })
+      body: JSON.stringify({ type: type || 'avatar', customPrompt })
     });
     const data = await resp.json();
     if (!data.success) { alert(data.error || '生成失败'); return; }
@@ -9560,7 +12190,49 @@ let vcRecordTimer = null;
 let vcRecordSeconds = 0;
 let vcUploadedFile = null;
 
+async function loadCloneEngines() {
+  try {
+    const resp = await authFetch('/api/workbench/clone-engines');
+    const data = await resp.json();
+    const sel = document.getElementById('vc-engine-select');
+    const hint = document.getElementById('vc-engine-hint');
+    if (!sel) return;
+    const engines = data.engines || [];
+    const usable = engines.filter(e => e.usable);
+
+    // 重置下拉
+    sel.innerHTML = usable.length > 1
+      ? `<option value="">自动（推荐 · 按优先链回退）</option>`
+      : '';
+
+    for (const e of engines) {
+      const label = e.usable ? `${e.name} — ${e.desc}` : `${e.name} — ${e.reason}`;
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.textContent = label;
+      opt.disabled = !e.usable;
+      sel.appendChild(opt);
+    }
+
+    if (hint) {
+      if (!usable.length) {
+        hint.innerHTML = '⚠️ <b style="color:#f59e0b">未检测到可用克隆引擎</b>。请到「AI 配置」页面配置：阿里 DashScope（sk-* 且账号开通 voice_customization）或 火山引擎（格式 <code>appId:accessToken</code>），再回来克隆';
+      } else {
+        hint.innerHTML = `✓ 已检测到 <b style="color:#22c55e">${usable.length}</b> 个可用引擎：${usable.map(e => e.name).join('、')}`;
+      }
+    }
+
+    sel.onchange = () => {
+      if (!hint) return;
+      const eng = engines.find(e => e.id === sel.value);
+      if (eng) hint.innerHTML = `<b>${eng.name}</b>：${eng.desc}${eng.keyFormat ? `（Key 格式：<code>${eng.keyFormat}</code>）` : ''}`;
+    };
+  } catch (e) { console.warn('loadCloneEngines:', e.message); }
+}
+
 async function loadVoiceClonePage() {
+  // 加载可用的克隆引擎填到下拉（带配置状态提示）
+  loadCloneEngines();
   try {
     const resp = await authFetch('/api/workbench/voices');
     const data = await resp.json();
@@ -9572,12 +12244,13 @@ async function loadVoiceClonePage() {
       return;
     }
     el.innerHTML = voices.map(v => {
+      const providerName = v.clone_provider === 'aliyun-tts' ? '☁️ 阿里 CosyVoice' : v.clone_provider === 'volcengine' ? '🌋 火山引擎' : '';
       const statusTag = v.cloned
-        ? '<span class="tag tag-green">语音包就绪</span>'
+        ? `<span class="tag tag-green">${providerName || '语音包就绪'}</span>`
         : '<span class="tag tag-yellow">仅本地</span>';
       const statusHint = v.cloned
-        ? `<div style="font-size:10px;color:#22c55e;margin-top:2px;">Fish Audio ID: ${esc((v.fish_ref_id||'').substring(0,20))}...</div>`
-        : `<div style="font-size:10px;color:#8b8fa3;margin-top:2px;">可用于 TTS（配置 Fish Audio 效果更佳）</div>`;
+        ? `<div style="font-size:10px;color:#22c55e;margin-top:2px;">${providerName} 声音克隆已就绪</div>`
+        : `<div style="font-size:10px;color:#8b8fa3;margin-top:2px;">可用于 TTS（配置火山引擎声音复刻效果更佳）</div>`;
       return `<div class="card" style="padding:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <div>
@@ -9592,10 +12265,11 @@ async function loadVoiceClonePage() {
             ${Array.from({length:20}, (_, i) => `<div style="width:3px;height:${4+Math.random()*16}px;background:var(--accent);border-radius:1px;opacity:${0.4+Math.random()*0.6}"></div>`).join('')}
           </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button onclick="vcPlayVoice('${v.id}')" style="padding:6px 16px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">▶ 试听</button>
-          <button onclick="vcUseVoice('${v.id}','${esc(v.name)}')" style="padding:6px 16px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">使用此声音</button>
-          <button onclick="vcDeleteVoice('${v.id}')" style="padding:6px 16px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-left:auto;">🗑 删除</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="vcPlayVoice('${v.id}')" style="padding:6px 14px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;" title="播放你上传的原始样本">▶ 原样试听</button>
+          ${v.cloned ? `<button onclick="vcPreviewCloneEffect('${v.id}', this)" style="padding:6px 14px;background:var(--accent);color:#000;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;" title="用克隆出的声音合成一段测试语句">🎵 克隆效果试听</button>` : ''}
+          <button onclick="vcUseVoice('${v.id}','${esc(v.name)}')" style="padding:6px 14px;background:none;color:var(--text2);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer;">使用此声音</button>
+          <button onclick="vcDeleteVoice('${v.id}')" style="padding:6px 14px;background:rgba(239,68,68,.1);color:#ef4444;border:none;border-radius:6px;font-size:12px;cursor:pointer;margin-left:auto;">🗑 删除</button>
         </div>
       </div>`;
     }).join('');
@@ -9668,9 +12342,11 @@ async function vcStartClone() {
   const s3 = document.getElementById('vc-step3');
   s1.textContent = '处理中...'; s1.style.color = 'var(--accent)';
 
+  const engine = document.getElementById('vc-engine-select')?.value || '';
   const fd = new FormData();
   fd.append('audio', vcUploadedFile);
   fd.append('name', name);
+  if (engine) fd.append('engine', engine);
   try {
     s1.textContent = '已完成'; s1.style.color = '#22c55e';
     s2.textContent = '处理中...'; s2.style.color = 'var(--accent)';
@@ -9678,9 +12354,10 @@ async function vcStartClone() {
     const data = await resp.json();
     if (!data.success) throw new Error(data.error);
     s2.textContent = '已完成'; s2.style.color = '#22c55e';
-    s3.textContent = data.cloned ? '已完成' : '跳过（未配置 Fish Audio）';
+    const providerLabel = data.cloneProvider === 'aliyun-tts' ? '阿里 CosyVoice' : data.cloneProvider === 'volcengine' ? '火山引擎声音复刻' : '';
+    s3.textContent = data.cloned ? `已完成（${providerLabel}）` : '跳过（未配置语音克隆API）';
     s3.style.color = data.cloned ? '#22c55e' : '#f59e0b';
-    btn.textContent = data.cloned ? '✅ 克隆完成！' : '✅ 已保存（需配置 Fish Audio 才能克隆）';
+    btn.textContent = data.cloned ? `✅ 克隆完成！(${providerLabel})` : '✅ 已保存（配置阿里 DashScope 或 火山引擎可克隆）';
     // 刷新声音列表
     loadVoiceClonePage();
     // 重置表单
@@ -9714,6 +12391,30 @@ async function vcPlayVoice(id) {
     _globalAudio.onended = () => { URL.revokeObjectURL(url); _globalAudio = null; };
     _globalAudio.play();
   } catch (err) { alert('试听失败: ' + err.message); }
+}
+
+// 用克隆后的声音合成一段测试台词，让用户听"克隆效果"
+async function vcPreviewCloneEffect(id, btn) {
+  const text = prompt('输入试听文本（<=100 字，留空用默认）', '你好，这里是我的克隆声音试听，欢迎使用 VIDO。');
+  if (text === null) return;
+  const label = btn.textContent; btn.textContent = '⏳ 合成中...'; btn.disabled = true;
+  if (_globalAudio) { _globalAudio.pause(); _globalAudio.src = ''; _globalAudio = null; }
+  try {
+    const resp = await authFetch(`/api/workbench/voices/${id}/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text || undefined, speed: 1.0 }),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || '合成失败');
+    _globalAudio = new Audio(data.url);
+    _globalAudio.onended = () => { _globalAudio = null; };
+    await _globalAudio.play();
+  } catch (err) {
+    alert('克隆试听失败: ' + err.message + '\n\n可能原因：\n- 克隆还没成功（看卡片右上角 tag 是否是绿色）\n- 阿里 / 火山 API Key 失效\n- 网络超时');
+  } finally {
+    btn.textContent = label; btn.disabled = false;
+  }
 }
 
 function vcUseVoice(id, name) {
@@ -10153,25 +12854,73 @@ async function submitCreateDramaProject() {
   const title = document.getElementById('dcp-title').value.trim();
   if (!title) return alert('请输入网剧标题');
   try {
-    const r = await authFetch('/api/drama/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    // 场景数/时长：若留空，后端按 AI 建议逻辑兜底（默认 6 / 8s）
+    const scEl = document.getElementById('dcp-scenes');
+    const durEl = document.getElementById('dcp-shot-dur');
+    const scVal = scEl?.value?.trim();
+    const durVal = durEl?.value?.trim();
+    const payload = {
       title,
       synopsis: document.getElementById('dcp-synopsis').value.trim(),
       style: document.getElementById('dcp-style').value || '日系动漫',
       motion_preset: document.getElementById('dcp-motion').value || 'cinematic',
       episode_count: parseInt(document.getElementById('dcp-episodes').value || '10'),
       aspect_ratio: document.getElementById('dcp-aspect')?.value || '9:16',
-      // v15: 创建时一次性确定所有生成参数
-      scene_count: parseInt(document.getElementById('dcp-scenes')?.value || '6'),
-      shot_duration: parseInt(document.getElementById('dcp-shot-dur')?.value || '8'),
       image_model: document.getElementById('dcp-img-model')?.value || 'auto',
       video_model: document.getElementById('dcp-vid-model')?.value || 'auto',
       characters: dcpChars,
-    }) });
+    };
+    // 只在用户明确填了值才传；否则让后端走默认/AI 推断
+    if (scVal) payload.scene_count = parseInt(scVal);
+    if (durVal) payload.shot_duration = parseInt(durVal);
+    const r = await authFetch('/api/drama/projects', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const d = await r.json();
     if (d.success) { closeDramaCreateModal(); openDramaStudio(d.data.id); }
     else alert(d.error);
   } catch (e) { alert('创建失败: ' + e.message); }
 }
+
+// AI 推荐场景数 + 每镜时长
+async function suggestSceneParams() {
+  const title = document.getElementById('dcp-title')?.value?.trim() || '';
+  const synopsis = document.getElementById('dcp-synopsis')?.value?.trim() || '';
+  const style = document.getElementById('dcp-style')?.value || '';
+  if (!title && !synopsis) { alert('请先填写故事简介或标题'); return; }
+  const btn = document.getElementById('dcp-suggest-btn');
+  const hint = document.getElementById('dcp-suggest-hint');
+  if (btn) { btn.disabled = true; btn.textContent = '分析中…'; }
+  if (hint) hint.textContent = 'AI 正在根据简介分析合适的节奏…';
+  try {
+    const r = await authFetch('/api/drama/suggest-scene-params', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, synopsis, style }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    const { scene_count, shot_duration, total_episode_seconds, reasoning } = j.data;
+    const scEl = document.getElementById('dcp-scenes');
+    const durEl = document.getElementById('dcp-shot-dur');
+    if (scEl) scEl.value = scene_count;
+    if (durEl) {
+      // 如果选项里没有，则添加
+      if (!Array.from(durEl.options).some(o => o.value === String(shot_duration))) {
+        const opt = document.createElement('option');
+        opt.value = shot_duration; opt.textContent = shot_duration + ' 秒';
+        durEl.appendChild(opt);
+      }
+      durEl.value = shot_duration;
+    }
+    if (hint) hint.innerHTML = `✓ AI 建议 <b>${scene_count}</b> 场 × <b>${shot_duration}</b> 秒 = 每集 ${total_episode_seconds}s${reasoning ? '　<span style="color:var(--text2)">(' + reasoning + ')</span>' : ''}　<a href="#" onclick="event.preventDefault();document.getElementById('dcp-scenes').value='';document.getElementById('dcp-suggest-hint').textContent='';">清空</a>`;
+  } catch (e) {
+    if (hint) hint.innerHTML = '<span style="color:#f87171">建议失败：' + (e.message || '') + '</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ AI 建议'; }
+  }
+}
+window.suggestSceneParams = suggestSceneParams;
 
 async function deleteDramaProject(pid) {
   if (!confirm('确定删除此网剧及所有剧集？')) return;
@@ -10433,23 +13182,29 @@ async function loadDramaModels() {
 
 function updateDramaProgress(task) {
   const pct = task.progress || 0;
-  ['screenwriter', 'director', 'consistency', 'motion', 'prompt', 'imagegen', 'done'].forEach(s => {
+  // 新 10 步流水线
+  const allSteps = ['screenwriter', 'director', 'visual', 'dialogue', 'tts', 'threeview', 'consistency', 'confirm', 'imagegen', 'done'];
+  allSteps.forEach(s => {
     const el = document.getElementById('dp-' + s); if (el) el.classList.remove('active', 'done');
   });
-  if (pct >= 20) document.getElementById('dp-screenwriter')?.classList.add('done');
-  if (pct >= 35) document.getElementById('dp-director')?.classList.add('done');
-  if (pct >= 43) document.getElementById('dp-consistency')?.classList.add('done');
-  if (pct >= 50) document.getElementById('dp-motion')?.classList.add('done');
-  if (pct >= 60) document.getElementById('dp-prompt')?.classList.add('done');
-  if (pct >= 95) document.getElementById('dp-imagegen')?.classList.add('done');
-  if (pct >= 100) document.getElementById('dp-done')?.classList.add('done');
-  if (pct < 20) document.getElementById('dp-screenwriter')?.classList.add('active');
-  else if (pct < 35) document.getElementById('dp-director')?.classList.add('active');
-  else if (pct < 43) document.getElementById('dp-consistency')?.classList.add('active');
-  else if (pct < 50) document.getElementById('dp-motion')?.classList.add('active');
-  else if (pct < 60) document.getElementById('dp-prompt')?.classList.add('active');
-  else if (pct < 95) document.getElementById('dp-imagegen')?.classList.add('active');
-  else if (pct < 100) document.getElementById('dp-done')?.classList.add('active');
+  // 基于百分比标记已完成/活跃步骤
+  const thresholds = [
+    ['screenwriter', 10], ['director', 20], ['visual', 30], ['dialogue', 38],
+    ['tts', 46], ['threeview', 58], ['consistency', 65], ['confirm', 67],
+    ['imagegen', 97], ['done', 100]
+  ];
+  for (const [step, threshold] of thresholds) {
+    const el = document.getElementById('dp-' + step);
+    if (!el) continue;
+    if (pct >= threshold) el.classList.add('done');
+  }
+  // 标记当前活跃步骤
+  for (let i = thresholds.length - 1; i >= 0; i--) {
+    if (pct < thresholds[i][1]) {
+      const el = document.getElementById('dp-' + thresholds[i][0]);
+      if (el) el.classList.add('active');
+    } else break;
+  }
   // 进度文字
   const msgEl = document.getElementById('drama-progress-msg');
   if (msgEl && task.message) msgEl.textContent = task.message;

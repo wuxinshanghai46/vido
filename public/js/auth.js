@@ -4,7 +4,14 @@ let _currentUser = null;
 
 function getToken() { return _accessToken; }
 function setToken(token) { _accessToken = token; sessionStorage.setItem('vido_token', token); }
-function clearToken() { _accessToken = null; sessionStorage.removeItem('vido_token'); _currentUser = null; }
+function clearToken() {
+  _accessToken = null;
+  _currentUser = null;
+  sessionStorage.removeItem('vido_token');
+  sessionStorage.removeItem('vido_user');
+  localStorage.removeItem('vido_token');
+  localStorage.removeItem('vido_user');
+}
 
 function getAuthHeaders() {
   const token = getToken();
@@ -18,7 +25,7 @@ async function authFetch(url, opts = {}) {
   opts.headers = { ...base, ...opts.headers };
   let res = await fetch(url, opts);
   if (res.status === 401) {
-    // 尝试刷新 token
+    // 尝试刷新 token（去重并发刷新，避免 refresh_token 旋转 race 把人踢出去）
     const refreshed = await tryRefresh();
     if (refreshed) {
       const base2 = isFormData ? { 'Authorization': `Bearer ${getToken()}` } : getAuthHeaders();
@@ -26,25 +33,35 @@ async function authFetch(url, opts = {}) {
       res = await fetch(url, opts);
     } else {
       clearToken();
-      window.location.href = '/login.html';
+      window.location.href = '/?login=1';
       return res;
     }
   }
   return res;
 }
 
+// 关键修复：去重并发 refresh 调用 — 避免 refresh_token 旋转期间多个 401 并发刷新导致互相失效
+let _inflightRefresh = null;
 async function tryRefresh() {
-  try {
-    const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.success && data.data?.access_token) {
-      setToken(data.data.access_token);
-      _currentUser = data.data.user;
-      return true;
+  if (_inflightRefresh) return _inflightRefresh;
+  _inflightRefresh = (async () => {
+    try {
+      const res = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data.success && data.data?.access_token) {
+        setToken(data.data.access_token);
+        _currentUser = data.data.user;
+        return true;
+      }
+      return false;
+    } catch { return false; }
+    finally {
+      // 1.5s 内同 token 不再重复刷新
+      setTimeout(() => { _inflightRefresh = null; }, 1500);
     }
-    return false;
-  } catch { return false; }
+  })();
+  return _inflightRefresh;
 }
 
 async function fetchCurrentUser() {
@@ -63,14 +80,15 @@ function getCurrentUser() { return _currentUser; }
 async function logout() {
   try { await authFetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
   clearToken();
-  window.location.href = '/login.html';
+  window.location.href = '/?login=1';
 }
 
 // === 页面保护 ===
+// 超管和普通用户都可访问工作台；后台 /admin.html 由 requireAdmin 单独保护
 async function requireAuth() {
-  if (!getToken()) { window.location.href = '/login.html'; return false; }
+  if (!getToken()) { window.location.href = '/?login=1'; return false; }
   const user = await fetchCurrentUser();
-  if (!user) { clearToken(); window.location.href = '/login.html'; return false; }
+  if (!user) { clearToken(); window.location.href = '/?login=1'; return false; }
   return true;
 }
 
@@ -83,8 +101,10 @@ function authUrl(url) {
 }
 
 async function requireAdmin() {
-  const ok = await requireAuth();
-  if (!ok) return false;
-  if (_currentUser.role !== 'admin') { window.location.href = '/'; return false; }
+  // admin 独立登录入口：未登录直接跳 /login.html?redirect=/admin.html（不走前台首页弹窗）
+  if (!getToken()) { window.location.href = '/login.html?redirect=' + encodeURIComponent(location.pathname); return false; }
+  const user = await fetchCurrentUser();
+  if (!user) { clearToken(); window.location.href = '/login.html?redirect=' + encodeURIComponent(location.pathname); return false; }
+  if (user.role !== 'admin') { window.location.href = '/'; return false; }
   return true;
 }

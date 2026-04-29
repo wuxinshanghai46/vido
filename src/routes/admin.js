@@ -1022,6 +1022,17 @@ router.post('/daily-learn/trigger', async (req, res) => {
   }
 });
 
+// 强制全量学习：让所有 AI 团队成员学习全部 KB 知识
+router.post('/daily-learn/force-study', async (req, res) => {
+  try {
+    const dailyLearn = require('../services/dailyLearnService');
+    const result = await dailyLearn.forceFullStudy();
+    res.json({ success: true, data: result });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // 【v6 新增】每日学习 - 查看最近 digest
 router.get('/daily-learn/recent', (req, res) => {
   try {
@@ -1230,31 +1241,74 @@ router.get('/dashboard', (req, res) => {
     const monthCalls = allCalls.filter(c => inRange(c.timestamp, monthAgo));
     const quarterCalls = allCalls.filter(c => inRange(c.timestamp, quarterAgo));
 
+    // 按品类（llm/video/image/tts）拆分
+    function bucketByCategory(list) {
+      const buckets = { llm: { calls: 0, cost_usd: 0, tokens: 0 },
+                        video: { calls: 0, cost_usd: 0, seconds: 0 },
+                        image: { calls: 0, cost_usd: 0, count: 0 },
+                        tts:   { calls: 0, cost_usd: 0, chars: 0 } };
+      for (const r of list) {
+        const c = r.category || 'llm';
+        if (!buckets[c]) continue;
+        buckets[c].calls++;
+        buckets[c].cost_usd += r.cost_usd || 0;
+        if (c === 'llm')   buckets.llm.tokens   += r.total_tokens   || 0;
+        if (c === 'video') buckets.video.seconds += r.video_seconds || 0;
+        if (c === 'image') buckets.image.count   += r.image_count   || 0;
+        if (c === 'tts')   buckets.tts.chars     += r.tts_chars     || 0;
+      }
+      Object.values(buckets).forEach(b => { b.cost_usd = Number(b.cost_usd.toFixed(4)); });
+      return buckets;
+    }
+
+    // 成功/失败统计
+    const successCount = allCalls.filter(r => r.status === 'success').length;
+    const failCount = allCalls.filter(r => r.status === 'fail').length;
+    const successRate = allCalls.length ? Number((successCount / allCalls.length * 100).toFixed(1)) : 100;
+
     const tokenStats = {
       total_calls: allCalls.length,
       total_tokens: sumTokens(allCalls),
       total_cost_usd: sumCost(allCalls),
+      success_count: successCount,
+      fail_count: failCount,
+      success_rate: successRate,
       today: {
         calls: todayCalls.length,
         tokens: sumTokens(todayCalls),
         cost_usd: sumCost(todayCalls),
+        by_category: bucketByCategory(todayCalls),
       },
       week: {
         calls: weekCalls.length,
         tokens: sumTokens(weekCalls),
         cost_usd: sumCost(weekCalls),
+        by_category: bucketByCategory(weekCalls),
       },
       month: {
         calls: monthCalls.length,
         tokens: sumTokens(monthCalls),
         cost_usd: sumCost(monthCalls),
+        by_category: bucketByCategory(monthCalls),
       },
       quarter: {
         calls: quarterCalls.length,
         tokens: sumTokens(quarterCalls),
         cost_usd: sumCost(quarterCalls),
+        by_category: bucketByCategory(quarterCalls),
       },
+      total_by_category: bucketByCategory(allCalls),
     };
+
+    // 用户活跃度（基于最近登录时间）
+    const activeStats = {
+      dau: users.filter(u => inRange(u.last_login, today)).length,
+      wau: users.filter(u => inRange(u.last_login, weekAgo)).length,
+      mau: users.filter(u => inRange(u.last_login, monthAgo)).length,
+    };
+    userStats.dau = activeStats.dau;
+    userStats.wau = activeStats.wau;
+    userStats.mau = activeStats.mau;
 
     // ——— 按用户消耗 Top 10 ———
     const byUser = {};
@@ -1322,6 +1376,9 @@ router.get('/dashboard', (req, res) => {
     let serverMetrics = null;
     try { serverMetrics = tracker.getServerMetrics(); } catch {}
 
+    // CNY 汇率（USD→CNY）来自 tokenTracker.budget
+    const usdCnyRate = tracker.getUSDtoCNY();
+
     const dashboardData = {
       timestamp: now.toISOString(),
       users: userStats,
@@ -1332,6 +1389,7 @@ router.get('/dashboard', (req, res) => {
       model_ranking: modelRanking,
       knowledge: knowledgeStats,
       server: serverMetrics,
+      currency: { usd_cny_rate: usdCnyRate },
     };
     _dashboardCache = { data: dashboardData, timestamp: Date.now() };
     res.json({ success: true, data: dashboardData });
@@ -1433,10 +1491,14 @@ router.get('/token-stats/budget', (req, res) => {
 
 router.put('/token-stats/budget', (req, res) => {
   try {
-    const { monthly_budget_usd, alert_threshold } = req.body || {};
+    const { monthly_budget_usd, alert_threshold, usd_cny_rate } = req.body || {};
     const budget = tracker.loadBudget();
     if (monthly_budget_usd !== undefined) budget.monthly_budget_usd = Number(monthly_budget_usd) || 0;
     if (alert_threshold !== undefined) budget.alert_threshold = Number(alert_threshold) || 0.8;
+    if (usd_cny_rate !== undefined) {
+      const r = Number(usd_cny_rate);
+      if (r > 0 && r < 100) budget.usd_cny_rate = r;
+    }
     tracker.saveBudget(budget);
     res.json({ success: true, data: tracker.getBudgetStatus() });
   } catch (e) {
@@ -1562,6 +1624,270 @@ router.get('/knowledgebase/_preview/:agentType', (req, res) => {
 router.post('/knowledgebase/_seed', (req, res) => {
   const r = kb.ensureSeeded();
   res.json({ success: true, data: r });
+});
+
+// 批量导入提示词（飞书 wiki 等外部来源粘贴的 markdown）
+// body: { source, collection, applies_to:[], content }
+// 按二级标题 ## 自动拆分为多条 KB；若没有 ##，整段作为单条
+router.post('/knowledgebase/import-prompts', (req, res) => {
+  try {
+    const { source = '飞书 wiki', collection = 'storyboard', applies_to = [], content = '' } = req.body || {};
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, error: 'content 不能为空' });
+    }
+    const allowed = ['digital_human', 'drama', 'storyboard', 'atmosphere', 'production', 'engineering'];
+    if (!allowed.includes(collection)) {
+      return res.status(400).json({ success: false, error: 'collection 必须是 ' + allowed.join('/') });
+    }
+    const appliesArr = Array.isArray(applies_to) && applies_to.length
+      ? applies_to
+      : ['screenwriter', 'director', 'storyboard', 'atmosphere'];
+
+    // 拆分：按 \n## 分段（保留首段的"前言"）
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
+    const sections = [];
+    let curTitle = null;
+    let curBody = [];
+    for (const line of lines) {
+      const m = /^##\s+(.+)$/.exec(line.trim());
+      if (m) {
+        if (curTitle || curBody.join('').trim()) {
+          sections.push({ title: curTitle || '前言', body: curBody.join('\n').trim() });
+        }
+        curTitle = m[1].trim();
+        curBody = [];
+      } else {
+        curBody.push(line);
+      }
+    }
+    if (curTitle || curBody.join('').trim()) {
+      sections.push({ title: curTitle || '飞书提示词', body: curBody.join('\n').trim() });
+    }
+    const filtered = sections.filter(s => s.body.length > 0);
+    if (filtered.length === 0) {
+      return res.status(400).json({ success: false, error: '解析后没有有效内容（请检查 markdown 格式）' });
+    }
+
+    const inserted = [];
+    for (const sec of filtered) {
+      // 提取关键词：取标题 + 内容前 200 字中的中文短语
+      const head = (sec.title + ' ' + sec.body.slice(0, 200));
+      const keywords = (head.match(/[一-龥]{2,8}/g) || []).slice(0, 12);
+      // 提取 prompt 片段：内容里以 - 或 1. 开头的行（最多 8 条）
+      const snips = (sec.body.match(/^[\s>]*[-*•]\s+(.+?)$/gm) || [])
+        .map(s => s.replace(/^[\s>]*[-*•]\s+/, '').trim())
+        .filter(s => s.length >= 4 && s.length <= 120)
+        .slice(0, 8);
+      const id = 'kb_feishu_' + uuidv4().slice(0, 8);
+      const doc = {
+        id,
+        collection,
+        subcategory: '提示词',
+        title: sec.title.slice(0, 80),
+        summary: sec.body.slice(0, 160),
+        content: sec.body.slice(0, 4000),
+        tags: ['feishu', '提示词', collection],
+        keywords,
+        prompt_snippets: snips,
+        applies_to: appliesArr,
+        source,
+        lang: 'zh',
+        enabled: true,
+      };
+      db.insertKnowledgeDoc(doc);
+      inserted.push(doc);
+    }
+    res.json({ success: true, data: { inserted: inserted.length, ids: inserted.map(d => d.id) } });
+  } catch (e) {
+    console.error('[KB Import] failed:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 强制使用 KB 全局开关（落盘 outputs/kb_force.json）
+router.get('/knowledgebase/_force', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const f = path.resolve(__dirname, '../../outputs/kb_force.json');
+    let enabled = true;
+    if (fs.existsSync(f)) {
+      try { enabled = JSON.parse(fs.readFileSync(f, 'utf8')).enabled !== false; } catch {}
+    }
+    res.json({ success: true, data: { enabled } });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.put('/knowledgebase/_force', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const f = path.resolve(__dirname, '../../outputs/kb_force.json');
+    const enabled = req.body?.enabled !== false;
+    fs.writeFileSync(f, JSON.stringify({ enabled, updated_at: new Date().toISOString() }, null, 2), 'utf8');
+    res.json({ success: true, data: { enabled } });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════
+// API 接口账号管理（AppID/AppKey 对接账号）
+// ═══════════════════════════════════════════
+const apiCatalog = require('../services/apiCatalog');
+
+router.get('/api-accounts', (req, res) => {
+  const list = auth.listApiAccounts().map(a => ({
+    ...a,
+    app_secret_masked: a.app_secret ? a.app_secret.slice(0, 6) + '••••••' + a.app_secret.slice(-4) : '',
+  }));
+  res.json({ success: true, data: list });
+});
+
+router.get('/api-accounts/catalog', (req, res) => {
+  res.json({ success: true, data: apiCatalog.listCatalog() });
+});
+
+// 返回可分配给接口账号的 AI 模型目录（按供应商分组）
+router.get('/api-accounts/model-catalog', (req, res) => {
+  try {
+    const { loadSettings } = require('../services/settingsService');
+    const s = loadSettings();
+    const USE_LABELS = { story: '剧情', image: '图片', video: '视频', tts: '语音', vlm: '视觉理解' };
+    const groups = [];
+    for (const p of (s.providers || [])) {
+      if (p.enabled === false) continue;
+      const models = (p.models || []).filter(m => m.enabled !== false);
+      if (!models.length) continue;
+      groups.push({
+        provider_id: p.id,
+        provider_name: p.name || p.id,
+        items: models.map(m => ({
+          key: `${p.id}::${m.id}`,
+          model_id: m.id,
+          label: m.name || m.id,
+          use: m.use || '',
+          use_label: USE_LABELS[m.use] || m.use || '',
+        })),
+      });
+    }
+    res.json({ success: true, data: groups });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.get('/api-accounts/:id', (req, res) => {
+  const acc = auth.getApiAccountById(req.params.id);
+  if (!acc) return res.status(404).json({ success: false, error: '接口账号不存在' });
+  res.json({ success: true, data: acc }); // 含完整 app_secret，仅 admin 可见
+});
+
+router.post('/api-accounts', (req, res) => {
+  const { name, allowed_apis = [], allowed_models = [], remark = '', credits = 0 } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ success: false, error: '请填写账号名称' });
+  // 校验 allowed_apis 全都存在
+  const known = new Set(apiCatalog.allKeys());
+  const bad = (allowed_apis || []).filter(k => k !== '*' && !known.has(k));
+  if (bad.length) return res.status(400).json({ success: false, error: '未知接口 key: ' + bad.join(',') });
+  const acc = auth.createApiAccount({ name: name.trim(), allowed_apis, allowed_models, remark, credits });
+  res.json({ success: true, data: acc });
+});
+
+router.put('/api-accounts/:id', (req, res) => {
+  const { name, allowed_apis, allowed_models, remark, status, credits } = req.body || {};
+  const update = {};
+  if (name !== undefined) update.name = String(name).trim();
+  if (Array.isArray(allowed_apis)) {
+    const known = new Set(apiCatalog.allKeys());
+    const bad = allowed_apis.filter(k => k !== '*' && !known.has(k));
+    if (bad.length) return res.status(400).json({ success: false, error: '未知接口 key: ' + bad.join(',') });
+    update.allowed_apis = allowed_apis;
+  }
+  if (Array.isArray(allowed_models)) update.allowed_models = allowed_models;
+  if (remark !== undefined) update.remark = String(remark);
+  if (status !== undefined && ['active', 'disabled'].includes(status)) update.status = status;
+  if (credits !== undefined && Number.isFinite(Number(credits))) update.credits = Number(credits);
+  const acc = auth.updateApiAccount(req.params.id, update);
+  if (!acc) return res.status(404).json({ success: false, error: '接口账号不存在' });
+  res.json({ success: true, data: acc });
+});
+
+router.post('/api-accounts/:id/rotate-secret', (req, res) => {
+  const acc = auth.rotateApiSecret(req.params.id);
+  if (!acc) return res.status(404).json({ success: false, error: '接口账号不存在' });
+  res.json({ success: true, data: acc });
+});
+
+router.delete('/api-accounts/:id', (req, res) => {
+  const ok = auth.deleteApiAccount(req.params.id);
+  if (!ok) return res.status(404).json({ success: false, error: '接口账号不存在' });
+  res.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════
+// 数据源管理（爆款复刻 search providers）— 转发到 radar
+// ═══════════════════════════════════════════════════
+const searchProviders = require('../services/searchProviders');
+router.get('/datasources', (req, res) => {
+  try {
+    const list = searchProviders.listProviders();
+    const config = searchProviders.loadConfig();
+    res.json({
+      success: true,
+      providers: list.map(p => ({ ...p, config: config.providers?.[p.id] || { enabled: false } })),
+    });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.put('/datasources/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!searchProviders.getProvider(id)) return res.status(404).json({ success: false, error: 'provider 不存在' });
+    const config = searchProviders.loadConfig();
+    config.providers = config.providers || {};
+    config.providers[id] = { ...(config.providers[id] || {}), ...req.body };
+    searchProviders.saveConfig(config);
+    res.json({ success: true, config: config.providers[id] });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+router.post('/datasources/:id/health', async (req, res) => {
+  try {
+    const provider = searchProviders.getProvider(req.params.id);
+    if (!provider) return res.status(404).json({ success: false, error: 'provider 不存在' });
+    const config = searchProviders.loadConfig();
+    const r = await provider.health(config.providers?.[req.params.id] || {});
+    res.json({ success: true, health: r });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════
+// 模型调用管理（Pipeline Model Routing）
+// ═══════════════════════════════════════════════════
+const pms = require('../services/pipelineModelService');
+
+router.get('/pipeline-models', (req, res) => {
+  try {
+    const schema = pms.listSchema();
+    const config = pms.loadConfig();
+    // 列出每个 use 的可用模型（让前端 dropdown 选）
+    const availableByUse = {
+      story: pms.listAvailableModels('story'),
+      image: pms.listAvailableModels('image'),
+      video: pms.listAvailableModels('video'),
+      tts:   pms.listAvailableModels('tts'),
+      avatar: pms.listAvailableModels('avatar'),
+    };
+    res.json({ success: true, schema, config: config.stages, available: availableByUse, defaults: pms.listDefaults() });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.put('/pipeline-models/:stageId', (req, res) => {
+  try {
+    const updated = pms.setStageConfig(req.params.stageId, req.body.models || []);
+    res.json({ success: true, models: updated });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 module.exports = router;

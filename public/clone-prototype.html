@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频克隆中心 · VIDO 原型 v2</title>
+<style>
+:root {
+  --bg:    #0D0E12;
+  --bg2:   #141519;
+  --bg3:   #1E2025;
+  --bg4:   #2A2D34;
+  --border: #2D3038;
+  --border2:#3A3F4A;
+  --text:  #E8EAED;
+  --text2: #B8BCC4;
+  --text3: #6B7280;
+  --cyan:  #21FFF3;
+  --yellow:#FFF600;
+  --red:   #FF5470;
+  --orange:#FF8B3D;
+  --green: #10b981;
+  --purple:#7c6cf0;
+  --pink:  #ec4899;
+  --grad:  linear-gradient(135deg, #CBFFF8, #21FFF3, #FFF600);
+  --grad-warm: linear-gradient(135deg, #FF8B3D, #FF5470, #ec4899);
+  /* 平台色 */
+  --p-douyin:    #000000;
+  --p-douyin-bg: #FE2C55;
+  --p-kuaishou:  #FF6633;
+  --p-redbook:   #FF2442;
+  --p-weishi:    #00B0F0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Inter", sans-serif;
+  background: var(--bg); color: var(--text);
+  overflow: hidden;
+}
+
+/* ════════ 双栏布局 ════════ */
+.app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100vh;
+}
+
+/* ════════ Sidebar ════════ */
+.sb {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+.sb-logo {
+  padding: 20px 22px 24px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.sb-logo-mark {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--grad); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 16px;
+}
+.sb-logo-text { font-size: 16px; font-weight: 800; }
+.sb-logo-tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px;
+  background: rgba(124,108,240,0.2); color: var(--purple);
+  font-weight: 700;
+}
+.sb-section { padding: 18px 0 6px; }
+.sb-section-title {
+  font-size: 10px; color: var(--text3); padding: 0 22px 6px;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.sb-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 22px;
+  font-size: 13px; color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+  position: relative;
+}
+.sb-item:hover { background: var(--bg3); color: var(--text); }
+.sb-item.active {
+  background: linear-gradient(90deg, rgba(33,255,243,0.08), transparent);
+  color: var(--cyan);
+  border-left-color: var(--cyan);
+}
+.sb-item-icon { font-size: 16px; }
+.sb-item-badge {
+  margin-left: auto;
+  font-size: 10px; padding: 2px 7px; border-radius: 999px;
+  background: var(--bg3); color: var(--text3);
+}
+.sb-item.active .sb-item-badge { background: var(--cyan); color: var(--bg); font-weight: 700; }
+.sb-item-new {
+  font-size: 9px; padding: 2px 6px; border-radius: 4px;
+  background: var(--grad-warm); color: white; font-weight: 700;
+  margin-left: auto;
+}
+.sb-foot {
+  margin-top: auto; padding: 16px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text3);
+  display: flex; align-items: center; gap: 8px;
+}
+.sb-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ════════ Main ════════ */
+.main {
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+
+/* topbar */
+.tp {
+  height: 56px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 26px; gap: 16px;
+  position: sticky; top: 0; z-index: 20;
+  backdrop-filter: blur(8px);
+}
+.tp-crumb {
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+.tp-crumb .small {
+  font-size: 11px; font-weight: 400; color: var(--text3);
+  padding: 2px 8px; border-radius: 999px; background: var(--bg3);
+}
+.tp-spacer { flex: 1; }
+.tp-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  width: 280px;
+  font-size: 12px;
+}
+.tp-search input {
+  flex: 1; background: transparent; border: 0; outline: none;
+  color: var(--text); font-size: 12px;
+}
+.tp-icon-btn {
+  width: 34px; height: 34px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text2);
+  transition: all 0.2s;
+}
+.tp-icon-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.tp-user {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--grad); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 13px;
+  cursor: pointer;
+}
+
+/* 模块容器 */
+.mod {
+  display: none;
+  padding: 24px 28px 60px;
+  animation: fadeIn 0.3s ease;
+}
+.mod.active { display: block; }
+@keyframes fadeIn { from {opacity:0;transform:translateY(6px)} to {opacity:1;transform:translateY(0)} }
+
+.mod-head {
+  margin-bottom: 22px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+}
+.mod-head h1 {
+  font-size: 22px; font-weight: 800;
+  background: var(--grad);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 4px;
+}
+.mod-head p { font-size: 12px; color: var(--text3); }
+
+/* ════════════════════════════════════════════════
+   通用组件
+   ════════════════════════════════════════════════ */
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 6px 14px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: 12px; color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chip:hover { border-color: var(--cyan); color: var(--text); }
+.chip.selected {
+  background: var(--grad); color: var(--bg);
+  border-color: transparent; font-weight: 600;
+}
+.chip-warm.selected { background: var(--grad-warm); }
+
+.btn {
+  padding: 9px 18px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg3);
+  color: var(--text); font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 500; transition: all 0.2s;
+}
+.btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn-primary {
+  background: var(--grad); color: var(--bg);
+  border-color: transparent; font-weight: 700;
+}
+.btn-primary:hover { color: var(--bg); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(33,255,243,0.3); }
+.btn-warm { background: var(--grad-warm); color: white; border-color: transparent; }
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+.btn-ghost { background: transparent; }
+
+/* 平台 pill */
+.plat {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 700;
+  color: white;
+}
+.plat-douyin    { background: var(--p-douyin-bg); }
+.plat-kuaishou  { background: var(--p-kuaishou); }
+.plat-redbook   { background: var(--p-redbook); }
+.plat-weishi    { background: var(--p-weishi); }
+.plat-douyin-lite, .plat-kuaishou-lite { background: rgba(254,44,85,0.2); color: #FE2C55; border: 1px solid rgba(254,44,85,0.4); }
+.plat-kuaishou-lite { background: rgba(255,102,51,0.2); color: var(--p-kuaishou); border-color: rgba(255,102,51,0.4); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 多平台搜索
+   ════════════════════════════════════════════════ */
+.search-bar {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin-bottom: 22px;
+  position: relative;
+  background: linear-gradient(135deg, rgba(33,255,243,0.05), rgba(124,108,240,0.05)), var(--bg2);
+}
+.search-input-wrap {
+  display: flex; gap: 10px; margin-bottom: 14px;
+}
+.search-input {
+  flex: 1; padding: 12px 18px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text); font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+.search-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(33,255,243,0.15); }
+.search-filter-row {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.search-filter-label {
+  font-size: 11px; color: var(--text3); margin-right: -8px;
+}
+.search-hot-tags {
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.search-hot-label { font-size: 11px; color: var(--text3); }
+.hot-tag {
+  font-size: 11px; padding: 4px 12px; border-radius: 4px;
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.hot-tag:hover { color: var(--cyan); }
+.hot-tag-rank {
+  font-size: 10px; color: var(--red); font-weight: 700;
+}
+.hot-tag-rank.top { color: var(--yellow); }
+
+.search-result-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px;
+  font-size: 12px; color: var(--text3);
+}
+.search-result-bar b { color: var(--cyan); }
+
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.video-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.video-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border2);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+}
+.vc-thumb {
+  width: 100%; aspect-ratio: 9/16;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 38px;
+  overflow: hidden;
+}
+.vc-thumb-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.7) 100%);
+  pointer-events: none;
+}
+.vc-thumb-plat { position: absolute; top: 8px; left: 8px; z-index: 2; }
+.vc-thumb-duration {
+  position: absolute; bottom: 8px; right: 8px; z-index: 2;
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  background: rgba(0,0,0,0.7); color: white;
+}
+.vc-thumb-rank {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  font-size: 10px; padding: 3px 8px; border-radius: 999px;
+  background: var(--grad-warm); color: white; font-weight: 700;
+}
+.vc-info {
+  padding: 12px 14px;
+}
+.vc-title {
+  font-size: 13px; line-height: 1.5; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 8px; min-height: 40px;
+}
+.vc-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text3);
+  margin-bottom: 10px;
+}
+.vc-author {
+  display: flex; align-items: center; gap: 6px; flex: 1;
+  min-width: 0;
+}
+.vc-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--bg4);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+}
+.vc-author-name {
+  color: var(--text2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vc-stats {
+  display: flex; gap: 12px;
+  font-size: 11px; color: var(--text3);
+  margin-bottom: 12px;
+}
+.vc-stat { display: inline-flex; align-items: center; gap: 3px; }
+.vc-stat b { color: var(--text2); font-weight: 600; }
+.vc-actions {
+  display: flex; gap: 6px;
+}
+.vc-actions .btn { flex: 1; justify-content: center; padding: 6px 8px; font-size: 11px; }
+
+/* ════════════════════════════════════════════════
+   MODULE: 我的关注
+   ════════════════════════════════════════════════ */
+.follow-layout {
+  display: grid; grid-template-columns: 280px 1fr; gap: 18px;
+  height: calc(100vh - 56px - 24px - 60px - 24px);
+  min-height: 500px;
+}
+.follow-side {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.follow-side-head {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.follow-side-head b { font-size: 13px; }
+.follow-side-search {
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--bg3); border: 1px solid var(--border);
+  font-size: 11px; color: var(--text); outline: none;
+  width: 120px;
+}
+.follow-side-list {
+  flex: 1; overflow-y: auto;
+}
+.follow-plat-group {
+  padding: 8px 0;
+}
+.follow-plat-title {
+  padding: 6px 16px;
+  font-size: 10px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+.follow-author {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+.follow-author:hover { background: var(--bg3); }
+.follow-author.active {
+  background: linear-gradient(90deg, rgba(33,255,243,0.06), transparent);
+  border-left-color: var(--cyan);
+}
+.follow-author-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  border: 2px solid var(--border);
+}
+.follow-author-meta { flex: 1; min-width: 0; }
+.follow-author-name {
+  font-size: 13px; color: var(--text); font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+  overflow: hidden;
+}
+.follow-author-name span {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.follow-author-stat {
+  font-size: 10px; color: var(--text3); margin-top: 2px;
+}
+.follow-author-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+}
+
+.follow-detail {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.follow-detail-head {
+  padding: 22px 26px;
+  background: linear-gradient(135deg, rgba(124,108,240,0.12), rgba(33,255,243,0.06));
+  border-bottom: 1px solid var(--border);
+  display: flex; gap: 18px;
+  align-items: center;
+}
+.fd-avatar {
+  width: 80px; height: 80px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 38px;
+  border: 3px solid var(--cyan);
+  flex-shrink: 0;
+}
+.fd-info { flex: 1; }
+.fd-name {
+  font-size: 22px; font-weight: 800; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 10px;
+}
+.fd-bio {
+  font-size: 12px; color: var(--text2); margin-bottom: 10px;
+  line-height: 1.6;
+}
+.fd-stats {
+  display: flex; gap: 24px;
+  font-size: 12px;
+}
+.fd-stat-num {
+  font-size: 16px; font-weight: 700; color: var(--cyan);
+  font-family: monospace;
+}
+.fd-stat-label { color: var(--text3); font-size: 11px; }
+.fd-actions {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.fd-section {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.fd-section:last-child { border-bottom: none; }
+.fd-section-head {
+  font-size: 13px; font-weight: 700; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.fd-works-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px;
+}
+.fd-work {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  cursor: pointer; transition: all 0.2s;
+}
+.fd-work:hover { border-color: var(--cyan); transform: translateY(-2px); }
+.fd-work-thumb {
+  width: 100%; aspect-ratio: 9/16; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px;
+}
+.fd-work-info { padding: 8px 10px; }
+.fd-work-title {
+  font-size: 11px; line-height: 1.4; color: var(--text2);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 30px;
+}
+.fd-work-stat {
+  font-size: 10px; color: var(--text3); margin-top: 4px;
+  display: flex; gap: 8px;
+}
+
+/* ════════════════════════════════════════════════
+   MODULE: 热度排行
+   ════════════════════════════════════════════════ */
+.rank-tabs {
+  display: flex; gap: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: 18px;
+  width: fit-content;
+}
+.rank-tab {
+  padding: 8px 18px; border-radius: 999px;
+  font-size: 12px; cursor: pointer;
+  color: var(--text2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.rank-tab.active {
+  background: var(--grad); color: var(--bg); font-weight: 700;
+}
+
+.rank-filters {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.rank-board {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 60px 70px 1fr 120px 110px 90px 110px;
+  gap: 14px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  transition: all 0.15s;
+}
+.rank-row:hover { background: var(--bg3); }
+.rank-row:last-child { border-bottom: none; }
+.rank-row.head {
+  background: var(--bg3);
+  font-size: 11px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.8px;
+  padding: 10px 20px;
+  font-weight: 600;
+}
+.rank-num {
+  font-size: 18px; font-weight: 800; font-family: monospace;
+  text-align: center;
+  color: var(--text3);
+}
+.rank-num.t1 { color: var(--yellow); font-size: 22px; }
+.rank-num.t2 { color: #C0C0C0; font-size: 20px; }
+.rank-num.t3 { color: #CD7F32; font-size: 20px; }
+.rank-thumb {
+  width: 60px; aspect-ratio: 9/16;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  position: relative;
+}
+.rank-info {
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.rank-title {
+  font-size: 13px; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.4;
+}
+.rank-author-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text3);
+}
+.rank-views, .rank-likes {
+  font-size: 13px; font-weight: 700; font-family: monospace;
+  color: var(--cyan);
+}
+.rank-trend {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 700;
+}
+.rank-trend.up { color: var(--green); }
+.rank-trend.down { color: var(--red); }
+.rank-trend.new { color: var(--purple); }
+.rank-actions { display: flex; gap: 4px; }
+
+.rank-mini-section {
+  margin-top: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+.rank-mini-head {
+  font-size: 13px; font-weight: 700;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rank-mini-head .badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(33,255,243,0.15); color: var(--cyan);
+}
+.rank-mini-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+}
+.rank-mini-card {
+  display: flex; gap: 12px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px;
+  cursor: pointer; transition: all 0.2s;
+}
+.rank-mini-card:hover { border-color: var(--cyan); }
+.rank-mini-thumb {
+  width: 56px; aspect-ratio: 9/16;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.rank-mini-info { flex: 1; min-width: 0; }
+.rank-mini-title {
+  font-size: 12px; line-height: 1.4; color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+  margin-bottom: 4px;
+}
+.rank-mini-meta { font-size: 10px; color: var(--text3); }
+.rank-mini-meta b { color: var(--cyan); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 视频克隆（沿用之前的 5 步）
+   ════════════════════════════════════════════════ */
+.steps {
+  background: var(--bg2);
+  padding: 22px 0 26px;
+  border-bottom: 1px solid var(--border);
+  margin: -24px -28px 24px;
+  padding: 22px 28px 26px;
+}
+.steps-inner {
+  max-width: 1080px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between;
+  position: relative;
+}
+.steps-line {
+  position: absolute; top: 18px; left: 36px; right: 36px;
+  height: 2px; background: var(--border); z-index: 0;
+}
+.steps-line-fill {
+  position: absolute; top: 18px; left: 36px;
+  height: 2px; background: var(--grad);
+  z-index: 1; transition: width 0.6s ease;
+  width: 0%;
+}
+.step {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  cursor: pointer; flex: 1; max-width: 130px;
+}
+.step-dot {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg3); border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: var(--text3);
+  transition: all 0.3s;
+}
+.step.active .step-dot {
+  background: var(--grad); border-color: transparent;
+  color: var(--bg); box-shadow: 0 0 16px rgba(33,255,243,0.4);
+}
+.step.done .step-dot {
+  background: rgba(16,185,129,0.15); border-color: var(--green); color: var(--green);
+}
+.step-label { font-size: 12px; color: var(--text3); white-space: nowrap; }
+.step.active .step-label { color: var(--cyan); font-weight: 600; }
+.step.done .step-label { color: var(--green); }
+
+.spanel { display: none; }
+.spanel.active { display: block; animation: fadeIn 0.4s ease; }
+
+.upload-zone {
+  background: linear-gradient(135deg, rgba(33,255,243,0.04), rgba(124,108,240,0.04));
+  border: 2px dashed var(--border2);
+  border-radius: 16px;
+  padding: 54px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s;
+  margin-bottom: 22px;
+}
+.upload-zone:hover { border-color: var(--cyan); }
+.upload-icon { font-size: 44px; margin-bottom: 14px; }
+.upload-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.upload-sub { font-size: 12px; color: var(--text3); }
+
+.parse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.parse-col { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.parse-col-head { font-size: 13px; font-weight: 600; color: var(--cyan); margin-bottom: 12px; }
+.subtitle-list { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.subtitle-row { display: flex; gap: 10px; font-size: 12px; line-height: 1.5; padding: 6px 8px; border-radius: 6px; background: var(--bg3); }
+.subtitle-time { color: var(--cyan); font-family: monospace; font-size: 10px; white-space: nowrap; padding-top: 2px; }
+.subtitle-text { color: var(--text2); }
+.subtitle-row.new { animation: slideIn 0.3s ease; }
+@keyframes slideIn { from {opacity:0;transform:translateX(-8px)} to {opacity:1;transform:translateX(0)} }
+.frame-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; max-height: 320px; overflow-y: auto; }
+.frame-cell { aspect-ratio: 16/9; background: linear-gradient(135deg, #2a2d34, #1e2025); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; position: relative; border: 1px solid var(--border); }
+.frame-cell-time { position: absolute; bottom: 4px; right: 4px; font-size: 9px; padding: 2px 5px; border-radius: 3px; background: rgba(0,0,0,0.7); color: var(--text2); }
+
+.parse-progress { margin-top: 18px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+.pp-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.pp-row:last-child { margin-bottom: 0; }
+.pp-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--bg3); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text3); flex-shrink: 0; }
+.pp-row.done .pp-icon { background: rgba(16,185,129,0.15); border-color: var(--green); color: var(--green); }
+.pp-row.active .pp-icon { background: var(--grad); color: var(--bg); border-color: transparent; animation: spin 2s linear infinite; }
+@keyframes spin { to {transform:rotate(360deg)} }
+.pp-text { flex: 1; font-size: 13px; }
+.pp-text small { display: block; color: var(--text3); font-size: 11px; margin-top: 2px; }
+.pp-pct { font-size: 12px; font-weight: 700; color: var(--cyan); font-family: monospace; }
+
+.rewrite-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.rewrite-col { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.rewrite-col-head { font-size: 13px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+.rewrite-col-head .badge-orig { color: var(--text3); }
+.rewrite-col-head .badge-new { background: var(--grad); color: var(--bg); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.rewrite-block { font-size: 12px; line-height: 1.7; color: var(--text2); padding: 9px 11px; border-radius: 7px; background: var(--bg3); border-left: 3px solid var(--border2); margin-bottom: 7px; }
+.rewrite-block.changed { border-left-color: var(--cyan); }
+.rewrite-block-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+
+.rewrite-options { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 20px; }
+.rewrite-options h4 { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+.opt-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.opt-row:last-child { margin-bottom: 0; }
+.opt-label { font-size: 12px; color: var(--text2); width: 90px; flex-shrink: 0; }
+
+.gen-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.gen-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 13px 16px; }
+.gen-stat-label { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+.gen-stat-value { font-size: 22px; font-weight: 800; color: var(--cyan); font-family: monospace; }
+.gen-stat-sub { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+.scene-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.scene-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; position: relative; }
+.scene-thumb { width: 100%; aspect-ratio: 16/9; background: linear-gradient(135deg, #2a2d34, #1e2025); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 8px; position: relative; overflow: hidden; }
+.scene-card.done .scene-thumb { background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(33,255,243,0.15)); }
+.scene-card.processing .scene-thumb::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(33,255,243,0.2), transparent); animation: shimmer 1.6s infinite; }
+@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+.scene-meta { font-size: 11px; color: var(--text2); }
+.scene-num { color: var(--cyan); font-weight: 700; }
+.scene-status { position: absolute; top: 18px; right: 18px; font-size: 9px; padding: 2px 7px; border-radius: 3px; }
+.scene-status.done { background: var(--green); color: white; }
+.scene-status.processing { background: var(--cyan); color: var(--bg); }
+.scene-status.pending { background: var(--bg4); color: var(--text3); }
+
+.result-hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; margin-bottom: 20px; }
+.result-player { background: #000; border-radius: 12px; aspect-ratio: 9/16; display: flex; align-items: center; justify-content: center; font-size: 64px; position: relative; overflow: hidden; border: 1px solid var(--border); max-height: 580px; }
+.result-player::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(124,108,240,0.15), rgba(33,255,243,0.1)); }
+.result-player-controls { position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.5); padding: 9px 13px; border-radius: 999px; backdrop-filter: blur(8px); }
+.result-player-play { width: 28px; height: 28px; border-radius: 50%; background: var(--cyan); color: var(--bg); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; }
+.result-player-bar { flex: 1; height: 3px; background: rgba(255,255,255,0.2); border-radius: 2px; position: relative; }
+.result-player-bar::after { content: ''; position: absolute; left: 0; top: 0; width: 30%; height: 100%; background: var(--cyan); border-radius: 2px; }
+.result-player-time { font-size: 11px; color: white; font-family: monospace; }
+.result-info { display: flex; flex-direction: column; gap: 14px; }
+.result-info-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.result-info-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.diff-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+.diff-row:last-child { border-bottom: none; }
+.diff-key { color: var(--text3); }
+.diff-val-old { color: var(--text2); font-family: monospace; }
+.diff-val-new { color: var(--cyan); font-family: monospace; font-weight: 700; }
+.diff-arrow { color: var(--text3); margin: 0 8px; }
+
+.action-row { display: flex; gap: 10px; flex-wrap: wrap; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+
+.foot-bar { margin-top: 22px; display: flex; justify-content: space-between; align-items: center; padding-top: 18px; border-top: 1px solid var(--border); }
+.foot-hint { font-size: 12px; color: var(--text3); }
+
+/* ════════════════════════════════════════════════
+   MODULE: 我的作品（占位）
+   ════════════════════════════════════════════════ */
+.works-empty {
+  background: var(--bg2); border: 1px dashed var(--border2);
+  border-radius: 16px; padding: 80px 40px; text-align: center;
+}
+.works-empty-icon { font-size: 56px; margin-bottom: 18px; opacity: 0.4; }
+.works-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.works-empty-sub { font-size: 12px; color: var(--text3); margin-bottom: 24px; }
+
+/* toast */
+.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); padding: 11px 22px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--cyan); color: var(--cyan); font-size: 12px; z-index: 1000; display: none; box-shadow: 0 12px 32px rgba(0,0,0,0.4); }
+
+/* watermark */
+.proto-mark { position: fixed; bottom: 14px; right: 14px; font-size: 10px; padding: 5px 11px; border-radius: 999px; background: rgba(124,108,240,0.15); border: 1px solid rgba(124,108,240,0.4); color: var(--purple); font-weight: 600; pointer-events: none; }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══════════════════════════════════════
+       LEFT SIDEBAR
+       ═══════════════════════════════════════ -->
+  <aside class="sb">
+    <div class="sb-logo">
+      <div class="sb-logo-mark">V</div>
+      <div>
+        <div class="sb-logo-text">VIDO</div>
+        <span class="sb-logo-tag">原型 v2</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">视频克隆中心</div>
+      <div class="sb-item active" data-mod="search">
+        <span class="sb-item-icon">🔍</span><span>多平台搜索</span>
+      </div>
+      <div class="sb-item" data-mod="follow">
+        <span class="sb-item-icon">⭐</span><span>我的关注</span>
+        <span class="sb-item-badge">12</span>
+      </div>
+      <div class="sb-item" data-mod="rank">
+        <span class="sb-item-icon">📊</span><span>热度排行</span>
+        <span class="sb-item-new">HOT</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">创作工具</div>
+      <div class="sb-item" data-mod="clone">
+        <span class="sb-item-icon">🎬</span><span>视频克隆</span>
+      </div>
+      <div class="sb-item" data-mod="works">
+        <span class="sb-item-icon">📚</span><span>我的作品</span>
+        <span class="sb-item-badge">3</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-section-title">数据与设置</div>
+      <div class="sb-item" data-mod="analytics" onclick="toast('暂未开放·待 Sprint 4')">
+        <span class="sb-item-icon">📈</span><span>数据分析</span>
+      </div>
+      <div class="sb-item" data-mod="settings" onclick="toast('暂未开放·待 Sprint 4')">
+        <span class="sb-item-icon">⚙️</span><span>系统设置</span>
+      </div>
+    </div>
+
+    <div class="sb-foot">
+      <span class="sb-foot-dot"></span>
+      <span>所有平台爬虫在线</span>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════
+       MAIN
+       ═══════════════════════════════════════ -->
+  <main class="main">
+    <div class="tp">
+      <div class="tp-crumb" id="tpCrumb">🔍 多平台搜索 <span class="small">实时</span></div>
+      <div class="tp-spacer"></div>
+      <div class="tp-search">
+        <span style="color:var(--text3)">🔎</span>
+        <input placeholder="全局搜索 / 输入关键字..." />
+      </div>
+      <div class="tp-icon-btn" title="通知">🔔</div>
+      <div class="tp-icon-btn" title="帮助">?</div>
+      <div class="tp-user">U</div>
+    </div>
+
+    <!-- ─────────── MOD: 多平台搜索 ─────────── -->
+    <div class="mod active" data-mod="search">
+      <div class="mod-head">
+        <div>
+          <h1>🔍 多平台爆款搜索</h1>
+          <p>抖音 / 快手 / 小红书 / 微视 · 含极速版 · 实时索引点击量+发布时间</p>
+        </div>
+        <div class="chip-row">
+          <div class="chip selected">🌐 全网搜索</div>
+          <div class="chip">📦 仅本地缓存</div>
+        </div>
+      </div>
+
+      <div class="search-bar">
+        <div class="search-input-wrap">
+          <input class="search-input" id="searchInput" placeholder="搜索关键字（如：口红测评 / 减脂餐 / 副业）..." value="口红测评" />
+          <button class="btn btn-primary" onclick="doSearch()">🔍 搜索全网</button>
+        </div>
+        <div class="search-filter-row">
+          <span class="search-filter-label">平台：</span>
+          <div class="chip-row" id="platChips">
+            <div class="chip selected" data-plat="all">全部</div>
+            <div class="chip" data-plat="douyin">📺 抖音</div>
+            <div class="chip" data-plat="douyin-lite">⚡ 抖音极速版</div>
+            <div class="chip" data-plat="kuaishou">📹 快手</div>
+            <div class="chip" data-plat="kuaishou-lite">⚡ 快手极速版</div>
+            <div class="chip" data-plat="redbook">📕 小红书</div>
+            <div class="chip" data-plat="weishi">🎞 微视</div>
+          </div>
+        </div>
+        <div class="search-filter-row" style="margin-top:10px">
+          <span class="search-filter-label">排序：</span>
+          <div class="chip-row">
+            <div class="chip selected">🔥 综合热度</div>
+            <div class="chip">👁 点击最多</div>
+            <div class="chip">❤️ 点赞最多</div>
+            <div class="chip">🆕 最新发布</div>
+            <div class="chip">⏱ 完播率</div>
+          </div>
+          <span class="search-filter-label" style="margin-left:8px">时间：</span>
+          <div class="chip-row">
+            <div class="chip">今天</div>
+            <div class="chip selected">7 天</div>
+            <div class="chip">30 天</div>
+            <div class="chip">全部</div>
+          </div>
+        </div>
+        <div class="search-hot-tags">
+          <span class="search-hot-label">🔥 实时热搜：</span>
+          <span class="hot-tag" onclick="searchTag('AI 工具')">AI 工具 <span class="hot-tag-rank top">↑1</span></span>
+          <span class="hot-tag" onclick="searchTag('副业')">副业 <span class="hot-tag-rank">2</span></span>
+          <span class="hot-tag" onclick="searchTag('减脂餐')">减脂餐 <span class="hot-tag-rank">3</span></span>
+          <span class="hot-tag" onclick="searchTag('穿搭')">穿搭</span>
+          <span class="hot-tag" onclick="searchTag('面试技巧')">面试技巧</span>
+          <span class="hot-tag" onclick="searchTag('治愈风景')">治愈风景</span>
+          <span class="hot-tag" onclick="searchTag('情侣日常')">情侣日常</span>
+          <span class="hot-tag" onclick="searchTag('美食探店')">美食探店</span>
+        </div>
+      </div>
+
+      <div class="search-result-bar">
+        <span>找到 <b id="searchTotal">158</b> 条结果 · 关键字 <b id="searchKw">"口红测评"</b> · 排序：综合热度 · 7 天内</span>
+        <span>每页 24 条 · 第 1 / 7 页</span>
+      </div>
+
+      <div class="video-grid" id="searchGrid"></div>
+    </div>
+
+    <!-- ─────────── MOD: 我的关注 ─────────── -->
+    <div class="mod" data-mod="follow">
+      <div class="mod-head">
+        <div>
+          <h1>⭐ 我的关注</h1>
+          <p>跟踪 12 位博主 · 4 个平台 · 自动同步新作品 · 一键克隆爆款</p>
+        </div>
+        <div class="chip-row">
+          <button class="btn btn-sm">⚙️ 关注设置</button>
+          <button class="btn btn-sm">🔔 新作通知</button>
+        </div>
+      </div>
+
+      <div class="follow-layout">
+        <aside class="follow-side">
+          <div class="follow-side-head">
+            <b>关注列表</b>
+            <input class="follow-side-search" placeholder="过滤..." />
+          </div>
+          <div class="follow-side-list" id="followList"></div>
+        </aside>
+
+        <div class="follow-detail" id="followDetail">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 热度排行 ─────────── -->
+    <div class="mod" data-mod="rank">
+      <div class="mod-head">
+        <div>
+          <h1>📊 热度排行榜</h1>
+          <p>实时聚合多平台爆款 · 每 30 分钟更新 · 支持关键字 / 关注博主 双维度筛选</p>
+        </div>
+        <button class="btn">🔄 立即刷新</button>
+      </div>
+
+      <div class="rank-tabs">
+        <div class="rank-tab active" data-rank-tab="all">🌐 全网热榜</div>
+        <div class="rank-tab" data-rank-tab="kw">🔍 按关键字</div>
+        <div class="rank-tab" data-rank-tab="follow">⭐ 关注博主</div>
+      </div>
+
+      <div class="rank-filters">
+        <div class="chip-row">
+          <span class="search-filter-label">平台：</span>
+          <div class="chip selected">🌐 全平台</div>
+          <div class="chip">📺 抖音</div>
+          <div class="chip">📹 快手</div>
+          <div class="chip">📕 小红书</div>
+          <div class="chip">🎞 微视</div>
+        </div>
+        <div class="chip-row">
+          <span class="search-filter-label">时间：</span>
+          <div class="chip">今日</div>
+          <div class="chip selected">本周</div>
+          <div class="chip">本月</div>
+        </div>
+        <div class="chip-row">
+          <span class="search-filter-label">分类：</span>
+          <div class="chip selected">全部</div>
+          <div class="chip">美妆</div>
+          <div class="chip">穿搭</div>
+          <div class="chip">美食</div>
+          <div class="chip">数码</div>
+          <div class="chip">情感</div>
+          <div class="chip">知识</div>
+        </div>
+      </div>
+
+      <div class="rank-board">
+        <div class="rank-row head">
+          <div>排名</div>
+          <div></div>
+          <div>视频信息</div>
+          <div>播放量</div>
+          <div>点赞</div>
+          <div>趋势</div>
+          <div>操作</div>
+        </div>
+        <div id="rankList"></div>
+      </div>
+
+      <div class="rank-mini-section">
+        <div class="rank-mini-head">
+          ⭐ 我关注的博主最近爆款
+          <span class="badge">12 位博主 · 7 天内</span>
+        </div>
+        <div class="rank-mini-grid" id="rankMini"></div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 视频克隆（5 步流程） ─────────── -->
+    <div class="mod" data-mod="clone">
+      <div class="mod-head">
+        <div>
+          <h1>🎬 视频克隆工作台</h1>
+          <p>从搜索/关注/排行选中爆款 → 5 步生成全新原创版本</p>
+        </div>
+        <div class="chip-row">
+          <button class="btn btn-sm">📥 上传本地视频</button>
+          <button class="btn btn-sm" onclick="goMod('search')">🔍 去搜索选片</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="steps-inner">
+          <div class="steps-line"></div>
+          <div class="steps-line-fill" id="stepFill"></div>
+          <div class="step active" data-step="1" onclick="goStep(1)"><div class="step-dot">1</div><div class="step-label">选定素材</div></div>
+          <div class="step" data-step="2" onclick="goStep(2)"><div class="step-dot">2</div><div class="step-label">智能解析</div></div>
+          <div class="step" data-step="3" onclick="goStep(3)"><div class="step-dot">3</div><div class="step-label">改写预览</div></div>
+          <div class="step" data-step="4" onclick="goStep(4)"><div class="step-dot">4</div><div class="step-label">画面生成</div></div>
+          <div class="step" data-step="5" onclick="goStep(5)"><div class="step-dot">5</div><div class="step-label">成片输出</div></div>
+        </div>
+      </div>
+
+      <!-- Step 1 -->
+      <div class="spanel active" data-spanel="1">
+        <div class="upload-zone" onclick="goStep(2)">
+          <div class="upload-icon">📤</div>
+          <div class="upload-title">点击或拖拽视频到此处</div>
+          <div class="upload-sub">MP4 / MOV / WEBM · 最大 200MB · 或从「多平台搜索」直接选片</div>
+        </div>
+        <div class="foot-bar">
+          <div class="foot-hint">💡 提示：从搜索结果点「克隆」按钮可跳过上传，直接进解析</div>
+          <button class="btn btn-primary" onclick="goStep(2)">使用演示数据 →</button>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="spanel" data-spanel="2">
+        <div class="parse-grid">
+          <div class="parse-col">
+            <div class="parse-col-head">📝 口播识别（Whisper STT）</div>
+            <div class="subtitle-list" id="subtitleList"></div>
+          </div>
+          <div class="parse-col">
+            <div class="parse-col-head">🖼 画面抽帧（GPT-4V）</div>
+            <div class="frame-grid" id="frameGrid"></div>
+          </div>
+        </div>
+        <div class="parse-progress">
+          <div class="pp-row done"><div class="pp-icon">✓</div><div class="pp-text"><b>视频准备</b><small>美妆带货_60s · 18.4 MB · 1080×1920</small></div><div class="pp-pct">100%</div></div>
+          <div class="pp-row active" id="step2-stt"><div class="pp-icon">⟳</div><div class="pp-text"><b>口播识别</b><small id="sttHint">Whisper API 转录中…</small></div><div class="pp-pct" id="sttPct">0%</div></div>
+          <div class="pp-row" id="step2-frame"><div class="pp-icon">3</div><div class="pp-text"><b>画面分析</b><small id="frameHint">每 2s 抽帧 → GPT-4V 描述</small></div><div class="pp-pct" id="framePct">0%</div></div>
+          <div class="pp-row" id="step2-extract"><div class="pp-icon">4</div><div class="pp-text"><b>叙事结构提炼</b><small>识别钩子/痛点/转折/CTA</small></div><div class="pp-pct">—</div></div>
+        </div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(1)">‹ 返回</button>
+          <button class="btn btn-primary" id="step2NextBtn" disabled style="opacity:0.5;cursor:not-allowed">解析中…</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="spanel" data-spanel="3">
+        <div class="rewrite-grid" id="rewriteGrid"></div>
+        <div class="rewrite-options">
+          <h4>🎛 生成参数</h4>
+          <div class="opt-row"><div class="opt-label">配音音色</div><div class="chip-row"><div class="chip selected">🎤 我的克隆</div><div class="chip">👩 知性女声</div><div class="chip">👨 商务男声</div><div class="chip">+ 其他</div></div></div>
+          <div class="opt-row"><div class="opt-label">画面策略</div><div class="chip-row"><div class="chip selected">🎨 重新生成</div><div class="chip">🎬 直接生视频</div><div class="chip">👤 数字人替换</div></div></div>
+          <div class="opt-row"><div class="opt-label">字幕样式</div><div class="chip-row"><div class="chip selected">🟡 抖音黄字</div><div class="chip">⚫ 黑底白字</div><div class="chip">无字幕</div></div></div>
+          <div class="opt-row"><div class="opt-label">差异度</div><div class="chip-row"><div class="chip">轻 30%</div><div class="chip selected">中 60% 推荐</div><div class="chip">重 90%</div></div></div>
+        </div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(2)">‹ 返回</button>
+          <div style="display:flex;gap:10px"><button class="btn">🔄 重写一版</button><button class="btn btn-primary" onclick="goStep(4)">开始生成 →</button></div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="spanel" data-spanel="4">
+        <div class="gen-stats">
+          <div class="gen-stat"><div class="gen-stat-label">已完成</div><div class="gen-stat-value" id="genDone">0 / 8</div><div class="gen-stat-sub">并行 4 路</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">已用时</div><div class="gen-stat-value" id="genTime">00:00</div><div class="gen-stat-sub">预计 2-4 分</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">消耗</div><div class="gen-stat-value" id="genCost">¥0.00</div><div class="gen-stat-sub">画面+配音+合成</div></div>
+          <div class="gen-stat"><div class="gen-stat-label">差异度</div><div class="gen-stat-value" id="genDiff">—</div><div class="gen-stat-sub">完成后给出</div></div>
+        </div>
+        <div class="scene-grid" id="sceneGrid"></div>
+        <div class="foot-bar">
+          <button class="btn" onclick="goStep(3)">‹ 返回改写</button>
+          <button class="btn btn-primary" id="step4NextBtn" disabled style="opacity:0.5;cursor:not-allowed">生成中…</button>
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="spanel" data-spanel="5">
+        <div class="result-hero">
+          <div class="result-player">
+            <span style="opacity:0.6">🎬</span>
+            <div class="result-player-controls">
+              <div class="result-player-play">▶</div>
+              <div class="result-player-bar"></div>
+              <div class="result-player-time">0:18 / 1:00</div>
+            </div>
+          </div>
+          <div class="result-info">
+            <div class="result-info-card">
+              <h4>📊 与原视频对比</h4>
+              <div class="diff-row"><span class="diff-key">视频时长</span><span><span class="diff-val-old">60.4s</span><span class="diff-arrow">→</span><span class="diff-val-new">60.2s</span></span></div>
+              <div class="diff-row"><span class="diff-key">字幕相似度</span><span><span class="diff-val-old">100%</span><span class="diff-arrow">→</span><span class="diff-val-new">23%</span></span></div>
+              <div class="diff-row"><span class="diff-key">画面感知哈希</span><span><span class="diff-val-old">原视频</span><span class="diff-arrow">→</span><span class="diff-val-new">已变 87%</span></span></div>
+              <div class="diff-row"><span class="diff-key">音频指纹</span><span><span class="diff-val-old">原配音</span><span class="diff-arrow">→</span><span class="diff-val-new">克隆音色</span></span></div>
+              <div class="diff-row"><span class="diff-key">叙事节奏匹配</span><span class="diff-val-new">98%</span></div>
+            </div>
+            <div class="result-info-card">
+              <h4>🛡 平台过审预测</h4>
+              <div class="diff-row"><span class="diff-key">抖音去重</span><span class="diff-val-new" style="color:var(--green)">✓ 低风险</span></div>
+              <div class="diff-row"><span class="diff-key">小红书原创</span><span class="diff-val-new" style="color:var(--green)">✓ 87 分</span></div>
+              <div class="diff-row"><span class="diff-key">视频号匹配</span><span class="diff-val-new" style="color:var(--green)">✓ 通过</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary">⬇ 下载 MP4</button>
+          <button class="btn">📋 复制 SRT</button>
+          <button class="btn">🔄 一键再克隆 5 个</button>
+          <button class="btn">📤 推送草稿箱</button>
+          <button class="btn">📊 详细报告</button>
+          <div style="flex:1"></div>
+          <button class="btn" onclick="goStep(1)">↻ 克隆新视频</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────── MOD: 我的作品 ─────────── -->
+    <div class="mod" data-mod="works">
+      <div class="mod-head">
+        <div>
+          <h1>📚 我的作品</h1>
+          <p>已生成的克隆成片 · 可下载 / 重新生成 / 推送到平台</p>
+        </div>
+      </div>
+      <div class="works-empty">
+        <div class="works-empty-icon">🎬</div>
+        <div class="works-empty-title">3 个克隆成片（演示数据）</div>
+        <div class="works-empty-sub">连接 VIDO 现有作品库 API 后将自动同步</div>
+        <button class="btn btn-primary" onclick="goMod('search')">🔍 去找新爆款克隆</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="proto-mark">原型 v2 · 仅本地预览 · Mock 数据</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// MOCK 数据
+// ═══════════════════════════════════════════════
+const PLATFORMS = {
+  douyin:        { name: '抖音',       cls: 'plat-douyin',       icon: '📺' },
+  'douyin-lite': { name: '抖音极速版', cls: 'plat-douyin-lite',  icon: '⚡' },
+  kuaishou:      { name: '快手',       cls: 'plat-kuaishou',     icon: '📹' },
+  'kuaishou-lite':{name: '快手极速版', cls: 'plat-kuaishou-lite',icon: '⚡' },
+  redbook:       { name: '小红书',     cls: 'plat-redbook',      icon: '📕' },
+  weishi:        { name: '微视',       cls: 'plat-weishi',       icon: '🎞' },
+};
+
+function fmtNum(n) {
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿';
+  if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+const COLORS = ['#FF5470', '#7c6cf0', '#21FFF3', '#FFF600', '#FF8B3D', '#10b981', '#ec4899', '#00B0F0'];
+function colorAt(i) { return COLORS[i % COLORS.length]; }
+
+const SEARCH_VIDEOS = [
+  { emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色，带杯柄都不沾', author: '阿琳的彩妆日常', avatar: '👩', plat: 'douyin',       views: 2300000, likes: 124000, dur: '0:58', time: '2 天前', rank: 1 },
+  { emoji: '👄', title: '99 元买了 7 只口红，这只 0 差评！纯欲挂 yyds', author: 'CC 的种草日记', avatar: '👧', plat: 'redbook',      views: 890000,  likes: 56000,  dur: '0:45', time: '3 天前', rank: 2 },
+  { emoji: '💋', title: '试色 12 支爆款口红 | 这只显白到发光！',         author: '美妆博主小鹿', avatar: '🦌', plat: 'douyin',       views: 1560000, likes: 82000,  dur: '1:20', time: '1 天前', rank: 3 },
+  { emoji: '🌹', title: '送女朋友千万别买这只口红…她会上瘾',                 author: '老王种草',     avatar: '👨', plat: 'kuaishou',     views: 678000,  likes: 41000,  dur: '0:38', time: '5 小时前', rank: 4 },
+  { emoji: '✨', title: '冷调显白红 vs 暖调温柔粉 | 一支搞定 4 季',       author: 'Lulu 的衣橱',  avatar: '👗', plat: 'redbook',      views: 432000,  likes: 28000,  dur: '1:05', time: '4 天前' },
+  { emoji: '💖', title: 'YSL vs MAC vs Tom Ford 三大热门口红横评',        author: '理性消费指南', avatar: '🤓', plat: 'douyin',       views: 925000,  likes: 67000,  dur: '2:14', time: '1 天前' },
+  { emoji: '🍒', title: '学生党宝藏！20 元真嘴唇感口红测评',              author: '平价美妆',     avatar: '🌸', plat: 'douyin-lite',  views: 234000,  likes: 19800,  dur: '0:52', time: '6 小时前' },
+  { emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',                author: '专业彩妆师 May', avatar: '💋', plat: 'douyin',       views: 1890000, likes: 156000, dur: '3:42', time: '5 天前' },
+  { emoji: '👑', title: '哑光雾面 vs 镜面镜光 | 哪种更显气质？',           author: '气质美学',     avatar: '👸', plat: 'redbook',      views: 312000,  likes: 24000,  dur: '0:48', time: '2 天前' },
+  { emoji: '🌷', title: '春天必入！4 只温柔豆沙色实测',                    author: 'Sunny 美妆',   avatar: '🌷', plat: 'kuaishou',     views: 156000,  likes: 12300,  dur: '1:18', time: '3 天前' },
+  { emoji: '🍑', title: '日常通勤 5 分钟妆 | 一支口红打天下',              author: '通勤美妆',     avatar: '👜', plat: 'weishi',       views: 87000,   likes: 7800,   dur: '0:42', time: '1 天前' },
+  { emoji: '💄', title: '哺乳期能用的口红有哪些？母婴博主实测',            author: '宝妈安安',     avatar: '👶', plat: 'redbook',      views: 245000,  likes: 18500,  dur: '1:30', time: '4 天前' },
+];
+
+const FOLLOWED = [
+  { id: 'f1', name: '阿琳的彩妆日常', avatar: '👩', plat: 'douyin',  fans: 2340000, works: 312, newCount: 3, bio: '专业彩妆师 8 年 · 种草不踩雷 · 每周三新品测评 · 商务合作私信', tags: ['美妆', '种草', '测评'], hot: true },
+  { id: 'f2', name: 'CC 的种草日记',   avatar: '👧', plat: 'redbook', fans: 856000,  works: 245, newCount: 1, bio: '小红书全平台美妆达人 · 95 后留学生 · 平价宝藏挖掘机', tags: ['美妆', '平价'] },
+  { id: 'f3', name: '通勤美妆',        avatar: '👜', plat: 'weishi',  fans: 432000,  works: 178, newCount: 0, bio: '5 分钟通勤妆 · 都市职场女性必备', tags: ['通勤', '快手妆'] },
+  { id: 'f4', name: '老王种草',        avatar: '👨', plat: 'kuaishou',fans: 1230000, works: 423, newCount: 2, bio: '北方爷们儿教你买好货 · 直男视角种草', tags: ['男性视角', '直白'] },
+  { id: 'f5', name: '理性消费指南',    avatar: '🤓', plat: 'douyin',  fans: 678000,  works: 156, newCount: 1, bio: '消费经济学教授 · 数据派种草 · 不被广告洗脑', tags: ['消费', '横评'] },
+  { id: 'f6', name: 'Sunny 美妆',      avatar: '🌷', plat: 'kuaishou',fans: 234000,  works: 89,  newCount: 0, bio: '清新少女风 · 大学校园美妆博主', tags: ['学生', '少女风'] },
+  { id: 'f7', name: '宝妈安安',        avatar: '👶', plat: 'redbook', fans: 189000,  works: 134, newCount: 1, bio: '二胎宝妈 · 母婴美妆测评 · 关注成分安全', tags: ['母婴', '安全'] },
+  { id: 'f8', name: '专业彩妆师 May',  avatar: '💋', plat: 'douyin',  fans: 3450000, works: 567, newCount: 4, bio: '中央戏剧学院化妆系毕业 · 明星御用化妆师', tags: ['专业', '化妆师'] },
+  { id: 'f9', name: '平价美妆',        avatar: '🌸', plat: 'douyin-lite', fans: 156000, works: 67, newCount: 2, bio: '20 元也能买好货 · 学生党最爱', tags: ['平价', '学生'] },
+  { id: 'f10', name: 'Lulu 的衣橱',    avatar: '👗', plat: 'redbook', fans: 567000,  works: 234, newCount: 0, bio: '穿搭+美妆全能博主 · INFP 文艺女生', tags: ['穿搭', '美妆'] },
+  { id: 'f11', name: '气质美学',       avatar: '👸', plat: 'redbook', fans: 423000,  works: 198, newCount: 1, bio: '淑女风 · 知性气质打造 · 30+ 女性必看', tags: ['气质', '知性'] },
+  { id: 'f12', name: '美妆博主小鹿',   avatar: '🦌', plat: 'douyin',  fans: 1230000, works: 345, newCount: 5, bio: '抖音 TOP 美妆达人 · 一支口红能聊半小时', tags: ['抖音', '深度评测'], hot: true },
+];
+
+const RANKING = [
+  { rank: 1, emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色，带杯柄都不沾', author: '阿琳的彩妆日常', plat: 'douyin', views: 2300000, likes: 124000, trend: 'new' },
+  { rank: 2, emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',                  author: '专业彩妆师 May', plat: 'douyin', views: 1890000, likes: 156000, trend: 'up', delta: 12 },
+  { rank: 3, emoji: '💋', title: '试色 12 支爆款口红 | 这只显白到发光！',           author: '美妆博主小鹿',   plat: 'douyin', views: 1560000, likes: 82000,  trend: 'up', delta: 5 },
+  { rank: 4, emoji: '👄', title: '99 元买了 7 只口红，这只 0 差评！纯欲挂 yyds',     author: 'CC 的种草日记', plat: 'redbook', views: 890000,  likes: 56000,  trend: 'down', delta: -2 },
+  { rank: 5, emoji: '💖', title: 'YSL vs MAC vs Tom Ford 三大热门口红横评',         author: '理性消费指南',   plat: 'douyin', views: 925000,  likes: 67000,  trend: 'up', delta: 8 },
+  { rank: 6, emoji: '🌹', title: '送女朋友千万别买这只口红…她会上瘾',                   author: '老王种草',       plat: 'kuaishou', views: 678000, likes: 41000, trend: 'new' },
+  { rank: 7, emoji: '✨', title: '冷调显白红 vs 暖调温柔粉 | 一支搞定 4 季',         author: 'Lulu 的衣橱',    plat: 'redbook', views: 432000,  likes: 28000,  trend: 'down', delta: -3 },
+  { rank: 8, emoji: '👑', title: '哑光雾面 vs 镜面镜光 | 哪种更显气质？',             author: '气质美学',       plat: 'redbook', views: 312000,  likes: 24000,  trend: 'up', delta: 4 },
+  { rank: 9, emoji: '🍒', title: '学生党宝藏！20 元真嘴唇感口红测评',                author: '平价美妆',       plat: 'douyin-lite', views: 234000, likes: 19800, trend: 'new' },
+  { rank: 10, emoji: '🌷', title: '春天必入！4 只温柔豆沙色实测',                    author: 'Sunny 美妆',     plat: 'kuaishou', views: 156000, likes: 12300, trend: 'up', delta: 2 },
+];
+
+const RANK_MINI = [
+  { emoji: '💄', title: '油皮亲妈！这只口红从早涂到晚不脱色…', author: '阿琳的彩妆日常', plat: 'douyin', views: 2300000, time: '2 天前' },
+  { emoji: '🎀', title: '试色 100 支口红 我只推荐这 5 只',     author: '专业彩妆师 May', plat: 'douyin', views: 1890000, time: '5 天前' },
+  { emoji: '💋', title: '试色 12 支爆款口红 | 这只显白…',     author: '美妆博主小鹿',  plat: 'douyin', views: 1560000, time: '1 天前' },
+  { emoji: '🌹', title: '送女朋友千万别买这只口红…',           author: '老王种草',      plat: 'kuaishou', views: 678000,  time: '5 小时前' },
+  { emoji: '👜', title: '通勤族必看！5 分钟出门妆',           author: '通勤美妆',      plat: 'weishi',  views: 87000,   time: '1 天前' },
+  { emoji: '👶', title: '哺乳期口红测评 | 母婴博主亲测',       author: '宝妈安安',      plat: 'redbook', views: 245000,  time: '4 天前' },
+];
+
+// ═══════════════════════════════════════════════
+// 模块切换
+// ═══════════════════════════════════════════════
+function goMod(name) {
+  document.querySelectorAll('.sb-item').forEach(el => el.classList.toggle('active', el.dataset.mod === name));
+  document.querySelectorAll('.mod').forEach(el => el.classList.toggle('active', el.dataset.mod === name));
+  const titles = {
+    search: '🔍 多平台搜索',
+    follow: '⭐ 我的关注',
+    rank:   '📊 热度排行',
+    clone:  '🎬 视频克隆',
+    works:  '📚 我的作品',
+  };
+  document.getElementById('tpCrumb').innerHTML = (titles[name] || name) + ' <span class="small">实时</span>';
+  document.querySelector('.main').scrollTop = 0;
+
+  if (name === 'follow' && !window._followInited) { renderFollow(); window._followInited = true; }
+  if (name === 'rank' && !window._rankInited) { renderRank(); window._rankInited = true; }
+  if (name === 'clone' && !window._cloneInited) { window._cloneInited = true; }
+}
+document.querySelectorAll('.sb-item[data-mod]').forEach(el => {
+  el.addEventListener('click', () => { if (el.dataset.mod) goMod(el.dataset.mod); });
+});
+
+// ═══════════════════════════════════════════════
+// MOD: 搜索
+// ═══════════════════════════════════════════════
+function renderSearch(items, kw) {
+  const grid = document.getElementById('searchGrid');
+  grid.innerHTML = items.map((v, i) => {
+    const p = PLATFORMS[v.plat] || PLATFORMS.douyin;
+    const c = colorAt(i);
+    return `
+      <div class="video-card">
+        <div class="vc-thumb" style="background:linear-gradient(135deg, ${c}40, ${c}10)">
+          <div class="vc-thumb-overlay"></div>
+          <span class="plat ${p.cls} vc-thumb-plat">${p.icon} ${p.name}</span>
+          ${v.rank ? `<span class="vc-thumb-rank">🔥 #${v.rank}</span>` : ''}
+          <span class="vc-thumb-duration">${v.dur}</span>
+          <span style="position:relative;z-index:1">${v.emoji}</span>
+        </div>
+        <div class="vc-info">
+          <div class="vc-title">${v.title}</div>
+          <div class="vc-meta">
+            <div class="vc-author">
+              <div class="vc-avatar">${v.avatar}</div>
+              <span class="vc-author-name">${v.author}</span>
+            </div>
+            <span>${v.time}</span>
+          </div>
+          <div class="vc-stats">
+            <span class="vc-stat">👁 <b>${fmtNum(v.views)}</b></span>
+            <span class="vc-stat">❤️ <b>${fmtNum(v.likes)}</b></span>
+            <span class="vc-stat">💬 <b>${fmtNum(Math.floor(v.likes * 0.05))}</b></span>
+          </div>
+          <div class="vc-actions">
+            <button class="btn btn-sm" onclick="event.stopPropagation();toast('已关注 ${v.author}')">⭐ 关注</button>
+            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();goMod('clone');toast('已选定该视频，进入克隆流程')">🎬 克隆</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function doSearch() {
+  const kw = document.getElementById('searchInput').value.trim();
+  document.getElementById('searchKw').textContent = `"${kw || '全部'}"`;
+  document.getElementById('searchTotal').textContent = (50 + Math.floor(Math.random() * 200));
+  renderSearch(SEARCH_VIDEOS, kw);
+  toast(`🔍 搜索 "${kw}" · 已聚合 6 个平台结果`);
+}
+function searchTag(tag) { document.getElementById('searchInput').value = tag; doSearch(); }
+
+// 平台 chip 多选切换
+document.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip || !chip.parentElement.classList.contains('chip-row')) return;
+  // 单选行为：同行 chip 切换
+  if (chip.parentElement.querySelector('.chip.selected') !== chip) {
+    chip.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+  }
+});
+
+// ═══════════════════════════════════════════════
+// MOD: 关注
+// ═══════════════════════════════════════════════
+function renderFollow() {
+  // 按平台分组
+  const grouped = {};
+  FOLLOWED.forEach(f => {
+    if (!grouped[f.plat]) grouped[f.plat] = [];
+    grouped[f.plat].push(f);
+  });
+
+  const list = document.getElementById('followList');
+  list.innerHTML = Object.entries(grouped).map(([plat, arr]) => {
+    const p = PLATFORMS[plat];
+    return `
+      <div class="follow-plat-group">
+        <div class="follow-plat-title">${p.icon} ${p.name} · ${arr.length} 位</div>
+        ${arr.map((f, i) => `
+          <div class="follow-author ${plat === 'douyin' && i === 0 ? 'active' : ''}" onclick="selectFollow('${f.id}')">
+            <div class="follow-author-avatar" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+3)}40)">${f.avatar}</div>
+            <div class="follow-author-meta">
+              <div class="follow-author-name"><span>${f.name}</span>${f.hot ? '🔥' : ''}</div>
+              <div class="follow-author-stat">${fmtNum(f.fans)} 粉 · ${f.works} 作品</div>
+            </div>
+            ${f.newCount ? `<div class="follow-author-dot" title="${f.newCount} 个新作品"></div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }).join('');
+
+  // 默认选中第一个
+  selectFollow(FOLLOWED[0].id);
+}
+
+function selectFollow(id) {
+  document.querySelectorAll('.follow-author').forEach(el => el.classList.remove('active'));
+  // 找到点击元素
+  const all = [...document.querySelectorAll('.follow-author')];
+  const f = FOLLOWED.find(x => x.id === id);
+  if (!f) return;
+  // 简单：标记包含该作者名的卡
+  all.forEach(el => {
+    if (el.querySelector('.follow-author-name span')?.textContent === f.name) el.classList.add('active');
+  });
+
+  const p = PLATFORMS[f.plat];
+  const detail = document.getElementById('followDetail');
+
+  // 生成 mock 作品列表
+  const works = Array.from({ length: 8 }).map((_, i) => ({
+    emoji: ['💄','👄','💋','🎀','👑','✨','🌷','💖'][i % 8],
+    title: `${f.name} 作品 #${f.works - i}`,
+    views: Math.floor(50000 + Math.random() * 2000000),
+    days: i + 1,
+  }));
+
+  detail.innerHTML = `
+    <div class="follow-detail-head">
+      <div class="fd-avatar" style="background:linear-gradient(135deg, ${colorAt(0)}40, ${colorAt(2)}40)">${f.avatar}</div>
+      <div class="fd-info">
+        <div class="fd-name">${f.name} <span class="plat ${p.cls}">${p.icon} ${p.name}</span></div>
+        <div class="fd-bio">${f.bio}</div>
+        <div class="fd-stats">
+          <div><div class="fd-stat-num">${fmtNum(f.fans)}</div><div class="fd-stat-label">粉丝</div></div>
+          <div><div class="fd-stat-num">${f.works}</div><div class="fd-stat-label">作品</div></div>
+          <div><div class="fd-stat-num">${(8 + Math.random() * 4).toFixed(1)}%</div><div class="fd-stat-label">互动率</div></div>
+          <div><div class="fd-stat-num" style="color:var(--green)">↑ ${(2 + Math.random() * 8).toFixed(1)}%</div><div class="fd-stat-label">7 天涨粉</div></div>
+        </div>
+      </div>
+      <div class="fd-actions">
+        <button class="btn btn-sm">🔔 开启新作通知</button>
+        <button class="btn btn-sm btn-warm">🎬 克隆 ta 的爆款</button>
+        <button class="btn btn-sm">取消关注</button>
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">
+        🎯 标签
+        <span class="chip-row">${f.tags.map(t => `<span class="chip btn-sm" style="background:rgba(33,255,243,0.1);color:var(--cyan);border-color:rgba(33,255,243,0.3)">${t}</span>`).join('')}</span>
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">
+        🎬 最近作品（${works.length}）
+        <button class="btn btn-sm">查看全部 ${f.works} 个 →</button>
+      </div>
+      <div class="fd-works-grid">
+        ${works.map((w, i) => `
+          <div class="fd-work">
+            <div class="fd-work-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">${w.emoji}</div>
+            <div class="fd-work-info">
+              <div class="fd-work-title">${w.title}</div>
+              <div class="fd-work-stat"><span>👁 ${fmtNum(w.views)}</span><span>${w.days} 天前</span></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="fd-section">
+      <div class="fd-section-head">📈 数据趋势（最近 30 天）</div>
+      <div style="background:var(--bg3);border-radius:8px;padding:30px;text-align:center;color:var(--text3);font-size:12px">
+        📊 折线图占位（粉丝数 / 互动率 / 发布频率 等三条线）
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════
+// MOD: 排行
+// ═══════════════════════════════════════════════
+function renderRank() {
+  const list = document.getElementById('rankList');
+  list.innerHTML = RANKING.map(r => {
+    const p = PLATFORMS[r.plat];
+    const trendHtml = r.trend === 'new'  ? '<span class="rank-trend new">🆕 NEW</span>' :
+                      r.trend === 'up'   ? `<span class="rank-trend up">↑ ${r.delta}</span>` :
+                      r.trend === 'down' ? `<span class="rank-trend down">↓ ${Math.abs(r.delta)}</span>` :
+                      '<span class="rank-trend">—</span>';
+    const numCls = r.rank === 1 ? 't1' : r.rank === 2 ? 't2' : r.rank === 3 ? 't3' : '';
+    return `
+      <div class="rank-row">
+        <div class="rank-num ${numCls}">${r.rank}</div>
+        <div class="rank-thumb" style="background:linear-gradient(135deg, ${colorAt(r.rank)}40, ${colorAt(r.rank+2)}10)">${r.emoji}</div>
+        <div class="rank-info">
+          <div class="rank-title">${r.title}</div>
+          <div class="rank-author-row">
+            <span class="plat ${p.cls}">${p.icon} ${p.name}</span>
+            <span>· ${r.author}</span>
+          </div>
+        </div>
+        <div class="rank-views">${fmtNum(r.views)}</div>
+        <div class="rank-likes">${fmtNum(r.likes)}</div>
+        <div>${trendHtml}</div>
+        <div class="rank-actions">
+          <button class="btn btn-sm" onclick="toast('已关注')">⭐</button>
+          <button class="btn btn-sm btn-primary" onclick="goMod('clone');toast('已加载到克隆流程')">🎬</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const mini = document.getElementById('rankMini');
+  mini.innerHTML = RANK_MINI.map((r, i) => {
+    const p = PLATFORMS[r.plat];
+    return `
+      <div class="rank-mini-card" onclick="toast('已加载该视频到克隆流程')">
+        <div class="rank-mini-thumb" style="background:linear-gradient(135deg, ${colorAt(i)}40, ${colorAt(i+2)}10)">${r.emoji}</div>
+        <div class="rank-mini-info">
+          <div class="rank-mini-title">${r.title}</div>
+          <div class="rank-mini-meta">
+            <span class="plat ${p.cls}" style="font-size:9px">${p.icon}</span>
+            ${r.author} · <b>${fmtNum(r.views)}</b> 播放 · ${r.time}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// rank tabs
+document.querySelectorAll('.rank-tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.rank-tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  toast('已切换排行维度：' + t.textContent.trim());
+}));
+
+// ═══════════════════════════════════════════════
+// MOD: 克隆 5 步流程
+// ═══════════════════════════════════════════════
+let currentStep = 1;
+function goStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.spanel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.spanel[data-spanel="${n}"]`)?.classList.add('active');
+  document.querySelectorAll('.step').forEach(el => {
+    const sn = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done');
+    if (sn === n) el.classList.add('active');
+    else if (sn < n) el.classList.add('done');
+  });
+  const fill = document.getElementById('stepFill');
+  if (fill) fill.style.width = `${((n - 1) / 4) * 100}%`;
+  document.querySelector('.main').scrollTop = 0;
+  if (n === 2) startParseAnimation();
+  if (n === 3) renderRewrite();
+  if (n === 4) startGenAnimation();
+}
+
+const MOCK_SUBTITLES = [
+  { t: '00:00', text: '姐妹们今天我必须给你们说这个口红！' },
+  { t: '00:03', text: '就是这一支，我用了整整 3 个月。' },
+  { t: '00:07', text: '从早上化妆一直到晚上下班完全不脱色。' },
+  { t: '00:11', text: '关键它还不显唇纹，平价学生党都买得起。' },
+  { t: '00:16', text: '上嘴显白显气色，黄黑皮也能驾驭。' },
+  { t: '00:20', text: '这质感你看，真的像唇釉一样水润。' },
+  { t: '00:25', text: '吃饭喝水都不会沾杯子上。' },
+  { t: '00:30', text: '我已经回购第三支了，姐妹们冲！' },
+  { t: '00:35', text: '小黄车第一个链接，前 100 名有赠品。' },
+  { t: '00:40', text: '原价 89 现在只要 39，全网最低！' },
+];
+const MOCK_FRAMES = ['🎬','👄','💄','🪞','👩','✨','🥤','💋','🛒','🎁','💰','👍','👀','🤳','👋','🌟']
+  .map((emoji, i) => ({ ts: `0:${(i*4).toString().padStart(2,'0')}`, emoji }));
+
+const MOCK_REWRITE = [
+  { label: 'HOOK · 钩子', orig: '姐妹们今天我必须给你们说这个口红！就是这一支，我用了整整 3 个月。', new: '不是我说，这只口红真的让我惊到了！连续用了 90 天我才敢推荐给你们。', changed: true },
+  { label: 'PAIN · 痛点', orig: '从早上化妆一直到晚上下班完全不脱色。关键它还不显唇纹，平价学生党都买得起。', new: '化完妆开早会、午饭、加班到晚上，居然完全不掉色。最重要的是不卡唇纹，价格还是日常水平能负担的。', changed: true },
+  { label: 'PROOF · 证明', orig: '上嘴显白显气色，黄黑皮也能驾驭。这质感你看，真的像唇釉一样水润。', new: '我是冷调黄一白，涂上瞬间提气色不挑肤色。质地像唇蜜一样滋润不拔干。', changed: true },
+  { label: 'CTA · 行动', orig: '我已经回购第三支了，姐妹们冲！小黄车第一个链接，前 100 名有赠品。', new: '我自己已经下单第三支备用了。点击屏幕下方第一个商品链接，今天前 100 单加送同色系唇笔。', changed: true },
+  { label: 'OUTRO · 收尾', orig: '我会一直给你们测好用的，记得点关注。我们下个视频见，拜拜！', new: '关注我每周三新品测评不迷路，下期我们聊春夏防晒。爱你们，下条视频见！', changed: true },
+];
+
+const MOCK_SCENES = ['👩','💄','👄','🥤','🛒','💰','👀','👋'].map((emoji, i) => ({ num: i + 1, label: `场景 #${i + 1}`, emoji }));
+
+let parseStarted = false;
+function startParseAnimation() {
+  if (parseStarted) return; parseStarted = true;
+  const subList = document.getElementById('subtitleList');
+  const frameGrid = document.getElementById('frameGrid');
+  subList.innerHTML = ''; frameGrid.innerHTML = '';
+
+  let si = 0;
+  const sttPct = document.getElementById('sttPct');
+  const sttHint = document.getElementById('sttHint');
+  const sttRow = document.getElementById('step2-stt');
+  const subTimer = setInterval(() => {
+    if (si >= MOCK_SUBTITLES.length) { clearInterval(subTimer); sttPct.textContent = '100%'; sttRow.classList.remove('active'); sttRow.classList.add('done'); sttRow.querySelector('.pp-icon').textContent = '✓'; sttHint.textContent = `已识别 ${MOCK_SUBTITLES.length} 条字幕`; return; }
+    const item = MOCK_SUBTITLES[si];
+    const row = document.createElement('div');
+    row.className = 'subtitle-row new';
+    row.innerHTML = `<span class="subtitle-time">${item.t}</span><span class="subtitle-text">${item.text}</span>`;
+    subList.appendChild(row); subList.scrollTop = subList.scrollHeight;
+    si++; sttPct.textContent = Math.round(si / MOCK_SUBTITLES.length * 100) + '%';
+  }, 380);
+
+  let fi = 0;
+  const framePct = document.getElementById('framePct');
+  const frameHint = document.getElementById('frameHint');
+  const frameRow = document.getElementById('step2-frame');
+  MOCK_FRAMES.forEach(f => { const cell = document.createElement('div'); cell.className = 'frame-cell'; cell.style.opacity = '0.15'; cell.innerHTML = `<span class="frame-cell-time">${f.ts}</span>`; frameGrid.appendChild(cell); });
+  setTimeout(() => {
+    frameRow.classList.add('active'); frameRow.querySelector('.pp-icon').textContent = '⟳';
+    const frameTimer = setInterval(() => {
+      if (fi >= MOCK_FRAMES.length) {
+        clearInterval(frameTimer); framePct.textContent = '100%'; frameRow.classList.remove('active'); frameRow.classList.add('done'); frameRow.querySelector('.pp-icon').textContent = '✓'; frameHint.textContent = `已分析 ${MOCK_FRAMES.length} 帧 · 8 个场景`;
+        const exRow = document.getElementById('step2-extract');
+        exRow.classList.add('active'); exRow.querySelector('.pp-icon').textContent = '⟳'; exRow.querySelector('.pp-pct').textContent = '0%';
+        let p = 0;
+        const exTimer = setInterval(() => {
+          p += 12;
+          if (p >= 100) { p = 100; exRow.classList.remove('active'); exRow.classList.add('done'); exRow.querySelector('.pp-icon').textContent = '✓';
+            const btn = document.getElementById('step2NextBtn'); btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = '查看改写结果 →'; btn.onclick = () => goStep(3);
+            clearInterval(exTimer);
+          }
+          exRow.querySelector('.pp-pct').textContent = p + '%';
+        }, 200);
+        return;
+      }
+      const cell = frameGrid.children[fi];
+      cell.style.opacity = '1'; cell.innerHTML = `${MOCK_FRAMES[fi].emoji}<span class="frame-cell-time">${MOCK_FRAMES[fi].ts}</span>`;
+      fi++; framePct.textContent = Math.round(fi / MOCK_FRAMES.length * 100) + '%';
+    }, 280);
+  }, 1500);
+}
+
+function renderRewrite() {
+  const grid = document.getElementById('rewriteGrid');
+  grid.innerHTML = `
+    <div class="rewrite-col">
+      <div class="rewrite-col-head"><span>📜 原始口播</span><span class="badge-orig">5 段 · 60s</span></div>
+      ${MOCK_REWRITE.map(r => `<div class="rewrite-block"><div class="rewrite-block-label">${r.label}</div>${r.orig}</div>`).join('')}
+    </div>
+    <div class="rewrite-col">
+      <div class="rewrite-col-head"><span>✨ AI 改写版</span><span class="badge-new">DeepSeek-V3</span></div>
+      ${MOCK_REWRITE.map(r => `<div class="rewrite-block ${r.changed ? 'changed' : ''}"><div class="rewrite-block-label">${r.label}</div>${r.new}</div>`).join('')}
+    </div>
+  `;
+}
+
+let genStarted = false;
+function startGenAnimation() {
+  if (genStarted) return; genStarted = true;
+  const grid = document.getElementById('sceneGrid');
+  grid.innerHTML = MOCK_SCENES.map(s => `<div class="scene-card pending" data-scene="${s.num}"><div class="scene-thumb">${s.emoji}</div><div class="scene-status pending">待处理</div><div class="scene-meta"><span class="scene-num">#${s.num}</span> · ${s.label}</div></div>`).join('');
+
+  let done = 0, elapsed = 0;
+  const total = MOCK_SCENES.length;
+  const timeEl = document.getElementById('genTime');
+  const costEl = document.getElementById('genCost');
+  const doneEl = document.getElementById('genDone');
+  const diffEl = document.getElementById('genDiff');
+  const tickTimer = setInterval(() => {
+    elapsed++;
+    timeEl.textContent = `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${(elapsed%60).toString().padStart(2,'0')}`;
+    costEl.textContent = '¥' + (elapsed * 0.18).toFixed(2);
+  }, 1000);
+
+  function processScene(i, delay) {
+    setTimeout(() => {
+      const card = grid.children[i];
+      card.classList.remove('pending'); card.classList.add('processing');
+      const status = card.querySelector('.scene-status');
+      status.classList.remove('pending'); status.classList.add('processing'); status.textContent = '生成中';
+      setTimeout(() => {
+        card.classList.remove('processing'); card.classList.add('done');
+        status.classList.remove('processing'); status.classList.add('done'); status.textContent = '✓ 完成';
+        done++; doneEl.textContent = `${done} / ${total}`;
+        if (done === total) {
+          clearInterval(tickTimer); diffEl.textContent = '87 分';
+          const btn = document.getElementById('step4NextBtn'); btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.textContent = '查看成片 →'; btn.onclick = () => goStep(5);
+        }
+      }, 1800 + Math.random() * 1200);
+    }, delay);
+  }
+  for (let i = 0; i < total; i++) processScene(i, Math.floor(i / 4) * 1500 + (i % 4) * 200);
+}
+
+// ═══════════════════════════════════════════════
+// 通用
+// ═══════════════════════════════════════════════
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.style.display = 'none', 2400);
+}
+
+// 初始化：渲染搜索 grid
+renderSearch(SEARCH_VIDEOS);
+</script>
+</body>
+</html>

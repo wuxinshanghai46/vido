@@ -138,6 +138,42 @@ async function extractContent(videoUrl, userId) {
   const { callLLM } = require('./storyService');
   const { platform, name: platformName } = parsePlatformUrl(videoUrl);
 
+  // ━━━ 抖音优先走 douyinExtract（无 MCP 依赖，直接 fetch iesdouyin SSR）━━━
+  if (platform === 'douyin') {
+    try {
+      const { getDouyinVideoInfo } = require('./douyinExtract');
+      const info = await getDouyinVideoInfo(videoUrl);
+      console.log(`[Radar] 抖音 iesdouyin SSR 提取成功: ${info.title} · ${info.author}`);
+      const contentId = uuidv4();
+      db.insertContent({
+        id: contentId,
+        user_id: userId,
+        video_url: info.share_url,
+        platform: 'douyin',
+        platform_name: '抖音',
+        title: info.title || '',
+        transcript: info.transcript || '',
+        tags: info.tags || [],
+        author: info.author || '',
+        author_avatar: info.author_avatar || '',
+        author_id: info.author_id || '',
+        cover: info.cover || '',
+        views: info.views || 0,
+        likes: info.likes || 0,
+        comments: info.comments || 0,
+        duration: info.duration || 0,
+        upload_date: info.upload_date,
+        crawled: true,
+        source: info.source,
+        status: 'done',
+      });
+      return { id: contentId, ...info, platformName: '抖音' };
+    } catch (e) {
+      console.warn('[Radar] douyinExtract 失败，走通用回退:', e.message);
+      // 不 throw，继续走通用 MCP/axios 路径
+    }
+  }
+
   // 第0步：尝试 MCP media-crawler（更精准的平台特化爬虫）
   const mcpData = await tryMcpExtract(videoUrl);
 
@@ -185,13 +221,44 @@ ${crawledInfo}
   "author": "作者名称"
 }`;
 
-  const result = await callLLM(systemPrompt, userPrompt);
-  let parsed;
+  // LLM 解析有可能慢或不可用 — 给一个最长 25s 兜底，超时/失败则降级到原始页面数据
+  let result = '';
+  let llmFailed = null;
   try {
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : result);
-  } catch {
-    parsed = { title: page.title || '内容分析', transcript: page.bodyText || result, tags: page.tags, style: '未知', hook: '', structure: '', highlights: [] };
+    result = await Promise.race([
+      callLLM(systemPrompt, userPrompt),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('LLM 解析超时（>25s）')), 25000)),
+    ]);
+  } catch (e) {
+    llmFailed = e.message;
+    console.warn('[Radar] LLM 解析失败，使用原始抓取数据:', e.message);
+  }
+
+  let parsed;
+  if (result) {
+    try {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : result);
+    } catch {
+      parsed = { title: page.title || '内容分析', transcript: page.bodyText || result, tags: page.tags, style: '未知', hook: '', structure: '', highlights: [] };
+    }
+  } else if (hasRealContent) {
+    // 有真实抓取数据，LLM 失败时降级返回原始数据
+    parsed = {
+      title: page.title || platformName + '视频',
+      transcript: page.bodyText || page.rawText.substring(0, 500),
+      tags: page.tags || [],
+      style: '未知',
+      hook: '', structure: '',
+      highlights: llmFailed ? [`AI 解析失败：${llmFailed}`] : [],
+      author: page.author || '',
+    };
+  } else {
+    // 抓取 + LLM 全失败 → 不写垃圾记录，直接抛错
+    const reasons = [];
+    if (!hasRealContent) reasons.push('页面抓取失败（可能需要登录或目标平台限制）');
+    if (llmFailed) reasons.push('AI 解析失败：' + llmFailed);
+    throw new Error(reasons.join(' · '));
   }
 
   // 合并抓取数据和AI分析

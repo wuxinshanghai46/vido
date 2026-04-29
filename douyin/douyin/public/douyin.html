@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>抖音视频分析</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+    }
+    .container { max-width: 1000px; margin: 0 auto; padding: 30px 20px; }
+
+    /* 导航 */
+    nav {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 30px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    nav a {
+      text-decoration: none;
+      color: #666;
+      font-size: 15px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      transition: all 0.2s;
+    }
+    nav a:hover, nav a.active {
+      background: #333;
+      color: #fff;
+    }
+
+    h1 { text-align: center; margin-bottom: 8px; font-size: 26px; }
+    .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 14px; }
+
+    /* 输入区 */
+    .input-section {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 24px;
+    }
+    .input-section label { font-weight: 600; font-size: 14px; display: block; margin-bottom: 8px; }
+    .input-row { display: flex; gap: 10px; }
+    .input-row textarea {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+    }
+    .input-row textarea:focus { outline: none; border-color: #4a90d9; }
+
+    /* 按钮 */
+    .btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #fe2c55; color: #fff; }
+    .btn-blue { background: #4a90d9; color: #fff; }
+    .btn-green { background: #28a745; color: #fff; }
+    .btn-purple { background: #7c3aed; color: #fff; }
+    .btn-outline { background: transparent; border: 1px solid #ccc; color: #555; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    /* 用户信息 */
+    .user-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 24px;
+      display: none;
+    }
+    .user-card.show { display: flex; align-items: center; gap: 16px; }
+    .user-card .user-name { font-size: 18px; font-weight: 600; }
+    .user-card .user-id { color: #888; font-size: 13px; }
+    .user-card .user-actions { margin-left: auto; }
+
+    /* 排序栏 */
+    .sort-bar {
+      display: none;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .sort-bar.show { display: flex; }
+    .sort-bar label { color: #666; }
+    .sort-bar select {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .video-count { margin-left: auto; color: #888; font-size: 13px; }
+
+    /* 视频列表 */
+    .video-list { display: none; }
+    .video-list.show { display: block; }
+
+    .video-item {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .video-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+
+    .video-header {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .video-thumb {
+      width: 80px;
+      height: 106px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #eee;
+      flex-shrink: 0;
+    }
+    .video-info { flex: 1; min-width: 0; }
+    .video-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .video-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #888;
+      flex-wrap: wrap;
+    }
+    .video-stats span { white-space: nowrap; }
+
+    /* 展开的视频操作区 */
+    .video-detail {
+      display: none;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+    .video-detail.show { display: block; }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    /* 结果区 */
+    .result-box {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 12px;
+      font-size: 14px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .result-box textarea {
+      width: 100%;
+      min-height: 200px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      line-height: 1.8;
+      font-family: inherit;
+      resize: vertical;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ccc;
+      border-top-color: #333;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-msg {
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 12px;
+    }
+    .status-info { background: #e7f3ff; color: #004085; }
+    .status-error { background: #f8d7da; color: #721c24; }
+    .status-success { background: #d4edda; color: #155724; }
+
+    /* 声音选择 */
+    .voice-select {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .audio-player {
+      margin-top: 12px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="/">音视频转文字</a>
+      <a href="/douyin.html" class="active">抖音分析</a>
+      <a href="/voice.html">声音克隆</a>
+    </nav>
+
+    <h1>抖音视频分析</h1>
+    <p class="subtitle">粘贴分享文本 -> 查看用户视频 -> 转录 -> AI改写 -> 配音</p>
+
+    <!-- 输入区 -->
+    <div class="input-section">
+      <label>粘贴抖音分享文本</label>
+      <div class="input-row">
+        <textarea id="shareInput" placeholder="例如: 4.10 复制打开抖音，看看【香港S叔的作品】2026年会复制2008年的金融危机嘛 https://v.douyin.com/cFsoklsuB98/ ..."></textarea>
+        <button class="btn btn-primary" id="parseBtn" onclick="parseShare()">解析</button>
+      </div>
+    </div>
+
+    <!-- 用户信息 -->
+    <div class="user-card" id="userCard">
+      <div>
+        <div class="user-name" id="userName"></div>
+        <div class="user-id" id="userId"></div>
+      </div>
+      <div class="user-actions">
+        <button class="btn btn-blue" id="loadVideosBtn" onclick="loadUserVideos()">加载视频列表</button>
+      </div>
+    </div>
+
+    <!-- 排序栏 -->
+    <div class="sort-bar" id="sortBar">
+      <label>排序:</label>
+      <select id="sortSelect" onchange="sortVideos()">
+        <option value="date_desc">最新发布</option>
+        <option value="date_asc">最早发布</option>
+        <option value="likes_desc">点赞最多</option>
+        <option value="likes_asc">点赞最少</option>
+        <option value="duration_desc">时长最长</option>
+        <option value="duration_asc">时长最短</option>
+      </select>
+      <span class="video-count" id="videoCount"></span>
+    </div>
+
+    <!-- 视频列表 -->
+    <div class="video-list" id="videoList"></div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let currentVideos = [];
+    let expandedVideoId = null;
+    let transcripts = {}; // videoId -> text
+
+    async function parseShare() {
+      const text = document.getElementById('shareInput').value.trim();
+      if (!text) return alert('请粘贴分享文本');
+
+      const btn = document.getElementById('parseBtn');
+      btn.disabled = true;
+      btn.textContent = '解析中...';
+
+      try {
+        const res = await fetch('/api/douyin/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        currentUser = data.user;
+
+        // 显示用户卡片
+        document.getElementById('userName').textContent = data.user.name;
+        document.getElementById('userId').textContent = `ID: ${data.user.id}`;
+        document.getElementById('userCard').classList.add('show');
+
+        // 如果同时有视频信息, 直接显示
+        if (data.video) {
+          currentVideos = [data.video];
+          renderVideos();
+        }
+      } catch (err) {
+        alert('解析失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '解析';
+      }
+    }
+
+    async function loadUserVideos() {
+      if (!currentUser?.url) return alert('未获取到用户信息');
+
+      const btn = document.getElementById('loadVideosBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loading"></span>加载中...';
+
+      try {
+        const res = await fetch('/api/douyin/user-videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userUrl: currentUser.url }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        currentVideos = data;
+        renderVideos();
+      } catch (err) {
+        alert('加载失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '加载视频列表';
+      }
+    }
+
+    function sortVideos() {
+      const sortBy = document.getElementById('sortSelect').value;
+      const sorted = [...currentVideos];
+
+      sorted.sort((a, b) => {
+        switch (sortBy) {
+          case 'date_desc': return (b.upload_date || '').localeCompare(a.upload_date || '');
+          case 'date_asc': return (a.upload_date || '').localeCompare(b.upload_date || '');
+          case 'likes_desc': return (b.like_count || 0) - (a.like_count || 0);
+          case 'likes_asc': return (a.like_count || 0) - (b.like_count || 0);
+          case 'duration_desc': return (b.duration || 0) - (a.duration || 0);
+          case 'duration_asc': return (a.duration || 0) - (b.duration || 0);
+          default: return 0;
+        }
+      });
+
+      currentVideos = sorted;
+      renderVideos();
+    }
+
+    function renderVideos() {
+      const list = document.getElementById('videoList');
+      const sortBar = document.getElementById('sortBar');
+
+      if (currentVideos.length === 0) {
+        list.innerHTML = '';
+        list.classList.remove('show');
+        sortBar.classList.remove('show');
+        return;
+      }
+
+      sortBar.classList.add('show');
+      document.getElementById('videoCount').textContent = `共 ${currentVideos.length} 个视频`;
+      list.classList.add('show');
+
+      list.innerHTML = currentVideos.map((v, i) => {
+        const isExpanded = expandedVideoId === v.id;
+        const transcript = transcripts[v.id] || '';
+        const date = v.upload_date ? `${v.upload_date.substring(0,4)}-${v.upload_date.substring(4,6)}-${v.upload_date.substring(6,8)}` : '';
+
+        return `
+          <div class="video-item">
+            <div class="video-header" onclick="toggleVideo('${v.id}')">
+              ${v.thumbnail ? `<img class="video-thumb" src="${v.thumbnail}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<div class="video-thumb"></div>'}
+              <div class="video-info">
+                <div class="video-title">${escapeHtml(v.title || v.description || '无标题')}</div>
+                <div class="video-stats">
+                  <span>${formatNum(v.like_count)} 赞</span>
+                  <span>${formatNum(v.comment_count)} 评论</span>
+                  <span>${formatDuration(v.duration)}</span>
+                  ${date ? `<span>${date}</span>` : ''}
+                </div>
+              </div>
+            </div>
+
+            <div class="video-detail ${isExpanded ? 'show' : ''}" id="detail-${v.id}">
+              <div class="action-buttons">
+                <button class="btn btn-blue btn-sm" onclick="transcribeVideo('${v.id}', '${escapeAttr(v.url)}', '${escapeAttr(v.title)}')">
+                  转录文案
+                </button>
+                <button class="btn btn-green btn-sm" onclick="rewriteVideo('${v.id}')" ${transcript ? '' : 'disabled'}>
+                  AI改写
+                </button>
+                <select class="voice-select" id="voice-${v.id}">
+                  <option value="zh-CN-YunxiNeural">男声-云希</option>
+                  <option value="zh-CN-YunjianNeural">男声-云健</option>
+                  <option value="zh-CN-XiaoxiaoNeural">女声-晓晓</option>
+                  <option value="zh-CN-XiaohanNeural">女声-晓涵</option>
+                </select>
+                <button class="btn btn-purple btn-sm" onclick="ttsVideo('${v.id}')" ${transcript ? '' : 'disabled'}>
+                  AI配音
+                </button>
+              </div>
+              <div id="status-${v.id}"></div>
+              <div id="result-${v.id}"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function toggleVideo(videoId) {
+      expandedVideoId = expandedVideoId === videoId ? null : videoId;
+      renderVideos();
+    }
+
+    async function transcribeVideo(videoId, videoUrl, title) {
+      const statusEl = document.getElementById(`status-${videoId}`);
+      const resultEl = document.getElementById(`result-${videoId}`);
+
+      statusEl.innerHTML = '<div class="status-msg status-info"><span class="loading"></span>正在下载并转录视频，请耐心等待...</div>';
+      resultEl.innerHTML = '';
+
+      try {
+        const res = await fetch('/api/douyin/transcribe-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl, videoId, title }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        transcripts[videoId] = data.text;
+        statusEl.innerHTML = '<div class="status-msg status-success">转录完成!</div>';
+        resultEl.innerHTML = `
+          <div class="result-box">
+            <textarea id="text-${videoId}">${escapeHtml(data.text)}</textarea>
+          </div>
+        `;
+
+        // 重新渲染以启用按钮
+        renderVideos();
+        // 恢复展开状态和结果
+        expandedVideoId = videoId;
+        renderVideos();
+        setTimeout(() => {
+          document.getElementById(`status-${videoId}`).innerHTML = '<div class="status-msg status-success">转录完成!</div>';
+          document.getElementById(`result-${videoId}`).innerHTML = `
+            <div class="result-box">
+              <textarea id="text-${videoId}">${escapeHtml(data.text)}</textarea>
+            </div>
+          `;
+        }, 0);
+      } catch (err) {
+        statusEl.innerHTML = `<div class="status-msg status-error">转录失败: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function rewriteVideo(videoId) {
+      const textEl = document.getElementById(`text-${videoId}`);
+      const text = textEl ? textEl.value : transcripts[videoId];
+      if (!text) return alert('请先转录视频');
+
+      const statusEl = document.getElementById(`status-${videoId}`);
+      statusEl.innerHTML = '<div class="status-msg status-info"><span class="loading"></span>AI改写中...</div>';
+
+      try {
+        const res = await fetch('/api/douyin/rewrite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        statusEl.innerHTML = '<div class="status-msg status-success">改写完成!</div>';
+        const resultEl = document.getElementById(`result-${videoId}`);
+        resultEl.innerHTML = `
+          <div class="result-box">
+            <p style="font-weight:600;margin-bottom:8px;font-size:13px;color:#666;">改写结果:</p>
+            <textarea id="text-${videoId}">${escapeHtml(data.rewritten)}</textarea>
+          </div>
+        `;
+        transcripts[videoId] = data.rewritten;
+      } catch (err) {
+        statusEl.innerHTML = `<div class="status-msg status-error">改写失败: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function ttsVideo(videoId) {
+      const textEl = document.getElementById(`text-${videoId}`);
+      const text = textEl ? textEl.value : transcripts[videoId];
+      if (!text) return alert('请先转录视频');
+
+      const voiceEl = document.getElementById(`voice-${videoId}`);
+      const voice = voiceEl ? voiceEl.value : 'zh-CN-YunxiNeural';
+
+      const statusEl = document.getElementById(`status-${videoId}`);
+      statusEl.innerHTML = '<div class="status-msg status-info"><span class="loading"></span>AI配音生成中...</div>';
+
+      try {
+        const res = await fetch('/api/douyin/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        statusEl.innerHTML = '<div class="status-msg status-success">配音完成!</div>';
+        const resultEl = document.getElementById(`result-${videoId}`);
+        resultEl.innerHTML += `
+          <div style="margin-top:12px">
+            <audio class="audio-player" controls src="${data.audioUrl}"></audio>
+            <a href="${data.audioUrl}" download class="btn btn-outline btn-sm" style="margin-top:8px;display:inline-block">下载音频</a>
+          </div>
+        `;
+      } catch (err) {
+        statusEl.innerHTML = `<div class="status-msg status-error">配音失败: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function formatNum(n) {
+      if (!n) return '0';
+      if (n >= 10000) return (n / 10000).toFixed(1) + 'w';
+      return String(n);
+    }
+
+    function formatDuration(s) {
+      if (!s) return '--';
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return m > 0 ? `${m}分${sec}秒` : `${sec}秒`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      if (!str) return '';
+      return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
