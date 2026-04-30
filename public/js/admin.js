@@ -4323,14 +4323,7 @@ function openStageEditModal(stageId, type) {
       : `<div class="vido-model-list">${cur.map((m, idx) => {
           const meta = avail.find(a => a.provider_id === m.provider_id && a.model_id === m.model_id);
           // 优先用 settings 里的中文 model_name；如果该 provider 已被禁用 / 模型已删除 → meta 是 undefined
-          let isStale = !meta;
-          // 二阶放行：STAGE_DEFAULTS 里写的 model_id 可能是「模型版本」（如 cosyvoice-v3.5-plus），
-          // 而 settings.providers[].models[] 存的是「音色 ID」（如 longxiaochun）——名字体系不一致会被误标 stale。
-          // 只要同 provider_id 在 avail 里有任意一个模型（说明 provider 自身 enabled），就不再标 stale。
-          if (isStale) {
-            const sameProvHasModels = avail.some(a => a.provider_id === m.provider_id);
-            if (sameProvHasModels) isStale = false;
-          }
+          const isStale = !meta;
           const displayName = meta?.model_name || _i18nModelName(m.model_id) || m.model_id;
           const provName = meta?.provider_name || _i18nProviderName(m.provider_id) || m.provider_id;
           return `

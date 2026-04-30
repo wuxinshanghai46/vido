@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.css" />
-  <link rel="stylesheet" href="/css/workflow.css?v=20260408b" />
+  <link rel="stylesheet" href="/css/workflow.css" />
   <script src="/js/auth.js"></script>
 </head>
 <body>
@@ -180,6 +180,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.js"></script>
-<script src="/js/workflow.js?v=20260408b"></script>
+<script src="/js/workflow.js"></script>
 </body>
 </html>
