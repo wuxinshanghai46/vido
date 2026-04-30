@@ -79,6 +79,33 @@ function fontOpt(bold = false) {
   return f ? `fontfile='${f.replace(/\\/g, '/')}'` : '';
 }
 
+function resolveFontFile(fontName, bold = false) {
+  const name = String(fontName || '').toLowerCase();
+  const candidates = [];
+  if (/noto.*bold|粗体/.test(name)) {
+    candidates.push(path.resolve(__dirname, '../../public/fonts/NotoSansSC-Bold.otf'));
+  }
+  if (/noto/.test(name)) {
+    candidates.push(path.resolve(__dirname, '../../public/fonts/NotoSansSC-Regular.otf'));
+  }
+  if (/雅黑|microsoft|yahei/.test(name)) {
+    candidates.push('C:/Windows/Fonts/msyh.ttc', 'C:/Windows/Fonts/msyhbd.ttc');
+  }
+  if (/黑体|simhei/.test(name)) {
+    candidates.push('C:/Windows/Fonts/simhei.ttf');
+  }
+  if (/宋体|simsun/.test(name)) {
+    candidates.push('C:/Windows/Fonts/simsun.ttc');
+  }
+  candidates.push(bold ? FONT_BOLD : FONT_FILE);
+  return candidates.find(f => f && fs.existsSync(f)) || '';
+}
+
+function fontOptFor(fontName, bold = false) {
+  const f = resolveFontFile(fontName, bold);
+  return f ? `fontfile='${f.replace(/\\/g, '/')}'` : '';
+}
+
 // ═══ 花字预设样式 ═══
 const TEXT_PRESETS = {
   // 标题花字 — 大号、描边、阴影
@@ -183,7 +210,7 @@ function buildDrawText(cfg) {
   const parts = [];
 
   // 字体
-  const fo = fontOpt(cfg.bold ?? preset.bold);
+  const fo = fontOptFor(cfg.fontName, cfg.bold ?? preset.bold);
   if (fo) parts.push(fo);
 
   // 文本

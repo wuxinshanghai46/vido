@@ -59,6 +59,26 @@
     { id: 'nod',         name: '点头认同',   en: 'nodding in agreement, confident expression' },
   ];
 
+  const PARTICLE_PRESETS = [
+    { id: '', label: '无', text: '' },
+    { id: 'soft', label: '轻柔', text: '呢' },
+    { id: 'confirm', label: '确认', text: '对吧' },
+    { id: 'surprise', label: '惊讶', text: '哇' },
+    { id: 'emphasis', label: '强调', text: '真的' },
+    { id: 'question', label: '提问', text: '是不是' },
+    { id: 'pause', label: '停顿', text: '嗯' },
+  ];
+
+  function _segSpeechText(seg) {
+    const base = String(seg?.text || '').trim();
+    const particle = String(seg?.particle || '').trim();
+    if (!base) return '';
+    if (!particle) return base;
+    if (/^(哇|嗯|诶|欸|真的|其实|注意)$/.test(particle)) return `${particle}，${base}`;
+    if (/^(对吧|是不是|呢|呀|啊|哦)$/.test(particle)) return `${base}${/[。！？?!]$/.test(base) ? '' : '，'}${particle}`;
+    return `${base}，${particle}`;
+  }
+
   // ══════════════ API helper ══════════════
   async function api(path, opts = {}) {
     const headers = { ...(opts.headers || {}) };
@@ -806,14 +826,12 @@
     }
     if (a.source) badges.push(`<span class="av-badge source">${a.source === 'upload' ? '📤 上传' : '🎨 AI 生成'}</span>`);
 
-    const desc = a.description ? `<div class="av-desc">${escapeHtml(a.description)}</div>` : '';
     const created = a.created_at ? new Date(a.created_at).toLocaleString('zh-CN', { year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
     const meta = created ? `<div class="av-meta">🕐 ${created}</div>` : '';
 
     host.innerHTML = `${media}
       <div class="av-name">${escapeHtml(a.name)}</div>
       <div class="av-badges">${badges.join('')}</div>
-      ${desc}
       ${meta}
       <button class="av-switch-btn" data-tab-go="step2">↻ 切换到其他形象</button>`;
   }
@@ -875,8 +893,9 @@
         body: { text },
       });
       if (!r.success) throw new Error(r.error || '拆分失败');
-      state.s3.segments = r.segments;
-      renderTimeline(r.segments);
+      state.s3.segments = (r.segments || []).map(s => ({ ...s, speech_text: s.speech_text || _segSpeechText(s) }));
+      state.s3.lastSegmentText = text;
+      renderTimeline(state.s3.segments);
       toast(`🧩 已拆成 ${r.segments.length} 段，总时长 ≈ ${r.total_duration}s`, 'success');
     } catch (err) {
       toast('拆分失败：' + err.message, 'error');
@@ -888,12 +907,20 @@
   function renderTimeline(segments) {
     const host = $('#dhS3TimelineBody');
     if (!host) return;
-    host.innerHTML = segments.map((s, i) => `<div class="dh-tl-row" data-seg-idx="${i}">
+    host.innerHTML = segments.map((s, i) => {
+      const particle = s.particle || '';
+      const opts = PARTICLE_PRESETS.map(p => `<option value="${escapeHtml(p.text)}" ${p.text === particle ? 'selected' : ''}>${p.label}</option>`).join('');
+      const speech = _segSpeechText(s);
+      return `<div class="dh-tl-row" data-seg-idx="${i}">
       <div class="dh-tl-time">${fmtTime(s.start)}-${fmtTime(s.end)}</div>
-      <div class="dh-tl-text">${escapeHtml(s.text)}</div>
-      <div class="dh-tl-motion" title="${escapeHtml(s.motion)}">${escapeHtml(s.expression)} · ${escapeHtml(s.motion)}</div>
+      <div class="dh-tl-text">${escapeHtml(s.text)}${speech !== s.text ? `<div style="font-size:11px;color:var(--dh-text-muted);margin-top:4px">朗读：${escapeHtml(speech)}</div>` : ''}</div>
+      <button class="dh-tl-motion" data-edit-seg="${i}" title="${escapeHtml(s.motion)}">
+        <span>动作</span><b>${escapeHtml(s.expression)}</b>
+      </button>
+      <select class="dh-input" data-seg-particle="${i}" style="width:88px;padding:6px 8px;font-size:12px">${opts}</select>
       <button class="dh-tl-edit" data-edit-seg="${i}" title="编辑表情/动作">✎</button>
-    </div>`).join('');
+    </div>`;
+    }).join('');
     $('#dhS3Timeline').style.display = 'block';
   }
 
@@ -965,6 +992,15 @@
     closeMotionEditor();
     toast('已更新', 'success');
   }
+
+  function updateSegmentParticle(idx, particle) {
+    const seg = state.s3.segments[idx];
+    if (!seg) return;
+    seg.particle = particle || '';
+    seg.speech_text = _segSpeechText(seg);
+    renderTimeline(state.s3.segments);
+  }
+
   function fmtTime(s) { const m = Math.floor(s / 60), x = s % 60; return m ? `${m}:${String(x).padStart(2, '0')}` : `${x}s`; }
 
   function updateS3Meta() {
@@ -1101,6 +1137,14 @@
     if (!text) return toast('请先写好台词', 'error');
     if (text.length > 1000) return toast('台词不能超过 1000 字（Omni 单次上限）', 'error');
 
+    if (!state.s3.segments?.length || state.s3.lastSegmentText !== text) {
+      toast('正在自动拆分台词，并加入默认语气助词...', '');
+      await segmentScript();
+    }
+    const speechText = (state.s3.segments || []).length
+      ? state.s3.segments.map(_segSpeechText).filter(Boolean).join(' ')
+      : text;
+
     // 字幕开了但没拆分 → 先自动拆分（否则烧录不出字幕）
     if (state.s3.subtitle?.show && (!state.s3.segments || state.s3.segments.length === 0)) {
       toast('字幕开启中，自动拆分台词…', '');
@@ -1111,7 +1155,7 @@
     const box = $('#dhRenderBox');
     box.innerHTML = `<div class="dh-render-stage">
       <div class="dh-render-stage-name">📤 提交中</div>
-      <div class="dh-render-stage-sub">让 Jimeng Omni 开始驱动你的形象说话…</div>
+      <div class="dh-render-stage-sub">正在按后台模型链路驱动你的形象说话…</div>
     </div>
     <div class="dh-gen-spinner" style="align-self:center"></div>`;
 
@@ -1120,7 +1164,7 @@
         method: 'POST',
         body: {
           avatar_id: state.selectedAvatar.id,
-          text,
+          text: speechText,
           voice_id: state.s3.voiceId || null,
           title: state.selectedAvatar.name,
           segments: state.s3.segments || [],
@@ -1168,10 +1212,10 @@
           prepare_image: { name: '🖼️ 准备形象', sub: '上传/归一化图片' },
           prepare_audio: { name: '🎤 准备语音', sub: 'TTS 准备中' },
           detecting:     { name: '🔍 主体检测', sub: '抠出人物' },
-          submitting:    { name: '⚡ 提交到 Jimeng', sub: '排队中' },
+          submitting:    { name: '⚡ 提交到数字人引擎', sub: '排队中' },
           submitted:     { name: '⏳ 等待中', sub: '已提交，等服务端调度' },
           polling:       { name: '⏳ 等待中', sub: '渲染中，请稍候' },
-          running:       { name: '🎨 Jimeng 渲染中', sub: `CV 状态 ${t.cv_status || '...'}` },
+          running:       { name: '🎨 数字人渲染中', sub: `状态 ${t.cv_status || '...'}` },
           post_effects:  { name: '✨ 特效合成', sub: '叠花字/贴图' },
           done:          { name: '✅ 完成', sub: '' },
         };
@@ -1216,15 +1260,16 @@
 
         // 慢提示：>5min 时建议改用更短台词或换引擎
         let slowHint = '';
+        const engineName = t.actual_model || t.actual_provider || 'avatar.lip_sync';
         if (elapsed > 300) {
           slowHint = `<div style="margin-top:10px;padding:10px 12px;background:rgba(255,246,0,0.06);border:1px solid rgba(255,246,0,0.3);border-radius:8px;font-size:11px;color:var(--dh-text-soft);line-height:1.7">
-            ⏱️ 当前引擎：<b>火山即梦 Omni v1.5</b> · 每秒视频约渲染 8-15 秒<br>
-            🚀 提速建议：① 缩短台词（&lt;100 字）；② 换<b>飞影免费通道</b>（首页"零成本一键生成"）；③ 用预设视频素材
+            ⏱️ 当前引擎：<b>${escapeHtml(engineName)}</b><br>
+            🚀 提速建议：① 缩短台词（&lt;100 字）；② 确认后台 avatar.lip_sync 第一优先级是飞影；③ 用预设视频素材
           </div>`;
         }
         if (box) box.innerHTML = `<div class="dh-render-stage">
           <div class="dh-render-stage-name">${stg.name}</div>
-          <div class="dh-render-stage-sub">${stg.sub} · 已用 ${elapsed}s · 引擎：jimeng-omni-v15</div>
+          <div class="dh-render-stage-sub">${stg.sub} · 已用 ${elapsed}s · 引擎：${escapeHtml(engineName)}</div>
         </div>
         <div class="dh-gen-spinner" style="align-self:center;margin:10px auto"></div>${slowHint}`;
 
@@ -2404,12 +2449,20 @@
     const el = document.getElementById('dhSubPreviewText');
     if (!el) return;
     const fontName = ($('#dhSubFont')?.value || '抖音美好体').trim();
+    const fontStack = {
+      '微软雅黑': '"Microsoft YaHei", "微软雅黑", sans-serif',
+      '黑体': '"SimHei", "黑体", sans-serif',
+      '宋体': '"SimSun", "宋体", serif',
+      'Noto Sans SC': '"Noto Sans SC", "Microsoft YaHei", sans-serif',
+      'Noto Sans SC Bold': '"Noto Sans SC", "Microsoft YaHei", sans-serif',
+    }[fontName] || `"${fontName}", "Microsoft YaHei", sans-serif`;
     const sizeRaw = parseInt($('#dhSubSize')?.value) || 72;
     // 预览框是缩小版（aspect-ratio 16/9），按原画 1080 高度等比缩放字号
     const previewSize = Math.max(14, Math.round(sizeRaw * 0.5));
     const color = $('#dhSubColor')?.value || '#FFFFFF';
     const outline = $('#dhSubOutline')?.value || '#000000';
-    el.style.fontFamily = `"${fontName}", "Microsoft YaHei", "PingFang SC", sans-serif`;
+    el.style.fontFamily = fontStack;
+    el.style.fontWeight = /Bold|粗体|黑体/.test(fontName) ? '800' : '600';
     el.style.fontSize = previewSize + 'px';
     el.style.color = color;
     // 用 text-shadow 模拟描边效果（4 个方向各 1px）
@@ -2465,6 +2518,9 @@
     // 字幕样式弹窗里 select / color input 变化 → 刷预览
     if (['dhSubFont','dhSubSize','dhSubColor','dhSubOutline'].includes(e.target.id)) {
       refreshSubtitlePreview();
+    }
+    if (e.target.dataset?.segParticle !== undefined) {
+      updateSegmentParticle(parseInt(e.target.dataset.segParticle), e.target.value);
     }
   });
   // color input 拖动时实时刷新（input 事件触发频率更高）

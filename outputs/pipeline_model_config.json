@@ -1,0 +1,26 @@
+{
+  "stages": {
+    "avatar.lip_sync": [
+      {
+        "provider_id": "hifly",
+        "model_id": "hifly",
+        "priority": 1,
+        "enabled": true
+      }
+    ],
+    "avatar.describe": [
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o-mini",
+        "priority": 2,
+        "enabled": true
+      }
+    ]
+  }
+}

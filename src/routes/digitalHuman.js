@@ -744,8 +744,10 @@ router.post('/scripts/segment', async (req, res) => {
     }
 
     const { callLLM } = require('../services/storyService');
-    const sysPrompt = `你是专业视频口播分段师。按自然语义/呼吸节点拆分，每段约 8-12 秒（中文 30-50 字）。
-输出严格 JSON 数组，每项：{"text":"...","expression":"natural|smile|serious|excited|calm","motion":"英文动作描述"}
+    const sysPrompt = `你是专业视频口播分段师。按自然语义/呼吸节点拆分，每段约 5-9 秒（中文 18-36 字）。
+输出严格 JSON 数组，每项：{"text":"...","expression":"natural|smile|serious|excited|calm","motion":"英文动作描述","particle":"呢|对吧|哇|真的|是不是|嗯|"}
+particle 是给 TTS 朗读用的语气助词/口语提示，默认要根据语义选择，不能每段都一样：开头可用"嗯/哇/真的"，解释可用"呢"，确认可用"对吧"，提问可用"是不是"，不适合就留空。
+expression 和 motion 要随内容变化，避免全程 natural。
 不要输出其他任何内容。`;
     const userPrompt = `台词：\n${text}\n\n直接输出 JSON 数组。`;
     const out = await callLLM(sysPrompt, userPrompt);
@@ -757,19 +759,34 @@ router.post('/scripts/segment', async (req, res) => {
     } catch {
       raw = text.match(/[^。！？\n]+[。！？]?/g)
         ?.filter(s => s.trim().length > 5)
-        ?.map(s => ({ text: s.trim(), expression: 'natural', motion: 'natural speaking with subtle head movements' })) || [];
+        ?.map((s, i) => ({
+          text: s.trim(),
+          expression: ['smile', 'natural', 'serious', 'excited'][i % 4],
+          motion: ['warm open-palms explanation', 'natural speaking with subtle head movements', 'confident nodding while speaking', 'slightly energetic hand gesture'][i % 4],
+          particle: ['', '呢', '对吧', '真的'][i % 4],
+        })) || [];
     }
 
     // 加时间戳（按 4 字/秒估算）
     let cursor = 0;
+    const particleFallback = ['', '呢', '对吧', '真的', '是不是', '嗯'];
     const segments = raw.map((seg, i) => {
-      const chars = (seg.text || '').length;
+      const cleanText = String(seg.text || '').trim();
+      const particle = String(seg.particle ?? particleFallback[i % particleFallback.length] ?? '').trim();
+      const speechText = particle
+        ? (/^(哇|嗯|诶|欸|真的|其实|注意)$/.test(particle)
+            ? `${particle}，${cleanText}`
+            : `${cleanText}${/[。！？?!]$/.test(cleanText) ? '' : '，'}${particle}`)
+        : cleanText;
+      const chars = cleanText.length;
       const dur = Math.max(2, Math.round(chars / 4));
       const s = cursor;
       cursor += dur;
       return {
         index: i,
-        text: seg.text,
+        text: cleanText,
+        particle,
+        speech_text: speechText,
         expression: seg.expression || 'natural',
         motion: seg.motion || 'natural speaking',
         start: s,
@@ -812,6 +829,9 @@ router.post('/videos/generate', async (req, res) => {
     // 做一次本地字数 fallback 拆分：每段 ~16 字、按 4 字/秒估算 startTime/endTime。
     // 这样字幕至少能烧到视频上，而不是因为 segments 为空就整个丢弃。
     let effectiveSegments = Array.isArray(segments) ? segments : [];
+    const speechText = effectiveSegments.length
+      ? effectiveSegments.map(s => s.speech_text || s.text).filter(Boolean).join(' ')
+      : text;
     if (subtitle?.show && !effectiveSegments.length && text && text.trim()) {
       const CHAR_PER_SEG = 16;
       const SEC_PER_CHAR = 0.25;
@@ -853,18 +873,28 @@ router.post('/videos/generate', async (req, res) => {
         endTime: s.end,
         // subtitle 配置用于 FFmpeg drawtext：字体/颜色/描边
         fontSize: subtitle.fontSize || 72,
+        fontName: subtitle.fontName || 'Noto Sans SC',
         color: subtitle.color || '#FFFFFF',
         outlineColor: subtitle.outlineColor || '#000000',
       }));
     }
 
+    const motionPrompt = effectiveSegments.length
+      ? effectiveSegments.slice(0, 12).map((s, i) =>
+          `Segment ${i + 1}: expression=${s.expression || 'natural'}, gesture=${s.motion || 'natural speaking'}`
+        ).join('; ')
+      : '';
+
     const base = _publicBaseUrl(req);
     const resp = await axios.post(`${base}/api/avatar/jimeng-omni/generate`, {
       image_url: avatar.image_url,
-      text,
+      text: speechText,
       voiceId: voice_id || null,
       title: title || avatar.name,
       speed: 1.0,
+      prompt: motionPrompt
+        ? `Keep exact facial identity and stable lip sync. Follow these speaking gestures and expressions when possible: ${motionPrompt}. Natural hand gestures, clear mouth movement, confident eye contact.`
+        : undefined,
       textEffects,
       kind: 'production',
     }, {
@@ -880,7 +910,7 @@ router.post('/videos/generate', async (req, res) => {
       success: true,
       taskId: resp.data.taskId,
       avatar_id,
-      message: '已提交到 Jimeng Omni，渲染 1-3 分钟',
+      message: '已提交到数字人合成链路，渲染 1-3 分钟',
     });
   } catch (err) {
     const e = err.response?.data?.error || err.message;

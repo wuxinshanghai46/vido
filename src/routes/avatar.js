@@ -1610,7 +1610,7 @@ router.post('/preview-voice', async (req, res) => {
     });
 
     if (!result) {
-      return res.status(500).json({ success: false, error: '所有 TTS 供应商均不可用，请在设置中配置语音 API Key（智谱/火山/百度/阿里等）' });
+      return res.status(500).json({ success: false, error: `TTS 试听失败：${generateSpeech.lastError || '所有 TTS 供应商均不可用'}` });
     }
 
     // TTS 可能生成 .wav 或 .mp3，检查实际文件
@@ -1715,10 +1715,12 @@ router.get('/voice-list', (req, res) => {
     ];
 
     // 附加：settings 里 user-defined TTS 模型（仅 trusted 供应商）
+    const safeAliyunVoiceIds = new Set(['longxiaochun', 'longxiaoxia', 'longmiao', 'longwan', 'longshu', 'longshuo']);
     for (const provider of settings.providers || []) {
       if (!trustedProviders.has(provider.id)) continue;
       const ttsModels = (provider.models || []).filter(m => m.use === 'tts' && m.enabled !== false);
       for (const m of ttsModels) {
+        if (provider.id === 'aliyun-tts' && !safeAliyunVoiceIds.has(m.id)) continue;
         if (voices.find(v => v.id === m.id)) continue;
         const name = m.name || m.id;
         const gender = /female|girl|女|甜美|温柔|知性/.test(name + m.id) ? 'female'
@@ -1808,22 +1810,17 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
     'hifly-free', 'hifly',                      // 飞影
   ]);
 
-  // 把 model_id 映射到「实际依赖的 settings provider id」。
-  // pipeline_model_config.json 里 provider_id 字段只是个展示标签（例如即梦 Omni 历史上写 volcengine，
-  // 但它实际去 settings 里找 id='jimeng' 的 provider 取 AK:SK）。预检 enabled 时要用真正依赖的那个。
-  const ACTUAL_PROVIDER = {
-    'jimeng_realman_avatar_picture_omni_v15': 'jimeng',
-    'wan2.2-animate-move': 'dashscope',
-    'character-3': 'hedra',
-    'character-2': 'hedra',
-    'hifly': 'hifly',
-    'hifly-free': 'hifly',
-  };
-
   let chain = pms.pickAllEnabled('avatar.lip_sync');
   if (!chain || !chain.length) {
     // 没配置 → 用代码默认
     chain = pms.getStageDefaults('avatar.lip_sync');
+  }
+
+  const wantsHifly = chain.some(m => m.model_id === 'hifly' || m.model_id === 'hifly-free' || m.provider_id === 'hifly');
+  if (wantsHifly) {
+    // 用户明确把飞影放进 lip_sync 链时，Step3 必须严格走飞影。
+    // 之前飞影未配置/失败后会继续尝试即梦，导致“后台改成飞影但前端仍调用即梦”的错觉和额外消耗。
+    chain = chain.filter(m => m.model_id === 'hifly' || m.model_id === 'hifly-free' || m.provider_id === 'hifly');
   }
 
   console.log(`[lip-sync:dispatch] 用户配置链: ${chain.map(m => `${m.provider_id}/${m.model_id}`).join(' → ')}`);
@@ -1834,17 +1831,6 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
     if (!LIP_SYNC_CAPABLE.has(m.model_id)) {
       console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 该模型不支持 image+audio 口型同步（仅文生视频）`);
       continue;
-    }
-    // Provider-enabled 预检：实际依赖的 provider 在 settings 里被禁用 → 跳过（让 fallback 上位，
-    // 而不是等下游 service 抛"未配置"才知道）
-    {
-      const actualPid = ACTUAL_PROVIDER[m.model_id] || m.provider_id;
-      const _depProv = (require('../services/settingsService').loadSettings().providers || []).find(p => p.id === actualPid);
-      if (_depProv && _depProv.enabled === false) {
-        console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 实际依赖的 provider "${actualPid}" 已在 AI 配置中禁用`);
-        if (typeof onProgress === 'function') onProgress({ stage: 'skip', message: `${actualPid} 已禁用，切换备用`, model_id: m.model_id });
-        continue;
-      }
     }
     triedAny = true;
     console.log(`[lip-sync:dispatch] 尝试 ${m.provider_id}/${m.model_id}...`);
@@ -1868,10 +1854,10 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
         const hifly = require('../services/hiflyService');
         // Pre-flight：没配 api_key 就跳过（避免 dispatcher 抛"未配置"误导用户）
         const _settings = require('../services/settingsService').loadSettings();
-        const _hiflyProv = (_settings.providers || []).find(p => p.id === 'hifly' || /hifly|lingverse/i.test((p.preset || '') + '|' + (p.name || '')));
-        if (!_hiflyProv || !_hiflyProv.api_key) {
-          console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 未配置 hifly api_key（请到「AI 配置」添加 Authorization Token）`);
-          continue;
+        const _hiflyProv = (_settings.providers || []).find(p => p.id === 'hifly' || /hifly|lingverse/i.test((p.preset || '') + '|' + (p.name || '') + '|' + (p.api_url || '')));
+        const hasHiflyToken = !!(_hiflyProv?.api_key || process.env.HIFLY_TOKEN || process.env.HIFLY_AGENT_TOKEN);
+        if (!hasHiflyToken) {
+          throw new Error('飞影未配置 API Token：请在「AI 配置」新增 hifly/lingverse provider，或设置 HIFLY_TOKEN / HIFLY_AGENT_TOKEN。已禁止回退即梦。');
         }
         // Step a: 用 imageUrl 拿到飞影 avatar ID（带磁盘缓存，同图二次零开销）
         const hiflyAvatar = await _ensureHiflyAvatar(imageUrl, hifly, onProgress, m.model_id);
@@ -1913,12 +1899,14 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
       lastError = err;
       // 并发限流 → 自动 fallback 到下一个候选
       if (err.code === 'CONCURRENT_LIMIT' || /Concurrent\s*Limit|Reached\s*API\s*Concurrent/i.test(err.message)) {
+        if (wantsHifly) throw err;
         console.warn(`[lip-sync:dispatch] ${m.model_id} 命中并发限流，切到下一候选`);
         if (typeof onProgress === 'function') onProgress({ stage: 'fallback', message: `${m.model_id} 限流，正在切换备用模型`, model_id: m.model_id });
         continue;
       }
       // 账户欠费 / 余额不足 → 也跳到下一候选（不要让单一供应商欠费阻断流程）
       if (/AccountOverdue|InsufficientBalance|账户欠费|余额不足|owed|not\s*authorized|资源未授权/i.test(err.message)) {
+        if (wantsHifly) throw err;
         console.warn(`[lip-sync:dispatch] ${m.model_id} 账户问题: ${err.message}，切到下一候选`);
         if (typeof onProgress === 'function') onProgress({ stage: 'fallback', message: `${m.model_id} 账户/授权异常，切换备用`, model_id: m.model_id });
         continue;
@@ -2030,6 +2018,7 @@ async function _applyAvatarPostEffects(videoPath, fx, outDir) {
     endTime: e.endTime,
     // 透传用户字幕样式（fontSize / 颜色 / 描边）
     fontSize: e.fontSize,
+    fontName: e.fontName,
     fontcolor: e.fontcolor || e.color,
     bordercolor: e.bordercolor || e.outlineColor,
     borderw: e.borderw,
@@ -2204,7 +2193,7 @@ router.post('/jimeng-omni/generate', async (req, res) => {
       } else if (text && text.trim()) {
         const audioBase = path.join(jimengAssetsDir, uuidv4());
         const result = await generateSpeech(text, audioBase, { voiceId: voiceId || null, speed: Number(speed) || 1.0 });
-        if (!result) throw new Error('TTS 合成失败');
+        if (!result) throw new Error(`TTS 合成失败：${generateSpeech.lastError || '没有可用的语音供应商'}`);
         const finalName = path.basename(result);
         task.audio_url = `${baseUrl}/public/jimeng-assets/${finalName}`;
       } else {
@@ -2314,12 +2303,12 @@ router.post('/jimeng-omni/generate', async (req, res) => {
           videoPath: task.local_path,
           videoUrl: relVideoUrl,
           imageUrl: relImageUrl,
-          model: 'jimeng-omni-raw',
+          model: task.actual_model || 'avatar-lip-sync',
           ratio: '9:16',
           created_at: new Date(task.created_at).toISOString(),
           finished_at: new Date().toISOString(),
           cv_task_id: task.cv_task_id,
-          source: 'omni',
+          source: task.actual_provider || 'avatar',
           // 区分: 'sample' = Step 1 动态预览样片；'production' = Step 3 正式数字人；其他旧数据默认 production
           kind: kind === 'sample' ? 'sample' : 'production',
           // 字幕烧录状态（让作品库能展示）

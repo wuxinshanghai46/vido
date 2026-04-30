@@ -67,8 +67,7 @@ const STAGE_DEFAULTS = {
   ],
   'avatar.sample_video': [{ provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 1, enabled: true }],
   'avatar.lip_sync':     [
-    { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 1, enabled: true },
-    { provider_id: 'dashscope', model_id: 'wan2.2-animate-move', priority: 2, enabled: true },
+    { provider_id: 'hifly', model_id: 'hifly', priority: 1, enabled: true },
   ],
   'avatar.tts':          [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },

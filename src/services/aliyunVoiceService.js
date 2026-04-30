@@ -284,20 +284,27 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
   const model = opts.model || inferredModel;
 
   // v1 音色 → v3-flash/v3.5-plus 映射（cosyvoice v3 模型用 _v3 后缀的音色名）
-  // 已验证可用：longxiaochun_v3（女）、longanyang（男）、longcheng（男）、longhua（男）
-  // 不可用：longwan / longjing / *_v2
-  const V1_FEMALE = ['longxiaochun', 'longxiaoxia', 'longxiaobai', 'longjing', 'longshu', 'longmiao', 'longtong', 'longjingjing', 'longyumi', 'longanyou', 'longxixi', 'longwan'];
-  const V1_MALE = ['longanyang', 'longcheng', 'longhua', 'longyuan', 'longfei', 'longxiang', 'longxiaocheng'];
+  // 之前把所有女声都压到 longxiaochun_v3，导致前端选不同阿里音色听起来完全一样。
+  // 这里按音色逐一映射，保持真实差异；如果阿里侧某个音色不可用，会明确报错给调用方。
+  const V3_VOICE_MAP = {
+    longxiaochun: 'longxiaochun_v3',
+    longxiaoxia: 'longxiaoxia_v3',
+    longxiaobai: 'longxiaobai_v3',
+    longjing: 'longjing_v3',
+    longshu: 'longshu_v3',
+    longmiao: 'longmiao_v3',
+    longtong: 'longtong_v3',
+    longjingjing: 'longjingjing_v3',
+    longyumi: 'longyumi_v3',
+    longanyou: 'longanyou_v3',
+    longxixi: 'longxixi_v3',
+    longwan: 'longwan_v3',
+    longshuo: 'longshuo_v3',
+  };
   let actualVoice = voiceId;
   if (model === 'cosyvoice-v3-flash' || model === 'cosyvoice-v3.5-plus') {
-    // 优先尝试加 _v3 后缀（如 longxiaochun → longxiaochun_v3）
     if (/^long\w+$/.test(voiceId) && !/_v[23]$/.test(voiceId)) {
-      // 已知可直接用的 v1 音色
-      if (V1_MALE.includes(voiceId)) {
-        actualVoice = voiceId === 'longanyang' ? voiceId : voiceId; // 男声多数原名可用，先保留
-      } else if (V1_FEMALE.includes(voiceId)) {
-        actualVoice = 'longxiaochun_v3'; // 女声统一映射到已验证可用的
-      }
+      actualVoice = V3_VOICE_MAP[voiceId] || voiceId;
     }
     if (actualVoice !== voiceId) {
       console.log(`[Aliyun CosyVoice] 音色映射 ${voiceId} → ${actualVoice} (${model})`);
