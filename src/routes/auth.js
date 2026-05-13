@@ -1,10 +1,34 @@
 const router = require('express').Router();
+const jwt = require('jsonwebtoken');
 const { hashPassword, verifyPassword, hashToken, generateToken } = require('../utils/crypto');
 const { getUserByUsername, getUserByEmail, createUser, updateUser, getUserById, getRoleById,
         saveRefreshToken, getRefreshToken, deleteRefreshToken, deleteUserRefreshTokens } = require('../models/authStore');
-const { signToken, authenticate } = require('../middleware/auth');
+const { signToken, authenticate, JWT_SECRET } = require('../middleware/auth');
+
+const PAGE_SESSION_DAYS = 7;
+function _setPageSession(res, userId) {
+  const token = jwt.sign({ userId, scope: 'page' }, JWT_SECRET, { expiresIn: `${PAGE_SESSION_DAYS}d` });
+  res.cookie('vido_session', token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: PAGE_SESSION_DAYS * 86400000,
+    path: '/',
+  });
+}
 
 const REFRESH_TOKEN_DAYS = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
+
+// last_login 降频：进程内每用户 5 分钟最多回写一次，避免每次登录都跑 47KB 全文写盘
+const _lastLoginCache = new Map();
+const LAST_LOGIN_THROTTLE_MS = 5 * 60 * 1000;
+function _touchLastLogin(userId) {
+  const last = _lastLoginCache.get(userId) || 0;
+  if (Date.now() - last < LAST_LOGIN_THROTTLE_MS) return;
+  _lastLoginCache.set(userId, Date.now());
+  setImmediate(() => {
+    try { updateUser(userId, { last_login: new Date().toISOString() }); } catch {}
+  });
+}
 
 // 注册
 router.post('/register', (req, res) => {
@@ -22,6 +46,7 @@ router.post('/register', (req, res) => {
   const accessToken = signToken(user.id, user.role);
   const { refreshToken, refreshExpires } = issueRefresh(user.id);
 
+  _setPageSession(res, user.id);
   res.cookie('refresh_token', refreshToken, { httpOnly: true, sameSite: 'lax', maxAge: REFRESH_TOKEN_DAYS * 86400000, path: '/api/auth' });
   res.json({
     success: true,
@@ -39,15 +64,17 @@ router.post('/login', (req, res) => {
   if (!verifyPassword(password, user.password_hash, user.password_salt)) {
     return res.status(401).json({ success: false, error: '用户名或密码错误' });
   }
-  updateUser(user.id, { last_login: new Date().toISOString(), password_plain: password });
+  // 立刻签发 token + 落 cookie 返回，避免被 last_login 写盘卡住
   const accessToken = signToken(user.id, user.role);
   const { refreshToken } = issueRefresh(user.id);
-
+  _setPageSession(res, user.id);
   res.cookie('refresh_token', refreshToken, { httpOnly: true, sameSite: 'lax', maxAge: REFRESH_TOKEN_DAYS * 86400000, path: '/api/auth' });
   res.json({
     success: true,
     data: { access_token: accessToken, user: safeUser(user) }
   });
+  // 异步、降频更新 last_login（每用户 5 分钟一次），不再回写明文密码
+  _touchLastLogin(user.id);
 });
 
 // 刷新 token
@@ -67,6 +94,7 @@ router.post('/refresh', (req, res) => {
   const accessToken = signToken(user.id, user.role);
   const { refreshToken: newRefresh } = issueRefresh(user.id);
 
+  _setPageSession(res, user.id);
   res.cookie('refresh_token', newRefresh, { httpOnly: true, sameSite: 'lax', maxAge: REFRESH_TOKEN_DAYS * 86400000, path: '/api/auth' });
   res.json({ success: true, data: { access_token: accessToken, user: safeUser(user) } });
 });
@@ -76,6 +104,7 @@ router.post('/logout', authenticate, (req, res) => {
   const token = req.cookies?.refresh_token;
   if (token) deleteRefreshToken(hashToken(token));
   res.clearCookie('refresh_token', { path: '/api/auth' });
+  res.clearCookie('vido_session', { path: '/' });
   res.json({ success: true });
 });
 

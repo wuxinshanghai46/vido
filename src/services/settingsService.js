@@ -50,6 +50,14 @@ const PROVIDER_PRESETS = {
     { id: 'veo-3.1-fast', name: 'Veo 3.1 Fast（快速·$0.15/s）', type: 'video', use: 'video' },
     { id: 'veo-3', name: 'Veo 3（高质量·音频同步）', type: 'video', use: 'video' },
   ] },
+  topview:     { name: 'Topview AI',  api_url: 'https://api.topview.ai', defaultModels: [
+    { id: 'topview-avatar4', name: 'Topview Avatar 4（最新数字人）', type: 'avatar', use: 'avatar' },
+    { id: 'topview-avatar4-fast', name: 'Topview Avatar 4 Fast（数字人极速）', type: 'avatar', use: 'avatar' },
+    { id: 'topview-product-avatar-v3', name: 'Topview Product Avatar V3（商品数字人）', type: 'avatar', use: 'avatar' },
+    { id: 'topview-m2v', name: 'Topview Avatar Marketing Video（广告数字人）', type: 'video', use: 'video' },
+    { id: 'topview-image2video-pro', name: 'Topview Image-to-Video Pro', type: 'video', use: 'video' },
+    { id: 'topview-image2video-best', name: 'Topview Image-to-Video Best', type: 'video', use: 'video' },
+  ] },
   // ——— 语音合成 ———
   elevenlabs:  { name: 'ElevenLabs',   api_url: 'https://api.elevenlabs.io/v1',                 defaultModels: [{ id: 'eleven_multilingual_v2', name: 'Multilingual v2（多语言高质）', type: 'tts', use: 'tts' }, { id: 'eleven_flash_v2_5', name: 'Flash v2.5（极速）', type: 'tts', use: 'tts' }] },
   fishaudio:   { name: 'Fish Audio',   api_url: 'https://api.fish.audio/v1',                    defaultModels: [{ id: 'speech-1.5', name: 'Fish Speech 1.5（中文/多语言·极自然）', type: 'tts', use: 'tts' }] },
@@ -215,6 +223,7 @@ const ENV_SEED_MAP = [
   { envKey: 'PIKA_API_KEY',        presetId: 'pika'          },
   { envKey: 'SEEDANCE_API_KEY',    presetId: 'seedance'      },
   { envKey: 'VEO_API_KEY',         presetId: 'veo'           },
+  { envKey: 'TOPVIEW_API_KEY',     presetId: 'topview'       },
   { envKey: 'ELEVENLABS_API_KEY',  presetId: 'elevenlabs'  },
   { envKey: 'FISHAUDIO_API_KEY',   presetId: 'fishaudio'   },
   { envKey: 'VOLCENGINE_TTS_KEY', presetId: 'volcengine'  },

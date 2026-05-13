@@ -14164,9 +14164,19 @@ function previewWork(id) {
 async function deleteWork(type, id) {
   if (!confirm('确认删除此作品？')) return;
   try {
-    await authFetch(`/api/works/${type}/${id}`, { method: 'DELETE' });
+    let res;
+    try {
+      res = await authFetch(`/api/works/${type}/${id}`, { method: 'DELETE' });
+    } catch (networkErr) {
+      res = await authFetch(`/api/works/${type}/${id}/delete`, { method: 'POST' });
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast?.('已删除', 'ok');
     loadWorksPage();
-  } catch {}
+  } catch (e) {
+    showToast?.('删除失败: ' + e.message, 'error');
+  }
 }
 
 // ══════════════════════════════════════════════════════

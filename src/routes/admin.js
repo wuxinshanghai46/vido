@@ -1235,6 +1235,8 @@ router.get('/dashboard', (req, res) => {
     const allCalls = db.listTokenUsage();
     const sumCost = (list) => Number(list.reduce((s, r) => s + (r.cost_usd || 0), 0).toFixed(4));
     const sumTokens = (list) => list.reduce((s, r) => s + (r.total_tokens || 0), 0);
+    const sumInputTokens = (list) => list.reduce((s, r) => s + (r.input_tokens || 0), 0);
+    const sumOutputTokens = (list) => list.reduce((s, r) => s + (r.output_tokens || 0), 0);
 
     const todayCalls = allCalls.filter(c => inRange(c.timestamp, today));
     const weekCalls = allCalls.filter(c => inRange(c.timestamp, weekAgo));
@@ -1243,7 +1245,7 @@ router.get('/dashboard', (req, res) => {
 
     // 按品类（llm/video/image/tts）拆分
     function bucketByCategory(list) {
-      const buckets = { llm: { calls: 0, cost_usd: 0, tokens: 0 },
+      const buckets = { llm: { calls: 0, cost_usd: 0, tokens: 0, input_tokens: 0, output_tokens: 0 },
                         video: { calls: 0, cost_usd: 0, seconds: 0 },
                         image: { calls: 0, cost_usd: 0, count: 0 },
                         tts:   { calls: 0, cost_usd: 0, chars: 0 } };
@@ -1252,7 +1254,11 @@ router.get('/dashboard', (req, res) => {
         if (!buckets[c]) continue;
         buckets[c].calls++;
         buckets[c].cost_usd += r.cost_usd || 0;
-        if (c === 'llm')   buckets.llm.tokens   += r.total_tokens   || 0;
+        if (c === 'llm') {
+          buckets.llm.tokens += r.total_tokens || 0;
+          buckets.llm.input_tokens += r.input_tokens || 0;
+          buckets.llm.output_tokens += r.output_tokens || 0;
+        }
         if (c === 'video') buckets.video.seconds += r.video_seconds || 0;
         if (c === 'image') buckets.image.count   += r.image_count   || 0;
         if (c === 'tts')   buckets.tts.chars     += r.tts_chars     || 0;
@@ -1269,6 +1275,8 @@ router.get('/dashboard', (req, res) => {
     const tokenStats = {
       total_calls: allCalls.length,
       total_tokens: sumTokens(allCalls),
+      total_input_tokens: sumInputTokens(allCalls),
+      total_output_tokens: sumOutputTokens(allCalls),
       total_cost_usd: sumCost(allCalls),
       success_count: successCount,
       fail_count: failCount,
@@ -1276,24 +1284,32 @@ router.get('/dashboard', (req, res) => {
       today: {
         calls: todayCalls.length,
         tokens: sumTokens(todayCalls),
+        input_tokens: sumInputTokens(todayCalls),
+        output_tokens: sumOutputTokens(todayCalls),
         cost_usd: sumCost(todayCalls),
         by_category: bucketByCategory(todayCalls),
       },
       week: {
         calls: weekCalls.length,
         tokens: sumTokens(weekCalls),
+        input_tokens: sumInputTokens(weekCalls),
+        output_tokens: sumOutputTokens(weekCalls),
         cost_usd: sumCost(weekCalls),
         by_category: bucketByCategory(weekCalls),
       },
       month: {
         calls: monthCalls.length,
         tokens: sumTokens(monthCalls),
+        input_tokens: sumInputTokens(monthCalls),
+        output_tokens: sumOutputTokens(monthCalls),
         cost_usd: sumCost(monthCalls),
         by_category: bucketByCategory(monthCalls),
       },
       quarter: {
         calls: quarterCalls.length,
         tokens: sumTokens(quarterCalls),
+        input_tokens: sumInputTokens(quarterCalls),
+        output_tokens: sumOutputTokens(quarterCalls),
         cost_usd: sumCost(quarterCalls),
         by_category: bucketByCategory(quarterCalls),
       },
@@ -1314,9 +1330,11 @@ router.get('/dashboard', (req, res) => {
     const byUser = {};
     allCalls.forEach(c => {
       const uid = c.user_id || 'unknown';
-      if (!byUser[uid]) byUser[uid] = { user_id: uid, calls: 0, tokens: 0, cost_usd: 0 };
+      if (!byUser[uid]) byUser[uid] = { user_id: uid, calls: 0, tokens: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
       byUser[uid].calls++;
       byUser[uid].tokens += c.total_tokens || 0;
+      byUser[uid].input_tokens += c.input_tokens || 0;
+      byUser[uid].output_tokens += c.output_tokens || 0;
       byUser[uid].cost_usd += c.cost_usd || 0;
     });
     const topUsers = Object.values(byUser)
@@ -1336,12 +1354,20 @@ router.get('/dashboard', (req, res) => {
       const byModel = {};
       calls.forEach(c => {
         const key = `${c.provider || '-'}/${c.model || '-'}`;
-        if (!byModel[key]) byModel[key] = { key, provider: c.provider, model: c.model, calls: 0, tokens: 0, cost_usd: 0 };
+        if (!byModel[key]) byModel[key] = { key, provider: c.provider, model: c.model, calls: 0, tokens: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
         byModel[key].calls++;
         byModel[key].tokens += c.total_tokens || 0;
+        byModel[key].input_tokens += c.input_tokens || 0;
+        byModel[key].output_tokens += c.output_tokens || 0;
         byModel[key].cost_usd += c.cost_usd || 0;
       });
-      const arr = Object.values(byModel).map(m => ({ ...m, cost_usd: Number(m.cost_usd.toFixed(4)) }));
+      const arr = Object.values(byModel).map(m => ({
+        ...m,
+        avg_input_tokens: m.calls ? Math.round(m.input_tokens / m.calls) : 0,
+        avg_output_tokens: m.calls ? Math.round(m.output_tokens / m.calls) : 0,
+        avg_total_tokens: m.calls ? Math.round(m.tokens / m.calls) : 0,
+        cost_usd: Number(m.cost_usd.toFixed(4)),
+      }));
       const sorted = arr.sort((a, b) => b.calls - a.calls);
       return {
         top: sorted.slice(0, 5),
@@ -1404,11 +1430,77 @@ router.get('/dashboard', (req, res) => {
 // ═══════════════════════════════════════════════════
 const tracker = require('../services/tokenTracker');
 
+function _modelLabelIndex() {
+  try {
+    const { loadSettings } = require('../services/settingsService');
+    const settings = loadSettings();
+    const providers = {};
+    const models = {};
+    (settings.providers || []).forEach(p => {
+      providers[p.id] = p.name || p.id;
+      (p.models || []).forEach(m => {
+        models[`${p.id}::${m.id}`] = m.name || m.id;
+      });
+    });
+    return { providers, models };
+  } catch {
+    return { providers: {}, models: {} };
+  }
+}
+
+function _fallbackProviderName(id) {
+  return ({
+    topview: 'Topview AI',
+    'aliyun-tts': '阿里云 CosyVoice',
+    'aliyun-nls': '阿里云 NLS',
+    deyunai: '漫路聚合',
+    volcengine: '火山引擎',
+    replicate: 'Replicate',
+    deepseek: 'DeepSeek',
+    dashscope: '阿里百炼',
+    hifly: '飞影 Hifly',
+    jimeng: '即梦',
+  })[id] || id || '-';
+}
+
+function _fallbackModelName(id) {
+  return ({
+    'topview-product-avatar-v3': 'Topview Product Avatar V3',
+    'topview-product-avatar-i2v': 'Topview Product Avatar Image2Video',
+    'topview-m2v': 'Topview Marketing Video',
+    'cosyvoice-v3.5-plus': 'CosyVoice 3.5 Plus',
+    'cosyvoice-v3-flash': 'CosyVoice 3 Flash',
+    'gpt-4o-mini': 'GPT-4o Mini',
+    'nano-banana': 'Nano Banana',
+    'nano-banana-pro': 'Nano Banana Pro',
+  })[id] || id || '-';
+}
+
+function _enrichUsageRows(rows) {
+  const idx = _modelLabelIndex();
+  return (rows || []).map(r => {
+    const keyProvider = r.provider || (typeof r.key === 'string' && r.key.includes('/') ? r.key.split('/')[0] : '');
+    const keyModel = r.model || (typeof r.key === 'string' && r.key.includes('/') ? r.key.split('/').slice(1).join('/') : '');
+    const providerName = idx.providers[keyProvider] || _fallbackProviderName(keyProvider);
+    const modelName = idx.models[`${keyProvider}::${keyModel}`] || _fallbackModelName(keyModel);
+    return {
+      ...r,
+      provider_name: providerName,
+      model_name: modelName,
+      vendor_label: providerName,
+      model_label: modelName,
+    };
+  });
+}
+
 // 总览 (默认最近 7 天)
 router.get('/token-stats/overview', (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
     const stats = tracker.getStats({ days });
+    stats.by_provider = _enrichUsageRows(stats.by_provider);
+    stats.by_model = _enrichUsageRows(stats.by_model);
+    stats.by_agent = _enrichUsageRows(stats.by_agent);
     const budget = tracker.getBudgetStatus();
     const alerts = tracker.checkAlerts();
     res.json({ success: true, data: { stats, budget, alerts } });
@@ -1422,7 +1514,7 @@ router.get('/token-stats/by-provider', (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
     const stats = tracker.getStats({ days });
-    res.json({ success: true, data: stats.by_provider });
+    res.json({ success: true, data: _enrichUsageRows(stats.by_provider) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -1433,7 +1525,7 @@ router.get('/token-stats/by-model', (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
     const stats = tracker.getStats({ days });
-    res.json({ success: true, data: stats.by_model });
+    res.json({ success: true, data: _enrichUsageRows(stats.by_model) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -1444,7 +1536,7 @@ router.get('/token-stats/by-agent', (req, res) => {
   try {
     const days = parseInt(req.query.days) || 7;
     const stats = tracker.getStats({ days });
-    res.json({ success: true, data: stats.by_agent });
+    res.json({ success: true, data: _enrichUsageRows(stats.by_agent) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -1465,7 +1557,7 @@ router.get('/token-stats/by-day', (req, res) => {
 router.get('/token-stats/recent', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    res.json({ success: true, data: tracker.listRecent(limit) });
+    res.json({ success: true, data: _enrichUsageRows(tracker.listRecent(limit)) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

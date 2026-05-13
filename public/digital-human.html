@@ -1,12 +1,56 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>数字人 · VIDO</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/digital-human.css?v=17">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=11">
+  <script>
+    (() => {
+      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide'];
+      let tab = 'step1';
+      try {
+        const urlTab = new URLSearchParams(location.search).get('tab');
+        const savedTab = localStorage.getItem('vido_dh_active_tab');
+        tab = tabs.includes(urlTab) ? urlTab : (tabs.includes(savedTab) ? savedTab : 'step1');
+      } catch {}
+      document.documentElement.dataset.dhInitialTab = tab;
+    })();
+  </script>
+  <link rel="stylesheet" href="/css/digital-human.css?v=19">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260513-product-voice-picker">
+  <style>
+    html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
+    html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
+    html[data-dh-initial-tab="step1"] .dh-tab-pane[data-pane="step1"],
+    html[data-dh-initial-tab="step2"] .dh-tab-pane[data-pane="step2"],
+    html[data-dh-initial-tab="step3"] .dh-tab-pane[data-pane="step3"],
+    html[data-dh-initial-tab="tasks"] .dh-tab-pane[data-pane="tasks"],
+    html[data-dh-initial-tab="dual"] .dh-tab-pane[data-pane="dual"],
+    html[data-dh-initial-tab="plaza"] .dh-tab-pane[data-pane="plaza"],
+    html[data-dh-initial-tab="works"] .dh-tab-pane[data-pane="works"],
+    html[data-dh-initial-tab="voice-clone"] .dh-tab-pane[data-pane="voice-clone"],
+    html[data-dh-initial-tab="product-dh"] .dh-tab-pane[data-pane="product-dh"],
+    html[data-dh-initial-tab="space-guide"] .dh-tab-pane[data-pane="space-guide"] { display: block !important; }
+    html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) .dh-nav-item.active {
+      background: transparent;
+      color: var(--dh-text-soft);
+      font-weight: 400;
+    }
+    html[data-dh-initial-tab="step2"] .dh-nav-item[data-tab="step2"],
+    html[data-dh-initial-tab="step3"] .dh-nav-item[data-tab="step3"],
+    html[data-dh-initial-tab="tasks"] .dh-nav-item[data-tab="tasks"],
+    html[data-dh-initial-tab="dual"] .dh-nav-item[data-tab="dual"],
+    html[data-dh-initial-tab="plaza"] .dh-nav-item[data-tab="plaza"],
+    html[data-dh-initial-tab="works"] .dh-nav-item[data-tab="works"],
+    html[data-dh-initial-tab="voice-clone"] .dh-nav-item[data-tab="voice-clone"],
+    html[data-dh-initial-tab="product-dh"] .dh-nav-item[data-tab="product-dh"],
+    html[data-dh-initial-tab="space-guide"] .dh-nav-item[data-tab="space-guide"] {
+      background: var(--dh-primary-bg) !important;
+      color: var(--dh-primary) !important;
+      font-weight: 500 !important;
+    }
+  </style>
 </head>
 <body>
   <div class="dh-app" id="dhApp">
@@ -29,6 +73,25 @@
           </a>
           <a class="dh-nav-item" data-tab="step3">
             <span class="dh-nav-icon">③</span>生成数字人
+          </a>
+          <a class="dh-nav-item" data-tab="tasks">
+            <span class="dh-nav-icon">⏳</span>任务中心
+            <span class="dh-nav-badge" id="dhTaskCount" style="display:none">0</span>
+          </a>
+        </div>
+        <div class="dh-nav-group">
+          <div class="dh-nav-title">广告带货</div>
+          <a class="dh-nav-item" data-tab="product-dh">
+            <span class="dh-nav-icon">🛍️</span>商品数字人
+          </a>
+          <a class="dh-nav-item" data-tab="space-guide">
+            <span class="dh-nav-icon">📢</span>广告数字人
+          </a>
+        </div>
+        <div class="dh-nav-group">
+          <div class="dh-nav-title">广场</div>
+          <a class="dh-nav-item" data-tab="plaza">
+            <span class="dh-nav-icon">🎭</span>形象广场
           </a>
         </div>
         <div class="dh-nav-group">
@@ -81,7 +144,6 @@
           <!-- ★ Step1 左右双栏：左=表单 右=预览卡常驻 -->
           <div class="dh-s1-grid">
            <div class="dh-s1-form">
-
           <!-- 文生图面板 -->
           <div class="dh-mode-pane active" data-mode-pane="generate">
             <div class="dh-form-grid">
@@ -94,7 +156,7 @@
                 </div>
               </div>
 
-              <div class="dh-field">
+              <div class="dh-field" style="display:none">
                 <label>风格（人物 + 背景）</label>
                 <div class="dh-style-grid">
                   <button class="dh-style-card active" data-style="idol_warm">
@@ -161,8 +223,8 @@
               </div>
 
               <div class="dh-field">
-                <label>补充描述（可选） <button class="dh-link-btn dh-ai-desc-btn" id="dhS1DescAIBtn">✨ AI 补充描述</button></label>
-                <textarea id="dhS1Desc" class="dh-input" rows="2" placeholder="如：黑长直发、米色毛衣、戴金丝眼镜、手里拿一杯咖啡（或留空让 AI 补）"></textarea>
+                <label>形象描述 <span style="font-size:11px;color:var(--text2);font-weight:400">（直接写清楚长相 / 服装 / 背景 / 动作 / 氛围，越具体越准）</span> <button class="dh-link-btn dh-ai-desc-btn" id="dhS1DescAIBtn">✨ AI 补充</button></label>
+                <textarea id="dhS1Desc" class="dh-input" rows="5" placeholder="例：亚洲女生 165cm，黑长直发，米色针织毛衣，金丝眼镜，左手拿杯咖啡，背景是温暖的木质咖啡馆，黄昏柔光，治愈氛围"></textarea>
               </div>
 
               <div class="dh-field">
@@ -172,6 +234,34 @@
                   <button class="dh-chip" data-ratio="1:1">1:1 方形</button>
                   <button class="dh-chip" data-ratio="3:4">3:4</button>
                   <button class="dh-chip" data-ratio="16:9">16:9 横屏</button>
+                </div>
+              </div>
+
+              <div class="dh-field">
+                <label>构图 <span style="font-size:11px;color:var(--text2);font-weight:400">（选全身才能看到动作和服装下半身）</span></label>
+                <div class="dh-chip-row">
+                  <button class="dh-chip" data-s1-framing="headshot">头像</button>
+                  <button class="dh-chip active" data-s1-framing="half_body">半身</button>
+                  <button class="dh-chip" data-s1-framing="full_body">全身</button>
+                  <button class="dh-chip" data-s1-framing="close_up">特写</button>
+                </div>
+              </div>
+
+              <div class="dh-field" style="display:none">
+                <label>动作姿势 <span style="font-size:11px;color:var(--text2);font-weight:400">（构图选半身或全身才能看见动作）</span></label>
+                <div class="dh-motion-actions" id="dhS1ActionList"></div>
+              </div>
+
+              <div class="dh-field">
+                <label>自定义背景图 <span style="font-size:11px;color:var(--text2);font-weight:400">（可选 · 上传后人物会"贴"到这个场景前面）</span></label>
+                <input type="file" id="dhS1BgFile" accept="image/*" hidden>
+                <div id="dhS1BgUploadBox" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhS1BgPickBtn">📤 选择背景图</button>
+                  <span id="dhS1BgHint" style="font-size:11px;color:var(--text2)">不选用风格自带背景</span>
+                </div>
+                <div id="dhS1BgPreview" style="display:none;margin-top:8px;position:relative;width:120px">
+                  <img id="dhS1BgImg" src="" alt="bg" style="width:120px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--dh-border)">
+                  <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhS1BgClear" style="position:absolute;top:4px;right:4px;padding:2px 6px;font-size:10px">×</button>
                 </div>
               </div>
 
@@ -190,6 +280,54 @@
                 <div>点击选择 或 拖拽图片到这里</div>
                 <div class="dh-upload-meta">支持 PNG/JPG/WEBP，最大 20MB</div>
               </div>
+            </div>
+
+            <!-- 上传模式下：上传人物 + 上传背景 → 一键合成场景图（百度 body_seg + sharp） -->
+            <div class="dh-field" id="dhComposeBox" style="margin-top:14px;padding:12px;border:1px dashed var(--dh-border);border-radius:8px;background:rgba(33,255,243,0.03)">
+              <label style="display:flex;align-items:center;gap:6px">
+                <span>🪄 自己上传背景，把人贴上去</span>
+                <span style="font-size:11px;color:var(--text2);font-weight:400">（百度抠像 + 自动构图，绕开 AI 生成）</span>
+              </label>
+              <input type="file" id="dhComposeBgFile" accept="image/*" hidden>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px">
+                <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhComposeBgPickBtn">📤 选择背景图</button>
+                <span id="dhComposeBgHint" style="font-size:11px;color:var(--text2)">未选背景</span>
+              </div>
+              <div id="dhComposeBgPreview" style="display:none;margin-top:8px;position:relative;width:120px">
+                <img id="dhComposeBgImg" src="" alt="bg" style="width:120px;height:80px;object-fit:cover;border-radius:6px;border:1px solid var(--dh-border)">
+                <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhComposeBgClear" style="position:absolute;top:4px;right:4px;padding:2px 6px;font-size:10px">×</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+                <span style="font-size:11px;color:var(--text2)">合成方式：</span>
+                <div class="dh-chip-row" style="display:inline-flex;gap:4px">
+                  <button class="dh-chip dh-chip-sm active" data-compose-mode="fast" title="百度抠像 + sharp 合成，保留原人物长相">⚡ 保真抠像合成</button>
+                </div>
+                <span style="font-size:11px;color:var(--text2)">上传真人照不会进入 AI 重绘</span>
+              </div>
+              <div id="dhComposeFastOpts" style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <span style="font-size:11px;color:var(--text2)">人物位置：</span>
+                <div class="dh-chip-row" style="display:inline-flex;gap:4px">
+                  <button class="dh-chip dh-chip-sm" data-compose-place="center">居中贴地</button>
+                  <button class="dh-chip dh-chip-sm active" data-compose-place="bottom">贴底（站立）</button>
+                  <button class="dh-chip dh-chip-sm" data-compose-place="fit">填满</button>
+                </div>
+                <span style="font-size:11px;color:var(--text2);margin-left:8px">人物大小：</span>
+                <input type="range" id="dhComposeSize" min="55" max="95" step="5" value="76" style="width:90px;accent-color:var(--accent)">
+                <span id="dhComposeSizeLabel" style="font-size:11px;color:var(--text);min-width:32px">76%</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <span style="font-size:11px;color:var(--text2)">画面比例：</span>
+                <div class="dh-chip-row" style="display:inline-flex;gap:4px">
+                  <button class="dh-chip dh-chip-sm active" data-compose-ratio="9:16">9:16</button>
+                  <button class="dh-chip dh-chip-sm" data-compose-ratio="1:1">1:1</button>
+                  <button class="dh-chip dh-chip-sm" data-compose-ratio="3:4">3:4</button>
+                  <button class="dh-chip dh-chip-sm" data-compose-ratio="16:9">16:9</button>
+                </div>
+              </div>
+              <button class="dh-btn dh-btn-primary" id="dhComposeBtn" style="margin-top:10px;width:100%" disabled>
+                🪄 合成场景图
+              </button>
+              <div style="font-size:11px;color:var(--text2);margin-top:6px">提示：先在上方上传一张人物图，再在这里选好背景图后点合成。该功能只做抠像贴合，不重绘人物长相。</div>
             </div>
           </div>
 
@@ -210,30 +348,33 @@
                   <input type="text" id="dhS1Name" class="dh-input" placeholder="如：商务小姐姐" maxlength="30">
                 </div>
 
-                <!-- 动态预览区（可选 - 测试照片是否能开口说话）-->
+                <!-- 动态预览区（可选 - 测试照片是否能开口说话；不再是保存的前置）-->
                 <div class="dh-sample-area" id="dhS1SampleArea">
                   <div class="dh-sample-hint">
-                    <div class="dh-sample-hint-title">🎬 试一下能不能动起来（可选）</div>
-                    <div class="dh-sample-hint-sub">让 AI 驱动这张脸说一段话，5-8 秒预览。如果直接保存也可以，后面用数字人模块再做也行。约 1-2 分钟。</div>
+                    <div class="dh-sample-hint-title">🎬 生成动态形象（可选）</div>
+                    <div class="dh-sample-hint-sub">让 AI 驱动这张脸说一段话，验证形象能动、口型正常。不生成也能直接保存到"我的形象"。</div>
                   </div>
-                  <button class="dh-btn dh-btn-primary" id="dhS1SampleBtn">🎬 试一下能不能动</button>
+                  <button class="dh-btn dh-btn-primary" id="dhS1SampleBtn">🎬 生成动态形象（可选）</button>
                 </div>
 
                 <!-- 动态预览进行中 -->
                 <div class="dh-sample-running" id="dhS1SampleRunning" style="display:none">
                   <div class="dh-gen-spinner" style="width:24px;height:24px;border-width:2px;margin:0"></div>
-                  <div class="dh-sample-stage" id="dhS1SampleStage">AI 正在让你的形象动起来…</div>
+                  <div class="dh-sample-running-main">
+                    <div class="dh-sample-stage" id="dhS1SampleStage">正在生成动态形象，可以直接保存或等结果出来</div>
+                    <div class="dh-sample-running-note">动态预览只是为了验证形象能动，不影响保存。</div>
+                  </div>
                   <div class="dh-sample-elapsed" id="dhS1SampleElapsed">0s</div>
                 </div>
 
                 <!-- 动态预览完成后 -->
                 <div class="dh-sample-done" id="dhS1SampleDone" style="display:none">
-                  <div class="dh-sample-done-tip">👆 视频已出，满意就保存；不满意可以重试或换图</div>
+                  <div class="dh-sample-done-tip">👆 视频已出，可以保存；不满意就重新生成图</div>
                 </div>
 
                 <div class="dh-preview-btns">
                   <button class="dh-btn dh-btn-ghost" id="dhS1Regen">↻ 重新生成图</button>
-                  <button class="dh-btn dh-btn-primary" id="dhS1Save" title="保存到我的形象（无需先做动态测试）">💾 保存到我的形象</button>
+                  <button class="dh-btn dh-btn-primary" id="dhS1Save" title="保存这张形象到「我的形象」">💾 保存到我的形象</button>
                 </div>
               </div>
             </div>
@@ -323,6 +464,20 @@
                 <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhS3WriteBtn">✨ AI 写稿（弹窗填内容）</button>
               </div>
 
+              <div class="dh-product-panel" id="dhProductPanel">
+                <div class="dh-product-panel-head">
+                  <div>
+                    <div class="dh-product-title">商品数字人素材</div>
+                    <div class="dh-product-sub">当前形象已在生成阶段融合商品，视频生成时按该形象类型自动呈现</div>
+                  </div>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhProductPickBtn" type="button">补传商品</button>
+                  <input type="file" id="dhProductFile" accept="image/*" style="display:none">
+                </div>
+                <div class="dh-product-preview" id="dhProductPreview">
+                  <div class="dh-product-empty">未上传商品图</div>
+                </div>
+              </div>
+
               <div class="dh-col-title" style="margin-top:20px">台词（可手改）</div>
               <textarea id="dhS3Text" class="dh-input" rows="6" placeholder="AI 写的稿子会落到这里，你也可以直接手写" maxlength="1000"></textarea>
               <div class="dh-text-foot">
@@ -338,7 +493,7 @@
               <!-- 字幕设置 -->
               <div class="dh-subtitle-bar">
                 <label class="dh-switch">
-                  <input type="checkbox" id="dhS3SubtitleOn">
+                  <input type="checkbox" id="dhS3SubtitleOn" checked>
                   <span>显示字幕</span>
                 </label>
                 <button class="dh-link-btn" id="dhS3SubtitleStyleBtn">调整字幕样式 →</button>
@@ -347,63 +502,167 @@
               <button class="dh-btn dh-btn-primary dh-btn-lg dh-submit-row" id="dhS3SubmitBtn">
                 <span>🎬</span> 生成数字人视频
               </button>
+              <button class="dh-btn dh-btn-ghost dh-btn-lg dh-submit-row" id="dhProductAdBtn" style="display:none">
+                <span>🎞️</span> 生成 Topview 式产品介绍片
+              </button>
 
               <!-- 字幕样式模态 -->
               <div class="dh-modal" id="dhSubtitleModal" style="display:none">
-                <div class="dh-modal-body" style="max-width:640px">
+                <div class="dh-modal-body dh-subtitle-modal-body" style="max-width:760px">
                   <div class="dh-modal-head">
                     <div>选择字幕样式</div>
                     <button class="dh-link-btn" data-subtitle-close>✕</button>
                   </div>
+                  <div class="dh-subtitle-modal-scroll">
 
-                  <!-- 实时预览（模拟视频底部字幕） -->
+                  <!-- 实时预览（模拟视频底部字幕，会按选中风格变样） -->
                   <div style="margin-bottom:18px">
-                    <div style="font-size:12px;color:var(--dh-text-muted);margin-bottom:6px">实时预览</div>
-                    <div id="dhSubPreviewStage" style="position:relative;width:100%;aspect-ratio:16/9;background:linear-gradient(135deg,#3b3b50 0%,#1a1a26 100%);border-radius:10px;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;padding-bottom:30px">
-                      <span id="dhSubPreviewText" style="color:#fff;font-size:36px;font-weight:600;text-align:center;padding:6px 14px;background:rgba(0,0,0,0.45);border-radius:4px">这是字幕预览效果</span>
+                    <div style="font-size:12px;color:var(--dh-text-muted);margin-bottom:6px">实时预览（CSS 模拟，最终成片为 ASS 字幕烧录）</div>
+                    <div id="dhSubPreviewStage" class="dh-sub-preview-stage" data-sub-style="popup" data-sub-pos="bottom">
+                      <span id="dhSubPreviewText" class="dh-sub-preview-text">限时秒杀 仅需99元 立刻抢购</span>
                     </div>
                   </div>
 
+                  <!-- ★ 字幕动效（8 种）★ -->
                   <div class="dh-field">
-                    <label>字体</label>
-                    <select id="dhSubFont" class="dh-input">
-                      <option value="抖音美好体">抖音美好体</option>
-                      <option value="思源黑体">思源黑体</option>
-                      <option value="微软雅黑">微软雅黑</option>
-                      <option value="Noto Sans SC">Noto Sans SC</option>
-                    </select>
-                  </div>
-                  <div class="dh-field">
-                    <label>字号</label>
-                    <select id="dhSubSize" class="dh-input">
-                      <option value="56">56</option>
-                      <option value="72" selected>72</option>
-                      <option value="80">80</option>
-                      <option value="96">96</option>
-                    </select>
-                  </div>
-                  <div class="dh-field">
-                    <label>字体颜色</label>
-                    <input type="color" id="dhSubColor" value="#FFFFFF" class="dh-input">
-                  </div>
-                  <div class="dh-field">
-                    <label>描边颜色</label>
-                    <input type="color" id="dhSubOutline" value="#000000" class="dh-input">
-                  </div>
-                  <div class="dh-field">
-                    <label>预设样式</label>
-                    <div class="dh-sub-presets" id="dhSubPresets">
-                      <button class="dh-sub-preset" data-sub-preset="white">T<br><span>纯白</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="yellow">T<br><span>亮黄</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="pink">T<br><span>粉红</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="cyan">T<br><span>青蓝</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="green">T<br><span>绿色</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="red">T<br><span>红色</span></button>
-                      <button class="dh-sub-preset" data-sub-preset="purple">T<br><span>紫色</span></button>
+                    <label>字幕动效</label>
+                    <div class="dh-sub-style-grid" id="dhSubStyleGrid">
+                      <button type="button" class="dh-sub-style" data-sub-style="popup">
+                        <span class="dh-sub-style-thumb popup"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">弹跳出现</span>
+                        <span class="dh-sub-style-desc">主流推荐 · 抖音同款</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="bouncy">
+                        <span class="dh-sub-style-thumb bouncy"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">律动跳字</span>
+                        <span class="dh-sub-style-desc">节奏感 · 黄字</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="karaoke">
+                        <span class="dh-sub-style-thumb karaoke"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">卡拉OK</span>
+                        <span class="dh-sub-style-desc">逐字高亮 · 跟唱感</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="neon">
+                        <span class="dh-sub-style-thumb neon"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">霓虹发光</span>
+                        <span class="dh-sub-style-desc">赛博 · 直播间</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="comic">
+                        <span class="dh-sub-style-thumb comic"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">漫画黄底</span>
+                        <span class="dh-sub-style-desc">综艺感 · 顶部</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="news">
+                        <span class="dh-sub-style-thumb news"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">新闻条</span>
+                        <span class="dh-sub-style-desc">黑底白字 · 严肃</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="emphasis">
+                        <span class="dh-sub-style-thumb emphasis"><b>99<em>元</em></b></span>
+                        <span class="dh-sub-style-name">关键词强调</span>
+                        <span class="dh-sub-style-desc">数字/限时词自动放大</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="classic">
+                        <span class="dh-sub-style-thumb classic"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">经典静态</span>
+                        <span class="dh-sub-style-desc">白字黑边 · 传统</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="fire">
+                        <span class="dh-sub-style-thumb fire"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">火焰燃烧</span>
+                        <span class="dh-sub-style-desc">激情感 · 促销</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="shake">
+                        <span class="dh-sub-style-thumb shake"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">地震抖动</span>
+                        <span class="dh-sub-style-desc">紧张感 · 爆点</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="gold">
+                        <span class="dh-sub-style-thumb gold"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">土豪金</span>
+                        <span class="dh-sub-style-desc">奢华感 · 高端</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="matrix">
+                        <span class="dh-sub-style-thumb matrix"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">科技矩阵</span>
+                        <span class="dh-sub-style-desc">未来感 · 科技</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="film">
+                        <span class="dh-sub-style-thumb film"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">电影字幕</span>
+                        <span class="dh-sub-style-desc">大片感 · 纪录</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="pink">
+                        <span class="dh-sub-style-thumb pink"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">少女粉</span>
+                        <span class="dh-sub-style-desc">生活感 · 小红书</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="wave">
+                        <span class="dh-sub-style-thumb wave"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">波浪摇摆</span>
+                        <span class="dh-sub-style-desc">活力感 · 综艺</span>
+                      </button>
+                      <button type="button" class="dh-sub-style" data-sub-style="zoom">
+                        <span class="dh-sub-style-thumb zoom"><b>嗨~</b></span>
+                        <span class="dh-sub-style-name">冲击放大</span>
+                        <span class="dh-sub-style-desc">爆款感 · 开场</span>
+                      </button>
                     </div>
                   </div>
+
+                  <label class="dh-switch" style="margin:8px 0 12px;display:flex;align-items:center;gap:8px">
+                    <input type="checkbox" id="dhSubSmartEmphasis" checked>
+                    <span>智能识别并放大关键词（数字 / 价格 / 限时词 / 重点词）</span>
+                  </label>
+                  <div style="font-size:11px;color:var(--dh-text-muted);margin-top:-6px;margin-bottom:14px">提示：选择「卡拉OK」或「关键词强调」时此开关被忽略（已内置）</div>
+
+                  <details style="margin-top:6px">
+                    <summary style="cursor:pointer;color:var(--dh-text-muted);font-size:12px;padding:6px 0">高级：手动覆盖字体/颜色</summary>
+                    <div class="dh-field">
+                      <label>字体</label>
+                      <select id="dhSubFont" class="dh-input">
+                        <option value="抖音美好体">抖音美好体</option>
+                        <option value="思源黑体">思源黑体</option>
+                        <option value="微软雅黑">微软雅黑</option>
+                        <option value="Noto Sans SC">Noto Sans SC</option>
+                        <option value="宋体">宋体</option>
+                        <option value="黑体">黑体</option>
+                      </select>
+                    </div>
+                    <div class="dh-field">
+                      <label>字号</label>
+                      <select id="dhSubSize" class="dh-input">
+                        <option value="56">56</option>
+                        <option value="72" selected>72</option>
+                        <option value="80">80</option>
+                        <option value="96">96</option>
+                      </select>
+                    </div>
+                    <div class="dh-field">
+                      <label>字体颜色（覆盖动效默认）</label>
+                      <input type="color" id="dhSubColor" value="#FFFFFF" class="dh-input">
+                    </div>
+                    <div class="dh-field">
+                      <label>描边颜色（覆盖动效默认）</label>
+                      <input type="color" id="dhSubOutline" value="#000000" class="dh-input">
+                    </div>
+                    <div class="dh-field">
+                      <label>颜色快捷</label>
+                      <div class="dh-sub-presets" id="dhSubPresets">
+                        <button class="dh-sub-preset" data-sub-preset="white">T<br><span>纯白</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="yellow">T<br><span>亮黄</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="pink">T<br><span>粉红</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="cyan">T<br><span>青蓝</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="green">T<br><span>绿色</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="red">T<br><span>红色</span></button>
+                        <button class="dh-sub-preset" data-sub-preset="purple">T<br><span>紫色</span></button>
+                      </div>
+                    </div>
+                  </details>
+
                   <div class="dh-preview-btns" style="justify-content:flex-end">
                     <button class="dh-btn dh-btn-primary" id="dhSubtitleSave">保存设置</button>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -416,6 +675,308 @@
                 <div class="dh-render-idle">
                   <div class="dh-empty-icon">🎬</div>
                   <div>点击左侧"生成数字人视频"后，这里会显示进度</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ━━ 商品数字人 Topview式双栏 ━━ -->
+        <div class="dh-tab-pane" data-pane="product-dh">
+          <div class="pdh2-layout">
+
+            <!-- ── 左控制面板 ── -->
+            <div class="pdh2-ctrl">
+
+              <div class="pdh2-ctrl-header">
+                <div class="pdh2-title">商品数字人</div>
+                <div class="pdh2-subtitle">上传人物 + 商品图 → 生成商品形象 → 保存到我的形象 → 生成动态广告</div>
+              </div>
+
+              <!-- 数字人照片 -->
+              <div class="pdh2-section">
+                <div class="pdh2-section-label">数字人照片</div>
+                <div class="pdh2-photo-tabs" id="pdhPhotoTabs">
+                  <button class="pdh2-photo-tab active" data-pdh-tab="upload">上传照片</button>
+                  <button class="pdh2-photo-tab" data-pdh-tab="ai-gen">AI 创建</button>
+                  <button class="pdh2-photo-tab" data-pdh-tab="my-av">我的形象</button>
+                </div>
+
+                <!-- 上传照片 -->
+                <div class="pdh2-photo-pane active" data-pdh-photo-pane="upload">
+                  <div class="pdh2-upload-zone" id="pdhPersonUpload">
+                    <input type="file" id="pdhPersonFile" accept="image/*" hidden>
+                    <div class="pdh2-upload-icon">👤</div>
+                    <div class="pdh2-upload-text">点击上传 / 拖拽照片</div>
+                    <div class="pdh2-upload-meta">PNG/JPG · 建议正面半身照</div>
+                  </div>
+                </div>
+
+                <!-- AI 创建 -->
+                <div class="pdh2-photo-pane" data-pdh-photo-pane="ai-gen">
+                  <div class="pdh2-chip-group">
+                    <div class="pdh2-chip-label">性别</div>
+                    <div class="pdh2-chip-row">
+                      <button class="pdh2-chip active" data-pdh-gender="female">女</button>
+                      <button class="pdh2-chip" data-pdh-gender="male">男</button>
+                    </div>
+                  </div>
+                  <div class="pdh2-chip-group" style="margin-top:8px">
+                    <div class="pdh2-chip-label">风格</div>
+                    <div class="pdh2-chip-row" style="flex-wrap:wrap">
+                      <button class="pdh2-chip active" data-pdh-style="idol_warm">偶像暖调</button>
+                      <button class="pdh2-chip" data-pdh-style="office">职场商务</button>
+                      <button class="pdh2-chip" data-pdh-style="live_studio">直播主播</button>
+                      <button class="pdh2-chip" data-pdh-style="studio_plain">纯色影棚</button>
+                    </div>
+                  </div>
+                  <button class="pdh2-action-btn" id="pdhAIGenBtn">✨ AI 生成人物</button>
+                  <div class="pdh2-gen-status" id="pdhGenStatus" style="display:none">
+                    <div class="dh-gen-spinner" style="width:14px;height:14px;border-width:2px;margin:0"></div>
+                    <span>生成中，约 15 秒…</span>
+                  </div>
+                </div>
+
+                <!-- 我的形象 -->
+                <div class="pdh2-photo-pane" data-pdh-photo-pane="my-av">
+                  <div class="pdh2-av-grid" id="pdhMyAvGrid">
+                    <div class="dh-empty"><div class="dh-empty-icon">📂</div><div class="dh-empty-text">暂无形象</div></div>
+                  </div>
+                </div>
+
+                <!-- 已选人物预览 -->
+                <div class="pdh2-person-preview" id="pdhPersonPreview" style="display:none">
+                  <img id="pdhPersonImg" class="pdh2-preview-img" alt="人物">
+                  <button class="pdh2-change-btn" id="pdhPersonResel">更换</button>
+                </div>
+              </div>
+
+              <!-- 产品图片 -->
+              <div class="pdh2-section">
+                <div class="pdh2-section-label">产品图片</div>
+                <div class="pdh2-upload-zone" id="pdhProductDrop" style="display:block">
+                  <input type="file" id="pdhProductFile" accept="image/*" hidden>
+                  <div class="pdh2-upload-icon">🛍️</div>
+                  <div class="pdh2-upload-text">点击上传商品图</div>
+                  <div class="pdh2-upload-meta">PNG/JPG · 建议纯色背景</div>
+                </div>
+                <div class="pdh2-person-preview" id="pdhProductPreview" style="display:none">
+                  <img id="pdhProductImg" class="pdh2-preview-img" alt="商品">
+                  <button class="pdh2-change-btn" id="pdhProductResel">更换</button>
+                </div>
+                <input type="text" id="pdhProductNameInput" class="pdh2-input" placeholder="产品名称（选填）">
+              </div>
+
+              <div class="pdh2-section">
+                <div class="pdh2-section-label">配音音色</div>
+                <input type="hidden" id="pdhVoiceSelect" value="">
+                <div class="pdh2-voice-picker" id="pdhVoicePicker">
+                  <div class="pdh2-voice-current" id="pdhVoiceCurrent">
+                    <div class="dh-voice-opt-icon">🎙️</div>
+                    <div class="dh-voice-opt-body">
+                      <div class="dh-voice-opt-name">请选择配音音色</div>
+                      <div class="dh-voice-opt-sub">优先使用阿里等低成本 TTS，Topview 兼容</div>
+                    </div>
+                  </div>
+                  <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="pdhVoiceOpenBtn">选择音色</button>
+                </div>
+              </div>
+              <!-- 生成按钮 -->
+              <button class="pdh2-generate-btn" id="pdhGenerateBtn">
+                生成商品形象
+              </button>
+            </div>
+
+            <!-- ── 右画廊 ── -->
+            <div class="pdh2-gallery" id="pdhGallery">
+              <div class="pdh2-empty-state" id="pdhEmptyState">
+                <div class="pdh2-empty-icon">🛍️</div>
+                <div class="pdh2-empty-title">准备好了就开始</div>
+                <div class="pdh2-empty-desc">上传人物照片和商品图，填写台词，点击生成</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ━━ 广告数字人 / 展厅导览 ━━ -->
+        <div class="dh-tab-pane" data-pane="space-guide">
+          <div class="dh-wizard-head">
+            <div class="dh-wizard-title">广告数字人</div>
+            <div class="dh-wizard-sub">上传广告背景或产品空间图，AI 会先生成多张可控广告首帧，再用 Seedance 逐镜头生成并平滑拼接。</div>
+          </div>
+
+          <div class="dh-ad-flow">
+            <div class="dh-ad-flow-step active"><span>1</span>上传素材</div>
+            <div class="dh-ad-flow-step active"><span>2</span>生成分镜首帧</div>
+            <div class="dh-ad-flow-step"><span>3</span>提示词串联镜头</div>
+            <div class="dh-ad-flow-step"><span>4</span>Seedance 合成视频</div>
+          </div>
+
+          <div class="dh-space-layout">
+            <div class="dh-space-panel">
+              <div class="dh-space-section">
+                <div class="dh-col-title">广告数字人形象</div>
+                <div class="dh-space-avatar" id="dhSpaceAvatar">
+                  <div class="dh-selected-empty">
+                    <div class="dh-empty-icon">▥</div>
+                    <div>从「我的形象」选择一个数字人</div>
+                    <button class="dh-link-btn" data-space-pick-avatar>去选择形象 →</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dh-space-section">
+                <div class="dh-col-title">广告背景 / 展示画面</div>
+                <div class="dh-space-bg-drop" id="dhSpaceBgDrop" role="button" tabindex="0" aria-label="上传广告背景图">
+                  <input type="file" id="dhSpaceBgFile" accept="image/*" hidden>
+                  <div class="dh-upload-icon">▤</div>
+                  <div class="dh-upload-hint">上传广告背景图</div>
+                </div>
+                <div class="dh-space-bg-preview" id="dhSpaceBgPreview" style="display:none">
+                  <img id="dhSpaceBgImg" alt="空间背景">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhSpaceBgClear" type="button">更换背景</button>
+                </div>
+              </div>
+
+              <div class="dh-space-section">
+                <div class="dh-col-title">配音</div>
+                <div class="dh-space-voice-compact-card">
+                  <div class="dh-space-voice-current" id="dhSpaceVoiceCurrent">
+                    <div class="dh-voice-opt-icon">⚡</div>
+                    <div class="dh-voice-opt-body">
+                      <div class="dh-voice-opt-name">自动选择</div>
+                      <div class="dh-voice-opt-sub">根据广告文案自动匹配音色</div>
+                    </div>
+                  </div>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhSpaceVoiceOpen">选择配音</button>
+                </div>
+                <div class="dh-voice-list dh-space-voice-list" id="dhSpaceVoiceList" style="display:none"></div>
+              </div>
+
+              <div class="dh-space-section" style="display:none">
+                <div class="dh-col-title">AI 场景识别</div>
+                <div class="dh-chip-row">
+                  <button class="dh-chip active" data-space-scene="auto">按提示词识别</button>
+                  <button class="dh-chip" data-space-scene="gallery_wall">展厅艺术墙</button>
+                  <button class="dh-chip" data-space-scene="showroom">品牌展厅</button>
+                  <button class="dh-chip" data-space-scene="retail_store">门店导购</button>
+                  <button class="dh-chip" data-space-scene="model_room">样板间讲解</button>
+                  <button class="dh-chip" data-space-scene="museum_gallery">博物馆展陈</button>
+                  <button class="dh-chip" data-space-scene="exhibition_booth">展会展位</button>
+                  <button class="dh-chip" data-space-scene="hotel_lobby">酒店大堂</button>
+                  <button class="dh-chip" data-space-scene="office_showroom">企业展厅</button>
+                  <button class="dh-chip" data-space-scene="real_estate">房产空间</button>
+                  <button class="dh-chip" data-space-scene="auto_showroom">汽车展厅</button>
+                  <button class="dh-chip" data-space-scene="custom">自定义场景</button>
+                </div>
+                <input class="dh-input" id="dhSpaceScenePromptLegacy" maxlength="180" placeholder="按背景和文案补充场景要点，例如：高端岩板墙、灯光从右侧打出金属纹理">
+              </div>
+
+              <div class="dh-space-section" style="display:none">
+                <div class="dh-col-title">AI 镜头策略</div>
+                <div class="dh-chip-row">
+                  <button class="dh-chip active" data-space-camera="push_in">缓慢推近</button>
+                  <button class="dh-chip" data-space-camera="static">稳定定机位</button>
+                  <button class="dh-chip" data-space-camera="handheld">轻微手持感</button>
+                  <button class="dh-chip" data-space-camera="pan_right">向右平移</button>
+                  <button class="dh-chip" data-space-camera="walkthrough">导览穿行</button>
+                  <button class="dh-chip" data-space-camera="orbit">轻微环绕</button>
+                  <button class="dh-chip" data-space-camera="wide_to_detail">全景到细节</button>
+                  <button class="dh-chip" data-space-camera="rack_focus">移焦强调</button>
+                  <button class="dh-chip" data-space-camera="custom">自定义镜头</button>
+                </div>
+                <input class="dh-input" id="dhSpaceCameraPrompt" maxlength="160" placeholder="自定义镜头动作，例如：先保留全景，再轻推到右侧材质细节">
+              </div>
+            </div>
+
+            <div class="dh-space-panel dh-space-main">
+              <div class="dh-ad-workbench-head">
+                <div>
+                  <div class="dh-ad-workbench-title">分镜看板</div>
+                  <div class="dh-ad-workbench-sub">先生成 3-5 张广告首帧，确认镜头逻辑后再合成视频。</div>
+                </div>
+                <div class="dh-ad-head-actions">
+                  <button class="dh-btn dh-btn-primary dh-btn-lg" id="dhSpaceSubmit" type="button">生成广告数字人</button>
+                </div>
+              </div>
+
+              <div class="dh-ad-editor-grid">
+                <div class="dh-ad-editor-main">
+                  <div class="dh-space-core-fields">
+                    <div class="dh-field">
+                      <label>视频标题</label>
+                      <input class="dh-input" id="dhSpaceTitle" maxlength="80" value="广告数字人" placeholder="例如：高端艺术墙新品广告">
+                    </div>
+                    <div class="dh-field">
+                      <label>生成时长</label>
+                      <select class="dh-input" id="dhSpaceDuration">
+                        <option value="15">15 秒</option>
+                        <option value="30" selected>30 秒</option>
+                        <option value="45">45 秒</option>
+                        <option value="60">60 秒</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="dh-space-copy-toolbar">
+                    <span>广告内容</span>
+                    <div class="dh-space-copy-mode-tabs">
+                      <button type="button" class="active" data-space-copy-mode="manual">手动输入</button>
+                      <button type="button" data-space-copy-mode="ai">AI 生成</button>
+                    </div>
+                  </div>
+                  <div class="dh-ad-copy-prompt-grid">
+                    <div class="dh-field">
+                      <label>广告文案</label>
+                      <textarea class="dh-input" id="dhSpaceText" rows="6" maxlength="1000" placeholder="写数字人要说的话，例如：大家现在看到的是这面定制艺术墙，它的纹理层次非常丰富，在灯光下会呈现自然金属光泽。"></textarea>
+                      <div class="dh-field-hint" id="dhSpacePromptHint">手动输入广告文案后，系统会根据内容自动生成右侧镜头提示词。</div>
+                    </div>
+                    <div class="dh-field">
+                      <label>镜头提示词</label>
+                      <textarea class="dh-input" id="dhSpaceScenePrompt" rows="6" maxlength="360" placeholder="描述画面和镜头怎么走，例如：第一镜展示整体空间，第二镜推进到产品纹理，第三镜数字人站在左侧讲解，右侧保留完整展示画面，最后镜头给到购买引导。"></textarea>
+                      <div class="dh-field-hint">可自动生成，也可以手动微调镜头顺序、人物站位和收束画面。</div>
+                    </div>
+                  </div>
+                  <div class="dh-space-actions">
+                    <button class="dh-btn dh-btn-ghost" id="dhSpaceSampleText" type="button" title="只把示例广告文案填入上方输入框，不会生成内容">填入示例文案</button>
+                    <button class="dh-btn dh-btn-ghost" id="dhSpaceAIWrite" type="button" title="根据广告文案和镜头提示词拆成 3-5 个分镜卡片">生成分镜看板</button>
+                  </div>
+                  <div class="dh-space-subtitle-panel">
+                    <div>
+                      <div class="dh-space-subtitle-title">字幕</div>
+                    </div>
+                    <label class="dh-switch">
+                      <input type="checkbox" id="dhSpaceSubtitleOn" checked>
+                      <span>显示字幕</span>
+                    </label>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhSpaceSubtitleStyleBtn" type="button">调整字幕样式</button>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="dh-space-preview" id="dhSpacePreview">
+                <div class="dh-storyboard-empty">
+                  <div class="dh-story-card ghost">
+                    <div class="dh-story-thumb">01</div>
+                    <b>开场首帧</b>
+                    <span>展示背景/产品空间，锁定整体构图</span>
+                  </div>
+                  <div class="dh-story-card ghost">
+                    <div class="dh-story-thumb">02</div>
+                    <b>卖点特写</b>
+                    <span>突出产品、材质、场景亮点</span>
+                  </div>
+                  <div class="dh-story-card ghost">
+                    <div class="dh-story-thumb">03</div>
+                    <b>数字人讲解</b>
+                    <span>让人物出镜，用口播串联卖点</span>
+                  </div>
+                  <div class="dh-story-card ghost">
+                    <div class="dh-story-thumb">04</div>
+                    <b>行动引导</b>
+                    <span>收束镜头，生成最终转化画面</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -663,6 +1224,56 @@ B: ...
           </div>
         </div>
 
+        <!-- ━━ 任务中心 ━━ -->
+        <div class="dh-tab-pane" data-pane="tasks">
+          <div class="dh-wizard-head">
+            <div class="dh-wizard-title">任务中心</div>
+            <div class="dh-wizard-sub">后台生成中的数字人都会在这里，可以继续创建下一个任务</div>
+          </div>
+          <div class="dh-task-toolbar">
+            <div class="dh-task-type-tabs" id="dhTaskTypeTabs">
+              <button class="active" data-task-type="digital_human">数字人</button>
+              <button data-task-type="product_ad">商品数字人</button>
+              <button data-task-type="digital_ad">广告数字人</button>
+            </div>
+            <button class="dh-btn dh-btn-ghost" id="dhTaskRefresh">刷新任务</button>
+            <button class="dh-btn dh-btn-ghost" id="dhTaskClearDone">清理已完成</button>
+            <button class="dh-btn dh-btn-primary" data-tab-go="step3">继续创建</button>
+          </div>
+          <div class="dh-task-list" id="dhTaskList">
+            <div class="dh-empty">
+              <div class="dh-empty-icon">⏳</div>
+              <div class="dh-empty-text">暂无后台任务</div>
+              <div class="dh-empty-sub">提交生成后可离开页面继续创建，下方会集中展示进度</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ━━ 形象广场 ━━ -->
+        <div class="dh-tab-pane" data-pane="plaza">
+          <div class="dh-wizard-head">
+            <div class="dh-wizard-title">🎭 形象广场</div>
+            <div class="dh-wizard-sub">精选预设形象 · 一键引用到第三步生成数字人（仅展示已有真实图片的形象）</div>
+          </div>
+          <div class="dh-plaza-toolbar">
+            <select class="dh-input dh-input-sm" id="dhPlazaCategory" style="max-width:180px">
+              <option value="">全部分类</option>
+            </select>
+            <select class="dh-input dh-input-sm" id="dhPlazaGender" style="max-width:120px">
+              <option value="">全部性别</option>
+              <option value="female">女</option>
+              <option value="male">男</option>
+            </select>
+            <span class="dh-plaza-count" id="dhPlazaCount" style="margin-left:auto;color:var(--dh-text-muted);font-size:12px"></span>
+          </div>
+          <div class="dh-plaza-grid" id="dhPlazaGrid">
+            <div class="dh-empty">
+              <div class="dh-empty-icon">⏳</div>
+              <div class="dh-empty-text">加载中...</div>
+            </div>
+          </div>
+        </div>
+
         <!-- ━━ 作品库 ━━ -->
         <div class="dh-tab-pane" data-pane="works">
           <div class="dh-wizard-head">
@@ -728,14 +1339,50 @@ B: ...
         <div class="dh-modal-head">
           <div>✨ AI 写稿向导</div>
         </div>
+        <div class="dh-write-mode-tabs" id="dhWriteModeTabs">
+          <button type="button" class="active" data-write-mode="script">口播稿</button>
+          <button type="button" data-write-mode="product">商品数字人</button>
+          <button type="button" data-write-mode="space">广告数字人</button>
+        </div>
         <div class="dh-field">
-          <label>要写的内容 / 主题 / 要点（越具体写稿越精准）</label>
+          <label id="dhWriteTopicLabel">要写的内容 / 主题 / 要点（越具体写稿越精准）</label>
           <textarea id="dhWriteInput" class="dh-input" rows="6" maxlength="800" placeholder="例如：介绍下我自己，我叫小明，从事电商行业 5 年，擅长直播带货。希望用亲切接地气的口吻，重点讲我的经验和爆品案例。"></textarea>
-          <div class="dh-chip-row" style="margin-top:8px">
+          <div class="dh-chip-row" id="dhWritePresetRow" style="margin-top:8px">
             <button class="dh-chip dh-chip-sm" data-write-preset="早上 10 分钟快速清醒的 3 个小方法">早起清醒</button>
             <button class="dh-chip dh-chip-sm" data-write-preset="给新手的第一次直播 3 条建议">直播新手</button>
             <button class="dh-chip dh-chip-sm" data-write-preset="推荐一款我最近在用的好物并说明理由">好物推荐</button>
             <button class="dh-chip dh-chip-sm" data-write-preset="自我介绍 · 突出专业形象与人设">自我介绍</button>
+          </div>
+        </div>
+        <div id="dhProductWriteFields" style="display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="dh-field">
+              <label>商品名称</label>
+              <input id="dhProductName" class="dh-input" maxlength="80" placeholder="例如：便携式高速吹风机">
+            </div>
+            <div class="dh-field">
+              <label>目标人群</label>
+              <input id="dhProductAudience" class="dh-input" maxlength="120" placeholder="例如：通勤女生、宝妈、宿舍学生">
+            </div>
+          </div>
+          <div class="dh-field">
+            <label>核心卖点（用逗号分隔）</label>
+            <input id="dhProductSellingPoints" class="dh-input" maxlength="260" placeholder="例如：三分钟速干、不伤发、轻便折叠、低噪音">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="dh-field">
+              <label>优惠/行动号召</label>
+              <input id="dhProductOffer" class="dh-input" maxlength="120" placeholder="例如：今天下单立减 30 元">
+            </div>
+            <div class="dh-field">
+              <label>展示动作</label>
+              <select id="dhProductMotionStyle" class="dh-input">
+                <option value="hold">手持展示</option>
+                <option value="point">指向商品</option>
+                <option value="compare">左右对比</option>
+                <option value="demo">开箱试用</option>
+              </select>
+            </div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -767,9 +1414,34 @@ B: ...
       </div>
     </div>
 
+    <div class="dh-modal dh-space-voice-modal" id="dhSpaceVoiceModal" style="display:none">
+      <div class="dh-modal-body dh-space-voice-modal-body">
+        <div class="dh-modal-head">
+          <div>
+            <div>选择配音</div>
+            <div class="dh-modal-sub">公共音色、我的声音和试听都在这里选择</div>
+          </div>
+          <button class="dh-link-btn" type="button" data-space-voice-close>×</button>
+        </div>
+        <div class="dh-space-voice-tools">
+          <input type="text" id="dhSpaceVoiceModalSearch" class="dh-input dh-input-sm" placeholder="搜索配音名、供应商或性别">
+        </div>
+        <div class="dh-voice-list dh-space-voice-modal-list" id="dhSpaceVoiceModalList">
+          <div class="dh-empty">
+            <div class="dh-empty-icon">⏳</div>
+            <div class="dh-empty-text">加载配音中...</div>
+          </div>
+        </div>
+        <div class="dh-modal-foot">
+          <button class="dh-btn dh-btn-ghost" type="button" data-space-voice-close>取消</button>
+          <button class="dh-btn dh-btn-primary" type="button" data-space-voice-close>确认</button>
+        </div>
+      </div>
+    </div>
+
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=30"></script>
+  <script src="/js/digital-human.js?v=20260513-product-voice-picker"></script>
 </body>
 </html>

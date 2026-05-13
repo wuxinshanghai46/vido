@@ -1,0 +1,58 @@
+{
+  "id": "dreamid-faceswap",
+  "name": "ID 锁定换脸（保脸）",
+  "category": "portrait",
+  "version": 2,
+  "description": "锁定参考人脸 ID，把任意目标图里的人物换成这张脸。基于 Replicate InstantID（zsxkib/instant-id）。如要走阿里 DashScope，请在 engine 选 dashscope 并填 dashscopeModel。",
+  "inputs": [
+    {
+      "name": "referenceFaceUrl",
+      "type": "string",
+      "required": true,
+      "label": "参考人脸图 URL",
+      "desc": "正面、清晰、单人，作为 ID 锁定基准"
+    },
+    {
+      "name": "targetUrl",
+      "type": "string",
+      "label": "目标姿势图 URL（可选）",
+      "desc": "要被换脸的目标画面（人物姿势/构图会保留）。不传则只按 prompt 生成"
+    },
+    {
+      "name": "stylePrompt",
+      "type": "string",
+      "label": "风格提示",
+      "default": "photorealistic, natural lighting, preserve facial identity, real human skin"
+    },
+    {
+      "name": "engine",
+      "type": "string",
+      "label": "引擎",
+      "default": "instantid",
+      "desc": "instantid (默认) | dashscope（需另填 dashscopeModel）"
+    },
+    {
+      "name": "dashscopeModel",
+      "type": "string",
+      "label": "DashScope model id（仅 engine=dashscope 时）",
+      "desc": "如 facechain-generation；阿里官方 DreamID-V 暂未对外，建议默认 instantid"
+    }
+  ],
+  "steps": [
+    {
+      "id": "swap",
+      "type": "id_swap",
+      "params": {
+        "referenceFaceUrl": "$referenceFaceUrl",
+        "targetUrl": "$targetUrl",
+        "prompt": "$stylePrompt",
+        "engine": "$engine",
+        "dashscopeModel": "$dashscopeModel"
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "imageUrl", "from": "$swap.imageUrl", "type": "string", "label": "换脸后图片 URL" },
+    { "name": "engineUsed", "from": "$swap.engineUsed", "type": "string", "label": "实际使用的引擎" }
+  ]
+}

@@ -38,12 +38,35 @@ function load() {
   return null;
 }
 
-function save(db) {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+// ── 内存缓存 + 防抖刷盘 ──
+// 进程内只读盘一次（启动时 + migration），后续 save() 在 30ms 内合并写盘
+// 这样登录链路（getUserByUsername → updateUser → saveRefreshToken）从 3-4 次同步 47KB 写盘降到 1 次异步
+let _cachedDb = null;
+let _migrationDone = false;
+let _saveTimer = null;
+function _flush() {
+  if (!_cachedDb) return;
+  try {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    const tmp = DB_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(_cachedDb, null, 2), 'utf-8');
+    fs.renameSync(tmp, DB_PATH);
+  } catch (e) {
+    console.error('[authStore] flush failed:', e.message);
+  }
 }
+function save(db) {
+  _cachedDb = db;
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => { _saveTimer = null; _flush(); }, 30);
+}
+// 进程退出前同步刷盘
+process.on('beforeExit', () => { if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; _flush(); } });
+process.on('SIGTERM', () => { if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; _flush(); } });
+process.on('SIGINT',  () => { if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; _flush(); } process.exit(0); });
 
 function init() {
+  if (_migrationDone && _cachedDb) return _cachedDb;
   let db = load();
   if (db && db.users && db.users.length > 0) {
     let changed = false;
@@ -110,6 +133,7 @@ function init() {
       if (!Array.isArray(u.allowed_models)) { u.allowed_models = []; changed = true; }
     }
     if (changed) save(db);
+    _cachedDb = db; _migrationDone = true;
     return db;
   }
 
@@ -134,6 +158,7 @@ function init() {
     refresh_tokens: []
   };
   save(db);
+  _cachedDb = db; _migrationDone = true;
   console.log('\n  ⚠ 默认管理员已创建: admin / admin123 — 请尽快修改密码\n');
   return db;
 }

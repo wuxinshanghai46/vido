@@ -18,12 +18,21 @@ const http = require('http');
  * @param {object} options - { gender: 'female'|'male', speed: 1.0, voiceId: null }
  * @returns {string|null} 生成的音频文件路径，失败返回 null
  */
-async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, voiceId = null } = {}) {
+async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null } = {}) {
   if (!text || !text.trim()) return null;
+
+  if (voiceId && String(voiceId).startsWith('hifly:')) {
+    const result = await generateWithHiflyTTS(text, outputPath, { voiceId, speed, pitch });
+    if (result) {
+      console.log(`[TTS] 使用飞影 Hifly 音色 ${voiceId} 生成成功`);
+      return _postProcessAudio(result);
+    }
+    throw new Error('飞影 Hifly 音色合成失败');
+  }
 
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
-    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed });
+    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch });
     if (result) {
       console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`);
       return _postProcessAudio(result);
@@ -35,8 +44,8 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const chain = [
-    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, voiceId } },
-    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, voiceId } },
+    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId } },
+    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId } },
   ];
 
   const errors = [];
@@ -116,9 +125,15 @@ function _getTTSKey(providerId) {
     const settings = loadSettings();
     const p = settings.providers.find(p => p.id === providerId && p.enabled && p.api_key);
     if (!p) return '';
-    // 健康检查：test_status === 'error' 的供应商一律屏蔽（UI 列表 / 备选链）
-    if (p.test_status === 'error') return '';
-    const hasTTS = (p.models || []).some(m => m.enabled !== false && m.use === 'tts');
+    // Do not permanently hide a TTS vendor just because an old health check
+    // failed. Individual unusable voices are filtered by preview-voice after a
+    // real synthesis attempt, which avoids losing the whole Aliyun pool due to
+    // stale provider metadata.
+    // Some production providers were saved before per-model metadata existed.
+    // If a TTS provider has a valid key but no models array, treat it as usable
+    // and fall back to the provider's built-in/default voice pool.
+    const models = Array.isArray(p.models) ? p.models : [];
+    const hasTTS = models.length === 0 || models.some(m => m.enabled !== false && m.use === 'tts');
     return hasTTS ? p.api_key : '';
   } catch { return ''; }
 }
@@ -190,7 +205,7 @@ async function uploadVoiceToFishAudio(voiceFilePath, voiceName, apiKey) {
   });
 }
 
-async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0 }) {
+async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0 }) {
   const db = require('../models/database');
   const voice = db.getVoice(voiceId);
   if (!voice?.file_path || !fs.existsSync(voice.file_path)) {
@@ -214,7 +229,7 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     if (!aliyun.hasKey()) {
       throw new Error('未配置阿里 CosyVoice API Key（去后台 AI 配置 → aliyun-tts 设置）');
     }
-    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed });
+    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch });
     if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
       console.log(`[TTS] 阿里 CosyVoice 定制音色合成成功: ${voice.name} voice_id=${voice.aliyun_voice_id}`);
       return result;
@@ -567,13 +582,13 @@ async function generateWithBaidu(text, outputPath, { gender, speed, voiceId, api
 //   方言：longwan（龙湾·粤语）、longyu（龙渝·重庆话）
 // ═══════════════════════════════════════════
 const ALI_VOICES = {
-  female: 'longxiaochun',
+  female: 'longxiaochun_v3',
   male: 'longcheng',
 };
 
 // —— 阿里 NLS（智能语音交互）基础 TTS · 不支持克隆，只能预设音色 ——
 // 使用 AppKey + AccessToken（api_key 存成 "{AppKey}:{AccessToken}" 格式）
-async function generateWithAliyunNLS(text, outputPath, { gender, speed, voiceId }) {
+async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, voiceId }) {
   const { synthesizeWithNLS, hasNLSCreds } = require('./aliyunVoiceService');
   if (!hasNLSCreds()) return null;
   // NLS TTS 的音色 ID 和 DashScope CosyVoice 不一样，单独映射
@@ -581,16 +596,58 @@ async function generateWithAliyunNLS(text, outputPath, { gender, speed, voiceId 
   const voice = voiceId || NLS_VOICES[gender] || 'xiaoyun';
   const model = _getTTSModel('aliyun-nls');
   const finalVoice = (model?.id && !voiceId) ? model.id : voice;
-  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed });
+  const pitchRate = Math.round(((Number(pitch) || 1) - 1) * 500);
+  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed, pitch: pitchRate });
 }
 
 // 阿里 TTS 现在统一走 aliyunVoiceService.synthesize（CosyVoice WebSocket）
 // CosyVoice 已经不支持 HTTP REST 了，旧的 cosyvoice-v1 HTTP 端点已停服
-async function generateWithAliyunTTS(text, outputPath, { gender, speed, voiceId, apiKey }) {
+async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey }) {
   const voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
   const aliyun = require('./aliyunVoiceService');
   // aliyunVoiceService.synthesize 自动从 voice id 推断 model（v3-flash for 预设/v3.5-plus for 真克隆）
-  return aliyun.synthesize(text, voice, outputPath, { speed });
+  return aliyun.synthesize(text, voice, outputPath, { speed, pitch });
+}
+
+async function _downloadUrlToFile(url, outputPath) {
+  const target = path.extname(outputPath) ? outputPath : outputPath + '.mp3';
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const client = /^https:/i.test(url) ? https : http;
+  await new Promise((resolve, reject) => {
+    const req = client.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return _downloadUrlToFile(res.headers.location, target).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`download failed HTTP ${res.statusCode}`));
+      }
+      const ws = fs.createWriteStream(target);
+      res.pipe(ws);
+      ws.on('finish', () => ws.close(resolve));
+      ws.on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(120000, () => req.destroy(new Error('download timeout')));
+  });
+  return target;
+}
+
+async function generateWithHiflyTTS(text, outputPath, { voiceId, speed }) {
+  const hiflyVoice = String(voiceId || '').replace(/^hifly:/, '');
+  if (!hiflyVoice) throw new Error('飞影音色 ID 为空');
+  const hifly = require('./hiflyService');
+  const taskId = await hifly.createAudioByTTS({
+    voice: hiflyVoice,
+    text,
+    title: `vido${Date.now()}`,
+    aigc_flag: 1,
+  });
+  const done = await hifly.waitAudioTask(taskId, { intervalMs: 3000, timeoutMs: 5 * 60 * 1000 });
+  const audioUrl = done.audio_url;
+  if (!audioUrl) throw new Error('飞影音频任务未返回音频地址');
+  return _downloadUrlToFile(audioUrl, outputPath.endsWith('.mp3') ? outputPath : outputPath + '.mp3');
 }
 
 async function pollAliyunTTSTask(taskId, apiKey, mp3Path) {
@@ -1057,19 +1114,44 @@ function getAvailableVoices() {
 
   // 阿里云 CosyVoice
   if (_getTTSKey('aliyun-tts')) {
+    const ali = (id, name, gender, tag = '') => ({ id, name, gender, provider: '阿里云', providerIcon: '☁️', lang: 'zh', ...(tag ? { tag } : {}) });
     voices.push(
-      { id: 'longxiaochun', name: '龙小淳·温柔', gender: 'female', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '推荐' },
-      { id: 'longmiao', name: '龙喵·软萌', gender: 'female', provider: '阿里云', providerIcon: '☁️', lang: 'zh' },
-      { id: 'longshu', name: '龙姝·知性', gender: 'female', provider: '阿里云', providerIcon: '☁️', lang: 'zh' },
-      { id: 'longjing', name: '龙婧·播报', gender: 'female', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '播报' },
-      { id: 'longcheng', name: '龙城·沉稳', gender: 'male', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '推荐' },
-      { id: 'longhua', name: '龙华·儒雅', gender: 'male', provider: '阿里云', providerIcon: '☁️', lang: 'zh' },
-      { id: 'longyuan', name: '龙远·磁性', gender: 'male', provider: '阿里云', providerIcon: '☁️', lang: 'zh' },
-      { id: 'longfei', name: '龙飞·激昂', gender: 'male', provider: '阿里云', providerIcon: '☁️', lang: 'zh' },
-      { id: 'longwan', name: '龙湾·粤语', gender: 'female', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '粤语' },
-      { id: 'longyu', name: '龙渝·重庆话', gender: 'male', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '方言' },
-      { id: 'longshuo', name: '龙硕·童声男', gender: 'child', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '童声' },
-      { id: 'longtong', name: '龙童·童声女', gender: 'child', provider: '阿里云', providerIcon: '☁️', lang: 'zh', tag: '童声' },
+      ali('longxiaochun_v3', '龙小淳·温柔', 'female', '推荐'),
+      ali('longxiaoxia_v3', '龙小夏·热情', 'female', '口播'),
+      ali('longyumi_v3', '龙雨蜜·甜美', 'female'),
+      ali('longanwen_v3', '龙安文·温婉', 'female'),
+      ali('longanyun_v3', '龙安韵·自然', 'female'),
+      ali('longanli_v3', '龙安莉·亲和', 'female'),
+      ali('longyingmu_v3', '龙樱木·活力', 'female'),
+      ali('longcheng_v3', '龙城·沉稳', 'male', '推荐'),
+      ali('longhua_v3', '龙华·儒雅', 'male'),
+      ali('longfei_v3', '龙飞·激昂', 'male', '带货'),
+      ali('longze_v3', '龙泽·磁性', 'male'),
+      ali('longzhe_v3', '龙哲·讲述', 'male'),
+      ali('longhuhu_v3', '龙虎虎·童声', 'child', '童声'),
+      ali('longanlang_v3', '龙安朗·播报', 'male', '播报'),
+      ali('longantai_v3', '龙安泰·沉稳', 'male'),
+      // v3-flash 有些账号仍只接受无 _v3 的旧别名，保留少量兜底。
+      ali('longxiaochun', '龙小淳·兼容', 'female'),
+      ali('longcheng', '龙城·兼容', 'male'),
+      ali('longhua', '龙华·兼容', 'male')
+    );
+  }
+
+  // 阿里 NLS 预置音色（智能语音交互，和 CosyVoice 是不同产品线）
+  if (_getTTSKey('aliyun-nls')) {
+    const nls = (id, name, gender, tag = '') => ({ id, name, gender, provider: '阿里NLS', providerIcon: '☁️', lang: 'zh', ...(tag ? { tag } : {}) });
+    voices.push(
+      nls('xiaoyun', '小云·标准女声', 'female', '推荐'),
+      nls('xiaomei', '小美·甜美女声', 'female'),
+      nls('ruoxi', '若兮·温柔女声', 'female'),
+      nls('siqi', '思琪·自然女声', 'female'),
+      nls('sijia', '思佳·亲和女声', 'female'),
+      nls('aixia', '艾夏·活力女声', 'female'),
+      nls('xiaogang', '小刚·标准男声', 'male', '推荐'),
+      nls('aicheng', '艾诚·磁性男声', 'male'),
+      nls('sicheng', '思诚·自然男声', 'male'),
+      nls('aiqi', '艾琪·童声', 'child', '童声')
     );
   }
 
@@ -1158,7 +1240,8 @@ async function testProviderSynthesis(providerId, outputPath) {
     const s = loadSettings();
     const p = (s.providers || []).find(x => x.id === providerId && x.enabled && x.api_key);
     if (!p) throw new Error('供应商未配置或已停用');
-    if (!(p.models || []).some(m => m.enabled !== false && m.use === 'tts')) throw new Error('未启用 TTS 模型');
+    const models = Array.isArray(p.models) ? p.models : [];
+    if (models.length > 0 && !models.some(m => m.enabled !== false && m.use === 'tts')) throw new Error('未启用 TTS 模型');
     // 绕过 test_status 的屏蔽，直接用 api_key
     const map = {
       volcengine: () => generateWithVolcEngine('测试', outputPath, { apiKey: p.api_key, gender: 'female', speed: 1.0 }),

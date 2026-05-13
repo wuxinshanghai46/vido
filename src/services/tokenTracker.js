@@ -1,3 +1,24 @@
+function firstValue(...values) {
+  return values.find(v => v !== undefined && v !== null);
+}
+
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function findPricing(table, model, fallback) {
+  if (!model) return fallback;
+  if (table[model]) return table[model];
+  const normalized = String(model).toLowerCase();
+  const keys = Object.keys(table).sort((a, b) => b.length - a.length);
+  const matched = keys.find(k => {
+    const kk = k.toLowerCase();
+    return normalized.includes(kk) || kk.includes(normalized);
+  });
+  return matched ? table[matched] : fallback;
+}
+
 /**
  * Token 使用追踪服务
  *
@@ -248,14 +269,27 @@ const IMAGE_PRICING = {
  */
 function record(p) {
   try {
-    const {
-      provider, model, category = 'llm',
-      inputTokens: rawInputTokens = 0, outputTokens: rawOutputTokens = 0,
-      videoSeconds: rawVideoSeconds = 0, imageCount: rawImageCount = 0, ttsChars: rawTtsChars = 0,
-      durationMs = 0, status = 'success',
-      userId = null, agentId = null, requestId = null,
-      errorMsg = null,
-    } = p;
+    const provider = p.provider;
+    const model = p.model;
+    const category = p.category || p.type || 'llm';
+    const rawInputTokens = toNumber(firstValue(
+      p.inputTokens, p.promptTokens, p.input_tokens, p.prompt_tokens, p.usage?.prompt_tokens, p.usage?.input_tokens
+    ));
+    const rawOutputTokens = toNumber(firstValue(
+      p.outputTokens, p.completionTokens, p.output_tokens, p.completion_tokens, p.usage?.completion_tokens, p.usage?.output_tokens
+    ));
+    const rawTotalTokens = toNumber(firstValue(p.totalTokens, p.total_tokens, p.usage?.total_tokens), rawInputTokens + rawOutputTokens);
+    const rawVideoSeconds = toNumber(firstValue(p.videoSeconds, p.video_seconds));
+    const rawImageCount = toNumber(firstValue(p.imageCount, p.image_count));
+    const rawTtsChars = toNumber(firstValue(p.ttsChars, p.tts_chars));
+    const durationMs = toNumber(firstValue(p.durationMs, p.duration_ms));
+    const status = p.status || 'success';
+    const userId = firstValue(p.userId, p.user_id, null);
+    const agentId = firstValue(p.agentId, p.agent_id, null);
+    const requestId = firstValue(p.requestId, p.request_id, null);
+    const errorMsg = firstValue(p.errorMsg, p.error_msg, null);
+    const costOverride = firstValue(p.costUsd, p.cost_usd);
+    const usageSource = firstValue(p.usageSource, p.usage_source, rawTotalTokens ? 'actual' : null);
 
     // 关键规则：status=fail 时把所有计费量都归零
     //   原因：失败调用上游不会扣费，但 input prompt 长度还可能被估算成 token 量；
@@ -264,6 +298,7 @@ function record(p) {
     const isFail = status === 'fail';
     const inputTokens  = isFail ? 0 : rawInputTokens;
     const outputTokens = isFail ? 0 : rawOutputTokens;
+    const totalTokens = isFail ? 0 : (inputTokens + outputTokens || rawTotalTokens);
     const videoSeconds = isFail ? 0 : rawVideoSeconds;
     const imageCount   = isFail ? 0 : rawImageCount;
     const ttsChars     = isFail ? 0 : rawTtsChars;
@@ -271,17 +306,19 @@ function record(p) {
     // 计算成本（fail 时上游不计费 → cost 直接 0）
     let cost = 0;
     if (!isFail) {
-      if (category === 'llm') {
-        const [inPrice, outPrice] = PRICING[model] || [0, 0];
+      if (costOverride !== undefined && costOverride !== null) {
+        cost = toNumber(costOverride);
+      } else if (category === 'llm') {
+        const [inPrice, outPrice] = findPricing(PRICING, model, [0, 0]);
         cost = (inputTokens / 1_000_000) * inPrice + (outputTokens / 1_000_000) * outPrice;
       } else if (category === 'video') {
-        const unitPrice = VIDEO_PRICING[model] || 0;
+        const unitPrice = findPricing(VIDEO_PRICING, model, 0);
         cost = videoSeconds * unitPrice;
       } else if (category === 'image') {
-        const unitPrice = IMAGE_PRICING[model] || 0;
+        const unitPrice = findPricing(IMAGE_PRICING, model, 0);
         cost = imageCount * unitPrice;
       } else if (category === 'tts') {
-        const unitPrice = TTS_PRICING[model] || 0;
+        const unitPrice = findPricing(TTS_PRICING, model, 0);
         cost = (ttsChars / 1_000_000) * unitPrice;
       }
     }
@@ -292,13 +329,18 @@ function record(p) {
       provider, model, category,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
-      total_tokens: inputTokens + outputTokens,
+      total_tokens: totalTokens,
       video_seconds: videoSeconds,
       image_count: imageCount,
       tts_chars: ttsChars,
       cost_usd: Number(cost.toFixed(6)),
       duration_ms: durationMs,
       status,
+      usage_source: usageSource,
+      source: p.source || null,
+      operation: p.operation || null,
+      workflow_id: p.workflowId || p.workflow_id || null,
+      step_id: p.stepId || p.step_id || null,
       user_id: userId,
       agent_id: agentId,
       request_id: requestId,
@@ -350,6 +392,10 @@ function getStats({ from, to, days } = {}) {
   // 按 agent 汇总
   stats.by_agent = groupAggregate(records, 'agent_id');
   // 按天汇总（最多 30 天）
+  stats.by_category = groupAggregate(records, 'category');
+  stats.by_provider = groupAggregate(records, 'provider');
+  stats.by_model = groupAggregate(records, r => `${r.provider || '(unknown)'}/${r.model || '(unknown)'}`);
+  stats.by_agent = groupAggregate(records, 'agent_id');
   stats.by_day = groupByDay(records);
 
   return stats;
@@ -358,14 +404,20 @@ function getStats({ from, to, days } = {}) {
 function groupAggregate(records, field) {
   const groups = {};
   for (const r of records) {
-    const key = r[field] || '(unknown)';
+    const key = typeof field === 'function' ? field(r) : (r[field] || '(unknown)');
     if (!groups[key]) {
       groups[key] = {
         key,
+        provider: r.provider || null,
+        model: r.model || null,
+        category: r.category || null,
         calls: 0,
         tokens: 0,
         input_tokens: 0,
         output_tokens: 0,
+        video_seconds: 0,
+        image_count: 0,
+        tts_chars: 0,
         cost_usd: 0,
         success: 0,
         fail: 0,
@@ -376,12 +428,21 @@ function groupAggregate(records, field) {
     g.tokens += r.total_tokens || 0;
     g.input_tokens += r.input_tokens || 0;
     g.output_tokens += r.output_tokens || 0;
+    g.video_seconds += r.video_seconds || 0;
+    g.image_count += r.image_count || 0;
+    g.tts_chars += r.tts_chars || 0;
     g.cost_usd += r.cost_usd || 0;
     if (r.status === 'success') g.success++;
     else g.fail++;
   }
   return Object.values(groups)
-    .map(g => ({ ...g, cost_usd: Number(g.cost_usd.toFixed(4)) }))
+    .map(g => ({
+      ...g,
+      avg_input_tokens: g.calls ? Math.round(g.input_tokens / g.calls) : 0,
+      avg_output_tokens: g.calls ? Math.round(g.output_tokens / g.calls) : 0,
+      avg_total_tokens: g.calls ? Math.round(g.tokens / g.calls) : 0,
+      cost_usd: Number(g.cost_usd.toFixed(4)),
+    }))
     .sort((a, b) => b.cost_usd - a.cost_usd);
 }
 
@@ -390,10 +451,12 @@ function groupByDay(records) {
   for (const r of records) {
     const day = r.timestamp?.slice(0, 10) || 'unknown';
     if (!byDay[day]) {
-      byDay[day] = { day, calls: 0, tokens: 0, cost_usd: 0 };
+      byDay[day] = { day, calls: 0, tokens: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
     }
     byDay[day].calls++;
     byDay[day].tokens += r.total_tokens || 0;
+    byDay[day].input_tokens += r.input_tokens || 0;
+    byDay[day].output_tokens += r.output_tokens || 0;
     byDay[day].cost_usd += r.cost_usd || 0;
   }
   return Object.values(byDay)

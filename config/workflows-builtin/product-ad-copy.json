@@ -1,0 +1,70 @@
+{
+  "id": "product-ad-copy",
+  "name": "商品广告文案生成",
+  "category": "copywriting",
+  "version": 1,
+  "description": "输入商品名称和卖点，自动生成短视频口播脚本、封面标题、话题标签。适用于抖音/小红书带货视频。",
+  "inputs": [
+    {
+      "name": "product_name",
+      "type": "string",
+      "required": true,
+      "label": "商品名称",
+      "desc": "例如：玻尿酸精华液"
+    },
+    {
+      "name": "selling_points",
+      "type": "string",
+      "required": true,
+      "label": "核心卖点",
+      "desc": "用逗号分隔，例如：补水保湿、快速吸收、敏感肌可用、价格实惠"
+    },
+    {
+      "name": "target_audience",
+      "type": "string",
+      "required": false,
+      "label": "目标人群",
+      "desc": "例如：25-35岁女性、学生党、宝妈",
+      "default": "大众消费者"
+    },
+    {
+      "name": "duration",
+      "type": "string",
+      "required": false,
+      "label": "视频时长",
+      "desc": "30秒 / 60秒 / 90秒",
+      "default": "60秒"
+    }
+  ],
+  "steps": [
+    {
+      "id": "script",
+      "type": "text_gen",
+      "params": {
+        "system": "你是资深短视频带货文案策划，擅长抖音爆款内容创作。用户给你商品信息，你生成完整的数字人口播脚本。要求：1）开头3秒钩子（制造悬念/痛点/福利）；2）中间产品介绍（结合卖点，口语化，有节奏感）；3）结尾CTA（引导点赞、评论、购买）。按[开场][介绍][CTA]三段输出，每段标注大概时长。",
+        "prompt": "商品：{{$product_name}}\n卖点：{{$selling_points}}\n目标人群：{{$target_audience}}\n时长：{{$duration}}\n\n请生成数字人口播脚本："
+      }
+    },
+    {
+      "id": "title",
+      "type": "text_gen",
+      "params": {
+        "system": "你是爆款标题专家。根据商品信息生成5个抖音爆款封面标题，要求：有强烈情绪词、数字、对比冲突感，控制在20字以内，每行一个，不加序号。",
+        "prompt": "商品：{{$product_name}}\n卖点：{{$selling_points}}\n目标人群：{{$target_audience}}\n\n生成5个封面标题："
+      }
+    },
+    {
+      "id": "hashtags",
+      "type": "text_gen",
+      "params": {
+        "system": "你是社媒话题标签策略师。输出3层话题标签：头部大标签（百亿播放）2个、垂类标签3个、精准长尾标签5个。格式：# 开头，空格分隔，一行输出完。",
+        "prompt": "商品：{{$product_name}}，目标人群：{{$target_audience}}，生成话题标签："
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "script",   "from": "$script.text",   "type": "string", "label": "口播脚本" },
+    { "name": "titles",   "from": "$title.text",    "type": "string", "label": "封面标题（5条）" },
+    { "name": "hashtags", "from": "$hashtags.text",  "type": "string", "label": "话题标签" }
+  ]
+}

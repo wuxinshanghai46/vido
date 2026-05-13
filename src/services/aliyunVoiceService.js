@@ -229,8 +229,9 @@ async function waitForEnroll(taskOrVoiceId) {
 // 内存 LRU 缓存：同 voice_id + text + speed 命中直接复制结果文件，省 5-10 秒 WebSocket 时间
 const _synthCache = new Map();  // key → cachedFilePath
 const _CACHE_MAX = 200;
-function _cacheKey(voiceId, text, speed, format) {
-  return `${voiceId}::${format}::${speed}::${text.length}::${text.slice(0,80)}::${require('crypto').createHash('md5').update(text).digest('hex').slice(0,12)}`;
+const _CACHE_VERSION = 'cosyvoice-direct-voice-v2';
+function _cacheKey(voiceId, text, speed, pitch, format) {
+  return `${_CACHE_VERSION}::${voiceId}::${format}::${speed}::${pitch}::${text.length}::${text.slice(0,80)}::${require('crypto').createHash('md5').update(text).digest('hex').slice(0,12)}`;
 }
 function _cacheGet(key) {
   const v = _synthCache.get(key);
@@ -261,9 +262,10 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
   const format = (opts.format || 'mp3').toLowerCase();
   const outPath = outputPath.replace(/\.[^.]+$/, '') + '.' + format;
   const safeSpeed0 = Math.min(2.0, Math.max(0.5, Number(opts.speed) || 0.85));
+  const safePitch0 = Math.min(2.0, Math.max(0.5, Number(opts.pitch) || 1));
 
   // 缓存命中：直接复制
-  const cKey = _cacheKey(voiceId, cleanText, safeSpeed0, format);
+  const cKey = _cacheKey(voiceId, cleanText, safeSpeed0, safePitch0, format);
   if (!opts.skipCache) {
     const cached = _cacheGet(cKey);
     if (cached) {
@@ -283,27 +285,20 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
                       : 'cosyvoice-v3-flash';
   const model = opts.model || inferredModel;
 
-  // v1 音色 → v3-flash/v3.5-plus 映射（cosyvoice v3 模型用 _v3 后缀的音色名）
-  // 已验证可用：longxiaochun_v3（女）、longanyang（男）、longcheng（男）、longhua（男）
-  // 不可用：longwan / longjing / *_v2
-  const V1_FEMALE = ['longxiaochun', 'longxiaoxia', 'longxiaobai', 'longjing', 'longshu', 'longmiao', 'longtong', 'longjingjing', 'longyumi', 'longanyou', 'longxixi', 'longwan'];
-  const V1_MALE = ['longanyang', 'longcheng', 'longhua', 'longyuan', 'longfei', 'longxiang', 'longxiaocheng'];
+  // 只对阿里官方明确要求 v3 后缀的旧别名做点对点映射。
+  // 之前把一批女声统一映射到 longxiaochun_v3，会导致用户选不同阿里音色却听起来完全一样。
+  const LEGACY_VOICE_ALIASES = {
+    longxiaochun: 'longxiaochun_v3',
+  };
   let actualVoice = voiceId;
   if (model === 'cosyvoice-v3-flash' || model === 'cosyvoice-v3.5-plus') {
-    // 优先尝试加 _v3 后缀（如 longxiaochun → longxiaochun_v3）
-    if (/^long\w+$/.test(voiceId) && !/_v[23]$/.test(voiceId)) {
-      // 已知可直接用的 v1 音色
-      if (V1_MALE.includes(voiceId)) {
-        actualVoice = voiceId === 'longanyang' ? voiceId : voiceId; // 男声多数原名可用，先保留
-      } else if (V1_FEMALE.includes(voiceId)) {
-        actualVoice = 'longxiaochun_v3'; // 女声统一映射到已验证可用的
-      }
-    }
+    actualVoice = LEGACY_VOICE_ALIASES[voiceId] || voiceId;
     if (actualVoice !== voiceId) {
       console.log(`[Aliyun CosyVoice] 音色映射 ${voiceId} → ${actualVoice} (${model})`);
     }
   }
   const safeSpeed = safeSpeed0;
+  const safePitch = safePitch0;
   const sampleRate = opts.sampleRate || 22050;
 
   const WebSocket = require('ws');
@@ -344,7 +339,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
             sample_rate: sampleRate,
             volume: 50,
             rate: safeSpeed,
-            pitch: 1,
+            pitch: safePitch,
           },
           input: {},
         },

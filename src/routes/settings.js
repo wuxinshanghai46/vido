@@ -260,6 +260,18 @@ async function testProviderConnection(p) {
     const body = await httpGetCustom(`https://api.elevenlabs.io/v1/voices`, { 'xi-api-key': p.api_key });
     return checkResponseBody(body, p);
   }
+  // Topview requires both UID and bearer key. The upload credential endpoint is
+  // a low-cost auth check and does not start a generation task.
+  if (p.id === 'topview') {
+    const uid = p.topview_uid || p.api_uid || p.uid || process.env.TOPVIEW_UID;
+    if (!uid) throw new Error('Topview UID 未配置');
+    const body = await httpGetCustom('https://api.topview.ai/v1/upload/credential?format=png', {
+      'Topview-Uid': uid,
+      'Authorization': `Bearer ${p.api_key}`,
+      'Accept': '*/*',
+    });
+    return checkResponseBody(body, p);
+  }
 
   const authType = p.id === 'huggingface' ? 'hf' : 'bearer';
   const proto = urlObj.protocol === 'https:' ? 'https' : 'http';

@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const cookieParser = require('express').json; // express 内置无 cookie-parser，用手动解析
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,7 +11,37 @@ const PORT = process.env.PORT || 3000;
 const authStore = require('./models/authStore');
 authStore.init();
 
-const { authenticate, requireRole, requirePermission } = require('./middleware/auth');
+const { authenticate, requireRole, requirePermission, JWT_SECRET } = require('./middleware/auth');
+
+// ── 页面级认证 ──
+// 解析 Cookie 字符串（无需 cookie-parser 依赖）
+function _parseCookies(req) {
+  const out = {};
+  (req.headers.cookie || '').split(';').forEach(c => {
+    const [k, ...v] = c.trim().split('=');
+    if (k) out[k.trim()] = decodeURIComponent(v.join('=').trim());
+  });
+  return out;
+}
+
+// 受保护页面中间件：验证 vido_session Cookie（7天 JWT）
+function requirePageAuth(req, res, next) {
+  const cookies = _parseCookies(req);
+  const token = cookies.vido_session;
+  if (!token) {
+    const target = encodeURIComponent(req.originalUrl);
+    return res.redirect(`/?login=1&target=${target}`);
+  }
+  try {
+    const d = jwt.verify(token, JWT_SECRET);
+    if (!d.userId) throw new Error('no userId');
+    next();
+  } catch {
+    res.clearCookie('vido_session', { path: '/' });
+    const target = encodeURIComponent(req.originalUrl);
+    return res.redirect(`/?login=1&target=${target}`);
+  }
+}
 
 app.use(cors({ origin: true, credentials: true }));
 // 保留原始 body（签名验证用）仅对 /openapi/* 生效，避免影响其他路由的 JSON 解析
@@ -33,6 +63,15 @@ app.use((req, res, next) => {
 });
 
 // 静态文件（登录页、admin页不需要 auth）
+// 屏蔽未登录直接访问 .html 文件（防绕过路由层直接取源码）
+const _PUBLIC_HTML = new Set(['/home.html', '/login.html']);
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') && !_PUBLIC_HTML.has(req.path)) {
+    return requirePageAuth(req, res, next);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
 // === 公开路由（无需认证） ===
@@ -204,6 +243,24 @@ app.get('/api/i2v/images/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
+// 工作流资产（生成图、抠图、融合图等中间产物）— 必须公网可访问供 Replicate / DashScope 等拉取
+app.get('/public/workflow-assets/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/workflow-assets', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  const ext = path.extname(filename).toLowerCase();
+  const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'video/mp4',
+                    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+  res.writeHead(200, {
+    'Content-Type': mimeMap[ext] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    'Cache-Control': 'public, max-age=3600',
+  });
+  fs.createReadStream(filePath).pipe(res);
+});
+
 // 即梦数字人 Omni 临时素材（图片/音频）— 必须公网可访问供火山 API 拉取
 app.get('/public/jimeng-assets/:filename', (req, res) => {
   const fs = require('fs');
@@ -350,6 +407,8 @@ app.use('/api/comic', authenticate, requirePermission('comic'), require('./route
 app.use('/api/drama', authenticate, require('./routes/drama'));
 app.use('/api/ai-cap', authenticate, require('./routes/aiCap'));
 app.use('/api/workflow', authenticate, require('./routes/workflow'));
+// 新工作流引擎（复数）— JSON 驱动可配置 AI 工作流
+app.use('/api/workflows', authenticate, require('./routes/workflows'));
 app.use('/api/agent', authenticate, require('./routes/agent'));
 app.use('/api/portrait', authenticate, requirePermission('portrait'), require('./routes/portrait'));
 app.use('/api/workbench', authenticate, require('./routes/workbench'));
@@ -406,15 +465,17 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, '../public/home.htm
 app.get('/home', (req, res) => res.sendFile(path.join(__dirname, '../public/home.html')));
 app.get('/home.html', (req, res) => res.sendFile(path.join(__dirname, '../public/home.html')));
 // 登录后工作台
-app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
-app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
-app.get('/digital-human', (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
-app.get('/digital-human.html', (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
-// /login.html — admin 独立登录入口（user 端继续走首页 modal 登录，互不干扰）
+app.get('/dashboard', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+app.get('/index.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
+app.get('/digital-human', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+app.get('/digital-human.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+app.get('/ai-manga-drama', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
+app.get('/ai-manga-drama.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
+// /login.html — admin 独立登录入口（公开）
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
-app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
+app.get('/admin', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
+app.get('/admin.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
 
 // SPA 回退（排除 API 路径）
 app.get('*', (req, res) => {

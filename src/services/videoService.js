@@ -1449,6 +1449,174 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
   throw new Error('Veo 生成超时（10 分钟）');
 }
 
+function _topviewProviderConfig() {
+  const { getApiKey, loadSettings } = require('./settingsService');
+  const settings = loadSettings();
+  const provider = (settings.providers || []).find(p => p.id === 'topview' && p.enabled);
+  const apiKey = getApiKey('topview') || process.env.TOPVIEW_API_KEY;
+  const uid = provider?.topview_uid || provider?.api_uid || provider?.uid || process.env.TOPVIEW_UID;
+  const baseUrl = (provider?.api_url || 'https://api.topview.ai').replace(/\/$/, '');
+  if (!apiKey) throw new Error('未配置 Topview API Key');
+  if (!uid) throw new Error('未配置 Topview UID');
+  return { apiKey, uid, baseUrl };
+}
+
+function _topviewHeaders(cfg, json = false) {
+  const headers = {
+    'Topview-Uid': cfg.uid,
+    'Authorization': 'Bearer ' + cfg.apiKey,
+    'Accept': '*/*',
+    'User-Agent': 'VIDO/1.0',
+  };
+  if (json) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+function _topviewJson(method, url, cfg, bodyObj) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const body = bodyObj ? JSON.stringify(bodyObj) : '';
+    const headers = _topviewHeaders(cfg, !!bodyObj);
+    if (body) headers['Content-Length'] = Buffer.byteLength(body);
+    const req = https.request({
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + (urlObj.search || ''),
+      method,
+      headers,
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString();
+        let json;
+        try { json = JSON.parse(text); } catch { return reject(new Error('Topview 返回格式错误: ' + text.substring(0, 160))); }
+        if (res.statusCode >= 400) return reject(new Error(`Topview HTTP ${res.statusCode}: ${json.message || json.error || text.substring(0, 160)}`));
+        if (json.code && json.code !== '200') return reject(new Error(`Topview ${json.code}: ${json.message || json.errorMsg || '请求失败'}`));
+        resolve(json);
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(60000, () => { req.destroy(); reject(new Error('Topview 请求超时')); });
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+function _mimeFromExt(ext) {
+  const e = String(ext || '').toLowerCase();
+  if (e === '.jpg' || e === '.jpeg') return 'image/jpeg';
+  if (e === '.webp') return 'image/webp';
+  if (e === '.bmp') return 'image/bmp';
+  if (e === '.mp4') return 'video/mp4';
+  if (e === '.mov') return 'video/quicktime';
+  if (e === '.mp3') return 'audio/mpeg';
+  if (e === '.wav') return 'audio/wav';
+  return 'image/png';
+}
+
+function _topviewPutFile(uploadUrl, filePath) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(uploadUrl);
+    const stat = fs.statSync(filePath);
+    const req = https.request({
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + (urlObj.search || ''),
+      method: 'PUT',
+      headers: {
+        'Content-Length': stat.size,
+        'Content-Type': _mimeFromExt(path.extname(filePath)),
+        'User-Agent': 'VIDO/1.0',
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          return reject(new Error(`Topview S3 上传失败 HTTP ${res.statusCode}: ${Buffer.concat(chunks).toString().substring(0, 160)}`));
+        }
+        resolve();
+      });
+    });
+    req.on('error', reject);
+    fs.createReadStream(filePath).pipe(req);
+  });
+}
+
+async function _prepareTopviewUploadFile(imageUrl, outputDir, filename) {
+  fs.mkdirSync(outputDir, { recursive: true });
+  if (!imageUrl) throw new Error('Topview Image-to-Video 需要参考图');
+  if (imageUrl.startsWith('data:')) {
+    const m = imageUrl.match(/^data:([^;]+);base64,(.+)$/s);
+    if (!m) throw new Error('Topview 参考图 data URL 格式错误');
+    const ext = m[1].includes('jpeg') ? '.jpg' : (m[1].includes('webp') ? '.webp' : '.png');
+    const p = path.join(outputDir, `${filename}_topview_ref${ext}`);
+    fs.writeFileSync(p, Buffer.from(m[2], 'base64'));
+    return p;
+  }
+  if (/^https?:\/\//i.test(imageUrl)) {
+    const parsed = new URL(imageUrl);
+    let ext = path.extname(parsed.pathname).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg', '.webp', '.bmp'].includes(ext)) ext = '.png';
+    const p = path.join(outputDir, `${filename}_topview_ref${ext}`);
+    await downloadFile(imageUrl, p);
+    return p;
+  }
+  if (fs.existsSync(imageUrl)) return imageUrl;
+  throw new Error('Topview 参考图不存在或不是可访问 URL');
+}
+
+function _topviewMode(videoModel) {
+  const m = String(videoModel || '').toLowerCase();
+  if (m.includes('best')) return 'best';
+  if (m.includes('plus')) return 'plus';
+  if (m.includes('lite')) return 'lite';
+  return 'pro';
+}
+
+async function generateTopviewClip({ prompt, duration = 5, outputDir, filename, image_url, video_model }) {
+  const cfg = _topviewProviderConfig();
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `${filename}.mp4`);
+  const refPath = await _prepareTopviewUploadFile(image_url, outputDir, filename);
+  const ext = path.extname(refPath).replace('.', '').toLowerCase() || 'png';
+
+  const credential = await _topviewJson('GET', `${cfg.baseUrl}/v1/upload/credential?format=${encodeURIComponent(ext)}`, cfg);
+  const fileId = credential.result?.fileId || credential.fileId;
+  const uploadUrl = credential.result?.uploadUrl || credential.uploadUrl;
+  if (!fileId || !uploadUrl) throw new Error('Topview 未返回上传凭证');
+  await _topviewPutFile(uploadUrl, refPath);
+
+  const submit = await _topviewJson('POST', `${cfg.baseUrl}/v1/common_task/image2video/submit`, cfg, {
+    imageFileId: fileId,
+    prompt: (prompt || '').substring(0, 2000),
+    duration: String(Math.min(Math.max(Math.round(duration), 5), 10)),
+    mode: _topviewMode(video_model),
+    generatingCount: '1',
+  });
+  const taskId = submit.result?.taskId || submit.taskId;
+  if (!taskId) throw new Error('Topview 未返回 taskId');
+
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const status = await _topviewJson('GET', `${cfg.baseUrl}/v1/common_task/image2video/result?taskId=${encodeURIComponent(taskId)}&needCloudFrontUrl=true`, cfg);
+    const result = status.result || {};
+    const st = String(result.status || '').toLowerCase();
+    if (st === 'success' || st === 'succeeded' || st === 'completed') {
+      const videoUrl = result.videos?.[0]?.originVideo?.filePath
+        || result.videos?.[0]?.originVideo?.url
+        || result.videoUrl
+        || result.finishedVideoUrl;
+      if (!videoUrl) throw new Error('Topview 生成成功但未返回视频 URL');
+      await downloadFile(videoUrl, outputPath);
+      return { filePath: outputPath };
+    }
+    if (st === 'fail' || st === 'failed' || result.errorMsg) {
+      throw new Error('Topview 生成失败: ' + (result.errorMsg || JSON.stringify(result).substring(0, 200)));
+    }
+  }
+  throw new Error('Topview 生成超时');
+}
+
 // ——— MXAPI 聚合平台（即梦/Sora/Veo 代理）———
 async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
   const { getApiKey } = require('./settingsService');
@@ -1587,7 +1755,7 @@ async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, as
 // 视频供应商优先级（质量+稳定性排序，即梦/Kling 优先于免费的智谱）
 const VIDEO_PROVIDER_PRIORITY = [
   'deyunai', 'jimeng', 'mxapi', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
-  'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
+  'topview', 'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
 ];
 const PROVIDER_ID_MAP = { openai: 'sora' };
 
@@ -1633,6 +1801,11 @@ async function generateVideoClip(options) {
     return generateMxapiClip(options);
   }
 
+  if (model.startsWith('topview-')) {
+    console.log(`[VideoService] 模型 ${model} 通过 Topview 路由`);
+    return generateTopviewClip(options);
+  }
+
   // FAL 代理的模型（包括 Seedance via FAL、HunyuanVideo 1.5 via FAL、Wan 2.2 via FAL 等）
   if (isFalModel && provider !== 'fal') {
     console.log(`[VideoService] 模型 ${model} 通过 FAL 代理路由`);
@@ -1651,6 +1824,7 @@ async function generateVideoClip(options) {
     case 'luma':        return generateLumaClip(options);
     case 'minimax':     return generateMinimaxClip(options);
     case 'veo':         return generateVeoClip(options);
+    case 'topview':     return generateTopviewClip(options);
     case 'jimeng':      return generateJimengClip(options);
     case 'mxapi':       return generateMxapiClip(options);
     case 'zhipu':       return generateZhipuClip(options);

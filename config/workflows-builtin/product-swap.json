@@ -1,0 +1,61 @@
+{
+  "id": "product-swap",
+  "name": "ComfyUI 产品替换",
+  "category": "product",
+  "version": 1,
+  "description": "上传一张「模特拿着商品」的现成场景照 + 你的新产品图，AI 把场景里的原商品精准替换成你的产品。模特/姿势/场景/光线全保留 — 这是 Topview 实际用的招（不是「重新生成」）。基于 multi-image-kontext-pro（Replicate flux-kontext）。",
+  "inputs": [
+    {
+      "name": "sceneUrl",
+      "type": "string",
+      "required": true,
+      "label": "场景照 URL",
+      "desc": "已有的「模特拿着某商品」的成片（比如博主原图）"
+    },
+    {
+      "name": "newProductUrl",
+      "type": "string",
+      "required": true,
+      "label": "新产品图 URL",
+      "desc": "要替换进去的产品（最好白底正面照）"
+    },
+    {
+      "name": "productHint",
+      "type": "string",
+      "label": "产品描述（可选，帮助模型对齐）",
+      "default": "a smartphone with screen on, vertical orientation"
+    },
+    {
+      "name": "aspectRatio",
+      "type": "string",
+      "label": "输出比例",
+      "default": "match_input_image"
+    }
+  ],
+  "steps": [
+    {
+      "id": "cleanProduct",
+      "type": "cutout",
+      "params": {
+        "imageUrl": "$newProductUrl"
+      },
+      "ignoreError": true
+    },
+    {
+      "id": "swap",
+      "type": "image_fuse",
+      "params": {
+        "image1Url": "$sceneUrl",
+        "image2Url": "$newProductUrl",
+        "prompt": "Replace the product in [Image 1] with the EXACT product from [Image 2]. Keep [Image 1] person identity, pose, hand grip, lighting, perspective and background unchanged. The new product must match [Image 2] category, shape, color, screen content, logo and proportions exactly. Hint: {{productHint}}. Photo-realistic, seamless integration, natural contact shadow on the product, no floating sticker, no pasted look, no category swap.",
+        "aspectRatio": "$aspectRatio",
+        "engine": "flux-kontext"
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "imageUrl", "from": "$swap.imageUrl", "type": "string", "label": "产品替换后图片" },
+    { "name": "engineUsed", "from": "$swap.engineUsed", "type": "string", "label": "引擎" },
+    { "name": "cleanProductUrl", "from": "$cleanProduct.imageUrl", "type": "string", "label": "抠图后的产品（中间产物）" }
+  ]
+}

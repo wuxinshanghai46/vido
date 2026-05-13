@@ -1,0 +1,63 @@
+{
+  "id": "product-cutout-scene",
+  "name": "商品抠图+场景合成",
+  "category": "image",
+  "version": 1,
+  "description": "上传商品图 → 自动抠图去背景 → 生成产品场景图，一键制作商品宣传素材。",
+  "inputs": [
+    {
+      "name": "productImage",
+      "type": "image",
+      "required": true,
+      "label": "商品图片",
+      "desc": "上传商品原图（支持 JPG/PNG，建议白底或纯色背景）"
+    },
+    {
+      "name": "sceneDesc",
+      "type": "string",
+      "required": false,
+      "label": "场景描述",
+      "desc": "希望的展示场景，例如：现代简约桌面，自然光、极简风格",
+      "default": "高端简约展示台，柔和影棚灯光，纯色渐变背景"
+    },
+    {
+      "name": "productName",
+      "type": "string",
+      "required": false,
+      "label": "商品名称",
+      "desc": "用于生成场景提示词",
+      "default": "产品"
+    }
+  ],
+  "steps": [
+    {
+      "id": "cutout",
+      "type": "cutout",
+      "params": {
+        "image": "$productImage"
+      }
+    },
+    {
+      "id": "scene_prompt",
+      "type": "text_gen",
+      "params": {
+        "system": "你是商业摄影提示词专家。根据商品名称和场景需求，生成一段专业的商品场景图生成提示词（英文）。要求：突出商品主体、场景自然、光影专业、不出现人物。只输出英文提示词，不加解释。",
+        "prompt": "商品：{{$productName}}，展示场景：{{$sceneDesc}}"
+      }
+    },
+    {
+      "id": "scene_image",
+      "type": "image_gen",
+      "params": {
+        "prompt": "$scene_prompt.text",
+        "ratio": "1:1",
+        "negative": "person, human, hands, cartoon, anime, illustration, watermark, text, blurry"
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "cutoutUrl",  "from": "$cutout.outputUrl",       "type": "image",  "label": "抠图结果（透明背景）" },
+    { "name": "sceneUrl",   "from": "$scene_image.imageUrl",   "type": "image",  "label": "场景背景图" },
+    { "name": "scenePrompt","from": "$scene_prompt.text",      "type": "string", "label": "使用的场景提示词" }
+  ]
+}

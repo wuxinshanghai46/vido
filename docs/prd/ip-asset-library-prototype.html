@@ -1,0 +1,652 @@
+<!-- VIDO IP 资产库 静态原型 v1.0 - 仅用于产品评审 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDO – IP 资产库</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0c12;--bg2:#12121a;--bg3:#1a1a24;--bg4:#222230;--bg5:#2a2a3c;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.11);
+  --text:#edeef2;--text2:rgba(237,238,242,.6);--text3:rgba(237,238,242,.32);
+  --accent:#7c6cf0;--cyan:#21FFF3;--success:#00e5a0;--warning:#f5c518;--error:#ff4d6d;
+  --r:10px;--rl:14px;
+  --grad:linear-gradient(135deg,#7c6cf0 0%,#5b8def 60%,#43cfb6 100%);
+}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden;font-size:14px}
+
+/* SIDEBAR */
+.sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0}
+.sidebar-logo{padding:20px 18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.logo-mark{width:30px;height:30px;background:var(--grad);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.logo-text{font-size:16px;font-weight:700;letter-spacing:.3px}
+.logo-text span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar-nav{flex:1;padding:10px 10px;overflow-y:auto}
+.nav-section{margin-bottom:18px}
+.nav-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;padding:0 8px;margin-bottom:6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r);color:var(--text2);cursor:pointer;transition:all .18s;font-size:13.5px}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{background:rgba(124,108,240,.15);color:var(--accent);font-weight:600}
+.nav-item .icon{width:18px;text-align:center;font-size:15px}
+.sidebar-bottom{padding:14px 10px;border-top:1px solid var(--border)}
+.user-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r);cursor:pointer}
+.user-row:hover{background:var(--bg3)}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:12px}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:16px;background:var(--bg2);flex-shrink:0}
+.topbar-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.topbar-spacer{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 18px;border-radius:999px;border:none;cursor:pointer;font-size:13.5px;font-weight:600;transition:all .18s}
+.btn-primary{background:var(--grad);color:#fff}
+.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}
+.btn-ghost:hover{background:var(--bg4);color:var(--text)}
+.btn-sm{height:30px;padding:0 14px;font-size:12.5px}
+.btn-danger{background:rgba(255,77,109,.15);color:var(--error);border:1px solid rgba(255,77,109,.3)}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* TABS */
+.tab-bar{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab{padding:10px 16px;cursor:pointer;color:var(--text2);font-size:13.5px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .18s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan);font-weight:600}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:0 12px;height:36px;flex:1;max-width:300px}
+.search-box input{background:transparent;border:none;outline:none;color:var(--text);font-size:13.5px;flex:1}
+.search-box input::placeholder{color:var(--text3)}
+.search-icon{color:var(--text3);font-size:14px}
+.filter-select{height:36px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:0 12px;color:var(--text2);font-size:13.5px;cursor:pointer;outline:none}
+.count-label{margin-left:auto;color:var(--text3);font-size:13px}
+
+/* GRID */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+
+/* CARD BASE */
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;cursor:pointer;transition:all .2s;position:relative}
+.card:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+
+/* CHARACTER CARD */
+.char-card .avatar-wrap{position:relative;padding-top:100%;overflow:hidden}
+.char-card .avatar-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:64px}
+.char-card .ref-badge{position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);color:var(--text2);font-size:11px;padding:3px 8px;border-radius:999px}
+.char-card .card-body{padding:12px}
+.char-card .char-name{font-size:14px;font-weight:600;margin-bottom:8px}
+.tag-row{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--bg5);color:var(--text2)}
+.tag-cyan{background:rgba(33,255,243,.1);color:var(--cyan)}
+.tag-purple{background:rgba(124,108,240,.12);color:var(--accent)}
+.tag-green{background:rgba(0,229,160,.1);color:var(--success)}
+.tag-yellow{background:rgba(245,197,24,.1);color:var(--warning)}
+
+/* hover overlay */
+.card-overlay{position:absolute;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;gap:10px;opacity:0;transition:opacity .2s;pointer-events:none}
+.card:hover .card-overlay{opacity:1;pointer-events:all}
+.card-overlay .btn{pointer-events:all}
+
+/* PRODUCT CARD */
+.prod-card .thumb{position:relative;padding-top:56.25%;overflow:hidden}
+.prod-card .thumb-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px}
+.prod-card .card-body{padding:12px}
+.prod-card .prod-name{font-size:13.5px;font-weight:600;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prod-meta{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.prod-price{font-size:14px;font-weight:700;color:var(--warning)}
+.prod-ref{font-size:11px;color:var(--text3)}
+
+/* SCENE CARD */
+.scene-card .thumb{position:relative;padding-top:60%;overflow:hidden}
+.scene-card .thumb-bg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:52px}
+.scene-card .card-body{padding:12px}
+.scene-card .scene-name{font-size:13.5px;font-weight:600;margin-bottom:4px}
+.scene-prompt{font-size:11.5px;color:var(--text3);line-height:1.55;margin:6px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.scene-footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.view-icon{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px}
+
+/* PERM TABLE */
+.perm-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:14px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r)}
+.perm-label{color:var(--text2);font-size:13px;white-space:nowrap}
+.radio-group{display:flex;gap:4px}
+.radio-btn{padding:5px 12px;border-radius:999px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:12.5px;cursor:pointer;transition:all .15s}
+.radio-btn.active{background:rgba(33,255,243,.12);border-color:var(--cyan);color:var(--cyan)}
+.perm-table-wrap{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.perm-table{width:100%;border-collapse:collapse}
+.perm-table th{padding:12px 16px;text-align:left;font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border2)}
+.perm-table td{padding:10px 16px;border-bottom:1px solid var(--border);font-size:13.5px;vertical-align:middle}
+.perm-table tr:last-child td{border-bottom:none}
+.perm-table tr:nth-child(even) td{background:rgba(255,255,255,.018)}
+.perm-table tr:hover td{background:var(--bg4)}
+.cell-user{display:flex;align-items:center;gap:10px}
+.cell-avatar{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.perm-cell{display:flex;align-items:center;gap:8px}
+.perm-check{width:16px;height:16px;accent-color:var(--cyan);cursor:pointer}
+.quota-input{width:52px;height:28px;background:var(--bg5);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;text-align:center;outline:none;padding:0 6px}
+.quota-input:disabled{opacity:.3;cursor:not-allowed}
+.perm-footer{margin-top:16px;display:flex;justify-content:flex-end}
+
+/* SLIDE PANEL */
+.slide-panel{position:fixed;top:0;right:0;width:360px;height:100vh;background:var(--bg2);border-left:1px solid var(--border2);z-index:100;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow-y:auto}
+.slide-panel.open{transform:translateX(0)}
+.slide-header{padding:20px 20px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.slide-title{font-size:15px;font-weight:700}
+.slide-close{width:30px;height:30px;border-radius:50%;background:var(--bg4);border:none;color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.slide-close:hover{background:var(--bg5);color:var(--text)}
+.slide-body{padding:20px}
+.slide-avatar{width:80px;height:80px;border-radius:var(--rl);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:40px}
+.slide-name{text-align:center;font-size:18px;font-weight:700;margin-bottom:6px}
+.slide-tags{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;margin-bottom:20px}
+.slide-section{margin-bottom:16px}
+.slide-section-title{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;font-weight:600}
+.stat-row{display:flex;gap:10px}
+.stat-box{flex:1;background:var(--bg3);border-radius:var(--r);padding:12px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;color:var(--cyan)}
+.stat-lbl{font-size:11px;color:var(--text3);margin-top:2px}
+.slide-actions{display:flex;gap:8px;margin-top:20px}
+.slide-actions .btn{flex:1;justify-content:center}
+.overlay-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99;display:none}
+.overlay-bg.show{display:block}
+
+/* DEMO SECTION */
+.demo-section{margin-top:48px;padding-top:32px;border-top:2px dashed var(--border2)}
+.demo-title{font-size:13px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:24px;display:flex;align-items:center;gap:10px}
+.demo-title::before,.demo-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.wizard-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rl);padding:24px}
+.wizard-tabs{display:flex;gap:6px;margin-bottom:20px}
+.w-tab{padding:8px 14px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--text2);font-size:13px;cursor:pointer;transition:all .15s}
+.w-tab.active{background:rgba(33,255,243,.1);border-color:var(--cyan);color:var(--cyan);font-weight:600}
+.w-tab:hover:not(.active){background:var(--bg4)}
+.scroll-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin;scrollbar-color:var(--bg5) transparent}
+.scroll-row::-webkit-scrollbar{height:4px}
+.scroll-row::-webkit-scrollbar-track{background:transparent}
+.scroll-row::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px}
+.pick-card{min-width:110px;max-width:110px;border-radius:var(--r);border:2px solid var(--border);background:var(--bg2);cursor:pointer;transition:all .18s;overflow:hidden;flex-shrink:0}
+.pick-card:hover{border-color:var(--accent)}
+.pick-card.selected{border-color:var(--cyan)}
+.pick-card.selected .pick-check{opacity:1}
+.pick-thumb{height:88px;display:flex;align-items:center;justify-content:center;font-size:38px;position:relative}
+.pick-check{position:absolute;top:6px;right:6px;width:20px;height:20px;background:var(--cyan);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#000;font-weight:800;opacity:0;transition:opacity .15s}
+.pick-label{padding:6px 8px;font-size:11.5px;font-weight:500;text-align:center;color:var(--text2)}
+.selected-bar{margin-top:16px;padding:12px 16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);display:flex;align-items:center;justify-content:space-between}
+.selected-info{font-size:13px;color:var(--text2)}
+.selected-info strong{color:var(--cyan)}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">🎬</div>
+    <div class="logo-text"><span>VIDO</span></div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section">
+      <div class="nav-label">创作</div>
+      <div class="nav-item" onclick="log('dashboard')"><span class="icon">🏠</span>工作台</div>
+      <div class="nav-item" onclick="log('projects')"><span class="icon">🎬</span>我的项目</div>
+      <div class="nav-item" onclick="log('i2v')"><span class="icon">🖼️</span>图生视频</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">资产</div>
+      <div class="nav-item active"><span class="icon">🎭</span>IP 资产库</div>
+      <div class="nav-item" onclick="log('kb')"><span class="icon">📚</span>知识库</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">管理</div>
+      <div class="nav-item" onclick="log('digital-human')"><span class="icon">🤖</span>数字人</div>
+      <div class="nav-item" onclick="log('settings')"><span class="icon">⚙️</span>设置</div>
+      <div class="nav-item" onclick="log('team')"><span class="icon">👥</span>团队</div>
+    </div>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="user-row">
+      <div class="user-avatar">A</div>
+      <div>
+        <div style="font-size:13px;font-weight:600">Admin</div>
+        <div style="font-size:11px;color:var(--text3)">管理员</div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">🎭 IP 资产库</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost btn-sm" onclick="log('import')">⬆ 导入</button>
+    <button class="btn btn-primary" onclick="log('new-char')">＋ 新建角色</button>
+  </div>
+
+  <div class="content" id="mainContent">
+
+    <!-- TABS -->
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('char',this)">角色</div>
+      <div class="tab" onclick="switchTab('prod',this)">商品</div>
+      <div class="tab" onclick="switchTab('scene',this)">场景</div>
+      <div class="tab" onclick="switchTab('perm',this)">权限矩阵</div>
+    </div>
+
+    <!-- ===== TAB: 角色 ===== -->
+    <div id="tab-char">
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="搜索角色名称...">
+        </div>
+        <select class="filter-select">
+          <option>全部风格</option>
+          <option>写实</option>
+          <option>古风</option>
+          <option>赛博</option>
+          <option>可爱</option>
+        </select>
+        <select class="filter-select">
+          <option>全部性别</option>
+          <option>男</option>
+          <option>女</option>
+        </select>
+        <span class="count-label">共 18 个角色</span>
+      </div>
+      <div class="grid-4">
+        <!-- card 1 -->
+        <div class="card char-card" onclick="openPanel('小美','👩‍🦰','32','写实','甜美','女','linear-gradient(135deg,#f093fb,#f5576c)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#f093fb,#f5576c)">👩‍🦰</div><div class="ref-badge">⬡ 32 次引用</div></div>
+          <div class="card-body"><div class="char-name">小美</div><div class="tag-row"><span class="tag tag-cyan">写实</span><span class="tag tag-purple">甜美</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','小美')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','小美')">🗑 删除</button></div>
+        </div>
+        <!-- card 2 -->
+        <div class="card char-card" onclick="openPanel('职场男','👨‍💼','18','写实','商务','男','linear-gradient(135deg,#4facfe,#00f2fe)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">👨‍💼</div><div class="ref-badge">⬡ 18 次引用</div></div>
+          <div class="card-body"><div class="char-name">职场男</div><div class="tag-row"><span class="tag tag-cyan">写实</span><span class="tag tag-yellow">商务</span><span class="tag">男</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','职场男')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','职场男')">🗑 删除</button></div>
+        </div>
+        <!-- card 3 -->
+        <div class="card char-card" onclick="openPanel('古装仙','🧝‍♀️','7','古风','飘逸','女','linear-gradient(135deg,#a18cd1,#fbc2eb)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb)">🧝‍♀️</div><div class="ref-badge">⬡ 7 次引用</div></div>
+          <div class="card-body"><div class="char-name">古装仙</div><div class="tag-row"><span class="tag tag-purple">古风</span><span class="tag">飘逸</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','古装仙')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','古装仙')">🗑 删除</button></div>
+        </div>
+        <!-- card 4 -->
+        <div class="card char-card" onclick="openPanel('赛博女','🤖','44','赛博','未来','女','linear-gradient(135deg,#0f0c29,#302b63,#24243e)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#0f0c29,#302b63,#24243e)">🤖</div><div class="ref-badge">⬡ 44 次引用</div></div>
+          <div class="card-body"><div class="char-name">赛博女</div><div class="tag-row"><span class="tag tag-cyan">赛博</span><span class="tag">未来</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','赛博女')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','赛博女')">🗑 删除</button></div>
+        </div>
+        <!-- card 5 -->
+        <div class="card char-card" onclick="openPanel('甜美萌','🧒‍♀️','12','可爱','学生','女','linear-gradient(135deg,#fccb90,#d57eeb)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#fccb90,#d57eeb)">🧒</div><div class="ref-badge">⬡ 12 次引用</div></div>
+          <div class="card-body"><div class="char-name">甜美萌</div><div class="tag-row"><span class="tag tag-green">可爱</span><span class="tag">学生</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','甜美萌')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','甜美萌')">🗑 删除</button></div>
+        </div>
+        <!-- card 6 -->
+        <div class="card char-card" onclick="openPanel('知性姐','👩‍🏫','29','写实','知性','女','linear-gradient(135deg,#667eea,#764ba2)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#667eea,#764ba2)">👩‍🏫</div><div class="ref-badge">⬡ 29 次引用</div></div>
+          <div class="card-body"><div class="char-name">知性姐</div><div class="tag-row"><span class="tag tag-cyan">写实</span><span class="tag tag-purple">知性</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','知性姐')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','知性姐')">🗑 删除</button></div>
+        </div>
+        <!-- card 7 -->
+        <div class="card char-card" onclick="openPanel('校园男','👦','5','青春','学生','男','linear-gradient(135deg,#43e97b,#38f9d7)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">👦</div><div class="ref-badge">⬡ 5 次引用</div></div>
+          <div class="card-body"><div class="char-name">校园男</div><div class="tag-row"><span class="tag tag-green">青春</span><span class="tag">学生</span><span class="tag">男</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','校园男')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','校园男')">🗑 删除</button></div>
+        </div>
+        <!-- card 8 -->
+        <div class="card char-card" onclick="openPanel('国风女','👸','38','古风','优雅','女','linear-gradient(135deg,#c94b4b,#4b134f)')">
+          <div class="avatar-wrap"><div class="avatar-bg" style="background:linear-gradient(135deg,#c94b4b,#4b134f)">👸</div><div class="ref-badge">⬡ 38 次引用</div></div>
+          <div class="card-body"><div class="char-name">国风女</div><div class="tag-row"><span class="tag tag-purple">古风</span><span class="tag">优雅</span><span class="tag">女</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','国风女')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','国风女')">🗑 删除</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: 商品 ===== -->
+    <div id="tab-prod" style="display:none">
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="搜索商品名称...">
+        </div>
+        <select class="filter-select">
+          <option>全部分类</option>
+          <option>护肤</option>
+          <option>健康</option>
+          <option>食品</option>
+          <option>家居</option>
+          <option>数码</option>
+          <option>服饰</option>
+        </select>
+        <span class="count-label">共 8 个商品</span>
+      </div>
+      <div class="grid-4">
+        <div class="card prod-card" onclick="log('美白精华套装')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#fdfbfb,#ebedee)">💄</div></div>
+          <div class="card-body"><div class="prod-name">美白精华套装</div><div class="tag-row"><span class="tag tag-purple">护肤</span></div><div class="prod-meta"><span class="prod-price">¥298</span><span class="prod-ref">引用 15 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','beauty')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','beauty')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('运动健康仪')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#e0f7fa,#006064)">💪</div></div>
+          <div class="card-body"><div class="prod-name">运动健康仪</div><div class="tag-row"><span class="tag tag-green">健康</span></div><div class="prod-meta"><span class="prod-price">¥1,299</span><span class="prod-ref">引用 6 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','health')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','health')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('有机红枣礼盒')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#8b0000,#e53935)">🍎</div></div>
+          <div class="card-body"><div class="prod-name">有机红枣礼盒</div><div class="tag-row"><span class="tag tag-yellow">食品</span></div><div class="prod-meta"><span class="prod-price">¥88</span><span class="prod-ref">引用 27 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','food1')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','food1')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('智能香薰机')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#2b5876,#4e4376)">🕯️</div></div>
+          <div class="card-body"><div class="prod-name">智能香薰机</div><div class="tag-row"><span class="tag">家居</span></div><div class="prod-meta"><span class="prod-price">¥459</span><span class="prod-ref">引用 11 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','home')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','home')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('高蛋白能量棒')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#f7971e,#ffd200)">⚡</div></div>
+          <div class="card-body"><div class="prod-name">高蛋白能量棒</div><div class="tag-row"><span class="tag tag-yellow">食品</span></div><div class="prod-meta"><span class="prod-price">¥39</span><span class="prod-ref">引用 8 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','bar')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','bar')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('复古胶片相机')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#2c3e50,#bdc3c7)">📷</div></div>
+          <div class="card-body"><div class="prod-name">复古胶片相机</div><div class="tag-row"><span class="tag">数码</span></div><div class="prod-meta"><span class="prod-price">¥899</span><span class="prod-ref">引用 14 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','cam')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','cam')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('真丝睡衣套装')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#f8bbd9,#c2185b)">👘</div></div>
+          <div class="card-body"><div class="prod-name">真丝睡衣套装</div><div class="tag-row"><span class="tag tag-purple">服饰</span></div><div class="prod-meta"><span class="prod-price">¥568</span><span class="prod-ref">引用 22 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','cloth')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','cloth')">🗑 删除</button></div>
+        </div>
+        <div class="card prod-card" onclick="log('燕窝即食礼盒')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#fffde7,#c8a415)">🥣</div></div>
+          <div class="card-body"><div class="prod-name">燕窝即食礼盒</div><div class="tag-row"><span class="tag tag-yellow">食品</span></div><div class="prod-meta"><span class="prod-price">¥698</span><span class="prod-ref">引用 31 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','nest')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','nest')">🗑 删除</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: 场景 ===== -->
+    <div id="tab-scene" style="display:none">
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="搜索场景名称...">
+        </div>
+        <select class="filter-select">
+          <option>全部视角</option>
+          <option>正面</option>
+          <option>侧面</option>
+          <option>俯视</option>
+        </select>
+        <span class="count-label">共 6 个场景</span>
+      </div>
+      <div class="grid-3">
+        <div class="card scene-card" onclick="log('室内白色展台')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#f5f7fa,#c3cfe2)">🏛️</div></div>
+          <div class="card-body"><div class="scene-name">室内白色展台</div><div class="tag-row"><span class="tag">写实</span><span class="tag">室内</span></div><div class="scene-prompt">a clean white studio with soft diffused light, minimalist background, product display setup...</div><div class="scene-footer"><span class="view-icon">👁 正面</span><span class="prod-ref">引用 9 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s1')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s1')">🗑 删除</button></div>
+        </div>
+        <div class="card scene-card" onclick="log('户外公园小径')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#d4fc79,#96e6a1)">🌿</div></div>
+          <div class="card-body"><div class="scene-name">户外公园小径</div><div class="tag-row"><span class="tag">写实</span><span class="tag">户外</span></div><div class="scene-prompt">outdoor park pathway with dappled sunlight through trees, natural green bokeh...</div><div class="scene-footer"><span class="view-icon">👁 侧面</span><span class="prod-ref">引用 14 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s2')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s2')">🗑 删除</button></div>
+        </div>
+        <div class="card scene-card" onclick="log('办公桌面铺陈')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#f6d365,#fda085)">🗂️</div></div>
+          <div class="card-body"><div class="scene-name">办公桌面铺陈</div><div class="tag-row"><span class="tag">俯拍</span><span class="tag">商务</span></div><div class="scene-prompt">top-down flat lay on wooden desk with stationery, coffee cup and notebooks arranged...</div><div class="scene-footer"><span class="view-icon">👁 俯视</span><span class="prod-ref">引用 21 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s3')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s3')">🗑 删除</button></div>
+        </div>
+        <div class="card scene-card" onclick="log('现代客厅暖光')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#f093fb,#f5576c,#f7971e)">🛋️</div></div>
+          <div class="card-body"><div class="scene-name">现代客厅暖光</div><div class="tag-row"><span class="tag">写实</span><span class="tag">家居</span></div><div class="scene-prompt">modern living room with warm ambient lighting, comfortable sofa, bookshelf background...</div><div class="scene-footer"><span class="view-icon">👁 正面</span><span class="prod-ref">引用 18 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s4')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s4')">🗑 删除</button></div>
+        </div>
+        <div class="card scene-card" onclick="log('直播间设置')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">📡</div></div>
+          <div class="card-body"><div class="scene-name">直播间设置</div><div class="tag-row"><span class="tag tag-cyan">直播</span><span class="tag">室内</span></div><div class="scene-prompt">professional live streaming studio with ring light, green screen, product shelves...</div><div class="scene-footer"><span class="view-icon">👁 正面</span><span class="prod-ref" style="color:var(--cyan)">引用 35 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s5')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s5')">🗑 删除</button></div>
+        </div>
+        <div class="card scene-card" onclick="log('咖啡店窗边')">
+          <div class="thumb"><div class="thumb-bg" style="background:linear-gradient(135deg,#c79081,#dfa579)">☕</div></div>
+          <div class="card-body"><div class="scene-name">咖啡店窗边</div><div class="tag-row"><span class="tag">写实</span><span class="tag">休闲</span></div><div class="scene-prompt">cozy coffee shop window seat with steam rising from cup, warm golden hour light...</div><div class="scene-footer"><span class="view-icon">👁 侧面</span><span class="prod-ref">引用 12 次</span></div></div>
+          <div class="card-overlay"><button class="btn btn-sm btn-ghost" onclick="ev(event,'edit','s6')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="ev(event,'del','s6')">🗑 删除</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TAB: 权限矩阵 ===== -->
+    <div id="tab-perm" style="display:none">
+      <div class="perm-toolbar">
+        <span class="perm-label">用户：</span>
+        <select class="filter-select">
+          <option>全部用户</option>
+          <option>张三</option>
+          <option>李四</option>
+          <option>王五</option>
+          <option>测试账号</option>
+        </select>
+        <span class="perm-label" style="margin-left:16px">资产类型：</span>
+        <div class="radio-group">
+          <button class="radio-btn active" onclick="setRadio(this)">角色</button>
+          <button class="radio-btn" onclick="setRadio(this)">商品</button>
+          <button class="radio-btn" onclick="setRadio(this)">场景</button>
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn btn-ghost btn-sm" onclick="log('batch-grant')">批量授权</button>
+        <button class="btn btn-ghost btn-sm" onclick="log('batch-revoke')">批量撤销</button>
+      </div>
+      <div class="perm-table-wrap">
+        <table class="perm-table">
+          <thead>
+            <tr>
+              <th style="width:150px">用户</th>
+              <th>小美</th>
+              <th>赛博女</th>
+              <th>知性姐</th>
+              <th>国风女</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="cell-user"><div class="cell-avatar" style="background:linear-gradient(135deg,#667eea,#764ba2)">张</div>张三</div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="100" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="50" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="200" min="0"></div></td>
+            </tr>
+            <tr>
+              <td><div class="cell-user"><div class="cell-avatar" style="background:linear-gradient(135deg,#f093fb,#f5576c)">李</div>李四</div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="30" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="80" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+            </tr>
+            <tr>
+              <td><div class="cell-user"><div class="cell-avatar" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">王</div>王五</div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="999" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="999" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="999" min="0"></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" checked onchange="toggleQuota(this)"><input class="quota-input" type="number" value="999" min="0"></div></td>
+            </tr>
+            <tr>
+              <td><div class="cell-user"><div class="cell-avatar" style="background:linear-gradient(135deg,#f6d365,#fda085)">测</div>测试账号</div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+              <td><div class="perm-cell"><input type="checkbox" class="perm-check" onchange="toggleQuota(this)"><input class="quota-input" type="number" value="0" min="0" disabled></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="perm-footer">
+        <button class="btn btn-primary" onclick="log('batch-save')">💾 批量保存</button>
+      </div>
+    </div>
+
+    <!-- ===== DEMO SECTION ===== -->
+    <div class="demo-section">
+      <div class="demo-title">创作端集成 Demo — 数字人向导 Step 1</div>
+      <div class="wizard-card">
+        <div style="margin-bottom:6px;font-size:13px;color:var(--text3)">Step 1 / 4 &nbsp;·&nbsp; 选择形象</div>
+        <div style="font-size:17px;font-weight:700;margin-bottom:16px">选择你的数字人形象</div>
+        <div class="wizard-tabs">
+          <button class="w-tab" onclick="switchWTab(this)">✨ 生成形象</button>
+          <button class="w-tab" onclick="switchWTab(this)">📷 上传照片</button>
+          <button class="w-tab active" onclick="switchWTab(this)">🎭 选已有 IP ★</button>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">从 IP 资产库选择已创建的角色形象，自动继承风格与提示词</div>
+        <div class="scroll-row" id="pickRow">
+          <div class="pick-card selected" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#f093fb,#f5576c)">👩‍🦰<div class="pick-check">✓</div></div>
+            <div class="pick-label">小美</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#4facfe,#00f2fe)">👨‍💼<div class="pick-check">✓</div></div>
+            <div class="pick-label">职场男</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb)">🧝‍♀️<div class="pick-check">✓</div></div>
+            <div class="pick-label">古装仙</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#0f0c29,#302b63)">🤖<div class="pick-check">✓</div></div>
+            <div class="pick-label">赛博女</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#fccb90,#d57eeb)">🧒<div class="pick-check">✓</div></div>
+            <div class="pick-label">甜美萌</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#667eea,#764ba2)">👩‍🏫<div class="pick-check">✓</div></div>
+            <div class="pick-label">知性姐</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#43e97b,#38f9d7)">👦<div class="pick-check">✓</div></div>
+            <div class="pick-label">校园男</div>
+          </div>
+          <div class="pick-card" onclick="togglePick(this)">
+            <div class="pick-thumb" style="background:linear-gradient(135deg,#c94b4b,#4b134f)">👸<div class="pick-check">✓</div></div>
+            <div class="pick-label">国风女</div>
+          </div>
+        </div>
+        <div class="selected-bar">
+          <div class="selected-info">已选：<strong id="selectedName">小美</strong> &nbsp;·&nbsp; 写实 / 甜美 / 女</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="log('prev')">← 上一步</button>
+            <button class="btn btn-primary btn-sm" onclick="log('next')">下一步 →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- SLIDE PANEL -->
+<div class="overlay-bg" id="overlayBg" onclick="closePanel()"></div>
+<div class="slide-panel" id="slidePanel">
+  <div class="slide-header">
+    <span class="slide-title" id="panelTitle">角色详情</span>
+    <button class="slide-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="slide-body">
+    <div class="slide-avatar" id="panelAvatar"></div>
+    <div class="slide-name" id="panelName"></div>
+    <div class="slide-tags" id="panelTags"></div>
+    <div class="slide-section">
+      <div class="slide-section-title">使用统计</div>
+      <div class="stat-row">
+        <div class="stat-box"><div class="stat-val" id="panelRef">—</div><div class="stat-lbl">总引用次数</div></div>
+        <div class="stat-box"><div class="stat-val" style="color:var(--success)">3</div><div class="stat-lbl">关联项目</div></div>
+        <div class="stat-box"><div class="stat-val" style="color:var(--warning)">2</div><div class="stat-lbl">关联商品</div></div>
+      </div>
+    </div>
+    <div class="slide-section">
+      <div class="slide-section-title">基本信息</div>
+      <div style="background:var(--bg3);border-radius:var(--r);padding:12px;font-size:13px;line-height:1.8">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">创建时间</span><span>2026-04-12</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">最近使用</span><span>2 天前</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">归属用户</span><span>Admin</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">版权状态</span><span style="color:var(--success)">● 授权中</span></div>
+      </div>
+    </div>
+    <div class="slide-section">
+      <div class="slide-section-title">风格 Prompt（节选）</div>
+      <div style="background:var(--bg3);border-radius:var(--r);padding:10px 12px;font-size:11.5px;color:var(--text2);line-height:1.7;font-family:monospace">realistic portrait, soft lighting, clean background, natural expression, studio shot...</div>
+    </div>
+    <div class="slide-actions">
+      <button class="btn btn-ghost" onclick="log('edit-char')">✏️ 编辑</button>
+      <button class="btn btn-primary" onclick="log('use-in-project')">+ 用于项目</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function log(action){console.log('[VIDO Prototype]',action)}
+function ev(e,action,name){e.stopPropagation();log(action+':'+name)}
+
+function switchTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'))
+  el.classList.add('active')
+  document.querySelectorAll('[id^="tab-"]').forEach(t=>t.style.display='none')
+  document.getElementById('tab-'+name).style.display='block'
+}
+
+function openPanel(name,emoji,refs,t1,t2,t3,grad){
+  document.getElementById('panelTitle').textContent='角色详情'
+  document.getElementById('panelName').textContent=name
+  document.getElementById('panelRef').textContent=refs
+  var av=document.getElementById('panelAvatar')
+  av.textContent=emoji
+  av.style.background=grad
+  var tags=document.getElementById('panelTags')
+  tags.innerHTML=''
+  ;[t1,t2,t3].forEach(function(t){
+    var s=document.createElement('span')
+    s.className='tag tag-cyan'
+    s.textContent=t
+    tags.appendChild(s)
+  })
+  document.getElementById('slidePanel').classList.add('open')
+  document.getElementById('overlayBg').classList.add('show')
+}
+function closePanel(){
+  document.getElementById('slidePanel').classList.remove('open')
+  document.getElementById('overlayBg').classList.remove('show')
+}
+
+function setRadio(el){
+  document.querySelectorAll('.radio-btn').forEach(b=>b.classList.remove('active'))
+  el.classList.add('active')
+}
+
+function toggleQuota(cb){
+  var qi=cb.parentElement.querySelector('.quota-input')
+  qi.disabled=!cb.checked
+  if(cb.checked&&qi.value==='0')qi.value=50
+  if(!cb.checked)qi.value=0
+}
+
+function switchWTab(el){
+  document.querySelectorAll('.w-tab').forEach(t=>t.classList.remove('active'))
+  el.classList.add('active')
+}
+
+function togglePick(card){
+  var wasSelected=card.classList.contains('selected')
+  document.querySelectorAll('.pick-card').forEach(c=>c.classList.remove('selected'))
+  if(!wasSelected){
+    card.classList.add('selected')
+    document.getElementById('selectedName').textContent=card.querySelector('.pick-label').textContent
+  } else {
+    document.getElementById('selectedName').textContent='未选择'
+  }
+}
+</script>
+</body>
+</html>

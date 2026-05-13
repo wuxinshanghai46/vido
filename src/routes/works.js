@@ -167,8 +167,7 @@ router.get('/', (req, res) => {
   });
 });
 
-// DELETE /api/works/:type/:id - 删除指定作品（须为所有者或 admin）
-router.delete('/:type/:id', (req, res) => {
+function deleteWorkByType(req, res) {
   const { type, id } = req.params;
   try {
     // 先取原始数据做所有权校验
@@ -198,7 +197,13 @@ router.delete('/:type/:id', (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}
+
+// DELETE /api/works/:type/:id - 删除指定作品（须为所有者或 admin）
+router.delete('/:type/:id', deleteWorkByType);
+
+// POST fallback: some browsers/proxies can drop DELETE and surface "Failed to fetch".
+router.post('/:type/:id/delete', deleteWorkByType);
 
 // GET /api/works/stats - 作品统计（只统计当前用户；admin 看全部）
 router.get('/stats', (req, res) => {

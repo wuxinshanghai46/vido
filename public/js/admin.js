@@ -2963,15 +2963,34 @@ function monitorRenderTable(rows, keyField, label) {
           <th>${label}</th>
           <th>调用</th>
           <th>Tokens</th>
+          <th>Input / Output</th>
           <th>消耗 (CNY/USD)</th>
         </tr>
       </thead>
       <tbody>
-        ${rows.slice(0, 10).map(r => `
+        ${rows.slice(0, 10).map(r => {
+          const mainLabel = label === 'provider'
+            ? (r.provider_name || r.vendor_label || r[keyField] || '-')
+            : label === 'model'
+              ? (r.model_name || r.model_label || r[keyField] || '-')
+              : (r[keyField] || '-');
+          const subLabel = label === 'provider'
+            ? (r.provider && r.provider !== mainLabel ? r.provider : '')
+            : label === 'model'
+              ? (r.key || [r.provider, r.model].filter(Boolean).join(' / '))
+              : '';
+          return `
           <tr>
-            <td class="monitor-key">${esc(r[keyField] || '-')}</td>
+            <td class="monitor-key">
+              <div>${esc(mainLabel)}</div>
+              ${subLabel ? `<div style="font-size:10px;color:var(--text3);font-family:monospace">${esc(subLabel)}</div>` : ''}
+            </td>
             <td>${r.calls}</td>
             <td>${(r.tokens || 0).toLocaleString()}</td>
+            <td style="font-size:11px;color:var(--text3)">
+              In ${(r.input_tokens || 0).toLocaleString()}<br>
+              Out ${(r.output_tokens || 0).toLocaleString()}
+            </td>
             <td>
               <div class="monitor-cost-cell">
                 <span style="color:var(--accent);font-weight:700">${cny(r.cost_usd)}</span> <span style="font-size:10px;color:var(--text3)">$${r.cost_usd.toFixed(4)}</span>
@@ -2979,7 +2998,7 @@ function monitorRenderTable(rows, keyField, label) {
               </div>
             </td>
           </tr>
-        `).join('')}
+        `}).join('')}
       </tbody>
     </table>
   `;
@@ -3069,8 +3088,8 @@ function monitorRenderRecent(rows) {
       <thead>
         <tr>
           <th>时间</th>
-          <th>Provider</th>
-          <th>Model</th>
+          <th>接入厂商</th>
+          <th>模型</th>
           <th>Category</th>
           <th>Agent</th>
           <th>Tokens</th>
@@ -3083,11 +3102,20 @@ function monitorRenderRecent(rows) {
         ${rows.map(r => `
           <tr class="${r.status === 'fail' ? 'row-fail' : ''}">
             <td>${r.timestamp?.slice(11, 19) || '-'}</td>
-            <td>${esc(r.provider || '-')}</td>
-            <td class="monitor-key">${esc(r.model || '-')}</td>
+            <td>
+              <div>${esc(r.provider_name || r.vendor_label || r.provider || '-')}</div>
+              <div style="font-size:10px;color:var(--text3);font-family:monospace">${esc(r.provider || '-')}</div>
+            </td>
+            <td class="monitor-key">
+              <div>${esc(r.model_name || r.model_label || r.model || '-')}</div>
+              <div style="font-size:10px;color:var(--text3);font-family:monospace">${esc(r.model || '-')}</div>
+            </td>
             <td>${esc(r.category || '-')}</td>
             <td>${esc(r.agent_id || '-')}</td>
-            <td>${(r.total_tokens || 0).toLocaleString()}</td>
+            <td>
+              <div>${(r.total_tokens || 0).toLocaleString()}</div>
+              <div style="font-size:10px;color:var(--text3)">In ${(r.input_tokens || 0).toLocaleString()} / Out ${(r.output_tokens || 0).toLocaleString()}</div>
+            </td>
             <td><span style="color:var(--accent);font-weight:700">${cny(r.cost_usd)}</span> <span style="font-size:10px;color:var(--text3)">$${(r.cost_usd || 0).toFixed(6)}</span></td>
             <td>${r.duration_ms}ms</td>
             <td>${r.status === 'success' ? '✓' : '✗'}</td>
@@ -3221,6 +3249,7 @@ function renderDashboard(d) {
         <div class="dash-card-main">
           <div class="dash-card-label">Token 调用次数</div>
           <div class="dash-card-value">${d.tokens.total_calls}</div>
+          <div class="dash-card-meta">Tokens ${(d.tokens.total_tokens || 0).toLocaleString()} / In ${(d.tokens.total_input_tokens || 0).toLocaleString()} / Out ${(d.tokens.total_output_tokens || 0).toLocaleString()}</div>
           <div class="dash-card-meta">今日 ${d.tokens.today.calls} · 本月 ${d.tokens.month.calls}${typeof d.tokens.success_rate === 'number' ? ` · 成功率 ${d.tokens.success_rate}%` : ''}</div>
         </div>
       </div>
@@ -3335,7 +3364,11 @@ function renderDashboard(d) {
       <tr>
         <td class="dash-key">${esc(m.model || '-')}</td>
         <td style="color:var(--text3);font-size:10px;">${esc(m.provider || '-')}</td>
-        <td>${m.calls}</td>
+        <td>
+          <div>${m.calls}</div>
+          <div style="font-size:10px;color:var(--text3)">${(m.tokens || 0).toLocaleString()} t</div>
+          <div style="font-size:10px;color:var(--text3)">In ${(m.input_tokens || 0).toLocaleString()} / Out ${(m.output_tokens || 0).toLocaleString()}</div>
+        </td>
         <td>${dualCost(m.cost_usd)}</td>
       </tr>
     `).join('');
@@ -4181,12 +4214,15 @@ function renderModelPipeline() {
 
   const groupHtml = Object.entries(schema).map(([groupName, stages]) => {
     const stageNodes = stages.map((stage, sIdx) => {
-      const models = config[stage.id] || [];
+      const savedModels = config[stage.id] || [];
+      const defaultModels = (_pmsCache.defaults && _pmsCache.defaults[stage.id]) || [];
+      const models = savedModels.length ? savedModels : defaultModels.map(m => ({ ...m, _isDefault: true }));
       const enabledModels = models.filter(m => m.enabled);
       const firstModel = enabledModels[0];
-      const isConfigured = models.length > 0;
+      const isConfigured = savedModels.length > 0;
+      const isUsingDefault = !isConfigured && models.length > 0;
       return `
-        <div class="pms-flow-stage ${isConfigured ? 'configured' : ''}" onclick="openStageEditModal('${stage.id}', '${stage.type}')">
+        <div class="pms-flow-stage ${isConfigured || isUsingDefault ? 'configured' : ''}" onclick="openStageEditModal('${stage.id}', '${stage.type}')">
           <div class="pms-stage-num">#${sIdx + 1}</div>
           <div class="pms-stage-title">${esc(stage.name)}</div>
           <div class="pms-stage-type">${stage.type}</div>
@@ -4195,7 +4231,7 @@ function renderModelPipeline() {
               ? (() => {
                   const meta = (available[stage.type] || []).find(a => a.provider_id === firstModel.provider_id && a.model_id === firstModel.model_id);
                   const dispName = meta?.model_name || _i18nModelName(firstModel.model_id) || firstModel.model_id;
-                  const provName = meta?.provider_name || _i18nProviderName(firstModel.provider_id) || firstModel.provider_id;
+                  const provName = (isUsingDefault ? '系统默认 · ' : '') + (meta?.provider_name || _i18nProviderName(firstModel.provider_id) || firstModel.provider_id);
                   const stale = !meta;
                   const trim = (s) => s.length > 22 ? s.slice(0, 20) + '…' : s;
                   return `<div class="first" ${stale ? 'style="opacity:.5"' : ''}>${esc(trim(dispName))}</div>
@@ -4230,7 +4266,11 @@ function renderModelPipeline() {
   }).join('');
 
   const totalStages = Object.values(schema).reduce((s, a) => s + a.length, 0);
-  const configuredStages = Object.values(config).filter(v => v && v.length > 0).length;
+  const configuredStages = Object.values(schema).flat().filter(stage => {
+    const saved = config[stage.id] || [];
+    const defaults = (_pmsCache.defaults && _pmsCache.defaults[stage.id]) || [];
+    return saved.length > 0 || defaults.length > 0;
+  }).length;
 
   // 固定工具链（不走 AI 模型路由，但用户也想知道用了什么）
   const fixedToolChain = `
@@ -4463,4 +4503,3 @@ async function saveStage(stageId, models) {
     toast('已保存');
   } catch (e) { toast('保存失败：' + e.message); }
 }
-

@@ -1,0 +1,29 @@
+{
+  "id": "batch-cutout",
+  "name": "批量抠图",
+  "category": "image",
+  "version": 1,
+  "description": "对一组图片批量去背景，输出透明 PNG 数组。基于 BiRefNet（Replicate）。需要 Replicate API key。",
+  "inputs": [
+    {
+      "name": "imageUrls",
+      "type": "array",
+      "required": true,
+      "label": "图片 URL 列表",
+      "desc": "可粘贴多个图片 URL（一行一个），或从平台素材库选择"
+    }
+  ],
+  "steps": [
+    {
+      "id": "cut",
+      "type": "batch_cutout",
+      "params": {
+        "imageUrls": "$imageUrls"
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "results", "from": "$cut.cutImageUrls", "type": "array", "label": "抠图结果（透明 PNG URL 数组）" },
+    { "name": "successCount", "from": "$cut.count", "type": "number", "label": "成功数量" }
+  ]
+}

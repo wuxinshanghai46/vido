@@ -106,8 +106,6 @@ const monitorStore = createStore('monitor_db.json', 'accounts');
 const contentStore = createStore('content_db.json', 'contents');
 // 内容雷达 - 复刻任务
 const replicateStore = createStore('replicate_db.json', 'tasks');
-// 爆款复刻 - 关键字订阅
-const subscriptionStore = createStore('subscription_db.json', 'subscriptions');
 // AI 能力 - 角色库/场景库/风格库
 const aiCharStore  = createStore('ai_characters.json', 'characters');
 const aiSceneStore = createStore('ai_scenes.json', 'scenes');
@@ -327,14 +325,6 @@ const db = {
   listReplicateTasks(userId)    { return replicateStore.list(t => !userId || t.user_id === userId); },
   updateReplicateTask(id, fields){ replicateStore.update(id, fields); },
   deleteReplicateTask(id)       { replicateStore.delete(id); },
-
-  // ——— Subscriptions（关键字订阅）———
-  insertSubscription(row)       { subscriptionStore.insert(row); },
-  getSubscription(id)           { return subscriptionStore.get(id); },
-  listSubscriptions(userId)     { return subscriptionStore.list(s => !userId || s.user_id === userId); },
-  listAllSubscriptions()        { return subscriptionStore.list(); },
-  updateSubscription(id, fields){ subscriptionStore.update(id, fields); },
-  deleteSubscription(id)        { subscriptionStore.delete(id); },
 
   // ——— Custom Voices（自定义声音）———
   insertVoice(row)            { voiceStore.insert(row); },

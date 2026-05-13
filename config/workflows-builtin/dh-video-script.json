@@ -1,0 +1,62 @@
+{
+  "id": "dh-video-script",
+  "name": "数字人视频脚本规划",
+  "category": "script",
+  "version": 1,
+  "description": "输入主题或产品信息，AI 自动拆分为多段数字人口播脚本，每段含台词、动作指令、情绪标注，直接导入数字人视频生成。",
+  "inputs": [
+    {
+      "name": "topic",
+      "type": "string",
+      "required": true,
+      "label": "视频主题",
+      "desc": "例如：介绍我们的爆款精华液 / 公司年终总结 / 产品上新发布会"
+    },
+    {
+      "name": "style",
+      "type": "string",
+      "required": false,
+      "label": "风格",
+      "desc": "活泼/专业/温暖/励志/知识科普",
+      "default": "专业"
+    },
+    {
+      "name": "segments",
+      "type": "string",
+      "required": false,
+      "label": "段落数",
+      "desc": "3 / 5 / 8（段落越多视频越长）",
+      "default": "5"
+    },
+    {
+      "name": "extra",
+      "type": "string",
+      "required": false,
+      "label": "补充信息",
+      "desc": "品牌调性、禁用词、特别强调的点等（可留空）",
+      "default": ""
+    }
+  ],
+  "steps": [
+    {
+      "id": "outline",
+      "type": "text_gen",
+      "params": {
+        "system": "你是专业短视频导演，专注数字人口播视频脚本创作。根据用户输入，生成结构清晰的视频脚本大纲，包含每段的核心内容和目的。输出格式：段落编号 + 标题 + 核心内容（一句话），共{{$segments}}段。",
+        "prompt": "主题：{{$topic}}\n风格：{{$style}}\n补充：{{$extra}}\n\n生成{{$segments}}段视频脚本大纲："
+      }
+    },
+    {
+      "id": "full_script",
+      "type": "text_gen",
+      "params": {
+        "system": "你是专业数字人口播脚本编剧。将大纲扩写为完整脚本，每段必须包含：\n[台词] 口播文字（自然流畅，符合数字人语气）\n[动作] 建议动作（自然交谈/比心/点赞/展示产品/开掌说明等）\n[情绪] 情绪标注（自然/兴奋/温暖/坚定等）\n[时长] 预估朗读秒数\n\n注意：台词避免书面语，口语化，有节奏感，每段台词控制在50-120字。",
+        "prompt": "主题：{{$topic}}\n风格：{{$style}}\n\n大纲：\n{{$outline.text}}\n\n请按大纲扩写完整脚本（{{$segments}}段）："
+      }
+    }
+  ],
+  "outputs": [
+    { "name": "outline",     "from": "$outline.text",     "type": "string", "label": "脚本大纲" },
+    { "name": "fullScript",  "from": "$full_script.text", "type": "string", "label": "完整分段脚本（含动作/情绪标注）" }
+  ]
+}

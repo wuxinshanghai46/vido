@@ -38,6 +38,7 @@ logs/
 
 # Local sync/backup artifacts
 _server_sync/
+.sync-backup/
 
 # Douyin crawler local artifacts (keep source, ignore cache/binaries)
 douyin/__MACOSX/

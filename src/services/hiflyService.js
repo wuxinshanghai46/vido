@@ -85,15 +85,21 @@ async function uploadFile({ filePath, buffer, fileExtension }) {
 // ═══════════════════════════════════════════════
 // 数字人（avatar）
 // ═══════════════════════════════════════════════
+function _safeTitle(title, fallback = 'vido') {
+  return String(title || fallback)
+    .replace(/[^\u4e00-\u9fa5A-Za-z0-9_]/g, '')
+    .slice(0, 20) || fallback;
+}
+
 async function createAvatarByVideo({ video_url, file_id, title = '未命名', aigc_flag = 0 }) {
   if (!video_url && !file_id) throw new Error('video_url 与 file_id 至少一个');
-  const r = await _post('/api/v2/hifly/avatar/create_by_video', { video_url, file_id, title, aigc_flag });
+  const r = await _post('/api/v2/hifly/avatar/create_by_video', { video_url, file_id, title: _safeTitle(title), aigc_flag });
   return r.task_id;
 }
 
 async function createAvatarByImage({ image_url, file_id, title = '未命名', model = 2, aigc_flag = 0 }) {
   if (!image_url && !file_id) throw new Error('image_url 与 file_id 至少一个');
-  const r = await _post('/api/v2/hifly/avatar/create_by_image', { image_url, file_id, title, model, aigc_flag });
+  const r = await _post('/api/v2/hifly/avatar/create_by_image', { image_url, file_id, title: _safeTitle(title), model, aigc_flag });
   return r.task_id;
 }
 
@@ -137,21 +143,24 @@ async function queryVoiceTask(task_id) {
 // ═══════════════════════════════════════════════
 // 创作（video/audio）
 // ═══════════════════════════════════════════════
-async function createVideoByAudio({ audio_url, file_id, avatar, title = '未命名', aigc_flag = 0 }) {
+async function createVideoByAudio({ audio_url, file_id, avatar, title = '未命名', aigc_flag = 0, pipeline = '1.5' }) {
   if (!avatar) throw new Error('avatar 必填');
   if (!audio_url && !file_id) throw new Error('audio_url 与 file_id 至少一个');
-  const r = await _post('/api/v2/hifly/video/create_by_audio', { audio_url, file_id, avatar, title, aigc_flag });
+  const body = { audio_url, file_id, avatar, title: _safeTitle(title), aigc_flag };
+  if (pipeline) body.pipeline = pipeline;
+  const r = await _post('/api/v2/hifly/video/create_by_audio', body);
   return r.task_id;
 }
 
 async function createVideoByTTS({
-  voice, text, avatar, title = '未命名', aigc_flag = 0,
+  voice, text, avatar, title = '未命名', aigc_flag = 0, pipeline = '1.5',
   subtitle = null, // { show:bool, fontName?, fontSize?, primaryColor?, outlineColor?, width?, height?, posX?, posY? }
 }) {
   if (!voice) throw new Error('voice 必填');
   if (!avatar) throw new Error('avatar 必填');
   if (!text || !text.trim()) throw new Error('text 必填');
-  const body = { voice, text, avatar, title, aigc_flag };
+  const body = { voice, text, avatar, title: _safeTitle(title), aigc_flag };
+  if (pipeline) body.pipeline = pipeline;
   if (subtitle && subtitle.show) {
     body.st_show = 1;
     if (subtitle.fontName) body.st_font_name = subtitle.fontName;
@@ -174,10 +183,15 @@ async function createAudioByTTS({ voice, text, title = '未命名', aigc_flag = 
   return r.task_id;
 }
 
+async function queryAudioTask(task_id) {
+  const r = await _get('/api/v2/hifly/audio/task', { task_id });
+  return { status: r.status, audio_url: r.audio_Url || r.audio_url || r.video_Url || r.video_url, duration: r.duration, raw: r };
+}
+
 async function queryVideoTask(task_id) {
   const r = await _get('/api/v2/hifly/video/task', { task_id });
   // 注意文档里 video_Url 是大写 U
-  return { status: r.status, video_url: r.video_Url || r.video_url, duration: r.duration, raw: r };
+  return { status: r.status, video_url: r.video_Url || r.video_url, audio_url: r.audio_Url || r.audio_url || r.video_Url || r.video_url, duration: r.duration, raw: r };
 }
 
 // ═══════════════════════════════════════════════
@@ -204,6 +218,7 @@ async function _wait(queryFn, task_id, { intervalMs = 5000, timeoutMs = 15 * 60 
 async function waitAvatarTask(task_id, opts) { return _wait(queryAvatarTask, task_id, opts); }
 async function waitVoiceTask(task_id, opts) { return _wait(queryVoiceTask, task_id, opts); }
 async function waitVideoTask(task_id, opts) { return _wait(queryVideoTask, task_id, opts); }
+async function waitAudioTask(task_id, opts) { return _wait(queryAudioTask, task_id, opts); }
 
 // ═══════════════════════════════════════════════
 // 一步到位封装
@@ -283,6 +298,6 @@ module.exports = {
   cloneVoice,
   // video
   createVideoByAudio, createVideoByTTS, createAudioByTTS,
-  queryVideoTask, waitVideoTask,
+  queryVideoTask, waitVideoTask, queryAudioTask, waitAudioTask,
   generateVideoByTTS, generateVideoByAudio,
 };

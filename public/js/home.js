@@ -151,11 +151,12 @@ async function doLogin(e) {
     if (!j.success) throw new Error(j.error || '登录失败');
     sessionStorage.setItem('vido_token', j.data.access_token);
     localStorage.setItem('vido_token', j.data.access_token);
+    const _target = new URLSearchParams(location.search).get('target');
     if (j.data.user) {
       sessionStorage.setItem('vido_user', JSON.stringify(j.data.user));
       localStorage.setItem('vido_user', JSON.stringify(j.data.user));
     }
-    location.href = '/index.html';
+    location.href = _target ? decodeURIComponent(_target) : '/index.html';
   } catch (err) {
     showAuthErr(err.message);
     if (btn) { btn.disabled = false; btn.textContent = '登录并进入工作室'; }
@@ -266,9 +267,16 @@ document.addEventListener('click', (e) => {
 
   const params = new URLSearchParams(location.search);
 
+  // ?login=1 表示服务端 Cookie 失效要求重新登录 → 清掉旧 token 强制重走登录流程
+  if (params.get('login') === '1' && token) {
+    sessionStorage.removeItem('vido_token');
+    sessionStorage.removeItem('vido_user');
+    token = null;
+  }
+
   // 已登录用户访问首页 → 自动跳工作台（除非显式 ?home=1 想看营销页 或 ?login=1 刚退出）
   if (token) {
-    if (params.get('home') !== '1' && params.get('login') !== '1') {
+    if (params.get('home') !== '1') {
       location.replace('/index.html');
       return;
     }
