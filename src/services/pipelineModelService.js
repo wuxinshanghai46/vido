@@ -33,6 +33,27 @@ const PIPELINE_SCHEMA = {
     { id: 'avatar.lip_sync',     name: 'Step3 数字人合成',         type: 'avatar', desc: '形象+音频→口型同步视频（Wan-Animate/即梦 Omni/飞影）' },
     { id: 'avatar.tts',          name: '数字人配音 TTS',           type: 'tts',   desc: '把脚本合成音频（火山/讯飞/阿里 CosyVoice 等）' },
   ],
+  '商品数字人': [
+    { id: 'product_avatar.describe',     name: '商品卖点 / 口播脚本',       type: 'story',  desc: '根据商品名称、卖点、目标人群生成商品数字人口播文案' },
+    { id: 'product_avatar.person_image', name: '商品数字人底图生成',       type: 'image',  desc: '生成或扩展商品数字人的人物形象底图' },
+    { id: 'product_avatar.fuse_image',   name: '商品融合形象图',           type: 'avatar', desc: '人物图 + 商品图融合，默认 Topview Product Avatar V3' },
+    { id: 'product_avatar.marketing_video', name: '商品介绍片生成',        type: 'video',  desc: '商品数字人成片，默认 Topview Product Avatar Image2Video；也可配置 Seedance 链路' },
+    { id: 'product_avatar.tts',          name: '商品口播 TTS',             type: 'tts',    desc: '商品介绍文案配音' },
+  ],
+  '广告数字人': [
+    { id: 'ad_avatar.copy',          name: '广告文案 / 分镜拆解',       type: 'story',  desc: '把广告主题、空间、镜头要求拆成数字人广告分镜' },
+    { id: 'ad_avatar.keyframe',      name: '广告展示画面 / 关键帧',     type: 'image',  desc: '生成广告数字人的展示画面、收束画面或关键帧' },
+    { id: 'ad_avatar.marketing_video', name: '广告数字人视频生成',      type: 'video',  desc: '广告数字人成片，优先 Topview Marketing Video，失败后走当前数字人/Seedance 链路' },
+    { id: 'ad_avatar.lip_sync',      name: '广告数字人口型合成',        type: 'avatar', desc: '广告数字人形象 + 口播音频的口型同步合成' },
+    { id: 'ad_avatar.tts',           name: '广告口播 TTS',              type: 'tts',    desc: '广告口播文案配音' },
+  ],
+  '高定广告片': [
+    { id: 'luxury_ad.copy',      name: '高定广告片文案 / 镜头策划', type: 'story', desc: '按 Topview Image2 + Seedance 思路生成 4-8 镜头广告片分镜' },
+    { id: 'luxury_ad.keyframe',  name: '高定广告片关键帧',         type: 'image', desc: '生成产品/人物/场景一致的高定广告关键帧' },
+    { id: 'luxury_ad.video',     name: '高定广告片图生视频',       type: 'video', desc: '用 Seedance/Topview 图生视频把关键帧串成镜头' },
+    { id: 'luxury_ad.tts',       name: '高定广告片配音 TTS',       type: 'tts',   desc: '高定广告旁白、口播或字幕配音' },
+    { id: 'luxury_ad.post',      name: '高定广告片后期包装',       type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
+  ],
   '网剧': [
     { id: 'drama.script',          name: '剧本 / 分镜生成',          type: 'story', desc: '编剧 LLM，输出剧本+分镜 JSON' },
     { id: 'drama.character_image', name: '角色形象图',               type: 'image', desc: '为每个角色生成统一形象图' },
@@ -65,13 +86,79 @@ const STAGE_DEFAULTS = {
     { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
     { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
   ],
-  'avatar.sample_video': [{ provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 1, enabled: true }],
+  'avatar.sample_video': [
+    { provider_id: 'topview', model_id: 'topview-avatar4-fast', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 2, enabled: true },
+    { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 3, enabled: true },
+  ],
   'avatar.lip_sync':     [
-    { provider_id: 'hifly', model_id: 'hifly', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-avatar4', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-avatar4-fast', priority: 2, enabled: true },
+    { provider_id: 'hifly', model_id: 'hifly', priority: 3, enabled: true },
+    { provider_id: 'volcengine', model_id: 'jimeng_realman_avatar_picture_omni_v15', priority: 4, enabled: true },
+    { provider_id: 'dashscope', model_id: 'wan2.2-animate-move', priority: 5, enabled: true },
   ],
   'avatar.tts':          [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  // 商品数字人
+  'product_avatar.describe': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'product_avatar.person_image': [
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
+  ],
+  'product_avatar.fuse_image': [
+    { provider_id: 'topview', model_id: 'topview-product-avatar-v3', priority: 1, enabled: true },
+    { provider_id: 'replicate', model_id: 'flux-kontext-multi-pro', priority: 2, enabled: true },
+    { provider_id: 'replicate', model_id: 'instantid', priority: 3, enabled: true },
+  ],
+  'product_avatar.marketing_video': [
+    { provider_id: 'topview', model_id: 'topview-product-avatar-i2v', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+  ],
+  'product_avatar.tts': [
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  // 广告数字人
+  'ad_avatar.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'ad_avatar.keyframe': [
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
+  ],
+  'ad_avatar.marketing_video': [
+    { provider_id: 'topview', model_id: 'topview-m2v', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 2, enabled: true },
+  ],
+  'ad_avatar.lip_sync': [
+    { provider_id: 'topview', model_id: 'topview-avatar4', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-avatar4-fast', priority: 2, enabled: true },
+    { provider_id: 'hifly', model_id: 'hifly', priority: 3, enabled: true },
+  ],
+  'ad_avatar.tts': [
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  // 高定广告片
+  'luxury_ad.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'luxury_ad.keyframe': [
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
+  ],
+  'luxury_ad.video': [
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-best', priority: 2, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: false },
+    { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', priority: 4, enabled: false },
+    { provider_id: 'deyunai', model_id: 'hailuo-02-fast', priority: 5, enabled: false },
+  ],
+  'luxury_ad.tts': [
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  'luxury_ad.post': [
+    { provider_id: 'local', model_id: 'ffmpeg-effects', priority: 1, enabled: true },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],
@@ -147,9 +234,18 @@ function pickModel(stageId) {
   return list.find(m => m.enabled) || null;
 }
 
+function pickModelWithDefault(stageId) {
+  return pickModel(stageId) || (getStageDefaults(stageId).find(m => m.enabled) || null);
+}
+
 /** 拿到该 stage 的所有 enabled 模型（按优先级） — 用于 fallback 链 */
 function pickAllEnabled(stageId) {
   return getStageConfig(stageId).filter(m => m.enabled);
+}
+
+function pickAllEnabledWithDefault(stageId) {
+  const configured = pickAllEnabled(stageId);
+  return configured.length ? configured : getStageDefaults(stageId).filter(m => m.enabled);
 }
 
 /** 列出 settings.providers 中所有可用模型（按 use 字段过滤） */
@@ -192,6 +288,8 @@ module.exports = {
   getStageConfig,
   setStageConfig,
   pickModel,
+  pickModelWithDefault,
   pickAllEnabled,
+  pickAllEnabledWithDefault,
   listAvailableModels,
 };

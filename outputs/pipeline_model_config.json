@@ -10,15 +10,219 @@
     ],
     "avatar.describe": [
       {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o-mini",
+        "priority": 1,
+        "enabled": true
+      },
+      {
         "provider_id": "deepseek",
         "model_id": "deepseek-chat",
+        "priority": 2,
+        "enabled": true
+      }
+    ],
+    "avatar.image_gen": [
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gpt-4o-mini",
+        "model_id": "jimeng-t2i-v4",
         "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "volcengine",
+        "model_id": "doubao-seedream-5-0-260128",
+        "priority": 3,
+        "enabled": true
+      }
+    ],
+    "avatar.sample_video": [
+      {
+        "provider_id": "hifly",
+        "model_id": "hifly",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "volcengine",
+        "model_id": "jimeng_realman_avatar_picture_omni_v15",
+        "priority": 2,
+        "enabled": true
+      }
+    ],
+    "avatar.tts": [
+      {
+        "provider_id": "aliyun-tts",
+        "model_id": "cosyvoice-v3.5-plus",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "aliyun-tts",
+        "model_id": "cosyvoice-v3-flash",
+        "priority": 2,
+        "enabled": true
+      }
+    ],
+    "ad_avatar.keyframe": [
+      {
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedream-5-0-260128",
+        "priority": 1,
+        "enabled": true
+      }
+    ],
+    "ad_avatar.tts": [
+      {
+        "provider_id": "aliyun-tts",
+        "model_id": "cosyvoice-v3.5-plus",
+        "priority": 1,
+        "enabled": true
+      }
+    ],
+    "ad_avatar.lip_sync": [
+      {
+        "provider_id": "topview",
+        "model_id": "topview-avatar4",
+        "priority": 1,
+        "enabled": true
+      }
+    ],
+    "ad_avatar.marketing_video": [
+      {
+        "provider_id": "topview",
+        "model_id": "topview-m2v",
+        "enabled": true,
+        "priority": 1
+      },
+      {
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedance-1-0-pro-250528",
+        "enabled": true,
+        "priority": 2
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "kling-v2.5-turbo-pro",
+        "enabled": true,
+        "priority": 3
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "kling-v2-master",
+        "enabled": true,
+        "priority": 4
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02-fast",
+        "enabled": true,
+        "priority": 5
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02",
+        "enabled": true,
+        "priority": 6
+      }
+    ],
+    "luxury_ad.video": [
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-pro",
+        "enabled": true,
+        "priority": 1
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-best",
+        "enabled": true,
+        "priority": 2
+      },
+      {
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedance-1-0-pro-250528",
+        "enabled": false,
+        "priority": 3
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "kling-v2.5-turbo-pro",
+        "enabled": false,
+        "priority": 4
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "kling-v2-master",
+        "enabled": false,
+        "priority": 5
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02-fast",
+        "enabled": false,
+        "priority": 6
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02",
+        "enabled": false,
+        "priority": 7
+      }
+    ],
+    "luxury_ad.keyframe": [
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "imagen-4",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "flux-pro",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "jimeng-t2i-v4",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "qwen-image-edit",
+        "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "doubao-seedream-4-0-250828",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
+        "priority": 80,
+        "enabled": false
+      },
+      {
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedream-5-0-260128",
+        "priority": 90,
         "enabled": true
       }
     ]
