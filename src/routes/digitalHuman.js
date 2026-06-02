@@ -8882,6 +8882,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     const isBlockingLuxuryReviewError = (message = '') => {
       const text = String(message || '').trim();
       if (!text) return false;
+      if (/^(审稿未通过|审核未通过|review failed|not approved)$/i.test(text)) return false;
       if (expectedPeople < 2 && /(全部|所有|每个|全片|整条).*(voiceover|narration|旁白|字幕)|(?:voiceover|narration|旁白|字幕).*(全部|所有|每个|全片|整条)|缺少.*(dialogue|dialogue_lines|对白)|没有.*(dialogue|dialogue_lines|对白)/i.test(text)) return false;
       if (/后台流程词|@主商品|@参考|主产品|主商品|只出现.*一个核心人物|每个相关镜头|未包含.*违反.*真实对话/.test(text)) return false;
       if (/缺少.*(痛点|解决方案|产品介绍|可视化证明|行动收束)|没有.*(痛点|解决方案|产品介绍|可视化证明|行动收束)|未包含.*(痛点|解决方案|产品介绍|可视化证明|行动收束)/.test(text)) return true;
