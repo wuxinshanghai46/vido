@@ -1096,6 +1096,39 @@ function _isHardShowroomGuideReject(qa) {
   ].some(x => text.includes(x));
 }
 
+function _extractFirstBalancedJsonObject(text = '') {
+  // Vision providers sometimes append prose after JSON or emit more than one
+  // object; parse only the first complete object so a valid pass is not lost.
+  const source = String(text || '');
+  const start = source.indexOf('{');
+  if (start < 0) return '';
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escaping = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  return '';
+}
+
 function _jsonFromVisionReply(raw = '') {
   const text = String(raw || '').trim();
   if (!text) {
@@ -1105,12 +1138,12 @@ function _jsonFromVisionReply(raw = '') {
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match && !stripped.startsWith('{')) {
+  const jsonObject = _extractFirstBalancedJsonObject(stripped);
+  if (!jsonObject && !stripped.startsWith('{')) {
     throw new Error(`视觉质检模型返回内容不是 JSON：${stripped.slice(0, 120)}`);
   }
   try {
-    return JSON.parse(match ? match[0] : stripped);
+    return JSON.parse(jsonObject || stripped);
   } catch (err) {
     throw new Error(`视觉质检模型返回 JSON 不完整或格式错误：${stripped.slice(0, 180)}`);
   }
@@ -12638,6 +12671,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   let repairInstruction = '';
   const referenceImages = refs.map(x => x.resolved).filter(Boolean);
   const hasShotReferenceLock = referenceImages.length > 1;
+  // Normalize once at the image-call boundary so unsupported UI/model values
+  // such as "auto" never leak into Topview or other paid image providers.
+  const safeAspectRatio = _normalizeAspectRatio(aspectRatio, '16:9');
   const primary = refs[0]?.source || refs[0]?.resolved;
   const shortError = err => String(err?.message || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 220);
   // Attempts are returned to the UI, so include enough audit data to explain
@@ -12669,7 +12705,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         'Use the uploaded product/reference image as the main visual anchor. Preserve the product and produce a premium commercial keyframe.',
       ].join(' '),
       referenceBase64: refBuf.toString('base64'),
-      aspectRatio,
+      aspectRatio: safeAspectRatio,
       filename: `${filename}_${suffix}`,
       watermark: false,
       cropBottomPx: 0,
@@ -12683,7 +12719,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       if (/nano-banana/.test(modelId)) {
         return _generateViaDeyunaiNanoBanana({
           prompt: promptForAttempt,
-          aspectRatio,
+          aspectRatio: safeAspectRatio,
           filename: `${filename}_deyunai_${idx}`,
           destDir,
           referenceImages,
@@ -12693,7 +12729,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
         prompt: promptForAttempt,
-        aspectRatio,
+        aspectRatio: safeAspectRatio,
         filename: `${filename}_deyunai_${idx}`,
         destDir,
         referenceImages,
@@ -12714,14 +12750,14 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           prompt: promptForAttempt,
           referenceImages: referenceImages.slice(0, 6),
           model: model.model_id,
-          aspectRatio,
+          aspectRatio: safeAspectRatio,
           resolution: topviewResolution,
           ...usageMeta,
         })
         : await tv.generateTextToImage({
           prompt: promptForAttempt,
           model: model.model_id,
-          aspectRatio,
+          aspectRatio: safeAspectRatio,
           resolution: topviewResolution,
           ...usageMeta,
         });
