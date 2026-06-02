@@ -8424,18 +8424,80 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         console.warn(`[DH/luxury-ad/storyboard] ${label} subject keyword weak, continue with product lock: ${productSubject}`);
       }
     };
+    const luxuryAgentModelQueue = (stageId = '') => {
+      try {
+        const pms = require('../services/pipelineModelService');
+        const list = typeof pms.pickAllEnabledWithDefault === 'function'
+          ? pms.pickAllEnabledWithDefault(stageId)
+          : (typeof pms.pickAllEnabled === 'function' ? pms.pickAllEnabled(stageId) : []);
+        const seen = new Set();
+        return (Array.isArray(list) ? list : [])
+          .filter(m => m && m.enabled !== false && m.provider_id && m.model_id)
+          .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999))
+          .filter(m => {
+            const key = `${String(m.provider_id || '').toLowerCase()}/${String(m.model_id || '').toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+      } catch {
+        return [];
+      }
+    };
+    const isRetryableLuxuryAgentModelError = (err) => {
+      const msg = String(err?.message || err || '');
+      return /402|insufficient\s+(balance|quota)|quota|overdue|balance|no available channel|channel.*(disabled|unavailable)|model_not_found|model.*(not found|unavailable)|api key|timeout|ECONNRESET|ETIMEDOUT|429|503/i.test(msg);
+    };
+    const callLuxuryStageLLM = async ({ name, systemPrompt, userPrompt, maxTokens, pipelineStageId, requestId, skipKB = false }) => {
+      const queue = luxuryAgentModelQueue(pipelineStageId);
+      const candidates = queue.length ? queue : [null];
+      const attempts = [];
+      let lastErr = null;
+      for (let modelIndex = 0; modelIndex < candidates.length; modelIndex++) {
+        const modelPref = candidates[modelIndex];
+        const modelLabel = modelPref ? `${modelPref.provider_id}/${modelPref.model_id}` : 'default';
+        try {
+          const out = await callLLM(systemPrompt, userPrompt, {
+            kb: skipKB ? undefined : { scene: 'luxury_ad', query: `${product_name} ${brief}`.slice(0, 160), limit: 3, maxCharsPerDoc: 500 },
+            skipKB,
+            pipelineStageId,
+            agentId: name,
+            requestId,
+            maxTokens,
+            preferredStoryModel: modelPref ? { ...modelPref, _stageId: pipelineStageId } : undefined,
+          });
+          if (attempts.length) {
+            console.info(`[DH/luxury-ad/storyboard] ${name} fallback succeeded with ${modelLabel}`);
+          }
+          return out;
+        } catch (err) {
+          lastErr = err;
+          const message = String(err?.message || err || '').replace(/\s+/g, ' ').slice(0, 240);
+          attempts.push(`${modelLabel}: ${message}`);
+          if (modelIndex < candidates.length - 1 && isRetryableLuxuryAgentModelError(err)) {
+            console.warn(`[DH/luxury-ad/storyboard] ${name} model failed ${modelLabel}, try next:`, message);
+            continue;
+          }
+          break;
+        }
+      }
+      const error = new Error(`${name} 模型队列均不可用：${attempts.join('；') || String(lastErr?.message || lastErr || 'unknown error')}`);
+      error.cause = lastErr;
+      throw error;
+    };
     const callLuxuryAgent = async ({ name, systemPrompt, userPrompt, json = 'array', maxTokens = 9000, pipelineStageId = llmStageId }) => {
       try {
         const strictJsonPrompt = [
           systemPrompt,
           '严格 JSON 输出规则：只能输出一个合法 JSON 本体；不能输出 markdown；不能输出注释；所有字符串必须使用双引号；字符串内部不能出现未转义的真实换行；如果要表达多行对白，用 dialogue_lines 数组，不要在 dialogue 字符串里直接换行；不能有尾逗号。',
         ].join('\n');
-        const out = await callLLM(strictJsonPrompt, userPrompt, {
-          kb: { scene: 'luxury_ad', query: `${product_name} ${brief}`.slice(0, 160), limit: 3, maxCharsPerDoc: 500 },
-          pipelineStageId,
-          agentId: name,
-          requestId: request_key || '',
+        const out = await callLuxuryStageLLM({
+          name,
+          systemPrompt: strictJsonPrompt,
+          userPrompt,
           maxTokens,
+          pipelineStageId,
+          requestId: request_key || '',
         });
         try {
           return json === 'object' ? _cleanJsonObject(out) : _cleanJsonArray(out);
@@ -8445,12 +8507,14 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
             json === 'object' ? '输出必须是一个 JSON 对象。' : '输出必须是一个 JSON 数组。',
             '不能输出 markdown，不能解释。修复未转义换行、漏引号、尾逗号等格式问题；如果无法判断字段内容，保持原文字符串。',
           ].join('\n');
-          const repaired = await callLLM(repairSys, `需要修复的 ${name} 原始输出：\n${String(out || '').slice(0, 24000)}`, {
-            skipKB: true,
-            requestId: request_key || `${name}.json_repair`,
-            pipelineStageId,
-            agentId: `${name}.json_repair`,
+          const repaired = await callLuxuryStageLLM({
+            name: `${name}.json_repair`,
+            systemPrompt: repairSys,
+            userPrompt: `需要修复的 ${name} 原始输出：\n${String(out || '').slice(0, 24000)}`,
             maxTokens,
+            pipelineStageId,
+            requestId: request_key || `${name}.json_repair`,
+            skipKB: true,
           });
           return json === 'object' ? _cleanJsonObject(repaired) : _cleanJsonArray(repaired);
         }

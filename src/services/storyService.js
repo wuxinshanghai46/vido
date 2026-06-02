@@ -154,6 +154,13 @@ function _configFromPreferredStoryModel(preferred = {}) {
 }
 
 function _resolvePipelineStoryModel(opts = {}) {
+  if (opts.preferredStoryModel && (opts.preferredStoryModel.provider_id || opts.preferredStoryModel.providerId) && (opts.preferredStoryModel.model_id || opts.preferredStoryModel.model)) {
+    return {
+      ...opts.preferredStoryModel,
+      _stageId: opts.preferredStoryModel._stageId || opts.pipelineStageId || opts.pipelineFallbackStageId || '',
+      _explicit: true,
+    };
+  }
   const stages = [opts.pipelineStageId, opts.pipelineFallbackStageId].filter(Boolean);
   if (!stages.length) return null;
   try {
