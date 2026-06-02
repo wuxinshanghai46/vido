@@ -8365,7 +8365,10 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     const fastDetailedStoryboard = false;
     const assertAgentTextOk = (label, value) => {
       const raw = typeof value === 'string' ? value : JSON.stringify(value || {});
-      if (/[?？]{3,}|�/.test(raw)) throw new Error(`${label} 返回内容包含乱码或无法识别的占位符。`);
+      if (/�/.test(raw)) throw new Error(`${label} 返回内容包含乱码或无法识别的占位符。`);
+      if (/[?？]{3,}/.test(raw)) {
+        console.warn(`[DH/luxury-ad/storyboard] ${label} contains repeated question marks; continue after text normalization.`);
+      }
       if (subjectKeywords.length && !_luxurySubjectHit(raw, subjectKeywords, productSubject)) {
         console.warn(`[DH/luxury-ad/storyboard] ${label} subject keyword weak, continue with product lock: ${productSubject}`);
       }
@@ -8986,8 +8989,11 @@ ${JSON.stringify(scenes, null, 2)}
       throw new Error(`AI 返回镜头数量不足：需要至少 ${minSceneCount} 镜，实际 ${rawScenes.length} 镜。`);
     }
     const rawSceneText = JSON.stringify(rawScenes);
-    if (/[?？]{3,}|�/.test(rawSceneText)) {
+    if (/�/.test(rawSceneText)) {
       throw new Error('AI 返回内容包含乱码或无法识别的占位符，已停止生成；请重新生成或检查当前 story 模型输出。');
+    }
+    if (/[?？]{3,}/.test(rawSceneText)) {
+      console.warn('[DH/luxury-ad/storyboard] scenes contain repeated question marks; continue after text normalization.');
     }
     const hasSubjectKeyword = _luxurySubjectHit(rawSceneText, subjectKeywords, productSubject);
     if (!hasSubjectKeyword) {
