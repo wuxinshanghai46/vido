@@ -8448,9 +8448,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       const msg = String(err?.message || err || '');
       return /402|insufficient\s+(balance|quota)|quota|overdue|balance|no available channel|channel.*(disabled|unavailable)|model_not_found|model.*(not found|unavailable)|api key|timeout|ECONNRESET|ETIMEDOUT|429|503/i.test(msg);
     };
-    const callLuxuryStageLLM = async ({ name, systemPrompt, userPrompt, maxTokens, pipelineStageId, requestId, skipKB = false }) => {
-      const queue = luxuryAgentModelQueue(pipelineStageId);
-      const candidates = queue.length ? queue : [null];
+    const callLuxuryStageLLM = async ({ name, systemPrompt, userPrompt, maxTokens, pipelineStageId, requestId, skipKB = false, modelPref = undefined }) => {
+      const queue = modelPref !== undefined ? [modelPref] : luxuryAgentModelQueue(pipelineStageId);
+      const candidates = modelPref !== undefined ? [modelPref] : (queue.length ? queue : [null]);
       const attempts = [];
       let lastErr = null;
       for (let modelIndex = 0; modelIndex < candidates.length; modelIndex++) {
@@ -8486,49 +8486,71 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       throw error;
     };
     const callLuxuryAgent = async ({ name, systemPrompt, userPrompt, json = 'array', maxTokens = 9000, pipelineStageId = llmStageId }) => {
-      try {
-        const strictJsonPrompt = [
-          systemPrompt,
-          '严格 JSON 输出规则：只能输出一个合法 JSON 本体；不能输出 markdown；不能输出注释；所有字符串必须使用双引号；字符串内部不能出现未转义的真实换行；如果要表达多行对白，用 dialogue_lines 数组，不要在 dialogue 字符串里直接换行；不能有尾逗号。',
-        ].join('\n');
-        const out = await callLuxuryStageLLM({
-          name,
-          systemPrompt: strictJsonPrompt,
-          userPrompt,
-          maxTokens,
-          pipelineStageId,
-          requestId: request_key || '',
-        });
+      const strictJsonPrompt = [
+        systemPrompt,
+        '严格 JSON 输出规则：只能输出一个合法 JSON 本体；不能输出 markdown；不能输出注释；所有字符串必须使用双引号；字符串内部不能出现未转义的真实换行；如果要表达多行对白，用 dialogue_lines 数组，不要在 dialogue 字符串里直接换行；不能有尾逗号。',
+      ].join('\n');
+      const queue = luxuryAgentModelQueue(pipelineStageId);
+      const candidates = queue.length ? queue : [null];
+      const attempts = [];
+      let lastErr = null;
+      for (let modelIndex = 0; modelIndex < candidates.length; modelIndex++) {
+        const modelPref = candidates[modelIndex];
+        const modelLabel = modelPref ? `${modelPref.provider_id}/${modelPref.model_id}` : 'default';
         try {
-          return json === 'object' ? _cleanJsonObject(out) : _cleanJsonArray(out);
-        } catch (parseErr) {
-          const repairSys = [
-            '你是 JSON 格式修复器。只把输入修复为合法 JSON，不新增剧情，不改写事实，不补充字段内容。',
-            json === 'object' ? '输出必须是一个 JSON 对象。' : '输出必须是一个 JSON 数组。',
-            '不能输出 markdown，不能解释。修复未转义换行、漏引号、尾逗号等格式问题；如果无法判断字段内容，保持原文字符串。',
-          ].join('\n');
-          const repaired = await callLuxuryStageLLM({
-            name: `${name}.json_repair`,
-            systemPrompt: repairSys,
-            userPrompt: `需要修复的 ${name} 原始输出：\n${String(out || '').slice(0, 24000)}`,
+          const out = await callLuxuryStageLLM({
+            name,
+            systemPrompt: strictJsonPrompt,
+            userPrompt,
             maxTokens,
             pipelineStageId,
-            requestId: request_key || `${name}.json_repair`,
-            skipKB: true,
+            requestId: request_key || '',
+            modelPref,
           });
-          return json === 'object' ? _cleanJsonObject(repaired) : _cleanJsonArray(repaired);
+          try {
+            return json === 'object' ? _cleanJsonObject(out) : _cleanJsonArray(out);
+          } catch (parseErr) {
+            const repairSys = [
+              '你是 JSON 格式修复器。只把输入修复为合法 JSON，不新增剧情，不改写事实，不补充字段内容。',
+              json === 'object' ? '输出必须是一个 JSON 对象。' : '输出必须是一个 JSON 数组。',
+              '不能输出 markdown，不能解释。修复未转义换行、漏引号、尾逗号等格式问题；如果无法判断字段内容，保持原文字符串。',
+            ].join('\n');
+            const repaired = await callLuxuryStageLLM({
+              name: `${name}.json_repair`,
+              systemPrompt: repairSys,
+              userPrompt: `需要修复的 ${name} 原始输出：\n${String(out || '').slice(0, 24000)}`,
+              maxTokens,
+              pipelineStageId,
+              requestId: request_key || `${name}.json_repair`,
+              skipKB: true,
+              modelPref,
+            });
+            try {
+              return json === 'object' ? _cleanJsonObject(repaired) : _cleanJsonArray(repaired);
+            } catch (repairParseErr) {
+              throw new Error(`JSON_PARSE_FAILED_AFTER_REPAIR: ${repairParseErr.message || repairParseErr}`);
+            }
+          }
+        } catch (err) {
+          lastErr = err;
+          const primaryMsg = String(err.message || '');
+          attempts.push(`${modelLabel}: ${primaryMsg.replace(/\s+/g, ' ').slice(0, 220)}`);
+          const retryContentFailure = /JSON_PARSE_FAILED_AFTER_REPAIR|Unexpected end of JSON|LLM 没有返回/.test(primaryMsg);
+          if (modelIndex < candidates.length - 1 && (retryContentFailure || isRetryableLuxuryAgentModelError(err))) {
+            console.warn(`[DH/luxury-ad/storyboard] ${name} candidate failed ${modelLabel}, try next:`, primaryMsg.replace(/\s+/g, ' ').slice(0, 240));
+            continue;
+          }
+          const modelUnavailable = /模型不存在|无可用密钥|已禁用|No available channel|model_not_found|api key/i.test(primaryMsg);
+          if (modelUnavailable) {
+            throw new Error(`${name} 模型不可用：${attempts.join('；')}。已停止生成，没有使用本地兜底内容；请先修复 ${pipelineStageId} 的 story 模型。`);
+          }
+          if (/JSON_PARSE_FAILED_AFTER_REPAIR|Unexpected end of JSON|JSON|LLM 没有返回/.test(primaryMsg)) {
+            throw new Error(`${name} 没有返回完整 JSON：${attempts.join('；')}。已停止生成，没有使用本地兜底内容。`);
+          }
+          throw new Error(`${name} 执行失败：${attempts.join('；') || primaryMsg}`);
         }
-      } catch (err) {
-        const primaryMsg = String(err.message || '');
-        const modelUnavailable = /模型不存在|无可用密钥|已禁用|No available channel|model_not_found|api key/i.test(primaryMsg);
-        if (modelUnavailable) {
-          throw new Error(`${name} 模型不可用：${primaryMsg}。已停止生成，没有使用本地兜底内容；请先修复 ${pipelineStageId} 的 story 模型。`);
-        }
-        if (/Unexpected end of JSON|JSON|LLM 没有返回/.test(primaryMsg)) {
-          throw new Error(`${name} 没有返回完整 JSON：${primaryMsg}。已停止生成，没有使用本地兜底内容。`);
-        }
-        throw new Error(`${name} 执行失败：${primaryMsg}`);
       }
+      throw new Error(`${name} 执行失败：${attempts.join('；') || String(lastErr?.message || 'unknown error')}`);
     };
     const isJsonIncompleteAgentError = (err) => /没有返回完整 JSON|Unexpected end of JSON|LLM .*JSON|JSON/.test(String(err?.message || ''));
     const callLuxuryAgentArrayInChunks = async ({ name, systemPrompt, baseUserPrompt, sceneList = [], chunkSize = 2, maxTokens = 7000 }) => {
