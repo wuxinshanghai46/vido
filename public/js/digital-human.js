@@ -147,6 +147,8 @@
       scriptGenerating: false,
       keyframeGenerating: false,
       keyframeProgress: null,
+      keyframeError: '',
+      keyframeErrorDetails: null,
       workflowProgress: null,
       usageRows: [],
       usageSummary: null,
@@ -6776,6 +6778,33 @@
     return true;
   }
 
+  // Render rejected candidate images so failed image spend can be inspected
+  // without relaxing the strict QA gate.
+  function renderLuxuryKeyframeErrorDetails(details = null) {
+    const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean).slice(0, 8) : [];
+    if (!attempts.length) return '';
+    return `<div class="dh-lux-error-attempts">
+      ${attempts.map((a, i) => {
+        const model = [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/');
+        const img = a.image_url || a.preview_url || '';
+        const qaReason = [
+          ...(Array.isArray(a.qa?.major_mismatches) ? a.qa.major_mismatches : []),
+          ...(Array.isArray(a.qa?.unrelated_subjects) ? a.qa.unrelated_subjects.map(x => `无关主体：${x}`) : []),
+          a.qa?.reason || '',
+          a.error || '',
+        ].filter(Boolean).slice(0, 3).join('；');
+        return `<article class="dh-lux-error-attempt">
+          <div>
+            <b>${escapeHtml(model || `候选 ${i + 1}`)}</b>
+            <span>${a.ok ? '通过' : '未通过'}${a.prompt_chars ? ` · prompt ${escapeHtml(String(a.prompt_chars))} 字符` : ''}</span>
+            <small>${escapeHtml(qaReason || '无详细原因')}</small>
+          </div>
+          ${img ? `<button type="button" class="dh-lux-error-thumb" data-lux-error-preview="${i}" title="查看被拒绝的候选图"><img src="${escapeHtml(luxuryAssetPreviewUrl({ url: img }))}" alt="${escapeHtml(model || '候选图')}"></button>` : ''}
+        </article>`;
+      }).join('')}
+    </div>`;
+  }
+
   function renderLuxuryAdScriptTable(host, segments) {
     if (!host) return;
     if (!segments.length) {
@@ -6846,6 +6875,7 @@
     }
     const disabledAttr = state.luxuryAd.keyframeGenerating ? 'disabled' : '';
     const errorText = String(state.luxuryAd.keyframeError || '').trim();
+    const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
@@ -6854,7 +6884,7 @@
         </div>
         <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>重新生成全部分镜</button>
       </div>
-      ${errorText ? `<div class="dh-demo-script-review" style="border-color:rgba(255,74,112,.55);background:rgba(255,74,112,.08);color:#ffd5df"><b>分镜生成已停止</b><span>${escapeHtml(errorText)}</span></div>` : ''}
+      ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>分镜生成已停止</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
     ` + segments.map((seg, i) => {
       const kf = keyframes[i] || {};
       const img = kf.image_url || kf.imageUrl || '';
@@ -7523,6 +7553,7 @@
     let progressTimer = null;
     state.luxuryAd.keyframeGenerating = true;
     state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
     if (singleIndex === null || force) state.luxuryAd.keyframes = [];
     else state.luxuryAd.keyframes = (state.luxuryAd.keyframes || []).map((item, i) => i === singleIndex ? {} : item);
     state.luxuryAd.keyframeProgress = {
@@ -7649,6 +7680,7 @@
       };
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeError = '';
+      state.luxuryAd.keyframeErrorDetails = null;
       renderLuxuryAdStoryboard();
       const lockedCount = state.luxuryAd.keyframes.filter(k => String(k.reference_mode || '').includes('reference_locked')).length;
       toast(singleIndex !== null
@@ -7661,6 +7693,7 @@
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
+      state.luxuryAd.keyframeErrorDetails = err?.data?.details || null;
       renderLuxuryAdStoryboard();
       toast('高定广告片分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
     } finally {
@@ -10312,6 +10345,16 @@
       const asset = luxuryAdReferenceAssets()[Number(luxAssetPreview.dataset.luxAssetPreview)];
       const url = asset?.url || asset?.previewUrl || '';
       if (url) openImagePreviewModal(url, asset?.name || '参考素材');
+      return;
+    }
+    const luxErrorPreview = closest('[data-lux-error-preview]');
+    if (luxErrorPreview) {
+      // Rejected candidates are still useful diagnostics, but they never count
+      // as approved keyframes until the backend QA returns pass=true.
+      const idx = Number(luxErrorPreview.dataset.luxErrorPreview);
+      const attempt = (state.luxuryAd.keyframeErrorDetails?.attempts || [])[idx] || {};
+      const url = attempt.image_url || attempt.preview_url || '';
+      if (url) openImagePreviewModal(url, `未通过候选图 ${idx + 1}`);
       return;
     }
     const luxShotEdit = closest('[data-lux-shot-edit]');

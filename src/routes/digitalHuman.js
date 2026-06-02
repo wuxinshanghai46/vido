@@ -11976,52 +11976,20 @@ async function _createLuxuryAdReferenceKeyframe({
     hasAvatar,
     characterLock,
   });
-  const prompt = [
-    _luxurySteelEnvironmentLockPrompt(productSubject, scene),
-    shotContractPrompt,
-    subjectGuard,
+  // Image providers cap prompts near 2000 characters, so only this compact
+  // contract is sent to the model; the full storyboard remains stored for QA.
+  const prompt = _buildLuxuryImageModelStrictPrompt({
+    scene,
+    productSubject,
     productLockPrompt,
-    'Create one premium Image2-style keyframe for a high-end commercial storyboard.',
-    hasAnyReference
-      ? 'Generate a NEW combined advertising keyframe from the uploaded materials. Do not return the raw reference image and do not create a plain placeholder.'
-      : 'No uploaded product, scene or person reference is provided. Generate the product/service visual, scene and any needed human subject directly from the advertising brief and storyboard.',
-    scene.continuity_bible ? `Campaign continuity bible: ${_compactLuxuryKeyframeText(scene.continuity_bible, 900)}.` : '',
-    hasAnyReference
-      ? 'Use the uploaded reference images as a material, product and scene board, not as flat pasted layers.'
-      : 'Do not ask for more uploads and do not invent unrelated retail props. Keep a consistent commercial subject category across all shots.',
-    hasStoryLayoutReference
-      ? 'Reference image 1 is the mandatory composition anchor: one real human presenter inside the allowed premium environment, beside finished product/material evidence. Follow this relationship first; do not generate a product-only or factory-only image.'
-      : hasAnyReference
-      ? 'Reference image 1 is the main product/scene/brand reference for this shot. Preserve the product shape, material, lighting mood, color palette and spatial intention.'
-      : productLockPrompt,
-    hasStoryLayoutReference
-      ? 'Later reference images are material, scene and identity anchors. Use them to refine the finished product surface, facade/showroom mood and actor identity, while keeping the human+environment+product composition from reference image 1.'
-      : hasAnyReference
-      ? 'If reference image 2 exists, it is the CURRENT SHOT VISUAL REFERENCE. The generated keyframe must visibly follow its space, material, color palette, product surface, lighting direction and composition. Do not replace it with a generic studio product shot.'
-      : '',
-    hasAnyReference ? productLockPrompt : '',
-    hasAnyReference
-      ? 'Blend the selected shot material into a coherent commercial background/scene with product readability, realistic lighting and matching perspective.'
-      : 'Build a coherent premium commercial frame with product readability, realistic lighting, believable scene design and matching perspective.',
-    hasAvatar
-      ? 'The last reference image is the selected human identity. Use it only as character identity, styling and face impression guidance. Redraw the person naturally inside the shot with matching lighting, perspective, contact shadows and believable body pose. Do not paste a cutout.'
-      : personRequired
-      ? 'No human reference image is provided. Generate a believable real advertising actor required by this storyboard panel, integrated with the same physical scene, product/material evidence, lighting, perspective and contact shadows.'
-      : 'No selected human identity is required. Product-only framing is acceptable only for macro/detail insert shots; otherwise keep story context and human scale when the shot contract asks for it.',
-    characterLock?.prompt || '',
-    scene.visual_prompt ? `Storyboard visual intent: ${scene.visual_prompt}` : '',
-    scene.action || scene.visual_action ? `Action and expression: ${String(scene.action || scene.visual_action).slice(0, 220)}.` : '',
-    scene.emotion || scene.mood ? `Emotion and atmosphere: ${String(scene.emotion || scene.mood).slice(0, 180)}.` : '',
-    scene.sfx_audio || scene.audio ? `SFX/audio intent for the shot: ${String(scene.sfx_audio || scene.audio).slice(0, 160)}.` : '',
-    scene.image2_brief ? `Image2 brief: ${scene.image2_brief}` : '',
-    scene.asset_prep ? `Asset preparation: ${scene.asset_prep}` : '',
-    scene.voiceover ? `Narration meaning: ${String(scene.voiceover).slice(0, 180)}.` : '',
-    scene.referenceImageCount ? `There are ${scene.referenceImageCount} uploaded reference materials in the project; this shot is using uploaded reference material ${Number(scene.referenceImageIndex || 0) + 1}. Keep that material recognizable.` : '',
-    'Quality target: competitor-grade commercial storyboard frames with coherent actor, real location depth, designed product environment, natural perspective and lighting. Do not output a dark placeholder, flat composite, product catalog crop, or generic material texture.',
-    'The result must look like one frame from the same premium campaign as the other storyboard panels: same actor identity if visible, same location/material family, same light direction, same color temperature and same camera taste.',
-    'Luxury advertising composition, cinematic but controlled, clean product readability, no generated text, no watermark, no extra random people, no face morphing, no identity drift, no unrelated scene replacement.',
-    'NEGATIVE: cosmetic bottle, perfume bottle, skincare bottle, lotion tube, beverage bottle, phone, watch, jewelry, unrelated packaged product, random retail prop, changing steel/material into consumer goods.',
-  ].filter(Boolean).join(' ');
+    subjectGuard,
+    shotContractPrompt,
+    hasAnyReference,
+    hasStoryLayoutReference,
+    hasAvatar,
+    personRequired,
+    characterLock,
+  });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
     prompt,
@@ -12058,7 +12026,9 @@ async function _createLuxuryAdReferenceKeyframe({
       : null,
     preferControlledCandidate: false,
     allowControlledFinal: false,
-    strictSingleCandidate: true,
+    // Strict retry mode: every configured image model uses the same compact
+    // storyboard contract and must pass QA; this is not a hidden fallback.
+    strictSingleCandidate: false,
   });
   const outPath = imageResult.outPath;
   return {
@@ -12341,6 +12311,76 @@ function _canUseControlledLuxurySteelPresenterOnly(scenes = [], productSubject =
     && _isLuxurySteelMaterialSubject(productSubject || sc.product_subject, sc));
 }
 
+// Keep image-model prompts below provider caps while preserving the hard storyboard contract first.
+function _luxuryFitImagePromptParts(parts = [], maxChars = 1850) {
+  const cleanParts = (Array.isArray(parts) ? parts : [])
+    .map(x => String(x || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const out = [];
+  let used = 0;
+  for (const part of cleanParts) {
+    const remaining = maxChars - used - (out.length ? 1 : 0);
+    if (remaining <= 0) break;
+    const clipped = Array.from(part).slice(0, remaining).join('');
+    if (clipped) {
+      out.push(clipped);
+      used += clipped.length + (out.length > 1 ? 1 : 0);
+    }
+  }
+  return out.join(' ').slice(0, maxChars);
+}
+
+// Build the exact short prompt sent to image models; it intentionally avoids re-appending the full legacy prompt.
+function _buildLuxuryImageModelStrictPrompt({
+  scene = {},
+  productSubject = '',
+  productLockPrompt = '',
+  subjectGuard = '',
+  shotContractPrompt = '',
+  hasAnyReference = false,
+  hasStoryLayoutReference = false,
+  hasAvatar = false,
+  personRequired = false,
+  characterLock = null,
+} = {}) {
+  const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
+  const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
+  const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 900);
+  const visual = _compactLuxuryKeyframeText(
+    scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
+    260,
+  );
+  const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 220);
+  const camera = _compactLuxuryKeyframeText(
+    [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
+    180,
+  );
+  const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 180);
+  const refRule = hasStoryLayoutReference
+    ? 'Reference rule: reference image 1 is composition only; create a real photorealistic ad frame with the required presenter, action, product evidence and scene.'
+    : hasAnyReference
+    ? 'Reference rule: use uploaded references as visual anchors, but obey this shot contract first; do not output a raw reference copy or unrelated exterior.'
+    : 'Reference rule: no uploaded shot reference is available; generate directly from the shot contract.';
+  return _luxuryFitImagePromptParts([
+    `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Product/material: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 120)}.`,
+    personRequired
+      ? 'MANDATORY HUMAN: one visible real presenter/actress must appear in this frame performing the specified action. Do not generate an empty exterior, product-only facade, robot, mannequin, or abstract scene.'
+      : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
+    visual ? `MUST SHOW: ${visual}.` : '',
+    action ? `REQUIRED ACTION: ${action}.` : '',
+    camera ? `CAMERA/SCENE: ${camera}.` : '',
+    narration ? `NARRATION MEANING: ${narration}.` : '',
+    compiled ? `COMPILED CONTRACT: ${compiled}.` : '',
+    refRule,
+    hasAvatar ? 'Identity reference rule: preserve the selected presenter identity only when a human appears; redraw naturally in-scene, no pasted cutout.' : '',
+    characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
+    subjectGuard,
+    productLockPrompt,
+    'Style: premium commercial storyboard still, photorealistic, coherent lighting, product-readable, no generated text, no watermark, no extra random people.',
+    'NEGATIVE: missing presenter when required, wrong location, exterior-only facade when action requires entering/interior, robot/android, cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
+  ], 1850);
+}
+
 // Generate one strict high-end ad keyframe from the compiled storyboard contract and reference materials.
 async function _createLuxuryAdReferenceKeyframe({
   req,
@@ -12489,52 +12529,20 @@ async function _createLuxuryAdReferenceKeyframe({
     hasAvatar,
     characterLock,
   });
-  const prompt = [
-    _luxurySteelEnvironmentLockPrompt(productSubject, scene),
-    shotContractPrompt,
-    subjectGuard,
+  // Image providers cap prompts near 2000 characters, so only this compact
+  // contract is sent to the model; the full storyboard remains stored for QA.
+  const prompt = _buildLuxuryImageModelStrictPrompt({
+    scene,
+    productSubject,
     productLockPrompt,
-    'Create one premium Image2-style keyframe for a high-end commercial storyboard.',
-    hasAnyReference
-      ? 'Generate a NEW combined advertising keyframe from the uploaded materials. Do not return the raw reference image and do not create a plain placeholder.'
-      : 'No uploaded product, scene or person reference is provided. Generate the product/service visual, scene and any needed human subject directly from the advertising brief and storyboard.',
-    scene.continuity_bible ? `Campaign continuity bible: ${_compactLuxuryKeyframeText(scene.continuity_bible, 900)}.` : '',
-    hasAnyReference
-      ? 'Use the uploaded reference images as a material, product and scene board, not as flat pasted layers.'
-      : 'Do not ask for more uploads and do not invent unrelated retail props. Keep a consistent commercial subject category across all shots.',
-    hasStoryLayoutReference
-      ? 'Reference image 1 is the mandatory composition anchor: one real human presenter inside the allowed premium environment, beside finished product/material evidence. Follow this relationship first; do not generate a product-only or factory-only image.'
-      : hasAnyReference
-      ? 'Reference image 1 is the main product/scene/brand reference for this shot. Preserve the product shape, material, lighting mood, color palette and spatial intention.'
-      : productLockPrompt,
-    hasStoryLayoutReference
-      ? 'Later reference images are material, scene and identity anchors. Use them to refine the finished product surface, facade/showroom mood and actor identity, while keeping the human+environment+product composition from reference image 1.'
-      : hasAnyReference
-      ? 'If reference image 2 exists, it is the CURRENT SHOT VISUAL REFERENCE. The generated keyframe must visibly follow its space, material, color palette, product surface, lighting direction and composition. Do not replace it with a generic studio product shot.'
-      : '',
-    hasAnyReference ? productLockPrompt : '',
-    hasAnyReference
-      ? 'Blend the selected shot material into a coherent commercial background/scene with product readability, realistic lighting and matching perspective.'
-      : 'Build a coherent premium commercial frame with product readability, realistic lighting, believable scene design and matching perspective.',
-    hasAvatar
-      ? 'The last reference image is the selected human identity. Use it only as character identity, styling and face impression guidance. Redraw the person naturally inside the shot with matching lighting, perspective, contact shadows and believable body pose. Do not paste a cutout.'
-      : personRequired
-      ? 'No human reference image is provided. Generate a believable real advertising actor required by this storyboard panel, integrated with the same physical scene, product/material evidence, lighting, perspective and contact shadows.'
-      : 'No selected human identity is required. Product-only framing is acceptable only for macro/detail insert shots; otherwise keep story context and human scale when the shot contract asks for it.',
-    characterLock?.prompt || '',
-    scene.visual_prompt ? `Storyboard visual intent: ${scene.visual_prompt}` : '',
-    scene.action || scene.visual_action ? `Action and expression: ${String(scene.action || scene.visual_action).slice(0, 220)}.` : '',
-    scene.emotion || scene.mood ? `Emotion and atmosphere: ${String(scene.emotion || scene.mood).slice(0, 180)}.` : '',
-    scene.sfx_audio || scene.audio ? `SFX/audio intent for the shot: ${String(scene.sfx_audio || scene.audio).slice(0, 160)}.` : '',
-    scene.image2_brief ? `Image2 brief: ${scene.image2_brief}` : '',
-    scene.asset_prep ? `Asset preparation: ${scene.asset_prep}` : '',
-    scene.voiceover ? `Narration meaning: ${String(scene.voiceover).slice(0, 180)}.` : '',
-    scene.referenceImageCount ? `There are ${scene.referenceImageCount} uploaded reference materials in the project; this shot is using uploaded reference material ${Number(scene.referenceImageIndex || 0) + 1}. Keep that material recognizable.` : '',
-    'Quality target: competitor-grade commercial storyboard frames with coherent actor, real location depth, designed product environment, natural perspective and lighting. Do not output a dark placeholder, flat composite, product catalog crop, or generic material texture.',
-    'The result must look like one frame from the same premium campaign as the other storyboard panels: same actor identity if visible, same location/material family, same light direction, same color temperature and same camera taste.',
-    'Luxury advertising composition, cinematic but controlled, clean product readability, no generated text, no watermark, no extra random people, no face morphing, no identity drift, no unrelated scene replacement.',
-    'NEGATIVE: cosmetic bottle, perfume bottle, skincare bottle, lotion tube, beverage bottle, phone, watch, jewelry, unrelated packaged product, random retail prop, changing steel/material into consumer goods.',
-  ].filter(Boolean).join(' ');
+    subjectGuard,
+    shotContractPrompt,
+    hasAnyReference,
+    hasStoryLayoutReference,
+    hasAvatar,
+    personRequired,
+    characterLock,
+  });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
     prompt,
@@ -12571,7 +12579,9 @@ async function _createLuxuryAdReferenceKeyframe({
       : null,
     preferControlledCandidate: false,
     allowControlledFinal: false,
-    strictSingleCandidate: true,
+    // Strict retry mode: every configured image model uses the same compact
+    // storyboard contract and must pass QA; this is not a hidden fallback.
+    strictSingleCandidate: false,
   });
   const outPath = imageResult.outPath;
   return {
@@ -12622,6 +12632,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   preferControlledCandidate = false,
   allowControlledFinal = false,
   strictSingleCandidate = false,
+  allowQaRepair = false,
 }) {
   const attempts = [];
   let repairInstruction = '';
@@ -12629,14 +12640,22 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const hasShotReferenceLock = referenceImages.length > 1;
   const primary = refs[0]?.source || refs[0]?.resolved;
   const shortError = err => String(err?.message || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 220);
-  const addAttempt = (model, ok, err = null) => {
+  // Attempts are returned to the UI, so include enough audit data to explain
+  // failed spending without exposing server filesystem paths.
+  const addAttempt = (model, ok, err = null, meta = {}) => {
     attempts.push({
       provider_id: model?.provider_id || model?.provider || 'deyunai',
       model_id: model?.model_id || model?.model || 'nano-banana',
       ok: !!ok,
       error: err ? shortError(err) : '',
+      ...meta,
     });
   };
+  // Candidate URLs let users inspect rejected images instead of guessing
+  // whether the image model was called at all.
+  const candidateImageUrl = outPath => (outPath && fs.existsSync(outPath))
+    ? `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(outPath)}`
+    : '';
   const promptWithRepair = () => repairInstruction
     ? [repairInstruction, prompt].filter(Boolean).join(' ').slice(0, 1950)
     : prompt;
@@ -12803,8 +12822,14 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
     const modelKey = `${model?.provider_id || model?.provider || 'unknown'}/${model?.model_id || model?.model || 'unknown'}`;
+    const attemptPrompt = promptWithRepair();
+    const attemptPromptChars = Array.from(String(attemptPrompt || '')).length;
     try {
-      const outPath = await runCandidate(model, i + 1, promptWithRepair());
+      const outPath = await runCandidate(model, i + 1, attemptPrompt);
+      const attemptMeta = {
+        prompt_chars: attemptPromptChars,
+        image_url: candidateImageUrl(outPath),
+      };
       let qa = null;
       if (typeof qaCheck === 'function') {
         try {
@@ -12815,9 +12840,12 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
               qa?.reason || '',
             ].filter(Boolean).slice(0, 5).join('；');
-            addAttempt(model, false, new Error(`QA未通过：${issues || '分镜图与剧本不一致'}`));
-            repairInstruction = strictSingleCandidate ? '' : _luxuryQaRepairInstruction(qa);
-            if (!strictSingleCandidate && repairInstruction && !repairedModels.has(modelKey)) {
+            addAttempt(model, false, new Error(`QA未通过：${issues || '分镜图与剧本不一致'}`), {
+              ...attemptMeta,
+              qa,
+            });
+            repairInstruction = allowQaRepair && !strictSingleCandidate ? _luxuryQaRepairInstruction(qa) : '';
+            if (allowQaRepair && !strictSingleCandidate && repairInstruction && !repairedModels.has(modelKey)) {
               repairedModels.add(modelKey);
               i -= 1;
             }
@@ -12826,17 +12854,20 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           }
         } catch (qaErr) {
           if (Number(qaErr?.status) === 422 || qaErr?.code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED') {
-            addAttempt(model, false, qaErr);
+            addAttempt(model, false, qaErr, attemptMeta);
             if (strictSingleCandidate) break;
             continue;
           }
           throw qaErr;
         }
       }
-      addAttempt(model, true);
+      addAttempt(model, true, null, {
+        ...attemptMeta,
+        qa,
+      });
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, qa };
     } catch (err) {
-      addAttempt(model, false, err);
+      addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
       console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}:`, shortError(err));
       if (strictSingleCandidate) break;
     }

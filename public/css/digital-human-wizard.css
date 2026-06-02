@@ -968,6 +968,16 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-demo-script-review { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--dh-border); background: rgba(33,255,243,.035); }
 .dh-demo-script-review h4 { margin: 0 0 4px; color: var(--dh-text); font-size: 20px; letter-spacing: 0; }
 .dh-demo-script-review p { margin: 0; color: var(--dh-text-soft); font-size: 12px; line-height: 1.5; }
+/* High-end ad QA failures expose rejected candidates without approving them as usable keyframes. */
+.dh-lux-keyframe-error { align-items: stretch; flex-direction: column; border-color: rgba(255,74,112,.55); background: rgba(255,74,112,.08); color: #ffd5df; }
+.dh-lux-error-attempts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; width: 100%; }
+.dh-lux-error-attempt { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 10px; align-items: center; min-height: 76px; padding: 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(0,0,0,.22); }
+.dh-lux-error-attempt b, .dh-lux-error-attempt span, .dh-lux-error-attempt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-lux-error-attempt b { color: #fff; font-size: 13px; }
+.dh-lux-error-attempt span { color: #ffd5df; font-size: 12px; }
+.dh-lux-error-attempt small { color: rgba(255,255,255,.68); font-size: 11px; }
+.dh-lux-error-thumb { width: 72px; height: 56px; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.18); border-radius: 6px; background: rgba(0,0,0,.38); cursor: zoom-in; }
+.dh-lux-error-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dh-demo-script-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .dh-demo-script-mainline, .dh-demo-script-overview { margin: 12px; padding: 13px 16px; border-radius: var(--dh-radius-sm); background: rgba(33,255,243,.055); color: var(--dh-text); border: 1px solid rgba(33,255,243,.20); }
 .dh-demo-script-mainline b, .dh-demo-script-overview b { display: block; color: var(--dh-primary); font-size: 13px; margin-bottom: 5px; }
