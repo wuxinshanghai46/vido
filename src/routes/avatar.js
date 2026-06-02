@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -8,30 +8,6 @@ const { v4: uuidv4 } = require('uuid');
 // 上传目录
 const uploadDir = path.join(__dirname, '../../outputs/avatar');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-const previewVoiceCacheDir = path.join(uploadDir, '__preview_cache');
-if (!fs.existsSync(previewVoiceCacheDir)) fs.mkdirSync(previewVoiceCacheDir, { recursive: true });
-const previewVoiceBadFile = path.join(uploadDir, 'bad_preview_voices.json');
-
-function _readBadPreviewVoices() {
-  try {
-    const arr = JSON.parse(fs.readFileSync(previewVoiceBadFile, 'utf8'));
-    return new Set(Array.isArray(arr) ? arr.filter(Boolean).map(String) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function _markBadPreviewVoice(voiceId, reason) {
-  if (!voiceId) return;
-  const bad = _readBadPreviewVoices();
-  bad.add(String(voiceId));
-  try {
-    fs.writeFileSync(previewVoiceBadFile, JSON.stringify([...bad], null, 2), 'utf8');
-    console.warn(`[preview-voice] disabled bad voice ${voiceId}: ${reason || '-'}`);
-  } catch (e) {
-    console.warn('[preview-voice] write bad voice file failed:', e.message);
-  }
-}
 
 // 预设图片目录
 const presetsDir = path.join(__dirname, '../../outputs/presets');
@@ -658,12 +634,6 @@ router.post('/generate', async (req, res) => {
             position: posMap[e.position] || e.position || 'top',
             startTime: e.startTime ?? 0,
             endTime: e.endTime,
-            fontName: e.fontName,
-            fontSize: e.fontSize,
-            fontcolor: e.fontcolor || e.color,
-            bordercolor: e.bordercolor || e.outlineColor,
-            borderw: e.borderw,
-            bold: e.bold,
           })).filter(t => t.text);
 
           // 招引动画映射：前端 type (arrow/finger/fire/sparkle/circle) → effectsService icon
@@ -912,16 +882,51 @@ router.get('/tasks', (req, res) => {
 const PRESET_AVATARS = {
   // —— 商务 ——
   'female-1': { name: '商务女性', category: 'business', gender: 'female', prompt: '真人摄影照片，一位25岁左右的年轻漂亮亚洲女性，穿着白色西装外套，淡妆，自信温柔的微笑，柔和的影棚灯光，干净的渐变背景，半身照，超高清皮肤纹理，真实人像摄影，8K写实照片，photorealistic portrait photography, NOT illustration NOT cartoon NOT anime' },
-  'male-1':   { name: '商务男性', category: 'business', gender: 'male',   prompt: '真人摄影照片，一位28岁左右的英俊亚洲男性，穿着深藏青色修身西装配开领衬衫，迷人微笑，现代发型，柔和灯光，干净背景，半身照，超清晰，8K写实照片，photorealistic portrait photography, NOT illustration NOT cartoon NOT anime' },
+  'male-1':   { name: '商务男性', category: 'business', gender: 'male', prompt: '真人摄影照片，一位28岁左右的英俊亚洲男性，穿着深藏青色修身西装配开领衬衫，迷人微笑，现代发型，柔和灯光，干净背景，半身照，超清晰，8K写实照片，photorealistic portrait photography, NOT illustration NOT cartoon NOT anime' },
+  'female-biz-2': { name: '精英女高管', category: 'business', gender: 'female', prompt: '真人摄影照片，单人独照，一位 32 岁中国女性高管，黑色剪裁西装搭配白色内搭，简约金耳钉，利落齐肩短发，知性自信直视镜头，柔和影棚主光，纯色浅灰渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'male-biz-2':   { name: '资深顾问',   category: 'business', gender: 'male',   prompt: '真人摄影照片，单人独照，一位 38 岁中国男性金融顾问，深灰色三件套西装配浅色衬衫和领带，文质彬彬，稳重微笑直视镜头，柔和影棚主光，纯色深灰渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'female-biz-3': { name: '创业女性',   category: 'business', gender: 'female', prompt: '真人摄影照片，单人独照，一位 28 岁亚洲创业女性，浅粉色针织衫外搭米色西装，马尾发型，自然妆容，阳光温暖笑容直视镜头，柔和影棚主光，纯色米白渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
 
   // —— 新闻 / 主持 ——
   'female-2': { name: '新闻主播', category: 'news', gender: 'female', prompt: '真人摄影照片，一位25岁左右的美丽中国女性电视新闻主播，专业优雅的外表，淡妆，珍珠耳环，演播室柔和灯光，自信温暖的表情，半身照，超清晰，8K写实照片，photorealistic portrait, NOT illustration NOT anime' },
+  'male-news-1': { name: '男主播',   category: 'news', gender: 'male',   prompt: '真人摄影照片，单人独照，一位 35 岁中国男性新闻主播，深蓝色西装白衬衫红领带，庄重表情直视镜头，柔和影棚主光，纯色深蓝渐变背景，干净背景无任何演播室元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'female-news-2': { name: '财经主持', category: 'news', gender: 'female', prompt: '真人摄影照片，单人独照，一位 30 岁亚洲女性财经主持人，红色西装外套配白色内搭，职业气质，长发整齐披肩，亲和自然笑容直视镜头，柔和影棚主光，纯色浅蓝渐变背景，干净背景无任何演播室元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
 
   // —— 教育 / 讲师 ——
-  'male-2':   { name: '教育讲师', category: 'education', gender: 'male',   prompt: '真人摄影照片，一位30岁左右的友善亚洲男性教师，穿着休闲毛衣配衬衫，温暖平易近人的微笑，现代教室背景虚化，半身照，超清晰，8K写实照片，photorealistic portrait, NOT illustration NOT anime' },
+  'male-2':   { name: '教育讲师', category: 'education', gender: 'male', prompt: '真人摄影照片，一位30岁左右的友善亚洲男性教师，穿着休闲毛衣配衬衫，温暖平易近人的微笑，现代教室背景虚化，半身照，超清晰，8K写实照片，photorealistic portrait, NOT illustration NOT anime' },
+  'female-edu-1': { name: '知性女教师', category: 'education', gender: 'female', prompt: '真人摄影照片，单人独照，一位 28 岁亚洲女性大学老师，浅色衬衫配细框眼镜，长发自然垂肩，温柔自信笑容直视镜头，柔和影棚主光，纯色米白渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'male-edu-2':   { name: '理工教授',   category: 'education', gender: 'male',   prompt: '真人摄影照片，单人独照，一位 45 岁亚洲男性大学教授，灰色休闲西装配白衬衫，方框眼镜，稍有白发，睿智表情直视镜头，柔和影棚主光，纯色浅灰渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
 
   // —— 医疗 / 健康 ——
+  'female-med-1': { name: '女医生', category: 'medical', gender: 'female', prompt: '真人摄影照片，单人独照，一位 30 岁亚洲女性医生，白色医生袍配听诊器，马尾发型，亲切专业微笑直视镜头，柔和影棚主光，纯色浅灰渐变背景，干净背景无任何医院元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
   'male-med-1':   { name: '男医生', category: 'medical', gender: 'male',   prompt: '真人摄影照片，单人独照，一位 40 岁亚洲男性医生，白大褂配浅蓝色衬衫，短发，沉稳微笑直视镜头，柔和影棚主光，纯色浅灰渐变背景，干净背景无任何医院元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+
+  // —— 科技 / 直播 ——
+  'male-tech-1': { name: '科技博主', category: 'tech', gender: 'male', prompt: '真人摄影照片，单人独照，一位 27 岁亚洲男性科技 up 主，黑色 T 恤外搭拉链卫衣，短发精神，充满活力的微笑直视镜头，柔和影棚主光，纯色深蓝渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'female-tech-1': { name: '游戏主播', category: 'tech', gender: 'female', prompt: '真人摄影照片，单人独照，一位 23 岁亚洲女性游戏主播，粉色耳机，马尾发型，俏皮活力微笑直视镜头，柔和影棚主光，纯色粉紫渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+
+  // —— 生活 / 带货 ——
+  'female-life-1': { name: '时尚达人', category: 'lifestyle', gender: 'female', prompt: '真人摄影照片，单人独照，一位 26 岁亚洲女性时尚博主，米色大衣配丝巾，化妆精致，自信直视镜头，柔和影棚主光，纯色米白渐变背景，干净背景无任何环境元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'male-life-1':   { name: '健身教练', category: 'lifestyle', gender: 'male',   prompt: '真人摄影照片，单人独照，一位 30 岁亚洲男性健身教练，黑色紧身运动衫，体形健美，短发短胡，自信微笑直视镜头，柔和影棚主光，纯色深灰渐变背景，干净背景无任何健身房元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+  'female-life-2': { name: '美食博主', category: 'lifestyle', gender: 'female', prompt: '真人摄影照片，单人独照，一位 25 岁亚洲女性美食博主，浅色围裙配白色内搭，亲切微笑直视镜头，柔和影棚主光，纯色米白渐变背景，干净背景无任何厨房元素，正面半身照一人，8K photorealistic solo portrait, clean studio backdrop, single person only, NOT anime' },
+
+  // —— 儿童 / 长辈 ——
+  'child-1': { name: '小男孩', category: 'child', gender: 'male',   prompt: '真人儿童摄影照片，单人独照，一位 8 岁中国亚洲男孩，圆脸阳光，干净短发整齐，浅蓝色纯色圆领 T 恤，天真灿烂露齿笑直视镜头，柔和 45 度影棚主光 + 正面补光，纯色浅蓝到白色渐变无纹理背景，皮肤细节清晰，睫毛可见，瞳孔反光自然，只有一个小孩，干净背景无任何环境元素、无玩具、无道具、无兄弟姐妹，正面半身照一人，真实儿童摄影 DSLR 照片，photorealistic solo child portrait photo, hyperrealistic skin and hair detail, single asian child only, studio portrait, NOT anime NOT illustration NOT cartoon NOT 3D render, ABSOLUTELY NOT a doll' },
+  'child-2': { name: '小女孩', category: 'child', gender: 'female', prompt: '真人儿童摄影照片，单人独照，一位 7 岁中国亚洲女孩，圆脸大眼睛睫毛长，整齐双马尾扎粉色发圈，淡粉色纯色纯棉圆领 T 恤（不是连衣裙、不是纱裙），甜美天真微笑轻露牙齿直视镜头，柔和 45 度影棚主光 + 眼神光，纯色浅粉到白色渐变无纹理背景，皮肤细腻红润，瞳孔反光自然，只有一个小孩，干净背景无任何玩具、花朵、动物、兄弟姐妹，正面半身照一人，真实儿童摄影 DSLR 照片，photorealistic solo child portrait photo, hyperrealistic skin and hair detail, single asian child only, studio portrait, NOT anime NOT illustration NOT cartoon NOT 3D render, ABSOLUTELY NOT a doll' },
+  'elder-1': { name: '长者爷爷', category: 'elder', gender: 'male',   prompt: '真人老年人摄影照片，单人独照，一位 65 岁中国亚洲男性长者，一头整齐的银白短发，有真实的岁月感面部皱纹和法令纹但精神矍铄，戴细边老花眼镜（可选），浅灰色纯色针织开衫内搭白衬衫，肩膀放松自然坐姿，慈祥温和含蓄微笑直视镜头，柔和 45 度影棚主光凸显皮肤肌理，纯色浅灰到白色渐变无纹理背景，皮肤有真实老年细节（雀斑、毛孔、皱纹、岁月痕迹），眼神有智慧感和温暖感，只有一位老人，干净背景无任何家具、茶杯、书架、家人，正面半身照一人，DSLR 高清真实人像照片 85mm f/2.8，photorealistic senior portrait photograph of ONE elderly asian man, hyperrealistic skin texture with natural aging wrinkles and pores, single person studio portrait, NOT anime NOT illustration NOT cartoon NOT 3D render' },
+  'elder-2': { name: '长者奶奶', category: 'elder', gender: 'female', prompt: '真人老年人摄影照片，单人独照，一位 62 岁中国亚洲女性长者，一头短款银灰色卷发打理得干净优雅，有真实岁月感的温和皱纹法令纹眼角纹但不显老态，戴珍珠耳钉，米白色纯色纯棉针织衫（不是花色、不是印花），肩膀放松坐姿自然，温和慈爱含蓄笑容直视镜头，柔和 45 度影棚主光 + 眼神光凸显皮肤肌理，纯色米白到浅粉渐变无纹理背景，皮肤有真实老年细节（雀斑、毛孔、细纹、岁月痕迹），眼神温暖有智慧感，只有一位老人，干净背景无任何家具、茶杯、花瓶、家人，正面半身照一人，DSLR 高清真实人像照片 85mm f/2.8，photorealistic senior portrait photograph of ONE elderly asian woman, hyperrealistic skin texture with natural aging wrinkles pores and laugh lines, single person studio portrait, NOT anime NOT illustration NOT cartoon NOT 3D render' },
+
+  // —— 外国 ——
+  'western-1': { name: '欧美男性',  category: 'western', gender: 'male',   prompt: 'Hyperrealistic DSLR portrait photograph of ONE single caucasian european male executive age 32, well-groomed short brown hair with slight natural wave, clean-shaven defined jawline, deep navy single-breasted wool suit with crisp white dress shirt and subtle burgundy silk tie, calm confident charming smile showing natural teeth, looking directly into lens, soft 45-degree studio key light with rim light and eye catchlight, plain gradient medium-gray paper backdrop, hyperrealistic skin texture with visible pores and subtle stubble shadow, sharp iris detail with natural catchlights, 85mm f/2 lens bokeh, half-body frontal centered composition, ONLY ONE PERSON in frame, clean background with zero environmental props, studio portrait photography, 8K ultra-realistic raw photo. NEGATIVE: multiple people, cartoon, anime, illustration, 3D render, painting, CGI, video game character, stylized, uncanny valley, waxy skin, plastic doll, digital art' },
+  'western-2': { name: '欧美女性',  category: 'western', gender: 'female', prompt: 'Hyperrealistic DSLR portrait photograph of ONE single caucasian european female professional age 28, soft natural blonde shoulder-length wavy hair with subtle highlights, porcelain skin with visible natural pores, cream-colored silk blouse with delicate pearl earrings, gentle warm smile showing a hint of natural teeth, looking directly into lens, soft 45-degree studio key light with rim light and eye catchlight, plain gradient beige paper backdrop, hyperrealistic skin texture with visible pores and tiny imperfections, sharp iris detail with natural catchlights, 85mm f/2 lens bokeh, half-body frontal centered composition, ONLY ONE PERSON in frame, clean background with zero environmental props, studio portrait photography, 8K ultra-realistic raw photo. NEGATIVE: multiple people, cartoon, anime, illustration, 3D render, painting, CGI, video game character, stylized, uncanny valley, waxy skin, plastic doll, digital art' },
+  'africa-1':  { name: '非裔女性',  category: 'western', gender: 'female', prompt: 'Hyperrealistic DSLR portrait photograph of ONE single african black female journalist age 28, rich dark brown skin with beautiful natural melanin glow, natural afro-textured curly hair styled neat and voluminous, small gold hoop earrings, solid warm terracotta colored blouse with subtle texture, confident warm genuine smile showing natural teeth, looking directly into lens, soft 45-degree studio key light with strong rim light highlighting skin texture and eye catchlight, plain gradient warm cream paper backdrop, hyperrealistic skin texture with visible pores and natural sheen, sharp iris detail with natural catchlights, 85mm f/2 lens bokeh, half-body frontal centered composition, ONLY ONE PERSON in frame, clean background with zero environmental props, studio portrait photography, 8K ultra-realistic raw photo. NEGATIVE: multiple people, cartoon, anime, illustration, 3D render, painting, CGI, video game character, stylized, uncanny valley, waxy skin, plastic doll, bleached skin, lightened skin tone' },
+  'india-1':   { name: '印度男性',  category: 'western', gender: 'male',   prompt: 'Hyperrealistic DSLR portrait photograph of ONE single indian south-asian male software engineer age 32, warm brown skin tone, neat short black hair with natural texture, well-groomed short black beard with defined jawline, dark chestnut brown eyes with natural catchlights, charcoal gray casual collared shirt with subtle fabric texture, confident intelligent friendly smile showing natural teeth, looking directly into lens, soft 45-degree studio key light with rim light and eye catchlight, plain gradient deep blue paper backdrop, hyperrealistic skin texture with visible pores and subtle beard shadow, sharp iris detail with natural catchlights, 85mm f/2 lens bokeh, half-body frontal centered composition, ONLY ONE PERSON in frame, clean background with zero environmental props, studio portrait photography, 8K ultra-realistic raw photo. NEGATIVE: multiple people, cartoon, anime, illustration, 3D render, painting, CGI, video game character, stylized, uncanny valley, waxy skin, plastic doll, bollywood poster, overly smooth skin' },
+
+  // —— 动漫 / 虚拟 ——
+  'anime-1':  { name: '动漫少女',  category: 'anime', gender: 'female', prompt: 'Beautiful anime solo character portrait, one single young girl with flowing pastel gradient hair, large sparkling crystal eyes, delicate facial features, wearing futuristic outfit, soft glowing particles, clean gradient pastel backdrop, no crowd no multi-character, digital anime illustration, Makoto Shinkai style lighting, upper body, single character only, 4K' },
+  'anime-2':  { name: '动漫少年',  category: 'anime', gender: 'male',   prompt: 'Anime solo boy portrait, one single 17 yo boy, spiky black hair, determined eyes, modern school uniform with cyber accents, clean gradient blue backdrop, no crowd no multi-character, vibrant anime illustration, Makoto Shinkai style, single character only, 4K' },
+  'anime-3':  { name: '国风女侠',  category: 'anime', gender: 'female', prompt: 'Chinese ink painting anime solo portrait, one single young wuxia heroine, long black hair with hairpin, cyan silk hanfu, elegant expression, clean gradient ink-wash backdrop, no crowd no multi-character, classical Chinese ink style, single character only, 4K' },
+  'vtuber-1': { name: 'VTuber少女', category: 'anime', gender: 'female', prompt: 'VTuber anime solo portrait, one single cute girl with twin pink ponytails, cat ears headband, sparkly blue eyes, school uniform, energetic smile, clean gradient pastel backdrop with subtle stars, no crowd no multi-character, single character only, 4K' },
 };
 
 const BG_NEGATIVE = '，绝对不要出现任何人物、人像、角色、动物，只画纯环境背景，空旷无人';
@@ -956,6 +961,12 @@ router.get('/presets', (req, res) => {
     { id: 'news',      name: '新闻/主持' },
     { id: 'education', name: '教育' },
     { id: 'medical',   name: '医疗' },
+    { id: 'tech',      name: '科技/直播' },
+    { id: 'lifestyle', name: '生活/带货' },
+    { id: 'child',     name: '儿童' },
+    { id: 'elder',     name: '长辈' },
+    { id: 'western',   name: '外国' },
+    { id: 'anime',     name: '动漫/虚拟' },
   ];
   res.json({ success: true, avatars, avatarMeta, backgrounds, categories });
 });
@@ -1580,31 +1591,17 @@ router.get('/templates', (req, res) => {
 // POST /api/avatar/preview-voice — TTS 音色试听
 router.post('/preview-voice', async (req, res) => {
   const { text, voiceId, gender, speed } = req.body;
-  const sampleText = ((text || '').trim() || '你好，这是试听。').slice(0, 24);
+  const sampleText = (text || '').trim() || '大家好，欢迎来到我的频道，今天给大家分享一个特别实用的技巧。';
 
   // 直接传递 voiceId 给 TTS（火山引擎等供应商需要精确音色 ID）
   const safeVoiceId = voiceId || null;
   const safeGender = gender || (voiceId?.includes('female') || voiceId?.includes('girl') ? 'female' : voiceId?.includes('male') || voiceId?.includes('boy') ? 'male' : 'female');
 
   try {
-    if (safeVoiceId && _readBadPreviewVoices().has(String(safeVoiceId))) {
-      return res.status(410).json({ success: false, error: '该音色试听失败，已自动移除' });
-    }
-    const crypto = require('crypto');
-    const cacheKey = crypto.createHash('sha1')
-      .update(JSON.stringify({ sampleText, safeVoiceId, safeGender, speed: speed || 1.0 }))
-      .digest('hex')
-      .slice(0, 24);
-    const cachedPath = path.join(previewVoiceCacheDir, `preview_${cacheKey}.mp3`);
-    const cachedWavPath = path.join(previewVoiceCacheDir, `preview_${cacheKey}.wav`);
-    const hitPath = fs.existsSync(cachedPath) ? cachedPath : fs.existsSync(cachedWavPath) ? cachedWavPath : null;
-    if (hitPath && fs.statSync(hitPath).size > 512) {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.setHeader('Content-Type', hitPath.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg');
-      return fs.createReadStream(hitPath).pipe(res);
-    }
-
-    const outPath = cachedPath;
+    const taskDir = path.join(path.resolve(process.env.OUTPUT_DIR || './outputs'), 'avatar', '__preview');
+    const fs = require('fs');
+    fs.mkdirSync(taskDir, { recursive: true });
+    const outPath = path.join(taskDir, `preview_${Date.now()}.mp3`);
     const { generateSpeech } = require('../services/ttsService');
     const result = await generateSpeech(sampleText, outPath, {
       gender: safeGender,
@@ -1613,8 +1610,7 @@ router.post('/preview-voice', async (req, res) => {
     });
 
     if (!result) {
-      _markBadPreviewVoice(safeVoiceId, 'generateSpeech returned empty result');
-      return res.status(500).json({ success: false, error: '所有 TTS 供应商均不可用，请在设置中配置语音 API Key（智谱/火山/百度/阿里等）' });
+      return res.status(500).json({ success: false, error: `TTS 试听失败：${generateSpeech.lastError || '所有 TTS 供应商均不可用'}` });
     }
 
     // TTS 可能生成 .wav 或 .mp3，检查实际文件
@@ -1622,16 +1618,15 @@ router.post('/preview-voice', async (req, res) => {
     const actualPath = fs.existsSync(outPath) ? outPath : fs.existsSync(wavPath) ? wavPath : null;
     if (actualPath) {
       const isWav = actualPath.endsWith('.wav');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
       res.setHeader('Content-Type', isWav ? 'audio/wav' : 'audio/mpeg');
-      fs.createReadStream(actualPath).pipe(res);
+      const stream = fs.createReadStream(actualPath);
+      stream.pipe(res);
+      stream.on('end', () => { setTimeout(() => { try { fs.unlinkSync(actualPath); } catch {} }, 5000); });
     } else {
-      _markBadPreviewVoice(safeVoiceId, 'TTS file missing');
       res.status(500).json({ success: false, error: 'TTS 文件生成失败' });
     }
   } catch (err) {
     console.error('[preview-voice] error:', err.message);
-    _markBadPreviewVoice(safeVoiceId, err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -1639,7 +1634,7 @@ router.post('/preview-voice', async (req, res) => {
 // GET /api/avatar/voice-list — 获取可用音色列表
 // 单一数据源：ttsService.getAvailableVoices()（已按 _getTTSKey() 过滤未配 key 的供应商）
 // 这样 voice id 一定能被 generateSpeech() 实际合成，避免"声音错乱"
-router.get('/voice-list', async (req, res) => {
+router.get('/voice-list', (req, res) => {
   try {
     const { getAvailableVoices } = require('../services/ttsService');
     const { loadSettings } = require('../services/settingsService');
@@ -1656,8 +1651,6 @@ router.get('/voice-list', async (req, res) => {
       trustedProviders.add(p.id);
     }
     if (blockedProviders.length) console.log('[voice-list] 已屏蔽测试失败的供应商:', blockedProviders.join(','));
-    const badPreviewVoices = _readBadPreviewVoices();
-    let hiflyVoices = [];
 
     // 供应商名 → id 反查表（用于 ttsService 返回的对象）
     const nameToId = {
@@ -1668,7 +1661,6 @@ router.get('/voice-list', async (req, res) => {
 
     const real = getAvailableVoices();
     const filtered = real.filter(v => {
-      if (badPreviewVoices.has(String(v.id))) return false;
       // Windows SAPI 总是允许
       if (v.provider === 'Windows') return true;
       const pid = nameToId[v.provider] || (v.provider || '').toLowerCase();
@@ -1684,7 +1676,6 @@ router.get('/voice-list', async (req, res) => {
       const dbVoices = db.listVoices(userId) || [];
       clonedVoices = dbVoices
         .filter(v => {
-          if (badPreviewVoices.has(String(v.id))) return false;
           if (!v.file_path || !fs.existsSync(v.file_path)) return false;
           // 真 ready 的才挂出来
           if (v.aliyun_voice_id) return true;
@@ -1717,61 +1708,19 @@ router.get('/voice-list', async (req, res) => {
         });
     } catch (e) { console.warn('[voice-list] listVoices failed:', e.message); }
 
-    if (trustedProviders.has('hifly')) {
-      try {
-        const hifly = require('../services/hiflyService');
-        const list = await hifly.listVoices({ page: 1, size: 300 });
-        hiflyVoices = (list || [])
-          .map((v, i) => {
-            const rawId = v.voice || v.voice_id || v.id || v.value;
-            if (!rawId) return null;
-            const name = v.title || v.name || v.voice_name || rawId;
-            const hay = String(name + ' ' + rawId).toLowerCase();
-            const gender = /male|男|叔|哥|先生|man|boy/.test(hay)
-              ? 'male'
-              : /child|kid|童|girl|boy/.test(hay)
-              ? 'child'
-              : 'female';
-            const id = `hifly:${rawId}`;
-            if (badPreviewVoices.has(id)) return null;
-            return {
-              id,
-              name,
-              gender,
-              provider: '飞影 Hifly',
-              providerId: 'hifly',
-              providerIcon: '🎬',
-              lang: 'zh',
-              tag: i < 6 ? '飞影' : undefined,
-              raw: v,
-            };
-          })
-          .filter(Boolean);
-      } catch (e) {
-        console.warn('[voice-list] 拉取飞影音色失败:', e.message);
-      }
-    }
-
-    let topviewVoices = [];
-    try {
-      const topview = require('../services/topviewService');
-      topviewVoices = await topview.listVoices({ language: 'zh-CN', pageSize: 50 });
-    } catch (e) {
-      console.warn('[voice-list] Topview voices failed:', e.message);
-    }
     const voices = [
       { id: '', name: '自动（按可用链回退）', gender: 'auto', provider: '系统', providerIcon: '⚡' },
-      ...topviewVoices,
       ...clonedVoices,
-      ...hiflyVoices,
       ...filtered,
     ];
 
     // 附加：settings 里 user-defined TTS 模型（仅 trusted 供应商）
+    const safeAliyunVoiceIds = new Set(['longxiaochun', 'longxiaoxia', 'longmiao', 'longwan', 'longshu', 'longshuo']);
     for (const provider of settings.providers || []) {
       if (!trustedProviders.has(provider.id)) continue;
       const ttsModels = (provider.models || []).filter(m => m.use === 'tts' && m.enabled !== false);
       for (const m of ttsModels) {
+        if (provider.id === 'aliyun-tts' && !safeAliyunVoiceIds.has(m.id)) continue;
         if (voices.find(v => v.id === m.id)) continue;
         const name = m.name || m.id;
         const gender = /female|girl|女|甜美|温柔|知性/.test(name + m.id) ? 'female'
@@ -1820,7 +1769,7 @@ function _hashUrl(url) {
 }
 
 async function _ensureHiflyAvatar(imageUrl, hifly, onProgress, modelId) {
-  const key = _hashUrl(`${imageUrl}|aigc_off_v2`);
+  const key = _hashUrl(imageUrl);
   const cache = _readHiflyAvatarCache();
   if (cache[key] && cache[key].avatar) {
     console.log(`[hifly] 命中 avatar 缓存: ${key} → ${cache[key].avatar}`);
@@ -1832,8 +1781,7 @@ async function _ensureHiflyAvatar(imageUrl, hifly, onProgress, modelId) {
     image_url: imageUrl,
     title: 'vido-auto-' + key,
     model: 2,        // 文档默认值
-    // Hifly docs: 0=follow account setting, 1=force on, 2=force off.
-    aigc_flag: 2,
+    aigc_flag: 1,    // AI 生成内容标识
   });
   const r = await hifly.waitAvatarTask(tid, {
     intervalMs: 5000,
@@ -1856,46 +1804,23 @@ async function _ensureHiflyAvatar(imageUrl, hifly, onProgress, modelId) {
 async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl, taskId, onProgress, userId, agentId }) {
   // 已知支持 image+audio 真口型同步的模型（白名单）
   const LIP_SYNC_CAPABLE = new Set([
-    'topview-avatar4',
-    'topview-avatar4-fast',
     'jimeng_realman_avatar_picture_omni_v15',  // 火山即梦 Omni v1.5
     'wan2.2-animate-move',                      // 阿里万相 (注：需要模板视频，不仅是音频)
     'character-3', 'character-2',               // Hedra
     'hifly-free', 'hifly',                      // 飞影
   ]);
 
-  // 把 model_id 映射到「实际依赖的 settings provider id」。
-  // pipeline_model_config.json 里 provider_id 字段只是个展示标签（例如即梦 Omni 历史上写 volcengine，
-  // 但它实际去 settings 里找 id='jimeng' 的 provider 取 AK:SK）。预检 enabled 时要用真正依赖的那个。
-  const ACTUAL_PROVIDER = {
-    'topview-avatar4': 'topview',
-    'topview-avatar4-fast': 'topview',
-    'jimeng_realman_avatar_picture_omni_v15': 'jimeng',
-    'wan2.2-animate-move': 'dashscope',
-    'character-3': 'hedra',
-    'character-2': 'hedra',
-    'hifly': 'hifly',
-    'hifly-free': 'hifly',
-  };
-
   let chain = pms.pickAllEnabled('avatar.lip_sync');
   if (!chain || !chain.length) {
-    throw new Error('avatar.lip_sync 未启用任何模型：请先在管理后台「模型调用管理」选择并启用飞影/即梦等口型同步模型；系统不会再自动回退到即梦。');
+    // 没配置 → 用代码默认
+    chain = pms.getStageDefaults('avatar.lip_sync');
   }
 
-  try {
-    const settings = require('../services/settingsService').loadSettings();
-    const topviewProvider = (settings.providers || []).find(p => p.id === 'topview' && p.enabled !== false);
-    const hasTopviewAuth = !!(topviewProvider?.api_key || process.env.TOPVIEW_API_KEY)
-      && !!(topviewProvider?.topview_uid || topviewProvider?.api_uid || topviewProvider?.uid || process.env.TOPVIEW_UID);
-    const topviewModel = (topviewProvider?.models || []).find(m =>
-      m.enabled !== false && ['topview-avatar4', 'topview-avatar4-fast'].includes(m.id)
-    );
-    if (hasTopviewAuth && topviewModel?.id && !chain.some(m => m.provider_id === 'topview' || m.model_id === topviewModel.id)) {
-      chain = [{ provider_id: 'topview', model_id: topviewModel.id, priority: 0, enabled: true }, ...chain];
-    }
-  } catch (e) {
-    console.warn('[lip-sync:dispatch] Topview 优先链检查失败:', e.message);
+  const wantsHifly = chain.some(m => m.model_id === 'hifly' || m.model_id === 'hifly-free' || m.provider_id === 'hifly');
+  if (wantsHifly) {
+    // 用户明确把飞影放进 lip_sync 链时，Step3 必须严格走飞影。
+    // 之前飞影未配置/失败后会继续尝试即梦，导致“后台改成飞影但前端仍调用即梦”的错觉和额外消耗。
+    chain = chain.filter(m => m.model_id === 'hifly' || m.model_id === 'hifly-free' || m.provider_id === 'hifly');
   }
 
   console.log(`[lip-sync:dispatch] 用户配置链: ${chain.map(m => `${m.provider_id}/${m.model_id}`).join(' → ')}`);
@@ -1907,35 +1832,9 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
       console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 该模型不支持 image+audio 口型同步（仅文生视频）`);
       continue;
     }
-    // Provider-enabled 预检：实际依赖的 provider 在 settings 里被禁用 → 跳过（让 fallback 上位，
-    // 而不是等下游 service 抛"未配置"才知道）
-    {
-      const actualPid = ACTUAL_PROVIDER[m.model_id] || m.provider_id;
-      const _depProv = (require('../services/settingsService').loadSettings().providers || []).find(p => p.id === actualPid);
-      if (_depProv && _depProv.enabled === false) {
-        console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 实际依赖的 provider "${actualPid}" 已在 AI 配置中禁用`);
-        if (typeof onProgress === 'function') onProgress({ stage: 'skip', message: `${actualPid} 已禁用，切换备用`, model_id: m.model_id });
-        continue;
-      }
-    }
     triedAny = true;
     console.log(`[lip-sync:dispatch] 尝试 ${m.provider_id}/${m.model_id}...`);
     try {
-      if (m.provider_id === 'topview' || String(m.model_id || '').startsWith('topview-avatar')) {
-        const topview = require('../services/topviewService');
-        const r = await topview.generatePhotoAvatar({
-          imageUrl,
-          audioUrl,
-          prompt: prompt || '',
-          model: m.model_id || 'topview-avatar4',
-          taskTitle: `vido-${String(taskId || Date.now()).replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}`,
-          onProgress: (info) => {
-            if (typeof onProgress === 'function') onProgress({ ...info, model_id: m.model_id || 'topview-avatar4' });
-          },
-        });
-        return { ...r, model_id: m.model_id || 'topview-avatar4', provider_id: 'topview' };
-      }
-
       // —— 火山即梦 Omni ——
       if (m.model_id === 'jimeng_realman_avatar_picture_omni_v15') {
         const r = await jimengAvatarService.generateDigitalHumanVideo({
@@ -1955,10 +1854,10 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
         const hifly = require('../services/hiflyService');
         // Pre-flight：没配 api_key 就跳过（避免 dispatcher 抛"未配置"误导用户）
         const _settings = require('../services/settingsService').loadSettings();
-        const _hiflyProv = (_settings.providers || []).find(p => p.id === 'hifly' || /hifly|lingverse/i.test((p.preset || '') + '|' + (p.name || '')));
-        if (!_hiflyProv || !_hiflyProv.api_key) {
-          console.warn(`[lip-sync:dispatch] 跳过 ${m.provider_id}/${m.model_id} — 未配置 hifly api_key（请到「AI 配置」添加 Authorization Token）`);
-          continue;
+        const _hiflyProv = (_settings.providers || []).find(p => p.id === 'hifly' || /hifly|lingverse/i.test((p.preset || '') + '|' + (p.name || '') + '|' + (p.api_url || '')));
+        const hasHiflyToken = !!(_hiflyProv?.api_key || process.env.HIFLY_TOKEN || process.env.HIFLY_AGENT_TOKEN);
+        if (!hasHiflyToken) {
+          throw new Error('飞影未配置 API Token：请在「AI 配置」新增 hifly/lingverse provider，或设置 HIFLY_TOKEN / HIFLY_AGENT_TOKEN。已禁止回退即梦。');
         }
         // Step a: 用 imageUrl 拿到飞影 avatar ID（带磁盘缓存，同图二次零开销）
         const hiflyAvatar = await _ensureHiflyAvatar(imageUrl, hifly, onProgress, m.model_id);
@@ -1967,12 +1866,8 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
         const tid = await hifly.createVideoByAudio({
           audio_url: audioUrl,
           avatar: hiflyAvatar,
-          title: `vido${String(taskId || Date.now()).replace(/[^A-Za-z0-9]/g, '').slice(0, 16)}`,
-          // Hifly docs: 0=follow account setting, 1=force on, 2=force off.
-          // Force off here so our generated videos never override the user's
-          // disabled AI-identification setting in the vendor console.
-          aigc_flag: 2,
-          pipeline: '1.5',
+          title: `vido-${taskId || Date.now()}`,
+          aigc_flag: 1,
         });
         // Step c: 轮询到完成
         const r = await hifly.waitVideoTask(tid, {
@@ -2004,12 +1899,14 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
       lastError = err;
       // 并发限流 → 自动 fallback 到下一个候选
       if (err.code === 'CONCURRENT_LIMIT' || /Concurrent\s*Limit|Reached\s*API\s*Concurrent/i.test(err.message)) {
+        if (wantsHifly) throw err;
         console.warn(`[lip-sync:dispatch] ${m.model_id} 命中并发限流，切到下一候选`);
         if (typeof onProgress === 'function') onProgress({ stage: 'fallback', message: `${m.model_id} 限流，正在切换备用模型`, model_id: m.model_id });
         continue;
       }
       // 账户欠费 / 余额不足 → 也跳到下一候选（不要让单一供应商欠费阻断流程）
       if (/AccountOverdue|InsufficientBalance|账户欠费|余额不足|owed|not\s*authorized|资源未授权/i.test(err.message)) {
+        if (wantsHifly) throw err;
         console.warn(`[lip-sync:dispatch] ${m.model_id} 账户问题: ${err.message}，切到下一候选`);
         if (typeof onProgress === 'function') onProgress({ stage: 'fallback', message: `${m.model_id} 账户/授权异常，切换备用`, model_id: m.model_id });
         continue;
@@ -2019,7 +1916,7 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
     }
   }
   if (!triedAny) {
-    throw new Error('avatar.lip_sync 调度失败：当前启用链中没有任何"可口型同步"的模型（请在管理后台「模型调用管理」启用飞影/即梦等支持 image+audio 的模型）');
+    throw new Error('avatar.lip_sync 调度失败：当前优先级链中没有任何"可口型同步"的模型（请在管理后台「模型调用管理」启用 jimeng_realman_avatar_picture_omni_v15 等支持 image+audio 的模型）');
   }
   if (lastError) throw lastError;
   throw new Error('avatar.lip_sync 调度失败：所有候选模型均不可用');
@@ -2110,27 +2007,21 @@ async function _applyAvatarPostEffects(videoPath, fx, outDir) {
   const textEffects = fx?.textEffects || [];
   const stickers   = fx?.stickers   || [];
   const pointers   = fx?.pointers   || [];
-  const cameraMotion = fx?.cameraMotion || 'static';
-  const cameraSegments = Array.isArray(fx?.cameraSegments) ? fx.cameraSegments : [];
-  const coverWatermark = fx?.coverWatermark === true;
-  if (!textEffects.length && !stickers.length && !pointers.length && !coverWatermark) return null;
+  if (!textEffects.length && !stickers.length && !pointers.length) return null;
 
   const posMap = { 'top-center': 'top', 'bottom-center': 'bottom', 'center': 'center' };
   const resolvedTexts = textEffects.map((e, i) => ({
     text: e.text,
     preset: e.style || 'title',
     position: posMap[e.position] || e.position || 'top',
-    // 字幕动效：subtitleStyle 决定动画/颜色/位置 preset；smartEmphasis 自动放大关键词
-    subtitleStyle: e.subtitleStyle || undefined,
-    smartEmphasis: e.smartEmphasis === true,
     startTime: e.startTime ?? 0,
     endTime: e.endTime,
-    // 透传用户字幕样式（fontSize / 颜色 / 描边）— 留空则走 subtitleStyle preset 默认
-    fontName: e.fontName,
+    // 透传用户字幕样式（fontSize / 颜色 / 描边）
     fontSize: e.fontSize,
-    fontcolor: e.fontcolor || e.color || undefined,
-    bordercolor: e.bordercolor || e.outlineColor || undefined,
-    borderw: e.borderw ?? ((e.bordercolor || e.outlineColor) ? 3 : undefined),
+    fontName: e.fontName,
+    fontcolor: e.fontcolor || e.color,
+    bordercolor: e.bordercolor || e.outlineColor,
+    borderw: e.borderw,
     bold: e.bold,
   })).filter(t => t.text);
 
@@ -2158,7 +2049,7 @@ async function _applyAvatarPostEffects(videoPath, fx, outDir) {
     return { icon: iconMap[p.type] || p.type || 'arrow_down', ...posXY, startTime: p.startTime ?? 0, endTime: p.endTime };
   });
 
-  if (!resolvedTexts.length && !resolvedStickers.length && !resolvedPointers.length && !coverWatermark) return null;
+  if (!resolvedTexts.length && !resolvedStickers.length && !resolvedPointers.length) return null;
 
   try {
     const { applyEffects } = require('../services/effectsService');
@@ -2168,11 +2059,6 @@ async function _applyAvatarPostEffects(videoPath, fx, outDir) {
       texts: resolvedTexts,
       images: resolvedStickers,
       pointers: resolvedPointers,
-      cameraMotion,
-      cameraSegments,
-      coverWatermark,
-      // ASR 强制对齐：抽视频 audio 走 Whisper 拿真实时间戳，字幕和声音 100% 对齐
-      asrAlign: resolvedTexts.length > 0,
     });
     if (out?.outputPath && fs.existsSync(out.outputPath)) {
       console.log(`[Omni-FX] 后期特效合成完成: ${out.outputPath}`);
@@ -2197,7 +2083,7 @@ async function _applyAvatarPostEffects(videoPath, fx, outDir) {
         let okCount = 0;
         for (let i = 0; i < resolvedTexts.length; i++) {
           try {
-            const r = await ae({ videoPath: cur, texts: [resolvedTexts[i]], images: i === 0 ? resolvedStickers : [], pointers: i === 0 ? resolvedPointers : [], cameraMotion: i === 0 ? cameraMotion : 'static', cameraSegments: i === 0 ? cameraSegments : [], coverWatermark: i === 0 ? coverWatermark : false });
+            const r = await ae({ videoPath: cur, texts: [resolvedTexts[i]], images: i === 0 ? resolvedStickers : [], pointers: i === 0 ? resolvedPointers : [] });
             if (r?.outputPath && fs.existsSync(r.outputPath)) {
               cur = r.outputPath;
               okCount++;
@@ -2224,7 +2110,7 @@ router.post('/jimeng-omni/generate', async (req, res) => {
   const {
     image_url, image, audio_url, text, voiceId, prompt, auto_detect, speed = 1.0,
     // 后期特效（花字/贴图/招引）— Omni 生成完后（或 compose 完后）再叠
-    textEffects, stickers, pointers, cameraMotion, coverWatermark = false,
+    textEffects, stickers, pointers,
     // 作品分类：'sample' (形象预览) / 'production' (数字人正片)
     kind,
   } = req.body || {};
@@ -2240,7 +2126,7 @@ router.post('/jimeng-omni/generate', async (req, res) => {
     video_url: null,
     error: null,
     // 存起来，后续 compose 路径也能读到
-    post_effects: { textEffects: textEffects || [], stickers: stickers || [], pointers: pointers || [], cameraMotion: cameraMotion || 'static', cameraSegments: req.body?.cameraSegments || [], coverWatermark: coverWatermark === true },
+    post_effects: { textEffects: textEffects || [], stickers: stickers || [], pointers: pointers || [] },
   };
   jimengTasks.set(taskId, task);
 
@@ -2307,7 +2193,7 @@ router.post('/jimeng-omni/generate', async (req, res) => {
       } else if (text && text.trim()) {
         const audioBase = path.join(jimengAssetsDir, uuidv4());
         const result = await generateSpeech(text, audioBase, { voiceId: voiceId || null, speed: Number(speed) || 1.0 });
-        if (!result) throw new Error('TTS 合成失败');
+        if (!result) throw new Error(`TTS 合成失败：${generateSpeech.lastError || '没有可用的语音供应商'}`);
         const finalName = path.basename(result);
         task.audio_url = `${baseUrl}/public/jimeng-assets/${finalName}`;
       } else {
@@ -2329,23 +2215,13 @@ router.post('/jimeng-omni/generate', async (req, res) => {
       // Step 4: 提交生成 + 轮询（按 admin 后台「模型调用管理 → avatar.lip_sync」优先级链调度）
       task.stage = 'submitting';
       task.status = 'running';
-      // 默认 prompt 会始终注入身份保持和自然动作约束；用户/分段动作作为补充意图。
-      const DEFAULT_OMNI_PROMPT = [
-        '严格保持原图人物身份完全一致：脸型、五官、发型、发际线、年龄、肤色、服装和背景都不要改变。',
-        '生成自然真人口播数字人：嘴型与音频逐字同步，下颌和面颊随发音轻微运动，眨眼自然，眼神看向镜头。',
-        '动作要克制流畅：头部、肩颈、手势只有自然微动，不要夸张表演，不要突然抖动，不要大幅位移，不要脸部漂移或变形。',
-        '保持商业口播质感：画面稳定，半身/上半身出镜，表情亲和可信，语气与台词情绪一致。',
-        '禁止出现额外人物、额外肢体、字幕乱码、画面闪烁、相机剧烈运动、面部换人、五官重绘。',
-        'preserve exact facial identity, stable lip sync, natural presenter gestures, no face drift, no morphing, no extra person',
-      ].join(' ');
-      const finalPrompt = prompt
-        ? `${DEFAULT_OMNI_PROMPT}\n\n本段动作/语调/表情/镜头意图：${String(prompt).slice(0, 1200)}`
-        : DEFAULT_OMNI_PROMPT;
+      // 强保留面部特征的默认 prompt（用户传了自定义就用用户的）
+      const DEFAULT_OMNI_PROMPT = '严格保持原图人物面部特征不变，不要改变发型/年龄/肤色/五官/脸型，自然表情，嘴型清晰与音频同步，眼神坚定有感染力，身体微动稳定，真人摄影质感，preserve exact facial identity, do not change face, stable lip sync';
       const dispResult = await _dispatchLipSync({
         imageUrl: task.image_url,
         audioUrl: task.audio_url,
         maskUrls,
-        prompt: finalPrompt,
+        prompt: prompt || DEFAULT_OMNI_PROMPT,
         baseUrl,
         taskId,
         userId: req.user?.id,
@@ -2388,7 +2264,7 @@ router.post('/jimeng-omni/generate', async (req, res) => {
         // 判断方式：前端 post_effects 存在 + 任务没有 skipPostEffects 标记
         if (task.post_effects && !task.skip_post_effects_here) {
           const subtitleCount = (task.post_effects.textEffects || []).length;
-          if (subtitleCount > 0 || (task.post_effects.stickers || []).length > 0 || (task.post_effects.pointers || []).length > 0 || task.post_effects.coverWatermark === true) {
+          if (subtitleCount > 0 || (task.post_effects.stickers || []).length > 0 || (task.post_effects.pointers || []).length > 0) {
             task.stage = 'post_effects';
             console.log(`[jimeng-omni:${taskId}] 开始叠加字幕/特效 · ${subtitleCount} 段字幕`);
             const fxOut = await _applyAvatarPostEffects(finalPath, task.post_effects, path.dirname(finalPath));
@@ -2427,12 +2303,12 @@ router.post('/jimeng-omni/generate', async (req, res) => {
           videoPath: task.local_path,
           videoUrl: relVideoUrl,
           imageUrl: relImageUrl,
-          model: 'jimeng-omni-raw',
+          model: task.actual_model || 'avatar-lip-sync',
           ratio: '9:16',
           created_at: new Date(task.created_at).toISOString(),
           finished_at: new Date().toISOString(),
           cv_task_id: task.cv_task_id,
-          source: 'omni',
+          source: task.actual_provider || 'avatar',
           // 区分: 'sample' = Step 1 动态预览样片；'production' = Step 3 正式数字人；其他旧数据默认 production
           kind: kind === 'sample' ? 'sample' : 'production',
           // 字幕烧录状态（让作品库能展示）
@@ -2681,14 +2557,7 @@ router.post('/jimeng-omni/compose', async (req, res) => {
       task.local_path = outPath;
 
       // === 后期特效（花字/贴图/招引）在抠像合成完后叠上去 ===
-      if (task.post_effects && (
-        task.post_effects.textEffects?.length
-        || task.post_effects.stickers?.length
-        || task.post_effects.pointers?.length
-        || task.post_effects.cameraMotion !== 'static'
-        || task.post_effects.cameraSegments?.length
-        || task.post_effects.coverWatermark === true
-      )) {
+      if (task.post_effects && (task.post_effects.textEffects?.length || task.post_effects.stickers?.length || task.post_effects.pointers?.length)) {
         task.stage = 'post_effects';
         const fxOut = await _applyAvatarPostEffects(outPath, task.post_effects, path.dirname(outPath));
         if (fxOut) {

@@ -47,6 +47,13 @@ const PIPELINE_SCHEMA = {
     { id: 'ad_avatar.lip_sync',      name: '广告数字人口型合成',        type: 'avatar', desc: '广告数字人形象 + 口播音频的口型同步合成' },
     { id: 'ad_avatar.tts',           name: '广告口播 TTS',              type: 'tts',    desc: '广告口播文案配音' },
   ],
+  '高定广告片': [
+    { id: 'luxury_ad.copy',      name: '高定广告片文案 / 镜头策划', type: 'story', desc: '按 Topview Image2 + Seedance 思路生成 4-8 镜头广告片分镜' },
+    { id: 'luxury_ad.keyframe',  name: '高定广告片关键帧',         type: 'image', desc: '生成产品/人物/场景一致的高定广告关键帧' },
+    { id: 'luxury_ad.video',     name: '高定广告片图生视频',       type: 'video', desc: '用 Seedance/Topview 图生视频把关键帧串成镜头' },
+    { id: 'luxury_ad.tts',       name: '高定广告片配音 TTS',       type: 'tts',   desc: '高定广告旁白、口播或字幕配音' },
+    { id: 'luxury_ad.post',      name: '高定广告片后期包装',       type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
+  ],
   '网剧': [
     { id: 'drama.script',          name: '剧本 / 分镜生成',          type: 'story', desc: '编剧 LLM，输出剧本+分镜 JSON' },
     { id: 'drama.character_image', name: '角色形象图',               type: 'image', desc: '为每个角色生成统一形象图' },
@@ -132,6 +139,26 @@ const STAGE_DEFAULTS = {
   'ad_avatar.tts': [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  // 高定广告片
+  'luxury_ad.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'luxury_ad.keyframe': [
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
+  ],
+  'luxury_ad.video': [
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 1, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-best', priority: 2, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: false },
+    { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', priority: 4, enabled: false },
+    { provider_id: 'deyunai', model_id: 'hailuo-02-fast', priority: 5, enabled: false },
+  ],
+  'luxury_ad.tts': [
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
+  ],
+  'luxury_ad.post': [
+    { provider_id: 'local', model_id: 'ffmpeg-effects', priority: 1, enabled: true },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],

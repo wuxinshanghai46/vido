@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIDO - 工作流画布</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.css" />
+  <link rel="stylesheet" href="/css/workflow.css" />
+  <script src="/js/auth.js"></script>
+</head>
+<body>
+
+<!-- ═══ 顶栏 ═══ -->
+<header class="wf-topbar">
+  <div class="wf-tb-left">
+    <button class="wf-tb-btn" onclick="goBack()" title="返回">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <input class="wf-tb-title" id="wf-title" value="未命名项目" placeholder="项目名称..." />
+  </div>
+  <div class="wf-tb-center">
+    <span class="wf-tb-status" id="wf-status">就绪</span>
+  </div>
+  <div class="wf-tb-right">
+    <button class="wf-tb-btn" onclick="undoAction()" title="撤销">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 5h7a3 3 0 110 6H6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 2L2 5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="wf-tb-btn" onclick="redoAction()" title="重做">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 5H5a3 3 0 100 6h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M9 2l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="wf-tb-sep"></div>
+    <button class="wf-tb-btn" onclick="saveWorkflow()" title="保存">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M11 13H3a1 1 0 01-1-1V2a1 1 0 011-1h6l3 3v8a1 1 0 01-1 1z" stroke="currentColor" stroke-width="1.2"/><rect x="4" y="8" width="6" height="5" rx=".5" stroke="currentColor" stroke-width="1.2"/></svg>
+      保存
+    </button>
+    <button class="wf-tb-btn wf-tb-primary" onclick="executeWorkflow()" title="执行工作流">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg>
+      执行
+    </button>
+  </div>
+</header>
+
+<!-- ═══ 主体 ═══ -->
+<div class="wf-body">
+
+  <!-- 左侧工具栏 -->
+  <aside class="wf-sidebar">
+    <div class="wf-sidebar-section">
+      <div class="wf-sidebar-title">添加节点</div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'text')" onclick="addNodeAtCenter('text')">
+        <div class="wf-node-icon wf-icon-text">T</div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">文本</div>
+          <div class="wf-node-desc">脚本、广告词、品牌文案</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'background')" onclick="addNodeAtCenter('background')">
+        <div class="wf-node-icon wf-icon-bg">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M1 11l4-3.5 2.5 2 3-3 4.5 4" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">背景</div>
+          <div class="wf-node-desc">场景背景画面</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'character')" onclick="addNodeAtCenter('character')">
+        <div class="wf-node-icon wf-icon-char">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">人物</div>
+          <div class="wf-node-desc">角色形象、动作表情</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'video')" onclick="addNodeAtCenter('video')">
+        <div class="wf-node-icon wf-icon-video">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="10" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M11 6l4-2v8l-4-2" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">视频</div>
+          <div class="wf-node-desc">文生视频、图生视频</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'avatar')" onclick="addNodeAtCenter('avatar')">
+        <div class="wf-node-icon wf-icon-avatar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">数字人</div>
+          <div class="wf-node-desc">口播、讲解、数字人视频</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'voice')" onclick="addNodeAtCenter('voice')">
+        <div class="wf-node-icon wf-icon-voice">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5" y="1" width="6" height="8" rx="3" stroke="currentColor" stroke-width="1.2"/><path d="M3 7a5 5 0 0010 0M8 12v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">配音</div>
+          <div class="wf-node-desc">TTS 语音合成</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'music')" onclick="addNodeAtCenter('music')">
+        <div class="wf-node-icon wf-icon-music">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 13V4l8-3v9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="4" cy="13" r="2" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="10" r="2" stroke="currentColor" stroke-width="1.2"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">音乐</div>
+          <div class="wf-node-desc">背景音乐、音效</div>
+        </div>
+      </div>
+      <div class="wf-node-btn" draggable="true" ondragstart="dragNode(event,'merge')" onclick="addNodeAtCenter('merge')">
+        <div class="wf-node-icon wf-icon-merge">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 5h8M4 8h6M4 11h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        </div>
+        <div class="wf-node-label">
+          <div class="wf-node-name">合成</div>
+          <div class="wf-node-desc">合并视频、导出成片</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-sidebar-sep"></div>
+
+    <div class="wf-sidebar-section">
+      <div class="wf-sidebar-title">节点列表</div>
+      <div id="wf-node-list" style="max-height:180px;overflow-y:auto;">
+        <div style="text-align:center;color:var(--wf-text3);font-size:11px;padding:12px">暂无节点</div>
+      </div>
+    </div>
+
+    <div class="wf-sidebar-sep"></div>
+
+    <div class="wf-sidebar-section">
+      <div class="wf-sidebar-action" onclick="clearCanvas()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 2l9 9M11 2l-9 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        清空画布
+      </div>
+      <div class="wf-sidebar-action" onclick="autoLayout()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="8" y="1" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="4.5" y="8" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.1"/></svg>
+        自动排列
+      </div>
+    </div>
+  </aside>
+
+  <!-- 画布区域 -->
+  <div class="wf-canvas-wrap">
+    <div id="drawflow" ondrop="dropNode(event)" ondragover="event.preventDefault()"></div>
+
+    <!-- 底部工具条 -->
+    <div class="wf-bottombar">
+      <button class="wf-bb-btn" onclick="toggleGrid()" title="网格">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 5h12M1 9h12M5 1v12M9 1v12" stroke="currentColor" stroke-width="1" opacity=".5"/></svg>
+      </button>
+      <button class="wf-bb-btn" onclick="fitView()" title="适应画布">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 4V1h3M10 1h3v3M13 10v3h-3M4 13H1v-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="wf-zoom-wrap">
+        <button class="wf-bb-btn" onclick="zoomOut()">−</button>
+        <span class="wf-zoom-val" id="wf-zoom-val">100%</span>
+        <button class="wf-bb-btn" onclick="zoomIn()">+</button>
+      </div>
+      <span class="wf-bb-hint" id="wf-node-count">0 节点</span>
+    </div>
+  </div>
+</div>
+
+<!-- 添加节点弹出菜单（点击画布+按钮时显示） -->
+<div class="wf-context-menu" id="wf-context-menu" style="display:none">
+  <div class="wf-cm-title">添加节点</div>
+  <div class="wf-cm-item" onclick="addNodeAt('text')"><span class="wf-cm-icon wf-icon-text">T</span>文本</div>
+  <div class="wf-cm-item" onclick="addNodeAt('background')"><span class="wf-cm-icon wf-icon-bg">🏞️</span>背景</div>
+  <div class="wf-cm-item" onclick="addNodeAt('character')"><span class="wf-cm-icon wf-icon-char">👤</span>人物</div>
+  <div class="wf-cm-item" onclick="addNodeAt('video')"><span class="wf-cm-icon wf-icon-video">🎬</span>视频</div>
+  <div class="wf-cm-item" onclick="addNodeAt('avatar')"><span class="wf-cm-icon wf-icon-avatar">🧑‍💼</span>数字人</div>
+  <div class="wf-cm-item" onclick="addNodeAt('voice')"><span class="wf-cm-icon wf-icon-voice">🎤</span>配音</div>
+  <div class="wf-cm-item" onclick="addNodeAt('music')"><span class="wf-cm-icon wf-icon-music">🎵</span>音乐</div>
+  <div class="wf-cm-item" onclick="addNodeAt('merge')"><span class="wf-cm-icon wf-icon-merge">⬜</span>合成</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.60/dist/drawflow.min.js"></script>
+<script src="/js/workflow.js"></script>
+</body>
+</html>

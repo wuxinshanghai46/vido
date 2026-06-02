@@ -13,10 +13,7 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-try:
-    mcp = FastMCP("CrawlServer", dependencies=["uvicorn"])
-except TypeError:
-    mcp = FastMCP("CrawlServer")
+mcp = FastMCP("CrawlServer", dependencies=["uvicorn"])
 
 # Define default output path as a resource
 @mcp.resource("config://output_path")
