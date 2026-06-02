@@ -8834,6 +8834,37 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       }
       return list.slice(0, wantedShots);
     };
+    const padLuxuryStoryPlanBeats = (plan = {}) => {
+      if (!plan || typeof plan !== 'object') return plan;
+      const beats = Array.isArray(plan.beats) ? plan.beats.filter(x => x && typeof x === 'object') : [];
+      const targetBeats = Math.max(3, Math.min(wantedShots, outlineNotes.length || wantedShots));
+      while (beats.length < targetBeats) {
+        const i = beats.length;
+        const outline = outlineNotes[i] || outline_segments[i] || {};
+        const role = _luxuryRoleAt(i, targetBeats, outline.role || outline.story_stage || '');
+        const fallbackOpts = { role, productSubject, index: i, total: targetBeats, brief, continuousHuman };
+        const voiceover = _cleanLuxuryAdCopy(outline.copy_direction || outline.voiceover || outline.narration || '', fallbackOpts);
+        const visual = _cleanLuxuryAdVisual(outline.objective || outline.content_prompt || outline.material_need || '', fallbackOpts);
+        beats.push({
+          beat_index: i + 1,
+          role,
+          time_range: `${Math.round((targetDuration / targetBeats) * i)}-${Math.round((targetDuration / targetBeats) * (i + 1))}s`,
+          scene: outline.title || `故事段落 ${i + 1}`,
+          plot: visual,
+          character_goal: _luxuryScriptPurposeLabel(role, i, targetBeats, ''),
+          conflict_or_question: role === 'hook' ? '高峰期订单处理压力出现' : '',
+          solution_step: `${productSubject}继续推进门店订单处理流程`,
+          visual_proof: visual,
+          emotional_change: outline.emotion || _fallbackLuxuryAdEmotion({ role }),
+          spoken_line: voiceover,
+          spoken_intent: voiceover,
+          required_visual_subject: `人物 + 真实门店场景 + ${productSubject}证据`,
+          why_next: '按广告结构自然进入下一段',
+          padded_from_outline: true,
+        });
+      }
+      return { ...plan, beats };
+    };
     const luxuryDialogueSpeakers = (scene = {}, characterList = []) => {
       const lines = Array.isArray(scene?.dialogue_lines)
         ? scene.dialogue_lines
