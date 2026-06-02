@@ -12363,6 +12363,23 @@ function _luxuryFitImagePromptParts(parts = [], maxChars = 1850) {
   return out.join(' ').slice(0, maxChars);
 }
 
+function _luxuryCapImageModelPrompt(prompt = '', maxChars = 1850) {
+  const clean = String(prompt || '').replace(/\s+/g, ' ').trim();
+  const chars = Array.from(clean);
+  if (chars.length <= maxChars) return clean;
+  const head = chars.slice(0, Math.max(0, maxChars - 96)).join('');
+  return `${head} IMPORTANT: prompt was compacted; obey the shot contract above.`;
+}
+
+function _luxuryIsQaRejectError(err = null) {
+  const code = String(err?.code || '');
+  const status = Number(err?.status || 0);
+  const message = String(err?.message || err || '');
+  return status === 422
+    || code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
+    || /QA未通过|QA failed|分镜图与剧本不一致|storyboard.*mismatch|Missing required|Wrong product|Wrong scene/i.test(message);
+}
+
 // Build the exact short prompt sent to image models; it intentionally avoids re-appending the full legacy prompt.
 function _buildLuxuryImageModelStrictPrompt({
   scene = {},
@@ -12693,8 +12710,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     ? `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(outPath)}`
     : '';
   const promptWithRepair = () => repairInstruction
-    ? [repairInstruction, prompt].filter(Boolean).join(' ').slice(0, 1950)
-    : prompt;
+    ? _luxuryCapImageModelPrompt([repairInstruction, prompt].filter(Boolean).join(' '), 1850)
+    : _luxuryCapImageModelPrompt(prompt, 1850);
   const runSeedream = async (model, suffix, promptForAttempt) => {
     if (!primary) throw new Error('缺少主商品/参考图，无法生成高定广告分镜');
     const avatarService = require('../services/avatarService');
@@ -12854,10 +12871,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   });
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
 
-  const repairedModels = new Set();
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
-    const modelKey = `${model?.provider_id || model?.provider || 'unknown'}/${model?.model_id || model?.model || 'unknown'}`;
     const attemptPrompt = promptWithRepair();
     const attemptPromptChars = Array.from(String(attemptPrompt || '')).length;
     try {
@@ -12873,26 +12888,26 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           if (!qa?.pass) {
             const issues = [
               ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
-              ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
+              ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
               qa?.reason || '',
-            ].filter(Boolean).slice(0, 5).join('；');
-            addAttempt(model, false, new Error(`QA未通过：${issues || '分镜图与剧本不一致'}`), {
+            ].filter(Boolean).slice(0, 5).join('; ');
+            const qaRejectErr = new Error(`QA未通过：${issues || '分镜图与剧本不一致'}`);
+            qaRejectErr.status = 422;
+            qaRejectErr.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
+            qaRejectErr._luxuryAttemptRecorded = true;
+            addAttempt(model, false, qaRejectErr, {
               ...attemptMeta,
               qa,
             });
-            repairInstruction = allowQaRepair && !strictSingleCandidate ? _luxuryQaRepairInstruction(qa) : '';
-            if (allowQaRepair && !strictSingleCandidate && repairInstruction && !repairedModels.has(modelKey)) {
-              repairedModels.add(modelKey);
-              i -= 1;
-            }
-            if (strictSingleCandidate) break;
-            continue;
+            throw qaRejectErr;
           }
         } catch (qaErr) {
-          if (Number(qaErr?.status) === 422 || qaErr?.code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED') {
-            addAttempt(model, false, qaErr, attemptMeta);
-            if (strictSingleCandidate) break;
-            continue;
+          if (_luxuryIsQaRejectError(qaErr)) {
+            if (!qaErr._luxuryAttemptRecorded) {
+              qaErr._luxuryAttemptRecorded = true;
+              addAttempt(model, false, qaErr, attemptMeta);
+            }
+            throw qaErr;
           }
           throw qaErr;
         }
@@ -12903,8 +12918,16 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       });
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, qa };
     } catch (err) {
+      if (_luxuryIsQaRejectError(err)) {
+        if (!err._luxuryAttemptRecorded) {
+          err._luxuryAttemptRecorded = true;
+          addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
+        }
+        console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; stop model fallback:`, shortError(err));
+        break;
+      }
       addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
-      console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}:`, shortError(err));
+      console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
       if (strictSingleCandidate) break;
     }
   }
@@ -13218,7 +13241,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
   const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject);
   const hasAnyReference = refs.length > 0;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
-  const prompt = _buildLuxuryKeyframePrompt({
+  const shotContractPrompt = _buildLuxuryKeyframePrompt({
     scene,
     productSubject,
     productLockPrompt,
@@ -13227,6 +13250,18 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     hasOnlyAvatarReference,
     hasStoryLayoutReference,
     hasAvatar,
+    characterLock,
+  });
+  const prompt = _buildLuxuryImageModelStrictPrompt({
+    scene,
+    productSubject,
+    productLockPrompt,
+    subjectGuard,
+    shotContractPrompt,
+    hasAnyReference,
+    hasStoryLayoutReference,
+    hasAvatar,
+    personRequired,
     characterLock,
   });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
@@ -13265,7 +13300,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       : null,
     preferControlledCandidate: false,
     allowControlledFinal: false,
-    strictSingleCandidate: true,
+    strictSingleCandidate: false,
   });
   const outPath = imageResult.outPath;
   return {
