@@ -9425,6 +9425,29 @@ ${JSON.stringify(scenes, null, 2)}
         aspectRatio: output_ratio || '9:16',
       }));
     }
+    if (isDetailedMode) {
+      scenes = scenes.map((scene, i) => {
+        const role = _luxuryRoleAt(i, scenes.length, scene.role);
+        const fallbackOpts = { role, productSubject, index: i, total: scenes.length, brief, continuousHuman };
+        const voiceover = _cleanLuxuryAdCopy(
+          scene.narration || scene.voiceover || scene.ad_copy || scene.subtitle || scene.text || scene.copy_direction || '',
+          fallbackOpts,
+        );
+        const dialogueLines = (Array.isArray(scene.dialogue_lines) ? scene.dialogue_lines : [])
+          .map(line => _cleanLuxuryAdCopy(line, fallbackOpts))
+          .filter(Boolean);
+        return {
+          ...scene,
+          narration: voiceover,
+          ad_copy: voiceover,
+          voiceover,
+          subtitle: voiceover,
+          text: voiceover,
+          dialogue: dialogueLines.join('\n'),
+          dialogue_lines: dialogueLines,
+        };
+      });
+    }
     const briefInfo = _fallbackLuxuryBriefInfo({
       brief,
       durationSec: targetDuration,
@@ -10029,6 +10052,12 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const lighting = _luxuryStrictText(visualContract.lighting || scene.lighting_style || scene.lighting || photography.lighting || '', 260);
   const mustShow = _luxuryStrictList(visualContract.must_show || scene.must_show, 10);
   const mustNotShow = _luxuryStrictList(visualContract.must_not_show || scene.must_not_show, 14);
+  while (mustNotShow.length < 3) {
+    const fallbackNegatives = ['generated text or subtitle overlay', 'unrelated product category', 'random extra people or scene replacement'];
+    const next = fallbackNegatives[mustNotShow.length] || fallbackNegatives[fallbackNegatives.length - 1];
+    if (!mustNotShow.includes(next)) mustNotShow.push(next);
+    else break;
+  }
   const qaContract = _luxuryStrictText(scene.qa_contract || visualContract.qa_contract || '', 900);
   return {
     shot_id: Number(index || 0) + 1,
