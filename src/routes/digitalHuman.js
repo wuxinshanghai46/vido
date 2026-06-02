@@ -6580,15 +6580,26 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
 }
 
 function _suggestLuxuryAdShotCount({ text = '', durationSec = 30, assetSummary = '' } = {}) {
+  const range = _suggestLuxuryAdShotRange({ durationSec });
   const seconds = Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
-  let count = seconds <= 18 ? 5 : seconds <= 24 ? 7 : seconds <= 38 ? 10 : seconds <= 52 ? 12 : 14;
+  let count = range.recommended;
   const source = [text, assetSummary].filter(Boolean).join('\n');
   const punctuation = (source.match(/[，。；;、\n]/g) || []).length;
   const keywords = ['开场', '产品', '品牌', '卖点', '痛点', '材质', '工艺', '细节', '场景', '人物', '近景', '远景', '转场', '最后', '引导']
     .filter(k => source.includes(k)).length;
   if (punctuation >= 7 || keywords >= 7) count += 1;
+  if (punctuation >= 11 || keywords >= 10) count += 1;
   if (punctuation <= 1 && keywords <= 2 && seconds <= 20) count -= 1;
-  return Math.max(4, Math.min(12, count));
+  return Math.max(range.min, Math.min(range.max, count));
+}
+
+function _suggestLuxuryAdShotRange({ durationSec = 30 } = {}) {
+  const seconds = Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
+  if (seconds <= 18) return { min: 4, max: 6, recommended: 5 };
+  if (seconds <= 24) return { min: 5, max: 8, recommended: 6 };
+  if (seconds <= 38) return { min: 7, max: 10, recommended: 8 };
+  if (seconds <= 52) return { min: 10, max: 14, recommended: 12 };
+  return { min: 12, max: 18, recommended: 14 };
 }
 
 function _isWeakLuxuryProductName(value = '') {
@@ -8217,16 +8228,29 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     }
     const visualReferenceSummary = _luxuryVisualReferenceBriefToText(visualReferenceBrief);
     const enrichedAssetSummary = [asset_summary, visualReferenceSummary].filter(Boolean).join('\n');
+    const shotRange = _suggestLuxuryAdShotRange({ durationSec: targetDuration });
     const suggestedShots = _suggestLuxuryAdShotCount({ text: brief, durationSec: targetDuration, assetSummary: enrichedAssetSummary });
     const uploadedReferenceAssets = Array.isArray(reference_assets)
       ? reference_assets.filter(x => x && (x.url || x.previewUrl || x.name))
       : [];
-    const requestedShotCount = Math.max(0, Math.min(12, Math.round(Number(shot_count) || 0)));
+    const requestedShotCount = Math.max(0, Math.min(18, Math.round(Number(shot_count) || 0)));
+    const outlineShotCount = Array.isArray(outline_segments)
+      ? outline_segments.filter(x => x && typeof x === 'object').length
+      : 0;
+    const outlineShotTarget = outlineShotCount >= shotRange.min && outlineShotCount <= shotRange.max
+      ? outlineShotCount
+      : 0;
     const wantedShots = isDetailedMode
       ? (uploadedReferenceAssets.length
         ? Math.max(1, Math.min(uploadedReferenceAssets.length, requestedShotCount || uploadedReferenceAssets.length))
-        : Math.max(1, Math.min(12, requestedShotCount || suggestedShots)))
-      : suggestedShots;
+        : Math.max(shotRange.min, Math.min(shotRange.max, outlineShotTarget || suggestedShots)))
+      : Math.max(3, Math.min(8, suggestedShots));
+    const minAllowedShots = isDetailedMode
+      ? (uploadedReferenceAssets.length ? wantedShots : shotRange.min)
+      : 3;
+    const maxAllowedShots = isDetailedMode
+      ? (uploadedReferenceAssets.length ? wantedShots : shotRange.max)
+      : 8;
     const referenceShotLockNote = isDetailedMode && uploadedReferenceAssets.length
       ? `本次用户只上传了 ${uploadedReferenceAssets.length} 张顺序分镜/场景画面，只允许输出 ${wantedShots} 个镜头；不得新增没有上传素材支撑的额外镜头。`
       : '';
@@ -8299,7 +8323,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       continuousHuman ? '人物要求：同一位真人从头贯穿整条广告' : '',
     ].filter(Boolean).join('；');
     const outlineNotes = Array.isArray(outline_segments) && outline_segments.length
-      ? outline_segments.slice(0, isDetailedMode ? wantedShots : 8).map((s, i) => ({
+      ? outline_segments.slice(0, isDetailedMode ? maxAllowedShots : 8).map((s, i) => ({
           index: i + 1,
           title: s.title || `分镜${i + 1}`,
           role: s.role || s.shot_role || '',
@@ -8313,7 +8337,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         }))
       : [];
     const modeInstruction = isDetailedMode
-      ? `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${targetDuration} 秒广告通常拆成约 ${wantedShots} 镜，每镜约 2-4 秒。${referenceShotLockNote}`
+      ? `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；不要为了凑数重复镜头，每镜约 2-4 秒。${referenceShotLockNote}`
       : `当前是第 2 步：用户只填写了广告设想。你只能先把广告设想拆成按时间推进的场景顺序和素材清单：开场分镜 → 第二场景 → 后续场景 → 收尾分镜。自己判断大概需要几个分镜；建议约 ${wantedShots} 个，但可按内容在 3-8 个之间调整。不要只输出 1 个镜头，不要假装已经看过素材，不要给具体景别/镜头运动/Topview 提示词；shot_size/shot_angle 固定写“素材进入后生成”，content_prompt 只写该场景需要什么画面，voiceover 只写旁白/介绍方向。`;
     const { callLLM } = require('../services/storyService');
     const sys = [
@@ -8354,7 +8378,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
 生成阶段：${isDetailedMode ? '第 3 步剧本生成' : '第 2 步场景配置'}
 阶段要求：${modeInstruction}
 
-${isDetailedMode ? `请生成 ${wantedShots} 个镜头的 JSON 数组。` : `请先根据广告内容和目标时长自行判断分镜数量，输出 3-8 个镜头的 JSON 数组；建议约 ${wantedShots} 个，简单广告也至少要有开场、产品/场景、细节或价值、行动引导，不允许只输出 1 个镜头。`}每个对象必须包含：
+${isDetailedMode ? `请根据剧情生成 ${minAllowedShots}-${maxAllowedShots} 个镜头的 JSON 数组，建议约 ${wantedShots} 个；不要为了凑数重复镜头。` : `请先根据广告内容和目标时长自行判断分镜数量，输出 3-8 个镜头的 JSON 数组；建议约 ${wantedShots} 个，简单广告也至少要有开场、产品/场景、细节或价值、行动引导，不允许只输出 1 个镜头。`}每个对象必须包含：
 {
   "title": "镜头名，6字以内",
   "role": "hook|display|macro|benefit|proof|cta",
@@ -8786,9 +8810,11 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     };
     const padLuxuryScenesToWanted = (sceneList = []) => {
       const list = (Array.isArray(sceneList) ? sceneList : []).filter(x => x && typeof x === 'object');
-      if (!isDetailedMode || list.length >= wantedShots) return list.slice(0, wantedShots);
-      const total = Math.max(wantedShots, list.length || wantedShots);
-      while (list.length < wantedShots) {
+      const requiredShotFloor = Math.max(1, Math.min(minAllowedShots, maxAllowedShots));
+      const allowedShotCeiling = Math.max(requiredShotFloor, maxAllowedShots);
+      if (!isDetailedMode || list.length >= requiredShotFloor) return list.slice(0, allowedShotCeiling);
+      const total = Math.max(requiredShotFloor, list.length || requiredShotFloor);
+      while (list.length < requiredShotFloor) {
         const i = list.length;
         const outline = outlineNotes[i] || outline_segments[i] || {};
         const role = _luxuryRoleAt(i, total, outline.role || outline.story_stage || '');
@@ -8832,12 +8858,12 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           padded_from_outline: true,
         });
       }
-      return list.slice(0, wantedShots);
+      return list.slice(0, allowedShotCeiling);
     };
     const padLuxuryStoryPlanBeats = (plan = {}) => {
       if (!plan || typeof plan !== 'object') return plan;
       const beats = Array.isArray(plan.beats) ? plan.beats.filter(x => x && typeof x === 'object') : [];
-      const targetBeats = Math.max(3, Math.min(wantedShots, outlineNotes.length || wantedShots));
+      const targetBeats = Math.max(3, Math.min(maxAllowedShots, outlineNotes.length || wantedShots));
       while (beats.length < targetBeats) {
         const i = beats.length;
         const outline = outlineNotes[i] || outline_segments[i] || {};
@@ -9026,7 +9052,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
   "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","scene":"发生地点","plot":"这一段发生的人物剧情","character_goal":"人物目标","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现：人物 + 真实场景 + ${productSubject}证据","why_next":"为什么自然进入下一段"}]
 }
-beats 数量：${targetDuration >= 24 ? `${Math.max(8, Math.min(12, wantedShots))}` : `${Math.max(5, Math.min(8, wantedShots))}`} 个，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
+beats 数量：建议 ${Math.max(3, Math.min(wantedShots, maxAllowedShots))} 个，可在 ${Math.max(3, minAllowedShots)}-${Math.max(3, maxAllowedShots)} 个内按剧情调整，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
@@ -9074,7 +9100,7 @@ ${JSON.stringify(storyPlan, null, 2)}
 已有场景顺序：
 ${outlineNotes.length ? JSON.stringify(outlineNotes, null, 2) : '暂无'}
 
-请拆成 ${wantedShots} 个镜头，输出 JSON 数组。每个对象必须包含：
+请按剧情拆成 ${minAllowedShots}-${maxAllowedShots} 个镜头，建议约 ${wantedShots} 个，输出 JSON 数组；不要为了凑数重复镜头。每个对象必须包含：
 index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_content,visual,dialogue_lines,voiceover,narration,characters,material_usage,source_beat。
 注意：不要输出 dialogue 字符串里的真实换行；如有对白，只能用 dialogue_lines 数组。`;
       scenes = await callLuxuryAgent({ name: 'luxury_ad.shot.splitter', systemPrompt: splitSys, userPrompt: splitUser, json: 'array', maxTokens: 9000 });
@@ -9228,11 +9254,12 @@ ${JSON.stringify(scenes, null, 2)}
 广告类型：${ad_type || 'auto'}
 目标时长：${targetDuration} 秒；画面比例：${output_ratio}
 
-请输出 ${Math.max(4, Math.min(8, wantedShots))} 个场景顺序对象。`;
+请按剧情输出 ${Math.max(3, Math.min(8, minAllowedShots))}-${Math.max(4, Math.min(8, maxAllowedShots))} 个场景顺序对象，建议约 ${Math.max(4, Math.min(8, wantedShots))} 个；不要为了凑数重复场景。`;
       scenes = await callLuxuryAgent({ name: llmStageId, systemPrompt: outlineSys, userPrompt: outlineUser, json: 'array', maxTokens: 3500 });
     }
-    const maxSceneCount = isDetailedMode ? wantedShots : 8;
+    const maxSceneCount = isDetailedMode ? maxAllowedShots : 8;
     const minSceneCount = isDetailedMode ? Math.max(1, Math.min(2, wantedShots)) : 3;
+    const finalMinSceneCount = isDetailedMode ? Math.max(1, Math.min(minAllowedShots, maxAllowedShots)) : minSceneCount;
     let rawScenes = Array.isArray(scenes) ? scenes : [];
     if (rawScenes.length < minSceneCount) {
       throw new Error(`AI 返回镜头数量不足：需要至少 ${minSceneCount} 镜，实际 ${rawScenes.length} 镜。`);
@@ -9475,11 +9502,14 @@ ${JSON.stringify(scenes, null, 2)}
     if (scenes.length < minSceneCount) {
       throw new Error(`AI 返回有效镜头数量不足：需要至少 ${minSceneCount} 镜，实际 ${scenes.length} 镜。`);
     }
-    if (isDetailedMode && !uploadedReferenceAssets.length && scenes.length < wantedShots) {
+    if (isDetailedMode && !uploadedReferenceAssets.length && scenes.length < finalMinSceneCount) {
       scenes = padLuxuryScenesToWanted(scenes);
-      if (scenes.length < wantedShots) {
-        throw new Error(`AI 没有按要求返回完整剧本镜头：需要 ${wantedShots} 镜，实际 ${scenes.length} 镜。`);
+      if (scenes.length < finalMinSceneCount) {
+        throw new Error(`AI 没有按要求返回完整剧本镜头：需要至少 ${finalMinSceneCount} 镜，实际 ${scenes.length} 镜。`);
       }
+    }
+    if (isDetailedMode && scenes.length > maxAllowedShots) {
+      scenes = scenes.slice(0, maxAllowedShots);
     }
     let cursor = 0;
     scenes = scenes.map((s, i) => {
@@ -9678,10 +9708,14 @@ ${JSON.stringify(scenes, null, 2)}
       outputRatio: output_ratio,
     });
     briefInfo.person_spec = resolvedPersonSpec;
+    briefInfo.recommended_shot_count = wantedShots;
+    briefInfo.shot_count_range = isDetailedMode
+      ? { min: minAllowedShots, max: maxAllowedShots }
+      : { min: 3, max: 8 };
     if (isDetailedMode && storyCharacters.length) {
       briefInfo.characters = storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline' };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     _storeLuxuryStoryboardResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
