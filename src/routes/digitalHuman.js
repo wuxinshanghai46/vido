@@ -7364,6 +7364,7 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
   const name = String(productSubject || '主商品').replace(/\s+/g, '').slice(0, 12) || '主商品';
   const storyText = [brief, productSubject].filter(Boolean).join(' ');
   const isMaterial = /钢|金属|板材|建材|材料|材质|墙|石材|木饰面|岩板|瓷砖/i.test(storyText);
+  const isStoreOps = /点餐|门店|餐饮|订单|库存|收银|外卖|堂食|营业|高峰/i.test(storyText);
   const isRobot = /机器人|AI|人工智能|智能|未来|助理|科技/i.test(storyText);
   const roleIndex = {
     hook: 0,
@@ -7397,6 +7398,18 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
     '告别混乱，生活重新有序',
     cta || '现在体验，开启智能生活',
     '让未来，从今天住进家里',
+  ];
+  const storeOpsLines = [
+    '高峰刚开始，订单已经排起队',
+    '电话和线上订单，不再各忙各的',
+    `${name}把每张订单整理清楚`,
+    '库存状态同步，前台不用反复确认',
+    '后厨按顺序出单，节奏稳下来',
+    '错单少一点，顾客等待也少一点',
+    '忙的时候，也能看清每一步',
+    '营业高峰结束，门店终于松一口气',
+    cta || '现在接入，让高峰营业更从容',
+    '让每一次接单，都更稳更清楚',
   ];
   const genericLines = [
     '问题出现时，需求才真正清楚',
@@ -7436,7 +7449,7 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
     ];
     return humanLines[Math.min(idx, humanLines.length - 1)] || humanLines[humanLines.length - 1];
   }
-  const lines = isRobot ? robotLines : (isMaterial ? materialLines : genericLines);
+  const lines = isStoreOps ? storeOpsLines : (isRobot ? robotLines : (isMaterial ? materialLines : genericLines));
   return lines[Math.min(idx, lines.length - 1)] || lines[lines.length - 1];
 }
 
@@ -7445,6 +7458,9 @@ function _isWeakLuxuryAdLine(value = '', productSubject = '') {
   if (!s || s.length < 6) return true;
   const subject = String(productSubject || '').replace(/\s+/g, '').trim();
   if (subject && (s === subject || s === `${subject}广告`)) return true;
+  const subjectText = String(productSubject || '');
+  if (/点餐|门店|餐饮|订单|库存|收银|外卖|堂食|营业|高峰/i.test(subjectText)
+    && /(设计|空间|材料|材质|展厅|家居|生活|居家|住进家里)/.test(s)) return true;
   return /(广告需求识别|由广告需求|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|主商品|产品名称|一句话需求|brief|一眼看见材质的高级感|让材料成为空间主角|纹理在光影里更清晰|高级空间，需要高级材质|主角登场|价值一眼看清|细节被放大|质感被看见|真实场景里，更懂需求|每一处细节，都是选择理由|现在咨询，了解更多方案|核心亮点|一次解决|让日常使用更轻松|加入你的必备清单|便捷|高效|效率倍增|智能集成|只需片刻|告别繁琐|创作更轻松)/.test(s);
 }
 
