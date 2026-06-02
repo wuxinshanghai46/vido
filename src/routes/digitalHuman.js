@@ -7548,7 +7548,8 @@ function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
   const s = _stripLuxuryBriefNoise(value)
     .replace(/[。；;，,]\s*$/g, '')
     .trim();
-  if (_looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, fallbackOpts.productSubject)) return _fallbackLuxuryAdCopy(fallbackOpts);
+  const subjectContext = [fallbackOpts.productSubject, fallbackOpts.brief].filter(Boolean).join(' ');
+  if (_looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, subjectContext)) return _fallbackLuxuryAdCopy(fallbackOpts);
   return s.slice(0, 34);
 }
 
