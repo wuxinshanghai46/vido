@@ -8999,6 +8999,7 @@ beats 数量：${targetDuration >= 24 ? `${Math.max(8, Math.min(12, wantedShots)
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
+      storyPlan = padLuxuryStoryPlanBeats(storyPlan);
       let storyCharacterIssue = describeLuxuryCharacterIssue(storyCharacters, { label: '编剧 agent 人物表' });
       if (storyCharacterIssue) {
         storyPlan = await repairLuxuryCastPayload({
