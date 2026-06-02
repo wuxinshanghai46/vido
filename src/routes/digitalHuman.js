@@ -7502,6 +7502,40 @@ function _fallbackLuxuryAdAction({ role = '', productSubject = '主商品' } = {
   return action[_luxuryRoleAt(0, 1, role)] || action.display;
 }
 
+function _luxuryIsStoreOpsContext(value = '') {
+  return /点餐|门店|餐饮|订单|库存|收银|外卖|堂食|营业|高峰|后厨|厨房|顾客|排队|取餐/i.test(String(value || ''));
+}
+
+function _luxuryHasMaterialActionLeak(value = '') {
+  return /(展厅|材料应用|材质表面|材料细节|样板边缘|样板|空间动线|整体空间|完整空间|材质细节|材料|材质|墙面|板材|建筑外立面|设计空间|会所|样板间)/.test(String(value || ''));
+}
+
+function _fallbackLuxuryStoreOpsAction({ role = '', index = 0, total = 10, productSubject = '门店 AI 点餐系统' } = {}) {
+  const name = String(productSubject || '门店 AI 点餐系统').trim() || '门店 AI 点餐系统';
+  const beat = _luxuryRoleAt(index, total, role);
+  const actions = {
+    hook: `店长一手拿纸质订单，一手接电话催单，眉头紧皱地看向前台和后厨方向，建立营业高峰的混乱感。`,
+    display: `店长把纸质订单放到柜台旁，转身看向平板里的订单列表，手势引导观众看到${name}开始接管流程。`,
+    product_reveal: `店长抬手点开${name}界面，屏幕里的电话单、外卖单和堂食单被整理成清晰队列。`,
+    benefit: `店长在平板上确认订单和库存状态，随后转头向后厨示意，动作从紧张变得有条理。`,
+    proof: `店长指向后厨大屏或前台订单列表，员工按系统提示处理下一单，画面呈现协同变顺。`,
+    cta: `店长站在前台旁面向镜头，右手指向稳定运行的${name}界面，用放松表情完成收束。`,
+  };
+  return actions[beat] || actions.display;
+}
+
+function _cleanLuxuryAdAction(value = '', fallbackOpts = {}) {
+  const role = fallbackOpts.role || '';
+  const productSubject = fallbackOpts.productSubject || '主商品';
+  const context = [fallbackOpts.productSubject, fallbackOpts.brief].filter(Boolean).join(' ');
+  const s = String(value || '').replace(/\s+/g, ' ').trim();
+  if (_luxuryIsStoreOpsContext(context)) {
+    if (!s || _luxuryHasMaterialActionLeak(s)) return _fallbackLuxuryStoreOpsAction(fallbackOpts);
+    return s.slice(0, 220);
+  }
+  return (s || _fallbackLuxuryAdAction({ role, productSubject })).slice(0, 260);
+}
+
 function _fallbackLuxuryAdEmotion({ role = '' } = {}) {
   const emotion = {
     hook: '克制、好奇、先建立高级感。',
@@ -8608,8 +8642,10 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || scene.visual_prompt || scene.material_need || scene.required_material || '',
           fallbackOpts,
         );
-        const action = String(scene.action || scene.visual_action || scene.character_action || scene.body_action || '').replace(/\s+/g, ' ').trim()
-          || _fallbackLuxuryAdAction({ role, productSubject });
+        const action = _cleanLuxuryAdAction(
+          scene.action || scene.visual_action || scene.character_action || scene.body_action || '',
+          fallbackOpts,
+        );
         const objective = _cleanLuxuryAdVisual(scene.objective || scene.intent || scene.purpose || '', fallbackOpts)
           .replace(/[。；;，,]\s*$/g, '')
           || _luxuryScriptPurposeLabel(role, i, total, '');
@@ -8649,7 +8685,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           visual: scene.visual || visual,
           display_visual: scene.display_visual || visual,
           action,
-          visual_action: scene.visual_action || action,
+          visual_action: action,
           characters: chars,
           character_profiles: chars,
           dialogue: dialogueLines.join('\n'),
@@ -9181,6 +9217,7 @@ ${JSON.stringify(scenes, null, 2)}
           visual = _luxuryStoryFirstHumanVisual({ visual, productSubject, role, index: i, total: roleCount, characters: rawCharacters });
           action = _luxuryStoryFirstHumanAction({ action, productSubject, role, index: i, total: roleCount, characters: rawCharacters });
         }
+        action = _cleanLuxuryAdAction(action, fallbackOpts);
         const camera = isDetailedMode ? String(x.camera || x.camera_motion || x.motion || 'smooth_slide').trim() : '';
         const shotAngle = isDetailedMode ? String(x.shot_angle || x.angle || x.shot_size || x.framing || '').trim() : '素材进入后生成';
         const materialUsage = (String(x.material_usage || x.material_hint || '').trim()
@@ -9299,6 +9336,7 @@ ${JSON.stringify(scenes, null, 2)}
         visual = _luxuryStoryFirstHumanVisual({ visual, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
         action = _luxuryStoryFirstHumanAction({ action, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
       }
+      action = _cleanLuxuryAdAction(action, fallbackOpts);
       const corePersonRequired = _luxuryStoryboardRequiresPerson({
         role,
         index: i,
@@ -9727,6 +9765,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       visual = _luxuryStoryFirstHumanVisual({ visual, productSubject: subject, role, index: i, total: list.length, characters: storyCharactersForShot });
       action = _luxuryStoryFirstHumanAction({ action, productSubject: subject, role, index: i, total: list.length, characters: storyCharactersForShot });
     }
+    action = _cleanLuxuryAdAction(action, fallbackOpts);
     const corePersonRequired = _luxuryStoryboardRequiresPerson({
       title: raw.title || '',
       objective: raw.objective || raw.intent || raw.purpose || '',
