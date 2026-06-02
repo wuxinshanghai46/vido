@@ -48,11 +48,14 @@ const PIPELINE_SCHEMA = {
     { id: 'ad_avatar.tts',           name: '广告口播 TTS',              type: 'tts',    desc: '广告口播文案配音' },
   ],
   '高定广告片': [
-    { id: 'luxury_ad.copy',      name: '高定广告片文案 / 镜头策划', type: 'story', desc: '按 Topview Image2 + Seedance 思路生成 4-8 镜头广告片分镜' },
-    { id: 'luxury_ad.keyframe',  name: '高定广告片关键帧',         type: 'image', desc: '生成产品/人物/场景一致的高定广告关键帧' },
-    { id: 'luxury_ad.video',     name: '高定广告片图生视频',       type: 'video', desc: '用 Seedance/Topview 图生视频把关键帧串成镜头' },
-    { id: 'luxury_ad.tts',       name: '高定广告片配音 TTS',       type: 'tts',   desc: '高定广告旁白、口播或字幕配音' },
-    { id: 'luxury_ad.post',      name: '高定广告片后期包装',       type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
+    { id: 'luxury_ad.scene_config', name: '1-2 广告需求 / 场景配置', type: 'story', desc: '把一句话广告需求整理成场景顺序、人物/主体来源和素材清单' },
+    { id: 'luxury_ad.script',       name: '3 剧本生成',             type: 'story', desc: '按时间段生成画面、动作、台词、目的、情绪和声音说明' },
+    { id: 'luxury_ad.storyboard_director', name: '3.5 分镜导演 / 视觉合同', type: 'story', desc: '把已确认剧本转成每镜可执行视觉合同、参考图策略和生图/质检约束' },
+    { id: 'luxury_ad.keyframe',     name: '4 分镜生成 / 画面',       type: 'image', desc: '根据剧本生成产品/人物/场景一致的分镜画面' },
+    { id: 'luxury_ad.keyframe_qa',  name: '4 分镜视觉质检',         type: 'vlm', desc: '多模态检查分镜图是否严格匹配已确认剧本、主体和镜头要求' },
+    { id: 'luxury_ad.video',        name: '5 广告合成 / 图生视频',   type: 'video', desc: '用 Seedance/Topview 图生视频把分镜画面串成镜头' },
+    { id: 'luxury_ad.tts',          name: '5 广告合成 / 配音 TTS',   type: 'tts',   desc: '高定广告旁白、口播或字幕配音' },
+    { id: 'luxury_ad.post',         name: '5 广告合成 / 字幕后期',   type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
   ],
   '网剧': [
     { id: 'drama.script',          name: '剧本 / 分镜生成',          type: 'story', desc: '编剧 LLM，输出剧本+分镜 JSON' },
@@ -141,10 +144,50 @@ const STAGE_DEFAULTS = {
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
   // 高定广告片
-  'luxury_ad.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'luxury_ad.scene_config': [
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+  ],
+  'luxury_ad.script': [
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+  ],
+  'luxury_ad.storyboard_director': [
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+  ],
+  'luxury_ad.copy': [
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
+  ],
   'luxury_ad.keyframe': [
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
-    { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'qwen-image-edit', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'doubao-seedream-4-0-250828', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'imagen-4', priority: 4, enabled: true },
+    { provider_id: 'deyunai', model_id: 'flux-pro', priority: 5, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-2', priority: 20, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 21, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-seedream-5', priority: 22, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 23, enabled: true },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 80, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 81, enabled: false },
+  ],
+  'luxury_ad.keyframe_qa': [
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.0-flash', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 4, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 5, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-3.1-flash-lite-preview', priority: 7, enabled: true },
+    { provider_id: 'zhipu', model_id: 'glm-4v-flash', priority: 20, enabled: true },
+    { provider_id: 'zhipu', model_id: 'glm-4v', priority: 21, enabled: true },
+    { provider_id: 'zhipu', model_id: 'glm-4.5v', priority: 22, enabled: true },
+    { provider_id: 'zhipu', model_id: 'glm-4.6v', priority: 23, enabled: true },
   ],
   'luxury_ad.video': [
     { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 1, enabled: true },
@@ -248,6 +291,30 @@ function pickAllEnabledWithDefault(stageId) {
   return configured.length ? configured : getStageDefaults(stageId).filter(m => m.enabled);
 }
 
+function isVlmCapableModel(provider, model) {
+  const use = String(model?.use || '').toLowerCase();
+  const type = String(model?.type || '').toLowerCase();
+  if (['vlm', 'vision', 'visual'].includes(use) || ['vlm', 'vision', 'visual'].includes(type)) return true;
+  if (['image', 'video', 'tts', 'audio', 'music', 'embedding', 'avatar'].includes(use)
+    || ['image', 'video', 'tts', 'audio', 'music', 'embedding', 'avatar'].includes(type)) return false;
+
+  const providerText = `${provider?.id || ''} ${provider?.preset || ''} ${provider?.name || ''}`.toLowerCase();
+  const modelText = `${model?.id || ''} ${model?.name || ''}`.toLowerCase();
+  const isDeyunai = providerText.includes('deyunai') || providerText.includes('漫路');
+  if (!isDeyunai) return false;
+
+  // DeyunAI exposes several multimodal models as chat/story models. They can
+  // accept image_url messages and are valid candidates for strict visual QA.
+  return [
+    /^gpt-4o(?:$|-)/,
+    /^gemini-(?:2\.0|2\.5|3\.1)/,
+    /^claude-(?:3|sonnet)/,
+    /qwen.*vl/,
+    /vision/,
+    /multimodal|多模态/,
+  ].some(rx => rx.test(modelText));
+}
+
 /** 列出 settings.providers 中所有可用模型（按 use 字段过滤） */
 function listAvailableModels(useType) {
   try {
@@ -261,6 +328,7 @@ function listAvailableModels(useType) {
         // useType: image/video/tts/story/avatar — 'avatar' 我们映射到 video 或 image
         const matches = useType === 'avatar' ? ['video', 'image', 'avatar'].includes(m.use)
                       : useType === 'story'  ? ['story', 'chat', 'llm'].includes(m.use)
+                      : useType === 'vlm'    ? isVlmCapableModel(p, m)
                       : m.use === useType;
         if (matches || useType === 'all') {
           out.push({

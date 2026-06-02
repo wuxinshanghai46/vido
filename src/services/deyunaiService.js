@@ -237,7 +237,12 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     }
     throw new Error(`漫路视频生成超时（${timeoutMs}ms）`);
   } catch (e) {
-    _err = e.message; throw e;
+    const detail = e.response?.data
+      ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 500)}`
+      : e.message;
+    _err = detail;
+    if (e.response?.data) throw new Error('漫路 video 调用失败: ' + detail);
+    throw e;
   } finally {
     try {
       require('./tokenTracker').record({

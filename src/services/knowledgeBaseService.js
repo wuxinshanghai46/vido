@@ -93,13 +93,37 @@ function searchDocs(q, collection) {
   return db.listKnowledgeDocs({ q, collection, enabledOnly: true });
 }
 
+function _docsForAgent(agentType) {
+  const docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+  if (agentType !== 'prompt_engineer') return docs;
+
+  const byId = new Map(docs.map(d => [d.id, d]));
+  for (const d of db.listKnowledgeDocs({ enabledOnly: true })) {
+    const text = [
+      d.title,
+      d.summary,
+      d.content,
+      d.subcategory,
+      (d.tags || []).join(' '),
+      (d.keywords || []).join(' '),
+      (d.prompt_snippets || []).join(' '),
+      d.collection,
+    ].filter(Boolean).join(' ').toLowerCase();
+    const promptish = (d.prompt_snippets || []).length
+      || /\b(prompt|visual prompt|motion|camera|voice|tts|lip[- ]?sync|scene|character|action)\b/.test(text)
+      || /提示词|场景|人物|动作|镜头|语音|口播|口型|分镜/.test(text);
+    if (promptish) byId.set(d.id, d);
+  }
+  return [...byId.values()];
+}
+
 // ———————————————————————————————————————————————
 // 为 agent 构建静态上下文（用于注入 systemPrompt）
 // ———————————————————————————————————————————————
 function buildAgentContext(agentType, opts = {}) {
   const { genre, maxDocs = 12, maxCharsPerDoc = 600, includeCache = true } = opts;
 
-  let docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+  let docs = _docsForAgent(agentType);
 
   // 如果有全量学习缓存，附加缓存中的知识摘要（不重复）
   if (includeCache) {
@@ -162,7 +186,7 @@ function buildAgentContext(agentType, opts = {}) {
 // 全量 KB 注入：将该 Agent 的所有知识一次性注入（用于强制学习模式）
 function buildFullKBContext(agentType, opts = {}) {
   const { maxCharsPerDoc = 800 } = opts;
-  let docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+  let docs = _docsForAgent(agentType);
   if (docs.length === 0) return '';
 
   const lines = docs.map(d => {
@@ -198,7 +222,7 @@ function searchForAgent(agentType, query, opts = {}) {
   if (!query) return '';
 
   // 1. 先取该 agent 可用的所有 docs
-  let docs = db.listKnowledgeDocs({ appliesTo: agentType, enabledOnly: true });
+  let docs = _docsForAgent(agentType);
 
   // 2. 如果指定了 team，再按团队过滤（双重保险：agent 属于此 team）
   if (team) {
@@ -277,7 +301,7 @@ function listAgentsByTeam(team) {
 
 // 为团队内某个 agent 统计知识条数
 function getAgentStats(agentId) {
-  const docs = db.listKnowledgeDocs({ appliesTo: agentId, enabledOnly: true });
+  const docs = _docsForAgent(agentId);
   return {
     agentId,
     total_docs: docs.length,
@@ -384,6 +408,9 @@ const AGENT_TYPES = [
   { id: 'llm_engineer', name: '大模型工程师', emoji: '🤖', team: 'rd', layer: 'engineering',
     skills: ['模型接入', 'Prompt 工程', 'Fine-tuning', '模型评估', '路由策略', 'RAG', 'Function Calling'],
     desc: '熟悉 OpenAI/Anthropic/Google/DeepSeek/字节/阿里等全量 API，快速将新模型接入业务并调优' },
+  { id: 'prompt_engineer', name: '提示词工程师', emoji: '✍️', team: 'rd', layer: 'engineering',
+    skills: ['提示词体系设计', '场景提示词', '人物一致性提示词', '语音与情绪提示词', '动作与镜头提示词', '多模型提示词适配', '负面提示词与质检'],
+    desc: '平台级提示词负责人。凡涉及场景、人物、语音、动作、镜头、图像、视频、文案等提示词生成或优化，负责按不同模型和业务场景建立模板、约束、负面词、质检与每日学习沉淀。' },
   { id: 'component_engineer', name: '组件工程师', emoji: '🧩', team: 'rd', layer: 'engineering',
     skills: ['MCP 协议', 'Skills 系统', '插件架构', '第三方集成', 'Webhook', 'OAuth'],
     desc: '负责接入各类 MCP 连接器、Claude Skills、外部 API 组件，并设计插件识别与调用机制' },
@@ -485,29 +512,32 @@ function buildDramaPipelineContext(genre) {
 // ───────────────────────────────────────────────
 const SCENE_AGENT_MAP = {
   // 数字人
-  digital_human: ['digital_human', 'copywriter'],
-  avatar_text:   ['digital_human', 'copywriter'],
-  avatar_script: ['digital_human', 'copywriter'],
+  digital_human: ['digital_human', 'copywriter', 'prompt_engineer'],
+  avatar_text:   ['digital_human', 'copywriter', 'prompt_engineer'],
+  avatar_script: ['digital_human', 'copywriter', 'prompt_engineer'],
+  showroom_guide: ['digital_human', 'storyboard', 'atmosphere', 'prompt_engineer'],
+  digital_ad: ['digital_human', 'copywriter', 'storyboard', 'prompt_engineer'],
   // 剧情/编剧
-  story:         ['screenwriter'],
-  screenwriter:  ['screenwriter'],
-  drama:         ['screenwriter', 'director'],
+  story:         ['screenwriter', 'prompt_engineer'],
+  screenwriter:  ['screenwriter', 'prompt_engineer'],
+  drama:         ['screenwriter', 'director', 'prompt_engineer'],
   // 分镜/导演
-  storyboard:    ['storyboard', 'director'],
-  director:      ['director', 'storyboard'],
+  storyboard:    ['storyboard', 'director', 'prompt_engineer'],
+  director:      ['director', 'storyboard', 'prompt_engineer'],
   // 图像 / 美术
-  image:         ['art_director', 'atmosphere'],
-  character_image: ['character_consistency', 'art_director'],
-  background_image: ['art_director', 'atmosphere'],
+  image:         ['art_director', 'atmosphere', 'prompt_engineer'],
+  character_image: ['character_consistency', 'art_director', 'prompt_engineer'],
+  background_image: ['art_director', 'atmosphere', 'prompt_engineer'],
   // 视频
-  video:         ['director', 'storyboard', 'atmosphere'],
-  video_prompt:  ['storyboard', 'atmosphere'],
+  video:         ['director', 'storyboard', 'atmosphere', 'prompt_engineer'],
+  video_prompt:  ['storyboard', 'atmosphere', 'prompt_engineer'],
+  prompt:        ['prompt_engineer'],
   // 剪辑
   editor:        ['editor'],
   // 文案/标题/运营
-  copy:          ['copywriter'],
-  title:         ['copywriter'],
-  cover:         ['copywriter', 'art_director'],
+  copy:          ['copywriter', 'prompt_engineer'],
+  title:         ['copywriter', 'prompt_engineer'],
+  cover:         ['copywriter', 'art_director', 'prompt_engineer'],
   // 本地化
   localize:      ['localizer'],
   // 市场调研

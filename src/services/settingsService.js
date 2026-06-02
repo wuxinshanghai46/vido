@@ -2,7 +2,10 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
-const SETTINGS_PATH = path.join(__dirname, '../../outputs/settings.json');
+const OUTPUT_DIR = process.env.OUTPUT_DIR
+  ? path.resolve(process.env.OUTPUT_DIR)
+  : path.join(__dirname, '../../outputs');
+const SETTINGS_PATH = path.join(OUTPUT_DIR, 'settings.json');
 
 // 预设供应商模板（用于"快速添加"下拉）
 const PROVIDER_PRESETS = {
@@ -18,7 +21,7 @@ const PROVIDER_PRESETS = {
     { id: 'cogvideox-2-i2v', name: 'CogVideoX-2 图生视频', type: 'video', use: 'video' },
   ] },
   stability:   { name: 'Stability AI', api_url: 'https://api.stability.ai/v2beta',             defaultModels: [{ id: 'sd3.5-large', name: 'SD 3.5 Large', type: 'image', use: 'image' }, { id: 'sd3.5-large-turbo', name: 'SD 3.5 Turbo', type: 'image', use: 'image' }] },
-  replicate:   { name: 'Replicate',    api_url: 'https://api.replicate.com/v1',                defaultModels: [{ id: 'flux-schnell', name: 'FLUX.1 Schnell', type: 'image', use: 'image' }, { id: 'flux-dev', name: 'FLUX.1 Dev', type: 'image', use: 'image' }, { id: 'wan-2-1', name: 'Wan 2.1', type: 'video', use: 'video' }] },
+  replicate:   { name: 'Replicate',    api_url: 'https://api.replicate.com/v1',                defaultModels: [{ id: 'flux-schnell', name: 'FLUX.1 Schnell', type: 'image', use: 'image' }, { id: 'flux-dev', name: 'FLUX.1 Dev', type: 'image', use: 'image' }, { id: 'wan-2-1', name: 'Wan 2.1', type: 'video', use: 'video' }, { id: 'men1scus/birefnet', name: 'BiRefNet Professional Matting', type: 'matting', use: 'matting' }] },
   huggingface: { name: 'HuggingFace',  api_url: 'https://api-inference.huggingface.co',        defaultModels: [{ id: 'modelscope-t2v', name: 'ModelScope T2V', type: 'video', use: 'video' }] },
   anthropic:   { name: 'Anthropic',    api_url: 'https://api.anthropic.com/v1',                defaultModels: [{ id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: 'chat', use: 'story' }, { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', type: 'chat', use: 'story' }] },
   qwen:        { name: '通义千问',      api_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModels: [{ id: 'qwen-max', name: 'Qwen Max', type: 'chat', use: 'story' }, { id: 'qwen-vl-max', name: 'Qwen VL Max', type: 'image', use: 'image' }] },
@@ -51,6 +54,10 @@ const PROVIDER_PRESETS = {
     { id: 'veo-3', name: 'Veo 3（高质量·音频同步）', type: 'video', use: 'video' },
   ] },
   topview:     { name: 'Topview AI',  api_url: 'https://api.topview.ai', defaultModels: [
+    { id: 'topview-nano-banana-2', name: 'Nano Banana 2', type: 'image', use: 'image' },
+    { id: 'topview-nano-banana-pro', name: 'Nano Banana Pro', type: 'image', use: 'image' },
+    { id: 'topview-seedream-5', name: 'Seedream 5.0', type: 'image', use: 'image' },
+    { id: 'topview-gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image' },
     { id: 'topview-avatar4', name: 'Topview Avatar 4（最新数字人）', type: 'avatar', use: 'avatar' },
     { id: 'topview-avatar4-fast', name: 'Topview Avatar 4 Fast（数字人极速）', type: 'avatar', use: 'avatar' },
     { id: 'topview-product-avatar-v3', name: 'Topview Product Avatar V3（商品数字人）', type: 'avatar', use: 'avatar' },
@@ -167,6 +174,9 @@ const PROVIDER_PRESETS = {
     { id: 'flux-schnell',            name: 'Flux Schnell（最快）',                          type: 'image', use: 'image', channel: 'cn' },
     { id: 'jimeng-t2i-v4',           name: '即梦 文生图 V4',                                type: 'image', use: 'image', channel: 'cn' },
     { id: 'jimeng-t2i-v3',           name: '即梦 文生图 V3',                                type: 'image', use: 'image', channel: 'cn' },
+    { id: 'qwen-image-edit',         name: 'Qwen-Image-Edit（图像编辑）',                      type: 'image', use: 'image', channel: 'cn' },
+    { id: 'qwen-image',              name: 'Qwen-Image',                                      type: 'image', use: 'image', channel: 'cn' },
+    { id: 'doubao-seedream-4-0-250828', name: '豆包 Seedream 4.0（图像编辑）',                 type: 'image', use: 'image', channel: 'cn' },
     { id: 'seedream-3.0',            name: '豆包 Seedream 3.0',                              type: 'image', use: 'image', channel: 'cn' },
     { id: 'gpt-image-1',             name: 'GPT Image-1（OpenAI · 海外）',                   type: 'image', use: 'image', channel: 'overseas' },
     { id: 'dall-e-3',                name: 'DALL-E 3（OpenAI · 海外）',                      type: 'image', use: 'image', channel: 'overseas' },
@@ -228,6 +238,8 @@ const ENV_SEED_MAP = [
   { envKey: 'FISHAUDIO_API_KEY',   presetId: 'fishaudio'   },
   { envKey: 'VOLCENGINE_TTS_KEY', presetId: 'volcengine'  },
   { envKey: 'BAIDU_TTS_KEY',      presetId: 'baidu'       },
+  { envKey: 'BAIDU_AIP_KEY',      presetId: 'baidu-aip'   },
+  { envKey: 'BAIDU_AIP_API_KEY',  presetId: 'baidu-aip'   },
   { envKey: 'ALIYUN_TTS_KEY',     presetId: 'aliyun-tts'  },
   { envKey: 'HEYGEN_API_KEY',     presetId: 'heygen'      },
   { envKey: 'DID_API_KEY',        presetId: 'did'         },
@@ -280,7 +292,7 @@ function saveSettings(data) {
 function getApiKey(providerId) {
   try {
     const settings = loadSettings();
-    const p = settings.providers.find(p => p.id === providerId && p.enabled);
+    const p = settings.providers.find(p => (p.id === providerId || p.preset === providerId) && p.enabled !== false);
     return p?.api_key || '';
   } catch { return ''; }
 }

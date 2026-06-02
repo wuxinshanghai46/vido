@@ -48,7 +48,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use('/openapi', express.json({
   verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); },
 }));
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '5mb' }));
 // 手动解析 cookie（不引入 cookie-parser 依赖）
 app.use((req, res, next) => {
   req.cookies = {};
@@ -72,7 +72,17 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, '../public'), { index: false }));
+app.use(express.static(path.join(__dirname, '../public'), {
+  index: false,
+  setHeaders(res, filePath) {
+    const normalized = filePath.replace(/\\/g, '/');
+    if (normalized.endsWith('/admin.html') || normalized.endsWith('/js/admin.js')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  },
+}));
 
 // === 公开路由（无需认证） ===
 app.use('/api/auth', require('./routes/auth'));
@@ -269,7 +279,7 @@ app.get('/public/jimeng-assets/:filename', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).end();
   const stat = fs.statSync(filePath);
   const ext = path.extname(filename).toLowerCase();
-  const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+  const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'video/mp4',
                     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
   res.writeHead(200, {
     'Content-Type': mimeMap[ext] || 'application/octet-stream',
@@ -363,19 +373,64 @@ app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
 app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
   const fs = require('fs');
   const path = require('path');
+  const axios = require('axios');
   try {
     const db = require('./models/database');
     const ffmpegService = require('./services/ffmpegService');
     const p = db.getPortrait(req.params.id);
     if (!p) return res.status(404).end();
-    if (p.image_url && /^\/public\//.test(p.image_url)) {
-      const local = path.resolve(__dirname, '..' + p.image_url);
-      if (fs.existsSync(local)) {
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return fs.createReadStream(local).pipe(res);
+
+    const sendFile = (filePath, contentType = 'image/jpeg') => {
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      fs.createReadStream(filePath).pipe(res);
+      return true;
+    };
+    const sendPlaceholder = () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="720" viewBox="0 0 480 720"><rect width="480" height="720" fill="#0b0d12"/><rect x="34" y="34" width="412" height="652" rx="18" fill="none" stroke="#2a2f3a" stroke-width="3" stroke-dasharray="12 10"/><text x="240" y="340" text-anchor="middle" fill="#8791a5" font-size="30" font-family="Arial, sans-serif">本地未同步图片</text><text x="240" y="388" text-anchor="middle" fill="#596276" font-size="20" font-family="Arial, sans-serif">请同步 outputs/jimeng-assets</text></svg>`;
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(svg);
+    };
+    const findLocalImage = (url) => {
+      if (!url) return null;
+      const clean = String(url).split('?')[0];
+      const candidates = [];
+      if (/^\/public\//.test(clean)) candidates.push(path.resolve(__dirname, '..' + clean));
+      if (clean.includes('/public/jimeng-assets/')) candidates.push(path.resolve(__dirname, '../outputs/jimeng-assets', path.basename(clean)));
+      if (clean.includes('/api/portrait/image/')) candidates.push(path.resolve(__dirname, '../outputs/portraits', path.basename(clean)), path.resolve(__dirname, '../outputs/portraits/uploads', path.basename(clean)));
+      return candidates.find(x => x && fs.existsSync(x)) || null;
+    };
+    const imageUrl = p.image_url || p.photo_url || '';
+    const localImage = findLocalImage(imageUrl);
+    if (localImage) {
+      const ext = path.extname(localImage).toLowerCase();
+      const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      return sendFile(localImage, type);
+    }
+
+    // 本地开发常见情况：portrait_db 从线上同步了 URL，但 outputs/jimeng-assets 没同步。
+    // 默认快速返回明确占位图，避免每张卡片等待远程外链超时；需要尝试代理时加 ?proxy=1。
+    if (/^https?:\/\//i.test(imageUrl) && req.query.proxy === '1') {
+      const clean = imageUrl.split('?')[0];
+      const ext = /\.(png|webp|jpg|jpeg)$/i.test(clean) ? path.extname(clean).toLowerCase() : '.jpg';
+      const cachePath = path.resolve(__dirname, '../outputs/jimeng-assets', `avatar_thumb_${req.params.id}${ext}`);
+      if (fs.existsSync(cachePath)) {
+        const type = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        return sendFile(cachePath, type);
+      }
+      try {
+        const r = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 2500, maxRedirects: 3 });
+        if (r.status >= 200 && r.status < 300 && r.data?.byteLength) {
+          fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+          fs.writeFileSync(cachePath, Buffer.from(r.data));
+          return sendFile(cachePath, r.headers['content-type'] || (ext === '.png' ? 'image/png' : 'image/jpeg'));
+        }
+      } catch (e) {
+        console.warn('[DH/avatar-thumb] remote image unavailable:', imageUrl, e.message);
       }
     }
+
     const sample = p.sample_video_url || '';
     let localVideo = null;
     if (sample.includes('/public/jimeng-assets/')) {
@@ -383,7 +438,7 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
       const candidate = path.resolve(__dirname, '../outputs/jimeng-assets', name);
       if (fs.existsSync(candidate)) localVideo = candidate;
     }
-    if (!localVideo) return res.status(204).end();
+    if (!localVideo) return sendPlaceholder();
     const thumbPath = localVideo.replace(/\.(mp4|mov|webm|mkv)$/i, '') + '.thumb.jpg';
     const send = () => {
       res.setHeader('Content-Type', 'image/jpeg');

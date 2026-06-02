@@ -86,7 +86,7 @@ async function segmentFrame(imgBuffer, type = 'foreground') {
  * @param {{qps?: number, onFrame?: (idx, total)=>void}} [opts]
  * @returns {Promise<Buffer[]>} 与输入等长
  */
-async function segmentFramesBatch(buffers, { qps = 8, onFrame } = {}) {
+async function segmentFramesBatch(buffers, { qps = 8, onFrame, strict = false } = {}) {
   const total = buffers.length;
   const results = new Array(total);
   let nextIdx = 0;
@@ -97,6 +97,7 @@ async function segmentFramesBatch(buffers, { qps = 8, onFrame } = {}) {
       try {
         results[i] = await segmentFrame(buffers[i]);
       } catch (e) {
+        if (strict) throw e;
         // 失败保留原图作兜底（不抠，叠背景后会露出原背景；比整体报错强）
         console.warn(`[baidu-matting] 第 ${i + 1}/${total} 帧失败: ${e.message}`);
         results[i] = buffers[i];

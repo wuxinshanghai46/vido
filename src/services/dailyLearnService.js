@@ -178,6 +178,29 @@ function saveState(state) {
   }
 }
 
+function isPromptKnowledgeDoc(doc = {}) {
+  const text = [
+    doc.title,
+    doc.summary,
+    doc.content,
+    doc.subcategory,
+    (doc.tags || []).join(' '),
+    (doc.keywords || []).join(' '),
+    (doc.prompt_snippets || []).join(' '),
+    doc.collection,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return (doc.prompt_snippets || []).length
+    || /\b(prompt|visual prompt|motion|camera|voice|tts|lip[- ]?sync|scene|character|action)\b/.test(text)
+    || /提示词|场景|人物|动作|镜头|语音|口播|口型|分镜/.test(text);
+}
+
+function docsForLearningAgent(agentId, docs = []) {
+  if (agentId === 'prompt_engineer') {
+    return docs.filter(isPromptKnowledgeDoc);
+  }
+  return docs.filter(d => (d.applies_to || []).includes(agentId));
+}
+
 // ———————————————————————————————————————————————
 // 主流程：每日学习
 // ———————————————————————————————————————————————
@@ -229,7 +252,7 @@ async function runDailyLearn({ manual = false } = {}) {
 
   const agentDigests = [];
   for (const agent of agentTypes) {
-    const agentNewDocs = newDocs.filter(d => (d.applies_to || []).includes(agent.id));
+    const agentNewDocs = docsForLearningAgent(agent.id, newDocs);
     const digest = generateAgentDigest(agent, agentNewDocs, currentDocs);
     const filePath = path.join(digestDir, `${agent.id}.md`);
     fs.writeFileSync(filePath, digest, 'utf8');
@@ -237,7 +260,7 @@ async function runDailyLearn({ manual = false } = {}) {
       agent_id: agent.id,
       agent_name: agent.name,
       new_docs_count: agentNewDocs.length,
-      total_docs: currentDocs.filter(d => (d.applies_to || []).includes(agent.id)).length,
+      total_docs: docsForLearningAgent(agent.id, currentDocs).length,
       digest_file: `docs/learning/${today}/${agent.id}.md`,
     });
   }
@@ -290,7 +313,7 @@ async function runDailyLearn({ manual = false } = {}) {
 // ———————————————————————————————————————————————
 function generateAgentDigest(agent, newDocs, allDocs) {
   const today = new Date().toISOString().slice(0, 10);
-  const agentDocs = allDocs.filter(d => (d.applies_to || []).includes(agent.id));
+  const agentDocs = docsForLearningAgent(agent.id, allDocs);
 
   const lines = [];
   lines.push(`# ${agent.emoji} ${agent.name} 每日学习报告`);

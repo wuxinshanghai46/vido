@@ -104,6 +104,8 @@ const voiceStore = createStore('voice_db.json', 'voices');
 const monitorStore = createStore('monitor_db.json', 'accounts');
 // 内容雷达 - 内容库
 const contentStore = createStore('content_db.json', 'contents');
+// 内容雷达 - 关键词订阅
+const subscriptionStore = createStore('subscription_db.json', 'subscriptions');
 // 内容雷达 - 复刻任务
 const replicateStore = createStore('replicate_db.json', 'tasks');
 // AI 能力 - 角色库/场景库/风格库
@@ -318,6 +320,14 @@ const db = {
   },
   updateContent(id, fields)     { contentStore.update(id, fields); },
   deleteContent(id)             { contentStore.delete(id); },
+
+  // ——— Radar Subscriptions（关键词订阅）———
+  insertSubscription(row)        { subscriptionStore.insert(row); },
+  getSubscription(id)            { return subscriptionStore.get(id); },
+  listSubscriptions(userId)      { return subscriptionStore.list(s => !userId || s.user_id === userId); },
+  listAllSubscriptions()         { return subscriptionStore.list(); },
+  updateSubscription(id, fields) { subscriptionStore.update(id, fields); },
+  deleteSubscription(id)         { subscriptionStore.delete(id); },
 
   // ——— Replicate Tasks（复刻任务）———
   insertReplicateTask(row)      { replicateStore.insert(row); },

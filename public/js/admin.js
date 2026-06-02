@@ -1163,8 +1163,16 @@ async function saveModel() {
 }
 async function deleteModel(providerId, modelId) {
   if (!confirm(`确认删除模型 ${modelId}？`)) return;
-  await authFetch(`/api/settings/providers/${providerId}/models/${modelId}`, { method: 'DELETE' });
-  await loadProviders(); toast('已删除');
+  try {
+    const url = `/api/settings/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`;
+    const res = await authFetch(url, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || '删除失败');
+    await loadProviders(); toast('已删除');
+  } catch (e) {
+    toast('删除失败: ' + e.message, 'error');
+    await loadProviders();
+  }
   setTimeout(() => { const sub = document.getElementById('spmodels-' + providerId); if (sub && !sub.classList.contains('open')) toggleProviderModels(providerId); }, 100);
 }
 
@@ -4159,6 +4167,10 @@ const _MODEL_I18N = {
   'deepseek-reasoner': 'DeepSeek R1（推理模型）',
   'glm-4-plus': '智谱 GLM-4 Plus',
   'glm-4-flash': '智谱 GLM-4 Flash',
+  'glm-4v-flash': '智谱 GLM-4V Flash（视觉理解）',
+  'glm-4v': '智谱 GLM-4V（视觉理解）',
+  'glm-4.5v': '智谱 GLM-4.5V（视觉理解）',
+  'glm-4.6v': '智谱 GLM-4.6V（视觉理解）',
   'cogview-3-flash': '智谱 CogView-3 Flash',
   'cogvideox-flash': '智谱 CogVideoX Flash',
   'nano-banana': 'Nano Banana 文生图',
@@ -4196,6 +4208,11 @@ const _PROVIDER_I18N = {
 };
 function _i18nModelName(id) { return _MODEL_I18N[id] || ''; }
 function _i18nProviderName(id) { return _PROVIDER_I18N[id] || ''; }
+function _cleanModelName(raw, id) {
+  const s = String(raw || '').trim();
+  if (!s || /\?{3,}|�/.test(s)) return _i18nModelName(id) || id;
+  return s;
+}
 
 async function loadModelPipeline() {
   try {
@@ -4230,7 +4247,7 @@ function renderModelPipeline() {
             ${firstModel
               ? (() => {
                   const meta = (available[stage.type] || []).find(a => a.provider_id === firstModel.provider_id && a.model_id === firstModel.model_id);
-                  const dispName = meta?.model_name || _i18nModelName(firstModel.model_id) || firstModel.model_id;
+                  const dispName = _cleanModelName(meta?.model_name, firstModel.model_id);
                   const provName = (isUsingDefault ? '系统默认 · ' : '') + (meta?.provider_name || _i18nProviderName(firstModel.provider_id) || firstModel.provider_id);
                   const stale = !meta;
                   const trim = (s) => s.length > 22 ? s.slice(0, 20) + '…' : s;
@@ -4363,8 +4380,15 @@ function openStageEditModal(stageId, type) {
       : `<div class="vido-model-list">${cur.map((m, idx) => {
           const meta = avail.find(a => a.provider_id === m.provider_id && a.model_id === m.model_id);
           // 优先用 settings 里的中文 model_name；如果该 provider 已被禁用 / 模型已删除 → meta 是 undefined
-          const isStale = !meta;
-          const displayName = meta?.model_name || _i18nModelName(m.model_id) || m.model_id;
+          let isStale = !meta;
+          // 二阶放行：STAGE_DEFAULTS 里写的 model_id 可能是「模型版本」（如 cosyvoice-v3.5-plus），
+          // 而 settings.providers[].models[] 存的是「音色 ID」（如 longxiaochun）——名字体系不一致会被误标 stale。
+          // 只要同 provider_id 在 avail 里有任意一个模型（说明 provider 自身 enabled），就不再标 stale。
+          if (isStale) {
+            const sameProvHasModels = avail.some(a => a.provider_id === m.provider_id);
+            if (sameProvHasModels) isStale = false;
+          }
+          const displayName = _cleanModelName(meta?.model_name, m.model_id);
           const provName = meta?.provider_name || _i18nProviderName(m.provider_id) || m.provider_id;
           return `
             <div class="vido-model-item ${m.enabled?'selected':''}" ${isStale ? 'style="opacity:.5"' : ''}>
@@ -4390,7 +4414,7 @@ function openStageEditModal(stageId, type) {
           <div class="vido-model-item" onclick="_stageEditAdd(${i})">
             <span style="font-size:18px;color:var(--accent)">+</span>
             <div class="vido-model-item-info">
-              <div class="vido-model-item-id" style="font-weight:600">${esc(c.model_name || c.model_id)}</div>
+              <div class="vido-model-item-id" style="font-weight:600">${esc(_cleanModelName(c.model_name, c.model_id))}</div>
               <div class="vido-model-item-meta" style="opacity:.7">${esc(c.provider_name || c.provider_id)} · <code style="font-size:10px">${esc(c.model_id)}</code></div>
             </div>
           </div>

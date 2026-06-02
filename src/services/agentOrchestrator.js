@@ -255,6 +255,16 @@ ${JSON.stringify(subResults, null, 2)}
 // 自主编排：用户只给自然语言任务，系统自动决定整个执行流程
 // ———————————————————————————————————————————————
 async function autoExecute(task, opts = {}) {
+  // PM-led mode is the default: automatic tasks enter the full workflow,
+  // where project_manager/executive_producer coordinates specialist agents by phase.
+  if (!opts.allowSingleAgent) {
+    return runWorkflow(task, {
+      taskType: opts.taskType || 'auto',
+      workflowName: opts.workflowName || 'auto',
+      onProgress: opts.onProgress,
+    });
+  }
+
   const ctx = new AgentCallContext(task, 'user');
 
   // Step 1: LLM 任务路由 - 决定谁做主 agent + 工作流
@@ -1044,6 +1054,40 @@ function classifyWorkflow(task) {
   return 'video';
 }
 
+function _phaseLooksPromptRelated(phase, task, workflowName) {
+  const haystack = [
+    task,
+    workflowName,
+    phase?.id,
+    phase?.name,
+    ...(phase?.agents || []).flatMap(a => [a.id, a.action, a.instruction]),
+  ].filter(Boolean).join('\n').toLowerCase();
+  return /prompt|提示词|场景|人物|角色|动作|镜头|语音|口播|口型|分镜|图像|图片|视频|文案|脚本|storyboard|camera|voice|action|scene|character|image|video/.test(haystack);
+}
+
+function withPromptEngineerForPromptWork(phases, task, workflowName) {
+  return (phases || []).map(phase => {
+    const agents = Array.isArray(phase.agents) ? [...phase.agents] : [];
+    if (!_phaseLooksPromptRelated(phase, task, workflowName)) {
+      return { ...phase, agents };
+    }
+    if (agents.some(a => a.id === 'prompt_engineer')) {
+      return { ...phase, agents };
+    }
+    return {
+      ...phase,
+      agents: [
+        ...agents,
+        {
+          id: 'prompt_engineer',
+          action: '提示词体系与模型适配',
+          instruction: '作为平台级提示词工程师，检查并优化本阶段涉及的场景、人物、语音、动作、镜头、图像、视频、文案提示词；按不同模型输出正向词、负面词、稳定性约束和质检要点，并沉淀可复用模板。',
+        },
+      ],
+    };
+  });
+}
+
 /**
  * 判断任务类型（业务 vs 研发）- 简单规则匹配，避免多一次 LLM 调用
  */
@@ -1108,6 +1152,8 @@ async function runWorkflow(task, opts = {}) {
       phases = BUSINESS_WORKFLOWS[resolvedWorkflow].phases;
     }
   }
+
+  phases = withPromptEngineerForPromptWork(phases, task, resolvedWorkflow);
 
   const ctx = new AgentCallContext(task, 'workflow');
   const workflowId = require('crypto').randomUUID();

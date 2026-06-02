@@ -22,6 +22,7 @@ function withMaskedKeys(settings) {
 
 // ——— 供应商预设（供前端展示快速填充） ———
 router.get('/presets', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   const presets = Object.entries(PROVIDER_PRESETS).map(([id, p]) => ({
     id, name: p.name, api_url: p.api_url, defaultModels: p.defaultModels,
   }));
@@ -30,6 +31,7 @@ router.get('/presets', (req, res) => {
 
 // ——— 读取全部设置 ———
 router.get('/', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.json({ success: true, data: withMaskedKeys(loadSettings()) });
 });
 
@@ -135,9 +137,13 @@ router.delete('/providers/:id/models/:modelId', (req, res) => {
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
+  const before = (p.models || []).length;
   p.models = (p.models || []).filter(m => m.id !== req.params.modelId);
+  if (p.models.length === before) {
+    return res.status(404).json({ success: false, error: '模型不存在或模型 ID 未正确编码' });
+  }
   saveSettings(settings);
-  res.json({ success: true });
+  res.json({ success: true, removed: before - p.models.length });
 });
 
 // 切换模型启用状态

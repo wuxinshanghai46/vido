@@ -54,7 +54,8 @@ const STORYBOARD_SYSTEM_PROMPT = `你是一个专业的数字人视频分镜师�
 **动作连贯性（极重要 — 违反会让视频看起来离谱）：**
 - action 字段必须是"站定对着镜头说话时的动作"，所有段都能连起来播
 - ✅ 允许: nodding gently, slight head tilt, raising eyebrows, small hand gesture at chest level, subtle shoulder movement, open palm, pointing forward with right hand, leaning slightly forward
-- ❌ 禁止: picking up anything, holding a prop, walking, turning away, looking down at phone, eating, drinking, typing, looking off-camera, 拿东西/走动/转身/低头看手机/使用电子设备 等
+- ❌ 禁止: picking up anything, holding a prop, walking off frame, random wandering, turning away, looking down at phone, eating, drinking, typing, looking off-camera, 拿东西/离开画面/乱走/转身离开/低头看手机/使用电子设备 等
+- ✅ 广告导览场景可允许: small natural step into position, slow guided walkthrough, settling weight naturally；这类动作必须短、稳、始终面向镜头或展示区。
 - 相邻两段之间动作幅度要接近（不要上一段 subtle nod 下一段 dramatic arm sweep）
 - 人物始终面向镜头，服装/灯光/背景/发型在所有段保持一致
 
@@ -536,9 +537,9 @@ function _bodyFramePromptHint(bodyFrame) {
 // ═══════════════════════════════════════════════
 const SPEECH_COMPATIBLE_NEGATIVES = [
   'picking up an object', 'picks up', 'holding prop', 'reaching for',
-  'turning away', 'walking', 'looking away', 'looking down at phone',
+  'turning away', 'walking off frame', 'random wandering', 'aimless off-camera staring', 'looking down at phone',
   'using phone', 'typing', 'eating', 'drinking',
-  '拿起', '拿着道具', '转身离开', '走开', '低头看手机', '使用手机', '打字', '吃东西',
+  '拿起', '拿着道具', '转身离开', '走开', '乱走', '低头看手机', '使用手机', '打字', '吃东西',
 ];
 function _sanitizeSegmentAction(rawAction, idx, prevAction) {
   const a = String(rawAction || '').trim() || 'speaking naturally with subtle head movements';
@@ -555,13 +556,13 @@ function _sanitizeSegmentAction(rawAction, idx, prevAction) {
 
 // 段与段之间的姿态连贯性提示：从第二段起，都引用前一段的动作关键词，防止姿态跳变
 function _continuityPromptHint(idx, prevAction) {
-  if (idx === 0) return 'maintain stable posture, feet grounded, face centered to camera';
+  if (idx === 0) return 'maintain identity and natural posture, keep face visible, allow small guided steps when the action asks for walkthrough motion';
   const prev = String(prevAction || '').slice(0, 80);
   return `continuing smoothly from previous shot (previous: ${prev}), keep body posture / hand position / outfit / lighting consistent with prior segment, avoid abrupt reposition or wardrobe change`;
 }
 
 // 动作层面的通用 negative — 所有段 prompt 末尾统一追加
-const ACTION_NEGATIVES_SUFFIX = 'NEGATIVE: sudden wardrobe change, sudden lighting change, sudden background change, different person, turning away from camera, looking away from camera, picking up random objects, walking off frame, disappearing, multi-person scene';
+const ACTION_NEGATIVES_SUFFIX = 'NEGATIVE: sudden wardrobe change, sudden lighting change, sudden background change, different person, turning away from camera for no reason, aimless off-camera staring, picking up random objects, leaving the frame or presenter zone, disappearing, multi-person scene';
 
 /**
  * 按 shot.camera 从 multiAngleImages 中选择最合适的参考图
@@ -1069,7 +1070,13 @@ async function _seedanceAVGenerate(imgParam, prompt, model, apiKey, onProgress, 
 
   // Ark 的 content 参数格式（OpenAI 风格 + Ark 扩展）
   // 参数通过 prompt 末尾 --flag value 形式传递（官方推荐写法）
-  const promptWithFlags = `${prompt} --resolution 720p --ratio ${ratio} --duration ${duration}${hasAudio ? ' --cameramove false' : ''}`;
+  const promptText = String(prompt || '');
+  const isGuideMotion = opts.allowCameraMove === true
+    || /showroom|walkthrough|docent|guide|presenter|pan_product|parallax|导览|展厅|广告数字人|展示墙|介绍/i.test(promptText);
+  const cameraMoveFlag = hasAudio
+    ? (isGuideMotion ? ' --cameramove true' : ' --cameramove false')
+    : '';
+  const promptWithFlags = `${prompt} --resolution 720p --ratio ${ratio} --duration ${duration}${cameraMoveFlag}`;
   try {
 
   // Ark image 接受 URL / data URI / base64

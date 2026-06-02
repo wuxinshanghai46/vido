@@ -142,6 +142,7 @@ const PERMISSION_MATRIX = {
       { id: 'projects',   label: '我的项目',     group: '我的' },
       { id: 'portrait',   label: '我的角色',     group: '我的' },
       { id: 'assets',     label: '素材库',       group: '我的' },
+      { id: 'model_usage', label: '模型消耗',    group: '我的' },
     ],
     // 与平台矩阵一致：查看/创建/编辑/删除 四列
     actions: [
@@ -1966,6 +1967,7 @@ router.get('/pipeline-models', (req, res) => {
     // 列出每个 use 的可用模型（让前端 dropdown 选）
     const availableByUse = {
       story: pms.listAvailableModels('story'),
+      vlm:   pms.listAvailableModels('vlm'),
       image: pms.listAvailableModels('image'),
       video: pms.listAvailableModels('video'),
       tts:   pms.listAvailableModels('tts'),

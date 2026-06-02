@@ -46,36 +46,35 @@ function _guessKBScene(sp) {
 }
 
 // 全局默认文本模型优先级（用户未显式指定模型时生效）
-//   1. 漫路（deyunai）聚合平台 · ChatGPT 系列（gpt-4o 优先）
-//   2. deepseek
+//   1. deepseek（中文结构化文本更稳）
+//   2. 漫路（deyunai）聚合平台（当前主要用于图像/视频，文本模型按可用性兜底）
 //   3. openai / anthropic / 其他
 const PREFERRED_TEXT_PROVIDERS = [
-  /^deyunai$|漫路/i,
-  /^deepseek$/i,
-  /^openai$/i,
-  /^anthropic$|claude/i,
-  /^zhipu$|智谱/i,
+  /^deepseek\b/i,
+  /^deyunai\b|漫路/i,
+  /^openai\b/i,
+  /^anthropic\b|claude/i,
+  /^zhipu\b|智谱/i,
 ];
 
 // 为一个 provider 挑最好的 story 模型
-//   漫路 deyunai 实测可用：qwen3-32b > gemini-3.1-flash-lite-preview > deepseek-r1
-//   注意：R1 是推理模型，输出在 reasoning_content（业务层不一定能解析），
-//        qwen3-32b 是普通模型 content 直接有内容，优先级最高
+//   漫路 deyunai 当前文本通道实测：gemini-2.5-flash / claude-sonnet-4-6 可用；
+//   qwen3-32b、gemini-3.1-flash-lite-preview、deepseek-r1 当前会返回 400。
 function _pickPreferredStoryModel(p) {
-  const models = (p.models || []).filter(m => m.enabled !== false && m.use === 'story');
+  const models = (p.models || []).filter(m => m.enabled !== false && _storyUseMatches(m.use));
   if (!models.length) return null;
   // 注意：models.find 里拼接的是 "id name"（如 "qwen3-32b Qwen3 32B"），
   //       所以正则不能用 ^...$ 全行锚定，要用 \b 单词边界匹配
-  // 漫路实测可用 9 个，按"输出标准 + 速度 + 成本"综合排序：
+  // 按"当前可用性 + 输出标准 + 速度 + 成本"综合排序。
   const preferred = [
-    /^gpt-4o-mini\b/i,                       // 最快+最便宜，默认首选
-    /^qwen3-32b\b/i,                         // 国内通道最稳
+    /^gemini-2\.5-flash\b/i,                 // 当前漫路可用，速度和结构化输出更均衡
+    /^claude.*sonnet.*4-6\b/i,               // 当前漫路可用，复杂文案兜底
     /^gpt-4o\b/i,                            // OpenAI 旗舰
-    /^claude.*sonnet.*4-6\b/i,               // Claude 4.6
-    /^gemini-2\.5-flash\b/i,                 // Gemini Flash
+    /^gpt-4o-mini\b/i,                       // 漫路当前可能禁用，降级候选
     /^gemini-2\.5-pro\b/i,                   // Gemini Pro
     /^gemini-2\.0-flash\b/i,
-    /^gemini-3\.1-flash-lite-preview\b/i,    // 国内通道 Gemini
+    /^qwen3-32b\b/i,                         // 当前可能 400，保留为配置恢复后的候选
+    /^gemini-3\.1-flash-lite-preview\b/i,
     /^deepseek-r1\b/i,                       // R1 推理慢，兜底
     // 其他 provider 偏好（非 deyunai 时）
     /chatgpt/i,
@@ -91,8 +90,92 @@ function _pickPreferredStoryModel(p) {
   return models[0];
 }
 
+function _storyUseMatches(use) {
+  return ['story', 'chat', 'llm'].includes(String(use || '').toLowerCase());
+}
+
+function _providerMatchesPreferred(provider = {}, preferred = {}) {
+  const target = String(preferred.provider_id || preferred.providerId || '').trim().toLowerCase();
+  if (!target) return false;
+  return [provider.id, provider.preset, provider.name]
+    .filter(Boolean)
+    .some(v => String(v).trim().toLowerCase() === target);
+}
+
+function _envStoryConfigFromPreferred(preferred = {}) {
+  const providerId = String(preferred.provider_id || preferred.providerId || '').trim().toLowerCase();
+  const modelId = String(preferred.model_id || preferred.model || '').trim();
+  if (!providerId || !modelId) return null;
+  if (providerId === 'deepseek' && process.env.DEEPSEEK_API_KEY) {
+    return { apiKey: process.env.DEEPSEEK_API_KEY, baseURL: 'https://api.deepseek.com/v1', model: modelId, providerId: 'deepseek' };
+  }
+  if (providerId === 'openai' && process.env.OPENAI_API_KEY) {
+    return { apiKey: process.env.OPENAI_API_KEY, baseURL: null, model: modelId, providerId: 'openai' };
+  }
+  if ((providerId === 'anthropic' || providerId === 'claude') && process.env.CLAUDE_API_KEY) {
+    return { apiKey: process.env.CLAUDE_API_KEY, baseURL: 'https://api.anthropic.com/v1', model: modelId, providerId: 'anthropic' };
+  }
+  return null;
+}
+
+function _configFromPreferredStoryModel(preferred = {}) {
+  const providerId = String(preferred.provider_id || preferred.providerId || '').trim();
+  const modelId = String(preferred.model_id || preferred.model || '').trim();
+  if (!providerId || !modelId) return null;
+  try {
+    const { loadSettings } = require('./settingsService');
+    const settings = loadSettings();
+    const provider = (settings.providers || [])
+      .find(p => p.enabled && p.api_key && _providerMatchesPreferred(p, preferred));
+    if (provider) {
+      const model = (provider.models || [])
+        .find(m => String(m.id || '').trim() === modelId && m.enabled !== false && _storyUseMatches(m.use));
+      if (!model) {
+        throw new Error(`模型调用管理里的 ${providerId}/${modelId} 不是可用的文本模型，请检查该模型是否启用并设置为 story/chat/llm`);
+      }
+      return {
+        apiKey: provider.api_key,
+        baseURL: provider.api_url,
+        model: model.id,
+        providerId: provider.id,
+        channel: model.channel,
+        stageId: preferred._stageId || preferred.stage_id || '',
+      };
+    }
+  } catch (err) {
+    if (preferred._explicit) throw err;
+  }
+  const envConfig = _envStoryConfigFromPreferred(preferred);
+  if (envConfig) return { ...envConfig, stageId: preferred._stageId || preferred.stage_id || '' };
+  if (preferred._explicit) {
+    throw new Error(`模型调用管理里的 ${providerId}/${modelId} 没有可用配置，请检查供应商 API Key 和模型用途`);
+  }
+  return null;
+}
+
+function _resolvePipelineStoryModel(opts = {}) {
+  const stages = [opts.pipelineStageId, opts.pipelineFallbackStageId].filter(Boolean);
+  if (!stages.length) return null;
+  try {
+    const pipeline = require('./pipelineModelService');
+    for (const stageId of stages) {
+      const explicit = pipeline.pickModel(stageId);
+      if (explicit) return { ...explicit, _stageId: stageId, _explicit: true };
+    }
+    for (const stageId of stages) {
+      const fallback = (pipeline.getStageDefaults(stageId) || []).find(m => m.enabled !== false);
+      if (fallback) return { ...fallback, _stageId: stageId, _explicit: false };
+    }
+  } catch (err) {
+    console.warn('[callLLM] pipeline model resolve failed:', err.message);
+  }
+  return null;
+}
+
 // 动态获取故事生成配置：优先读取 settings 中配置的 story 模型，回退到 env vars
-function getStoryConfig() {
+function getStoryConfig(preferred = null) {
+  const preferredConfig = preferred ? _configFromPreferredStoryModel(preferred) : null;
+  if (preferredConfig) return preferredConfig;
   try {
     const { loadSettings } = require('./settingsService');
     const settings = loadSettings();
@@ -110,7 +193,7 @@ function getStoryConfig() {
     });
     for (const provider of candidates) {
       const model = _pickPreferredStoryModel(provider);
-      if (model) return { apiKey: provider.api_key, baseURL: provider.api_url, model: model.id, providerId: provider.id };
+      if (model) return { apiKey: provider.api_key, baseURL: provider.api_url, model: model.id, providerId: provider.id, channel: model.channel };
     }
   } catch {}
   // Fallback to env vars
@@ -126,7 +209,7 @@ function callAnthropicLLM(config, systemPrompt, userPrompt) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       model: config.model,
-      max_tokens: 4096,
+      max_tokens: Math.max(1024, Math.min(16000, Number(config.maxTokens) || 4096)),
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
@@ -171,7 +254,8 @@ function callAnthropicLLM(config, systemPrompt, userPrompt) {
  * @returns {string} 响应文本
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
-  const config = getStoryConfig();
+  const preferred = _resolvePipelineStoryModel(opts);
+  const config = getStoryConfig(preferred);
   if (!config) throw new Error('未配置 AI 供应商，请在「AI 配置」页面添加供应商并设置 story 模型');
 
   // v9: 自动注入 KB 上下文
@@ -246,7 +330,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       const client = new OpenAI(sdkOpts);
       let completion = await client.chat.completions.create({
         model: config.model,
-        max_tokens: 4096,
+        max_tokens: Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096)),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -290,7 +374,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
           status,
           errorMsg,
           userId: opts.userId,
-          agentId: opts.agentId,
+          agentId: opts.agentId || config.stageId || opts.pipelineStageId,
           requestId: opts.requestId,
         });
       } catch {}

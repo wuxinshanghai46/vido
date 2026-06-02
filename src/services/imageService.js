@@ -54,12 +54,14 @@ const STYLE_PROMPTS = {
   wuxia:     'in Chinese wuxia martial arts style (武侠), flowing robes and silk, ancient Chinese architecture, bamboo forests, moonlit night, dramatic kung fu poses, 仙侠古风',
   darkfanta: 'in dark fantasy epic style, grim atmosphere, dramatic chiaroscuro lighting, medieval armor and creatures, dark color palette with fire accents, Lord of the Rings aesthetic',
   mecha:     'in mecha anime style, detailed mechanical robot design, chrome and neon accents, cockpit details, Gundam-inspired proportions, sci-fi military aesthetic, energy weapons',
+  realistic: 'photorealistic real-camera commercial photography, natural human skin texture, realistic fabric, studio casting reference photo, no illustration, no CGI, no anime',
 };
 
 // 2D/3D 维度附加提示词
 const DIM_SUFFIX = {
   '2d': 'flat 2D illustration, anime style, clean linework, cell shading',
   '3d': 'photorealistic 3D render, subsurface scattering, cinematic lighting, octane render, 8K',
+  realistic: 'ultra realistic full-body studio photo, real adult human, natural proportions, realistic face, realistic hands and shoes, commercial wardrobe fitting reference',
 };
 
 // 即梦AI 专用中文风格提示词（中文模型用中文 prompt 效果更好）
@@ -77,11 +79,13 @@ const STYLE_PROMPTS_CN = {
   wuxia:     '中国武侠风格，飘逸衣袍，古代建筑，竹林，月夜，仙侠古风',
   darkfanta: '暗黑奇幻史诗风格，阴暗氛围，明暗对比光影，中世纪铠甲，暗色调配火焰色',
   mecha:     '机甲动漫风格，精细机械设计，铬合金与霓虹色，科幻军事美学',
+  realistic: '真人摄影照片风格，真实成年人，真实皮肤纹理，真实布料褶皱，商业棚拍选角参考，禁止动漫和CG感',
 };
 
 const DIM_SUFFIX_CN = {
   '2d': '2D平面插画，动漫风格，干净线条',
   '3d': '写实3D渲染，电影级光影，超高清8K',
+  realistic: '超写实真人全身棚拍照片，自然比例，真实五官、手部和鞋子，商业服装试装参考',
 };
 
 const ANIMAL_RACES = ['动物','宠物','神兽','怪兽'];
@@ -89,7 +93,7 @@ const ANIMAL_RACES = ['动物','宠物','神兽','怪兽'];
 // 即梦AI 专用 prompt — 多角度角色转面图
 function buildJimengPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
   const isAnimal = ANIMAL_RACES.includes(race);
-  const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : 'celulose';
+  const styleKey = animStyle && STYLE_PROMPTS_CN[animStyle] ? animStyle : (dim === 'realistic' ? 'realistic' : 'celulose');
   const styleCN = STYLE_PROMPTS_CN[styleKey];
   const dimCN = DIM_SUFFIX_CN[dim] || DIM_SUFFIX_CN['2d'];
 
@@ -115,7 +119,7 @@ function buildJimengPrompt(name, role, description, dim = '2d', race = '人', sp
 
 // 英文 prompt — 多角度角色转面图 (character turnaround sheet)
 function buildPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
-  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
+  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === 'realistic' ? 'realistic' : (dim === '3d' ? '3dcg' : 'celulose'));
   const isAnimal = ANIMAL_RACES.includes(race);
   if (isAnimal) {
     const creatureType = species || race;
@@ -138,7 +142,7 @@ function buildPrompt(name, role, description, dim = '2d', race = '人', species 
 
 // 单张人物肖像 prompt（用于工作流分镜，非转面图）
 function buildPortraitPrompt(name, role, description, dim = '2d', race = '人', species = '', animStyle = '') {
-  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === '3d' ? '3dcg' : 'celulose');
+  const styleKey = animStyle && STYLE_PROMPTS[animStyle] ? animStyle : (dim === 'realistic' ? 'realistic' : (dim === '3d' ? '3dcg' : 'celulose'));
   const isAnimal = ANIMAL_RACES.includes(race);
   if (isAnimal) {
     const creatureType = species || race;
@@ -867,6 +871,7 @@ async function generateCharacterImage({ name, role = 'main', description = '', d
     case 'jimeng':      filePath = await generateJimengImage({ prompt, filename, dim, referenceImages, aspectRatio }); break;
     case 'mxapi':      filePath = await generateMxapiImage({ prompt, filename, aspectRatio, resolution, referenceImages, name, role, description, race, species, imageType: 'character' }); break;
     case 'nanobanana': filePath = await generateNanoBananaImage({ prompt, filename, aspectRatio, resolution, referenceImages }); break;
+    case 'topview':    filePath = await generateTopviewImage({ prompt, filename, aspectRatio, resolution, image_model, referenceImages }); break;
     case 'openai':     filePath = await generateOpenAIImage({ name, role, description, filename, race, species }); break;
     case 'zhipu':      filePath = await generateZhipuImage({ name, role, description, filename, race, species });  break;
     case 'stability':  filePath = await generateStabilityImage({ name, role, description, dim, filename, race, species }); break;
@@ -936,6 +941,34 @@ async function generateDeyunaiImage({ prompt, filename, aspectRatio = '1:1', res
   await downloadFile(r.urls[0], outputPath);
   console.log(`[ImageService] 漫路图像下载完成: ${outputPath} (${(fs.statSync(outputPath).size / 1024).toFixed(0)}KB)`);
   return outputPath;
+}
+
+async function generateTopviewImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', image_model = '', referenceImages = [] }) {
+  const settings = require('./settingsService').loadSettings();
+  const providerConfig = (settings.providers || []).find(p => p.id === 'topview' && p.enabled !== false);
+  if (!providerConfig) throw new Error('未启用 Topview 供应商');
+  const explicitModel = image_model && image_model.includes('::') ? image_model.split('::')[1] : '';
+  const imageModel = explicitModel || pickPreferredImageModel(providerConfig) || 'topview-nano-banana-2';
+  const tv = require('./topviewService');
+  const refs = Array.isArray(referenceImages) ? referenceImages.filter(Boolean) : [];
+  const result = refs.length ? await tv.generateImageEdit({
+    prompt,
+    referenceImages: refs,
+    model: imageModel,
+    aspectRatio: 'auto',
+    resolution,
+    generateCount: 1,
+  }) : await tv.generateTextToImage({
+    prompt,
+    model: imageModel,
+    aspectRatio,
+    resolution,
+    generateCount: 1,
+  });
+  const destPath = path.join(imgDir(filename), `${filename}.png`);
+  ensureDir();
+  await downloadFile(result.imageUrl, destPath);
+  return destPath;
 }
 
 // 自定义供应商通用图片生成（OpenAI 兼容接口）
@@ -1023,6 +1056,9 @@ async function generateSceneImage({ title = '', description = '', theme = '', ti
       break;
     case 'nanobanana':
       filePath = await generateNanoBananaImage({ prompt, filename, aspectRatio, resolution, referenceImages });
+      break;
+    case 'topview':
+      filePath = await generateTopviewImage({ prompt, filename, aspectRatio, resolution, image_model, referenceImages });
       break;
     case 'zhipu':
       filePath = await generateZhipuImage({ name: title, role: '', description, filename, race: '', species: '', imageType: 'scene', scenePrompt: prompt });
@@ -1116,6 +1152,8 @@ async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', reso
         return await generateMxapiImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
       case 'nanobanana':
         return await generateNanoBananaImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages });
+      case 'topview':
+        return await generateTopviewImage({ prompt, filename: destFilename, aspectRatio, resolution, image_model, referenceImages });
       case 'zhipu':
         return await generateZhipuImage({ name: destFilename, role: '', description: prompt, filename: destFilename, race: '', species: '' });
       case 'openai':
@@ -1149,7 +1187,7 @@ async function generateCharacterThreeView(opts) {
   const {
     name, role, description, dim, race, species, animStyle,
     aspectRatio, resolution, referenceImages = [], image_model = '',
-    lockPromptEn = '', lockPromptCn = '',
+    lockPromptEn = '', lockPromptCn = '', includeFace = true,
   } = opts || {};
   if (!name) throw new Error('name 必填');
 
@@ -1170,8 +1208,8 @@ async function generateCharacterThreeView(opts) {
     {
       key: 'side',
       label: '侧面',
-      hintEn: 'full-body 3/4 side profile view, character facing left at 45 degrees, same outfit and hairstyle and face as the reference image, neutral pose, pure clean white background, identical character design',
-      hintCn: '全身 3/4 侧面视角，人物向左转 45 度，服装发型面孔与参考图完全一致，中立姿态，纯白干净背景，角色设计严格一致',
+      hintEn: 'full-body true left side profile view at 90 degrees, nose pointing left, only one eye visible, same outfit and hairstyle and body proportions as the front reference, neutral pose, pure clean white background, identical character design',
+      hintCn: '全身真实左侧面 90 度视角，鼻尖朝左，只能看到一只眼睛，服装发型和身体比例与正面参考完全一致，中立姿态，纯白干净背景，角色设计严格一致',
       useRefs: 'front',
     },
     {
@@ -1189,17 +1227,18 @@ async function generateCharacterThreeView(opts) {
       useRefs: 'front',
     },
   ];
+  const sheetViews = includeFace === false ? views.filter(v => v.key !== 'face') : views;
 
   // provider 优先级：用户指定 > jimeng（i2i 强）> mxapi > nanobanana > openai/zhipu（t2i 回退）
   const userSpecifiedTV = image_model && image_model !== 'auto';
   const providerChain = userSpecifiedTV
     ? [image_model.includes('::') ? image_model.split('::')[0] : image_model]
-    : ['jimeng', 'mxapi', 'nanobanana', 'openai', 'zhipu'];
+    : ['jimeng', 'mxapi', 'deyunai', 'nanobanana', 'openai', 'zhipu'];
 
   const partResults = {};
   const partErrs = [];
 
-  for (const v of views) {
+  for (const v of sheetViews) {
     // 构造本视角的 reference 图（前置视角的 filePath）
     let vRefs = [];
     if (v.useRefs === 'initial') vRefs = referenceImages || [];
@@ -1244,7 +1283,7 @@ async function generateCharacterThreeView(opts) {
   // 用 sharp 将 4 张图横向拼接成一张 reference sheet（白背景，统一高度 1024）
   const targetH = 1024;
   const processed = [];
-  for (const v of views) {
+  for (const v of sheetViews) {
     const src = partResults[v.key].filePath;
     const buf = await sharp(src)
       .resize({ height: targetH, fit: 'contain', background: { r: 255, g: 255, b: 255 } })
@@ -1267,7 +1306,7 @@ async function generateCharacterThreeView(opts) {
 
   const toEntry = (key, r) => ({
     key,
-    label: views.find(v => v.key === key)?.label || key,
+    label: sheetViews.find(v => v.key === key)?.label || key,
     filePath: r.filePath,
     filename: path.basename(r.filePath),
     url: `/api/story/character-image/${path.basename(r.filePath)}`,
@@ -1280,7 +1319,7 @@ async function generateCharacterThreeView(opts) {
     front: toEntry('front', partResults.front),
     side:  toEntry('side',  partResults.side),
     back:  toEntry('back',  partResults.back),
-    face:  toEntry('face',  partResults.face),
+    face:  partResults.face ? toEntry('face',  partResults.face) : null,
     sheet: {
       key: 'sheet', label: '拼贴参考图',
       filePath: sheetFile,

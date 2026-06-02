@@ -70,6 +70,7 @@ async function matteVideo(videoPath, outMattedPath, { fps, tmpDir, qps = 8, onPr
   onProgress && onProgress({ stage: 'matting_start', total: frameBuffers.length });
   const mattedBuffers = await segmentFramesBatch(frameBuffers, {
     qps,
+    strict: true,
     onFrame: (done, total) => onProgress && onProgress({ stage: 'matting_progress', done, total }),
   });
 

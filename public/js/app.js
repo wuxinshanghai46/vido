@@ -7669,6 +7669,15 @@ async function startAvatarJimengOmni({ text, avatar, voiceId, btn, resetBtn, doM
       image_url: imageUrl, text, voiceId, speed, prompt: promptHint,
       // 后期特效透传（Omni 原生成片后 OR 抠像合成后会再叠一层 FFmpeg）
       textEffects: (typeof avTextEffects !== 'undefined' ? (avTextEffects || []) : []),
+      subtitle: {
+        show: subtitleEnabled !== false,
+        style: 'popup',
+        smartEmphasis: true,
+        fontSize: Number(subtitleSize) || 60,
+        color: subtitleColor || '#FFFFFF',
+        outlineColor: '#000000',
+        position: subtitlePosition === 'top' ? 'top-center' : 'bottom-center',
+      },
       stickers: uploadedStickers,
       pointers: (typeof avGuideAnims !== 'undefined' ? (avGuideAnims || []) : []),
     };

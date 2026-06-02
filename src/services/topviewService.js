@@ -273,6 +273,44 @@ function isTopviewSeriesI2VModel(model) {
   return /^Topview\s+(Pro|Plus|Best)$/i.test(String(model || '').trim());
 }
 
+function normalizeTopviewImageModel(model) {
+  const raw = String(model || '').trim();
+  const lower = raw.toLowerCase();
+  const map = {
+    'topview-nano-banana-2': 'Nano Banana 2',
+    'nano-banana-2': 'Nano Banana 2',
+    'topview-nano-banana-pro': 'Nano Banana Pro',
+    'nano-banana-pro': 'Nano Banana Pro',
+    'topview-nano-banana': 'Nano Banana',
+    'nano-banana': 'Nano Banana',
+    'topview-seedream-5': 'Seedream 5.0',
+    'seedream-5': 'Seedream 5.0',
+    'seedream-5.0': 'Seedream 5.0',
+    'topview-gpt-image-2': 'GPT Image 2',
+    'gpt-image-2': 'GPT Image 2',
+    'topview-imagen-4': 'Imagen 4',
+    'imagen-4': 'Imagen 4',
+  };
+  return map[lower] || raw || 'Nano Banana 2';
+}
+
+function topviewImageResolution(model, resolution) {
+  const display = normalizeTopviewImageModel(model);
+  const noResolution = new Set(['Nano Banana', 'GPT Image 1.5', 'Kontext-Pro', 'Imagen 4']);
+  if (noResolution.has(display)) return '';
+  if (display === 'Seedream 5.0') return '2K';
+  const raw = String(resolution || '').trim();
+  if (/^(512p|1k|2k|4k)$/i.test(raw)) return raw.toUpperCase().replace('512P', '512p');
+  const px = raw.match(/^(\d{3,5})x(\d{3,5})$/i);
+  if (px) {
+    const longEdge = Math.max(Number(px[1]), Number(px[2]));
+    if (longEdge >= 3200) return '4K';
+    if (longEdge >= 1400) return '2K';
+    return '1K';
+  }
+  return '1K';
+}
+
 function topviewV1ImageToVideoQueryPath(submitPath) {
   if (submitPath === '/v1/common_task/image2video/submit') return '/v1/common_task/image2video/result';
   return submitPath.replace('/submit', '/query');
@@ -316,6 +354,112 @@ async function waitTopviewTask({ cfg, queryPath, taskId, kind, onProgress, inter
     }
   }
   throw new Error(`Topview ${kind} timeout after ${Math.round(timeoutMs / 1000)}s (taskId=${taskId})`);
+}
+
+async function generateTextToImage({ prompt, model = 'topview-nano-banana-2', aspectRatio = '1:1', resolution = '1K', generateCount = 1, onProgress, userId = '', agentId = '', requestId = '', source = '', operation = 'text_to_image' } = {}) {
+  const startedAt = Date.now();
+  const cfg = providerConfig();
+  const displayModel = normalizeTopviewImageModel(model);
+  const body = {
+    model: displayModel,
+    prompt: String(prompt || '').trim().slice(0, 5000),
+    aspectRatio: aspectRatio || '1:1',
+    generateCount: Math.min(4, Math.max(1, Number(generateCount) || 1)),
+  };
+  const finalResolution = topviewImageResolution(displayModel, resolution);
+  if (finalResolution) body.resolution = finalResolution;
+  if (!body.prompt) throw new Error('Topview Text-to-Image requires prompt');
+  if (typeof onProgress === 'function') onProgress({ stage: 'topview_t2i_submitting', model_id: displayModel });
+  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/text2image/task/submit`, cfg, body);
+  const taskId = submit.result?.taskId || submit.taskId;
+  if (!taskId) throw new Error('Topview Text-to-Image submit succeeded without taskId');
+  const result = await waitTopviewTask({
+    cfg,
+    queryPath: '/v1/common_task/text2image/task/query',
+    taskId,
+    kind: 'text_to_image',
+    onProgress,
+    intervalMs: 4000,
+    timeoutMs: 5 * 60 * 1000,
+  });
+  const imageUrl = firstImageUrl(result);
+  if (!imageUrl) throw new Error('Topview Text-to-Image succeeded without image URL');
+  try {
+    require('./tokenTracker').record({
+      provider: 'topview',
+      model: model || displayModel,
+      category: 'image',
+      imageCount: body.generateCount || 1,
+      durationMs: Date.now() - startedAt,
+      status: 'success',
+      userId,
+      agentId,
+      requestId,
+      source,
+      operation,
+      usageSource: 'estimated',
+    });
+  } catch {}
+  return { imageUrl, taskId, provider: 'topview', model_id: displayModel, raw: result };
+}
+
+async function generateImageEdit({ prompt, referenceImages = [], model = 'topview-nano-banana-2', aspectRatio = 'auto', resolution = '1K', generateCount = 1, onProgress, userId = '', agentId = '', requestId = '', source = '', operation = 'image_edit' } = {}) {
+  const startedAt = Date.now();
+  const cfg = providerConfig();
+  const refs = (Array.isArray(referenceImages) ? referenceImages : [])
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  if (!refs.length) return generateTextToImage({ prompt, model, aspectRatio: aspectRatio === 'auto' ? '1:1' : aspectRatio, resolution, generateCount, onProgress, userId, agentId, requestId, source, operation: 'text_to_image' });
+  const displayModel = normalizeTopviewImageModel(model);
+  const paths = [];
+  for (let i = 0; i < refs.length; i++) {
+    paths.push(await prepareFile(refs[i], `image_edit_ref_${i + 1}`, '.png'));
+  }
+  const inputImageFileIds = [];
+  for (const p of paths) inputImageFileIds.push(await uploadFile(p, cfg));
+  const body = {
+    model: displayModel,
+    prompt: String(prompt || '').trim().slice(0, 5000),
+    inputImageFileIds,
+    aspectRatio: aspectRatio || 'auto',
+    generateCount: Math.min(4, Math.max(1, Number(generateCount) || 1)),
+  };
+  const finalResolution = topviewImageResolution(displayModel, resolution);
+  if (finalResolution) body.resolution = finalResolution;
+  if (!body.prompt) throw new Error('Topview Image Edit requires prompt');
+  if (typeof onProgress === 'function') onProgress({ stage: 'topview_image_edit_submitting', model_id: displayModel, reference_count: inputImageFileIds.length });
+  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/image_edit/task/submit`, cfg, body);
+  const taskId = submit.result?.taskId || submit.taskId;
+  if (!taskId) throw new Error('Topview Image Edit submit succeeded without taskId');
+  const result = await waitTopviewTask({
+    cfg,
+    queryPath: '/v1/common_task/image_edit/task/query',
+    taskId,
+    kind: 'image_edit',
+    onProgress,
+    intervalMs: 4000,
+    timeoutMs: 5 * 60 * 1000,
+  });
+  const imageUrl = firstImageUrl(result);
+  if (!imageUrl) throw new Error('Topview Image Edit succeeded without image URL');
+  try {
+    require('./tokenTracker').record({
+      provider: 'topview',
+      model: model || displayModel,
+      category: 'image',
+      imageCount: body.generateCount || 1,
+      durationMs: Date.now() - startedAt,
+      status: 'success',
+      userId,
+      agentId,
+      requestId,
+      source,
+      operation,
+      usageSource: 'estimated',
+    });
+  } catch {}
+  return { imageUrl, taskId, provider: 'topview', model_id: displayModel, raw: result };
 }
 
 async function generatePhotoAvatar({ imageUrl, audioUrl, prompt = '', model = 'topview-avatar4', taskTitle = '', onProgress, timeoutMs = null, intervalMs = 5000 }) {
@@ -735,6 +879,8 @@ module.exports = {
   providerConfig,
   jsonRequest,
   uploadFile,
+  generateTextToImage,
+  generateImageEdit,
   generatePhotoAvatar,
   listPublicProductAvatars,
   generateProductAvatarImage,
