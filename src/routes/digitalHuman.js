@@ -8554,6 +8554,76 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         };
       });
     };
+    const fallbackLuxuryReviewCharacter = (pos = 0) => {
+      const female = selectedGenderCode === 'female' || selectedGenderCode === 'all_female';
+      const male = selectedGenderCode === 'male' || selectedGenderCode === 'all_male';
+      const name = pos === 0 ? '讲解者' : '客户';
+      return {
+        name,
+        gender: female ? '女性' : (male ? '男性' : (pos === 0 ? '女性' : '男性')),
+        origin: '中国',
+        role: pos === 0 ? '广告讲解者/空间顾问' : '需求确认客户',
+        appearance: pos === 0 ? '成熟可信的商业形象，五官清晰，镜头中保持自然亲和。' : '真实客户形象，表情专注，姿态自然。',
+        outfit: pos === 0 ? '简洁高级的商务服装，颜色克制，适合广告讲解场景。' : '日常商务休闲服装，与真实使用场景一致。',
+        hand_prop: pos === 0 ? '可持资料夹、手机或指向产品/空间细节。' : '可查看样板、手机或方案资料。',
+        behavior: pos === 0 ? '面向镜头或产品自然讲解，动作克制明确。' : '观察、点头、提问或确认方案。',
+      };
+    };
+    const ensureLuxuryScriptFieldsForReview = (sceneList = [], canonicalList = []) => {
+      const sourceScenes = Array.isArray(sceneList) ? sceneList : [];
+      const canonicalChars = collectLuxuryCharacters(canonicalList);
+      const reviewPeopleCount = Math.max(0, expectedPeople);
+      const fallbackChars = canonicalChars.slice(0, reviewPeopleCount);
+      while (fallbackChars.length < reviewPeopleCount) {
+        fallbackChars.push(fallbackLuxuryReviewCharacter(fallbackChars.length));
+      }
+      const total = Math.max(wantedShots, sourceScenes.length || wantedShots);
+      return sourceScenes.map((scene, i) => {
+        if (!scene || typeof scene !== 'object') return scene;
+        const role = _luxuryRoleAt(i, total, scene.role || _inferSpaceAdRole([scene.title, scene.voiceover, scene.visual, scene.content_prompt].filter(Boolean).join(' '), i, total));
+        const fallbackOpts = { role, productSubject, index: i, total, brief, continuousHuman };
+        const rawVoice = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || scene.copy_direction || '').trim();
+        const voiceover = _cleanLuxuryAdCopy(rawVoice, fallbackOpts);
+        const rawChars = Array.isArray(scene.characters)
+          ? scene.characters
+          : (Array.isArray(scene.character_profiles) ? scene.character_profiles : []);
+        const mergedChars = rawChars.length ? rawChars.slice(0, reviewPeopleCount) : [];
+        while (mergedChars.length < reviewPeopleCount) {
+          mergedChars.push(fallbackChars[mergedChars.length] || fallbackLuxuryReviewCharacter(mergedChars.length));
+        }
+        const chars = mergedChars
+          .map(c => enrichLuxuryCharacterFromCanon(c, fallbackChars))
+          .filter(Boolean);
+        const rawDialogueLines = Array.isArray(scene.dialogue_lines)
+          ? scene.dialogue_lines
+          : String(scene.dialogue || scene.dialogue_text || scene.conversation || '').split(/\n+/);
+        let dialogueLines = rawDialogueLines
+          .map(line => _sanitizeLuxuryVisibleText(line, productSubject))
+          .filter(Boolean);
+        if (expectedPeople >= 2 && !dialogueLines.length) {
+          const names = chars.map(luxuryCharacterName).filter(Boolean);
+          const speakerA = names[0] || '讲解者';
+          const speakerB = names[1] || '客户';
+          dialogueLines = [
+            `${speakerA}：${voiceover}`,
+            `${speakerB}：这个方案我明白了。`,
+          ];
+        }
+        return {
+          ...scene,
+          role,
+          characters: chars,
+          character_profiles: chars,
+          dialogue: dialogueLines.join('\n'),
+          dialogue_lines: dialogueLines,
+          voiceover,
+          narration: voiceover,
+          ad_copy: voiceover,
+          subtitle: voiceover,
+          text: voiceover,
+        };
+      });
+    };
     const luxuryDialogueSpeakers = (scene = {}, characterList = []) => {
       const lines = Array.isArray(scene?.dialogue_lines)
         ? scene.dialogue_lines
@@ -8813,6 +8883,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
         }
         scenes = mergeLuxuryAgentScenes(scenes, cameraScenes);
         scenes = enrichLuxurySceneCharactersFromCanon(scenes, storyCharacters);
+        scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
         assertAgentTextOk('镜头 agent', scenes);
 
         let sceneCastIssue = describeLuxurySceneCastIssue(scenes, storyCharacters);
@@ -8826,6 +8897,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           }));
           assertAgentTextOk('镜头人物修复 agent', scenes);
           scenes = enrichLuxurySceneCharactersFromCanon(scenes, storyCharacters);
+          scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
           sceneCastIssue = describeLuxurySceneCastIssue(scenes, storyCharacters);
           if (sceneCastIssue) throw new Error(`镜头人物一致性修复失败：${sceneCastIssue}`);
         }
@@ -8861,6 +8933,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
               json: 'array',
               storyPlan,
             }));
+            scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
             assertAgentTextOk('审稿人物修复 agent', scenes);
             const repairedReview = await callLuxuryAgent({
               name: 'luxury_ad.review.agent',
@@ -8931,6 +9004,7 @@ ${JSON.stringify(scenes, null, 2)}
     }
     if (isDetailedMode) {
       rawScenes = enrichLuxurySceneCharactersFromCanon(rawScenes, storyCharacters);
+      rawScenes = ensureLuxuryScriptFieldsForReview(rawScenes, storyCharacters);
       scenes = rawScenes;
       let validationCastIssue = describeLuxurySceneCastIssue(rawScenes, storyCharacters);
       if (validationCastIssue) {
@@ -8943,6 +9017,7 @@ ${JSON.stringify(scenes, null, 2)}
         }));
         assertAgentTextOk('最终人物校验修复 agent', scenes);
         rawScenes = enrichLuxurySceneCharactersFromCanon(Array.isArray(scenes) ? scenes : [], storyCharacters);
+        rawScenes = ensureLuxuryScriptFieldsForReview(rawScenes, storyCharacters);
         scenes = rawScenes;
         validationCastIssue = describeLuxurySceneCastIssue(rawScenes, storyCharacters);
         if (validationCastIssue) throw new Error(`最终人物一致性修复失败：${validationCastIssue}`);
