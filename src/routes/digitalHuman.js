@@ -9301,9 +9301,10 @@ ${JSON.stringify(scenes, null, 2)}
         visualReferenceBrief,
         visualReferenceSummary,
       });
-      // Strict handoff: every detailed storyboard shot must carry an executable
-      // visual contract before the user can enter the image-generation stage.
-      scenes = scenes.map((scene, i) => _prepareLuxuryStrictShotForGeneration(scene, i, scenes.length, {
+      // Script generation must return the reviewed script even when the later
+      // image-generation contract still needs completion. The keyframe stage
+      // rebuilds and enforces the hard preflight before spending image cost.
+      scenes = scenes.map((scene, i) => _prepareLuxuryStrictShotForScriptReview(scene, i, scenes.length, {
         productSubject,
         aspectRatio: output_ratio || '9:16',
       }));
@@ -9934,9 +9935,8 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
 
 // Strict preflight gate: a high-end ad shot cannot spend image-model cost
 // until the visible subject, scene, action, camera and QA contract are explicit.
-function _assertLuxuryStrictStoryboardContract(contract = {}, { shotIndex = 0 } = {}) {
+function _luxuryStrictStoryboardContractIssues(contract = {}) {
   const issues = [];
-  const shotNo = Number(shotIndex || 0) + 1;
   if (!_luxuryStrictText(contract.role)) issues.push('缺少广告节拍 role');
   if (!Number(contract.duration) || Number(contract.duration) <= 0) issues.push('缺少有效时长 duration');
   if (!_luxuryStrictText(contract.product_subject)) issues.push('缺少主商品/主体 product_subject');
@@ -9950,8 +9950,14 @@ function _assertLuxuryStrictStoryboardContract(contract = {}, { shotIndex = 0 } 
   if (!Array.isArray(contract.must_show) || contract.must_show.length < 3) issues.push('must_show 至少需要 3 项');
   if (!Array.isArray(contract.must_not_show) || contract.must_not_show.length < 3) issues.push('must_not_show 至少需要 3 项');
   if (!_luxuryStrictText(contract.qa_contract)) issues.push('缺少 QA 验收标准 qa_contract');
+  return issues;
+}
+
+function _assertLuxuryStrictStoryboardContract(contract = {}, { shotIndex = 0 } = {}) {
+  const issues = _luxuryStrictStoryboardContractIssues(contract);
+  const shotNo = Number(shotIndex || 0) + 1;
   if (issues.length) {
-    const err = new Error(`第 ${shotNo} 镜分镜合约不完整，已停止，未调用图片模型：${issues.join('；')}`);
+    const err = new Error(`第 ${shotNo} 镜分镜合约不完整，已停止分镜画面生成：${issues.join('；')}`);
     err.status = 422;
     err.code = 'LUXURY_STORYBOARD_CONTRACT_PRECHECK_FAILED';
     err.details = { shot_index: shotIndex, issues, contract };
@@ -9994,6 +10000,30 @@ function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1,
   return {
     ...scene,
     strict_storyboard_contract_required: true,
+    strict_storyboard_contract: contract,
+    prompt_preflight: preflight,
+    compiled_image_prompt: compiledPrompt,
+  };
+}
+
+// Script review should not fail just because the later image-generation
+// contract is incomplete. Attach the contract readiness status and let the
+// keyframe stage enforce the hard gate before spending image-model cost.
+function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 1, opts = {}) {
+  const contract = _buildLuxuryStrictStoryboardContract(scene, index, total, opts);
+  const issues = _luxuryStrictStoryboardContractIssues(contract);
+  const preflight = {
+    pass: issues.length === 0,
+    score: issues.length === 0 ? 100 : Math.max(30, 100 - issues.length * 8),
+    issues,
+    mode: 'script_review_soft_preflight',
+  };
+  const compiledPrompt = preflight.pass
+    ? _compileLuxuryShotImagePrompt(scene, contract, { aspectRatio: opts.aspectRatio || '16:9' })
+    : '';
+  return {
+    ...scene,
+    strict_storyboard_contract_required: false,
     strict_storyboard_contract: contract,
     prompt_preflight: preflight,
     compiled_image_prompt: compiledPrompt,
