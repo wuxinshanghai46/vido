@@ -8603,6 +8603,15 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const fallbackOpts = { role, productSubject, index: i, total, brief, continuousHuman };
         const rawVoice = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || scene.copy_direction || '').trim();
         const voiceover = _cleanLuxuryAdCopy(rawVoice, fallbackOpts);
+        const visual = _cleanLuxuryAdVisual(
+          scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || scene.visual_prompt || scene.material_need || scene.required_material || '',
+          fallbackOpts,
+        );
+        const action = String(scene.action || scene.visual_action || scene.character_action || scene.body_action || '').replace(/\s+/g, ' ').trim()
+          || _fallbackLuxuryAdAction({ role, productSubject });
+        const objective = _cleanLuxuryAdVisual(scene.objective || scene.intent || scene.purpose || '', fallbackOpts)
+          .replace(/[。；;，,]\s*$/g, '')
+          || _luxuryScriptPurposeLabel(role, i, total, '');
         const rawChars = Array.isArray(scene.characters)
           ? scene.characters
           : (Array.isArray(scene.character_profiles) ? scene.character_profiles : []);
@@ -8631,6 +8640,15 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         return {
           ...scene,
           role,
+          objective,
+          purpose: scene.purpose || objective,
+          script_purpose: scene.script_purpose || scene.purpose_label || _luxuryScriptPurposeLabel(role, i, total, scene.purpose || ''),
+          content_prompt: visual,
+          scene_content: scene.scene_content || visual,
+          visual: scene.visual || visual,
+          display_visual: scene.display_visual || visual,
+          action,
+          visual_action: scene.visual_action || action,
           characters: chars,
           character_profiles: chars,
           dialogue: dialogueLines.join('\n'),
