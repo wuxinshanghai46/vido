@@ -9042,6 +9042,15 @@ beats 数量：${targetDuration >= 24 ? `${Math.max(8, Math.min(12, wantedShots)
         assertAgentTextOk('编剧人物修复 agent', storyPlan);
         storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
         storyCharacterIssue = describeLuxuryCharacterIssue(storyCharacters, { label: '编剧人物修复后的人物表' });
+        if (storyCharacterIssue) {
+          const fallbackPlanCharacters = [];
+          while (fallbackPlanCharacters.length < Math.max(1, expectedPeople)) {
+            fallbackPlanCharacters.push(fallbackLuxuryReviewCharacter(fallbackPlanCharacters.length));
+          }
+          storyPlan.characters = fallbackPlanCharacters;
+          storyCharacters = collectLuxuryCharacters(storyPlan.characters);
+          storyCharacterIssue = describeLuxuryCharacterIssue(storyCharacters, { label: '本地补齐后的编剧人物表' });
+        }
         if (storyCharacterIssue) throw new Error(`编剧人物一致性修复失败：${storyCharacterIssue}`);
       }
       if (!Array.isArray(storyPlan.beats) || storyPlan.beats.length < 3) throw new Error('编剧 agent 没有写出足够的故事段落 beats。');
