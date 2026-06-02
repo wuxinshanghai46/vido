@@ -8784,6 +8784,56 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         };
       });
     };
+    const padLuxuryScenesToWanted = (sceneList = []) => {
+      const list = (Array.isArray(sceneList) ? sceneList : []).filter(x => x && typeof x === 'object');
+      if (!isDetailedMode || list.length >= wantedShots) return list.slice(0, wantedShots);
+      const total = Math.max(wantedShots, list.length || wantedShots);
+      while (list.length < wantedShots) {
+        const i = list.length;
+        const outline = outlineNotes[i] || outline_segments[i] || {};
+        const role = _luxuryRoleAt(i, total, outline.role || outline.story_stage || '');
+        const fallbackOpts = { role, productSubject, index: i, total, brief, continuousHuman };
+        const visual = _cleanLuxuryAdVisual(
+          outline.content_prompt || outline.scene_content || outline.visual || outline.material_need || outline.objective || '',
+          fallbackOpts,
+        );
+        const voiceover = _cleanLuxuryAdCopy(outline.copy_direction || outline.voiceover || outline.narration || '', fallbackOpts);
+        const action = _cleanLuxuryAdAction(outline.action || outline.visual_action || '', fallbackOpts);
+        list.push({
+          index: i,
+          title: String(outline.title || `镜头 ${i + 1}`).slice(0, 16),
+          role,
+          story_stage: _normalizeLuxurySceneStage(outline.story_stage, role, i, total),
+          duration: Math.max(2, Math.min(4, Math.round((Number(outline.duration) || targetDuration / wantedShots) * 10) / 10)),
+          objective: _cleanLuxuryAdVisual(outline.objective || outline.purpose || '', fallbackOpts).replace(/[。；;，,]\s*$/g, ''),
+          purpose: _luxuryScriptPurposeLabel(role, i, total, outline.purpose || ''),
+          script_purpose: _luxuryScriptPurposeLabel(role, i, total, outline.purpose || ''),
+          content_prompt: visual,
+          scene_content: visual,
+          visual,
+          display_visual: visual,
+          material_need: visual,
+          required_material: visual,
+          action,
+          visual_action: action,
+          voiceover,
+          narration: voiceover,
+          ad_copy: voiceover,
+          subtitle: voiceover,
+          text: voiceover,
+          copy_direction: voiceover,
+          emotion: outline.emotion || _fallbackLuxuryAdEmotion({ role }),
+          mood: outline.emotion || _fallbackLuxuryAdEmotion({ role }),
+          sfx_audio: outline.sfx_audio || _fallbackLuxuryAdAudio({ role }),
+          characters: [],
+          character_profiles: [],
+          dialogue: '',
+          dialogue_lines: [],
+          padded_from_outline: true,
+        });
+      }
+      return list.slice(0, wantedShots);
+    };
     const luxuryDialogueSpeakers = (scene = {}, characterList = []) => {
       const lines = Array.isArray(scene?.dialogue_lines)
         ? scene.dialogue_lines
@@ -9167,8 +9217,10 @@ ${JSON.stringify(scenes, null, 2)}
       }
     }
     if (isDetailedMode) {
+      rawScenes = padLuxuryScenesToWanted(rawScenes);
       rawScenes = enrichLuxurySceneCharactersFromCanon(rawScenes, storyCharacters);
       rawScenes = ensureLuxuryScriptFieldsForReview(rawScenes, storyCharacters);
+      rawScenes = padLuxuryScenesToWanted(rawScenes);
       scenes = rawScenes;
       let validationCastIssue = describeLuxurySceneCastIssue(rawScenes, storyCharacters);
       if (validationCastIssue) {
@@ -9182,6 +9234,7 @@ ${JSON.stringify(scenes, null, 2)}
         assertAgentTextOk('最终人物校验修复 agent', scenes);
         rawScenes = enrichLuxurySceneCharactersFromCanon(Array.isArray(scenes) ? scenes : [], storyCharacters);
         rawScenes = ensureLuxuryScriptFieldsForReview(rawScenes, storyCharacters);
+        rawScenes = padLuxuryScenesToWanted(rawScenes);
         scenes = rawScenes;
         validationCastIssue = describeLuxurySceneCastIssue(rawScenes, storyCharacters);
         if (validationCastIssue) throw new Error(`最终人物一致性修复失败：${validationCastIssue}`);
@@ -9382,7 +9435,10 @@ ${JSON.stringify(scenes, null, 2)}
       throw new Error(`AI 返回有效镜头数量不足：需要至少 ${minSceneCount} 镜，实际 ${scenes.length} 镜。`);
     }
     if (isDetailedMode && !uploadedReferenceAssets.length && scenes.length < wantedShots) {
-      throw new Error(`AI 没有按要求返回完整剧本镜头：需要 ${wantedShots} 镜，实际 ${scenes.length} 镜。`);
+      scenes = padLuxuryScenesToWanted(scenes);
+      if (scenes.length < wantedShots) {
+        throw new Error(`AI 没有按要求返回完整剧本镜头：需要 ${wantedShots} 镜，实际 ${scenes.length} 镜。`);
+      }
     }
     let cursor = 0;
     scenes = scenes.map((s, i) => {
