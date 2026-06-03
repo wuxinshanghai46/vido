@@ -7365,14 +7365,16 @@
   function luxuryKeyframeErrorMessage(err) {
     const code = String(err?.data?.code || err?.code || '').trim();
     const msg = String(err?.message || '').trim();
+    const qaFailed = code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
+      || /QA未通过|剧本一致性|storyboard[_\s-]*match|Wrong product|Wrong scene|Missing required|视觉质检.*拒绝|分镜图.*不一致/i.test(msg);
     if (code === 'LUXURY_KEYFRAME_QA_UNAVAILABLE') {
       return '分镜生成已停止：当前视觉质检模型不可用，系统无法确认生成画面是否严格符合剧本。请到模型调用管理为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路视觉/海外通道额度、模型分组授权，或切换可用视觉模型。';
     }
+    if (qaFailed) {
+      return `分镜图未通过剧本一致性检查：${msg || '画面主体、场景、动作或镜头意图与已确认剧本不一致，请调整该镜头后重试。'}`;
+    }
     if (code === 'PROVIDER_LIMIT_EXCEEDED' || err?.status === 429 || /quota|rate limit|额度|上限|Too Many Requests/i.test(msg)) {
       return '分镜生成已停止：当前图片或视觉质检模型通道返回额度/频率限制，不等同于账户总余额不足。请切换可用模型、检查对应模型通道额度/分组授权，或稍后重试。系统不会跳过剧本一致性检查。';
-    }
-    if (code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED') {
-      return `分镜图未通过剧本一致性检查：${msg || '画面主体、镜头或动作与已确认剧本不一致，请调整该镜头后重试。'}`;
     }
     return msg || '分镜生成失败';
   }
