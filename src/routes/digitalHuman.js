@@ -1168,6 +1168,35 @@ function _qaJsonFromVisionProse(raw = '') {
   };
 }
 
+function _qaJsonFromMalformedVisionJson(raw = '') {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text || !/pass|subject_match|storyboard_match|score/i.test(text)) return null;
+  const boolField = name => {
+    const re = new RegExp(`["']?${name}["']?\\s*:\\s*(true|false)`, 'i');
+    const m = text.match(re);
+    return m ? m[1].toLowerCase() === 'true' : null;
+  };
+  const pass = boolField('pass');
+  const subjectMatch = boolField('subject_match');
+  const storyboardMatch = boolField('storyboard_match');
+  const scoreMatch = text.match(/["']?score["']?\s*:\s*(\d{1,3})/i);
+  const score = Math.max(0, Math.min(100, Number(scoreMatch?.[1]) || (pass ? 86 : 35)));
+  if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
+  const ok = pass === true && score >= 82 && subjectMatch !== false && storyboardMatch !== false;
+  return {
+    pass: ok,
+    score,
+    subject_match: subjectMatch !== false && ok,
+    storyboard_match: storyboardMatch !== false && ok,
+    major_mismatches: ok ? [] : [text.slice(0, 180)],
+    unrelated_subjects: [],
+    observed: text.slice(0, 220),
+    reason: ok
+      ? 'Vision QA returned malformed JSON but explicit pass fields were recovered.'
+      : 'Vision QA returned malformed JSON with explicit reject or weak match fields.',
+  };
+}
+
 function _compactQaText(value = '', max = 520) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -1645,6 +1674,11 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
         attempts.push({ provider: `${candidate.id}/${candidate.model}`, ok: true });
         return { parsed, provider: `${candidate.id}/${candidate.model}` };
       } catch (parseErr) {
+        const repairedParsed = _qaJsonFromMalformedVisionJson(raw);
+        if (repairedParsed) {
+          attempts.push({ provider: `${candidate.id}/${candidate.model}`, ok: true, repaired_json: true });
+          return { parsed: repairedParsed, provider: `${candidate.id}/${candidate.model}` };
+        }
         const proseParsed = _qaJsonFromVisionProse(raw);
         if (proseParsed) {
           attempts.push({ provider: `${candidate.id}/${candidate.model}`, ok: true, normalized_prose: true });
@@ -2877,13 +2911,16 @@ function _extractTaskStatus(payload) {
   ).toLowerCase();
 }
 
-async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, destDir, referenceImages = [], outputSize = 'standard', resolution = '' }) {
+async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, destDir, referenceImages = [], outputSize = 'standard', resolution = '', preferredModel = '' }) {
   const { loadSettings } = require('../services/settingsService');
   const settings = loadSettings();
   const dy = (settings.providers || []).find(p => (p.id === 'deyunai' || p.preset === 'deyunai') && p.enabled && p.api_key);
   if (!dy) throw new Error('未配置 deyunai 漫路 provider');
   // 严格按 candidates 顺序优先（之前用 dy.models.find 是按 settings 数组顺序，pro 排在 base 后面会被跳过）
-  const candidates = ['nano-banana-pro', 'nano-banana'];
+  const requestedModel = String(preferredModel || '').trim();
+  const candidates = /^nano-banana(?:-pro)?$/i.test(requestedModel)
+    ? [requestedModel]
+    : ['nano-banana-pro', 'nano-banana'];
   const modelMap = new Map((dy.models || []).map(m => [m.id, m]));
   let enabledModel = null;
   for (const id of candidates) {
@@ -13173,6 +13210,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           destDir,
           referenceImages,
           outputSize,
+          preferredModel: model.model_id,
         });
       }
       return _generateViaDeyunaiSpecificImageModel({
@@ -13355,8 +13393,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           err._luxuryAttemptRecorded = true;
           addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
         }
-        console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; stop model fallback:`, shortError(err));
-        break;
+        console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
+        if (strictSingleCandidate) break;
+        continue;
       }
       addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
       console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
@@ -15357,6 +15396,10 @@ router.post('/spaces/keyframes', async (req, res) => {
   } catch (err) {
     const e = err.response?.data?.error || err.message;
     console.error('[DH/spaces/keyframes] failed:', e);
+    const attempts = err.luxuryKeyframeAttempts || err.details?.luxuryKeyframeAttempts || err.details?.attempts;
+    if (Array.isArray(attempts) && attempts.length) {
+      console.error('[DH/spaces/keyframes] attempts:', JSON.stringify(attempts).slice(0, 3000));
+    }
     _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: err.details || err.response?.data || null });
     _sendApiError(res, err, '高定广告片分镜生成失败');
   }
