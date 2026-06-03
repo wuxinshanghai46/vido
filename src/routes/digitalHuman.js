@@ -13002,8 +13002,13 @@ async function _createLuxuryAdReferenceKeyframe({
       else refs.push(item);
     }
   }
-  const hasAvatar = !!String(avatarUrl || '').trim();
-  const avatarSource = String(avatarUrl || '').trim();
+  const rawAvatarSource = String(avatarUrl || '').trim();
+  const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
+    ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
+    : '';
+  const avatarIsGeneratedPresenterSeed = !!rawAvatarSource && !!generatedPresenterSeedUrl && sameRef(rawAvatarSource, generatedPresenterSeedUrl);
+  const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
+  const avatarSource = hasAvatar ? rawAvatarSource : '';
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
@@ -13611,8 +13616,13 @@ async function _createLuxuryAdReferenceKeyframe({
       else refs.push(item);
     }
   }
-  const hasAvatar = !!String(avatarUrl || '').trim();
-  const avatarSource = String(avatarUrl || '').trim();
+  const rawAvatarSource = String(avatarUrl || '').trim();
+  const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
+    ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
+    : '';
+  const avatarIsGeneratedPresenterSeed = !!rawAvatarSource && !!generatedPresenterSeedUrl && sameRef(rawAvatarSource, generatedPresenterSeedUrl);
+  const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
+  const avatarSource = hasAvatar ? rawAvatarSource : '';
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
