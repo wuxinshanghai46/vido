@@ -252,31 +252,58 @@ const ENV_SEED_MAP = [
 function loadSettings() {
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+      return mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
     } catch {}
   }
   // 首次启动：从 .env 自动初始化
   return seedFromEnv();
 }
 
+function buildEnvSeededProvider(envKey, presetId) {
+  const key = process.env[envKey];
+  const preset = PROVIDER_PRESETS[presetId];
+  if (!key || !preset) return null;
+  return {
+    id: presetId,
+    name: preset.name,
+    api_url: preset.api_url,
+    api_key: key,
+    enabled: true,
+    models: preset.defaultModels.map(m => ({ ...m, enabled: true })),
+    last_tested: null,
+    test_status: null,
+    created_at: new Date().toISOString(),
+    source: 'env',
+  };
+}
+
+function mergeEnvSeededProviders(settings = {}) {
+  const out = { ...settings };
+  out.providers = Array.isArray(settings.providers) ? [...settings.providers] : [];
+  out.mcps = Array.isArray(settings.mcps) ? settings.mcps : [];
+  out.skills = Array.isArray(settings.skills) ? settings.skills : [];
+
+  for (const { envKey, presetId } of ENV_SEED_MAP) {
+    const seeded = buildEnvSeededProvider(envKey, presetId);
+    if (!seeded) continue;
+    const existing = out.providers.find(p => p?.id === presetId || p?.preset === presetId);
+    if (!existing) {
+      out.providers.push(seeded);
+      continue;
+    }
+    if (!existing.api_key) existing.api_key = seeded.api_key;
+    if (!existing.api_url) existing.api_url = seeded.api_url;
+    if (!Array.isArray(existing.models) || !existing.models.length) existing.models = seeded.models;
+  }
+
+  return out;
+}
+
 function seedFromEnv() {
   const providers = [];
   for (const { envKey, presetId } of ENV_SEED_MAP) {
-    const key = process.env[envKey];
-    if (key) {
-      const preset = PROVIDER_PRESETS[presetId];
-      providers.push({
-        id: presetId,
-        name: preset.name,
-        api_url: preset.api_url,
-        api_key: key,
-        enabled: true,
-        models: preset.defaultModels.map(m => ({ ...m, enabled: true })),
-        last_tested: null,
-        test_status: null,
-        created_at: new Date().toISOString(),
-      });
-    }
+    const seeded = buildEnvSeededProvider(envKey, presetId);
+    if (seeded) providers.push(seeded);
   }
   const data = { providers, mcps: [], skills: [] };
   saveSettings(data);
