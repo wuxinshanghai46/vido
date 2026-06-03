@@ -1242,6 +1242,30 @@ function _luxuryIsMaterialProductShot(scene = {}, subject = '') {
   return /钢|金属|板材|建材|材料|材质|幕墙|墙面|外立面|展墙|展厅|建筑|steel|metal|panel|sheet|facade|wall|material|building|showroom/i.test(text);
 }
 
+function _luxuryShotImpliesHumanPresenter(scene = {}) {
+  const text = _luxurySceneText(scene, [
+    'title',
+    'objective',
+    'intent',
+    'purpose',
+    'role',
+    'story_stage',
+    'content_prompt',
+    'scene_content',
+    'display_visual',
+    'visual',
+    'visual_prompt',
+    'action',
+    'visual_action',
+    'voiceover',
+    'narration',
+    'dialogue',
+    'director_prompt',
+    'qa_contract',
+  ]);
+  return /专业身份|入口引入|行业痛点|做了.*年|多年项目|项目经验|介绍员|讲解员|导购|顾问|设计师|店长|经理|客户|业主|入场|走入|走进|看向|拿着|翻看|手持|讲述|开场|身份|professional identity|presenter|host|designer|consultant|store manager|manager|client|customer|walks? in|enters?|holding|looks? at|reviewing/i.test(text);
+}
+
 function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   const role = String(scene.role || scene.shot_role || scene.story_role || '').toLowerCase();
   const idx = Number(scene.index ?? scene.shot_index ?? 0);
@@ -1260,6 +1284,7 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   ]);
   const strongPerson = /真人|人物出镜|同一人物|真实空间设计师|空间设计师|设计师|品牌顾问|空间顾问|客户|业主|店长|经理|真人讲解者|讲解员|讲解者|导购|顾问|主持人|模特|入场|走入|走进|带观众|手势|指向|触摸|person|human|presenter|host|model|woman|man|girl|boy|designer|consultant|customer|client|store manager|architect|walks? in|walking into|enters? the frame|standing beside|pointing at|gesture/i.test(coreVisualText);
   if (strongPerson) return true;
+  if (!isMacroDetail && _luxuryShotImpliesHumanPresenter(scene)) return true;
 
   if (scene.person_required === true || scene.character_required === true || scene.requires_person === true) return true;
   if (scene.person_required === false || scene.character_required === false || scene.requires_person === false) {
@@ -1290,10 +1315,11 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
 }
 
 function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
-  const explicitFalse = scene.person_required === false
+  const implicitPresenter = _luxuryShotImpliesHumanPresenter(scene) && !_luxuryIsMacroDetailShot(scene);
+  const explicitFalse = !implicitPresenter && (scene.person_required === false
     || scene.character_required === false
     || scene.requires_person === false
-    || scene.visible_subject_required === false;
+    || scene.visible_subject_required === false);
   const text = _luxurySceneText(scene, [
     'title',
     'objective',
@@ -1333,6 +1359,16 @@ function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
     character_lock: scene.character_lock || null,
   });
   const combined = [text, characterText, subject].filter(Boolean).join(' ');
+  if (implicitPresenter) {
+    return {
+      required: true,
+      humanRequired: true,
+      hasHumanCue: true,
+      hasNonHumanCue: false,
+      label: 'human presenter implied by the storyboard',
+      contract: _compactQaText(combined, 520),
+    };
+  }
   const explicitHumanCue = /女性|男性|女士|男士|女生|男生|介绍员|讲解员|讲解者|主持人|女主|男主|林晓|真人|人物|actress|actor|female|male|spokeswoman|spokesman|narrator|guide|docent/i.test(combined);
   const hasCharacters = (Array.isArray(scene.characters) && scene.characters.length)
     || (Array.isArray(scene.character_profiles) && scene.character_profiles.length)
@@ -1374,10 +1410,19 @@ function _luxuryKeyframeVisibleSubjectInstruction(requirement = {}, hasAvatar = 
   return 'SCRIPT-LOCKED VISIBLE SUBJECT: follow the confirmed script exactly. If it asks for an animal, robot, alien, mascot, creature, object, vehicle, product, place or service moment, depict that subject as written. Do not replace it with a human presenter unless the confirmed script explicitly says human/person.';
 }
 
+function _luxurySceneFriendlyProductSubject(subject = '') {
+  return String(subject || '')
+    .replace(/建筑外立面/g, '高端建筑装饰')
+    .replace(/外立面/g, '装饰')
+    .replace(/facade cladding panels?/ig, 'architectural decorative metal panels')
+    .replace(/facade panels?/ig, 'decorative metal wall panels')
+    .trim();
+}
+
 function _luxuryQaExpectedVisual(scene = {}, subject = '') {
   const base = _compactQaText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 420);
   if (!_luxuryIsMaterialProductShot(scene, subject)) return base;
-  const materialContract = 'Required product/material subject: finished steel or metal building facade panels, wall installation, showroom material display, material sheets, surface texture, or edge/detail close-up. Avoid cosmetics, jewelry, bottles, unrelated props, rusty scrap, raw piles, and generic workbench objects.';
+  const materialContract = 'Required product/material subject: finished premium steel or metal decorative panels shown as showroom sample walls, installed wall panels, material sheets, surface texture, edge/detail close-up, or facade application only when the storyboard explicitly asks for an exterior. Avoid empty exterior-only walls, cosmetics, jewelry, bottles, unrelated props, rusty scrap, raw piles, and generic workbench objects.';
   return _compactQaText([base, materialContract].filter(Boolean).join(' '), 700);
 }
 
@@ -10129,12 +10174,13 @@ function _luxuryDirectorSceneType(scene = {}, index = 0, total = 6, productSubje
   const text = [role, scene.title, scene.visual, scene.content_prompt, scene.scene_content, scene.topview_prompt, scene.voiceover]
     .filter(Boolean)
     .join(' ');
+  if (/高端空间|室内|展厅|样板|展示区|showroom|sample|display|interior|premium space|design studio/i.test(text)) return 'high_end_showroom';
   if (/macro|detail|texture|close|特写|纹理|材质|细节/i.test(text)) return 'macro_detail';
   if (/cta|end|咨询|收束|行动|结尾|call to action/i.test(text) || index >= total - 1) return 'consultation_cta';
   if (/外立面|建筑外观|facade|exterior|building/i.test(text)) return 'exterior_facade';
   if (/展厅|样板|成品区|showroom|sample|display|interior/i.test(text)) return 'high_end_showroom';
   if (_isLuxurySteelMaterialSubject(productSubject, scene)) {
-    if (index === 0) return 'exterior_facade';
+    if (index === 0) return 'brand_world_establishing';
     if (role === 'proof' || role === 'display' || role === 'benefit') return 'high_end_showroom';
   }
   return index === 0 ? 'brand_world_establishing' : 'premium_story_scene';
@@ -12371,6 +12417,12 @@ async function _createLuxuryAdReferenceKeyframe({
     productName: scene.title,
   });
   const visibleSubjectRequirement = _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject);
+  if (_luxuryShotImpliesHumanPresenter(scene) && !_luxuryIsMacroDetailShot(scene)) {
+    visibleSubjectRequirement.required = true;
+    visibleSubjectRequirement.humanRequired = true;
+    visibleSubjectRequirement.hasHumanCue = true;
+    visibleSubjectRequirement.label = 'human presenter implied by the storyboard';
+  }
   const personRequired = visibleSubjectRequirement.humanRequired;
   const isSteelMaterialSubject = _isLuxurySteelMaterialSubject(productSubject, scene);
   let steelSceneAnchorUrl = '';
@@ -12390,7 +12442,7 @@ async function _createLuxuryAdReferenceKeyframe({
       await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
     }
   }
-  if (isSteelMaterialSubject) {
+  if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
@@ -12870,6 +12922,7 @@ function _buildLuxuryImageModelStrictPrompt({
     260,
   );
   const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 220);
+  const displayProductSubject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     180,
@@ -12880,8 +12933,20 @@ function _buildLuxuryImageModelStrictPrompt({
     : hasAnyReference
     ? 'Reference rule: use uploaded references as visual anchors, but obey this shot contract first; do not output a raw reference copy or unrelated exterior.'
     : 'Reference rule: no uploaded shot reference is available; generate directly from the shot contract.';
+  const expectedEnv = _luxuryExpectedEnvironmentFromContract(scene);
+  const locationRule = expectedEnv.wantsInterior && !expectedEnv.wantsExterior
+    ? 'LOCATION LOCK: create an interior high-end showroom, sample-wall display, design studio, consultation area or premium indoor display space. Uploaded facade/exterior references are material/style evidence only; do not copy their exterior location.'
+    : (expectedEnv.wantsExterior && !expectedEnv.wantsInterior
+      ? 'LOCATION LOCK: an exterior facade/application scene is allowed only because the confirmed storyboard contract asks for it.'
+      : 'LOCATION LOCK: make a coherent ad scene with depth, human scale and product evidence; do not default to an empty facade wall.');
+  const productLockForScene = expectedEnv.wantsInterior
+    ? [
+        _compactLuxuryKeyframeText(productLockPrompt, 260),
+        'For this shot, product evidence must appear inside the interior/showroom story scene: sample wall, display board, wall panel installation, material table or edge/profile detail. Do not replace the scene with an empty exterior facade.',
+      ].filter(Boolean).join(' ')
+    : productLockPrompt;
   return _luxuryFitImagePromptParts([
-    `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Product/material: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 120)}.`,
+    `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Product/material: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
     personRequired
       ? 'MANDATORY HUMAN: one visible real presenter/actress must appear in this frame performing the specified action. Do not generate an empty exterior, product-only facade, robot, mannequin, or abstract scene.'
       : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
@@ -12890,11 +12955,12 @@ function _buildLuxuryImageModelStrictPrompt({
     camera ? `CAMERA/SCENE: ${camera}.` : '',
     narration ? `NARRATION MEANING: ${narration}.` : '',
     compiled ? `COMPILED CONTRACT: ${compiled}.` : '',
+    locationRule,
     refRule,
     hasAvatar ? 'Identity reference rule: preserve the selected presenter identity only when a human appears; redraw naturally in-scene, no pasted cutout.' : '',
     characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
     subjectGuard,
-    productLockPrompt,
+    productLockForScene,
     'Style: premium commercial storyboard still, photorealistic, coherent lighting, product-readable, no generated text, no watermark, no extra random people.',
     'NEGATIVE: missing presenter when required, wrong location, exterior-only facade when action requires entering/interior, robot/android, cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
   ], 1850);
@@ -12941,6 +13007,12 @@ async function _createLuxuryAdReferenceKeyframe({
     productName: scene.title,
   });
   const visibleSubjectRequirement = _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject);
+  if (_luxuryShotImpliesHumanPresenter(scene) && !_luxuryIsMacroDetailShot(scene)) {
+    visibleSubjectRequirement.required = true;
+    visibleSubjectRequirement.humanRequired = true;
+    visibleSubjectRequirement.hasHumanCue = true;
+    visibleSubjectRequirement.label = 'human presenter implied by the storyboard';
+  }
   const personRequired = visibleSubjectRequirement.humanRequired;
   const isSteelMaterialSubject = _isLuxurySteelMaterialSubject(productSubject, scene);
   let steelSceneAnchorUrl = '';
@@ -12960,7 +13032,7 @@ async function _createLuxuryAdReferenceKeyframe({
       await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
     }
   }
-  if (isSteelMaterialSubject) {
+  if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
@@ -13633,6 +13705,12 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     productName: scene.title,
   });
   const visibleSubjectRequirement = _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject);
+  if (_luxuryShotImpliesHumanPresenter(scene) && !_luxuryIsMacroDetailShot(scene)) {
+    visibleSubjectRequirement.required = true;
+    visibleSubjectRequirement.humanRequired = true;
+    visibleSubjectRequirement.hasHumanCue = true;
+    visibleSubjectRequirement.label = 'human presenter implied by the storyboard';
+  }
   const personRequired = visibleSubjectRequirement.humanRequired;
   const isSteelMaterialSubject = _isLuxurySteelMaterialSubject(productSubject, scene);
   let steelSceneAnchorUrl = '';
@@ -13652,7 +13730,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
     }
   }
-  if (isSteelMaterialSubject) {
+  if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
