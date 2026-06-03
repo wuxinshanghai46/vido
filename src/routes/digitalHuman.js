@@ -12,6 +12,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { execFileSync } = require('child_process');
@@ -23,8 +24,10 @@ const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackServi
 const JIMENG_ASSETS_DIR = path.join(__dirname, '../../outputs/jimeng-assets');
 const DH_IMAGES_DIR = path.join(__dirname, '../../outputs/dh-images');
 const OUTPUT_ROOT_DIR = path.join(__dirname, '../../outputs');
+const DH_PUBLIC_ASSETS_DIR = path.join(OUTPUT_ROOT_DIR, 'dh-assets');
 fs.mkdirSync(JIMENG_ASSETS_DIR, { recursive: true });
 fs.mkdirSync(DH_IMAGES_DIR, { recursive: true });
+fs.mkdirSync(DH_PUBLIC_ASSETS_DIR, { recursive: true });
 
 const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
@@ -668,24 +671,28 @@ function _uniquePipelineModels(models = []) {
 router.post('/products/upload', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: '请选择商品图片' });
-    const ext = (path.extname(req.file.originalname || '') || '.jpg').toLowerCase();
-    const filename = `product_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`;
-    const dst = path.join(JIMENG_ASSETS_DIR, filename);
-    fs.copyFileSync(req.file.path, dst);
+    const { asset, reused } = _persistDhUploadAsset(req, req.file, {
+      role: 'product',
+      type: 'dh_product_image',
+      prefix: 'dh_product',
+    });
     try { fs.unlinkSync(req.file.path); } catch {}
-    const base = _publicBaseUrl(req);
-    const absUrl = `${base}/public/jimeng-assets/${filename}`;
+    const absUrl = _dhPublicAssetUrl(req, path.basename(asset.file_path));
     res.json({
       success: true,
       url: absUrl,
       preparedUrl: absUrl,
       cutoutUrl: '',
-      name: req.file.originalname || filename,
+      name: req.file.originalname || asset.name || path.basename(asset.file_path),
+      asset_id: asset.id,
+      asset: _assetResponseFromDhCache(req, asset, { reused }).asset,
+      reused,
     });
-    _prepareProductAsset(dst, `product_cutout_${Date.now()}_${uuidv4().slice(0, 8)}.png`).catch(err => {
+    _prepareProductAsset(asset.file_path, `product_cutout_${Date.now()}_${uuidv4().slice(0, 8)}.png`).catch(err => {
       console.warn('[DH/product-upload] async product cutout skipped:', err.message);
     });
   } catch (err) {
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -2269,6 +2276,110 @@ function _publicBaseUrl(req) {
     return fromEnv;
   }
   return requestBase;
+}
+
+function _dhPublicAssetUrl(req, filename = '') {
+  return `${_publicBaseUrl(req)}/public/dh-assets/${path.basename(filename)}`;
+}
+
+function _sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest('hex');
+}
+
+function _safeImageExt(originalName = '', mimeType = '') {
+  const ext = String(path.extname(originalName || '') || '').toLowerCase();
+  if (['.jpg', '.jpeg', '.png', '.webp', '.bmp'].includes(ext)) return ext;
+  if (/png/i.test(mimeType)) return '.png';
+  if (/webp/i.test(mimeType)) return '.webp';
+  if (/bmp/i.test(mimeType)) return '.bmp';
+  return '.jpg';
+}
+
+function _findDhAssetByHash(req, sha256 = '', role = '') {
+  const hash = String(sha256 || '').trim().toLowerCase();
+  if (!hash) return null;
+  return db.listAssets(scopeUserId(req), 'all').find(asset => {
+    if (!asset || String(asset.content_hash || '').toLowerCase() !== hash) return false;
+    if (asset.source !== 'dh_upload_cache') return false;
+    if (role && asset.role && asset.role !== role) return false;
+    return asset.file_path && fs.existsSync(asset.file_path);
+  }) || null;
+}
+
+function _assetResponseFromDhCache(req, asset, { reused = true } = {}) {
+  const filename = path.basename(asset.file_path || asset.file_url || '');
+  const url = _dhPublicAssetUrl(req, filename);
+  return {
+    success: true,
+    imageUrl: url,
+    url,
+    image_url: url,
+    filename,
+    asset_id: asset.id,
+    asset: {
+      id: asset.id,
+      type: asset.type,
+      role: asset.role,
+      name: asset.name,
+      url,
+      content_hash: asset.content_hash,
+      reused,
+    },
+    reused,
+  };
+}
+
+function _persistDhUploadAsset(req, file, {
+  role = 'reference',
+  type = 'dh_reference_image',
+  prefix = 'dh_asset',
+} = {}) {
+  if (!file?.path || !fs.existsSync(file.path)) throw new Error('uploaded file is missing');
+  const declaredHash = String(req.body?.sha256 || req.body?.content_hash || '').trim().toLowerCase();
+  const contentHash = _sha256File(file.path);
+  if (declaredHash && declaredHash !== contentHash) {
+    throw new Error('上传图片校验失败，请重新选择原图上传');
+  }
+
+  const existing = _findDhAssetByHash(req, contentHash, role);
+  if (existing) {
+    const reuseCount = Number(existing.reuse_count || 0) + 1;
+    db.updateAsset(existing.id, {
+      last_used_at: new Date().toISOString(),
+      reuse_count: reuseCount,
+    });
+    return { asset: { ...existing, reuse_count: reuseCount }, reused: true };
+  }
+
+  // Content-addressed storage: the same compressed image maps to one stable
+  // server file, so refresh/retry does not create duplicate uploaded assets.
+  const ext = _safeImageExt(file.originalname, file.mimetype);
+  const filename = `${prefix}_${contentHash.slice(0, 20)}${ext}`;
+  const dstPath = path.join(DH_PUBLIC_ASSETS_DIR, filename);
+  if (!fs.existsSync(dstPath)) fs.copyFileSync(file.path, dstPath);
+  const stat = fs.statSync(dstPath);
+  const asset = {
+    id: uuidv4(),
+    user_id: scopeUserId(req),
+    type,
+    role,
+    name: req.body?.name || file.originalname || filename,
+    original_name: file.originalname || filename,
+    file_path: dstPath,
+    file_url: `/public/dh-assets/${filename}`,
+    public_url: _dhPublicAssetUrl(req, filename),
+    mime_type: file.mimetype || '',
+    file_size: stat.size,
+    content_hash: contentHash,
+    source: 'dh_upload_cache',
+    reuse_count: 0,
+    created_at: new Date().toISOString(),
+    last_used_at: new Date().toISOString(),
+  };
+  db.insertAsset(asset);
+  return { asset, reused: false };
 }
 
 function _localJimengAssetUrl(url, req) {
@@ -6097,17 +6208,36 @@ router.post('/images/compose-scene', async (req, res) => {
 //   form-data: image
 //   return: { imageUrl, filename }
 // ═══════════════════════════════════════════════
+router.get('/assets/lookup', (req, res) => {
+  try {
+    const sha256 = String(req.query.sha256 || req.query.content_hash || '').trim().toLowerCase();
+    const role = String(req.query.role || 'reference').trim();
+    if (!sha256 || !/^[a-f0-9]{64}$/i.test(sha256)) return res.json({ success: true, found: false });
+    const asset = _findDhAssetByHash(req, sha256, role);
+    if (!asset) return res.json({ success: true, found: false });
+    db.updateAsset(asset.id, {
+      last_used_at: new Date().toISOString(),
+      reuse_count: Number(asset.reuse_count || 0) + 1,
+    });
+    res.json({ ..._assetResponseFromDhCache(req, asset, { reused: true }), found: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/images/upload', imageUploadSingle, (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: '请选择图片' });
-    const ext = path.extname(req.file.originalname || '').toLowerCase() || '.png';
-    const dstName = `dh_upload_${uuidv4()}${ext}`;
-    const dstPath = path.join(JIMENG_ASSETS_DIR, dstName);
-    fs.copyFileSync(req.file.path, dstPath);
+    const role = String(req.body?.role || 'reference').trim() || 'reference';
+    const { asset, reused } = _persistDhUploadAsset(req, req.file, {
+      role,
+      type: role === 'product' ? 'dh_product_image' : 'dh_reference_image',
+      prefix: role === 'product' ? 'dh_product' : 'dh_ref',
+    });
     try { fs.unlinkSync(req.file.path); } catch {}
-    const baseUrl = _publicBaseUrl(req);
-    res.json({ success: true, imageUrl: `${baseUrl}/public/jimeng-assets/${dstName}`, filename: dstName });
+    res.json(_assetResponseFromDhCache(req, asset, { reused }));
   } catch (err) {
+    if (req.file?.path) { try { fs.unlinkSync(req.file.path); } catch {} }
     res.status(500).json({ success: false, error: err.message });
   }
 });

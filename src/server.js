@@ -290,6 +290,23 @@ app.get('/public/jimeng-assets/:filename', (req, res) => {
 });
 
 // 用户主题偏好
+// 数字人上传素材缓存：按内容 hash 持久化，浏览器和外部模型都从这里复用。
+app.get('/public/dh-assets/:filename', (req, res) => {
+  const fs = require('fs');
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(__dirname, '../outputs/dh-assets', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+  const stat = fs.statSync(filePath);
+  const ext = path.extname(filename).toLowerCase();
+  const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+  res.writeHead(200, {
+    'Content-Type': mimeMap[ext] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  });
+  fs.createReadStream(filePath).pipe(res);
+});
+
 app.put('/api/user/theme', authenticate, (req, res) => {
   const { theme } = req.body;
   const valid = ['purple', 'cyan', 'green', 'amber', 'rose', 'blue', 'light', 'light-purple', 'light-blue', 'light-green', 'light-rose', 'light-amber'];

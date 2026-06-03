@@ -940,6 +940,13 @@
     }
   }
 
+  async function sha256UploadFile(file) {
+    if (!window.crypto?.subtle || !file?.arrayBuffer) return '';
+    const buffer = await file.arrayBuffer();
+    const digest = await window.crypto.subtle.digest('SHA-256', buffer);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   async function uploadDhImage(file, options = {}) {
     // 所有图片上传统一先走客户端压缩，避免高定广告片参考图继续原图慢传。
     const compressed = await compressImageBeforeUpload(file, {
@@ -951,8 +958,23 @@
     if (Number(compressed?.size || 0) > DH_IMAGE_UPLOAD_LIMITS.maxCompressedSize) {
       throw new Error(`${compressed.name || file.name || '图片'} 压缩后仍超过 12MB，请先压缩后再上传`);
     }
+    const uploadRole = options.role || 'reference';
+    const contentHash = await sha256UploadFile(compressed);
+    if (contentHash) {
+      // Server-side asset cache lookup happens before uploading bytes. A cache
+      // hit means the same compressed image is already stored on the data disk.
+      const cached = await apiWithTimeout(`/api/dh/assets/lookup?sha256=${encodeURIComponent(contentHash)}&role=${encodeURIComponent(uploadRole)}`, {
+        method: 'GET',
+      }, options.timeoutMs || DH_IMAGE_UPLOAD_LIMITS.timeoutMs);
+      if (cached?.success && cached.found) {
+        const cachedUrl = cached.imageUrl || cached.url || cached.image_url || cached.asset?.url || '';
+        if (cachedUrl) return cachedUrl;
+      }
+    }
     const fd = new FormData();
     fd.append('image', compressed);
+    if (contentHash) fd.append('sha256', contentHash);
+    fd.append('role', uploadRole);
     const r = await apiWithTimeout('/api/dh/images/upload', { method: 'POST', body: fd }, options.timeoutMs || DH_IMAGE_UPLOAD_LIMITS.timeoutMs);
     if (!r.success) throw new Error(r.error || '上传失败');
     const imageUrl = r.imageUrl || r.url || r.image_url || r.data?.imageUrl || r.data?.url || r.data?.image_url || '';
@@ -2559,6 +2581,25 @@
     const btns = ['#dhProductPickBtn', '#dhProductWritePickBtn'].map(s => $(s)).filter(Boolean);
     btns.forEach(b => { b.disabled = true; b.dataset.oldText = b.textContent; b.textContent = '上传中…'; });
     try {
+      const contentHash = await sha256UploadFile(file);
+      if (contentHash) {
+        const cached = await apiWithTimeout(`/api/dh/assets/lookup?sha256=${encodeURIComponent(contentHash)}&role=product`, { method: 'GET' });
+        const cachedUrl = cached?.imageUrl || cached?.url || cached?.asset?.url || '';
+        if (cached?.success && cached.found && cachedUrl) {
+          state.s3.product = {
+            ...(state.s3.product || {}),
+            enabled: true,
+            imageUrl: cachedUrl,
+            preparedUrl: cachedUrl,
+            cutoutUrl: '',
+            imageName: cached.asset?.name || file.name,
+          };
+          renderProductMaterial();
+          toast('商品素材已从服务器缓存复用', 'success');
+          return;
+        }
+        fd.append('sha256', contentHash);
+      }
       const r = await fetch('/api/dh/products/upload', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + state.token },
@@ -4226,13 +4267,7 @@
     renderSpaceGuide();
     toast('背景本地预览已显示，正在上传…');
     try {
-      file = await compressImageBeforeUpload(file);
-      const fd = new FormData();
-      fd.append('image', file);
-      const r = await api('/api/dh/images/upload', { method: 'POST', body: fd });
-      if (!r.success) throw new Error(r.error || '上传失败');
-      const imageUrl = r.imageUrl || r.url || r.image_url || r.data?.imageUrl || r.data?.url || r.data?.image_url || '';
-      if (!imageUrl) throw new Error('上传成功但没有返回图片地址');
+      const imageUrl = await uploadDhImage(file, { role: 'space_background' });
       state.space.bgImageUrl = imageUrl;
       if (state.space.bgPreviewUrl && state.space.bgPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(state.space.bgPreviewUrl);
       state.space.bgPreviewUrl = imageUrl;
@@ -4270,7 +4305,7 @@
     toast(`已选择 ${images.length} 张参考素材，正在上传…`);
     try {
       for (let i = 0; i < images.length; i++) {
-        const imageUrl = await uploadDhImage(images[i]);
+        const imageUrl = await uploadDhImage(images[i], { role: 'luxury_sequence_reference' });
         state.space.referenceImages[i] = { ...state.space.referenceImages[i], url: imageUrl, previewUrl: imageUrl, uploading: false };
         if (i === 0) {
           state.space.bgImageUrl = imageUrl;
@@ -5567,7 +5602,7 @@
     setLuxuryProgress('assets');
     toast('主产品图正在上传…');
     try {
-      const imageUrl = await uploadDhImage(file);
+      const imageUrl = await uploadDhImage(file, { role: 'product' });
       revokeLuxuryBlobPreview(state.luxuryAd.productAsset);
       state.luxuryAd.productAsset = { ...state.luxuryAd.productAsset, url: imageUrl, previewUrl: imageUrl, uploading: false };
       syncLuxuryAdUploadFlags();
@@ -5623,7 +5658,7 @@
     updateLuxuryAdStepLocks();
     toast('人物参考正在上传…');
     try {
-      const imageUrl = await uploadDhImage(file);
+      const imageUrl = await uploadDhImage(file, { role: 'person_reference' });
       revokeLuxuryBlobPreview(state.luxuryAd.personAsset);
       state.luxuryAd.personAsset = {
         ...state.luxuryAd.personAsset,
@@ -5745,7 +5780,7 @@
       // 每张图独立上传、独立回填 URL，避免第 2 张被第 1 张阻塞。
       const results = await Promise.allSettled(files.map(async (file, i) => {
         const idx = start + i;
-        const imageUrl = await uploadDhImage(file);
+        const imageUrl = await uploadDhImage(file, { role: 'brief_reference' });
         revokeLuxuryBlobPreview(state.luxuryAd.briefRefAssets[idx]);
         state.luxuryAd.briefRefAssets[idx] = {
           ...state.luxuryAd.briefRefAssets[idx],
@@ -5841,7 +5876,7 @@
       const results = await Promise.allSettled(files.map(async (file, i) => {
         const idx = targetShot !== null ? targetAssetIndex : assignedIndexes[i];
         if (!Number.isFinite(idx) || idx < 0) return null;
-        const imageUrl = await uploadDhImage(file);
+        const imageUrl = await uploadDhImage(file, { role: 'luxury_sequence_reference' });
         revokeLuxuryBlobPreview(state.luxuryAd.refAssets[idx]);
         state.luxuryAd.refAssets[idx] = { ...state.luxuryAd.refAssets[idx], url: imageUrl, previewUrl: imageUrl, uploading: false };
         setLuxuryAdReferenceAssets(state.luxuryAd.refAssets);
