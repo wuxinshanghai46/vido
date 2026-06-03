@@ -2499,6 +2499,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'When identity_reference_mode is generated_presenter_seed_guidance_only, do not fail only because the face differs from a generated seed; judge that a credible presenter exists, matches the required gender/style when specified, and follows the storyboard.',
     'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
+    'Hard fail if the frame looks like an AI poster, CGI render, over-smoothed plastic face, mannequin, wax figure, fashion catalogue, jewelry store, cosmetics shelf, or illustrated concept art instead of a real live-action commercial frame.',
     'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
     'For steel/metal/material/wall-panel/building-material subjects, the image must show steel or metal material, panels, sheets, wall installation, surface texture, edge/detail, showroom material display, or a clearly related construction/material scene. It must not show cosmetic bottles or jewelry.',
     'Use visible_subject_required and visible_subject_contract in the contract. When a visible subject is required, hard fail if the generated image omits it or replaces it with a different kind of subject.',
@@ -13163,6 +13164,7 @@ async function _createLuxuryAdReferenceKeyframe({
     hasAvatar,
     personRequired,
     characterLock,
+    referenceRoleGuide: _luxuryKeyframeReferenceRoleGuide(refs, scene),
   });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
@@ -13522,6 +13524,41 @@ function _luxuryIsQaRejectError(err = null) {
     || /QA未通过|QA failed|分镜图与剧本不一致|storyboard.*mismatch|Missing required|Wrong product|Wrong scene/i.test(message);
 }
 
+function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
+  const sceneSeedUrl = String(scene.luxury_seed_assets?.scene?.url || '').trim();
+  const subjectSeedUrl = String(scene.luxury_seed_assets?.subject_evidence?.url || '').trim();
+  const presenterSeedUrl = String(scene.luxury_seed_assets?.presenter?.url || '').trim();
+  const sameRef = (a, b) => String(a || '').trim() === String(b || '').trim();
+  const lines = (Array.isArray(refs) ? refs : [])
+    .map((ref, idx) => {
+      const n = idx + 1;
+      const kind = String(ref?.kind || '').trim();
+      const source = String(ref?.source || '').trim();
+      if (kind === 'human_environment_layout' || kind === 'human_story_layout') {
+        return `Reference image ${n}: composition map only. Final frame must be a real camera photo: visible presenter in medium shot with face/expression readable, standing beside or gesturing toward product/material evidence. Do not copy the diagram style, small distant figure, or illustration look.`;
+      }
+      if (kind === 'generated_presenter_guidance' || sameRef(source, presenterSeedUrl)) {
+        return `Reference image ${n}: same campaign presenter guidance only. Keep one consistent natural actor, age/gender/professional wardrobe family and believable face; do not copy its background, portrait pose, fashion retail, jewelry, cosmetics, or studio category.`;
+      }
+      if (sameRef(source, subjectSeedUrl)) {
+        return `Reference image ${n}: advertised product/material evidence. The final frame must clearly show these finished panels/sample wall/material surfaces, not generic luxury props.`;
+      }
+      if (sameRef(source, sceneSeedUrl) || kind === 'story_seed_reference') {
+        return `Reference image ${n}: real premium location style and lighting only. Use it as the commercial space family, but add the required presenter and product evidence in the same shot.`;
+      }
+      if (kind === 'identity_reference') {
+        return `Reference image ${n}: strict human identity reference. Preserve the same face impression, age, hairstyle and wardrobe family while placing the actor naturally in the scene.`;
+      }
+      if (kind === 'main_reference' || kind === 'shot_reference' || kind === 'demand_reference') {
+        return `Reference image ${n}: product/scene/style evidence only. Preserve the requested category while obeying the shot contract.`;
+      }
+      return `Reference image ${n}: supporting visual evidence only; do not let it override the required actor, scene or product contract.`;
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+  return lines.length ? `REFERENCE ROLE LOCK: ${lines.join(' ')}` : '';
+}
+
 // Build the exact short prompt sent to image models; it intentionally avoids re-appending the full legacy prompt.
 function _buildLuxuryImageModelStrictPrompt({
   scene = {},
@@ -13534,6 +13571,7 @@ function _buildLuxuryImageModelStrictPrompt({
   hasAvatar = false,
   personRequired = false,
   characterLock = null,
+  referenceRoleGuide = '',
 } = {}) {
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
@@ -13578,6 +13616,9 @@ function _buildLuxuryImageModelStrictPrompt({
     personRequired
       ? 'MANDATORY HUMAN: one visible real presenter/consultant/professional must appear in this frame performing the specified action. Do not generate an empty location, subject-only packshot, robot, mannequin, or abstract scene.'
       : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
+    'REAL CAMERA LOCK: live-action documentary commercial film still, natural skin texture with imperfections, real fabric, practical location light, believable shadows, optical 35mm/50mm lens, no over-smoothed AI face, no glossy 3D render, no poster-like illustration.',
+    personRequired ? 'FRAMING LOCK: presenter must be in a medium or medium-close shot, face and expression readable, hands/action visible, placed beside the product/material evidence in the same real location.' : '',
+    referenceRoleGuide ? _compactLuxuryKeyframeText(referenceRoleGuide, 760) : '',
     steelEnvironmentLock,
     positiveAnchor,
     sceneRecipe,
@@ -13594,7 +13635,6 @@ function _buildLuxuryImageModelStrictPrompt({
     characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
     subjectGuard,
     productLockForScene,
-    'REAL CAMERA LOCK: live-action film still, documentary commercial photography, natural skin texture with imperfections, real fabric, practical location light, optical depth of field, believable shadows, no over-smoothed AI face, no glossy 3D render, no poster-like illustration.',
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
     'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
   ], 1850);
@@ -13790,6 +13830,7 @@ async function _createLuxuryAdReferenceKeyframe({
     hasAvatar,
     personRequired,
     characterLock,
+    referenceRoleGuide: _luxuryKeyframeReferenceRoleGuide(refs, scene),
   });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
@@ -14484,6 +14525,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     hasAvatar,
     personRequired,
     characterLock,
+    referenceRoleGuide: _luxuryKeyframeReferenceRoleGuide(refs, scene),
   });
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
