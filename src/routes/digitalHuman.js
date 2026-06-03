@@ -13009,6 +13009,7 @@ async function _createLuxuryAdReferenceKeyframe({
   const avatarIsGeneratedPresenterSeed = !!rawAvatarSource && !!generatedPresenterSeedUrl && sameRef(rawAvatarSource, generatedPresenterSeedUrl);
   const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
   const avatarSource = hasAvatar ? rawAvatarSource : '';
+  const generatedPresenterGuidanceUrl = avatarIsGeneratedPresenterSeed ? rawAvatarSource : '';
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
@@ -13070,13 +13071,20 @@ async function _createLuxuryAdReferenceKeyframe({
     }
   }
   if (useProductReference) {
-    await addRef(backgroundUrl, 'main_reference');
+    const hasGeneratedSubjectEvidence = !!scene.luxury_seed_assets?.subject_evidence?.url
+      && refs.some(x => sameRef(x.source, scene.luxury_seed_assets.subject_evidence.url));
+    if (!(generatedPresenterGuidanceUrl && hasGeneratedSubjectEvidence)) {
+      await addRef(backgroundUrl, 'main_reference');
+    }
     for (const url of (Array.isArray(referenceImages) ? referenceImages : [])) {
       if (refs.length >= (avatarUrl ? 3 : 4)) break;
       await addRef(url, 'shot_reference');
     }
   }
   for (const url of demandReferenceImages) await addRef(url, 'demand_reference');
+  if (generatedPresenterGuidanceUrl) {
+    await addRef(generatedPresenterGuidanceUrl, 'generated_presenter_guidance');
+  }
   if (avatarSource) {
     const existingIdx = refs.findIndex(x => sameRef(x.source, avatarSource));
     let existing = existingIdx >= 0 ? refs[existingIdx] : null;
@@ -13562,6 +13570,9 @@ function _buildLuxuryImageModelStrictPrompt({
   const positiveAnchor = _luxuryKeyframePositiveAnchor(productSubject || scene.product_subject, scene);
   const sceneRecipe = _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene);
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
+  const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
+    ? 'PRESENTER CONTINUITY: a system-generated presenter seed may be provided as soft actor guidance. Keep one natural real presenter with consistent age/gender/professional styling, but do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, or a portrait studio.'
+    : '';
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
     personRequired
@@ -13571,6 +13582,7 @@ function _buildLuxuryImageModelStrictPrompt({
     positiveAnchor,
     sceneRecipe,
     humanAnchor,
+    generatedPresenterGuidance,
     visual ? `MUST SHOW: ${visual}.` : '',
     action ? `REQUIRED ACTION: ${action}.` : '',
     camera ? `CAMERA/SCENE: ${camera}.` : '',
@@ -13582,8 +13594,9 @@ function _buildLuxuryImageModelStrictPrompt({
     characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
     subjectGuard,
     productLockForScene,
+    'REAL CAMERA LOCK: live-action film still, documentary commercial photography, natural skin texture with imperfections, real fabric, practical location light, optical depth of field, believable shadows, no over-smoothed AI face, no glossy 3D render, no poster-like illustration.',
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
-    'NEGATIVE: missing presenter when required, wrong industry/location, subject-only packshot when action requires a story scene, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
+    'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
   ], 1850);
 }
 
@@ -13623,6 +13636,7 @@ async function _createLuxuryAdReferenceKeyframe({
   const avatarIsGeneratedPresenterSeed = !!rawAvatarSource && !!generatedPresenterSeedUrl && sameRef(rawAvatarSource, generatedPresenterSeedUrl);
   const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
   const avatarSource = hasAvatar ? rawAvatarSource : '';
+  const generatedPresenterGuidanceUrl = avatarIsGeneratedPresenterSeed ? rawAvatarSource : '';
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
@@ -13684,13 +13698,20 @@ async function _createLuxuryAdReferenceKeyframe({
     }
   }
   if (useProductReference) {
-    await addRef(backgroundUrl, 'main_reference');
+    const hasGeneratedSubjectEvidence = !!scene.luxury_seed_assets?.subject_evidence?.url
+      && refs.some(x => sameRef(x.source, scene.luxury_seed_assets.subject_evidence.url));
+    if (!(generatedPresenterGuidanceUrl && hasGeneratedSubjectEvidence)) {
+      await addRef(backgroundUrl, 'main_reference');
+    }
     for (const url of (Array.isArray(referenceImages) ? referenceImages : [])) {
       if (refs.length >= (avatarUrl ? 3 : 4)) break;
       await addRef(url, 'shot_reference');
     }
   }
   for (const url of demandReferenceImages) await addRef(url, 'demand_reference');
+  if (generatedPresenterGuidanceUrl) {
+    await addRef(generatedPresenterGuidanceUrl, 'generated_presenter_guidance');
+  }
   if (avatarSource) {
     const existingIdx = refs.findIndex(x => sameRef(x.source, avatarSource));
     let existing = existingIdx >= 0 ? refs[existingIdx] : null;
