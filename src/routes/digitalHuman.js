@@ -1333,6 +1333,7 @@ function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
     || scene.character_required === false
     || scene.requires_person === false
     || scene.visible_subject_required === false);
+  const storyRequiresHuman = !explicitFalse && _luxuryStoryboardRequiresPerson(scene, subject);
   const text = _luxurySceneText(scene, [
     'title',
     'objective',
@@ -1372,13 +1373,13 @@ function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
     character_lock: scene.character_lock || null,
   });
   const combined = [text, characterText, subject].filter(Boolean).join(' ');
-  if (implicitPresenter) {
+  if (implicitPresenter || storyRequiresHuman) {
     return {
       required: true,
       humanRequired: true,
       hasHumanCue: true,
       hasNonHumanCue: false,
-      label: 'human presenter implied by the storyboard',
+      label: implicitPresenter ? 'human presenter implied by the storyboard' : 'human presenter required by story role and subject contract',
       contract: _compactQaText(combined, 520),
     };
   }
@@ -1960,6 +1961,7 @@ function _luxurySceneNeedsHumanStory(scene = {}, productSubject = '') {
   const wantsHuman = scene.person_required === true
     || scene.character_required === true
     || scene.requires_person === true
+    || _luxuryStoryboardRequiresPerson(scene, productSubject || scene.product_subject)
     || _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject).humanRequired;
   const hasStoryScene = /showroom|interior|indoor|outdoor|street|store|office|studio|factory|restaurant|clinic|school|hotel|scene|space|lobby|sample[- ]?wall|display|consultation|展厅|样板|室内|室外|门店|办公室|工作室|工厂|餐厅|酒店|学校|空间|场景|洽谈/.test(`${sceneType} ${env}`);
   return !!(wantsHuman && hasStoryScene);
@@ -14582,6 +14584,9 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       if (isLuxury) {
         await _assertLuxuryKeyframeQaAvailable(req);
       }
+      if (isLuxury) {
+        scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
+      }
       const luxuryAsyncSeedAssets = isLuxury
         ? await _prepareLuxuryStoryboardSeedAssets(req, {
           scenes,
@@ -15901,6 +15906,9 @@ router.post('/spaces/keyframes', async (req, res) => {
     }
     const base = _publicBaseUrl(req);
     const keyframes = [];
+    if (isLuxury) {
+      scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
+    }
     const personAssetImageUrl = isLuxury && person_asset && (person_asset.image_url || person_asset.url)
       ? String(person_asset.image_url || person_asset.url || '').trim()
       : '';
