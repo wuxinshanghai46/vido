@@ -41,13 +41,17 @@ function buildUrl(path, modelId) {
   return BASE_HOST + prefix + path;
 }
 
-function buildHeaders(modelId) {
+function buildImageUrl(path) {
+  return BASE_HOST + '/v1' + path;
+}
+
+function buildHeaders(modelId, options = {}) {
   const apiKey = getDeyunaiKey();
   const headers = {
     'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   };
-  if (isOverseasModel(modelId)) headers.vendor = 'API_VENDOR';
+  if (!options.forceDomestic && isOverseasModel(modelId)) headers.vendor = 'API_VENDOR';
   return headers;
 }
 
@@ -126,9 +130,9 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
       if (referenceImages.length > 1) body.image_urls = referenceImages;
     }
     const submitRes = await axios.post(
-      buildUrl('/images/generations', model),
+      buildImageUrl('/images/generations'),
       body,
-      { headers: buildHeaders(model), timeout: 30000, validateStatus: () => true }
+      { headers: buildHeaders(model, { forceDomestic: true }), timeout: 30000, validateStatus: () => true }
     );
     if (submitRes.status >= 400) {
       throw new Error(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
@@ -151,8 +155,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
     while (Date.now() - start < timeoutMs) {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
       const queryRes = await axios.get(
-        buildUrl(`/images/generations/${_taskId}`, model),
-        { headers: buildHeaders(model), timeout: 15000 }
+        buildImageUrl(`/images/generations/${_taskId}`),
+        { headers: buildHeaders(model, { forceDomestic: true }), timeout: 15000 }
       );
       const d = queryRes.data?.data || {};
       if (d.task_status === 'succeed') {

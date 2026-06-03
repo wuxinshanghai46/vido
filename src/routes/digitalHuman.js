@@ -14111,6 +14111,41 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     if (hasShotReferenceLock && provider !== 'deyunai' && provider !== 'topview') return false;
     return true;
   });
+  const hasGeneratedPresenterGuidanceRef = refs.some(x => x?.kind === 'generated_presenter_guidance');
+  const hasStrictIdentityReference = refs.some(x => x?.kind === 'identity_reference');
+  const hasRunnableTopviewKeyframeModel = configuredModelsAll.some(model =>
+    String(model?.provider_id || '').toLowerCase() === 'topview'
+    || String(model?.model_id || '').toLowerCase().startsWith('topview-')
+  );
+  const topviewProviderHint = hasRunnableTopviewKeyframeModel
+    ? 'Topview 图像编辑模型已可用于当前分镜阶段，系统会继续按配置尝试。'
+    : '当前生产环境没有可运行的 Topview 图像编辑模型（缺少 provider/API Key/UID 或未启用），系统不会把它当作已可用能力。';
+  if (
+    hasGeneratedPresenterGuidanceRef
+    && !hasStrictIdentityReference
+    && !hasRunnableTopviewKeyframeModel
+    && process.env.VIDO_LUXURY_ALLOW_DEYUNAI_GENERATED_PRESENTER_KEYFRAMES !== '1'
+  ) {
+    const configuredLabels = configuredModelsAll
+      .map(model => `${model.provider_id}/${model.model_id}`)
+      .join(', ') || '无可运行图片模型';
+    const err = new Error([
+      '高定广告片分镜生成已停止：当前镜头需要真人商业片质感和人物一致性，但只有系统生成的 presenter_seed，没有用户确认的真人/演员身份图。',
+      topviewProviderHint,
+      `当前可运行候选仅为：${configuredLabels}。这些候选在实测中会发生人物换脸、场景跑偏和 AI 质感过重，未达到竞品级商用标准。`,
+      '请先配置可运行的 Topview 图像编辑模型，或上传/选择已确认真人身份参考图后重试；系统不会再降级到 DeyunAI 自由生图盲试。',
+    ].join(' '));
+    err.status = 422;
+    err.code = 'LUXURY_REAL_FRAME_PROVIDER_REQUIRED';
+    err.luxuryKeyframeAttempts = [{
+      provider_id: 'preflight',
+      model_id: 'commercial-real-frame-gate',
+      ok: false,
+      error: '缺少可运行的真人一致性商业片图像编辑链路，已阻止 DeyunAI 自由生图继续消耗。',
+      configured_models: configuredLabels,
+    }];
+    throw err;
+  }
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
 
   for (let i = 0; i < configuredModels.length; i++) {
@@ -16291,7 +16326,12 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (Array.isArray(attempts) && attempts.length) {
       console.error('[DH/spaces/keyframes] attempts:', JSON.stringify(attempts).slice(0, 3000));
     }
-    _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: err.details || err.response?.data || null });
+    let errorDetails = err.details || err.response?.data || {};
+    if (!errorDetails || typeof errorDetails !== 'object') errorDetails = { raw: errorDetails };
+    if (Array.isArray(attempts) && attempts.length && !errorDetails.attempts) {
+      errorDetails.attempts = attempts;
+    }
+    _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: errorDetails });
     _sendApiError(res, err, '高定广告片分镜生成失败');
   }
 });
