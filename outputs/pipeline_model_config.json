@@ -233,32 +233,44 @@
     "luxury_ad.keyframe": [
       {
         "provider_id": "deyunai",
-        "model_id": "qwen-image",
+        "model_id": "nano-banana-pro",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "qwen-image-edit",
+        "model_id": "nano-banana",
         "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "doubao-seedream-4-0-250828",
+        "model_id": "qwen-image",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "imagen-4",
+        "model_id": "qwen-image-edit",
         "priority": 4,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "flux-pro",
+        "model_id": "doubao-seedream-4-0-250828",
         "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "imagen-4",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "flux-pro",
+        "priority": 7,
         "enabled": true
       },
       {
@@ -284,18 +296,6 @@
         "model_id": "topview-gpt-image-2",
         "priority": 23,
         "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
-        "priority": 80,
-        "enabled": false
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
-        "priority": 81,
-        "enabled": false
       },
       {
         "provider_id": "deyunai",

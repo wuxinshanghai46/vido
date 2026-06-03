@@ -1517,8 +1517,8 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
   const settings = loadSettings();
   const providers = Array.isArray(settings.providers) ? settings.providers : [];
   const stageId = 'luxury_ad.keyframe_qa';
-  const strictSingleCandidate = options.strictSingleCandidate !== false;
-  const allowAutoVlmFallback = options.allowAutoVlmFallback === true;
+  const strictSingleCandidate = options.strictSingleCandidate === true;
+  const allowAutoVlmFallback = options.allowAutoVlmFallback !== false;
   const configuredBase = (typeof pms.pickAllEnabled === 'function'
     ? pms.pickAllEnabled(stageId)
     : (pms.getStageConfig(stageId) || []))
