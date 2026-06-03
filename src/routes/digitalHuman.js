@@ -1272,6 +1272,7 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   const total = Number(scene.totalShots || scene.total_shots || scene.shot_count || 6);
   const isMacroDetail = _luxuryIsMacroDetailShot(scene);
   const isStoryRole = _luxuryRoleNeedsStoryHuman(role, idx, total);
+  const implicitPresenter = _luxuryShotImpliesHumanPresenter(scene);
   const coreVisualText = _luxurySceneText(scene, [
     'title',
     'objective',
@@ -1284,7 +1285,10 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   ]);
   const strongPerson = /真人|人物出镜|同一人物|真实空间设计师|空间设计师|设计师|品牌顾问|空间顾问|客户|业主|店长|经理|真人讲解者|讲解员|讲解者|导购|顾问|主持人|模特|入场|走入|走进|带观众|手势|指向|触摸|person|human|presenter|host|model|woman|man|girl|boy|designer|consultant|customer|client|store manager|architect|walks? in|walking into|enters? the frame|standing beside|pointing at|gesture/i.test(coreVisualText);
   if (strongPerson) return true;
-  if (!isMacroDetail && _luxuryShotImpliesHumanPresenter(scene)) return true;
+  // Story intent wins over texture/macro wording. A hook such as
+  // "professional identity" or presenter narration cannot be downgraded
+  // to product-only just because the shot also mentions material texture.
+  if (implicitPresenter) return true;
 
   if (scene.person_required === true || scene.character_required === true || scene.requires_person === true) return true;
   if (scene.person_required === false || scene.character_required === false || scene.requires_person === false) {
@@ -1315,7 +1319,9 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
 }
 
 function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
-  const implicitPresenter = _luxuryShotImpliesHumanPresenter(scene) && !_luxuryIsMacroDetailShot(scene);
+  // Macro/detail wording may describe product evidence, but it must not erase
+  // an implied presenter required by the ad story.
+  const implicitPresenter = _luxuryShotImpliesHumanPresenter(scene);
   const explicitFalse = !implicitPresenter && (scene.person_required === false
     || scene.character_required === false
     || scene.requires_person === false
@@ -1575,14 +1581,19 @@ function _luxuryStoryFirstHumanAction({ action = '', productSubject = '主商品
 
 function _luxuryShouldRepairHumanStoryKeyframe(scene = {}, index = 0, total = 6, productSubject = '') {
   const role = _luxuryRoleAt(index, total, scene.role || scene.shot_role || scene.story_role);
+  const implicitPresenter = _luxuryShotImpliesHumanPresenter(scene);
+  const storyRole = _luxuryRoleNeedsStoryHuman(role, index, total);
+  const firstMaterialHook = index === 0 && _luxuryIsMaterialProductShot(scene, productSubject || scene.product_subject);
+  if (implicitPresenter || storyRole || firstMaterialHook) return true;
+
+  // Only explicit macro/detail inserts remain product-only. This check must
+  // come after story-intent checks so a hook scene is not misread as a texture
+  // insert just because it mentions material surface or pattern.
   if (_luxuryIsMacroDetailShot({ ...scene, role })) return false;
-  return _luxuryShotImpliesHumanPresenter(scene)
-    || _luxuryRoleNeedsStoryHuman(role, index, total)
-    || scene.storyboard_panel_required === true
+  return scene.storyboard_panel_required === true
     || scene.person_required === true
     || scene.character_required === true
-    || scene.requires_person === true
-    || (index === 0 && _luxuryIsMaterialProductShot(scene, productSubject || scene.product_subject));
+    || scene.requires_person === true;
 }
 
 function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, productSubject = '') {
@@ -1804,7 +1815,7 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
   if (allowAutoVlmFallback && configured.length > configuredCount) {
     console.info(`[DH/luxury-ad] keyframe QA auto-added ${configured.length - configuredCount} VLM fallback candidate(s) after configured queue`);
   } else if (strictSingleCandidate && configured.length > 1) {
-    console.info(`[DH/luxury-ad] keyframe QA strict mode using first configured candidate only; skipped ${configured.length - 1} configured fallback(s)`);
+    console.info(`[DH/luxury-ad] keyframe QA uses first configured VLM candidate only; image generation still follows the configured image-model queue. skipped_qa_candidates=${configured.length - 1}`);
   }
   let lastErr = null;
   for (const candidate of candidates) {
