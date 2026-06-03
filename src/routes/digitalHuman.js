@@ -1603,6 +1603,34 @@ function _luxuryShouldRepairHumanStoryKeyframe(scene = {}, index = 0, total = 6,
     || scene.requires_person === true;
 }
 
+function _luxuryNaturalHumanStoryVisual({ productSubject = 'premium material', role = '', index = 0, total = 6 } = {}) {
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || 'premium architectural decorative metal panels') || 'premium architectural decorative metal panels';
+  const beat = _luxuryRoleAt(index, total, role);
+  const templates = {
+    hook: `A natural film-still commercial frame in a warm high-end interior showroom: one real adult male designer/consultant is visible in medium shot, calmly introducing the pain point beside a sample wall of ${subject}. The showroom has warm ceiling lights, wood or stone floor, consultation table depth, and readable metal wall-panel samples in the same frame.`,
+    display: `A natural high-end showroom walkthrough: the same real designer/consultant guides the viewer toward a sample-wall display of ${subject}, with warm interior lighting, realistic depth, wall panels, material boards, and human scale all visible.`,
+    product_reveal: `A realistic commercial storyboard frame: the designer stands beside installed sample panels of ${subject}, gesturing toward the surface and edge details while the warm showroom environment remains visible.`,
+    benefit: `A lived-in design studio/showroom moment: the designer explains how ${subject} improves architectural space quality, with face, expression, interior background and product/material evidence visible together.`,
+    proof: `A realistic showroom proof shot: the designer is visible near ${subject} sample boards, indicating finish, reflection and installation details without turning the image into a pure macro close-up.`,
+    cta: `A natural consultation-area closing frame: the designer remains visible beside ${subject} samples in a warm premium showroom, ready to discuss the final solution.`,
+  };
+  return (templates[beat] || templates.benefit).slice(0, 620);
+}
+
+function _luxuryNaturalHumanStoryAction({ productSubject = 'premium material', role = '', index = 0, total = 6 } = {}) {
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || 'premium architectural decorative metal panels') || 'premium architectural decorative metal panels';
+  const beat = _luxuryRoleAt(index, total, role);
+  const templates = {
+    hook: `The designer faces camera briefly, then turns slightly toward the ${subject} sample wall, using a restrained hand gesture to introduce the problem; face and expression remain visible.`,
+    display: `The designer walks slowly through the showroom path and gestures toward the material wall, keeping the body and product evidence in one natural frame.`,
+    product_reveal: `The designer stops beside the panel installation and points near the edge/profile detail without blocking the product evidence.`,
+    benefit: `The designer explains while moving from a wider showroom view toward the product evidence, expression calm and credible.`,
+    proof: `The designer indicates finish, reflection and installation detail with one hand while staying visible in frame.`,
+    cta: `The designer settles into a steady consultation pose, looking credible and ready to continue the service conversation.`,
+  };
+  return (templates[beat] || templates.benefit).slice(0, 420);
+}
+
 function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, productSubject = '') {
   if (!scene || typeof scene !== 'object') return scene;
   if (!_luxuryShouldRepairHumanStoryKeyframe(scene, index, total, productSubject)) return scene;
@@ -1610,28 +1638,22 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   const role = _luxuryRoleAt(index, total, scene.role || scene.shot_role || scene.story_role);
   const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || scene.product_name || 'premium architectural decorative metal panels')
     || (productSubject || scene.product_subject || 'premium architectural decorative metal panels');
-  const characters = Array.isArray(scene.characters)
-    ? scene.characters
-    : (Array.isArray(scene.character_profiles) ? scene.character_profiles : []);
-  const currentVisual = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
-  const currentAction = scene.action || scene.visual_action || scene.character_action || '';
-  const storyVisual = _luxuryStoryFirstHumanVisual({
-    visual: currentVisual,
+  // This repair intentionally replaces legacy product-only/dark-background
+  // wording instead of appending to it. Re-appending polluted prompts caused
+  // repeated "dark corridor" and "material close-up" failures.
+  const storyVisual = _luxuryNaturalHumanStoryVisual({
     productSubject: subject,
     role,
     index,
     total,
-    characters,
   });
-  const storyAction = _luxuryStoryFirstHumanAction({
-    action: currentAction,
+  const storyAction = _luxuryNaturalHumanStoryAction({
     productSubject: subject,
     role,
     index,
     total,
-    characters,
   });
-  const interiorEnv = 'interior high-end showroom, sample-wall display, design studio, consultation area, premium indoor material display space';
+  const interiorEnv = 'warm interior high-end showroom, sample-wall display, design studio, consultation area, premium indoor material display space; not corridor, not exterior, not facade-only';
   const visibleSubject = 'one visible realistic presenter/designer/consultant with the product/material evidence in the same interior showroom frame';
   const referenceStrategy = [
     'Use uploaded exterior/facade/material images only as loose material texture evidence.',
@@ -1641,7 +1663,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   const qaContract = [
     'QA must require one visible human presenter/designer/consultant in an interior high-end showroom or design studio.',
     `The advertised material subject must be visible as ${subject} on a sample wall, installed wall panel, display board, edge/detail area, or material table.`,
-    'Reject empty exterior facades, pure material close-ups, generic surfaces, factory/warehouse scenes, catalogue packshots, and unrelated consumer products.',
+    'Reject empty exterior facades, exterior-like walkways, cold dark corridors, pure material close-ups, generic surfaces, factory/warehouse scenes, catalogue packshots, CGI/3D render/AI illustration looks, and unrelated consumer products.',
   ].join(' ');
   const directorPrompt = [
     'STORYBOARD DIRECTOR CONTRACT: live-action commercial storyboard frame.',
@@ -1666,12 +1688,16 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   ];
   const mustNotShow = [
     'empty exterior facade or storefront-only scene',
+    'cold dark corridor or exterior-like walkway',
     'pure material close-up unless the storyboard is explicitly macro/detail',
+    'CGI, 3D render, AI illustration, waxy synthetic skin, plastic over-polished look',
+    'hidden presenter face, cropped face, back-view-only presenter',
     'factory, warehouse, raw steel piles, catalogue packshot, unrelated consumer product',
   ];
 
   return {
     ...scene,
+    _luxury_human_story_repaired: true,
     role,
     product_subject: subject,
     person_required: true,
@@ -1688,6 +1714,10 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     visual: storyVisual,
     action: storyAction,
     visual_action: storyAction,
+    lighting_style: 'warm premium showroom lighting, natural skin tone, soft practical ceiling light, no cold dark corridor',
+    shot_angle: 'eye-level medium commercial storyboard frame',
+    shot_size: 'medium shot with showroom depth',
+    camera_label: 'eye-level 35mm commercial film still, medium shot, face and product evidence visible',
     material_usage: `${subject} shown inside a premium interior showroom as sample-wall, wall-panel, display-board, edge/detail, or material-table evidence; exterior references are material texture only, not location lock`,
     material_hint: `${subject} showroom material evidence`,
     reference_strategy: referenceStrategy,
@@ -1710,8 +1740,8 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
       actor_blocking: storyAction,
       product_evidence: `${subject} visible in the same interior scene`,
       composition: 'medium-wide or medium commercial storyboard frame with human presenter, showroom depth, and product/material evidence all readable',
-      lighting: 'premium showroom lighting, soft commercial contrast, coherent shadows',
-      camera: scene.camera_label || scene.camera || 'premium commercial storyboard camera, natural perspective',
+      lighting: 'warm premium showroom lighting, natural skin tone, soft practical ceiling light, coherent shadows, no cold dark corridor',
+      camera: 'eye-level 35mm commercial film still, medium shot, face and product evidence visible',
       image_prompt: topviewPrompt,
       topview_prompt: topviewPrompt,
       qa_contract: qaContract,
@@ -7451,16 +7481,16 @@ async function _createLuxuryHumanEnvironmentLayoutAnchor({ filename, destDir, as
       const gap = Math.max(4, Math.round(panelW * 0.012));
       const w = Math.round((panelW - gap * 8) / 7);
       const x = panelX + gap + i * (w + gap);
-      const shade = ['#20262a', '#596267', '#111619', '#8d9699', '#2b3337', '#707a80', '#171c1f'][i % 7];
+      const shade = ['#373f42', '#8d9693', '#263034', '#b4aaa0', '#4f5b5f', '#a7b0ac', '#2b3031'][i % 7];
       return `<rect x="${x}" y="${panelY + gap}" width="${w}" height="${panelH - gap * 2}" rx="4" fill="${shade}"/>`;
     }).join('\n');
     const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#05080a"/>
-      <stop offset="0.55" stop-color="#10171a"/>
-      <stop offset="1" stop-color="#24201a"/>
+      <stop offset="0" stop-color="#f6f0e7"/>
+      <stop offset="0.55" stop-color="#eee3d5"/>
+      <stop offset="1" stop-color="#d8ccbd"/>
     </linearGradient>
     <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#11171a"/>
@@ -7471,18 +7501,21 @@ async function _createLuxuryHumanEnvironmentLayoutAnchor({ filename, destDir, as
     </linearGradient>
   </defs>
   <rect width="100%" height="100%" fill="url(#bg)"/>
-  <path d="M 0 ${floorY} L ${width} ${Math.round(floorY * 0.96)} L ${width} ${height} L 0 ${height} Z" fill="#171411"/>
-  <path d="M ${Math.round(width * 0.04)} ${height} L ${Math.round(width * 0.34)} ${floorY} L ${Math.round(width * 0.94)} ${floorY} L ${width} ${height} Z" fill="#252018" opacity="0.8"/>
-  <rect x="${panelX}" y="${panelY}" width="${panelW}" height="${panelH}" rx="${exterior ? 4 : 18}" fill="#080b0d" stroke="#8f9b9d" stroke-width="2"/>
+  <rect x="0" y="0" width="${width}" height="${Math.round(height * 0.13)}" fill="#fffaf2" opacity="0.75"/>
+  <circle cx="${Math.round(width * 0.25)}" cy="${Math.round(height * 0.08)}" r="${Math.round(width * 0.055)}" fill="#fff0bf" opacity="0.35"/>
+  <circle cx="${Math.round(width * 0.68)}" cy="${Math.round(height * 0.08)}" r="${Math.round(width * 0.05)}" fill="#fff0bf" opacity="0.28"/>
+  <path d="M 0 ${floorY} L ${width} ${Math.round(floorY * 0.96)} L ${width} ${height} L 0 ${height} Z" fill="#d9cdbc"/>
+  <path d="M ${Math.round(width * 0.04)} ${height} L ${Math.round(width * 0.34)} ${floorY} L ${Math.round(width * 0.94)} ${floorY} L ${width} ${height} Z" fill="#cbbda9" opacity="0.72"/>
+  <rect x="${panelX}" y="${panelY}" width="${panelW}" height="${panelH}" rx="${exterior ? 4 : 18}" fill="#f8f4ee" stroke="#a89f94" stroke-width="2"/>
   ${panelRects}
   <rect x="${panelX + Math.round(panelW * 0.58)}" y="${panelY}" width="${Math.round(panelW * 0.10)}" height="${panelH}" fill="url(#metal)" opacity="0.82"/>
   <path d="M ${panelX} ${panelY + Math.round(panelH * 0.40)} L ${panelX + panelW} ${panelY + Math.round(panelH * 0.30)}" stroke="#d6dedc" stroke-width="${Math.max(6, Math.round(width * 0.006))}" opacity="0.38"/>
-  <path d="M ${personX - Math.round(personH * 0.13)} ${personBaseY} L ${personX - Math.round(personH * 0.04)} ${bodyTop + Math.round(personH * 0.38)} L ${personX + Math.round(personH * 0.05)} ${personBaseY}" stroke="#171a1d" stroke-width="${Math.round(personH * 0.07)}" fill="none" stroke-linecap="round"/>
+  <path d="M ${personX - Math.round(personH * 0.13)} ${personBaseY} L ${personX - Math.round(personH * 0.04)} ${bodyTop + Math.round(personH * 0.38)} L ${personX + Math.round(personH * 0.05)} ${personBaseY}" stroke="#2b2e33" stroke-width="${Math.round(personH * 0.07)}" fill="none" stroke-linecap="round"/>
   <circle cx="${personX}" cy="${bodyTop - Math.round(personH * 0.11)}" r="${headR}" fill="#d0a780"/>
-  <path d="M ${personX - headR} ${bodyTop - Math.round(personH * 0.14)} Q ${personX} ${bodyTop - Math.round(personH * 0.23)} ${personX + headR} ${bodyTop - Math.round(personH * 0.14)}" fill="#17191b"/>
-  <path d="M ${personX - Math.round(personH * 0.10)} ${bodyTop} Q ${personX} ${bodyTop - Math.round(personH * 0.06)} ${personX + Math.round(personH * 0.10)} ${bodyTop} L ${personX + Math.round(personH * 0.13)} ${bodyTop + Math.round(personH * 0.38)} L ${personX - Math.round(personH * 0.13)} ${bodyTop + Math.round(personH * 0.38)} Z" fill="#262b31"/>
-  <path d="M ${personX + Math.round(personH * 0.09)} ${bodyTop + Math.round(personH * 0.10)} C ${personX + Math.round(personH * 0.28)} ${bodyTop + Math.round(personH * 0.09)}, ${panelX - Math.round(width * 0.02)} ${panelY + Math.round(panelH * 0.45)}, ${panelX + Math.round(width * 0.02)} ${panelY + Math.round(panelH * 0.45)}" stroke="#262b31" stroke-width="${Math.round(personH * 0.045)}" fill="none" stroke-linecap="round"/>
-  <ellipse cx="${personX}" cy="${personBaseY + Math.round(personH * 0.03)}" rx="${Math.round(personH * 0.17)}" ry="${Math.round(personH * 0.04)}" fill="#050505" opacity="0.55"/>
+  <path d="M ${personX - headR} ${bodyTop - Math.round(personH * 0.14)} Q ${personX} ${bodyTop - Math.round(personH * 0.23)} ${personX + headR} ${bodyTop - Math.round(personH * 0.14)}" fill="#1f2022"/>
+  <path d="M ${personX - Math.round(personH * 0.10)} ${bodyTop} Q ${personX} ${bodyTop - Math.round(personH * 0.06)} ${personX + Math.round(personH * 0.10)} ${bodyTop} L ${personX + Math.round(personH * 0.13)} ${bodyTop + Math.round(personH * 0.38)} L ${personX - Math.round(personH * 0.13)} ${bodyTop + Math.round(personH * 0.38)} Z" fill="#e8edf0"/>
+  <path d="M ${personX + Math.round(personH * 0.09)} ${bodyTop + Math.round(personH * 0.10)} C ${personX + Math.round(personH * 0.28)} ${bodyTop + Math.round(personH * 0.09)}, ${panelX - Math.round(width * 0.02)} ${panelY + Math.round(panelH * 0.45)}, ${panelX + Math.round(width * 0.02)} ${panelY + Math.round(panelH * 0.45)}" stroke="#e8edf0" stroke-width="${Math.round(personH * 0.045)}" fill="none" stroke-linecap="round"/>
+  <ellipse cx="${personX}" cy="${personBaseY + Math.round(personH * 0.03)}" rx="${Math.round(personH * 0.17)}" ry="${Math.round(personH * 0.04)}" fill="#51483f" opacity="0.28"/>
 </svg>`;
     const sharp = require('sharp');
     await sharp(Buffer.from(svg)).png().toFile(outPath);
@@ -12857,6 +12890,7 @@ async function _createLuxuryAdReferenceKeyframe({
     // Strict retry mode: every configured image model uses the same compact
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
+    allowQaRepair: true,
   });
   const outPath = imageResult.outPath;
   return {
@@ -13235,8 +13269,8 @@ function _buildLuxuryImageModelStrictPrompt({
     characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
     subjectGuard,
     productLockForScene,
-    'Style: premium commercial storyboard still, photorealistic, coherent lighting, product-readable, no generated text, no watermark, no extra random people.',
-    'NEGATIVE: missing presenter when required, wrong location, exterior-only facade when action requires entering/interior, robot/android, cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
+    'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, warm practical showroom light, product-readable, no generated text, no watermark, no extra random people.',
+    'NEGATIVE: missing presenter when required, wrong location, cold dark corridor, exterior-like walkway, exterior-only facade when action requires entering/interior, CGI, 3D render, AI illustration, waxy plastic face, robot/android, cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
   ], 1850);
 }
 
@@ -13448,6 +13482,7 @@ async function _createLuxuryAdReferenceKeyframe({
     // Strict retry mode: every configured image model uses the same compact
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
+    allowQaRepair: true,
   });
   const outPath = imageResult.outPath;
   return {
@@ -13709,6 +13744,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               qa?.reason || '',
             ].filter(Boolean).slice(0, 5).join('; ');
             const qaRejectErr = new Error(`QA未通过：${issues || '分镜图与剧本不一致'}`);
+            if (allowQaRepair) {
+              repairInstruction = _luxuryQaRepairInstruction(qa) || repairInstruction;
+            }
             qaRejectErr.status = 422;
             qaRejectErr.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
             qaRejectErr._luxuryAttemptRecorded = true;
@@ -14126,6 +14164,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     preferControlledCandidate: false,
     allowControlledFinal: false,
     strictSingleCandidate: false,
+    allowQaRepair: true,
   });
   const outPath = imageResult.outPath;
   return {
