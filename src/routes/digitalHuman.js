@@ -2435,6 +2435,14 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   });
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, subject);
   const personRequired = visibleSubject.humanRequired;
+  const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
+    ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
+    : '';
+  const isGeneratedPresenterSeedRef = (url = '') => {
+    const value = String(url || '').trim();
+    return !!value && !!generatedPresenterSeedUrl && value === generatedPresenterSeedUrl;
+  };
+  const strictIdentityReferenceUrl = isGeneratedPresenterSeedRef(scene.identity_reference_image) ? '' : (scene.identity_reference_image || '');
   const expected = {
     shot: `${shotIndex + 1}/${totalShots}`,
     product_subject: _compactQaText(subject, 120),
@@ -2458,15 +2466,17 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     director_must_show: Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.slice(0, 8) : [],
     director_must_not_show: Array.isArray(scene.visual_contract?.must_not_show) ? scene.visual_contract.must_not_show.slice(0, 12) : [],
     director_qa_contract: _compactQaText(scene.qa_contract || scene.visual_contract?.qa_contract || scene.director_prompt || '', 760),
+    identity_reference_mode: strictIdentityReferenceUrl ? 'strict_user_or_selected_identity' : (generatedPresenterSeedUrl ? 'generated_presenter_seed_guidance_only' : 'none'),
   };
   const images = [];
   const qaReferenceUrls = [
-    scene.identity_reference_image || '',
+    strictIdentityReferenceUrl,
     referenceUrl || '',
     ...(Array.isArray(scene.qa_reference_images) ? scene.qa_reference_images : []),
   ]
     .map(x => String(x || '').trim())
     .filter(Boolean)
+    .filter(x => !isGeneratedPresenterSeedRef(x))
     .filter((x, i, arr) => arr.indexOf(x) === i)
     .slice(0, 4);
   for (const url of qaReferenceUrls) {
@@ -2485,7 +2495,8 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'Keep observed and reason under 80 characters. Keep major_mismatches to at most 3 short items, each under 80 characters.',
     'For major_mismatches and unrelated_subjects: return an empty array [] when there are none. Never output placeholder words such as "short", "none" or "n/a".',
     'Pass only if the generated keyframe visibly follows the confirmed storyboard content, advertised product category, material/scene subject, action and camera intention.',
-    'When reference images include a person and the contract has a continuity bible, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
+    'When identity_reference_mode is strict_user_or_selected_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
+    'When identity_reference_mode is generated_presenter_seed_guidance_only, do not fail only because the face differs from a generated seed; judge that a credible presenter exists, matches the required gender/style when specified, and follows the storyboard.',
     'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
     'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
