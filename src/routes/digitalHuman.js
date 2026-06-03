@@ -13173,7 +13173,7 @@ async function _createLuxuryAdReferenceKeyframe({
       })
       : null,
     preferControlledCandidate: false,
-    allowControlledFinal: isSteelMaterialSubject,
+    allowControlledFinal: false,
     // Strict retry mode: every configured image model uses the same compact
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
@@ -13496,18 +13496,6 @@ function _luxuryIsQaRejectError(err = null) {
     || /QA未通过|QA failed|分镜图与剧本不一致|storyboard.*mismatch|Missing required|Wrong product|Wrong scene/i.test(message);
 }
 
-function _luxuryIsStructuralKeyframeQaFailure(err = null, qa = null) {
-  const fields = [
-    err?.message,
-    qa?.reason,
-    qa?.observed,
-    ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
-    ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects : []),
-  ];
-  const text = fields.map(x => String(x || '')).join(' ');
-  return /factory|warehouse|industrial|steel mill|raw material|barrels?|crane|forklift|storage|wrong scene|wrong industry|missing required (human|presenter|person|actor)|no (human|presenter|person|actor)|empty facade|exterior facade, not an interior|generic warehouse/i.test(text);
-}
-
 // Build the exact short prompt sent to image models; it intentionally avoids re-appending the full legacy prompt.
 function _buildLuxuryImageModelStrictPrompt({
   scene = {},
@@ -13794,7 +13782,7 @@ async function _createLuxuryAdReferenceKeyframe({
       })
       : null,
     preferControlledCandidate: false,
-    allowControlledFinal: isSteelMaterialSubject,
+    allowControlledFinal: false,
     // Strict retry mode: every configured image model uses the same compact
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
@@ -14066,7 +14054,6 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             }
             qaRejectErr.status = 422;
             qaRejectErr.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
-            qaRejectErr.qa = qa;
             qaRejectErr._luxuryAttemptRecorded = true;
             addAttempt(model, false, qaRejectErr, {
               ...attemptMeta,
@@ -14095,12 +14082,6 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         if (!err._luxuryAttemptRecorded) {
           err._luxuryAttemptRecorded = true;
           addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
-        }
-        if (allowControlledFinal && _luxuryIsStructuralKeyframeQaFailure(err, err.qa || null)) {
-          const controlledResult = await tryControlledCandidate(`qa-structural-${i + 1}`);
-          if (controlledResult) return controlledResult;
-          const controlledPathResult = await tryControlledPathCandidate(`qa-structural-${i + 1}`);
-          if (controlledPathResult) return controlledPathResult;
         }
         console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
         if (strictSingleCandidate) break;
@@ -14495,7 +14476,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       })
       : null,
     preferControlledCandidate: false,
-    allowControlledFinal: isSteelMaterialSubject,
+    allowControlledFinal: false,
     strictSingleCandidate: false,
     allowQaRepair: true,
   });
