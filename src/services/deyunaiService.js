@@ -68,6 +68,20 @@ function extractImageUrlsFromSyncPayload(payload) {
   return arr.map(x => x?.url || x?.b64_json || '').filter(Boolean);
 }
 
+function extractProviderBusinessError(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const code = payload.code ?? payload.error?.code;
+  const reason = payload.reason || payload.error?.reason || '';
+  const message = payload.message || payload.msg || payload.error?.message || '';
+  const numericCode = Number(code);
+  if ((Number.isFinite(numericCode) && numericCode >= 400) || /error|fail/i.test(String(reason || message))) {
+    return [code ? `code=${code}` : '', reason ? `reason=${reason}` : '', message ? `message=${message}` : '']
+      .filter(Boolean)
+      .join(', ') || JSON.stringify(payload).slice(0, 300);
+  }
+  return null;
+}
+
 // ════════════════════════════════════════════════
 // 1. 文本 chat completions
 // ════════════════════════════════════════════════
@@ -160,6 +174,10 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
       );
       if (submitRes.status >= 400) {
         throw new Error(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
+      }
+      const businessError = extractProviderBusinessError(submitRes.data);
+      if (businessError) {
+        throw new Error(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} provider error: ${businessError}`);
       }
       _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
       const urls = extractImageUrlsFromSyncPayload(submitRes.data);

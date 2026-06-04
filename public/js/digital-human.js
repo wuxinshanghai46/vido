@@ -6885,9 +6885,17 @@
   function renderLuxuryKeyframeErrorDetails(details = null) {
     const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean).slice(0, 8) : [];
     if (!attempts.length) return '';
+    const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
+    const firstProviderFail = attempts.find(a => !a.ok && !a.qa);
+    const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true);
+    const summaryParts = [
+      firstProviderFail ? `首个生成通道 ${label(firstProviderFail) || '图片模型'} 未返回可用图片：${String(firstProviderFail.error || '未知错误').slice(0, 140)}` : '',
+      firstQaFail ? `后续候选图已出图但被视觉 QA 拒绝：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
+    ].filter(Boolean);
     return `<div class="dh-lux-error-attempts">
+      ${summaryParts.length ? `<div class="dh-lux-error-summary">${summaryParts.map(x => `<span>${escapeHtml(x)}</span>`).join('')}</div>` : ''}
       ${attempts.map((a, i) => {
-        const model = [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/');
+        const model = label(a);
         const img = a.image_url || a.preview_url || '';
         const qaReason = [
           ...(Array.isArray(a.qa?.major_mismatches) ? a.qa.major_mismatches : []),
@@ -6973,14 +6981,41 @@
     if (!segments.length) return '';
     const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
     const ratio = String(state.luxuryAd.outputRatio || '9:16');
+    const manifest = state.luxuryAd.assetManifest
+      || segments.find(x => x?.asset_manifest)?.asset_manifest
+      || keyframes.find(x => x?.asset_manifest)?.asset_manifest
+      || null;
+    const locks = state.luxuryAd.visualLocks
+      || segments.find(x => x?.visual_locks)?.visual_locks
+      || keyframes.find(x => x?.visual_locks)?.visual_locks
+      || null;
+    const items = Array.isArray(manifest?.items) ? manifest.items.slice(0, 6) : [];
+    const lockRows = [
+      ['真实场景', locks?.reality_lock?.scene_basis || locks?.reality_lock?.prompt],
+      ['产品保真', locks?.product_lock?.subject || locks?.product_lock?.prompt],
+      ['人物一致', locks?.character_lock?.prompt],
+      ['场景连续', locks?.scene_lock?.scene_basis || locks?.scene_lock?.prompt],
+      ['UI浮层', locks?.ui_lock?.prompt],
+      ['风格边界', locks?.style_lock?.prompt],
+    ].filter(([, value]) => value).slice(0, 6);
     return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板">
       <div class="dh-lux-sheet-head">
         <div>
           <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '高定广告片分镜板')}</b>
-          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard</span>
+          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · 资产锁与 QA 已融合到每镜</span>
         </div>
-        <em>Storyboard Sheet</em>
+        <em>Storyboard Workbench</em>
       </div>
+      ${(items.length || lockRows.length) ? `<div class="dh-lux-sheet-locks">
+        ${items.length ? `<div class="dh-lux-sheet-lock-group">
+          <small>资产合同</small>
+          <div>${items.map((item, i) => `<span><b>${escapeHtml(luxuryRoleLabel(item.role))}</b>${escapeHtml(item.name || item.observed || `素材 ${i + 1}`)}</span>`).join('')}</div>
+        </div>` : ''}
+        ${lockRows.length ? `<div class="dh-lux-sheet-lock-group">
+          <small>视觉锁</small>
+          <div>${lockRows.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(String(value || '').slice(0, 80))}</span>`).join('')}</div>
+        </div>` : ''}
+      </div>` : ''}
       <div class="dh-lux-sheet-grid">
         ${segments.map((seg, i) => {
           const kf = keyframes[i] || {};
@@ -6999,6 +7034,7 @@
               <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
               <div><dt>ACTION</dt><dd>${escapeHtml(action || luxuryShotContentPrompt(seg))}</dd></div>
               <div><dt>UI/VFX</dt><dd>${escapeHtml(ui || 'none')}</dd></div>
+              <div><dt>QA</dt><dd>${renderLuxuryFrameQaDimensions(kf) || '<span class="dh-lux-sheet-qa-pending">等待质检</span>'}</dd></div>
             </dl>
           </article>`;
         }).join('')}
@@ -7097,7 +7133,6 @@
         <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>重新生成全部分镜</button>
       </div>
       ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>分镜生成已停止</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
-      ${renderLuxuryAssetLocksPanel(segments, keyframes)}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {
       const kf = keyframes[i] || {};
@@ -7538,7 +7573,12 @@
         throw err;
       }
       if (r.status === 'done' && r.result) return r.result;
-      if (r.status === 'error') throw new Error(r.error || '分镜生成失败');
+      if (r.status === 'error') {
+        const err = new Error(r.error || '分镜生成失败');
+        err.data = { code: r.code || r.details?.code || '', details: r.details || {} };
+        err.status = r.http_status || r.status_code || 422;
+        throw err;
+      }
       if (r.status && r.status !== lastStatus) {
         lastStatus = r.status;
         const elapsed = Math.max(1, Math.round((Date.now() - started) / 1000));
@@ -7564,6 +7604,23 @@
   function luxuryKeyframeErrorMessage(err) {
     const code = String(err?.data?.code || err?.code || '').trim();
     const msg = String(err?.message || '').trim();
+    const attempts = Array.isArray(err?.data?.details?.attempts) ? err.data.details.attempts : [];
+    if (attempts.length) {
+      const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
+      const gptImage2 = attempts.find(a => /gpt-image-2/i.test(label(a)));
+      const qaRejectedAttempt = attempts.find(a => a.qa && a.qa.pass !== true);
+      const allQaRejected = attempts.some(a => a.qa) && attempts.filter(a => a.qa).every(a => a.qa.pass !== true);
+      if (gptImage2 && !gptImage2.ok && /500|Internal Server Error|provider error|未返回图片|no image|未返回图片数据/i.test(String(gptImage2.error || ''))) {
+        return [
+          '分镜生成已停止：DeyunAI GPT Image 2 通道返回 500，未返回可用图片数据。',
+          qaRejectedAttempt ? '后续图片候选已生成，但视觉 QA 判定画面与剧本/资产锁不一致。' : '',
+          '这不是“余额不足”，需要检查 GPT Image 2 企业接口参数/通道状态，同时按候选图 QA 原因调整镜头合同或参考图。',
+        ].filter(Boolean).join('');
+      }
+      if (allQaRejected) {
+        return '分镜生成已停止：图片候选已生成，但全部未通过视觉 QA，主要是画面主体、场景、人物一致性或资产锁与剧本不一致。请展开候选明细查看具体模型和被拒绝图片。';
+      }
+    }
     const qaFailed = code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
       || /QA未通过|剧本一致性|storyboard[_\s-]*match|Wrong product|Wrong scene|Missing required|视觉质检.*拒绝|分镜图.*不一致/i.test(msg);
     if (code === 'LUXURY_KEYFRAME_QA_UNAVAILABLE') {

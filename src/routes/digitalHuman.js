@@ -3912,9 +3912,11 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
     prompt = prompt.replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200F\uFEFF]/g, '');
   }
 
-  const size = /^\d+x\d+$/i.test(String(resolution || ''))
+  const size = String(model || '').toLowerCase() === 'gpt-image-2'
+    ? 'auto'
+    : (/^\d+x\d+$/i.test(String(resolution || ''))
     ? String(resolution).toLowerCase()
-    : _outputSizeString(aspectRatio, outputSize);
+    : _outputSizeString(aspectRatio, outputSize));
 
   const axios = require('axios');
   // 经线上对照测试：nano-banana / nano-banana-pro 走 /v1 国内通道（200 SUCCEED）；
