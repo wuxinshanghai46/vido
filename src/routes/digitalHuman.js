@@ -4038,9 +4038,11 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
   const m = (dy?.models || []).find(x => x.id === model && x.enabled !== false);
   if (!dy || !m) throw new Error(`deyunai 未启用 ${model}`);
 
-  const size = /^\d+x\d+$/i.test(String(resolution || ''))
-    ? String(resolution).toLowerCase()
-    : _outputSizeString(aspectRatio, outputSize);
+  const size = String(model || '').toLowerCase() === 'gpt-image-2'
+    ? 'auto'
+    : (/^\d+x\d+$/i.test(String(resolution || ''))
+      ? String(resolution).toLowerCase()
+      : _outputSizeString(aspectRatio, outputSize));
   const dyClient = require('../services/deyunaiService');
   console.log(`[DH/images] 调 deyunai ${model} (refs=${(referenceImages || []).filter(Boolean).length}, prompt=${prompt.length}c)`);
   const r = await dyClient.generateImage({
@@ -14867,6 +14869,44 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           outputSize,
           preferredModel: model.model_id,
         });
+      }
+      if (modelId === 'gpt-image-2') {
+        const gptRefs = referenceImages.filter(Boolean);
+        const runGptImage2 = (refsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
+          model: model.model_id,
+          prompt: promptForAttempt,
+          aspectRatio: safeAspectRatio,
+          filename: `${filename}_deyunai_${idx}${suffix}`,
+          destDir,
+          referenceImages: refsForMode,
+          outputSize,
+        });
+        try {
+          return await runGptImage2(gptRefs, '');
+        } catch (err) {
+          if (!gptRefs.length || !/GPT Image 2 edits|provider error|code=500|Internal Server Error|PANXXXO100IFR/i.test(String(err?.message || err))) {
+            throw err;
+          }
+          addAttempt(model, false, err, {
+            prompt_chars: Array.from(String(promptForAttempt || '')).length,
+            fallback_mode: 'gpt-image-2-edits-full-refs',
+            reference_count: gptRefs.length,
+          });
+          console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed; retrying with primary reference only:', shortError(err));
+        }
+        if (gptRefs.length > 1) {
+          try {
+            return await runGptImage2(gptRefs.slice(0, 1), '_primary_ref');
+          } catch (err) {
+            addAttempt(model, false, err, {
+              prompt_chars: Array.from(String(promptForAttempt || '')).length,
+              fallback_mode: 'gpt-image-2-edits-primary-ref',
+              reference_count: 1,
+            });
+            console.warn('[DH/luxury-ad] deyunai gpt-image-2 primary-reference retry failed; falling back to text-to-image:', shortError(err));
+          }
+        }
+        return runGptImage2([], '_text_only');
       }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
