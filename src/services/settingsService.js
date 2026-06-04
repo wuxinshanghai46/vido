@@ -178,6 +178,7 @@ const PROVIDER_PRESETS = {
     { id: 'qwen-image',              name: 'Qwen-Image',                                      type: 'image', use: 'image', channel: 'cn' },
     { id: 'doubao-seedream-4-0-250828', name: '豆包 Seedream 4.0（图像编辑）',                 type: 'image', use: 'image', channel: 'cn' },
     { id: 'seedream-3.0',            name: '豆包 Seedream 3.0',                              type: 'image', use: 'image', channel: 'cn' },
+    { id: 'gpt-image-2',             name: 'GPT Image 2（OpenAI · 海外）',                   type: 'image', use: 'image', channel: 'overseas' },
     { id: 'gpt-image-1',             name: 'GPT Image-1（OpenAI · 海外）',                   type: 'image', use: 'image', channel: 'overseas' },
     { id: 'dall-e-3',                name: 'DALL-E 3（OpenAI · 海外）',                      type: 'image', use: 'image', channel: 'overseas' },
     { id: 'dall-e-2',                name: 'DALL-E 2（OpenAI · 海外）',                      type: 'image', use: 'image', channel: 'overseas' },

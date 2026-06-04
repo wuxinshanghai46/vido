@@ -239,6 +239,7 @@ const IMAGE_PRICING = {
   'mxapi-draw-4-5':                    0.04,
   'mxapi-seedream':                    0.04,
   // 漫路（deyunai）聚合 — 图像（USD/张，按官方价兜底）
+  'gpt-image-2':                       0.04,
   'gpt-image-1':                       0.04,
   'dall-e-3':                          0.04,
   'dall-e-2':                          0.02,

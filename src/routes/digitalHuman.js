@@ -4021,9 +4021,10 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
 
 async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRatio, filename, destDir, referenceImages = [], outputSize = 'standard', resolution = '' }) {
   if (!model) throw new Error('missing image model');
-  if (typeof prompt === 'string' && prompt.length > 2000) {
+  const promptCap = String(model || '').toLowerCase() === 'gpt-image-2' ? 30000 : 2000;
+  if (typeof prompt === 'string' && prompt.length > promptCap) {
     const original = prompt.length;
-    prompt = Array.from(prompt).slice(0, 2000).join('');
+    prompt = Array.from(prompt).slice(0, promptCap).join('');
     console.warn(`[DH/images] ${model} prompt ${original} 字符 → 截断到 ${prompt.length}`);
   }
   if (typeof prompt === 'string') {
@@ -14825,9 +14826,14 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const candidateImageUrl = outPath => (outPath && fs.existsSync(outPath))
     ? `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(outPath)}`
     : '';
-  const promptWithRepair = () => repairInstruction
-    ? _luxuryCapImageModelPrompt([repairInstruction, currentPrompt].filter(Boolean).join(' '), 1850)
-    : _luxuryCapImageModelPrompt(currentPrompt, 1850);
+  const promptWithRepair = (model = null) => {
+    const modelId = String(model?.model_id || model?.model || '').toLowerCase();
+    const maxChars = modelId === 'gpt-image-2' ? 12000 : 1850;
+    const fullPrompt = repairInstruction
+      ? [repairInstruction, currentPrompt].filter(Boolean).join(' ')
+      : currentPrompt;
+    return _luxuryCapImageModelPrompt(fullPrompt, maxChars);
+  };
   const runSeedream = async (model, suffix, promptForAttempt) => {
     if (!primary) throw new Error('缺少主商品/参考图，无法生成高定广告分镜');
     const avatarService = require('../services/avatarService');
@@ -15004,13 +15010,18 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     String(model?.provider_id || '').toLowerCase() === 'topview'
     || String(model?.model_id || '').toLowerCase().startsWith('topview-')
   );
+  const hasRunnableDeyunaiGptImage2Model = configuredModelsAll.some(model =>
+    String(model?.provider_id || '').toLowerCase() === 'deyunai'
+    && String(model?.model_id || '').toLowerCase() === 'gpt-image-2'
+  );
+  const hasRunnableCommercialKeyframeModel = hasRunnableTopviewKeyframeModel || hasRunnableDeyunaiGptImage2Model;
   const topviewProviderHint = hasRunnableTopviewKeyframeModel
     ? 'Topview 图像编辑模型已可用于当前分镜阶段，系统会继续按配置尝试。'
     : '当前生产环境没有可运行的 Topview 图像编辑模型（缺少 provider/API Key/UID 或未启用），系统不会把它当作已可用能力。';
   if (
     hasGeneratedPresenterGuidanceRef
     && !hasStrictIdentityReference
-    && !hasRunnableTopviewKeyframeModel
+    && !hasRunnableCommercialKeyframeModel
     && process.env.VIDO_LUXURY_ALLOW_DEYUNAI_GENERATED_PRESENTER_KEYFRAMES !== '1'
   ) {
     const configuredLabels = configuredModelsAll
@@ -15041,7 +15052,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
 
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
-    const attemptPrompt = promptWithRepair();
+    const attemptPrompt = promptWithRepair(model);
     const attemptPromptChars = Array.from(String(attemptPrompt || '')).length;
     try {
       const outPath = await runCandidate(model, i + 1, attemptPrompt);

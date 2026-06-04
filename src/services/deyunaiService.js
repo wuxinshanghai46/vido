@@ -41,8 +41,16 @@ function buildUrl(path, modelId) {
   return BASE_HOST + prefix + path;
 }
 
-function buildImageUrl(path) {
-  return BASE_HOST + '/v1' + path;
+function buildImageUrl(path, modelId) {
+  return buildUrl(path, modelId);
+}
+
+function buildEnterpriseImageUrl(path) {
+  return BASE_HOST + '/ent/v1' + path;
+}
+
+function isGptImage2Model(modelId) {
+  return String(modelId || '').toLowerCase() === 'gpt-image-2';
 }
 
 function buildHeaders(modelId, options = {}) {
@@ -53,6 +61,11 @@ function buildHeaders(modelId, options = {}) {
   };
   if (!options.forceDomestic && isOverseasModel(modelId)) headers.vendor = 'API_VENDOR';
   return headers;
+}
+
+function extractImageUrlsFromSyncPayload(payload) {
+  const arr = Array.isArray(payload?.data) ? payload.data : [];
+  return arr.map(x => x?.url || x?.b64_json || '').filter(Boolean);
 }
 
 // ════════════════════════════════════════════════
@@ -124,15 +137,46 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
+    if (isGptImage2Model(model)) {
+      const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 14);
+      const isEdit = refs.length > 0;
+      const body = {
+        prompt,
+        background: 'auto',
+        n,
+        output_compression: 100,
+        output_format: 'png',
+        quality: 'auto',
+        size: size || 'auto',
+      };
+      if (isEdit) {
+        body.images = refs.map(image_url => ({ image_url }));
+        body.input_fidelity = 'high';
+      }
+      const submitRes = await axios.post(
+        buildEnterpriseImageUrl(isEdit ? '/images/edits' : '/images/generations'),
+        body,
+        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, validateStatus: () => true }
+      );
+      if (submitRes.status >= 400) {
+        throw new Error(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
+      }
+      _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
+      const urls = extractImageUrlsFromSyncPayload(submitRes.data);
+      if (!urls.length) throw new Error('漫路 GPT Image 2 未返回图片数据: ' + JSON.stringify(submitRes.data).slice(0, 300));
+      _ok = true;
+      return { urls, taskId: _taskId, raw: submitRes.data };
+    }
+
     const body = { model, prompt, n, size };
     if (Array.isArray(referenceImages) && referenceImages.length) {
       body.image_url = referenceImages[0];
       if (referenceImages.length > 1) body.image_urls = referenceImages;
     }
     const submitRes = await axios.post(
-      buildImageUrl('/images/generations'),
+      buildImageUrl('/images/generations', model),
       body,
-      { headers: buildHeaders(model, { forceDomestic: true }), timeout: 30000, validateStatus: () => true }
+      { headers: buildHeaders(model), timeout: 30000, validateStatus: () => true }
     );
     if (submitRes.status >= 400) {
       throw new Error(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
@@ -155,8 +199,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
     while (Date.now() - start < timeoutMs) {
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
       const queryRes = await axios.get(
-        buildImageUrl(`/images/generations/${_taskId}`),
-        { headers: buildHeaders(model, { forceDomestic: true }), timeout: 15000 }
+        buildImageUrl(`/images/generations/${_taskId}`, model),
+        { headers: buildHeaders(model), timeout: 15000 }
       );
       const d = queryRes.data?.data || {};
       if (d.task_status === 'succeed') {
