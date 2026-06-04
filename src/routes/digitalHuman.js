@@ -642,12 +642,21 @@ function _pickRunnablePipelineModel(stageId) {
   }
 }
 
-function _pickRunnablePipelineModels(stageId) {
+function _luxuryStageRequiresAdminConfig(stageId = '') {
+  return /^luxury_ad\.(presenter_seed|scene_seed|subject_evidence_seed|keyframe|keyframe_qa|keyframe_repair|video)$/i.test(String(stageId || ''));
+}
+
+function _pickRunnablePipelineModels(stageId, options = {}) {
   try {
     const pms = require('../services/pipelineModelService');
-    const list = typeof pms.pickAllEnabledWithDefault === 'function'
+    const useDefault = options.withDefault !== undefined
+      ? options.withDefault !== false
+      : !_luxuryStageRequiresAdminConfig(stageId);
+    const list = useDefault && typeof pms.pickAllEnabledWithDefault === 'function'
       ? pms.pickAllEnabledWithDefault(stageId)
-      : [_pickPipelineModel(stageId)].filter(Boolean);
+      : (typeof pms.pickAllEnabled === 'function'
+        ? pms.pickAllEnabled(stageId)
+        : [_pickPipelineModel(stageId)].filter(Boolean));
     return (list || [])
       .filter(m => m && m.enabled !== false)
       .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999))
@@ -1776,7 +1785,7 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
   const providers = Array.isArray(settings.providers) ? settings.providers : [];
   const stageId = options.stageId || 'luxury_ad.keyframe_qa';
   const strictSingleCandidate = options.strictSingleCandidate === true;
-  const allowAutoVlmFallback = options.allowAutoVlmFallback !== false;
+  const allowAutoVlmFallback = options.allowAutoVlmFallback === true && !_luxuryStageRequiresAdminConfig(stageId);
   const configuredBase = (typeof pms.pickAllEnabled === 'function'
     ? pms.pickAllEnabled(stageId)
     : (pms.getStageConfig(stageId) || []))
@@ -2060,10 +2069,12 @@ function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = 'male',
   const gender = /female|woman|girl|女/i.test(String(guideGender || '')) ? 'female' : 'male';
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes, brief });
   return [
-    'REALISTIC PRESENTER SEED IMAGE for a premium commercial storyboard.',
+    'STRICT REALISTIC PRESENTER IDENTITY SEED IMAGE for a premium commercial storyboard.',
+    'This image will become the mandatory identity reference for every later keyframe that contains a human. Create a stable, reusable campaign actor, not a one-off poster model.',
     `Industry context: ${contract.industry}.`,
-    `Create one real adult ${gender} presenter / consultant / professional appropriate for this industry, medium shot, face clearly visible, natural expression, wardrobe matching the industry and brand tone.`,
-    'Use a neutral premium commercial background so this person can be reused across storyboard keyframes. Realistic skin texture, optical photography, not CGI, not illustration, no text, no logo, no extra people.',
+    `Create one real adult ${gender} presenter / consultant / professional appropriate for this industry, waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the industry and brand tone.`,
+    'Stable identity requirements: clear face impression, consistent age, hairstyle, skin tone, body proportions, outfit family and color palette. Avoid dramatic pose, heavy expression, sunglasses, mask, hat covering hair, profile-only face or cropped/hidden face.',
+    'Use a neutral premium commercial background so this exact person can be reused across storyboard keyframes. Realistic skin texture, optical photography, not CGI, not illustration, no text, no logo, no extra people.',
     productSubject ? `The campaign subject is ${_luxurySceneFriendlyProductSubject(productSubject)}; do not turn this seed into a product-only shot.` : '',
   ].filter(Boolean).join(' ');
 }
@@ -2129,6 +2140,67 @@ async function _generateLuxurySeedAsset(req, {
   };
 }
 
+async function _checkLuxuryPresenterSeedQuality(req, {
+  seedUrl = '',
+  productSubject = '',
+  guideGender = '',
+  scenes = [],
+} = {}) {
+  const url = String(seedUrl || '').trim();
+  if (!url) {
+    const err = new Error('Presenter seed image is missing.');
+    err.status = 422;
+    err.code = 'LUXURY_PRESENTER_SEED_MISSING';
+    throw err;
+  }
+  const sceneHint = (Array.isArray(scenes) ? scenes : [])
+    .slice(0, 4)
+    .map((s, i) => `${i + 1}. ${[s.title, s.objective, s.visual, s.action, s.environment_lock].filter(Boolean).join(' ')}`)
+    .join('\n')
+    .slice(0, 900);
+  const prompt = [
+    'You are the strict casting QA gate for a text-only high-end commercial ad.',
+    'Image 1 is a generated presenter identity seed. It will be used as the mandatory identity reference for all later human keyframes.',
+    'Return ONLY compact JSON, no markdown.',
+    'Schema: {"pass":boolean,"score":0-100,"realism":0-100,"face_visible":boolean,"identity_lockable":boolean,"industry_fit":boolean,"major_issues":[],"reason":"brief reason"}',
+    'Pass only if this looks like a real adult human commercial actor captured by a real camera, not CGI, not a digital avatar, not a plastic AI face, not a fashion poster, and not a cropped/hidden-face image.',
+    'The face must be clear enough to lock identity later: visible eyes, hairstyle, age impression, skin tone and outfit family.',
+    'Hard fail if there are multiple people, sunglasses/mask/hat hiding identity, unreadable face, child, celebrity lookalike, mannequin, waxy skin, illustration, watermark, text, logo, or unrelated product-only image.',
+    guideGender ? `Requested presenter gender/style hint: ${String(guideGender).slice(0, 80)}.` : '',
+    productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}.` : '',
+    sceneHint ? `Storyboard context: ${sceneHint}` : '',
+  ].filter(Boolean).join(' ');
+  const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [await _imageUrlToDataUrl(req, url)]);
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const realism = Math.max(0, Math.min(100, Number(parsed.realism) || 0));
+  const issues = _cleanQaList(parsed.major_issues, 120, 5);
+  const qa = {
+    pass: parsed.pass === true
+      && score >= 82
+      && realism >= 78
+      && parsed.face_visible === true
+      && parsed.identity_lockable === true
+      && parsed.industry_fit === true
+      && issues.length === 0,
+    score,
+    realism,
+    face_visible: parsed.face_visible === true,
+    identity_lockable: parsed.identity_lockable === true,
+    industry_fit: parsed.industry_fit === true,
+    major_issues: issues,
+    reason: String(parsed.reason || '').slice(0, 220),
+    provider,
+  };
+  if (!qa.pass) {
+    const err = new Error(`Generated presenter seed did not pass identity QA: ${qa.reason || issues.join('; ') || 'quality below threshold'}`);
+    err.status = 422;
+    err.code = 'LUXURY_PRESENTER_SEED_QA_FAILED';
+    err.details = qa;
+    throw err;
+  }
+  return qa;
+}
+
 async function _prepareLuxuryStoryboardSeedAssets(req, {
   scenes = [],
   productSubject = '',
@@ -2171,7 +2243,13 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
       err.details = { stage_id: 'luxury_ad.presenter_seed', attempts: seed.attempts || [] };
       throw err;
     }
-    assets.presenter = { ...seed, source: 'generated_presenter_seed' };
+    const seedQa = await _checkLuxuryPresenterSeedQuality(req, {
+      seedUrl: seed.url,
+      productSubject,
+      guideGender,
+      scenes,
+    });
+    assets.presenter = { ...seed, source: 'generated_presenter_seed', qa: seedQa };
     assets.used.push('luxury_ad.presenter_seed');
   }
 
@@ -2352,6 +2430,237 @@ function _buildLuxuryReferenceCharacterLock(visualReferenceBrief = null, personR
   };
 }
 
+function _luxuryLockCleanText(value = '', max = 220) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function _luxuryInferAssetRole(asset = {}, meta = null) {
+  const text = [
+    asset.role,
+    asset.type,
+    asset.kind,
+    asset.name,
+    meta?.type,
+    meta?.observed,
+    meta?.must_keep,
+    meta?.usage,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/person|people|human|actor|presenter|model|face|portrait|真人|人物|演员|主持|讲解|顾问|店长/.test(text)) return 'person';
+  if (/ui|interface|screen|app|dashboard|screenshot|界面|截图|后台|看板|订单|弹窗/.test(text)) return 'ui';
+  if (/scene|room|store|shop|showroom|space|interior|exterior|office|restaurant|clinic|factory|warehouse|场景|门店|店铺|展厅|空间|办公室|餐厅|诊所|工厂|仓库/.test(text)) return 'scene';
+  if (/style|competitor|mood|tone|lighting|reference|竞品|风格|光线|色调|构图/.test(text)) return 'style';
+  if (/detail|material|texture|prop|tool|paper|phone|package|sample|道具|细节|材质|纹理|手机|单据|包装|样品/.test(text)) return 'prop';
+  if (/product|goods|sku|pack|logo|brand|material|产品|商品|包装|品牌|材料/.test(text)) return 'product';
+  return 'mixed';
+}
+
+function _luxuryAssetManifestLine(item = {}) {
+  return [
+    item.role ? `${item.role}` : '',
+    item.name ? `name=${item.name}` : '',
+    item.observed ? `observed=${item.observed}` : '',
+    item.must_keep ? `keep=${item.must_keep}` : '',
+    item.usage ? `use=${item.usage}` : '',
+    item.avoid ? `avoid=${item.avoid}` : '',
+  ].filter(Boolean).join('; ');
+}
+
+function _buildLuxuryAssetManifest({
+  visualReferenceBrief = null,
+  briefReferenceAssets = [],
+  productAsset = null,
+  personAsset = null,
+  referenceAssets = [],
+  backgroundUrl = '',
+  referenceImages = [],
+  productSubject = '',
+} = {}) {
+  const brief = _normalizeLuxuryVisualReferenceBrief(visualReferenceBrief);
+  const items = [];
+  const push = (asset = {}, role = '', source = '', index = 0, meta = null, priority = 50) => {
+    if (!asset || typeof asset !== 'object') return;
+    const url = _luxuryBriefAssetUrl(asset) || String(asset.image || asset.src || '').trim();
+    const name = _luxuryLockCleanText(asset.name || asset.title || asset.id || asset.filename || '', 90);
+    if (!url && !name && !meta) return;
+    const inferredRole = role || _luxuryInferAssetRole(asset, meta);
+    items.push({
+      index: Math.max(1, Math.round(Number(index || items.length + 1)) || items.length + 1),
+      role: inferredRole,
+      source,
+      url,
+      name,
+      observed: _luxuryLockCleanText(meta?.observed || asset.description || asset.observed || '', 180),
+      must_keep: _luxuryLockCleanText(meta?.must_keep || asset.must_keep || asset.keep || '', 180),
+      avoid: _luxuryLockCleanText(meta?.avoid || asset.avoid || asset.do_not_use || '', 180),
+      usage: _luxuryLockCleanText(meta?.usage || asset.usage || asset.role_note || '', 160),
+      priority,
+    });
+  };
+
+  if (productAsset && (productAsset.url || productAsset.image_url || productAsset.name)) {
+    push(productAsset, 'product', 'product_asset', 1, {
+      observed: productSubject,
+      must_keep: 'product category, shape, color, material, package/logo details if visible',
+      avoid: 'do not redesign, replace category, invent fake text, or turn it into generic luxury props',
+      usage: 'primary product lock for all product-evidence shots',
+    }, 100);
+  }
+  if (personAsset && (personAsset.url || personAsset.image_url || personAsset.name || personAsset.id)) {
+    push(personAsset, 'person', 'person_asset', 1, {
+      observed: personAsset.name || 'uploaded person reference',
+      must_keep: 'same face impression, age, hair, body proportion, outfit family and gender presentation',
+      avoid: 'do not invent a different actor or beauty-poster model',
+      usage: 'identity lock for every human shot',
+    }, 100);
+  }
+  (Array.isArray(briefReferenceAssets) ? briefReferenceAssets : []).slice(0, 8).forEach((asset, i) => {
+    const meta = _luxuryBriefAssetMeta(brief, i + 1);
+    push(asset, '', 'brief_reference_asset', i + 1, meta, 90 - i);
+  });
+  (Array.isArray(referenceAssets) ? referenceAssets : []).slice(0, 8).forEach((asset, i) => {
+    push(asset, '', 'shot_reference_asset', i + 1, null, 70 - i);
+  });
+  if (backgroundUrl) {
+    push({ url: backgroundUrl, name: 'main background/product image' }, 'scene', 'background_url', 1, {
+      observed: 'main uploaded image used as scene/product anchor',
+      must_keep: 'real spatial layout, product evidence, lighting direction and perspective when applicable',
+      avoid: 'do not replace with unrelated showroom, office, factory, retail shelf or fantasy location',
+      usage: 'main visual anchor',
+    }, 80);
+  }
+  (Array.isArray(referenceImages) ? referenceImages : []).slice(0, 8).forEach((url, i) => {
+    if (!url || url === backgroundUrl) return;
+    push({ url, name: `ordered reference image ${i + 1}` }, 'mixed', 'reference_image', i + 1, {
+      observed: 'ordered uploaded reference for the matching storyboard/keyframe',
+      must_keep: 'preserve the intended product, scene, prop or style evidence according to the shot',
+      avoid: 'do not treat this as permission to change product category or actor identity',
+      usage: 'shot-level visual anchor',
+    }, 60 - i);
+  });
+
+  const unique = [];
+  const seen = new Set();
+  items
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    .forEach(item => {
+      const key = [item.role, item.source, item.url, item.name].join('|');
+      if (seen.has(key)) return;
+      seen.add(key);
+      unique.push(item);
+    });
+
+  return {
+    product_subject: _luxuryLockCleanText(productSubject || brief?.product_subject || '', 120),
+    summary: _luxuryLockCleanText(brief?.summary || '', 260),
+    people: _luxuryLockCleanText(brief?.people || '', 180),
+    scene: _luxuryLockCleanText(brief?.scene || '', 220),
+    style: _luxuryLockCleanText(brief?.style || '', 180),
+    negative_constraints: _luxuryLockCleanText(brief?.negative_constraints || '', 240),
+    items: unique.slice(0, 14),
+  };
+}
+
+function _lockItemsByRole(assetManifest = {}, roles = []) {
+  const wanted = new Set((Array.isArray(roles) ? roles : [roles]).filter(Boolean));
+  return (Array.isArray(assetManifest.items) ? assetManifest.items : [])
+    .filter(item => wanted.has(item.role))
+    .slice(0, 6);
+}
+
+function _buildLuxuryVisualLocks({
+  assetManifest = null,
+  visualReferenceBrief = null,
+  productSubject = '',
+  brief = '',
+} = {}) {
+  const briefInfo = _normalizeLuxuryVisualReferenceBrief(visualReferenceBrief);
+  const manifest = assetManifest || _buildLuxuryAssetManifest({ visualReferenceBrief, productSubject });
+  const itemText = (roles) => _lockItemsByRole(manifest, roles).map(_luxuryAssetManifestLine).filter(Boolean).join(' | ');
+  const productItems = itemText(['product', 'mixed']);
+  const personItems = itemText(['person']);
+  const sceneItems = itemText(['scene']);
+  const propItems = itemText(['prop', 'detail']);
+  const uiItems = itemText(['ui']);
+  const styleItems = itemText(['style']);
+  const realScene = manifest.scene || briefInfo?.scene || 'industry-appropriate real working location from the user brief';
+  const subject = _luxuryLockCleanText(productSubject || manifest.product_subject || briefInfo?.product_subject || 'advertised subject', 120);
+  const realityPrompt = [
+    'REALITY LOCK: every keyframe must look like a real live-action commercial shot captured in a believable social/workplace setting, not an AI poster.',
+    `Real-world scene basis: ${realScene}.`,
+    'Prefer ordinary practical details: ceiling lights, real shelves/desks/counters, paper documents, phones, packages, tools, fingerprints, slight clutter, natural hand occlusion and imperfect human expression.',
+    'Use practical location light and real camera perspective. Avoid fantasy lighting, glossy render, plastic skin, over-clean showroom, generic luxury props, sci-fi decor and abstract background.',
+  ].join(' ');
+  const productPrompt = [
+    `PRODUCT LOCK: advertised subject is ${subject}.`,
+    productItems ? `Uploaded product/reference evidence: ${productItems}.` : '',
+    'Preserve category, shape, color, material, package/logo details when visible; do not redesign, rename, replace with cosmetics/perfume/beverage/phone/watch/jewelry/random stock goods.',
+  ].filter(Boolean).join(' ');
+  const scenePrompt = [
+    `SCENE LOCK: use the uploaded or inferred real environment as the campaign world: ${realScene}.`,
+    sceneItems ? `Scene references: ${sceneItems}.` : '',
+    'Do not jump to unrelated office, factory, warehouse, luxury boutique, technology lab, street, or empty studio unless the brief/reference explicitly asks for it.',
+  ].filter(Boolean).join(' ');
+  const characterPrompt = [
+    personItems ? `CHARACTER LOCK: uploaded person evidence: ${personItems}.` : '',
+    personItems ? 'All human shots must keep the same face impression, age, hairstyle, outfit family, body proportions and gender presentation; adapt pose and light only.' : '',
+  ].filter(Boolean).join(' ');
+  const propPrompt = [
+    propItems ? `PROP LOCK: recurring real props/evidence: ${propItems}.` : '',
+    'Use story-appropriate practical props such as phone, paper order, sample, box, counter, tool or screen only when they support the brief and uploaded references.',
+  ].filter(Boolean).join(' ');
+  const uiPrompt = [
+    uiItems ? `UI LOCK: uploaded UI/interface evidence: ${uiItems}.` : '',
+    'If UI is needed, keep it as subtle post-production style overlay anchored to phone/screen/action; do not cover face, hands, product evidence or create unreadable fake brand text.',
+  ].filter(Boolean).join(' ');
+  const stylePrompt = [
+    styleItems || manifest.style ? `STYLE LOCK: ${[manifest.style, styleItems].filter(Boolean).join(' | ')}.` : '',
+    'Style may guide color and camera feeling only; it must not override product identity, real scene, actor identity or product category.',
+  ].filter(Boolean).join(' ');
+  return {
+    asset_manifest: manifest,
+    reality_lock: { enabled: true, scene_basis: realScene, prompt: realityPrompt },
+    character_lock: characterPrompt ? { enabled: true, prompt: characterPrompt } : null,
+    product_lock: { enabled: true, subject, prompt: productPrompt },
+    scene_lock: { enabled: true, scene_basis: realScene, prompt: scenePrompt },
+    prop_lock: { enabled: true, prompt: propPrompt },
+    ui_lock: { enabled: true, prompt: uiPrompt },
+    style_lock: stylePrompt ? { enabled: true, prompt: stylePrompt } : null,
+  };
+}
+
+function _luxuryLocksPrompt(locks = null, max = 1300) {
+  if (!locks || typeof locks !== 'object') return '';
+  const parts = [
+    locks.reality_lock?.prompt,
+    locks.character_lock?.prompt,
+    locks.product_lock?.prompt,
+    locks.scene_lock?.prompt,
+    locks.prop_lock?.prompt,
+    locks.ui_lock?.prompt,
+    locks.style_lock?.prompt,
+  ].filter(Boolean);
+  const manifestLines = Array.isArray(locks.asset_manifest?.items)
+    ? locks.asset_manifest.items.slice(0, 8).map(_luxuryAssetManifestLine).filter(Boolean)
+    : [];
+  if (manifestLines.length) parts.unshift(`ASSET MANIFEST: ${manifestLines.join(' || ')}`);
+  return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function _attachLuxuryVisualLocks(scene = {}, locks = null) {
+  if (!locks || typeof locks !== 'object') return scene;
+  return {
+    ...scene,
+    asset_manifest: locks.asset_manifest || scene.asset_manifest || null,
+    visual_locks: locks,
+    reality_lock: locks.reality_lock || scene.reality_lock || null,
+    scene_lock: locks.scene_lock || scene.scene_lock || null,
+    prop_lock: locks.prop_lock || scene.prop_lock || null,
+    ui_lock: locks.ui_lock || scene.ui_lock || null,
+    style_lock: locks.style_lock || scene.style_lock || null,
+    product_lock: locks.product_lock || scene.product_lock || null,
+  };
+}
+
 async function _analyzeLuxuryBriefReferenceAssets(req, assets = [], { brief = '', productName = '' } = {}) {
   const list = (Array.isArray(assets) ? assets : [])
     .filter(x => x && (x.url || x.image_url || x.previewUrl))
@@ -2442,7 +2751,12 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     const value = String(url || '').trim();
     return !!value && !!generatedPresenterSeedUrl && value === generatedPresenterSeedUrl;
   };
-  const strictIdentityReferenceUrl = isGeneratedPresenterSeedRef(scene.identity_reference_image) ? '' : (scene.identity_reference_image || '');
+  const strictIdentityReferenceUrl = String(scene.identity_reference_image || generatedPresenterSeedUrl || '').trim();
+  const strictIdentityReferenceMode = strictIdentityReferenceUrl
+    ? (isGeneratedPresenterSeedRef(strictIdentityReferenceUrl)
+      ? 'strict_generated_presenter_seed_identity'
+      : 'strict_user_or_selected_identity')
+    : 'none';
   const expected = {
     shot: `${shotIndex + 1}/${totalShots}`,
     product_subject: _compactQaText(subject, 120),
@@ -2461,12 +2775,19 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     material_usage: _compactQaText(scene.material_usage || scene.material_hint || '', 180),
     generation_instruction: _compactQaText(scene.topview_prompt || scene.reference_prompt || scene.visual_prompt || '', 640),
     continuity_bible: _compactQaText(scene.continuity_bible || scene.brief_reference_summary || '', 760),
+    asset_manifest: scene.asset_manifest || scene.visual_locks?.asset_manifest || null,
+    reality_lock: scene.reality_lock || scene.visual_locks?.reality_lock || null,
+    character_lock: scene.character_lock || scene.visual_locks?.character_lock || null,
+    product_lock: scene.product_lock || scene.visual_locks?.product_lock || null,
+    scene_lock: scene.scene_lock || scene.visual_locks?.scene_lock || null,
+    prop_lock: scene.prop_lock || scene.visual_locks?.prop_lock || null,
+    ui_lock: scene.ui_lock || scene.visual_locks?.ui_lock || null,
     director_scene_type: _compactQaText(scene.scene_type_lock || scene.visual_contract?.scene_type || '', 120),
     director_allowed_environment: _compactQaText(scene.environment_lock || scene.visual_contract?.allowed_environment || '', 260),
     director_must_show: Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.slice(0, 8) : [],
     director_must_not_show: Array.isArray(scene.visual_contract?.must_not_show) ? scene.visual_contract.must_not_show.slice(0, 12) : [],
     director_qa_contract: _compactQaText(scene.qa_contract || scene.visual_contract?.qa_contract || scene.director_prompt || '', 760),
-    identity_reference_mode: strictIdentityReferenceUrl ? 'strict_user_or_selected_identity' : (generatedPresenterSeedUrl ? 'generated_presenter_seed_guidance_only' : 'none'),
+    identity_reference_mode: strictIdentityReferenceMode,
   };
   const images = [];
   const qaReferenceUrls = [
@@ -2476,7 +2797,6 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   ]
     .map(x => String(x || '').trim())
     .filter(Boolean)
-    .filter(x => !isGeneratedPresenterSeedRef(x))
     .filter((x, i, arr) => arr.indexOf(x) === i)
     .slice(0, 4);
   for (const url of qaReferenceUrls) {
@@ -2491,13 +2811,16 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'You are the strict final QA gate for a high-end commercial storyboard keyframe.',
     images.length > 1 ? `Images 1-${images.length - 1} are required visual references: identity, product/material, scene and style anchors when provided. Image ${images.length} is the generated keyframe to judge.` : 'The image is the generated keyframe to judge.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
+    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"asset_fidelity":0-100,"character_consistency":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"ui_overlay":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
     'Keep observed and reason under 80 characters. Keep major_mismatches to at most 3 short items, each under 80 characters.',
     'For major_mismatches and unrelated_subjects: return an empty array [] when there are none. Never output placeholder words such as "short", "none" or "n/a".',
     'Pass only if the generated keyframe visibly follows the confirmed storyboard content, advertised product category, material/scene subject, action and camera intention.',
-    'When identity_reference_mode is strict_user_or_selected_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
-    'When identity_reference_mode is generated_presenter_seed_guidance_only, do not fail only because the face differs from a generated seed; judge that a credible presenter exists, matches the required gender/style when specified, and follows the storyboard.',
+    'When identity_reference_mode is strict_user_or_selected_identity or strict_generated_presenter_seed_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
+    'A generated presenter seed is an internal identity lock, not loose inspiration. Treat it like a casting reference selected by the system from the user brief.',
     'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
+    'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
+    'Hard fail if uploaded product/person/scene/UI references are treated as generic inspiration instead of role-specific locks.',
+    'Score quality_dimensions strictly: realism means real commercial photography, asset_fidelity means uploaded/reference lock fidelity, character_consistency means same actor if required, scene_continuity means same real-world campaign setting, product_fidelity means product/category/package/material preservation, ui_overlay means subtle readable post-production UI without covering face/hands/product.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
     'Hard fail if the frame looks like an AI poster, CGI render, over-smoothed plastic face, mannequin, wax figure, fashion catalogue, jewelry store, cosmetics shelf, or illustrated concept art instead of a real live-action commercial frame.',
     'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
@@ -2512,11 +2835,34 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const majorMismatches = _cleanQaList(parsed.major_mismatches, 140, 8);
   const unrelatedSubjects = _cleanQaList(parsed.unrelated_subjects, 100, 8);
+  const rawDims = parsed.quality_dimensions && typeof parsed.quality_dimensions === 'object'
+    ? parsed.quality_dimensions
+    : {};
+  const dimScore = key => Math.max(0, Math.min(100, Number(rawDims[key]) || 0));
+  const qualityDimensions = {
+    realism: dimScore('realism'),
+    asset_fidelity: dimScore('asset_fidelity'),
+    character_consistency: dimScore('character_consistency'),
+    scene_continuity: dimScore('scene_continuity'),
+    product_fidelity: dimScore('product_fidelity'),
+    ui_overlay: dimScore('ui_overlay'),
+  };
+  const hasAssetLocks = !!(scene.asset_manifest || scene.visual_locks?.asset_manifest);
+  const hasCharacterLock = !!(scene.character_lock || scene.visual_locks?.character_lock || strictIdentityReferenceUrl);
+  const hasUiLock = !!(scene.ui_overlay || scene.ui_lock || scene.visual_locks?.ui_lock);
+  const qualityPass = qualityDimensions.realism >= 76
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= 76)
+    && (!hasCharacterLock || qualityDimensions.character_consistency >= 74)
+    && qualityDimensions.scene_continuity >= 72
+    && qualityDimensions.product_fidelity >= 74
+    && (!hasUiLock || qualityDimensions.ui_overlay >= 70);
   const qa = {
-    pass: parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0,
+    pass: parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
+    quality_dimensions: qualityDimensions,
+    quality_pass: qualityPass,
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -7820,7 +8166,17 @@ async function _createLuxuryHumanEnvironmentLayoutAnchor({ filename, destDir, as
 
 function _luxuryQaRepairInstruction(qa = null) {
   if (!qa) return '';
+  const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
+  const dimIssues = [
+    Number(dims.realism) > 0 && Number(dims.realism) < 76 ? `realism score too low (${dims.realism}); make it look like real commercial photography in a practical social/workplace scene` : '',
+    Number(dims.asset_fidelity) > 0 && Number(dims.asset_fidelity) < 76 ? `asset fidelity too low (${dims.asset_fidelity}); obey uploaded/reference product/person/scene locks` : '',
+    Number(dims.character_consistency) > 0 && Number(dims.character_consistency) < 74 ? `character consistency too low (${dims.character_consistency}); preserve the same actor identity when a person appears` : '',
+    Number(dims.scene_continuity) > 0 && Number(dims.scene_continuity) < 72 ? `scene continuity too low (${dims.scene_continuity}); keep the same real-world campaign setting` : '',
+    Number(dims.product_fidelity) > 0 && Number(dims.product_fidelity) < 74 ? `product fidelity too low (${dims.product_fidelity}); preserve product category, material, package and shape` : '',
+    Number(dims.ui_overlay) > 0 && Number(dims.ui_overlay) < 70 ? `UI overlay score too low (${dims.ui_overlay}); keep UI subtle, anchored, readable and non-obstructive` : '',
+  ].filter(Boolean);
   const issues = [
+    ...dimIssues,
     ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
     ...(Array.isArray(qa.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
     qa.observed || '',
@@ -7845,6 +8201,196 @@ function _luxuryQaRepairInstruction(qa = null) {
     cleanIssues.join('; '),
     'Generate a new image that visibly fixes every listed mismatch while keeping the same storyboard, product subject and camera intent. Do not repeat the failed composition.',
   ].join(' ');
+}
+
+function _luxuryQaFailureText(qa = null) {
+  if (!qa) return '';
+  const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
+  return [
+    ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
+    ...(Array.isArray(qa.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
+    qa.observed,
+    qa.reason,
+    Object.entries(dims)
+      .filter(([, value]) => Number(value) > 0 && Number(value) < 76)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(' '),
+  ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function _mergeLuxuryMustList(base = [], additions = [], max = 12) {
+  const list = [...(Array.isArray(base) ? base : []), ...(Array.isArray(additions) ? additions : [])]
+    .map(x => String(x || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return list.filter((x, i, arr) => arr.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).slice(0, max);
+}
+
+function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
+  productSubject = '',
+  aspectRatio = '16:9',
+  index = 0,
+  total = 1,
+} = {}) {
+  const failureText = _luxuryQaFailureText(qa).toLowerCase();
+  const dims = qa?.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
+  const contract = scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object'
+    ? { ...scene.strict_storyboard_contract }
+    : _buildLuxuryStrictStoryboardContract(scene, index, total, { productSubject, aspectRatio });
+  const originalMustShow = Array.isArray(contract.must_show) ? contract.must_show : [];
+  const originalMustNotShow = Array.isArray(contract.must_not_show) ? contract.must_not_show : [];
+  const mustShow = [];
+  const mustNotShow = [
+    'AI poster look, CGI render, illustration, waxy plastic skin, mannequin, fashion catalogue pose',
+    'unrelated product category, random luxury props, catalogue packshot when the storyboard requires a real action scene',
+    'generic empty background, scene replacement, wrong industry environment, wrong actor, missing required subject',
+  ];
+  const repairNotes = [];
+  const realismLow = Number(dims.realism) > 0 && Number(dims.realism) < 76;
+  const assetLow = Number(dims.asset_fidelity) > 0 && Number(dims.asset_fidelity) < 76;
+  const characterLow = Number(dims.character_consistency) > 0 && Number(dims.character_consistency) < 74;
+  const sceneLow = Number(dims.scene_continuity) > 0 && Number(dims.scene_continuity) < 72;
+  const productLow = Number(dims.product_fidelity) > 0 && Number(dims.product_fidelity) < 74;
+  const missedSubject = /missing|required subject|omits|does not show|未出现|缺少|没有|没按要求/.test(failureText);
+  const wrongScene = /wrong scene|unrelated.*scene|warehouse|factory|office|retail|exterior|interior|location|environment|场景|仓库|工厂|办公室|门店|外景|内景/.test(failureText);
+  const wrongProduct = /wrong product|unrelated subject|cosmetic|perfume|skincare|bottle|phone|watch|jewelry|beverage|产品|品类|香水|护肤|手机|珠宝|手表/.test(failureText);
+  const wrongActor = /different actor|identity|face|gender|hairstyle|outfit|人物|人脸|发型|性别|穿搭|换人/.test(failureText);
+
+  if (realismLow || /ai|cgi|poster|plastic|render|illustration|假|塑料|海报/.test(failureText)) {
+    repairNotes.push('realism');
+    mustShow.push('real live-action commercial photography in a practical real-world location, natural skin texture, real fabric, believable shadows and optical lens perspective');
+    mustNotShow.push('over-polished AI poster, CGI, 3D render, plastic skin, beauty-ad mannequin, floating surreal composition');
+  }
+  if (missedSubject || wrongProduct || productLow) {
+    repairNotes.push('required_subject');
+    mustShow.push(`the advertised subject evidence must be visibly readable as ${_luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || contract.product_subject || 'the advertised product/service')}`);
+    mustShow.push('the exact storyboard-required product/service/material/use moment in the same frame, not a generic substitute');
+    mustNotShow.push('cosmetics, perfume, skincare bottle, beverage bottle, phone, watch, jewelry, or unrelated consumer goods unless explicitly requested');
+  }
+  if (sceneLow || wrongScene) {
+    repairNotes.push('scene_environment');
+    mustShow.push('the same industry-appropriate real social/commercial setting required by the storyboard, with product evidence integrated into that location');
+    mustNotShow.push('jumping to a different warehouse, factory, office, boutique, retail shelf, exterior facade or empty studio unless the storyboard explicitly requires it');
+  }
+  if (characterLow || wrongActor || scene.character_lock || scene.identity_reference_image) {
+    repairNotes.push('character_identity');
+    mustShow.push('the same campaign presenter identity when a person appears: same age impression, gender, face impression, hairstyle, body proportions and outfit family');
+    mustNotShow.push('new random actor, changed gender, changed hairstyle, changed wardrobe family, hidden face, back-only person when the action requires presenter identity');
+  }
+  if (assetLow || scene.visual_locks || scene.asset_manifest) {
+    repairNotes.push('asset_fidelity');
+    mustShow.push('all uploaded or generated lock references must be treated as role-specific locks: person as identity, scene as place family, product as subject evidence, UI as post-production overlay guide');
+  }
+
+  const visualContract = {
+    ...(scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {}),
+    must_show: _mergeLuxuryMustList(scene.visual_contract?.must_show || contract.must_show, mustShow, 14),
+    must_not_show: _mergeLuxuryMustList(scene.visual_contract?.must_not_show || contract.must_not_show, mustNotShow, 14),
+    allowed_environment: wrongScene || sceneLow
+      ? _luxuryStrictText(contract.allowed_environment || scene.environment_lock || scene.visual_contract?.allowed_environment || 'the exact industry-appropriate real-world setting from this storyboard, not a substituted generic scene', 280)
+      : (scene.visual_contract?.allowed_environment || contract.allowed_environment),
+    qa_contract: [
+      'QA-REWRITTEN HARD CONTRACT:',
+      qa?.reason ? `Previous QA reason: ${_luxuryStrictText(qa.reason, 180)}.` : '',
+      qa?.observed ? `Previous observation: ${_luxuryStrictText(qa.observed, 180)}.` : '',
+      'The next keyframe must fix every listed failure and will be rejected if any required subject, real-world scene, presenter identity, product evidence or lock reference is missing or replaced.',
+    ].filter(Boolean).join(' '),
+    repair_notes: repairNotes,
+  };
+  const rewritten = {
+    ...scene,
+    visual_contract: visualContract,
+    qa_repair_contract: {
+      from_provider: qa?.provider || '',
+      score: qa?.score || 0,
+      dimensions: qa?.quality_dimensions || {},
+      repair_notes: repairNotes,
+      previous_reason: qa?.reason || '',
+      previous_observed: qa?.observed || '',
+    },
+    qa_contract: visualContract.qa_contract,
+  };
+  const rewrittenContract = {
+    ...contract,
+    must_show: _mergeLuxuryMustList(originalMustShow, mustShow, 14),
+    must_not_show: _mergeLuxuryMustList(originalMustNotShow, mustNotShow, 14),
+    qa_contract: visualContract.qa_contract,
+  };
+  const compiledPrompt = _compileLuxuryShotImagePrompt(rewritten, rewrittenContract, { aspectRatio });
+  return {
+    ...rewritten,
+    strict_storyboard_contract_required: true,
+    strict_storyboard_contract: rewrittenContract,
+    compiled_image_prompt: compiledPrompt,
+    prompt_preflight: {
+      ...(scene.prompt_preflight || {}),
+      pass: true,
+      mode: 'qa_rewritten_hard_contract',
+      repair_notes: repairNotes,
+    },
+  };
+}
+
+function _buildLuxuryQaRewrittenImagePrompt({
+  scene = {},
+  qa = null,
+  productSubject = '',
+  productLockPrompt = '',
+  subjectGuard = '',
+  refs = [],
+  hasAvatar = false,
+  personRequired = false,
+  characterLock = null,
+  aspectRatio = '16:9',
+  index = 0,
+  total = 1,
+} = {}) {
+  const repairedScene = _rewriteLuxuryShotContractFromQa(scene, qa, { productSubject, aspectRatio, index, total });
+  const hasAnyReference = Array.isArray(refs) && refs.length > 0;
+  const hasStoryLayoutReference = Array.isArray(refs) && (refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout');
+  const repairedContractPrompt = _buildLuxuryKeyframePrompt({
+    scene: repairedScene,
+    productSubject,
+    productLockPrompt,
+    subjectGuard,
+    hasAnyReference,
+    hasOnlyAvatarReference: false,
+    hasStoryLayoutReference,
+    hasAvatar,
+    characterLock,
+  });
+  const prompt = _buildLuxuryImageModelStrictPrompt({
+    scene: repairedScene,
+    productSubject,
+    productLockPrompt,
+    subjectGuard,
+    shotContractPrompt: repairedContractPrompt,
+    hasAnyReference,
+    hasStoryLayoutReference,
+    hasAvatar,
+    personRequired,
+    characterLock,
+    referenceRoleGuide: _luxuryKeyframeReferenceRoleGuide(refs, repairedScene),
+  });
+  return {
+    scene: repairedScene,
+    prompt,
+    repairInstruction: _luxuryQaRepairInstruction(qa),
+  };
+}
+
+function _luxuryQaContractRepairHook(opts = {}) {
+  return ({ qa = null, repairInstruction = '' } = {}) => {
+    const rewritten = _buildLuxuryQaRewrittenImagePrompt({
+      ...opts,
+      qa,
+    });
+    return {
+      prompt: rewritten.prompt,
+      repairInstruction: rewritten.repairInstruction || repairInstruction,
+      repair_notes: rewritten.scene?.qa_repair_contract?.repair_notes || [],
+      scene: rewritten.scene,
+    };
+  };
 }
 
 function _luxuryNeedsContinuousHuman(...parts) {
@@ -8551,6 +9097,7 @@ router.post('/luxury-ad/shot-rewrite', async (req, res) => {
       camera: segment.camera || segment.camera_label || segment.motion || '',
       style_note: segment.style_note || segment.other || '',
       topview_prompt: segment.topview_prompt || segment.reference_prompt || '',
+      ui_overlay: segment.ui_overlay || null,
       reference_index: segment.reference_index || 0,
     };
     const assetNotes = [
@@ -8670,6 +9217,12 @@ ${userInstruction}
         motion: String(x.motion || x.camera_label || _luxuryCameraLabel(camera)).trim(),
         topview_prompt: String(x.topview_prompt || x.reference_prompt || currentShot.topview_prompt || '').trim(),
         reference_prompt: String(x.reference_prompt || x.topview_prompt || currentShot.topview_prompt || '').trim(),
+        ui_overlay: _luxuryNormalizeUiOverlay(x.ui_overlay || x.uiOverlay || x.overlay_prompt || x.vfx_prompt || currentShot.ui_overlay || null, {
+          ...segment,
+          content_prompt: visual,
+          visual,
+          action,
+        }, brief),
         user_edited: true,
         ai_rewritten: true,
       },
@@ -8936,6 +9489,21 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       : '';
     const productSubject = _deriveLuxuryProductSubject({ text: brief, productName: product_name || visualReferenceBrief?.product_subject || '', assetSummary: enrichedAssetSummary });
     const productLockPrompt = _luxuryProductLockPrompt(productSubject);
+    const luxuryAssetManifest = _buildLuxuryAssetManifest({
+      visualReferenceBrief,
+      briefReferenceAssets,
+      productAsset: product_asset,
+      personAsset: person_asset,
+      referenceAssets: uploadedReferenceAssets,
+      referenceImages: uploadedReferenceAssets.map(x => x.url || x.image_url || x.previewUrl).filter(Boolean),
+      productSubject,
+    });
+    const luxuryVisualLocks = _buildLuxuryVisualLocks({
+      assetManifest: luxuryAssetManifest,
+      visualReferenceBrief,
+      productSubject,
+      brief,
+    });
     const continuousHuman = _luxuryNeedsContinuousHuman(brief, enrichedAssetSummary, productSubject, person_asset);
     const continuousHumanInstruction = continuousHuman
       ? '用户明确要求有真人从头贯穿整条视频：第 1 镜必须让同一位真人从外部入口或外部场景进入；中间每一镜都要让同一位真人带看、指向、触摸、讲解或引导观众；最后必须回到可坐下或面对镜头沟通的位置，收束到方案、性价比和售后服务。每一镜的画面和动作都必须出现同一位真人，不允许写成纯产品空镜或无人镜头。'
@@ -10164,6 +10732,12 @@ ${JSON.stringify(scenes, null, 2)}
           visual,
           display_visual: visual,
           topview_prompt: String(x.topview_prompt || x.reference_prompt || '').trim(),
+          ui_overlay: _luxuryNormalizeUiOverlay(x.ui_overlay || x.uiOverlay || x.overlay_prompt || x.vfx_prompt || null, {
+            ...x,
+            content_prompt: visual,
+            visual,
+            action,
+          }, brief),
           visual_prompt: String(x.visual_prompt || '').trim(),
           video_prompt: String(x.video_prompt || '').trim(),
           camera,
@@ -10263,6 +10837,12 @@ ${JSON.stringify(scenes, null, 2)}
       const referenceLabel = s.reference_label || `@参考${referenceIndex}`;
       const rawTopviewPrompt = String(s.topview_prompt || s.reference_prompt || '').trim();
       const cleanTopviewPrompt = productOnlyMaterialShot && _luxuryLooksLikeHumanInstruction(rawTopviewPrompt) ? '' : rawTopviewPrompt;
+      const uiOverlay = _luxuryNormalizeUiOverlay(s.ui_overlay || s.uiOverlay || s.overlay_prompt || s.vfx_prompt || null, {
+        ...s,
+        content_prompt: visual,
+        visual,
+        action,
+      }, brief);
       const scriptPurpose = _luxuryScriptPurposeLabel(role, i, scenes.length, s.script_purpose || s.purpose_label || s.purpose || '');
       const finalDialogue = Array.isArray(s.dialogue_lines)
         ? s.dialogue_lines.join('\n')
@@ -10312,6 +10892,7 @@ ${JSON.stringify(scenes, null, 2)}
         topview_prompt: cleanTopviewPrompt || (productOnlyMaterialShot
           ? _luxuryProductOnlyTopviewPrompt({ visual, referenceLabel: Number(referenceIndex) > 0 ? referenceLabel : '', subject: productSubject })
           : `使用 @主商品${Number(referenceIndex) > 0 ? ` 和 ${referenceLabel}` : ''} 生成这一镜头：${visual} 镜头运动：${s.camera_label || _luxuryCameraLabel(s.camera || s.camera_motion || s.motion)}。`),
+        ui_overlay: uiOverlay,
         camera_label: s.camera_label || _luxuryCameraLabel(s.camera || s.camera_motion || s.motion),
         reference_index: referenceIndex,
         reference_label: referenceLabel,
@@ -10332,6 +10913,7 @@ ${JSON.stringify(scenes, null, 2)}
           visualReferenceBrief,
           visualReferenceSummary,
           adStyle: ad_type,
+          luxuryLocks: luxuryVisualLocks,
         });
         directorContracts = await callLuxuryAgent({
           name: 'luxury_ad.storyboard_director',
@@ -10348,6 +10930,7 @@ ${JSON.stringify(scenes, null, 2)}
         productSubject,
         visualReferenceBrief,
         visualReferenceSummary,
+        luxuryLocks: luxuryVisualLocks,
       });
       // Script generation must return the reviewed script even when the later
       // image-generation contract still needs completion. The keyframe stage
@@ -10380,6 +10963,7 @@ ${JSON.stringify(scenes, null, 2)}
         };
       });
     }
+    scenes = scenes.map(scene => _attachLuxuryVisualLocks(scene, luxuryVisualLocks));
     const briefInfo = _fallbackLuxuryBriefInfo({
       brief,
       durationSec: targetDuration,
@@ -10395,7 +10979,7 @@ ${JSON.stringify(scenes, null, 2)}
     if (isDetailedMode && storyCharacters.length) {
       briefInfo.characters = storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     _storeLuxuryStoryboardResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
@@ -10687,6 +11271,12 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     const topviewPrompt = (!corePersonRequired && _luxuryIsMaterialProductShot({ title: raw.title || '', content_prompt: visual, visual }, subject) && _luxuryLooksLikeHumanInstruction(rawTopviewPrompt))
       ? ''
       : rawTopviewPrompt;
+    const uiOverlay = _luxuryNormalizeUiOverlay(raw.ui_overlay || raw.uiOverlay || raw.overlay_prompt || raw.vfx_prompt || null, {
+      ...raw,
+      content_prompt: visual,
+      visual,
+      action,
+    }, text);
     const shotAngle = String(raw.shot_angle || raw.angle || raw.shot_size || raw.framing || '').trim();
     const materialUsage = String(raw.material_usage || raw.material_hint || '').trim() || `@主商品 + ${referenceLabel}`;
     const styleNote = String(raw.style_note || raw.other || `风格：高级商业广告，镜头克制，光影和材质清晰；转场：顺接下一镜。`).replace(/成片广告词/g, '成片广告词');
@@ -10746,6 +11336,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       reference_index: referenceIndex,
       reference_label: referenceLabel,
       reference_mentions: Array.isArray(raw.reference_mentions) && raw.reference_mentions.length ? raw.reference_mentions : ['@主商品', referenceLabel],
+      ui_overlay: uiOverlay,
       topview_prompt: topviewPrompt || (corePersonRequired
         ? `生成真人广告故事板画面：${visual || voiceover}。人物、真实空间和${subject}证据必须同框；不要生成纯产品、纯材料、空仓库或空外立面；不生成画面文字。`
         : _luxuryProductOnlyTopviewPrompt({ visual: visual || voiceover, referenceLabel, subject })),
@@ -10803,11 +11394,14 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   productSubject = '',
   visualReferenceBrief = null,
   visualReferenceSummary = '',
+  luxuryLocks = null,
 } = {}, aiContract = {}) {
   const subject = productSubject || scene.product_subject || 'advertised product';
+  const locks = luxuryLocks || scene.visual_locks || null;
+  const locksPrompt = _luxuryLocksPrompt(locks, 900);
   const sceneType = _luxuryDirectorText(aiContract.scene_type || aiContract.sceneType || _luxuryDirectorSceneType(scene, index, total, subject), 80);
   const allowedEnvironment = _luxuryDirectorText(
-    aiContract.allowed_environment || aiContract.environment || _luxuryDirectorAllowedEnvironment(sceneType, scene, subject),
+    aiContract.allowed_environment || aiContract.environment || locks?.scene_lock?.scene_basis || _luxuryDirectorAllowedEnvironment(sceneType, scene, subject),
     360,
   );
   const isSteel = _isLuxurySteelMaterialSubject(subject, scene);
@@ -10818,9 +11412,11 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   const mustShow = _luxuryDirectorList(aiContract.must_show || aiContract.mustShow, [
     personRequired ? 'the same campaign presenter/designer/customer integrated in the physical scene' : 'the advertised product/material as the readable hero evidence',
     `${subject} visible as finished commercial product evidence`,
+    locks?.reality_lock?.scene_basis ? `real-world location basis: ${locks.reality_lock.scene_basis}` : '',
+    locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
     visual || 'the confirmed storyboard visual',
     action || 'one clear storyboard action',
-  ]).slice(0, 8);
+  ]).filter(Boolean).slice(0, 8);
   const steelNegatives = [
     'industrial factory',
     'warehouse',
@@ -10842,6 +11438,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   const referenceStrategy = _luxuryDirectorText(
     aiContract.reference_strategy || aiContract.referenceStrategy || [
       visualReferenceSummary || (visualReferenceBrief ? 'Use uploaded demand references as campaign visual guidance.' : 'No demand reference summary is available; obey the storyboard contract.'),
+      locksPrompt ? `Mandatory asset/reality locks: ${locksPrompt}` : '',
       'Demand references guide actor identity, space, material, mood and quality; they are not an automatic shot count.',
       'If a person identity reference exists, keep the same face impression, age, hairstyle, outfit family and body scale across all human shots.',
     ].filter(Boolean).join(' '),
@@ -10850,20 +11447,21 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   const productEvidence = _luxuryDirectorText(
     aiContract.product_evidence || aiContract.productEvidence || (isSteel
       ? `${subject}: finished installed metal/facade panels, brushed or mirror surface, seams, edge profiles, material wall or premium application area must be visible.`
-      : `${subject}: visible product/service evidence must match the uploaded references and storyboard.`),
+      : `${subject}: visible product/service evidence must match the uploaded references, asset manifest and storyboard.`),
     320,
   );
   const composition = _luxuryDirectorText(aiContract.composition || (personRequired
-    ? 'commercial storyboard frame: real person + real environment + product/material evidence in one coherent shot'
-    : 'premium insert frame: product/material texture and application evidence, not an unrelated still life'), 280);
+    ? 'real commercial storyboard frame: real person + practical real-world environment + product/material evidence in one coherent shot'
+    : 'real commercial insert frame: product/material texture and application evidence, not an unrelated still life'), 280);
   const lighting = _luxuryDirectorText(aiContract.lighting || scene.lighting_style || (isSteel
-    ? 'controlled low-key side light, refined reflections, premium dark or showroom ambience'
-    : 'premium commercial lighting consistent with the reference mood'), 220);
+    ? 'practical showroom or workplace lighting, controlled reflections, natural shadows, no glossy CGI'
+    : 'practical real-location commercial lighting consistent with the reference mood'), 220);
   const qaContract = _luxuryDirectorText(
     aiContract.qa_contract || aiContract.qaContract || [
       `Pass only if scene type is ${sceneType}.`,
       `Allowed environment: ${allowedEnvironment}.`,
       `Must show ${mustShow.join('; ')}.`,
+      locksPrompt ? `Must obey asset/reality locks: ${locksPrompt}.` : '',
       `Hard fail if any appears: ${mustNotShow.join('; ')}.`,
     ].join(' '),
     900,
@@ -10871,6 +11469,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   const imagePrompt = _luxuryDirectorText(aiContract.image_prompt || aiContract.imagePrompt || [
     `Storyboard director visual contract for shot ${index + 1}: ${sceneType}.`,
     `Allowed environment: ${allowedEnvironment}.`,
+    locksPrompt ? `Asset and reality locks: ${locksPrompt}.` : '',
     `Must show: ${mustShow.join('; ')}.`,
     `Product evidence: ${productEvidence}.`,
     `Composition: ${composition}.`,
@@ -10879,6 +11478,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     `Avoid: ${mustNotShow.join('; ')}.`,
   ].filter(Boolean).join(' '), 1200);
   const topviewPrompt = _luxuryDirectorText(aiContract.topview_prompt || aiContract.topviewPrompt || imagePrompt, 1200);
+  const uiOverlay = _luxuryNormalizeUiOverlay(aiContract.ui_overlay || aiContract.uiOverlay || scene.ui_overlay || null, scene);
   return {
     scene_type: sceneType,
     allowed_environment: allowedEnvironment,
@@ -10892,6 +11492,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     camera: _luxuryDirectorText(aiContract.camera || camera || 'premium commercial camera language', 220),
     image_prompt: imagePrompt,
     topview_prompt: topviewPrompt,
+    ui_overlay: uiOverlay,
     qa_contract: qaContract,
   };
 }
@@ -10899,6 +11500,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
 function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], opts = {}) {
   const list = Array.isArray(scenes) ? scenes : [];
   const ai = Array.isArray(contracts) ? contracts : [];
+  const locks = opts.luxuryLocks || null;
   const byIndex = new Map();
   ai.forEach((item, pos) => {
     if (!item || typeof item !== 'object') return;
@@ -10910,6 +11512,7 @@ function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], op
     }
   });
   return list.map((scene, i) => {
+    scene = _attachLuxuryVisualLocks(scene, locks);
     const existingContract = scene && scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
     const contract = _luxuryBuildLocalDirectorContract(scene, i, list.length, opts, {
       ...existingContract,
@@ -10917,6 +11520,7 @@ function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], op
     });
     const directorPrompt = [
       `STORYBOARD DIRECTOR CONTRACT: ${contract.image_prompt}`,
+      _luxuryLocksPrompt(scene.visual_locks, 900),
       _luxurySteelEnvironmentLockPrompt(opts.productSubject || scene.product_subject, scene),
       `Reference strategy: ${contract.reference_strategy}`,
       `QA contract: ${contract.qa_contract}`,
@@ -10927,6 +11531,7 @@ function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], op
       scene_type_lock: contract.scene_type,
       environment_lock: contract.allowed_environment,
       visual_contract: contract,
+      ui_overlay: contract.ui_overlay || scene.ui_overlay || null,
       qa_contract: contract.qa_contract,
       director_prompt: directorPrompt,
       visual_prompt: [scene.visual_prompt || '', directorPrompt].filter(Boolean).join(' ').slice(0, 2800),
@@ -10956,12 +11561,162 @@ function _luxuryStrictList(value, maxItems = 8) {
     .slice(0, maxItems);
 }
 
+function _luxuryNormalizeUiOverlay(value = null, scene = {}, brief = '') {
+  const sourceText = [
+    typeof value === 'string' ? value : '',
+    value && typeof value === 'object' ? [value.type, value.content, value.motion, value.style, value.placement].filter(Boolean).join(' ') : '',
+    scene.ui_overlay_text,
+    scene.overlay_prompt,
+    scene.vfx_prompt,
+    scene.action,
+    scene.visual,
+    scene.content_prompt,
+    brief,
+  ].filter(Boolean).join(' ');
+  const cleanText = String(sourceText || '').replace(/\s+/g, ' ').trim();
+  if (!cleanText) return null;
+  const shouldHaveOverlay = /(UI|app|screen|phone|mobile|popup|card|notification|dashboard|chart|waveform|check|tick|order|chat|message|interface|floating|hologram|overlay|弹窗|卡片|界面|手机|订单|通知|勾|对勾|确认|数据|波形|图表|悬浮|全息|智能体|助手)/i.test(cleanText);
+  if (!shouldHaveOverlay && !value) return null;
+  const obj = value && typeof value === 'object' ? value : {};
+  const type = String(obj.type || '').trim()
+    || (/(check|tick|确认|对勾|勾)/i.test(cleanText) ? 'confirmation_badge'
+      : (/(waveform|音频|波形)/i.test(cleanText) ? 'audio_waveform'
+        : (/(dashboard|chart|数据|图表)/i.test(cleanText) ? 'data_panel'
+          : (/(chat|message|消息|对话)/i.test(cleanText) ? 'message_cards' : 'app_ui_cards'))));
+  const placement = String(obj.placement || obj.position || '').trim()
+    || (/(phone|mobile|手机)/i.test(cleanText) ? 'anchored near phone screen' : 'floating beside the subject, not covering face or product');
+  const content = String(obj.content || obj.text || obj.label || cleanText).replace(/\s+/g, ' ').trim().slice(0, 260);
+  const motion = String(obj.motion || obj.animation || '').trim()
+    || (/(check|tick|确认|对勾|勾)/i.test(cleanText) ? 'soft pop-in with subtle glow'
+      : 'soft translucent cards slide in and settle');
+  const style = String(obj.style || '').trim()
+    || 'minimal translucent glass UI, clean rounded cards, no readable brand text unless specified';
+  return { type, placement, content, motion, style };
+}
+
+function _luxuryUiOverlayPrompt(overlay = null) {
+  const ui = _luxuryNormalizeUiOverlay(overlay);
+  if (!ui) return '';
+  return [
+    `UI/VFX overlay: ${ui.type}.`,
+    `Placement: ${ui.placement}.`,
+    `Content intent: ${ui.content}.`,
+    `Motion: ${ui.motion}.`,
+    `Style: ${ui.style}.`,
+    'The overlay must feel like a premium app/product interaction layer; keep it subtle, translucent and integrated with the live-action scene.',
+    'Do not cover the actor face, product evidence, or key hand action.',
+  ].join(' ');
+}
+
+function _luxuryXmlEscape(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function _luxuryOverlayLabel(ui = {}) {
+  const raw = String(ui.content || ui.type || '').replace(/\s+/g, ' ').trim();
+  if (/confirmation|check|tick|确认|对勾|勾/i.test(`${ui.type} ${raw}`)) return 'Confirmed';
+  if (/order|订单/i.test(raw)) return 'Order synced';
+  if (/message|chat|消息|对话/i.test(`${ui.type} ${raw}`)) return 'New message';
+  if (/waveform|audio|voice|音频|波形/i.test(`${ui.type} ${raw}`)) return 'Voice ready';
+  if (/dashboard|chart|data|数据|图表/i.test(`${ui.type} ${raw}`)) return 'Live data';
+  return raw.slice(0, 26) || 'Action confirmed';
+}
+
+function _luxuryBuildUiOverlaySvg({ width = 1080, height = 1920, overlay = null } = {}) {
+  const ui = _luxuryNormalizeUiOverlay(overlay);
+  if (!ui) return '';
+  const shortSide = Math.max(1, Math.min(width, height));
+  const isPortrait = height >= width;
+  const cardW = Math.round(width * (isPortrait ? 0.46 : 0.28));
+  const cardH = Math.round(shortSide * 0.16);
+  const margin = Math.round(shortSide * 0.055);
+  const placement = String(ui.placement || '').toLowerCase();
+  const left = /left|左/.test(placement)
+    ? margin
+    : (/phone|mobile|screen|手机|屏幕/.test(placement)
+      ? Math.round(width - cardW - margin)
+      : Math.round(width - cardW - margin));
+  const top = /bottom|下/.test(placement)
+    ? Math.round(height - cardH - margin * 2.3)
+    : (/center|中/.test(placement)
+      ? Math.round(height * 0.42)
+      : Math.round(height * (isPortrait ? 0.18 : 0.16)));
+  const radius = Math.round(shortSide * 0.025);
+  const label = _luxuryXmlEscape(_luxuryOverlayLabel(ui));
+  const sub = _luxuryXmlEscape(String(ui.motion || 'soft pop-in').replace(/\s+/g, ' ').slice(0, 28));
+  const accent = /confirmation|check|tick|确认|对勾|勾/i.test(`${ui.type} ${ui.content}`)
+    ? '#6EE7B7'
+    : (/dashboard|chart|data|数据|图表/i.test(`${ui.type} ${ui.content}`) ? '#93C5FD' : '#A5B4FC');
+  const fontMain = Math.max(18, Math.round(shortSide * 0.026));
+  const fontSub = Math.max(12, Math.round(shortSide * 0.016));
+  const iconSize = Math.round(cardH * 0.48);
+  const iconX = left + Math.round(cardH * 0.22);
+  const iconY = top + Math.round(cardH * 0.26);
+  const lineX = left + Math.round(cardH * 0.92);
+  const lineY = top + Math.round(cardH * 0.35);
+  const bars = [0.36, 0.58, 0.42, 0.72].map((h, i) => {
+    const bw = Math.round(cardW * 0.045);
+    const gap = Math.round(cardW * 0.018);
+    const x = left + cardW - margin - (4 - i) * (bw + gap);
+    const bh = Math.round(cardH * h);
+    const y = top + Math.round((cardH - bh) / 2);
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="${Math.round(bw / 2)}" fill="${accent}" opacity="${0.38 + i * 0.13}"/>`;
+  }).join('');
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="${Math.round(shortSide * 0.01)}" stdDeviation="${Math.round(shortSide * 0.018)}" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+    <linearGradient id="glass" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.62"/>
+      <stop offset="1" stop-color="#EAF1FF" stop-opacity="0.36"/>
+    </linearGradient>
+  </defs>
+  <g filter="url(#shadow)" opacity="0.94">
+    <rect x="${left}" y="${top}" width="${cardW}" height="${cardH}" rx="${radius}" fill="url(#glass)" stroke="#FFFFFF" stroke-opacity="0.58" stroke-width="1.5"/>
+    <circle cx="${iconX + iconSize / 2}" cy="${iconY + iconSize / 2}" r="${iconSize / 2}" fill="${accent}" opacity="0.26"/>
+    <circle cx="${iconX + iconSize / 2}" cy="${iconY + iconSize / 2}" r="${iconSize * 0.32}" fill="${accent}" opacity="0.92"/>
+    <path d="M ${iconX + iconSize * 0.32} ${iconY + iconSize * 0.51} L ${iconX + iconSize * 0.45} ${iconY + iconSize * 0.64} L ${iconX + iconSize * 0.70} ${iconY + iconSize * 0.38}" fill="none" stroke="#FFFFFF" stroke-width="${Math.max(3, Math.round(iconSize * 0.09))}" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="${lineX}" y="${lineY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontMain}" font-weight="700" fill="#172033">${label}</text>
+    <text x="${lineX}" y="${lineY + Math.round(fontMain * 1.35)}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSub}" font-weight="600" fill="#516070">${sub}</text>
+    ${bars}
+  </g>
+</svg>`;
+}
+
+async function _applyLuxuryUiOverlayComposite({ inputPath = '', scene = {}, filename = '', destDir = JIMENG_ASSETS_DIR } = {}) {
+  const ui = _luxuryNormalizeUiOverlay(scene.ui_overlay || scene.uiOverlay || null, scene);
+  if (!ui || !inputPath || !fs.existsSync(inputPath)) return { outPath: inputPath, applied: false, overlay: null };
+  const sharp = _loadSharp();
+  if (!sharp) return { outPath: inputPath, applied: false, overlay: ui, skipped: 'sharp_unavailable' };
+  const meta = await sharp(inputPath).rotate().metadata();
+  const width = meta.width || 1080;
+  const height = meta.height || 1920;
+  const svg = _luxuryBuildUiOverlaySvg({ width, height, overlay: ui });
+  if (!svg) return { outPath: inputPath, applied: false, overlay: null };
+  fs.mkdirSync(destDir, { recursive: true });
+  const outPath = path.join(destDir, `${filename || path.basename(inputPath, path.extname(inputPath))}_ui_overlay.jpg`);
+  await sharp(inputPath)
+    .rotate()
+    .composite([{ input: Buffer.from(svg), left: 0, top: 0, blend: 'over' }])
+    .jpeg({ quality: 94, chromaSubsampling: '4:4:4' })
+    .toFile(outPath);
+  return { outPath, applied: true, overlay: ui };
+}
+
 // Build the mandatory director contract used by image generation and QA.
 // This is a deterministic compiler from the confirmed storyboard fields.
 function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, { productSubject = '' } = {}) {
   const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
   const photography = scene.photography && typeof scene.photography === 'object' ? scene.photography : {};
   const cameraPlan = scene.camera_plan && typeof scene.camera_plan === 'object' ? scene.camera_plan : {};
+  const locks = scene.visual_locks || null;
+  const locksPrompt = _luxuryLocksPrompt(locks, 900);
   const subject = _luxuryStrictText(productSubject || scene.product_subject || '', 140);
   const visual = _luxuryStrictText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 520);
   const action = _luxuryStrictText(scene.action || scene.visual_action || '', 260);
@@ -10989,6 +11744,15 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const composition = _luxuryStrictText(visualContract.composition || scene.composition || photography.framing || scene.image2_brief || '', 320);
   const lighting = _luxuryStrictText(visualContract.lighting || scene.lighting_style || scene.lighting || photography.lighting || '', 260);
   const mustShow = _luxuryStrictList(visualContract.must_show || scene.must_show, 10);
+  [
+    locks?.reality_lock?.scene_basis ? `real-world scene basis: ${locks.reality_lock.scene_basis}` : '',
+    locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
+    locks?.character_lock?.prompt ? 'same uploaded/reference actor identity when a person appears' : '',
+    locks?.scene_lock?.prompt ? 'same uploaded/inferred scene family and practical lighting' : '',
+    locks?.prop_lock?.prompt ? 'story-appropriate real props/evidence from asset manifest' : '',
+  ].filter(Boolean).forEach(item => {
+    if (!mustShow.includes(item) && mustShow.length < 10) mustShow.push(item);
+  });
   const mustNotShow = _luxuryStrictList(visualContract.must_not_show || scene.must_not_show, 14);
   while (mustNotShow.length < 3) {
     const fallbackNegatives = ['generated text or subtitle overlay', 'unrelated product category', 'random extra people or scene replacement'];
@@ -11013,6 +11777,15 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     must_show: mustShow,
     must_not_show: mustNotShow,
     qa_contract: qaContract,
+    asset_manifest: locks?.asset_manifest || scene.asset_manifest || null,
+    reality_lock: locks?.reality_lock || scene.reality_lock || null,
+    character_lock: locks?.character_lock || scene.character_lock || null,
+    product_lock: locks?.product_lock || scene.product_lock || null,
+    scene_lock: locks?.scene_lock || scene.scene_lock || null,
+    prop_lock: locks?.prop_lock || scene.prop_lock || null,
+    ui_lock: locks?.ui_lock || scene.ui_lock || null,
+    style_lock: locks?.style_lock || scene.style_lock || null,
+    visual_locks_prompt: locksPrompt,
   };
 }
 
@@ -11064,9 +11837,11 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     `Camera: ${contract.camera}.`,
     `Composition: ${contract.composition}.`,
     `Lighting: ${contract.lighting}.`,
+    contract.visual_locks_prompt ? `Mandatory asset/reality locks: ${contract.visual_locks_prompt}.` : '',
     `Must show: ${contract.must_show.join('; ')}.`,
     `Must not show: ${contract.must_not_show.join('; ')}.`,
     `QA acceptance rule: ${contract.qa_contract}.`,
+    _luxuryUiOverlayPrompt(scene.ui_overlay),
     scene.continuity_bible ? `Campaign continuity: ${_luxuryStrictText(scene.continuity_bible, 520)}.` : '',
     scene.reference_prompt ? `Reference strategy: ${_luxuryStrictText(scene.reference_prompt, 420)}.` : '',
     'No generated subtitles, no text overlay, no watermark, no random extra people, no unrelated product category, no scene replacement.',
@@ -11243,6 +12018,7 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
   visualReferenceBrief = null,
   visualReferenceSummary = '',
   adStyle = 'luxury_soft',
+  luxuryLocks = null,
 } = {}) {
   const compactScenes = (Array.isArray(scenes) ? scenes : []).map((s, i) => ({
     index: i,
@@ -11253,6 +12029,7 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     visual: s.content_prompt || s.scene_content || s.visual || '',
     action: s.action || s.visual_action || '',
     dialogue: s.dialogue_lines || s.dialogue || s.voiceover || s.text || '',
+    ui_overlay: s.ui_overlay || null,
     camera: [s.shot_angle, s.shot_size, s.camera_label, s.camera, s.lighting_style].filter(Boolean).join('; '),
   }));
   const systemPrompt = [
@@ -11267,8 +12044,11 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     `Product subject lock: ${productSubject || 'advertised product'}`,
     `Style: ${_luxuryAdStyleName(adStyle)} / ${_luxuryAdStylePrompt(adStyle)}`,
     `Uploaded visual reference summary: ${_luxuryDirectorText(visualReferenceSummary || JSON.stringify(visualReferenceBrief || ''), 1600)}`,
+    luxuryLocks ? `Mandatory asset manifest and reality locks: ${_luxuryDirectorText(_luxuryLocksPrompt(luxuryLocks, 1800), 1800)}` : '',
     '',
     'Important execution rules:',
+    '- Treat uploaded product/person/scene/UI/reference images as role-specific locks, not decorative inspiration.',
+    '- The frame must feel like real commercial photography in a believable social/workplace scene; avoid AI poster, glossy render, fantasy lighting and generic luxury stock locations.',
     '- Demand references guide actor identity, space, material, mood and quality. They are not a fixed shot count.',
     '- If references show one person or the script is single-person, keep a single same presenter/actor across human shots.',
     '- For steel/metal/building-material/facade products, never choose factory, warehouse, steel mill, cranes, raw beams, raw sheets, construction site, rust, forklifts or storage racks.',
@@ -11276,7 +12056,7 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     '- Every non-macro shot should look like a live-action commercial storyboard panel: real person, real environment and product/material evidence in one coherent frame.',
     '',
     'Return array items with this schema:',
-    '{"index":0,"scene_type":"","allowed_environment":"","must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","image_prompt":"","topview_prompt":"","qa_contract":""}',
+    '{"index":0,"scene_type":"","allowed_environment":"","must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_overlay":{"type":"","placement":"","content":"","motion":"","style":""},"image_prompt":"","topview_prompt":"","qa_contract":""}',
     '',
     `Confirmed script shots:\n${JSON.stringify(compactScenes, null, 2)}`,
   ].join('\n');
@@ -12796,6 +13576,7 @@ async function _createGeneratedShowroomGuideKeyframe({
   };
 }
 
+
 /*
 async function _createGeneratedShowroomGuideKeyframe_legacyComposite({
   req,
@@ -13206,8 +13987,49 @@ async function _createLuxuryAdReferenceKeyframe({
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
     allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: Number(scene.totalShots || scene.shotCount || 1),
+    }),
   });
-  const outPath = imageResult.outPath;
+  let outPath = imageResult.outPath;
+  let uiOverlayPost = null;
+  if (scene.ui_overlay) {
+    uiOverlayPost = await _applyLuxuryUiOverlayComposite({
+      inputPath: outPath,
+      scene,
+      filename: `${filename}_final`,
+      destDir,
+    });
+    if (uiOverlayPost.applied) {
+      outPath = uiOverlayPost.outPath;
+      if (typeof qaCheck === 'function') {
+        const postQa = await qaCheck({ outPath, model: { provider_id: 'post', model_id: 'ui-overlay-composite' }, modelLabel: 'post/ui-overlay-composite' });
+        if (!postQa?.pass) {
+          const issues = [
+            ...(Array.isArray(postQa?.major_mismatches) ? postQa.major_mismatches : []),
+            ...(Array.isArray(postQa?.unrelated_subjects) ? postQa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
+            postQa?.reason || '',
+          ].filter(Boolean).slice(0, 5).join('; ');
+          const err = new Error(`UI overlay post-composite QA failed: ${issues || 'post-composite frame violates storyboard locks'}`);
+          err.status = 422;
+          err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
+          err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          throw err;
+        }
+        imageResult.qa = postQa;
+      }
+    }
+  }
   return {
     outPath,
     plan: {
@@ -13228,6 +14050,10 @@ async function _createLuxuryAdReferenceKeyframe({
       strict_storyboard_contract: scene.strict_storyboard_contract || null,
       prompt_preflight: scene.prompt_preflight || null,
       compiled_image_prompt: scene.compiled_image_prompt || prompt,
+      ui_overlay_post: uiOverlayPost ? {
+        applied: !!uiOverlayPost.applied,
+        overlay: uiOverlayPost.overlay || null,
+      } : null,
       controlled_strategy: isSteelMaterialSubject
         ? (personRequired
           ? 'reference_anchored_real_model_required_steel_presenter'
@@ -13538,7 +14364,7 @@ function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
         return `Reference image ${n}: composition map only. Final frame must be a real camera photo: visible presenter in medium shot with face/expression readable, standing beside or gesturing toward product/material evidence. Do not copy the diagram style, small distant figure, or illustration look.`;
       }
       if (kind === 'generated_presenter_guidance' || sameRef(source, presenterSeedUrl)) {
-        return `Reference image ${n}: same campaign presenter guidance only. Keep one consistent natural actor, age/gender/professional wardrobe family and believable face; do not copy its background, portrait pose, fashion retail, jewelry, cosmetics, or studio category.`;
+        return `Reference image ${n}: mandatory system-generated campaign presenter identity lock. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family in every human shot; do not copy its background, portrait pose, fashion retail, jewelry, cosmetics, or studio category.`;
       }
       if (sameRef(source, subjectSeedUrl)) {
         return `Reference image ${n}: advertised product/material evidence. The final frame must clearly show these finished panels/sample wall/material surfaces, not generic luxury props.`;
@@ -13575,6 +14401,7 @@ function _buildLuxuryImageModelStrictPrompt({
 } = {}) {
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
+  const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
   const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 900);
   const visual = _compactLuxuryKeyframeText(
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
@@ -13609,10 +14436,11 @@ function _buildLuxuryImageModelStrictPrompt({
   const sceneRecipe = _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene);
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
-    ? 'PRESENTER CONTINUITY: a system-generated presenter seed may be provided as soft actor guidance. Keep one natural real presenter with consistent age/gender/professional styling, but do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, or a portrait studio.'
+    ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory identity reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family, but do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, or a portrait studio.'
     : '';
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
+    lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired
       ? 'MANDATORY HUMAN: one visible real presenter/consultant/professional must appear in this frame performing the specified action. Do not generate an empty location, subject-only packshot, robot, mannequin, or abstract scene.'
       : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
@@ -13872,8 +14700,49 @@ async function _createLuxuryAdReferenceKeyframe({
     // storyboard contract and must pass QA; this is not a hidden fallback.
     strictSingleCandidate: false,
     allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: Number(scene.totalShots || scene.shotCount || 1),
+    }),
   });
-  const outPath = imageResult.outPath;
+  let outPath = imageResult.outPath;
+  let uiOverlayPost = null;
+  if (scene.ui_overlay) {
+    uiOverlayPost = await _applyLuxuryUiOverlayComposite({
+      inputPath: outPath,
+      scene,
+      filename: `${filename}_final`,
+      destDir,
+    });
+    if (uiOverlayPost.applied) {
+      outPath = uiOverlayPost.outPath;
+      if (typeof qaCheck === 'function') {
+        const postQa = await qaCheck({ outPath, model: { provider_id: 'post', model_id: 'ui-overlay-composite' }, modelLabel: 'post/ui-overlay-composite' });
+        if (!postQa?.pass) {
+          const issues = [
+            ...(Array.isArray(postQa?.major_mismatches) ? postQa.major_mismatches : []),
+            ...(Array.isArray(postQa?.unrelated_subjects) ? postQa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
+            postQa?.reason || '',
+          ].filter(Boolean).slice(0, 5).join('; ');
+          const err = new Error(`UI overlay post-composite QA failed: ${issues || 'post-composite frame violates storyboard locks'}`);
+          err.status = 422;
+          err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
+          err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          throw err;
+        }
+        imageResult.qa = postQa;
+      }
+    }
+  }
   return {
     outPath,
     plan: {
@@ -13894,6 +14763,10 @@ async function _createLuxuryAdReferenceKeyframe({
       strict_storyboard_contract: scene.strict_storyboard_contract || null,
       prompt_preflight: scene.prompt_preflight || null,
       compiled_image_prompt: scene.compiled_image_prompt || prompt,
+      ui_overlay_post: uiOverlayPost ? {
+        applied: !!uiOverlayPost.applied,
+        overlay: uiOverlayPost.overlay || null,
+      } : null,
       controlled_strategy: isSteelMaterialSubject
         ? (personRequired
           ? 'reference_anchored_real_model_required_steel_presenter'
@@ -13924,9 +14797,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   allowControlledFinal = false,
   strictSingleCandidate = false,
   allowQaRepair = false,
+  qaRepairHook = null,
 }) {
   const attempts = [];
   let repairInstruction = '';
+  let currentPrompt = prompt;
   const referenceImages = refs.map(x => x.resolved).filter(Boolean);
   const hasShotReferenceLock = referenceImages.length > 1;
   // Normalize once at the image-call boundary so unsupported UI/model values
@@ -13951,8 +14826,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     ? `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(outPath)}`
     : '';
   const promptWithRepair = () => repairInstruction
-    ? _luxuryCapImageModelPrompt([repairInstruction, prompt].filter(Boolean).join(' '), 1850)
-    : _luxuryCapImageModelPrompt(prompt, 1850);
+    ? _luxuryCapImageModelPrompt([repairInstruction, currentPrompt].filter(Boolean).join(' '), 1850)
+    : _luxuryCapImageModelPrompt(currentPrompt, 1850);
   const runSeedream = async (model, suffix, promptForAttempt) => {
     if (!primary) throw new Error('缺少主商品/参考图，无法生成高定广告分镜');
     const avatarService = require('../services/avatarService');
@@ -14111,6 +14986,18 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     if (hasShotReferenceLock && provider !== 'deyunai' && provider !== 'topview') return false;
     return true;
   });
+  if (_luxuryStageRequiresAdminConfig(stageId || 'luxury_ad.keyframe') && !configuredModelsAll.length) {
+    const err = new Error(`${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止高定广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
+    err.status = 422;
+    err.code = 'LUXURY_STAGE_MODEL_NOT_CONFIGURED';
+    err.luxuryKeyframeAttempts = [{
+      provider_id: 'preflight',
+      model_id: 'model-routing-admin-config',
+      ok: false,
+      error: `${stageId || 'luxury_ad.keyframe'} has no runnable model from pipeline model config`,
+    }];
+    throw err;
+  }
   const hasGeneratedPresenterGuidanceRef = refs.some(x => x?.kind === 'generated_presenter_guidance');
   const hasStrictIdentityReference = refs.some(x => x?.kind === 'identity_reference');
   const hasRunnableTopviewKeyframeModel = configuredModelsAll.some(model =>
@@ -14147,6 +15034,10 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     throw err;
   }
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
+  const repairCounts = new Map();
+  const maxQaRepairRetries = allowQaRepair
+    ? Math.max(0, Math.min(2, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 1)) || 1))
+    : 0;
 
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
@@ -14174,6 +15065,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             }
             qaRejectErr.status = 422;
             qaRejectErr.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
+            qaRejectErr.qa = qa;
             qaRejectErr._luxuryAttemptRecorded = true;
             addAttempt(model, false, qaRejectErr, {
               ...attemptMeta,
@@ -14202,6 +15094,47 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         if (!err._luxuryAttemptRecorded) {
           err._luxuryAttemptRecorded = true;
           addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
+        }
+        const repairKey = `${model.provider_id}/${model.model_id}`;
+        const usedRepairs = Number(repairCounts.get(repairKey) || 0);
+        if (allowQaRepair && usedRepairs < maxQaRepairRetries && typeof qaRepairHook === 'function') {
+          try {
+            const repairPatch = await qaRepairHook({
+              qa: err.qa || null,
+              error: err,
+              prompt: currentPrompt,
+              repairInstruction,
+              model,
+              repairAttempt: usedRepairs + 1,
+            });
+            if (repairPatch && typeof repairPatch === 'object') {
+              if (repairPatch.prompt) currentPrompt = String(repairPatch.prompt);
+              if (repairPatch.repairInstruction) repairInstruction = String(repairPatch.repairInstruction);
+              attempts.push({
+                provider_id: 'qa-repair',
+                model_id: 'contract-rewrite',
+                ok: true,
+                error: '',
+                repair_attempt: usedRepairs + 1,
+                repair_notes: Array.isArray(repairPatch.repair_notes) ? repairPatch.repair_notes.slice(0, 6) : undefined,
+                prompt_chars: Array.from(String(currentPrompt || '')).length,
+              });
+            }
+          } catch (repairErr) {
+            attempts.push({
+              provider_id: 'qa-repair',
+              model_id: 'contract-rewrite',
+              ok: false,
+              error: shortError(repairErr),
+              repair_attempt: usedRepairs + 1,
+            });
+          }
+        }
+        if (allowQaRepair && repairInstruction && usedRepairs < maxQaRepairRetries) {
+          repairCounts.set(repairKey, usedRepairs + 1);
+          console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; retrying the same model with rewritten QA contract ${usedRepairs + 1}/${maxQaRepairRetries}:`, shortError(err));
+          i -= 1;
+          continue;
         }
         console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
         if (strictSingleCandidate) break;
@@ -14368,9 +15301,11 @@ function _buildLuxuryKeyframePrompt({
     ? 'Reference rule: reference image 1 is the main product or visual anchor. If reference image 2 exists, it is the current shot reference. Preserve product identity, material, shape, color, category and recognizable selling point.'
     : 'Reference rule: no uploaded shot reference is available. Generate the product/service scene directly from the shot contract; keep the same product category across shots.';
   const actorRule = _luxuryKeyframeVisibleSubjectInstruction(visibleSubject, hasAvatar);
+  const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
   const prompt = [
     _luxurySteelEnvironmentLockPrompt(productSubject || scene.product_subject, scene),
     `SHOT CONTRACT: shot ${shotNo}${total ? ` of ${total}` : ''}. Product subject: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 140)}.`,
+    lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired ? _luxuryKeyframeHumanAnchor(scene, hasAvatar) : '',
     visibleSubjectRequired
       ? 'COMPOSITION FIRST: the generated image must be a real advertising story frame that follows the confirmed script subject. Show the required subject/entity clearly and do not replace it with another subject type.'
@@ -14600,8 +15535,49 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     allowControlledFinal: false,
     strictSingleCandidate: false,
     allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: Number(scene.totalShots || scene.shotCount || 1),
+    }),
   });
-  const outPath = imageResult.outPath;
+  let outPath = imageResult.outPath;
+  let uiOverlayPost = null;
+  if (scene.ui_overlay) {
+    uiOverlayPost = await _applyLuxuryUiOverlayComposite({
+      inputPath: outPath,
+      scene,
+      filename: `${filename}_final`,
+      destDir,
+    });
+    if (uiOverlayPost.applied) {
+      outPath = uiOverlayPost.outPath;
+      if (typeof qaCheck === 'function') {
+        const postQa = await qaCheck({ outPath, model: { provider_id: 'post', model_id: 'ui-overlay-composite' }, modelLabel: 'post/ui-overlay-composite' });
+        if (!postQa?.pass) {
+          const issues = [
+            ...(Array.isArray(postQa?.major_mismatches) ? postQa.major_mismatches : []),
+            ...(Array.isArray(postQa?.unrelated_subjects) ? postQa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
+            postQa?.reason || '',
+          ].filter(Boolean).slice(0, 5).join('; ');
+          const err = new Error(`UI overlay post-composite QA failed: ${issues || 'post-composite frame violates storyboard locks'}`);
+          err.status = 422;
+          err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
+          err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          throw err;
+        }
+        imageResult.qa = postQa;
+      }
+    }
+  }
   return {
     outPath,
     plan: {
@@ -14622,6 +15598,10 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       strict_storyboard_contract: scene.strict_storyboard_contract || null,
       prompt_preflight: scene.prompt_preflight || null,
       compiled_image_prompt: scene.compiled_image_prompt || prompt,
+      ui_overlay_post: uiOverlayPost ? {
+        applied: !!uiOverlayPost.applied,
+        overlay: uiOverlayPost.overlay || null,
+      } : null,
       controlled_strategy: isSteelMaterialSubject
         ? (personRequired
           ? 'reference_anchored_real_model_required_steel_presenter'
@@ -14674,6 +15654,26 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       productName: luxuryProductName,
       assetSummary: payload.asset_summary || payload.assetSummary || '',
     }) : '';
+    const luxuryAsyncBriefReferenceAssets = Array.isArray(payload.brief_reference_assets)
+      ? payload.brief_reference_assets.filter(x => x && (x.url || x.image_url || x.previewUrl || x.name)).slice(0, 6)
+      : [];
+    const luxuryAsyncVisualReferenceBrief = _normalizeLuxuryVisualReferenceBrief(payload.visual_reference_brief);
+    const luxuryAsyncAssetManifest = isLuxury ? _buildLuxuryAssetManifest({
+      visualReferenceBrief: luxuryAsyncVisualReferenceBrief,
+      briefReferenceAssets: luxuryAsyncBriefReferenceAssets,
+      productAsset: payload.product_asset || null,
+      personAsset: payload.person_asset || null,
+      referenceAssets: Array.isArray(payload.reference_assets) ? payload.reference_assets : [],
+      referenceImages: Array.isArray(payload.reference_images) ? payload.reference_images : [],
+      backgroundUrl,
+      productSubject,
+    }) : null;
+    const luxuryAsyncVisualLocks = isLuxury ? _buildLuxuryVisualLocks({
+      assetManifest: luxuryAsyncAssetManifest,
+      visualReferenceBrief: luxuryAsyncVisualReferenceBrief,
+      productSubject,
+      brief: text,
+    }) : null;
     let scenes = isLuxury
       ? _normalizeProvidedLuxuryStoryboardSegments(guideSegments, {
         text,
@@ -14688,6 +15688,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       scenes = _mergeLuxuryStoryboardDirectorContracts(scenes, [], {
         productSubject,
         visualReferenceSummary: payload.visual_reference_summary || payload.brief_reference_summary || payload.asset_summary || payload.assetSummary || '',
+        luxuryLocks: luxuryAsyncVisualLocks,
       });
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
@@ -14768,6 +15769,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           scene: {
             ...sc,
             totalShots: scenes.length,
+            asset_manifest: luxuryAsyncAssetManifest || undefined,
+            visual_locks: luxuryAsyncVisualLocks || undefined,
             seed_reference_images: luxuryAsyncSeedReferenceImages,
             luxury_seed_assets: luxuryAsyncSeedAssets,
           },
@@ -14785,6 +15788,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
               product_subject: productSubject,
               product_lock_prompt: _luxuryProductLockPrompt(productSubject),
               active_reference_image: sc.suppress_story_reference_images === true ? '' : backgroundUrl,
+              asset_manifest: luxuryAsyncAssetManifest || undefined,
+              visual_locks: luxuryAsyncVisualLocks || undefined,
               topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
               visual_prompt: sc.visual_prompt || '',
               seed_reference_images: luxuryAsyncSeedReferenceImages,
@@ -14811,6 +15816,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           shot_plan: shotPlan,
           source_avatar_url: luxuryAsyncIdentityAvatar?.image_url || '',
           source_background_url: backgroundUrl,
+          asset_manifest: isLuxury ? luxuryAsyncAssetManifest || undefined : undefined,
+          visual_locks: isLuxury ? luxuryAsyncVisualLocks || undefined : undefined,
           seed_reference_images: isLuxury ? luxuryAsyncSeedReferenceImages : undefined,
           luxury_seed_assets: isLuxury ? luxuryAsyncSeedAssets : undefined,
           qa: isLuxury ? (shotPlan?.qa || null) : undefined,
@@ -16001,6 +17008,21 @@ router.post('/spaces/keyframes', async (req, res) => {
       productName: luxuryProductName,
       assetSummary: enrichedAssetSummary,
     }) : '';
+    const luxuryAssetManifest = isLuxury ? _buildLuxuryAssetManifest({
+      visualReferenceBrief,
+      briefReferenceAssets,
+      productAsset: product_asset,
+      personAsset: person_asset,
+      referenceImages: luxuryReferences,
+      backgroundUrl: background_url,
+      productSubject,
+    }) : null;
+    const luxuryVisualLocks = isLuxury ? _buildLuxuryVisualLocks({
+      assetManifest: luxuryAssetManifest,
+      visualReferenceBrief,
+      productSubject,
+      brief: text,
+    }) : null;
     let scenes = isLuxury
       ? _normalizeProvidedLuxuryStoryboardSegments(guideSegments, {
         text,
@@ -16017,6 +17039,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         productSubject,
         visualReferenceBrief,
         visualReferenceSummary,
+        luxuryLocks: luxuryVisualLocks,
       });
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
@@ -16188,6 +17211,8 @@ router.post('/spaces/keyframes', async (req, res) => {
           source_background_url: background_url,
           active_reference_image: lockedLuxuryReference,
           source_reference_images: luxuryReferences,
+          asset_manifest: luxuryAssetManifest || undefined,
+          visual_locks: luxuryVisualLocks || undefined,
           character_lock: luxuryCharacterLock || undefined,
         });
         continue;
@@ -16206,6 +17231,8 @@ router.post('/spaces/keyframes', async (req, res) => {
           referenceImageCount: luxuryReferences.length,
           referenceImageIndex: isLuxury ? Math.max(0, luxuryShotRefInfo.referenceIndex - 1) : 0,
           active_reference_image: luxuryShotRefs[0] || background_url,
+          asset_manifest: luxuryAssetManifest || undefined,
+          visual_locks: luxuryVisualLocks || undefined,
           character_lock: luxuryCharacterLock || undefined,
           brief_reference_assets: briefReferenceAssets,
           brief_reference_images: briefReferenceImages,
@@ -16236,6 +17263,8 @@ router.post('/spaces/keyframes', async (req, res) => {
             product_subject: productSubject,
             product_lock_prompt: _luxuryProductLockPrompt(productSubject),
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
             topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
             visual_prompt: sc.visual_prompt || '',
             brief_reference_summary: visualReferenceSummary,
@@ -16265,6 +17294,8 @@ router.post('/spaces/keyframes', async (req, res) => {
             product_subject: productSubject,
             product_lock_prompt: _luxuryProductLockPrompt(productSubject),
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
             topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
             visual_prompt: sc.visual_prompt || '',
             brief_reference_summary: visualReferenceSummary,
@@ -16309,6 +17340,8 @@ router.post('/spaces/keyframes', async (req, res) => {
         active_reference_image: isLuxury ? (sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url)) : undefined,
         source_reference_images: isLuxury ? luxuryReferences : undefined,
         source_brief_reference_images: isLuxury ? briefReferenceImages : undefined,
+        asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined,
+        visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined,
         seed_reference_images: isLuxury ? luxurySeedReferenceImages : undefined,
         luxury_seed_assets: isLuxury ? luxurySeedAssets : undefined,
         continuity_bible: isLuxury ? luxuryReferenceContinuityBible || undefined : undefined,
@@ -16316,7 +17349,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         qa: isLuxury ? keyframeQa : undefined,
       });
     }
-    const responseBody = { success: true, scenes, keyframes, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const responseBody = { success: true, scenes, keyframes, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     _storeLuxuryKeyframeResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
@@ -16335,6 +17368,114 @@ router.post('/spaces/keyframes', async (req, res) => {
     _sendApiError(res, err, '高定广告片分镜生成失败');
   }
 });
+
+function _luxuryFrameImageUrl(k = {}) {
+  return k.image_url || k.imageUrl || k.keyframeUrl || k.url || '';
+}
+
+function _isReferenceLockedLuxuryKeyframe(k = {}) {
+  return k.reference_locked === true
+    || k.referenceLocked === true
+    || k.reference_mode === 'reference_locked_keyframe'
+    || k.shot_plan?.kind === 'reference_locked_keyframe';
+}
+
+function _luxuryFrameRequiresCharacterConsistency(k = {}) {
+  const locks = k.visual_locks && typeof k.visual_locks === 'object' ? k.visual_locks : {};
+  return !!(k.character_lock?.enabled
+    || locks.character_lock
+    || locks.character_identity
+    || locks.person_lock
+    || locks.fixed_person
+    || k.fixed_person);
+}
+
+function _luxuryFrameRequiresUiOverlayScore(k = {}) {
+  const locks = k.visual_locks && typeof k.visual_locks === 'object' ? k.visual_locks : {};
+  return !!(k.ui_overlay
+    || k.uiOverlay
+    || k.shot_plan?.ui_overlay
+    || k.shot_plan?.ui_overlay_post?.applied
+    || locks.ui_overlay
+    || locks.ui_lock);
+}
+
+function _numScore(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
+  const frames = Array.isArray(keyframes) ? keyframes : [];
+  const failures = [];
+  const thresholds = {
+    realism: 76,
+    asset_fidelity: 76,
+    scene_continuity: 72,
+    product_fidelity: 74,
+    character_consistency: 74,
+    ui_overlay: 70,
+  };
+
+  if (!frames.length) {
+    return {
+      pass: false,
+      code: 'LUXURY_KEYFRAMES_REQUIRED',
+      failures: [{ index: 0, reason: 'keyframes_missing', message: 'Luxury ad video requires confirmed keyframes before paid video generation.' }],
+    };
+  }
+
+  frames.forEach((kf, i) => {
+    const imageUrl = _luxuryFrameImageUrl(kf);
+    const index = i + 1;
+    if (!imageUrl) {
+      failures.push({ index, reason: 'image_missing', message: 'Keyframe image_url is required.' });
+      return;
+    }
+
+    if (_isReferenceLockedLuxuryKeyframe(kf)) return;
+
+    const qa = kf.qa && typeof kf.qa === 'object' ? kf.qa : null;
+    if (!qa) {
+      failures.push({ index, reason: 'qa_missing', message: 'Generated luxury keyframe must pass storyboard QA before video generation.' });
+      return;
+    }
+    if (qa.pass !== true) {
+      failures.push({
+        index,
+        reason: 'qa_failed',
+        score: qa.score,
+        message: qa.reason || 'Generated luxury keyframe QA did not pass.',
+      });
+    }
+
+    const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : null;
+    if (!dims) {
+      failures.push({ index, reason: 'qa_dimensions_missing', message: 'Luxury keyframe QA must include realism, asset fidelity, scene continuity and product fidelity scores.' });
+      return;
+    }
+
+    const requiredDims = ['realism', 'asset_fidelity', 'scene_continuity', 'product_fidelity'];
+    if (_luxuryFrameRequiresCharacterConsistency(kf)) requiredDims.push('character_consistency');
+    if (_luxuryFrameRequiresUiOverlayScore(kf)) requiredDims.push('ui_overlay');
+
+    requiredDims.forEach(dim => {
+      const score = _numScore(dims[dim]);
+      if (score === null) {
+        failures.push({ index, reason: `${dim}_missing`, dimension: dim, threshold: thresholds[dim], message: `Missing ${dim} QA score.` });
+      } else if (score < thresholds[dim]) {
+        failures.push({ index, reason: `${dim}_low`, dimension: dim, score, threshold: thresholds[dim], message: `${dim} score is below the luxury ad threshold.` });
+      }
+    });
+  });
+
+  return {
+    pass: failures.length === 0,
+    code: failures.length ? 'LUXURY_VIDEO_PRECHECK_FAILED' : 'OK',
+    frame_count: frames.length,
+    failures,
+  };
+}
 
 router.post('/spaces/generate', async (req, res) => {
   try {
@@ -16585,6 +17726,17 @@ router.post('/spaces/generate', async (req, res) => {
     if (!text?.trim()) return res.status(400).json({ success: false, error: 'text 必填' });
     if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填，请先选择配音音色' });
     const requestBgmAsset = _luxuryBgmAssetFromPayload({ bgm_asset, background_music, bgm_url, background_music_url });
+    if (ad_mode === 'luxury_ad') {
+      const luxuryPrecheck = _validateLuxuryAdVideoPrecheck({ keyframes });
+      if (!luxuryPrecheck.pass) {
+        return res.status(422).json({
+          success: false,
+          code: 'LUXURY_VIDEO_PRECHECK_FAILED',
+          error: '高定广告成片前检查未通过，请先重新生成或确认不合格关键帧，避免浪费视频生成额度。',
+          details: luxuryPrecheck,
+        });
+      }
+    }
 
     const avatar = avatar_id ? db.getPortrait(avatar_id) : null;
     if (avatar_id && (!avatar || avatar.kind !== 'digital_human' || !ownedBy(req, avatar))) {
