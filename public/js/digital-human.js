@@ -649,7 +649,7 @@
     state.space.adMode = tab === 'luxury-ad' ? 'luxury' : 'standard';
     const preview = $('#dhSpacePreview');
     if (preview) preview.innerHTML = state.space.adMode === 'luxury'
-      ? '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择形象、上传多张参考画面或产品物料，再生成高定分镜关键帧。</span></div>'
+      ? '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择形象、上传多张参考画面或产品物料，再生成剧情分镜关键帧。</span></div>'
       : '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择广告数字人形象、上传广告背景，再生成单镜头预览。</span></div>';
     renderSpaceGuide();
   }
@@ -8272,7 +8272,7 @@
       proof: '卖点分镜',
       cta: '收尾分镜',
       endcard: '片尾分镜',
-    })[String(role || '').toLowerCase()] || '高定镜头';
+    })[String(role || '').toLowerCase()] || '剧情镜头';
   }
 
   function luxuryNormalizeSceneStage(value = '', role = '', index = 0, total = 5) {
@@ -8432,7 +8432,7 @@
     const hint = $('#dhSpacePromptHint');
     if (hint) hint.textContent = state.space.copyMode === 'ai'
       ? (state.space.adMode === 'luxury' ? 'AI 会写广告文案、镜头提示词并生成高定多分镜。' : 'AI 会写广告文案、生成画面提示词，并拆出口播时间轴。')
-      : (state.space.adMode === 'luxury' ? '手动输入广告文案后，系统会生成高定分镜提示词。' : '手动输入广告文案后，系统会生成画面提示词，并拆出口播时间轴。');
+      : (state.space.adMode === 'luxury' ? '手动输入广告文案后，系统会生成剧情分镜提示词。' : '手动输入广告文案后，系统会生成画面提示词，并拆出口播时间轴。');
     updateSpaceStoryboardButtons();
   }
 
@@ -8479,7 +8479,7 @@
         </div>
         <div class="dh-story-card ghost">
           <div class="dh-story-thumb">02</div>
-          <b>高定分镜</b>
+          <b>剧情分镜</b>
           <span>拆成 4-8 个镜头，逐镜头检查构图与卖点</span>
         </div>
         <div class="dh-story-card ghost">
@@ -8689,7 +8689,7 @@
             <b>分镜看板已生成</b>
             <span>${modeLabel} · ${state.space.segments.length} 个镜头 · 下一步先生成每个镜头关键帧，确认效果后再合成视频${isLuxury ? ` · ${luxuryProviderQueueLabel()}` : ''}</span>
           </div>
-          <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-space-keyframes-from-board>${isLuxury ? '生成高定关键帧预览' : '生成分镜镜头预览'}</button>
+          <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-space-keyframes-from-board>${isLuxury ? '生成剧情关键帧预览' : '生成分镜镜头预览'}</button>
         </div>
         <div class="dh-storyboard-grid${!isLuxury ? ' dh-storyboard-grid-single' : ''}">
           ${state.space.segments.map((seg, idx) => `<div class="dh-story-card">
@@ -8698,7 +8698,7 @@
               <span>${fmtTime(seg.start)}-${fmtTime(seg.end)}</span>
               <span class="dh-story-badge">${escapeHtml(presetLabel(TONE_PRESETS, seg.tone || 'natural'))}</span>
             </div>
-            <b>${escapeHtml(seg.title || (isLuxury ? `高定镜头 ${idx + 1}` : `分镜 ${idx + 1}`))}</b>
+            <b>${escapeHtml(seg.title || (isLuxury ? `剧情镜头 ${idx + 1}` : `分镜 ${idx + 1}`))}</b>
             <p>${escapeHtml(seg.text)}</p>
             ${isLuxury ? renderLuxuryShotDetails(seg) : ''}
             <span>${isLuxury ? `风格：${escapeHtml(luxuryStyleName(state.space.adStyle))} · 先生成 Topview/Image2 风格关键帧预览。` : '先按此段生成广告预览图。'}</span>
@@ -8947,7 +8947,7 @@
     }
     const box = $('#dhSpacePreview');
     if (box) {
-      box.innerHTML = renderProgressPreview(isLuxury ? '生成高定关键帧' : '合成展墙讲解视频', isLuxury ? '后台会按高定风格生成多张 Image2 关键帧，再用 Topview Image2Video 逐镜头串联成片' : '后台会使用已确认的展墙讲解构图，生成左侧数字人讲解、右侧展示区稳定可见的连续口播视频', 0, {
+      box.innerHTML = renderProgressPreview(isLuxury ? '生成剧情关键帧' : '合成展墙讲解视频', isLuxury ? '后台会按剧情广告风格生成多张 Image2 关键帧，再用 Topview Image2Video 逐镜头串联成片' : '后台会使用已确认的展墙讲解构图，生成左侧数字人讲解、右侧展示区稳定可见的连续口播视频', 0, {
         previewUrl: state.space.bgImageUrl,
       });
     }

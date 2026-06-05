@@ -7326,7 +7326,7 @@ router.post('/scripts/write', async (req, res) => {
     const isProduct = mode === 'product' && product?.name;
     const isSpace = mode === 'space';
     const sysPrompt = isLuxuryAd
-      ? `你是高定品牌广告片策划。输出内容必须是一段可直接进入分镜生成的广告需求/脚本，不是口播稿，不要写镜头编号。`
+      ? `你是剧情品牌广告片策划。输出内容必须是一段可直接进入分镜生成的广告需求/脚本，不是口播稿，不要写镜头编号。`
       : isProduct
       ? `你是专业电商商品数字人口播策划。输出内容必须可直接被 TTS 朗读，适合真人数字人边展示商品边讲解。`
       : isSpace
@@ -12394,7 +12394,7 @@ ${seedSegments || text}
   "asset_prep": "素材预处理建议：抠图、产品替换、背景锁定或片尾留白"` : ''}
 }
 
-要求：人物必须来自上传的数字人形象；背景/产品/参考图必须来自上传素材；每个镜头只做一个动作或一个卖点，避免大幅度转身、换装、换脸、换场景。${isLuxury ? '镜头必须包含：氛围建立、产品/材质特写、人物/场景互动、卖点展示、品牌收束；整体要像商业广告片，不是普通口播。必须体现参考视频里的 GPT image2 + Seedance2 工作流思路：先用摄影解构做高定关键帧，再用图生视频做镜头运动。' : ''}`;
+要求：人物必须来自上传的数字人形象；背景/产品/参考图必须来自上传素材；每个镜头只做一个动作或一个卖点，避免大幅度转身、换装、换脸、换场景。${isLuxury ? '镜头必须包含：氛围建立、产品/材质特写、人物/场景互动、卖点展示、品牌收束；整体要像商业广告片，不是普通口播。必须体现参考视频里的 GPT image2 + Seedance2 工作流思路：先用摄影解构做剧情关键帧，再用图生视频做镜头运动。' : ''}`;
   try {
     const out = await callLLM(sys, user, {
       kb: { scene: kbScene, query: kbQuery, limit: isLuxury ? 6 : 5, maxCharsPerDoc: 650 },
@@ -12431,7 +12431,7 @@ ${seedSegments || text}
     const base = fallback[i % Math.max(1, fallback.length)] || {};
     return {
       ...base,
-      title: labels[i] || `高定镜头 ${i + 1}`,
+      title: labels[i] || `剧情镜头 ${i + 1}`,
       role: _inferSpaceAdRole([base.role, base.title, base.voiceover, base.visual_prompt, segments?.[i]?.text].filter(Boolean).join(' '), i, wantedShots),
       visual_prompt: [
         `Premium advertising keyframe, ${style}.`,
