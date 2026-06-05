@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 数字人板块 3 步向导后端
  *   /api/dh/images/generate   — Seedream 文生图（人+背景一体）
  *   /api/dh/images/upload     — 上传真人照片
@@ -454,7 +454,7 @@ function _extractPublicError(err, fallback = '接口请求失败') {
   let publicCode = code || 'INTERNAL_ERROR';
   if (publicCode === 'LUXURY_KEYFRAME_QA_UNAVAILABLE') {
     status = 503;
-    message = '高定广告片分镜生成已停止：当前视觉质检模型不可用，系统无法确认分镜图是否严格符合剧本。请在模型调用管理中为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路对应的视觉/海外通道额度、模型分组授权或切换可用视觉模型。';
+    message = '剧情广告分镜生成已停止：当前视觉质检模型不可用，系统无法确认分镜图是否严格符合剧本。请在模型调用管理中为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路对应的视觉/海外通道额度、模型分组授权或切换可用视觉模型。';
   } else if (
     publicCode !== 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
     && (String(code).toLowerCase() === 'setlimitexceeded' || /inference limit|safe experience mode|quota|rate limit/i.test(message))
@@ -2237,7 +2237,7 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
       destDir,
     });
     if (!seed.url) {
-      const err = new Error('高定广告片真人讲解员种子图生成失败：剧情要求真人，但没有可用人物参考，且 presenter_seed 未返回图片。');
+      const err = new Error('剧情广告真人讲解员种子图生成失败：剧情要求真人，但没有可用人物参考，且 presenter_seed 未返回图片。');
       err.status = 422;
       err.code = 'LUXURY_PRESENTER_SEED_FAILED';
       err.details = { stage_id: 'luxury_ad.presenter_seed', attempts: seed.attempts || [] };
@@ -2263,7 +2263,7 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
       destDir,
     });
     if (!seed.url) {
-      const err = new Error('高定广告片行业场景种子图生成失败：剧情要求明确场景，但 scene_seed 未返回图片。');
+      const err = new Error('剧情广告行业场景种子图生成失败：剧情要求明确场景，但 scene_seed 未返回图片。');
       err.status = 422;
       err.code = 'LUXURY_SCENE_SEED_FAILED';
       err.details = { stage_id: 'luxury_ad.scene_seed', attempts: seed.attempts || [] };
@@ -2284,7 +2284,7 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
       destDir,
     });
     if (!seed.url) {
-      const err = new Error('高定广告片主体证据种子图生成失败：已上传主体参考，但 subject_evidence_seed 未返回图片。');
+      const err = new Error('剧情广告主体证据种子图生成失败：已上传主体参考，但 subject_evidence_seed 未返回图片。');
       err.status = 422;
       err.code = 'LUXURY_SUBJECT_EVIDENCE_SEED_FAILED';
       err.details = { stage_id: 'luxury_ad.subject_evidence_seed', attempts: seed.attempts || [] };
@@ -2713,7 +2713,7 @@ async function _assertLuxuryKeyframeQaAvailable(req) {
       'This is not a creative task. If you can inspect the attached image, return the JSON object above.'
     ].join(' '), [probeImage]);
   } catch (err) {
-    const e = new Error(`高定广告片分镜视觉质检不可用：${err.message || err}`);
+    const e = new Error(`剧情广告分镜视觉质检不可用：${err.message || err}`);
     e.status = 503;
     e.code = 'LUXURY_KEYFRAME_QA_UNAVAILABLE';
     e.details = {
@@ -4690,7 +4690,7 @@ function _getSeedanceAdConfig(preferred = null) {
   const model = preferredModels.find(id => models.some(m => m.id === id && m.enabled !== false))
     || models.find(m => /seedance/i.test(m.id || '') && m.enabled !== false && !unsupportedModels.has(m.id))?.id
     || 'doubao-seedance-2-0-260128';
-  return { apiKey: p.api_key, model };
+  return { apiKey: p.api_key, model, providerId: p.id };
 }
 
 function _taskPatch(taskId, patch) {
@@ -5007,8 +5007,8 @@ async function _applyLuxuryBgmIfConfigured(taskId, videoPath, bgm = {}) {
   const bgmRef = _luxuryBgmRef(bgm);
   if (!bgmRef) return videoPath;
   const bgmPath = _resolveLuxuryBgmPath(bgm);
-  if (!bgmPath) throw new Error('高定广告片背景音乐文件不存在，请重新上传后期配乐');
-  _taskPatch(taskId, { stage: 'post_bgm', progress: 92, message: '叠加高定广告片后期配乐' });
+  if (!bgmPath) throw new Error('剧情广告背景音乐文件不存在，请重新上传后期配乐');
+  _taskPatch(taskId, { stage: 'post_bgm', progress: 92, message: '叠加剧情广告后期配乐' });
   const { applyEffects } = require('../services/effectsService');
   const fx = await applyEffects({
     videoPath,
@@ -5020,7 +5020,7 @@ async function _applyLuxuryBgmIfConfigured(taskId, videoPath, bgm = {}) {
     },
   });
   if (fx?.outputPath && fs.existsSync(fx.outputPath)) return fx.outputPath;
-  throw new Error('高定广告片背景音乐叠加失败');
+  throw new Error('剧情广告背景音乐叠加失败');
 }
 
 async function _muxAudioWithLoopedVideo(videoPath, audioPath, outputPath, ratio = '16:9', outputSize = 'standard') {
@@ -5783,7 +5783,7 @@ async function _runTopviewAdMarketingVideo(req, taskId, {
   pipelineVideoModel,
 }) {
   if (adMode === 'luxury_ad') {
-    throw new Error('高定广告片不能走 Topview Marketing Video 成片接口，请使用逐分镜图生视频链路');
+    throw new Error('剧情广告不能走 Topview Marketing Video 成片接口，请使用逐分镜图生视频链路');
   }
   const topview = require('../services/topviewService');
   const base = _publicBaseUrl(req);
@@ -7267,7 +7267,7 @@ function _fallbackWriteScript({ topic, durationSec = 30, mode = 'script', produc
   const src = String(topic || '').replace(/\s+/g, ' ').trim();
   const name = product?.name || product?.image_name || '这款产品';
   if (mode === 'luxury_ad') {
-    return `请做一条高定广告片，围绕${src || name}讲一个完整的产品宣传故事。开场用高级空间或品牌氛围建立第一印象，中段用镜头推进到产品材质、工艺细节、使用场景和核心卖点，画面要像品牌广告，不要像数字人站桩讲解。最后收束到品牌记忆点和咨询引导，整体节奏克制、有质感，适合直接生成分镜和关键画面。`;
+    return `请做一条剧情广告，围绕${src || name}讲一个完整的产品宣传故事。开场用高级空间或品牌氛围建立第一印象，中段用镜头推进到产品材质、工艺细节、使用场景和核心卖点，画面要像品牌广告，不要像数字人站桩讲解。最后收束到品牌记忆点和咨询引导，整体节奏克制、有质感，适合直接生成分镜和关键画面。`;
   }
   if (mode === 'product' && product?.name) {
     const points = product?.selling_points || '设计细节、使用体验和日常实用性';
@@ -7338,7 +7338,7 @@ router.post('/scripts/write', async (req, res) => {
 目标时长：约 ${duration_sec} 秒
 
 要求：
-1. 输出一段可直接放入“高定广告片”输入框的广告需求/脚本，只输出正文，不要标题、编号、解释
+1. 输出一段可直接放入“剧情广告”输入框的广告需求/脚本，只输出正文，不要标题、编号、解释
 2. 不是数字人口播稿，不要写“大家好/大家现在看到的是”，要像品牌广告策划
 3. 必须包含：广告目标、产品/品牌核心卖点、目标受众、画面风格、镜头故事推进、结尾行动引导
 4. 如果用户只给一句话，要主动补全合理的广告故事，但不要虚构具体价格、资质、医疗/金融承诺
@@ -7503,7 +7503,7 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
   const source = String(text || '').replace(/\s+/g, ' ').trim();
   const total = Math.max(3, Math.min(12, Number(shotCount) || _suggestLuxuryAdShotCount({ text: source, durationSec, assetSummary }) || 5));
   const baseDur = Math.max(2, Math.round(((Number(durationSec) || 30) / total) * 10) / 10);
-  const core = source || `围绕${productName}做一条高定广告片，突出产品质感、核心卖点、使用场景和品牌记忆点。`;
+  const core = source || `围绕${productName}做一条剧情广告，突出产品质感、核心卖点、使用场景和品牌记忆点。`;
   const names = ['开场分镜', '第二场景', '细节分镜', '场景转折', '卖点分镜', '使用演示', '信任证明', '对比强化', '优惠呈现', '收尾分镜', '补充分镜', '片尾分镜'];
   const roles = ['hook', 'display', 'macro', 'benefit', 'proof', 'benefit', 'proof', 'display', 'benefit', 'cta', 'display', 'cta'];
   const shotSizes = ['微观全景 / 固定镜头', '中远景 / 缓慢前进', '极近景 / 微距平移', '中景 / 场景切换', '特写 / 轻微环绕', '中景 / 使用演示', '近景 / 证明细节', '中远景 / 对比切换', '特写 / 优惠呈现', '品牌收尾 / 固定镜头', '中景 / 补充说明', '片尾 / 稳定停留'];
@@ -7634,7 +7634,7 @@ function _isWeakLuxuryProductName(value = '') {
   return /\.(png|jpe?g|webp|gif)$/i.test(s)
     || /^微信图片[_\-\d]/.test(s)
     || /^主商品$|^商品图$|^产品图$/i.test(s)
-    || /^(高定广告片|广告片|广告数字人|普通广告数字人|由广告设想识别|上传主商品)$/i.test(s);
+    || /^(剧情广告|广告片|广告数字人|普通广告数字人|由广告设想识别|上传主商品)$/i.test(s);
 }
 
 function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary = '' } = {}) {
@@ -9052,7 +9052,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       },
     });
   } catch (err) {
-    _sendApiError(res, err, '高定广告人物三视图生成失败');
+    _sendApiError(res, err, '剧情广告人物三视图生成失败');
   }
 });
 
@@ -9110,7 +9110,7 @@ router.post('/luxury-ad/shot-rewrite', async (req, res) => {
     ].filter(Boolean).join('；') || asset_summary || '暂无素材摘要';
     const { callLLM } = require('../services/storyService');
     const sys = [
-      '你是一个高定广告片专业小组：品牌策略/编剧、商业摄影指导、AI 视觉提示词专家。',
+      '你是一个剧情广告专业小组：品牌策略/编剧、商业摄影指导、AI 视觉提示词专家。',
       '你只修改用户指定的一个镜头，必须输出 JSON object，不要输出解释。',
       '输出要有广告片质感：具体画面、具体镜头语言、具体观众文案，避免“便捷、高效、效率倍增、智能集成、创作只需片刻”等泛泛营销套话，除非用户明确要求这种口径。',
       '这个镜头要服务完整广告顺序，不是普通数字人口播。'
@@ -9231,7 +9231,7 @@ ${userInstruction}
       },
     });
   } catch (err) {
-    _sendApiError(res, err, '高定广告镜头 AI 修改失败');
+    _sendApiError(res, err, '剧情广告镜头 AI 修改失败');
   }
 });
 
@@ -9599,7 +9599,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       : `当前是第 2 步：用户只填写了广告设想。你只能先把广告设想拆成按时间推进的场景顺序和素材清单：开场分镜 → 第二场景 → 后续场景 → 收尾分镜。自己判断大概需要几个分镜；建议约 ${wantedShots} 个，但可按内容在 3-8 个之间调整。不要只输出 1 个镜头，不要假装已经看过素材，不要给具体景别/镜头运动/Topview 提示词；shot_size/shot_angle 固定写“素材进入后生成”，content_prompt 只写该场景需要什么画面，voiceover 只写旁白/介绍方向。`;
     const { callLLM } = require('../services/storyService');
     const sys = [
-      '你是高定广告片专业创作组，由品牌策略/编剧、商业摄影指导、AI 视觉提示词专家共同产出。',
+      '你是剧情广告专业创作组，由品牌策略/编剧、商业摄影指导、AI 视觉提示词专家共同产出。',
       '你的任务是把用户的“广告设想”拆成按时间推进的多场景广告故事，再在素材进入后写成专业广告剧本。',
       '只输出 JSON 数组，不要输出说明文字。第 2 步只输出场景顺序与素材清单；第 3 步输出剧本审核表，必须写清楚每镜秒数、画面、动作、台词、目的、情绪、镜头和声音。',
       '语言标准：像商业广告导演案和摄影分镜，不像普通数字人口播拆句，不重复套模板，不写空泛功能词。',
@@ -10256,7 +10256,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     };
     const repairLuxuryCastPayload = async ({ label, payload, issue, json = 'array', storyPlan = null }) => {
       const repairSys = [
-        '你是高定广告片人物一致性修复 agent。你的任务是修复上一轮 agent 输出里的人物数量、性别、地域、对白说话人和动作主体不一致问题。',
+        '你是剧情广告人物一致性修复 agent。你的任务是修复上一轮 agent 输出里的人物数量、性别、地域、对白说话人和动作主体不一致问题。',
         '只输出修复后的 JSON 本体，不要 markdown，不要解释。',
         subjectLockInstruction,
         castInstruction,
@@ -10282,7 +10282,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
     };
     if (isDetailedMode) {
       const storySys = [
-        '你是高定广告片的资深广告编剧 agent。你的职责是先写“真人商业广告故事”，不写产品图库脚本，也不写镜头参数。',
+        '你是剧情广告的资深广告编剧 agent。你的职责是先写“真人商业广告故事”，不写产品图库脚本，也不写镜头参数。',
         '只输出 JSON 对象，不要 markdown，不要解释。',
         `广告主体必须作为故事中的可见证据出现：${productSubject}。但故事主语必须先是人物在真实场景中遇到问题、行动、验证和收束，不能让产品/材料替代人物成为唯一主角。`,
         castInstruction,
@@ -10439,7 +10439,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
         }
 
         const reviewSys = [
-          '你是高定广告片审稿 agent。只输出 JSON 对象。',
+          '你是剧情广告审稿 agent。只输出 JSON 对象。',
           '检查剧本是否像一个连续故事，是否围绕主体，人物数量是否正确，镜头是否来自剧本，台词是否推进剧情，是否存在乱码或兜底空话。',
           expectedPeople < 2
             ? '本片是单人/旁白型广告：允许所有镜头使用 voiceover/narration/旁白作为成片台词，不得因为缺少 dialogue 或 dialogue_lines 而 rejected。只检查旁白是否推动故事、是否具体、是否有禁词。'
@@ -10496,7 +10496,7 @@ ${JSON.stringify(scenes, null, 2)}
       }
     } else {
       const outlineSys = [
-        '你是高定广告片场景配置 agent。只输出 JSON 数组本体，不要 markdown，不要解释。',
+        '你是剧情广告场景配置 agent。只输出 JSON 数组本体，不要 markdown，不要解释。',
         '任务：把用户一句话广告需求拆成 4-8 个场景顺序，用于下一步剧本生成；这里不要写专业景别、长镜头参数或完整剧本。',
         '每个元素只保留这些字段：title、role、duration、objective、material_need、copy_direction、action、emotion、sfx_audio。',
         'role 只能使用 hook、display、macro、benefit、proof、cta。duration 使用数字秒数。',
@@ -11000,7 +11000,7 @@ ${JSON.stringify(scenes, null, 2)}
       err.status = 422;
       err.code = 'LUXURY_SCRIPT_VALIDATION_FAILED';
     }
-    _sendApiError(res, err, '高定广告片分镜脚本生成失败');
+    _sendApiError(res, err, '剧情广告分镜脚本生成失败');
   }
 });
 
@@ -12238,11 +12238,11 @@ async function _buildSpaceAdStoryboard({ title, text, durationSec, segments, sce
     .map((s, i) => `${i + 1}. ${s.text}`)
     .join('\n');
   const sys = isLuxury
-    ? '你是高定广告片导演。你会把产品/品牌广告拆成 Topview Image2 关键帧 + Seedance 全参考视频的镜头序列。只输出 JSON 数组。'
+    ? '你是剧情广告导演。你会把产品/品牌广告拆成 Topview Image2 关键帧 + Seedance 全参考视频的镜头序列。只输出 JSON 数组。'
     : '你是短视频广告导演。你会把广告数字人口播文案拆成 Topview/Image2 + Seedance 风格的可控多关键帧广告分镜。只输出 JSON 数组。';
   const user = `标题：${title || '广告数字人'}
 场景/背景要点：${scenePrompt || '根据上传背景自动识别'}
-广告模式：${isLuxury ? `高定广告片 / ${_luxuryAdStyleName(adStyle)} / ${_luxuryAdStylePrompt(adStyle)}` : '普通广告数字人'}
+广告模式：${isLuxury ? `剧情广告 / ${_luxuryAdStyleName(adStyle)} / ${_luxuryAdStylePrompt(adStyle)}` : '普通广告数字人'}
 目标时长：${target} 秒
 文案分段：
 ${seedSegments || text}
@@ -12374,7 +12374,7 @@ function _compactLuxuryShotMeta(shot = {}) {
 function _compactProviderPromptText(value = '', max = 1600) {
   return String(value || '')
     .replace(/\s+/g, ' ')
-    .replace(/\b(PRODUCT SUBJECT LOCK:\s*the advertised product category is "高定广告片"\.?)/ig, '')
+    .replace(/\b(PRODUCT SUBJECT LOCK:\s*the advertised product category is "剧情广告"\.?)/ig, '')
     .trim()
     .slice(0, max);
 }
@@ -14163,7 +14163,7 @@ async function _createLuxuryAdReferenceKeyframe({
     outPath,
     plan: {
       kind: hasAvatar ? 'luxury_reference_identity_redraw' : 'luxury_reference_product_scene',
-      focus: hasAvatar ? '高定广告人物身份参考重绘融合' : '高定广告产品/场景分镜',
+      focus: hasAvatar ? '剧情广告人物身份参考重绘融合' : '剧情广告产品/场景分镜',
       reference_count: refs.length,
       has_avatar_reference: hasAvatar,
       character_lock: characterLock ? {
@@ -14880,7 +14880,7 @@ async function _createLuxuryAdReferenceKeyframe({
     outPath,
     plan: {
       kind: hasAvatar ? 'luxury_reference_identity_redraw' : 'luxury_reference_product_scene',
-      focus: hasAvatar ? '高定广告人物身份参考重绘融合' : '高定广告产品/场景分镜',
+      focus: hasAvatar ? '剧情广告人物身份参考重绘融合' : '剧情广告产品/场景分镜',
       reference_count: refs.length,
       has_avatar_reference: hasAvatar,
       character_lock: characterLock ? {
@@ -14968,7 +14968,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     return _luxuryCapImageModelPrompt(fullPrompt, maxChars);
   };
   const runSeedream = async (model, suffix, promptForAttempt) => {
-    if (!primary) throw new Error('缺少主商品/参考图，无法生成高定广告分镜');
+    if (!primary) throw new Error('缺少主商品/参考图，无法生成剧情广告分镜');
     const avatarService = require('../services/avatarService');
     const refBuf = await _fetchImageBuffer(_absolutePublicUrl(req, primary));
     return avatarService._arkSeedreamGenerate({
@@ -15162,7 +15162,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     return true;
   });
   if (_luxuryStageRequiresAdminConfig(stageId || 'luxury_ad.keyframe') && !configuredModelsAll.length) {
-    const err = new Error(`${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止高定广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
+    const err = new Error(`${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止剧情广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
     err.status = 422;
     err.code = 'LUXURY_STAGE_MODEL_NOT_CONFIGURED';
     err.luxuryKeyframeAttempts = [{
@@ -15197,7 +15197,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       .map(model => `${model.provider_id}/${model.model_id}`)
       .join(', ') || '无可运行图片模型';
     const err = new Error([
-      '高定广告片分镜生成已停止：当前镜头需要真人商业片质感和人物一致性，但只有系统生成的 presenter_seed，没有用户确认的真人/演员身份图。',
+      '剧情广告分镜生成已停止：当前镜头需要真人商业片质感和人物一致性，但只有系统生成的 presenter_seed，没有用户确认的真人/演员身份图。',
       topviewProviderHint,
       `当前可运行候选仅为：${configuredLabels}。这些候选在实测中会发生人物换脸、场景跑偏和 AI 质感过重，未达到竞品级商用标准。`,
       '请先配置可运行的 Topview 图像编辑模型，或上传/选择已确认真人身份参考图后重试；系统不会再降级到 DeyunAI 自由生图盲试。',
@@ -15398,7 +15398,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     .map(a => `${a.provider_id}/${a.model_id}${a.ok ? ' 成功' : ` 失败：${a.error || '未知错误'}`}`)
     .join('；');
   const err = new Error([
-    '高定广告片分镜画面生成失败。',
+    '剧情广告分镜画面生成失败。',
     summary ? `已尝试：${summary}。` : '',
     hasReferenceLock ? '当前镜头已绑定参考图，本次不会降级到只看主商品的自由生图模型。' : '',
     '可灵、海螺属于后续图生视频阶段，必须先生成分镜画面后才会执行；Topview 图片模型可用于当前分镜阶段，请检查其文生图/图像编辑额度和模型配置。',
@@ -15433,7 +15433,7 @@ function _buildLuxuryKeyframePrompt({
       : '';
     const compiledPrompt = _luxuryStrictText([packetPrompt, scene.compiled_image_prompt || ''].filter(Boolean).join(' '), 6000);
     if (!compiledPrompt) {
-      const err = new Error('高定广告分镜缺少 compiled_image_prompt，已停止，未调用图片模型。');
+      const err = new Error('剧情广告分镜缺少 compiled_image_prompt，已停止，未调用图片模型。');
       err.status = 422;
       err.code = 'LUXURY_COMPILED_PROMPT_REQUIRED';
       err.details = { scene_index: scene.index ?? scene.shot_index ?? null };
@@ -15768,7 +15768,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     outPath,
     plan: {
       kind: hasAvatar ? 'luxury_reference_identity_redraw' : 'luxury_reference_product_scene',
-      focus: hasAvatar ? '高定广告人物身份参考重绘融合' : '高定广告产品/场景分镜',
+      focus: hasAvatar ? '剧情广告人物身份参考重绘融合' : '剧情广告产品/场景分镜',
       reference_count: refs.length,
       has_avatar_reference: hasAvatar,
       character_lock: characterLock ? {
@@ -15822,7 +15822,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
   fs.mkdirSync(taskDir, { recursive: true });
   const base = _publicBaseUrl(req);
   try {
-    _taskPatch(taskId, { status: 'running', stage: 'storyboard', progress: 8, message: isLuxury ? '生成高定广告片分镜' : (isShowroomGuide ? '生成展墙讲解单镜头' : '生成广告数字人分镜') });
+    _taskPatch(taskId, { status: 'running', stage: 'storyboard', progress: 8, message: isLuxury ? '生成剧情广告分镜' : (isShowroomGuide ? '生成展墙讲解单镜头' : '生成广告数字人分镜') });
     const guideSegments = Array.isArray(segments) && segments.length
       ? segments.slice(0, maxStoryboardShots)
       : (isShowroomGuide
@@ -15921,8 +15921,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       const luxuryAsyncIdentityAvatar = isLuxury && !avatar?.image_url && luxuryAsyncGeneratedPresenterImage
         ? {
           id: 'luxury_generated_presenter_seed',
-          name: '高定广告片真人讲解员种子',
-          title: '高定广告片真人讲解员种子',
+          name: '剧情广告真人讲解员种子',
+          title: '剧情广告真人讲解员种子',
           image_url: luxuryAsyncGeneratedPresenterImage,
           gender: guideGender,
         }
@@ -15953,7 +15953,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         // Strict no-fallback rule: high-end ads stop when the real keyframe
         // generator is unavailable instead of switching to a hidden fallback.
         if (isLuxury && typeof keyframeMaker !== 'function') {
-          const err = new Error('高定广告片分镜生成器不可用：_createLuxuryAdReferenceKeyframe 未加载，已停止，未启用兜底生成器。');
+          const err = new Error('剧情广告分镜生成器不可用：_createLuxuryAdReferenceKeyframe 未加载，已停止，未启用兜底生成器。');
           err.status = 503;
           err.code = 'LUXURY_KEYFRAME_GENERATOR_UNAVAILABLE';
           throw err;
@@ -16103,7 +16103,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         continue;
       }
       if (isLuxury && _isTopviewPipelineModel(candidateVideoModel)) {
-        providerErrors.push(`${_pipelineModelLabel(candidateVideoModel)}: 高定广告片只支持 Topview Image2Video，不使用 Topview M2V/Avatar 链路`);
+        providerErrors.push(`${_pipelineModelLabel(candidateVideoModel)}: 剧情广告只支持 Topview Image2Video，不使用 Topview M2V/Avatar 链路`);
         continue;
       }
       if (_isTopviewPipelineModel(candidateVideoModel)) {
@@ -16171,11 +16171,11 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     if (!isShowroomGuide && !isLuxury && await tryLipSyncPipeline()) return;
     const preferredVideoModel = seedancePipelineModel || (!isLuxury && _isSeedancePipelineModel(pipelineVideoModel) ? pipelineVideoModel : null);
     if (isLuxury && !preferredVideoModel) {
-      const detail = providerErrors.length ? `已按模型调用管理顺序尝试：${providerErrors.join('；').slice(0, 800)}` : '没有可用的高定广告片图生视频模型';
-      throw new Error(`高定广告片图生视频生成失败：${detail}`);
+      const detail = providerErrors.length ? `已按模型调用管理顺序尝试：${providerErrors.join('；').slice(0, 800)}` : '没有可用的剧情广告图生视频模型';
+      throw new Error(`剧情广告图生视频生成失败：${detail}`);
     }
     const { _seedanceAVGenerate } = require('../services/avatarService');
-    const { apiKey, model } = _getSeedanceAdConfig(preferredVideoModel);
+    const { apiKey, model, providerId } = _getSeedanceAdConfig(preferredVideoModel);
     const clips = [];
     const videoKbContext = _buildDhKbContext(
       isShowroomGuide ? 'showroom_guide' : 'digital_ad',
@@ -16185,7 +16185,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     try {
       for (let i = 0; i < keyframes.length; i++) {
         const kf = keyframes[i];
-        _taskPatch(taskId, { stage: 'video', progress: 45 + Math.round((i / keyframes.length) * 35), message: `${isLuxury ? '生成高定广告镜头' : '生成广告镜头'} ${i + 1}/${keyframes.length}` });
+        _taskPatch(taskId, { stage: 'video', progress: 45 + Math.round((i / keyframes.length) * 35), message: `${isLuxury ? '生成剧情广告镜头' : '生成广告镜头'} ${i + 1}/${keyframes.length}` });
         const prompt = [
           kf.video_prompt,
           kf.workflow_type === 'luxury_ad_storyboard' ? `Luxury workflow metadata: ${JSON.stringify(_compactLuxuryShotMeta(kf)).slice(0, 1000)}.` : '',
@@ -16202,14 +16202,35 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         const seedanceDuration = (isShowroomGuide || isLuxury)
           ? Math.max(5, Math.min(10, storyboardDuration))
           : (kf.duration || 4);
-        const { videoBuffer } = await _seedanceAVGenerate(
-          kf.image_url,
-          prompt,
-          model,
-          apiKey,
-          info => _taskPatch(taskId, { message: info.message || `Seedance 广告镜头 ${i + 1}` }),
-          { ratio: aspectRatio, duration: seedanceDuration, hasAudio: false, allowCameraMove: isShowroomGuide }
-        );
+        let videoBuffer;
+        if (providerId === 'webang-seedance') {
+          const videoService = require('../services/videoService');
+          const webangFilename = `webang_seedance_clip_${String(i + 1).padStart(2, '0')}`;
+          _taskPatch(taskId, { message: `微众 Seedance 剧情广告镜头 ${i + 1}/${keyframes.length}` });
+          const generated = await videoService.generateVideoClip({
+            video_provider: 'webang-seedance',
+            video_model: model,
+            prompt,
+            duration: seedanceDuration,
+            outputDir: taskDir,
+            filename: webangFilename,
+            image_url: kf.image_url,
+            aspectRatio,
+            userId: req.user?.id || req.userId || '',
+            agentId: 'luxury_ad.video',
+          });
+          videoBuffer = fs.readFileSync(generated.filePath);
+        } else {
+          const generated = await _seedanceAVGenerate(
+            kf.image_url,
+            prompt,
+            model,
+            apiKey,
+            info => _taskPatch(taskId, { message: info.message || `Seedance 广告镜头 ${i + 1}` }),
+            { ratio: aspectRatio, duration: seedanceDuration, hasAudio: false, allowCameraMove: isShowroomGuide }
+          );
+          videoBuffer = generated.videoBuffer;
+        }
         const clipPath = path.join(taskDir, `clip_${String(i + 1).padStart(2, '0')}.mp4`);
         if (isLuxury) {
           const rawClipPath = path.join(taskDir, `clip_${String(i + 1).padStart(2, '0')}_raw.mp4`);
@@ -16223,10 +16244,10 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     } catch (seedanceErr) {
       providerErrors.push(`${model}: ${seedanceErr.message}`);
       const detail = providerErrors.length ? `；已尝试：${providerErrors.join('；').slice(0, 500)}` : '';
-      throw new Error(`${isLuxury ? '高定广告片' : '广告'}图生视频生成失败：${seedanceErr.message}${detail}`);
+      throw new Error(`${isLuxury ? '剧情广告' : '广告'}图生视频生成失败：${seedanceErr.message}${detail}`);
     }
 
-    _taskPatch(taskId, { stage: 'post_effects', progress: 84, message: isLuxury ? '平滑拼接高定广告镜头' : '平滑拼接广告镜头' });
+    _taskPatch(taskId, { stage: 'post_effects', progress: 84, message: isLuxury ? '平滑拼接剧情广告镜头' : '平滑拼接广告镜头' });
     const concatPath = path.join(taskDir, 'digital_ad_concat.mp4');
     await _concatVideosSmooth(clips, concatPath, aspectRatio, outputSize);
     const voiceSegments = isShowroomGuide && Array.isArray(speechSegments) && speechSegments.some(s => s?.text)
@@ -16297,7 +16318,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       id: taskId,
       status: 'done',
       stage: 'done',
-      title: title || (isLuxury ? '高定广告片' : '广告数字人'),
+      title: title || (isLuxury ? '剧情广告' : '广告数字人'),
       text: voiceover || text,
       scenes,
       keyframes: keyframes.map(_publicAdKeyframeMeta),
@@ -17128,7 +17149,7 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (isLuxuryRequest && (!Array.isArray(segments) || !segments.length)) {
       return res.status(422).json({
         success: false,
-        error: '高定广告片分镜生成必须传入已确认剧本 segments，不能用本地兜底生成。',
+        error: '剧情广告分镜生成必须传入已确认剧本 segments，不能用本地兜底生成。',
         code: 'LUXURY_SCRIPT_SEGMENTS_REQUIRED',
       });
     }
@@ -17299,8 +17320,8 @@ router.post('/spaces/keyframes', async (req, res) => {
     const luxuryBriefReferenceAvatar = isLuxury && (luxuryBriefPersonReferenceImage || luxuryGeneratedPresenterImage)
       ? {
         id: luxuryBriefPersonReferenceImage ? 'luxury_brief_reference_person' : 'luxury_generated_presenter_seed',
-        name: luxuryBriefPersonReferenceImage ? '需求参考人物' : '高定广告片真人讲解员种子',
-        title: luxuryBriefPersonReferenceImage ? '需求参考人物' : '高定广告片真人讲解员种子',
+        name: luxuryBriefPersonReferenceImage ? '需求参考人物' : '剧情广告真人讲解员种子',
+        title: luxuryBriefPersonReferenceImage ? '需求参考人物' : '剧情广告真人讲解员种子',
         image_url: luxuryBriefPersonReferenceImage || luxuryGeneratedPresenterImage,
         gender: '',
       }
@@ -17350,7 +17371,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         : _createLockedAdKeyframe;
       if (isLuxury && typeof keyframeMaker !== 'function') {
         // Strict no-fallback rule: do not switch to the legacy fallback maker.
-        const err = new Error('高定广告片分镜生成器不可用：_createLuxuryAdReferenceKeyframe 未加载，已停止，未启用兜底生成器。');
+        const err = new Error('剧情广告分镜生成器不可用：_createLuxuryAdReferenceKeyframe 未加载，已停止，未启用兜底生成器。');
         err.status = 503;
         err.code = 'LUXURY_KEYFRAME_GENERATOR_UNAVAILABLE';
         throw err;
@@ -17596,7 +17617,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       errorDetails.attempts = attempts;
     }
     _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: errorDetails });
-    _sendApiError(res, err, '高定广告片分镜生成失败');
+    _sendApiError(res, err, '剧情广告分镜生成失败');
   }
 });
 
@@ -17963,7 +17984,7 @@ router.post('/spaces/generate', async (req, res) => {
         return res.status(422).json({
           success: false,
           code: 'LUXURY_VIDEO_PRECHECK_FAILED',
-          error: '高定广告成片前检查未通过，请先重新生成或确认不合格关键帧，避免浪费视频生成额度。',
+          error: '剧情广告成片前检查未通过，请先重新生成或确认不合格关键帧，避免浪费视频生成额度。',
           details: luxuryPrecheck,
         });
       }

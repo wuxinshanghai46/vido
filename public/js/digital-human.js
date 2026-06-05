@@ -616,7 +616,7 @@
       works: '🎬 作品库',
       'product-dh': '🛍️ 商品数字人',
       'space-guide': '📢 广告数字人',
-      'luxury-ad': '🎞️ 高定广告片',
+      'luxury-ad': '🎞️ 剧情广告',
     }[tab] || '数字人';
 
     if (tab === 'step2') loadMyAvatars();
@@ -951,7 +951,7 @@
   }
 
   async function uploadDhImage(file, options = {}) {
-    // 所有图片上传统一先走客户端压缩，避免高定广告片参考图继续原图慢传。
+    // 所有图片上传统一先走客户端压缩，避免剧情广告参考图继续原图慢传。
     const compressed = await compressImageBeforeUpload(file, {
       maxDim: options.maxDim || 1600,
       quality: options.quality || 0.82,
@@ -2121,7 +2121,7 @@
         renderLuxuryAdStoryboard();
         updateLuxuryAdStepLocks();
       } else renderSpaceGuide();
-      toast(`已选中「${a.name}」，返回${returnTab === 'luxury-ad' ? '高定广告片' : '广告数字人'}`, 'success');
+      toast(`已选中「${a.name}」，返回${returnTab === 'luxury-ad' ? '剧情广告' : '广告数字人'}`, 'success');
       switchTab(returnTab);
       return;
     }
@@ -2331,7 +2331,7 @@
         renderLuxuryAdStoryboard();
         updateLuxuryAdStepLocks();
       } else renderSpaceGuide();
-      toast(`已选中「${it.name}」，用于${scene === 'luxury-ad' ? '高定广告片' : '广告数字人'}`, 'success');
+      toast(`已选中「${it.name}」，用于${scene === 'luxury-ad' ? '剧情广告' : '广告数字人'}`, 'success');
       switchTab(scene);
     } else if (scene === 'product-dh') {
       const av = it._avatarData;
@@ -2363,7 +2363,7 @@
         <div style="display:grid;gap:10px">
           <button class="dh-btn dh-btn-primary" data-scene="step3" type="button">③ 生成数字人</button>
           <button class="dh-btn dh-btn-ghost" data-scene="space-guide" type="button">📢 广告数字人</button>
-          <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button">🎞️ 高定广告片</button>
+          <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button">🎞️ 剧情广告</button>
           ${isProduct ? '<button class="dh-btn dh-btn-ghost" data-scene="product-dh" type="button">🛍️ 商品数字人</button>' : ''}
           <button class="dh-link-btn" data-scene="" type="button">取消</button>
         </div>
@@ -3457,7 +3457,7 @@
       if (el) el.value = '';
     });
     renderLuxuryAd();
-    if (!quiet) toast('已清空高定广告片表单，可以重新创建', 'success');
+    if (!quiet) toast('已清空剧情广告表单，可以重新创建', 'success');
   }
   const DH_TASK_STORE_KEY = 'dh_video_tasks_v1';
   const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
@@ -3541,7 +3541,7 @@
     const adMode = String(task?.ad_mode || task?.adMode || task?.retryPayload?.ad_mode || task?.createDetail?.adMode || '').toLowerCase();
     const generationMode = String(task?.generation_mode || task?.generationMode || task?.retryPayload?.generation_mode || '').toLowerCase();
     const title = String(task?.title || task?.avatarName || task?.createDetail?.title || '').toLowerCase();
-    if (task?.taskType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('高定广告片')) return 'luxury_ad';
+    if (task?.taskType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('剧情广告')) return 'luxury_ad';
     if (task?.taskType === 'product_ad') return 'product_ad';
     if (task?.taskType === 'digital_ad' || task?.taskType === 'space_guide') return 'digital_ad';
     return 'digital_human';
@@ -3552,7 +3552,7 @@
       digital_human: '数字人',
       product_ad: '商品口播视频',
       digital_ad: '广告数字人',
-      luxury_ad: '高定广告片',
+      luxury_ad: '剧情广告',
     }[type] || '数字人';
   }
 
@@ -3910,7 +3910,7 @@
       }
       if (!payload?.background_url || !String(payload?.text || '').trim() || !String(payload?.voice_id || '').trim()) {
         switchTab(type === 'luxury_ad' ? 'luxury-ad' : 'space-guide');
-        toast(type === 'luxury_ad' ? '旧高定广告片任务缺少重提参数，请回高定广告片页面确认画面、文案和音色后提交' : '旧广告任务缺少重提参数，请回广告数字人页面确认背景、文案和音色后提交', 'error');
+        toast(type === 'luxury_ad' ? '旧剧情广告任务缺少重提参数，请回剧情广告页面确认画面、文案和音色后提交' : '旧广告任务缺少重提参数，请回广告数字人页面确认背景、文案和音色后提交', 'error');
         return;
       }
       const needsStrictKeyframe = payload.strict_mode === true
@@ -3972,7 +3972,7 @@
           voiceId: payload.voice_id || '',
           scenePrompt: payload.scene_prompt || '',
           cameraPrompt: payload.camera_prompt || '',
-          adMode: payload.ad_mode === 'luxury_ad' ? '高定广告片' : '普通广告数字人',
+          adMode: payload.ad_mode === 'luxury_ad' ? '剧情广告' : '普通广告数字人',
           adStyle: payload.ad_style || '',
           guideGender: payload.guide_gender || '',
           shotCount: payload.shot_count || '',
@@ -3989,7 +3989,7 @@
       pollVideoTask(r.taskId);
       state.activeTaskType = type === 'luxury_ad' ? 'luxury_ad' : 'digital_ad';
       renderTaskCenter();
-      toast(type === 'luxury_ad' ? '已重新提交高定广告片任务' : '已重新提交广告数字人任务', 'success');
+      toast(type === 'luxury_ad' ? '已重新提交剧情广告任务' : '已重新提交广告数字人任务', 'success');
       return;
     }
     if (type !== 'product_ad') {
@@ -4140,7 +4140,7 @@
           ? `<img src="${escapeHtml(withAuthQuery(img))}" alt="${escapeHtml(a.name || '数字人')}" loading="eager" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='${escapeHtml(withAuthQuery(rawImg || (a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : '')))}'">`
           : `<div class="dh-selected-empty"><div class="dh-empty-icon">▥</div><div>这个形象缺少可用封面图</div><button class="dh-link-btn" data-space-pick-avatar>重新选择形象 →</button></div>`}
           <div class="av-name">${escapeHtml(a.name || '已选形象')}</div>
-          <div class="av-badges"><span class="av-badge">${isLuxury ? '高定广告片' : '广告数字人'}</span><span class="av-badge">静态图驱动</span></div>
+          <div class="av-badges"><span class="av-badge">${isLuxury ? '剧情广告' : '广告数字人'}</span><span class="av-badge">静态图驱动</span></div>
           <div class="dh-field-hint" style="margin-top:6px">${isLuxury ? '高定片会把形象作为同一人物身份参考逐镜头重绘进场景；锁定脸型、发型、年龄感和服装风格，只改变姿态、表情和镜头角度。' : '生成时使用形象静态图保持身份；动态预览只用于查看人物效果，不直接作为广告视频输入。'}</div>
           <button class="av-switch-btn" data-space-pick-avatar>↻ 切换形象</button>`;
       }
@@ -4464,7 +4464,7 @@
       host.innerHTML = `<div class="dh-voice-opt-icon">TV</div>
         <div class="dh-voice-opt-body">
           <div class="dh-voice-opt-name">未选择配音</div>
-          <div class="dh-voice-opt-sub">高定广告片必须手动选择声音</div>
+          <div class="dh-voice-opt-sub">剧情广告必须手动选择声音</div>
         </div>`;
       return;
     }
@@ -4740,7 +4740,7 @@
     const src = selectedAvatarImageUrl(a);
     const isVideo = !!(a.sample_video_url || a.video_url);
     host.innerHTML = `<div class="dh-luxgen-person-thumb">${src ? `<img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(a.name || '人物形象')}" data-fallback-src="${escapeHtml(withAuthQuery(a.image_url || a.photo_url || ''))}" onerror="window.__dhAvatarImageFallback&&window.__dhAvatarImageFallback(this)">` : '已选'}</div>
-      <div class="dh-luxgen-person-copy"><b>${escapeHtml(a.name || '已选人物')}</b><small>${isVideo ? '已选视频/动态素材，但高定广告片只取身份参考来重绘进镜头。' : '作为人物身份参考，生成分镜时会重绘融合到场景里。'}</small></div>`;
+      <div class="dh-luxgen-person-copy"><b>${escapeHtml(a.name || '已选人物')}</b><small>${isVideo ? '已选视频/动态素材，但剧情广告只取身份参考来重绘进镜头。' : '作为人物身份参考，生成分镜时会重绘融合到场景里。'}</small></div>`;
   }
 
   function renderLuxuryAdPostScriptPerson() {
@@ -5469,10 +5469,10 @@
     const mask = document.createElement('div');
     mask.className = 'dh-luxgen-writer-mask';
     mask.innerHTML = `
-      <div class="dh-luxgen-writer-modal" role="dialog" aria-modal="true" aria-label="AI 帮我写高定广告片内容">
+      <div class="dh-luxgen-writer-modal" role="dialog" aria-modal="true" aria-label="AI 帮我写剧情广告内容">
         <div class="dh-luxgen-writer-head">
           <div>
-            <h3>AI 帮我写高定广告片内容</h3>
+            <h3>AI 帮我写剧情广告内容</h3>
             <p>给一点产品、卖点或目标客户，AI 会先写成广告词/需求，再用于生成详细分镜。</p>
           </div>
           <button class="dh-icon-btn" type="button" data-lux-writer-close>×</button>
@@ -6965,7 +6965,7 @@
     host.innerHTML = `<div class="dh-demo-script-review">
       <div>
         <h4>剧本审核</h4>
-        <p>第 1 版 · 待确认 · ${escapeHtml(info.title || '高定广告片')} · 共 ${segments.length} 镜 · 总时长 ${totalSeconds} 秒</p>
+        <p>第 1 版 · 待确认 · ${escapeHtml(info.title || '剧情广告')} · 共 ${segments.length} 镜 · 总时长 ${totalSeconds} 秒</p>
       </div>
       <div class="dh-demo-script-actions">
         <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerate">重新生成整版</button>
@@ -7036,7 +7036,7 @@
     return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板">
       <div class="dh-lux-sheet-head">
         <div>
-          <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '高定广告片分镜板')}</b>
+          <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '剧情广告分镜板')}</b>
           <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · 资产锁与 QA 已融合到每镜</span>
         </div>
         <em>Storyboard Workbench</em>
@@ -7824,7 +7824,7 @@
       showLuxuryAdStep(detail ? 3 : 2, { silent: true });
       ok = true;
     } catch (err) {
-      toast((detail ? '高定广告片剧本生成失败：' : '高定广告片场景配置生成失败：') + err.message, 'error');
+      toast((detail ? '剧情广告剧本生成失败：' : '剧情广告场景配置生成失败：') + err.message, 'error');
     } finally {
       state.luxuryAd.sceneGenerating = false;
       state.luxuryAd.scriptGenerating = false;
@@ -8049,7 +8049,7 @@
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
       state.luxuryAd.keyframeErrorDetails = err?.data?.details || null;
       renderLuxuryAdStoryboard();
-      toast('高定广告片分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
+      toast('剧情广告分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
     } finally {
       if (progressTimer) clearInterval(progressTimer);
       state.luxuryAd.keyframeGenerating = false;
@@ -8084,13 +8084,13 @@
     }
     const primaryFrame = state.luxuryAd.keyframes?.find(k => k?.image_url || k?.imageUrl)?.image_url || state.luxuryAd.keyframes?.find(k => k?.image_url || k?.imageUrl)?.imageUrl || '';
     const voiceId = state.luxuryAd.voiceId || '';
-    if (!voiceId) return toast('请先手动选择配音音色；高定广告片不会自动选声音', 'error');
+    if (!voiceId) return toast('请先手动选择配音音色；剧情广告不会自动选声音', 'error');
     const btn = $('#dhLuxAdConfirmGenerate');
     const old = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = '提交合成中…'; }
     setLuxuryProgress('video');
     try {
-      const title = '高定广告片';
+      const title = '剧情广告';
       const productAsset = state.luxuryAd.productAsset || {};
       const referenceAssets = luxuryAdReferenceAssets();
       const selectedVoice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
@@ -8122,7 +8122,7 @@
         duration_sec: state.luxuryAd.durationSec,
         subtitle: subtitlePayload,
         scene_prompt: text,
-          camera_prompt: '高定广告片：按分镜顺序生成镜头，镜头语言高级克制，保留产品故事与品牌质感。',
+          camera_prompt: '剧情广告：按分镜顺序生成镜头，镜头语言高级克制，保留产品故事与品牌质感。',
         ad_mode: 'luxury_ad',
         ad_style: 'luxury_soft',
         shot_count: state.luxuryAd.segments.length || 4,
@@ -8162,7 +8162,7 @@
             avatarId: state.selectedAvatar?.id || '',
             voiceId,
             voiceName: selectedVoice.name || selectedVoice.label || voiceId,
-            adMode: '高定广告片',
+            adMode: '剧情广告',
             outputRatio: state.luxuryAd.outputRatio,
             outputSize: state.luxuryAd.outputSize,
             resolution: outputPixels(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
@@ -8185,11 +8185,11 @@
         pollVideoTask(state.luxuryAd.taskId);
       }
       state.activeTaskType = 'luxury_ad';
-        toast('高定广告片任务已提交，任务中心会显示剧本、分镜、配音、字幕和逐镜视频生成进度', 'success');
+        toast('剧情广告任务已提交，任务中心会显示剧本、分镜、配音、字幕和逐镜视频生成进度', 'success');
       renderTaskCenter();
       switchTab('tasks');
     } catch (err) {
-      toast('高定广告片生成失败：' + err.message, 'error');
+      toast('剧情广告生成失败：' + err.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = old || '合成广告'; }
     }
@@ -8317,7 +8317,7 @@
   }
 
   const SPACE_STANDARD_SAMPLE_TEXT = '大家现在看到的是这面定制展示墙。它的纹理层次非常丰富，在顶部射灯的照射下，会呈现出自然的金属光泽和空间纵深。我们把人物讲解区放在左侧，右侧完整保留展示面，这样观众既能看到讲解员，也能清楚看到空间亮点。';
-  const SPACE_LUXURY_SAMPLE_TEXT = '用一支高定广告片呈现这面艺术墙的品牌质感。开场先建立完整空间氛围，再推进到材质纹理和光影细节，中段让人物与场景自然互动，突出定制工艺和高级质感，最后收束到品牌记忆点和咨询引导。';
+  const SPACE_LUXURY_SAMPLE_TEXT = '用一支剧情广告呈现这面艺术墙的品牌质感。开场先建立完整空间氛围，再推进到材质纹理和光影细节，中段让人物与场景自然互动，突出定制工艺和高级质感，最后收束到品牌记忆点和咨询引导。';
 
   function syncSpaceModeCopyLabels() {
     const isLuxury = state.space.adMode === 'luxury';
@@ -8328,29 +8328,29 @@
     const visualLabel = $('#dhSpaceVisualLabel');
     const visualHint = $('#dhSpaceVisualHint');
     const sampleBtn = $('#dhSpaceSampleText');
-    if (copyLabel) copyLabel.textContent = isLuxury ? '高定广告脚本' : '广告文案';
+    if (copyLabel) copyLabel.textContent = isLuxury ? '剧情广告脚本' : '广告文案';
     if (visualLabel) visualLabel.textContent = isLuxury ? '高定摄影 / 分镜提示词' : '画面提示词';
     if (visualHint) visualHint.textContent = isLuxury
-      ? '高定广告片会拆成多镜头分镜，并为每镜头生成摄影解构、关键帧和图生视频提示。'
-      : '普通广告使用展墙讲解画面；高定广告片使用多分镜。';
+      ? '剧情广告会拆成多镜头分镜，并为每镜头生成摄影解构、关键帧和图生视频提示。'
+      : '普通广告使用展墙讲解画面；剧情广告使用多分镜。';
     if (sampleBtn) sampleBtn.textContent = isLuxury ? '填入高定示例' : '填入示例文案';
     if (titleInput) {
       const current = String(titleInput.value || '').trim();
-      if (isLuxury && (!current || current === '广告数字人')) titleInput.value = '高定广告片';
-      if (!isLuxury && current === '高定广告片') titleInput.value = '广告数字人';
-      titleInput.placeholder = isLuxury ? '例如：高端艺术墙高定广告片' : '例如：高端艺术墙新品广告';
+      if (isLuxury && (!current || current === '广告数字人')) titleInput.value = '剧情广告';
+      if (!isLuxury && current === '剧情广告') titleInput.value = '广告数字人';
+      titleInput.placeholder = isLuxury ? '例如：高端艺术墙剧情广告' : '例如：高端艺术墙新品广告';
     }
     if (textInput) {
       const current = String(textInput.value || '').trim();
       if (isLuxury && current === SPACE_STANDARD_SAMPLE_TEXT) textInput.value = SPACE_LUXURY_SAMPLE_TEXT;
       if (!isLuxury && current === SPACE_LUXURY_SAMPLE_TEXT) textInput.value = SPACE_STANDARD_SAMPLE_TEXT;
       textInput.placeholder = isLuxury
-        ? '写高定广告片脚本，例如：开场建立品牌空间，第二镜做材质特写，中段展示人物与场景互动，最后收束到品牌记忆点。'
+        ? '写剧情广告脚本，例如：开场建立品牌空间，第二镜做材质特写，中段展示人物与场景互动，最后收束到品牌记忆点。'
         : '写数字人要说的话，例如：大家现在看到的是这面定制艺术墙，它的纹理层次非常丰富，在灯光下会呈现自然金属光泽。';
     }
     if (sceneInput) {
       sceneInput.placeholder = isLuxury
-        ? '高定广告分镜：逆向摄影解构、焦段/景别/灯光、产品与人物位置、镜头运动和片尾留白。'
+        ? '剧情广告分镜：逆向摄影解构、焦段/景别/灯光、产品与人物位置、镜头运动和片尾留白。'
         : '展厅导览式口播广告：人物位于画面左侧三分之一自然讲解，右侧保留完整展示墙/产品空间，暖色展示灯突出材质纹理，稳定机位配合极慢推近。';
     }
   }
@@ -8455,7 +8455,7 @@
     const validGuidePreview = state.space.adMode !== 'luxury' && isQualifiedShowroomGuidePreview(state.space.keyframes?.[0]);
     if (submit) submit.textContent = hasKeyframes
       ? (state.space.adMode === 'luxury'
-        ? '确认关键帧并合成高定广告片'
+        ? '确认关键帧并合成剧情广告'
         : (validGuidePreview ? '确认合格预览并合成视频' : '预览不合格，请重新生成'))
       : (state.space.adMode === 'luxury' ? '生成分镜关键帧预览' : '生成带人物导览预览');
   }
@@ -8485,7 +8485,7 @@
         <div class="dh-story-card ghost">
           <div class="dh-story-thumb">03</div>
           <b>Topview I2V</b>
-          <span>按关键帧逐镜头生成高定广告片段</span>
+          <span>按关键帧逐镜头生成剧情广告段</span>
         </div>
         <div class="dh-story-card ghost">
           <div class="dh-story-thumb">04</div>
@@ -8529,7 +8529,7 @@
     const settings = $('#dhLuxurySettings');
     if (settings) settings.style.display = isLuxury ? 'grid' : 'none';
     const pageTitle = $('#dhSpacePageTitle');
-    if (pageTitle) pageTitle.textContent = isLuxury ? '高定广告片' : '广告数字人';
+    if (pageTitle) pageTitle.textContent = isLuxury ? '剧情广告' : '广告数字人';
     const pageSub = $('#dhSpacePageSub');
     if (pageSub) pageSub.textContent = isLuxury
       ? '独立的多镜头广告片工作流：人物可选；选择人物后会锁定同一身份参考，逐镜头重绘融合。'
@@ -8545,10 +8545,10 @@
     const shot = $('#dhLuxuryShotCount');
     if (shot) shot.value = String(state.space.shotCount || 6);
     const title = $('#dhSpaceWorkbenchTitle');
-    if (title) title.textContent = isLuxury ? '高定广告片工作流' : '单镜头预览';
+    if (title) title.textContent = isLuxury ? '剧情广告工作流' : '单镜头预览';
     const sub = $('#dhSpaceWorkbenchSub');
     if (sub) sub.textContent = isLuxury
-      ? '按 Topview Image2Video 参考流生成 4-8 个高定广告镜头；人物只变姿态和表情，不换脸。'
+      ? '按 Topview Image2Video 参考流生成 4-8 个剧情广告镜头；人物只变姿态和表情，不换脸。'
       : 'AI 会按上传背景和性别生成一位导览员，并先做自然融合质检；没有人物的预览不能合成。';
     const hint = $('#dhSpaceModeHint');
     if (hint) hint.textContent = isLuxury
@@ -8682,7 +8682,7 @@
     state.space.keyframes = [];
     const box = $('#dhSpacePreview');
     if (box) {
-      const modeLabel = isLuxury ? '高定广告片' : '普通广告数字人';
+      const modeLabel = isLuxury ? '剧情广告' : '普通广告数字人';
       box.innerHTML = `<div class="dh-storyboard-wrap">
         <div class="dh-storyboard-status">
           <div>
@@ -8753,7 +8753,7 @@
         </div>
         <div class="dh-storyboard-status-actions">
           <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-space-keyframes-from-board>${isLuxury ? '重新生成关键帧' : '重新生成预览'}</button>
-          <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-space-submit-from-board>${isLuxury ? '确认关键帧并合成高定广告片' : '确认预览并合成视频'}</button>
+          <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-space-submit-from-board>${isLuxury ? '确认关键帧并合成剧情广告' : '确认预览并合成视频'}</button>
         </div>
       </div>
       <div class="dh-storyboard-grid${isGuidePreview ? ' dh-storyboard-grid-guide' : ''}">
@@ -9014,7 +9014,7 @@
         avatarName: state.selectedAvatar?.name || '',
         avatarId: state.selectedAvatar?.id || '',
         voiceId: voiceId || '',
-        adMode: isLuxury ? '高定广告片' : '普通广告数字人',
+        adMode: isLuxury ? '剧情广告' : '普通广告数字人',
         adStyle: isLuxury ? luxuryStyleName(adStyle) : '',
         guideGender: !isLuxury ? (state.space.guideGender || 'female') : '',
         shotCount: shotCount || '',
@@ -9029,7 +9029,7 @@
       };
       const taskMeta = {
         taskId: r.taskId,
-        avatarName: isLuxury ? `${title || '高定广告片'} · ${luxuryStyleName(adStyle)}` : (title || state.selectedAvatar?.name || '广告数字人'),
+        avatarName: isLuxury ? `${title || '剧情广告'} · ${luxuryStyleName(adStyle)}` : (title || state.selectedAvatar?.name || '广告数字人'),
         startedAt: Date.now(),
         status: 'submitted',
         stage: 'submitted',
@@ -9047,7 +9047,7 @@
         box.innerHTML = `<div class="dh-space-result">
           <div>
             <div class="dh-render-stage-name">已提交到任务中心</div>
-            <div class="dh-render-stage-sub">${durationSec}s · ${isLuxury ? '多镜头高定广告片' : '展墙讲解口播'} · 预览图和视频都在后台生成，可以继续创建其他任务。</div>
+            <div class="dh-render-stage-sub">${durationSec}s · ${isLuxury ? '多镜头剧情广告' : '展墙讲解口播'} · 预览图和视频都在后台生成，可以继续创建其他任务。</div>
             <button class="dh-btn dh-btn-primary dh-btn-sm" data-tab-go="tasks">查看任务中心</button>
           </div>
         </div>`;

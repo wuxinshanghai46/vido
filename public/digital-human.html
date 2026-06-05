@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260604-storyboard-workbench">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260605-story-ad-workflow">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -89,7 +89,7 @@
             <span class="dh-nav-icon">📢</span>广告数字人
           </a>
           <a class="dh-nav-item" data-tab="luxury-ad">
-            <span class="dh-nav-icon">🎞️</span>高定广告片
+            <span class="dh-nav-icon">🎞️</span>剧情广告
           </a>
         </div>
         <div class="dh-nav-group">
@@ -988,9 +988,9 @@
                   <div class="dh-ad-mode-panel" id="dhSpaceAdModePanel">
                     <div class="dh-space-copy-mode-tabs dh-ad-mode-tabs">
                       <button type="button" class="active" data-space-ad-mode="standard">普通广告数字人</button>
-                      <button type="button" data-space-ad-mode="luxury">高定广告片</button>
+                      <button type="button" data-space-ad-mode="luxury">剧情广告</button>
                     </div>
-                    <div class="dh-field-hint" id="dhSpaceModeHint">普通模式按参考视频走“左侧数字人讲解 + 右侧展示区 + 单镜头稳定口播”；高定广告片才走多关键帧串联。</div>
+                    <div class="dh-field-hint" id="dhSpaceModeHint">普通模式按参考视频走“左侧数字人讲解 + 右侧展示区 + 单镜头稳定口播”；剧情广告才走多关键帧串联。</div>
                   </div>
                   <div class="dh-ad-mode-panel" id="dhSpaceGuideModePanel">
                     <div class="dh-space-copy-mode-tabs dh-ad-mode-tabs">
@@ -1079,7 +1079,7 @@
                     <div class="dh-field">
                       <label id="dhSpaceVisualLabel">画面提示词</label>
                       <textarea class="dh-input" id="dhSpaceScenePrompt" rows="6" maxlength="360" placeholder="展厅导览式口播广告：人物位于画面左侧三分之一自然讲解，右侧保留完整展示墙/产品空间，暖色展示灯突出材质纹理，稳定机位配合极慢推近。"></textarea>
-                      <div class="dh-field-hint" id="dhSpaceVisualHint">普通广告使用展墙讲解画面；高定广告片使用多分镜。</div>
+                      <div class="dh-field-hint" id="dhSpaceVisualHint">普通广告使用展墙讲解画面；剧情广告使用多分镜。</div>
                     </div>
                   </div>
                   <div class="dh-space-actions">
@@ -1128,16 +1128,16 @@
           </div>
         </div>
 
-        <!-- ━━ 高定广告片 · flow-5-4 真实流程 ━━ -->
+        <!-- ━━ 剧情广告 · flow-5-4 真实流程 ━━ -->
         <div class="dh-tab-pane" data-pane="luxury-ad">
           <div class="dh-wizard-head">
             <div>
-              <div class="dh-wizard-title">高定广告片</div>
+              <div class="dh-wizard-title">剧情广告</div>
               <div class="dh-wizard-sub">广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。</div>
             </div>
           </div>
 
-          <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="高定广告片完整流程" id="dhLuxAdSteps">
+          <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告完整流程" id="dhLuxAdSteps">
             <div class="active" data-lux-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
             <div class="locked" data-lux-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
             <div class="locked" data-lux-step="3" role="button" tabindex="0"><b>3</b><span>剧本生成</span><small>按时间段拆解</small></div>
@@ -1332,7 +1332,7 @@
                     <div class="dh-voice-opt-icon">TV</div>
                     <div class="dh-voice-opt-body">
                       <div class="dh-voice-opt-name">未选择配音</div>
-                      <div class="dh-voice-opt-sub">高定广告片必须手动选择声音</div>
+                      <div class="dh-voice-opt-sub">剧情广告必须手动选择声音</div>
                     </div>
                   </div>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdVoiceOpen">选择配音</button>
@@ -1357,7 +1357,7 @@
               <div class="dh-demo-task-shell">
                 <aside class="dh-demo-task-list">
                   <div class="dh-demo-task-card">
-                    <b>高定广告片</b>
+                    <b>剧情广告</b>
                     <span class="dh-demo-muted" id="dhLuxAdTaskMeta">提交后进入任务中心 · 30 秒 · 9:16</span>
                     <div class="dh-demo-progress-line"><i></i></div>
                     <p class="dh-demo-muted">任务中心会显示逐镜视频、配音、字幕和最终合成进度。</p>
@@ -1662,7 +1662,7 @@ B: ...
               <button class="active" data-task-type="digital_human">数字人</button>
               <button data-task-type="product_ad">商品口播视频</button>
               <button data-task-type="digital_ad">广告数字人</button>
-              <button data-task-type="luxury_ad">高定广告片</button>
+              <button data-task-type="luxury_ad">剧情广告</button>
             </div>
             <button class="dh-btn dh-btn-ghost" id="dhTaskRefresh">刷新任务</button>
             <button class="dh-btn dh-btn-primary" data-tab-go="step3">继续创建</button>
@@ -1869,6 +1869,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260604-storyboard-workbench-image2-diagnostics"></script>
+  <script src="/js/digital-human.js?v=20260605-story-ad-workflow"></script>
 </body>
 </html>

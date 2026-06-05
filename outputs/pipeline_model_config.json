@@ -312,34 +312,46 @@
         "priority": 2
       },
       {
-        "provider_id": "api-key-20260404180437",
-        "model_id": "doubao-seedance-1-0-pro-250528",
+        "provider_id": "webang-seedance",
+        "model_id": "doubao-seedance-2-0-260128",
         "enabled": true,
         "priority": 3
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "kling-v2.5-turbo-pro",
+        "provider_id": "webang-seedance",
+        "model_id": "doubao-seedance-2-0-fast-260128",
         "enabled": true,
         "priority": 4
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "kling-v2-master",
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedance-1-0-pro-250528",
         "enabled": true,
         "priority": 5
       },
       {
         "provider_id": "deyunai",
-        "model_id": "hailuo-02-fast",
+        "model_id": "kling-v2.5-turbo-pro",
         "enabled": true,
         "priority": 6
       },
       {
         "provider_id": "deyunai",
-        "model_id": "hailuo-02",
+        "model_id": "kling-v2-master",
         "enabled": true,
         "priority": 7
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02-fast",
+        "enabled": true,
+        "priority": 8
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "hailuo-02",
+        "enabled": true,
+        "priority": 9
       }
     ],
     "luxury_ad.keyframe": [

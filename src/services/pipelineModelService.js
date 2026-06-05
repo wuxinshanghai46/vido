@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Pipeline 模型路由服务
  *
  * 职责：维护「数字人/网剧/爆款复刻」每个环节使用哪些模型 + 优先级。
@@ -47,7 +47,7 @@ const PIPELINE_SCHEMA = {
     { id: 'ad_avatar.lip_sync',      name: '广告数字人口型合成',        type: 'avatar', desc: '广告数字人形象 + 口播音频的口型同步合成' },
     { id: 'ad_avatar.tts',           name: '广告口播 TTS',              type: 'tts',    desc: '广告口播文案配音' },
   ],
-  '高定广告片': [
+  '剧情广告': [
     { id: 'luxury_ad.scene_config', name: '1-2 广告需求 / 场景配置', type: 'story', desc: '把一句话广告需求整理成场景顺序、人物/主体来源和素材清单' },
     { id: 'luxury_ad.script',       name: '3 剧本生成',             type: 'story', desc: '按时间段生成画面、动作、台词、目的、情绪和声音说明' },
     { id: 'luxury_ad.storyboard_director', name: '3.5 分镜导演 / 视觉合同', type: 'story', desc: '把已确认剧本转成每镜可执行视觉合同、参考图策略和生图/质检约束' },
@@ -59,7 +59,7 @@ const PIPELINE_SCHEMA = {
     { id: 'luxury_ad.keyframe_qa',  name: '4 分镜视觉质检',         type: 'vlm', desc: '多模态检查分镜图是否严格匹配已确认剧本、主体和镜头要求' },
     { id: 'luxury_ad.keyframe_repair', name: '4 分镜 QA 修正 / 重试', type: 'story', desc: '把 QA 失败原因编译成下一次生图的明确修正指令，不跳过质检' },
     { id: 'luxury_ad.video',        name: '5 广告合成 / 图生视频',   type: 'video', desc: '用 Seedance/Topview 图生视频把分镜画面串成镜头' },
-    { id: 'luxury_ad.tts',          name: '5 广告合成 / 配音 TTS',   type: 'tts',   desc: '高定广告旁白、口播或字幕配音' },
+    { id: 'luxury_ad.tts',          name: '5 广告合成 / 配音 TTS',   type: 'tts',   desc: '剧情广告旁白、口播或字幕配音' },
     { id: 'luxury_ad.post',         name: '5 广告合成 / 字幕后期',   type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
   ],
   '网剧': [
@@ -148,7 +148,7 @@ const STAGE_DEFAULTS = {
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
-  // 高定广告片
+  // 剧情广告
   'luxury_ad.scene_config': [
     { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
     { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
@@ -229,9 +229,11 @@ const STAGE_DEFAULTS = {
   'luxury_ad.video': [
     { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 1, enabled: true },
     { provider_id: 'topview', model_id: 'topview-image2video-best', priority: 2, enabled: true },
-    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: false },
-    { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', priority: 4, enabled: false },
-    { provider_id: 'deyunai', model_id: 'hailuo-02-fast', priority: 5, enabled: false },
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 3, enabled: true },
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', priority: 4, enabled: true },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
+    { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', priority: 6, enabled: false },
+    { provider_id: 'deyunai', model_id: 'hailuo-02-fast', priority: 7, enabled: false },
   ],
   'luxury_ad.tts': [
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
