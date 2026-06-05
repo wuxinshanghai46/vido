@@ -5351,6 +5351,7 @@
       busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady),
       busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')))
     );
+    setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady), busyGenerating ? gate.hint : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')));
     setLuxuryButtonLock('#dhLuxAdPreviewFrames', busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady), busyGenerating ? gate.hint : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.detailedReady ? '请先生成剧本' : '')));
     const submitLocked = state.luxuryAd.keyframeGenerating
       || gate.sceneGenerating
@@ -7250,7 +7251,7 @@
       if (sceneHost) renderLuxuryAdOutline(sceneHost, segments);
       if (scriptHost) {
         if (segments.length) renderLuxuryAdScriptTable(scriptHost, segments);
-        else scriptHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '正在生成可审核剧本表；完成后会立即显示镜、秒、画面、动作、台词、目的和状态。');
+        else scriptHost.innerHTML = `<div class="dh-luxgen-empty"><b>剧本生成中</b><span>正在生成可审核剧本表；完成后会立即显示镜、秒、画面、动作、台词、目的和状态。若不满意，可点击上方“重新生成剧本”。</span></div>`;
       }
       if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本审核通过后才会调用图片模型。');
       renderLuxuryAdPostScriptPerson();
@@ -10781,7 +10782,7 @@
     if (closest('#dhLuxAdDetectStyle')) { buildLuxuryAdStoryboard({ autoNext: false, detail: false }); return; }
     if (closest('#dhLuxAdAutoVisuals')) { autoGenerateLuxuryAdAiVisuals(); return; }
     if (closest('#dhLuxAdStoryboard')) { buildLuxuryAdStoryboard({ autoNext: false, detail: true }); return; }
-    if (closest('#dhLuxAdScriptRegenerate')) { buildLuxuryAdStoryboard({ autoNext: false, detail: true }); return; }
+    if (closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop')) { buildLuxuryAdStoryboard({ autoNext: false, detail: true }); return; }
     if (closest('#dhLuxAdGenerate')) { buildLuxuryAdStoryboard({ autoNext: true, detail: false }); return; }
     if (closest('#dhLuxAdRegenerateFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
     const luxuryShotRegenerate = closest('[data-lux-shot-regenerate]');

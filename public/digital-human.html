@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260605-script-review-visible">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260605-script-review-regenerate">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1287,7 +1287,10 @@
                   <h3><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
                   <p class="dh-demo-copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
                 </div>
-                <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhLuxAdPreviewFrames" type="button">确认剧本和人物，生成分镜</button>
+                <div class="dh-demo-script-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerateTop" type="button">重新生成剧本</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhLuxAdPreviewFrames" type="button">确认剧本和人物，生成分镜</button>
+                </div>
               </div>
               <div id="dhLuxAdScriptHost" class="dh-demo-table-wrap">
                 <div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“确认配置，生成剧本”。</span></div>
@@ -1869,6 +1872,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260605-script-review-visible"></script>
+  <script src="/js/digital-human.js?v=20260605-script-review-regenerate"></script>
 </body>
 </html>
