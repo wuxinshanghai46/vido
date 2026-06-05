@@ -2984,6 +2984,224 @@ function _dhPublicAssetUrl(req, filename = '') {
   return `${_publicBaseUrl(req)}/public/dh-assets/${path.basename(filename)}`;
 }
 
+function _jimengPublicAssetUrl(req, filename = '') {
+  return `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(filename)}`;
+}
+
+function _svgEscape(value = '') {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function _storyboardTextLines(value = '', maxUnits = 26, maxLines = 3) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+  const lines = [];
+  let line = '';
+  let units = 0;
+  for (const ch of text) {
+    const w = /[\x00-\x7F]/.test(ch) ? 0.58 : 1;
+    if (line && units + w > maxUnits) {
+      lines.push(line);
+      line = ch;
+      units = w;
+      if (lines.length >= maxLines) break;
+    } else {
+      line += ch;
+      units += w;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (lines.length === maxLines && text.length > lines.join('').length) {
+    lines[maxLines - 1] = `${lines[maxLines - 1].replace(/[。,.，；;:\s]+$/, '')}...`;
+  }
+  return lines;
+}
+
+function _storyboardTextSvg(value, x, y, opts = {}) {
+  const {
+    maxUnits = 26,
+    maxLines = 3,
+    lineHeight = 22,
+    size = 18,
+    fill = '#1e293b',
+    weight = 500,
+  } = opts;
+  const lines = _storyboardTextLines(value, maxUnits, maxLines);
+  return lines.map((line, i) => (
+    `<text x="${x}" y="${y + i * lineHeight}" font-size="${size}" font-weight="${weight}" fill="${fill}">${_svgEscape(line)}</text>`
+  )).join('');
+}
+
+function _storyboardAsciiText(value = '', fallback = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return fallback;
+  const nonAscii = (text.match(/[^\x00-\x7F]/g) || []).length;
+  if (nonAscii > Math.max(2, text.length * 0.2)) return fallback;
+  return text.replace(/[^\x00-\x7F]/g, '').trim() || fallback;
+}
+
+let STORYBOARD_SHEET_FONT_FACE_CSS = null;
+function _storyboardSheetFontFaceCss() {
+  if (STORYBOARD_SHEET_FONT_FACE_CSS !== null) return STORYBOARD_SHEET_FONT_FACE_CSS;
+  try {
+    const fontPath = path.join(process.cwd(), 'public', 'fonts', 'NotoSansSC-Regular.otf');
+    if (!fs.existsSync(fontPath)) {
+      STORYBOARD_SHEET_FONT_FACE_CSS = '';
+      return STORYBOARD_SHEET_FONT_FACE_CSS;
+    }
+    const fontBase64 = fs.readFileSync(fontPath).toString('base64');
+    STORYBOARD_SHEET_FONT_FACE_CSS = `@font-face{font-family:"VidoStoryboardCJK";src:url("data:font/otf;base64,${fontBase64}") format("opentype");font-weight:400 900;font-style:normal;}`;
+  } catch {
+    STORYBOARD_SHEET_FONT_FACE_CSS = '';
+  }
+  return STORYBOARD_SHEET_FONT_FACE_CSS;
+}
+
+function _luxuryStoryboardShotSummary(scene = {}, keyframe = {}) {
+  const visual = scene.visual || scene.visual_prompt || scene.title || scene.text || keyframe.visual || '';
+  const action = scene.action || scene.action_prompt || scene.motion || scene.text || keyframe.action || '';
+  const dialogue = scene.dialogue || scene.voiceover || scene.subtitle || scene.copy || scene.text || '';
+  const camera = scene.camera || scene.camera_movement || scene.shot_angle || scene.lens || '';
+  const purpose = scene.purpose || scene.role || scene.beat || '';
+  return { visual, action, dialogue, camera, purpose };
+}
+
+function _localJimengPathFromUrl(url = '') {
+  const raw = String(url || '').split('?')[0];
+  const marker = '/public/jimeng-assets/';
+  const idx = raw.indexOf(marker);
+  if (idx >= 0) {
+    const name = path.basename(raw.slice(idx + marker.length));
+    const local = path.join(JIMENG_ASSETS_DIR, name);
+    if (fs.existsSync(local)) return local;
+  }
+  if (raw.startsWith('/public/jimeng-assets/')) {
+    const local = path.join(JIMENG_ASSETS_DIR, path.basename(raw));
+    if (fs.existsSync(local)) return local;
+  }
+  return '';
+}
+
+function _localStoryboardImagePath(keyframe = {}) {
+  const local = String(keyframe.local_path || keyframe.file_path || keyframe.outPath || '').trim();
+  if (local && fs.existsSync(local)) return local;
+  return _localJimengPathFromUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '');
+}
+
+async function _storyboardImageDataUri(filePath, width, height) {
+  if (!filePath || !fs.existsSync(filePath)) return '';
+  const sharp = _loadSharp();
+  if (!sharp) return '';
+  const buf = await sharp(filePath)
+    .rotate()
+    .resize(width, height, { fit: 'cover', position: 'attention' })
+    .jpeg({ quality: 86, chromaSubsampling: '4:4:4' })
+    .toBuffer();
+  return `data:image/jpeg;base64,${buf.toString('base64')}`;
+}
+
+async function _createLuxuryStoryboardSheetImages(req, {
+  scenes = [],
+  keyframes = [],
+  taskId = '',
+  title = '剧情广告',
+  aspectRatio = '9:16',
+  destDir = JIMENG_ASSETS_DIR,
+} = {}) {
+  const sharp = _loadSharp();
+  if (!sharp || !Array.isArray(scenes) || !scenes.length || !Array.isArray(keyframes) || !keyframes.length) return [];
+  fs.mkdirSync(destDir, { recursive: true });
+  const totalDuration = Math.round(scenes.reduce((sum, scene) => sum + Math.max(1, Number(scene.duration ?? scene.seconds ?? 3) || 3), 0));
+  const sheets = [];
+  const perSheet = 4;
+  const pageW = 1600;
+  const pageH = 2140;
+  const margin = 58;
+  const gap = 30;
+  const headerH = 180;
+  const cardW = Math.floor((pageW - margin * 2 - gap) / 2);
+  const cardH = 870;
+  const frameW = cardW - 40;
+  const frameH = 405;
+  const safeTaskId = String(taskId || uuidv4()).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80) || uuidv4();
+  for (let start = 0; start < scenes.length; start += perSheet) {
+    const slice = scenes.slice(start, start + perSheet);
+    const sheetIndex = Math.floor(start / perSheet) + 1;
+    const cardSvgs = [];
+    for (let i = 0; i < slice.length; i++) {
+      const scene = slice[i] || {};
+      const absoluteIndex = start + i;
+      const keyframe = keyframes[absoluteIndex] || {};
+      const row = Math.floor(i / 2);
+      const col = i % 2;
+      const x = margin + col * (cardW + gap);
+      const y = headerH + 42 + row * (cardH + gap);
+      const imagePath = _localStoryboardImagePath(keyframe);
+      const imageData = imagePath ? await _storyboardImageDataUri(imagePath, frameW, frameH) : '';
+      const shot = _luxuryStoryboardShotSummary(scene, keyframe);
+      const duration = Math.max(1, Number(scene.duration ?? scene.seconds ?? 3) || 3);
+      const role = _storyboardAsciiText(scene.role || scene.purpose || scene.beat || '', 'story beat');
+      const cameraText = _storyboardAsciiText(shot.camera, 'cinematic live-action commercial framing');
+      const actionText = _storyboardAsciiText(shot.action || shot.visual, `story action beat ${absoluteIndex + 1}`);
+      const lineText = _storyboardAsciiText(shot.dialogue || shot.purpose, `dialogue or narration beat ${absoluteIndex + 1}`);
+      cardSvgs.push(`
+        <g transform="translate(${x},${y})">
+          <rect x="0" y="0" width="${cardW}" height="${cardH}" rx="0" fill="#ffffff" stroke="#d6dee8" stroke-width="2"/>
+          <rect x="0" y="0" width="${cardW}" height="54" fill="#f1f5f9" stroke="#d6dee8" stroke-width="2"/>
+          <rect x="18" y="13" width="34" height="28" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
+          <text x="29" y="34" text-anchor="middle" font-size="22" font-weight="900" fill="#0f172a">${absoluteIndex + 1}</text>
+          <text x="66" y="34" font-size="22" font-weight="900" fill="#0f172a">${duration}s</text>
+          <text x="${cardW - 22}" y="34" text-anchor="end" font-size="16" font-weight="800" fill="#475569">${_svgEscape(role)}</text>
+          <rect x="20" y="74" width="${frameW}" height="${frameH}" fill="#e5e7eb" stroke="#cbd5e1" stroke-width="2"/>
+          ${imageData
+            ? `<image href="${imageData}" x="20" y="74" width="${frameW}" height="${frameH}" preserveAspectRatio="xMidYMid slice"/>`
+            : `<text x="${cardW / 2}" y="282" text-anchor="middle" font-size="28" font-weight="900" fill="#64748b">STORYBOARD FRAME</text>`}
+          <rect x="20" y="500" width="112" height="54" fill="#0f172a"/>
+          <text x="76" y="535" text-anchor="middle" font-size="18" font-weight="900" fill="#ffffff">CAMERA</text>
+          ${_storyboardTextSvg(cameraText, 152, 523, { maxUnits: 28, maxLines: 2, size: 18, fill: '#334155', weight: 700 })}
+          <line x1="20" y1="576" x2="${cardW - 20}" y2="576" stroke="#e2e8f0" stroke-width="2"/>
+          <rect x="20" y="598" width="112" height="54" fill="#0f172a"/>
+          <text x="76" y="633" text-anchor="middle" font-size="18" font-weight="900" fill="#ffffff">ACTION</text>
+          ${_storyboardTextSvg(actionText, 152, 621, { maxUnits: 28, maxLines: 3, size: 18, fill: '#334155', weight: 700 })}
+          <line x1="20" y1="694" x2="${cardW - 20}" y2="694" stroke="#e2e8f0" stroke-width="2"/>
+          <rect x="20" y="716" width="112" height="54" fill="#0f172a"/>
+          <text x="76" y="751" text-anchor="middle" font-size="18" font-weight="900" fill="#ffffff">LINE</text>
+          ${_storyboardTextSvg(lineText, 152, 739, { maxUnits: 28, maxLines: 3, size: 18, fill: '#334155', weight: 700 })}
+          <text x="20" y="${cardH - 34}" font-size="16" font-weight="900" fill="#64748b">Frame ${absoluteIndex + 1} / ${scenes.length}</text>
+          <text x="${cardW - 20}" y="${cardH - 34}" text-anchor="end" font-size="16" font-weight="900" fill="#64748b">LIVE ACTION</text>
+        </g>`);
+    }
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+      <svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
+        <style>${_storyboardSheetFontFaceCss()} text{font-family:"VidoStoryboardCJK","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC","SimHei",Arial,sans-serif;}</style>
+        <rect width="${pageW}" height="${pageH}" fill="#eef3f8"/>
+        <rect x="${margin}" y="38" width="${pageW - margin * 2}" height="112" fill="#ffffff" stroke="#d6dee8" stroke-width="2"/>
+        <text x="${margin + 24}" y="82" font-size="28" font-weight="900" fill="#0f172a">AI VIDEO AD STORYBOARD</text>
+        <text x="${margin + 24}" y="120" font-size="22" font-weight="900" fill="#334155">${_svgEscape(_storyboardAsciiText(String(title || '').slice(0, 48), 'STORY AD'))}</text>
+        <text x="${pageW - margin - 24}" y="82" text-anchor="end" font-size="20" font-weight="900" fill="#0f172a">SHEET ${sheetIndex} / ${Math.ceil(scenes.length / perSheet)}</text>
+        <text x="${pageW - margin - 24}" y="120" text-anchor="end" font-size="18" font-weight="800" fill="#475569">${scenes.length} shots · ${totalDuration}s · ${_svgEscape(aspectRatio)}</text>
+        ${cardSvgs.join('\n')}
+      </svg>`;
+    const filename = `storyboard_sheet_${safeTaskId}_${String(sheetIndex).padStart(2, '0')}.png`;
+    const outPath = path.join(destDir, filename);
+    await sharp(Buffer.from(svg)).png().toFile(outPath);
+    sheets.push({
+      index: sheetIndex,
+      kind: 'storyboard_sheet',
+      layout: '2x2_storyboard_sheet',
+      shot_start: start + 1,
+      shot_end: start + slice.length,
+      image_url: _jimengPublicAssetUrl(req, filename),
+      local_path: outPath,
+    });
+  }
+  return sheets;
+}
+
 function _sha256File(filePath) {
   const hash = crypto.createHash('sha256');
   hash.update(fs.readFileSync(filePath));
@@ -16190,6 +16408,23 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       }
     }
 
+    const storyboardSheets = isLuxury
+      ? await _createLuxuryStoryboardSheetImages(req, {
+        scenes,
+        keyframes,
+        taskId,
+        title: payload.brief_info?.title || title || '剧情广告',
+        aspectRatio,
+        destDir: JIMENG_ASSETS_DIR,
+      })
+      : [];
+    if (storyboardSheets.length) {
+      _taskPatch(taskId, {
+        storyboard_sheets: storyboardSheets,
+        storyboardSheetUrl: storyboardSheets[0]?.image_url || '',
+      });
+    }
+
     const pipelineVideoModels = _uniquePipelineModels(isLuxury
       ? _pickRunnablePipelineModels('luxury_ad.video')
       : _pickRunnablePipelineModels('ad_avatar.marketing_video'));
@@ -17755,6 +17990,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       keyframes.push({
         ...sc,
         image_url: url,
+        local_path: keyframePath,
         reference_mode: shotPlan?.kind === 'integrated_avatar_background'
           ? 'integrated_avatar_background'
           : (shotPlan?.kind === 'generated_showroom_guide' ? 'generated_showroom_guide' : 'locked_composite'),
@@ -17773,7 +18009,17 @@ router.post('/spaces/keyframes', async (req, res) => {
         qa: isLuxury ? keyframeQa : undefined,
       });
     }
-    const responseBody = { success: true, scenes, keyframes, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const storyboardSheets = isLuxury
+      ? await _createLuxuryStoryboardSheetImages(req, {
+        scenes,
+        keyframes,
+        taskId,
+        title: brief_info?.title || title || '剧情广告',
+        aspectRatio,
+        destDir: JIMENG_ASSETS_DIR,
+      })
+      : [];
+    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     _storeLuxuryKeyframeResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {

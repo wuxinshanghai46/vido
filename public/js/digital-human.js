@@ -162,6 +162,7 @@
       storyboardDetailed: false,
       segments: [],
       keyframes: [],
+      storyboardSheets: [],
       taskId: '',
       taskUrl: '',
     },
@@ -7034,14 +7035,32 @@
       ['UI浮层', locks?.ui_lock?.prompt],
       ['风格边界', locks?.style_lock?.prompt],
     ].filter(([, value]) => value).slice(0, 6);
+    const generatedSheets = Array.isArray(state.luxuryAd.storyboardSheets)
+      ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url))
+      : [];
     return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板">
       <div class="dh-lux-sheet-head">
         <div>
           <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '剧情广告分镜板')}</b>
-          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · 资产锁与 QA 已融合到每镜</span>
+          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · 剧本确认后直接生成分镜板</span>
         </div>
         <em>Storyboard Workbench</em>
       </div>
+      ${generatedSheets.length ? `<div class="dh-lux-sheet-output">
+        <div class="dh-lux-sheet-output-title">
+          <b>分镜板成品</b>
+          <span>${generatedSheets.length} 页 · 直接进入绘制首帧/成片流程</span>
+        </div>
+        <div class="dh-lux-sheet-output-grid">
+          ${generatedSheets.map((sheet, i) => {
+            const src = luxuryAssetPreviewUrl({ url: sheet.image_url || sheet.imageUrl || sheet.url || '' });
+            return `<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="dh-lux-sheet-output-card">
+              <img src="${escapeHtml(src)}" alt="分镜板第 ${i + 1} 页">
+              <span>第 ${i + 1} 页 · 镜头 ${escapeHtml(String(sheet.shot_start || ''))}-${escapeHtml(String(sheet.shot_end || ''))}</span>
+            </a>`;
+          }).join('')}
+        </div>
+      </div>` : ''}
       ${(items.length || lockRows.length) ? `<div class="dh-lux-sheet-locks">
         ${items.length ? `<div class="dh-lux-sheet-lock-group">
           <small>资产合同</small>
@@ -7819,6 +7838,7 @@
       state.luxuryAd.segments = detail && lockedShotLimit > 0 ? nextSegments.slice(0, lockedShotLimit) : nextSegments;
       state.luxuryAd.storyboardDetailed = !!detail || String(r.planning_mode || '').toLowerCase() === 'detailed';
       state.luxuryAd.keyframes = [];
+      state.luxuryAd.storyboardSheets = [];
       renderLuxuryAdStoryboard();
       toast(detail
         ? `剧本已生成：${state.luxuryAd.segments.length} 个镜头，现在确认人物来源后再生成分镜`
@@ -7906,7 +7926,10 @@
     state.luxuryAd.keyframeGenerating = true;
     state.luxuryAd.keyframeError = '';
     state.luxuryAd.keyframeErrorDetails = null;
-    if (singleIndex === null || force) state.luxuryAd.keyframes = [];
+    if (singleIndex === null || force) {
+      state.luxuryAd.keyframes = [];
+      state.luxuryAd.storyboardSheets = [];
+    }
     else state.luxuryAd.keyframes = (state.luxuryAd.keyframes || []).map((item, i) => i === singleIndex ? {} : item);
     state.luxuryAd.keyframeProgress = {
       current: 0,
@@ -7998,6 +8021,7 @@
       }
       if (!r.success) throw new Error(r.error || '分镜生成失败');
       const nextKeyframes = (r.keyframes || []).slice(0, totalShots);
+      const nextStoryboardSheets = Array.isArray(r.storyboard_sheets) ? r.storyboard_sheets : [];
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
@@ -8006,6 +8030,7 @@
       if (singleIndex === null) {
         if (returnedScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(returnedScenes);
         state.luxuryAd.keyframes = nextKeyframes;
+        state.luxuryAd.storyboardSheets = nextStoryboardSheets;
       } else {
         const existingFrames = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
         const merged = Array.from({ length: previewSegments.length }, (_, i) => existingFrames[i] || {});
