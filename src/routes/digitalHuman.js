@@ -11849,6 +11849,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     `${aspectRatio} photorealistic commercial storyboard keyframe.`,
     'Use this confirmed per-shot execution packet only; do not rewrite the story, subject, scene or shot role.',
     globalBible ? `Global visual bible: ${_luxuryStrictText(JSON.stringify(globalBible), 1400)}.` : '',
+    currentShot?.story_extract ? `Per-shot story extraction from the full script, highest priority: ${_luxuryStrictText(JSON.stringify(currentShot.story_extract), 1400)}.` : '',
     currentShot ? `Current shot execution packet: ${_luxuryStrictText(JSON.stringify(currentShot), 1800)}.` : '',
     `Shot: ${contract.shot_id}/${contract.shot_count}; role: ${contract.role}; duration: ${contract.duration}s.`,
     `Product subject: ${contract.product_subject}.`,
@@ -11925,9 +11926,13 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
   aspectRatio = '9:16',
   referenceRoleMap = null,
 } = {}) {
+  const storyExtract = scene.full_story_extract && typeof scene.full_story_extract === 'object'
+    ? scene.full_story_extract
+    : null;
   const currentShot = {
     shot_id: contract.shot_id,
     shot_count: contract.shot_count,
+    story_extract: storyExtract ? _compactLuxuryObject(storyExtract, 1200) : null,
     duration: contract.duration,
     purpose: _luxuryStrictText(scene.script_purpose || scene.purpose || scene.objective || contract.role || '', 120),
     scene: contract.scene,
@@ -11960,6 +11965,127 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
     must_not_show: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
     qa_acceptance: _luxuryStrictText(contract.qa_contract || '', 1200),
   };
+}
+
+function _mergeLuxuryStoryExtractIntoScene(scene = {}, extract = {}, index = 0) {
+  const shot = extract && typeof extract === 'object' ? extract : {};
+  const mustShow = Array.isArray(shot.must_show) ? shot.must_show.map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [];
+  const mustNotShow = Array.isArray(shot.must_not_show) ? shot.must_not_show.map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [];
+  const visual = _luxuryStrictText(shot.visual || shot.key_visual || shot.frame || '', 520);
+  const action = _luxuryStrictText(shot.action || shot.performance || '', 320);
+  const sceneText = _luxuryStrictText(shot.scene || shot.environment || '', 320);
+  const camera = _luxuryStrictText(shot.camera || shot.framing || shot.composition || '', 280);
+  const dialogue = _luxuryStrictText(shot.dialogue || shot.voiceover || shot.copy || '', 420);
+  const imageBrief = _luxuryStrictText(shot.image2_brief || shot.keyframe_brief || '', 900);
+  const storyExtract = {
+    shot_index: index,
+    source: 'full_story_per_keyframe_extract_v1',
+    story_beat: _luxuryStrictText(shot.story_beat || shot.purpose || shot.intent || '', 220),
+    scene: sceneText,
+    visual,
+    action,
+    camera,
+    dialogue,
+    must_show: mustShow,
+    must_not_show: mustNotShow,
+    image2_brief: imageBrief,
+  };
+  const prioritizedBrief = [
+    imageBrief ? `FULL-STORY PER-SHOT EXTRACT: ${imageBrief}` : '',
+    visual ? `Current shot visual from full story: ${visual}` : '',
+    action ? `Current shot action from full story: ${action}` : '',
+    camera ? `Current shot camera from full story: ${camera}` : '',
+    scene.image2_brief || '',
+  ].filter(Boolean).join(' ');
+  return {
+    ...scene,
+    full_story_extract: storyExtract,
+    story_extraction_mode: 'full_story_per_keyframe',
+    scene_content: visual || scene.scene_content,
+    content_prompt: visual || scene.content_prompt,
+    display_visual: visual || scene.display_visual,
+    visual: visual || scene.visual,
+    visual_prompt: visual ? [visual, scene.visual_prompt || ''].filter(Boolean).join(' ') : scene.visual_prompt,
+    action: action || scene.action,
+    visual_action: action || scene.visual_action,
+    character_action: action || scene.character_action,
+    scene_prompt: sceneText || scene.scene_prompt,
+    environment_lock: sceneText || scene.environment_lock,
+    shot_angle: camera || scene.shot_angle,
+    camera: camera || scene.camera,
+    voiceover: dialogue || scene.voiceover,
+    narration: dialogue || scene.narration,
+    image2_brief: _luxuryStrictText(prioritizedBrief, 1400),
+    must_show: mustShow.length ? Array.from(new Set([...(Array.isArray(scene.must_show) ? scene.must_show : []), ...mustShow])).slice(0, 8) : scene.must_show,
+    must_not_show: mustNotShow.length ? Array.from(new Set([...(Array.isArray(scene.must_not_show) ? scene.must_not_show : []), ...mustNotShow])).slice(0, 8) : scene.must_not_show,
+  };
+}
+
+async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
+  text = '',
+  briefInfo = null,
+  productSubject = '',
+  aspectRatio = '9:16',
+} = {}) {
+  const list = Array.isArray(scenes) ? scenes : [];
+  const fullStory = _luxuryStrictText(text, 5200);
+  if (!fullStory || !list.length) return list;
+  const { callLLM } = require('../services/storyService');
+  const compactShots = list.map((scene, i) => ({
+    index: i,
+    title: _luxuryStrictText(scene.title || scene.story_stage || '', 80),
+    role: _luxuryStrictText(scene.role || scene.shot_role || scene.story_role || '', 80),
+    duration: Number(scene.duration || scene.duration_sec || 0) || 0,
+    voiceover: _luxuryStrictText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 220),
+    visual: _luxuryStrictText(scene.visual || scene.visual_prompt || scene.content_prompt || scene.scene_content || '', 260),
+    action: _luxuryStrictText(scene.action || scene.visual_action || scene.character_action || '', 180),
+  }));
+  const systemPrompt = [
+    '你是剧情广告分镜图生成前的逐镜头剧情抽取器。',
+    '任务：每次只为一张即将生成的分镜图，从完整剧情/完整需求中提取当前镜头必须画出来的内容，避免长剧情在图片 prompt 中被截断。',
+    '只输出 JSON 对象，不要解释。',
+  ].join('\n');
+  const enriched = [];
+  for (let i = 0; i < list.length; i++) {
+    const current = compactShots[i] || {};
+    const userPrompt = [
+      `完整剧情/需求（权威来源，不能忽略）：\n${fullStory}`,
+      '',
+      `品牌/商品主体：${productSubject || '按完整剧情判断'}`,
+      `画幅：${aspectRatio}`,
+      briefInfo ? `全局基础信息：${_luxuryStrictText(JSON.stringify(briefInfo), 1400)}` : '',
+      `全部已确认镜头摘要：\n${_luxuryStrictText(JSON.stringify(compactShots), 3600)}`,
+      `上一镜：${i > 0 ? _luxuryStrictText(JSON.stringify(compactShots[i - 1]), 900) : '无'}`,
+      `当前要生成图片的镜头：${_luxuryStrictText(JSON.stringify(current), 1200)}`,
+      `下一镜：${i + 1 < compactShots.length ? _luxuryStrictText(JSON.stringify(compactShots[i + 1]), 900) : '无'}`,
+      '',
+      '请为当前这一张分镜图输出 JSON：',
+      '{"story_beat":"","scene":"","visual":"","action":"","camera":"","dialogue":"","must_show":[],"must_not_show":[],"image2_brief":""}',
+      '',
+      '要求：',
+      '- visual/action/scene/camera 必须直接服务当前镜头，不要泛泛描述整条广告。',
+      '- image2_brief 要把当前镜头最重要的剧情画面放在最前面，控制在 180 个中文字符内。',
+      '- must_show 至少 3 项，必须来自当前镜头和完整剧情。',
+      '- 不要生成字幕、文字、logo、水印；不要添加无关商品或无关人物。',
+    ].filter(Boolean).join('\n');
+    try {
+      const raw = await callLLM(systemPrompt, userPrompt, {
+        pipelineStageId: 'luxury_ad.keyframe',
+        agentId: 'luxury_ad.keyframe.story_extract',
+        kb: { scene: 'digital_ad', query: [productSubject, current.title, current.visual, current.voiceover].filter(Boolean).join(' ').slice(0, 160), limit: 2 },
+      });
+      const parsed = _jsonFromVisionReply(raw);
+      enriched.push(_mergeLuxuryStoryExtractIntoScene(list[i], parsed, i));
+    } catch (err) {
+      console.warn(`[DH/luxury-ad] full-story per-shot extract skipped for shot ${i + 1}:`, err.message);
+      enriched.push({
+        ...list[i],
+        story_extraction_mode: 'full_story_per_keyframe_failed',
+        full_story_extract_error: err.message,
+      });
+    }
+  }
+  return enriched;
 }
 
 // Prepare one strict high-end ad shot for the keyframe stage. This keeps the
@@ -15887,6 +16013,12 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         luxuryLocks: luxuryAsyncVisualLocks,
       });
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
+      scenes = await _enrichLuxuryScenesWithFullStoryExtract(req, scenes, {
+        text,
+        briefInfo: payload.brief_info || null,
+        productSubject,
+        aspectRatio,
+      });
     }
     _taskPatch(taskId, { scenes, progress: 15 });
 
@@ -15944,7 +16076,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           });
           scenes[i] = sc;
         }
-        _taskPatch(taskId, { stage: 'keyframes', progress: 15 + Math.round((i / scenes.length) * 28), message: `${isLuxury ? '生成高定分镜' : '生成广告预览图'} ${i + 1}/${scenes.length}` });
+        _taskPatch(taskId, { stage: 'keyframes', progress: 15 + Math.round((i / scenes.length) * 28), message: `${isLuxury ? '生成剧情分镜' : '生成广告预览图'} ${i + 1}/${scenes.length}` });
         const keyframeMaker = isLuxury
           ? (typeof _createLuxuryAdReferenceKeyframe === 'function' ? _createLuxuryAdReferenceKeyframe : null)
           : isShowroomGuide
@@ -17275,6 +17407,12 @@ router.post('/spaces/keyframes', async (req, res) => {
         luxuryLocks: luxuryVisualLocks,
       });
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
+      scenes = await _enrichLuxuryScenesWithFullStoryExtract(req, scenes, {
+        text,
+        briefInfo: brief_info,
+        productSubject,
+        aspectRatio,
+      });
     }
     if (isLuxury) {
       await _assertLuxuryKeyframeQaAvailable(req);
