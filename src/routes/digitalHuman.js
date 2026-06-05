@@ -3912,11 +3912,9 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
     prompt = prompt.replace(/[\u0000-\u0008\u000B-\u001F\u007F\u200B-\u200F\uFEFF]/g, '');
   }
 
-  const size = String(model || '').toLowerCase() === 'gpt-image-2'
-    ? 'auto'
-    : (/^\d+x\d+$/i.test(String(resolution || ''))
+  const size = /^\d+x\d+$/i.test(String(resolution || ''))
     ? String(resolution).toLowerCase()
-    : _outputSizeString(aspectRatio, outputSize));
+    : _outputSizeString(aspectRatio, outputSize);
 
   const axios = require('axios');
   // 经线上对照测试：nano-banana / nano-banana-pro 走 /v1 国内通道（200 SUCCEED）；
@@ -14808,6 +14806,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   let repairInstruction = '';
   let currentPrompt = prompt;
   const referenceImages = refs.map(x => x.resolved).filter(Boolean);
+  const hasReferenceLock = referenceImages.length > 0;
   const hasShotReferenceLock = referenceImages.length > 1;
   // Normalize once at the image-call boundary so unsupported UI/model values
   // such as "auto" never leak into Topview or other paid image providers.
@@ -14884,29 +14883,19 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         try {
           return await runGptImage2(gptRefs, '');
         } catch (err) {
-          if (!gptRefs.length || !/GPT Image 2 edits|provider error|code=500|Internal Server Error|PANXXXO100IFR/i.test(String(err?.message || err))) {
-            throw err;
-          }
-          addAttempt(model, false, err, {
-            prompt_chars: Array.from(String(promptForAttempt || '')).length,
-            fallback_mode: 'gpt-image-2-edits-full-refs',
-            reference_count: gptRefs.length,
-          });
-          console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed; retrying with primary reference only:', shortError(err));
-        }
-        if (gptRefs.length > 1) {
-          try {
-            return await runGptImage2(gptRefs.slice(0, 1), '_primary_ref');
-          } catch (err) {
+          if (gptRefs.length) {
+            err.code = err.code || 'LUXURY_GPT_IMAGE2_EDITS_UNAVAILABLE';
+            err._luxuryAttemptRecorded = true;
             addAttempt(model, false, err, {
               prompt_chars: Array.from(String(promptForAttempt || '')).length,
-              fallback_mode: 'gpt-image-2-edits-primary-ref',
-              reference_count: 1,
+              fallback_mode: 'gpt-image-2-edits-all-refs-required',
+              reference_count: gptRefs.length,
+              rule: 'reference_locked_no_text_only_fallback',
             });
-            console.warn('[DH/luxury-ad] deyunai gpt-image-2 primary-reference retry failed; falling back to text-to-image:', shortError(err));
+            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references; no text-only fallback will be used:', shortError(err));
           }
+          throw err;
         }
-        return runGptImage2([], '_text_only');
       }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
@@ -14953,6 +14942,13 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       return runSeedream(model, `seedream_${idx}`, promptForAttempt);
     }
     throw new Error(`分镜生成阶段不支持 ${provider || 'unknown'}/${modelId || 'unknown'}，该模型可能属于图生视频或口型同步阶段`);
+  };
+  const canPreserveLockedReferences = model => {
+    const provider = String(model?.provider_id || '').toLowerCase();
+    const modelId = String(model?.model_id || '').toLowerCase();
+    if (provider === 'topview' || modelId.startsWith('topview-')) return true;
+    if (provider === 'deyunai' && modelId === 'gpt-image-2') return true;
+    return false;
   };
 
   let controlledCandidateTried = false;
@@ -15032,6 +15028,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   ]).filter(model => {
     const provider = String(model?.provider_id || '').toLowerCase();
     if (hasShotReferenceLock && provider !== 'deyunai' && provider !== 'topview') return false;
+    if (hasReferenceLock && !canPreserveLockedReferences(model)) return false;
     return true;
   });
   if (_luxuryStageRequiresAdminConfig(stageId || 'luxury_ad.keyframe') && !configuredModelsAll.length) {
@@ -15193,7 +15190,10 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         if (strictSingleCandidate) break;
         continue;
       }
-      addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
+      if (!err._luxuryAttemptRecorded) {
+        err._luxuryAttemptRecorded = true;
+        addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
+      }
       console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
       if (strictSingleCandidate) break;
     }
@@ -15270,7 +15270,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const err = new Error([
     '高定广告片分镜画面生成失败。',
     summary ? `已尝试：${summary}。` : '',
-    hasShotReferenceLock ? '当前镜头已绑定参考图，本次不会降级到只看主商品的自由生图模型。' : '',
+    hasReferenceLock ? '当前镜头已绑定参考图，本次不会降级到只看主商品的自由生图模型。' : '',
     '可灵、海螺属于后续图生视频阶段，必须先生成分镜画面后才会执行；Topview 图片模型可用于当前分镜阶段，请检查其文生图/图像编辑额度和模型配置。',
   ].filter(Boolean).join(''));
   err.status = qaRejected ? 422 : (limitHit ? 429 : 500);
