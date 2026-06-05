@@ -6893,7 +6893,7 @@
       const qa = kf.qa || kf.shot_plan?.qa || null;
       if (!referenceLocked) {
         if (!qa) errors.push(`第 ${i + 1} 镜缺少视觉 QA 结果，不能进入成片。`);
-        else if (qa.pass !== true) errors.push(`第 ${i + 1} 镜视觉 QA 未通过：${qa.reason || '未说明原因'}`);
+        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`第 ${i + 1} 镜视觉 QA 未通过：${qa.reason || '未说明原因'}`);
       }
       const dims = qa?.quality_dimensions || {};
       const lowDims = [
@@ -6922,7 +6922,7 @@
     if (!attempts.length) return '';
     const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
     const firstProviderFail = attempts.find(a => !a.ok && !a.qa);
-    const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true);
+    const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
     const summaryParts = [
       firstProviderFail ? `首个生成通道 ${label(firstProviderFail) || '图片模型'} 未返回可用图片：${String(firstProviderFail.error || '未知错误').slice(0, 140)}` : '',
       firstQaFail ? `后续候选图已出图但被视觉 QA 拒绝：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
@@ -7663,8 +7663,8 @@
     if (attempts.length) {
       const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
       const gptImage2 = attempts.find(a => /gpt-image-2/i.test(label(a)));
-      const qaRejectedAttempt = attempts.find(a => a.qa && a.qa.pass !== true);
-      const allQaRejected = attempts.some(a => a.qa) && attempts.filter(a => a.qa).every(a => a.qa.pass !== true);
+      const qaRejectedAttempt = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
+      const allQaRejected = attempts.some(a => a.qa) && attempts.filter(a => a.qa).every(a => a.qa.pass !== true && a.qa.accepted_with_warning !== true);
       if (gptImage2 && !gptImage2.ok && /500|Internal Server Error|provider error|未返回图片|no image|未返回图片数据/i.test(String(gptImage2.error || ''))) {
         return [
           '分镜生成已停止：DeyunAI GPT Image 2 通道返回 500，未返回可用图片数据。',
