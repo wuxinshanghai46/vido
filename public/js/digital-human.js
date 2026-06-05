@@ -5243,7 +5243,7 @@
     let step = 0;
     let hint = '第 1 步：先描述你想做什么广告，AI 会先生成视频基础信息。';
     if (sceneGenerating) { step = 1; hint = '正在生成场景配置，请稍等。'; }
-    else if (scriptGenerating) { step = 2; hint = '正在生成剧本，请等生成完成后再进入剧本生成模块。'; }
+    else if (scriptGenerating) { step = 2; hint = '正在生成剧本；生成完成后会立即显示剧本审核表，确认合适后再进入分镜。'; }
     else if (state.luxuryAd.briefUploading) { step = 0; hint = '需求参考图上传中，请稍等。'; }
     else if (state.luxuryAd.uploading) { step = 1; hint = '场景素材上传中，请稍等。'; }
     else if (!contentReady) { step = 0; hint = '第 1 步：写广告需求；可以自己写，也可以点击 AI 帮我写。'; }
@@ -6720,7 +6720,7 @@
           <p>${escapeHtml(objective)}</p>
           <small>${escapeHtml(materialNeed)}</small>
         </article>`;
-      }).join('') : `<article class="dh-luxgen-brief-scene"><span>…</span><b>剧本生成中</b><p>确认基础信息后生成完整剧本审核表。</p><small>生成完成后才会显示镜、秒、画面、动作、台词、目的和状态。</small></article>`}
+      }).join('') : `<article class="dh-luxgen-brief-scene"><span>…</span><b>等待剧本</b><p>确认基础信息后生成完整剧本审核表。</p><small>剧本生成完成后会直接展示镜、秒、画面、动作、台词、目的和状态，供你审核。</small></article>`}
         </div>
       </section>
     </div>`;
@@ -6969,7 +6969,7 @@
       </div>
       <div class="dh-demo-script-actions">
         <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerate">重新生成整版</button>
-        <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" disabled>待确认</button>
+        <span class="dh-luxgen-status ready">待确认</span>
       </div>
     </div>
     <div class="dh-demo-script-mainline">
@@ -7247,8 +7247,11 @@
       return;
     }
     if (state.luxuryAd.scriptGenerating) {
-      if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '正在生成全局视觉、人物表和完整镜头表。完成前不展示半成品分镜。');
-      if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '生成完成后会一次性显示“全局视觉 + 镜/秒/画面/动作/台词/目的/状态”。');
+      if (sceneHost) renderLuxuryAdOutline(sceneHost, segments);
+      if (scriptHost) {
+        if (segments.length) renderLuxuryAdScriptTable(scriptHost, segments);
+        else scriptHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '正在生成可审核剧本表；完成后会立即显示镜、秒、画面、动作、台词、目的和状态。');
+      }
       if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本审核通过后才会调用图片模型。');
       renderLuxuryAdPostScriptPerson();
       updateLuxuryAdStepLocks();
