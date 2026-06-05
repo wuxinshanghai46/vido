@@ -518,7 +518,7 @@ app.use('/api/ai-team', authenticate, require('./routes/aiTeam'));
 app.get('/api/health', (req, res) => {
   const { getStoryInfo } = require('./services/storyService');
   const storyInfo = getStoryInfo();
-  const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2' };
+  const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', 'webang-seedance': '微众 Seedance 2.0' };
   const videoProvider = process.env.VIDEO_PROVIDER || 'auto';
   res.json({
     status: 'ok',
@@ -575,7 +575,7 @@ app.listen(PORT, '0.0.0.0', async () => {
   const story = getStoryInfo();
   console.log(`  剧情模型: ${story.provider === 'none' ? '未配置（请在 AI 配置页面添加）' : `${story.provider} (${story.model})`}`);
   const vp = process.env.VIDEO_PROVIDER || 'auto';
-  const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（国内免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', auto: '自动（由 AI 配置决定）' };
+  const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（国内免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', 'webang-seedance': '微众 Seedance 2.0', auto: '自动（由 AI 配置决定）' };
   console.log(`  视频模型: ${videoLabels[vp] || vp}\n`);
 
   // 自动启动本地 MCP 服务器

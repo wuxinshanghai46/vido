@@ -1348,6 +1348,163 @@ async function generateArkSeedanceClip({ prompt, duration = 5, outputDir, filena
   throw new Error('Seedance 2.0 生成超时（15 分钟）');
 }
 
+function _normaliseWebangBaseUrl(apiUrl = '') {
+  let base = (apiUrl || 'https://test-tk.iserviceapi.com/api').replace(/\/$/, '');
+  if (base.endsWith('/api/v1')) return base;
+  if (base.endsWith('/v1')) return base;
+  if (base.endsWith('/api')) return `${base}/v1`;
+  return `${base}/api/v1`;
+}
+
+function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutMs = 60000) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(baseUrl + pathName);
+    const bodyStr = body ? JSON.stringify(body) : '';
+    const req = https.request({
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + (urlObj.search || ''),
+      method,
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr),
+        'User-Agent': 'VIDO/1.0'
+      }
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString();
+        let json = null;
+        try { json = text ? JSON.parse(text) : {}; } catch {}
+        if (res.statusCode >= 400) {
+          const msg = json?.error?.message || json?.message || text.substring(0, 200);
+          return reject(new Error(`微众 Seedance HTTP ${res.statusCode}: ${msg}`));
+        }
+        if (!json) return reject(new Error('微众 Seedance 返回格式错误: ' + text.substring(0, 160)));
+        resolve(json);
+      });
+    });
+    req.on('error', e => reject(new Error('微众 Seedance 网络错误: ' + e.message)));
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('微众 Seedance 请求超时')));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+function _pickWebangTaskId(result) {
+  const data = result?.data || result;
+  return data?.id || data?.task_id || data?.taskId || data?.request_id || data?.requestId;
+}
+
+function _pickWebangVideoUrl(result) {
+  const data = result?.data || result;
+  return data?.video_url
+    || data?.videoUrl
+    || data?.url
+    || data?.output_url
+    || data?.outputUrl
+    || data?.content?.video_url
+    || data?.output?.video_url
+    || data?.output?.video?.url
+    || data?.video?.url
+    || data?.videos?.[0]?.url
+    || data?.videos?.[0]?.video_url
+    || data?.items?.[0]?.video_url
+    || data?.items?.[0]?.url;
+}
+
+function _pickWebangStatus(result) {
+  const data = result?.data || result;
+  return String(data?.status || data?.state || data?.task_status || data?.taskStatus || '').toLowerCase();
+}
+
+// ——— 微众 Seedance 2.0（一站式 AI 模型服务平台，OpenAI-compatible /api/v1）———
+async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
+  const { getApiKey, loadSettings } = require('./settingsService');
+  let provider = null;
+  try {
+    const settings = loadSettings();
+    provider = (settings.providers || []).find(p => (p.id === 'webang-seedance' || p.preset === 'webang-seedance') && p.enabled !== false);
+  } catch {}
+  const apiKey = getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
+  if (!apiKey) throw new Error('未配置微众 Seedance API Key');
+
+  const baseUrl = _normaliseWebangBaseUrl(provider?.api_url);
+  const model = video_model || (provider?.models || []).find(m => m.enabled !== false && m.use === 'video')?.id || 'doubao-seedance-2-0-260128';
+  const ratioFlag = aspectRatio === '9:16' ? '9:16' : (aspectRatio === '1:1' ? '1:1' : '16:9');
+  const durSec = Math.min(Math.max(Math.round(duration), 5), 10);
+
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `${filename}.mp4`);
+
+  let content = prompt.substring(0, 2000) + ` --ratio ${ratioFlag} --dur ${durSec}`;
+  if (image_url) content += ' --mode i2v';
+
+  const body = {
+    model,
+    content,
+    ratio: ratioFlag,
+    duration: durSec,
+    generate_audio: false,
+    watermark: false
+  };
+  if (image_url) {
+    body.image = image_url;
+    body.image_url = image_url;
+  }
+
+  const _started = Date.now();
+  let _ok = false; let _err = null; let _taskId = null;
+  try {
+    console.log(`[Webang Seedance] submit model=${model}, prompt长度=${prompt.length}, image=${!!image_url}`);
+    const submit = await _webangRequest('POST', baseUrl, '/videos/generations', apiKey, body);
+    _taskId = _pickWebangTaskId(submit);
+
+    const directUrl = _pickWebangVideoUrl(submit);
+    if (directUrl && !_taskId) {
+      await downloadFile(directUrl, outputPath);
+      _ok = true;
+      return { filePath: outputPath };
+    }
+    if (!_taskId) throw new Error('微众 Seedance 未返回任务 ID: ' + JSON.stringify(submit).substring(0, 300));
+
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const status = await _webangRequest('GET', baseUrl, `/videos/generations/${encodeURIComponent(_taskId)}`, apiKey, null, 30000);
+      const state = _pickWebangStatus(status);
+      const videoUrl = _pickWebangVideoUrl(status);
+      if (videoUrl && (!state || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(state))) {
+        await downloadFile(videoUrl, outputPath);
+        _ok = true;
+        return { filePath: outputPath };
+      }
+      if (['succeeded', 'success', 'completed', 'done', 'finished'].includes(state)) {
+        throw new Error('微众 Seedance 生成成功但未返回视频 URL');
+      }
+      if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(state)) {
+        const msg = status?.error?.message || status?.message || JSON.stringify(status).substring(0, 200);
+        throw new Error('微众 Seedance 生成失败: ' + msg);
+      }
+      console.log(`[Webang Seedance] 状态: ${state || 'pending'} (${(i + 1) * 5}秒)`);
+    }
+    throw new Error('微众 Seedance 生成超时（10 分钟）');
+  } catch (e) {
+    _err = e.message;
+    throw e;
+  } finally {
+    try {
+      require('./tokenTracker').record({
+        provider: 'webang-seedance', model,
+        category: 'video', videoSeconds: durSec,
+        durationMs: Date.now() - _started,
+        status: _ok ? 'success' : 'fail', errorMsg: _err,
+        userId, agentId, requestId: _taskId,
+      });
+    } catch {}
+  }
+}
+
 // ——— Google Veo 3 / 3.1（Gemini API，影院级视频）———
 async function generateVeoClip({ prompt, duration = 8, outputDir, filename, image_url, video_model }) {
   const { getApiKey, loadSettings } = require('./settingsService');
@@ -1754,7 +1911,7 @@ async function generateMxapiClip({ prompt, duration = 5, outputDir, filename, as
 // ——— 自动检测视频 provider（settings > env > demo）———
 // 视频供应商优先级（质量+稳定性排序，即梦/Kling 优先于免费的智谱）
 const VIDEO_PROVIDER_PRIORITY = [
-  'deyunai', 'jimeng', 'mxapi', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
+  'deyunai', 'jimeng', 'mxapi', 'webang-seedance', 'kling', 'pika', 'fal', 'seedance', 'runway', 'luma', 'veo',
   'topview', 'minimax', 'openai', 'zhipu', 'replicate', 'huggingface'
 ];
 const PROVIDER_ID_MAP = { openai: 'sora' };
@@ -1790,6 +1947,10 @@ async function generateVideoClip(options) {
 
   // 火山方舟 Seedance 2.0 直连（doubao-seedance-* 模型）
   const isArkSeedance = model.startsWith('doubao-seedance-');
+  if (isArkSeedance && provider === 'webang-seedance') {
+    console.log(`[VideoService] 模型 ${model} 通过微众 Seedance 路由`);
+    return generateWebangSeedanceClip(options);
+  }
   if (isArkSeedance) {
     console.log(`[VideoService] 模型 ${model} 通过火山方舟直连`);
     return generateArkSeedanceClip(options);
@@ -1827,6 +1988,7 @@ async function generateVideoClip(options) {
     case 'topview':     return generateTopviewClip(options);
     case 'jimeng':      return generateJimengClip(options);
     case 'mxapi':       return generateMxapiClip(options);
+    case 'webang-seedance': return generateWebangSeedanceClip(options);
     case 'zhipu':       return generateZhipuClip(options);
     case 'huggingface': return generateHuggingFaceClip(options);
     case 'replicate':   return generateReplicateClip(options);

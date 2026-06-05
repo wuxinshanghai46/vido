@@ -48,6 +48,13 @@ const PROVIDER_PRESETS = {
     { id: 'fal-ai/seedance/v2/text-to-video', name: 'Seedance 2.0 T2V（12文件多模态·动作最强·角色一致性）', type: 'video', use: 'video' },
     { id: 'fal-ai/seedance/v2/image-to-video', name: 'Seedance 2.0 I2V（多参考图·角色一致性引擎）', type: 'video', use: 'video' },
   ] },
+  'webang-seedance': { name: '微众 · Seedance 2.0', api_url: 'https://test-tk.iserviceapi.com/api', defaultModels: [
+    { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（视频编辑·图生视频·文生视频）', type: 'video', use: 'video' },
+    { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（加速版）', type: 'video', use: 'video' },
+    { id: 'doubao-seedance-2-0-t2v-250428', name: 'Seedance 2.0 T2V（文生视频）', type: 'video', use: 'video' },
+    { id: 'doubao-seedance-2-0-i2v-250428', name: 'Seedance 2.0 I2V（图生视频）', type: 'video', use: 'video' },
+    { id: 'doubao-seedance-1-5-pro-251215', name: 'Seedance 1.5 Pro（图+音频→视频）', type: 'video', use: 'video' },
+  ] },
   veo:         { name: 'Google Veo',  api_url: 'https://generativelanguage.googleapis.com/v1beta', defaultModels: [
     { id: 'veo-3.1', name: 'Veo 3.1（广播级画质·原生音频·最强照片写实·$0.40/s）', type: 'video', use: 'video' },
     { id: 'veo-3.1-fast', name: 'Veo 3.1 Fast（快速·$0.15/s）', type: 'video', use: 'video' },
@@ -233,6 +240,7 @@ const ENV_SEED_MAP = [
   { envKey: 'JIMENG_API_KEY',      presetId: 'jimeng'      },
   { envKey: 'PIKA_API_KEY',        presetId: 'pika'          },
   { envKey: 'SEEDANCE_API_KEY',    presetId: 'seedance'      },
+  { envKey: 'WEBANG_SEEDANCE_API_KEY', presetId: 'webang-seedance' },
   { envKey: 'VEO_API_KEY',         presetId: 'veo'           },
   { envKey: 'TOPVIEW_API_KEY',     presetId: 'topview'       },
   { envKey: 'ELEVENLABS_API_KEY',  presetId: 'elevenlabs'  },

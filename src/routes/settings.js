@@ -238,6 +238,7 @@ async function testProviderConnection(p) {
     'api.minimaxi.chat':        '/v1/models',
     'api.lumalabs.ai':          '/dream-machine/v1/generations',
     'api.pika.art':             '/api/v1/generations',
+    'test-tk.iserviceapi.com':  '/api/v1/models',
     'api.elevenlabs.io':        '/v1/voices',
     'api.fish.audio':           '/v1/models',
     'dashscope.aliyuncs.com':   '/compatible-mode/v1/models',
