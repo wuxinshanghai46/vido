@@ -2293,13 +2293,27 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
         });
         break;
       } catch (err) {
-        if (attempt >= 2) throw err;
+        if (attempt >= 2) {
+          console.warn('[DH/luxury-ad] presenter seed QA failed after retry; continuing without generated identity seed:', err.message);
+          assets.presenter_seed_warning = {
+            skipped: true,
+            reason: err.message,
+            qa: err.details || null,
+            last_seed_url: seed.url || '',
+          };
+          assets.used.push('luxury_ad.presenter_seed_skipped_qa_failed');
+          seed = null;
+          seedQa = null;
+          break;
+        }
         firstQaError = err;
         console.warn('[DH/luxury-ad] presenter seed QA failed, retrying with plain identity-lock prompt:', err.message);
       }
     }
-    assets.presenter = { ...seed, source: 'generated_presenter_seed', qa: seedQa };
-    assets.used.push('luxury_ad.presenter_seed');
+    if (seed?.url && seedQa?.pass) {
+      assets.presenter = { ...seed, source: 'generated_presenter_seed', qa: seedQa };
+      assets.used.push('luxury_ad.presenter_seed');
+    }
   }
 
   if (needsScene && !assets.scene?.url) {
