@@ -6916,6 +6916,24 @@
     return true;
   }
 
+  function validateLuxuryAdStoryboardPlan(scenes = [], expectedSegments = []) {
+    const list = Array.isArray(scenes) ? scenes : [];
+    const expected = Array.isArray(expectedSegments) ? expectedSegments : [];
+    const errors = [];
+    if (!list.length) errors.push('规划分镜没有返回镜头表。');
+    if (expected.length && list.length !== expected.length) {
+      errors.push(`规划分镜数量不一致：剧本 ${expected.length} 镜，返回 ${list.length} 镜。`);
+    }
+    list.forEach((seg, i) => {
+      const n = i + 1;
+      if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`第 ${n} 镜缺少画面内容。`);
+      if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`第 ${n} 镜缺少动作/表情。`);
+      if (!String(luxuryShotNarrationText(seg) || seg.dialogue || seg.dialogue_text || '').trim()) errors.push(`第 ${n} 镜缺少台词/旁白。`);
+    });
+    if (errors.length) throw new Error(errors.slice(0, 8).join('；'));
+    return true;
+  }
+
   // Render rejected candidate images so failed image spend can be inspected
   // without relaxing the strict QA gate.
   function renderLuxuryKeyframeErrorDetails(details = null) {
@@ -8024,14 +8042,19 @@
       if (!r.success) throw new Error(r.error || '分镜生成失败');
       const nextKeyframes = (r.keyframes || []).slice(0, totalShots);
       const nextStoryboardSheets = Array.isArray(r.storyboard_sheets) ? r.storyboard_sheets : [];
-      const planningSheetMode = r.storyboard_mode === 'planning_sheet' || r.keyframe_generation_status === 'failed';
+      const returnedScenes = Array.isArray(r.scenes) ? r.scenes.slice(0, totalShots) : [];
+      const planningSheetMode = r.storyboard_mode === 'planning_sheet'
+        || r.reference_mode === 'storyboard_planning_sheet'
+        || r.keyframe_generation_status === 'failed'
+        || (!nextKeyframes.length && returnedScenes.length === totalShots && (nextStoryboardSheets.length || r.keyframe_error || r.details));
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
-      if (!planningSheetMode || !nextStoryboardSheets.length) {
+      if (planningSheetMode) {
+        validateLuxuryAdStoryboardPlan(returnedScenes.length ? returnedScenes : requestSegments, requestSegments);
+      } else {
         validateLuxuryAdKeyframes(nextKeyframes, requestSegments);
       }
-      const returnedScenes = Array.isArray(r.scenes) ? r.scenes.slice(0, totalShots) : [];
       if (singleIndex === null) {
         if (returnedScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(returnedScenes);
         state.luxuryAd.keyframes = nextKeyframes;
@@ -8110,6 +8133,7 @@
       state.luxuryAd.segments = clampLuxuryAdSegmentsToLockedAssets(state.luxuryAd.segments || []);
       state.luxuryAd.keyframes = (state.luxuryAd.keyframes || []).slice(0, state.luxuryAd.segments.length);
     }
+    if (state.luxuryAd.keyframePlanningOnly) return toast('当前只有可审核分镜板，关键帧还未通过 QA。请先重新生成关键帧，再合成广告', 'error');
     if (!state.luxuryAd.keyframes?.some(k => k?.image_url)) return toast('请先点击“4 生成分镜”，确认每段画面后再合成广告', 'error');
     try {
       validateLuxuryAdKeyframes(state.luxuryAd.keyframes || [], state.luxuryAd.segments || []);

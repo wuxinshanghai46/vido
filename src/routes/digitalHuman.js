@@ -17741,7 +17741,6 @@ router.post('/spaces/keyframes', async (req, res) => {
       });
     }
     if (isLuxury) {
-      await _assertLuxuryKeyframeQaAvailable(req);
       luxuryPlanningScenes = scenes;
       luxuryPlanningMeta = {
         asset_manifest: luxuryAssetManifest || undefined,
@@ -17760,6 +17759,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         aspectRatio,
         destDir: JIMENG_ASSETS_DIR,
       });
+      await _assertLuxuryKeyframeQaAvailable(req);
     }
     const base = _publicBaseUrl(req);
     const keyframes = [];
@@ -18109,7 +18109,7 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (Array.isArray(attempts) && attempts.length && !errorDetails.attempts) {
       errorDetails.attempts = attempts;
     }
-    if (req.body?.ad_mode === 'luxury_ad' && Array.isArray(luxuryPlanningStoryboardSheets) && luxuryPlanningStoryboardSheets.length) {
+    if (req.body?.ad_mode === 'luxury_ad' && Array.isArray(luxuryPlanningScenes) && luxuryPlanningScenes.length) {
       const partialBody = {
         success: true,
         storyboard_mode: 'planning_sheet',
