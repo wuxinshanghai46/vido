@@ -76,7 +76,13 @@ app.use(express.static(path.join(__dirname, '../public'), {
   index: false,
   setHeaders(res, filePath) {
     const normalized = filePath.replace(/\\/g, '/');
-    if (normalized.endsWith('/admin.html') || normalized.endsWith('/js/admin.js')) {
+    if (
+      normalized.endsWith('/admin.html')
+      || normalized.endsWith('/js/admin.js')
+      || normalized.endsWith('/digital-human.html')
+      || normalized.endsWith('/js/digital-human.js')
+      || normalized.endsWith('/css/digital-human-wizard.css')
+    ) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
