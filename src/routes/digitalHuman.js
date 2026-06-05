@@ -2100,6 +2100,20 @@ function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = 'male',
   ].filter(Boolean).join(' ');
 }
 
+function _luxuryPresenterSeedRetryPrompt({ productSubject = '', guideGender = 'male', scenes = [], previousReason = '' } = {}) {
+  const gender = /female|woman|girl|女/i.test(String(guideGender || '')) ? 'female' : 'male';
+  const contract = _luxuryIndustrySeedContract({ productSubject, scenes });
+  return [
+    'SECOND ATTEMPT: create a plain, real, identity-lockable commercial actor reference.',
+    `One adult ${gender} presenter only. Front-facing clear face, both eyes fully visible, no sunglasses, no glasses tint, no mask, no hat, no hair covering eyes, no profile angle, no cropped face.`,
+    'The person must look like a real live-action commercial actor photographed by a camera: natural skin pores, normal facial asymmetry, realistic hair, ordinary professional wardrobe, calm natural expression.',
+    'Avoid fashion poster styling, beauty campaign glamour, plastic AI skin, CGI render, mannequin, wax figure, editorial pose, dramatic lighting, luxury boutique background, jewelry/cosmetics shelf, generated text, logo or watermark.',
+    `Industry context: ${contract.industry}. Use a simple neutral workplace or soft commercial background appropriate for ${contract.scene}.`,
+    productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}. This is a presenter identity seed, not a product-only image.` : '',
+    previousReason ? `Previous failed QA reason to avoid exactly: ${String(previousReason).slice(0, 260)}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
 function _luxurySceneSeedPrompt({ productSubject = '', scenes = [], brief = '' } = {}) {
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes, brief });
   return [
@@ -2249,27 +2263,41 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
   };
 
   if (needsPresenter && !assets.presenter?.url) {
-    const seed = await _generateLuxurySeedAsset(req, {
-      stageId: 'luxury_ad.presenter_seed',
-      prompt: _luxuryPresenterSeedPrompt({ productSubject, guideGender, scenes }),
-      aspectRatio: '9:16',
-      outputSize,
-      filename: `${filenamePrefix}_presenter_seed`,
-      destDir,
-    });
-    if (!seed.url) {
-      const err = new Error('剧情广告真人讲解员种子图生成失败：剧情要求真人，但没有可用人物参考，且 presenter_seed 未返回图片。');
-      err.status = 422;
-      err.code = 'LUXURY_PRESENTER_SEED_FAILED';
-      err.details = { stage_id: 'luxury_ad.presenter_seed', attempts: seed.attempts || [] };
-      throw err;
+    let seed = null;
+    let seedQa = null;
+    let firstQaError = null;
+    for (const attempt of [1, 2]) {
+      seed = await _generateLuxurySeedAsset(req, {
+        stageId: 'luxury_ad.presenter_seed',
+        prompt: attempt === 1
+          ? _luxuryPresenterSeedPrompt({ productSubject, guideGender, scenes })
+          : _luxuryPresenterSeedRetryPrompt({ productSubject, guideGender, scenes, previousReason: firstQaError?.message || firstQaError?.details?.reason || '' }),
+        aspectRatio: '9:16',
+        outputSize,
+        filename: `${filenamePrefix}_presenter_seed${attempt > 1 ? '_retry' : ''}`,
+        destDir,
+      });
+      if (!seed.url) {
+        const err = new Error('剧情广告真人讲解员种子图生成失败：剧情要求真人，但没有可用人物参考，且 presenter_seed 未返回图片。');
+        err.status = 422;
+        err.code = 'LUXURY_PRESENTER_SEED_FAILED';
+        err.details = { stage_id: 'luxury_ad.presenter_seed', attempts: seed.attempts || [] };
+        throw err;
+      }
+      try {
+        seedQa = await _checkLuxuryPresenterSeedQuality(req, {
+          seedUrl: seed.url,
+          productSubject,
+          guideGender,
+          scenes,
+        });
+        break;
+      } catch (err) {
+        if (attempt >= 2) throw err;
+        firstQaError = err;
+        console.warn('[DH/luxury-ad] presenter seed QA failed, retrying with plain identity-lock prompt:', err.message);
+      }
     }
-    const seedQa = await _checkLuxuryPresenterSeedQuality(req, {
-      seedUrl: seed.url,
-      productSubject,
-      guideGender,
-      scenes,
-    });
     assets.presenter = { ...seed, source: 'generated_presenter_seed', qa: seedQa };
     assets.used.push('luxury_ad.presenter_seed');
   }
@@ -12322,7 +12350,8 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
     ].filter(Boolean).join('\n');
     try {
       const raw = await callLLM(systemPrompt, userPrompt, {
-        pipelineStageId: 'luxury_ad.keyframe',
+        pipelineStageId: 'luxury_ad.storyboard_director',
+        pipelineFallbackStageId: 'luxury_ad.script',
         agentId: 'luxury_ad.keyframe.story_extract',
         kb: { scene: 'digital_ad', query: [productSubject, current.title, current.visual, current.voiceover].filter(Boolean).join(' ').slice(0, 160), limit: 2 },
       });
