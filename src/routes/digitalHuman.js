@@ -15439,11 +15439,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             err._luxuryAttemptRecorded = true;
             addAttempt(model, false, err, {
               prompt_chars: Array.from(String(promptForAttempt || '')).length,
-              fallback_mode: 'gpt-image-2-edits-all-refs-required',
+              fallback_mode: 'gpt-image-2-edits-first-then-relaxed-fallback',
               reference_count: gptRefs.length,
-              rule: 'reference_locked_no_text_only_fallback',
+              rule: 'reference_preserving_first_relaxed_fallback_allowed',
             });
-            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references; no text-only fallback will be used:', shortError(err));
+            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references; trying relaxed configured image fallbacks:', shortError(err));
           }
           throw err;
         }
@@ -15574,14 +15574,24 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     console.info('[DH/luxury-ad] controlled steel candidate is reference/diagnostic only; real image model generation is required for final keyframes');
   }
 
-  const configuredModelsAll = _uniquePipelineModels([
+  const configuredModelsRaw = _uniquePipelineModels([
     ..._pickRunnablePipelineModels(stageId || 'luxury_ad.keyframe'),
-  ]).filter(model => {
+  ]);
+  const referencePreservingModels = configuredModelsRaw.filter(model => {
     const provider = String(model?.provider_id || '').toLowerCase();
     if (hasShotReferenceLock && provider !== 'deyunai' && provider !== 'topview') return false;
     if (hasReferenceLock && !canPreserveLockedReferences(model)) return false;
     return true;
   });
+  const relaxedFallbackModels = hasReferenceLock
+    ? configuredModelsRaw.filter(model => !referencePreservingModels.some(locked => (
+      String(locked?.provider_id || '') === String(model?.provider_id || '')
+      && String(locked?.model_id || '') === String(model?.model_id || '')
+    )))
+    : [];
+  const configuredModelsAll = hasReferenceLock
+    ? _uniquePipelineModels([...referencePreservingModels, ...relaxedFallbackModels])
+    : configuredModelsRaw;
   if (_luxuryStageRequiresAdminConfig(stageId || 'luxury_ad.keyframe') && !configuredModelsAll.length) {
     const err = new Error(`${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止剧情广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
     err.status = 422;
@@ -15821,7 +15831,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const err = new Error([
     '剧情广告分镜画面生成失败。',
     summary ? `已尝试：${summary}。` : '',
-    hasReferenceLock ? '当前镜头已绑定参考图，本次不会降级到只看主商品的自由生图模型。' : '',
+    hasReferenceLock ? '当前镜头已绑定参考图；系统已优先尝试可保参考图的编辑模型，随后也尝试了已配置的可用图像模型。' : '',
     '可灵、海螺属于后续图生视频阶段，必须先生成分镜画面后才会执行；Topview 图片模型可用于当前分镜阶段，请检查其文生图/图像编辑额度和模型配置。',
   ].filter(Boolean).join(''));
   err.status = qaRejected ? 422 : (limitHit ? 429 : 500);
