@@ -3155,7 +3155,8 @@ async function _createLuxuryStoryboardSheetImages(req, {
   destDir = JIMENG_ASSETS_DIR,
 } = {}) {
   const sharp = _loadSharp();
-  if (!sharp || !Array.isArray(scenes) || !scenes.length || !Array.isArray(keyframes) || !keyframes.length) return [];
+  if (!sharp || !Array.isArray(scenes) || !scenes.length) return [];
+  const frameList = Array.isArray(keyframes) ? keyframes : [];
   fs.mkdirSync(destDir, { recursive: true });
   const totalDuration = Math.round(scenes.reduce((sum, scene) => sum + Math.max(1, Number(scene.duration ?? scene.seconds ?? 3) || 3), 0));
   const sheets = [];
@@ -3177,7 +3178,7 @@ async function _createLuxuryStoryboardSheetImages(req, {
     for (let i = 0; i < slice.length; i++) {
       const scene = slice[i] || {};
       const absoluteIndex = start + i;
-      const keyframe = keyframes[absoluteIndex] || {};
+      const keyframe = frameList[absoluteIndex] || {};
       const row = Math.floor(i / 2);
       const col = i % 2;
       const x = margin + col * (cardW + gap);
@@ -3201,7 +3202,7 @@ async function _createLuxuryStoryboardSheetImages(req, {
           <rect x="20" y="74" width="${frameW}" height="${frameH}" fill="#e5e7eb" stroke="#cbd5e1" stroke-width="2"/>
           ${imageData
             ? `<image href="${imageData}" x="20" y="74" width="${frameW}" height="${frameH}" preserveAspectRatio="xMidYMid slice"/>`
-            : `<text x="${cardW / 2}" y="282" text-anchor="middle" font-size="28" font-weight="900" fill="#64748b">STORYBOARD FRAME</text>`}
+            : `<text x="${cardW / 2}" y="282" text-anchor="middle" font-size="28" font-weight="900" fill="#64748b">STORYBOARD PLAN</text>`}
           <rect x="20" y="500" width="112" height="54" fill="#0f172a"/>
           <text x="76" y="535" text-anchor="middle" font-size="18" font-weight="900" fill="#ffffff">CAMERA</text>
           ${_storyboardTextSvg(cameraText, 152, 523, { maxUnits: 28, maxLines: 2, size: 18, fill: '#334155', weight: 700 })}
@@ -17551,6 +17552,9 @@ async function _runStrictSpaceGuideTask(req, taskId, payload) {
 }
 
 router.post('/spaces/keyframes', async (req, res) => {
+  let luxuryPlanningStoryboardSheets = [];
+  let luxuryPlanningScenes = [];
+  let luxuryPlanningMeta = null;
   try {
     if (_isStrictShowroomMode(req.body || {})) {
       try {
@@ -17738,6 +17742,24 @@ router.post('/spaces/keyframes', async (req, res) => {
     }
     if (isLuxury) {
       await _assertLuxuryKeyframeQaAvailable(req);
+      luxuryPlanningScenes = scenes;
+      luxuryPlanningMeta = {
+        asset_manifest: luxuryAssetManifest || undefined,
+        visual_locks: luxuryVisualLocks || undefined,
+        global_visual_bible: luxuryGlobalVisualBible || undefined,
+        shot_count: scenes.length,
+        ratio: aspectRatio,
+        output_size: normalizedOutputSize,
+        resolution: _outputSizeString(aspectRatio, normalizedOutputSize),
+      };
+      luxuryPlanningStoryboardSheets = await _createLuxuryStoryboardSheetImages(req, {
+        scenes,
+        keyframes: [],
+        taskId: `${taskId}_plan`,
+        title: brief_info?.title || title || '剧情广告',
+        aspectRatio,
+        destDir: JIMENG_ASSETS_DIR,
+      });
     }
     const base = _publicBaseUrl(req);
     const keyframes = [];
@@ -18086,6 +18108,22 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (!errorDetails || typeof errorDetails !== 'object') errorDetails = { raw: errorDetails };
     if (Array.isArray(attempts) && attempts.length && !errorDetails.attempts) {
       errorDetails.attempts = attempts;
+    }
+    if (req.body?.ad_mode === 'luxury_ad' && Array.isArray(luxuryPlanningStoryboardSheets) && luxuryPlanningStoryboardSheets.length) {
+      const partialBody = {
+        success: true,
+        storyboard_mode: 'planning_sheet',
+        keyframe_generation_status: 'failed',
+        keyframe_error: e,
+        scenes: luxuryPlanningScenes,
+        keyframes: [],
+        storyboard_sheets: luxuryPlanningStoryboardSheets,
+        details: errorDetails,
+        ...(luxuryPlanningMeta || {}),
+        reference_mode: 'storyboard_planning_sheet',
+      };
+      _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'done', result: partialBody });
+      return res.json(partialBody);
     }
     _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: errorDetails });
     _sendApiError(res, err, '剧情广告分镜生成失败');

@@ -7179,6 +7179,7 @@
     const disabledAttr = state.luxuryAd.keyframeGenerating ? 'disabled' : '';
     const errorText = String(state.luxuryAd.keyframeError || '').trim();
     const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
+    const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
@@ -7187,7 +7188,7 @@
         </div>
         <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>重新生成全部分镜</button>
       </div>
-      ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>分镜生成已停止</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
+      ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '关键帧待重新生成' : '分镜生成已停止'}</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {
       const kf = keyframes[i] || {};
@@ -7926,6 +7927,7 @@
     state.luxuryAd.keyframeGenerating = true;
     state.luxuryAd.keyframeError = '';
     state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.keyframePlanningOnly = false;
     if (singleIndex === null || force) {
       state.luxuryAd.keyframes = [];
       state.luxuryAd.storyboardSheets = [];
@@ -8022,15 +8024,19 @@
       if (!r.success) throw new Error(r.error || '分镜生成失败');
       const nextKeyframes = (r.keyframes || []).slice(0, totalShots);
       const nextStoryboardSheets = Array.isArray(r.storyboard_sheets) ? r.storyboard_sheets : [];
+      const planningSheetMode = r.storyboard_mode === 'planning_sheet' || r.keyframe_generation_status === 'failed';
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
-      validateLuxuryAdKeyframes(nextKeyframes, requestSegments);
+      if (!planningSheetMode || !nextStoryboardSheets.length) {
+        validateLuxuryAdKeyframes(nextKeyframes, requestSegments);
+      }
       const returnedScenes = Array.isArray(r.scenes) ? r.scenes.slice(0, totalShots) : [];
       if (singleIndex === null) {
         if (returnedScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(returnedScenes);
         state.luxuryAd.keyframes = nextKeyframes;
         state.luxuryAd.storyboardSheets = nextStoryboardSheets;
+        state.luxuryAd.keyframePlanningOnly = planningSheetMode;
       } else {
         const existingFrames = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
         const merged = Array.from({ length: previewSegments.length }, (_, i) => existingFrames[i] || {});
@@ -8042,11 +8048,14 @@
           state.luxuryAd.segments = applyLuxuryShotBindings(mergedSegments);
         }
       }
+      if (!planningSheetMode) state.luxuryAd.keyframePlanningOnly = false;
       state.luxuryAd.keyframeProgress = {
-        current: singleIndex === null ? state.luxuryAd.keyframes.length : totalShots,
-        total: singleIndex === null ? (previewSegments.length || state.luxuryAd.keyframes.length) : totalShots,
+        current: planningSheetMode ? totalShots : (singleIndex === null ? state.luxuryAd.keyframes.length : totalShots),
+        total: singleIndex === null ? (previewSegments.length || state.luxuryAd.keyframes.length || totalShots) : totalShots,
         startedAt,
-        message: singleIndex === null
+        message: planningSheetMode
+          ? `分镜板已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`
+          : singleIndex === null
           ? `分镜已完成：${state.luxuryAd.keyframes.length}/${previewSegments.length || state.luxuryAd.keyframes.length}（静态分镜；合成广告时才逐镜生成动态视频）。`
           : `第 ${singleIndex + 1} 镜已重新生成。`,
       };
@@ -8057,21 +8066,23 @@
         startedAt,
         elapsedSec: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
         percent: 100,
-        label: '分镜生成完成',
-        phase: '已完成剧本一致性检查',
+        label: planningSheetMode ? '分镜板已生成' : '分镜生成完成',
+        phase: planningSheetMode ? '关键帧待重新生成' : '已完成剧本一致性检查',
         message: state.luxuryAd.keyframeProgress.message,
       };
       state.luxuryAd.keyframeGenerating = false;
-      state.luxuryAd.keyframeError = '';
-      state.luxuryAd.keyframeErrorDetails = null;
+      state.luxuryAd.keyframeError = planningSheetMode ? (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板') : '';
+      state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (r.details || null) : null;
       renderLuxuryAdStoryboard();
       const lockedCount = state.luxuryAd.keyframes.filter(k => String(k.reference_mode || '').includes('reference_locked')).length;
       toast(singleIndex !== null
         ? `第 ${singleIndex + 1} 镜已重新生成`
+        : planningSheetMode
+          ? '已先生成可审核分镜板，关键帧可重新生成'
         : (lockedCount
           ? `已锁定 ${lockedCount} 个参考镜头作为分镜，请点击“合成广告”；提交后会显示逐镜图生视频进度`
           : `已生成 ${state.luxuryAd.keyframes.length} 个分镜`), 'success');
-      if (autoSubmit) await submitLuxuryAd();
+      if (autoSubmit && !planningSheetMode) await submitLuxuryAd();
     } catch (err) {
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
