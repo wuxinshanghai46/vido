@@ -9520,6 +9520,13 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       castModeAuto: rawCastMode === 'auto',
       castModeInferredFrom: rawCastMode === 'auto' ? 'brief' : 'manual',
     };
+    const luxuryGlobalVisualBible = _buildLuxuryGlobalVisualBible({
+      visualLocks: luxuryVisualLocks,
+      visualReferenceBrief,
+      productSubject,
+      personSpec: resolvedPersonSpec,
+      aspectRatio: output_ratio || '9:16',
+    });
     const expectedPeople = castMode === 'single' ? 1 : (castMode === 'group' ? 3 : 2);
     const genderLabels = {
       auto: 'AI 按故事判断',
@@ -10941,6 +10948,7 @@ ${JSON.stringify(scenes, null, 2)}
       scenes = scenes.map((scene, i) => _prepareLuxuryStrictShotForScriptReview(scene, i, scenes.length, {
         productSubject,
         aspectRatio: output_ratio || '9:16',
+        globalVisualBible: luxuryGlobalVisualBible,
       }));
     }
     if (isDetailedMode) {
@@ -10982,7 +10990,7 @@ ${JSON.stringify(scenes, null, 2)}
     if (isDetailedMode && storyCharacters.length) {
       briefInfo.characters = storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: luxuryGlobalVisualBible, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     _storeLuxuryStoryboardResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
@@ -11828,9 +11836,20 @@ function _assertLuxuryStrictStoryboardContract(contract = {}, { shotIndex = 0 } 
 // Compile a storyboard contract into the exact image-model prompt. The prompt
 // is saved for review so failures can be traced without guessing.
 function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio = '16:9' } = {}) {
+  const packet = scene.shot_execution_packet && typeof scene.shot_execution_packet === 'object'
+    ? scene.shot_execution_packet
+    : null;
+  const globalBible = packet?.global_visual_bible && typeof packet.global_visual_bible === 'object'
+    ? packet.global_visual_bible
+    : null;
+  const currentShot = packet?.current_shot && typeof packet.current_shot === 'object'
+    ? packet.current_shot
+    : null;
   const prompt = [
     `${aspectRatio} photorealistic commercial storyboard keyframe.`,
-    'Use this confirmed storyboard contract only; do not rewrite the story, subject, scene or shot role.',
+    'Use this confirmed per-shot execution packet only; do not rewrite the story, subject, scene or shot role.',
+    globalBible ? `Global visual bible: ${_luxuryStrictText(JSON.stringify(globalBible), 1400)}.` : '',
+    currentShot ? `Current shot execution packet: ${_luxuryStrictText(JSON.stringify(currentShot), 1800)}.` : '',
     `Shot: ${contract.shot_id}/${contract.shot_count}; role: ${contract.role}; duration: ${contract.duration}s.`,
     `Product subject: ${contract.product_subject}.`,
     `Visible subject: ${contract.visible_subject}.`,
@@ -11849,7 +11868,98 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     scene.reference_prompt ? `Reference strategy: ${_luxuryStrictText(scene.reference_prompt, 420)}.` : '',
     'No generated subtitles, no text overlay, no watermark, no random extra people, no unrelated product category, no scene replacement.',
   ].filter(Boolean).join(' ');
-  return prompt.slice(0, 1950);
+  return prompt.slice(0, 6000);
+}
+
+function _compactLuxuryObject(value, maxChars = 1200) {
+  if (!value) return null;
+  if (typeof value === 'string') return _luxuryStrictText(value, maxChars);
+  try {
+    return JSON.parse(_luxuryStrictText(JSON.stringify(value), maxChars));
+  } catch (_) {
+    return _luxuryStrictText(value, maxChars);
+  }
+}
+
+function _buildLuxuryGlobalVisualBible({
+  briefInfo = null,
+  visualLocks = null,
+  visualReferenceBrief = null,
+  productSubject = '',
+  personSpec = null,
+  aspectRatio = '9:16',
+} = {}) {
+  const info = briefInfo && typeof briefInfo === 'object' ? briefInfo : {};
+  const locks = visualLocks && typeof visualLocks === 'object' ? visualLocks : {};
+  const ref = visualReferenceBrief && typeof visualReferenceBrief === 'object' ? visualReferenceBrief : {};
+  return {
+    style: _luxuryStrictText(info.style || locks.style_lock?.prompt || ref.style || 'photorealistic premium commercial film still', 260),
+    tone: _luxuryStrictText(info.tone || ref.tone || 'real social/commercial scene, restrained premium color, not AI poster style', 260),
+    lighting: _luxuryStrictText(info.lighting || locks.reality_lock?.lighting || ref.lighting || 'practical location light, believable shadows, natural skin and material texture', 260),
+    main_scene: _luxuryStrictText(info.main_scene || locks.scene_lock?.scene_basis || locks.reality_lock?.scene_basis || ref.scene || 'industry-appropriate real-world location from the confirmed brief', 320),
+    character_table: Array.isArray(info.characters) ? info.characters.slice(0, 6).map(c => ({
+      name: _luxuryStrictText(c?.name || '', 60),
+      gender: _luxuryStrictText(c?.gender || '', 40),
+      origin: _luxuryStrictText(c?.origin || '', 80),
+      role: _luxuryStrictText(c?.role || '', 100),
+      appearance: _luxuryStrictText(c?.appearance || c?.description || '', 260),
+      outfit: _luxuryStrictText(c?.outfit || '', 160),
+      behavior: _luxuryStrictText(c?.behavior || '', 160),
+    })) : [],
+    person_spec: _compactLuxuryObject(personSpec, 900),
+    product_subject: _luxuryStrictText(productSubject || info.product_subject || ref.product_subject || '', 180),
+    aspect_ratio: _luxuryStrictText(aspectRatio || info.aspect_ratio || '9:16', 20),
+    locks_summary: {
+      reality: _luxuryStrictText(locks.reality_lock?.prompt || locks.reality_lock?.scene_basis || '', 320),
+      character: _luxuryStrictText(locks.character_lock?.prompt || '', 320),
+      product: _luxuryStrictText(locks.product_lock?.prompt || locks.product_lock?.subject || '', 320),
+      scene: _luxuryStrictText(locks.scene_lock?.prompt || locks.scene_lock?.scene_basis || '', 320),
+      prop: _luxuryStrictText(locks.prop_lock?.prompt || '', 260),
+      ui: _luxuryStrictText(locks.ui_lock?.prompt || '', 260),
+    },
+  };
+}
+
+function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
+  globalVisualBible = null,
+  aspectRatio = '9:16',
+  referenceRoleMap = null,
+} = {}) {
+  const currentShot = {
+    shot_id: contract.shot_id,
+    shot_count: contract.shot_count,
+    duration: contract.duration,
+    purpose: _luxuryStrictText(scene.script_purpose || scene.purpose || scene.objective || contract.role || '', 120),
+    scene: contract.scene,
+    person: _luxuryStrictText(scene.character_prompt || scene.character || contract.character_lock?.prompt || contract.visible_subject || '', 320),
+    product_or_prop: _luxuryStrictText(scene.material_usage || scene.material_hint || contract.product_subject || contract.product_lock?.subject || '', 320),
+    visual: contract.visual,
+    action: contract.action,
+    dialogue: _luxuryStrictText(scene.dialogue || scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 420),
+    camera: contract.camera,
+    composition: contract.composition,
+    lighting: contract.lighting,
+    ui_or_vfx: _luxuryStrictText(_luxuryUiOverlayPrompt(scene.ui_overlay), 260),
+  };
+  const roleMap = referenceRoleMap && typeof referenceRoleMap === 'object'
+    ? referenceRoleMap
+    : {
+      identity_reference: _luxuryStrictText(scene.identity_reference_image || contract.character_lock?.source || '', 220),
+      scene_reference: _luxuryStrictText(scene.active_reference_image || contract.scene_lock?.source || '', 220),
+      product_reference: _luxuryStrictText(contract.product_lock?.source || scene.product_reference_image || '', 220),
+      prop_reference: _luxuryStrictText(contract.prop_lock?.source || '', 220),
+      ui_reference: _luxuryStrictText(contract.ui_lock?.source || '', 220),
+    };
+  return {
+    packet_version: 'luxury_shot_execution_packet_v1',
+    aspect_ratio: aspectRatio,
+    global_visual_bible: globalVisualBible || _buildLuxuryGlobalVisualBible({ productSubject: contract.product_subject, aspectRatio }),
+    current_shot: currentShot,
+    reference_role_map: roleMap,
+    must_show: Array.isArray(contract.must_show) ? contract.must_show : [],
+    must_not_show: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
+    qa_acceptance: _luxuryStrictText(contract.qa_contract || '', 1200),
+  };
 }
 
 // Prepare one strict high-end ad shot for the keyframe stage. This keeps the
@@ -11857,11 +11967,19 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
 function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1, opts = {}) {
   const contract = _buildLuxuryStrictStoryboardContract(scene, index, total, opts);
   const preflight = _assertLuxuryStrictStoryboardContract(contract, { shotIndex: index });
-  const compiledPrompt = _compileLuxuryShotImagePrompt(scene, contract, { aspectRatio: opts.aspectRatio || '16:9' });
+  const packet = _buildLuxuryShotExecutionPacket(scene, contract, {
+    globalVisualBible: opts.globalVisualBible || scene.global_visual_bible || null,
+    aspectRatio: opts.aspectRatio || '16:9',
+    referenceRoleMap: scene.reference_role_map || null,
+  });
+  const sceneWithPacket = { ...scene, shot_execution_packet: packet, global_visual_bible: packet.global_visual_bible };
+  const compiledPrompt = _compileLuxuryShotImagePrompt(sceneWithPacket, contract, { aspectRatio: opts.aspectRatio || '16:9' });
   return {
     ...scene,
     strict_storyboard_contract_required: true,
     strict_storyboard_contract: contract,
+    global_visual_bible: packet.global_visual_bible,
+    shot_execution_packet: packet,
     prompt_preflight: preflight,
     compiled_image_prompt: compiledPrompt,
   };
@@ -11879,13 +11997,21 @@ function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 
     issues,
     mode: 'script_review_soft_preflight',
   };
+  const packet = _buildLuxuryShotExecutionPacket(scene, contract, {
+    globalVisualBible: opts.globalVisualBible || scene.global_visual_bible || null,
+    aspectRatio: opts.aspectRatio || '16:9',
+    referenceRoleMap: scene.reference_role_map || null,
+  });
+  const sceneWithPacket = { ...scene, shot_execution_packet: packet, global_visual_bible: packet.global_visual_bible };
   const compiledPrompt = preflight.pass
-    ? _compileLuxuryShotImagePrompt(scene, contract, { aspectRatio: opts.aspectRatio || '16:9' })
+    ? _compileLuxuryShotImagePrompt(sceneWithPacket, contract, { aspectRatio: opts.aspectRatio || '16:9' })
     : '';
   return {
     ...scene,
     strict_storyboard_contract_required: false,
     strict_storyboard_contract: contract,
+    global_visual_bible: packet.global_visual_bible,
+    shot_execution_packet: packet,
     prompt_preflight: preflight,
     compiled_image_prompt: compiledPrompt,
   };
@@ -14405,7 +14531,10 @@ function _buildLuxuryImageModelStrictPrompt({
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
   const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
-  const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 900);
+  const executionPacket = scene.shot_execution_packet && typeof scene.shot_execution_packet === 'object'
+    ? _luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 2600)
+    : '';
+  const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 2200);
   const visual = _compactLuxuryKeyframeText(
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
     260,
@@ -14459,6 +14588,7 @@ function _buildLuxuryImageModelStrictPrompt({
     action ? `REQUIRED ACTION: ${action}.` : '',
     camera ? `CAMERA/SCENE: ${camera}.` : '',
     narration ? `NARRATION MEANING: ${narration}.` : '',
+    executionPacket ? `SHOT EXECUTION PACKET: ${executionPacket}.` : '',
     compiled ? `COMPILED CONTRACT: ${compiled}.` : '',
     locationRule,
     refRule,
@@ -14468,7 +14598,7 @@ function _buildLuxuryImageModelStrictPrompt({
     productLockForScene,
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
     'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
-  ], 1850);
+  ], 6000);
 }
 
 // Generate one strict high-end ad keyframe from the compiled storyboard contract and reference materials.
@@ -15298,7 +15428,10 @@ function _buildLuxuryKeyframePrompt({
   // Strict compiled prompt mode: high-end ad keyframes must use the reviewed
   // storyboard compiler output, not an implicit prompt assembled at call time.
   if (scene.strict_storyboard_contract_required === true) {
-    const compiledPrompt = _luxuryStrictText(scene.compiled_image_prompt || '', 2200);
+    const packetPrompt = scene.shot_execution_packet && typeof scene.shot_execution_packet === 'object'
+      ? `SHOT EXECUTION PACKET: ${_luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 2600)}.`
+      : '';
+    const compiledPrompt = _luxuryStrictText([packetPrompt, scene.compiled_image_prompt || ''].filter(Boolean).join(' '), 6000);
     if (!compiledPrompt) {
       const err = new Error('高定广告分镜缺少 compiled_image_prompt，已停止，未调用图片模型。');
       err.status = 422;
@@ -15306,7 +15439,7 @@ function _buildLuxuryKeyframePrompt({
       err.details = { scene_index: scene.index ?? scene.shot_index ?? null };
       throw err;
     }
-    return compiledPrompt.slice(0, 1950);
+    return compiledPrompt.slice(0, 6000);
   }
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || 0);
@@ -15649,6 +15782,8 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       source_brief_reference_images: _pickLuxuryControlledReferenceUrls(scene, refs),
       // Store strict artifacts even if this legacy function is called manually.
       strict_storyboard_contract: scene.strict_storyboard_contract || null,
+      global_visual_bible: scene.global_visual_bible || scene.shot_execution_packet?.global_visual_bible || null,
+      shot_execution_packet: scene.shot_execution_packet || null,
       prompt_preflight: scene.prompt_preflight || null,
       compiled_image_prompt: scene.compiled_image_prompt || prompt,
       ui_overlay_post: uiOverlayPost ? {
@@ -15727,6 +15862,14 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       productSubject,
       brief: text,
     }) : null;
+    const luxuryAsyncGlobalVisualBible = isLuxury ? _buildLuxuryGlobalVisualBible({
+      briefInfo: payload.brief_info || null,
+      visualLocks: luxuryAsyncVisualLocks,
+      visualReferenceBrief: luxuryAsyncVisualReferenceBrief,
+      productSubject,
+      personSpec: payload.person_spec || null,
+      aspectRatio,
+    }) : null;
     let scenes = isLuxury
       ? _normalizeProvidedLuxuryStoryboardSegments(guideSegments, {
         text,
@@ -15797,6 +15940,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           sc = _prepareLuxuryStrictShotForGeneration(sc, i, scenes.length, {
             productSubject,
             aspectRatio,
+            globalVisualBible: luxuryAsyncGlobalVisualBible,
           });
           scenes[i] = sc;
         }
@@ -15824,6 +15968,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             totalShots: scenes.length,
             asset_manifest: luxuryAsyncAssetManifest || undefined,
             visual_locks: luxuryAsyncVisualLocks || undefined,
+            global_visual_bible: luxuryAsyncGlobalVisualBible || undefined,
             seed_reference_images: luxuryAsyncSeedReferenceImages,
             luxury_seed_assets: luxuryAsyncSeedAssets,
           },
@@ -16963,9 +17108,11 @@ router.post('/spaces/keyframes', async (req, res) => {
       product_name = '',
       product_asset = null,
       person_asset = null,
+      brief_info = null,
       asset_summary = '',
       brief_reference_assets = [],
       visual_reference_brief = null,
+      global_visual_bible = null,
       guide_gender = 'female',
       aspect_ratio,
       aspectRatio: aspectRatioBody,
@@ -17076,6 +17223,18 @@ router.post('/spaces/keyframes', async (req, res) => {
       productSubject,
       brief: text,
     }) : null;
+    const luxuryGlobalVisualBible = isLuxury
+      ? (global_visual_bible && typeof global_visual_bible === 'object'
+        ? global_visual_bible
+        : _buildLuxuryGlobalVisualBible({
+          briefInfo: brief_info,
+          visualLocks: luxuryVisualLocks,
+          visualReferenceBrief,
+          productSubject,
+          personSpec: req.body?.person_spec || null,
+          aspectRatio,
+        }))
+      : null;
     let scenes = isLuxury
       ? _normalizeProvidedLuxuryStoryboardSegments(guideSegments, {
         text,
@@ -17178,6 +17337,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         sc = _prepareLuxuryStrictShotForGeneration(sc, i, scenes.length, {
           productSubject,
           aspectRatio,
+          globalVisualBible: luxuryGlobalVisualBible,
         });
         scenes[i] = sc;
       }
@@ -17225,6 +17385,24 @@ router.post('/spaces/keyframes', async (req, res) => {
         };
       })();
       const luxuryShotRefs = luxuryShotRefInfo.refs;
+      if (isLuxury) {
+        const luxuryShotReferenceRoleMap = {
+          identity_reference: luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+          scene_reference: luxurySceneSeedImage || luxuryBriefSceneReferenceImage || '',
+          product_reference: luxurySubjectEvidenceSeedImage || background_url || '',
+          shot_reference: luxuryShotRefInfo.active || '',
+          active_reference_order: luxuryShotRefs,
+        };
+        sc = _prepareLuxuryStrictShotForGeneration({
+          ...sc,
+          reference_role_map: luxuryShotReferenceRoleMap,
+        }, i, scenes.length, {
+          productSubject,
+          aspectRatio,
+          globalVisualBible: luxuryGlobalVisualBible,
+        });
+        scenes[i] = sc;
+      }
       const lockedLuxuryReference = isLuxury && luxuryShotRefInfo.canLockReference ? (luxuryShotRefInfo.active || luxuryShotRefs[0] || '') : '';
       if (isLuxury) {
         _assertLuxuryKeyframeContractReady({
@@ -17402,7 +17580,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         qa: isLuxury ? keyframeQa : undefined,
       });
     }
-    const responseBody = { success: true, scenes, keyframes, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const responseBody = { success: true, scenes, keyframes, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     _storeLuxuryKeyframeResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {

@@ -139,6 +139,7 @@
       visualReferenceBrief: null,
       assetManifest: null,
       visualLocks: null,
+      globalVisualBible: null,
       briefUploading: false,
       refAssets: [],
       assets: [],
@@ -3428,6 +3429,9 @@
     state.luxuryAd.assets = [];
     state.luxuryAd.briefRefAssets = [];
     state.luxuryAd.visualReferenceBrief = null;
+    state.luxuryAd.assetManifest = null;
+    state.luxuryAd.visualLocks = null;
+    state.luxuryAd.globalVisualBible = null;
     state.luxuryAd.briefUploading = false;
     state.luxuryAd.bgmAsset = null;
     state.luxuryAd.uploading = false;
@@ -6642,7 +6646,7 @@
     const info = deriveLuxuryBriefInfo(state.luxuryAd.content, segments, state.luxuryAd.briefInfo || {});
     state.luxuryAd.briefInfo = info;
     syncLuxuryBriefInfoToControls(info);
-    const scenePlan = (Array.isArray(segments) ? segments : []).slice(0, 8);
+    const scenePlan = state.luxuryAd.storyboardDetailed ? (Array.isArray(segments) ? segments : []).slice(0, 8) : [];
     const product = state.luxuryAd.productAsset || null;
     const productUrl = product ? luxuryAssetPreviewUrl(product) : '';
     const productUploading = !!product?.uploading && !productUrl;
@@ -6698,11 +6702,11 @@
       </div>
       <section class="dh-luxgen-brief-scenes">
         <div class="dh-luxgen-brief-scenes-head">
-          <b>剧本生成依据</b>
-          <span>下一步会按这些结构点生成完整对白、人物互动和分镜动作。</span>
+          <b>${state.luxuryAd.storyboardDetailed ? '剧本生成依据' : '等待完整剧本'}</b>
+          <span>${state.luxuryAd.storyboardDetailed ? '后续会按这些已确认镜头生成图片分镜。' : '竞品式流程：完整剧本未生成前不展示镜头行，避免把草稿当成最终分镜。'}</span>
         </div>
         <div class="dh-luxgen-brief-scene-grid">
-          ${scenePlan.map((seg, i) => {
+          ${scenePlan.length ? scenePlan.map((seg, i) => {
         const roleValue = seg.stage_user_edited
           ? (seg.role || seg.shot_role || seg.type || luxuryAdDefaultRoleForIndex(i, segments.length || 1))
           : luxuryAdDefaultRoleForIndex(i, segments.length || 1);
@@ -6716,7 +6720,7 @@
           <p>${escapeHtml(objective)}</p>
           <small>${escapeHtml(materialNeed)}</small>
         </article>`;
-      }).join('')}
+      }).join('') : `<article class="dh-luxgen-brief-scene"><span>…</span><b>剧本生成中</b><p>确认基础信息后生成完整剧本审核表。</p><small>生成完成后才会显示镜、秒、画面、动作、台词、目的和状态。</small></article>`}
         </div>
       </section>
     </div>`;
@@ -6779,6 +6783,36 @@
           <p>${escapeHtml(c.description || '真实成年人，外貌、服装、发型、手部道具和动作习惯会在分镜中继续补全。')}</p>
         </article>`).join('')}
       </div>
+    </section>`;
+  }
+
+  function renderLuxuryGlobalVisualBible() {
+    const bible = state.luxuryAd.globalVisualBible || {};
+    const rows = [
+      ['风格', bible.style],
+      ['色调', bible.tone],
+      ['光照', bible.lighting],
+      ['主场景', bible.main_scene],
+    ].filter(([, value]) => String(value || '').trim());
+    const characters = Array.isArray(bible.character_table)
+      ? bible.character_table.filter(c => c && (c.name || c.appearance || c.role)).slice(0, 6)
+      : [];
+    const locks = bible.locks_summary && typeof bible.locks_summary === 'object'
+      ? Object.entries(bible.locks_summary).filter(([, value]) => String(value || '').trim()).slice(0, 6)
+      : [];
+    if (!rows.length && !characters.length && !locks.length) return '';
+    return `<section class="dh-luxgen-global-bible">
+      <div class="dh-luxgen-character-head">
+        <b>高级 · 全局视觉</b>
+        <span>风格、色调、光照、人物、主场景会进入每个镜头执行包。</span>
+      </div>
+      ${rows.length ? `<div class="dh-lux-lock-grid">${rows.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><b>${escapeHtml(String(value || '').slice(0, 180))}</b></div>`).join('')}</div>` : ''}
+      ${characters.length ? `<div class="dh-luxgen-character-grid">${characters.map((c, i) => `<article class="dh-luxgen-character-card">
+        <strong>${escapeHtml(c.name || `人物 ${i + 1}`)}</strong>
+        <small>${escapeHtml([c.role, c.gender, c.origin].filter(Boolean).join(' · '))}</small>
+        <p>${escapeHtml(c.appearance || c.outfit || c.behavior || '固定人物身份会进入每个有人物的镜头。')}</p>
+      </article>`).join('')}</div>` : ''}
+      ${locks.length ? `<div class="dh-lux-sheet-locks"><div class="dh-lux-sheet-lock-group"><small>锁定规则</small><div>${locks.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(String(value || '').slice(0, 100))}</span>`).join('')}</div></div></div>` : ''}
     </section>`;
   }
 
@@ -6942,6 +6976,7 @@
       <b>剧本主线</b>
       <span>${escapeHtml([info.style || '高端商业广告', info.theme || '品牌广告', `${segments.length} 个镜头`, characters.length >= 2 ? '双人互动对白' : '旁白/单人讲解'].filter(Boolean).join(' · '))}</span>
     </div>
+    ${renderLuxuryGlobalVisualBible()}
     ${renderLuxuryCharacterCards(info)}
     <table class="dh-demo-table">
       <thead>
@@ -7203,6 +7238,22 @@
     const frameHost = $('#dhLuxAdFrameHost');
     const segments = applyLuxuryShotBindings(state.luxuryAd.segments || []);
     const keyframes = state.luxuryAd.keyframes || [];
+    if (state.luxuryAd.sceneGenerating) {
+      if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('基础信息生成中', '正在分析广告需求、主体来源、真实场景和全局视觉。生成完成前不展示草稿镜头。');
+      if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('等待剧本', '基础信息完成后再生成剧本审核表。');
+      if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本确认后才会生成图片分镜。');
+      renderLuxuryAdPostScriptPerson();
+      updateLuxuryAdStepLocks();
+      return;
+    }
+    if (state.luxuryAd.scriptGenerating) {
+      if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '正在生成全局视觉、人物表和完整镜头表。完成前不展示半成品分镜。');
+      if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '生成完成后会一次性显示“全局视觉 + 镜/秒/画面/动作/台词/目的/状态”。');
+      if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本审核通过后才会调用图片模型。');
+      renderLuxuryAdPostScriptPerson();
+      updateLuxuryAdStepLocks();
+      return;
+    }
     if (!segments.length) {
       if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('还没有基础信息', '先写广告需求。AI 会先解析标题、主题、风格、时长和比例。');
       if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('还没有剧本', '请先完成基础信息配置，再生成剧本。');
@@ -7751,6 +7802,7 @@
       if (r.visual_reference_brief) state.luxuryAd.visualReferenceBrief = r.visual_reference_brief;
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
+      if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
       if (!detail && r.person_spec && typeof r.person_spec === 'object') {
         const prevSpec = luxuryAdPersonSpec();
         state.luxuryAd.personSpec = { ...prevSpec, ...r.person_spec };
@@ -7899,6 +7951,8 @@
           url: compactLuxuryUrl(asset.url || asset.previewUrl || ''),
         })).filter(x => x.url || x.name),
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
+        global_visual_bible: state.luxuryAd.globalVisualBible || null,
+        brief_info: state.luxuryAd.briefInfo || null,
         person_asset: luxuryAdPersonAssetPayload(),
         person_spec: luxuryAdPersonSpec(),
         reference_assets: luxuryAdReferenceAssets()
@@ -7942,6 +7996,7 @@
       const nextKeyframes = (r.keyframes || []).slice(0, totalShots);
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
+      if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
       validateLuxuryAdKeyframes(nextKeyframes, requestSegments);
       const returnedScenes = Array.isArray(r.scenes) ? r.scenes.slice(0, totalShots) : [];
       if (singleIndex === null) {
@@ -8055,6 +8110,7 @@
           url: compactLuxuryUrl(asset.url || asset.previewUrl || ''),
         })).filter(x => x.url || x.name),
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
+        global_visual_bible: state.luxuryAd.globalVisualBible || null,
         person_asset: luxuryAdPersonAssetPayload(),
         brief_info: state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(text, state.luxuryAd.segments || {}),
         reference_assets: referenceAssets
@@ -10538,6 +10594,7 @@
       if (ratioSelect) ratioSelect.value = ratioValue;
       $$('[data-lux-ratio]').forEach(b => b.classList.toggle('active', b === luxRatio));
       state.luxuryAd.storyboardDetailed = false;
+      state.luxuryAd.globalVisualBible = null;
       state.luxuryAd.keyframes = [];
       updateLuxuryAdOutputHint();
       renderLuxuryAdStoryboard();
@@ -10584,6 +10641,9 @@
         if (refs[idx].previewUrl?.startsWith('blob:')) URL.revokeObjectURL(refs[idx].previewUrl);
         state.luxuryAd.briefRefAssets = refs.filter((_, i) => i !== idx);
         state.luxuryAd.visualReferenceBrief = null;
+        state.luxuryAd.assetManifest = null;
+        state.luxuryAd.visualLocks = null;
+        state.luxuryAd.globalVisualBible = null;
         state.luxuryAd.briefInfo = null;
         state.luxuryAd.segments = [];
         state.luxuryAd.storyboardDetailed = false;
@@ -12520,6 +12580,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       state.luxuryAd.visualReferenceBrief = null;
       state.luxuryAd.assetManifest = null;
       state.luxuryAd.visualLocks = null;
+      state.luxuryAd.globalVisualBible = null;
       state.luxuryAd.segments = [];
       state.luxuryAd.storyboardDetailed = false;
       state.luxuryAd.keyframes = [];
@@ -12538,6 +12599,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       state.luxuryAd.visualReferenceBrief = null;
       state.luxuryAd.assetManifest = null;
       state.luxuryAd.visualLocks = null;
+      state.luxuryAd.globalVisualBible = null;
       state.luxuryAd.briefInfo = null;
       state.luxuryAd.segments = [];
       state.luxuryAd.storyboardDetailed = false;
@@ -12550,9 +12612,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const luxDuration = $('#dhLuxAdDuration');
     if (luxDuration) luxDuration.addEventListener('change', e => handleLuxuryAdDurationChange(e.target.value));
     const luxRatio = $('#dhLuxAdRatio');
-    if (luxRatio) luxRatio.addEventListener('change', e => { state.luxuryAd.outputRatio = e.target.value || '9:16'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
+    if (luxRatio) luxRatio.addEventListener('change', e => { state.luxuryAd.outputRatio = e.target.value || '9:16'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
     const luxSize = $('#dhLuxAdSize');
-    if (luxSize) luxSize.addEventListener('change', e => { state.luxuryAd.outputSize = e.target.value || 'standard'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
+    if (luxSize) luxSize.addEventListener('change', e => { state.luxuryAd.outputSize = e.target.value || 'standard'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
     const luxSubtitle = $('#dhLuxAdSubtitle');
     if (luxSubtitle) luxSubtitle.addEventListener('change', e => {
       state.luxuryAd.subtitle = e.target.value !== 'off';
