@@ -1197,13 +1197,26 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   const storyboardMatch = boolField('storyboard_match');
   const scoreMatch = text.match(/["']?score["']?\s*:\s*(\d{1,3})/i);
   const score = Math.max(0, Math.min(100, Number(scoreMatch?.[1]) || (pass ? 86 : 35)));
+  const numberField = name => {
+    const re = new RegExp(`["']?${name}["']?\\s*:\\s*(\\d{1,3})`, 'i');
+    const m = text.match(re);
+    return m ? Math.max(0, Math.min(100, Number(m[1]) || 0)) : 0;
+  };
   if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
   const ok = pass === true && score >= 82 && subjectMatch !== false && storyboardMatch !== false;
   return {
     pass: ok,
     score,
-    subject_match: subjectMatch !== false && ok,
-    storyboard_match: storyboardMatch !== false && ok,
+    subject_match: subjectMatch === null ? ok : subjectMatch,
+    storyboard_match: storyboardMatch === null ? ok : storyboardMatch,
+    quality_dimensions: {
+      realism: numberField('realism'),
+      asset_fidelity: numberField('asset_fidelity'),
+      character_consistency: numberField('character_consistency'),
+      scene_continuity: numberField('scene_continuity'),
+      product_fidelity: numberField('product_fidelity'),
+      ui_overlay: numberField('ui_overlay'),
+    },
     major_mismatches: ok ? [] : [text.slice(0, 180)],
     unrelated_subjects: [],
     observed: text.slice(0, 220),
@@ -1215,6 +1228,14 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
 
 function _compactQaText(value = '', max = 520) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function _luxuryQaHasHardForbiddenMismatch(text = '', subject = '') {
+  const combined = String(text || '').toLowerCase();
+  const subjectText = String(subject || '');
+  if (/cosmetic|perfume|skincare|lotion|bottle|jewelry|watch|phone|beverage|化妆|香水|护肤|瓶|珠宝|手表|手机|饮料/.test(combined)
+    && /钢|金属|板材|建材|材料|材质|墙面|展墙/i.test(subjectText)) return true;
+  return /unrelated product category|wrong product|wrong subject|different subject|replaced subject|无关主体|错误主体|错品类|换成/.test(combined);
 }
 
 function _cleanQaList(value = [], maxItem = 140, maxItems = 8) {
@@ -2856,13 +2877,26 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && qualityDimensions.scene_continuity >= 72
     && qualityDimensions.product_fidelity >= 74
     && (!hasUiLock || qualityDimensions.ui_overlay >= 70);
+  const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
+  const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
+  const manualReviewPass = parsed.subject_match === true
+    && unrelatedSubjects.length === 0
+    && !hardForbiddenMismatch
+    && qualityDimensions.realism >= 76
+    && qualityDimensions.product_fidelity >= 74
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= 74)
+    && qualityDimensions.scene_continuity >= 68;
+  const strictPass = parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass && !hardForbiddenMismatch;
   const qa = {
-    pass: parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass,
+    pass: strictPass || manualReviewPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
     quality_dimensions: qualityDimensions,
     quality_pass: qualityPass,
+    strict_pass: strictPass,
+    manual_review_required: !strictPass && manualReviewPass,
+    accepted_with_warning: !strictPass && manualReviewPass,
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -2870,10 +2904,10 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     provider,
     expected,
   };
-  const combined = [...majorMismatches, ...unrelatedSubjects, qa.observed, qa.reason].join(' ').toLowerCase();
-  if (/cosmetic|perfume|skincare|lotion|bottle|jewelry|watch|phone|beverage|化妆|香水|护肤|瓶|珠宝|手表|手机|饮料/.test(combined)
-    && /钢|金属|板材|建材|材料|材质|墙面|展墙/i.test(subject)) {
+  if (hardForbiddenMismatch) {
     qa.pass = false;
+    qa.manual_review_required = false;
+    qa.accepted_with_warning = false;
   }
   return qa;
 }
@@ -17830,7 +17864,7 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
       failures.push({ index, reason: 'qa_missing', message: 'Generated luxury keyframe must pass storyboard QA before video generation.' });
       return;
     }
-    if (qa.pass !== true) {
+    if (qa.pass !== true && qa.accepted_with_warning !== true) {
       failures.push({
         index,
         reason: 'qa_failed',
