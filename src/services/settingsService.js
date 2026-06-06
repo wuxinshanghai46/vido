@@ -258,6 +258,12 @@ const ENV_SEED_MAP = [
   { envKey: 'DEYUNAI_API_KEY',   presetId: 'deyunai'    },
 ];
 
+const ENV_PROVIDER_EXTRA_MAP = {
+  topview: {
+    topview_uid: 'TOPVIEW_UID',
+  },
+};
+
 function loadSettings() {
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
@@ -272,7 +278,7 @@ function buildEnvSeededProvider(envKey, presetId) {
   const key = process.env[envKey];
   const preset = PROVIDER_PRESETS[presetId];
   if (!key || !preset) return null;
-  return {
+  const provider = {
     id: presetId,
     name: preset.name,
     api_url: preset.api_url,
@@ -284,6 +290,11 @@ function buildEnvSeededProvider(envKey, presetId) {
     created_at: new Date().toISOString(),
     source: 'env',
   };
+  const extraEnv = ENV_PROVIDER_EXTRA_MAP[presetId] || {};
+  for (const [field, extraEnvKey] of Object.entries(extraEnv)) {
+    if (process.env[extraEnvKey]) provider[field] = process.env[extraEnvKey];
+  }
+  return provider;
 }
 
 function mergeEnvSeededProviders(settings = {}) {
@@ -303,6 +314,10 @@ function mergeEnvSeededProviders(settings = {}) {
     if (!existing.api_key) existing.api_key = seeded.api_key;
     if (!existing.api_url) existing.api_url = seeded.api_url;
     if (!Array.isArray(existing.models) || !existing.models.length) existing.models = seeded.models;
+    const extraEnv = ENV_PROVIDER_EXTRA_MAP[presetId] || {};
+    for (const field of Object.keys(extraEnv)) {
+      if (!existing[field] && seeded[field]) existing[field] = seeded[field];
+    }
   }
 
   return out;

@@ -65,31 +65,38 @@ router.post('/providers/refresh-all', async (req, res) => {
 
 // 新增供应商
 router.post('/providers', (req, res) => {
-  const { id, name, api_url, api_key, models = [] } = req.body;
+  const { id, name, api_url, api_key, topview_uid, api_uid, uid, models = [] } = req.body;
   if (!name || !api_url) return res.status(400).json({ success: false, error: '请填写供应商名称和 API 地址' });
   const settings = loadSettings();
   const newId = (id || name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || Date.now().toString());
   if (settings.providers.find(p => p.id === newId)) {
     return res.status(400).json({ success: false, error: '供应商 ID 已存在，请使用不同名称' });
   }
-  settings.providers.push({
+  const provider = {
     id: newId, name, api_url, api_key: api_key || '', enabled: !!api_key,
     models: models.map(m => ({ ...m, enabled: true })),
     last_tested: null, test_status: null, created_at: new Date().toISOString(),
-  });
+  };
+  if (topview_uid !== undefined) provider.topview_uid = String(topview_uid || '').trim();
+  if (api_uid !== undefined) provider.api_uid = String(api_uid || '').trim();
+  if (uid !== undefined) provider.uid = String(uid || '').trim();
+  settings.providers.push(provider);
   saveSettings(settings);
   res.json({ success: true, data: { id: newId } });
 });
 
 // 更新供应商基本信息（名称/URL/Key）
 router.put('/providers/:id', (req, res) => {
-  const { name, api_url, api_key } = req.body;
+  const { name, api_url, api_key, topview_uid, api_uid, uid } = req.body;
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
   if (name !== undefined) p.name = name;
   if (api_url !== undefined) p.api_url = api_url;
   if (api_key !== undefined) { p.api_key = api_key.trim(); p.enabled = !!p.api_key; }
+  if (topview_uid !== undefined) p.topview_uid = String(topview_uid || '').trim();
+  if (api_uid !== undefined) p.api_uid = String(api_uid || '').trim();
+  if (uid !== undefined) p.uid = String(uid || '').trim();
   saveSettings(settings);
   res.json({ success: true });
 });
@@ -269,7 +276,7 @@ async function testProviderConnection(p) {
   }
   // Topview requires both UID and bearer key. The upload credential endpoint is
   // a low-cost auth check and does not start a generation task.
-  if (p.id === 'topview') {
+  if (p.id === 'topview' || p.preset === 'topview') {
     const uid = p.topview_uid || p.api_uid || p.uid || process.env.TOPVIEW_UID;
     if (!uid) throw new Error('Topview UID 未配置');
     const body = await httpGetCustom('https://api.topview.ai/v1/upload/credential?format=png', {

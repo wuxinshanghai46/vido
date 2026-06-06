@@ -1609,7 +1609,7 @@ async function generateVeoClip({ prompt, duration = 8, outputDir, filename, imag
 function _topviewProviderConfig() {
   const { getApiKey, loadSettings } = require('./settingsService');
   const settings = loadSettings();
-  const provider = (settings.providers || []).find(p => p.id === 'topview' && p.enabled);
+  const provider = (settings.providers || []).find(p => (p.id === 'topview' || p.preset === 'topview') && p.enabled !== false);
   const apiKey = getApiKey('topview') || process.env.TOPVIEW_API_KEY;
   const uid = provider?.topview_uid || provider?.api_uid || provider?.uid || process.env.TOPVIEW_UID;
   const baseUrl = (provider?.api_url || 'https://api.topview.ai').replace(/\/$/, '');

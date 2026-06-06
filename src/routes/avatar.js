@@ -1940,7 +1940,7 @@ async function _dispatchLipSync({ imageUrl, audioUrl, maskUrls, prompt, baseUrl,
 
   try {
     const settings = require('../services/settingsService').loadSettings();
-    const topviewProvider = (settings.providers || []).find(p => p.id === 'topview' && p.enabled !== false);
+    const topviewProvider = (settings.providers || []).find(p => (p.id === 'topview' || p.preset === 'topview') && p.enabled !== false);
     const hasTopviewAuth = !!(topviewProvider?.api_key || process.env.TOPVIEW_API_KEY)
       && !!(topviewProvider?.topview_uid || topviewProvider?.api_uid || topviewProvider?.uid || process.env.TOPVIEW_UID);
     const topviewModel = (topviewProvider?.models || []).find(m =>

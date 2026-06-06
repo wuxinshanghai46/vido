@@ -945,7 +945,7 @@ async function generateDeyunaiImage({ prompt, filename, aspectRatio = '1:1', res
 
 async function generateTopviewImage({ prompt, filename, aspectRatio = '1:1', resolution = '1K', image_model = '', referenceImages = [] }) {
   const settings = require('./settingsService').loadSettings();
-  const providerConfig = (settings.providers || []).find(p => p.id === 'topview' && p.enabled !== false);
+  const providerConfig = (settings.providers || []).find(p => (p.id === 'topview' || p.preset === 'topview') && p.enabled !== false);
   if (!providerConfig) throw new Error('未启用 Topview 供应商');
   const explicitModel = image_model && image_model.includes('::') ? image_model.split('::')[1] : '';
   const imageModel = explicitModel || pickPreferredImageModel(providerConfig) || 'topview-nano-banana-2';
