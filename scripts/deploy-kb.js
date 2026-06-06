@@ -128,9 +128,10 @@ const FILES = [
   ['src/services/seeds/drama.js', true],
   ['src/services/seeds/storyboard.js', true],
   ['src/services/seeds/atmosphere.js', true],
-  ['src/services/seeds/production.js', true],
-  ['src/services/seeds/engineering.js', true],
-  ['src/services/seeds/era_anchors.js', true],
+    ['src/services/seeds/production.js', true],
+    ['src/services/seeds/engineering.js', true],
+    ['src/services/seeds/era_anchors.js', true],
+    ['src/services/seeds/prompt_intelligence.js', true],
   // === 前端 ===
   ['public/index.html', true],
   ['public/admin.html', true],
