@@ -159,6 +159,9 @@
       usageTaskRows: [],
       usageTaskSummary: null,
       usageRequestKeys: {},
+      productionContract: null,
+      productionProjectId: '',
+      productionProject: null,
       storyboardDetailed: false,
       segments: [],
       keyframes: [],
@@ -3448,6 +3451,9 @@
     state.luxuryAd.usageTaskRows = [];
     state.luxuryAd.usageTaskSummary = null;
     state.luxuryAd.usageRequestKeys = {};
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.productionProjectId = '';
+    state.luxuryAd.productionProject = null;
     state.luxuryAd.storyboardDetailed = false;
     state.luxuryAd.segments = [];
     state.luxuryAd.keyframes = [];
@@ -4699,9 +4705,12 @@
     if (generated && (generated.url || generated.image_url || generated.previewUrl)) {
       return {
         id: generated.id || 'luxury_ad_person_sheet',
+        actor_asset_id: generated.actor_asset_id || generated.asset_library_id || generated.material_id || '',
         name: generated.name || '拟真真人三视图',
         type: generated.type || 'luxury_ad_character_sheet',
+        source: generated.source || 'person_asset',
         image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
+        extra_image_urls: Array.isArray(generated.extra_image_urls) ? generated.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
         view_count: generated.view_count || 3,
         description: generated.spec_description || generated.description || luxuryAdPersonDescription(),
       };
@@ -4710,12 +4719,129 @@
     if (!a) return null;
     return {
       id: a.id || '',
+      actor_asset_id: a.actor_asset_id || '',
       name: a.name || '已选人物',
       type: a.avatar_type || a.type || 'selected_avatar',
+      source: a.source || 'selected_avatar',
       image_url: compactLuxuryUrl(selectedAvatarImageUrl(a)),
+      extra_image_urls: Array.isArray(a.extra_image_urls) ? a.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
       view_count: 1,
       description: a.description || a.prompt || '',
     };
+  }
+
+  function luxuryActorAssetUrls(asset = {}) {
+    return [
+      asset.image_url || asset.file_url || asset.url || '',
+      ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
+      ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
+    ].map(compactLuxuryUrl).filter(Boolean);
+  }
+
+  function luxuryActorMaterialToPersonAsset(asset = {}) {
+    const urls = luxuryActorAssetUrls(asset);
+    return {
+      id: asset.id || '',
+      actor_asset_id: asset.id || '',
+      material_id: asset.id || '',
+      name: asset.name || '角色素材',
+      type: 'actor_material',
+      source: 'actor_library',
+      url: urls[0] || '',
+      image_url: urls[0] || '',
+      previewUrl: urls[0] || '',
+      extra_image_urls: urls.slice(1),
+      view_count: Number(asset.view_count || urls.length) || 1,
+      description: asset.description || asset.metadata?.description || '',
+    };
+  }
+
+  async function persistLuxuryPersonAssetToLibrary(asset = {}, source = 'luxury_ad') {
+    const url = compactLuxuryUrl(asset.image_url || asset.url || asset.previewUrl || '');
+    if (!url || /^blob:/i.test(url) || asset.actor_asset_id || asset.asset_library_id) return null;
+    try {
+      const body = {
+        type: 'character',
+        name: asset.name || '剧情广告演员',
+        image_url: url,
+        extra_image_urls: Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
+        view_count: Number(asset.view_count || 1) || 1,
+        source,
+        description: asset.spec_description || asset.description || luxuryAdPersonDescription(),
+        tags: ['剧情广告', '演员'],
+        metadata: {
+          role: 'actor',
+          from: source,
+          person_spec: luxuryAdPersonSpec(),
+        },
+      };
+      const r = await api('/api/assets', { method: 'POST', body });
+      const saved = r?.data || null;
+      if (saved?.id && state.luxuryAd.personAsset && (state.luxuryAd.personAsset.image_url || state.luxuryAd.personAsset.url) === url) {
+        state.luxuryAd.personAsset = {
+          ...state.luxuryAd.personAsset,
+          actor_asset_id: saved.id,
+          asset_library_id: saved.id,
+          material_id: saved.id,
+          source: 'actor_library',
+        };
+        renderLuxuryAdPerson();
+      }
+      return saved;
+    } catch (err) {
+      console.warn('[luxuryAd] save actor asset failed:', err.message || err);
+      return null;
+    }
+  }
+
+  async function openLuxuryAdActorLibrary() {
+    let items = [];
+    try {
+      const r = await api('/api/assets?type=character');
+      items = Array.isArray(r?.data) ? r.data : [];
+    } catch (err) {
+      return toast('角色素材库加载失败：' + err.message, 'error');
+    }
+    const old = document.getElementById('__dh_lux_actor_library');
+    if (old) old.remove();
+    const mask = document.createElement('div');
+    mask.id = '__dh_lux_actor_library';
+    mask.style.cssText = 'position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:24px';
+    const cards = items.length ? items.map(asset => {
+      const urls = luxuryActorAssetUrls(asset);
+      const thumb = urls[0] || '';
+      return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:86px">
+        <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
+        <span style="min-width:0;display:block">
+          <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
+          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${urls.length || 1} 张参考图 · ${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
+        </span>
+      </button>`;
+    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传人物参考或生成三视图后会自动入库。</div>';
+    mask.innerHTML = `<div style="width:min(760px,94vw);max-height:82vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)">
+        <div><b>角色素材库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择一个固定演员，后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
+        <button type="button" data-lux-actor-close style="border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer">×</button>
+      </div>
+      <div style="padding:14px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${cards}</div>
+    </div>`;
+    document.body.appendChild(mask);
+    const close = () => mask.remove();
+    mask.addEventListener('click', e => {
+      if (e.target === mask || e.target.closest('[data-lux-actor-close]')) return close();
+      const btn = e.target.closest('[data-lux-actor-material]');
+      if (!btn) return;
+      const asset = items.find(x => x.id === btn.dataset.luxActorMaterial);
+      if (!asset) return;
+      state.selectedAvatar = null;
+      state.luxuryAd.personAsset = luxuryActorMaterialToPersonAsset(asset);
+      state.luxuryAd.keyframes = [];
+      renderLuxuryAdPerson();
+      renderLuxuryAdStoryboard();
+      updateLuxuryAdStepLocks();
+      close();
+      toast(`已选择角色素材「${asset.name || '演员'}」`, 'success');
+    });
   }
 
   function renderLuxuryAdPerson() {
@@ -4726,10 +4852,17 @@
     const generated = state.luxuryAd.personAsset;
     if (generated && (generated.url || generated.image_url || generated.previewUrl || generated.uploading)) {
       const src = generated.url || generated.image_url || generated.previewUrl || '';
+      const actorUrls = luxuryActorAssetUrls(generated);
+      const actorId = generated.actor_asset_id || generated.asset_library_id || generated.material_id || '';
+      const actorMeta = [
+        generated.source === 'actor_library' ? '角色素材库' : '',
+        actorId ? '已绑定 actor_id' : '',
+        actorUrls.length ? `${actorUrls.length} 张演员参考` : '',
+      ].filter(Boolean).join(' · ');
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
         ${src ? `<img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || '真人三视图')}">` : '<div class="dh-luxgen-person-thumb">生成中</div>'}
         <b>${escapeHtml(generated.name || '拟真真人三视图')}</b>
-        <small>${escapeHtml(generated.uploading ? '正在生成正面、侧面、背面三视图。' : (generated.description || '正面 / 侧面 / 背面，真人广告角色参考。'))}</small>
+        <small>${escapeHtml(generated.uploading ? '正在生成正面、侧面、背面三视图。' : (actorMeta || generated.description || '正面 / 侧面 / 背面，真人广告角色参考。'))}</small>
       </div>`;
       return;
     }
@@ -5692,6 +5825,7 @@
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
+      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'uploaded_person_reference');
       toast('人物参考已上传，会用于后续剧本和分镜保持人物一致', 'success');
     } catch (err) {
       state.luxuryAd.personAsset = state.luxuryAd.personAsset ? { ...state.luxuryAd.personAsset, uploading: false, failed: true } : null;
@@ -5755,6 +5889,7 @@
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
+      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'generated_person_sheet');
       toast('真人三视图已生成，后续分镜会按这个人物参考保持一致', 'success');
     } catch (err) {
       state.luxuryAd.personAsset = null;
@@ -6236,6 +6371,35 @@
     if (/真人|人物出镜|同一人物|真人讲解者|讲解员|讲解者|导购|顾问|主持人|模特|入场|走入|走进|带观众|手势|指向|触摸|person|human|presenter|host|model|woman|man|girl|boy|walks? in|walking into|enters? the frame|standing beside|pointing at|gesture/i.test(text)) return true;
     if (luxuryIsMaterialProductShot(seg)) return false;
     return /人物|手部|手势|指向|触摸|走入|走进|入场|表情|person|human|hand|gesture|point|touch|walk/i.test(String(seg.action || seg.visual_action || ''));
+  }
+
+  function luxuryAdProductionGate(segments = [], { finalKeyframes = false } = {}) {
+    const list = Array.isArray(segments) ? segments : [];
+    const humanShotIndexes = list
+      .map((seg, i) => luxuryCoreShotRequiresPerson(seg) ? i + 1 : 0)
+      .filter(Boolean);
+    const person = luxuryAdPersonAssetPayload();
+    const personUrl = compactLuxuryUrl(person?.image_url || person?.url || '');
+    const actorUploading = !!state.luxuryAd.personAsset?.uploading;
+    const actorReady = !!personUrl && !/^blob:/i.test(personUrl) && !actorUploading;
+    const blocked = !!finalKeyframes && humanShotIndexes.length > 0 && !actorReady;
+    const reason = actorUploading
+      ? '人物参考仍在上传或生成中，不能进入真实关键帧。'
+      : '有人物镜头但还没有确认演员参考。请先上传人物参考、选择数字人形象，或生成真人三视图。';
+    return {
+      stage: finalKeyframes ? 'final_keyframe_gate' : 'storyboard_review_gate',
+      human_required: humanShotIndexes.length > 0,
+      human_shot_indexes: humanShotIndexes,
+      actor_reference: {
+        status: actorReady ? 'confirmed' : 'missing',
+        source: person?.type || '',
+        name: person?.name || '',
+        image_url: personUrl,
+      },
+      final_keyframes_ready: !blocked,
+      blocked,
+      reason: blocked ? reason : '',
+    };
   }
 
   function luxuryProductOnlyPrompt(seg = {}, index = 0) {
@@ -6934,38 +7098,28 @@
     return true;
   }
 
-  // Render rejected candidate images so failed image spend can be inspected
-  // without relaxing the strict QA gate.
+  // Keep rejected images out of the primary result. A failed candidate wall makes
+  // the workflow look like a usable storyboard even when the visual contract failed.
   function renderLuxuryKeyframeErrorDetails(details = null) {
     const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean).slice(0, 8) : [];
     if (!attempts.length) return '';
     const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
     const firstProviderFail = attempts.find(a => !a.ok && !a.qa);
     const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
+    const preflightFail = attempts.find(a => String(a?.provider_id || a?.provider || '') === 'preflight');
     const summaryParts = [
+      preflightFail ? String(preflightFail.error || '当前缺少可执行的真人一致性商业片链路。').slice(0, 180) : '',
       firstProviderFail ? `首个生成通道 ${label(firstProviderFail) || '图片模型'} 未返回可用图片：${String(firstProviderFail.error || '未知错误').slice(0, 140)}` : '',
       firstQaFail ? `后续候选图已出图但被视觉 QA 拒绝：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
     ].filter(Boolean);
+    const failedLabels = attempts
+      .filter(a => !a.ok)
+      .map(a => label(a) || '未知模型')
+      .filter(Boolean)
+      .slice(0, 6);
     return `<div class="dh-lux-error-attempts">
       ${summaryParts.length ? `<div class="dh-lux-error-summary">${summaryParts.map(x => `<span>${escapeHtml(x)}</span>`).join('')}</div>` : ''}
-      ${attempts.map((a, i) => {
-        const model = label(a);
-        const img = a.image_url || a.preview_url || '';
-        const qaReason = [
-          ...(Array.isArray(a.qa?.major_mismatches) ? a.qa.major_mismatches : []),
-          ...(Array.isArray(a.qa?.unrelated_subjects) ? a.qa.unrelated_subjects.map(x => `无关主体：${x}`) : []),
-          a.qa?.reason || '',
-          a.error || '',
-        ].filter(Boolean).slice(0, 3).join('；');
-        return `<article class="dh-lux-error-attempt">
-          <div>
-            <b>${escapeHtml(model || `候选 ${i + 1}`)}</b>
-            <span>${a.ok ? '通过' : '未通过'}${a.prompt_chars ? ` · prompt ${escapeHtml(String(a.prompt_chars))} 字符` : ''}</span>
-            <small>${escapeHtml(qaReason || '无详细原因')}</small>
-          </div>
-          ${img ? `<button type="button" class="dh-lux-error-thumb" data-lux-error-preview="${i}" title="查看被拒绝的候选图"><img src="${escapeHtml(luxuryAssetPreviewUrl({ url: img }))}" alt="${escapeHtml(model || '候选图')}"></button>` : ''}
-        </article>`;
-      }).join('')}
+      <div class="dh-lux-error-summary"><span>${escapeHtml(failedLabels.length ? `已阻止/拒绝的通道：${failedLabels.join('、')}` : '没有可展示的合格候选图。')}</span></div>
     </div>`;
   }
 
@@ -7188,6 +7342,69 @@
     return `<div class="dh-lux-qa-dims">${rows.join('')}</div>`;
   }
 
+  function renderLuxuryProductionContractStatus() {
+    const contract = state.luxuryAd.productionContract || null;
+    if (!contract || typeof contract !== 'object') return '';
+    const humanShots = Array.isArray(contract.human_shot_indexes) ? contract.human_shot_indexes : [];
+    const actor = contract.actor_reference || {};
+    const rows = [
+      ['人物镜头', humanShots.length ? `第 ${humanShots.join('、')} 镜` : '无强制人物镜头'],
+      ['演员参考', actor.status === 'confirmed' ? (actor.name || '已确认') : '未确认'],
+      ['真实关键帧', contract.final_keyframes_ready ? '可进入' : '等待资产/模型'],
+    ];
+    return `<section class="dh-lux-lock-panel">
+      <div class="dh-lux-lock-head">
+        <b>制作合同</b>
+        <span>${escapeHtml(contract.blocked || contract.final_keyframes_ready === false ? (contract.reason || '等待确认关键资产') : '已按分镜合同约束后续生成')}</span>
+      </div>
+      <div class="dh-lux-lock-grid">
+        ${rows.map(([label, value]) => `<div><small>${escapeHtml(label)}</small><b>${escapeHtml(value)}</b></div>`).join('')}
+      </div>
+    </section>`;
+  }
+
+  function luxuryProductionProjectStageLabel(stage = '') {
+    const map = {
+      script_reviewing: '剧本审核中',
+      frame_reviewing: '分镜板审核中',
+      actor_required: '等待固定演员',
+      model_required: '等待保参考模型',
+      frame_failed: '关键帧失败',
+      frame_ready: '关键帧已就绪',
+      video_generating: '成片生成中',
+      video_ready: '成片已就绪',
+    };
+    return map[String(stage || '').trim()] || '生产包已建立';
+  }
+
+  function applyLuxuryProductionProject(project = null) {
+    if (!project || typeof project !== 'object') return;
+    state.luxuryAd.productionProject = project;
+    state.luxuryAd.productionProjectId = project.id || state.luxuryAd.productionProjectId || '';
+    if (project.production_contract) state.luxuryAd.productionContract = project.production_contract;
+  }
+
+  function renderLuxuryProductionProjectStatus() {
+    const project = state.luxuryAd.productionProject || null;
+    if (!project || typeof project !== 'object') return '';
+    const visual = project.visual_asset || {};
+    const sheetCount = Number(visual.sheet_count || (Array.isArray(visual.segment_sheet_urls) ? visual.segment_sheet_urls.length : 0)) || 0;
+    const frameCount = Array.isArray(project.keyframes) ? project.keyframes.filter(k => k?.image_url || k?.imageUrl).length : 0;
+    const shotCount = Array.isArray(project.scenes) ? project.scenes.length : (state.luxuryAd.segments || []).length;
+    const idText = project.id ? String(project.id).slice(0, 8) : '未落盘';
+    return `<section class="dh-lux-lock-panel">
+      <div class="dh-lux-lock-head">
+        <b>生产包</b>
+        <span>${escapeHtml(luxuryProductionProjectStageLabel(project.project_state))} · ${escapeHtml(idText)}</span>
+      </div>
+      <div class="dh-lux-lock-grid">
+        <div><small>项目阶段</small><b>${escapeHtml(luxuryProductionProjectStageLabel(project.project_state))}</b></div>
+        <div><small>分镜板</small><b>${sheetCount ? `${sheetCount} 页已保存` : '未保存'}</b></div>
+        <div><small>真实关键帧</small><b>${frameCount}/${shotCount || 0}</b></div>
+      </div>
+    </section>`;
+  }
+
   function renderLuxuryAdFrameCards(host, segments, keyframes) {
     if (!host) return;
     if (!segments.length || !state.luxuryAd.storyboardDetailed) {
@@ -7198,15 +7415,18 @@
     const errorText = String(state.luxuryAd.keyframeError || '').trim();
     const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
+    const regenerateLabel = planningOnly ? '生成真实关键帧' : '重新生成真实关键帧';
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
           <b>分镜结果</b>
           <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : `共 ${segments.length} 个镜头`}</span>
         </div>
-        <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>重新生成全部分镜</button>
+        <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
       </div>
       ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '关键帧待重新生成' : '分镜生成已停止'}</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
+      ${renderLuxuryProductionProjectStatus()}
+      ${renderLuxuryProductionContractStatus()}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {
       const kf = keyframes[i] || {};
@@ -7858,6 +8078,9 @@
       state.luxuryAd.storyboardDetailed = !!detail || String(r.planning_mode || '').toLowerCase() === 'detailed';
       state.luxuryAd.keyframes = [];
       state.luxuryAd.storyboardSheets = [];
+      state.luxuryAd.productionProjectId = '';
+      state.luxuryAd.productionProject = null;
+      state.luxuryAd.productionContract = null;
       renderLuxuryAdStoryboard();
       toast(detail
         ? `剧本已生成：${state.luxuryAd.segments.length} 个镜头，现在确认人物来源后再生成分镜`
@@ -7939,7 +8162,31 @@
     const totalShots = Math.max(1, requestSegments.length || 1);
     const btn = singleIndex === null ? $('#dhLuxAdPreviewFrames') : document.querySelector(`[data-lux-shot-regenerate="${singleIndex}"]`);
     const old = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = singleIndex === null ? '生成分镜…' : '生成本镜…'; }
+    const reviewOnlyRequest = singleIndex === null && !force;
+    const productionGate = luxuryAdProductionGate(requestSegments, { finalKeyframes: !reviewOnlyRequest });
+    state.luxuryAd.productionContract = productionGate;
+    if (productionGate.blocked) {
+      state.luxuryAd.keyframeError = productionGate.reason;
+      state.luxuryAd.keyframeErrorDetails = {
+        reason: 'actor_reference_required',
+        production_contract: productionGate,
+        attempts: [{
+          provider_id: 'preflight',
+          model_id: 'actor-reference-gate',
+          ok: false,
+          error: productionGate.reason,
+        }],
+      };
+      renderLuxuryAdStoryboard();
+      updateLuxuryAdStepLocks();
+      return toast(productionGate.reason, 'error');
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = singleIndex === null
+        ? (reviewOnlyRequest ? '生成审核分镜板…' : '生成真实关键帧…')
+        : '生成本镜…';
+    }
     const startedAt = Date.now();
     let progressTimer = null;
     state.luxuryAd.keyframeGenerating = true;
@@ -7956,7 +8203,9 @@
       total: totalShots,
       startedAt,
       message: singleIndex === null
-        ? `正在生成分镜：0/${totalShots}，已用 0 秒。`
+        ? (reviewOnlyRequest
+          ? `正在生成审核分镜板：0/${totalShots}，已用 0 秒。`
+          : `正在生成真实关键帧：0/${totalShots}，已用 0 秒。`)
         : `正在重新生成第 ${singleIndex + 1} 镜，已用 0 秒。`,
     };
     updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
@@ -7973,7 +8222,9 @@
         total,
         startedAt,
         message: singleIndex === null
-          ? `正在生成分镜：约 ${estimated}/${total}，已用 ${elapsed} 秒。系统会按每个镜头的商品、画面、动作表情和提示词执行，通常需要 1-3 分钟。`
+          ? (reviewOnlyRequest
+            ? `正在生成审核分镜板：约 ${estimated}/${total}，已用 ${elapsed} 秒。系统只整理镜头表、画面、动作和分镜板，不调用最终关键帧模型。`
+            : `正在生成真实关键帧：约 ${estimated}/${total}，已用 ${elapsed} 秒。系统会按同一真人演员、剧情动作和写实摄影要求逐镜生成，通常需要 1-3 分钟。`)
           : `正在重新生成第 ${singleIndex + 1} 镜，已用 ${elapsed} 秒。`,
       };
       updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
@@ -7999,6 +8250,8 @@
         })).filter(x => x.url || x.name),
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
         global_visual_bible: state.luxuryAd.globalVisualBible || null,
+        production_contract: state.luxuryAd.productionContract || null,
+        production_project_id: state.luxuryAd.productionProjectId || '',
         brief_info: state.luxuryAd.briefInfo || null,
         person_asset: luxuryAdPersonAssetPayload(),
         person_spec: luxuryAdPersonSpec(),
@@ -8017,6 +8270,8 @@
         expand_brief: state.luxuryAd.expandBrief !== false,
         request_key: requestKey,
         request_async: true,
+        storyboard_review_only: singleIndex === null && !force,
+        storyboard_final_keyframes: !!force || singleIndex !== null,
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
       };
       let r;
@@ -8047,9 +8302,13 @@
         || r.reference_mode === 'storyboard_planning_sheet'
         || r.keyframe_generation_status === 'failed'
         || (!nextKeyframes.length && returnedScenes.length === totalShots && (nextStoryboardSheets.length || r.keyframe_error || r.details));
+      const deferredPlanning = planningSheetMode && r.keyframe_generation_status === 'deferred_for_review';
+      if (r.production_project) applyLuxuryProductionProject(r.production_project);
+      else if (r.production_project_id) state.luxuryAd.productionProjectId = r.production_project_id;
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
+      if (r.production_contract) state.luxuryAd.productionContract = r.production_contract;
       if (planningSheetMode) {
         validateLuxuryAdStoryboardPlan(returnedScenes.length ? returnedScenes : requestSegments, requestSegments);
       } else {
@@ -8077,7 +8336,9 @@
         total: singleIndex === null ? (previewSegments.length || state.luxuryAd.keyframes.length || totalShots) : totalShots,
         startedAt,
         message: planningSheetMode
-          ? `分镜板已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`
+          ? (deferredPlanning
+            ? `分镜板已生成：${totalShots}/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
+            : `分镜板已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`)
           : singleIndex === null
           ? `分镜已完成：${state.luxuryAd.keyframes.length}/${previewSegments.length || state.luxuryAd.keyframes.length}（静态分镜；合成广告时才逐镜生成动态视频）。`
           : `第 ${singleIndex + 1} 镜已重新生成。`,
@@ -8090,18 +8351,18 @@
         elapsedSec: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
         percent: 100,
         label: planningSheetMode ? '分镜板已生成' : '分镜生成完成',
-        phase: planningSheetMode ? '关键帧待重新生成' : '已完成剧本一致性检查',
+        phase: planningSheetMode ? (deferredPlanning ? '待生成真实关键帧' : '关键帧待重新生成') : '已完成剧本一致性检查',
         message: state.luxuryAd.keyframeProgress.message,
       };
       state.luxuryAd.keyframeGenerating = false;
-      state.luxuryAd.keyframeError = planningSheetMode ? (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板') : '';
-      state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (r.details || null) : null;
+      state.luxuryAd.keyframeError = planningSheetMode ? (deferredPlanning ? '' : (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板')) : '';
+      state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (deferredPlanning ? null : (r.details || null)) : null;
       renderLuxuryAdStoryboard();
       const lockedCount = state.luxuryAd.keyframes.filter(k => String(k.reference_mode || '').includes('reference_locked')).length;
       toast(singleIndex !== null
         ? `第 ${singleIndex + 1} 镜已重新生成`
         : planningSheetMode
-          ? '已先生成可审核分镜板，关键帧可重新生成'
+          ? (deferredPlanning ? '已生成可审核分镜板，确认后再生成真实关键帧' : '已先生成可审核分镜板，关键帧可重新生成')
         : (lockedCount
           ? `已锁定 ${lockedCount} 个参考镜头作为分镜，请点击“合成广告”；提交后会显示逐镜图生视频进度`
           : `已生成 ${state.luxuryAd.keyframes.length} 个分镜`), 'success');
@@ -8111,6 +8372,9 @@
       state.luxuryAd.keyframeProgress = null;
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
       state.luxuryAd.keyframeErrorDetails = err?.data?.details || null;
+      if (err?.data?.details?.production_project) applyLuxuryProductionProject(err.data.details.production_project);
+      else if (err?.data?.details?.production_project_id) state.luxuryAd.productionProjectId = err.data.details.production_project_id;
+      if (err?.data?.details?.production_contract) state.luxuryAd.productionContract = err.data.details.production_contract;
       renderLuxuryAdStoryboard();
       toast('剧情广告分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
     } finally {
@@ -8377,7 +8641,7 @@
   }
 
   function luxuryProviderQueueLabel() {
-    return '供应商队列：Topview Image2Video → 火山 Seedance → 漫路可灵 → 漫路海螺';
+    return '供应商队列：保参考 Image2 关键帧 → Seedance2 / Topview I2V / 可灵 / 海螺图生视频';
   }
 
   const SPACE_STANDARD_SAMPLE_TEXT = '大家现在看到的是这面定制展示墙。它的纹理层次非常丰富，在顶部射灯的照射下，会呈现出自然的金属光泽和空间纵深。我们把人物讲解区放在左侧，右侧完整保留展示面，这样观众既能看到讲解员，也能清楚看到空间亮点。';
@@ -8548,7 +8812,7 @@
         </div>
         <div class="dh-story-card ghost">
           <div class="dh-story-thumb">03</div>
-          <b>Topview I2V</b>
+          <b>图生视频</b>
           <span>按关键帧逐镜头生成剧情广告段</span>
         </div>
         <div class="dh-story-card ghost">
@@ -8612,7 +8876,7 @@
     if (title) title.textContent = isLuxury ? '剧情广告工作流' : '单镜头预览';
     const sub = $('#dhSpaceWorkbenchSub');
     if (sub) sub.textContent = isLuxury
-      ? '按 Topview Image2Video 参考流生成 4-8 个剧情广告镜头；人物只变姿态和表情，不换脸。'
+      ? '按 Image2 关键帧 + 图生视频参考流生成剧情广告镜头；人物只变姿态和表情，不换脸。'
       : 'AI 会按上传背景和性别生成一位导览员，并先做自然融合质检；没有人物的预览不能合成。';
     const hint = $('#dhSpaceModeHint');
     if (hint) hint.textContent = isLuxury
@@ -8765,7 +9029,7 @@
             <b>${escapeHtml(seg.title || (isLuxury ? `剧情镜头 ${idx + 1}` : `分镜 ${idx + 1}`))}</b>
             <p>${escapeHtml(seg.text)}</p>
             ${isLuxury ? renderLuxuryShotDetails(seg) : ''}
-            <span>${isLuxury ? `风格：${escapeHtml(luxuryStyleName(state.space.adStyle))} · 先生成 Topview/Image2 风格关键帧预览。` : '先按此段生成广告预览图。'}</span>
+            <span>${isLuxury ? `风格：${escapeHtml(luxuryStyleName(state.space.adStyle))} · 先生成保参考 Image2 风格关键帧预览。` : '先按此段生成广告预览图。'}</span>
           </div>`).join('')}
         </div>
       </div>`;
@@ -9011,7 +9275,7 @@
     }
     const box = $('#dhSpacePreview');
     if (box) {
-      box.innerHTML = renderProgressPreview(isLuxury ? '生成剧情关键帧' : '合成展墙讲解视频', isLuxury ? '后台会按剧情广告风格生成多张 Image2 关键帧，再用 Topview Image2Video 逐镜头串联成片' : '后台会使用已确认的展墙讲解构图，生成左侧数字人讲解、右侧展示区稳定可见的连续口播视频', 0, {
+      box.innerHTML = renderProgressPreview(isLuxury ? '生成剧情关键帧' : '合成展墙讲解视频', isLuxury ? '后台会按剧情广告风格生成多张保参考关键帧，再用已配置的图生视频模型逐镜头串联成片' : '后台会使用已确认的展墙讲解构图，生成左侧数字人讲解、右侧展示区稳定可见的连续口播视频', 0, {
         previewUrl: state.space.bgImageUrl,
       });
     }
@@ -9424,8 +9688,8 @@
           guide_keyframe:{ name: '🖼️ 生成导览预览', sub: t.message || '融合讲解员和空间背景' },
           guide_video:   { name: '🎬 生成讲解视频', sub: t.message || '驱动数字人一镜到底讲解' },
           video:         { name: '🎞️ 图生视频', sub: t.message || 'Seedance 正在生成镜头' },
-          topview_i2v:   { name: '🎞️ 图生视频', sub: t.message || 'Topview 正在生成动态镜头' },
-          topview_i2v_error: { name: '⚠️ Topview 生成失败', sub: t.message || '正在尝试备用图生视频模型' },
+          topview_i2v:   { name: '🎞️ 图生视频', sub: t.message || '正在生成动态镜头' },
+          topview_i2v_error: { name: '⚠️ 图生视频生成失败', sub: t.message || '正在尝试备用图生视频模型' },
           topview_m2v:   { name: '🎬 生成广告视频', sub: t.message || 'Topview 正在合成广告' },
           ad_lip_sync:   { name: '🎙️ 生成口型视频', sub: t.message || '正在驱动口型和动作' },
           post_effects:  { name: '✨ 字幕/特效合成', sub: isLuxuryTask ? '正在合成配音、字幕和成片' : '正在烧录字幕' },
@@ -10776,16 +11040,6 @@
       if (url) openImagePreviewModal(url, asset?.name || '参考素材');
       return;
     }
-    const luxErrorPreview = closest('[data-lux-error-preview]');
-    if (luxErrorPreview) {
-      // Rejected candidates are still useful diagnostics, but they never count
-      // as approved keyframes until the backend QA returns pass=true.
-      const idx = Number(luxErrorPreview.dataset.luxErrorPreview);
-      const attempt = (state.luxuryAd.keyframeErrorDetails?.attempts || [])[idx] || {};
-      const url = attempt.image_url || attempt.preview_url || '';
-      if (url) openImagePreviewModal(url, `未通过候选图 ${idx + 1}`);
-      return;
-    }
     const luxShotEdit = closest('[data-lux-shot-edit]');
     if (luxShotEdit) {
       openLuxuryShotEditor(Number(luxShotEdit.dataset.luxShotEdit));
@@ -10812,6 +11066,10 @@
     }
     if (closest('#dhLuxAdUploadPersonRef')) {
       $('#dhLuxAdPersonFile')?.click();
+      return;
+    }
+    if (closest('#dhLuxAdPickActorAsset')) {
+      openLuxuryAdActorLibrary();
       return;
     }
     if (closest('#dhLuxAdGeneratePersonSheet')) {

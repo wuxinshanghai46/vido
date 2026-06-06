@@ -53,6 +53,28 @@ function isGptImage2Model(modelId) {
   return String(modelId || '').toLowerCase() === 'gpt-image-2';
 }
 
+async function normalizeGptImage2EditReference(imageUrl) {
+  const value = String(imageUrl || '').trim();
+  if (!value || value.startsWith('data:image/')) return value;
+  if (!/^https?:\/\//i.test(value)) return value;
+  try {
+    const resp = await axios.get(value, {
+      responseType: 'arraybuffer',
+      timeout: 60000,
+      maxContentLength: 20 * 1024 * 1024,
+      validateStatus: status => status >= 200 && status < 300,
+    });
+    const contentType = String(resp.headers?.['content-type'] || '').split(';')[0].trim();
+    const mime = /^image\//i.test(contentType)
+      ? contentType
+      : (/\.png(\?|$)/i.test(value) ? 'image/png' : 'image/jpeg');
+    return `data:${mime};base64,${Buffer.from(resp.data).toString('base64')}`;
+  } catch (err) {
+    console.warn('[DeyunAI] gpt-image-2 reference data-url conversion failed, using original URL:', err.message);
+    return value;
+  }
+}
+
 function buildHeaders(modelId, options = {}) {
   const apiKey = getDeyunaiKey();
   const headers = {
@@ -164,8 +186,12 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
         size: size || 'auto',
       };
       if (isEdit) {
-        body.images = refs.map(image_url => ({ image_url }));
-        body.input_fidelity = 'high';
+        const normalizedRefs = [];
+        for (const ref of refs) {
+          const image_url = await normalizeGptImage2EditReference(ref);
+          if (image_url) normalizedRefs.push({ image_url });
+        }
+        body.images = normalizedRefs;
       }
       const submitRes = await axios.post(
         buildEnterpriseImageUrl(isEdit ? '/images/edits' : '/images/generations'),

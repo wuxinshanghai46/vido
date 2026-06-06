@@ -20,11 +20,13 @@ const db = require('../models/database');
 const { scopeUserId, ownedBy, requirePermission } = require('../middleware/auth');
 const avatarService = require('../services/avatarService');
 const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackService');
+const modelCapabilityService = require('../services/modelCapabilityService');
 
 const JIMENG_ASSETS_DIR = path.join(__dirname, '../../outputs/jimeng-assets');
 const DH_IMAGES_DIR = path.join(__dirname, '../../outputs/dh-images');
 const OUTPUT_ROOT_DIR = path.join(__dirname, '../../outputs');
 const DH_PUBLIC_ASSETS_DIR = path.join(OUTPUT_ROOT_DIR, 'dh-assets');
+const LUXURY_AD_PROJECTS_FILE = path.join(OUTPUT_ROOT_DIR, 'luxury_ad_projects.json');
 fs.mkdirSync(JIMENG_ASSETS_DIR, { recursive: true });
 fs.mkdirSync(DH_IMAGES_DIR, { recursive: true });
 fs.mkdirSync(DH_PUBLIC_ASSETS_DIR, { recursive: true });
@@ -32,6 +34,233 @@ fs.mkdirSync(DH_PUBLIC_ASSETS_DIR, { recursive: true });
 const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
 const luxuryKeyframeResults = new Map();
+
+function _jsonClone(value, fallback = null) {
+  try {
+    if (value === undefined) return fallback;
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return fallback;
+  }
+}
+
+function _readLuxuryAdProjectStore() {
+  try {
+    if (!fs.existsSync(LUXURY_AD_PROJECTS_FILE)) return { projects: [] };
+    const data = JSON.parse(fs.readFileSync(LUXURY_AD_PROJECTS_FILE, 'utf8'));
+    if (!Array.isArray(data.projects)) data.projects = [];
+    return data;
+  } catch {
+    return { projects: [] };
+  }
+}
+
+function _writeLuxuryAdProjectStore(data) {
+  fs.mkdirSync(path.dirname(LUXURY_AD_PROJECTS_FILE), { recursive: true });
+  fs.writeFileSync(LUXURY_AD_PROJECTS_FILE, JSON.stringify({ projects: Array.isArray(data.projects) ? data.projects : [] }, null, 2), 'utf8');
+}
+
+function _luxuryAdProjectBelongsTo(req, row = {}) {
+  const uid = scopeUserId(req);
+  return !uid || !row.user_id || row.user_id === uid;
+}
+
+function _publicLuxuryAdProject(row = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const safe = _jsonClone(row, {}) || {};
+  const stripLocal = item => {
+    if (!item || typeof item !== 'object') return item;
+    const next = { ...item };
+    delete next.local_path;
+    delete next.localPath;
+    return next;
+  };
+  safe.storyboard_sheets = Array.isArray(safe.storyboard_sheets) ? safe.storyboard_sheets.map(stripLocal) : [];
+  safe.keyframes = Array.isArray(safe.keyframes) ? safe.keyframes.map(stripLocal) : [];
+  return safe;
+}
+
+function _listLuxuryAdProjects(req, limit = 20) {
+  const max = Math.max(1, Math.min(100, Number(limit) || 20));
+  return _readLuxuryAdProjectStore().projects
+    .filter(row => _luxuryAdProjectBelongsTo(req, row))
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
+    .slice(0, max)
+    .map(_publicLuxuryAdProject);
+}
+
+function _getLuxuryAdProject(req, id = '') {
+  const clean = String(id || '').trim();
+  if (!clean) return null;
+  const row = _readLuxuryAdProjectStore().projects.find(p => p.id === clean) || null;
+  return row && _luxuryAdProjectBelongsTo(req, row) ? _publicLuxuryAdProject(row) : null;
+}
+
+function _luxuryAdProductionStage({ reviewOnly = false, finalKeyframes = false, scenes = [], keyframes = [], contract = null, errorCode = '', keyframeError = '' } = {}) {
+  const code = String(errorCode || '').trim();
+  if (code === 'LUXURY_ACTOR_REFERENCE_REQUIRED') return 'actor_required';
+  if (code === 'LUXURY_ACTOR_REFERENCE_UNREACHABLE') return 'actor_required';
+  if (code === 'LUXURY_REFERENCE_PRESERVING_MODEL_REQUIRED') return 'model_required';
+  if (keyframeError || code) return 'frame_failed';
+  const frameCount = Array.isArray(keyframes) ? keyframes.filter(k => k && (k.image_url || k.imageUrl)).length : 0;
+  const shotCount = Array.isArray(scenes) ? scenes.length : 0;
+  if (frameCount && (!shotCount || frameCount >= shotCount)) return 'frame_ready';
+  if (contract?.human_required && contract?.actor_reference?.status !== 'confirmed') return 'actor_required';
+  if (contract?.human_required && contract?.actor_reference?.image_url && contract?.keyframe_model_gate?.reference_preserving_ready === false && finalKeyframes) return 'model_required';
+  if (reviewOnly) return 'frame_reviewing';
+  return 'script_reviewing';
+}
+
+function _luxuryAdProjectVisualAsset(storyboardSheets = []) {
+  const sheets = Array.isArray(storyboardSheets) ? storyboardSheets : [];
+  const urls = sheets.map(s => s?.image_url || s?.url || '').filter(Boolean);
+  return {
+    sheet_url: urls[0] || '',
+    master_sheet_url: urls[0] || '',
+    segment_sheet_urls: urls,
+    sheet_count: urls.length,
+  };
+}
+
+function _projectText(value = '', max = 1200) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function _compactLuxuryAdProjectScene(scene = {}, index = 0) {
+  const storyExtract = scene.story_extract && typeof scene.story_extract === 'object'
+    ? {
+      story_beat: _projectText(scene.story_extract.story_beat, 600),
+      scene: _projectText(scene.story_extract.scene, 600),
+      visual: _projectText(scene.story_extract.visual, 700),
+      action: _projectText(scene.story_extract.action, 500),
+      camera: _projectText(scene.story_extract.camera, 500),
+      dialogue: _projectText(scene.story_extract.dialogue, 300),
+      must_show: Array.isArray(scene.story_extract.must_show) ? scene.story_extract.must_show.slice(0, 8) : undefined,
+      must_not_show: Array.isArray(scene.story_extract.must_not_show) ? scene.story_extract.must_not_show.slice(0, 8) : undefined,
+    }
+    : undefined;
+  return {
+    index: Number(scene.index ?? index) || index,
+    time: _projectText(scene.time || '', 80),
+    start: scene.start,
+    end: scene.end,
+    duration: scene.duration ?? scene.seconds,
+    role: _projectText(scene.role || scene.shot_role || '', 80),
+    story_stage: _projectText(scene.story_stage || '', 120),
+    shot_type: _projectText(scene.shot_type || scene.shot_size || '', 120),
+    camera: _projectText(scene.camera || scene.shot_angle || '', 700),
+    visual: _projectText(scene.visual || scene.scene_content || scene.content_prompt || '', 900),
+    action: _projectText(scene.action || scene.visual_action || scene.character_action || '', 800),
+    voiceover: _projectText(scene.voiceover || scene.narration || scene.dialogue || scene.text || '', 500),
+    emotion: _projectText(scene.emotion || scene.mood || '', 260),
+    sfx_audio: _projectText(scene.sfx_audio || scene.audio || '', 260),
+    ui_overlay: scene.ui_overlay ? _jsonClone(scene.ui_overlay, null) : undefined,
+    story_extract: storyExtract,
+    requires_person: scene.requires_person === true || scene.person_required === true || scene.character_required === true,
+    reference_label: _projectText(scene.reference_label || '', 120),
+  };
+}
+
+function _compactLuxuryAdProjectKeyframe(kf = {}, index = 0) {
+  if (!kf || typeof kf !== 'object') return {};
+  const qa = kf.qa && typeof kf.qa === 'object'
+    ? {
+      pass: !!kf.qa.pass,
+      score: kf.qa.score,
+      reason: _projectText(kf.qa.reason || '', 500),
+      quality_dimensions: kf.qa.quality_dimensions || undefined,
+    }
+    : undefined;
+  return {
+    index,
+    image_url: kf.image_url || kf.imageUrl || kf.url || '',
+    reference_mode: kf.reference_mode || '',
+    source_avatar_url: kf.source_avatar_url || '',
+    active_reference_image: kf.active_reference_image || '',
+    qa,
+    shot_plan: kf.shot_plan ? {
+      kind: kf.shot_plan.kind || '',
+      fusion_model: kf.shot_plan.fusion_model || '',
+      note: _projectText(kf.shot_plan.note || '', 400),
+    } : undefined,
+  };
+}
+
+function _compactLuxuryAdProjectSheets(storyboardSheets = []) {
+  return (Array.isArray(storyboardSheets) ? storyboardSheets : []).map(sheet => ({
+    index: sheet.index,
+    kind: sheet.kind || 'storyboard_sheet',
+    layout: sheet.layout || '',
+    shot_start: sheet.shot_start,
+    shot_end: sheet.shot_end,
+    image_url: sheet.image_url || sheet.url || '',
+  }));
+}
+
+function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {}) {
+  const now = new Date().toISOString();
+  const data = _readLuxuryAdProjectStore();
+  const requestedId = String(body.production_project_id || body.project_id || result.production_project_id || '').trim();
+  const existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
+  const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
+  const id = existing?.id || requestedId || uuidv4();
+  const scenes = Array.isArray(result.scenes) ? result.scenes : [];
+  const keyframes = Array.isArray(result.keyframes) ? result.keyframes : [];
+  const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : [];
+  const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
+  const reviewOnly = result.storyboard_mode === 'planning_sheet'
+    || result.reference_mode === 'storyboard_planning_sheet'
+    || result.keyframe_generation_status === 'deferred_for_review';
+  const finalKeyframes = body.storyboard_final_keyframes === true;
+  const project_state = patch.project_state || _luxuryAdProductionStage({
+    reviewOnly,
+    finalKeyframes,
+    scenes,
+    keyframes,
+    contract,
+    errorCode: patch.error_code || result.code || result.details?.code || '',
+    keyframeError: patch.error || result.keyframe_error || '',
+  });
+  const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
+  const row = {
+    ...(existing || {}),
+    id,
+    kind: 'luxury_ad_production_project',
+    user_id: existing?.user_id || scopeUserId(req) || req.user?.id || null,
+    title,
+    project_state,
+    status: ['frame_ready', 'video_ready'].includes(project_state) ? 'ready' : (project_state.endsWith('_failed') || project_state === 'frame_failed' ? 'failed' : 'working'),
+    text: String(body.text || existing?.text || '').slice(0, 12000),
+    product_name: body.product_name || body.product_asset?.name || existing?.product_name || '',
+    product_subject: result.production_contract?.visual_locks?.product_lock?.subject || existing?.product_subject || '',
+    duration_sec: Number(body.duration_sec || existing?.duration_sec || 0) || null,
+    ratio: result.ratio || body.aspect_ratio || body.aspectRatio || existing?.ratio || '',
+    output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
+    resolution: result.resolution || existing?.resolution || '',
+    brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
+    scenes: scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
+    keyframes: keyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
+    storyboard_sheets: _compactLuxuryAdProjectSheets(storyboardSheets),
+    visual_asset: _luxuryAdProjectVisualAsset(storyboardSheets),
+    production_contract: _jsonClone(contract || existing?.production_contract || null),
+    asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
+    visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
+    global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
+    keyframe_generation_status: result.keyframe_generation_status || existing?.keyframe_generation_status || '',
+    reference_mode: result.reference_mode || existing?.reference_mode || '',
+    last_error: patch.error || result.keyframe_error || '',
+    last_error_code: patch.error_code || result.code || '',
+    updated_at: now,
+    created_at: existing?.created_at || now,
+  };
+  if (existingIndex >= 0) data.projects[existingIndex] = row;
+  else data.projects.push(row);
+  const overflow = Math.max(0, data.projects.length - 300);
+  if (overflow) data.projects.splice(0, overflow);
+  _writeLuxuryAdProjectStore(data);
+  return _publicLuxuryAdProject(row);
+}
 
 function _dhKbQuery(...parts) {
   return parts
@@ -466,10 +695,25 @@ function _extractPublicError(err, fallback = '接口请求失败') {
   message = _compactDhPublicMessage(message || fallback);
   const body = { success: false, error: message, message, code: publicCode };
   const attempts = err?.luxuryKeyframeAttempts || err?.details?.luxuryKeyframeAttempts || err?.details?.attempts;
+  const publicDetails = {};
+  if (err?.details?.reason) publicDetails.reason = err.details.reason;
   if (Array.isArray(attempts) && attempts.length) {
-    body.details = { attempts };
-  } else if (err?.details?.qa) {
-    body.details = { qa: err.details.qa };
+    publicDetails.attempts = attempts;
+  }
+  if (err?.details?.qa) {
+    publicDetails.qa = err.details.qa;
+  }
+  if (err?.details?.production_contract) {
+    publicDetails.production_contract = err.details.production_contract;
+  }
+  if (err?.details?.production_project) {
+    publicDetails.production_project = err.details.production_project;
+    publicDetails.production_project_id = err.details.production_project.id;
+  } else if (err?.details?.production_project_id) {
+    publicDetails.production_project_id = err.details.production_project_id;
+  }
+  if (Object.keys(publicDetails).length) {
+    body.details = publicDetails;
   }
   return { status, body };
 }
@@ -621,13 +865,128 @@ function _pipelineModelRunnable(model) {
   if (!model?.provider_id || !model?.model_id) return false;
   const providerId = String(model.provider_id).toLowerCase();
   const modelId = String(model.model_id).toLowerCase();
+  const providerModelEnabled = provider => {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    if (!models.length) return true;
+    const explicit = models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
+    if (explicit) return explicit.enabled !== false;
+    return _providerPresetHasModel(provider, modelId);
+  };
   if (providerId === 'topview' || modelId.startsWith('topview-')) {
     const p = _findEnabledProvider('topview');
     return !!((p?.api_key || process.env.TOPVIEW_API_KEY)
-      && (p?.topview_uid || p?.api_uid || p?.uid || process.env.TOPVIEW_UID));
+      && (p?.topview_uid || p?.api_uid || p?.uid || process.env.TOPVIEW_UID)
+      && providerModelEnabled(p));
   }
   if (_isSeedancePipelineModel(model)) return !!_findRunnableSeedanceProvider(model);
-  return !!_findEnabledProvider(model.provider_id);
+  const provider = _findEnabledProvider(model.provider_id);
+  return !!(provider && providerModelEnabled(provider));
+}
+
+function _providerPresetHasModel(provider = {}, modelId = '') {
+  const id = String(modelId || '').trim().toLowerCase();
+  if (!id) return false;
+  try {
+    const { PROVIDER_PRESETS } = require('../services/settingsService');
+    const presetId = String(provider.preset || provider.id || '').trim();
+    const preset = PROVIDER_PRESETS?.[presetId];
+    return Array.isArray(preset?.defaultModels)
+      && preset.defaultModels.some(m => String(m?.id || '').trim().toLowerCase() === id);
+  } catch {
+    return false;
+  }
+}
+
+function _luxuryCanPreserveLockedReferences(model) {
+  return modelCapabilityService.canGenerateReferencePreservingKeyframe(model);
+}
+
+function _luxuryCommercialKeyframeModelSummary() {
+  const models = _pickRunnablePipelineModels('luxury_ad.keyframe');
+  const referencePreserving = models.filter(_luxuryCanPreserveLockedReferences);
+  const required = ['image_edit', 'reference_preserving', 'character_consistency', 'realistic_photo'];
+  const configuredModels = _pickConfiguredPipelineModels('luxury_ad.keyframe');
+  return {
+    capability_required: 'reference_preserving_image_edit',
+    runnable_models: models.map(_pipelineModelLabel),
+    reference_preserving_models: referencePreserving.map(_pipelineModelLabel),
+    reference_preserving_ready: referencePreserving.length > 0,
+    capability_candidates: models.map(model => modelCapabilityService.modelCapabilityReport(model, required)),
+    configured_candidates: configuredModels.map(model => ({
+      ...modelCapabilityService.modelCapabilityReport(model, required),
+      runnable: _pipelineModelRunnable(model),
+      routing_reason: _pipelineModelRunnable(model) ? 'runnable' : _pipelineModelNotRunnableReason(model),
+    })),
+  };
+}
+
+function _buildLuxuryProductionContract({
+  scenes = [],
+  productSubject = '',
+  identityReferenceUrl = '',
+  identityActorAssetId = '',
+  identityExtraImageUrls = [],
+  identitySource = '',
+  identityName = '',
+  identityGender = '',
+  identityRole = '',
+  identityDescription = '',
+  identityAvailability = null,
+  globalVisualBible = null,
+  assetManifest = null,
+  visualLocks = null,
+} = {}) {
+  const humanShotIndexes = (Array.isArray(scenes) ? scenes : [])
+    .map((scene, i) => _luxuryStoryboardRequiresPerson(scene, productSubject) ? i + 1 : 0)
+    .filter(Boolean);
+  const modelGate = _luxuryCommercialKeyframeModelSummary();
+  const hasIdentityUrl = !!String(identityReferenceUrl || '').trim();
+  const identityReachable = !hasIdentityUrl
+    ? false
+    : (identityAvailability && typeof identityAvailability === 'object'
+      ? identityAvailability.reachable !== false
+      : true);
+  const actorReady = hasIdentityUrl && identityReachable;
+  const actorAsset = actorReady ? _buildLuxuryActorAssetPackage({
+    imageUrl: identityReferenceUrl,
+    actorAssetId: identityActorAssetId,
+    extraImageUrls: identityExtraImageUrls,
+    source: identitySource,
+    name: identityName,
+    gender: identityGender,
+    role: identityRole,
+    description: identityDescription,
+  }) : null;
+  const finalKeyframesReady = !humanShotIndexes.length || (actorReady && modelGate.reference_preserving_ready);
+  const requiredActions = [];
+  if (humanShotIndexes.length && !actorReady) {
+    requiredActions.push(hasIdentityUrl ? 'replace_unreachable_actor_reference' : 'confirm_actor_reference');
+  }
+  if (humanShotIndexes.length && actorReady && !modelGate.reference_preserving_ready) {
+    requiredActions.push('enable_reference_preserving_keyframe_model');
+  }
+  return {
+    stage: 'commercial_storyboard_contract',
+    human_required: humanShotIndexes.length > 0,
+    human_shot_indexes: humanShotIndexes,
+    actor_reference: {
+      status: actorReady ? 'confirmed' : (hasIdentityUrl ? 'unreachable' : 'missing'),
+      source: identitySource || '',
+      name: identityName || '',
+      image_url: identityReferenceUrl || '',
+      actor_id: actorAsset?.actor_id || '',
+      actor_asset_id: identityActorAssetId || actorAsset?.actor_asset_id || '',
+      extra_image_urls: Array.isArray(identityExtraImageUrls) ? identityExtraImageUrls.slice(0, 8) : [],
+      availability: identityAvailability || null,
+    },
+    actor_asset: actorAsset,
+    visual_bible: globalVisualBible || null,
+    asset_manifest: assetManifest || null,
+    visual_locks: visualLocks || null,
+    keyframe_model_gate: modelGate,
+    final_keyframes_ready: finalKeyframesReady,
+    required_actions: requiredActions,
+  };
 }
 
 function _pickRunnablePipelineModel(stageId) {
@@ -664,6 +1023,49 @@ function _pickRunnablePipelineModels(stageId, options = {}) {
   } catch {
     return [];
   }
+}
+
+function _pickConfiguredPipelineModels(stageId) {
+  try {
+    const pms = require('../services/pipelineModelService');
+    const list = typeof pms.pickAllEnabled === 'function'
+      ? pms.pickAllEnabled(stageId)
+      : [_pickPipelineModel(stageId)].filter(Boolean);
+    return (list || [])
+      .filter(m => m && m.enabled !== false)
+      .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
+  } catch {
+    return [];
+  }
+}
+
+function _pipelineModelNotRunnableReason(model) {
+  if (!model?.provider_id || !model?.model_id) return 'missing_provider_or_model';
+  const providerId = String(model.provider_id).toLowerCase();
+  const modelId = String(model.model_id).toLowerCase();
+  if (providerId === 'topview' || modelId.startsWith('topview-')) {
+    const p = _findEnabledProvider('topview');
+    if (!p) return 'provider_auth_missing';
+    if (!(p.api_key || process.env.TOPVIEW_API_KEY)) return 'api_key_missing';
+    if (!(p.topview_uid || p.api_uid || p.uid || process.env.TOPVIEW_UID)) return 'topview_uid_missing';
+    if (Array.isArray(p.models) && p.models.length) {
+      const explicit = p.models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
+      if (explicit?.enabled === false) return 'model_disabled';
+      if (!explicit && !_providerPresetHasModel(p, modelId)) return 'model_not_in_provider_list';
+    }
+    return 'unknown_not_runnable';
+  }
+  if (_isSeedancePipelineModel(model)) {
+    return _findRunnableSeedanceProvider(model) ? 'runnable' : 'seedance_provider_or_model_missing';
+  }
+  const provider = _findEnabledProvider(model.provider_id);
+  if (!provider) return 'provider_auth_missing';
+  if (Array.isArray(provider.models) && provider.models.length) {
+    const explicit = provider.models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
+    if (explicit?.enabled === false) return 'model_disabled';
+    if (!explicit && !_providerPresetHasModel(provider, modelId)) return 'model_not_in_provider_list';
+  }
+  return 'unknown_not_runnable';
 }
 
 function _uniquePipelineModels(models = []) {
@@ -2090,12 +2492,14 @@ function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = 'male',
   const gender = /female|woman|girl|女/i.test(String(guideGender || '')) ? 'female' : 'male';
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes, brief });
   return [
-    'STRICT REALISTIC PRESENTER IDENTITY SEED IMAGE for a premium commercial storyboard.',
-    'This image will become the mandatory identity reference for every later keyframe that contains a human. Create a stable, reusable campaign actor, not a one-off poster model.',
+    'STRICT LIVE-ACTION CASTING PHOTO for a premium commercial storyboard.',
+    'This image becomes the mandatory actor identity reference for every later keyframe that contains a human. Create one stable reusable campaign actor, not a poster model and not a digital avatar.',
     `Industry context: ${contract.industry}.`,
-    `Create one real adult ${gender} presenter / consultant / professional appropriate for this industry, waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the industry and brand tone.`,
-    'Stable identity requirements: clear face impression, consistent age, hairstyle, skin tone, body proportions, outfit family and color palette. Avoid dramatic pose, heavy expression, sunglasses, mask, hat covering hair, profile-only face or cropped/hidden face.',
-    'Use a neutral premium commercial background so this exact person can be reused across storyboard keyframes. Realistic skin texture, optical photography, not CGI, not illustration, no text, no logo, no extra people.',
+    `Create one real adult East Asian ${gender} presenter / consultant / professional appropriate for this industry, waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the industry and brand tone.`,
+    'Stable identity requirements: clear face impression, consistent age, hairstyle, skin tone, body proportions, outfit family and color palette. Use ordinary professional styling that can plausibly appear in every scene.',
+    'Photographic realism requirements: real commercial casting photo, natural skin pores and slight facial asymmetry, realistic hair strands, normal hands, practical soft location light, optical 50mm/85mm lens feel.',
+    'Forbidden style drift: no cyberpunk, no sci-fi goggles, no sunglasses, no tinted glasses, no mask, no hat covering hair, no profile-only face, no cropped/hidden face, no plastic AI skin, no CGI, no 3D render, no illustration, no glamour fashion poster, no jewelry/cosmetics boutique styling, no text, no logo, no extra people.',
+    'Use a neutral premium workplace/commercial background so this exact person can be reused across storyboard keyframes.',
     productSubject ? `The campaign subject is ${_luxurySceneFriendlyProductSubject(productSubject)}; do not turn this seed into a product-only shot.` : '',
   ].filter(Boolean).join(' ');
 }
@@ -2337,24 +2741,33 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
   }
 
   if (productRefs.length && needsScene) {
-    const seed = await _generateLuxurySeedAsset(req, {
-      stageId: 'luxury_ad.subject_evidence_seed',
-      prompt: _luxurySubjectEvidenceSeedPrompt({ productSubject, scenes }),
-      refs: productRefs,
-      aspectRatio,
-      outputSize,
-      filename: `${filenamePrefix}_subject_evidence_seed`,
-      destDir,
-    });
-    if (!seed.url) {
-      const err = new Error('剧情广告主体证据种子图生成失败：已上传主体参考，但 subject_evidence_seed 未返回图片。');
-      err.status = 422;
-      err.code = 'LUXURY_SUBJECT_EVIDENCE_SEED_FAILED';
-      err.details = { stage_id: 'luxury_ad.subject_evidence_seed', attempts: seed.attempts || [] };
-      throw err;
+    try {
+      const seed = await _generateLuxurySeedAsset(req, {
+        stageId: 'luxury_ad.subject_evidence_seed',
+        prompt: _luxurySubjectEvidenceSeedPrompt({ productSubject, scenes }),
+        refs: productRefs,
+        aspectRatio,
+        outputSize,
+        filename: `${filenamePrefix}_subject_evidence_seed`,
+        destDir,
+      });
+      if (!seed.url) throw new Error('subject_evidence_seed returned no image');
+      assets.subject_evidence = { ...seed, source: 'generated_subject_evidence_seed' };
+      assets.used.push('luxury_ad.subject_evidence_seed');
+    } catch (err) {
+      assets.subject_evidence = {
+        url: productRefs[0],
+        source: 'user_reference_passthrough',
+        warning: {
+          stage_id: 'luxury_ad.subject_evidence_seed',
+          skipped: true,
+          reason: err.message,
+          attempts: err.details?.attempts || err.attempts || [],
+        },
+      };
+      assets.used.push('luxury_ad.subject_evidence_seed_passthrough');
+      console.warn('[DH/luxury-ad] subject evidence seed failed; continuing with user reference:', err.message);
     }
-    assets.subject_evidence = { ...seed, source: 'generated_subject_evidence_seed' };
-    assets.used.push('luxury_ad.subject_evidence_seed');
   }
 
   return assets;
@@ -4328,8 +4741,9 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
   const { loadSettings } = require('../services/settingsService');
   const settings = loadSettings();
   const dy = (settings.providers || []).find(p => (p.id === 'deyunai' || p.preset === 'deyunai') && p.enabled && p.api_key);
-  const m = (dy?.models || []).find(x => x.id === model && x.enabled !== false);
-  if (!dy || !m) throw new Error(`deyunai 未启用 ${model}`);
+  const m = (dy?.models || []).find(x => x.id === model);
+  const knownPresetModel = dy ? _providerPresetHasModel(dy, model) : false;
+  if (!dy || (m && m.enabled === false) || (!m && !knownPresetModel)) throw new Error(`deyunai 未启用 ${model}`);
 
   const size = String(model || '').toLowerCase() === 'gpt-image-2'
     ? 'auto'
@@ -4393,6 +4807,43 @@ async function _resolveImageForExternalApi(req, url) {
     }
   }
   return _absolutePublicUrl(req, url);
+}
+
+async function _probeLuxuryImageReferenceAvailability(req, url) {
+  const value = String(url || '').trim();
+  if (!value) return { reachable: false, reason: 'empty_url' };
+  if (value.startsWith('data:image/')) return { reachable: true, source: 'data_url' };
+  const localPath = _localAssetPathFromUrl(value);
+  if (localPath && fs.existsSync(localPath)) {
+    return { reachable: true, source: 'local_asset', path_hint: path.basename(localPath) };
+  }
+  const absolute = _absolutePublicUrl(req, value);
+  try {
+    const head = await axios.head(absolute, { timeout: 15000, validateStatus: () => true });
+    if (head.status >= 200 && head.status < 300) {
+      return { reachable: true, source: 'remote_url', status: head.status };
+    }
+    if (![403, 405].includes(head.status)) {
+      return { reachable: false, source: 'remote_url', status: head.status, reason: 'http_status_not_ok' };
+    }
+  } catch (err) {
+    // Some CDNs reject HEAD; try a tiny GET before declaring the asset unusable.
+  }
+  try {
+    const get = await axios.get(absolute, {
+      timeout: 20000,
+      responseType: 'arraybuffer',
+      headers: { Range: 'bytes=0-2047' },
+      maxContentLength: 256 * 1024,
+      validateStatus: () => true,
+    });
+    if (get.status >= 200 && get.status < 300) {
+      return { reachable: true, source: 'remote_url', status: get.status };
+    }
+    return { reachable: false, source: 'remote_url', status: get.status, reason: 'http_status_not_ok' };
+  } catch (err) {
+    return { reachable: false, source: 'remote_url', reason: String(err.message || err).slice(0, 160) };
+  }
 }
 
 function _localAssetPathFromUrl(url) {
@@ -9601,7 +10052,11 @@ function _publicLuxuryKeyframeResult(item) {
     const details = item.details && typeof item.details === 'object'
       ? {
         code: item.details.code || item.details.error?.code || undefined,
+        reason: item.details.reason || undefined,
         attempts: Array.isArray(item.details.attempts) ? item.details.attempts.slice(-8) : undefined,
+        production_contract: item.details.production_contract || undefined,
+        production_project: item.details.production_project || undefined,
+        production_project_id: item.details.production_project_id || item.details.production_project?.id || undefined,
         qa: item.details.qa ? {
           pass: !!item.details.qa.pass,
           reason: _compactDhPublicMessage(item.details.qa.reason || '', 420),
@@ -9621,6 +10076,24 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
   const body = _publicLuxuryKeyframeResult(item);
   if (!body) return res.status(404).json({ success: false, status: 'missing', error: '分镜生成结果还未产生或已过期' });
   res.json(body);
+});
+
+router.get('/luxury-ad/projects', (req, res) => {
+  try {
+    res.json({ success: true, projects: _listLuxuryAdProjects(req, req.query.limit || 20) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '剧情广告项目列表读取失败' });
+  }
+});
+
+router.get('/luxury-ad/projects/:id', (req, res) => {
+  try {
+    const project = _getLuxuryAdProject(req, req.params.id);
+    if (!project) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
+    res.json({ success: true, project });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '剧情广告生产包读取失败' });
+  }
 });
 
 router.get('/usage/recent', requirePermission('model_usage'), (req, res) => {
@@ -9771,17 +10244,21 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const outlineShotTarget = outlineShotCount >= shotRange.min && outlineShotCount <= shotRange.max
       ? outlineShotCount
       : 0;
+    const explicitShotTarget = requestedShotCount > 0 ? requestedShotCount : 0;
     const wantedShots = isDetailedMode
       ? (uploadedReferenceAssets.length
-        ? Math.max(1, Math.min(uploadedReferenceAssets.length, requestedShotCount || uploadedReferenceAssets.length))
-        : Math.max(shotRange.min, Math.min(shotRange.max, outlineShotTarget || suggestedShots)))
-      : Math.max(3, Math.min(8, suggestedShots));
+        ? Math.max(1, Math.min(uploadedReferenceAssets.length, explicitShotTarget || uploadedReferenceAssets.length))
+        : Math.max(1, Math.min(18, explicitShotTarget || outlineShotTarget || suggestedShots)))
+      : Math.max(3, Math.min(8, explicitShotTarget || suggestedShots));
     const minAllowedShots = isDetailedMode
-      ? (uploadedReferenceAssets.length ? wantedShots : shotRange.min)
+      ? (explicitShotTarget || uploadedReferenceAssets.length ? wantedShots : shotRange.min)
       : 3;
     const maxAllowedShots = isDetailedMode
-      ? (uploadedReferenceAssets.length ? wantedShots : shotRange.max)
+      ? (explicitShotTarget || uploadedReferenceAssets.length ? wantedShots : shotRange.max)
       : 8;
+    const exactShotCountNote = isDetailedMode && explicitShotTarget
+      ? `本次用户明确要求 ${wantedShots} 个镜头，必须正好输出 ${wantedShots} 个镜头；忽略默认“30秒约10镜”的经验规则，不得多拆也不得少拆。`
+      : '';
     const referenceShotLockNote = isDetailedMode && uploadedReferenceAssets.length
       ? `本次用户只上传了 ${uploadedReferenceAssets.length} 张顺序分镜/场景画面，只允许输出 ${wantedShots} 个镜头；不得新增没有上传素材支撑的额外镜头。`
       : '';
@@ -9890,7 +10367,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         }))
       : [];
     const modeInstruction = isDetailedMode
-      ? `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；不要为了凑数重复镜头，每镜约 2-4 秒。${referenceShotLockNote}`
+      ? `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${exactShotCountNote || `${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；`}不要为了凑数重复镜头，每镜约 2-4 秒。${referenceShotLockNote}`
       : `当前是第 2 步：用户只填写了广告设想。你只能先把广告设想拆成按时间推进的场景顺序和素材清单：开场分镜 → 第二场景 → 后续场景 → 收尾分镜。自己判断大概需要几个分镜；建议约 ${wantedShots} 个，但可按内容在 3-8 个之间调整。不要只输出 1 个镜头，不要假装已经看过素材，不要给具体景别/镜头运动/Topview 提示词；shot_size/shot_angle 固定写“素材进入后生成”，content_prompt 只写该场景需要什么画面，voiceover 只写旁白/介绍方向。`;
     const { callLLM } = require('../services/storyService');
     const sys = [
@@ -9931,7 +10408,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
 生成阶段：${isDetailedMode ? '第 3 步剧本生成' : '第 2 步场景配置'}
 阶段要求：${modeInstruction}
 
-${isDetailedMode ? `请根据剧情生成 ${minAllowedShots}-${maxAllowedShots} 个镜头的 JSON 数组，建议约 ${wantedShots} 个；不要为了凑数重复镜头。` : `请先根据广告内容和目标时长自行判断分镜数量，输出 3-8 个镜头的 JSON 数组；建议约 ${wantedShots} 个，简单广告也至少要有开场、产品/场景、细节或价值、行动引导，不允许只输出 1 个镜头。`}每个对象必须包含：
+${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedShots} 个镜头的 JSON 数组；不能输出 ${wantedShots + 1} 个，也不能少于 ${wantedShots} 个。` : `请根据剧情生成 ${minAllowedShots}-${maxAllowedShots} 个镜头的 JSON 数组，建议约 ${wantedShots} 个；不要为了凑数重复镜头。`) : `请先根据广告内容和目标时长自行判断分镜数量，输出 3-8 个镜头的 JSON 数组；建议约 ${wantedShots} 个，简单广告也至少要有开场、产品/场景、细节或价值、行动引导，不允许只输出 1 个镜头。`}每个对象必须包含：
 {
   "title": "镜头名，6字以内",
   "role": "hook|display|macro|benefit|proof|cta",
@@ -10605,7 +11082,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
   "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","scene":"发生地点","plot":"这一段发生的人物剧情","character_goal":"人物目标","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现：人物 + 真实场景 + ${productSubject}证据","why_next":"为什么自然进入下一段"}]
 }
-beats 数量：建议 ${Math.max(3, Math.min(wantedShots, maxAllowedShots))} 个，可在 ${Math.max(3, minAllowedShots)}-${Math.max(3, maxAllowedShots)} 个内按剧情调整，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
+beats 数量：${explicitShotTarget ? `正好 ${Math.max(3, wantedShots)} 个剧情 beat，服务后续正好 ${wantedShots} 个镜头` : `建议 ${Math.max(3, Math.min(wantedShots, maxAllowedShots))} 个，可在 ${Math.max(3, minAllowedShots)}-${Math.max(3, maxAllowedShots)} 个内按剧情调整`}，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
@@ -10653,10 +11130,11 @@ ${JSON.stringify(storyPlan, null, 2)}
 已有场景顺序：
 ${outlineNotes.length ? JSON.stringify(outlineNotes, null, 2) : '暂无'}
 
-请按剧情拆成 ${minAllowedShots}-${maxAllowedShots} 个镜头，建议约 ${wantedShots} 个，输出 JSON 数组；不要为了凑数重复镜头。每个对象必须包含：
+请按剧情拆成 ${explicitShotTarget ? `正好 ${wantedShots} 个镜头` : `${minAllowedShots}-${maxAllowedShots} 个镜头，建议约 ${wantedShots} 个`}，输出 JSON 数组；不要为了凑数重复镜头。每个对象必须包含：
 index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_content,visual,dialogue_lines,voiceover,narration,characters,material_usage,source_beat。
 注意：不要输出 dialogue 字符串里的真实换行；如有对白，只能用 dialogue_lines 数组。`;
       scenes = await callLuxuryAgent({ name: 'luxury_ad.shot.splitter', systemPrompt: splitSys, userPrompt: splitUser, json: 'array', maxTokens: 9000 });
+      if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
 
       if (!fastDetailedStoryboard) {
         const sceneSys = [
@@ -10670,6 +11148,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
 镜头草稿：${JSON.stringify(scenes, null, 2)}
 请返回增强后的同数量 JSON 数组。每镜必须写清楚发生地点、看见什么、主体如何出现、需要什么画面证据。`;
         scenes = mergeLuxuryAgentScenes(scenes, await callLuxuryAgent({ name: 'luxury_ad.scene.agent', systemPrompt: sceneSys, userPrompt: sceneUser, json: 'array', maxTokens: 10000 }));
+        if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
         assertAgentTextOk('场景 agent', scenes);
       }
 
@@ -10686,6 +11165,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
 请返回增强后的同数量 JSON 数组。每镜必须包含 action/visual_action/emotion/mood/dialogue_lines/voiceover/narration/characters。
 注意：不要输出 dialogue 字符串里的真实换行；如有对白，只能用 dialogue_lines 数组。`;
       scenes = mergeLuxuryAgentScenes(scenes, await callLuxuryAgent({ name: 'luxury_ad.action.agent', systemPrompt: actionSys, userPrompt: actionUser, json: 'array', maxTokens: 10000 }));
+      if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
       assertAgentTextOk('动作 agent', scenes);
 
       if (!fastDetailedStoryboard) {
@@ -10713,8 +11193,10 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           });
         }
         scenes = mergeLuxuryAgentScenes(scenes, cameraScenes);
+        if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
         scenes = enrichLuxurySceneCharactersFromCanon(scenes, storyCharacters);
         scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
+        if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
         assertAgentTextOk('镜头 agent', scenes);
 
         let sceneCastIssue = describeLuxurySceneCastIssue(scenes, storyCharacters);
@@ -10726,9 +11208,11 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
             json: 'array',
             storyPlan,
           }));
+          if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
           assertAgentTextOk('镜头人物修复 agent', scenes);
           scenes = enrichLuxurySceneCharactersFromCanon(scenes, storyCharacters);
           scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
+          if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
           sceneCastIssue = describeLuxurySceneCastIssue(scenes, storyCharacters);
           if (sceneCastIssue) throw new Error(`镜头人物一致性修复失败：${sceneCastIssue}`);
         }
@@ -10764,6 +11248,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
               json: 'array',
               storyPlan,
             }));
+            if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
             scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
             assertAgentTextOk('审稿人物修复 agent', scenes);
             const repairedReview = await callLuxuryAgent({
@@ -10807,11 +11292,11 @@ ${JSON.stringify(scenes, null, 2)}
 广告类型：${ad_type || 'auto'}
 目标时长：${targetDuration} 秒；画面比例：${output_ratio}
 
-请按剧情输出 ${Math.max(3, Math.min(8, minAllowedShots))}-${Math.max(4, Math.min(8, maxAllowedShots))} 个场景顺序对象，建议约 ${Math.max(4, Math.min(8, wantedShots))} 个；不要为了凑数重复场景。`;
+请按剧情输出 ${explicitShotTarget ? `正好 ${Math.max(1, Math.min(8, wantedShots))} 个场景顺序对象` : `${Math.max(3, Math.min(8, minAllowedShots))}-${Math.max(4, Math.min(8, maxAllowedShots))} 个场景顺序对象，建议约 ${Math.max(4, Math.min(8, wantedShots))} 个`}；不要为了凑数重复场景。`;
       scenes = await callLuxuryAgent({ name: llmStageId, systemPrompt: outlineSys, userPrompt: outlineUser, json: 'array', maxTokens: 3500 });
     }
     const maxSceneCount = isDetailedMode ? maxAllowedShots : 8;
-    const minSceneCount = isDetailedMode ? Math.max(1, Math.min(2, wantedShots)) : 3;
+    const minSceneCount = isDetailedMode ? (explicitShotTarget ? 1 : Math.max(1, Math.min(2, wantedShots))) : 3;
     const finalMinSceneCount = isDetailedMode ? Math.max(1, Math.min(minAllowedShots, maxAllowedShots)) : minSceneCount;
     let rawScenes = Array.isArray(scenes) ? scenes : [];
     if (rawScenes.length < minSceneCount) {
@@ -11514,14 +11999,19 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
   adStyle = 'luxury_soft',
   assetSummary = '',
 } = {}) {
-  const targetDuration = Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
-  const total = Math.max(4, Math.min(8, Number(shotCount) || segments.length || 6));
+  const providedCount = Array.isArray(segments) ? segments.length : 0;
+  const targetDuration = providedCount
+    ? Math.max(1, Math.min(180, Math.round(Number(durationSec) || providedCount * 3 || 30)))
+    : Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
+  const total = providedCount
+    ? Math.max(1, Math.min(12, providedCount))
+    : Math.max(4, Math.min(8, Number(shotCount) || 6));
   const subject = productSubject || _deriveLuxuryProductSubject({ text, productName: '', assetSummary });
   const productLockPrompt = _luxuryProductLockPrompt(subject);
   let list = (Array.isArray(segments) ? segments : [])
     .filter(x => x && (x.voiceover || x.text || x.visual || x.visual_prompt || x.title))
     .slice(0, total);
-  if (list.length < Math.min(4, total)) {
+  if (!list.length) {
     list = _fallbackLuxuryAdStoryboard({
       text,
       durationSec: targetDuration,
@@ -12262,6 +12752,86 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
   };
 }
 
+function _buildLuxuryActorAssetPackage({
+  imageUrl = '',
+  actorAssetId = '',
+  extraImageUrls = [],
+  source = '',
+  name = '',
+  gender = '',
+  role = '',
+  description = '',
+} = {}) {
+  const url = String(imageUrl || '').trim();
+  if (!url) return null;
+  const stableSeed = String(actorAssetId || url).trim();
+  const actorId = `actor_${crypto.createHash('sha1').update(stableSeed).digest('hex').slice(0, 12)}`;
+  const extraRefs = Array.isArray(extraImageUrls)
+    ? extraImageUrls.map(x => String(x || '').trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const actorName = String(name || role || 'fixed campaign actor').trim().slice(0, 80);
+  const stable = [
+    'same face identity / closest visible face impression',
+    'same age impression',
+    'same hairstyle and hair color',
+    'same body proportions',
+    'same skin tone family',
+    'same outfit family unless storyboard explicitly changes wardrobe',
+    'same gender presentation',
+  ];
+  const forbidden = [
+    'new random actor',
+    'changed gender or age',
+    'changed face structure',
+    'fashion poster beauty model',
+    'plastic AI skin or waxy mannequin face',
+    'hidden face when the shot requires the actor',
+    'back-only person when the story needs expression',
+  ];
+  const prompt = [
+    `FIXED ACTOR ASSET PACKAGE: actor_id=${actorId}.`,
+    `Use the exact same campaign actor for every human keyframe: ${actorName}.`,
+    gender ? `Requested gender presentation: ${gender}.` : '',
+    description ? `Actor description: ${_luxuryLockCleanText(description, 420)}.` : '',
+    `Mandatory identity reference image: ${url}.`,
+    extraRefs.length ? `Additional actor reference views: ${extraRefs.join(' | ')}.` : '',
+    `Preserve: ${stable.join(', ')}.`,
+    `Never output: ${forbidden.join(', ')}.`,
+    'Only pose, gesture, expression, camera angle, lighting and placement may change between shots.',
+  ].filter(Boolean).join(' ');
+  return {
+    actor_id: actorId,
+    actor_asset_id: actorAssetId || '',
+    status: 'confirmed',
+    source: source || 'person_asset',
+    name: actorName,
+    gender: gender || '',
+    role: role || '',
+    image_url: url,
+    extra_image_urls: extraRefs,
+    stable_attributes: stable,
+    forbidden_drift: forbidden,
+    prompt,
+  };
+}
+
+function _luxuryActorReferenceGroup(actor = {}, primaryUrl = '') {
+  const urls = [
+    primaryUrl,
+    actor?.image_url,
+    actor?.url,
+    actor?.previewUrl,
+    ...(Array.isArray(actor?.extra_image_urls) ? actor.extra_image_urls : []),
+    ...(Array.isArray(actor?.extra_images) ? actor.extra_images : []),
+    ...(Array.isArray(actor?.views) ? actor.views : []),
+  ];
+  return urls
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x, i, arr) => arr.indexOf(x) === i)
+    .slice(0, 6);
+}
+
 function _mergeLuxuryStoryExtractIntoScene(scene = {}, extract = {}, index = 0) {
   const shot = extract && typeof extract === 'object' ? extract : {};
   const mustShow = Array.isArray(shot.must_show) ? shot.must_show.map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [];
@@ -12660,8 +13230,8 @@ async function _buildSpaceAdStoryboard({ title, text, durationSec, segments, sce
     .map((s, i) => `${i + 1}. ${s.text}`)
     .join('\n');
   const sys = isLuxury
-    ? '你是剧情广告导演。你会把产品/品牌广告拆成 Topview Image2 关键帧 + Seedance 全参考视频的镜头序列。只输出 JSON 数组。'
-    : '你是短视频广告导演。你会把广告数字人口播文案拆成 Topview/Image2 + Seedance 风格的可控多关键帧广告分镜。只输出 JSON 数组。';
+    ? '你是剧情广告导演。你会把产品/品牌广告拆成保参考 Image2 关键帧 + Seedance2/图生视频全参考镜头序列。只输出 JSON 数组。'
+    : '你是短视频广告导演。你会把广告数字人口播文案拆成 Image2 关键帧 + 图生视频风格的可控多关键帧广告分镜。只输出 JSON 数组。';
   const user = `标题：${title || '广告数字人'}
 场景/背景要点：${scenePrompt || '根据上传背景自动识别'}
 广告模式：${isLuxury ? `剧情广告 / ${_luxuryAdStyleName(adStyle)} / ${_luxuryAdStylePrompt(adStyle)}` : '普通广告数字人'}
@@ -12867,7 +13437,7 @@ function _publicAdKeyframeMeta(k = {}) {
 function _spaceAdKeyframePrompt({ scene, title, text, scenePrompt }) {
   const luxuryMeta = _compactLuxuryShotMeta(scene);
   return [
-    'Topview Image2-style controlled keyframe for an advertising digital human video.',
+    'Reference-preserving Image2-style controlled keyframe for an advertising digital human video.',
     'CRITICAL REFERENCE LOCK: Use ONLY the two uploaded reference images as the visual source. Do not invent a new location, warehouse, factory, office, showroom, street, or any unrelated environment.',
     'Reference image 1 is the exact presenter/avatar. If a person appears, it MUST be this same person: same face identity, hairstyle, glasses, age, body type and clothing style. Do not create any new model, actor, worker, or different face.',
     'Reference image 2 is the exact advertising background/display image. Preserve the same wall/display/product/background layout, colors, materials, spatial perspective and lighting direction. Do not replace it with steel shelves, industrial storage, factory racks, or a different room.',
@@ -14264,16 +14834,17 @@ function _buildLuxuryCharacterConsistencyLock(avatar = null) {
   const identityName = String(avatar.name || avatar.title || avatar.nickname || 'selected presenter').trim().slice(0, 60);
   return {
     enabled: true,
-    mode: 'optional_identity_reference',
+    mode: 'strict_identity_reference',
     identity_name: identityName,
     stable_attributes: ['face identity', 'age impression', 'hairstyle', 'body proportions', 'outfit family', 'skin tone'],
     mutable_attributes: ['pose', 'gesture', 'expression', 'camera angle', 'lighting adaptation', 'scene placement'],
     prompt: [
-      'CHARACTER CONSISTENCY LOCK: all shots that include a human must depict the same selected identity, not a new actor.',
+      'CHARACTER CONSISTENCY LOCK: all shots that include a human must depict the same selected campaign actor, not a new actor.',
       identityName ? `Identity label for internal continuity: ${identityName}.` : '',
-      'Keep the same face topology, age impression, hairstyle, skin tone, body proportions and outfit family across every keyframe.',
+      'Treat the identity reference like a casting/wardrobe continuity card. Keep the same face topology, age impression, hairstyle, skin tone, body proportions and outfit family across every keyframe.',
       'Only pose, gesture, expression, framing, camera angle and scene lighting may change to fit the storyboard.',
       'If a shot should not feature the person, keep it product/scene focused instead of inventing another model.',
+      'Never add sunglasses, sci-fi goggles, cyberpunk styling, plastic AI skin, CGI face, fashion-poster makeup, or a different wardrobe category unless the confirmed script explicitly requires it.',
     ].filter(Boolean).join(' '),
   };
 }
@@ -14307,7 +14878,7 @@ function _canUseControlledLuxurySteelPresenterOnly(scenes = [], productSubject =
     && _isLuxurySteelMaterialSubject(productSubject || sc.product_subject, sc));
 }
 
-async function _createLuxuryAdReferenceKeyframe({
+async function _createLuxuryAdReferenceKeyframeLegacyUnused({
   req,
   avatar = null,
   avatarUrl = '',
@@ -14343,6 +14914,20 @@ async function _createLuxuryAdReferenceKeyframe({
   const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
   const avatarSource = hasAvatar ? rawAvatarSource : '';
   const generatedPresenterGuidanceUrl = avatarIsGeneratedPresenterSeed ? rawAvatarSource : '';
+  const sceneIdentityGroup = Array.isArray(scene.identity_reference_group) ? scene.identity_reference_group : [];
+  const actorReferenceGroup = hasAvatar
+    ? _luxuryActorReferenceGroup({
+      ...(scene.actor_asset || scene.character_lock?.actor_asset || {}),
+      ...(avatar || {}),
+      extra_image_urls: [
+        ...(Array.isArray(avatar?.extra_image_urls) ? avatar.extra_image_urls : []),
+        ...(Array.isArray(scene.actor_asset?.extra_image_urls) ? scene.actor_asset.extra_image_urls : []),
+        ...(Array.isArray(scene.character_lock?.actor_asset?.extra_image_urls) ? scene.character_lock.actor_asset.extra_image_urls : []),
+        ...sceneIdentityGroup.slice(1),
+      ],
+    }, avatarSource || sceneIdentityGroup[0] || '')
+    : sceneIdentityGroup;
+  const actorExtraReferenceUrls = actorReferenceGroup.filter(x => !sameRef(x, avatarSource));
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
@@ -14428,6 +15013,10 @@ async function _createLuxuryAdReferenceKeyframe({
     }
     if (existing?.resolved) refs.push({ ...existing, kind: 'identity_reference' });
   }
+  for (const url of actorExtraReferenceUrls) {
+    if (refs.length >= 8) break;
+    await addRef(url, 'identity_reference_view');
+  }
   const characterLock = scene.character_lock || (hasAvatar
     ? (typeof _buildLuxuryCharacterConsistencyLock === 'function'
       ? _buildLuxuryCharacterConsistencyLock(avatar)
@@ -14501,6 +15090,8 @@ async function _createLuxuryAdReferenceKeyframe({
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
     prompt,
+    scene,
+    productSubject,
     aspectRatio,
     filename,
     destDir,
@@ -14551,6 +15142,8 @@ async function _createLuxuryAdReferenceKeyframe({
       index,
       total: Number(scene.totalShots || scene.shotCount || 1),
     }),
+    personRequired,
+    characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
@@ -14892,6 +15485,90 @@ function _luxuryCapImageModelPrompt(prompt = '', maxChars = 1850) {
   return `${head} IMPORTANT: prompt was compacted; obey the shot contract above.`;
 }
 
+function _luxuryGptImage2EditPrompt({
+  prompt = '',
+  scene = {},
+  productSubject = '',
+  refs = [],
+  personRequired = false,
+  characterLock = null,
+  aspectRatio = '16:9',
+} = {}) {
+  const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
+  const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
+  const subject = _compactLuxuryKeyframeText(
+    _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || ''),
+    120,
+  );
+  const visual = _compactLuxuryKeyframeText(
+    scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || prompt,
+    260,
+  );
+  const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 180);
+  const camera = _compactLuxuryKeyframeText(
+    [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
+    150,
+  );
+  const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
+  const refKinds = (Array.isArray(refs) ? refs : []).slice(0, 6).map((ref, idx) => {
+    const kind = String(ref?.kind || '').trim();
+    const label = /^identity_reference/.test(kind)
+      ? 'same adult presenter identity / actor view'
+      : (kind === 'human_environment_layout' || kind === 'human_story_layout')
+        ? 'composition guide'
+        : kind.includes('scene')
+          ? 'location and lighting style'
+          : 'product or visual evidence';
+    return `image ${idx + 1}: ${label}`;
+  });
+  const hasHumanReference = (Array.isArray(refs) ? refs : []).some(ref =>
+    /identity_reference|presenter/i.test(String(ref?.kind || '')));
+  const needsPresenter = !!personRequired || hasHumanReference || !!characterLock;
+  const presenterRule = needsPresenter
+    ? 'Use the same adult professional shown in the presenter reference group when provided. Treat all identity_reference images as different views of one actor, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene.'
+    : 'Only include people if the shot description asks for them.';
+  const location = _luxuryExpectedEnvironmentFromContract(scene);
+  const locationRule = location.wantsInterior && !location.wantsExterior
+    ? 'Place the action in a real premium indoor store, showroom, counter, office or consultation area with believable depth.'
+    : location.wantsExterior && !location.wantsInterior
+      ? 'Place the action in the confirmed real exterior or storefront environment.'
+      : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
+  return _luxuryFitImagePromptParts([
+    `Create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
+    subject ? `Advertised subject: ${subject}.` : '',
+    presenterRule,
+    visual ? `Scene content: ${visual}.` : '',
+    action ? `Actor action and expression: ${action}.` : '',
+    narration ? `Meaning to show: ${narration}.` : '',
+    camera ? `Camera and lighting: ${camera}.` : '',
+    refKinds.length ? `Use references as: ${refKinds.join('; ')}.` : '',
+    locationRule,
+    'Real live-action photography: natural skin texture, realistic hands, real fabric, practical shadows, optical lens perspective, believable commercial lighting.',
+    'Clean frame with no subtitles, no watermark, no logo text added by the model, and no extra unrelated people.',
+  ], 1150);
+}
+
+function _luxuryGptImage2EditReferenceUrls(refs = []) {
+  const list = Array.isArray(refs) ? refs : [];
+  const unique = urls => urls
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x, i, arr) => arr.indexOf(x) === i);
+  const identity = unique(list
+    .filter(ref => /identity_reference|generated_presenter_guidance/i.test(String(ref?.kind || '')))
+    .map(ref => ref.resolved));
+  if (identity.length) {
+    const support = unique(list
+      .filter(ref => !/identity_reference|generated_presenter_guidance|human_environment_layout|human_story_layout/i.test(String(ref?.kind || '')))
+      .map(ref => ref.resolved));
+    return unique([...identity.slice(0, 4), ...support.slice(0, 2)]).slice(0, 6);
+  }
+  return unique(list
+    .filter(ref => !/human_environment_layout|human_story_layout/i.test(String(ref?.kind || '')))
+    .map(ref => ref.resolved))
+    .slice(0, 2);
+}
+
 function _luxuryIsQaRejectError(err = null) {
   const code = String(err?.code || '');
   const status = Number(err?.status || 0);
@@ -14923,8 +15600,8 @@ function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
       if (sameRef(source, sceneSeedUrl) || kind === 'story_seed_reference') {
         return `Reference image ${n}: real premium location style and lighting only. Use it as the commercial space family, but add the required presenter and product evidence in the same shot.`;
       }
-      if (kind === 'identity_reference') {
-        return `Reference image ${n}: strict human identity reference. Preserve the same face impression, age, hairstyle and wardrobe family while placing the actor naturally in the scene.`;
+      if (/^identity_reference/.test(kind)) {
+        return `Reference image ${n}: strict fixed-actor identity reference${kind === 'identity_reference_view' ? ' view' : ''}. All identity references depict the same actor; preserve one continuous person across shots, including face impression, age, hairstyle, body proportions and wardrobe family, while placing the actor naturally in the scene.`;
       }
       if (kind === 'main_reference' || kind === 'shot_reference' || kind === 'demand_reference') {
         return `Reference image ${n}: product/scene/style evidence only. Preserve the requested category while obeying the shot contract.`;
@@ -14954,9 +15631,9 @@ function _buildLuxuryImageModelStrictPrompt({
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
   const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
   const executionPacket = scene.shot_execution_packet && typeof scene.shot_execution_packet === 'object'
-    ? _luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 2600)
+    ? _luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 1150)
     : '';
-  const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 2200);
+  const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 760);
   const visual = _compactLuxuryKeyframeText(
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
     260,
@@ -14990,7 +15667,7 @@ function _buildLuxuryImageModelStrictPrompt({
   const sceneRecipe = _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene);
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
-    ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory identity reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family, but do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, or a portrait studio.'
+    ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change only pose, expression, camera angle and scene placement. Do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
@@ -14998,7 +15675,8 @@ function _buildLuxuryImageModelStrictPrompt({
     personRequired
       ? 'MANDATORY HUMAN: one visible real presenter/consultant/professional must appear in this frame performing the specified action. Do not generate an empty location, subject-only packshot, robot, mannequin, or abstract scene.'
       : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
-    'REAL CAMERA LOCK: live-action documentary commercial film still, natural skin texture with imperfections, real fabric, practical location light, believable shadows, optical 35mm/50mm lens, no over-smoothed AI face, no glossy 3D render, no poster-like illustration.',
+    'LIVE-ACTION REALISM LOCK: make it look like a frame from a real commercial shoot with a real actor on a real location. Natural skin texture with pores and slight asymmetry, realistic hair and hands, real fabric, practical location light, believable shadows, optical 35mm/50mm lens perspective.',
+    'STYLE FORBIDDEN: no AI poster style, no anime, no illustration, no glossy 3D render, no CGI, no waxy plastic face, no cyberpunk, no sci-fi visor, no sunglasses/tinted glasses, no robot/android, no fashion-beauty campaign unless the confirmed script explicitly asks for it.',
     personRequired ? 'FRAMING LOCK: presenter must be in a medium or medium-close shot, face and expression readable, hands/action visible, placed beside the product/material evidence in the same real location.' : '',
     referenceRoleGuide ? _compactLuxuryKeyframeText(referenceRoleGuide, 760) : '',
     steelEnvironmentLock,
@@ -15019,8 +15697,8 @@ function _buildLuxuryImageModelStrictPrompt({
     subjectGuard,
     productLockForScene,
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
-    'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
-  ], 6000);
+    'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, cyber goggles, sunglasses, helmet, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
+  ], 2600);
 }
 
 // Generate one strict high-end ad keyframe from the compiled storyboard contract and reference materials.
@@ -15060,6 +15738,20 @@ async function _createLuxuryAdReferenceKeyframe({
   const hasAvatar = !!rawAvatarSource && !avatarIsGeneratedPresenterSeed;
   const avatarSource = hasAvatar ? rawAvatarSource : '';
   const generatedPresenterGuidanceUrl = avatarIsGeneratedPresenterSeed ? rawAvatarSource : '';
+  const sceneIdentityGroup = Array.isArray(scene.identity_reference_group) ? scene.identity_reference_group : [];
+  const actorReferenceGroup = hasAvatar
+    ? _luxuryActorReferenceGroup({
+      ...(scene.actor_asset || scene.character_lock?.actor_asset || {}),
+      ...(avatar || {}),
+      extra_image_urls: [
+        ...(Array.isArray(avatar?.extra_image_urls) ? avatar.extra_image_urls : []),
+        ...(Array.isArray(scene.actor_asset?.extra_image_urls) ? scene.actor_asset.extra_image_urls : []),
+        ...(Array.isArray(scene.character_lock?.actor_asset?.extra_image_urls) ? scene.character_lock.actor_asset.extra_image_urls : []),
+        ...sceneIdentityGroup.slice(1),
+      ],
+    }, avatarSource || sceneIdentityGroup[0] || '')
+    : sceneIdentityGroup;
+  const actorExtraReferenceUrls = actorReferenceGroup.filter(x => !sameRef(x, avatarSource));
   let demandReferenceImages = (Array.isArray(scene.brief_reference_images) ? scene.brief_reference_images : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
@@ -15145,6 +15837,10 @@ async function _createLuxuryAdReferenceKeyframe({
     }
     if (existing?.resolved) refs.push({ ...existing, kind: 'identity_reference' });
   }
+  for (const url of actorExtraReferenceUrls) {
+    if (refs.length >= 8) break;
+    await addRef(url, 'identity_reference_view');
+  }
   const characterLock = scene.character_lock || (hasAvatar
     ? (typeof _buildLuxuryCharacterConsistencyLock === 'function'
       ? _buildLuxuryCharacterConsistencyLock(avatar)
@@ -15218,6 +15914,8 @@ async function _createLuxuryAdReferenceKeyframe({
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
     prompt,
+    scene,
+    productSubject,
     aspectRatio,
     filename,
     destDir,
@@ -15268,6 +15966,8 @@ async function _createLuxuryAdReferenceKeyframe({
       index,
       total: Number(scene.totalShots || scene.shotCount || 1),
     }),
+    personRequired,
+    characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
@@ -15338,6 +16038,8 @@ async function _createLuxuryAdReferenceKeyframe({
 async function _generateLuxuryReferenceKeyframeImageSafe({
   req,
   prompt,
+  scene = {},
+  productSubject = '',
   aspectRatio,
   filename,
   destDir,
@@ -15353,6 +16055,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   strictSingleCandidate = false,
   allowQaRepair = false,
   qaRepairHook = null,
+  personRequired = false,
+  characterLock = null,
 }) {
   const attempts = [];
   let repairInstruction = '';
@@ -15383,11 +16087,23 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     : '';
   const promptWithRepair = (model = null) => {
     const modelId = String(model?.model_id || model?.model || '').toLowerCase();
-    const maxChars = modelId === 'gpt-image-2' ? 12000 : 1850;
+    const maxChars = modelId === 'gpt-image-2' ? 2600 : 1850;
     const fullPrompt = repairInstruction
       ? [repairInstruction, currentPrompt].filter(Boolean).join(' ')
       : currentPrompt;
-    return _luxuryCapImageModelPrompt(fullPrompt, maxChars);
+    const cappedPrompt = _luxuryCapImageModelPrompt(fullPrompt, maxChars);
+    if (modelId === 'gpt-image-2') {
+      return _luxuryGptImage2EditPrompt({
+        prompt: cappedPrompt,
+        scene,
+        productSubject,
+        refs,
+        personRequired,
+        characterLock,
+        aspectRatio: safeAspectRatio,
+      });
+    }
+    return cappedPrompt;
   };
   const runSeedream = async (model, suffix, promptForAttempt) => {
     if (!primary) throw new Error('缺少主商品/参考图，无法生成剧情广告分镜');
@@ -15422,7 +16138,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         });
       }
       if (modelId === 'gpt-image-2') {
-        const gptRefs = referenceImages.filter(Boolean);
+        const gptRefs = _luxuryGptImage2EditReferenceUrls(refs);
         const runGptImage2 = (refsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
           model: model.model_id,
           prompt: promptForAttempt,
@@ -15440,11 +16156,14 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             err._luxuryAttemptRecorded = true;
             addAttempt(model, false, err, {
               prompt_chars: Array.from(String(promptForAttempt || '')).length,
-              fallback_mode: 'gpt-image-2-edits-first-then-relaxed-fallback',
+              prompt_mode: 'gpt-image-2-audit-safe-edit',
+              fallback_mode: 'gpt-image-2-edits-first-no-reference-dropping',
               reference_count: gptRefs.length,
-              rule: 'reference_preserving_first_relaxed_fallback_allowed',
+              all_reference_count: refs.length,
+              reference_kinds: refs.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+              rule: 'reference_preserving_required_for_locked_actor_keyframe',
             });
-            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references; trying relaxed configured image fallbacks:', shortError(err));
+            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references:', shortError(err));
           }
           throw err;
         }
@@ -15495,13 +16214,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     }
     throw new Error(`分镜生成阶段不支持 ${provider || 'unknown'}/${modelId || 'unknown'}，该模型可能属于图生视频或口型同步阶段`);
   };
-  const canPreserveLockedReferences = model => {
-    const provider = String(model?.provider_id || '').toLowerCase();
-    const modelId = String(model?.model_id || '').toLowerCase();
-    if (provider === 'topview' || modelId.startsWith('topview-')) return true;
-    if (provider === 'deyunai' && modelId === 'gpt-image-2') return true;
-    return false;
-  };
+  const canPreserveLockedReferences = model => modelCapabilityService.canGenerateReferencePreservingKeyframe(model);
 
   let controlledCandidateTried = false;
   const tryControlledCandidate = async (phase = 'after-models') => {
@@ -15578,47 +16291,44 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const configuredModelsRaw = _uniquePipelineModels([
     ..._pickRunnablePipelineModels(stageId || 'luxury_ad.keyframe'),
   ]);
+  const requiredKeyframeCapabilities = ['image_edit', 'reference_preserving', 'character_consistency', 'realistic_photo'];
+  const rawCapabilityReports = configuredModelsRaw.map(model =>
+    modelCapabilityService.modelCapabilityReport(model, requiredKeyframeCapabilities));
   const referencePreservingModels = configuredModelsRaw.filter(model => {
-    const provider = String(model?.provider_id || '').toLowerCase();
-    if (hasShotReferenceLock && provider !== 'deyunai' && provider !== 'topview') return false;
+    if (hasShotReferenceLock && !modelCapabilityService.hasCapability(model, 'multi_reference')) return false;
     if (hasReferenceLock && !canPreserveLockedReferences(model)) return false;
     return true;
   });
-  const relaxedFallbackModels = hasReferenceLock
-    ? configuredModelsRaw.filter(model => !referencePreservingModels.some(locked => (
-      String(locked?.provider_id || '') === String(model?.provider_id || '')
-      && String(locked?.model_id || '') === String(model?.model_id || '')
-    )))
-    : [];
   const configuredModelsAll = hasReferenceLock
-    ? _uniquePipelineModels([...referencePreservingModels, ...relaxedFallbackModels])
+    ? _uniquePipelineModels(referencePreservingModels)
     : configuredModelsRaw;
   if (_luxuryStageRequiresAdminConfig(stageId || 'luxury_ad.keyframe') && !configuredModelsAll.length) {
-    const err = new Error(`${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止剧情广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
+    const rawLabels = configuredModelsRaw.map(model => `${model.provider_id}/${model.model_id}`).join(', ') || '无可运行图片模型';
+    const err = new Error(hasReferenceLock && configuredModelsRaw.length
+      ? `${stageId || 'luxury_ad.keyframe'} 已有可运行图片模型，但没有模型同时满足“多参考/图像编辑/保参考/人物一致/写实照片”能力，已停止剧情广告分镜生成。当前候选：${rawLabels}。`
+      : `${stageId || 'luxury_ad.keyframe'} 未在模型调用管理中配置可运行模型，已停止剧情广告分镜生成；请先到模型调用管理启用该阶段的图像模型。`);
     err.status = 422;
-    err.code = 'LUXURY_STAGE_MODEL_NOT_CONFIGURED';
+    err.code = hasReferenceLock && configuredModelsRaw.length ? 'LUXURY_REFERENCE_PRESERVING_MODEL_REQUIRED' : 'LUXURY_STAGE_MODEL_NOT_CONFIGURED';
     err.luxuryKeyframeAttempts = [{
       provider_id: 'preflight',
       model_id: 'model-routing-admin-config',
       ok: false,
-      error: `${stageId || 'luxury_ad.keyframe'} has no runnable model from pipeline model config`,
+      error: hasReferenceLock && configuredModelsRaw.length
+        ? `${stageId || 'luxury_ad.keyframe'} has runnable models but none match the required reference-preserving keyframe capabilities`
+        : `${stageId || 'luxury_ad.keyframe'} has no runnable model from pipeline model config`,
+      capability_required: requiredKeyframeCapabilities,
+      capability_candidates: rawCapabilityReports,
     }];
     throw err;
   }
   const hasGeneratedPresenterGuidanceRef = refs.some(x => x?.kind === 'generated_presenter_guidance');
   const hasStrictIdentityReference = refs.some(x => x?.kind === 'identity_reference');
-  const hasRunnableTopviewKeyframeModel = configuredModelsAll.some(model =>
-    String(model?.provider_id || '').toLowerCase() === 'topview'
-    || String(model?.model_id || '').toLowerCase().startsWith('topview-')
-  );
-  const hasRunnableDeyunaiGptImage2Model = configuredModelsAll.some(model =>
-    String(model?.provider_id || '').toLowerCase() === 'deyunai'
-    && String(model?.model_id || '').toLowerCase() === 'gpt-image-2'
-  );
-  const hasRunnableCommercialKeyframeModel = hasRunnableTopviewKeyframeModel || hasRunnableDeyunaiGptImage2Model;
-  const topviewProviderHint = hasRunnableTopviewKeyframeModel
-    ? 'Topview 图像编辑模型已可用于当前分镜阶段，系统会继续按配置尝试。'
-    : '当前生产环境没有可运行的 Topview 图像编辑模型（缺少 provider/API Key/UID 或未启用），系统不会把它当作已可用能力。';
+  const capabilityReports = configuredModelsAll.map(model =>
+    modelCapabilityService.modelCapabilityReport(model, requiredKeyframeCapabilities));
+  const hasRunnableCommercialKeyframeModel = configuredModelsAll.some(canPreserveLockedReferences);
+  const keyframeCapabilityHint = hasRunnableCommercialKeyframeModel
+    ? '当前已有可运行的保参考真人关键帧模型，系统会按模型调用管理配置继续尝试。'
+    : '当前生产环境没有可运行的“图像编辑 + 保参考 + 人物一致 + 写实照片”关键帧能力；系统不会把普通自由生图模型当作已可用能力。';
   if (
     hasGeneratedPresenterGuidanceRef
     && !hasStrictIdentityReference
@@ -15630,9 +16340,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       .join(', ') || '无可运行图片模型';
     const err = new Error([
       '剧情广告分镜生成已停止：当前镜头需要真人商业片质感和人物一致性，但只有系统生成的 presenter_seed，没有用户确认的真人/演员身份图。',
-      topviewProviderHint,
-      `当前可运行候选仅为：${configuredLabels}。这些候选在实测中会发生人物换脸、场景跑偏和 AI 质感过重，未达到竞品级商用标准。`,
-      '请先配置可运行的 Topview 图像编辑模型，或上传/选择已确认真人身份参考图后重试；系统不会再降级到 DeyunAI 自由生图盲试。',
+      keyframeCapabilityHint,
+      `当前可运行候选仅为：${configuredLabels}。这些候选若缺少保参考/人物一致能力，会发生人物换脸、场景跑偏和 AI 质感过重，未达到竞品级商用标准。`,
+      '请先启用具备保参考真人关键帧能力的图像编辑模型，或上传/选择已确认真人身份参考图后重试；系统不会再降级到自由生图盲试。',
     ].join(' '));
     err.status = 422;
     err.code = 'LUXURY_REAL_FRAME_PROVIDER_REQUIRED';
@@ -15642,6 +16352,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       ok: false,
       error: '缺少可运行的真人一致性商业片图像编辑链路，已阻止 DeyunAI 自由生图继续消耗。',
       configured_models: configuredLabels,
+      capability_required: requiredKeyframeCapabilities,
+      capability_candidates: capabilityReports,
     }];
     throw err;
   }
@@ -15833,7 +16545,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     '剧情广告分镜画面生成失败。',
     summary ? `已尝试：${summary}。` : '',
     hasReferenceLock ? '当前镜头已绑定参考图；系统已优先尝试可保参考图的编辑模型，随后也尝试了已配置的可用图像模型。' : '',
-    '可灵、海螺属于后续图生视频阶段，必须先生成分镜画面后才会执行；Topview 图片模型可用于当前分镜阶段，请检查其文生图/图像编辑额度和模型配置。',
+    'Seedance2、可灵、海螺等属于后续图生视频阶段，必须先生成分镜画面后才会执行；当前阶段请检查具备“图像编辑/保参考/人物一致”的关键帧模型额度、授权和模型配置。',
   ].filter(Boolean).join(''));
   err.status = qaRejected ? 422 : (limitHit ? 429 : 500);
   err.code = qaRejected ? 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED' : (limitHit ? 'PROVIDER_LIMIT_EXCEEDED' : 'LUXURY_KEYFRAME_PROVIDERS_FAILED');
@@ -16118,6 +16830,8 @@ async function _createLuxuryAdReferenceKeyframeFallback({
   const imageResult = await _generateLuxuryReferenceKeyframeImageSafe({
     req,
     prompt,
+    scene,
+    productSubject,
     aspectRatio,
     filename,
     destDir,
@@ -16166,6 +16880,8 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       index,
       total: Number(scene.totalShots || scene.shotCount || 1),
     }),
+    personRequired,
+    characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
@@ -17555,6 +18271,7 @@ router.post('/spaces/keyframes', async (req, res) => {
   let luxuryPlanningStoryboardSheets = [];
   let luxuryPlanningScenes = [];
   let luxuryPlanningMeta = null;
+  let luxuryActorAssetPackage = null;
   try {
     if (_isStrictShowroomMode(req.body || {})) {
       try {
@@ -17592,6 +18309,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       brief_reference_assets = [],
       visual_reference_brief = null,
       global_visual_bible = null,
+      production_contract = null,
+      production_project_id = '',
       guide_gender = 'female',
       aspect_ratio,
       aspectRatio: aspectRatioBody,
@@ -17600,6 +18319,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       resolution = '',
       request_key = '',
       request_async = false,
+      storyboard_review_only = null,
+      storyboard_final_keyframes = false,
     } = req.body || {};
     const isLuxuryRequest = ad_mode === 'luxury_ad';
     if (!background_url && !isLuxuryRequest) return res.status(400).json({ success: false, error: 'background_url 必填' });
@@ -17627,6 +18348,9 @@ router.post('/spaces/keyframes', async (req, res) => {
     const aspectRatio = _normalizeAspectRatio(aspect_ratio || aspectRatioBody, '16:9');
     const normalizedOutputSize = _normalizeOutputSize(output_size || outputSize);
     const isLuxury = isLuxuryRequest;
+    const luxuryStoryboardReviewOnly = isLuxury
+      && storyboard_review_only === true
+      && storyboard_final_keyframes !== true;
     const isShowroomGuide = ad_mode === 'showroom_guide';
     const luxuryReferences = isLuxury
       ? [background_url, ...(Array.isArray(reference_images) ? reference_images : [])]
@@ -17656,6 +18380,9 @@ router.post('/spaces/keyframes', async (req, res) => {
     const enrichedAssetSummary = [asset_summary || '', visualReferenceSummary].filter(Boolean).join('\n');
     const luxuryBriefPersonReferenceImage = isLuxury
       ? _selectLuxuryBriefReferenceImage(briefReferenceAssets, visualReferenceBrief, ['person'])
+      : '';
+    const luxuryPersonAssetImageUrl = isLuxury && person_asset && (person_asset.image_url || person_asset.url)
+      ? String(person_asset.image_url || person_asset.url || '').trim()
       : '';
     const luxuryBriefSceneReferenceImage = isLuxury
       ? _selectLuxuryBriefReferenceImage(briefReferenceAssets, visualReferenceBrief, ['scene', 'product', 'detail', 'mixed', 'competitor_style'])
@@ -17742,10 +18469,41 @@ router.post('/spaces/keyframes', async (req, res) => {
     }
     if (isLuxury) {
       luxuryPlanningScenes = scenes;
+      const confirmedIdentityUrl = avatar?.image_url || luxuryPersonAssetImageUrl || luxuryBriefPersonReferenceImage || '';
+      const confirmedIdentitySource = avatar?.image_url
+        ? 'selected_avatar'
+        : (luxuryPersonAssetImageUrl
+          ? (person_asset?.type || 'person_asset')
+          : (luxuryBriefPersonReferenceImage ? 'brief_person_reference' : ''));
+      const confirmedIdentityAvailability = confirmedIdentityUrl
+        ? await _probeLuxuryImageReferenceAvailability(req, confirmedIdentityUrl)
+        : { reachable: false, reason: 'missing_actor_reference' };
+      const luxuryProductionContract = _buildLuxuryProductionContract({
+        scenes,
+        productSubject,
+        identityReferenceUrl: confirmedIdentityUrl,
+        identityActorAssetId: person_asset?.actor_asset_id || person_asset?.asset_library_id || person_asset?.material_id || '',
+        identityExtraImageUrls: Array.isArray(person_asset?.extra_image_urls) ? person_asset.extra_image_urls : [],
+        identitySource: confirmedIdentitySource,
+        identityName: avatar?.name || person_asset?.name || '',
+        identityGender: avatar?.gender || person_asset?.gender || '',
+        identityRole: person_asset?.role || person_asset?.type || '',
+        identityDescription: [
+          person_asset?.description,
+          person_asset?.appearance,
+          person_asset?.outfit,
+        ].filter(Boolean).join(' '),
+        identityAvailability: confirmedIdentityAvailability,
+        globalVisualBible: luxuryGlobalVisualBible,
+        assetManifest: luxuryAssetManifest,
+        visualLocks: luxuryVisualLocks,
+      });
+      luxuryActorAssetPackage = luxuryProductionContract.actor_asset || null;
       luxuryPlanningMeta = {
         asset_manifest: luxuryAssetManifest || undefined,
         visual_locks: luxuryVisualLocks || undefined,
         global_visual_bible: luxuryGlobalVisualBible || undefined,
+        production_contract: luxuryProductionContract,
         shot_count: scenes.length,
         ratio: aspectRatio,
         output_size: normalizedOutputSize,
@@ -17759,6 +18517,67 @@ router.post('/spaces/keyframes', async (req, res) => {
         aspectRatio,
         destDir: JIMENG_ASSETS_DIR,
       });
+      if (luxuryStoryboardReviewOnly) {
+        const reviewBody = {
+          success: true,
+          storyboard_mode: 'planning_sheet',
+          keyframe_generation_status: 'deferred_for_review',
+          keyframe_error: '',
+          scenes,
+          keyframes: [],
+          storyboard_sheets: luxuryPlanningStoryboardSheets,
+          details: {
+            reason: 'storyboard_review_first',
+            message: '已先生成可审核分镜板；确认剧情、演员和写实风格后再生成最终关键帧。',
+            final_keyframes_required: true,
+          },
+          ...(luxuryPlanningMeta || {}),
+          reference_mode: 'storyboard_planning_sheet',
+        };
+        const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, reviewBody);
+        reviewBody.production_project = productionProject;
+        reviewBody.production_project_id = productionProject.id;
+        _storeLuxuryKeyframeResult(req, request_key, { status: 'done', result: reviewBody });
+        return res.json(reviewBody);
+      }
+      if (luxuryProductionContract.human_required && luxuryProductionContract.actor_reference?.status !== 'confirmed') {
+        const hasBadActorUrl = !!luxuryProductionContract.actor_reference?.image_url;
+        const err = new Error(hasBadActorUrl
+          ? '真实关键帧已停止：当前演员参考图片不可访问，上游图像编辑模型无法读取该人物参考。请重新上传人物参考或选择本地可访问的数字人形象后再生成真实关键帧。'
+          : '真实关键帧已停止：当前分镜包含真人镜头，但还没有确认演员参考。请先上传人物参考、选择数字人形象，或生成真人三视图后再生成真实关键帧。');
+        err.status = 422;
+        err.code = hasBadActorUrl ? 'LUXURY_ACTOR_REFERENCE_UNREACHABLE' : 'LUXURY_ACTOR_REFERENCE_REQUIRED';
+        err.details = {
+          reason: hasBadActorUrl ? 'actor_reference_unreachable' : 'actor_reference_required',
+          production_contract: luxuryProductionContract,
+          attempts: [{
+            provider_id: 'preflight',
+            model_id: 'actor-reference-gate',
+            ok: false,
+            error: hasBadActorUrl ? '演员参考图片不可访问，已阻止最终关键帧生成。' : '缺少已确认演员参考，已阻止最终关键帧生成。',
+            availability: luxuryProductionContract.actor_reference?.availability || null,
+          }],
+        };
+        throw err;
+      }
+      if (luxuryProductionContract.human_required && !luxuryProductionContract.keyframe_model_gate?.reference_preserving_ready) {
+        const err = new Error('真实关键帧已停止：当前分镜包含真人镜头，也已有演员参考，但本地没有可运行的“图像编辑 + 保参考 + 人物一致 + 写实照片”关键帧模型。请在模型调用管理中启用具备该能力的 Image2/图像编辑链路后再生成。');
+        err.status = 422;
+        err.code = 'LUXURY_REFERENCE_PRESERVING_MODEL_REQUIRED';
+        err.details = {
+          reason: 'reference_preserving_model_required',
+          production_contract: luxuryProductionContract,
+          attempts: [{
+            provider_id: 'preflight',
+            model_id: 'reference-preserving-model-gate',
+            ok: false,
+            error: '缺少可运行的保参考真人关键帧模型，已阻止最终关键帧生成。',
+            capability_required: ['image_edit', 'reference_preserving', 'character_consistency', 'realistic_photo'],
+            capability_candidates: luxuryProductionContract.keyframe_model_gate?.capability_candidates || [],
+          }],
+        };
+        throw err;
+      }
       await _assertLuxuryKeyframeQaAvailable(req);
     }
     const base = _publicBaseUrl(req);
@@ -17766,9 +18585,6 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (isLuxury) {
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
-    const personAssetImageUrl = isLuxury && person_asset && (person_asset.image_url || person_asset.url)
-      ? String(person_asset.image_url || person_asset.url || '').trim()
-      : '';
     const luxurySeedAssets = isLuxury
       ? await _prepareLuxuryStoryboardSeedAssets(req, {
         scenes,
@@ -17777,7 +18593,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         outputSize: normalizedOutputSize,
         filenamePrefix: `digital_ad_preview_${taskId}`,
         destDir: JIMENG_ASSETS_DIR,
-        existingPresenterUrl: avatar?.image_url || personAssetImageUrl || luxuryBriefPersonReferenceImage || '',
+        existingPresenterUrl: avatar?.image_url || luxuryPersonAssetImageUrl || luxuryBriefPersonReferenceImage || '',
         existingSceneUrl: luxuryBriefSceneReferenceImage || '',
         productReferenceImages: [background_url, ...(Array.isArray(reference_images) ? reference_images : []), ...briefReferenceImages],
         guideGender: guide_gender,
@@ -17790,12 +18606,14 @@ router.post('/spaces/keyframes', async (req, res) => {
       luxurySceneSeedImage,
       luxurySubjectEvidenceSeedImage,
     ].filter(Boolean);
-    const luxuryPersonAvatar = personAssetImageUrl
+    const luxuryPersonAvatar = luxuryPersonAssetImageUrl
       ? {
         id: person_asset.id || 'luxury_ad_person_sheet',
         name: person_asset.name || '拟真真人三视图',
         title: person_asset.name || '拟真真人三视图',
-        image_url: personAssetImageUrl,
+        image_url: luxuryPersonAssetImageUrl,
+        extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
+        actor_asset_id: person_asset.actor_asset_id || person_asset.asset_library_id || person_asset.material_id || '',
         gender: person_asset.gender || '',
       }
       : null;
@@ -17809,6 +18627,24 @@ router.post('/spaces/keyframes', async (req, res) => {
       }
       : null;
     const luxuryIdentityAvatar = avatar || luxuryPersonAvatar || luxuryBriefReferenceAvatar;
+    const luxuryIdentityExtraRefs = Array.isArray(luxuryIdentityAvatar?.extra_image_urls)
+      ? luxuryIdentityAvatar.extra_image_urls.map(x => String(x || '').trim()).filter(Boolean).slice(0, 8)
+      : [];
+    const luxuryIdentityReferenceGroup = _luxuryActorReferenceGroup(
+      luxuryActorAssetPackage || luxuryIdentityAvatar || {},
+      luxuryActorAssetPackage?.image_url || luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+    );
+    const luxuryEffectiveIdentityAvatar = luxuryIdentityReferenceGroup.length
+      ? {
+        ...(luxuryIdentityAvatar || {}),
+        id: luxuryActorAssetPackage?.actor_asset_id || luxuryIdentityAvatar?.id || '',
+        actor_asset_id: luxuryActorAssetPackage?.actor_asset_id || luxuryIdentityAvatar?.actor_asset_id || '',
+        actor_id: luxuryActorAssetPackage?.actor_id || luxuryIdentityAvatar?.actor_id || '',
+        name: luxuryActorAssetPackage?.name || luxuryIdentityAvatar?.name || luxuryIdentityAvatar?.title || '',
+        image_url: luxuryIdentityReferenceGroup[0],
+        extra_image_urls: luxuryIdentityReferenceGroup.slice(1),
+      }
+      : luxuryIdentityAvatar;
     const luxuryBriefCharacterLock = isLuxury
       ? _buildLuxuryReferenceCharacterLock(visualReferenceBrief, luxuryBriefPersonReferenceImage)
       : null;
@@ -17817,7 +18653,10 @@ router.post('/spaces/keyframes', async (req, res) => {
         ? {
           ..._buildLuxuryCharacterConsistencyLock(luxuryIdentityAvatar || {}),
           ...(luxuryBriefCharacterLock || {}),
+          actor_id: luxuryActorAssetPackage?.actor_id || '',
+          actor_asset: luxuryActorAssetPackage || undefined,
           prompt: [
+            luxuryActorAssetPackage?.prompt,
             _buildLuxuryCharacterConsistencyLock(luxuryIdentityAvatar || {})?.prompt,
             luxuryBriefCharacterLock?.prompt,
           ].filter(Boolean).join(' '),
@@ -17826,9 +18665,14 @@ router.post('/spaces/keyframes', async (req, res) => {
           enabled: true,
           mode: luxuryBriefCharacterLock?.mode || 'optional_identity_reference',
           identity_name: String(luxuryIdentityAvatar?.name || luxuryIdentityAvatar?.title || luxuryIdentityAvatar?.nickname || luxuryBriefCharacterLock?.identity_name || 'selected presenter').trim().slice(0, 60),
+          actor_id: luxuryActorAssetPackage?.actor_id || '',
+          actor_asset: luxuryActorAssetPackage || undefined,
           stable_attributes: luxuryBriefCharacterLock?.stable_attributes || ['face identity', 'age impression', 'hairstyle', 'body proportions', 'outfit family', 'skin tone'],
           mutable_attributes: ['pose', 'gesture', 'expression', 'camera angle', 'lighting adaptation', 'scene placement'],
-          prompt: luxuryBriefCharacterLock?.prompt || 'CHARACTER CONSISTENCY LOCK: keep the same selected identity across shots that include a human; do not invent another actor.',
+          prompt: [
+            luxuryActorAssetPackage?.prompt,
+            luxuryBriefCharacterLock?.prompt || 'CHARACTER CONSISTENCY LOCK: keep the same selected identity across shots that include a human; do not invent another actor.',
+          ].filter(Boolean).join(' '),
         })
       : null;
     for (let i = 0; i < scenes.length; i++) {
@@ -17890,7 +18734,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       const luxuryShotRefs = luxuryShotRefInfo.refs;
       if (isLuxury) {
         const luxuryShotReferenceRoleMap = {
-          identity_reference: luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+          identity_reference: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+          identity_reference_group: luxuryIdentityReferenceGroup,
           scene_reference: luxurySceneSeedImage || luxuryBriefSceneReferenceImage || '',
           product_reference: luxurySubjectEvidenceSeedImage || background_url || '',
           shot_reference: luxuryShotRefInfo.active || '',
@@ -17954,8 +18799,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       const shotBackgroundUrl = isLuxury ? background_url : background_url;
       const { outPath: keyframePath, plan: shotPlan } = await keyframeMaker({
         req,
-        avatar: luxuryIdentityAvatar,
-        avatarUrl: luxuryIdentityAvatar?.image_url || '',
+        avatar: luxuryEffectiveIdentityAvatar,
+        avatarUrl: luxuryEffectiveIdentityAvatar?.image_url || '',
         backgroundUrl: shotBackgroundUrl,
         referenceImages: isLuxury ? luxuryShotRefs : luxuryReferences,
         scene: {
@@ -17968,15 +18813,17 @@ router.post('/spaces/keyframes', async (req, res) => {
           asset_manifest: luxuryAssetManifest || undefined,
           visual_locks: luxuryVisualLocks || undefined,
           character_lock: luxuryCharacterLock || undefined,
+          actor_asset: luxuryActorAssetPackage || undefined,
+          identity_reference_group: luxuryIdentityReferenceGroup,
           brief_reference_assets: briefReferenceAssets,
           brief_reference_images: briefReferenceImages,
           brief_reference_summary: visualReferenceSummary,
           seed_reference_images: luxurySeedReferenceImages,
           luxury_seed_assets: luxurySeedAssets,
           continuity_bible: luxuryReferenceContinuityBible,
-          identity_reference_image: luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+          identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
           qa_reference_images: [
-            luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+            ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
             luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
             luxurySubjectEvidenceSeedImage,
             ...briefReferenceImages,
@@ -17999,15 +18846,18 @@ router.post('/spaces/keyframes', async (req, res) => {
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
+            character_lock: luxuryCharacterLock || undefined,
+            actor_asset: luxuryActorAssetPackage || undefined,
+            identity_reference_group: luxuryIdentityReferenceGroup,
             topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
             visual_prompt: sc.visual_prompt || '',
             brief_reference_summary: visualReferenceSummary,
             seed_reference_images: luxurySeedReferenceImages,
             luxury_seed_assets: luxurySeedAssets,
             continuity_bible: luxuryReferenceContinuityBible,
-            identity_reference_image: luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+            identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
             qa_reference_images: [
-              luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+              ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
               luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
               luxurySubjectEvidenceSeedImage,
               ...(briefReferenceImages || []),
@@ -18030,15 +18880,18 @@ router.post('/spaces/keyframes', async (req, res) => {
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
+            character_lock: luxuryCharacterLock || undefined,
+            actor_asset: luxuryActorAssetPackage || undefined,
+            identity_reference_group: luxuryIdentityReferenceGroup,
             topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
             visual_prompt: sc.visual_prompt || '',
             brief_reference_summary: visualReferenceSummary,
             seed_reference_images: luxurySeedReferenceImages,
             luxury_seed_assets: luxurySeedAssets,
             continuity_bible: luxuryReferenceContinuityBible,
-            identity_reference_image: luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+            identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
             qa_reference_images: [
-              luxuryIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+              ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
               luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
               luxurySubjectEvidenceSeedImage,
               ...(briefReferenceImages || []),
@@ -18094,7 +18947,12 @@ router.post('/spaces/keyframes', async (req, res) => {
         destDir: JIMENG_ASSETS_DIR,
       })
       : [];
-    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    if (isLuxury) {
+      const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, responseBody);
+      responseBody.production_project = productionProject;
+      responseBody.production_project_id = productionProject.id;
+    }
     _storeLuxuryKeyframeResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
@@ -18109,9 +18967,38 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (Array.isArray(attempts) && attempts.length && !errorDetails.attempts) {
       errorDetails.attempts = attempts;
     }
+    const hardGateCodes = new Set([
+      'LUXURY_ACTOR_REFERENCE_REQUIRED',
+      'LUXURY_ACTOR_REFERENCE_UNREACHABLE',
+      'LUXURY_REFERENCE_PRESERVING_MODEL_REQUIRED',
+    ]);
+    if (req.body?.ad_mode === 'luxury_ad' && hardGateCodes.has(err.code)) {
+      if (Array.isArray(luxuryPlanningScenes) && luxuryPlanningScenes.length) {
+        const blockedBody = {
+          success: false,
+          scenes: luxuryPlanningScenes,
+          keyframes: [],
+          storyboard_sheets: luxuryPlanningStoryboardSheets,
+          details: errorDetails,
+          ...(luxuryPlanningMeta || {}),
+          keyframe_error: e,
+          code: err.code,
+          reference_mode: 'storyboard_planning_sheet',
+        };
+        const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, blockedBody, {
+          error: e,
+          error_code: err.code,
+        });
+        errorDetails.production_project = productionProject;
+        errorDetails.production_project_id = productionProject.id;
+      }
+      _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: errorDetails });
+      return _sendApiError(res, err, '剧情广告分镜生成失败');
+    }
     if (req.body?.ad_mode === 'luxury_ad' && Array.isArray(luxuryPlanningScenes) && luxuryPlanningScenes.length) {
+      const finalKeyframesRequested = req.body?.storyboard_final_keyframes === true;
       const partialBody = {
-        success: true,
+        success: !finalKeyframesRequested,
         storyboard_mode: 'planning_sheet',
         keyframe_generation_status: 'failed',
         keyframe_error: e,
@@ -18122,6 +19009,17 @@ router.post('/spaces/keyframes', async (req, res) => {
         ...(luxuryPlanningMeta || {}),
         reference_mode: 'storyboard_planning_sheet',
       };
+      const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, partialBody, {
+        error: e,
+        error_code: err.code || '',
+      });
+      partialBody.production_project = productionProject;
+      partialBody.production_project_id = productionProject.id;
+      if (finalKeyframesRequested) {
+        partialBody.code = err.code || 'LUXURY_FINAL_KEYFRAME_GENERATION_FAILED';
+        _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: partialBody });
+        return res.status(err.status && err.status >= 400 ? err.status : 422).json(partialBody);
+      }
       _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'done', result: partialBody });
       return res.json(partialBody);
     }

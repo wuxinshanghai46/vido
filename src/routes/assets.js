@@ -28,10 +28,42 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
+function normalizeAssetImageList(value) {
+  const list = Array.isArray(value) ? value : (value ? [value] : []);
+  const seen = new Set();
+  return list
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter(x => {
+      if (seen.has(x)) return false;
+      seen.add(x);
+      return true;
+    })
+    .slice(0, 12);
+}
+
+function publicAssetUrl(asset) {
+  return asset.file_url || asset.image_url || asset.url || '';
+}
+
+function serializeAsset(asset) {
+  if (!asset) return asset;
+  const imageUrl = publicAssetUrl(asset);
+  const extraImages = normalizeAssetImageList(asset.extra_image_urls || asset.extra_images || []);
+  return {
+    ...asset,
+    category: asset.category || asset.type,
+    image_url: asset.image_url || imageUrl,
+    file_url: asset.file_url || imageUrl,
+    extra_image_urls: extraImages,
+    view_count: asset.view_count || (imageUrl ? 1 + extraImages.length : extraImages.length),
+  };
+}
+
 // GET /api/assets — 列表
 router.get('/', (req, res) => {
   const { type } = req.query;
-  const assets = db.listAssets(req.user.id, type || 'all');
+  const assets = db.listAssets(req.user.id, type || 'all').map(serializeAsset);
   res.json({ success: true, data: assets });
 });
 
@@ -39,10 +71,46 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const asset = db.getAsset(req.params.id);
   if (!asset) return res.status(404).json({ success: false, error: '素材不存在' });
-  res.json({ success: true, data: asset });
+  res.json({ success: true, data: serializeAsset(asset) });
 });
 
 // POST /api/assets/upload — 上传素材
+router.post('/', (req, res) => {
+  const body = req.body || {};
+  const type = String(body.type || body.category || '').trim() || 'scene';
+  if (!['character', 'scene', 'product', 'reference', 'music'].includes(type)) {
+    return res.status(400).json({ success: false, error: '无效素材类型' });
+  }
+  const imageUrl = String(body.image_url || body.file_url || body.url || '').trim();
+  const extraImageUrls = normalizeAssetImageList(body.extra_image_urls || body.extra_images || body.views);
+  if (type !== 'music' && !imageUrl && !extraImageUrls.length) {
+    return res.status(400).json({ success: false, error: '请提供素材图片 URL' });
+  }
+
+  const asset = {
+    id: uuidv4(),
+    user_id: req.user.id,
+    type,
+    category: type,
+    name: String(body.name || '').trim() || (type === 'character' ? '角色素材' : '素材'),
+    original_name: String(body.original_name || body.name || '').trim(),
+    file_path: '',
+    file_url: imageUrl,
+    image_url: imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_count: Number(body.view_count || (imageUrl ? 1 + extraImageUrls.length : extraImageUrls.length)) || 1,
+    status: body.status || 'active',
+    source: body.source || 'linked',
+    description: String(body.description || '').trim(),
+    tags: Array.isArray(body.tags) ? body.tags.slice(0, 20) : [],
+    metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
+    created_at: new Date().toISOString()
+  };
+
+  db.insertAsset(asset);
+  res.json({ success: true, data: serializeAsset(asset) });
+});
+
 router.post('/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: '请选择文件' });
 
@@ -54,17 +122,21 @@ router.post('/upload', upload.single('file'), (req, res) => {
     id: uuidv4(),
     user_id: req.user.id,
     type,
+    category: type,
     name: req.body.name || req.file.originalname,
     original_name: req.file.originalname,
     file_path: req.file.path,
     file_url: `/api/assets/file/${filename}`,
+    image_url: isAudio ? '' : `/api/assets/file/${filename}`,
+    extra_image_urls: [],
+    view_count: isAudio ? 0 : 1,
     duration: null,
     source: 'uploaded',
     created_at: new Date().toISOString()
   };
 
   db.insertAsset(asset);
-  res.json({ success: true, data: asset });
+  res.json({ success: true, data: serializeAsset(asset) });
 });
 
 // POST /api/assets/trim-music — 裁剪音乐并保存
@@ -148,16 +220,20 @@ router.post('/import', (req, res) => {
     id: uuidv4(),
     user_id: req.user.id,
     type,
+    category: type,
     name: name || path.basename(source_path, ext),
     original_name: path.basename(source_path),
     file_path: newPath,
     file_url: `/api/assets/file/${newFilename}`,
+    image_url: type === 'music' ? '' : `/api/assets/file/${newFilename}`,
+    extra_image_urls: [],
+    view_count: type === 'music' ? 0 : 1,
     source: 'generated',
     created_at: new Date().toISOString()
   };
 
   db.insertAsset(asset);
-  res.json({ success: true, data: asset });
+  res.json({ success: true, data: serializeAsset(asset) });
 });
 
 // PUT /api/assets/:id — 更新
