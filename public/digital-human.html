@@ -7,7 +7,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>
     (() => {
-      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','luxury-ad'];
+      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','luxury-ad'];
       let tab = 'step1';
       try {
         const urlTab = new URLSearchParams(location.search).get('tab');
@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260605-storyboard-sheet">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260607-actor-frameqa-v19">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -31,6 +31,7 @@
     html[data-dh-initial-tab="voice-clone"] .dh-tab-pane[data-pane="voice-clone"],
     html[data-dh-initial-tab="product-dh"] .dh-tab-pane[data-pane="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-tab-pane[data-pane="space-guide"],
+    html[data-dh-initial-tab="material-film"] .dh-tab-pane[data-pane="luxury-ad"],
     html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"] { display: block !important; }
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) .dh-nav-item.active {
       background: transparent;
@@ -46,6 +47,7 @@
     html[data-dh-initial-tab="voice-clone"] .dh-nav-item[data-tab="voice-clone"],
     html[data-dh-initial-tab="product-dh"] .dh-nav-item[data-tab="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-nav-item[data-tab="space-guide"],
+    html[data-dh-initial-tab="material-film"] .dh-nav-item[data-tab="material-film"],
     html[data-dh-initial-tab="luxury-ad"] .dh-nav-item[data-tab="luxury-ad"] {
       background: var(--dh-primary-bg) !important;
       color: var(--dh-primary) !important;
@@ -85,8 +87,8 @@
           <a class="dh-nav-item" data-tab="product-dh">
             <span class="dh-nav-icon">🛍️</span>商品数字人
           </a>
-          <a class="dh-nav-item" data-tab="space-guide">
-            <span class="dh-nav-icon">📢</span>广告数字人
+          <a class="dh-nav-item" data-tab="material-film">
+            <span class="dh-nav-icon">📢</span>素材审片
           </a>
           <a class="dh-nav-item" data-tab="luxury-ad">
             <span class="dh-nav-icon">🎞️</span>剧情广告
@@ -890,14 +892,14 @@
         <!-- ━━ 广告数字人 / 展厅导览 ━━ -->
         <div class="dh-tab-pane" data-pane="space-guide">
           <div class="dh-wizard-head">
-            <div class="dh-wizard-title" id="dhSpacePageTitle">广告数字人</div>
-            <div class="dh-wizard-sub" id="dhSpacePageSub">普通广告数字人按单镜头展墙讲解生成。</div>
+            <div class="dh-wizard-title" id="dhSpacePageTitle">素材审片</div>
+            <div class="dh-wizard-sub" id="dhSpacePageSub">素材审片按单镜头展墙讲解生成。</div>
           </div>
 
           <div class="dh-space-layout">
             <div class="dh-space-panel">
               <div class="dh-space-section">
-                <div class="dh-col-title" id="dhSpaceAvatarTitle">广告数字人形象（可选）</div>
+                <div class="dh-col-title" id="dhSpaceAvatarTitle">素材审片形象（可选）</div>
                 <div class="dh-space-avatar" id="dhSpaceAvatar">
                   <div class="dh-selected-empty">
                     <div class="dh-empty-icon">▥</div>
@@ -987,7 +989,7 @@
                 <div class="dh-ad-editor-main">
                   <div class="dh-ad-mode-panel" id="dhSpaceAdModePanel">
                     <div class="dh-space-copy-mode-tabs dh-ad-mode-tabs">
-                      <button type="button" class="active" data-space-ad-mode="standard">普通广告数字人</button>
+                      <button type="button" class="active" data-space-ad-mode="standard">素材审片</button>
                       <button type="button" data-space-ad-mode="luxury">剧情广告</button>
                     </div>
                     <div class="dh-field-hint" id="dhSpaceModeHint">普通模式按参考视频走“左侧数字人讲解 + 右侧展示区 + 单镜头稳定口播”；剧情广告才走多关键帧串联。</div>
@@ -997,7 +999,7 @@
                       <button type="button" data-space-guide-mode="direct_keyframe">上传完整首帧</button>
                       <button type="button" class="active" data-space-guide-mode="ai_guide">AI 生成导览员</button>
                     </div>
-                    <div class="dh-field-hint">普通广告数字人必须生成带人物的导览员预览，并通过首帧质检后才能合成；纯背景不能作为合格首帧。</div>
+                    <div class="dh-field-hint">素材审片必须生成带人物的导览员预览，并通过首帧质检后才能合成；纯背景不能作为合格首帧。</div>
                   </div>
                   <div class="dh-ad-mode-panel" id="dhSpaceGuideGenderPanel" style="display:none">
                     <label>AI 导览员性别</label>
@@ -1010,7 +1012,7 @@
                   <div class="dh-space-title-field">
                     <div class="dh-field">
                       <label>视频标题</label>
-                      <input class="dh-input" id="dhSpaceTitle" maxlength="80" value="广告数字人" placeholder="例如：高端艺术墙新品广告">
+                      <input class="dh-input" id="dhSpaceTitle" maxlength="80" value="素材审片" placeholder="例如：高端艺术墙新品广告">
                     </div>
                   </div>
                   <div class="dh-space-output-settings">
@@ -1132,8 +1134,8 @@
         <div class="dh-tab-pane" data-pane="luxury-ad">
           <div class="dh-wizard-head">
             <div>
-              <div class="dh-wizard-title">剧情广告</div>
-              <div class="dh-wizard-sub">广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。</div>
+              <div class="dh-wizard-title" id="dhLuxAdModeTitle">素材审片</div>
+              <div class="dh-wizard-sub" id="dhLuxAdModeSub">选择演员、上传多张素材，AI 生成广告词后直接合成基础广告。</div>
             </div>
           </div>
 
@@ -1144,6 +1146,7 @@
             <div class="locked" data-lux-step="4" role="button" tabindex="0"><b>4</b><span>分镜生成</span><small>形象和镜头</small></div>
             <div class="locked" data-lux-step="5" role="button" tabindex="0"><b>5</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
           </div>
+          <div id="dhLuxAdCapabilityStrip" class="dh-lux-commercial-guard"></div>
           <div class="dh-luxgen-live-progress" id="dhLuxAdLiveProgress" hidden></div>
           <div class="dh-luxgen-usage" id="dhLuxAdUsagePanel" hidden></div>
 
@@ -1151,8 +1154,8 @@
             <div class="dh-demo-entry">
               <div class="dh-demo-headline compact">
                 <div>
-                  <h2>告诉系统一句话，剩下交给我们</h2>
-                  <p class="dh-demo-copy">第一步只写广告需求。系统会先生成场景配置，再进入剧本、分镜、配音字幕和广告合成。</p>
+                  <h2>广告需求</h2>
+                  <p class="dh-demo-copy">写清产品、卖点、目标客户和收束方式，系统会生成场景配置并进入后续制作。</p>
                 </div>
                 <span class="dh-luxgen-badge" id="dhLuxAdRequirementState">待填写</span>
               </div>
@@ -1217,8 +1220,8 @@
               <div class="dh-luxgen-post-script-person" id="dhLuxAdPostScriptPerson">
                 <div class="dh-demo-section-title">人物配置</div>
                 <div class="dh-demo-guide">
-                  <b>先定人物</b>
-                  <span>生成剧本前锁定人物数量、人物性别和地域/种族；姓名、年龄、长相、服装、道具、气质、动作和妆造由 AI 在剧本人物表里生成。</span>
+                  <b>先定人物约束</b>
+                  <span>剧本前先锁定人数、性别、地域/种族或固定演员；可生成 AI 真人感演员包，也可上传真人照片或选择授权演员。</span>
                 </div>
                 <div class="dh-demo-person-source">
                   <input type="file" id="dhLuxAdPersonFile" accept="image/*" hidden>
@@ -1228,7 +1231,7 @@
                   </div>
                   <div>
                     <b>人物来源</b>
-                    <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；默认生成电影画质拟真真人，三视图只作为可选参考。</p>
+                    <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；AI 真人感演员包会作为后续分镜的人物一致性锁。</p>
                     <div class="dh-luxgen-person-spec">
                       <label>
                         <span>人物数量</span>
@@ -1267,10 +1270,10 @@
                     </div>
                   </div>
                   <div class="dh-demo-person-actions">
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdUploadPersonRef" type="button">上传人物参考</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdUploadPersonRef" type="button">上传真人参考</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickActorAsset" type="button">角色素材库</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickPerson" type="button">参考数字人形象</button>
-                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhLuxAdGeneratePersonSheet" type="button">AI 生成三视图</button>
+                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhLuxAdGeneratePersonSheet" type="button">AI 真人感演员包</button>
                   </div>
                 </div>
               </div>
@@ -1285,8 +1288,8 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
-                  <p class="dh-demo-copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
+                  <h3 id="dhLuxAdStep3Title"><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
+                  <p class="dh-demo-copy" id="dhLuxAdStep3Copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerateTop" type="button">重新生成剧本</button>
@@ -1303,17 +1306,18 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
-                  <p class="dh-demo-copy">分镜把人物形象、主体画面和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、声音字幕和 AI 指令。</p>
+                  <h3 id="dhLuxAdStep4Title"><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
+                  <p class="dh-demo-copy" id="dhLuxAdStep4Copy">分镜把人物形象、主体画面和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、声音字幕和 AI 指令。</p>
                 </div>
                 <button class="dh-btn dh-btn-primary" id="dhLuxAdGoCompose" type="button">确认分镜，进入广告合成</button>
               </div>
               <input type="file" id="dhLuxAdAssetFile" accept="image/*" hidden>
-              <div class="dh-demo-guide">
-                <b>按剧本生成</b>
-                <span>分镜必须严格沿用第 3 步已确认的镜头、人物、台词和动作；如果生成结果缺镜头、乱改主体或与剧本不一致，系统会报错而不是自动兜底。</span>
+              <div class="dh-demo-guide" id="dhLuxAdFrameGuide">
+                <b id="dhLuxAdFrameGuideTitle">按剧本生成</b>
+                <span id="dhLuxAdFrameGuideCopy">分镜必须严格沿用第 3 步已确认的镜头、人物、台词和动作；如果生成结果缺镜头、乱改主体或与剧本不一致，系统会报错而不是自动兜底。</span>
               </div>
-              <div class="dh-demo-section-title">分镜结果 <span class="dh-luxgen-badge" id="dhLuxAdFrameState">可选上传</span></div>
+              <div id="dhLuxAdCommercialGuard" class="dh-lux-commercial-guard"></div>
+              <div class="dh-demo-section-title"><span id="dhLuxAdFrameSectionTitle">分镜结果</span> <span class="dh-luxgen-badge" id="dhLuxAdFrameState">可选上传</span></div>
               <div id="dhLuxAdFrameHost" class="dh-demo-frame-list">
                 <div class="dh-luxgen-empty"><b>还没有分镜</b><span>确认剧本后点击“确认剧本，生成分镜”。</span></div>
               </div>
@@ -1351,6 +1355,18 @@
                     <option value="on" selected>默认生成</option>
                     <option value="off">不生成字幕</option>
                   </select>
+                </div>
+                <div class="dh-demo-card dh-luxgen-bgm-card" id="dhLuxAdBgmCard">
+                  <div class="dh-luxgen-bgm-main">
+                    <small>背景音乐</small>
+                    <b id="dhLuxAdBgmStatus">未配置，可先合成无配乐广告片</b>
+                    <span id="dhLuxAdBgmLicense">可自动匹配本地免第三方纯 BGM，也可上传自有授权音乐。</span>
+                  </div>
+                  <div class="dh-luxgen-bgm-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdBgmAuto">自动匹配 BGM</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdBgmUpload">上传 BGM</button>
+                  </div>
+                  <input type="file" id="dhLuxAdBgmFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden>
                 </div>
                 <div class="dh-demo-card">
                   <small>合成检查</small>
@@ -1392,7 +1408,7 @@
                 <option value="9:16" selected>9:16 竖屏广告</option>
                 <option value="16:9">16:9 横屏广告</option>
                 <option value="1:1">1:1 方形广告</option>
-                <option value="4:3">4:3 三视图 / 横版</option>
+                <option value="4:3">4:3 人物参考 / 横版</option>
                 <option value="3:4">3:4 竖版人物</option>
               </select>
               <select class="dh-input dh-luxgen-hidden-control" id="dhLuxAdSize" aria-hidden="true">
@@ -1665,7 +1681,7 @@ B: ...
             <div class="dh-task-type-tabs" id="dhTaskTypeTabs">
               <button class="active" data-task-type="digital_human">数字人</button>
               <button data-task-type="product_ad">商品口播视频</button>
-              <button data-task-type="digital_ad">广告数字人</button>
+              <button data-task-type="digital_ad">素材审片</button>
               <button data-task-type="luxury_ad">剧情广告</button>
             </div>
             <button class="dh-btn dh-btn-ghost" id="dhTaskRefresh">刷新任务</button>
@@ -1773,7 +1789,7 @@ B: ...
         <div class="dh-write-mode-tabs" id="dhWriteModeTabs">
           <button type="button" class="active" data-write-mode="script">口播稿</button>
           <button type="button" data-write-mode="product">商品数字人</button>
-          <button type="button" data-write-mode="space">广告数字人</button>
+          <button type="button" data-write-mode="space">素材审片</button>
         </div>
         <div class="dh-field">
           <label id="dhWriteTopicLabel">要写的内容 / 主题 / 要点（越具体写稿越精准）</label>
@@ -1873,6 +1889,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260606-actor-identity-group-v2"></script>
+  <script src="/js/digital-human.js?v=20260607-actor-frameqa-v19"></script>
 </body>
 </html>

@@ -314,6 +314,16 @@ function mergeEnvSeededProviders(settings = {}) {
     if (!existing.api_key) existing.api_key = seeded.api_key;
     if (!existing.api_url) existing.api_url = seeded.api_url;
     if (!Array.isArray(existing.models) || !existing.models.length) existing.models = seeded.models;
+    else {
+      const existingModelIds = new Set(existing.models.map(m => String(m?.id || '').trim()).filter(Boolean));
+      for (const model of seeded.models || []) {
+        const modelId = String(model?.id || '').trim();
+        if (modelId && !existingModelIds.has(modelId)) {
+          existing.models.push({ ...model, enabled: true });
+          existingModelIds.add(modelId);
+        }
+      }
+    }
     const extraEnv = ENV_PROVIDER_EXTRA_MAP[presetId] || {};
     for (const field of Object.keys(extraEnv)) {
       if (!existing[field] && seeded[field]) existing[field] = seeded[field];

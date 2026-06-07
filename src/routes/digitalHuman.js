@@ -989,6 +989,61 @@ function _buildLuxuryProductionContract({
   };
 }
 
+function _luxuryActorReferenceKind(asset = {}) {
+  if (!asset || typeof asset !== 'object') return '';
+  const metadata = asset.metadata || {};
+  const source = String(asset.source || metadata.source || asset.type || '').toLowerCase();
+  const text = [asset.name, asset.description, metadata.name, metadata.prompt, metadata.reference_kind]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return String(asset.reference_kind
+    || metadata.reference_kind
+    || (/uploaded|real_photo|human_photo/i.test(source)
+      ? 'real_photo'
+      : (/local_actor_library_generated/i.test(source) || /fixed real actor asset|realistic actor|真人感演员|真人演员包/.test(text)
+        ? 'synthetic_realistic_actor'
+        : (/generated|ai/i.test(source) ? 'ai_generated' : ''))))
+    .toLowerCase();
+}
+
+function _luxuryIsAiGeneratedActorReference(asset = {}) {
+  if (!asset || typeof asset !== 'object') return false;
+  const metadata = asset.metadata || {};
+  const kind = _luxuryActorReferenceKind(asset);
+  return asset.is_ai_generated === true
+    || metadata.is_ai_generated === true
+    || kind === 'ai_generated';
+}
+
+function _luxuryIsProductionUsableActorReference(asset = {}) {
+  if (!asset || typeof asset !== 'object') return false;
+  const metadata = asset.metadata || {};
+  const kind = _luxuryActorReferenceKind(asset);
+  return kind === 'real_photo'
+    || kind === 'synthetic_realistic_actor'
+    || asset.production_usable_actor === true
+    || metadata.production_usable_actor === true;
+}
+
+function _luxuryIsRealActorReference(asset = {}) {
+  if (!asset || typeof asset !== 'object') return false;
+  const metadata = asset.metadata || {};
+  const kind = _luxuryActorReferenceKind(asset);
+  const source = String(asset.source || metadata.source || asset.type || '').toLowerCase();
+  const tags = Array.isArray(asset.tags)
+    ? asset.tags.join(' ')
+    : Array.isArray(metadata.tags)
+      ? metadata.tags.join(' ')
+      : '';
+  const text = [source, kind, tags, asset.name, asset.description, metadata.reference_kind]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (_luxuryIsAiGeneratedActorReference(asset)) return false;
+  return /real_photo|uploaded_photo|uploaded_person_reference|human_photo|authorized_real_actor|licensed_actor|真人照片|授权真人|真人演员/.test(text);
+}
+
 function _pickRunnablePipelineModel(stageId) {
   try {
     const pms = require('../services/pipelineModelService');
@@ -1002,7 +1057,7 @@ function _pickRunnablePipelineModel(stageId) {
 }
 
 function _luxuryStageRequiresAdminConfig(stageId = '') {
-  return /^luxury_ad\.(presenter_seed|scene_seed|subject_evidence_seed|keyframe|keyframe_qa|keyframe_repair|video)$/i.test(String(stageId || ''));
+  return /^luxury_ad\.(person_sheet|presenter_seed|scene_seed|subject_evidence_seed|keyframe|keyframe_qa|keyframe_repair|video)$/i.test(String(stageId || ''));
 }
 
 function _pickRunnablePipelineModels(stageId, options = {}) {
@@ -1218,6 +1273,84 @@ async function _checkIsFullBodyImage(localPath) {
     console.warn('[DH/images] full-body 视觉自检失败:', err.message);
     return null;
   }
+}
+
+async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '' } = {}) {
+  if (!localPath || !fs.existsSync(localPath)) {
+    const err = new Error('演员包图片文件不存在，无法做构图质检');
+    err.status = 500;
+    err.code = 'LUXURY_ACTOR_FRAME_FILE_MISSING';
+    throw err;
+  }
+  const sharp = _loadSharp();
+  if (sharp) {
+    const meta = await sharp(localPath).rotate().metadata();
+    const width = Number(meta.width) || 0;
+    const height = Number(meta.height) || 0;
+    if (width && height && height < width * 1.12) {
+      const err = new Error(`演员包构图 QA 未通过：图片不是竖构图演员定妆照（${width}x${height}），容易形成横向半身肖像；必须生成 9:16 竖图并露出裤子/下半身。`);
+      err.status = 422;
+      err.code = 'LUXURY_ACTOR_FRAME_ORIENTATION_FAILED';
+      err.details = {
+        pass: false,
+        width,
+        height,
+        framing: 'landscape_or_not_vertical',
+        reason: 'actor package image must be vertical 9:16 or near-vertical casting photo',
+      };
+      throw err;
+    }
+  }
+  const prompt = [
+    'You are a strict QA gate for a commercial actor asset package.',
+    'The attached image is one generated actor reference photo.',
+    'Return ONLY compact JSON, no markdown.',
+    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","single_person":boolean,"realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    'Pass only if it is a realistic live-action casting/reference photo of exactly one adult person and the lower body is visibly included.',
+    'The acceptable frame is full body, knee-up, or at minimum thigh-up where trousers/skirt are clearly visible below the belt/hips. Pants/trousers/skirt must be visible. Belt/waistline alone is not enough.',
+    'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no pants/trousers/skirt are visible.',
+    'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, or more than one person.',
+    `View being checked: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
+  ].join(' ');
+  const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
+    stageId: 'luxury_ad.keyframe_qa',
+  });
+  const mismatches = _cleanQaList(parsed.major_mismatches, 140, 6);
+  const framing = String(parsed.framing || '').toLowerCase();
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const lowerBodyVisible = parsed.lower_body_visible === true;
+  const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true;
+  const acceptableFraming = /^(full_body|knee_up|thigh_up)$/.test(framing);
+  const pass = parsed.pass === true
+    && score >= 82
+    && parsed.single_person === true
+    && parsed.realistic_photo === true
+    && lowerBodyVisible
+    && lowerGarmentVisible
+    && acceptableFraming
+    && mismatches.length === 0;
+  const qa = {
+    pass,
+    score,
+    framing: framing || 'unknown',
+    single_person: parsed.single_person === true,
+    realistic_photo: parsed.realistic_photo === true,
+    lower_body_visible: lowerBodyVisible,
+    trousers_or_skirt_visible: lowerGarmentVisible,
+    knees_or_shoes_visible: parsed.knees_or_shoes_visible === true,
+    major_mismatches: mismatches,
+    observed: String(parsed.observed || '').slice(0, 240),
+    reason: String(parsed.reason || '').slice(0, 240),
+    provider,
+  };
+  if (!pass) {
+    const err = new Error(`演员包构图 QA 未通过：${qa.reason || qa.observed || '未达到全身/膝上参考照要求'}；framing=${qa.framing}，lower_body=${qa.lower_body_visible}，garment=${qa.trousers_or_skirt_visible}`);
+    err.status = 422;
+    err.code = 'LUXURY_ACTOR_FRAMING_QA_FAILED';
+    err.details = qa;
+    throw err;
+  }
+  return qa;
 }
 
 function _imageFileToDataUrl(localPath) {
@@ -1602,22 +1735,27 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   const numberField = name => {
     const re = new RegExp(`["']?${name}["']?\\s*:\\s*(\\d{1,3})`, 'i');
     const m = text.match(re);
-    return m ? Math.max(0, Math.min(100, Number(m[1]) || 0)) : 0;
+    return m ? Math.max(0, Math.min(100, Number(m[1]) || 0)) : null;
   };
   if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
   const ok = pass === true && score >= 82 && subjectMatch !== false && storyboardMatch !== false;
+  const dimOrDefault = (name) => {
+    const value = numberField(name);
+    if (value !== null) return value;
+    return ok ? score : 0;
+  };
   return {
     pass: ok,
     score,
     subject_match: subjectMatch === null ? ok : subjectMatch,
     storyboard_match: storyboardMatch === null ? ok : storyboardMatch,
     quality_dimensions: {
-      realism: numberField('realism'),
-      asset_fidelity: numberField('asset_fidelity'),
-      character_consistency: numberField('character_consistency'),
-      scene_continuity: numberField('scene_continuity'),
-      product_fidelity: numberField('product_fidelity'),
-      ui_overlay: numberField('ui_overlay'),
+      realism: dimOrDefault('realism'),
+      asset_fidelity: dimOrDefault('asset_fidelity'),
+      character_consistency: dimOrDefault('character_consistency'),
+      scene_continuity: dimOrDefault('scene_continuity'),
+      product_fidelity: dimOrDefault('product_fidelity'),
+      ui_overlay: dimOrDefault('ui_overlay'),
     },
     major_mismatches: ok ? [] : [text.slice(0, 180)],
     unrelated_subjects: [],
@@ -1679,6 +1817,83 @@ function _luxuryIsMaterialProductShot(scene = {}, subject = '') {
     ]),
   ].join('\n');
   return /钢|金属|板材|建材|材料|材质|幕墙|墙面|外立面|展墙|展厅|建筑|steel|metal|panel|sheet|facade|wall|material|building|showroom/i.test(text);
+}
+
+function _luxuryIsSoftwareWorkflowSubject(productSubject = '', scene = {}) {
+  const manifest = scene.asset_manifest || scene.visual_locks?.asset_manifest || {};
+  const manifestText = [
+    manifest.product_subject,
+    manifest.summary,
+    manifest.scene,
+    manifest.people,
+    manifest.style,
+    ...(Array.isArray(manifest.items) ? manifest.items.flatMap(item => [
+      item.role,
+      item.source,
+      item.name,
+      item.observed,
+      item.must_keep,
+      item.usage,
+    ]) : []),
+  ].filter(Boolean).join(' ');
+  const text = [
+    productSubject,
+    scene.product_subject,
+    scene.title,
+    scene.objective,
+    scene.intent,
+    scene.purpose,
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.display_visual,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.topview_prompt,
+    scene.material_usage,
+    scene.material_hint,
+    scene.scene,
+    manifestText,
+  ].filter(Boolean).join(' ');
+  if (/AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|库存管理|补货|库存预警|AI助手|智能助手/i.test(text)) return true;
+  return /软件|系统|平台|SaaS|小程序|应用|App\b|APP\b|后台|看板|仪表盘|界面|数据|算法|AI|人工智能|助手|订单|库存|补货|排单|收银|点餐|客服|CRM|ERP|OMS|WMS|workflow|software|platform|dashboard|interface|screen|app|assistant|ordering|order management|inventory|restock|retail ops|store ops|service/i.test(text)
+    && !/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text);
+}
+
+function _luxurySoftwareWorkflowEvidencePrompt(productSubject = 'software workflow') {
+  const subject = String(productSubject || 'software workflow').trim();
+  return [
+    `The visible product evidence for "${subject}" is the real service workflow, not a physical package.`,
+    'Acceptable evidence: a real actor using a phone/tablet/computer, order papers, inventory shelves, product boxes, confirmation/check UI, dashboard-like overlay, or a store/warehouse restock decision.',
+    'Readable brand text is not required; the workflow must be visually clear through action, props and environment.',
+  ].join(' ');
+}
+
+function _luxuryShouldApplyUiOverlay(scene = {}, productSubject = '') {
+  if (!scene || !scene.ui_overlay) return false;
+  if (!_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject, scene)) return true;
+  const text = [
+    scene.title,
+    scene.role,
+    scene.story_stage,
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.ui_overlay?.type,
+    scene.ui_overlay?.content,
+    scene.ui_overlay?.motion,
+  ].filter(Boolean).join(' ');
+  const explicitUiMoment = /AI recognition|确认|界面|看板|浮层|弹窗|识别|检查库存|推荐|补货|confirmed|confirmation|dashboard|interface|overlay|check UI|recognizes?|restock|recommend/i.test(text);
+  const problemSetup = /Order pressure|problem|压力|焦虑|担心|混乱|cannot keep up|worried|messy/i.test(text);
+  return explicitUiMoment && !problemSetup;
 }
 
 function _luxuryShotImpliesHumanPresenter(scene = {}) {
@@ -1867,6 +2082,10 @@ function _luxurySceneFriendlyProductSubject(subject = '') {
 
 function _luxuryQaExpectedVisual(scene = {}, subject = '') {
   const base = _compactQaText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 420);
+  if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
+    const workflowContract = _luxurySoftwareWorkflowEvidencePrompt(subject);
+    return _compactQaText([base, workflowContract].filter(Boolean).join(' '), 760);
+  }
   if (!_luxuryIsMaterialProductShot(scene, subject)) return base;
   const materialContract = 'Required product/material subject: finished premium steel or metal decorative panels shown as showroom sample walls, installed wall panels, material sheets, surface texture, edge/detail close-up, or facade application only when the storyboard explicitly asks for an exterior. Avoid empty exterior-only walls, cosmetics, jewelry, bottles, unrelated props, rusty scrap, raw piles, and generic workbench objects.';
   return _compactQaText([base, materialContract].filter(Boolean).join(' '), 700);
@@ -1874,6 +2093,9 @@ function _luxuryQaExpectedVisual(scene = {}, subject = '') {
 
 function _luxuryQaExpectedAction(scene = {}, subject = '', personRequired = false) {
   const base = _compactQaText(scene.action || scene.visual_action || '', 260);
+  if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
+    return _compactQaText([base, 'Software workflow action: judge whether the actor, phone/screen/order papers, shelves/inventory or confirmation UI communicate the requested order/inventory assistant story.'].filter(Boolean).join(' '), 420);
+  }
   if (personRequired) return base;
   if (_luxuryIsMaterialProductShot(scene, subject)) {
     return _compactQaText('Product/material detail insert: evaluate the visible product/material, scene category, composition and camera intent. Product-only framing is acceptable only for macro/detail inserts when person_required is false.', 360);
@@ -2088,20 +2310,38 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     index,
     total,
   });
+  const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const industryContract = _luxuryIndustrySeedContract({ productSubject: subject, scenes: [scene] });
   const sceneEnv = industryContract.scene;
   const evidenceText = industryContract.evidence;
-  const visibleSubject = `one visible realistic presenter/consultant/professional with the advertised subject evidence in the same ${industryContract.industry} commercial frame`;
+  const visibleSubject = softwareWorkflow
+    ? `one visible fixed realistic store manager/operator actor performing the ${subject} order/inventory workflow in the same real retail operations frame`
+    : `one visible realistic presenter/consultant/professional with the advertised subject evidence in the same ${industryContract.industry} commercial frame`;
   const referenceStrategy = [
     'Use uploaded reference images only according to their classified role: person identity, industry scene, subject evidence, or style.',
     'Do not let a subject/product reference override the confirmed story location or required human action.',
     'For this keyframe, image references are suppressed so the story contract controls composition first.',
   ].join(' ');
-  const qaContract = [
-    `QA must require one visible human presenter/consultant/professional in the confirmed ${industryContract.industry} scene.`,
-    `The advertised subject must be visible through this evidence: ${evidenceText}.`,
-    'Reject missing presenter, wrong industry scene, subject-only catalogue output, generic stock background, CGI/3D render/AI illustration looks, and unrelated products or props.',
-  ].join(' ');
+  const qaContract = softwareWorkflow
+    ? [
+      `QA must require one visible fixed actor in the confirmed ${industryContract.industry} scene.`,
+      `The advertised service/workflow must be visible through this evidence: ${evidenceText}.`,
+      'Accept phone/screen/order papers/inventory shelves/packages/check UI as product evidence for the software service.',
+      'Reject material showrooms, cosmetics shelves, pure phone packshots, sci-fi UI labs, missing actor, wrong scene, CGI/3D render/AI illustration looks, and unrelated products or props.',
+    ].join(' ')
+    : [
+      `QA must require one visible human presenter/consultant/professional in the confirmed ${industryContract.industry} scene.`,
+      `The advertised subject must be visible through this evidence: ${evidenceText}.`,
+      'Reject missing presenter, wrong industry scene, subject-only catalogue output, generic stock background, CGI/3D render/AI illustration looks, and unrelated products or props.',
+    ].join(' ');
+  const confirmedVisual = _luxuryStrictText(scene.visual_prompt || scene.content_prompt || scene.scene_content || scene.visual || '', 620);
+  const confirmedAction = _luxuryStrictText(scene.action || scene.visual_action || scene.character_action || '', 420);
+  const confirmedCamera = _luxuryStrictText(scene.camera || scene.shot_angle || scene.camera_label || '', 280);
+  const legacyMaterialPollution = softwareWorkflow
+    && /architectural materials|building finishing|premium material showroom|sample[- ]?wall|wall panels|facade|cladding|finish texture|material display|材料展厅|建材|墙板|外立面/i.test(confirmedVisual);
+  const visualToUse = legacyMaterialPollution ? storyVisual : (confirmedVisual || storyVisual);
+  const actionToUse = confirmedAction || storyAction;
+  const cameraToUse = confirmedCamera || 'eye-level medium commercial storyboard frame';
   const directorPrompt = [
     'STORYBOARD DIRECTOR CONTRACT: live-action commercial storyboard frame.',
     `Visible subject: ${visibleSubject}.`,
@@ -2112,14 +2352,18 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   ].join(' ');
   const topviewPrompt = [
     'STORYBOARD-FIRST IMAGE PROMPT: create a natural commercial storyboard still.',
-    `One visible realistic presenter/consultant/professional is inside the confirmed ${industryContract.industry} story scene.`,
+    softwareWorkflow
+      ? `One visible fixed realistic store manager/operator actor is inside the confirmed ${industryContract.industry} story scene.`
+      : `One visible realistic presenter/consultant/professional is inside the confirmed ${industryContract.industry} story scene.`,
     `Advertised subject evidence appears in the same frame: ${evidenceText}.`,
-    'Do not generate the wrong industry scene, an empty background, subject-only catalogue image, unrelated props, or fake readable text.',
-    storyVisual,
-    storyAction,
+    softwareWorkflow
+      ? 'Do not generate a material showroom, pure phone ad, supermarket aisle, cosmetics shelf, empty office, sci-fi dashboard, unrelated props, or fake readable text.'
+      : 'Do not generate the wrong industry scene, an empty background, subject-only catalogue image, unrelated props, or fake readable text.',
+    visualToUse,
+    actionToUse,
   ].filter(Boolean).join(' ');
   const mustShow = [
-    'visible human presenter/consultant/professional',
+    softwareWorkflow ? 'visible fixed store manager/operator actor' : 'visible human presenter/consultant/professional',
     `${industryContract.industry} scene matching the confirmed storyboard`,
     `${subject} advertised subject evidence in the same frame`,
   ];
@@ -2129,7 +2373,8 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     'CGI, 3D render, AI illustration, waxy synthetic skin, plastic over-polished look',
     'hidden presenter face, cropped face, back-view-only presenter',
     'unrelated consumer product, random prop, fake readable text',
-  ];
+    softwareWorkflow ? 'material showroom, facade panel display, cosmetics shelf, pure phone packshot, sci-fi UI lab' : '',
+  ].filter(Boolean);
 
   return {
     ...scene,
@@ -2144,16 +2389,16 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     visible_subject: visibleSubject,
     scene_type_lock: 'industry_story_scene',
     environment_lock: sceneEnv,
-    content_prompt: storyVisual,
-    scene_content: storyVisual,
-    display_visual: storyVisual,
-    visual: storyVisual,
-    action: storyAction,
-    visual_action: storyAction,
+    content_prompt: visualToUse,
+    scene_content: visualToUse,
+    display_visual: visualToUse,
+    visual: visualToUse,
+    action: actionToUse,
+    visual_action: actionToUse,
     lighting_style: 'premium commercial lighting, natural skin tone, practical light motivated by the confirmed industry scene',
-    shot_angle: 'eye-level medium commercial storyboard frame',
+    shot_angle: cameraToUse,
     shot_size: 'medium shot with real scene depth',
-    camera_label: 'eye-level 35mm commercial film still, medium shot, face and product evidence visible',
+    camera_label: cameraToUse,
     material_usage: `${subject} shown as story-appropriate advertised evidence: ${evidenceText}`,
     material_hint: `${subject} advertised subject evidence`,
     reference_strategy: referenceStrategy,
@@ -2161,7 +2406,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     topview_prompt: topviewPrompt,
     director_prompt: directorPrompt,
     qa_contract: qaContract,
-    visual_prompt: [directorPrompt, storyVisual, storyAction].filter(Boolean).join(' ').slice(0, 2800),
+    visual_prompt: [directorPrompt, visualToUse, actionToUse].filter(Boolean).join(' ').slice(0, 2800),
     reference_index: 0,
     reference_label: '',
     reference_mentions: [subject, `${industryContract.industry} story scene`],
@@ -2173,11 +2418,11 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
       allowed_environment: sceneEnv,
       visible_subject: visibleSubject,
       reference_strategy: referenceStrategy,
-      actor_blocking: storyAction,
+      actor_blocking: actionToUse,
       product_evidence: `${subject} visible as story-appropriate advertised evidence: ${evidenceText}`,
       composition: 'medium-wide or medium commercial storyboard frame with human presenter, real scene depth, and advertised subject evidence all readable',
       lighting: 'premium commercial lighting, natural skin tone, coherent shadows, practical light motivated by the confirmed industry scene',
-      camera: 'eye-level 35mm commercial film still, medium shot, face and product evidence visible',
+      camera: cameraToUse,
       image_prompt: topviewPrompt,
       topview_prompt: topviewPrompt,
       qa_contract: qaContract,
@@ -2442,6 +2687,13 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
     ]),
   ].filter(Boolean).join(' ');
   const subject = _luxurySceneFriendlyProductSubject(productSubject || 'advertised subject') || 'advertised subject';
+  if (_luxuryIsSoftwareWorkflowSubject(productSubject || subject, { visual: text, content_prompt: text })) {
+    return {
+      industry: 'retail operations / software workflow',
+      scene: `real store back office, stockroom shelf aisle, order-processing counter, package desk, retail operations room or small warehouse workflow area appropriate for ${subject}`,
+      evidence: `workflow evidence for ${subject}: fixed actor using phone/tablet/computer, paper orders, inventory sheets, shelves, product boxes, confirmation/check UI or dashboard-like service result`,
+    };
+  }
   const rules = [
     {
       test: /钢|金属|板材|建材|材料|材质|幕墙|墙面|外立面|建筑|steel|metal|panel|sheet|facade|wall|material|building/i,
@@ -2464,8 +2716,8 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
     {
       test: /软件|系统|平台|SaaS|app|应用|手机|电脑|AI|智能|数据|software|platform|dashboard|technology|tech/i,
       industry: 'technology / software service',
-      scene: `modern office, studio, control room, meeting area, device-use scene or clean digital workspace appropriate for ${subject}`,
-      evidence: `device screen, interface moment, workflow proof, dashboard-style visual or service-use evidence for ${subject}, without readable fake UI text`,
+      scene: `real workplace workflow scene, retail back office, stockroom, order counter, device-use scene or clean operations workspace appropriate for ${subject}`,
+      evidence: `device screen, interface moment, workflow proof, order/inventory documents, dashboard-style visual or service-use evidence for ${subject}, without readable fake UI text`,
     },
     {
       test: /酒店|民宿|地产|空间|家居|家具|装修|室内|hotel|real estate|home|furniture|interior|property/i,
@@ -2856,6 +3108,32 @@ function _selectLuxuryBriefReferenceImage(assets = [], visualReferenceBrief = nu
   return '';
 }
 
+function _luxuryNonPersonBriefReferenceImages(assets = [], visualReferenceBrief = null) {
+  const list = Array.isArray(assets) ? assets : [];
+  const brief = _normalizeLuxuryVisualReferenceBrief(visualReferenceBrief);
+  return list
+    .map((asset, i) => {
+      const url = _luxuryBriefAssetUrl(asset);
+      const meta = _luxuryBriefAssetMeta(brief, i + 1);
+      const text = [
+        meta?.type,
+        meta?.role,
+        meta?.observed,
+        meta?.usage,
+        asset?.role,
+        asset?.type,
+        asset?.source,
+        asset?.name,
+      ].filter(Boolean).join(' ');
+      return { url, text };
+    })
+    .filter(x => x.url && !/^blob:/i.test(x.url))
+    .filter(x => !/person|people|human|actor|presenter|portrait|model|人物|真人|演员|角色|形象|模特|主持|讲解|顾问/i.test(x.text))
+    .map(x => x.url)
+    .filter((x, i, arr) => arr.indexOf(x) === i)
+    .slice(0, 4);
+}
+
 function _buildLuxuryReferenceContinuityBible(visualReferenceBrief = null) {
   const brief = _normalizeLuxuryVisualReferenceBrief(visualReferenceBrief);
   if (!brief) return '';
@@ -3060,17 +3338,30 @@ function _buildLuxuryVisualLocks({
   const styleItems = itemText(['style']);
   const realScene = manifest.scene || briefInfo?.scene || 'industry-appropriate real working location from the user brief';
   const subject = _luxuryLockCleanText(productSubject || manifest.product_subject || briefInfo?.product_subject || 'advertised subject', 120);
+  const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, {
+    visual: brief,
+    asset_manifest: manifest,
+    scene: realScene,
+  });
   const realityPrompt = [
     'REALITY LOCK: every keyframe must look like a real live-action commercial shot captured in a believable social/workplace setting, not an AI poster.',
     `Real-world scene basis: ${realScene}.`,
     'Prefer ordinary practical details: ceiling lights, real shelves/desks/counters, paper documents, phones, packages, tools, fingerprints, slight clutter, natural hand occlusion and imperfect human expression.',
     'Use practical location light and real camera perspective. Avoid fantasy lighting, glossy render, plastic skin, over-clean showroom, generic luxury props, sci-fi decor and abstract background.',
   ].join(' ');
-  const productPrompt = [
-    `PRODUCT LOCK: advertised subject is ${subject}.`,
-    productItems ? `Uploaded product/reference evidence: ${productItems}.` : '',
-    'Preserve category, shape, color, material, package/logo details when visible; do not redesign, rename, replace with cosmetics/perfume/beverage/phone/watch/jewelry/random stock goods.',
-  ].filter(Boolean).join(' ');
+  const productPrompt = softwareWorkflow
+    ? [
+      `SERVICE/WORKFLOW PRODUCT LOCK: advertised subject is ${subject}.`,
+      productItems ? `Uploaded product/reference evidence: ${productItems}.` : '',
+      _luxurySoftwareWorkflowEvidencePrompt(subject),
+      'A phone, tablet, computer screen, paper order, shelf, package or dashboard is only workflow evidence, not the advertised product itself.',
+      'Do not replace the campaign with cosmetics, perfume, skincare, beverage, jewelry, watches, random retail goods, sci-fi lab UI, or a generic phone advertisement.',
+    ].filter(Boolean).join(' ')
+    : [
+      `PRODUCT LOCK: advertised subject is ${subject}.`,
+      productItems ? `Uploaded product/reference evidence: ${productItems}.` : '',
+      'Preserve category, shape, color, material, package/logo details when visible; do not redesign, rename, replace with cosmetics/perfume/beverage/phone/watch/jewelry/random stock goods.',
+    ].filter(Boolean).join(' ');
   const scenePrompt = [
     `SCENE LOCK: use the uploaded or inferred real environment as the campaign world: ${realScene}.`,
     sceneItems ? `Scene references: ${sceneItems}.` : '',
@@ -3220,6 +3511,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   });
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, subject);
   const personRequired = visibleSubject.humanRequired;
+  const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
     : '';
@@ -3236,6 +3528,10 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const expected = {
     shot: `${shotIndex + 1}/${totalShots}`,
     product_subject: _compactQaText(subject, 120),
+    product_subject_type: softwareWorkflowSubject ? 'software_service_workflow' : 'physical_or_material_product',
+    software_workflow_evidence_required: softwareWorkflowSubject
+      ? _luxurySoftwareWorkflowEvidencePrompt(subject)
+      : '',
     person_required: personRequired,
     visible_subject_required: visibleSubject.required,
     visible_subject_contract: visibleSubject.contract,
@@ -3287,19 +3583,33 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'You are the strict final QA gate for a high-end commercial storyboard keyframe.',
     images.length > 1 ? `Images 1-${images.length - 1} are required visual references: identity, product/material, scene and style anchors when provided. Image ${images.length} is the generated keyframe to judge.` : 'The image is the generated keyframe to judge.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"asset_fidelity":0-100,"character_consistency":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"ui_overlay":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
+    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
     'Keep observed and reason under 80 characters. Keep major_mismatches to at most 3 short items, each under 80 characters.',
     'For major_mismatches and unrelated_subjects: return an empty array [] when there are none. Never output placeholder words such as "short", "none" or "n/a".',
     'Pass only if the generated keyframe visibly follows the confirmed storyboard content, advertised product category, material/scene subject, action and camera intention.',
     'When identity_reference_mode is strict_user_or_selected_identity or strict_generated_presenter_seed_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
     'A generated presenter seed is an internal identity lock, not loose inspiration. Treat it like a casting reference selected by the system from the user brief.',
-    'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
+    softwareWorkflowSubject
+      ? 'Hard fail if the generated scene ignores the requested retail operations / stockroom / order-counter world and jumps into an unrelated cosmetics boutique, material showroom, sci-fi lab, luxury office, generic exterior, or inconsistent lighting/color palette. Retail shelves, stockroom shelves, boxes and order counters are acceptable when the storyboard asks for retail/order/inventory workflow.'
+      : 'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
     'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
     'Hard fail if uploaded product/person/scene/UI references are treated as generic inspiration instead of role-specific locks.',
-    'Score quality_dimensions strictly: realism means real commercial photography, asset_fidelity means uploaded/reference lock fidelity, character_consistency means same actor if required, scene_continuity means same real-world campaign setting, product_fidelity means product/category/package/material preservation, ui_overlay means subtle readable post-production UI without covering face/hands/product.',
+    softwareWorkflowSubject
+      ? 'For software/service/workflow products, subject_match must be true when the generated keyframe shows the advertised service through the confirmed workflow: same actor using phone/tablet/computer, order papers, inventory shelves, packages, dashboard/check UI, or restock/order confirmation in the requested scene. Do not require a physical product package or readable brand UI.'
+      : '',
+    softwareWorkflowSubject
+      ? 'For software/service/workflow products, product_fidelity means workflow/service proof and scene relevance, not package/material preservation. A phone or screen is acceptable as a carrier when it supports the order/inventory workflow; fail only if it becomes a generic phone ad or unrelated UI.'
+      : '',
+    softwareWorkflowSubject
+      ? 'For problem/setup shots, phone + paper orders + shelves/stockroom + worried actor is valid workflow evidence even before the AI confirmation UI appears. Require a confirmation/check/dashboard overlay only when the confirmed storyboard explicitly asks for it.'
+      : '',
+    'Storyboard_match is judged on a single still frame: accept an equivalent frozen pose, facial expression, prop relationship and camera framing that clearly represents the requested action. Do not fail only because a continuous verb such as flipping, tapping, checking or reviewing cannot literally animate in one image.',
+    'Score quality_dimensions strictly and output all six numeric fields. Put scene_continuity and product_fidelity before character_consistency. realism means real commercial photography, scene_continuity means same real-world campaign setting, product_fidelity means product/category/workflow/package/material preservation according to product_subject_type, asset_fidelity means uploaded/reference lock fidelity, ui_overlay means subtle readable post-production UI without covering face/hands/product, character_consistency means same actor if required.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
     'Hard fail if the frame looks like an AI poster, CGI render, over-smoothed plastic face, mannequin, wax figure, fashion catalogue, jewelry store, cosmetics shelf, or illustrated concept art instead of a real live-action commercial frame.',
-    'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
+    softwareWorkflowSubject
+      ? 'Hard fail if the main visible subject is an unrelated category such as cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, material showroom panels, generic luxury goods, a pure phone packshot, random props, or any scene not requested by the storyboard/reference.'
+      : 'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
     'For steel/metal/material/wall-panel/building-material subjects, the image must show steel or metal material, panels, sheets, wall installation, surface texture, edge/detail, showroom material display, or a clearly related construction/material scene. It must not show cosmetic bottles or jewelry.',
     'Use visible_subject_required and visible_subject_contract in the contract. When a visible subject is required, hard fail if the generated image omits it or replaces it with a different kind of subject.',
     'Use person_required only for explicitly human shots. Do not require a human actor for ads whose confirmed script calls for an animal, robot, alien, mascot, product, object, place or service moment.',
@@ -3324,13 +3634,35 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     ui_overlay: dimScore('ui_overlay'),
   };
   const hasAssetLocks = !!(scene.asset_manifest || scene.visual_locks?.asset_manifest);
+  const manifestItems = [
+    ...(Array.isArray(scene.asset_manifest?.items) ? scene.asset_manifest.items : []),
+    ...(Array.isArray(scene.visual_locks?.asset_manifest?.items) ? scene.visual_locks.asset_manifest.items : []),
+  ];
+  const hasNonPersonAssetLocks = manifestItems.some(item => !/person|actor|character|presenter/i.test(String(item?.role || item?.source || '')));
   const hasCharacterLock = !!(scene.character_lock || scene.visual_locks?.character_lock || strictIdentityReferenceUrl);
-  const hasUiLock = !!(scene.ui_overlay || scene.ui_lock || scene.visual_locks?.ui_lock);
+  const explicitUiText = [
+    scene.ui_overlay,
+    scene.ui_lock,
+    scene.visual_locks?.ui_lock?.required === true ? 'required' : '',
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.action,
+    scene.voiceover,
+  ].filter(Boolean).join(' ');
+  const hasUiLock = !!(scene.ui_overlay || scene.ui_lock || scene.visual_locks?.ui_lock?.required === true)
+    || (!softwareWorkflowSubject && !!scene.visual_locks?.ui_lock)
+    || (softwareWorkflowSubject && /确认|界面|看板|浮层|overlay|dashboard|interface|confirmation|check UI/i.test(explicitUiText));
+  const productFidelityThreshold = softwareWorkflowSubject ? 58 : 74;
+  const assetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 45 : 76;
+  const manualProductFidelityThreshold = softwareWorkflowSubject ? 55 : 74;
+  const manualAssetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 40 : 74;
   const qualityPass = qualityDimensions.realism >= 76
-    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= 76)
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= assetFidelityThreshold)
     && (!hasCharacterLock || qualityDimensions.character_consistency >= 74)
     && qualityDimensions.scene_continuity >= 72
-    && qualityDimensions.product_fidelity >= 74
+    && qualityDimensions.product_fidelity >= productFidelityThreshold
     && (!hasUiLock || qualityDimensions.ui_overlay >= 70);
   const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
   const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
@@ -3338,20 +3670,28 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && unrelatedSubjects.length === 0
     && !hardForbiddenMismatch
     && qualityDimensions.realism >= 76
-    && qualityDimensions.product_fidelity >= 74
-    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= 74)
+    && qualityDimensions.product_fidelity >= manualProductFidelityThreshold
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= manualAssetFidelityThreshold)
     && qualityDimensions.scene_continuity >= 68;
+  const softwareWorkflowManualPass = softwareWorkflowSubject
+    && parsed.subject_match === true
+    && parsed.storyboard_match === true
+    && unrelatedSubjects.length === 0
+    && !hardForbiddenMismatch
+    && qualityDimensions.realism >= 80
+    && qualityDimensions.product_fidelity >= 80
+    && qualityDimensions.scene_continuity >= 50;
   const strictPass = parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass && !hardForbiddenMismatch;
   const qa = {
-    pass: strictPass || manualReviewPass,
+    pass: strictPass || manualReviewPass || softwareWorkflowManualPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
     quality_dimensions: qualityDimensions,
     quality_pass: qualityPass,
     strict_pass: strictPass,
-    manual_review_required: !strictPass && manualReviewPass,
-    accepted_with_warning: !strictPass && manualReviewPass,
+    manual_review_required: !strictPass && (manualReviewPass || softwareWorkflowManualPass),
+    accepted_with_warning: !strictPass && (manualReviewPass || softwareWorkflowManualPass),
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -5767,6 +6107,268 @@ async function _applyLuxuryBgmIfConfigured(taskId, videoPath, bgm = {}) {
   });
   if (fx?.outputPath && fs.existsSync(fx.outputPath)) return fx.outputPath;
   throw new Error('剧情广告背景音乐叠加失败');
+}
+
+function _resolveMaterialFilmImagePath(url = '') {
+  const raw = String(url || '').split('?')[0].trim();
+  if (!raw) return '';
+  const jimengPath = _localJimengPathFromUrl(raw);
+  if (jimengPath) return jimengPath;
+  let pathname = raw;
+  try { pathname = new URL(raw).pathname; } catch {}
+  if (pathname.includes('/api/assets/file/')) {
+    const filename = path.basename(pathname);
+    const roots = [
+      path.join(OUTPUT_ROOT_DIR, 'assets'),
+      path.join(OUTPUT_ROOT_DIR, 'assets', 'characters'),
+      path.join(OUTPUT_ROOT_DIR, 'assets', 'scenes'),
+      path.join(OUTPUT_ROOT_DIR, 'assets', 'products'),
+    ];
+    for (const root of roots) {
+      const p = path.join(root, filename);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  if (path.isAbsolute(raw) && fs.existsSync(raw) && path.resolve(raw).startsWith(path.resolve(OUTPUT_ROOT_DIR))) return raw;
+  return '';
+}
+
+function _normalizeMaterialFilmUrls(value) {
+  const list = Array.isArray(value) ? value : (value ? [value] : []);
+  const seen = new Set();
+  return list
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter(x => {
+      if (seen.has(x)) return false;
+      seen.add(x);
+      return true;
+    })
+    .slice(0, 12);
+}
+
+async function _downloadMaterialFilmImage(url, destDir) {
+  const local = _resolveMaterialFilmImagePath(url);
+  if (local) return local;
+  const raw = String(url || '').trim();
+  if (!/^https?:\/\//i.test(raw)) return '';
+  const resp = await axios.get(raw, { responseType: 'arraybuffer', timeout: 30000, maxContentLength: 20 * 1024 * 1024 });
+  const ext = path.extname(new URL(raw).pathname) || '.jpg';
+  const out = path.join(destDir, `material_ref_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`);
+  fs.writeFileSync(out, Buffer.from(resp.data));
+  return out;
+}
+
+function _createMaterialFilmClip(imagePath, outputPath, durationSec, ratio = '9:16', outputSize = 'standard') {
+  const [w, h] = _outputPixels(ratio, outputSize);
+  const duration = Math.max(1.5, Math.min(8, Number(durationSec) || 3));
+  execFileSync(_ffmpegBin(), [
+    '-y',
+    '-loop', '1',
+    '-t', String(duration),
+    '-i', imagePath,
+    '-vf', `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '22',
+    '-an',
+    outputPath,
+  ], { stdio: 'pipe', timeout: 120000 });
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) throw new Error('素材片段生成失败');
+}
+
+async function _runMaterialFilmTask(req, taskId, payload = {}) {
+  const base = _publicBaseUrl(req);
+  const taskDir = path.join(JIMENG_ASSETS_DIR, `material_film_${taskId}`);
+  fs.mkdirSync(taskDir, { recursive: true });
+  const {
+    text = '',
+    title = '素材成片',
+    voiceId = '',
+    durationSec = 30,
+    aspectRatio = '9:16',
+    outputSize = 'standard',
+    subtitle = null,
+    bgmAsset = null,
+    personAsset = null,
+  } = payload;
+  const materialUrls = _normalizeMaterialFilmUrls([
+    personAsset && (personAsset.image_url || personAsset.url),
+    ...(Array.isArray(payload.materialAssets) ? payload.materialAssets : []),
+    ...(Array.isArray(payload.referenceImages) ? payload.referenceImages : []),
+    payload.backgroundUrl,
+  ].filter(Boolean));
+  if (!materialUrls.length) throw new Error('素材成片至少需要一张图片素材');
+  _taskPatch(taskId, { status: 'running', stage: 'material_assets', progress: 10, message: '整理素材成片图片' });
+  const localImages = [];
+  for (const url of materialUrls.slice(0, 12)) {
+    const local = await _downloadMaterialFilmImage(url, taskDir);
+    if (local) localImages.push(local);
+  }
+  if (!localImages.length) throw new Error('素材图片无法读取，请重新上传素材');
+
+  const totalDuration = Math.max(8, Math.min(90, Number(durationSec) || 30));
+  const perClip = Math.max(2.2, Math.min(5.5, totalDuration / localImages.length));
+  const clips = [];
+  localImages.forEach((imagePath, i) => {
+    const clip = path.join(taskDir, `material_clip_${String(i + 1).padStart(2, '0')}.mp4`);
+    _createMaterialFilmClip(imagePath, clip, perClip, aspectRatio, outputSize);
+    clips.push(clip);
+  });
+  _taskPatch(taskId, { stage: 'material_concat', progress: 36, message: '合成素材剪辑底片' });
+  const concatPath = path.join(taskDir, 'material_film_concat.mp4');
+  await _concatVideosSmooth(clips, concatPath, aspectRatio, outputSize);
+
+  let finalPath = concatPath;
+  if (voiceId && String(text || '').trim()) {
+    _taskPatch(taskId, { stage: 'material_tts', progress: 56, message: '生成素材成片配音' });
+    const audioBase = path.join(taskDir, 'material_voice');
+    let audioPath = await _synthesizeSegmentedSpeechFile(req, {
+      text,
+      voiceId,
+      segments: _fallbackGuideSegments(text, totalDuration),
+      outputBase: audioBase,
+    });
+    if (!audioPath) {
+      const { generateSpeech } = require('../services/ttsService');
+      audioPath = await generateSpeech(String(text).slice(0, 1000), audioBase, { voiceId, speed: 1.0 });
+    }
+    if (audioPath && fs.existsSync(audioPath)) {
+      const muxPath = path.join(taskDir, 'material_film_voice.mp4');
+      await _muxAudioWithLoopedVideo(concatPath, audioPath, muxPath, aspectRatio, outputSize);
+      finalPath = muxPath;
+    }
+  }
+  if (bgmAsset && _luxuryBgmRef(bgmAsset)) {
+    finalPath = await _applyLuxuryBgmIfConfigured(taskId, finalPath, bgmAsset);
+  }
+  _taskPatch(taskId, { stage: 'material_finalize', progress: 88, message: '保存素材成片结果' });
+  const publicName = `material_film_${taskId}.mp4`;
+  const publicPath = path.join(JIMENG_ASSETS_DIR, publicName);
+  fs.copyFileSync(finalPath, publicPath);
+  const videoUrl = `${base}/public/jimeng-assets/${publicName}`;
+  const taskData = {
+    id: taskId,
+    taskId,
+    status: 'done',
+    stage: 'done',
+    progress: 100,
+    title,
+    text,
+    videoPath: publicPath,
+    videoUrl: `/api/avatar/tasks/${taskId}/stream`,
+    video_url: videoUrl,
+    image_url: materialUrls[0] || '',
+    thumbnail_url: materialUrls[0] || '',
+    kind: 'production',
+    mode: 'material_film',
+    generation_mode: 'material_film',
+    ad_mode: 'material_film',
+    material_assets: materialUrls,
+    person_asset: personAsset || null,
+    subtitle,
+    bgm_asset: bgmAsset || null,
+    user_id: productAdTasks.get(taskId)?.user_id,
+    ratio: aspectRatio,
+    output_size: outputSize,
+    resolution: _outputSizeString(aspectRatio, outputSize),
+    created_at: productAdTasks.get(taskId)?.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  productAdTasks.set(taskId, { ...productAdTasks.get(taskId), ...taskData });
+  if (!db.getAvatarTask(taskId)) db.insertAvatarTask(taskData);
+  else db.updateAvatarTask(taskId, taskData);
+}
+
+function _inferLuxuryBgmProfile(input = {}) {
+  const text = [
+    input.text,
+    input.title,
+    input.ad_type,
+    input.ad_style,
+    input.brief_info?.product,
+    input.brief_info?.audience,
+    ...(Array.isArray(input.segments) ? input.segments.map(s => `${s.visual || ''} ${s.dialogue || ''} ${s.camera || ''}`) : []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const profiles = [
+    {
+      mood: '科技高级',
+      genre: 'ambient-tech',
+      baseFrequency: 196,
+      overlayFrequency: 392,
+      tempo: 92,
+      keywords: ['ai', '人工智能', '科技', '智能', '平台', '系统', '数据', '模型', '接口', '未来', '效率', 'saas'],
+    },
+    {
+      mood: '品牌温暖',
+      genre: 'warm-corporate',
+      baseFrequency: 220,
+      overlayFrequency: 330,
+      tempo: 78,
+      keywords: ['家庭', '生活', '陪伴', '温暖', '安心', '用户', '服务', '关怀', '故事'],
+    },
+    {
+      mood: '高端质感',
+      genre: 'luxury-minimal',
+      baseFrequency: 174,
+      overlayFrequency: 261,
+      tempo: 68,
+      keywords: ['高端', '质感', '奢华', '精品', '空间', '展厅', '精致', '极简', '品牌'],
+    },
+    {
+      mood: '增长动感',
+      genre: 'upbeat-commercial',
+      baseFrequency: 247,
+      overlayFrequency: 494,
+      tempo: 112,
+      keywords: ['爆发', '增长', '转化', '活动', '上新', '发布', '促销', '年轻', '快节奏'],
+    },
+  ];
+  const scored = profiles.map(p => ({
+    ...p,
+    score: p.keywords.reduce((sum, kw) => sum + (text.includes(kw) ? 1 : 0), 0),
+  })).sort((a, b) => b.score - a.score);
+  const selected = scored[0]?.score > 0 ? scored[0] : profiles[0];
+  return {
+    mood: selected.mood,
+    genre: selected.genre,
+    baseFrequency: selected.baseFrequency,
+    overlayFrequency: selected.overlayFrequency,
+    tempo: selected.tempo,
+    tags: selected.keywords.filter(kw => text.includes(kw)).slice(0, 6),
+  };
+}
+
+function _generateLocalLicensedBgm({ durationSec = 30, profile = {}, filename = '' } = {}) {
+  const duration = Math.max(8, Math.min(180, Number(durationSec) || 30));
+  const outDir = path.join(OUTPUT_ROOT_DIR, 'music');
+  fs.mkdirSync(outDir, { recursive: true });
+  const safeName = filename || `luxury_auto_bgm_${Date.now()}_${uuidv4().slice(0, 8)}.m4a`;
+  const outputPath = path.join(outDir, safeName);
+  const base = Number(profile.baseFrequency) || 196;
+  const overlay = Number(profile.overlayFrequency) || 392;
+  const tick = Math.max(0.25, Math.min(0.8, 60 / (Number(profile.tempo) || 90) / 2));
+  const fadeOutStart = Math.max(0, duration - 2);
+  const filter = [
+    `sine=frequency=${base}:duration=${duration}:sample_rate=44100[a0]`,
+    `sine=frequency=${overlay}:duration=${duration}:sample_rate=44100[a1]`,
+    `sine=frequency=${Math.round(base * 1.5)}:duration=${tick}:sample_rate=44100,aloop=loop=-1:size=${Math.round(44100 * tick)},atrim=0:${duration},volume=0.012[a2]`,
+    '[a0]volume=0.028[a0v]',
+    '[a1]volume=0.012,adelay=1400|1400[a1v]',
+    '[a0v][a1v][a2]amix=inputs=3:duration=longest,afade=t=in:ss=0:d=1.2,afade=t=out:st=' + fadeOutStart + ':d=2,alimiter=limit=0.35[aout]',
+  ].join(';');
+  execFileSync(_ffmpegBin(), [
+    '-y',
+    '-filter_complex', filter,
+    '-map', '[aout]',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    outputPath,
+  ], { stdio: 'pipe', timeout: 120000 });
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    throw new Error('本地 BGM 生成失败');
+  }
+  return outputPath;
 }
 
 async function _muxAudioWithLoopedVideo(videoPath, audioPath, outputPath, ratio = '16:9', outputSize = 'standard') {
@@ -8670,6 +9272,16 @@ function _luxuryImageSubjectAlias(productSubject = '', scene = {}) {
 function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
+  const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(rawSubject || subject, scene);
+  if (softwareWorkflow) {
+    return [
+      `SERVICE/WORKFLOW SUBJECT LOCK: the advertised subject is "${rawSubject || subject}".`,
+      _luxurySoftwareWorkflowEvidencePrompt(rawSubject || subject),
+      'The phone/screen is only the carrier of the service; do not turn this into a phone product ad.',
+      'The frame must show the workflow in a real store, retail office, stockroom or warehouse shelf context: actor + order/inventory evidence + action.',
+      'Do not invent cosmetics, perfume, skincare bottles, jewelry, watches, beverage packs, material showrooms, sci-fi UI labs, or unrelated retail goods.',
+    ].filter(Boolean).join(' ');
+  }
   const steelLock = _isLuxurySteelMaterialSubject(rawSubject || subject, scene)
     ? 'For this finished architectural facade panel product: show installed cladding panels, a premium sample wall, precise panel edges, brushed or mirror-like surface texture and reflected side light as the hero subject. Keep it in a designed showroom, building lobby, clean facade entrance, or luxury sample area.'
     : '';
@@ -8687,6 +9299,15 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
 function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
+  const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(rawSubject || subject, scene);
+  if (softwareWorkflow) {
+    return [
+      `ABSOLUTE FIRST PRIORITY: the visible advertised subject is the "${rawSubject || subject}" workflow.`,
+      '正向主体锚点：必须看见同一真人演员在真实零售/仓库/店铺场景中处理订单、库存、补货或确认动作。',
+      '画面证据必须包含手机/电脑屏幕、订单纸、货架库存、商品盒、确认卡片或数据界面中的至少两类；手机只是服务载体，不是广告主体。',
+      'Never output a generic phone ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, or empty workplace.',
+    ].join(' ');
+  }
   const isSteelOrMaterial = _isLuxurySteelMaterialSubject(rawSubject || subject, scene);
   return [
     `ABSOLUTE FIRST PRIORITY: the visible hero subject must be "${subject}".`,
@@ -8726,7 +9347,17 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
     .filter(Boolean)
     .join(' ');
   const isSteelOrMaterial = /钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|material|facade/i.test(text);
+  const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
+  if (personRequired && softwareWorkflow) {
+    return [
+      'REQUIRED SOFTWARE STORY VISUAL ANCHOR:',
+      'The first readable subject must be the fixed real actor performing the confirmed order/inventory assistant workflow in a believable store, retail office, stockroom or shelf aisle.',
+      `The advertised service evidence must remain visible as "${subject}" through phone/screen/order papers/inventory shelves/confirmation UI; do not require a physical package for the service itself.`,
+      'The frame must look like a live-action commercial storyboard panel: same actor + real work environment + workflow evidence + requested emotion/action.',
+      '中文硬约束：画面必须像真人实拍广告，固定演员在店铺/货架/仓库中处理订单或库存；手机、订单纸、货架、确认界面是产品证据，不能变成纯手机广告或空场景。',
+    ].join(' ');
+  }
   if (personRequired) {
     return [
       'REQUIRED STORY VISUAL ANCHOR:',
@@ -8761,6 +9392,24 @@ function _luxuryKeyframeSceneRecipe(productSubject = '', scene = {}) {
     .filter(Boolean)
     .join(' ');
   const isSteel = /钢|金属|板材|建材|材料|材质|外立面|steel|metal|panel|material|facade/i.test(text);
+  if (_luxuryIsSoftwareWorkflowSubject(productSubject, scene)) {
+    const wantsPaperInHand = /纸|订单|单据|文件|paper|order sheets?|documents?|invoice/i.test(text);
+    const wantsWorried = /焦虑|担心|压力|worried|pressure|cannot keep up|messy/i.test(text);
+    const wantsRestockPoint = /补货|推荐|建议|指向|货架|shelf|shelves|restock|recommend|advice|points?\s+(from|toward|to)|pointing/i.test(text);
+    const wantsCalmEnding = /收尾|结束|释然|放松|松一口气|放下|放到|抬头|日常|calm ending|relieved|relief|puts?\s+(the\s+)?paper|paper stack down|looks? up|routine/i.test(text);
+    return [
+      'CONCRETE SOFTWARE WORKFLOW SCENE RECIPE:',
+      'Create a realistic live-action retail operations scene: back-of-house retail stockroom, order-processing counter, package area, plain inventory shelf zone, or small warehouse shelf zone.',
+      'Show the fixed actor using a phone or computer while holding or reviewing paper orders, inventory sheets, product boxes, shelves, or a subtle confirmation/check UI.',
+      wantsPaperInHand ? 'This shot mentions paper/order sheets: at least one paper order sheet or document must be in the actor hand or actively reviewed, not only lying far away on a table.' : '',
+      wantsWorried ? 'This shot mentions pressure/worry: actor expression must show mild worried concentration, furrowed brow or tense focus, not a calm beauty portrait.' : '',
+      wantsRestockPoint ? 'This shot is a restock recommendation/action shot: the actor must clearly point with one hand or extended index finger from the phone/workflow toward a specific visible shelf item, product box, stock location or empty shelf gap. The phone/order assistant and the target shelf item must both be readable in one frame.' : '',
+      wantsRestockPoint ? 'Use a medium or medium-wide composition with shelf depth so the pointing gesture has a visible target. Do not let a stack of papers dominate the foreground, and do not reduce the action to merely looking at a phone.' : '',
+      wantsCalmEnding ? 'This shot is the calm ending/relief beat: the actor must put the paper stack down on the counter or release it onto the table, with the phone resting nearby as workflow evidence instead of being the main hand action.' : '',
+      wantsCalmEnding ? 'The actor should look up or slightly toward camera/customer with a relieved, calmer expression. Do not show him still worried, still checking the phone, or actively flipping papers.' : '',
+      'Use practical natural lighting, ordinary work details and real camera perspective. Avoid supermarket shopping aisles, colorful consumer-goods shelves, cleaning-product aisles, bathroom/home-goods/towel displays, cosmetics shelves, material showrooms, sci-fi interfaces, empty office glamour and pure phone packshots.',
+    ].join(' ');
+  }
   if (!isSteel) return '';
   if (_luxuryStoryboardRequiresPerson(scene, productSubject)) {
     return [
@@ -9593,6 +10242,13 @@ function _buildLuxurySubjectKeywords(productSubject = '', context = '') {
   if (/钢|钢材|钢板|板材|面板|金属/.test(source)) {
     extra.push('钢材', '钢结构', '钢材面板', '钢板', '板材', '面板', '金属面板', '金属板');
   }
+  if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: context, content_prompt: context })) {
+    extra.push(
+      'AI', '智能', '助手', '订单', '库存', '补货', '确认', '手机', '屏幕', '界面', '看板',
+      'AI助手', '订单助手', '订单管理', '库存管理', '零售', '货架',
+      'workflow', 'software', 'assistant', 'order', 'ordering', 'inventory', 'restock', 'dashboard', 'screen', 'phone',
+    );
+  }
   if (/建筑|空间|墙面|展厅|场景/.test(source)) extra.push('建筑', '空间', '墙面', '展厅');
   return Array.from(new Set([
     subject,
@@ -9613,6 +10269,9 @@ function _luxurySubjectHit(value = '', subjectKeywords = [], productSubject = ''
   const subject = String(productSubject || '');
   if (/钢|钢材|钢板|板材|面板|金属/.test(subject)) {
     return /钢|钢材|钢板|板材|面板|金属板|金属面板|墙面|展厅/.test(normalized);
+  }
+  if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: raw, content_prompt: raw })) {
+    return /AI|智能|助手|订单|库存|补货|确认|手机|屏幕|界面|看板|货架|零售|workflow|software|assistant|order|ordering|inventory|restock|dashboard|screen|phone/i.test(raw);
   }
   return false;
 }
@@ -9638,6 +10297,269 @@ function _luxuryCameraLabel(value = '') {
   return '高级产品镜头运动';
 }
 
+async function _generateLuxuryPersonSheetWithPipeline({
+  req,
+  prompt,
+  aspectRatio = '4:3',
+  filename,
+  destDir = JIMENG_ASSETS_DIR,
+  referenceImages = [],
+  outputSize = 'hd',
+} = {}) {
+  const stageId = 'luxury_ad.person_sheet';
+  const attempts = [];
+  const shortError = err => String(err?.message || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 240);
+  const addAttempt = (model, ok, err = null) => {
+    attempts.push({
+      provider_id: model?.provider_id || '',
+      model_id: model?.model_id || '',
+      ok: !!ok,
+      error: err ? shortError(err) : '',
+    });
+  };
+  const configuredModels = _uniquePipelineModels(_pickRunnablePipelineModels(stageId));
+  const rawModels = _pickConfiguredPipelineModels(stageId);
+  if (!configuredModels.length) {
+    const rawLabels = rawModels.map(model => `${model.provider_id}/${model.model_id}:${_pipelineModelNotRunnableReason(model)}`).join('；') || '未配置';
+    const err = new Error(`${stageId} 未在模型调用管理中配置可运行图片模型，已停止生成人物演员包；请先启用漫路 image2/nano/qwen 或其他可用图片模型。当前候选：${rawLabels}`);
+    err.status = 422;
+    err.code = 'LUXURY_PERSON_SHEET_MODEL_NOT_CONFIGURED';
+    err.luxuryKeyframeAttempts = [{
+      provider_id: 'preflight',
+      model_id: 'model-routing-admin-config',
+      ok: false,
+      error: rawLabels,
+    }];
+    throw err;
+  }
+
+  const safeAspectRatio = _normalizeAspectRatio(aspectRatio, '4:3');
+  const refs = (referenceImages || []).filter(Boolean).slice(0, 4);
+  const runCandidate = async (model, idx) => {
+    const provider = String(model?.provider_id || '').toLowerCase();
+    const modelId = String(model?.model_id || '').toLowerCase();
+    if (provider === 'deyunai') {
+      if (/nano-banana/.test(modelId)) {
+        return _generateViaDeyunaiNanoBanana({
+          prompt,
+          aspectRatio: safeAspectRatio,
+          filename: `${filename}_person_${idx}`,
+          destDir,
+          referenceImages: refs,
+          outputSize,
+          preferredModel: model.model_id,
+        });
+      }
+      return _generateViaDeyunaiSpecificImageModel({
+        model: model.model_id,
+        prompt,
+        aspectRatio: safeAspectRatio,
+        filename: `${filename}_person_${idx}`,
+        destDir,
+        referenceImages: refs,
+        outputSize,
+      });
+    }
+    if (provider === 'topview') {
+      const tv = require('../services/topviewService');
+      const usageMeta = {
+        userId: req.user?.id || req.userId || '',
+        agentId: stageId,
+        requestId: String(req.body?.request_key || req.query?.request_key || '').trim(),
+        source: 'digital_human_luxury_ad_person_sheet',
+      };
+      const result = refs.length
+        ? await tv.generateImageEdit({
+          prompt,
+          referenceImages: refs,
+          model: model.model_id,
+          aspectRatio: safeAspectRatio,
+          resolution: _topviewImageResolutionFromOutputSize(outputSize),
+          ...usageMeta,
+        })
+        : await tv.generateTextToImage({
+          prompt,
+          model: model.model_id,
+          aspectRatio: safeAspectRatio,
+          resolution: _topviewImageResolutionFromOutputSize(outputSize),
+          ...usageMeta,
+        });
+      const outPath = path.join(destDir, `${filename}_person_topview_${idx}.png`);
+      const imageBuffer = await _fetchImageBuffer(result.imageUrl);
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, imageBuffer);
+      return outPath;
+    }
+    throw new Error(`${stageId} 不支持 ${provider || 'unknown'}/${modelId || 'unknown'}，请在模型调用管理中选择图片生成模型`);
+  };
+
+  let lastErr = null;
+  for (let i = 0; i < configuredModels.length; i++) {
+    const model = configuredModels[i];
+    try {
+      const outPath = await runCandidate(model, i + 1);
+      const frameQa = await _checkLuxuryActorAssetFramingQa(req, outPath, {
+        viewKey: filename,
+        model: `${model.provider_id}/${model.model_id}`,
+      });
+      addAttempt(model, true);
+      return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
+    } catch (err) {
+      lastErr = err;
+      addAttempt(model, false, err);
+      console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed:`, shortError(err));
+    }
+  }
+  const err = new Error(`${stageId} 所有可运行模型均未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}`);
+  err.status = 502;
+  err.code = 'LUXURY_PERSON_SHEET_ALL_MODELS_FAILED';
+  err.luxuryKeyframeAttempts = attempts;
+  err.cause = lastErr;
+  throw err;
+}
+
+function _luxuryActorGenderFromContext({ text = '', descriptionText = '', spec = {}, roleHint = '' } = {}) {
+  const specGender = String(spec.gender || spec.genderAge || spec.gender_age || '').toLowerCase();
+  const combined = [text, descriptionText, roleHint].filter(Boolean).join(' ');
+  if (/female|woman|girl|女士|女性|女人|女主/.test(specGender) || /女性|女主|女士|女人|woman|female/i.test(combined)) {
+    return {
+      value: 'female',
+      prompt: 'East Asian female professional advertising actor, about 30 to 42 years old',
+      lock: 'Keep the selected female presentation consistent across all actor views.',
+    };
+  }
+  if (/male|man|boy|男士|男性|男人|男主/.test(specGender) || /男性|男主|男士|男人|man|male/i.test(combined)) {
+    return {
+      value: 'male',
+      prompt: 'East Asian male professional advertising actor, about 30 to 42 years old',
+      lock: 'Keep the selected male presentation consistent across all actor views.',
+    };
+  }
+  return {
+    value: 'male',
+    prompt: 'East Asian male retail store manager and business operator actor, about 30 to 42 years old',
+    lock: 'Keep the selected male presentation consistent across all actor views.',
+  };
+}
+
+function _luxuryActorOriginPrompt(spec = {}, text = '') {
+  const origin = String(spec.origin || spec.region || spec.ethnicity || spec.race || '').toLowerCase();
+  if (/southeast/.test(origin)) return { value: 'southeast_asian', prompt: 'Southeast Asian facial features' };
+  if (/white|european|caucasian/.test(origin)) return { value: 'white_european', prompt: 'European / Caucasian facial features' };
+  if (/black|african/.test(origin)) return { value: 'black_african', prompt: 'Black / African facial features' };
+  if (/south[_\s-]?asian|india|indian|南亚|印度/.test(origin) || /印度|南亚|Indian|South Asian/i.test(text)) return { value: 'south_asian', prompt: 'South Asian facial features' };
+  if (/latino|latin/.test(origin)) return { value: 'latino', prompt: 'Latino facial features' };
+  if (/middle[_\s-]?eastern/.test(origin)) return { value: 'middle_eastern', prompt: 'Middle Eastern facial features' };
+  return { value: 'east_asian_cn', prompt: 'Chinese / East Asian facial features' };
+}
+
+async function _generateLuxuryRealisticActorPackage({
+  req,
+  text,
+  descriptionText = '',
+  personContextNotes = '',
+  sceneNotes = '',
+  roleHint = '',
+  spec = {},
+  referencePersonUrl = '',
+  aspectRatio = '9:16',
+  baseUrl = '',
+} = {}) {
+  const actorId = `luxury_actor_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const actorAssetId = `actor_asset_${actorId}`;
+  const gender = _luxuryActorGenderFromContext({ text, descriptionText, spec, roleHint });
+  const origin = _luxuryActorOriginPrompt(spec, text);
+  const wardrobe = /店长|经理|门店|零售|订单|库存|仓库|store|manager|retail|order|inventory/i.test([text, descriptionText, roleHint].join(' '))
+    ? 'the exact same pale blue long-sleeve business shirt tucked into the exact same dark tailored trousers, black belt, clean business-casual shoes'
+    : 'the exact same clean premium business-casual outfit: pale blue or light neutral long-sleeve shirt tucked into dark tailored trousers, black belt, clean business shoes';
+  const common = [
+    'Create a fixed commercial actor asset package for a realistic live-action advertisement.',
+    'Generate one consistent real-looking professional actor for casting reference photos.',
+    `${gender.prompt}; ${origin.prompt}.`,
+    gender.lock,
+    `Wardrobe lock: ${wardrobe}.`,
+    'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible, standing pose. Show the actor from head to shoes whenever possible; at minimum show head, torso, belt, trousers/skirt, thighs and knees. Do not crop at chest, waist or hips.',
+    'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same actor, exact same haircut and hair length, exact same hair color, exact same shirt, exact same trousers, exact same belt and shoes. No outfit change, no hairstyle change, no age drift.',
+    'The result should look like practical studio casting photography of a real professional person.',
+    'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
+    'Commercial casting reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible, no text, no labels, no watermark.',
+    'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
+    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, fashion beauty poster, illustration, CGI, plastic AI skin.',
+    referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
+    `Advertising brief: ${String(text || '').slice(0, 900)}.`,
+    personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
+    sceneNotes ? `Scene context: ${sceneNotes.slice(0, 650)}.` : '',
+    roleHint ? `Role hint: ${roleHint.slice(0, 500)}.` : '',
+    'Keep the selected demographic, wardrobe, age impression, identity and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or extra people.',
+    REALISTIC_PHOTO_GUIDE,
+  ].filter(Boolean).join(' ');
+  const views = [
+    {
+      key: 'front',
+      prompt: `${common} FRONT VIEW: actor standing naturally, facing camera directly, calm professional expression, both eyes visible, full body visible from head to shoes or at least down to knees, pants/trousers and belt clearly visible, hands relaxed or lightly in pockets, real store manager casting photo. Do not crop as a bust portrait.`,
+    },
+    {
+      key: 'side',
+      prompt: `${common} SIDE / THREE-QUARTER VIEW: same actor, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes or at least down to knees, pants/trousers and belt clearly visible, neutral professional posture, same body proportions, real casting reference photo. Do not change jacket, shirt, hair or age.`,
+    },
+    {
+      key: 'action',
+      prompt: `${common} ACTION VIEW: same actor in a realistic retail/store/office workflow pose, holding a phone and a few order papers, visible from head to knees or full body, pants/trousers and belt clearly visible, looking professional and believable, same face identity, exact same haircut, exact same shirt, trousers and belt, natural commercial photo. No wardrobe drift.`,
+    },
+  ];
+  const outputs = [];
+  const attempts = [];
+  for (const view of views) {
+    const generated = await _generateLuxuryPersonSheetWithPipeline({
+      req,
+      prompt: view.prompt,
+      aspectRatio,
+      filename: `${actorId}_${view.key}`,
+      destDir: JIMENG_ASSETS_DIR,
+      referenceImages: referencePersonUrl ? [referencePersonUrl] : [],
+      outputSize: 'hd',
+    });
+    attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
+    outputs.push({
+      key: view.key,
+      model: generated.model,
+      path: generated.outPath,
+      url: `${baseUrl}/public/jimeng-assets/${path.basename(generated.outPath)}`,
+      frame_qa: generated.frameQa || null,
+    });
+  }
+  const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
+  fs.mkdirSync(actorDir, { recursive: true });
+  const actorAsset = {
+    actor_id: actorId,
+    actor_asset_id: actorAssetId,
+    status: 'confirmed',
+    source: 'local_actor_library_generated',
+    reference_kind: 'synthetic_realistic_actor',
+    production_usable_actor: true,
+    is_ai_generated: false,
+    name: 'AI 真人感固定演员',
+    gender: gender.value,
+    origin: origin.value,
+    role: /店长|经理|门店|零售|订单|库存|仓库|store|manager|retail|order|inventory/i.test([text, descriptionText, roleHint].join(' ')) ? 'store_manager' : 'commercial_actor',
+    image_url: outputs[0]?.url || '',
+    extra_image_urls: outputs.slice(1).map(x => x.url).filter(Boolean),
+    stable_attributes: [
+      'same realistic face identity',
+      'same age impression',
+      'same exact hairstyle and hair color',
+      'same body proportions',
+      'same exact pale blue shirt, trousers, belt and shoes',
+      'same natural skin texture',
+    ],
+    forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
+    prompt: `FIXED REAL ACTOR ASSET: use the same ${origin.prompt} ${gender.value} commercial actor across all human keyframes. Preserve face identity, age, exact hairstyle, body proportions, exact pale blue shirt, trousers, belt and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
+  };
+  fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
+  fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+  return { actorAsset, outputs, attempts };
+}
+
 router.post('/luxury-ad/person-sheet', async (req, res) => {
   try {
     const {
@@ -9647,20 +10569,36 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       description = '',
       person_spec = {},
       reference_person = null,
+      person_context = null,
+      flow_mode = '',
     } = req.body || {};
     const text = String(brief || '').trim();
-    if (text.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求，再生成人物三视图' });
+    if (text.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求，再生成 AI 真人感演员包' });
+    const flowMode = String(flow_mode || '').toLowerCase();
+    const sceneList = Array.isArray(scene_config) ? scene_config : [];
+    const context = person_context && typeof person_context === 'object' ? person_context : {};
+    const hasPersonDesignContext = sceneList.length > 0
+      || !!String(context.source || '').trim()
+      || !!String(context.brief_info?.title || context.brief_info?.theme || '').trim()
+      || (Array.isArray(context.person_notes) && context.person_notes.length > 0);
+    if (flowMode !== 'material' && !hasPersonDesignContext) {
+      return res.status(400).json({
+        success: false,
+        code: 'LUXURY_PERSON_DESIGN_REQUIRED',
+        error: '请先生成基础信息/人物设定，再生成 AI 真人感演员包',
+      });
+    }
     const baseUrl = _publicBaseUrl(req);
     const filename = `luxury_person_sheet_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const sceneNotes = Array.isArray(scene_config)
-      ? scene_config.slice(0, 6).map((s, i) => `${i + 1}. ${s.title || s.story_stage || ''} ${s.content_prompt || s.visual || s.objective || ''} ${s.action || ''}`).join('\n')
+    const sceneNotes = sceneList.length
+      ? sceneList.slice(0, 6).map((s, i) => `${i + 1}. ${s.title || s.story_stage || ''} ${s.content_prompt || s.visual || s.objective || ''} ${s.action || ''}`).join('\n')
       : '';
     const spec = (person_spec && typeof person_spec === 'object') ? person_spec : {};
     const genderMap = {
-      adult_woman_25_35: { en: 'female woman, 25-35 years old', lock: 'GENDER LOCK: female adult woman only. No male face, no beard, no moustache, no masculine jaw, no male body proportions.' },
-      adult_woman_35_50: { en: 'female woman, 35-50 years old', lock: 'GENDER LOCK: female adult woman only. No male face, no beard, no moustache, no masculine jaw, no male body proportions.' },
-      adult_man_25_35: { en: 'male man, 25-35 years old', lock: 'GENDER LOCK: male adult man only. No female face, no feminine body proportions.' },
-      adult_man_30_45: { en: 'male man, 30-45 years old', lock: 'GENDER LOCK: male adult man only. No female face, no feminine body proportions.' },
+      adult_woman_25_35: { en: 'female woman, 25-35 years old', lock: 'Keep a consistent female professional actor presentation across all views.' },
+      adult_woman_35_50: { en: 'female woman, 35-50 years old', lock: 'Keep a consistent female professional actor presentation across all views.' },
+      adult_man_25_35: { en: 'male man, 25-35 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
+      adult_man_30_45: { en: 'male man, 30-45 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
       auto_real_adult: { en: 'real adult human selected from the advertising brief', lock: '' },
     };
     const roleMap = {
@@ -9697,108 +10635,59 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     const referencePersonUrl = reference_person && (reference_person.image_url || reference_person.url)
       ? await _resolveImageForExternalApi(req, reference_person.image_url || reference_person.url)
       : '';
-    const prompt = [
-      'Create one ultra photorealistic commercial advertising character turnaround reference sheet from a real-camera studio photo style on a horizontal canvas.',
-      'The single image MUST contain exactly THREE separate full-body standing views of the SAME real adult human arranged left to right with visible spacing: FRONT VIEW, LEFT SIDE PROFILE VIEW, BACK VIEW.',
-      'The FRONT VIEW is mandatory and must be the left figure facing the camera directly with both eyes visible. The middle figure must be a clean LEFT SIDE PROFILE. The right figure must be a BACK VIEW showing the back of the same outfit and hair.',
-      'Each view must be head-to-toe, complete feet visible, equal height, same face identity, same hairstyle, same body proportions, same outfit, same shoes and same color palette.',
-      'All three figures stand on the same floor line, with full shoes visible near the bottom edge and enough margin above the head. Keep the camera far enough away to show the entire body.',
-      'Use a practical orthographic wardrobe fitting / casting reference layout. The three bodies should be smaller if needed so every head, hand, leg and shoe fits fully inside the frame.',
-      'Do NOT create a close-up, bust portrait, headshot, selfie, cinematic poster, single person crop, half-body crop or one-view portrait.',
-      'Style: realistic studio fashion reference photo shot on a real camera, clean neutral beige or warm gray seamless background, soft natural studio lighting, full body visible from head to shoes.',
-      genderLock,
-      referencePersonUrl ? 'Reference image 1 is an existing digital human / person image. Use it only as identity, age impression, hairstyle and outfit-family guidance, then redraw a real-human three-view sheet. Do not copy a cropped bust.' : '',
-      `Character role: ${roleHint}.`,
-      `Advertising brief: ${text.slice(0, 900)}.`,
-      sceneNotes ? `Storyboard context: ${sceneNotes.slice(0, 650)}.` : '',
-      'The person should look like a real advertising actor suitable for premium commercial storyboards, natural expression, tasteful modern clothing, realistic skin pores, slight human asymmetry, real fabric wrinkles and natural shoe details.',
-      'If the brief mentions AI, robot, future technology or smart devices, still create a REAL HUMAN actor/user/presenter, not a robot, android, synthetic avatar or futuristic mannequin.',
-      'Negative constraints: no anime, no cartoon, no CGI doll, no 3D render, no waxy AI skin, no synthetic avatar look, no plastic face, no illustration, no beauty poster, no fantasy armor, no sexual styling, no lingerie, no swimsuit, no child, no celebrity, no logo, no watermark, no text labels, no single portrait.',
-      'Composition should match a practical 3-view character sheet: front / side / back arranged left to right, equal height, complete feet visible, arms relaxed.',
-      REALISTIC_PHOTO_GUIDE,
-    ].filter(Boolean).join(' ');
-    const aspectRatio = _normalizeAspectRatio(output_ratio, '4:3');
-    let outPath = null;
-    let imageUrl = '';
-    let usedModel = '';
-    try {
-      const { generateCharacterThreeView } = require('../services/imageService');
-      const lockPromptCn = [
-        `${roleHint}，拟真真人商业广告演员，全身站立，真实摄影棚拍，真实皮肤、真实布料、真实鞋子`,
-        genderLock ? genderLock.replace(/^GENDER LOCK:\s*/i, '性别锁定：') : '',
-        descriptionText ? `补充描述：${descriptionText}` : '',
-        '禁止数字人、机器人、3D头像、动漫、CG塑料感、半身肖像',
-      ].filter(Boolean).join('，');
-      const lockPromptEn = [
-        roleHint,
-        'ultra photorealistic real adult commercial advertising actor, full-body studio casting reference photo, realistic skin pores, real fabric wrinkles, natural body proportions',
-        genderLock,
-        'no digital avatar, no robot, no android, no CGI doll, no anime, no bust portrait',
-      ].filter(Boolean).join(', ');
-      const tv = await generateCharacterThreeView({
-        name: filename + '_tv',
-        role: 'main',
-        description: roleHint,
-        dim: 'realistic',
-        race: '人',
-        species: 'human',
-        animStyle: 'realistic',
-        aspectRatio: '4:3',
-        resolution: '2K',
-        referenceImages: referencePersonUrl ? [referencePersonUrl] : [],
-        lockPromptCn,
-        lockPromptEn,
-        includeFace: false,
-      });
-      if (!tv?.sheet?.url || !tv?.sheet?.filePath) throw new Error('连续三视图未返回拼贴图');
-      outPath = tv.sheet.filePath;
-      imageUrl = `${baseUrl}${tv.sheet.url}`;
-      usedModel = `sequential_three_view/${[tv.front?.provider_used, tv.side?.provider_used, tv.back?.provider_used].filter(Boolean).join('+') || 'auto'}`;
-    } catch (threeViewErr) {
-      console.warn('[DH/luxury-ad/person-sheet] sequential three-view failed, fallback single canvas:', threeViewErr.message);
-    }
-    if (!imageUrl) {
-      try {
-        outPath = await _generateViaDeyunaiSpecificImageModel({
-          model: 'gpt-image-1',
-          prompt,
-          aspectRatio,
-          filename: filename + '_gpt',
-          destDir: JIMENG_ASSETS_DIR,
-          referenceImages: referencePersonUrl ? [referencePersonUrl] : [],
-          outputSize: 'hd',
-        });
-        usedModel = 'deyunai/gpt-image-1';
-      } catch (gptErr) {
-        console.warn('[DH/luxury-ad/person-sheet] gpt-image-1 failed, fallback nano-banana:', gptErr.message);
-        outPath = await _generateViaDeyunaiNanoBanana({
-          prompt,
-          aspectRatio,
-          filename: filename + '_nano',
-          destDir: JIMENG_ASSETS_DIR,
-          referenceImages: referencePersonUrl ? [referencePersonUrl] : [],
-          outputSize: 'hd',
-        });
-        usedModel = 'deyunai/nano-banana';
-      }
-      imageUrl = `${baseUrl}/public/jimeng-assets/${path.basename(outPath)}`;
-    }
+    const personContextNotes = [
+      context.source ? `人物设定来源：${context.source}` : '',
+      context.brief_info?.title ? `广告标题：${context.brief_info.title}` : '',
+      context.brief_info?.theme ? `主题：${context.brief_info.theme}` : '',
+      context.brief_info?.style ? `风格：${context.brief_info.style}` : '',
+      Array.isArray(context.person_notes) && context.person_notes.length
+        ? `人物表/约束：${context.person_notes.slice(0, 10).join('；')}`
+        : '',
+    ].filter(Boolean).join('\n');
+    const actorPack = await _generateLuxuryRealisticActorPackage({
+      req,
+      text,
+      descriptionText,
+      personContextNotes,
+      sceneNotes,
+      roleHint,
+      spec,
+      referencePersonUrl,
+      aspectRatio: '9:16',
+      baseUrl,
+    });
+    const actorAsset = actorPack.actorAsset;
+    const imageUrl = actorAsset.image_url || '';
     res.json({
       success: true,
       imageUrl,
-      filename: path.basename(outPath),
-      model: usedModel,
+      image_url: imageUrl,
+      extra_image_urls: actorAsset.extra_image_urls || [],
+      filename: path.basename(imageUrl || ''),
+      model: actorPack.outputs?.[0]?.model || '',
+      attempts: actorPack.attempts || [],
+      actor_asset: actorAsset,
+      outputs: actorPack.outputs || [],
       character: {
-        id: 'luxury_ad_person_sheet',
-        name: '拟真真人三视图',
-        type: 'luxury_ad_character_sheet',
+        id: actorAsset.actor_asset_id,
+        actor_id: actorAsset.actor_id,
+        actor_asset_id: actorAsset.actor_asset_id,
+        name: actorAsset.name || 'AI 真人感固定演员',
+        type: 'luxury_ad_actor_package',
+        source: actorAsset.source || 'local_actor_library_generated',
+        reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
+        is_ai_generated: false,
+        production_usable_actor: true,
+        gender: actorAsset.gender || '',
+        origin: actorAsset.origin || '',
         image_url: imageUrl,
-        view_count: 3,
-        description: `真人广告人物三视图：正面、侧面、背面。已按人物设定生成：${roleHint.slice(0, 80)}。`,
+        extra_image_urls: actorAsset.extra_image_urls || [],
+        view_count: 1 + (actorAsset.extra_image_urls || []).length,
+        description: `AI 真人感固定演员包：正面定妆、侧面/半侧、动作参考。已按 Lin 演员资产模式生成：${roleHint.slice(0, 80)}。`,
       },
     });
   } catch (err) {
-    _sendApiError(res, err, '剧情广告人物三视图生成失败');
+    _sendApiError(res, err, '剧情广告人物演员包生成失败');
   }
 });
 
@@ -9825,10 +10714,9 @@ router.post('/luxury-ad/shot-rewrite', async (req, res) => {
       return res.status(400).json({ success: false, error: '请先写清楚希望 AI 怎么修改这一镜头' });
     }
     const shotIndex = Math.max(0, Math.round(Number(index) || 0));
-    const totalShots = Math.max(1, Math.min(8, Math.round(Number(total) || 1)));
+    const totalShots = Math.max(1, Math.min(18, Math.round(Number(total) || 1)));
     const targetDuration = Math.max(12, Math.min(90, Math.round(Number(duration_sec) || 30)));
     const productSubject = _deriveLuxuryProductSubject({ text: brief, productName: product_name, assetSummary: asset_summary });
-    const productLockPrompt = _luxuryProductLockPrompt(productSubject);
     const role = _luxuryRoleAt(shotIndex, totalShots, segment.role || segment.shot_role || segment.type || '');
     const currentShot = {
       title: segment.title || `镜头 ${shotIndex + 1}`,
@@ -9849,10 +10737,11 @@ router.post('/luxury-ad/shot-rewrite', async (req, res) => {
       ui_overlay: segment.ui_overlay || null,
       reference_index: segment.reference_index || 0,
     };
+    const productLockPrompt = _luxuryProductLockPrompt(productSubject, currentShot);
     const assetNotes = [
       product_asset && (product_asset.name || product_asset.url) ? `主商品：${product_asset.name || product_asset.url}` : '',
       ...(Array.isArray(reference_assets) ? reference_assets.map(x => x && (x.name || x.url) ? `分镜画面${x.index || ''}：${x.name || x.url}` : '') : []),
-      person_asset && (person_asset.name || person_asset.id || person_asset.image_url) ? `人物参考：${person_asset.name || person_asset.id || '真人三视图'}${person_asset.image_url ? ` (${person_asset.image_url})` : ''}` : '',
+      person_asset && (person_asset.name || person_asset.id || person_asset.image_url) ? `人物参考：${person_asset.name || person_asset.id || 'AI 真人感演员包'}${person_asset.image_url ? ` (${person_asset.image_url})` : ''}` : '',
     ].filter(Boolean).join('；') || asset_summary || '暂无素材摘要';
     const { callLLM } = require('../services/storyService');
     const sys = [
@@ -10049,11 +10938,14 @@ function _publicLuxuryKeyframeResult(item) {
   if (!item) return null;
   if (item.status === 'done') return { success: true, status: 'done', result: item.result };
   if (item.status === 'error') {
+    const nestedAttempts = Array.isArray(item.details?.attempts)
+      ? item.details.attempts
+      : (Array.isArray(item.details?.details?.attempts) ? item.details.details.attempts : []);
     const details = item.details && typeof item.details === 'object'
       ? {
         code: item.details.code || item.details.error?.code || undefined,
         reason: item.details.reason || undefined,
-        attempts: Array.isArray(item.details.attempts) ? item.details.attempts.slice(-8) : undefined,
+        attempts: nestedAttempts.length ? nestedAttempts.slice(-8) : undefined,
         production_contract: item.details.production_contract || undefined,
         production_project: item.details.production_project || undefined,
         production_project_id: item.details.production_project_id || item.details.production_project?.id || undefined,
@@ -10263,7 +11155,6 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       ? `本次用户只上传了 ${uploadedReferenceAssets.length} 张顺序分镜/场景画面，只允许输出 ${wantedShots} 个镜头；不得新增没有上传素材支撑的额外镜头。`
       : '';
     const productSubject = _deriveLuxuryProductSubject({ text: brief, productName: product_name || visualReferenceBrief?.product_subject || '', assetSummary: enrichedAssetSummary });
-    const productLockPrompt = _luxuryProductLockPrompt(productSubject);
     const luxuryAssetManifest = _buildLuxuryAssetManifest({
       visualReferenceBrief,
       briefReferenceAssets,
@@ -10273,6 +11164,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       referenceImages: uploadedReferenceAssets.map(x => x.url || x.image_url || x.previewUrl).filter(Boolean),
       productSubject,
     });
+    const productLockPrompt = _luxuryProductLockPrompt(productSubject, { visual: brief, content_prompt: brief, asset_manifest: luxuryAssetManifest });
     const luxuryVisualLocks = _buildLuxuryVisualLocks({
       assetManifest: luxuryAssetManifest,
       visualReferenceBrief,
@@ -10349,7 +11241,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       product_asset && (product_asset.name || product_asset.url) ? `主商品图：${product_asset.name || product_asset.url}` : '',
       ...(Array.isArray(reference_assets) ? reference_assets.map(x => x && (x.name || x.url) ? `分镜画面${x.index || ''}：${x.name || x.url}` : '') : []),
       resolvedPersonSpec ? `人物配置：${JSON.stringify(resolvedPersonSpec).slice(0, 600)}` : '',
-      person_asset && (person_asset.name || person_asset.id || person_asset.image_url) ? `人物参考：${person_asset.name || person_asset.id || '真人三视图'}${person_asset.image_url ? ` (${person_asset.image_url})` : ''}` : '',
+      person_asset && (person_asset.name || person_asset.id || person_asset.image_url) ? `人物参考：${person_asset.name || person_asset.id || 'AI 真人感演员包'}${person_asset.image_url ? ` (${person_asset.image_url})` : ''}` : '',
       continuousHuman ? '人物要求：同一位真人从头贯穿整条广告' : '',
     ].filter(Boolean).join('；');
     const outlineNotes = Array.isArray(outline_segments) && outline_segments.length
@@ -11292,7 +12184,7 @@ ${JSON.stringify(scenes, null, 2)}
 广告类型：${ad_type || 'auto'}
 目标时长：${targetDuration} 秒；画面比例：${output_ratio}
 
-请按剧情输出 ${explicitShotTarget ? `正好 ${Math.max(1, Math.min(8, wantedShots))} 个场景顺序对象` : `${Math.max(3, Math.min(8, minAllowedShots))}-${Math.max(4, Math.min(8, maxAllowedShots))} 个场景顺序对象，建议约 ${Math.max(4, Math.min(8, wantedShots))} 个`}；不要为了凑数重复场景。`;
+请按剧情输出 ${explicitShotTarget ? `正好 ${Math.max(1, Math.min(18, wantedShots))} 个场景顺序对象` : `${Math.max(3, Math.min(18, minAllowedShots))}-${Math.max(4, Math.min(18, maxAllowedShots))} 个场景顺序对象，建议约 ${Math.max(4, Math.min(18, wantedShots))} 个`}；不要为了凑数重复场景。`;
       scenes = await callLuxuryAgent({ name: llmStageId, systemPrompt: outlineSys, userPrompt: outlineUser, json: 'array', maxTokens: 3500 });
     }
     const maxSceneCount = isDetailedMode ? maxAllowedShots : 8;
@@ -12004,10 +12896,10 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     ? Math.max(1, Math.min(180, Math.round(Number(durationSec) || providedCount * 3 || 30)))
     : Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
   const total = providedCount
-    ? Math.max(1, Math.min(12, providedCount))
-    : Math.max(4, Math.min(8, Number(shotCount) || 6));
+    ? Math.max(1, Math.min(18, providedCount))
+    : Math.max(4, Math.min(18, Number(shotCount) || 6));
   const subject = productSubject || _deriveLuxuryProductSubject({ text, productName: '', assetSummary });
-  const productLockPrompt = _luxuryProductLockPrompt(subject);
+  const productLockPrompt = _luxuryProductLockPrompt(subject, { visual: text, content_prompt: text, asset_summary: assetSummary });
   let list = (Array.isArray(segments) ? segments : [])
     .filter(x => x && (x.voiceover || x.text || x.visual || x.visual_prompt || x.title))
     .slice(0, total);
@@ -12432,16 +13324,19 @@ function _luxuryBuildUiOverlaySvg({ width = 1080, height = 1920, overlay = null 
   const cardH = Math.round(shortSide * 0.16);
   const margin = Math.round(shortSide * 0.055);
   const placement = String(ui.placement || '').toLowerCase();
+  const phoneAnchored = /phone|mobile|screen|手机|屏幕/.test(placement);
   const left = /left|左/.test(placement)
     ? margin
-    : (/phone|mobile|screen|手机|屏幕/.test(placement)
+    : (phoneAnchored
       ? Math.round(width - cardW - margin)
       : Math.round(width - cardW - margin));
   const top = /bottom|下/.test(placement)
     ? Math.round(height - cardH - margin * 2.3)
+    : (phoneAnchored && isPortrait
+      ? Math.round(height * 0.52)
     : (/center|中/.test(placement)
       ? Math.round(height * 0.42)
-      : Math.round(height * (isPortrait ? 0.18 : 0.16)));
+      : Math.round(height * (isPortrait ? 0.18 : 0.16))));
   const radius = Math.round(shortSide * 0.025);
   const label = _luxuryXmlEscape(_luxuryOverlayLabel(ui));
   const sub = _luxuryXmlEscape(String(ui.motion || 'soft pop-in').replace(/\s+/g, ' ').slice(0, 28));
@@ -12866,24 +13761,65 @@ function _mergeLuxuryStoryExtractIntoScene(scene = {}, extract = {}, index = 0) 
     ...scene,
     full_story_extract: storyExtract,
     story_extraction_mode: 'full_story_per_keyframe',
-    scene_content: visual || scene.scene_content,
-    content_prompt: visual || scene.content_prompt,
-    display_visual: visual || scene.display_visual,
-    visual: visual || scene.visual,
-    visual_prompt: visual ? [visual, scene.visual_prompt || ''].filter(Boolean).join(' ') : scene.visual_prompt,
-    action: action || scene.action,
-    visual_action: action || scene.visual_action,
-    character_action: action || scene.character_action,
-    scene_prompt: sceneText || scene.scene_prompt,
-    environment_lock: sceneText || scene.environment_lock,
-    shot_angle: camera || scene.shot_angle,
-    camera: camera || scene.camera,
-    voiceover: dialogue || scene.voiceover,
-    narration: dialogue || scene.narration,
+    scene_content: scene.scene_content || visual,
+    content_prompt: scene.content_prompt || visual,
+    display_visual: scene.display_visual || visual,
+    visual: scene.visual || visual,
+    visual_prompt: scene.visual_prompt || visual,
+    action: scene.action || action,
+    visual_action: scene.visual_action || action,
+    character_action: scene.character_action || action,
+    scene_prompt: scene.scene_prompt || sceneText,
+    environment_lock: scene.environment_lock || sceneText,
+    shot_angle: scene.shot_angle || camera,
+    camera: scene.camera || camera,
+    voiceover: scene.voiceover || dialogue,
+    narration: scene.narration || dialogue,
     image2_brief: _luxuryStrictText(prioritizedBrief, 1400),
     must_show: mustShow.length ? Array.from(new Set([...(Array.isArray(scene.must_show) ? scene.must_show : []), ...mustShow])).slice(0, 8) : scene.must_show,
     must_not_show: mustNotShow.length ? Array.from(new Set([...(Array.isArray(scene.must_not_show) ? scene.must_not_show : []), ...mustNotShow])).slice(0, 8) : scene.must_not_show,
   };
+}
+
+function _lockLuxuryScenesToProvidedSegments(scenes = [], segments = []) {
+  if (!Array.isArray(scenes) || !Array.isArray(segments) || !segments.length) return scenes;
+  return scenes.map((scene, index) => {
+    const segment = segments[index] && typeof segments[index] === 'object' ? segments[index] : null;
+    if (!segment) return scene;
+    const title = _luxuryStrictText(segment.title || scene.title || '', 120);
+    const voiceover = _luxuryStrictText(segment.voiceover || segment.narration || segment.text || scene.voiceover || scene.narration || '', 500);
+    const visual = _luxuryStrictText(segment.visual_prompt || segment.visual || segment.content_prompt || segment.scene_content || segment.text || scene.visual || scene.content_prompt || '', 900);
+    const action = _luxuryStrictText(segment.action || segment.visual_action || scene.action || scene.visual_action || '', 500);
+    const camera = _luxuryStrictText(segment.camera || segment.shot_angle || scene.camera || scene.shot_angle || '', 320);
+    const directorPrompt = _luxuryStrictText(scene.director_prompt || '', 1200);
+    const visualPrompt = [directorPrompt, visual].filter(Boolean).join(' ').slice(0, 2800);
+    return {
+      ...scene,
+      confirmed_segment_locked: true,
+      title: title || scene.title,
+      role: segment.role || scene.role,
+      start: segment.start ?? scene.start,
+      end: segment.end ?? scene.end,
+      duration: segment.duration || scene.duration,
+      source_text: _luxuryStrictText(segment.text || scene.source_text || '', 500),
+      voiceover: voiceover || scene.voiceover,
+      narration: voiceover || scene.narration,
+      ad_copy: voiceover || scene.ad_copy,
+      subtitle: voiceover || scene.subtitle,
+      text: voiceover || scene.text,
+      visual,
+      content_prompt: visual,
+      scene_content: visual,
+      display_visual: visual,
+      visual_prompt: visualPrompt || scene.visual_prompt,
+      action,
+      visual_action: action,
+      character_action: action,
+      camera: camera || scene.camera,
+      shot_angle: camera || scene.shot_angle,
+      camera_label: camera || scene.camera_label,
+    };
+  });
 }
 
 async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
@@ -13224,7 +14160,7 @@ async function _buildSpaceAdStoryboard({ title, text, durationSec, segments, sce
       source_text: voiceover,
     }];
   }
-  const wantedShots = isLuxury ? Math.max(4, Math.min(8, Number(shotCount) || 6)) : 5;
+  const wantedShots = isLuxury ? Math.max(4, Math.min(18, Number(shotCount) || 6)) : 5;
   const seedSegments = (Array.isArray(segments) && segments.length ? segments : _fallbackGuideSegments(text, target))
     .slice(0, wantedShots)
     .map((s, i) => `${i + 1}. ${s.text}`)
@@ -15017,6 +15953,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     if (refs.length >= 8) break;
     await addRef(url, 'identity_reference_view');
   }
+  _luxuryAssertActorReferenceReality(scene, refs, { personRequired });
   const characterLock = scene.character_lock || (hasAvatar
     ? (typeof _buildLuxuryCharacterConsistencyLock === 'function'
       ? _buildLuxuryCharacterConsistencyLock(avatar)
@@ -15056,8 +15993,8 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
   const hasAnyReference = refs.length > 0;
   const hasOnlyAvatarReference = hasAvatar && refs.length === 1 && refs[0]?.source === avatarUrl;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
@@ -15125,29 +16062,17 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
       : null,
     preferControlledCandidate: false,
     allowControlledFinal: false,
-    // Strict retry mode: every configured image model uses the same compact
-    // storyboard contract and must pass QA; this is not a hidden fallback.
+    // Strict mode: configured reference-preserving models may be tried in
+    // model-management order, but QA is a hard gate and never rewrites prompts.
     strictSingleCandidate: false,
-    allowQaRepair: true,
-    qaRepairHook: _luxuryQaContractRepairHook({
-      scene,
-      productSubject,
-      productLockPrompt,
-      subjectGuard,
-      refs,
-      hasAvatar,
-      personRequired,
-      characterLock,
-      aspectRatio,
-      index,
-      total: Number(scene.totalShots || scene.shotCount || 1),
-    }),
+    allowQaRepair: false,
+    qaRepairHook: null,
     personRequired,
     characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
-  if (scene.ui_overlay) {
+  if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
       inputPath: outPath,
       scene,
@@ -15569,6 +16494,131 @@ function _luxuryGptImage2EditReferenceUrls(refs = []) {
     .slice(0, 2);
 }
 
+function _luxuryTopviewEditReferenceUrls(refs = [], { personRequired = false, scene = {}, productSubject = '' } = {}) {
+  const list = Array.isArray(refs) ? refs : [];
+  const unique = urls => urls
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x, i, arr) => arr.indexOf(x) === i);
+  const identity = unique(list
+    .filter(ref => /identity_reference|generated_presenter_guidance/i.test(String(ref?.kind || '')))
+    .map(ref => ref.resolved));
+  if (personRequired) {
+    if (_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject, scene)) {
+      const text = [scene.visual, scene.content_prompt, scene.scene_content, scene.action, scene.voiceover, scene.title].filter(Boolean).join(' ');
+      if (/收尾|结束|释然|放松|松一口气|放下|放到|抬头|日常|calm ending|relieved|relief|puts?\s+(the\s+)?paper|paper stack down|looks? up|routine/i.test(text)) {
+        return identity
+          .slice()
+          .sort((a, b) => {
+            const sa = /action|phone|paper|order|document/i.test(a) ? 1 : 0;
+            const sb = /action|phone|paper|order|document/i.test(b) ? 1 : 0;
+            return sa - sb;
+          })
+          .slice(0, 6);
+      }
+      if (/补货|推荐|建议|指向|货架|shelf|shelves|restock|recommend|advice|points?\s+(from|toward|to)|pointing/i.test(text)) {
+        return identity
+          .slice()
+          .sort((a, b) => {
+            const sa = /action|phone|paper|order|document/i.test(a) ? 1 : 0;
+            const sb = /action|phone|paper|order|document/i.test(b) ? 1 : 0;
+            return sa - sb;
+          })
+          .slice(0, 6);
+      }
+      if (/纸|订单|单据|文件|手机|paper|order|document|phone/i.test(text)) {
+        return identity
+          .slice()
+          .sort((a, b) => {
+            const sa = /action|phone|paper|order|document/i.test(a) ? -1 : 0;
+            const sb = /action|phone|paper|order|document/i.test(b) ? -1 : 0;
+            return sa - sb;
+          })
+          .slice(0, 6);
+      }
+    }
+    return identity.slice(0, 6);
+  }
+  return unique(list
+    .filter(ref => !/human_environment_layout|human_story_layout/i.test(String(ref?.kind || '')))
+    .map(ref => ref.resolved))
+    .slice(0, 4);
+}
+
+function _luxuryActorReferenceRealityIssues(scene = {}, refs = [], { personRequired = false } = {}) {
+  if (!personRequired) return [];
+  const badVisualPattern = /(动漫|动画|二次元|卡通|插画|漫画|3D风格|3d风格|3D渲染|3d渲染|CGI|CG\b|渲染风格|虚拟形象|非真人|anime|cartoon|illustration|manga|3d render|cgi|virtual avatar)/i;
+  const personItems = [
+    ...(Array.isArray(scene.asset_manifest?.items) ? scene.asset_manifest.items : []),
+    ...(Array.isArray(scene.visual_locks?.asset_manifest?.items) ? scene.visual_locks.asset_manifest.items : []),
+  ].filter(item => /person|actor|character|presenter/i.test(String(item?.role || item?.source || item?.type || '')));
+  const issues = [];
+  const seen = new Set();
+  const addIssue = (issue) => {
+    const key = [issue.url || '', issue.reason || '', issue.observed || ''].join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    issues.push(issue);
+  };
+  for (const item of personItems) {
+    const observed = String(item?.observed || item?.description || item?.visual || '').trim();
+    if (!observed) continue;
+    if (badVisualPattern.test(observed)) {
+      addIssue({
+        reason: 'person_reference_observed_as_non_realistic',
+        name: String(item?.name || item?.title || '').slice(0, 80),
+        url: String(item?.url || item?.image_url || '').slice(0, 260),
+        observed: observed.slice(0, 160),
+        required: '真人写实演员参考图',
+      });
+    }
+  }
+  const characterPrompt = String(scene.character_lock?.prompt || scene.visual_locks?.character_lock?.prompt || '');
+  const observedMatches = characterPrompt.match(/observed=([^|.；;]+)/gi) || [];
+  for (const match of observedMatches) {
+    const observed = match.replace(/^observed=/i, '').trim();
+    if (badVisualPattern.test(observed)) {
+      addIssue({
+        reason: 'character_lock_observed_as_non_realistic',
+        observed: observed.slice(0, 160),
+        required: '真人写实演员参考图',
+      });
+    }
+  }
+  const identityRefs = (Array.isArray(refs) ? refs : [])
+    .filter(ref => /identity_reference|generated_presenter_guidance/i.test(String(ref?.kind || '')))
+    .map(ref => ref.resolved || ref.source)
+    .filter(Boolean);
+  if (!identityRefs.length) {
+    addIssue({
+      reason: 'missing_identity_reference',
+      observed: 'human shot has no locked actor identity reference',
+      required: '至少一张已确认真人演员身份参考图',
+    });
+  }
+  return issues.slice(0, 8);
+}
+
+function _luxuryAssertActorReferenceReality(scene = {}, refs = [], options = {}) {
+  const issues = _luxuryActorReferenceRealityIssues(scene, refs, options);
+  if (!issues.length) return;
+  const err = new Error('剧情广告分镜生成已停止：人物镜头需要已确认的真人写实演员素材，当前演员参考被识别为动漫/3D/非真人或缺少身份图。');
+  err.status = 422;
+  err.code = 'LUXURY_ACTOR_REFERENCE_NOT_REALISTIC';
+  err.details = {
+    issues,
+    required: '请先在演员库选择或生成真人写实演员卡，至少包含正脸/侧脸/半身等多视图身份参考，再生成分镜。',
+  };
+  err.luxuryKeyframeAttempts = [{
+    provider_id: 'preflight',
+    model_id: 'actor-reference-reality-gate',
+    ok: false,
+    error: '演员参考素材未通过真人写实门禁，已阻止继续调用图像模型。',
+    issues,
+  }];
+  throw err;
+}
+
 function _luxuryIsQaRejectError(err = null) {
   const code = String(err?.code || '');
   const status = Number(err?.status || 0);
@@ -15841,6 +16891,7 @@ async function _createLuxuryAdReferenceKeyframe({
     if (refs.length >= 8) break;
     await addRef(url, 'identity_reference_view');
   }
+  _luxuryAssertActorReferenceReality(scene, refs, { personRequired });
   const characterLock = scene.character_lock || (hasAvatar
     ? (typeof _buildLuxuryCharacterConsistencyLock === 'function'
       ? _buildLuxuryCharacterConsistencyLock(avatar)
@@ -15880,8 +16931,8 @@ async function _createLuxuryAdReferenceKeyframe({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
   const hasAnyReference = refs.length > 0;
   const hasOnlyAvatarReference = hasAvatar && refs.length === 1 && refs[0]?.source === avatarUrl;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
@@ -15949,29 +17000,17 @@ async function _createLuxuryAdReferenceKeyframe({
       : null,
     preferControlledCandidate: false,
     allowControlledFinal: false,
-    // Strict retry mode: every configured image model uses the same compact
-    // storyboard contract and must pass QA; this is not a hidden fallback.
+    // Strict mode: configured reference-preserving models may be tried in
+    // model-management order, but QA is a hard gate and never rewrites prompts.
     strictSingleCandidate: false,
-    allowQaRepair: true,
-    qaRepairHook: _luxuryQaContractRepairHook({
-      scene,
-      productSubject,
-      productLockPrompt,
-      subjectGuard,
-      refs,
-      hasAvatar,
-      personRequired,
-      characterLock,
-      aspectRatio,
-      index,
-      total: Number(scene.totalShots || scene.shotCount || 1),
-    }),
+    allowQaRepair: false,
+    qaRepairHook: null,
     personRequired,
     characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
-  if (scene.ui_overlay) {
+  if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
       inputPath: outPath,
       scene,
@@ -16086,8 +17125,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     ? `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(outPath)}`
     : '';
   const promptWithRepair = (model = null) => {
+    const providerId = String(model?.provider_id || model?.provider || '').toLowerCase();
     const modelId = String(model?.model_id || model?.model || '').toLowerCase();
-    const maxChars = modelId === 'gpt-image-2' ? 2600 : 1850;
+    const maxChars = modelId === 'gpt-image-2' || providerId === 'topview' || /^topview-/.test(modelId) ? 2600 : 1850;
     const fullPrompt = repairInstruction
       ? [repairInstruction, currentPrompt].filter(Boolean).join(' ')
       : currentPrompt;
@@ -16187,10 +17227,17 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         requestId: String(req.body?.request_key || req.query?.request_key || '').trim(),
         source: 'digital_human_luxury_ad',
       };
-      const result = referenceImages.length
+      const topviewReferenceImages = _luxuryTopviewEditReferenceUrls(refs, { personRequired, scene, productSubject });
+      if (personRequired && !topviewReferenceImages.length) {
+        const err = new Error('Topview 人物分镜需要已确认演员身份参考图，当前严格模式禁止降级为文生图。');
+        err.status = 422;
+        err.code = 'LUXURY_TOPVIEW_IDENTITY_REFERENCE_REQUIRED';
+        throw err;
+      }
+      const result = topviewReferenceImages.length
         ? await tv.generateImageEdit({
           prompt: promptForAttempt,
-          referenceImages: referenceImages.slice(0, 6),
+          referenceImages: topviewReferenceImages,
           model: model.model_id,
           aspectRatio: safeAspectRatio,
           resolution: topviewResolution,
@@ -16609,24 +17656,34 @@ function _buildLuxuryKeyframePrompt({
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject);
   const personRequired = visibleSubject.humanRequired;
   const visibleSubjectRequired = visibleSubject.required;
+  const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject, scene);
   const effectiveSubjectGuard = visibleSubjectRequired
-    ? [
+    ? (softwareWorkflowSubject
+      ? (subjectGuard || [
+        `SOFTWARE WORKFLOW EVIDENCE GUARD: the advertised service is "${productSubject || scene.product_subject}".`,
+        'Keep actor action, phone/screen/order papers/inventory evidence and work scene visible together. Do not convert this into a physical product packshot.',
+      ].join(' '))
+      : [
       `PRODUCT EVIDENCE GUARD: the advertised product/material category is "${productSubject || scene.product_subject}".`,
       'Keep this product/material visibly present when the script needs it, but the confirmed script subject remains authoritative.',
       'Reject unrelated product categories and generic stock props. Do not force a human if the script subject is not human.',
-    ].join(' ')
+      ].join(' '))
     : subjectGuard;
   const effectiveProductLockPrompt = visibleSubjectRequired
-    ? [
+    ? (softwareWorkflowSubject
+      ? productLockPrompt
+      : [
       `PRODUCT EVIDENCE LOCK: the product/material evidence must still read as "${productSubject || scene.product_subject}".`,
       'Show finished, premium, commercially usable product/material in the same frame when the script calls for product evidence.',
       'Do not change it into cosmetics, perfume, skincare, beverage, phone, watch, jewelry or unrelated props.',
-    ].join(' ')
+      ].join(' '))
     : productLockPrompt;
   const refRule = hasStoryLayoutReference
     ? 'Reference rule: reference image 1 is only a rough storyboard composition guide. Follow its relationship: one visible real presenter inside the same scene, beside or in front of the product/material evidence zone. If more reference images are provided, they are user-uploaded demand references for actor appearance, space, material, mood, and brand style. Use scene/material/style references as visual guidance, but if a person identity reference exists it is mandatory for all human shots. Do not treat demand references as fixed shot count or exact locked frames. Do not copy the layout guide as illustration; turn the result into a photorealistic commercial frame.'
     : hasOnlyAvatarReference
     ? 'Reference rule: reference image 1 is a human character sheet. Preserve the same identity only when this shot includes a person; do not treat the human sheet as the product.'
+    : (personRequired && softwareWorkflowSubject && hasAnyReference)
+    ? 'Reference rule: provided reference images are fixed actor identity references only. Preserve the same actor face, age, hairstyle and pale blue shirt family. Do not treat actor references as product, scene, grocery shelf, or catalogue layout. Generate the order/inventory work scene from the shot contract.'
     : hasAnyReference
     ? 'Reference rule: reference image 1 is the main product or visual anchor. If reference image 2 exists, it is the current shot reference. Preserve product identity, material, shape, color, category and recognizable selling point.'
     : 'Reference rule: no uploaded shot reference is available. Generate the product/service scene directly from the shot contract; keep the same product category across shots.';
@@ -16665,10 +17722,12 @@ function _buildLuxuryKeyframePrompt({
     effectiveProductLockPrompt,
     characterLock?.prompt || '',
     'Create one premium commercial storyboard keyframe that exactly matches the shot contract above. The frame must be a still keyframe, realistic, cinematic, product-readable, and coherent with the story.',
-    'No subtitles, no text overlay, no watermark, no extra random people, no product redesign.',
-    'Hard negative: cosmetic bottle, perfume bottle, skincare package, beverage bottle, phone, watch, jewelry, unrelated packaged product, random retail prop, changing steel/material/interior subject into consumer goods.',
+    'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
+    softwareWorkflowSubject
+      ? 'Hard negative: pure phone advertisement, supermarket shopping aisle, colorful consumer-goods aisle, cleaning-product shelf, bathroom/home-goods/towel display, cosmetics/perfume/skincare shelf, jewelry/watch display, material showroom, sci-fi UI lab, unrelated packaged product, random retail prop, changed actor identity.'
+      : 'Hard negative: cosmetic bottle, perfume bottle, skincare package, beverage bottle, phone, watch, jewelry, unrelated packaged product, random retail prop, changing steel/material/interior subject into consumer goods.',
   ].filter(Boolean).join(' ');
-  return prompt.slice(0, 1950);
+  return prompt.slice(0, softwareWorkflowSubject ? 2400 : 1950);
 }
 
 async function _createLuxuryAdReferenceKeyframeFallback({
@@ -16765,6 +17824,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
   }
   for (const url of demandReferenceImages) await addRef(url, 'demand_reference');
   if (avatarUrl) await addRef(avatarUrl, 'identity_reference');
+  _luxuryAssertActorReferenceReality(scene, refs, { personRequired });
   const hasOnlyAvatarReference = hasAvatar && refs.length === 1 && refs[0]?.source === avatarUrl;
   const characterLock = scene.character_lock || (hasAvatar ? {
     enabled: true,
@@ -16799,8 +17859,8 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
   const hasAnyReference = refs.length > 0;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
   const shotContractPrompt = _buildLuxuryKeyframePrompt({
@@ -16866,26 +17926,14 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     preferControlledCandidate: false,
     allowControlledFinal: false,
     strictSingleCandidate: false,
-    allowQaRepair: true,
-    qaRepairHook: _luxuryQaContractRepairHook({
-      scene,
-      productSubject,
-      productLockPrompt,
-      subjectGuard,
-      refs,
-      hasAvatar,
-      personRequired,
-      characterLock,
-      aspectRatio,
-      index,
-      total: Number(scene.totalShots || scene.shotCount || 1),
-    }),
+    allowQaRepair: false,
+    qaRepairHook: null,
     personRequired,
     characterLock,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
-  if (scene.ui_overlay) {
+  if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
       inputPath: outPath,
       scene,
@@ -16964,7 +18012,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
   const maxStoryboardShots = isLuxury
     ? (luxuryPayloadRefCount > 0
       ? Math.max(1, Math.min(luxuryPayloadRefCount, Math.round(Number(shotCount) || luxuryPayloadRefCount)))
-      : Math.max(1, Math.min(8, Math.round(Number(shotCount) || 6))))
+      : Math.max(1, Math.min(18, Math.round(Number(shotCount) || (Array.isArray(segments) && segments.length ? segments.length : 6)))))
     : (isShowroomGuide ? 1 : 5);
   const taskDir = path.join(JIMENG_ASSETS_DIR, `digital_ad_${taskId}`);
   fs.mkdirSync(taskDir, { recursive: true });
@@ -16994,6 +18042,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       ? payload.brief_reference_assets.filter(x => x && (x.url || x.image_url || x.previewUrl || x.name)).slice(0, 6)
       : [];
     const luxuryAsyncVisualReferenceBrief = _normalizeLuxuryVisualReferenceBrief(payload.visual_reference_brief);
+    const luxuryAsyncNonPersonBriefReferenceImages = _luxuryNonPersonBriefReferenceImages(luxuryAsyncBriefReferenceAssets, luxuryAsyncVisualReferenceBrief);
     const luxuryAsyncAssetManifest = isLuxury ? _buildLuxuryAssetManifest({
       visualReferenceBrief: luxuryAsyncVisualReferenceBrief,
       briefReferenceAssets: luxuryAsyncBriefReferenceAssets,
@@ -17067,7 +18116,11 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           destDir: JIMENG_ASSETS_DIR,
           existingPresenterUrl: avatar?.image_url || '',
           existingSceneUrl: '',
-          productReferenceImages: [backgroundUrl, ...(Array.isArray(payload.reference_images) ? payload.reference_images : [])],
+          productReferenceImages: [
+            backgroundUrl,
+            ...(Array.isArray(payload.reference_images) ? payload.reference_images : []),
+            ...luxuryAsyncNonPersonBriefReferenceImages,
+          ],
           guideGender,
         })
         : { used: [] };
@@ -17138,7 +18191,11 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             scene: {
               ...sc,
               product_subject: productSubject,
-              product_lock_prompt: _luxuryProductLockPrompt(productSubject),
+              product_lock_prompt: _luxuryProductLockPrompt(productSubject, {
+                ...sc,
+                asset_manifest: luxuryAsyncAssetManifest || undefined,
+                visual_locks: luxuryAsyncVisualLocks || undefined,
+              }),
               active_reference_image: sc.suppress_story_reference_images === true ? '' : backgroundUrl,
               asset_manifest: luxuryAsyncAssetManifest || undefined,
               visual_locks: luxuryAsyncVisualLocks || undefined,
@@ -18377,6 +19434,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       .filter(x => x && !/^blob:/i.test(x))
       .filter(Boolean)
       .slice(0, 4);
+    const nonPersonBriefReferenceImages = _luxuryNonPersonBriefReferenceImages(briefReferenceAssets, visualReferenceBrief);
     const enrichedAssetSummary = [asset_summary || '', visualReferenceSummary].filter(Boolean).join('\n');
     const luxuryBriefPersonReferenceImage = isLuxury
       ? _selectLuxuryBriefReferenceImage(briefReferenceAssets, visualReferenceBrief, ['person'])
@@ -18391,9 +19449,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       ? _buildLuxuryReferenceContinuityBible(visualReferenceBrief)
       : '';
     const limit = isLuxury
-      ? (luxuryShotReferenceCount > 0
-        ? Math.max(1, Math.min(luxuryShotReferenceCount, Math.round(Number(shot_count) || luxuryShotReferenceCount)))
-        : Math.max(1, Math.min(8, Math.round(Number(shot_count) || 6))))
+      ? Math.max(1, Math.min(18, Math.round(Number(shot_count) || (Array.isArray(segments) && segments.length ? segments.length : 6))))
       : (isShowroomGuide ? 1 : 5);
     const guideSegments = Array.isArray(segments) && segments.length
       ? segments.slice(0, limit)
@@ -18466,6 +19522,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         productSubject,
         aspectRatio,
       });
+      scenes = _lockLuxuryScenesToProvidedSegments(scenes, guideSegments);
     }
     if (isLuxury) {
       luxuryPlanningScenes = scenes;
@@ -18498,7 +19555,55 @@ router.post('/spaces/keyframes', async (req, res) => {
         assetManifest: luxuryAssetManifest,
         visualLocks: luxuryVisualLocks,
       });
+      const identityReferenceKind = person_asset
+        ? _luxuryActorReferenceKind(person_asset)
+        : (luxuryBriefPersonReferenceImage ? 'real_photo' : '');
+      const identityIsAiGenerated = person_asset
+        ? _luxuryIsAiGeneratedActorReference(person_asset)
+        : false;
+      const identityIsRealPerson = person_asset
+        ? _luxuryIsRealActorReference(person_asset)
+        : (!!luxuryBriefPersonReferenceImage || !!avatar?.image_url);
+      const identityIsProductionUsableActor = person_asset
+        ? _luxuryIsProductionUsableActorReference(person_asset)
+        : identityIsRealPerson;
+      if (luxuryProductionContract.actor_reference) {
+        luxuryProductionContract.actor_reference.reference_kind = identityReferenceKind;
+        luxuryProductionContract.actor_reference.is_ai_generated = identityIsAiGenerated;
+        luxuryProductionContract.actor_reference.real_person_reference = identityIsRealPerson;
+        luxuryProductionContract.actor_reference.production_usable_actor = identityIsProductionUsableActor;
+        if (luxuryProductionContract.actor_reference.status === 'confirmed' && !identityIsProductionUsableActor) {
+          luxuryProductionContract.actor_reference.status = 'not_real_person';
+          luxuryProductionContract.final_keyframes_ready = false;
+          if (Array.isArray(luxuryProductionContract.required_actions)) {
+            luxuryProductionContract.required_actions.push('select_real_actor_reference');
+          }
+        }
+      }
       luxuryActorAssetPackage = luxuryProductionContract.actor_asset || null;
+      if (!luxuryStoryboardReviewOnly && luxuryProductionContract.human_required) {
+        const actorIdentityRefs = [
+          luxuryProductionContract.actor_reference?.image_url,
+          ...(Array.isArray(luxuryProductionContract.actor_reference?.extra_image_urls)
+            ? luxuryProductionContract.actor_reference.extra_image_urls
+            : []),
+        ]
+          .map((url, idx) => String(url || '').trim()
+            ? {
+              source: String(url || '').trim(),
+              resolved: String(url || '').trim(),
+              kind: idx === 0 ? 'identity_reference' : 'identity_reference_view',
+            }
+            : null)
+          .filter(Boolean);
+        _luxuryAssertActorReferenceReality({
+          asset_manifest: luxuryAssetManifest || undefined,
+          visual_locks: luxuryVisualLocks || undefined,
+          character_lock: luxuryProductionContract.visual_bible?.locks_summary?.character
+            ? { prompt: luxuryProductionContract.visual_bible.locks_summary.character }
+            : undefined,
+        }, actorIdentityRefs, { personRequired: true });
+      }
       luxuryPlanningMeta = {
         asset_manifest: luxuryAssetManifest || undefined,
         visual_locks: luxuryVisualLocks || undefined,
@@ -18542,19 +19647,28 @@ router.post('/spaces/keyframes', async (req, res) => {
       }
       if (luxuryProductionContract.human_required && luxuryProductionContract.actor_reference?.status !== 'confirmed') {
         const hasBadActorUrl = !!luxuryProductionContract.actor_reference?.image_url;
+        const notRealPerson = luxuryProductionContract.actor_reference?.status === 'not_real_person';
         const err = new Error(hasBadActorUrl
-          ? '真实关键帧已停止：当前演员参考图片不可访问，上游图像编辑模型无法读取该人物参考。请重新上传人物参考或选择本地可访问的数字人形象后再生成真实关键帧。'
-          : '真实关键帧已停止：当前分镜包含真人镜头，但还没有确认演员参考。请先上传人物参考、选择数字人形象，或生成真人三视图后再生成真实关键帧。');
+          ? (notRealPerson
+            ? '真实关键帧已停止：当前演员参考是 AI 拟真素材，不是真人照片/授权真人演员。请上传真人参考或选择授权真人演员素材后再生成关键帧。'
+            : '真实关键帧已停止：当前演员参考图片不可访问，上游图像编辑模型无法读取该人物参考。请重新上传真人参考或选择本地可访问的授权演员素材后再生成关键帧。')
+          : '真实关键帧已停止：当前分镜包含真人镜头，但还没有确认真人演员参考。请先上传真人参考或选择授权真人演员素材后再生成关键帧。');
         err.status = 422;
-        err.code = hasBadActorUrl ? 'LUXURY_ACTOR_REFERENCE_UNREACHABLE' : 'LUXURY_ACTOR_REFERENCE_REQUIRED';
+        err.code = notRealPerson
+          ? 'LUXURY_REAL_ACTOR_REFERENCE_REQUIRED'
+          : (hasBadActorUrl ? 'LUXURY_ACTOR_REFERENCE_UNREACHABLE' : 'LUXURY_ACTOR_REFERENCE_REQUIRED');
         err.details = {
-          reason: hasBadActorUrl ? 'actor_reference_unreachable' : 'actor_reference_required',
+          reason: notRealPerson
+            ? 'real_actor_reference_required'
+            : (hasBadActorUrl ? 'actor_reference_unreachable' : 'actor_reference_required'),
           production_contract: luxuryProductionContract,
           attempts: [{
             provider_id: 'preflight',
             model_id: 'actor-reference-gate',
             ok: false,
-            error: hasBadActorUrl ? '演员参考图片不可访问，已阻止最终关键帧生成。' : '缺少已确认演员参考，已阻止最终关键帧生成。',
+            error: notRealPerson
+              ? 'AI 拟真演员不能作为真人参考通过，已阻止最终关键帧生成。'
+              : (hasBadActorUrl ? '演员参考图片不可访问，已阻止最终关键帧生成。' : '缺少已确认演员参考，已阻止最终关键帧生成。'),
             availability: luxuryProductionContract.actor_reference?.availability || null,
           }],
         };
@@ -18595,7 +19709,11 @@ router.post('/spaces/keyframes', async (req, res) => {
         destDir: JIMENG_ASSETS_DIR,
         existingPresenterUrl: avatar?.image_url || luxuryPersonAssetImageUrl || luxuryBriefPersonReferenceImage || '',
         existingSceneUrl: luxuryBriefSceneReferenceImage || '',
-        productReferenceImages: [background_url, ...(Array.isArray(reference_images) ? reference_images : []), ...briefReferenceImages],
+        productReferenceImages: [
+          background_url,
+          ...(Array.isArray(reference_images) ? reference_images : []),
+          ...nonPersonBriefReferenceImages,
+        ],
         guideGender: guide_gender,
       })
       : { used: [] };
@@ -18609,8 +19727,8 @@ router.post('/spaces/keyframes', async (req, res) => {
     const luxuryPersonAvatar = luxuryPersonAssetImageUrl
       ? {
         id: person_asset.id || 'luxury_ad_person_sheet',
-        name: person_asset.name || '拟真真人三视图',
-        title: person_asset.name || '拟真真人三视图',
+        name: person_asset.name || 'AI 真人感演员包',
+        title: person_asset.name || 'AI 真人感演员包',
         image_url: luxuryPersonAssetImageUrl,
         extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
         actor_asset_id: person_asset.actor_asset_id || person_asset.asset_library_id || person_asset.material_id || '',
@@ -18842,7 +19960,11 @@ router.post('/spaces/keyframes', async (req, res) => {
           scene: {
             ...sc,
             product_subject: productSubject,
-            product_lock_prompt: _luxuryProductLockPrompt(productSubject),
+            product_lock_prompt: _luxuryProductLockPrompt(productSubject, {
+              ...sc,
+              asset_manifest: luxuryAssetManifest || undefined,
+              visual_locks: luxuryVisualLocks || undefined,
+            }),
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
@@ -18876,7 +19998,11 @@ router.post('/spaces/keyframes', async (req, res) => {
           scene: {
             ...sc,
             product_subject: productSubject,
-            product_lock_prompt: _luxuryProductLockPrompt(productSubject),
+            product_lock_prompt: _luxuryProductLockPrompt(productSubject, {
+              ...sc,
+              asset_manifest: luxuryAssetManifest || undefined,
+              visual_locks: luxuryVisualLocks || undefined,
+            }),
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
@@ -19135,6 +20261,148 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
     failures,
   };
 }
+
+router.post('/luxury-ad/auto-bgm', async (req, res) => {
+  try {
+    const {
+      text = '',
+      title = '剧情广告',
+      duration_sec = 30,
+      durationSec = null,
+      segments = [],
+      ad_type = 'auto',
+      ad_style = 'luxury_soft',
+      brief_info = null,
+    } = req.body || {};
+    if (!String(text || '').trim()) {
+      return res.status(400).json({ success: false, error: '请先填写广告需求后再自动匹配 BGM' });
+    }
+    const duration = Number(durationSec || duration_sec) || 30;
+    const profile = _inferLuxuryBgmProfile({
+      text,
+      title,
+      segments,
+      ad_type,
+      ad_style,
+      brief_info,
+    });
+    const outputPath = _generateLocalLicensedBgm({ durationSec: duration, profile });
+    const filename = path.basename(outputPath);
+    const name = `${profile.mood} · 本地纯 BGM`;
+    const bgmAsset = {
+      name,
+      original_name: name,
+      file_path: outputPath,
+      file_url: `/api/projects/music/${filename}`,
+      url: `/api/projects/music/${filename}`,
+      volume: 0.16,
+      source: 'VIDO 本地生成',
+      license: 'VIDO 本地生成纯背景音；未使用第三方采样，可用于本项目商用测试与成片混音',
+      license_url: '',
+      requires_attribution: false,
+      matched_mood: profile.mood,
+      matched_genre: profile.genre,
+      matched_tags: profile.tags,
+      auto_matched: true,
+      generated_at: new Date().toISOString(),
+    };
+    res.json({ success: true, bgm_asset: bgmAsset, profile });
+  } catch (err) {
+    console.error('[DH/luxury-ad/auto-bgm] 失败:', err.message);
+    res.status(500).json({ success: false, error: err.message || 'BGM 自动匹配失败' });
+  }
+});
+
+router.post('/material-film/generate', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const {
+      text = '',
+      title = '素材成片',
+      voice_id = '',
+      duration_sec = 30,
+      aspect_ratio,
+      aspectRatio,
+      output_size,
+      outputSize,
+      material_assets = [],
+      reference_images = [],
+      background_url = '',
+      person_asset = null,
+      subtitle = null,
+      bgm_asset = null,
+      replaces_task_id = '',
+    } = body;
+    if (!String(text || '').trim()) return res.status(400).json({ success: false, error: 'text 必填' });
+    if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填，请先选择配音音色' });
+    const materialUrls = _normalizeMaterialFilmUrls([
+      ...(Array.isArray(material_assets) ? material_assets : []),
+      ...(Array.isArray(reference_images) ? reference_images : []),
+      background_url,
+    ]);
+    if (!materialUrls.length) return res.status(400).json({ success: false, error: '请先上传至少一张素材图片' });
+    const taskId = uuidv4();
+    const normalizedAspectRatio = _normalizeAspectRatio(aspect_ratio || aspectRatio, '9:16');
+    const normalizedOutputSize = _normalizeOutputSize(output_size || outputSize);
+    _markTaskSuperseded(replaces_task_id, taskId, req.user?.id || null);
+    const task = {
+      id: taskId,
+      taskId,
+      status: 'submitted',
+      stage: 'submitted',
+      progress: 3,
+      message: '已提交素材成片任务',
+      title,
+      text,
+      voice_id,
+      duration_sec,
+      material_assets: materialUrls,
+      reference_images,
+      background_url: background_url || materialUrls[0] || '',
+      person_asset,
+      subtitle,
+      bgm_asset,
+      user_id: req.user?.id,
+      created_at: new Date().toISOString(),
+      started_at: Date.now(),
+      kind: 'production',
+      mode: 'material_film',
+      generation_mode: 'material_film',
+      ad_mode: 'material_film',
+      ratio: normalizedAspectRatio,
+      output_size: normalizedOutputSize,
+      resolution: _outputSizeString(normalizedAspectRatio, normalizedOutputSize),
+    };
+    productAdTasks.set(taskId, task);
+    res.json({ success: true, taskId, message: '已提交素材成片任务' });
+    _runMaterialFilmTask(req, taskId, {
+      text,
+      title,
+      voiceId: voice_id,
+      durationSec: duration_sec,
+      materialAssets: materialUrls,
+      referenceImages: reference_images,
+      backgroundUrl: background_url || materialUrls[0] || '',
+      personAsset: person_asset,
+      subtitle,
+      bgmAsset: bgm_asset,
+      aspectRatio: normalizedAspectRatio,
+      outputSize: normalizedOutputSize,
+    }).catch(err => {
+      console.error('[DH/material-film] 失败:', err.message);
+      _taskPatch(taskId, {
+        status: 'error',
+        stage: 'material_error',
+        progress: 100,
+        error: err.message || '素材成片失败',
+        message: err.message || '素材成片失败',
+      });
+    });
+  } catch (err) {
+    console.error('[DH/material-film/generate] 失败:', err.message);
+    res.status(500).json({ success: false, error: err.message || '素材成片提交失败' });
+  }
+});
 
 router.post('/spaces/generate', async (req, res) => {
   try {

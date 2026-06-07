@@ -50,6 +50,19 @@ function serializeAsset(asset) {
   if (!asset) return asset;
   const imageUrl = publicAssetUrl(asset);
   const extraImages = normalizeAssetImageList(asset.extra_image_urls || asset.extra_images || []);
+  const metadata = asset.metadata || {};
+  const source = asset.source || metadata.source || '';
+  const actorText = [asset.name, asset.description, metadata.name, metadata.prompt, metadata.reference_kind]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const referenceKind = asset.reference_kind
+    || metadata.reference_kind
+    || (/uploaded|real_photo|human_photo/i.test(source)
+      ? 'real_photo'
+      : (/local_actor_library_generated/i.test(source) || /fixed real actor asset|realistic actor|真人感演员|真人演员包/.test(actorText)
+        ? 'synthetic_realistic_actor'
+        : (/generated|ai/i.test(source) ? 'ai_generated' : '')));
   return {
     ...asset,
     category: asset.category || asset.type,
@@ -57,12 +70,98 @@ function serializeAsset(asset) {
     file_url: asset.file_url || imageUrl,
     extra_image_urls: extraImages,
     view_count: asset.view_count || (imageUrl ? 1 + extraImages.length : extraImages.length),
+    source,
+    reference_kind: referenceKind,
+    gender: asset.gender || metadata.gender || '',
+    origin: asset.origin || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || '',
+    is_ai_generated: asset.is_ai_generated === true || metadata.is_ai_generated === true || referenceKind === 'ai_generated',
+    production_usable_actor: asset.production_usable_actor === true
+      || metadata.production_usable_actor === true
+      || referenceKind === 'synthetic_realistic_actor',
   };
+}
+
+function normalizeLocalPublicUrl(url = '') {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^https?:\/\/(?:127\.0\.0\.1|localhost):\d+(\/.+)$/i);
+  return m ? m[1] : raw;
+}
+
+function syncGeneratedActorLibraryAssets(userId) {
+  const outputDir = path.resolve(process.env.OUTPUT_DIR || './outputs');
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(outputDir, { withFileTypes: true })
+      .filter(d => d.isDirectory() && /^actor-library-/i.test(d.name))
+      .map(d => path.join(outputDir, d.name));
+  } catch {
+    return [];
+  }
+  const existing = db.listAssets(userId, 'all');
+  const existingKeys = new Set(existing.flatMap(a => [
+    a.id,
+    a.actor_asset_id,
+    a.metadata && a.metadata.actor_asset_id,
+    a.metadata && a.metadata.actor_id,
+  ].filter(Boolean)));
+  const inserted = [];
+  dirs.forEach(dir => {
+    const file = path.join(dir, 'actor_asset.json');
+    if (!fs.existsSync(file)) return;
+    let actor = null;
+    try { actor = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
+    const actorAssetId = String(actor.actor_asset_id || actor.asset_library_id || actor.actor_id || path.basename(dir)).trim();
+    if (!actorAssetId || existingKeys.has(actorAssetId)) return;
+    const imageUrl = normalizeLocalPublicUrl(actor.image_url || actor.url || actor.file_url || '');
+    const extraImageUrls = normalizeAssetImageList(actor.extra_image_urls || actor.extra_images || [])
+      .map(normalizeLocalPublicUrl)
+      .filter(Boolean);
+    if (!imageUrl && !extraImageUrls.length) return;
+    const asset = {
+      id: actorAssetId,
+      user_id: userId,
+      type: 'character',
+      category: 'character',
+      actor_asset_id: actorAssetId,
+      actor_id: actor.actor_id || actorAssetId,
+      name: actor.name || '本地演员素材',
+      original_name: actor.name || '',
+      file_path: '',
+      file_url: imageUrl,
+      image_url: imageUrl,
+      extra_image_urls: extraImageUrls,
+      view_count: Number(actor.view_count || (imageUrl ? 1 + extraImageUrls.length : extraImageUrls.length)) || 1,
+      status: actor.status || 'active',
+      source: actor.source || 'local_actor_library_generated',
+      reference_kind: actor.reference_kind || 'synthetic_realistic_actor',
+      gender: actor.gender || '',
+      origin: actor.origin || actor.region || actor.ethnicity || actor.race || '',
+      is_ai_generated: actor.reference_kind === 'ai_generated' || actor.is_ai_generated === true,
+      production_usable_actor: actor.production_usable_actor !== false,
+      description: actor.prompt || actor.description || '',
+      tags: ['演员', '角色素材', '本地生成'],
+      metadata: {
+        ...actor,
+        actor_asset_id: actorAssetId,
+        synced_from: file,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    db.insertAsset(asset);
+    existingKeys.add(actorAssetId);
+    inserted.push(asset);
+  });
+  return inserted;
 }
 
 // GET /api/assets — 列表
 router.get('/', (req, res) => {
   const { type } = req.query;
+  if (!type || type === 'all' || type === 'character') {
+    syncGeneratedActorLibraryAssets(req.user.id);
+  }
   const assets = db.listAssets(req.user.id, type || 'all').map(serializeAsset);
   res.json({ success: true, data: assets });
 });

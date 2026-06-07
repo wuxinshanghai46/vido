@@ -143,6 +143,7 @@ const PERMISSION_MATRIX = {
       { id: 'portrait',   label: '我的角色',     group: '我的' },
       { id: 'assets',     label: '素材库',       group: '我的' },
       { id: 'model_usage', label: '模型消耗',    group: '我的' },
+      { id: 'luxury_ad_pipeline_debug', label: '剧情广告调试链路', group: '我的' },
     ],
     // 与平台矩阵一致：查看/创建/编辑/删除 四列
     actions: [

@@ -118,6 +118,7 @@
     currentUser: null,
     luxuryAd: {
       currentStep: 1,
+      flowMode: 'material',
       content: '',
       adType: 'auto',
       durationSec: 30,
@@ -152,6 +153,8 @@
       keyframeProgress: null,
       keyframeError: '',
       keyframeErrorDetails: null,
+      personGenerationError: null,
+      personGenerationProgress: null,
       workflowProgress: null,
       usageRows: [],
       usageSummary: null,
@@ -551,16 +554,17 @@
   }
 
   // ══════════════ Tabs ══════════════
-  const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'luxury-ad'];
+  const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'material-film', 'luxury-ad'];
   const DH_LAST_TAB_KEY = 'vido_dh_active_tab';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
 
   function spacePaneForTab(tab) {
+    if (tab === 'material-film') return 'luxury-ad';
     return tab;
   }
 
   function isLuxuryAdModule() {
-    return state.activeTab === 'luxury-ad';
+    return state.activeTab === 'luxury-ad' || state.activeTab === 'material-film';
   }
 
   function setSpaceModeForActiveTab({ reset = false } = {}) {
@@ -619,7 +623,8 @@
       plaza: '🎭 形象广场',
       works: '🎬 作品库',
       'product-dh': '🛍️ 商品数字人',
-      'space-guide': '📢 广告数字人',
+      'space-guide': '📢 素材审片',
+      'material-film': '📢 素材审片',
       'luxury-ad': '🎞️ 剧情广告',
     }[tab] || '数字人';
 
@@ -630,7 +635,16 @@
       renderSpaceGuide();
       loadVoicesIfNeeded().then(renderSpaceVoiceOptions);
     }
+    if (tab === 'material-film') {
+      setLuxuryAdFlowMode('material');
+      renderLuxuryAd();
+      loadVoicesIfNeeded().then(() => {
+        renderLuxuryAdVoice();
+        updateLuxuryAdStepLocks();
+      });
+    }
     if (tab === 'luxury-ad') {
+      setLuxuryAdFlowMode('story');
       renderLuxuryAd();
       loadVoicesIfNeeded().then(() => {
         renderLuxuryAdVoice();
@@ -654,7 +668,7 @@
     const preview = $('#dhSpacePreview');
     if (preview) preview.innerHTML = state.space.adMode === 'luxury'
       ? '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择形象、上传多张参考画面或产品物料，再生成剧情分镜关键帧。</span></div>'
-      : '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择广告数字人形象、上传广告背景，再生成单镜头预览。</span></div>';
+      : '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择素材审片形象、上传广告背景，再生成单镜头预览。</span></div>';
     renderSpaceGuide();
   }
 
@@ -2115,17 +2129,18 @@
       switchTab('step3');
       return;
     }
-    if (state.avatarPickReturn === 'space-guide' || state.avatarPickReturn === 'luxury-ad') {
+    if (state.avatarPickReturn === 'space-guide' || state.avatarPickReturn === 'material-film' || state.avatarPickReturn === 'luxury-ad') {
       const returnTab = state.avatarPickReturn;
       state.avatarPickReturn = '';
       renderSelectedAvatar();
-      if (returnTab === 'luxury-ad') {
+      if (returnTab === 'luxury-ad' || returnTab === 'material-film') {
         if (state.luxuryAd.segments?.length) state.luxuryAd.keyframes = [];
         renderLuxuryAdPerson();
         renderLuxuryAdStoryboard();
         updateLuxuryAdStepLocks();
       } else renderSpaceGuide();
-      toast(`已选中「${a.name}」，返回${returnTab === 'luxury-ad' ? '剧情广告' : '广告数字人'}`, 'success');
+      const returnLabel = returnTab === 'luxury-ad' ? '剧情广告' : (returnTab === 'material-film' ? '素材审片' : '素材审片');
+      toast(`已选中「${a.name}」，返回${returnLabel}`, 'success');
       switchTab(returnTab);
       return;
     }
@@ -2327,15 +2342,15 @@
         avatar_type: 'normal',
       };
     }
-    if (scene === 'space-guide' || scene === 'luxury-ad') {
+    if (scene === 'space-guide' || scene === 'material-film' || scene === 'luxury-ad') {
       renderSelectedAvatar();
-      if (scene === 'luxury-ad') {
+      if (scene === 'luxury-ad' || scene === 'material-film') {
         if (state.luxuryAd.segments?.length) state.luxuryAd.keyframes = [];
         renderLuxuryAdPerson();
         renderLuxuryAdStoryboard();
         updateLuxuryAdStepLocks();
       } else renderSpaceGuide();
-      toast(`已选中「${it.name}」，用于${scene === 'luxury-ad' ? '剧情广告' : '广告数字人'}`, 'success');
+      toast(`已选中「${it.name}」，用于${scene === 'luxury-ad' ? '剧情广告' : (scene === 'material-film' ? '素材审片' : '素材审片')}`, 'success');
       switchTab(scene);
     } else if (scene === 'product-dh') {
       const av = it._avatarData;
@@ -2366,7 +2381,7 @@
         <div style="font-size:12px;color:rgba(255,255,255,.62);margin-bottom:14px">选择一个数字人场景后会带着这个形象进入对应工作台。</div>
         <div style="display:grid;gap:10px">
           <button class="dh-btn dh-btn-primary" data-scene="step3" type="button">③ 生成数字人</button>
-          <button class="dh-btn dh-btn-ghost" data-scene="space-guide" type="button">📢 广告数字人</button>
+          <button class="dh-btn dh-btn-ghost" data-scene="material-film" type="button">📢 素材审片</button>
           <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button">🎞️ 剧情广告</button>
           ${isProduct ? '<button class="dh-btn dh-btn-ghost" data-scene="product-dh" type="button">🛍️ 商品数字人</button>' : ''}
           <button class="dh-link-btn" data-scene="" type="button">取消</button>
@@ -2521,7 +2536,7 @@
     if (label) label.textContent = isProduct
       ? '商品场景 / 口播重点'
       : isSpace
-        ? '广告数字人信息（产品/场景/卖点/目标人群/优惠，越具体越好）'
+        ? '素材审片信息（产品/场景/卖点/目标人群/优惠，越具体越好）'
         : '要写的内容 / 主题 / 要点（越具体写稿越精准）';
     const input = $('#dhWriteInput');
     if (input) input.placeholder = isProduct
@@ -3422,6 +3437,7 @@
     state.luxuryAd.voiceId = '';
     state.luxuryAd.productAsset = null;
     state.luxuryAd.personAsset = null;
+    state.luxuryAd.personGenerationError = null;
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
@@ -3558,7 +3574,7 @@
     return {
       digital_human: '数字人',
       product_ad: '商品口播视频',
-      digital_ad: '广告数字人',
+      digital_ad: '素材审片',
       luxury_ad: '剧情广告',
     }[type] || '数字人';
   }
@@ -3893,7 +3909,7 @@
             avatar_id: t.avatar_id || payload?.avatar_id || detail.avatarId || '',
             background_url: t.background_url || payload?.background_url || detail.backgroundUrl || oldTask.previewUrl || '',
             text: t.text || payload?.text || detail.text || oldTask.textPreview || '',
-            title: t.title || payload?.title || detail.title || oldTask.avatarName || '广告数字人',
+            title: t.title || payload?.title || detail.title || oldTask.avatarName || '素材审片',
             voice_id: t.voice_id || payload?.voice_id || detail.voiceId || '',
             scene: t.scene || payload?.scene || 'auto',
             camera: t.camera || payload?.camera || 'auto',
@@ -3917,7 +3933,7 @@
       }
       if (!payload?.background_url || !String(payload?.text || '').trim() || !String(payload?.voice_id || '').trim()) {
         switchTab(type === 'luxury_ad' ? 'luxury-ad' : 'space-guide');
-        toast(type === 'luxury_ad' ? '旧剧情广告任务缺少重提参数，请回剧情广告页面确认画面、文案和音色后提交' : '旧广告任务缺少重提参数，请回广告数字人页面确认背景、文案和音色后提交', 'error');
+        toast(type === 'luxury_ad' ? '旧剧情广告任务缺少重提参数，请回剧情广告页面确认画面、文案和音色后提交' : '旧广告任务缺少重提参数，请回素材审片页面确认背景、文案和音色后提交', 'error');
         return;
       }
       const needsStrictKeyframe = payload.strict_mode === true
@@ -3961,7 +3977,7 @@
       const taskMeta = {
         taskId: r.taskId,
         taskType: type === 'luxury_ad' || payload.ad_mode === 'luxury_ad' ? 'luxury_ad' : 'digital_ad',
-        avatarName: payload.title || oldTask.avatarName || '广告数字人',
+        avatarName: payload.title || oldTask.avatarName || '素材审片',
         startedAt: Date.now(),
         status: 'submitted',
         stage: 'submitted',
@@ -3971,7 +3987,7 @@
         retryPayload: payload,
         createDetail: {
           ...(oldTask.createDetail || {}),
-          title: payload.title || oldTask.createDetail?.title || oldTask.avatarName || '广告数字人',
+          title: payload.title || oldTask.createDetail?.title || oldTask.avatarName || '素材审片',
           durationSec: payload.duration_sec,
           text: payload.text || oldTask.textPreview || '',
           avatarId: payload.avatar_id || '',
@@ -3979,7 +3995,7 @@
           voiceId: payload.voice_id || '',
           scenePrompt: payload.scene_prompt || '',
           cameraPrompt: payload.camera_prompt || '',
-          adMode: payload.ad_mode === 'luxury_ad' ? '剧情广告' : '普通广告数字人',
+          adMode: payload.ad_mode === 'luxury_ad' ? '剧情广告' : '素材审片',
           adStyle: payload.ad_style || '',
           guideGender: payload.guide_gender || '',
           shotCount: payload.shot_count || '',
@@ -3996,7 +4012,7 @@
       pollVideoTask(r.taskId);
       state.activeTaskType = type === 'luxury_ad' ? 'luxury_ad' : 'digital_ad';
       renderTaskCenter();
-      toast(type === 'luxury_ad' ? '已重新提交剧情广告任务' : '已重新提交广告数字人任务', 'success');
+      toast(type === 'luxury_ad' ? '已重新提交剧情广告任务' : '已重新提交素材审片任务', 'success');
       return;
     }
     if (type !== 'product_ad') {
@@ -4147,7 +4163,7 @@
           ? `<img src="${escapeHtml(withAuthQuery(img))}" alt="${escapeHtml(a.name || '数字人')}" loading="eager" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='${escapeHtml(withAuthQuery(rawImg || (a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : '')))}'">`
           : `<div class="dh-selected-empty"><div class="dh-empty-icon">▥</div><div>这个形象缺少可用封面图</div><button class="dh-link-btn" data-space-pick-avatar>重新选择形象 →</button></div>`}
           <div class="av-name">${escapeHtml(a.name || '已选形象')}</div>
-          <div class="av-badges"><span class="av-badge">${isLuxury ? '剧情广告' : '广告数字人'}</span><span class="av-badge">静态图驱动</span></div>
+          <div class="av-badges"><span class="av-badge">${isLuxury ? '剧情广告' : '素材审片'}</span><span class="av-badge">静态图驱动</span></div>
           <div class="dh-field-hint" style="margin-top:6px">${isLuxury ? '高定片会把形象作为同一人物身份参考逐镜头重绘进场景；锁定脸型、发型、年龄感和服装风格，只改变姿态、表情和镜头角度。' : '生成时使用形象静态图保持身份；动态预览只用于查看人物效果，不直接作为广告视频输入。'}</div>
           <button class="av-switch-btn" data-space-pick-avatar>↻ 切换形象</button>`;
       }
@@ -4249,7 +4265,7 @@
         : `<div class="dh-voice-opt-icon">!</div>
         <div class="dh-voice-opt-body">
           <div class="dh-voice-opt-name">未选择配音音色</div>
-          <div class="dh-voice-opt-sub">广告数字人必须选择一个可用音色后才能生成</div>
+          <div class="dh-voice-opt-sub">素材审片必须选择一个可用音色后才能生成</div>
         </div>`;
     }
     let html = !list.length ? `<div class="dh-voice-group"><div class="dh-voice-group-title">配音音色</div>
@@ -4402,6 +4418,105 @@
     return next;
   }
 
+  function luxuryAdIsMaterialMode() {
+    return (state.luxuryAd.flowMode || 'material') === 'material';
+  }
+
+  function setLuxuryAdFlowMode(mode = 'material') {
+    const next = mode === 'story' ? 'story' : 'material';
+    const changed = state.luxuryAd.flowMode !== next;
+    state.luxuryAd.flowMode = next;
+    if (!changed) return;
+    state.luxuryAd.currentStep = 1;
+    state.luxuryAd.storyboardDetailed = false;
+    state.luxuryAd.segments = [];
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.personGenerationError = null;
+    state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.productionProjectId = '';
+    state.luxuryAd.productionProject = null;
+  }
+
+  function luxuryMaterialAssetUrls() {
+    const urls = [];
+    const add = value => {
+      const url = compactLuxuryUrl(value || '');
+      if (url && !/^blob:/i.test(url) && !urls.includes(url)) urls.push(url);
+    };
+    add(state.luxuryAd.productAsset?.url || state.luxuryAd.productAsset?.image_url || '');
+    filledLuxuryAdBriefReferences().forEach(asset => add(asset.url || asset.image_url || asset.previewUrl || ''));
+    luxuryAdReferenceAssets().forEach(asset => add(asset.url || asset.image_url || asset.previewUrl || ''));
+    return urls.slice(0, 12);
+  }
+
+  function renderLuxuryAdModeUi() {
+    const material = luxuryAdIsMaterialMode();
+    const title = $('#dhLuxAdModeTitle');
+    const sub = $('#dhLuxAdModeSub');
+    const modeRow = $('#dhLuxAdModeRow');
+    if (modeRow) modeRow.remove();
+    if (title) title.textContent = material ? '素材审片' : '剧情广告';
+    if (sub) {
+      sub.textContent = material
+        ? '选择演员、上传多张素材，AI 生成广告词后直接合成基础广告；不生成分镜图片。'
+        : '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。';
+    }
+    const labels = material
+      ? [
+        ['广告需求', '说明产品和卖点'],
+        ['素材/演员', '上传素材并选演员'],
+        ['广告词', 'AI 生成口播文案'],
+        ['剪辑方案', '按素材节奏合成'],
+        ['成片合成', '配音/字幕/BGM'],
+      ]
+      : [
+        ['广告需求', '一句话输入'],
+        ['场景配置', '人物 / 场景 / 主体'],
+        ['剧本生成', '按时间段拆解'],
+        ['分镜生成', '形象和镜头'],
+        ['广告合成', '配音 / 字幕 / 视频'],
+      ];
+    $$('#dhLuxAdSteps > [data-lux-step]').forEach(el => {
+      const idx = Math.max(0, Number(el.dataset.luxStep || 1) - 1);
+      const span = el.querySelector('span');
+      const small = el.querySelector('small');
+      if (span) span.textContent = labels[idx]?.[0] || span.textContent;
+      if (small) small.textContent = labels[idx]?.[1] || small.textContent;
+    });
+    const generate = $('#dhLuxAdGenerate');
+    if (generate) generate.textContent = material ? '生成广告词方案' : '生成场景配置';
+    const storyboard = $('#dhLuxAdStoryboard');
+    if (storyboard) storyboard.textContent = material ? '确认素材和广告词' : '确认基础信息，生成剧本';
+    const preview = $('#dhLuxAdPreviewFrames');
+    if (preview) preview.textContent = material ? '跳过分镜，进入合成' : '确认剧本和人物，生成分镜';
+    const submit = $('#dhLuxAdConfirmGenerate');
+    if (submit) submit.textContent = material ? '合成素材成片' : '合成广告';
+    const step3Title = $('#dhLuxAdStep3Title');
+    if (step3Title) step3Title.innerHTML = `<span class="dh-luxgen-step-pill">3</span>${material ? '广告词方案' : '剧本生成'}`;
+    const step3Copy = $('#dhLuxAdStep3Copy');
+    if (step3Copy) step3Copy.textContent = material
+      ? '根据广告需求和上传素材生成口播广告词，不进入剧情分镜生成。'
+      : '按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。';
+    const step4Title = $('#dhLuxAdStep4Title');
+    if (step4Title) step4Title.innerHTML = `<span class="dh-luxgen-step-pill">4</span>${material ? '剪辑方案' : '分镜生成'}`;
+    const step4Copy = $('#dhLuxAdStep4Copy');
+    if (step4Copy) step4Copy.textContent = material
+      ? '素材成片只确认素材顺序、演员和口播节奏；不会生成分镜图片，也不会触发分镜 QA。'
+      : '分镜把人物形象、主体画面和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、声音字幕和 AI 指令。';
+    const frameGuideTitle = $('#dhLuxAdFrameGuideTitle');
+    if (frameGuideTitle) frameGuideTitle.textContent = material ? '素材剪辑确认' : '按剧本生成';
+    const frameGuideCopy = $('#dhLuxAdFrameGuideCopy');
+    if (frameGuideCopy) frameGuideCopy.textContent = material
+      ? '基础版素材成片不生成分镜图片；确认素材、演员、广告词和配音后直接进入合成。'
+      : '分镜必须严格沿用第 3 步已确认的镜头、人物、台词和动作；如果生成结果缺镜头、乱改主体或与剧本不一致，系统会报错而不是自动兜底。';
+    const frameSectionTitle = $('#dhLuxAdFrameSectionTitle');
+    if (frameSectionTitle) frameSectionTitle.textContent = material ? '剪辑方案' : '分镜结果';
+  }
+
   function luxuryAdFilledReferenceAssets() {
     return luxuryAdReferenceAssets().filter(luxuryAdAssetFilled);
   }
@@ -4493,6 +4608,7 @@
   function renderLuxuryAdBgm() {
     const card = $('#dhLuxAdBgmCard');
     const status = $('#dhLuxAdBgmStatus');
+    const license = $('#dhLuxAdBgmLicense');
     if (!card || !status) return;
     const bgm = state.luxuryAd.bgmAsset || null;
     const ready = luxuryAdHasBgm();
@@ -4500,6 +4616,16 @@
     status.textContent = ready
       ? (bgm.original_name || bgm.name || '背景音乐已配置，成片合成后叠加')
       : '未配置，可先合成无配乐广告片';
+    if (license) {
+      if (ready) {
+        const source = bgm.source || (bgm.auto_matched ? '自动匹配' : '用户上传');
+        const auth = bgm.license || bgm.license_name || '请确认已获得商用授权';
+        const mood = bgm.matched_mood ? ` · ${bgm.matched_mood}` : '';
+        license.textContent = `${source}${mood} · ${auth}`;
+      } else {
+        license.textContent = '可自动匹配本地免第三方纯 BGM，也可上传自有授权音乐。';
+      }
+    }
   }
 
   function luxuryAssetPreviewUrl(asset = {}) {
@@ -4651,15 +4777,19 @@
 
   function syncLuxuryPersonSpecControls() {
     const spec = luxuryAdPersonSpec();
+    const lock = state.luxuryAd.personSpecLock || null;
     $$('[data-lux-person-spec]').forEach(el => {
       const field = el.dataset.luxPersonSpec;
       if (!field) return;
       el.value = spec[field] || '';
+      const locked = !!(lock && (field === 'castMode' || field === 'gender' || field === 'origin') && (field !== 'origin' || lock.origin));
+      el.disabled = locked;
+      el.title = locked ? `已按固定演员「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '';
     });
   }
 
-  function luxuryAdPersonDescription() {
-    const spec = luxuryAdPersonSpec();
+  function luxuryAdPersonDescription(specOverride = null) {
+    const spec = specOverride || luxuryAdPersonSpec();
     const castMode = LUXURY_PERSON_SPEC_LABELS.castMode[spec.castMode] || spec.castMode || '单人';
     const gender = LUXURY_PERSON_SPEC_LABELS.gender[spec.gender] || String(spec.gender || '').trim() || 'AI 按故事判断';
     const origin = LUXURY_PERSON_SPEC_LABELS.origin[spec.origin] || String(spec.origin || '').trim() || '按广告需求判断';
@@ -4669,9 +4799,19 @@
       `人物性别：${gender}`,
       `地域/种族：${origin}`,
       referencePerson ? `参考数字人形象：${referencePerson}` : '',
-      '默认生成电影画质拟真真人。',
+      'AI 生成只作为拟真演员参考；需要真人请上传真人照片或使用授权真人演员素材。',
       '姓名、年龄、五官、发型、服装、道具、气质、动作和妆造必须由 AI 在剧本人物表里生成。',
     ].filter(Boolean).join('；');
+  }
+
+  function luxuryAdPersonGenerationSpec() {
+    const spec = { ...luxuryAdPersonSpec() };
+    const current = state.luxuryAd.personAsset || null;
+    if (current && luxuryAdActorReferenceKind(current) === 'ai_generated') {
+      spec.gender = 'auto';
+      spec.origin = spec.origin || 'east_asian_cn';
+    }
+    return spec;
   }
 
   function luxuryPersonGenderLabel(value = '') {
@@ -4700,15 +4840,156 @@
     return raw;
   }
 
+  function luxuryPersonGenderSpecValue(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/^(male|man|adult_man|男性|男士|男人|男)$/.test(raw) || /\bmale\b|man|男/.test(raw)) return 'male';
+    if (/^(female|woman|adult_woman|女性|女士|女人|女)$/.test(raw) || /\bfemale\b|woman|女/.test(raw)) return 'female';
+    if (/mixed|both|混合|男女/.test(raw)) return 'mixed';
+    return '';
+  }
+
+  function luxuryPersonOriginSpecValue(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/east[_\s-]?asian|asian[_\s-]?cn|china|chinese|中国|东亚/.test(raw)) return 'east_asian_cn';
+    if (/southeast/.test(raw)) return 'southeast_asian';
+    if (/white|european|caucasian/.test(raw)) return 'white_european';
+    if (/black|african/.test(raw)) return 'black_african';
+    if (/middle[_\s-]?eastern/.test(raw)) return 'middle_eastern';
+    if (/south[_\s-]?asian/.test(raw)) return 'south_asian';
+    if (/latino|latin/.test(raw)) return 'latino';
+    return '';
+  }
+
+  function luxuryAdActorReferenceKind(asset = {}) {
+    const source = String(asset.source || asset.metadata?.source || '').toLowerCase();
+    const kind = String(asset.reference_kind || asset.metadata?.reference_kind || '').toLowerCase();
+    const text = [asset.name, asset.description, asset.metadata?.name, asset.metadata?.prompt, kind]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (/real_photo|uploaded_photo|human_photo/.test(kind)) return 'real_photo';
+    if (/synthetic_realistic_actor|generated_real_actor|realistic_actor/.test(kind)) return 'synthetic_realistic_actor';
+    if (/ai_generated/.test(kind)) return 'ai_generated';
+    if (/uploaded|真人照片|real_photo|human_photo/.test(source)) return 'real_photo';
+    if (/local_actor_library_generated/.test(source) || /fixed real actor asset|realistic actor|真人感演员|真人演员包/.test(text)) return 'synthetic_realistic_actor';
+    if (/generated|ai|person_sheet/.test(source)) return 'ai_generated';
+    return kind || 'unknown';
+  }
+
+  function luxuryAdActorReferenceLabel(asset = {}) {
+    const kind = luxuryAdActorReferenceKind(asset);
+    if (kind === 'real_photo') return '真人照片参考';
+    if (kind === 'synthetic_realistic_actor') return 'AI 真人感演员包';
+    if (kind === 'ai_generated') return 'AI 拟真演员参考';
+    return '演员参考';
+  }
+
+  function luxuryAdActorIsAiGenerated(asset = {}) {
+    return luxuryAdActorReferenceKind(asset) === 'ai_generated';
+  }
+
+  function luxuryAdActorIsRealPerson(asset = {}) {
+    if (!asset || typeof asset !== 'object') return false;
+    const metadata = asset.metadata || {};
+    const source = String(asset.source || metadata.source || asset.type || '').toLowerCase();
+    const kind = String(luxuryAdActorReferenceKind(asset) || '').toLowerCase();
+    const tags = Array.isArray(asset.tags)
+      ? asset.tags.join(' ')
+      : Array.isArray(metadata.tags)
+        ? metadata.tags.join(' ')
+        : '';
+    const text = [source, kind, tags, asset.name, asset.description, metadata.reference_kind]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (asset.is_ai_generated === true || metadata.is_ai_generated === true || kind === 'ai_generated') return false;
+    return /real_photo|uploaded_photo|uploaded_person_reference|human_photo|authorized_real_actor|licensed_actor|真人照片|授权真人|真人演员/.test(text);
+  }
+
+  function luxuryAdActorIsSyntheticRealistic(asset = {}) {
+    return luxuryAdActorReferenceKind(asset) === 'synthetic_realistic_actor'
+      || asset.production_usable_actor === true
+      || asset.metadata?.production_usable_actor === true;
+  }
+
+  function luxuryAdActorUsableForKeyframes(asset = {}) {
+    return luxuryAdActorIsRealPerson(asset) || luxuryAdActorIsSyntheticRealistic(asset);
+  }
+
+  function compactLuxuryErrorReceipt(receipt = null) {
+    if (!receipt || typeof receipt !== 'object') return null;
+    const clone = JSON.parse(JSON.stringify(receipt));
+    if (clone.request?.headers?.Authorization) clone.request.headers.Authorization = '[hidden]';
+    if (clone.token) clone.token = '[hidden]';
+    return clone;
+  }
+
+  function renderLuxuryFullErrorReceipt(receipt = null, title = '完整错误回执') {
+    const safe = compactLuxuryErrorReceipt(receipt);
+    if (!safe) return '';
+    let json = '';
+    try { json = JSON.stringify(safe, null, 2); } catch { json = String(safe); }
+    return `<details class="dh-lux-error-receipt">
+      <summary>${escapeHtml(title)}</summary>
+      <pre>${escapeHtml(json)}</pre>
+    </details>`;
+  }
+
+  function applyLuxuryPersonAssetConstraints(asset = {}) {
+    if (!asset || typeof asset !== 'object') return;
+    const metadata = asset.metadata || {};
+    const spec = luxuryAdPersonSpec();
+    const isRealPerson = luxuryAdActorReferenceKind(asset) === 'real_photo';
+    const gender = luxuryPersonGenderSpecValue(asset.gender || metadata.gender || metadata.sex || asset.description || metadata.prompt || '');
+    const origin = luxuryPersonOriginSpecValue(asset.origin || asset.region || asset.ethnicity || asset.race || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || metadata.prompt || asset.description || '');
+    const next = { ...spec, castMode: 'single' };
+    if (gender) next.gender = gender;
+    else if (isRealPerson) next.gender = 'auto';
+    if (origin) next.origin = origin;
+    state.luxuryAd.personSpec = next;
+    state.luxuryAd.personSpecLock = {
+      source: asset.name || asset.actor_asset_id || asset.id || '已选演员',
+      actor_asset_id: asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id || '',
+      gender: gender || '',
+      origin: origin || '',
+      castMode: 'single',
+      reference_kind: luxuryAdActorReferenceKind(asset),
+    };
+    syncLuxuryPersonSpecControls();
+  }
+
+  function ensureLuxuryPersonAssetConstraints() {
+    const asset = state.luxuryAd.personAsset || null;
+    if (!asset || asset.uploading || !(asset.url || asset.image_url || asset.previewUrl)) return;
+    const actorKey = asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id || '';
+    if (!actorKey) return;
+    const lockKey = state.luxuryAd.personSpecLock?.actor_asset_id || '';
+    if (lockKey !== actorKey) applyLuxuryPersonAssetConstraints(asset);
+  }
+
   function luxuryAdPersonAssetPayload() {
     const generated = state.luxuryAd.personAsset;
     if (generated && (generated.url || generated.image_url || generated.previewUrl)) {
+      const referenceKind = luxuryAdActorReferenceKind(generated);
+      const isAiGenerated = referenceKind === 'ai_generated';
+      const isSyntheticActor = referenceKind === 'synthetic_realistic_actor'
+        || generated.production_usable_actor === true
+        || generated.metadata?.production_usable_actor === true;
       return {
         id: generated.id || 'luxury_ad_person_sheet',
         actor_asset_id: generated.actor_asset_id || generated.asset_library_id || generated.material_id || '',
-        name: generated.name || '拟真真人三视图',
+        actor_id: generated.actor_id || generated.metadata?.actor_id || '',
+        name: generated.name || (isSyntheticActor ? 'AI 真人感固定演员' : (isAiGenerated ? 'AI 拟真演员三视图' : '真人照片参考')),
         type: generated.type || 'luxury_ad_character_sheet',
         source: generated.source || 'person_asset',
+        reference_kind: referenceKind,
+        is_ai_generated: isAiGenerated,
+        production_usable_actor: isSyntheticActor,
+        real_person_reference: referenceKind === 'real_photo',
+        gender: generated.gender || generated.metadata?.gender || '',
+        origin: generated.origin || generated.metadata?.origin || '',
         image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
         extra_image_urls: Array.isArray(generated.extra_image_urls) ? generated.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
         view_count: generated.view_count || 3,
@@ -4730,6 +5011,45 @@
     };
   }
 
+  function luxuryAdPersonDesignReady() {
+    if (luxuryAdIsMaterialMode()) return true;
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const brief = state.luxuryAd.briefInfo || {};
+    return segments.length > 0 && !!(brief.title || brief.theme || state.luxuryAd.storyboardDetailed);
+  }
+
+  function luxuryAdPersonDesignGateMessage() {
+    return '请先生成基础信息/人物设定，再生成 AI 真人感演员包';
+  }
+
+  function luxuryAdPersonContextPayload(specOverride = null) {
+    const spec = specOverride || luxuryAdPersonSpec();
+    const brief = state.luxuryAd.briefInfo || {};
+    const segments = compactLuxurySegments(state.luxuryAd.segments || []);
+    const source = state.luxuryAd.storyboardDetailed ? 'script_character_table' : (segments.length ? 'scene_config_person_draft' : 'brief_only');
+    const personNotes = [
+      luxuryAdPersonDescription(spec),
+      brief.title ? `片名：${brief.title}` : '',
+      brief.theme ? `主题：${brief.theme}` : '',
+      brief.style ? `风格：${brief.style}` : '',
+      ...segments.slice(0, 6).map((seg, i) => [
+        `镜头${i + 1}`,
+        seg.title || seg.story_stage || '',
+        seg.content_prompt || seg.visual || seg.display_visual || '',
+        seg.action || seg.visual_action || '',
+        seg.narration || seg.voiceover || seg.subtitle || '',
+      ].filter(Boolean).join('：')),
+    ].filter(Boolean);
+    return {
+      source,
+      brief_info: brief,
+      person_spec: spec,
+      person_notes: personNotes,
+      scene_segments: segments.slice(0, 6),
+      script_ready: !!state.luxuryAd.storyboardDetailed,
+    };
+  }
+
   function luxuryActorAssetUrls(asset = {}) {
     return [
       asset.image_url || asset.file_url || asset.url || '',
@@ -4738,15 +5058,80 @@
     ].map(compactLuxuryUrl).filter(Boolean);
   }
 
+  function luxuryActorAssetViewLabel(index = 0) {
+    return ['正面', '侧面/半侧', '动作'][Number(index) || 0] || `参考 ${Number(index) + 1}`;
+  }
+
+  function luxuryPersonGenerationErrorExplanation(error = {}) {
+    const code = String(error.code || error.reason || '').toUpperCase();
+    const msg = String(error.message || error.error || '');
+    const raw = JSON.stringify(error.raw || error.details || error || {});
+    const text = `${code} ${msg} ${raw}`;
+    if (/AUDITSUBMITILLEGAL|SUBMIT\s+IS\s+ILLEGAL|审核|敏感|ILLEGAL/i.test(text)) {
+      return '模型平台提交审核拒绝：通常是人物描述、参考图或提示词触发了平台内容审核。需要调整人物描述/参考图后重新生成。';
+    }
+    if (/LUXURY_ACTOR_FRAME_ORIENTATION_FAILED|不是竖构图|landscape_or_not_vertical|9:16/i.test(text)) {
+      return '演员包构图质检未通过：模型返回了横图或非竖向演员定妆照，容易只露半身；系统已拒绝入库。';
+    }
+    if (/LUXURY_ACTOR_FRAMING_QA_FAILED|构图 QA|FRAMING_QA|LOWER_BODY|TROUSERS|GARMENT|半身|头像|WAIST_UP|BUST|HEADSHOT/i.test(text)) {
+      return '演员包构图质检未通过：系统检测到人物仍是头像/半身，或看不到裤子/裙子等下半身证据，因此没有写入演员库。请重新生成或调整模型链路。';
+    }
+    if (/PANXXXO100IFR|INTERNAL SERVER ERROR|CODE=500|HTTP\s*500/i.test(text)) {
+      return '上游图片模型返回 500：不是前端缓存问题，通常是该模型通道内部错误或当前参数组合不被通道接受。需要查看完整错误回执和模型链路。';
+    }
+    if (/NO_IMAGE|没有返回图片|未返回图片|RETURNED NO IMAGE/i.test(text)) {
+      return '模型请求完成但没有返回可用图片：说明本次通道没有产出可入库的演员图，不能继续当作人物锁。';
+    }
+    if (/UNAUTH|401|LOGIN/i.test(text)) {
+      return '登录态或权限异常：请刷新后确认账号仍有访问人物演员包接口的权限。';
+    }
+    if (/TIMEOUT|超时/i.test(text)) {
+      return '模型生成超时：人物包需要连续生成多张参考图，当前通道耗时过长未完成。';
+    }
+    return '人物演员包生成失败：请展开完整错误回执查看具体模型、状态码和返回内容。';
+  }
+
+  function luxuryPersonGenerationProgressHtml() {
+    const progress = state.luxuryAd.personGenerationProgress;
+    if (!progress || !progress.active) return '';
+    const pct = Math.max(6, Math.min(96, Math.round(Number(progress.percent) || 6)));
+    return `<div class="dh-lux-person-progress">
+      <div class="dh-lux-person-progress-head">
+        <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
+        <span>${pct}%</span>
+      </div>
+      <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
+      <small>${escapeHtml(progress.phase || '准备生成')} · ${escapeHtml(progress.message || '正在生成正面、侧面/半侧和动作参考图。')}</small>
+    </div>`;
+  }
+
   function luxuryActorMaterialToPersonAsset(asset = {}) {
     const urls = luxuryActorAssetUrls(asset);
+    const metadata = asset.metadata || {};
+    const source = asset.source || metadata.source || '';
+    const explicitKind = String(asset.reference_kind || metadata.reference_kind || '').toLowerCase();
+    let referenceKind = explicitKind || 'unknown';
+    if (/real_photo|uploaded_photo|human_photo/i.test(explicitKind) || /uploaded|real_photo|human_photo/i.test(source)) {
+      referenceKind = 'real_photo';
+    } else if (/synthetic_realistic_actor|generated_real_actor|realistic_actor/i.test(explicitKind) || /local_actor_library_generated/i.test(source)) {
+      referenceKind = 'synthetic_realistic_actor';
+    } else if (/ai_generated/i.test(explicitKind) || /generated|ai/i.test(source)) {
+      referenceKind = 'ai_generated';
+    }
     return {
       id: asset.id || '',
-      actor_asset_id: asset.id || '',
+      actor_asset_id: asset.actor_asset_id || metadata.actor_asset_id || asset.id || '',
+      actor_id: asset.actor_id || metadata.actor_id || '',
       material_id: asset.id || '',
       name: asset.name || '角色素材',
       type: 'actor_material',
-      source: 'actor_library',
+      source: source || 'actor_library',
+      reference_kind: referenceKind,
+      is_ai_generated: referenceKind === 'ai_generated',
+      production_usable_actor: referenceKind === 'synthetic_realistic_actor' || asset.production_usable_actor === true || metadata.production_usable_actor === true,
+      gender: asset.gender || metadata.gender || '',
+      origin: asset.origin || asset.region || asset.ethnicity || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || '',
+      metadata,
       url: urls[0] || '',
       image_url: urls[0] || '',
       previewUrl: urls[0] || '',
@@ -4772,6 +5157,11 @@
         metadata: {
           role: 'actor',
           from: source,
+          reference_kind: asset.reference_kind || (source === 'uploaded_person_reference' ? 'real_photo' : 'ai_generated'),
+          source: asset.source || source,
+          gender: asset.gender || '',
+          origin: asset.origin || '',
+          is_ai_generated: !!asset.is_ai_generated,
           person_spec: luxuryAdPersonSpec(),
         },
       };
@@ -4810,14 +5200,16 @@
     const cards = items.length ? items.map(asset => {
       const urls = luxuryActorAssetUrls(asset);
       const thumb = urls[0] || '';
+      const refLabel = luxuryAdActorReferenceLabel(asset);
+      const genderLabel = luxuryPersonGenderLabel(asset.gender || asset.metadata?.gender || '');
       return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:86px">
         <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
         <span style="min-width:0;display:block">
           <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
-          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${urls.length || 1} 张参考图 · ${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
+          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
         </span>
       </button>`;
-    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传人物参考或生成三视图后会自动入库。</div>';
+    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传真人参考或生成 AI 真人感演员包后会自动入库。</div>';
     mask.innerHTML = `<div style="width:min(760px,94vw);max-height:82vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)">
         <div><b>角色素材库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择一个固定演员，后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
@@ -4835,40 +5227,74 @@
       if (!asset) return;
       state.selectedAvatar = null;
       state.luxuryAd.personAsset = luxuryActorMaterialToPersonAsset(asset);
+      applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
       state.luxuryAd.keyframes = [];
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       close();
-      toast(`已选择角色素材「${asset.name || '演员'}」`, 'success');
+      const gender = luxuryPersonGenderLabel(state.luxuryAd.personAsset.gender || state.luxuryAd.personSpecLock?.gender || '');
+      toast(`已选择角色素材「${asset.name || '演员'}」${gender ? `，人物性别已同步为${gender}` : ''}`, 'success');
     });
   }
 
   function renderLuxuryAdPerson() {
     const host = $('#dhLuxAdPersonCurrent');
+    ensureLuxuryPersonAssetConstraints();
     syncLuxuryPersonSpecControls();
     renderLuxuryAdPostScriptPerson();
     if (!host) return;
     const generated = state.luxuryAd.personAsset;
-    if (generated && (generated.url || generated.image_url || generated.previewUrl || generated.uploading)) {
+    if (generated && (generated.url || generated.image_url || generated.previewUrl || generated.uploading || generated.failed)) {
       const src = generated.url || generated.image_url || generated.previewUrl || '';
       const actorUrls = luxuryActorAssetUrls(generated);
       const actorId = generated.actor_asset_id || generated.asset_library_id || generated.material_id || '';
+      const isAiActor = luxuryAdActorIsAiGenerated(generated);
+      const isSyntheticActor = luxuryAdActorIsSyntheticRealistic(generated);
+      const isRealActor = luxuryAdActorIsRealPerson(generated) || luxuryAdActorReferenceKind(generated) === 'real_photo';
+      const genderText = generated.gender
+        ? `性别：${luxuryPersonGenderLabel(generated.gender)}`
+        : (isRealActor ? '性别：按真人照片参考' : '');
       const actorMeta = [
-        generated.source === 'actor_library' ? '角色素材库' : '',
+        generated.source ? luxuryAdActorReferenceLabel(generated) : '',
         actorId ? '已绑定 actor_id' : '',
         actorUrls.length ? `${actorUrls.length} 张演员参考` : '',
+        genderText,
       ].filter(Boolean).join(' · ');
+      const defaultName = isSyntheticActor ? 'AI 真人感固定演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考');
+      const defaultDesc = isSyntheticActor
+        ? '这是按角色库演员包模式生成的真人感固定演员，会作为后续分镜的人物一致性锁。'
+        : isAiActor
+        ? '这是 AI 生成的拟真演员参考，不等同于真实真人照片。需要真人请上传真人照片或使用授权真人演员素材。'
+        : '真人照片参考会作为广告人物身份和气质锁定。';
+      const realPersonWarning = isAiActor
+        ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#ffd28a;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考，真实关键帧会要求真人照片或授权真人演员。</div>'
+        : '';
+      const errorHtml = generated.failed && state.luxuryAd.personGenerationError
+        ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><span>${escapeHtml(state.luxuryAd.personGenerationError.message || generated.error || '模型未返回可用图片')}</span>${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}</div>`
+        : '';
+      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面和动作演员照。' : (isAiActor ? '正在生成正面、侧面、背面三视图。' : '真人照片上传中。');
+      const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
+      const previewButtons = actorUrls.length
+        ? `<div class="dh-lux-actor-views">${actorUrls.slice(0, 6).map((url, i) => `<button type="button" data-lux-person-preview="${i}" title="预览${escapeHtml(luxuryActorAssetViewLabel(i))}">
+            <img src="${escapeHtml(withAuthQuery(url))}" alt="${escapeHtml(luxuryActorAssetViewLabel(i))}">
+            <span>${escapeHtml(luxuryActorAssetViewLabel(i))}</span>
+          </button>`).join('')}</div>`
+        : '';
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
-        ${src ? `<img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || '真人三视图')}">` : '<div class="dh-luxgen-person-thumb">生成中</div>'}
-        <b>${escapeHtml(generated.name || '拟真真人三视图')}</b>
-        <small>${escapeHtml(generated.uploading ? '正在生成正面、侧面、背面三视图。' : (actorMeta || generated.description || '正面 / 侧面 / 背面，真人广告角色参考。'))}</small>
+        ${src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || defaultName)}"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>'}
+        <b>${escapeHtml(generated.name || defaultName)}</b>
+        <small>${escapeHtml(generated.uploading ? loadingText : (actorMeta || generated.description || defaultDesc))}</small>
+        ${progressHtml}
+        ${previewButtons}
+        ${realPersonWarning}
+        ${errorHtml}
       </div>`;
       return;
     }
     const a = state.selectedAvatar;
     if (!a) {
-      host.innerHTML = `<span>未选</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>系统会按剧本生成真人广告角色；也可上传参考或 AI 生成三视图。</small></div>`;
+      host.innerHTML = `<span>未选</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>先生成基础信息/人物设定后可生成 AI 真人感演员包；真人请上传照片或选授权演员。</small></div>`;
       return;
     }
     const src = selectedAvatarImageUrl(a);
@@ -4877,10 +5303,25 @@
       <div class="dh-luxgen-person-copy"><b>${escapeHtml(a.name || '已选人物')}</b><small>${isVideo ? '已选视频/动态素材，但剧情广告只取身份参考来重绘进镜头。' : '作为人物身份参考，生成分镜时会重绘融合到场景里。'}</small></div>`;
   }
 
+  function renderLuxuryAdPersonSourceCopy() {
+    const sourceWrap = document.querySelector('.dh-demo-person-source');
+    const copy = sourceWrap?.querySelector('.dh-demo-copy');
+    if (!copy) return;
+    const asset = state.luxuryAd.personAsset || null;
+    const isReal = asset && (luxuryAdActorIsRealPerson(asset) || luxuryAdActorReferenceKind(asset) === 'real_photo');
+    const isAi = asset && luxuryAdActorIsAiGenerated(asset);
+    copy.textContent = isReal
+      ? '当前已使用真人照片参考，系统会按这张真人图锁定人物身份和气质；AI 演员包不会参与本次真人参考。'
+      : isAi
+        ? '当前是 AI 拟真演员参考，不等同于真人照片；需要真人广告请上传真人照片或选择授权真人演员。'
+        : '用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；上传真人照片/授权演员才按真人参考处理。';
+  }
+
   function renderLuxuryAdPostScriptPerson() {
     const host = $('#dhLuxAdPostScriptPerson');
     if (!host) return;
     host.hidden = false;
+    renderLuxuryAdPersonSourceCopy();
   }
 
   function setLuxuryProgress(step = 'content') {
@@ -4961,6 +5402,21 @@
     const perms = Array.isArray(user?.effective_permissions) ? user.effective_permissions : [];
     if (user?.role === 'admin' || perms.includes('*')) return true;
     return perms.some(p => p === 'model_usage' || (typeof p === 'string' && p.startsWith('enterprise:model_usage:')));
+  }
+
+  function canViewLuxuryInternalPipeline() {
+    const user = state.currentUser || null;
+    const perms = Array.isArray(user?.effective_permissions) ? user.effective_permissions : [];
+    if (user?.role === 'admin' || perms.includes('*')) return true;
+    return perms.some(p => [
+      'model_usage',
+      'luxury_ad_debug',
+      'luxury_ad_pipeline_debug',
+    ].includes(p) || (typeof p === 'string' && (
+      p.startsWith('enterprise:model_usage:')
+      || p.startsWith('enterprise:luxury_ad_debug:')
+      || p.startsWith('enterprise:luxury_ad_pipeline_debug:')
+    )));
   }
 
   function luxuryUsageStepFromRequestKey(key = '') {
@@ -5364,18 +5820,40 @@
     const segments = state.luxuryAd.segments || [];
     const refs = luxuryAdRefs();
     const keyframes = state.luxuryAd.keyframes || [];
+    const materialMode = luxuryAdIsMaterialMode();
+    const materialAssetCount = luxuryMaterialAssetUrls().length;
     const contentReady = text.length >= 6;
     const storyboardReady = segments.length > 0;
-    const detailedReady = !!state.luxuryAd.storyboardDetailed;
+    const detailedReady = materialMode ? contentReady : !!state.luxuryAd.storyboardDetailed;
     const titleReady = !storyboardReady || !!String(state.luxuryAd.briefInfo?.title || '').trim();
     const sceneGenerating = !!state.luxuryAd.sceneGenerating;
     const scriptGenerating = !!state.luxuryAd.scriptGenerating;
     const landingAssetsReady = luxuryAdHasLandingAssets();
     const productReady = !!state.luxuryAd.productAsset?.url && !state.luxuryAd.uploading;
     const assetsReady = contentReady;
-    const previewReady = detailedReady && storyboardReady && keyframes.length >= segments.length && segments.every((_, i) => !!(keyframes[i]?.image_url || keyframes[i]?.imageUrl));
+    const previewReady = materialMode
+      ? (contentReady && materialAssetCount > 0)
+      : detailedReady && storyboardReady && keyframes.length >= segments.length && segments.every((_, i) => !!(keyframes[i]?.image_url || keyframes[i]?.imageUrl));
     let step = 0;
-    let hint = '第 1 步：先描述你想做什么广告，AI 会先生成视频基础信息。';
+    let hint = materialMode
+      ? '第 1 步：先写广告需求，再上传素材、选择演员和配音。'
+      : '第 1 步：先描述你想做什么广告，AI 会先生成视频基础信息。';
+    if (materialMode) {
+      if (!contentReady) {
+        step = 0;
+        hint = '第 1 步：写清产品、卖点、目标客户和收束方式。';
+      } else if (!materialAssetCount) {
+        step = 1;
+        hint = '第 2 步：上传产品图、场景图、界面截图或门店素材；也可以从角色素材库选择演员。';
+      } else if (!state.luxuryAd.voiceId) {
+        step = 4;
+        hint = '素材已就绪。第 5 步：请选择配音音色，也可自动匹配 BGM 后合成。';
+      } else {
+        step = 4;
+        hint = '素材、广告词和配音已就绪，可以合成素材成片。';
+      }
+      return { text, refs, segments, keyframes, materialMode, materialAssetCount, contentReady, storyboardReady, detailedReady, titleReady, sceneGenerating, scriptGenerating, landingAssetsReady, productReady, assetsReady, previewReady, step, hint };
+    }
     if (sceneGenerating) { step = 1; hint = '正在生成场景配置，请稍等。'; }
     else if (scriptGenerating) { step = 2; hint = '正在生成剧本；生成完成后会立即显示剧本审核表，确认合适后再进入分镜。'; }
     else if (state.luxuryAd.briefUploading) { step = 0; hint = '需求参考图上传中，请稍等。'; }
@@ -5404,7 +5882,7 @@
       if (!state.luxuryAd.voiceId) hint = '分镜已生成。下一步：先手动选择配音音色，确认字幕，再合成广告。';
       else hint = '第 5 步：分镜、配音和字幕已就绪，合成时会逐镜生成动态视频并剪成完整广告片。';
     }
-    return { text, refs, segments, keyframes, contentReady, storyboardReady, detailedReady, titleReady, sceneGenerating, scriptGenerating, landingAssetsReady, productReady, assetsReady, previewReady, step, hint };
+    return { text, refs, segments, keyframes, materialMode, materialAssetCount, contentReady, storyboardReady, detailedReady, titleReady, sceneGenerating, scriptGenerating, landingAssetsReady, productReady, assetsReady, previewReady, step, hint };
   }
 
   function setLuxuryButtonLock(selector, disabled, reason = '') {
@@ -5417,6 +5895,7 @@
   }
 
   function luxuryAdMaxReachableStep(gate = luxuryAdGateState()) {
+    if (gate.materialMode) return gate.contentReady ? 5 : 1;
     if (gate.sceneGenerating) return 1;
     if (gate.scriptGenerating) return 2;
     if (gate.previewReady) return 5;
@@ -5465,34 +5944,47 @@
     const voice = (state.voices || []).find(v => String(v.id || '') === String(state.luxuryAd.voiceId || ''));
     const ratio = state.luxuryAd.outputRatio || '9:16';
     const seconds = state.luxuryAd.durationSec || 30;
+    const material = gate.materialMode;
+    const materialCount = gate.materialAssetCount || 0;
     const setText = (selector, value) => { const el = $(selector); if (el) el.textContent = value; };
-    setText('#dhLuxAdComposeSummary', frames ? `${frames} 分镜 · ${seconds} 秒 · ${ratio}` : '未生成分镜');
+    setText('#dhLuxAdComposeSummary', material ? `${materialCount} 个素材 · ${seconds} 秒 · ${ratio}` : (frames ? `${frames} 分镜 · ${seconds} 秒 · ${ratio}` : '未生成分镜'));
     setText('#dhLuxAdTaskMeta', `提交后进入任务中心 · ${seconds} 秒 · ${ratio}`);
-    setText('#dhLuxAdSceneSummary', gate.storyboardReady ? `${shots} 个场景配置` : '待生成');
-    setText('#dhLuxAdScriptSummary', gate.detailedReady ? `${shots} 镜头 · 按时间段拆解` : '待生成');
-    setText('#dhLuxAdFrameSummary', gate.previewReady ? `已确认 ${frames} 个分镜` : (frames ? `${frames}/${shots} 个分镜` : '待生成'));
+    setText('#dhLuxAdSceneSummary', material ? `${materialCount} 个用户素材` : (gate.storyboardReady ? `${shots} 个场景配置` : '待生成'));
+    setText('#dhLuxAdScriptSummary', material ? '按广告需求生成口播广告词' : (gate.detailedReady ? `${shots} 镜头 · 按时间段拆解` : '待生成'));
+    setText('#dhLuxAdFrameSummary', material ? '基础版不生成分镜图片' : (gate.previewReady ? `已确认 ${frames} 个分镜` : (frames ? `${frames}/${shots} 个分镜` : '待生成')));
     setText('#dhLuxAdVoiceSummary', voice ? (voice.name || voice.label || state.luxuryAd.voiceId) : '未选择');
     setText('#dhLuxAdSubtitleSummary', state.luxuryAd.subtitle === false ? '关闭字幕' : '默认开启');
   }
 
   function updateLuxuryAdStepLocks() {
+    renderLuxuryAdModeUi();
     const gate = luxuryAdGateState();
     updateLuxuryStoryStageHeading();
     const busyGenerating = gate.sceneGenerating || gate.scriptGenerating || state.luxuryAd.keyframeGenerating || state.luxuryAd.briefUploading;
     setLuxuryButtonLock('#dhLuxAdGenerate', busyGenerating || !gate.contentReady, gate.contentReady ? gate.hint : '请先写广告需求，或点击 AI 帮我写');
     setLuxuryButtonLock(
       '#dhLuxAdStoryboard',
-      busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady),
-      busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')))
+      gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)),
+      gate.materialMode
+        ? (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : ''))
+        : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : ''))))
     );
-    setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady), busyGenerating ? gate.hint : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')));
-    setLuxuryButtonLock('#dhLuxAdPreviewFrames', busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady), busyGenerating ? gate.hint : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.detailedReady ? '请先生成剧本' : '')));
-    const submitLocked = state.luxuryAd.keyframeGenerating
+    setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : '')));
+    setLuxuryButtonLock('#dhLuxAdPreviewFrames', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.detailedReady && !gate.materialMode ? '请先生成剧本' : '')));
+    const personSheetLocked = gate.materialMode
+      ? (busyGenerating || !gate.contentReady)
+      : (busyGenerating || !gate.contentReady || !luxuryAdPersonDesignReady());
+    setLuxuryButtonLock('#dhLuxAdGeneratePersonSheet', personSheetLocked, busyGenerating ? gate.hint : (!gate.contentReady ? '请先填写广告需求' : (!luxuryAdPersonDesignReady() && !gate.materialMode ? luxuryAdPersonDesignGateMessage() : '')));
+    const submitLocked = gate.materialMode
+      ? (busyGenerating || !gate.contentReady || !gate.materialAssetCount || !state.luxuryAd.voiceId)
+      : state.luxuryAd.keyframeGenerating
       || gate.sceneGenerating
       || gate.scriptGenerating
       || !(gate.contentReady && gate.storyboardReady && gate.previewReady)
       || !state.luxuryAd.voiceId;
-    const submitReason = !gate.previewReady
+    const submitReason = gate.materialMode
+      ? (!gate.contentReady ? '请先写广告需求' : (!gate.materialAssetCount ? '请先上传至少一张素材' : (!state.luxuryAd.voiceId ? '请先手动选择配音音色' : '')))
+      : !gate.previewReady
       ? '请先生成分镜'
       : (!state.luxuryAd.voiceId ? '请先手动选择配音音色' : '');
     setLuxuryButtonLock('#dhLuxAdConfirmGenerate', submitLocked, submitReason);
@@ -5503,9 +5995,11 @@
       ['#dhLuxAdConfirmGenerate', false],
     ];
     let nextSelector = '';
-    if (gate.contentReady && !gate.storyboardReady) nextSelector = '#dhLuxAdGenerate';
+    if (gate.materialMode && gate.contentReady && !gate.materialAssetCount) nextSelector = '#dhLuxAdGenerate';
+    else if (gate.contentReady && !gate.storyboardReady) nextSelector = '#dhLuxAdGenerate';
     else if (gate.contentReady && gate.storyboardReady && !gate.detailedReady) nextSelector = '#dhLuxAdStoryboard';
     else if (gate.contentReady && gate.storyboardReady && gate.detailedReady && !gate.previewReady) nextSelector = '#dhLuxAdPreviewFrames';
+    else if (gate.materialMode && gate.contentReady && gate.materialAssetCount && state.luxuryAd.voiceId) nextSelector = '#dhLuxAdConfirmGenerate';
     else if (gate.previewReady && state.luxuryAd.voiceId) nextSelector = '#dhLuxAdConfirmGenerate';
     stepActions.forEach(([selector, done]) => {
       const el = $(selector);
@@ -5563,9 +6057,15 @@
     }
     const frameState = $('#dhLuxAdFrameState');
     if (frameState) {
-      const refCount = luxuryAdReferenceAssets().filter(x => x.url || x.previewUrl).length;
-      frameState.textContent = refCount ? `已上传 ${refCount} 张` : '可选上传';
-      frameState.classList.toggle('ready', refCount > 0);
+      if (gate.materialMode) {
+        const materialCount = gate.materialAssetCount || 0;
+        frameState.textContent = materialCount ? `素材 ${materialCount} 个` : '待上传素材';
+        frameState.classList.toggle('ready', materialCount > 0);
+      } else {
+        const refCount = luxuryAdReferenceAssets().filter(x => x.url || x.previewUrl).length;
+        frameState.textContent = refCount ? `已上传 ${refCount} 张` : '可选上传';
+        frameState.classList.toggle('ready', refCount > 0);
+      }
     }
 
     syncLuxuryAdStepPanels(gate);
@@ -5790,21 +6290,28 @@
 
   async function uploadLuxuryAdPersonReference(fileList) {
     if (state.luxuryAd.keyframeGenerating) return toast('正在生成分镜，完成后再替换人物参考', 'error');
-    if (!state.luxuryAd.storyboardDetailed) return toast('请先生成并检查剧本，再确认人物来源', 'error');
-    const picked = pickUploadableImages(fileList, { maxCount: 1, label: '人物参考图片' });
+    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!text) return toast('请先填写广告需求，再确认人物来源', 'error');
+    const picked = pickUploadableImages(fileList, { maxCount: 1, label: '真人参考图片' });
     const file = picked.files[0];
-    if (!file) return toast(picked.error || '请上传人物参考图片', 'error');
+    if (!file) return toast(picked.error || '请上传真人参考图片', 'error');
     if (state.luxuryAd.personAsset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(state.luxuryAd.personAsset.previewUrl);
     state.luxuryAd.personAsset = {
       id: 'uploaded_person_reference',
-      name: file.name || '上传人物参考',
+      name: '真人照片参考',
+      original_name: file.name || '',
       type: 'uploaded_person_reference',
+      source: 'uploaded_person_reference',
+      reference_kind: 'real_photo',
+      is_ai_generated: false,
+      real_person_reference: true,
       url: '',
       previewUrl: URL.createObjectURL(file),
       uploading: true,
       view_count: 1,
-      description: '用户上传的人物参考，会作为广告人物身份和气质参考。',
+      description: '用户上传的真人照片参考，会作为广告人物身份和气质参考。',
     };
+    state.luxuryAd.personSpecLock = null;
     state.selectedAvatar = null;
     syncLuxuryAdUploadFlags();
     renderLuxuryAdPerson();
@@ -5812,21 +6319,32 @@
     toast('人物参考正在上传…');
     try {
       const imageUrl = await uploadDhImage(file, { role: 'person_reference' });
+      const detectedGender = await detectLuxuryAdPersonGender(imageUrl);
       revokeLuxuryBlobPreview(state.luxuryAd.personAsset);
       state.luxuryAd.personAsset = {
         ...state.luxuryAd.personAsset,
+        id: 'uploaded_person_reference',
+        name: '真人照片参考',
+        type: 'uploaded_person_reference',
+        source: 'uploaded_person_reference',
+        reference_kind: 'real_photo',
+        is_ai_generated: false,
+        real_person_reference: true,
         url: imageUrl,
         image_url: imageUrl,
         previewUrl: imageUrl,
         uploading: false,
+        gender: detectedGender || '',
+        detected_gender: detectedGender || '',
       };
+      applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
       syncLuxuryAdUploadFlags();
       state.luxuryAd.keyframes = [];
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'uploaded_person_reference');
-      toast('人物参考已上传，会用于后续剧本和分镜保持人物一致', 'success');
+      toast('真人照片参考已上传，会用于后续剧本和分镜保持人物一致', 'success');
     } catch (err) {
       state.luxuryAd.personAsset = state.luxuryAd.personAsset ? { ...state.luxuryAd.personAsset, uploading: false, failed: true } : null;
       syncLuxuryAdUploadFlags();
@@ -5836,24 +6354,81 @@
     }
   }
 
+  async function detectLuxuryAdPersonGender(imageUrl = '') {
+    const url = compactLuxuryUrl(imageUrl);
+    if (!url) return '';
+    try {
+      const r = await api('/api/dh/images/detect-gender', { method: 'POST', body: { imageUrl: url } });
+      const gender = String(r?.gender || '').toLowerCase();
+      return gender === 'male' || gender === 'female' ? gender : '';
+    } catch {
+      return '';
+    }
+  }
+
   async function generateLuxuryAdPersonSheet() {
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     if (!text) return toast('请先填写广告需求，AI 才知道人物应该是谁', 'error');
-    if (!state.luxuryAd.storyboardDetailed) return toast('请先生成并检查剧本，再生成真人三视图', 'error');
-    const personDescription = luxuryAdPersonDescription();
-    const referencePerson = luxuryAdPersonAssetPayload();
+    if (!luxuryAdIsMaterialMode() && !luxuryAdPersonDesignReady()) {
+      return toast(luxuryAdPersonDesignGateMessage(), 'error');
+    }
+    const generationSpec = luxuryAdPersonGenerationSpec();
+    const personDescription = luxuryAdPersonDescription(generationSpec);
+    const referenceCandidate = luxuryAdPersonAssetPayload();
+    const referenceKind = luxuryAdActorReferenceKind(referenceCandidate || {});
+    const referencePerson = referenceKind === 'real_photo' || referenceKind === 'synthetic_realistic_actor'
+      ? referenceCandidate
+      : null;
     const btn = $('#dhLuxAdGeneratePersonSheet');
     const old = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = '生成三视图中…'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '生成演员包中…'; }
+    state.luxuryAd.personGenerationError = null;
+    const personProgressStages = [
+      { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别和地域约束。' },
+      { at: 2500, percent: 24, phase: '生成正面定妆照', message: '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
+      { at: 8500, percent: 48, phase: '生成侧面/半侧参考', message: '复用同一脸型、发型、服装和身形比例。' },
+      { at: 15000, percent: 70, phase: '生成动作参考照', message: '同一演员进入商业动作姿态，检查衣服和发型不漂移。' },
+      { at: 22000, percent: 86, phase: '构图 QA 与素材入库', message: '检查是否看得到裤子/膝盖等下半身证据，通过后才绑定 actor_id。' },
+    ];
+    const updatePersonProgress = () => {
+      const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
+      const elapsed = Date.now() - start;
+      let stage = personProgressStages[0];
+      personProgressStages.forEach(item => { if (elapsed >= item.at) stage = item; });
+      state.luxuryAd.personGenerationProgress = {
+        active: true,
+        startedAt: start,
+        label: 'AI 真人感演员包',
+        percent: stage.percent,
+        phase: stage.phase,
+        message: stage.message,
+      };
+      renderLuxuryAdPerson();
+    };
+    state.luxuryAd.personGenerationProgress = {
+      active: true,
+      startedAt: Date.now(),
+      label: 'AI 真人感演员包',
+      percent: 10,
+      phase: '准备人物设定',
+      message: '读取广告需求、人物性别和地域约束。',
+    };
+    const personProgressTimer = setInterval(updatePersonProgress, 1400);
     state.luxuryAd.personAsset = {
-      id: 'luxury_ad_person_sheet',
-      name: '拟真真人三视图',
-      type: 'luxury_ad_character_sheet',
+      id: 'luxury_ad_actor_package',
+      name: 'AI 真人感固定演员',
+      type: 'luxury_ad_actor_package',
+      source: 'local_actor_library_generated',
+      reference_kind: 'synthetic_realistic_actor',
+      is_ai_generated: false,
+      production_usable_actor: true,
       url: '',
       previewUrl: '',
       uploading: true,
       view_count: 3,
-      description: '正在生成正面、侧面、背面三视图。',
+      gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
+      origin: generationSpec.origin || '',
+      description: '正在按角色素材库标准生成真人感固定演员包。',
       spec_description: personDescription,
     };
     state.selectedAvatar = null;
@@ -5865,38 +6440,95 @@
           brief: text,
           scene_config: compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 5),
           description: personDescription,
-          person_spec: luxuryAdPersonSpec(),
+          person_spec: generationSpec,
+          person_context: luxuryAdPersonContextPayload(generationSpec),
+          flow_mode: state.luxuryAd.flowMode || (luxuryAdIsMaterialMode() ? 'material' : 'story'),
           reference_person: referencePerson,
-          output_ratio: '4:3',
+          output_ratio: '9:16',
         },
       });
-      if (!r.success) throw new Error(r.error || '人物三视图生成失败');
+      if (!r.success) throw new Error(r.error || '人物演员包生成失败');
       const imageUrl = r.imageUrl || r.image_url || r.url || r.character?.image_url || '';
-      if (!imageUrl) throw new Error('人物三视图生成成功但没有返回图片地址');
+      if (!imageUrl) throw new Error('人物演员包生成成功但没有返回图片地址');
+      const character = r.character || {};
+      state.luxuryAd.personGenerationError = null;
+      state.luxuryAd.personGenerationProgress = {
+        active: true,
+        startedAt: state.luxuryAd.personGenerationProgress?.startedAt || Date.now(),
+        label: 'AI 真人感演员包',
+        percent: 96,
+        phase: '演员包生成完成',
+        message: '已返回正面、侧面/半侧和动作参考图，正在更新页面。',
+      };
       state.luxuryAd.personAsset = {
-        id: r.character?.id || 'luxury_ad_person_sheet',
-        name: r.character?.name || '拟真真人三视图',
-        type: 'luxury_ad_character_sheet',
+        id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
+        actor_id: character.actor_id || r.actor_asset?.actor_id || '',
+        actor_asset_id: character.actor_asset_id || r.actor_asset?.actor_asset_id || '',
+        name: character.name || 'AI 真人感固定演员',
+        type: character.type || 'luxury_ad_actor_package',
+        source: character.source || 'local_actor_library_generated',
+        reference_kind: character.reference_kind || 'synthetic_realistic_actor',
+        is_ai_generated: character.is_ai_generated === true,
+        production_usable_actor: character.production_usable_actor !== false,
+        gender: character.gender || generationSpec.gender || '',
+        origin: character.origin || generationSpec.origin || '',
         url: imageUrl,
         image_url: imageUrl,
         previewUrl: imageUrl,
+        extra_image_urls: Array.isArray(character.extra_image_urls)
+          ? character.extra_image_urls
+          : (Array.isArray(r.extra_image_urls) ? r.extra_image_urls : []),
         view_count: 3,
         uploading: false,
-        description: r.character?.description || '真人广告人物三视图：正面、侧面、背面。',
+        description: character.description || 'AI 真人感固定演员包：正面定妆、侧面/半侧、动作参考。',
         spec_description: personDescription,
       };
+      applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
       state.luxuryAd.keyframes = [];
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
-      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'generated_person_sheet');
-      toast('真人三视图已生成，后续分镜会按这个人物参考保持一致', 'success');
+      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'local_actor_library_generated');
+      toast('AI 真人感固定演员包已生成，并会写入角色素材库用于后续分镜锁定', 'success');
     } catch (err) {
-      state.luxuryAd.personAsset = null;
+      state.luxuryAd.personGenerationError = {
+        endpoint: '/api/dh/luxury-ad/person-sheet',
+        status: err?.status || err?.data?.status || 0,
+        code: err?.data?.code || err?.code || 'PERSON_ACTOR_PACKAGE_FAILED',
+        message: err?.data?.message || err?.data?.error || err.message || '人物演员包生成失败',
+        details: err?.data?.details || null,
+        raw: err?.data || null,
+      };
+      state.luxuryAd.personGenerationProgress = null;
+      state.luxuryAd.personAsset = {
+        id: 'luxury_ad_actor_package_failed',
+        name: 'AI 真人感固定演员',
+        type: 'luxury_ad_actor_package',
+        source: 'local_actor_library_generated',
+        reference_kind: 'synthetic_realistic_actor',
+        is_ai_generated: false,
+        production_usable_actor: true,
+        url: '',
+        previewUrl: '',
+        uploading: false,
+        failed: true,
+        view_count: 3,
+        gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
+        origin: generationSpec.origin || '',
+        description: '人物演员包生成失败，请展开完整错误回执查看模型链路。',
+        error: err?.data?.message || err?.data?.error || err.message || '',
+        spec_description: personDescription,
+      };
       renderLuxuryAdPerson();
-      toast('AI 生成人物三视图失败：' + err.message, 'error');
+      toast('AI 生成人物演员包失败：' + luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError), 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = old || 'AI 生成三视图'; }
+      clearInterval(personProgressTimer);
+      if (state.luxuryAd.personGenerationProgress?.active) {
+        state.luxuryAd.personGenerationProgress = null;
+        renderLuxuryAdPerson();
+      }
+      if (btn) { btn.disabled = false; btn.innerHTML = old || 'AI 真人感演员包'; }
+      updateLuxuryAdStepLocks();
     }
   }
 
@@ -6089,6 +6721,8 @@
         file_url: data.file_url || '',
         file_path: data.file_path || '',
         volume: 0.18,
+        source: '用户上传',
+        license: '用户自有或已获授权音乐',
       };
       renderLuxuryAdBgm();
       updateLuxuryAdStepLocks();
@@ -6098,6 +6732,38 @@
       toast('背景音乐上传失败：' + err.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = old || '上传背景音乐'; }
+    }
+  }
+
+  async function autoMatchLuxuryAdBgm() {
+    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!text) return toast('请先输入广告需求，再自动匹配 BGM', 'error');
+    const btn = $('#dhLuxAdBgmAuto');
+    const old = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '匹配中…'; }
+    try {
+      const r = await api('/api/dh/luxury-ad/auto-bgm', {
+        method: 'POST',
+        body: {
+          text,
+          title: '剧情广告',
+          ad_type: state.luxuryAd.adType || 'auto',
+          ad_style: 'luxury_soft',
+          duration_sec: state.luxuryAd.durationSec || 30,
+          segments: compactLuxurySegments(state.luxuryAd.segments || []),
+          brief_info: state.luxuryAd.briefInfo || null,
+        },
+      });
+      if (!r.success || !r.bgm_asset) throw new Error(r.error || 'BGM 自动匹配失败');
+      state.luxuryAd.bgmAsset = r.bgm_asset;
+      renderLuxuryAdBgm();
+      updateLuxuryAdStepLocks();
+      setLuxuryProgress('bgm');
+      toast(`已匹配 BGM：${r.bgm_asset.name || r.bgm_asset.matched_mood || '背景音乐'}`, 'success');
+    } catch (err) {
+      toast('自动匹配 BGM 失败：' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = old || '自动匹配 BGM'; }
     }
   }
 
@@ -6382,19 +7048,28 @@
     const personUrl = compactLuxuryUrl(person?.image_url || person?.url || '');
     const actorUploading = !!state.luxuryAd.personAsset?.uploading;
     const actorReady = !!personUrl && !/^blob:/i.test(personUrl) && !actorUploading;
-    const blocked = !!finalKeyframes && humanShotIndexes.length > 0 && !actorReady;
+    const actorIsAi = !!person && luxuryAdActorIsAiGenerated(person);
+    const actorIsRealPerson = !!person && luxuryAdActorIsRealPerson(person);
+    const actorUsableForKeyframes = !!person && luxuryAdActorUsableForKeyframes(person);
+    const blocked = !!finalKeyframes && humanShotIndexes.length > 0 && (!actorReady || !actorUsableForKeyframes);
     const reason = actorUploading
       ? '人物参考仍在上传或生成中，不能进入真实关键帧。'
-      : '有人物镜头但还没有确认演员参考。请先上传人物参考、选择数字人形象，或生成真人三视图。';
+      : actorReady && actorIsAi
+        ? '真实关键帧已停止：当前选择的是普通 AI 拟真参考，不是可用于人物锁的真人照片/AI 真人感演员包。请重新生成演员包、上传真人参考或选择角色库演员。'
+        : '有人物镜头但还没有确认可用演员参考。请先生成 AI 真人感演员包、上传真人参考或选择角色素材库演员。';
     return {
       stage: finalKeyframes ? 'final_keyframe_gate' : 'storyboard_review_gate',
       human_required: humanShotIndexes.length > 0,
       human_shot_indexes: humanShotIndexes,
       actor_reference: {
-        status: actorReady ? 'confirmed' : 'missing',
+        status: actorReady ? (actorUsableForKeyframes ? 'confirmed' : 'not_real_person') : 'missing',
         source: person?.type || '',
         name: person?.name || '',
         image_url: personUrl,
+        reference_kind: person?.reference_kind || '',
+        is_ai_generated: actorIsAi,
+        real_person_reference: actorIsRealPerson,
+        production_usable_actor: actorUsableForKeyframes,
       },
       final_keyframes_ready: !blocked,
       blocked,
@@ -6812,7 +7487,7 @@
     const info = deriveLuxuryBriefInfo(state.luxuryAd.content, segments, state.luxuryAd.briefInfo || {});
     state.luxuryAd.briefInfo = info;
     syncLuxuryBriefInfoToControls(info);
-    const scenePlan = state.luxuryAd.storyboardDetailed ? (Array.isArray(segments) ? segments : []).slice(0, 8) : [];
+    const scenePlan = state.luxuryAd.storyboardDetailed ? (Array.isArray(segments) ? segments : []).slice(0, 18) : [];
     const product = state.luxuryAd.productAsset || null;
     const productUrl = product ? luxuryAssetPreviewUrl(product) : '';
     const productUploading = !!product?.uploading && !productUrl;
@@ -7102,12 +7777,17 @@
   // the workflow look like a usable storyboard even when the visual contract failed.
   function renderLuxuryKeyframeErrorDetails(details = null) {
     const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean).slice(0, 8) : [];
-    if (!attempts.length) return '';
+    const receiptHtml = renderLuxuryFullErrorReceipt(details, '分镜接口完整错误回执');
+    if (!attempts.length) return receiptHtml;
     const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
     const firstProviderFail = attempts.find(a => !a.ok && !a.qa);
     const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
     const preflightFail = attempts.find(a => String(a?.provider_id || a?.provider || '') === 'preflight');
+    const topviewAttempts = attempts.filter(a => /topview/i.test(label(a)));
+    const topviewAllFailed = topviewAttempts.length > 0
+      && topviewAttempts.every(a => !a.ok && /All tasks failed|5000|quota|balance|余额|insufficient/i.test(String(a.error || '')));
     const summaryParts = [
+      topviewAllFailed ? 'Topview 图片通道全部失败：请优先检查 Topview 余额、额度或账号授权。' : '',
       preflightFail ? String(preflightFail.error || '当前缺少可执行的真人一致性商业片链路。').slice(0, 180) : '',
       firstProviderFail ? `首个生成通道 ${label(firstProviderFail) || '图片模型'} 未返回可用图片：${String(firstProviderFail.error || '未知错误').slice(0, 140)}` : '',
       firstQaFail ? `后续候选图已出图但被视觉 QA 拒绝：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
@@ -7120,6 +7800,7 @@
     return `<div class="dh-lux-error-attempts">
       ${summaryParts.length ? `<div class="dh-lux-error-summary">${summaryParts.map(x => `<span>${escapeHtml(x)}</span>`).join('')}</div>` : ''}
       <div class="dh-lux-error-summary"><span>${escapeHtml(failedLabels.length ? `已阻止/拒绝的通道：${failedLabels.join('、')}` : '没有可展示的合格候选图。')}</span></div>
+      ${receiptHtml}
     </div>`;
   }
 
@@ -7342,6 +8023,122 @@
     return `<div class="dh-lux-qa-dims">${rows.join('')}</div>`;
   }
 
+  function luxuryAdIsSoftwareWorkflow() {
+    const text = [
+      state.luxuryAd.productAsset?.name,
+      state.luxuryAd.briefInfo?.product_subject,
+      state.luxuryAd.content,
+      ...(state.luxuryAd.segments || []).flatMap(seg => [seg.title, seg.text, seg.visual, seg.action, seg.voiceover, seg.material_usage]),
+    ].filter(Boolean).join(' ');
+    return /AI\s*Order\s*Assistant|订单助手|智能订单|订单管理|库存管理|补货|软件|系统|平台|SaaS|APP|小程序|workflow|software|assistant|order|inventory|restock/i.test(text);
+  }
+
+  function luxuryAttemptKey(attempt = {}) {
+    return [attempt.provider_id || attempt.provider, attempt.model_id || attempt.model].filter(Boolean).join('/');
+  }
+
+  function luxuryAttemptStatus(attempts = [], provider = '', model = '') {
+    const needle = `${provider}/${model}`.toLowerCase();
+    const hit = attempts.find(a => luxuryAttemptKey(a).toLowerCase() === needle);
+    if (!hit) return '';
+    return hit.ok || hit.qa?.pass === true || hit.qa?.accepted_with_warning === true ? 'ready' : 'fail';
+  }
+
+  function renderLuxuryCommercialGuard() {
+    const hosts = ['#dhLuxAdCapabilityStrip', '#dhLuxAdCommercialGuard']
+      .map(selector => $(selector))
+      .filter(Boolean);
+    if (!hosts.length) return;
+    if (luxuryAdIsMaterialMode() || !canViewLuxuryInternalPipeline()) {
+      hosts.forEach(host => {
+        host.hidden = true;
+        host.innerHTML = '';
+      });
+      return;
+    }
+    hosts.forEach(host => {
+      host.hidden = false;
+    });
+    const segments = state.luxuryAd.segments || [];
+    const keyframes = state.luxuryAd.keyframes || [];
+    const details = state.luxuryAd.keyframeErrorDetails || null;
+    const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean) : [];
+    const hasActorAsset = !!(state.luxuryAd.personAsset?.url
+      || state.luxuryAd.productionContract?.actor_reference?.status === 'confirmed'
+      || keyframes.find(k => k?.character_lock?.actor_asset || k?.visual_locks?.character_lock?.actor_asset));
+    const actorLabel = hasActorAsset ? '固定演员已启用' : '待选演员';
+    const actorSub = hasActorAsset
+      ? '后端会把正脸/侧脸/动作参考作为人物一致性锁。'
+      : '建议先生成 AI 真人感演员包、上传真人参考或选择角色素材库演员。';
+    const workflow = luxuryAdIsSoftwareWorkflow();
+    const finishedFrames = keyframes.filter(k => k?.image_url || k?.imageUrl).length;
+    const totalFrames = Math.max(segments.length || 0, finishedFrames);
+    const topviewAttempts = attempts.filter(a => /topview/i.test(luxuryAttemptKey(a)));
+    const topviewAllFailed = topviewAttempts.length > 0
+      && topviewAttempts.every(a => !a.ok && /All tasks failed|5000|quota|balance|余额|insufficient/i.test(String(a.error || '')));
+    const qaAttempt = attempts.find(a => a.qa) || null;
+    const personSheetChain = [
+      ['deyunai', 'gpt-image-2', '漫路 GPT Image 2', false],
+      ['deyunai', 'nano-banana-pro', '漫路 Nano Banana Pro', false],
+      ['deyunai', 'nano-banana', '漫路 Nano Banana', false],
+      ['deyunai', 'qwen-image', '漫路 Qwen Image', false],
+      ['topview', 'topview-gpt-image-2', 'Topview GPT Image 2', true],
+    ];
+    const keyframeChain = [
+      ['deyunai', 'gpt-image-2', '漫路 GPT Image 2', false],
+      ['deyunai', 'nano-banana-pro', '漫路 Nano Banana Pro', false],
+      ['deyunai', 'nano-banana', '漫路 Nano Banana', false],
+      ['deyunai', 'qwen-image-edit', '漫路 Qwen Image Edit', false],
+      ['deyunai', 'doubao-seedream-4-0-250828', '漫路 Seedream 4.0', false],
+      ['topview', 'topview-gpt-image-2', 'Topview GPT Image 2', true],
+    ];
+    const videoChain = [
+      ['webang-seedance', 'doubao-seedance-2-0-260128', '微众 Seedance 2.0', false],
+      ['webang-seedance', 'doubao-seedance-2-0-fast-260128', '微众 Seedance 2.0 Fast', false],
+      ['topview', 'topview-image2video-pro', 'Topview I2V Pro', true],
+      ['deyunai', 'kling-v2.5-turbo-pro', '漫路 Kling 2.5', false],
+      ['deyunai', 'hailuo-02-fast', '漫路 Hailuo 02 Fast', false],
+    ];
+    const chainChipHtml = chain => chain.map(([provider, model, label, disabled]) => {
+      const status = luxuryAttemptStatus(attempts, provider, model);
+      return `<span class="${disabled ? 'disabled' : status}">${escapeHtml(label)}${disabled ? ' · 已停用' : ''}</span>`;
+    }).join('');
+    const cards = [
+      ['演员库 / 人物锁', actorLabel, actorSub, hasActorAsset ? 'ready' : 'warn'],
+      ['产品类型识别', workflow ? '软件服务工作流' : '实体/场景商品', workflow ? '手机、订单纸、货架、确认 UI 会作为产品证据。' : '按商品主体、空间和材质证据生成。', workflow ? 'ready' : ''],
+      ['模型调用链', attempts.length ? '已记录最近一次尝试' : '按模型调用管理执行', '人物演员包走 luxury_ad.person_sheet；分镜图走 luxury_ad.keyframe；成片视频走 luxury_ad.video。', topviewAllFailed ? 'fail' : (attempts.length ? 'warn' : '')],
+      ['严格 QA 门禁', qaAttempt ? `最近评分 ${qaAttempt.qa?.score ?? '-'}` : '等待生成后评分', 'Vision QA 会检查人物一致、剧情动作、写实度、产品/场景和 UI 遮挡。', qaAttempt?.qa?.pass ? 'ready' : (qaAttempt ? 'warn' : '')],
+    ].map(([title, value, sub, cls]) => `<div class="dh-lux-commercial-guard-card ${cls || ''}"><small>${escapeHtml(title)}</small><b>${escapeHtml(value)}</b><span>${escapeHtml(sub)}</span></div>`).join('');
+    const note = topviewAllFailed
+      ? '最近一次失败是 Topview 图片通道全部返回 All tasks failed。优先检查 Topview 余额/额度/账号授权；这不是剧情 QA 放行问题。'
+      : (state.luxuryAd.keyframeGenerating
+        ? (state.luxuryAd.keyframeProgress?.message || '正在生成分镜。')
+        : (finishedFrames ? `当前已生成 ${finishedFrames}/${totalFrames || finishedFrames} 个真实分镜。` : '确认剧本后会先按演员和工作流合同生成关键帧，失败时这里会显示模型链路和原因。'));
+    const html = `<section>
+      <div class="dh-lux-commercial-guard-head">
+        <div><b>商用分镜生成链路</b><span>固定演员、软件工作流、模型调用管理和严格 QA 会在这里显性展示。</span></div>
+        <em>${escapeHtml(state.luxuryAd.keyframeGenerating ? '生成中' : (finishedFrames ? '已有结果' : '待生成'))}</em>
+      </div>
+      <div class="dh-lux-commercial-guard-grid">${cards}</div>
+      <div class="dh-lux-model-chain-group">
+        <small>人物演员包链</small>
+        <div class="dh-lux-model-chain">${chainChipHtml(personSheetChain)}</div>
+      </div>
+      <div class="dh-lux-model-chain-group">
+        <small>第 4 步分镜图片链</small>
+        <div class="dh-lux-model-chain">${chainChipHtml(keyframeChain)}<span class="${qaAttempt ? (qaAttempt.qa?.pass ? 'ready' : 'fail') : ''}">QA: Gemini 2.5 Flash</span></div>
+      </div>
+      <div class="dh-lux-model-chain-group">
+        <small>第 5 步视频合成链</small>
+        <div class="dh-lux-model-chain">${chainChipHtml(videoChain)}</div>
+      </div>
+      <div class="dh-lux-commercial-guard-note">${escapeHtml(note)}</div>
+    </section>`;
+    hosts.forEach(host => {
+      host.innerHTML = html;
+    });
+  }
+
   function renderLuxuryProductionContractStatus() {
     const contract = state.luxuryAd.productionContract || null;
     if (!contract || typeof contract !== 'object') return '';
@@ -7403,6 +8200,58 @@
         <div><small>真实关键帧</small><b>${frameCount}/${shotCount || 0}</b></div>
       </div>
     </section>`;
+  }
+
+  function renderMaterialFilmStoryboard(sceneHost, scriptHost, frameHost) {
+    const text = (state.luxuryAd.content || $('#dhLuxAdText')?.value || '').trim();
+    const assets = luxuryMaterialAssetUrls();
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const actor = luxuryAdPersonAssetPayload();
+    const actorName = actor?.name || state.selectedAvatar?.name || '未选择演员';
+    const duration = Number(state.luxuryAd.durationSec || 30);
+    const ratio = state.luxuryAd.outputRatio || '9:16';
+    if (sceneHost) {
+      sceneHost.innerHTML = `
+        <div class="dh-luxgen-outline-grid">
+          <div class="dh-demo-card"><small>制作模式</small><b>素材成片</b><span>上传素材 + 演员 + 广告词，直接合成基础广告。</span></div>
+          <div class="dh-demo-card"><small>素材数量</small><b>${assets.length ? `${assets.length} 个素材` : '未上传素材'}</b><span>${assets.length ? '这些素材会作为剪辑画面来源。' : '请上传产品、人物、场景或界面素材。'}</span></div>
+          <div class="dh-demo-card"><small>演员</small><b>${escapeHtml(actorName)}</b><span>${actor ? '已作为口播/人物参考进入合成。' : '可从角色素材库选择，或上传真人参考。'}</span></div>
+          <div class="dh-demo-card"><small>规格</small><b>${duration}s · ${escapeHtml(ratio)}</b><span>最终合成走素材成片接口，不调用分镜图片模型。</span></div>
+        </div>`;
+    }
+    if (scriptHost) {
+      scriptHost.innerHTML = segments.length
+        ? `<div class="dh-luxgen-storyboard">
+          ${segments.map((seg, i) => `<article>
+            <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || `广告词段落 ${i + 1}`)}</b>
+            <span>${escapeHtml(luxuryAdShotTimeRange(seg, i, segments.length))}</span>
+            <p>${escapeHtml(luxuryShotNarrationText(seg) || seg.visual || seg.text || '')}</p>
+          </article>`).join('')}
+        </div>`
+        : luxuryAdEmptyBlock('还没有广告词方案', '点击“生成广告词方案”，系统会按素材成片生成 4 段口播文案。');
+    }
+    if (frameHost) {
+      const thumbHtml = assets.slice(0, 8).map((url, i) => {
+        const preview = luxuryAssetPreviewUrl({ url });
+        return `<button type="button" class="dh-demo-frame-visual" data-lux-material-preview="${i}" title="点击预览素材">
+          <img src="${escapeHtml(preview)}" alt="素材 ${i + 1}">
+          <b>${String(i + 1).padStart(2, '0')} · 素材画面</b>
+          <span>用于剪辑成片</span>
+        </button>`;
+      }).join('');
+      frameHost.innerHTML = `
+        <div class="dh-demo-script-review">
+          <div>
+            <b>素材成片不生成分镜图片</b>
+            <span>${assets.length ? `已准备 ${assets.length} 个素材，确认配音后可合成` : '请先上传至少一张素材'}</span>
+          </div>
+          <button type="button" class="dh-luxgen-edit" data-lux-material-compose>${assets.length ? '进入成片合成' : '等待素材'}</button>
+        </div>
+        ${thumbHtml ? `<div class="dh-demo-frame-list">${thumbHtml}</div>` : luxuryAdEmptyBlock('还没有素材', '回到第 1 步或第 2 步上传产品、人物、场景、界面素材。')}
+      `;
+    }
+    renderLuxuryAdPostScriptPerson();
+    updateLuxuryAdStepLocks();
   }
 
   function renderLuxuryAdFrameCards(host, segments, keyframes) {
@@ -7497,6 +8346,11 @@
     const frameHost = $('#dhLuxAdFrameHost');
     const segments = applyLuxuryShotBindings(state.luxuryAd.segments || []);
     const keyframes = state.luxuryAd.keyframes || [];
+    renderLuxuryCommercialGuard();
+    if (luxuryAdIsMaterialMode()) {
+      renderMaterialFilmStoryboard(sceneHost, scriptHost, frameHost);
+      return;
+    }
     if (state.luxuryAd.sceneGenerating) {
       if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('基础信息生成中', '正在分析广告需求、主体来源、真实场景和全局视觉。生成完成前不展示草稿镜头。');
       if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('等待剧本', '基础信息完成后再生成剧本审核表。');
@@ -7923,6 +8777,12 @@
       const gptImage2 = attempts.find(a => /gpt-image-2/i.test(label(a)));
       const qaRejectedAttempt = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
       const allQaRejected = attempts.some(a => a.qa) && attempts.filter(a => a.qa).every(a => a.qa.pass !== true && a.qa.accepted_with_warning !== true);
+      const topviewAttempts = attempts.filter(a => /topview/i.test(label(a)));
+      const topviewAllFailed = topviewAttempts.length > 0
+        && topviewAttempts.every(a => !a.ok && /All tasks failed|5000|quota|balance|余额|insufficient/i.test(String(a.error || '')));
+      if (topviewAllFailed) {
+        return '分镜生成已停止：Topview 图片通道全部返回 All tasks failed。请优先检查 Topview 余额、额度或账号授权；系统没有跳过严格 QA，也没有生成可商用关键帧。';
+      }
       if (gptImage2 && !gptImage2.ok && /500|Internal Server Error|provider error|未返回图片|no image|未返回图片数据/i.test(String(gptImage2.error || ''))) {
         return [
           '分镜生成已停止：DeyunAI GPT Image 2 通道返回 500，未返回可用图片数据。',
@@ -7949,6 +8809,10 @@
   }
 
   async function buildLuxuryAdStoryboard({ autoNext = false, detail = false } = {}) {
+    if (luxuryAdIsMaterialMode()) {
+      buildMaterialFilmCopyPlan();
+      return true;
+    }
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     const refs = luxuryAdRefs();
     if (!text) return toast('请先输入广告需求、产品介绍或一句话想法', 'error');
@@ -8104,6 +8968,10 @@
   }
 
   async function autoGenerateLuxuryAdAiVisuals() {
+    if (luxuryAdIsMaterialMode()) {
+      buildMaterialFilmCopyPlan();
+      return;
+    }
     if (state.luxuryAd.keyframeGenerating) return toast('正在生成分镜，请稍等', 'error');
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     if (!text) return toast('请先填写广告需求', 'error');
@@ -8126,6 +8994,11 @@
   }
 
   async function generateLuxuryAdKeyframes({ autoSubmit = false, onlyIndex = null, force = false } = {}) {
+    if (luxuryAdIsMaterialMode()) {
+      buildMaterialFilmCopyPlan();
+      showLuxuryAdStep(5, { silent: true });
+      return;
+    }
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     if (!text) return toast('请先输入广告需求', 'error');
     if (!state.luxuryAd.segments?.length) return toast('请先完成第 2 步：生成场景配置', 'error');
@@ -8371,7 +9244,14 @@
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
-      state.luxuryAd.keyframeErrorDetails = err?.data?.details || null;
+      state.luxuryAd.keyframeErrorDetails = {
+        endpoint: '/api/dh/spaces/keyframes',
+        status: err?.status || err?.data?.status || 0,
+        code: err?.data?.code || err?.code || '',
+        message: err?.data?.message || err?.data?.error || err.message || '',
+        ...(err?.data?.details || {}),
+        raw: err?.data || null,
+      };
       if (err?.data?.details?.production_project) applyLuxuryProductionProject(err.data.details.production_project);
       else if (err?.data?.details?.production_project_id) state.luxuryAd.productionProjectId = err.data.details.production_project_id;
       if (err?.data?.details?.production_contract) state.luxuryAd.productionContract = err.data.details.production_contract;
@@ -8389,6 +9269,7 @@
   }
 
   async function submitLuxuryAd() {
+    if (luxuryAdIsMaterialMode()) return submitMaterialFilmAd();
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     if (!text) return toast('请先输入广告需求', 'error');
     const refs = luxuryAdRefs();
@@ -8449,6 +9330,7 @@
         voice_id: voiceId,
         duration_sec: state.luxuryAd.durationSec,
         subtitle: subtitlePayload,
+        bgm_asset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
         scene_prompt: text,
           camera_prompt: '剧情广告：按分镜顺序生成镜头，镜头语言高级克制，保留产品故事与品牌质感。',
         ad_mode: 'luxury_ad',
@@ -8504,8 +9386,9 @@
             scenes: state.luxuryAd.segments || [],
             keyframes: state.luxuryAd.keyframes || [],
             subtitle: subtitlePayload,
+            bgmAsset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
             shotCount: state.luxuryAd.segments.length || state.luxuryAd.keyframes.length || 4,
-            composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · 提交后在任务中心查看逐镜视频`,
+            composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · ${luxuryAdHasBgm() ? 'BGM 已配置' : '无 BGM'} · 提交后在任务中心查看逐镜视频`,
             workflow: '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成（配音 / 字幕 / 视频）',
             submittedAt: new Date().toISOString(),
           },
@@ -8521,6 +9404,129 @@
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = old || '合成广告'; }
     }
+  }
+
+  async function submitMaterialFilmAd() {
+    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!text) return toast('请先输入广告需求', 'error');
+    const materialUrls = luxuryMaterialAssetUrls();
+    if (!materialUrls.length) return toast('请先上传至少一张产品/场景/界面素材', 'error');
+    const voiceId = state.luxuryAd.voiceId || '';
+    if (!voiceId) return toast('请先手动选择配音音色', 'error');
+    const btn = $('#dhLuxAdConfirmGenerate');
+    const old = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '提交素材成片中…'; }
+    setLuxuryProgress('video');
+    try {
+      const title = state.luxuryAd.briefInfo?.title || '素材成片';
+      const selectedVoice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
+      const subtitlePayload = getDhSubtitlePayload(state.luxuryAd.subtitle !== false);
+      const payload = {
+        text,
+        title,
+        voice_id: voiceId,
+        duration_sec: state.luxuryAd.durationSec || 30,
+        material_assets: materialUrls,
+        reference_images: materialUrls.slice(1),
+        background_url: materialUrls[0],
+        person_asset: luxuryAdPersonAssetPayload(),
+        subtitle: subtitlePayload,
+        bgm_asset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+        generation_mode: 'material_film',
+        ad_mode: 'material_film',
+        ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
+      };
+      const r = await api('/api/dh/material-film/generate', {
+        method: 'POST',
+        body: payload,
+      });
+      if (!r.success) throw new Error(r.error || '提交失败');
+      state.luxuryAd.taskId = r.taskId || r.task_id || '';
+      if (state.luxuryAd.taskId) {
+        syncRunningTask(state.luxuryAd.taskId, {
+          taskId: state.luxuryAd.taskId,
+          avatarName: title,
+          startedAt: Date.now(),
+          status: 'submitted',
+          stage: 'submitted',
+          previewUrl: materialUrls[0],
+          textPreview: `${state.luxuryAd.durationSec || 30}s · ${materialUrls.length} 素材 · ${text.slice(0, 50)}`,
+          taskType: 'material_film',
+          retryPayload: payload,
+          createDetail: {
+            title,
+            durationSec: state.luxuryAd.durationSec || 30,
+            text,
+            voiceId,
+            voiceName: selectedVoice.name || selectedVoice.label || voiceId,
+            adMode: '素材成片',
+            outputRatio: state.luxuryAd.outputRatio,
+            outputSize: state.luxuryAd.outputSize,
+            materialAssets: materialUrls,
+            personAsset: luxuryAdPersonAssetPayload(),
+            subtitle: subtitlePayload,
+            bgmAsset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+            workflow: '广告需求 → 素材/演员 → 广告词 → 本地剪辑合成 → 配音/字幕/BGM',
+            submittedAt: new Date().toISOString(),
+          },
+        });
+        pollVideoTask(state.luxuryAd.taskId);
+      }
+      state.activeTaskType = 'material_film';
+      toast('素材成片任务已提交，任务中心会显示合成进度', 'success');
+      renderTaskCenter();
+      switchTab('tasks');
+    } catch (err) {
+      toast('素材成片提交失败：' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = old || '合成素材成片'; }
+    }
+  }
+
+  function buildMaterialFilmCopyPlan() {
+    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!text) return toast('请先输入广告需求', 'error');
+    const assets = luxuryMaterialAssetUrls();
+    const duration = Number(state.luxuryAd.durationSec || 30);
+    const title = normalizeLuxuryBriefTitle(text) || '素材成片';
+    const beats = [
+      ['开场钩子', `先点明用户痛点：${text.slice(0, 52)}`],
+      ['核心卖点', '展示上传素材里的产品、界面、门店或场景证据，说明最关键优势。'],
+      ['信任证明', '用素材画面承接功能、品质、案例或服务能力，避免空泛口号。'],
+      ['行动收束', '用一句明确行动号召收尾，引导咨询、体验、比稿或下单。'],
+    ];
+    state.luxuryAd.briefInfo = deriveLuxuryBriefInfo(text, [], {
+      title,
+      theme: '素材成片',
+      style: '真实素材剪辑 + 演员口播',
+      duration_sec: duration,
+      aspect_ratio: state.luxuryAd.outputRatio || '9:16',
+      style_tags: ['素材剪辑', '真人口播', '商业广告', '快速成片'],
+    });
+    state.luxuryAd.segments = beats.map(([titleText, visual], i) => {
+      const start = Math.round((duration / beats.length) * i);
+      const end = Math.round((duration / beats.length) * (i + 1));
+      return {
+        index: i + 1,
+        start,
+        end,
+        duration: Math.max(2, end - start),
+        title: titleText,
+        visual,
+        action: i === 0 ? '演员开场介绍，素材快速切入。' : '素材画面按卖点节奏切换，演员口播承接。',
+        dialogue: visual,
+        voiceover: visual,
+        camera: '素材轻推拉，字幕跟随口播节奏。',
+        purpose: titleText,
+      };
+    });
+    state.luxuryAd.storyboardDetailed = true;
+    state.luxuryAd.keyframes = [];
+    syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
+    renderLuxuryAdStoryboard();
+    updateLuxuryAdStepLocks();
+    showLuxuryAdStep(5, { silent: true });
+    toast(assets.length ? `素材成片广告词方案已生成，已识别 ${assets.length} 个素材` : '广告词方案已生成，请继续上传素材', 'success');
   }
 
   function ensurePreviewAudio() {
@@ -8550,7 +9556,7 @@
       real_estate: '房产空间',
       auto_showroom: '汽车展厅',
       custom: '自定义场景',
-    })[scene] || '广告数字人';
+    })[scene] || '素材审片';
   }
 
   function spaceCameraName(camera) {
@@ -8664,8 +9670,8 @@
     if (sampleBtn) sampleBtn.textContent = isLuxury ? '填入高定示例' : '填入示例文案';
     if (titleInput) {
       const current = String(titleInput.value || '').trim();
-      if (isLuxury && (!current || current === '广告数字人')) titleInput.value = '剧情广告';
-      if (!isLuxury && current === '剧情广告') titleInput.value = '广告数字人';
+      if (isLuxury && (!current || current === '素材审片' || current === '广告数字人')) titleInput.value = '剧情广告';
+      if (!isLuxury && current === '剧情广告') titleInput.value = '素材审片';
       titleInput.placeholder = isLuxury ? '例如：高端艺术墙剧情广告' : '例如：高端艺术墙新品广告';
     }
     if (textInput) {
@@ -8857,13 +9863,13 @@
     const settings = $('#dhLuxurySettings');
     if (settings) settings.style.display = isLuxury ? 'grid' : 'none';
     const pageTitle = $('#dhSpacePageTitle');
-    if (pageTitle) pageTitle.textContent = isLuxury ? '剧情广告' : '广告数字人';
+    if (pageTitle) pageTitle.textContent = isLuxury ? '剧情广告' : '素材审片';
     const pageSub = $('#dhSpacePageSub');
     if (pageSub) pageSub.textContent = isLuxury
       ? '独立的多镜头广告片工作流：人物可选；选择人物后会锁定同一身份参考，逐镜头重绘融合。'
-      : '普通广告数字人按单镜头展墙讲解生成，适合稳定导览和空间卖点说明。';
+      : '素材审片按单镜头展墙讲解生成，适合稳定导览和空间卖点说明。';
     const avatarTitle = $('#dhSpaceAvatarTitle');
-    if (avatarTitle) avatarTitle.textContent = isLuxury ? '广告人物身份参考（可选）' : '广告数字人形象（可选）';
+    if (avatarTitle) avatarTitle.textContent = isLuxury ? '广告人物身份参考（可选）' : '素材审片形象（可选）';
     const bgTitle = $('#dhSpaceBgTitle');
     if (bgTitle) bgTitle.textContent = isLuxury ? '参考画面 / 产品物料' : '广告背景 / 展示画面';
     const bgUploadHint = $('#dhSpaceBgUploadHint');
@@ -8881,7 +9887,7 @@
     const hint = $('#dhSpaceModeHint');
     if (hint) hint.textContent = isLuxury
       ? `当前风格：${luxuryStyleName(state.space.adStyle)}；多关键帧分镜链路会锁定人物身份、产品和参考画面。`
-      : '普通广告数字人必须生成带人物的导览员预览，并通过质量检查后才能合成视频。';
+      : '素材审片必须生成带人物的导览员预览，并通过质量检查后才能合成视频。';
     const guideModePanel = $('#dhSpaceGuideModePanel');
     if (guideModePanel) guideModePanel.style.display = isLuxury ? 'none' : 'flex';
     const guideGenderPanel = $('#dhSpaceGuideGenderPanel');
@@ -8980,8 +9986,8 @@
         box.innerHTML = `<div class="dh-storyboard-wrap">
           <div class="dh-storyboard-status">
             <div>
-              <b>口播时间轴已生成</b>
-              <span>普通广告数字人 · 视觉 1 个连续镜头 · 口播 ${speechSegments.length} 段，人物左侧讲解，右侧展示背景/产品空间</span>
+          <b>口播时间轴已生成</b>
+          <span>素材审片 · 视觉 1 个连续镜头 · 口播 ${speechSegments.length} 段，人物左侧讲解，右侧展示背景/产品空间</span>
             </div>
             <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-space-keyframes-from-board>生成展墙讲解预览</button>
           </div>
@@ -9010,7 +10016,7 @@
     state.space.keyframes = [];
     const box = $('#dhSpacePreview');
     if (box) {
-      const modeLabel = isLuxury ? '剧情广告' : '普通广告数字人';
+      const modeLabel = isLuxury ? '剧情广告' : '素材审片';
       box.innerHTML = `<div class="dh-storyboard-wrap">
         <div class="dh-storyboard-status">
           <div>
@@ -9039,7 +10045,7 @@
   }
 
   async function writeAndSegmentSpaceScript() {
-    const title = ($('#dhSpaceTitle')?.value || '广告数字人').trim();
+    const title = ($('#dhSpaceTitle')?.value || '素材审片').trim();
     const durationSec = Number($('#dhSpaceDuration')?.value || state.space.durationSec || 30);
     const text = ($('#dhSpaceText')?.value || '').trim();
     const scenePrompt = ($('#dhSpaceScenePrompt')?.value || '').trim();
@@ -9117,7 +10123,7 @@
     if (missing.length) return toast('请先补齐：' + missing.join('、'), 'error');
     const durationSec = Number($('#dhSpaceDuration')?.value || state.space.durationSec || 30);
     if (!state.space.segments?.length) await buildSpaceStoryboardFromText(text, durationSec);
-    const title = ($('#dhSpaceTitle')?.value || '广告数字人').trim();
+    const title = ($('#dhSpaceTitle')?.value || '素材审片').trim();
     const shotCount = isLuxury ? Math.max(4, Math.min(8, Number(state.space.shotCount) || 6)) : 1;
     if (!isLuxury && !(state.space.speechSegments || []).length) {
       state.space.speechSegments = await buildSpaceSpeechSegments(text, durationSec);
@@ -9126,7 +10132,7 @@
     if (!isLuxury && state.space.guideMode === 'direct_keyframe') {
       state.space.guideMode = 'ai_guide';
       $$('[data-space-guide-mode]').forEach(b => b.classList.toggle('active', b.dataset.spaceGuideMode === 'ai_guide'));
-      toast('普通广告数字人必须先生成带人物的导览员预览，纯背景不能作为合格首帧。', 'warning');
+      toast('素材审片必须先生成带人物的导览员预览，纯背景不能作为合格首帧。', 'warning');
     }
     const btn = $('#dhSpaceSubmit');
     const old = btn?.textContent || '';
@@ -9184,7 +10190,7 @@
         if (!r.strict || !r.keyframe_id || !isQualifiedShowroomGuidePreview(kf)) {
           state.space.strictKeyframeId = '';
           state.space.keyframes = [];
-          throw new Error('预览未通过强制质量检查：贴片、模板合成、小人角落结果不能作为合格广告数字人预览');
+          throw new Error('预览未通过强制质量检查：贴片、模板合成、小人角落结果不能作为合格素材审片预览');
         }
       }
       const previousSegments = state.space.segments || [];
@@ -9236,7 +10242,7 @@
     if (!(state.space.voiceId || '').trim()) missing.push('配音音色');
     if (missing.length) {
       await DhConfirm({
-        title: '还不能生成广告数字人',
+        title: '还不能生成素材审片',
         message: '请先补齐必填内容后再生成。',
         detail: missing.map(x => `缺少：${x}`).join('<br>'),
         confirmText: '我知道了',
@@ -9249,7 +10255,7 @@
     if (!text) return toast('请先填写广告文案', 'error');
     if (text.length > 1000) return toast('广告文案不能超过 1000 字', 'error');
 
-    const title = ($('#dhSpaceTitle')?.value || '广告数字人').trim();
+    const title = ($('#dhSpaceTitle')?.value || '素材审片').trim();
     const voiceId = (state.space.voiceId || '').trim();
     const durationSec = Number($('#dhSpaceDuration')?.value || state.space.durationSec || Math.max(10, Math.ceil(text.length / 4)));
     const scenePrompt = ($('#dhSpaceScenePrompt')?.value || state.space.scenePrompt || '').trim();
@@ -9342,7 +10348,7 @@
         avatarName: state.selectedAvatar?.name || '',
         avatarId: state.selectedAvatar?.id || '',
         voiceId: voiceId || '',
-        adMode: isLuxury ? '剧情广告' : '普通广告数字人',
+        adMode: isLuxury ? '剧情广告' : '素材审片',
         adStyle: isLuxury ? luxuryStyleName(adStyle) : '',
         guideGender: !isLuxury ? (state.space.guideGender || 'female') : '',
         shotCount: shotCount || '',
@@ -9357,7 +10363,7 @@
       };
       const taskMeta = {
         taskId: r.taskId,
-        avatarName: isLuxury ? `${title || '剧情广告'} · ${luxuryStyleName(adStyle)}` : (title || state.selectedAvatar?.name || '广告数字人'),
+        avatarName: isLuxury ? `${title || '剧情广告'} · ${luxuryStyleName(adStyle)}` : (title || state.selectedAvatar?.name || '素材审片'),
         startedAt: Date.now(),
         status: 'submitted',
         stage: 'submitted',
@@ -9383,13 +10389,13 @@
       updateSpaceStoryboardButtons();
       switchTab('tasks');
       resetSpaceGuideFormForNext();
-      toast('广告数字人视频已提交到任务中心', 'success');
+      toast('素材审片视频已提交到任务中心', 'success');
     } catch (err) {
       if (box) box.innerHTML = `<div class="dh-render-stage">
         <div class="dh-render-stage-name" style="color:var(--dh-error)">❌ 生成失败</div>
         <div class="dh-render-stage-sub">${escapeHtml(err.message)}</div>
       </div>`;
-      toast('广告数字人提交失败：' + err.message, 'error');
+      toast('素材审片提交失败：' + err.message, 'error');
     }
   }
 
@@ -9653,7 +10659,7 @@
             avatar_id: t.avatar_id || meta.createDetail?.avatarId || '',
             background_url: t.background_url || meta.createDetail?.backgroundUrl || meta.previewUrl || '',
             text: t.text || meta.createDetail?.text || meta.textPreview || '',
-            title: t.title || meta.createDetail?.title || meta.avatarName || '广告数字人',
+            title: t.title || meta.createDetail?.title || meta.avatarName || '素材审片',
             voice_id: t.voice_id || meta.createDetail?.voiceId || '',
             scene: t.scene || 'auto',
             camera: t.camera || 'auto',
@@ -10892,7 +11898,7 @@
     }
     const spacePickAvatar = closest('[data-space-pick-avatar]');
     if (spacePickAvatar) {
-      state.avatarPickReturn = isLuxuryAdModule() ? 'luxury-ad' : 'space-guide';
+      state.avatarPickReturn = state.activeTab === 'material-film' ? 'material-film' : (isLuxuryAdModule() ? 'luxury-ad' : 'space-guide');
       switchTab('step2');
       return;
     }
@@ -11033,11 +12039,26 @@
       if (url) openImagePreviewModal(url, product.name || '主产品图');
       return;
     }
+    const luxPersonPreview = closest('[data-lux-person-preview]');
+    if (luxPersonPreview) {
+      const idx = Number(luxPersonPreview.dataset.luxPersonPreview || 0);
+      const asset = state.luxuryAd.personAsset || {};
+      const urls = luxuryActorAssetUrls(asset);
+      const url = urls[idx] || urls[0] || '';
+      if (url) openImagePreviewModal(url, `${asset.name || '演员参考'} · ${luxuryActorAssetViewLabel(idx)}`);
+      return;
+    }
     const luxAssetPreview = closest('[data-lux-asset-preview]');
     if (luxAssetPreview) {
       const asset = luxuryAdReferenceAssets()[Number(luxAssetPreview.dataset.luxAssetPreview)];
       const url = asset?.url || asset?.previewUrl || '';
       if (url) openImagePreviewModal(url, asset?.name || '参考素材');
+      return;
+    }
+    const luxMaterialPreview = closest('[data-lux-material-preview]');
+    if (luxMaterialPreview) {
+      const url = luxuryMaterialAssetUrls()[Number(luxMaterialPreview.dataset.luxMaterialPreview)] || '';
+      if (url) openImagePreviewModal(url, '素材成片素材');
       return;
     }
     const luxShotEdit = closest('[data-lux-shot-edit]');
@@ -11099,9 +12120,21 @@
     if (closest('#dhLuxAdClean')) { rewriteLuxuryAdContent(); return; }
     if (closest('#dhLuxAdDetectStyle')) { buildLuxuryAdStoryboard({ autoNext: false, detail: false }); return; }
     if (closest('#dhLuxAdAutoVisuals')) { autoGenerateLuxuryAdAiVisuals(); return; }
-    if (closest('#dhLuxAdStoryboard')) { buildLuxuryAdStoryboard({ autoNext: false, detail: true }); return; }
-    if (closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop')) { buildLuxuryAdStoryboard({ autoNext: false, detail: true }); return; }
-    if (closest('#dhLuxAdGenerate')) { buildLuxuryAdStoryboard({ autoNext: true, detail: false }); return; }
+    if (closest('#dhLuxAdStoryboard')) {
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      else buildLuxuryAdStoryboard({ autoNext: false, detail: true });
+      return;
+    }
+    if (closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop')) {
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      else buildLuxuryAdStoryboard({ autoNext: false, detail: true });
+      return;
+    }
+    if (closest('#dhLuxAdGenerate')) {
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      else buildLuxuryAdStoryboard({ autoNext: true, detail: false });
+      return;
+    }
     if (closest('#dhLuxAdRegenerateFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
     const luxuryShotRegenerate = closest('[data-lux-shot-regenerate]');
     if (luxuryShotRegenerate) {
@@ -11109,10 +12142,15 @@
       generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
       return;
     }
-    if (closest('#dhLuxAdPreviewFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false }); return; }
-    if (closest('#dhLuxAdGoCompose')) { showLuxuryAdStep(5); return; }
+    if (closest('#dhLuxAdPreviewFrames')) {
+      if (luxuryAdIsMaterialMode()) showLuxuryAdStep(5);
+      else generateLuxuryAdKeyframes({ autoSubmit: false });
+      return;
+    }
+    if (closest('#dhLuxAdGoCompose') || closest('[data-lux-material-compose]')) { showLuxuryAdStep(5); return; }
     if (closest('#dhLuxAdConfirmGenerate')) {
-      submitLuxuryAd();
+      if (luxuryAdIsMaterialMode()) submitMaterialFilmAd();
+      else submitLuxuryAd();
       return;
     }
     const plazaUse = closest('[data-plaza-use]'); if (plazaUse) { e.stopPropagation(); usePlazaAvatar(plazaUse.dataset.plazaUse); return; }
@@ -11210,7 +12248,7 @@
         state.space.visualSegments = [];
         state.space.strictKeyframeId = '';
         renderSpaceAdMode();
-        toast('普通广告数字人已禁用纯背景首帧，必须先生成带人物的导览员预览。', 'warning');
+        toast('素材审片已禁用纯背景首帧，必须先生成带人物的导览员预览。', 'warning');
         return;
       }
       state.space.guideMode = spaceGuideMode.dataset.spaceGuideMode === 'ai_guide' ? 'ai_guide' : 'direct_keyframe';
@@ -12817,6 +13855,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     });
     const luxBgmUpload = $('#dhLuxAdBgmUpload');
     if (luxBgmUpload) luxBgmUpload.addEventListener('click', () => $('#dhLuxAdBgmFile')?.click());
+    const luxBgmAuto = $('#dhLuxAdBgmAuto');
+    if (luxBgmAuto) luxBgmAuto.addEventListener('click', autoMatchLuxuryAdBgm);
     const luxProductDrop = $('#dhLuxAdProductDrop');
     if (luxProductDrop) {
       luxProductDrop.addEventListener('keydown', e => {
@@ -12955,6 +13995,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxExpandBrief) luxExpandBrief.addEventListener('change', e => { state.luxuryAd.expandBrief = !!e.target.checked; state.luxuryAd.segments = []; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
     updateOutputHints();
     switchTab(getInitialTab());
+    renderLuxuryAdStoryboard();
+    updateLuxuryAdStepLocks();
     await loadMyAvatars();
     renderProductMaterial();
     restoreVideoTasks();

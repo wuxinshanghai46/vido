@@ -228,22 +228,66 @@
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "model_id": "qwen-image",
         "priority": 4,
         "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-nano-banana-pro",
+        "priority": 20,
+        "enabled": false
+      }
+    ],
+    "luxury_ad.person_sheet": [
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-image-2",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "qwen-image",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-gpt-image-2",
+        "priority": 20,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-nano-banana-pro",
+        "priority": 21,
+        "enabled": false
       }
     ],
     "luxury_ad.scene_seed": [
@@ -254,22 +298,28 @@
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-seedream-5",
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "model_id": "qwen-image",
         "priority": 4,
         "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-seedream-5",
+        "priority": 20,
+        "enabled": false
       }
     ],
     "luxury_ad.subject_evidence_seed": [
@@ -280,78 +330,84 @@
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
+        "provider_id": "deyunai",
+        "model_id": "qwen-image-edit",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
+        "provider_id": "deyunai",
+        "model_id": "qwen-image",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "qwen-image-edit",
+        "model_id": "nano-banana-pro",
         "priority": 4,
         "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-gpt-image-2",
+        "priority": 20,
+        "enabled": false
       }
     ],
     "luxury_ad.video": [
       {
-        "provider_id": "topview",
-        "model_id": "topview-image2video-pro",
-        "enabled": true,
-        "priority": 1
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-image2video-best",
-        "enabled": true,
-        "priority": 2
-      },
-      {
         "provider_id": "webang-seedance",
         "model_id": "doubao-seedance-2-0-260128",
-        "enabled": true,
-        "priority": 3
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "webang-seedance",
         "model_id": "doubao-seedance-2-0-fast-260128",
-        "enabled": true,
-        "priority": 4
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-pro",
+        "priority": 20,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-best",
+        "priority": 21,
+        "enabled": false
       },
       {
         "provider_id": "api-key-20260404180437",
         "model_id": "doubao-seedance-1-0-pro-250528",
-        "enabled": true,
-        "priority": 5
+        "priority": 30,
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "kling-v2.5-turbo-pro",
-        "enabled": true,
-        "priority": 6
+        "priority": 31,
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "kling-v2-master",
-        "enabled": true,
-        "priority": 7
+        "priority": 32,
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "hailuo-02-fast",
-        "enabled": true,
-        "priority": 8
+        "priority": 33,
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "hailuo-02",
-        "enabled": true,
-        "priority": 9
+        "priority": 34,
+        "enabled": true
       }
     ],
     "luxury_ad.keyframe": [
@@ -362,70 +418,70 @@
         "enabled": true
       },
       {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 2,
-        "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-seedream-5",
-        "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-2",
-        "priority": 5,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 6,
+        "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
-        "priority": 7,
+        "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "qwen-image-edit",
-        "priority": 8,
+        "priority": 4,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "qwen-image",
-        "priority": 9,
+        "priority": 5,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "doubao-seedream-4-0-250828",
-        "priority": 10,
+        "priority": 6,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "imagen-4",
-        "priority": 11,
+        "priority": 7,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "flux-pro",
-        "priority": 12,
+        "priority": 8,
         "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-gpt-image-2",
+        "priority": 20,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-nano-banana-pro",
+        "priority": 21,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-seedream-5",
+        "priority": 22,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-nano-banana-2",
+        "priority": 23,
+        "enabled": false
       }
     ],
     "luxury_ad.keyframe_qa": [
