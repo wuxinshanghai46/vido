@@ -51,6 +51,7 @@ function _guessKBScene(sp) {
 //   3. openai / anthropic / 其他
 const PREFERRED_TEXT_PROVIDERS = [
   /^deepseek\b/i,
+  /^aiapi\b/i,
   /^deyunai\b|漫路/i,
   /^openai\b/i,
   /^anthropic\b|claude/i,
@@ -135,6 +136,7 @@ function _configFromPreferredStoryModel(preferred = {}) {
       }
       return {
         apiKey: provider.api_key,
+        appId: provider.app_id || provider.aiapi_app_id || provider.key_id || '',
         baseURL: provider.api_url,
         model: model.id,
         providerId: provider.id,
@@ -200,7 +202,7 @@ function getStoryConfig(preferred = null) {
     });
     for (const provider of candidates) {
       const model = _pickPreferredStoryModel(provider);
-      if (model) return { apiKey: provider.api_key, baseURL: provider.api_url, model: model.id, providerId: provider.id, channel: model.channel };
+      if (model) return { apiKey: provider.api_key, appId: provider.app_id || provider.aiapi_app_id || provider.key_id || '', baseURL: provider.api_url, model: model.id, providerId: provider.id, channel: model.channel };
     }
   } catch {}
   // Fallback to env vars
@@ -318,7 +320,8 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       //   - 海外模型走 /c35/v1（OpenAI/Claude/Gemini 等需走中转通道，并加 vendor header）
       // 模型 channel 由 settings.json 模型项的 'channel' 字段标注（'cn' / 'overseas'）
       const _isDeyunai = config.providerId === 'deyunai' || /deyunai|漫路/i.test(config.providerId || '');
-      let _vendorHeader = null;
+      const _isAIAPI = config.providerId === 'aiapi' || /aiapi/i.test(config.providerId || '');
+      let _defaultHeaders = null;
       if (_isDeyunai) {
         // 模型名启发式：含 gpt/claude/gemini/o1/grok 等海外品牌 → 走 c35
         const m = String(config.model || '').toLowerCase();
@@ -327,12 +330,19 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         if (isOverseas && config.baseURL && !config.baseURL.includes('/c35/')) {
           // 把 https://api.deyunai.com/v1 → https://api.deyunai.com/c35/v1
           sdkOpts.baseURL = config.baseURL.replace(/\/v1\/?$/, '/c35/v1');
-          _vendorHeader = { vendor: 'API_VENDOR' };
+          _defaultHeaders = { vendor: 'API_VENDOR' };
           console.log(`[deyunai] 海外模型 ${config.model} 切到 ${sdkOpts.baseURL}`);
         }
       }
-      // 把 vendor header 注入 SDK（OpenAI SDK v4 支持 defaultHeaders）
-      if (_vendorHeader) sdkOpts.defaultHeaders = _vendorHeader;
+      if (_isAIAPI) {
+        _defaultHeaders = {
+          ...(_defaultHeaders || {}),
+          'X-App-Key': config.apiKey,
+        };
+        if (config.appId) _defaultHeaders['X-App-Id'] = config.appId;
+      }
+      // 把供应商扩展 header 注入 SDK（OpenAI SDK v4 支持 defaultHeaders）
+      if (_defaultHeaders) sdkOpts.defaultHeaders = _defaultHeaders;
 
       const client = new OpenAI(sdkOpts);
       let completion = await client.chat.completions.create({

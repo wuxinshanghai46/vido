@@ -11,6 +11,7 @@ const SETTINGS_PATH = path.join(OUTPUT_DIR, 'settings.json');
 const PROVIDER_PRESETS = {
   openai:      { name: 'OpenAI',       api_url: 'https://api.openai.com/v1',                  defaultModels: [{ id: 'gpt-4o', name: 'GPT-4o', type: 'chat', use: 'story' }, { id: 'gpt-4o-mini', name: 'GPT-4o Mini', type: 'chat', use: 'story' }, { id: 'dall-e-3', name: 'DALL-E 3', type: 'image', use: 'image' }, { id: 'sora-2-pro', name: 'Sora 2 Pro（25秒·故事板·物理仿真最强）', type: 'video', use: 'video' }, { id: 'sora-2', name: 'Sora 2（旗舰·高质量）', type: 'video', use: 'video' }, { id: 'sora-2-mini', name: 'Sora 2 Mini（轻量·快速）', type: 'video', use: 'video' }, { id: 'tts-1', name: 'TTS-1', type: 'tts', use: 'tts' }] },
   deepseek:    { name: 'DeepSeek',     api_url: 'https://api.deepseek.com/v1',                 defaultModels: [{ id: 'deepseek-chat', name: 'DeepSeek Chat V3', type: 'chat', use: 'story' }, { id: 'deepseek-reasoner', name: 'DeepSeek R1', type: 'chat', use: 'story' }] },
+  aiapi:       { name: 'AIAPI',        api_url: 'http://43.98.167.151:3600/v1',                defaultModels: [{ id: 'deepseek-chat', name: 'DeepSeek Chat (AIAPI)', type: 'chat', use: 'story' }] },
   zhipu:       { name: '智谱 AI',      api_url: 'https://open.bigmodel.cn/api/paas/v4',        defaultModels: [
     { id: 'glm-4-plus', name: 'GLM-4-Plus（旗舰对话）', type: 'chat', use: 'story' },
     { id: 'glm-4-flash', name: 'GLM-4-Flash（免费·快速）', type: 'chat', use: 'story' },
@@ -225,6 +226,7 @@ const PROVIDER_PRESETS = {
 // .env 到供应商 ID 的映射（用于自动初始化）
 const ENV_SEED_MAP = [
   { envKey: 'DEEPSEEK_API_KEY',    presetId: 'deepseek'  },
+  { envKey: 'AIAPI_KEY_SECRET',    presetId: 'aiapi'     },
   { envKey: 'OPENAI_API_KEY',      presetId: 'openai'    },
   { envKey: 'ZHIPU_API_KEY',       presetId: 'zhipu'     },
   { envKey: 'STABILITY_API_KEY',   presetId: 'stability' },
@@ -259,6 +261,9 @@ const ENV_SEED_MAP = [
 ];
 
 const ENV_PROVIDER_EXTRA_MAP = {
+  aiapi: {
+    app_id: 'AIAPI_KEY_ID',
+  },
   topview: {
     topview_uid: 'TOPVIEW_UID',
   },

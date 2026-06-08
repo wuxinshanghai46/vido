@@ -6,10 +6,10 @@
 <title>VIDO · AI漫剧模块</title>
 <style>
 :root{
-  --bg:#0f0f15; --bg-1:#181821; --bg-2:#22222e; --bg-3:#2c2c3a; --bg-4:#34343f;
+  --bg:#101018; --bg-1:#171722; --bg-2:#222231; --bg-3:#2f2f42; --bg-4:#3a3a4b;
   --line:rgba(255,255,255,.06); --line-2:rgba(255,255,255,.1);
   --t-1:#fff; --t-2:rgba(255,255,255,.78); --t-3:rgba(255,255,255,.5); --t-4:rgba(255,255,255,.32);
-  --accent:#f59e0b; --accent-2:#fcd34d; --accent-soft:rgba(245,158,11,.12);
+  --accent:#ffb21a; --accent-2:#ffd166; --accent-soft:rgba(255,178,26,.13);
   --done:#34d399; --done-soft:rgba(52,211,153,.14);
   --busy:#fbbf24; --err:#f87171; --err-soft:rgba(248,113,113,.16);
   --info:#60a5fa; --info-soft:rgba(96,165,250,.12);
@@ -61,6 +61,24 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .pipeline .gobtn{margin-left:auto;padding:9px 18px;border-radius:9px;background:var(--accent);color:#1a1407;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-shrink:0}
 .pipeline .gobtn:hover{background:var(--accent-2)}
 
+.studio-home-band{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(460px,1.4fr);gap:18px;margin-bottom:18px}
+.studio-create-panel{border:1px solid rgba(255,178,26,.28);border-radius:16px;background:linear-gradient(145deg,rgba(255,178,26,.14),rgba(124,58,237,.09) 55%,rgba(24,24,33,.75));padding:18px;display:grid;align-content:space-between;min-height:236px;position:relative;overflow:hidden}
+.studio-create-panel:after{content:"";position:absolute;right:-80px;top:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(255,209,102,.22),transparent 65%);pointer-events:none}
+.studio-create-panel .eyebrow{color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase}
+.studio-create-panel h1{font-size:28px;line-height:1.16;margin:10px 0 8px;letter-spacing:0}
+.studio-create-panel p{margin:0;color:var(--t-3);font-size:13px;line-height:1.65;max-width:440px}
+.studio-create-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.studio-create-actions button{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:800;border:1px solid var(--line)}
+.studio-create-actions .primary{background:var(--accent);color:#1a1407;border-color:transparent}
+.studio-create-actions .ghost{background:rgba(255,255,255,.05);color:var(--t-2)}
+.studio-capability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.studio-cap-card{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);padding:14px;min-height:112px;display:grid;gap:7px;cursor:pointer}
+.studio-cap-card:hover{border-color:rgba(255,178,26,.45);background:rgba(255,178,26,.075)}
+.studio-cap-card em{font-style:normal;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(255,178,26,.13)}
+.studio-cap-card b{font-size:14px}
+.studio-cap-card span{font-size:12px;color:var(--t-3);line-height:1.5}
+.top-back-btn{padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;color:var(--t-2)}
+.top-back-btn:hover{background:rgba(255,178,26,.12);color:var(--t-1)}
 .manga-prod-shell{display:grid;gap:14px;margin:0 0 18px}
 .manga-mode-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .manga-mode-card{min-height:118px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.015));padding:14px;display:grid;align-content:space-between;gap:12px;cursor:pointer;transition:.18s ease}
@@ -82,6 +100,12 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .manga-prod-step.busy{border-color:rgba(245,158,11,.30);background:rgba(245,158,11,.065)}
 .manga-prod-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(96,165,250,.16);border-radius:9px;background:rgba(96,165,250,.055);color:var(--t-2);font-size:12px;line-height:1.55}
 .manga-prod-note button{flex:0 0 auto;padding:7px 11px;border-radius:8px;background:var(--accent);color:#1a1407;font-size:12px;font-weight:800}
+.real-cover-img,.real-shot-img,.real-player-img,.real-export-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.real-media-empty{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#22222e,#34343f);color:rgba(255,255,255,.42);font-size:13px;text-align:center;padding:16px}
+.real-action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.real-action-row button{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--t-2);font-size:12px;font-weight:700}
+.real-action-row button.primary{background:var(--accent);color:#1a1407;border-color:transparent}
+.real-action-row button.danger{border-color:rgba(248,113,113,.38);color:#fecaca;background:rgba(248,113,113,.08)}
 @media(max-width:1280px){.manga-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manga-prod-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 /* 主区 */
@@ -1424,10 +1448,13 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
 
   <header class="top">
     <div class="brand"><div class="m">V</div><div>VIDO <span class="s">/ AI漫剧</span></div></div>
+    <button class="top-back-btn" onclick="location.href='/index.html'">← 返回工作台</button>
     <div class="proj"><b>AI漫剧</b><span class="meta">正式接口</span></div>
     <div class="spacer"></div>
-    <span class="t-pill"><span class="d"></span>AI 在工作</span>
-    <span class="t-pill">已用 <span class="b">14 分</span></span>
+    <button class="t-btn" onclick="goStage(0)">项目首页</button>
+    <button class="t-btn acc" onclick="openNewModal()">+ 创建漫剧</button>
+    <span class="t-pill"><span class="d"></span>项目制生产</span>
+    <span class="t-pill">正式接口<span class="b">待命</span></span>
     <button class="t-btn play" onclick="openPlayer()">▶ 连播预览</button>
     <button class="t-btn">📤 分享</button>
     <button class="t-btn acc">导出 ▾</button>
@@ -1435,7 +1462,9 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
   </header>
 
   <nav class="pipeline">
-    <button class="stage-chip done" data-go="1" onclick="goStage(1)"><span class="num">1</span>📖 小说</button>
+    <button class="stage-chip busy" data-go="0" onclick="goStage(0)"><span class="num">0</span>🏠 项目</button>
+    <span class="stage-arrow">→</span>
+    <button class="stage-chip todo" data-go="1" onclick="goStage(1)"><span class="num">1</span>📖 小说</button>
     <span class="stage-arrow">→</span>
     <button class="stage-chip done" data-go="2" onclick="goStage(2)"><span class="num">2</span>📝 剧本</button>
     <span class="stage-arrow">→</span>
@@ -1448,7 +1477,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
   </nav>
 
   <!-- ============ 阶段 0: 创作记录 ============ -->
-  <section class="stage-view stage-home" data-stage="0">
+  <section class="stage-view stage-home cur" data-stage="0">
     <aside class="home-side">
       <button class="new-btn" onclick="location.href='/index.html'">← 返回工作台</button>
       <div class="nav-i cur"><span class="ic">📂</span>我的漫剧<span class="ct">0</span></div>
@@ -1468,6 +1497,26 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       <div class="nav-i"><span class="ic">🗑</span>回收站</div>
     </aside>
     <main class="home-main">
+      <div class="studio-home-band">
+        <div class="studio-create-panel">
+          <div>
+            <div class="eyebrow">AI Manga Drama Studio</div>
+            <h1>从小说到分镜、配音、成片的一体化生产台</h1>
+            <p>这里不再是静态原型。创建项目后会写入正式 `/api/drama` 项目，生成本集、单镜画面、视频和成片都走真实接口。</p>
+          </div>
+          <div class="studio-create-actions">
+            <button class="primary" onclick="openNewModal()">+ 创建新漫剧</button>
+            <button class="ghost" data-manga-prod-action="continue">继续最近项目</button>
+            <button class="ghost" onclick="goStage(1)">导入小说/大纲</button>
+          </div>
+        </div>
+        <div class="studio-capability-grid">
+          <button class="studio-cap-card" type="button" onclick="openNewModal()"><em>✨</em><b>新建项目</b><span>标题、简介、画风、集数、比例一次写入正式项目。</span></button>
+          <button class="studio-cap-card" type="button" data-manga-prod-action="continue"><em>▶</em><b>继续生产</b><span>打开已有真实项目，进入分集、分镜或成片阶段。</span></button>
+          <button class="studio-cap-card" type="button" onclick="goStage(4)"><em>🎬</em><b>分镜工作台</b><span>读取真实镜头，支持提示词、单镜画面、视频生成。</span></button>
+          <button class="studio-cap-card" type="button" onclick="goStage(5)"><em>📦</em><b>成片导出</b><span>读取 final video，未合成时可触发图片版或正式合成。</span></button>
+        </div>
+      </div>
       <div class="home-h">
         <h2>我的漫剧 <span class="ct">共 6 个项目 · 1 进行中 · 2 已完成</span></h2>
         <span class="spacer"></span>
@@ -2998,6 +3047,7 @@ document.querySelectorAll('#imp-swatch .sw').forEach(s=>{
 // === v14: 本镜面板渲染 ===
 function renderShotPanel(){
   const s=SHOTS[CURRENT_SHOT];if(!s){document.getElementById('panel-shot').innerHTML='';return}
+  s.chars=s.chars||[];s.props=s.props||[];s.lines=s.lines||[];
   const statTxt={done:'已成片',busy:`生成中 ${s.progress||0}%`,fail:'失败',todo:'待生成'}[s.status];
   const sceneData=ASSETS.scene[s.scene];
   const lensTxt=s.lens||'-';
@@ -3042,7 +3092,7 @@ function renderShotPanel(){
   html+=`<div class="shot-section"><h4><span class="ic">👤</span>演员 <span class="ct">${s.chars.length}</span><span class="lk">+ 加入演员</span></h4>
     <div class="actor-chips">`;
   s.chars.forEach(cid=>{
-    const c=ASSETS.char[cid];
+    const c=ASSETS.char[cid]||{name:cid,role:'角色',color:'#f59e0b'};
     html+=`<div class="actor-chip" onclick="document.querySelector('.tab[data-tab=bible]').click()"><span class="av" style="background:${c.color}">${c.name[0]}</span><span>${c.name}</span><span class="role">${c.role}</span></div>`;
   });
   if(s.chars.length===0)html+=`<span style="color:var(--t-4);font-size:12px">无演员</span>`;
@@ -3052,7 +3102,7 @@ function renderShotPanel(){
   html+=`<div class="shot-section"><h4><span class="ic">🏞️</span>场景 / 道具</h4>
     <div class="actor-chips">`;
   if(sceneData)html+=`<div class="actor-chip scene"><span>${sceneData.name}</span><span class="role">${sceneData.time}·${sceneData.light}</span></div>`;
-  s.props.forEach(pid=>{const p=ASSETS.prop[pid];html+=`<div class="actor-chip prop">🎒 ${p.name}</div>`});
+  s.props.forEach(pid=>{const p=ASSETS.prop[pid]||{name:pid};html+=`<div class="actor-chip prop">🎒 ${p.name}</div>`});
   if(s.props.length===0&&!sceneData)html+=`<span style="color:var(--t-4);font-size:12px">无</span>`;
   html+=`</div></div>`;
 
@@ -3060,10 +3110,11 @@ function renderShotPanel(){
   html+=`<div class="shot-section"><h4><span class="ic">💬</span>台词 / 配音 <span class="ct">${s.lines.length}</span><span class="lk">+ 加台词</span></h4>`;
   if(s.lines.length){
     s.lines.forEach(l=>{
-      const c=ASSETS.char[l.who];
+      const c=ASSETS.char[l.who]||{name:l.who||'旁白',color:'#f59e0b'};
       const bars=Array.from({length:32},()=>Math.max(3,Math.round(Math.random()*22))).map(h=>`<i style="height:${h}px"></i>`).join('');
+      const lineDur=Number(l.dur)||s.dur||0;
       html+=`<div class="line-card ${l.who}">
-        <div class="lh"><span class="who" style="color:${c.color}">${c.name}</span><span class="voice">${l.voice}</span><span class="emo">${l.emo}</span><span class="dur">${l.dur.toFixed(1)}s</span></div>
+        <div class="lh"><span class="who" style="color:${c.color}">${c.name}</span><span class="voice">${l.voice||'默认音色'}</span><span class="emo">${l.emo||s.mood||'自然'}</span><span class="dur">${lineDur.toFixed(1)}s</span></div>
         <div class="text">${l.text}</div>
         <div class="wave">${bars}</div>
         <div class="wave-actions"><button class="play">▶ 试听</button><button>🔄 重配</button><button>🎵 换音色</button><button>📝 改台词</button></div>
@@ -3097,7 +3148,7 @@ function renderShotPanel(){
   // ===== 画面参考 =====
   html+=`<div class="shot-section"><h4><span class="ic">🖼️</span>画面参考<span class="lk">+ 上传</span></h4>
     <div class="ref-row">
-      <div class="ref has">📷</div>
+      ${s.imageUrl?`<div class="ref has" style="overflow:hidden;position:relative"><img src="${s.imageUrl}" alt="当前分镜" style="width:100%;height:100%;object-fit:cover"></div>`:`<div class="ref has">📷</div>`}
       <div class="ref has">🎨</div>
       <div class="ref">+</div>
       <div class="ref">+</div>
@@ -3115,9 +3166,9 @@ function renderShotPanel(){
 
   // ===== 底部操作 =====
   html+=`<div class="shot-foot-acts">
-    <button>📋 复制为新镜</button>
-    <button>↺ 历史版本</button>
-    <button class="primary">🔄 ${s.status==='done'?'重生成':'生成本镜'}</button>
+    <button data-real-generate-prompt="${CURRENT_SHOT}">📝 生成提示词</button>
+    <button data-real-make-video="${CURRENT_SHOT}">🎞️ 生成视频</button>
+    <button class="primary" data-real-generate-shot="${CURRENT_SHOT}">🔄 ${s.imageUrl?'重生成画面':'生成本镜'}</button>
   </div>`;
 
   html+=`</div>`;
@@ -3285,7 +3336,15 @@ function closeSwap(){document.getElementById('swap-modal').classList.remove('ope
 
 // === v14: 连播预览 ===
 let PLAYER_CUR=2;let PLAYER_PLAYING=false;
+function shotMediaMarkup(s, cls='real-player-img'){
+  if(!s)return '<div class="real-media-empty">暂无画面</div>';
+  if(s.videoUrl)return `<video class="${cls}" src="${s.videoUrl}" muted loop playsinline ${PLAYER_PLAYING?'autoplay':''}></video>`;
+  if(s.imageUrl)return `<img class="${cls}" src="${s.imageUrl}" alt="镜头 ${s.no||''}">`;
+  return '';
+}
 function openPlayer(){
+  const nums=Object.values(SHOTS).map(s=>s.no);
+  if(!SHOTS[PLAYER_CUR])PLAYER_CUR=SHOTS[CURRENT_SHOT]?CURRENT_SHOT:(nums[0]||1);
   const p=document.getElementById('player');
   p.classList.add('open');
   renderPlayer();
@@ -3293,20 +3352,28 @@ function openPlayer(){
 function closePlayer(){document.getElementById('player').classList.remove('open');PLAYER_PLAYING=false}
 function renderPlayer(){
   const all=Object.values(SHOTS);
+  if(!all.length){
+    document.getElementById('player-thumbs').innerHTML='';
+    document.getElementById('player-screen').innerHTML='<div class="real-media-empty">请先打开一个有分镜的真实项目</div>';
+    return;
+  }
   // 缩略图列表
   document.getElementById('player-thumbs').innerHTML=all.map(s=>`
     <div class="pt ${s.no===PLAYER_CUR?'cur':''}" onclick="setPlayerShot(${s.no})">
-      <svg viewBox="0 0 300 533" preserveAspectRatio="xMidYMid slice"><rect width="300" height="533" fill="${shotBg(s.no)}"/></svg>
+      ${shotMediaMarkup(s,'real-player-img') || `<svg viewBox="0 0 300 533" preserveAspectRatio="xMidYMid slice"><rect width="300" height="533" fill="${shotBg(s.no)}"/></svg>`}
       <span class="n">#${String(s.no).padStart(2,'0')}</span>
     </div>`).join('');
 
   // 主画面
   const s=SHOTS[PLAYER_CUR];
+  if(!s){PLAYER_CUR=all[0].no;return renderPlayer();}
   let stage='';
   if(s.status==='fail'){
     stage=`<div class="frame-img" style="display:grid;place-items:center;background:#3a1a28;color:#f87171;font-size:48px">❗</div>`;
   }else if(s.status==='todo'){
     stage=`<div class="frame-img" style="display:grid;place-items:center;background:#22222e;color:rgba(255,255,255,.3);font-size:13px">尚未生成</div>`;
+  }else if(shotMediaMarkup(s)){
+    stage=`<div class="frame-img">${shotMediaMarkup(s)}</div>`;
   }else{
     stage=`<div class="frame-img"><svg viewBox="0 0 300 533" preserveAspectRatio="xMidYMid slice"><rect width="300" height="533" fill="${shotBg(s.no)}"/>
       ${s.chars.includes('mei')?'<g transform="translate(20,90) scale(1.3)"><use href="#char-mei-front"/></g>':''}
@@ -3343,7 +3410,7 @@ function togglePlay(){
 function buildMentionItems(){
   const items=[];
   items.push({h:'当前镜'});
-  items.push({k:'shot',id:CURRENT_SHOT,em:'🎬',nm:'@镜'+String(CURRENT_SHOT).padStart(2,'0'),sub:SHOTS[CURRENT_SHOT].desc.slice(0,14)+'…'});
+  items.push({k:'shot',id:CURRENT_SHOT,em:'🎬',nm:'@镜'+String(CURRENT_SHOT).padStart(2,'0'),sub:(SHOTS[CURRENT_SHOT]?.desc||'当前镜').slice(0,14)+'…'});
   items.push({h:'角色'});
   Object.entries(ASSETS.char).forEach(([id,c])=>items.push({k:'char',id,av:c.name[0],color:c.color,nm:'@'+c.name,sub:c.role}));
   items.push({h:'场景'});
@@ -3447,7 +3514,7 @@ document.addEventListener('keydown',e=>{
 });
 
 // ============ 正式页面 · 阶段切换 ============
-let CUR_STAGE=4;
+let CUR_STAGE=0;
 
 function goStage(n){
   CUR_STAGE=n;
@@ -3466,10 +3533,15 @@ function goStage(n){
   // 顶栏「一键继续生成」按钮文案
   const goBtn=document.querySelector('.pipeline .gobtn');
   if(goBtn){
-    const map={1:'→ 生成剧本',2:'→ 拆分集',3:'→ 进入分镜',4:'→ 合成成片',5:'📤 一键发布'};
+    const map={0:'▶ 继续最近项目',1:'→ 生成剧本',2:'→ 拆分集',3:'→ 进入分镜',4:'→ 合成成片',5:'📤 一键发布'};
     goBtn.innerHTML=map[n]||'▶ 继续';
     goBtn.onclick=()=>{
-      if(n===1)advanceStage(1,2,'生成剧本');
+      if(n===0){
+        const first = document.querySelector('[data-real-project]');
+        if(first) first.click();
+        else openNewModal();
+      }
+      else if(n===1)advanceStage(1,2,'生成剧本');
       else if(n===2)advanceStage(2,3,'拆分集');
       else if(n===3)goStage(4);
       else if(n===4)advanceStage(4,5,'合成成片');
@@ -3737,6 +3809,7 @@ goStage(0);
     const hasFinal = episodes.some(e => e.result?.final_video_url);
     const states = [
       hasProject ? 'done' : 'busy',
+      hasProject ? 'done' : 'todo',
       hasEpisode ? 'done' : 'todo',
       hasEpisode ? (hasGenerated ? 'done' : 'busy') : 'todo',
       hasGenerated ? (hasFinal ? 'done' : 'busy') : 'todo',
@@ -3866,7 +3939,15 @@ goStage(0);
   function cardClass(i) { return ['p2','p3','p4','p5','p6','p1'][i % 6]; }
   function coverIcon(p, i) {
     const icons = ['🎞️','🌙','🌸','🌃','🏯','☔','✨'];
-    return p.cover_url ? `<img src="${esc(p.cover_url)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<span class="em">${icons[i % icons.length]}</span>`;
+    const detail = real.details.get(String(p?.id || ''));
+    const ep = (detail?.episodes || []).find(e => e.result?.final_video_url || e.result?.scenes?.some(s => s.image_url || s.video_url));
+    const scene = ep?.result?.scenes?.find(s => s.image_url || s.video_url);
+    const url = p.cover_url || ep?.result?.final_video_url || scene?.image_url || scene?.video_url || '';
+    if (!url) return `<span class="em">${icons[i % icons.length]}</span>`;
+    if (/\.mp4($|\?)/i.test(url) || /\/final($|\?)/i.test(url) || /\/video\/\d+($|\?)/i.test(url)) {
+      return `<video class="real-cover-img" src="${esc(url)}" muted loop playsinline></video>`;
+    }
+    return `<img class="real-cover-img" src="${esc(url)}" alt="${esc(p.title || '漫剧封面')}">`;
   }
   function projectCard(p, i) {
     const total = p.episodes_total || p.episode_count || 0;
@@ -3992,6 +4073,9 @@ goStage(0);
     details.forEach(p => {
       (p.characters || []).forEach(c => assets.push({ type:'角色', title:c.name || c.role || '未命名角色', sub:p.title, icon:'👥', image:c.image_url || c.avatar_url }));
       (p.episodes || []).forEach(ep => (ep.result?.scenes || []).forEach((s, idx) => {
+        const bibleChars = ep.result?.character_bible?.characters || ep.result?.character_profiles || [];
+        bibleChars.forEach(c => assets.push({ type:'角色', title:c.name || c.role || '未命名角色', sub:ep.title || p.title, icon:'👥', image:c.image_url || c.avatar_url }));
+        (Array.isArray(s.present_chars) ? s.present_chars : []).forEach(name => assets.push({ type:'角色', title:name, sub:`${ep.title || p.title} · 镜 ${idx + 1}`, icon:'👥' }));
         if (view === '场景库') assets.push({ type:'场景', title:s.location || s.scene_name || `${ep.title || '剧集'} 镜头${idx + 1}`, sub:s.description || p.title, icon:'🏞️', image:s.image_url });
         if (view === '道具库' && Array.isArray(s.props)) s.props.forEach(prop => assets.push({ type:'道具', title:prop.name || prop, sub:s.description || p.title, icon:'🎒' }));
         if (view === '音色库' && s.voice) assets.push({ type:'音色', title:s.voice, sub:s.speaker || p.title, icon:'🎵' });
@@ -4050,30 +4134,113 @@ goStage(0);
     const h = $('.stage-episodes .ep-h h2');
     if (h) h.textContent = `${project.title || '漫剧项目'} · 分集`;
   }
+  function assetId(prefix, value, fallback) {
+    const raw = String(value || fallback || prefix).trim();
+    let h = 0;
+    for (let i = 0; i < raw.length; i++) h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+    return `${prefix}_${Math.abs(h)}`;
+  }
+  function normalizeLine(scene, shotNo) {
+    const text = scene.dialogue || scene.narrator || '';
+    if (!text) return null;
+    const who = scene.speaker || (scene.narrator ? '旁白' : '角色');
+    return {
+      who: assetId('char', who, 'narrator'),
+      text,
+      voice: who === '旁白' ? '旁白音色' : '默认音色',
+      emo: scene.tone || scene.emotion || '自然',
+      dur: Number(scene.duration) || 5,
+      shot: shotNo,
+    };
+  }
   function hydrateShotData(ep) {
     if (!ep?.result?.scenes?.length || typeof SHOTS === 'undefined') return false;
     Object.keys(SHOTS).forEach(k => delete SHOTS[k]);
+    Object.keys(ASSETS.char).forEach(k => delete ASSETS.char[k]);
+    Object.keys(ASSETS.scene).forEach(k => delete ASSETS.scene[k]);
+    Object.keys(ASSETS.prop).forEach(k => delete ASSETS.prop[k]);
+    const sceneColors = ['#a16207','#475569','#1e293b','#2563eb','#7c3aed','#0f766e'];
+    const charColors = ['#ec4899','#475569','#7c5316','#2563eb','#16a34a','#9333ea'];
+    const bibleChars = ep.result.character_bible?.characters || ep.result.character_profiles || [];
+    bibleChars.forEach((c, i) => {
+      const name = c.name || c.role || `角色${i + 1}`;
+      const id = assetId('char', name, i);
+      ASSETS.char[id] = {
+        name,
+        role: c.role || c.personality || '角色',
+        color: charColors[i % charColors.length],
+        shots: [],
+        scenes: [],
+        props: [],
+        coWith: {},
+      };
+    });
     ep.result.scenes.forEach((s, i) => {
       const no = i + 1;
+      const sceneId = assetId('scene', s.location || s.scene || s.description?.slice(0, 24), no);
+      if (!ASSETS.scene[sceneId]) {
+        ASSETS.scene[sceneId] = {
+          name: s.location || s.scene || `镜头场景 ${no}`,
+          time: s.time || s.pacing || '',
+          light: s.lighting || s.music_mood || '',
+          color: sceneColors[i % sceneColors.length],
+          shots: [],
+          chars: [],
+          props: [],
+        };
+      }
+      ASSETS.scene[sceneId].shots.push(no);
+      const line = normalizeLine(s, no);
+      const chars = [];
+      const namedChars = Array.isArray(s.present_chars) ? s.present_chars : [];
+      namedChars.forEach((name, idx) => {
+        const id = assetId('char', name, idx);
+        if (!ASSETS.char[id]) ASSETS.char[id] = { name, role:'演员', color:charColors[Object.keys(ASSETS.char).length % charColors.length], shots:[], scenes:[], props:[], coWith:{} };
+        chars.push(id);
+      });
+      if (line && !chars.includes(line.who)) {
+        if (!ASSETS.char[line.who]) ASSETS.char[line.who] = { name:s.speaker || (s.narrator ? '旁白' : '角色'), role:s.narrator ? '旁白' : '演员', color:charColors[Object.keys(ASSETS.char).length % charColors.length], shots:[], scenes:[], props:[], coWith:{} };
+        chars.push(line.who);
+      }
+      chars.forEach(id => {
+        ASSETS.char[id].shots.push(no);
+        if (!ASSETS.char[id].scenes.includes(sceneId)) ASSETS.char[id].scenes.push(sceneId);
+        if (!ASSETS.scene[sceneId].chars.includes(id)) ASSETS.scene[sceneId].chars.push(id);
+      });
+      const props = Array.isArray(s.props) ? s.props.map((p, idx) => {
+        const name = typeof p === 'string' ? p : p.name;
+        const id = assetId('prop', name, `${no}_${idx}`);
+        if (!ASSETS.prop[id]) ASSETS.prop[id] = { name:name || `道具${idx + 1}`, shots:[], chars:[], scenes:[] };
+        ASSETS.prop[id].shots.push(no);
+        ASSETS.prop[id].scenes.push(sceneId);
+        return id;
+      }) : [];
       SHOTS[no] = {
         no,
-        scene: 'living',
-        chars: [],
-        props: [],
+        scene: sceneId,
+        chars,
+        props,
         lens: s.motion_name || s.shot_scale || '镜头',
         dur: Number(s.duration) || 5,
         status: s.video_url ? 'done' : s.image_url ? 'done' : 'todo',
         progress: 0,
-        dialogue: s.dialogue ? [{ who: s.speaker || '旁白', txt: s.dialogue }] : [],
+        lines: line ? [line] : [],
         desc: s.description || s.visual_prompt || '',
         prompt: s.full_prompt_cn || s.visual_prompt || s.description || '',
+        camera: s.motion_name || s.motion_prompt || '',
+        transition: s.transition || '切',
+        mood: s.emotion || s.music_mood || '',
+        model: ep.result.image_model || '',
+        strength: s.strength || 'auto',
+        imageUrl: s.image_url || '',
+        videoUrl: s.video_url || '',
       };
     });
     const row = $('#framerow');
     if (row) {
       row.innerHTML = Object.values(SHOTS).map(s => `<div class="frame ${s.status}" data-no="${s.no}" draggable="true">
         <div class="num">${String(s.no).padStart(2, '0')}</div><div class="stat"></div>
-        <div style="position:absolute;inset:0;background:linear-gradient(135deg,#22222e,#34343f);display:grid;place-items:center;font-size:22px">🎬</div>
+        ${s.videoUrl ? `<video class="real-shot-img" src="${esc(s.videoUrl)}" muted loop playsinline></video>` : s.imageUrl ? `<img class="real-shot-img" src="${esc(s.imageUrl)}" alt="镜头 ${s.no}">` : `<div class="real-media-empty">🎬</div>`}
         <div class="lens-mini">${esc(s.lens || '-')}</div><div class="dur">${s.dur || 0}s</div>
       </div>`).join('') + `<div class="nowinfo"><b>真实分镜</b><span>${Object.keys(SHOTS).length} 镜 · 来自 /api/drama</span></div>`;
       row.querySelectorAll('.frame').forEach(f => f.addEventListener('click', () => goToShot(parseInt(f.dataset.no))));
@@ -4124,6 +4291,48 @@ goStage(0);
       const row = $('#framerow');
       if (row) row.innerHTML = `<div class="nowinfo"><b>暂无真实分镜</b><span>请先在分集页生成本集，完成后这里会显示真实镜头</span></div>`;
     }
+    if (n === 5) renderExportStage();
+  }
+  function renderExportStage() {
+    const p = real.currentProject;
+    const ep = real.currentEpisode || (p?.episodes || []).find(e => e.result?.final_video_url || e.result?.scenes?.length);
+    const scenes = ep?.result?.scenes || [];
+    const finalUrl = ep?.result?.final_video_url || '';
+    const screen = $('.stage-export .preview-screen');
+    if (screen) {
+      const first = scenes.find(s => s.video_url || s.image_url);
+      const media = finalUrl
+        ? `<video class="real-export-video" src="${esc(finalUrl)}" controls playsinline></video>`
+        : first?.video_url
+          ? `<video class="real-export-video" src="${esc(first.video_url)}" controls playsinline></video>`
+          : first?.image_url
+            ? `<img class="real-export-video" src="${esc(first.image_url)}" alt="成片预览">`
+            : `<div class="real-media-empty">暂无可预览成片</div>`;
+      const totalDur = scenes.reduce((sum, s) => sum + (Number(s.duration) || Number(p?.shot_duration) || 0), 0);
+      screen.innerHTML = `
+        <div class="ttl-overlay">${esc(p?.title || 'AI漫剧成片')}<div class="sub">${esc(ep?.title || '请选择剧集')}</div></div>
+        <div class="stage-img">${media}</div>
+        <div class="scrub"><div class="timeline"><div class="fill" style="width:${finalUrl ? '100%' : '38%'}"></div><div class="head" style="left:${finalUrl ? '100%' : '38%'}"></div></div>
+        <div class="ctrl"><span class="play">▶</span><span>${finalUrl ? '成片已合成' : '可先合成图片版成片'}</span><span class="time">00:00 / ${Math.round(totalDur || 0)}s</span></div></div>`;
+    }
+    const side = $('.stage-export .export-side');
+    if (side) {
+      const totalDur = scenes.reduce((sum, s) => sum + (Number(s.duration) || Number(p?.shot_duration) || 0), 0);
+      side.querySelector('h2')?.replaceChildren(document.createTextNode('📦 导出与发布'), (() => { const b=document.createElement('span'); b.className='badge'; b.textContent=finalUrl?'就绪':'待合成'; return b; })());
+      const stats = side.querySelector('.export-data-grid');
+      if (stats) stats.innerHTML = `
+        <div class="exp-stat"><div class="l">总时长</div><div class="v acc">${Math.round(totalDur || 0)}s</div></div>
+        <div class="exp-stat"><div class="l">总镜数</div><div class="v">${scenes.length}</div></div>
+        <div class="exp-stat"><div class="l">总集数</div><div class="v acc">${p?.episodes?.length || p?.episode_count || 0}<span class="u">集</span></div></div>
+        <div class="exp-stat"><div class="l">当前剧集</div><div class="v">${esc(ep?.title || '-')}</div></div>
+        <div class="exp-stat"><div class="l">成片</div><div class="v ${finalUrl ? 'green' : ''}">${finalUrl ? '已生成' : '未生成'}</div></div>
+        <div class="exp-stat"><div class="l">质检</div><div class="v green">${scenes.length ? '可预览' : '待分镜'}</div></div>`;
+      const acts = side.querySelector('.export-foot-acts');
+      if (acts) acts.innerHTML = `
+        <button onclick="goStage(4)">← 回去改</button>
+        ${finalUrl ? `<a href="${esc(finalUrl)}" download style="display:inline-flex;align-items:center;padding:9px 12px;border-radius:8px;border:1px solid var(--line);color:var(--t-2)">↓ MP4</a>` : `<button data-real-compose-images>图片合成</button>`}
+        <button class="primary" data-real-compose>${finalUrl ? '重新合成' : '合成成片'}</button>`;
+    }
   }
   async function generateEpisode(epId) {
     const p = real.currentProject;
@@ -4149,6 +4358,7 @@ goStage(0);
     real.comics = comics.value?.data || [];
     real.novels = novels.value?.novels || [];
     real.works = works.value?.works || [];
+    await ensureDetails();
     setSideView('我的漫剧');
     syncPipelineState(real.currentProject);
     updateProductionShell();
@@ -4201,6 +4411,38 @@ goStage(0);
     }
     openSequelModal(p?.title || '当前项目');
   };
+  async function refreshCurrentProject() {
+    if (!real.currentProject?.id) return null;
+    const fresh = await api('/api/drama/projects/' + encodeURIComponent(real.currentProject.id));
+    real.currentProject = fresh.data;
+    real.details.set(String(fresh.data.id), fresh.data);
+    if (real.currentEpisode?.id) {
+      real.currentEpisode = (fresh.data.episodes || []).find(e => e.id === real.currentEpisode.id) || real.currentEpisode;
+    }
+    renderEpisodes(fresh.data);
+    if (real.currentEpisode?.result?.scenes?.length) hydrateShotData(real.currentEpisode);
+    updateProductionShell();
+    return fresh.data;
+  }
+  function currentEpisodeOrNote() {
+    if (!real.currentProject) { note('请先打开一个真实项目'); return null; }
+    if (!real.currentEpisode) {
+      real.currentEpisode = (real.currentProject.episodes || []).find(e => e.result?.scenes?.length) || (real.currentProject.episodes || [])[0];
+    }
+    if (!real.currentEpisode) note('当前项目还没有剧集');
+    return real.currentEpisode;
+  }
+  async function runCurrentEpisodeAction(pathTail, method = 'POST', body = null, doneText = '任务已提交') {
+    const p = real.currentProject;
+    const ep = currentEpisodeOrNote();
+    if (!p || !ep) return;
+    await api(`/api/drama/projects/${encodeURIComponent(p.id)}/episodes/${encodeURIComponent(ep.id)}${pathTail}`, {
+      method,
+      body: body || undefined,
+    });
+    note(doneText);
+    await refreshCurrentProject();
+  }
   document.addEventListener('click', async e => {
     const open = e.target.closest('[data-real-open],[data-real-project]');
     if (open) {
@@ -4218,6 +4460,39 @@ goStage(0);
     if (gen) {
       e.stopPropagation();
       await generateEpisode(gen.dataset.realGenerateEpisode);
+      return;
+    }
+    const shotGen = e.target.closest('[data-real-generate-shot]');
+    if (shotGen) {
+      e.stopPropagation();
+      const idx = Math.max(0, Number(shotGen.dataset.realGenerateShot || CURRENT_SHOT) - 1);
+      await runCurrentEpisodeAction(`/scenes/${idx}/generate-video`, 'POST', null, '本镜画面生成已提交');
+      return;
+    }
+    const shotVideo = e.target.closest('[data-real-make-video]');
+    if (shotVideo) {
+      e.stopPropagation();
+      const idx = Math.max(0, Number(shotVideo.dataset.realMakeVideo || CURRENT_SHOT) - 1);
+      await runCurrentEpisodeAction(`/scenes/${idx}/make-video`, 'POST', null, '本镜视频生成已提交');
+      return;
+    }
+    const promptGen = e.target.closest('[data-real-generate-prompt]');
+    if (promptGen) {
+      e.stopPropagation();
+      const idx = Math.max(0, Number(promptGen.dataset.realGeneratePrompt || CURRENT_SHOT) - 1);
+      await runCurrentEpisodeAction(`/scenes/${idx}/generate-prompt`, 'POST', null, '提示词已生成');
+      return;
+    }
+    if (e.target.closest('[data-real-compose]')) {
+      e.stopPropagation();
+      await runCurrentEpisodeAction('/compose', 'POST', null, '成片合成已提交');
+      renderExportStage();
+      return;
+    }
+    if (e.target.closest('[data-real-compose-images]')) {
+      e.stopPropagation();
+      await runCurrentEpisodeAction('/compose-from-images', 'POST', null, '图片版成片合成已提交');
+      renderExportStage();
       return;
     }
     const prodAction = e.target.closest('[data-manga-prod-action]');
