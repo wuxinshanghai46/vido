@@ -2805,7 +2805,7 @@ async function _generateLuxurySeedAsset(req, {
   for (const url of (Array.isArray(refs) ? refs : [])) {
     const value = String(url || '').trim();
     if (!value) continue;
-    const resolved = await _resolveImageForExternalApi(req, value);
+    const resolved = await _resolveImageForExternalApi(req, value, { preferPublicUrl: true });
     if (resolved) resolvedRefs.push({ source: value, resolved, kind: stageId });
     if (resolvedRefs.length >= 3) break;
   }
@@ -5130,10 +5130,12 @@ function _absolutePublicUrl(req, url) {
   return _publicBaseUrl(req) + (url.startsWith('/') ? url : `/${url}`);
 }
 
-// Convert a URL (which may point to our own server) into a base64 data URI so
-// external AI providers (Replicate / deyunai) can use it without needing to reach our port.
-async function _resolveImageForExternalApi(req, url) {
+// Resolve an image reference for external providers.
+// Some providers accept/expect data URLs, while gpt-image-2 edits now requires a public URL.
+async function _resolveImageForExternalApi(req, url, options = {}) {
   if (!url) return '';
+  const preferPublicUrl = options && options.preferPublicUrl === true;
+  if (preferPublicUrl) return _absolutePublicUrl(req, url);
   const localPath = _localAssetPathFromUrl(url);
   if (localPath) {
     try {
@@ -15835,7 +15837,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
   async function addRef(url, kind = '', { prepend = false } = {}) {
     const value = String(url || '').trim();
     if (!value || refs.some(x => x.source === value)) return;
-    const resolved = await _resolveImageForExternalApi(req, value);
+    const resolved = await _resolveImageForExternalApi(req, value, { preferPublicUrl: true });
     if (resolved) {
       const item = { source: value, resolved, kind };
       if (prepend) refs.unshift(item);
@@ -15944,7 +15946,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     let existing = existingIdx >= 0 ? refs[existingIdx] : null;
     if (existingIdx >= 0) refs.splice(existingIdx, 1);
     if (!existing) {
-      const resolved = await _resolveImageForExternalApi(req, avatarSource);
+      const resolved = await _resolveImageForExternalApi(req, avatarSource, { preferPublicUrl: true });
       if (resolved) existing = { source: avatarSource, resolved };
     }
     if (existing?.resolved) refs.push({ ...existing, kind: 'identity_reference' });
@@ -16773,7 +16775,7 @@ async function _createLuxuryAdReferenceKeyframe({
   async function addRef(url, kind = '', { prepend = false } = {}) {
     const value = String(url || '').trim();
     if (!value || refs.some(x => x.source === value)) return;
-    const resolved = await _resolveImageForExternalApi(req, value);
+    const resolved = await _resolveImageForExternalApi(req, value, { preferPublicUrl: true });
     if (resolved) {
       const item = { source: value, resolved, kind };
       if (prepend) refs.unshift(item);
@@ -16882,7 +16884,7 @@ async function _createLuxuryAdReferenceKeyframe({
     let existing = existingIdx >= 0 ? refs[existingIdx] : null;
     if (existingIdx >= 0) refs.splice(existingIdx, 1);
     if (!existing) {
-      const resolved = await _resolveImageForExternalApi(req, avatarSource);
+      const resolved = await _resolveImageForExternalApi(req, avatarSource, { preferPublicUrl: true });
       if (resolved) existing = { source: avatarSource, resolved };
     }
     if (existing?.resolved) refs.push({ ...existing, kind: 'identity_reference' });
@@ -17748,7 +17750,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
   async function addRef(url, kind = '', { prepend = false } = {}) {
     const value = String(url || '').trim();
     if (!value || refs.some(x => x.source === value)) return;
-    const resolved = await _resolveImageForExternalApi(req, value);
+    const resolved = await _resolveImageForExternalApi(req, value, { preferPublicUrl: true });
     if (resolved) {
       const item = { source: value, resolved, kind };
       if (prepend) refs.unshift(item);
