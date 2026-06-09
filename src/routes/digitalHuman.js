@@ -2293,8 +2293,8 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   if (!_luxuryShouldRepairHumanStoryKeyframe(scene, index, total, productSubject)) return scene;
 
   const role = _luxuryRoleAt(index, total, scene.role || scene.shot_role || scene.story_role);
-  const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || scene.product_name || 'premium architectural decorative metal panels')
-    || (productSubject || scene.product_subject || 'premium architectural decorative metal panels');
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || scene.product_name || 'advertised subject')
+    || (productSubject || scene.product_subject || 'advertised subject');
   // This repair intentionally replaces legacy product-only/dark-background
   // wording instead of appending to it. Re-appending polluted prompts caused
   // repeated "dark corridor" and "material close-up" failures.
@@ -2696,7 +2696,7 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
   }
   const rules = [
     {
-      test: /钢|金属|板材|建材|材料|材质|幕墙|墙面|外立面|建筑|steel|metal|panel|sheet|facade|wall|material|building/i,
+      test: /钢|钢材|钢板|不锈钢|金属板材|金属板|建材|幕墙|护墙板|墙板|墙面|外立面|建筑外观|建筑材料|建筑装饰|architectural steel|facade|cladding|building material|wall panel/i,
       industry: 'architectural materials / building finishing',
       scene: `premium material showroom, design consultation area, sample-wall display or installed application mockup for ${subject}`,
       evidence: `visible sample boards, installed wall panels, edge/profile detail, finish texture or material display evidence of ${subject}`,
@@ -3610,7 +3610,9 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     softwareWorkflowSubject
       ? 'Hard fail if the main visible subject is an unrelated category such as cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, material showroom panels, generic luxury goods, a pure phone packshot, random props, or any scene not requested by the storyboard/reference.'
       : 'Hard fail if the main visible subject is an unrelated product category, generic stock luxury goods, cosmetics, perfume/skincare bottles, beverage bottles, watches, jewelry, phones, random props, or any object not requested by the storyboard/reference.',
-    'For steel/metal/material/wall-panel/building-material subjects, the image must show steel or metal material, panels, sheets, wall installation, surface texture, edge/detail, showroom material display, or a clearly related construction/material scene. It must not show cosmetic bottles or jewelry.',
+    _isLuxurySteelMaterialSubject(subject, scene)
+      ? 'For explicit steel/metal/facade/building-material subjects, the image must show the confirmed steel or metal product evidence such as panels, sheets, wall installation, surface texture, edge/detail, showroom material display, or a related construction/material scene. It must not show unrelated cosmetics or jewelry.'
+      : '',
     'Use visible_subject_required and visible_subject_contract in the contract. When a visible subject is required, hard fail if the generated image omits it or replaces it with a different kind of subject.',
     'Use person_required only for explicitly human shots. Do not require a human actor for ads whose confirmed script calls for an animal, robot, alien, mascot, product, object, place or service moment.',
     'When visible_subject_required is false, absence of people is acceptable; still judge product/material subject, scene type, composition, camera intent, and visible story purpose.',
@@ -9008,7 +9010,7 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     if (normalized && !_isWeakLuxuryProductName(normalized)) return normalized.slice(0, 40);
   }
   const keywordMap = [
-    { re: /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板|金属肌理|金属材料|型材|板材|建材|steel finished products?|finished steel|steel products?|steel sheets?|metal panels?|architectural steel|facade cladding/i, value: '成品建筑外立面钢材/金属板材' },
+    { re: /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|steel finished products?|finished steel|steel products?|steel sheets?|architectural steel|facade cladding/i, value: '钢材/金属板材' },
     { re: /木饰面|木墙|木材|木纹|护墙板/i, value: '木饰面/木作材料' },
     { re: /石材|岩板|大理石|瓷砖/i, value: '石材/岩板材料' },
     { re: /艺术墙|背景墙|墙面|展墙/i, value: '定制墙面材料' },
@@ -9021,20 +9023,24 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
 
 function _normalizeLuxuryProductSubject(value = '', context = '') {
   const raw = String(value || '').replace(/\s+/g, ' ').trim();
-  const text = [raw, context].filter(Boolean).join(' ');
-  if (/成品钢材|钢材成品|建筑外立面|不锈钢|金属板|金属材料|钢板|型材|板材|建材|steel finished products?|finished steel|steel products?|steel sheet|steel panel|metal panel|architectural steel|facade cladding/i.test(text)) {
-    return '成品建筑外立面钢材/金属板材';
-  }
   return raw
     .replace(/^(about|for|of|the|a|an)\s+/i, '')
     .replace(/\s+(products?|product|ad|video|commercial)$/i, '')
     .trim();
 }
 
+function _luxuryHasExplicitSteelSubject(text = '') {
+  return /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|幕墙钢|建筑钢|steel finished products?|finished steel|steel products?|steel sheets?|steel panels?|architectural steel|metal facade|metal cladding|facade cladding/i.test(String(text || ''));
+}
+
 function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
   const text = [
     productSubject,
     scene.product_subject,
+    scene.product_lock?.subject,
+    scene.visual_locks?.product_lock?.subject,
+    scene.asset_manifest?.product_subject,
+    scene.visual_locks?.asset_manifest?.product_subject,
     scene.title,
     scene.visual,
     scene.visual_prompt,
@@ -9044,7 +9050,7 @@ function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
     scene.voiceover,
     scene.topview_prompt,
   ].filter(Boolean).join(' ');
-  return /成品钢材|钢材成品|建筑外立面|不锈钢|金属板|金属材料|钢板|型材|板材|建材|steel finished products?|finished steel|steel products?|steel sheet|steel panel|metal panel|architectural steel|facade cladding/i.test(text);
+  return _luxuryHasExplicitSteelSubject(text);
 }
 
 async function _createLuxurySteelReferenceAnchor(req, { filename = '', destDir = JIMENG_ASSETS_DIR } = {}) {
@@ -9290,9 +9296,9 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
   return [
     `PRODUCT SUBJECT LOCK: the advertised product category is "${subject}".`,
     'The hero subject must stay in this product category and must be visually derived from reference image 1.',
-    'Do not invent a different product category, unrelated packaged goods, cosmetics, perfume bottles, skincare bottles, beverage bottles, phones, watches, jewelry or random retail props.',
+    'Do not invent a different product category, unrelated packaged goods, cosmetics, perfume bottles, skincare bottles, beverage bottles, phones, watches, jewelry or random retail props unless the confirmed brief explicitly names that category.',
     'If the uploaded main product is a material, surface, panel, wall, showroom sample or texture reference, treat that material/display as the product itself instead of placing unrelated consumer goods on it.',
-    rawSubject && rawSubject !== subject ? `Original Chinese product wording means this exact finished facade-panel category: ${rawSubject}. Interpret it only as a premium installed architectural product.` : '',
+    rawSubject && rawSubject !== subject ? `Original product wording: ${rawSubject}. Preserve that exact advertised category from the user brief and references.` : '',
     'The product should look finished, installed, polished, premium and commercially usable.',
     steelLock,
   ].filter(Boolean).join(' ');
@@ -9348,7 +9354,7 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   const text = [subject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.voiceover, scene.topview_prompt]
     .filter(Boolean)
     .join(' ');
-  const isSteelOrMaterial = /钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|material|facade/i.test(text);
+  const isSteelOrMaterial = _isLuxurySteelMaterialSubject(subject, scene);
   const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
   if (personRequired && softwareWorkflow) {
@@ -9393,7 +9399,7 @@ function _luxuryKeyframeSceneRecipe(productSubject = '', scene = {}) {
   const text = [productSubject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.objective, scene.voiceover]
     .filter(Boolean)
     .join(' ');
-  const isSteel = /钢|金属|板材|建材|材料|材质|外立面|steel|metal|panel|material|facade/i.test(text);
+  const isSteel = _isLuxurySteelMaterialSubject(productSubject || scene.product_subject, scene);
   if (_luxuryIsSoftwareWorkflowSubject(productSubject, scene)) {
     const wantsPaperInHand = /纸|订单|单据|文件|paper|order sheets?|documents?|invoice/i.test(text);
     const wantsWorried = /焦虑|担心|压力|worried|pressure|cannot keep up|messy/i.test(text);
@@ -10241,8 +10247,8 @@ function _buildLuxurySubjectKeywords(productSubject = '', context = '') {
   const subject = String(productSubject || '').trim();
   const source = `${subject}\n${context || ''}`;
   const extra = [];
-  if (/钢|钢材|钢板|板材|面板|金属/.test(source)) {
-    extra.push('钢材', '钢结构', '钢材面板', '钢板', '板材', '面板', '金属面板', '金属板');
+  if (_luxuryHasExplicitSteelSubject(source)) {
+    extra.push('钢材', '钢结构', '钢板', '不锈钢', '金属板材', '金属板');
   }
   if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: context, content_prompt: context })) {
     extra.push(
@@ -10269,8 +10275,8 @@ function _luxurySubjectHit(value = '', subjectKeywords = [], productSubject = ''
   if (!keys.length) return !productSubject || normalized.includes(String(productSubject).replace(/\s+/g, ''));
   if (keys.some(k => normalized.includes(k))) return true;
   const subject = String(productSubject || '');
-  if (/钢|钢材|钢板|板材|面板|金属/.test(subject)) {
-    return /钢|钢材|钢板|板材|面板|金属板|金属面板|墙面|展厅/.test(normalized);
+  if (_luxuryHasExplicitSteelSubject(subject)) {
+    return /钢|钢材|钢板|不锈钢|金属板材|金属板|建筑钢|幕墙钢/.test(normalized);
   }
   if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: raw, content_prompt: raw })) {
     return /AI|智能|助手|订单|库存|补货|确认|手机|屏幕|界面|看板|货架|零售|workflow|software|assistant|order|ordering|inventory|restock|dashboard|screen|phone/i.test(raw);
@@ -11283,7 +11289,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '单人规则：单人模式允许旁白、内心独白或对镜台词，但不能出现第二个说话人；每一句旁白/台词都必须推动“问题 -> 发现 -> 证明 -> 决定”的故事进程。',
       continuousHuman ? '本条广告有人物贯穿要求：每一镜都必须有同一位真人参与画面和动作，人物要带看、引导、讲解或完成咨询收束，不能写成纯产品空镜。' : '',
       '竞品级故事板规则：第 3 步不是随意产品静物摄影。除 macro/detail 这类极近景细节镜外，每一镜都必须像广告 storyboard panel：脚本指定的主体/角色 + 真实场景 + 主商品/服务证据在同一画面逻辑里推动故事；主体可以是人，也可以是动物、机器人、外星人、吉祥物、产品、空间或服务场景。',
-      '建材/钢材/空间材料类规则：只有当用户需求明确需要真人讲解/带看时，才安排空间设计师、品牌顾问、店长、客户或业主；否则按用户确认的主体生成空间、材料、动物、机器人、外星人或产品叙事。画面必须服务已确认剧本，不能只写金属板、样板、纹理或抽象高级背景。',
+      '行业规则：只有当用户需求或已确认剧本明确需要真人讲解/带看时，才安排真人角色；否则按用户确认的行业主体生成产品、空间、服务、动物、机器人、外星人、吉祥物或其它主体叙事。画面必须服务已确认剧本，不能套用历史行业场景或抽象高级背景。',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
     const user = `主商品：${productSubject}
@@ -11340,8 +11346,8 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 - 必须围绕主商品或用户描述的服务讲完整广告故事：开场分镜、第二场景、后续推进场景、收尾分镜都要有清晰顺序；不要只写一个场景，也不要只套“钩子/产品亮相/卖点”模板。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
-- 第 3 步画面必须像竞品 storyboard：除微距细节镜外，人物、场景、产品证据必须同框。不要只输出产品特写、材料样板、孤立背景或没有人参与的静物图。
-- 如果主商品是钢材、建材、板材、墙面、外立面、材料或空间设计服务，至少 70% 镜头要出现真实人物在真实空间中与材料发生关系：走近、观察、触摸、讲解、对比、确认方案或行动引导。
+- 第 3 步画面必须像竞品 storyboard：除微距细节镜外，脚本主体、场景、产品/服务证据要在同一画面逻辑里推进故事。只有当剧本明确需要人物时，才要求人物同框；不要把非人物广告强行改成真人导购。
+- 如果主商品明确是钢材/建材/墙面/外立面/空间设计服务，且用户需求或人物配置明确要求真人讲解/带看，才安排多数镜头出现真实人物与产品证据发生关系；否则按确认主体和剧本生成，不套用钢材展厅范式。
 ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
 - 如果目标时长是 30 秒，优先拆成 10 镜左右，每镜约 3 秒；15 秒优先拆成 5 镜左右，每镜约 3 秒。除非用户上传素材数量锁定，否则不要只生成 3 镜。
 - 主商品类别必须锁定为「${productSubject}」，不能把它改成化妆品、香水瓶、护肤品、饮料瓶、手机、首饰或任何无关消费品。
@@ -11948,16 +11954,16 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
     };
     if (isDetailedMode) {
       const storySys = [
-        '你是剧情广告的资深广告编剧 agent。你的职责是先写“真人商业广告故事”，不写产品图库脚本，也不写镜头参数。',
+        '你是剧情广告的资深广告编剧 agent。你的职责是先写“商业广告故事”，不写产品图库脚本，也不写镜头参数。',
         '只输出 JSON 对象，不要 markdown，不要解释。',
-        `广告主体必须作为故事中的可见证据出现：${productSubject}。但故事主语必须先是人物在真实场景中遇到问题、行动、验证和收束，不能让产品/材料替代人物成为唯一主角。`,
+        `广告主体必须作为故事中的可见证据出现：${productSubject}。故事主语必须来自用户确认的主体：可以是人物、产品、动物、机器人、外星人、吉祥物、空间、服务流程或其它行业对象，不能强行套真人导购或历史行业场景。`,
         castInstruction,
-        '对标竞品工作流：每个 beat 都必须是 live-action commercial story panel，人物、真实背景、产品/服务证据同场出现；不要写材料空镜、外立面空镜、产品图库、工厂仓库或纯材质展示。',
+        '对标竞品工作流：每个 beat 都必须是 live-action commercial story panel，脚本主体、真实背景、产品/服务证据同场推进；只有脚本明确有人物时才要求人物出现。不要写空镜、产品图库、工厂仓库或纯材质展示。',
         '故事必须有清晰人物目标、具体冲突/疑问、场景推进、证据出现、情绪变化和最后行动收束。不要写卖点堆叠，不要写口号集合。',
         '必须按故事脊柱推进：痛点/疑问 -> 场景代入 -> 产品登场 -> 解决方案 -> 可视化证明 -> 对比/服务 -> 行动收束。每个 beat 只承担一个推进职责，不能重复上一段画面或台词。',
         '每个 beat 的 spoken_line 必须像成片里能听到的一句人话：先承接上一段情境，再推进下一段。禁止只写抽象卖点、广告口号或形容词堆叠。',
         `如果目标时长约 30 秒，故事蓝图优先写 10 个短 beat，对齐：痛点、生活/空间状态、产品登场、核心功能1、核心功能2、演示、证明、对比、优惠/承诺、行动号召。`,
-        '建材/钢材/空间材料类必须发生在高端展厅、设计会客区、建筑样板间、真实应用空间或客户洽谈区；人物应是设计师、品牌顾问、客户、业主或店长，画面像真人广告故事，不像材料摄影。',
+        '只有当主商品明确属于钢材/建材/墙面/外立面/空间设计服务时，才可使用展厅、设计会客区、建筑样板间、真实应用空间或客户洽谈区；其它行业必须使用对应行业的真实场景。',
         '台词必须像真实人物在具体场景里说话：先说困扰，再说看见了什么改变，最后自然邀请行动；禁止“钢材，如何重塑建筑空间？”这类空泛设问。',
       ].join('\n');
       const storyUser = `${user}
@@ -11966,7 +11972,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
 {
   "story_title": "剧本标题",
   "logline": "一句话故事梗概",
-  "scene_bible": {"main_location":"固定主场景，如高端展厅/设计会客区/建筑样板间","background_details":"货架、样板墙、洽谈桌、灯光、动线、窗景等可见细节","product_evidence_zone":"产品/材料证据在场景中的固定位置"},
+  "scene_bible": {"main_location":"固定主场景，必须来自用户行业和剧本","background_details":"与行业匹配的真实环境细节、道具、灯光、动线、可见证据","product_evidence_zone":"产品/服务/主体证据在场景中的固定位置"},
   "story_arc": {
     "opening_problem": "开场人物遇到的具体问题",
     "turning_point": "主体如何进入并改变局面",
@@ -12036,7 +12042,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           '只输出 JSON 数组，数量和 index 必须与输入一致，不要新增/删除镜头。',
           `必须让 ${productSubject} 成为场景中的可见证据，但不能让它变成无人产品图。`,
           '只能增强 scene/content_prompt/visual/material_usage/required_material，不得改变故事顺序和人物关系。',
-          '每镜必须写真实背景细节：展厅货架/样板墙/洽谈桌/建筑样板间/窗光/灯光/人物站位/手持道具，禁止只写材料、外立面、纹理或抽象背景。'
+          '每镜必须写真实背景细节：使用与当前行业匹配的场地、道具、灯光、动线、主体位置和可见证据，禁止只写抽象背景或套用历史行业场景。'
         ].join('\n');
         const sceneUser = `编剧蓝图：${JSON.stringify(storyPlan)}
 镜头草稿：${JSON.stringify(scenes, null, 2)}
@@ -12052,7 +12058,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
         castInstruction,
         genderInstruction,
         '单人模式只能有一个说话人或旁白；双人模式整条剧本必须出现两个人名的真实对话，允许个别镜头只有其中一人发言。台词必须推进故事，不能是广告口号。',
-        '每镜 action 必须写人物可执行动作：看文件/看手机/走入空间/指向样板/触摸边缘/转头回应/拿起材料册/走向洽谈桌。禁止只写镜头推进或光线扫过产品。'
+        '每镜 action 必须写脚本主体可执行动作：人物、产品、动物、机器人、外星人、吉祥物、服务流程或 UI 按当前剧本行动。禁止只写镜头推进或光线扫过产品。'
       ].join('\n');
       const actionUser = `编剧蓝图：${JSON.stringify(storyPlan)}
 场景版镜头：${JSON.stringify(scenes, null, 2)}
@@ -14110,9 +14116,13 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     '- The frame must feel like real commercial photography in a believable social/workplace scene; avoid AI poster, glossy render, fantasy lighting and generic luxury stock locations.',
     '- Demand references guide actor identity, space, material, mood and quality. They are not a fixed shot count.',
     '- If references show one person or the script is single-person, keep a single same presenter/actor across human shots.',
-    '- For steel/metal/building-material/facade products, never choose factory, warehouse, steel mill, cranes, raw beams, raw sheets, construction site, rust, forklifts or storage racks.',
-    '- Steel/material shots must use finished premium facade panels, installed wall panels, high-end showroom sample wall, design consultation area or finished product zone.',
-    '- Every non-macro shot should look like a live-action commercial storyboard panel: real person, real environment and product/material evidence in one coherent frame.',
+    _isLuxurySteelMaterialSubject(productSubject, { visual: brief, content_prompt: visualReferenceSummary })
+      ? '- For explicit steel/metal/building-material/facade products, never choose factory, warehouse, steel mill, cranes, raw beams, raw sheets, construction site, rust, forklifts or storage racks.'
+      : '',
+    _isLuxurySteelMaterialSubject(productSubject, { visual: brief, content_prompt: visualReferenceSummary })
+      ? '- Steel/facade shots must use finished premium facade panels, installed wall panels, high-end showroom sample wall, design consultation area or finished product zone.'
+      : '',
+    '- Every non-macro shot should look like a live-action commercial storyboard panel: confirmed script subject, real environment and product/service evidence in one coherent frame. Require a human only when the script or references explicitly require one.',
     '',
     'Return array items with this schema:',
     '{"index":0,"scene_type":"","allowed_environment":"","must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_overlay":{"type":"","placement":"","content":"","motion":"","style":""},"image_prompt":"","topview_prompt":"","qa_contract":""}',
@@ -15800,10 +15810,10 @@ function _controlledLuxurySteelCompositeQa({ scene = {}, productSubject = '', ou
     provider: 'controlled-policy/deterministic-steel-presenter',
     expected: {
       shot: `${Number(shotIndex || 0) + 1}/${Math.max(1, Number(totalShots || scene.totalShots || 1))}`,
-      product_subject: _compactQaText(productSubject || scene.product_subject || 'finished steel/metal facade panels', 120),
+      product_subject: _compactQaText(productSubject || scene.product_subject || 'advertised subject', 120),
       person_required: true,
       controlled_composite: true,
-      required_elements: ['visible presenter', 'finished steel/metal facade panels', 'non-factory non-warehouse setting'],
+      required_elements: ['visible presenter', 'confirmed advertised subject evidence', 'non-factory non-warehouse setting'],
       note: 'Interaction is represented by controlled placement/gesture cue; do not reject this deterministic fallback for lack of model-painted hand contact.',
     },
   };
@@ -16056,7 +16066,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
           : 'controlled-policy/deterministic-steel-facade',
         expected: {
           shot: `${Number(index || 0) + 1}/${Math.max(1, Number(scene.totalShots || scene.shotCount || 1))}`,
-          product_subject: productSubject || scene.product_subject || 'finished steel/metal facade panels',
+          product_subject: productSubject || scene.product_subject || 'advertised subject',
           person_required: !!personRequired,
           controlled_composite: true,
         },
@@ -16368,10 +16378,10 @@ function _controlledLuxurySteelCompositeQa({ scene = {}, productSubject = '', ou
     provider: 'controlled-policy/deterministic-steel-presenter',
     expected: {
       shot: `${Number(shotIndex || 0) + 1}/${Math.max(1, Number(totalShots || scene.totalShots || 1))}`,
-      product_subject: _compactQaText(productSubject || scene.product_subject || 'finished steel/metal facade panels', 120),
+      product_subject: _compactQaText(productSubject || scene.product_subject || 'advertised subject', 120),
       person_required: true,
       controlled_composite: true,
-      required_elements: ['visible presenter', 'finished steel/metal facade panels', 'non-factory non-warehouse setting'],
+      required_elements: ['visible presenter', 'confirmed advertised subject evidence', 'non-factory non-warehouse setting'],
       note: 'Interaction is represented by controlled placement/gesture cue; do not reject this deterministic fallback for lack of model-painted hand contact.',
     },
   };
@@ -16994,7 +17004,7 @@ async function _createLuxuryAdReferenceKeyframe({
           : 'controlled-policy/deterministic-steel-facade',
         expected: {
           shot: `${Number(index || 0) + 1}/${Math.max(1, Number(scene.totalShots || scene.shotCount || 1))}`,
-          product_subject: productSubject || scene.product_subject || 'finished steel/metal facade panels',
+          product_subject: productSubject || scene.product_subject || 'advertised subject',
           person_required: !!personRequired,
           controlled_composite: true,
         },
@@ -17727,7 +17737,7 @@ function _buildLuxuryKeyframePrompt({
     'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
     softwareWorkflowSubject
       ? 'Hard negative: pure phone advertisement, supermarket shopping aisle, colorful consumer-goods aisle, cleaning-product shelf, bathroom/home-goods/towel display, cosmetics/perfume/skincare shelf, jewelry/watch display, material showroom, sci-fi UI lab, unrelated packaged product, random retail prop, changed actor identity.'
-      : 'Hard negative: cosmetic bottle, perfume bottle, skincare package, beverage bottle, phone, watch, jewelry, unrelated packaged product, random retail prop, changing steel/material/interior subject into consumer goods.',
+      : 'Hard negative: unrelated packaged product, random retail prop, wrong industry/location, changing the confirmed advertised subject into a different category.',
   ].filter(Boolean).join(' ');
   return prompt.slice(0, softwareWorkflowSubject ? 2400 : 1950);
 }
@@ -17919,7 +17929,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
           : 'controlled-policy/deterministic-steel-facade',
         expected: {
           shot: `${Number(index || 0) + 1}/${Math.max(1, Number(scene.totalShots || scene.shotCount || 1))}`,
-          product_subject: productSubject || scene.product_subject || 'finished steel/metal facade panels',
+          product_subject: productSubject || scene.product_subject || 'advertised subject',
           person_required: !!personRequired,
           controlled_composite: true,
         },
