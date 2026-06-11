@@ -3692,6 +3692,107 @@
     modal.classList.add('open');
   }
 
+  function luxuryFailedKeyframeCandidates(details = null) {
+    const rawAttempts = Array.isArray(details?.attempts)
+      ? details.attempts
+      : (Array.isArray(details?.raw?.details?.attempts) ? details.raw.details.attempts : []);
+    const seen = new Set();
+    return rawAttempts
+      .filter(a => a && !a.ok && (a.image_url || a.imageUrl || a.url))
+      .map((a, i) => {
+        const url = a.image_url || a.imageUrl || a.url || '';
+        const shotIndex = Number.isFinite(Number(a.shot_index)) ? Number(a.shot_index) : 0;
+        return {
+          ...a,
+          _candidateIndex: i,
+          _shotIndex: Math.max(0, shotIndex),
+          _url: url,
+          _label: [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/') || '图片模型',
+          _reason: String(a.qa?.reason || a.error || '视觉 QA 未通过').slice(0, 260),
+        };
+      })
+      .filter(a => {
+        const key = `${a._shotIndex}|${a._url}`;
+        if (!a._url || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function openLuxuryFailedCandidatesModal() {
+    const candidates = luxuryFailedKeyframeCandidates(state.luxuryAd.keyframeErrorDetails);
+    if (!candidates.length) {
+      toast('当前错误里没有可查看的失败候选图', 'error');
+      return;
+    }
+    stopAudibleMedia({ reset: false });
+    let modal = document.getElementById('dhLuxFailedCandidateModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'dhLuxFailedCandidateModal';
+      modal.className = 'dh-video-modal dh-lux-failed-modal';
+      modal.innerHTML = `
+        <div class="dh-video-modal-backdrop" data-modal-close></div>
+        <div class="dh-video-modal-card dh-lux-failed-modal-card">
+          <div class="dh-video-modal-head">
+            <span class="dh-video-modal-title">失败候选图</span>
+            <button class="dh-video-modal-close" data-modal-close type="button" title="关闭">×</button>
+          </div>
+          <div class="dh-lux-failed-modal-body"></div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => {
+        if (e.target.closest('[data-modal-close]')) modal.classList.remove('open');
+      });
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && modal.classList.contains('open')) modal.classList.remove('open');
+      });
+    }
+    const body = modal.querySelector('.dh-lux-failed-modal-body');
+    body.innerHTML = candidates.map((item, i) => `
+      <article class="dh-lux-failed-candidate">
+        <button type="button" class="dh-lux-failed-candidate-img" data-lux-failed-preview="${i}" title="预览候选图">
+          <img src="${escapeHtml(withAuthQuery(item._url))}" alt="失败候选图 ${i + 1}">
+        </button>
+        <div>
+          <b>镜头 ${item._shotIndex + 1} · ${escapeHtml(item._label)}</b>
+          <span>${escapeHtml(item._reason)}</span>
+          <small>${escapeHtml(item.fallback_mode || item.prompt_mode || 'QA rejected candidate')}</small>
+          <div class="dh-lux-failed-candidate-actions">
+            <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-preview="${i}">预览</button>
+            <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-lux-adopt-failed="${i}">保留到第 ${item._shotIndex + 1} 镜</button>
+          </div>
+        </div>
+      </article>`).join('');
+    modal.classList.add('open');
+  }
+
+  async function adoptLuxuryFailedCandidate(candidateIndex) {
+    const candidates = luxuryFailedKeyframeCandidates(state.luxuryAd.keyframeErrorDetails);
+    const item = candidates[Number(candidateIndex)];
+    if (!item?._url) return;
+    const idx = Math.max(0, Number(item._shotIndex || 0));
+    const seg = (state.luxuryAd.segments || [])[idx] || {};
+    const keyframes = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes.slice() : [];
+    while (keyframes.length <= idx) keyframes.push({});
+    keyframes[idx] = {
+      ...keyframes[idx],
+      title: keyframes[idx]?.title || seg.title || `镜头 ${idx + 1}`,
+      image_url: item._url,
+      imageUrl: item._url,
+      adopted_failed_candidate: true,
+      adopted_from_qa_failure: true,
+      adopted_model: item._label,
+      qa: item.qa || null,
+    };
+    state.luxuryAd.keyframes = keyframes;
+    renderLuxuryAd();
+    document.getElementById('dhLuxFailedCandidateModal')?.classList.remove('open');
+    toast(`已保留到第 ${idx + 1} 镜，可继续后续分镜或单镜重试`, 'success');
+    // 中文说明：人工保留失败候选图后立即保存进任务中心，刷新页面也能恢复当前取舍。
+    await saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => null);
+  }
+
   // 任务进度弹窗 —— 替代原本"查看进度"跳回 step3 的行为
   function openTaskProgressModal(taskId) {
     stopAudibleMedia({ reset: false });
@@ -7819,8 +7920,11 @@
   // the workflow look like a usable storyboard even when the visual contract failed.
   function renderLuxuryKeyframeErrorDetails(details = null) {
     const attempts = Array.isArray(details?.attempts) ? details.attempts.filter(Boolean).slice(0, 8) : [];
+    const failedCandidates = luxuryFailedKeyframeCandidates(details);
     const receiptHtml = renderLuxuryFullErrorReceipt(details, '分镜接口完整错误回执');
-    if (!attempts.length) return receiptHtml;
+    if (!attempts.length) {
+      return `${failedCandidates.length ? `<div class="dh-lux-error-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-candidates>查看失败内容（${failedCandidates.length}）</button></div>` : ''}${receiptHtml}`;
+    }
     const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
     const firstProviderFail = attempts.find(a => !a.ok && !a.qa);
     const firstQaFail = attempts.find(a => a.qa && a.qa.pass !== true && a.qa.accepted_with_warning !== true);
@@ -7842,6 +7946,7 @@
     return `<div class="dh-lux-error-attempts">
       ${summaryParts.length ? `<div class="dh-lux-error-summary">${summaryParts.map(x => `<span>${escapeHtml(x)}</span>`).join('')}</div>` : ''}
       <div class="dh-lux-error-summary"><span>${escapeHtml(failedLabels.length ? `已阻止/拒绝的通道：${failedLabels.join('、')}` : '没有可展示的合格候选图。')}</span></div>
+      ${failedCandidates.length ? `<div class="dh-lux-error-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-candidates>查看失败内容（${failedCandidates.length}）</button><span>可人工预览并保留到对应镜头</span></div>` : ''}
       ${receiptHtml}
     </div>`;
   }
@@ -12272,6 +12377,22 @@
       const binding = luxuryAdShotBoundAssets(seg, idx);
       const url = kf.image_url || kf.imageUrl || binding.ref?.url || binding.ref?.previewUrl || state.luxuryAd.productAsset?.url || '';
       if (url) openImagePreviewModal(url, `镜头 ${idx + 1} 画面预览`);
+      return;
+    }
+    if (closest('[data-lux-failed-candidates]')) {
+      openLuxuryFailedCandidatesModal();
+      return;
+    }
+    const luxFailedPreview = closest('[data-lux-failed-preview]');
+    if (luxFailedPreview) {
+      const candidates = luxuryFailedKeyframeCandidates(state.luxuryAd.keyframeErrorDetails);
+      const item = candidates[Number(luxFailedPreview.dataset.luxFailedPreview)];
+      if (item?._url) openImagePreviewModal(item._url, `失败候选图 · 镜头 ${item._shotIndex + 1}`);
+      return;
+    }
+    const luxAdoptFailed = closest('[data-lux-adopt-failed]');
+    if (luxAdoptFailed) {
+      await adoptLuxuryFailedCandidate(Number(luxAdoptFailed.dataset.luxAdoptFailed));
       return;
     }
     if (closest('#dhLuxAdVoiceOpen')) {

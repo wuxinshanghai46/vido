@@ -77,6 +77,36 @@ function extractImageUrlsFromSyncPayload(payload) {
   return arr.map(x => x?.url || x?.b64_json || '').filter(Boolean);
 }
 
+function extractImageUrlsFromAnyPayload(payload) {
+  const urls = new Set();
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 5) return;
+    if (typeof value === 'string') {
+      if (/^https?:\/\/.+\.(png|jpe?g|webp)(\?|$)/i.test(value) || /^data:image\//i.test(value)) urls.add(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(item => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      if (/^(url|image_url|imageUrl|b64_json)$/i.test(key)) visit(child, depth + 1);
+      else if (/image|result|data|output|candidate|asset/i.test(key)) visit(child, depth + 1);
+    }
+  };
+  visit(payload, 0);
+  return Array.from(urls);
+}
+
+function buildProviderImageError(message, payload) {
+  const err = new Error(message);
+  const urls = extractImageUrlsFromAnyPayload(payload);
+  if (urls.length) err.generatedUrls = urls;
+  err.providerPayload = payload;
+  return err;
+}
+
 function extractProviderBusinessError(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const code = payload.code ?? payload.error?.code;
@@ -200,11 +230,11 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, validateStatus: () => true }
       );
       if (submitRes.status >= 400) {
-        throw new Error(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
+        throw buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
       }
       const businessError = extractProviderBusinessError(submitRes.data);
       if (businessError) {
-        throw new Error(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} provider error: ${businessError}`);
+        throw buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} provider error: ${businessError}`, submitRes.data);
       }
       _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
       const urls = extractImageUrlsFromSyncPayload(submitRes.data);
@@ -232,7 +262,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       { headers: buildHeaders(model), timeout: 30000, validateStatus: () => true }
     );
     if (submitRes.status >= 400) {
-      throw new Error(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`);
+      throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
     }
     _taskId = submitRes.data?.data?.task_id || submitRes.data?.task_id;
     // 同步返回 (OpenAI 风格)
@@ -263,7 +293,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         return { urls, taskId: _taskId };
       }
       if (d.task_status === 'failed' || d.task_status === 'fail') {
-        throw new Error(`漫路图像生成失败: ${d.error_msg || d.message || JSON.stringify(d)}`);
+        throw buildProviderImageError(`漫路图像生成失败: ${d.error_msg || d.message || JSON.stringify(d)}`, d);
       }
       // submitted / processing → 继续轮询
     }

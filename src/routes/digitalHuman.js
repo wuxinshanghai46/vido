@@ -5333,16 +5333,39 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
       : _outputSizeString(aspectRatio, outputSize));
   const dyClient = require('../services/deyunaiService');
   console.log(`[DH/images] 调 deyunai ${model} (refs=${(referenceImages || []).filter(Boolean).length}, prompt=${prompt.length}c)`);
-  const r = await dyClient.generateImage({
-    model,
-    prompt,
-    n: 1,
-    size,
-    aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
-    referenceImages: (referenceImages || []).filter(Boolean).slice(0, 4),
-    timeoutMs: 180000,
-    agentId: 'digital_human_step1',
-  });
+  let r;
+  try {
+    r = await dyClient.generateImage({
+      model,
+      prompt,
+      n: 1,
+      size,
+      aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
+      referenceImages: (referenceImages || []).filter(Boolean).slice(0, 4),
+      timeoutMs: 180000,
+      agentId: 'digital_human_step1',
+    });
+  } catch (err) {
+    const candidateUrl = Array.isArray(err.generatedUrls) ? err.generatedUrls.find(Boolean) : '';
+    if (candidateUrl) {
+      try {
+        fs.mkdirSync(destDir, { recursive: true });
+        const candidatePath = path.join(destDir, `${filename}_provider_rejected.png`);
+        if (String(candidateUrl).startsWith('data:image/')) {
+          const b64 = String(candidateUrl).replace(/^data:image\/\w+;base64,/i, '');
+          fs.writeFileSync(candidatePath, Buffer.from(b64, 'base64'));
+        } else {
+          const img = await axios.get(candidateUrl, { responseType: 'arraybuffer', timeout: 60000 });
+          fs.writeFileSync(candidatePath, Buffer.from(img.data));
+        }
+        // 中文说明：供应商侧 QA 不通过但已经出图时，保存候选图给前端人工查看/保留。
+        err._luxuryCandidatePath = candidatePath;
+      } catch (saveErr) {
+        console.warn(`[DH/images] ${model} provider rejected candidate save failed:`, saveErr.message);
+      }
+    }
+    throw err;
+  }
   const url = r.urls?.[0];
   if (!url) throw new Error(`${model} 未返回图片 URL`);
   fs.mkdirSync(destDir, { recursive: true });
@@ -16732,6 +16755,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     qaRepairHook: null,
     personRequired,
     characterLock,
+    shotIndex: index,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
@@ -17137,24 +17161,55 @@ function _luxuryGptImage2EditPrompt({
 }
 
 function _luxuryGptImage2EditReferenceUrls(refs = []) {
+  return _luxuryGptImage2EditReferenceItems(refs, 'full').map(ref => ref.resolved).filter(Boolean);
+}
+
+function _luxuryGptImage2EditReferenceItems(refs = [], mode = 'full') {
   const list = Array.isArray(refs) ? refs : [];
-  const unique = urls => urls
-    .map(x => String(x || '').trim())
-    .filter(Boolean)
-    .filter((x, i, arr) => arr.indexOf(x) === i);
-  const identity = unique(list
+  const uniqueItems = items => {
+    const seen = new Set();
+    return items
+      .filter(ref => ref && String(ref.resolved || '').trim())
+      .filter(ref => {
+        const key = String(ref.resolved || '').trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+  const isLayout = ref => /human_environment_layout|human_story_layout/i.test(String(ref?.kind || ''));
+  const isIdentity = ref => /identity_reference|generated_presenter_guidance/i.test(String(ref?.kind || ''));
+  const isSecondaryIdentity = ref => /identity_reference_view/i.test(String(ref?.kind || ''));
+  const identity = uniqueItems(list
     .filter(ref => /identity_reference|generated_presenter_guidance/i.test(String(ref?.kind || '')))
-    .map(ref => ref.resolved));
-  if (identity.length) {
-    const support = unique(list
-      .filter(ref => !/identity_reference|generated_presenter_guidance|human_environment_layout|human_story_layout/i.test(String(ref?.kind || '')))
-      .map(ref => ref.resolved));
-    return unique([...identity.slice(0, 4), ...support.slice(0, 2)]).slice(0, 6);
+  );
+  const primaryIdentity = uniqueItems([
+    ...identity.filter(ref => /identity_reference$/i.test(String(ref?.kind || ''))),
+    ...identity.filter(ref => /generated_presenter_guidance/i.test(String(ref?.kind || ''))),
+    ...identity,
+  ]).slice(0, 1);
+  const support = uniqueItems(list
+    .filter(ref => !isIdentity(ref) && !isLayout(ref))
+  );
+  if (mode === 'identity_only') {
+    return primaryIdentity.length ? primaryIdentity : support.slice(0, 1);
   }
-  return unique(list
-    .filter(ref => !/human_environment_layout|human_story_layout/i.test(String(ref?.kind || '')))
-    .map(ref => ref.resolved))
-    .slice(0, 2);
+  if (mode === 'core') {
+    // 中文说明：GPT Image 2 edits 偶发会因参考图过多返回 500；降参时仍保留主身份照，
+    // 只去掉侧面/动作等非必要身份视图，避免变成无人物一致性的自由生图。
+    return uniqueItems([
+      ...primaryIdentity,
+      ...support.filter(ref => /main_reference|shot_reference|story_seed_reference|demand_reference|steel_scene_lock_anchor/i.test(String(ref?.kind || ''))).slice(0, 2),
+    ]).slice(0, 3);
+  }
+  if (identity.length) {
+    return uniqueItems([
+      ...identity.filter(ref => !isSecondaryIdentity(ref)).slice(0, 2),
+      ...identity.filter(isSecondaryIdentity).slice(0, 2),
+      ...support.slice(0, 2),
+    ]).slice(0, 6);
+  }
+  return support.slice(0, 2);
 }
 
 function _luxuryTopviewEditReferenceUrls(refs = [], { personRequired = false, scene = {}, productSubject = '' } = {}) {
@@ -17672,6 +17727,7 @@ async function _createLuxuryAdReferenceKeyframe({
     qaRepairHook: null,
     personRequired,
     characterLock,
+    shotIndex: index,
   });
   let outPath = imageResult.outPath;
   let uiOverlayPost = null;
@@ -17761,6 +17817,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   qaRepairHook = null,
   personRequired = false,
   characterLock = null,
+  shotIndex = Number(scene?.index ?? scene?.shot_index ?? 0),
 }) {
   const attempts = [];
   let repairInstruction = '';
@@ -17781,6 +17838,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       model_id: model?.model_id || model?.model || 'nano-banana',
       ok: !!ok,
       error: err ? shortError(err) : '',
+      shot_index: Number.isFinite(Number(meta.shot_index)) ? Number(meta.shot_index) : Number(shotIndex || 0),
       ...meta,
     });
   };
@@ -17843,35 +17901,52 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         });
       }
       if (modelId === 'gpt-image-2') {
-        const gptRefs = _luxuryGptImage2EditReferenceUrls(refs);
-        const runGptImage2 = (refsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
+        const refModes = [
+          ['full', _luxuryGptImage2EditReferenceItems(refs, 'full')],
+          ['core', _luxuryGptImage2EditReferenceItems(refs, 'core')],
+          ['identity_only', _luxuryGptImage2EditReferenceItems(refs, 'identity_only')],
+        ].filter((entry, i, arr) => {
+          const key = entry[1].map(ref => ref.resolved).filter(Boolean).join('|');
+          return key && arr.findIndex(x => x[1].map(ref => ref.resolved).filter(Boolean).join('|') === key) === i;
+        });
+        if (!refModes.length) refModes.push(['generation', []]);
+        const runGptImage2 = (refItemsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
           model: model.model_id,
           prompt: promptForAttempt,
           aspectRatio: safeAspectRatio,
           filename: `${filename}_deyunai_${idx}${suffix}`,
           destDir,
-          referenceImages: refsForMode,
+          referenceImages: refItemsForMode.map(ref => ref.resolved).filter(Boolean),
           outputSize,
         });
-        try {
-          return await runGptImage2(gptRefs, '');
-        } catch (err) {
-          if (gptRefs.length) {
-            err.code = err.code || 'LUXURY_GPT_IMAGE2_EDITS_UNAVAILABLE';
-            err._luxuryAttemptRecorded = true;
+        let lastGptErr = null;
+        for (let modeIndex = 0; modeIndex < refModes.length; modeIndex++) {
+          const [modeName, refItemsForMode] = refModes[modeIndex];
+          try {
+            // 中文说明：保身份降参重试。不是去掉演员身份，而是逐步减少非必要参考图，
+            // 规避通道 500/审核不稳，同时保留主身份照和少量主体证据。
+            return await runGptImage2(refItemsForMode, modeIndex === 0 ? '' : `_${modeName}`);
+          } catch (err) {
+            lastGptErr = err;
+            const mayRetryWithFewerRefs = modeIndex < refModes.length - 1
+              && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
             addAttempt(model, false, err, {
               prompt_chars: Array.from(String(promptForAttempt || '')).length,
               prompt_mode: 'gpt-image-2-audit-safe-edit',
-              fallback_mode: 'gpt-image-2-edits-first-no-reference-dropping',
-              reference_count: gptRefs.length,
+              fallback_mode: `gpt-image-2-edits-${modeName}`,
+              reference_count: refItemsForMode.length,
               all_reference_count: refs.length,
-              reference_kinds: refs.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+              reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+              image_url: candidateImageUrl(err._luxuryCandidatePath),
+              next_retry: mayRetryWithFewerRefs ? 'same-model-fewer-references' : '',
               rule: 'reference_preserving_required_for_locked_actor_keyframe',
             });
-            console.warn('[DH/luxury-ad] deyunai gpt-image-2 edits failed with required references:', shortError(err));
+            console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}); ${mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry'}:`, shortError(err));
+            if (!mayRetryWithFewerRefs) break;
           }
-          throw err;
         }
+        if (lastGptErr) lastGptErr._luxuryAttemptRecorded = true;
+        throw lastGptErr || new Error('gpt-image-2 edits 未返回可用图片');
       }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
@@ -18178,7 +18253,10 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       }
       if (!err._luxuryAttemptRecorded) {
         err._luxuryAttemptRecorded = true;
-        addAttempt(model, false, err, { prompt_chars: attemptPromptChars });
+        addAttempt(model, false, err, {
+          prompt_chars: attemptPromptChars,
+          image_url: candidateImageUrl(err._luxuryCandidatePath),
+        });
       }
       console.warn(`[DH/luxury-ad] keyframe provider failed ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
       if (strictSingleCandidate) break;
