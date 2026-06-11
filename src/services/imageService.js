@@ -930,6 +930,7 @@ async function generateDeyunaiImage({ prompt, filename, aspectRatio = '1:1', res
     prompt,
     n: 1,
     size,
+    aspectRatio,
     referenceImages,
     timeoutMs: 180000,
     userId,

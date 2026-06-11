@@ -1934,7 +1934,20 @@ function resolveVideoProvider() {
 }
 
 // ——— 主入口：自动选择 provider ———
+function assertPublicImageUrlForProvider(imageUrl = '') {
+  const value = String(imageUrl || '').trim();
+  if (!value) return '';
+  if (!/^https?:\/\//i.test(value) || /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(value)) {
+    throw new Error('图生视频参考图必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
+  }
+  return value;
+}
+
 async function generateVideoClip(options) {
+  if (options.image_url) {
+    // 中文说明：外部视频供应商暂不支持本地图片/base64，统一要求公网 URL。
+    options = { ...options, image_url: assertPublicImageUrlForProvider(options.image_url) };
+  }
   const provider = options.video_provider || resolveVideoProvider();
   const imgInfo = options.image_url
     ? (options.image_url.startsWith('data:') ? `base64(${Math.round(options.image_url.length/1024)}KB)` : `URL(${options.image_url.substring(0, 80)})`)

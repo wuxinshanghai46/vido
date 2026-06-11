@@ -91,6 +91,13 @@ function extractProviderBusinessError(payload) {
   return null;
 }
 
+function publicHttpImageRefs(referenceImages = []) {
+  return (Array.isArray(referenceImages) ? referenceImages : [])
+    .map(x => String(x || '').trim())
+    .filter(Boolean)
+    .filter(url => /^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(url));
+}
+
 // ════════════════════════════════════════════════
 // 1. 文本 chat completions
 // ════════════════════════════════════════════════
@@ -161,7 +168,9 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
   let _ok = false; let _err = null; let _taskId = null;
   try {
     if (isGptImage2Model(model)) {
-      const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 14);
+      const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
+      const refs = publicHttpImageRefs(referenceImages).slice(0, 14);
+      if (rawRefCount > 0 && refs.length === 0) throw new Error('漫路图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
       const isEdit = refs.length > 0;
       const body = {
         prompt,
@@ -210,9 +219,12 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       body.aspect_ratio = aspectRatio;
       body.aspectRatio = aspectRatio;
     }
-    if (Array.isArray(referenceImages) && referenceImages.length) {
-      body.image_url = referenceImages[0];
-      if (referenceImages.length > 1) body.image_urls = referenceImages;
+    const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
+    const refs = publicHttpImageRefs(referenceImages).slice(0, 4);
+    if (rawRefCount > 0 && refs.length === 0) throw new Error('漫路图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
+    if (refs.length) {
+      body.image_url = refs[0];
+      if (refs.length > 1) body.image_urls = refs;
     }
     const submitRes = await axios.post(
       buildImageUrl('/images/generations', model),

@@ -406,10 +406,14 @@ async function generateTextToImage({ prompt, model = 'topview-nano-banana-2', as
 async function generateImageEdit({ prompt, referenceImages = [], model = 'topview-nano-banana-2', aspectRatio = 'auto', resolution = '1K', generateCount = 1, onProgress, userId = '', agentId = '', requestId = '', source = '', operation = 'image_edit' } = {}) {
   const startedAt = Date.now();
   const cfg = providerConfig();
+  const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
   const refs = (Array.isArray(referenceImages) ? referenceImages : [])
     .map(x => String(x || '').trim())
     .filter(Boolean)
+    // 中文说明：供应商参考图只使用公网 URL，不接受 base64/data/blob/本地路径。
+    .filter(url => /^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(url))
     .slice(0, 6);
+  if (rawRefCount > 0 && !refs.length) throw new Error('Topview 图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
   if (!refs.length) return generateTextToImage({ prompt, model, aspectRatio: aspectRatio === 'auto' ? '1:1' : aspectRatio, resolution, generateCount, onProgress, userId, agentId, requestId, source, operation: 'text_to_image' });
   const displayModel = normalizeTopviewImageModel(model);
   const paths = [];

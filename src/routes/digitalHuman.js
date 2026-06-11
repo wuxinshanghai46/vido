@@ -5304,29 +5304,36 @@ const DEYUNAI_SHOWROOM_EDIT_MODELS = [
 
 function _absolutePublicUrl(req, url) {
   if (!url || typeof url !== 'string') return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  return _publicBaseUrl(req) + (url.startsWith('/') ? url : `/${url}`);
+  const clean = url.trim();
+  if (!clean || /^data:|^blob:/i.test(clean)) return '';
+  if (/^[a-zA-Z]:[\\/]/.test(clean) || /^file:\/\//i.test(clean)) return '';
+  if (/^https?:\/\//i.test(clean)) return clean;
+  return _publicBaseUrl(req) + (clean.startsWith('/') ? clean : `/${clean}`);
+}
+
+function _isPublicHttpImageUrl(url = '') {
+  if (!/^https?:\/\//i.test(String(url || '').trim())) return false;
+  try {
+    const u = new URL(String(url).trim());
+    return !/^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
 }
 
 // Resolve an image reference for external providers.
-// Some providers accept/expect data URLs, while gpt-image-2 edits now requires a public URL.
+// 中文说明：外部生图/图生视频供应商统一使用公网 URL；不再把本地文件转 base64/data URL。
 async function _resolveImageForExternalApi(req, url, options = {}) {
-  if (!url) return '';
-  const preferPublicUrl = options && options.preferPublicUrl === true;
-  if (preferPublicUrl) return _absolutePublicUrl(req, url);
-  const localPath = _localAssetPathFromUrl(url);
-  if (localPath) {
-    try {
-      const data = fs.readFileSync(localPath);
-      const ext = path.extname(localPath).toLowerCase().replace('.', '');
-      const mimeMap = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
-      const mime = mimeMap[ext] || 'image/jpeg';
-      return `data:${mime};base64,${data.toString('base64')}`;
-    } catch (e) {
-      console.warn('[DH] 转 base64 失败，回退 URL:', e.message);
-    }
+  const publicUrl = _absolutePublicUrl(req, url);
+  if (!publicUrl) {
+    if (options?.required) throw new Error('供应商图片参考必须是公网 URL，不支持 base64、blob 或本地文件路径');
+    return '';
   }
-  return _absolutePublicUrl(req, url);
+  if (!_isPublicHttpImageUrl(publicUrl)) {
+    if (options?.required) throw new Error(`供应商图片参考不是公网 URL：${publicUrl}`);
+    return '';
+  }
+  return publicUrl;
 }
 
 async function _probeLuxuryImageReferenceAvailability(req, url) {
