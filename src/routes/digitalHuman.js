@@ -2071,6 +2071,150 @@ function _luxuryKeyframeVisibleSubjectInstruction(requirement = {}, hasAvatar = 
   return 'SCRIPT-LOCKED VISIBLE SUBJECT: follow the confirmed script exactly. If it asks for an animal, robot, alien, mascot, creature, object, vehicle, product, place or service moment, depict that subject as written. Do not replace it with a human presenter unless the confirmed script explicitly says human/person.';
 }
 
+// 中文说明：多人对话不能靠“有人交流”这种模糊描述。这里从剧本、角色表、
+// 对话行和导演合同中抽取通用多角色合同，只在证据明确时要求多人，避免影响单人广告稳定性。
+function _luxuryBuildMultiCharacterContract(scene = {}, subject = '') {
+  const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
+  const explicit = scene.multi_character_contract && typeof scene.multi_character_contract === 'object'
+    ? scene.multi_character_contract
+    : (visualContract.multi_character_contract && typeof visualContract.multi_character_contract === 'object'
+      ? visualContract.multi_character_contract
+      : null);
+  if (explicit) {
+    const chars = Array.isArray(explicit.characters) ? explicit.characters : [];
+    const expected = Math.max(0, Math.min(6, Number(explicit.expected_count || explicit.count || chars.length || 0)));
+    return {
+      required: explicit.required === true || expected >= 2,
+      expected_count: expected >= 2 ? expected : 0,
+      source: 'explicit_multi_character_contract',
+      characters: chars.slice(0, 6).map((c, i) => ({
+        id: _luxuryStrictText(c.id || c.character_id || `角色${i + 1}`, 40),
+        role: _luxuryStrictText(c.role || c.name || c.identity || `角色${i + 1}`, 80),
+        appearance_lock: _luxuryStrictText(c.appearance_lock || c.appearance || c.description || '', 220),
+        position: _luxuryStrictText(c.position || c.blocking || '', 120),
+        speaking_role: _luxuryStrictText(c.speaking_role || c.dialogue_role || c.speaks || '', 120),
+        relation: _luxuryStrictText(c.relation || c.relationship || '', 120),
+      })),
+      dialogue_roles: Array.isArray(explicit.dialogue_roles) ? explicit.dialogue_roles.slice(0, 8).map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [],
+      blocking: _luxuryStrictText(explicit.blocking || explicit.actor_blocking || '', 320),
+      qa_rule: _luxuryStrictText(explicit.qa_rule || explicit.qa_contract || '', 420),
+    };
+  }
+
+  const characterSources = [
+    ...(Array.isArray(scene.characters) ? scene.characters : []),
+    ...(Array.isArray(scene.character_profiles) ? scene.character_profiles : []),
+    ...(Array.isArray(visualContract.characters) ? visualContract.characters : []),
+  ].filter(Boolean);
+  const dialogueSources = [
+    ...(Array.isArray(scene.dialogue_lines) ? scene.dialogue_lines : []),
+    ...(Array.isArray(scene.dialogues) ? scene.dialogues : []),
+    ...(Array.isArray(visualContract.dialogue_lines) ? visualContract.dialogue_lines : []),
+  ].filter(Boolean);
+  const text = [
+    subject,
+    scene.title,
+    scene.objective,
+    scene.intent,
+    scene.purpose,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.display_visual,
+    scene.visual,
+    scene.visual_prompt,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.dialogue,
+    scene.dialogue_text,
+    scene.director_prompt,
+    scene.qa_contract,
+    JSON.stringify(characterSources),
+    JSON.stringify(dialogueSources),
+    JSON.stringify(visualContract.subject_evidence || []),
+    JSON.stringify(visualContract.interaction_evidence || []),
+  ].filter(Boolean).join(' ');
+
+  const explicitCount = (() => {
+    const n = Number(scene.person_count || scene.people_count || scene.character_count || visualContract.person_count || visualContract.character_count || 0);
+    if (Number.isFinite(n) && n >= 2) return Math.min(6, Math.round(n));
+    if (/两人|双人|二人|2\s*人|two\s+(people|persons|characters|actors)|pair\b/i.test(text)) return 2;
+    if (/三人|3\s*人|three\s+(people|persons|characters|actors)/i.test(text)) return 3;
+    if (/四人|4\s*人|four\s+(people|persons|characters|actors)/i.test(text)) return 4;
+    if (/多人|多角色|群像|群聊|会议|圆桌|panel discussion|group conversation|multi[-\s]?character/i.test(text)) return Math.max(3, Math.min(6, characterSources.length || dialogueSources.length || 3));
+    return 0;
+  })();
+  const hasDialogueTurn = dialogueSources.length >= 2
+    || /(?:甲|乙|A|B|角色\s*1|角色\s*2|人物\s*1|人物\s*2|男|女|客户|顾问|同事|用户|商家|主持|嘉宾)\s*[:：]/i.test(text)
+    || /对话|交流|讨论|问答|回应|回答|反问|互相看|conversation|dialogue|talks? with|responds?|replies?/i.test(text);
+  const required = explicitCount >= 2 || characterSources.length >= 2 || (hasDialogueTurn && /两人|双方|彼此|互相|对话|交流|讨论|conversation|dialogue/i.test(text));
+  if (!required) {
+    return {
+      required: false,
+      expected_count: 0,
+      source: '',
+      characters: [],
+      dialogue_roles: [],
+      blocking: '',
+      qa_rule: '',
+    };
+  }
+  const expected = Math.max(2, Math.min(6, explicitCount || characterSources.length || dialogueSources.length || 2));
+  const characters = Array.from({ length: expected }, (_, i) => {
+    const c = characterSources[i] && typeof characterSources[i] === 'object' ? characterSources[i] : {};
+    return {
+      id: _luxuryStrictText(c.id || c.character_id || c.name || `角色${i + 1}`, 40),
+      role: _luxuryStrictText(c.role || c.identity || c.name || `角色${i + 1}`, 80),
+      appearance_lock: _luxuryStrictText(c.appearance_lock || c.appearance || c.description || c.prompt || '', 220),
+      position: _luxuryStrictText(c.position || c.blocking || (i === 0 ? 'left or foreground relationship position' : i === 1 ? 'right or response relationship position' : 'background/supporting relationship position'), 120),
+      speaking_role: _luxuryStrictText(c.speaking_role || c.dialogue_role || '', 120),
+      relation: _luxuryStrictText(c.relation || c.relationship || '', 120),
+    };
+  });
+  const dialogueRoles = dialogueSources.slice(0, 8).map((line, i) => {
+    if (typeof line === 'string') return _luxuryStrictText(line, 120);
+    return _luxuryStrictText([line.speaker || line.role || `角色${(i % expected) + 1}`, line.text || line.dialogue || line.content || ''].filter(Boolean).join(': '), 120);
+  }).filter(Boolean);
+  return {
+    required: true,
+    expected_count: expected,
+    source: 'script_or_storyboard_multi_character_evidence',
+    characters,
+    dialogue_roles: dialogueRoles,
+    blocking: _luxuryStrictText([
+      `show exactly ${expected} distinct visible characters required by the confirmed script`,
+      'each character keeps a separate face/body silhouette and relationship position',
+      'do not merge faces, duplicate the same person, crop one character out, or collapse the dialogue into a single presenter',
+    ].join('; '), 360),
+    qa_rule: _luxuryStrictText(`Hard fail if the frame does not show exactly ${expected} distinct visible characters, if faces/bodies merge, if one required dialogue participant is missing, or if a single-person presenter replaces the confirmed multi-character dialogue.`, 420),
+  };
+}
+
+function _luxuryMultiCharacterPrompt(contract = null, phase = 'image') {
+  if (!contract?.required || !Number(contract.expected_count)) return '';
+  const chars = Array.isArray(contract.characters) ? contract.characters : [];
+  const roster = chars.map(c => [
+    c.id ? `id=${c.id}` : '',
+    c.role ? `role=${c.role}` : '',
+    c.appearance_lock ? `appearance=${c.appearance_lock}` : '',
+    c.position ? `position=${c.position}` : '',
+    c.speaking_role ? `speaking=${c.speaking_role}` : '',
+    c.relation ? `relation=${c.relation}` : '',
+  ].filter(Boolean).join(', ')).filter(Boolean).join(' | ');
+  return [
+    `MULTI-CHARACTER CONTRACT (${phase}): exactly ${contract.expected_count} distinct visible characters are required by the confirmed script.`,
+    roster ? `Character roster: ${roster}.` : '',
+    contract.dialogue_roles?.length ? `Dialogue/interaction roles: ${contract.dialogue_roles.join(' | ')}.` : '',
+    contract.blocking ? `Blocking: ${contract.blocking}.` : '',
+    'Keep faces, bodies, wardrobe families and screen positions distinct. Do not duplicate one identity into multiple people.',
+    phase === 'video'
+      ? 'Animate only the approved keyframe relationship: speaking character may move mouth/head subtly, listening characters may nod or react; do not add/remove people.'
+      : 'The still keyframe must already show the required number and relationship clearly; do not leave missing participants for the video stage.',
+    contract.qa_rule ? `QA rule: ${contract.qa_rule}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
 function _luxurySceneFriendlyProductSubject(subject = '') {
   return String(subject || '')
     .replace(/建筑外立面/g, '高端建筑装饰')
@@ -9657,6 +9801,7 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
     ...rewritten,
     strict_storyboard_contract_required: true,
     strict_storyboard_contract: rewrittenContract,
+    multi_character_contract: rewrittenContract.multi_character_contract || rewritten.multi_character_contract || null,
     image_contract: imageContract,
     compiled_image_prompt: compiledPrompt,
     video_contract: videoContract,
@@ -13055,11 +13200,13 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     360,
   );
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
+  const multiCharacterContract = _luxuryBuildMultiCharacterContract({ ...scene, visual_contract: aiContract }, subject);
   const visual = _luxuryDirectorText(scene.content_prompt || scene.scene_content || scene.visual || scene.visual_prompt || scene.title, 260);
   const action = _luxuryDirectorText(scene.action || scene.visual_action || '', 180);
   const camera = _luxuryDirectorText([scene.shot_angle, scene.shot_size, scene.camera_label, scene.camera, scene.lighting_style].filter(Boolean).join('; '), 220);
   const mustShow = _luxuryDirectorList(aiContract.must_show || aiContract.mustShow, [
     ..._luxuryGenericEvidenceList(scene, subject),
+    multiCharacterContract.required ? `multi-character dialogue contract: exactly ${multiCharacterContract.expected_count} distinct visible characters with clear relationship blocking` : '',
     locks?.reality_lock?.scene_basis ? `real-world basis from asset/user lock: ${locks.reality_lock.scene_basis}` : '',
     locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
     visual || 'the confirmed storyboard visual',
@@ -13094,6 +13241,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
       `Pass only if scene type is ${sceneType}.`,
       `Allowed environment: ${allowedEnvironment}.`,
       `Must show ${mustShow.join('; ')}.`,
+      multiCharacterContract.required ? multiCharacterContract.qa_rule : '',
       locksPrompt ? `Must obey asset/reality locks: ${locksPrompt}.` : '',
       `Hard fail if any appears: ${mustNotShow.join('; ')}.`,
     ].join(' '),
@@ -13106,6 +13254,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     `Must show: ${mustShow.join('; ')}.`,
     `Product evidence: ${productEvidence}.`,
     `Composition: ${composition}.`,
+    _luxuryMultiCharacterPrompt(multiCharacterContract, 'image'),
     `Lighting: ${lighting}.`,
     camera ? `Camera: ${camera}.` : '',
     `Avoid: ${mustNotShow.join('; ')}.`,
@@ -13122,7 +13271,8 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     must_show: mustShow,
     must_not_show: mustNotShow,
     reference_strategy: referenceStrategy,
-    actor_blocking: _luxuryDirectorText(aiContract.actor_blocking || aiContract.actorBlocking || (personRequired ? 'Actor is naturally inside the scene, guiding attention to the product/material evidence; keep one clear action.' : 'No actor required unless this is not a macro/detail insert.'), 260),
+    actor_blocking: _luxuryDirectorText(aiContract.actor_blocking || aiContract.actorBlocking || multiCharacterContract.blocking || (personRequired ? 'Actor is naturally inside the scene, guiding attention to the product/material evidence; keep one clear action.' : 'No actor required unless this is not a macro/detail insert.'), 320),
+    multi_character_contract: multiCharacterContract,
     product_evidence: productEvidence,
     composition,
     lighting,
@@ -13175,6 +13325,7 @@ function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], op
       scene_type_lock: contract.scene_type,
       environment_lock: contract.allowed_environment,
       visual_contract: contract,
+      multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
       ui_overlay: contract.ui_overlay || scene.ui_overlay || null,
       qa_contract: contract.qa_contract,
       director_prompt: directorPrompt,
@@ -13367,6 +13518,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const locks = scene.visual_locks || null;
   const locksPrompt = _luxuryLocksPrompt(locks, 900);
   const subject = _luxuryStrictText(productSubject || scene.product_subject || '', 140);
+  const multiCharacterContract = _luxuryBuildMultiCharacterContract(scene, subject);
   const visual = _luxuryStrictText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 520);
   const action = _luxuryStrictText(scene.action || scene.visual_action || '', 260);
   const sceneText = _luxuryStrictText(
@@ -13397,6 +13549,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     locks?.reality_lock?.scene_basis ? `real-world scene basis: ${locks.reality_lock.scene_basis}` : '',
     locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
     locks?.character_lock?.prompt ? 'same uploaded/reference actor identity when a person appears' : '',
+    multiCharacterContract.required ? `exactly ${multiCharacterContract.expected_count} distinct visible characters required by the confirmed script` : '',
     locks?.scene_lock?.prompt ? 'same uploaded/inferred scene family and practical lighting' : '',
     locks?.prop_lock?.prompt ? 'story-appropriate real props/evidence from asset manifest' : '',
   ].filter(Boolean).forEach(item => {
@@ -13409,7 +13562,10 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     if (!mustNotShow.includes(next)) mustNotShow.push(next);
     else break;
   }
-  const qaContract = _luxuryStrictText(scene.qa_contract || visualContract.qa_contract || '', 900);
+  const qaContract = _luxuryStrictText([
+    scene.qa_contract || visualContract.qa_contract || '',
+    multiCharacterContract.required ? multiCharacterContract.qa_rule : '',
+  ].filter(Boolean).join(' '), 1100);
   return {
     shot_id: Number(index || 0) + 1,
     shot_count: Math.max(1, Number(total || 1)),
@@ -13429,6 +13585,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     asset_manifest: locks?.asset_manifest || scene.asset_manifest || null,
     reality_lock: locks?.reality_lock || scene.reality_lock || null,
     character_lock: locks?.character_lock || scene.character_lock || null,
+    multi_character_contract: multiCharacterContract,
     product_lock: locks?.product_lock || scene.product_lock || null,
     scene_lock: locks?.scene_lock || scene.scene_lock || null,
     prop_lock: locks?.prop_lock || scene.prop_lock || null,
@@ -13455,6 +13612,10 @@ function _luxuryStrictStoryboardContractIssues(contract = {}) {
   if (!Array.isArray(contract.must_show) || contract.must_show.length < 3) issues.push('must_show 至少需要 3 项');
   if (!Array.isArray(contract.must_not_show) || contract.must_not_show.length < 3) issues.push('must_not_show 至少需要 3 项');
   if (!_luxuryStrictText(contract.qa_contract)) issues.push('缺少 QA 验收标准 qa_contract');
+  if (contract.multi_character_contract?.required) {
+    if (Number(contract.multi_character_contract.expected_count || 0) < 2) issues.push('多人合同缺少有效 expected_count');
+    if (!Array.isArray(contract.multi_character_contract.characters) || contract.multi_character_contract.characters.length < 2) issues.push('多人合同缺少角色表 characters');
+  }
   return issues;
 }
 
@@ -13502,6 +13663,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     `Action and expression: ${contract.action}.`,
     `Camera: ${contract.camera}.`,
     `Composition: ${contract.composition}.`,
+    _luxuryMultiCharacterPrompt(contract.multi_character_contract || scene.multi_character_contract, 'image'),
     `Lighting: ${contract.lighting}.`,
     contract.visual_locks_prompt ? `Mandatory asset/reality locks: ${contract.visual_locks_prompt}.` : '',
     `Must show: ${contract.must_show.join('; ')}.`,
@@ -13529,6 +13691,7 @@ function _buildLuxuryImageContract(scene = {}, contract = {}) {
     lighting: contract.lighting || '',
     negative_constraints: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
     ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
+    multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
   };
 }
 
@@ -13538,14 +13701,16 @@ function _buildLuxuryVideoContract(scene = {}, contract = {}) {
     contract_type: 'luxury_i2v_motion_contract_v1',
     source_keyframe_lock: true,
     subject: contract.product_subject || scene.product_subject || '',
+    multi_character_contract: scene.multi_character_contract || contract.multi_character_contract || null,
     camera_motion: _luxuryStrictText(scene.i2v_brief || cameraPlan.movement || scene.camera_label || scene.camera || '', 260),
     subject_motion: _luxuryStrictText(scene.action || scene.visual_action || '', 260),
     timing: _luxuryStrictText(`${contract.duration || scene.duration || ''}s`, 40),
     continuity_constraints: [
       'preserve the approved keyframe subject, identity, scene, props, composition and lighting',
+      (scene.multi_character_contract || contract.multi_character_contract)?.required ? 'preserve the approved keyframe character count, separate identities and dialogue relationship blocking' : '',
       'animate only the confirmed motion/action/camera intent',
       'do not redraw into a new scene or introduce unconfirmed subjects',
-    ],
+    ].filter(Boolean),
     negative_constraints: [
       'no face morphing, product redesign, category drift, scene replacement, new readable text, logo, subtitle or watermark',
     ],
@@ -13562,6 +13727,7 @@ function _compileLuxuryShotVideoMotionPrompt(scene = {}, contract = {}, { adStyl
     videoContract.camera_motion ? `Camera motion: ${videoContract.camera_motion}.` : 'Camera motion: subtle controlled movement only.',
     videoContract.subject_motion ? `Subject/action motion: ${videoContract.subject_motion}.` : '',
     videoContract.timing ? `Timing: ${videoContract.timing}.` : '',
+    _luxuryMultiCharacterPrompt(scene.multi_character_contract || contract.multi_character_contract || videoContract.multi_character_contract, 'video'),
     `Continuity: ${(videoContract.continuity_constraints || []).join('; ')}.`,
     `Negative: ${(videoContract.negative_constraints || []).join('; ')}.`,
     `Style continuity: ${_luxuryAdStylePrompt(adStyle)}.`,
@@ -13640,6 +13806,7 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
     camera: contract.camera,
     composition: contract.composition,
     lighting: contract.lighting,
+    multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
     ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
     ui_or_vfx: _luxuryStrictText(_luxuryUiOverlayPrompt(scene.ui_overlay), 260),
   };
@@ -13930,6 +14097,7 @@ function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1,
     ...scene,
     strict_storyboard_contract_required: true,
     strict_storyboard_contract: contract,
+    multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
     global_visual_bible: packet.global_visual_bible,
     shot_execution_packet: packet,
     prompt_preflight: preflight,
@@ -13973,6 +14141,7 @@ function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 
     ...scene,
     strict_storyboard_contract_required: false,
     strict_storyboard_contract: contract,
+    multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
     global_visual_bible: packet.global_visual_bible,
     shot_execution_packet: packet,
     prompt_preflight: preflight,
@@ -14150,13 +14319,14 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     '- The frame must feel like real commercial photography in a believable social/workplace scene; avoid AI poster, glossy render, fantasy lighting and generic luxury stock locations.',
     '- Demand references guide actor identity, space, material, mood and quality. They are not a fixed shot count.',
     '- If references show one person or the script is single-person, keep a single same presenter/actor across human shots.',
+    '- If the confirmed script contains multi-person dialogue, multiple roles, or turn-taking interaction, create multi_character_contract with exact count, role table, relationship blocking and QA rule. Do not collapse it into a single presenter.',
     '- Every non-macro shot should look like a live-action commercial storyboard panel: confirmed script subject, confirmed environment and dynamic visible evidence in one coherent frame. Require a human only when the script or references explicitly require one.',
     '- Build must_show from dynamic evidence categories: appearance, interaction, environment, transformation, result, interface, material, relationship or emotion. Do not hard-code the category; choose only what this shot actually needs.',
     '- Build must_not_show as anti-drift rules: no unconfirmed subject, scene, person, prop, UI, readable text, logo, subtitle, watermark or category replacement.',
     '- If UI is required, describe carrier/placement/reason/readable_text_allowed in ui_policy. UI must be attached to a confirmed carrier or safe area; never ask the image model to create readable fake text.',
     '',
     'Return array items with this schema:',
-    '{"index":0,"scene_type":"","allowed_environment":"","subject_evidence":[],"interaction_evidence":[],"must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_policy":{"required":false,"reason":"","carrier":"","readable_text_allowed":false,"placement_rule":""},"ui_overlay":null,"image_prompt":"","topview_prompt":"","qa_contract":""}',
+    '{"index":0,"scene_type":"","allowed_environment":"","subject_evidence":[],"interaction_evidence":[],"multi_character_contract":{"required":false,"expected_count":0,"characters":[{"id":"","role":"","appearance_lock":"","position":"","speaking_role":"","relation":""}],"dialogue_roles":[],"blocking":"","qa_rule":""},"must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_policy":{"required":false,"reason":"","carrier":"","readable_text_allowed":false,"placement_rule":""},"ui_overlay":null,"image_prompt":"","topview_prompt":"","qa_contract":""}',
     '',
     `Confirmed script shots:\n${JSON.stringify(compactScenes, null, 2)}`,
   ].join('\n');
@@ -14322,6 +14492,7 @@ function _compactLuxuryShotMeta(shot = {}) {
     scene_type_lock: shot.scene_type_lock || '',
     environment_lock: shot.environment_lock || '',
     visual_contract: shot.visual_contract || null,
+    multi_character_contract: shot.multi_character_contract || shot.visual_contract?.multi_character_contract || shot.strict_storyboard_contract?.multi_character_contract || null,
     qa_contract: shot.qa_contract || '',
     director_prompt: shot.director_prompt || '',
     product_lock: shot.product_lock || '',
@@ -14398,6 +14569,7 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     scenePrompt ? `Brief context: ${_compactProviderPromptText(scenePrompt, 220)}.` : '',
     `Style: ${_luxuryAdStylePrompt(adStyle)}.`,
     videoContract?.source_keyframe_lock ? 'Source keyframe lock: preserve subject, identity, scene, props, composition and lighting from the approved keyframe.' : '',
+    _luxuryMultiCharacterPrompt(kf.multi_character_contract || videoContract?.multi_character_contract || kf.strict_storyboard_contract?.multi_character_contract, 'video'),
     characterLock?.enabled
       ? 'Preserve the same person from the keyframe; do not change face identity, age impression, hairstyle, body proportions or outfit family.'
       : 'Do not introduce a random new person if the keyframe is product/scene focused.',
@@ -16765,6 +16937,7 @@ function _buildLuxuryImageModelStrictPrompt({
   const positiveAnchor = _luxuryKeyframePositiveAnchor(productSubject || scene.product_subject, scene);
   const sceneRecipe = _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene);
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
+  const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || scene.visual_contract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change only pose, expression, camera angle and scene placement. Do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
@@ -16782,6 +16955,7 @@ function _buildLuxuryImageModelStrictPrompt({
     positiveAnchor,
     sceneRecipe,
     humanAnchor,
+    multiCharacterPrompt,
     generatedPresenterGuidance,
     visual ? `MUST SHOW: ${visual}.` : '',
     action ? `REQUIRED ACTION: ${action}.` : '',
@@ -17729,6 +17903,7 @@ function _buildLuxuryKeyframePrompt({
     : 'Reference rule: no uploaded shot reference is available. Generate the product/service scene directly from the shot contract; keep the same product category across shots.';
   const actorRule = _luxuryKeyframeVisibleSubjectInstruction(visibleSubject, hasAvatar);
   const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
+  const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || visualContract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
   const prompt = [
     _luxurySteelEnvironmentLockPrompt(productSubject || scene.product_subject, scene),
     `SHOT CONTRACT: shot ${shotNo}${total ? ` of ${total}` : ''}. Product subject: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 140)}.`,
@@ -17740,6 +17915,7 @@ function _buildLuxuryKeyframePrompt({
     _luxuryKeyframePositiveAnchor(productSubject || scene.product_subject, scene),
     _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene),
     !personRequired ? _luxuryKeyframeHumanAnchor(scene, hasAvatar) : '',
+    multiCharacterPrompt,
     repairInstruction,
     purpose ? `Story purpose: ${purpose}.` : '',
     visual ? `Must show exactly: ${visual}.` : '',
@@ -19952,6 +20128,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             image_contract: sc.image_contract || null,
             video_motion_prompt: sc.video_motion_prompt || '',
             video_contract: sc.video_contract || null,
+            multi_character_contract: sc.multi_character_contract || sc.strict_storyboard_contract?.multi_character_contract || null,
             strict_storyboard_contract: sc.strict_storyboard_contract || null,
             prompt_preflight: sc.prompt_preflight || null,
             fusion_model: 'none_reference_locked',
