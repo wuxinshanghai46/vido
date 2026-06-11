@@ -1306,9 +1306,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'The attached image is one generated actor reference photo.',
     'Return ONLY compact JSON, no markdown.',
     'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","single_person":boolean,"realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
-    'Pass only if it is a realistic live-action casting/reference photo of exactly one adult person and the lower body is visibly included.',
-    'The acceptable frame is full body, knee-up, or at minimum thigh-up where trousers/skirt are clearly visible below the belt/hips. Pants/trousers/skirt must be visible. Belt/waistline alone is not enough.',
-    'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no pants/trousers/skirt are visible.',
+    'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
+    'The acceptable frame is full body, knee-up, or at minimum thigh-up where lower-body clothing is clearly visible below the waist/hips. For infants/toddlers, a full-body seated, standing, held-safe, or supported pose is acceptable when legs/onesie/diaper/lower garment are visible.',
+    'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no lower-body clothing/legs are visible.',
     'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, or more than one person.',
     `View being checked: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
   ].join(' ');
@@ -2329,15 +2329,15 @@ function _luxuryIsMacroDetailShot(scene = {}) {
 
 function _luxuryMaterialStoryHumanVisual({ visual = '', productSubject = '主商品', role = '', index = 0, total = 6 } = {}) {
   const base = String(visual || '').replace(/\s+/g, ' ').trim();
-  if (/真人|人物|设计师|顾问|客户|业主|店长|经理|讲解者|导购|演员|person|human|designer|consultant|customer|client|manager/i.test(base)) return base;
+  if (/真人|人物|角色|演员|主体|用户|person|human|actor|character|user/i.test(base)) return base;
   if (!_luxuryRoleNeedsStoryHuman(role, index, total)) return base;
   const subject = String(productSubject || '主商品').trim() || '主商品';
   const scenes = [
-    `一位真实空间设计师站在高端展厅入口或建筑外立面前，身旁能看到${subject}的完整应用场景，画面同时包含人物、空间和材料主体`,
-    `一位品牌顾问带客户走近${subject}的展墙或建筑应用面，人物在画面一侧，产品和空间占据主体区域`,
-    `真实客户在展厅中停下观察${subject}，空间灯光扫过材料表面，人物反应和产品质感同框`,
-    `设计师在${subject}旁边讲解纹理、边缘和安装效果，手势靠近材料但不遮挡主体`,
-    `人物从空间动线中经过，镜头把视线从人物引向${subject}的完整应用场景`,
+    `一位剧情角色出现在已确认的真实场景里，身旁能看到${subject}的可见证据，画面同时包含人物、环境和主体关系`,
+    `剧情角色靠近${subject}的使用或展示证据，人物在画面一侧，主体证据和场景关系清楚`,
+    `真实用户角色停下观察或体验${subject}，人物反应和主体价值在同一画面成立`,
+    `剧情角色在${subject}旁边说明或体验关键变化，手势靠近证据但不遮挡主体`,
+    `人物从已确认场景动线中经过，镜头把视线从人物引向${subject}的真实业务证据`,
   ];
   const lead = scenes[Math.max(0, index) % scenes.length];
   return [lead, base].filter(Boolean).join('；').slice(0, 220);
@@ -2345,27 +2345,27 @@ function _luxuryMaterialStoryHumanVisual({ visual = '', productSubject = '主商
 
 function _luxuryMaterialStoryHumanAction({ action = '', productSubject = '主商品', role = '', index = 0, total = 6 } = {}) {
   const base = String(action || '').replace(/\s+/g, ' ').trim();
-  if (/真人|人物|设计师|顾问|客户|业主|店长|经理|讲解者|导购|演员|手势|指向|触摸|person|human|designer|consultant|customer|client|manager|gesture|point|touch/i.test(base)) return base;
+  if (/真人|人物|角色|演员|主体|用户|手势|指向|触摸|person|human|actor|character|user|gesture|point|touch/i.test(base)) return base;
   if (!_luxuryRoleNeedsStoryHuman(role, index, total)) return base;
   const actions = [
-    '人物从展厅或入口动线走入画面，先看向空间，再把视线带到材料主体。',
-    '人物停在材料旁边，用克制手势示意纹理和应用位置，产品保持画面主体。',
-    '客户靠近观察材料表面，表情从疑惑转为好奇，镜头保留完整空间关系。',
-    '设计师侧身让出产品主体，用手势引导观众看边缘、反光和安装细节。',
-    '人物与空间自然互动，镜头从人物反应过渡到产品应用场景。',
+    '人物从已确认场景中走入画面，先看向问题或需求，再把视线带到主体证据。',
+    '人物停在主体证据旁边，用克制手势示意关键使用或展示位置。',
+    '用户角色靠近观察或体验主体，表情从疑惑转为理解，镜头保留完整场景关系。',
+    '人物侧身让出主体证据，用手势引导观众看当前业务真正需要看见的细节。',
+    '人物与场景自然互动，镜头从人物反应过渡到主体使用或结果证据。',
   ];
   return [actions[Math.max(0, index) % actions.length], base].filter(Boolean).join(' ').slice(0, 220);
 }
 
-function _luxuryPrimaryStoryCharacter(characters = [], fallbackName = '空间设计师') {
+function _luxuryPrimaryStoryCharacter(characters = [], fallbackName = '角色A') {
   const list = (Array.isArray(characters) ? characters : [])
     .map(c => (c && typeof c === 'object') ? c : null)
     .filter(Boolean);
   const first = list[0] || {};
   const name = String(first.name || first.character_name || first.cn_name || first.nickname || '').replace(/\s+/g, ' ').trim() || fallbackName;
-  const role = String(first.role || first.identity || first.job || first.position || '空间设计师').replace(/\s+/g, ' ').trim();
-  const outfit = String(first.outfit || first.clothing || '浅色衬衫或克制商务装').replace(/\s+/g, ' ').trim();
-  const prop = String(first.hand_prop || first.prop || first.props || '样板册、平板或材料样板').replace(/\s+/g, ' ').trim();
+  const role = String(first.role || first.identity || first.job || first.position || '剧情核心角色').replace(/\s+/g, ' ').trim();
+  const outfit = String(first.outfit || first.clothing || '按年龄、行业和场景匹配的真实服装').replace(/\s+/g, ' ').trim();
+  const prop = String(first.hand_prop || first.prop || first.props || '已确认的产品/服务证据或自然手部动作').replace(/\s+/g, ' ').trim();
   return { name, role, outfit, prop };
 }
 
@@ -2375,15 +2375,15 @@ function _luxuryStoryFirstHumanVisual({ visual = '', productSubject = '主商品
   const c = _luxuryPrimaryStoryCharacter(characters);
   const beat = _luxuryRoleAt(index, total, role);
   const templates = {
-    hook: `${c.name}作为${c.role}站在高端展厅或设计会客区里，手里拿着${c.prop}，先面对真实客户问题，身后能看见${subject}的应用墙面或样板区`,
-    display: `${c.name}带观众走入明亮的高端展厅，人物、空间动线和${subject}应用区同框，背景有真实陈设、灯光和材料样板`,
-    product_reveal: `${c.name}走到${subject}应用墙前停下，用手势把视线引向材料表面和安装关系，人物半身与产品证据清楚同框`,
-    benefit: `${c.name}在真实空间里边走边讲解${subject}如何改变空间质感，画面同时包含人物表情、空间背景和材料应用`,
-    proof: `${c.name}靠近${subject}展示边缘、反光或工艺细节，镜头保留人物手部、材料细节和展厅环境，而不是单独产品特写`,
-    cta: `${c.name}回到洽谈桌或展厅入口，和${subject}应用场景一起完成收束，人物表情放松可信，空间像真实商业广告场景`,
+    hook: `${c.name}作为${c.role}出现在已确认的真实场景里，先面对当前需求或问题，身旁能看见${subject}的业务证据`,
+    display: `${c.name}在已确认场景中推进剧情，人物、环境动线和${subject}证据同框，背景细节来自 brief 或素材`,
+    product_reveal: `${c.name}靠近${subject}相关证据停下，用动作把视线引向主体价值，人物与证据清楚同框`,
+    benefit: `${c.name}在真实场景里体验、操作或回应${subject}带来的变化，画面同时包含人物表情、环境和主体证据`,
+    proof: `${c.name}靠近${subject}展示当前业务需要证明的细节，镜头保留人物手部、证据和真实环境，而不是单独图库特写`,
+    cta: `${c.name}回到稳定构图，和${subject}的使用或结果证据一起完成收束，人物表情自然可信`,
   };
   const lead = templates[beat] || templates.benefit;
-  if (/真人|人物|设计师|顾问|客户|业主|店长|经理|讲解者|导购|演员|person|human|designer|consultant|customer|client|manager/i.test(base)) {
+  if (/真人|人物|角色|演员|主体|用户|person|human|actor|character|user/i.test(base)) {
     return `${lead}；${base}`.slice(0, 260);
   }
   return `${lead}；${base}`.slice(0, 260);
@@ -2395,12 +2395,12 @@ function _luxuryStoryFirstHumanAction({ action = '', productSubject = '主商品
   const c = _luxuryPrimaryStoryCharacter(characters);
   const beat = _luxuryRoleAt(index, total, role);
   const templates = {
-    hook: `${c.name}先看向客户问题或现场细节，眉头轻皱，然后抬手把观众视线引向${subject}应用区。`,
-    display: `${c.name}从空间入口自然走入，脚步放慢，手持${c.prop}边走边示意展厅里的材料应用。`,
-    product_reveal: `${c.name}停在${subject}旁边，侧身让出产品主体，用手势指向表面、边缘和安装位置。`,
-    benefit: `${c.name}边讲边带观众从远景走近材料，表情从解释转为笃定，让解决方案变得具体。`,
-    proof: `${c.name}用手靠近但不遮挡材质细节，镜头跟随手势从人物反应移动到可见证据。`,
-    cta: `${c.name}回到稳定构图，面向镜头或客户自然收束，动作落到预约咨询或方案确认。`,
+    hook: `${c.name}先看向当前问题或现场细节，然后用自然动作把观众视线引向${subject}证据。`,
+    display: `${c.name}从已确认场景中自然进入或转身，动作放慢，用${c.prop}或手势说明主体关系。`,
+    product_reveal: `${c.name}停在${subject}证据旁边，侧身让出主体，用手势指向关键变化或使用位置。`,
+    benefit: `${c.name}边体验边把变化讲清楚，表情从疑惑或期待转为理解，让解决方案变得具体。`,
+    proof: `${c.name}用手靠近但不遮挡关键证据，镜头跟随手势从人物反应移动到可见结果。`,
+    cta: `${c.name}回到稳定构图，面向镜头或目标对象自然收束，动作落到确认、推荐或行动意图。`,
   };
   const lead = templates[beat] || templates.benefit;
   return [lead, base && !/主商品在|主体在克制光线|光线从产品|镜头贴近边缘/.test(base) ? base : '']
@@ -2915,7 +2915,7 @@ function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = 'male',
     'STRICT LIVE-ACTION CASTING PHOTO for a premium commercial storyboard.',
     'This image becomes the mandatory actor identity reference for every later keyframe that contains a human. Create one stable reusable campaign actor, not a poster model and not a digital avatar.',
     `Industry context: ${contract.industry}.`,
-    `Create one real adult East Asian ${gender} presenter / consultant / professional appropriate for this industry, waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the industry and brand tone.`,
+    `Create one real East Asian ${gender} campaign person appropriate for this industry and the confirmed brief; if the brief is for baby, child, teen, parent-child, maternity or family advertising, use an age-appropriate person instead of forcing an adult presenter. Waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the age, industry and brand tone.`,
     'Stable identity requirements: clear face impression, consistent age, hairstyle, skin tone, body proportions, outfit family and color palette. Use ordinary professional styling that can plausibly appear in every scene.',
     'Photographic realism requirements: real commercial casting photo, natural skin pores and slight facial asymmetry, realistic hair strands, normal hands, practical soft location light, optical 50mm/85mm lens feel.',
     'Forbidden style drift: no cyberpunk, no sci-fi goggles, no sunglasses, no tinted glasses, no mask, no hat covering hair, no profile-only face, no cropped/hidden face, no plastic AI skin, no CGI, no 3D render, no illustration, no glamour fashion poster, no jewelry/cosmetics boutique styling, no text, no logo, no extra people.',
@@ -2929,8 +2929,8 @@ function _luxuryPresenterSeedRetryPrompt({ productSubject = '', guideGender = 'm
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes });
   return [
     'SECOND ATTEMPT: create a plain, real, identity-lockable commercial actor reference.',
-    `One adult ${gender} presenter only. Front-facing clear face, both eyes fully visible, no sunglasses, no glasses tint, no mask, no hat, no hair covering eyes, no profile angle, no cropped face.`,
-    'The person must look like a real live-action commercial actor photographed by a camera: natural skin pores, normal facial asymmetry, realistic hair, ordinary professional wardrobe, calm natural expression.',
+    `One ${gender} campaign person only, matching the confirmed brief age. Front-facing clear face, both eyes fully visible, no sunglasses, no glasses tint, no mask, no hat, no hair covering eyes, no profile angle, no cropped face.`,
+    'The person must look like a real live-action commercial person photographed by a camera: natural skin pores, normal facial asymmetry, realistic hair, age-appropriate wardrobe, calm natural expression.',
     'Avoid fashion poster styling, beauty campaign glamour, plastic AI skin, CGI render, mannequin, wax figure, editorial pose, dramatic lighting, luxury boutique background, jewelry/cosmetics shelf, generated text, logo or watermark.',
     `Industry context: ${contract.industry}. Use a simple neutral workplace or soft commercial background appropriate for ${contract.scene}.`,
     productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}. This is a presenter identity seed, not a product-only image.` : '',
@@ -3022,9 +3022,9 @@ async function _checkLuxuryPresenterSeedQuality(req, {
     'Image 1 is a generated presenter identity seed. It will be used as the mandatory identity reference for all later human keyframes.',
     'Return ONLY compact JSON, no markdown.',
     'Schema: {"pass":boolean,"score":0-100,"realism":0-100,"face_visible":boolean,"identity_lockable":boolean,"industry_fit":boolean,"major_issues":[],"reason":"brief reason"}',
-    'Pass only if this looks like a real adult human commercial actor captured by a real camera, not CGI, not a digital avatar, not a plastic AI face, not a fashion poster, and not a cropped/hidden-face image.',
+    'Pass only if this looks like a real live-action commercial person matching the confirmed brief age, captured by a real camera, not CGI, not a digital avatar, not a plastic AI face, not a fashion poster, and not a cropped/hidden-face image.',
     'The face must be clear enough to lock identity later: visible eyes, hairstyle, age impression, skin tone and outfit family.',
-    'Hard fail if there are multiple people, sunglasses/mask/hat hiding identity, unreadable face, child, celebrity lookalike, mannequin, waxy skin, illustration, watermark, text, logo, or unrelated product-only image.',
+    'Hard fail if there are multiple people, sunglasses/mask/hat hiding identity, unreadable face, wrong age group, celebrity lookalike, mannequin, waxy skin, illustration, watermark, text, logo, or unrelated product-only image.',
     guideGender ? `Requested presenter gender/style hint: ${String(guideGender).slice(0, 80)}.` : '',
     productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}.` : '',
     sceneHint ? `Storyboard context: ${sceneHint}` : '',
@@ -4720,11 +4720,11 @@ function _buildStage1Prompt({ gender, userEnPrompt, framing, aspectRatio = '9:16
 
 function _buildPrompt({ style, gender, description, sceneDescription = '', action, userEnPrompt, framing, hasBgRef = false }) {
   const s = STYLE_PROMPTS[style] || STYLE_PROMPTS.free;
-  const g = gender === 'male' ? 'ordinary real young man' : gender === 'female' ? 'ordinary real young woman' : 'real person';
+  const g = gender === 'male' ? 'ordinary real male person' : gender === 'female' ? 'ordinary real female person' : 'real person';
   const genderLock = gender === 'female'
-    ? 'FEMALE WOMAN ONLY, unmistakably adult female, no male, no masculine facial features, no beard.'
+    ? 'FEMALE PERSON ONLY, no male, no masculine facial features, no beard.'
     : gender === 'male'
-      ? 'MALE MAN ONLY, unmistakably adult male, no female, no feminine facial features.'
+      ? 'MALE PERSON ONLY, no female, no feminine facial features.'
       : '';
   const userClause = (userEnPrompt && userEnPrompt.trim())
     ? userEnPrompt.trim()
@@ -4739,8 +4739,8 @@ function _buildPrompt({ style, gender, description, sceneDescription = '', actio
     'This is a reusable digital-human identity photo, not an advertising poster.',
     'The person must be the only subject; keep background plain and secondary.',
       'No signs, no poster text, no brand slogans, no wall text, no product showroom, no display shelves, no advertisement layout.',
-      'Natural adult face, realistic skin pores, ordinary human proportions, no doll-like or cartoon facial features.',
-      'Avoid over-beautified influencer look; keep a normal adult presenter identity.',
+      'Natural age-appropriate face, realistic skin pores, ordinary human proportions, no doll-like or cartoon facial features.',
+      'Avoid over-beautified influencer look; keep a normal reusable digital-human identity.',
   ].join(' ');
 
   // 剥掉 style 模板里旧的构图硬编码（让 framing chip 说了算）
@@ -4783,14 +4783,14 @@ function _buildPrompt({ style, gender, description, sceneDescription = '', actio
 }
 
 function _buildIntegratedBackgroundPrompt({ gender, userEnPrompt, framing, action }) {
-  const g = gender === 'male' ? 'adult male digital-human presenter'
-    : gender === 'female' ? 'adult female digital-human presenter'
-      : 'adult digital-human presenter';
+  const g = gender === 'male' ? 'male digital-human person'
+    : gender === 'female' ? 'female digital-human person'
+      : 'digital-human person selected from the description';
   const genderLock = gender === 'female'
-    ? 'Gender lock: FEMALE WOMAN ONLY. The presenter must read unmistakably as an adult woman; no male presenter, no masculine face, no beard, no short masculine haircut.'
+    ? 'Gender lock: FEMALE PERSON ONLY. No male presenter, no masculine face, no beard, no short masculine haircut unless explicitly requested.'
     : gender === 'male'
-      ? 'Gender lock: MALE MAN ONLY. The presenter must read unmistakably as an adult man; no female presenter, no feminine face, no long feminine hairstyle.'
-      : 'Gender: adult presenter, realistic and unambiguous.';
+      ? 'Gender lock: MALE PERSON ONLY. No female presenter, no feminine face, no long feminine hairstyle unless explicitly requested.'
+      : 'Gender: realistic person selected from the description.';
   const fr = framing === 'full_body'
     ? [
       'Full-body presenter integrated naturally into the uploaded background scene.',
@@ -5844,7 +5844,7 @@ async function _generateProductIntegratedAvatarImage(req, avatar, product) {
   let stepBImageUrl;
   try {
     const instantPrompt = `photorealistic portrait, holding ${productName}, natural skin, sharp focus, identity preserved`;
-    const negPrompt = 'low quality, distorted, plastic skin, cartoon, blurry, deformed, multiple faces, child';
+    const negPrompt = 'low quality, distorted, plastic skin, cartoon, blurry, deformed, multiple faces, wrong age group, age drift';
     stepBImageUrl = await _runInstantIDForProduct({
       apiKey: replicateKey,
       refFaceUrl: personUrl,
@@ -7978,7 +7978,7 @@ router.post('/images/generate', async (req, res) => {
             console.warn('[DH/images] 背景一体生成视觉自检：判定非全身 → 重 try 一次');
             const retryPrompt = [
               'Use the uploaded background as the exact commercial interior scene.',
-              'Generate one single adult presenter directly inside the scene with matching shadows and light.',
+              'Generate one single age-appropriate digital-human person directly inside the scene with matching shadows and light.',
               'EXTREME WIDE FULL-BODY STANDING SHOT: head, torso, arms, legs, ankles, shoes and both feet must all be visible.',
               'The presenter must be smaller in frame, standing on the visible floor plane, not sitting, not cropped.',
               'No half body, no waist-up, no portrait crop, no chair sitting, no pasted cutout edges.',
@@ -9027,25 +9027,14 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
   const names = ['开场分镜', '第二场景', '细节分镜', '场景转折', '卖点分镜', '使用演示', '信任证明', '对比强化', '优惠呈现', '收尾分镜', '补充分镜', '片尾分镜'];
   const roles = ['hook', 'display', 'macro', 'benefit', 'proof', 'benefit', 'proof', 'display', 'benefit', 'cta', 'display', 'cta'];
   const shotSizes = ['微观全景 / 固定镜头', '中远景 / 缓慢前进', '极近景 / 微距平移', '中景 / 场景切换', '特写 / 轻微环绕', '中景 / 使用演示', '近景 / 证明细节', '中远景 / 对比切换', '特写 / 优惠呈现', '品牌收尾 / 固定镜头', '中景 / 补充说明', '片尾 / 稳定停留'];
-  const isMaterial = /钢|金属|板材|建材|材料|材质|墙|石材|木饰面|岩板|瓷砖/i.test(productName);
   const continuousHuman = _luxuryNeedsContinuousHuman(source, assetSummary, productName);
   const visualByRole = {
-    hook: isMaterial
-      ? `纯净深色背景或高端空间中，${productName}被一束侧光缓慢带出，表面纹理先被看见，再过渡到下一镜头。`
-      : `干净背景中，${productName}以克制光线缓慢出现，先建立品牌第一印象，再过渡到完整展示。`,
-    display: isMaterial
-      ? `中远景缓慢推进到${productName}完整应用画面，顶部灯光扫过表面，建立空间高级感和产品第一印象。`
-      : `中远景缓慢推进到${productName}完整形态，主体位于画面中心，环境只服务于产品识别。`,
-    macro: isMaterial
-      ? `极近景贴近材质表面横向平移，纹理、边缘、反光和工艺细节被逐层放大。`
-      : `极近景贴近产品细节和关键结构，光线沿边缘移动，强调质感、做工和核心卖点。`,
-    benefit: isMaterial
-      ? `切入真实会所、展厅或设计空间，${productName}作为空间视觉中心，与灯光、墙面和陈设自然融合。`
-      : `切入真实使用场景，${productName}解决需求的瞬间被看见，画面保持高级、真实和克制。`,
-    proof: isMaterial
-      ? `轻微环绕或移焦强调核心卖点，让观众看到材质差异、定制质感和经得起近看的细节。`
-      : `用特写或轻微环绕强化一个可记忆卖点，让观众看见选择它的理由。`,
-    cta: `固定收尾镜头留出字幕和行动引导空间，${productName}与品牌记忆点清晰停留。`,
+    hook: `已确认的真实场景中，${productName}相关的问题或期待被清楚建立，画面不替换行业和主体。`,
+    display: `${productName}以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。`,
+    macro: `靠近${productName}的关键证据或使用细节，只放大当前业务真正需要看见的内容。`,
+    benefit: `真实使用或互动场景中，${productName}带来的变化被人物动作、结果或对比自然说明。`,
+    proof: `通过一个已确认的证据点证明${productName}的价值，不新增无关道具、场地或 UI。`,
+    cta: `${productName}与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。`,
   };
   return Array.from({ length: total }, (_, i) => {
     const role = roles[i] || (i === total - 1 ? 'cta' : 'benefit');
@@ -9058,9 +9047,9 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
     const sfxAudio = _fallbackLuxuryAdAudio({ role });
     const camera = i === 0 ? 'slow_push_in' : i === 2 ? 'macro_push' : i === total - 1 ? 'hold' : 'smooth_slide';
     const transition = i === 0 ? '溶化转场进入下一镜' : (i === total - 1 ? '固定停留收束品牌记忆' : '顺接下一镜');
-    const lightingStyle = isMaterial ? '侧逆光强化纹理和反光' : '柔和商业光突出主体识别';
+    const lightingStyle = '真实商业光线，匹配已确认行业场景和主体证据';
     const materialUsage = i === 0 ? '@主商品' : `@主商品 + @参考${i + 1}`;
-    const styleNote = `风格：${isMaterial ? '商业材料广告，高级、克制、重视光影和材质' : '品牌产品广告，高级、真实、重视主体识别'}；光线：${lightingStyle}；转场：${transition}。`;
+    const styleNote = `风格：真实商业剧情广告，按用户需求和素材确认行业；光线：${lightingStyle}；转场：${transition}。`;
     return {
       index: i,
       title: names[i] || _luxurySceneStageName(role, i, total),
@@ -9071,7 +9060,7 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
       objective: [
       `建立${productName}的第一场景和第一印象`,
       `切到第二场景，让主商品或服务关系更清楚`,
-      '展示材质、工艺和细节',
+      '展示当前业务真正需要看见的关键证据或细节',
       '进入真实场景或转折，说明使用关系',
       '强化一个可记忆卖点或可信理由',
       '收束品牌记忆点和行动引导',
@@ -9099,14 +9088,14 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
       visual,
       display_visual: visual,
       visual_prompt: [
-      'Premium product advertising keyframe, exact uploaded product as the hero subject.',
-      'Use uploaded product/reference images as visual anchors; no text overlay; no watermark.',
-      i === 0 ? 'Elegant opening atmosphere, product centered or revealed with controlled lighting.' : '',
-      i === 2 ? 'Macro texture/detail close-up, premium material and craft emphasis.' : '',
-      i === total - 1 ? 'Clean end-card composition with negative space for subtitles and call to action.' : '',
+      'Premium live-action advertising keyframe, preserve the confirmed advertised subject and business category.',
+      'Use uploaded product/reference images as role-specific visual anchors; no text overlay; no watermark.',
+      i === 0 ? 'Opening atmosphere from the confirmed brief, subject evidence readable without replacing the industry.' : '',
+      i === 2 ? 'Close detail or use-evidence shot based only on the confirmed subject, service or story need.' : '',
+      i === total - 1 ? 'Clean closing composition with negative space for subtitles and call to action.' : '',
       ].filter(Boolean).join(' '),
       video_prompt: [
-      'Image-to-video commercial shot, preserve product identity and reference composition.',
+      'Image-to-video commercial shot, preserve confirmed subject identity, people, scene and reference composition.',
       i === 0 ? 'Slow push-in reveal.' : i === total - 1 ? 'Elegant slow hold and settle.' : 'Subtle camera slide or focus shift.',
       'No morphing, no scene replacement, no extra people unless a person reference is selected.',
       ].join(' '),
@@ -9115,7 +9104,7 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
       reference_index: i + 1,
       reference_label: `@参考${i + 1}`,
       reference_mentions: ['@主商品', `@参考${i + 1}`],
-      topview_prompt: `使用 @主商品 和 @参考${i + 1} 生成这一镜头：${visual} 镜头运动：${_luxuryCameraLabel(camera)}。保持主商品身份、材质和构图稳定，不生成画面文字。`,
+      topview_prompt: `使用 @主商品 和 @参考${i + 1} 生成这一镜头：${visual} 镜头运动：${_luxuryCameraLabel(camera)}。保持已确认主体、场景证据和构图稳定，不生成画面文字。`,
       tone: 'premium',
       expression: 'calm',
       motion: 'premium product camera movement',
@@ -9543,11 +9532,11 @@ function _luxuryKeyframeHumanAnchor(scene = {}, hasAvatar = false) {
   return [
     'REQUIRED HUMAN ANCHOR:',
     hasAvatar
-      ? 'This shot requires the selected human identity to be visible as the presenter.'
-      : 'This shot requires exactly one realistic adult presenter to be visible; generate an anonymous professional presenter if no identity reference is uploaded.',
+      ? 'This shot requires the selected human identity to be visible as the confirmed campaign person.'
+      : 'This shot requires exactly one realistic campaign person to be visible, matching the confirmed age/person contract; generate an anonymous age-appropriate person if no identity reference is uploaded.',
     'The person must be part of the actual scene, not a sticker or cutout, and must perform the confirmed storyboard action.',
     'Do not return a subject-only, template-location-only or empty scene when the storyboard action asks for a live person.',
-    '中文硬约束：如果动作/画面要求真人入场、讲解、指向或触摸主体证据，画面必须出现一个真实成年人，不能只有主体空镜或默认场景。',
+    '中文硬约束：如果动作/画面要求真人、儿童、婴幼儿或其他人物出镜，画面必须出现符合人物年龄合同的真实人物，不能只有主体空镜或默认场景。',
   ].join(' ');
 }
 
@@ -9919,52 +9908,52 @@ function _luxuryHumanGuideBeat(index = 0, total = 10, productSubject = '主商�
   const name = String(productSubject || '主商品').trim() || '主商品';
   if (i <= 0) {
     return {
-      visual: `同一位真人讲解者从外部入口走入画面，带观众进入${name}的真实场景`,
-      action: '讲解者从画面边缘入场，先看向镜头，再转身引导观众往里走',
-      copy: '先跟着他，从入口看第一眼',
+      visual: `同一位剧情角色出现在已确认的真实场景里，带观众进入${name}相关的需求情境`,
+      action: '角色从画面边缘或场景关键位置进入，先看向镜头或问题点，再引导观众看向主体证据',
+      copy: '先跟着角色，看见真实需求',
     };
   }
   if (i === 1) {
     return {
-      visual: `同一位真人讲解者带观众走进展厅或应用空间，${name}开始进入视线`,
-      action: '讲解者边走边示意空间动线，把观众视线带到主体位置',
-      copy: '走进来，才看得见空间质感',
+      visual: `同一位剧情角色在已确认场景中继续推进，${name}开始以真实证据进入视线`,
+      action: '角色边移动或转身边示意关键位置，把观众视线带到主体证据',
+      copy: '进入场景，变化才看得清',
     };
   }
   if (i >= last) {
     return {
-      visual: `同一位真人讲解者坐下或站在咨询区收束，身后保留${name}和服务场景`,
-      action: '讲解者停在可坐下沟通的位置，面向镜头完成方案、性价比和售后说明',
-      copy: '最后坐下来，把方案讲清楚',
+      visual: `同一位剧情角色在已确认的收束场景中完成选择或行动，画面保留${name}的结果证据`,
+      action: '角色停在稳定构图中，面向镜头或目标对象完成确认、推荐或行动收束',
+      copy: '最后，把选择理由讲清楚',
     };
   }
   if (i >= last - 1) {
     return {
-      visual: `同一位真人讲解者回到完整空间中，把${name}的优势和服务承接起来`,
-      action: '讲解者回头确认观众视线，手势从材料细节带回整体空间',
-      copy: '从材料到服务，都要看得明白',
+      visual: `同一位剧情角色回到完整场景关系中，把${name}的价值和结果承接起来`,
+      action: '角色回头确认观众视线，手势从关键证据带回整体结果',
+      copy: '从体验到结果，都要看得明白',
     };
   }
   const beats = [
     {
-      visual: `同一位真人讲解者停在${name}旁边，近距离介绍纹理、边缘和工艺细节`,
-      action: '讲解者用手指向关键细节，镜头跟随手部移动到材质表面',
-      copy: '每一道纹理，都经得起近看',
+      visual: `同一位剧情角色停在${name}相关证据旁边，近距离说明当前业务真正需要看见的细节`,
+      action: '角色用手指向关键证据，镜头跟随手部移动到主体细节或结果位置',
+      copy: '关键细节，要经得起近看',
     },
     {
-      visual: `同一位真人讲解者带观众切换到应用空间，展示${name}落地后的整体效果`,
-      action: '讲解者侧身让出主体画面，再引导镜头看完整空间关系',
-      copy: '放进空间里，质感才完整',
+      visual: `同一位剧情角色带观众切换到已确认使用场景，展示${name}带来的整体变化`,
+      action: '角色侧身让出主体画面，再引导镜头看完整业务关系',
+      copy: '放进真实场景，价值才完整',
     },
     {
-      visual: `同一位真人讲解者拿起或靠近${name}样板，说明选择理由和品质差异`,
-      action: '讲解者轻触样板边缘，镜头从人物手势推到材料细节',
+      visual: `同一位剧情角色拿起、靠近或操作已确认的${name}证据，说明选择理由和差异`,
+      action: '角色轻触、展示或操作主体证据，镜头从人物手势推到关键结果',
       copy: '选择之前，先看清差异',
     },
     {
-      visual: `同一位真人讲解者在展厅中继续带看，串联${name}、设计和交付服务`,
-      action: '讲解者沿动线前行，边指引边把镜头带到下一处证据点',
-      copy: '看完产品，还要看交付能力',
+      visual: `同一位剧情角色在已确认场景中继续推进，串联${name}、使用过程和结果证据`,
+      action: '角色沿场景动线前行，边指引边把镜头带到下一处证据点',
+      copy: '看完主体，还要看真实结果',
     },
   ];
   return beats[(i - 2) % beats.length];
@@ -10110,9 +10099,6 @@ function _normalizeLuxurySceneStage(value = '', role = '', index = 0, total = 5)
 function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品', index = null, total = 0, brief = '', cta = '', continuousHuman = false } = {}) {
   const name = String(productSubject || '主商品').replace(/\s+/g, '').slice(0, 12) || '主商品';
   const storyText = [brief, productSubject].filter(Boolean).join(' ');
-  const isMaterial = /钢|金属|板材|建材|材料|材质|墙|石材|木饰面|岩板|瓷砖/i.test(storyText);
-  const isStoreOps = /点餐|门店|餐饮|订单|库存|收银|外卖|堂食|营业|高峰/i.test(storyText);
-  const isRobot = /机器人|AI|人工智能|智能|未来|助理|科技/i.test(storyText);
   const roleIndex = {
     hook: 0,
     display: 1,
@@ -10122,42 +10108,8 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
     cta: 9,
   }[_luxuryRoleAt(0, 1, role)] ?? 1;
   const idx = Number.isFinite(Number(index)) ? Math.max(0, Math.round(Number(index))) : roleIndex;
-  const materialLines = [
-    '好材料，先经得起第一眼审视',
-    '从展厅入口，纹理和光泽被看见',
-    '每一道边缘，都说明工艺标准',
-    '放进真实空间，质感成为中心',
-    '光线掠过表面，层次更清楚',
-    '走近触摸，细节经得起近看',
-    '从设计到交付，稳定才是信任',
-    '不同场景，也保持同样质感',
-    cta || '现在咨询，获取专属方案',
-    '让空间从材料开始高级起来',
-  ];
-  const robotLines = [
-    '琐事堆满一天，时间被慢慢挤走',
-    '你需要一个真正懂生活的帮手',
-    '全新一代AI助理，开始接管节奏',
-    '灯光、日程和提醒，被自动整理',
-    '重要安排，一眼就能看清',
-    '它学会你的习惯，提前做好准备',
-    '终于把时间，留给真正重要的人',
-    '告别混乱，生活重新有序',
-    cta || '现在体验，开启智能生活',
-    '让未来，从今天住进家里',
-  ];
-  const storeOpsLines = [
-    '高峰刚开始，订单已经排起队',
-    '电话和线上订单，不再各忙各的',
-    `${name}把每张订单整理清楚`,
-    '库存状态同步，前台不用反复确认',
-    '后厨按顺序出单，节奏稳下来',
-    '错单少一点，顾客等待也少一点',
-    '忙的时候，也能看清每一步',
-    '营业高峰结束，门店终于松一口气',
-    cta || '现在接入，让高峰营业更从容',
-    '让每一次接单，都更稳更清楚',
-  ];
+  // 中文说明：兜底文案只保留剧情功能位，不能按材料、门店、机器人等行业写死。
+  // 真正的行业、场景、人物和证据必须来自用户需求、素材、剧本或人工编辑。
   const genericLines = [
     '问题出现时，需求才真正清楚',
     `${name}进入画面，答案开始具体`,
@@ -10171,33 +10123,21 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
     '把更好的方案，带到现场',
   ];
   if (continuousHuman || _luxuryNeedsContinuousHuman(storyText)) {
-    const humanLines = isMaterial ? [
-      '先跟着他，从入口看第一眼',
-      '他带你走进展厅，看材料落地',
-      '走近一点，纹理才真正清楚',
-      '他把样板放进空间里对比',
-      '边缘、反光和触感都要看清',
-      '从设计到交付，他继续讲明白',
-      '看完材质，也看服务承接',
-      '不同空间里，质感保持一致',
-      '从材料到服务，都要看明白',
-      '最后坐下来，聊性价比和售后',
-    ] : [
-      '先跟着他，从真实场景进入',
-      '他带你看见问题和需要',
+    const humanLines = [
+      '先跟着角色，从真实场景进入',
+      '角色带你看见问题和需要',
       `${name}出现后，答案开始具体`,
-      '他边体验边把变化讲清楚',
+      '角色边体验边把变化讲清楚',
       '细节放近看，理由更可信',
       '换到真实场景，优势更自然',
-      '他继续带看，证明选择价值',
+      '角色继续演示，证明选择价值',
       '对比之后，判断变得简单',
       '从体验到服务，都要讲明白',
-      '最后坐下来，把方案讲清楚',
+      '最后把选择理由讲清楚',
     ];
     return humanLines[Math.min(idx, humanLines.length - 1)] || humanLines[humanLines.length - 1];
   }
-  const lines = isStoreOps ? storeOpsLines : (isRobot ? robotLines : (isMaterial ? materialLines : genericLines));
-  return lines[Math.min(idx, lines.length - 1)] || lines[lines.length - 1];
+  return genericLines[Math.min(idx, genericLines.length - 1)] || genericLines[genericLines.length - 1];
 }
 
 function _isWeakLuxuryAdLine(value = '', productSubject = '') {
@@ -10217,21 +10157,13 @@ function _fallbackLuxuryAdCopy(opts = {}) {
 
 function _fallbackLuxuryAdVisual({ role = '', productSubject = '主商品' } = {}) {
   const name = String(productSubject || '主商品').trim() || '主商品';
-  const isMaterial = /钢|金属|板材|建材|材料|材质|墙|石材|木饰面|岩板|瓷砖/i.test(name);
-  const visual = isMaterial ? {
-    hook: `纯净深色背景或高端空间中，${name}被一束侧光缓慢带出，表面纹理先被看见，再过渡到下一镜头。`,
-    display: `中远景缓慢推进到${name}完整应用画面，顶部灯光扫过表面，建立空间高级感和产品第一印象。`,
-    macro: '极近景贴近材质表面横向平移，纹理、边缘、反光和工艺细节被逐层放大。',
-    benefit: `切入真实会所、展厅或设计空间，${name}作为空间视觉中心，与灯光、墙面和陈设自然融合。`,
-    proof: '轻微环绕或移焦强调核心卖点，让观众看到材质差异、定制质感和经得起近看的细节。',
-    cta: `固定收尾镜头留出字幕和行动引导空间，${name}与品牌记忆点清晰停留。`,
-  } : {
-    hook: `干净背景中，${name}以克制光线缓慢出现，先建立品牌第一印象，再过渡到完整展示。`,
-    display: `中远景缓慢推进到${name}完整形态，主体位于画面中心，环境只服务于产品识别。`,
-    macro: '极近景贴近产品细节和关键结构，光线沿边缘移动，强调质感、做工和核心卖点。',
-    benefit: `切入真实使用场景，${name}解决需求的瞬间被看见，画面保持高级、真实和克制。`,
-    proof: '用特写或轻微环绕强化一个可记忆卖点，让观众看见选择它的理由。',
-    cta: `固定收尾镜头留出字幕和行动引导空间，${name}与品牌记忆点清晰停留。`,
+  const visual = {
+    hook: `已确认的真实场景中，${name}相关的问题或期待被清楚建立，画面不替换行业和主体。`,
+    display: `${name}以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。`,
+    macro: `靠近${name}的关键证据或使用细节，只放大当前业务真正需要看见的内容。`,
+    benefit: `真实使用或互动场景中，${name}带来的变化被人物动作、结果或对比自然说明。`,
+    proof: `通过一个已确认的证据点证明${name}的价值，不新增无关道具、场地或 UI。`,
+    cta: `${name}与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。`,
   };
   return visual[_luxuryRoleAt(0, 1, role)] || visual.display;
 }
@@ -10257,8 +10189,8 @@ function _luxuryHasMaterialActionLeak(value = '') {
   return /(展厅|材料应用|材质表面|材料细节|样板边缘|样板|空间动线|整体空间|完整空间|材质细节|材料|材质|墙面|板材|建筑外立面|设计空间|会所|样板间)/.test(String(value || ''));
 }
 
-function _fallbackLuxuryStoreOpsAction({ role = '', index = 0, total = 10, productSubject = '门店 AI 点餐系统' } = {}) {
-  const name = String(productSubject || '门店 AI 点餐系统').trim() || '门店 AI 点餐系统';
+function _fallbackLuxuryStoreOpsAction({ role = '', index = 0, total = 10, productSubject = '广告主体' } = {}) {
+  const name = String(productSubject || '广告主体').trim() || '广告主体';
   const beat = _luxuryRoleAt(index, total, role);
   const actions = {
     hook: `人物执行一个与当前痛点直接相关的动作，表情或姿态体现问题正在发生。`,
@@ -10535,21 +10467,21 @@ function _luxuryActorGenderFromContext({ text = '', descriptionText = '', spec =
   if (/female|woman|girl|女士|女性|女人|女主/.test(specGender) || /女性|女主|女士|女人|woman|female/i.test(combined)) {
     return {
       value: 'female',
-      prompt: 'female professional advertising actor',
+      prompt: 'female advertising person',
       lock: 'Keep the selected female presentation consistent across all actor views.',
     };
   }
   if (/male|man|boy|男士|男性|男人|男主/.test(specGender) || /男性|男主|男士|男人|man|male/i.test(combined)) {
     return {
       value: 'male',
-      prompt: 'male professional advertising actor',
+      prompt: 'male advertising person',
       lock: 'Keep the selected male presentation consistent across all actor views.',
     };
   }
   return {
-    value: 'male',
-    prompt: 'male professional advertising actor',
-    lock: 'Keep the selected male presentation consistent across all actor views.',
+    value: 'auto',
+    prompt: 'advertising person selected from the confirmed brief',
+    lock: 'Keep the selected gender/person presentation consistent across all actor views.',
   };
 }
 
@@ -10567,11 +10499,28 @@ function _luxuryActorOriginPrompt(spec = {}, text = '') {
 function _luxuryActorAgePrompt(spec = {}, text = '') {
   const raw = String(spec.age || spec.age_range || spec.ageRange || '').toLowerCase();
   const combined = [raw, text].filter(Boolean).join(' ');
+  if (/infant|baby|newborn|0[_\s-]?1|婴儿|宝宝|新生儿|母婴|奶粉|乳制品/.test(combined)) return { value: 'infant_0_1', prompt: '0 to 1 year old infant / baby, age-appropriate commercial subject' };
+  if (/toddler|1[_\s-]?3|幼儿/.test(combined)) return { value: 'toddler_1_3', prompt: '1 to 3 years old toddler, age-appropriate commercial subject' };
+  if (/child[_\s-]?4|4[_\s-]?7|儿童|小孩/.test(combined)) return { value: 'child_4_7', prompt: '4 to 7 years old child, age-appropriate commercial subject' };
+  if (/child[_\s-]?8|8[_\s-]?12|少儿|小学生/.test(combined)) return { value: 'child_8_12', prompt: '8 to 12 years old child, age-appropriate commercial subject' };
+  if (/teen|13[_\s-]?17|青少年|少年|少女|中学生/.test(combined)) return { value: 'teen_13_17', prompt: '13 to 17 years old teenager, age-appropriate commercial subject' };
   if (/senior|55|60|65|年长|老年/.test(combined)) return { value: 'senior_55_plus', prompt: '55+ years old senior adult' };
   if (/middle|40|45|50|中年/.test(combined)) return { value: 'middle_40_55', prompt: '40 to 55 years old mature adult' };
   if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(combined)) return { value: 'adult_30_40', prompt: '30 to 40 years old adult' };
   if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age range inferred from the confirmed story brief; avoid making the actor older unless the brief requires it' };
   return { value: 'young_adult', prompt: '25 to 32 years old young adult' };
+}
+
+function _luxuryActorAgeSafetyPrompt(age = {}) {
+  const value = String(age.value || '').toLowerCase();
+  if (/infant|toddler|child|teen/.test(value)) {
+    return [
+      'Age-appropriate child-safe commercial casting only.',
+      'No mature styling, no sexualized pose, no beauty/fashion glamour framing, no adult role, no unsafe situation.',
+      'Use natural guardian-safe posture and clothing appropriate to the product category and age.',
+    ].join(' ');
+  }
+  return 'Age-appropriate commercial styling; do not force business clothing unless the brief requires it.';
 }
 
 async function _generateLuxuryRealisticActorPackage({
@@ -10591,16 +10540,19 @@ async function _generateLuxuryRealisticActorPackage({
   const gender = _luxuryActorGenderFromContext({ text, descriptionText, spec, roleHint });
   const origin = _luxuryActorOriginPrompt(spec, text);
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
-  const wardrobe = 'the exact same clean contemporary business-casual outfit appropriate to the confirmed brief, with consistent shirt/top, trousers or skirt, belt/accessories and shoes across all views';
+  const ageSafety = _luxuryActorAgeSafetyPrompt(age);
+  const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'commercial person selected from the brief' : `${gender.value} commercial person`}`;
+  const wardrobe = 'the exact same clean age-appropriate outfit chosen from the confirmed brief and product category, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
   const common = [
     'Create a fixed commercial actor asset package for a realistic live-action advertisement.',
     'Generate one consistent real-looking professional actor for casting reference photos.',
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
+    ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
-    'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible, standing pose. Show the actor from head to shoes whenever possible; at minimum show head, torso, belt, trousers/skirt, thighs and knees. Do not crop at chest, waist or hips.',
-    'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same actor, exact same haircut and hair length, exact same hair color, exact same shirt, exact same trousers, exact same belt and shoes. No outfit change, no hairstyle change, no age drift.',
-    'The result should look like practical studio casting photography of a real professional person.',
+    'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible when age-appropriate. Show the person from head to shoes whenever possible; for infants/toddlers, full-body seated, supported, held-safe, or standing pose is acceptable. At minimum show head, torso and lower body. Do not crop at chest, waist or hips.',
+    'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.',
+    'The result should look like practical studio casting photography of a real commercial person.',
     'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
     'Commercial casting reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible, no text, no labels, no watermark.',
     'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
@@ -10616,15 +10568,15 @@ async function _generateLuxuryRealisticActorPackage({
   const views = [
     {
       key: 'front',
-      prompt: `${common} FRONT VIEW: actor standing naturally, facing camera directly, calm professional expression, both eyes visible, full body visible from head to shoes or at least down to knees, clothing silhouette and footwear clearly visible, hands relaxed or lightly in pockets, real commercial casting photo. Do not crop as a bust portrait.`,
+      prompt: `${common} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, clothing silhouette and lower body clearly visible, real commercial casting photo. For infants/toddlers, use a safe supported full-body pose. Do not crop as a bust portrait.`,
     },
     {
       key: 'side',
-      prompt: `${common} SIDE / THREE-QUARTER VIEW: same actor, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes or at least down to knees, clothing silhouette and footwear clearly visible, neutral professional posture, same body proportions, real casting reference photo. Do not change jacket, shirt, hair or age.`,
+      prompt: `${common} SIDE / THREE-QUARTER VIEW: same person, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes when possible, clothing silhouette and lower body clearly visible, natural age-appropriate posture, same body proportions, real casting reference photo. Do not change clothing, hair or age.`,
     },
     {
       key: 'action',
-      prompt: `${common} ACTION VIEW: same actor performing one neutral commercial action suggested by the confirmed brief, such as presenting, operating, comparing, demonstrating or reacting. Use props only when the brief or reference explicitly requires them; do not invent order papers, shelves, phones or fixed industry objects. Visible from head to knees or full body, clothing silhouette and footwear clearly visible, looking professional and believable, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
+      prompt: `${common} ACTION VIEW: same person performing one age-appropriate commercial action suggested by the confirmed brief, such as looking, reaching, holding a safe product, being safely supported, presenting, operating, comparing, demonstrating or reacting. Use props only when the brief or reference explicitly requires them; do not invent order papers, shelves, phones or fixed industry objects. Visible from head to knees or full body when possible, clothing silhouette and lower body clearly visible, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
     },
   ];
   const outputs = [];
@@ -10675,7 +10627,7 @@ async function _generateLuxuryRealisticActorPackage({
       'same natural skin texture',
     ],
     forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
-    prompt: `FIXED REAL ACTOR ASSET: use the same ${origin.prompt} ${gender.value} commercial actor (${age.prompt}) across all human keyframes. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
+    prompt: `FIXED REAL ACTOR ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
   };
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
@@ -10721,7 +10673,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       adult_woman_35_50: { en: 'female woman, 35-50 years old', lock: 'Keep a consistent female professional actor presentation across all views.' },
       adult_man_25_35: { en: 'male man, 25-35 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
       adult_man_30_45: { en: 'male man, 30-45 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
-      auto_real_adult: { en: 'real adult human selected from the advertising brief', lock: '' },
+      auto_real_adult: { en: 'real human selected from the advertising brief age/person contract', lock: '' },
     };
     const roleMap = {
       premium_ad_actor: 'premium commercial advertising actor',
@@ -10749,11 +10701,12 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       outfitMap[String(spec.outfit || '')] || '',
       descriptionText,
     ].filter(Boolean).join('; ') || [
-      /女性|女主|女士|woman|female|amy/i.test(text) ? 'adult woman' : '',
-      /男性|男主|男士|man|male/i.test(text) ? 'adult man' : '',
-      /家庭|生活|客厅|日程|家务|智能/i.test(text) ? 'modern lifestyle advertising character' : '',
-      /商务|办公|经理|店长|门店|职场/i.test(text) ? 'professional commercial advertising character' : '',
-    ].filter(Boolean).join(', ') || 'adult real human advertising character';
+      /女性|女主|女士|女人|女孩|woman|female|girl|amy/i.test(text) ? 'female advertising person selected from the brief' : '',
+      /男性|男主|男士|男人|男孩|man|male|boy/i.test(text) ? 'male advertising person selected from the brief' : '',
+      /婴儿|宝宝|幼儿|儿童|少儿|青少年|母婴|奶粉|乳制品|baby|infant|toddler|child|teen/i.test(text) ? 'age-appropriate child or baby commercial subject selected from the brief' : '',
+      /家庭|生活|客厅|日程|家务|智能/i.test(text) ? 'lifestyle advertising character selected from the brief' : '',
+      /商务|办公|经理|职场/i.test(text) ? 'commercial advertising character selected from the brief' : '',
+    ].filter(Boolean).join(', ') || 'real human advertising character selected from the brief';
     const referencePersonUrl = reference_person && (reference_person.image_url || reference_person.url)
       ? await _resolveImageForExternalApi(req, reference_person.image_url || reference_person.url)
       : '';
@@ -11435,7 +11388,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
   "duration": ${isDetailedMode ? '2-4' : '2-8'},
   "material_usage": "分镜使用素材（画面）：@主商品、@参考1、@参考2、人物参考或 AI 生成场景，并说明该镜头画面来源",
   "ad_copy": "成片屏幕广告词/字幕，8-18 个中文字符，必须能直接给观众看",
-  "dialogue": "如果有两个人物，本镜头必须是带人物名字的对白，例如：讲解者：...\\n客户：...",
+  "dialogue": "如果有两个人物，本镜头必须是带人物名字的对白，例如：角色A：...\\n角色B：...；角色身份必须来自人物表，不套用固定职业",
   "characters": [{"name":"人物名","gender":"性别","origin":"地域/族裔/来自哪里","role":"身份/关系","appearance":"年龄、种族/面孔、五官、发型、身形","outfit":"服装","hand_prop":"手里拿什么或触摸什么","behavior":"动作习惯"}],
   "voiceover": "成片旁白/字幕广告词，8-24 个中文字符，像广告成片上的短文案或介绍，不是镜头说明，不能照抄广告需求",
   "narration": "同 voiceover，明确这一镜最终读出来或显示出来的话",
@@ -11765,16 +11718,16 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     const fallbackLuxuryReviewCharacter = (pos = 0) => {
       const female = selectedGenderCode === 'female' || selectedGenderCode === 'all_female';
       const male = selectedGenderCode === 'male' || selectedGenderCode === 'all_male';
-      const name = pos === 0 ? '讲解者' : '客户';
+      const name = `角色${pos + 1}`;
       return {
         name,
         gender: female ? '女性' : (male ? '男性' : (pos === 0 ? '女性' : '男性')),
         origin: '中国',
-        role: pos === 0 ? '广告讲解者/空间顾问' : '需求确认客户',
-        appearance: pos === 0 ? '成熟可信的商业形象，五官清晰，镜头中保持自然亲和。' : '真实客户形象，表情专注，姿态自然。',
-        outfit: pos === 0 ? '简洁高级的商务服装，颜色克制，适合广告讲解场景。' : '日常商务休闲服装，与真实使用场景一致。',
-        hand_prop: pos === 0 ? '可持资料夹、手机或指向产品/空间细节。' : '可查看样板、手机或方案资料。',
-        behavior: pos === 0 ? '面向镜头或产品自然讲解，动作克制明确。' : '观察、点头、提问或确认方案。',
+        role: pos === 0 ? '广告剧情中的核心角色' : '广告剧情中的互动角色',
+        appearance: '年龄、五官、发型和身形按用户需求、行业素材和剧情关系生成，不套固定职业形象。',
+        outfit: '服装按广告需求、年龄和场景生成，保持真实自然，不默认商务服或销售服。',
+        hand_prop: '只使用需求、素材或剧本明确需要的道具；没有明确道具时保持自然手部动作。',
+        behavior: pos === 0 ? '围绕当前镜头目标做自然动作，推动剧情和主体证据成立。' : '通过回应、观察、体验或协作推动剧情关系。',
       };
     };
     const ensureLuxuryScriptFieldsForReview = (sceneList = [], canonicalList = []) => {
@@ -11821,8 +11774,8 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           .filter(Boolean);
         if (expectedPeople >= 2 && !dialogueLines.length) {
           const names = chars.map(luxuryCharacterName).filter(Boolean);
-          const speakerA = names[0] || '讲解者';
-          const speakerB = names[1] || '客户';
+          const speakerA = names[0] || '角色A';
+          const speakerB = names[1] || '角色B';
           dialogueLines = [
             `${speakerA}：${voiceover}`,
             `${speakerB}：这个方案我明白了。`,
@@ -11922,13 +11875,13 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           scene: outline.title || `故事段落 ${i + 1}`,
           plot: visual,
           character_goal: _luxuryScriptPurposeLabel(role, i, targetBeats, ''),
-          conflict_or_question: role === 'hook' ? '高峰期订单处理压力出现' : '',
-          solution_step: `${productSubject}继续推进门店订单处理流程`,
+          conflict_or_question: role === 'hook' ? '当前业务痛点或用户疑问出现' : '',
+          solution_step: `${productSubject}继续推进当前剧情中的解决步骤`,
           visual_proof: visual,
           emotional_change: outline.emotion || _fallbackLuxuryAdEmotion({ role }),
           spoken_line: voiceover,
           spoken_intent: voiceover,
-          required_visual_subject: `人物 + 真实门店场景 + ${productSubject}证据`,
+          required_visual_subject: `人物 + 已确认真实场景 + ${productSubject}证据`,
           why_next: '按广告结构自然进入下一段',
           padded_from_outline: true,
         });
@@ -12130,7 +12083,7 @@ beats 数量：${explicitShotTarget ? `正好 ${Math.max(3, wantedShots)} 个剧
         '只输出 JSON 数组，不要 markdown，不要解释。',
         `产品/材料主体 ${productSubject} 必须作为画面证据出现，但每个镜头的主语必须是人物在真实空间里的行动。`,
         '每个镜头必须能追溯到 story beats，必须保留人物目标和剧情推进。不要写孤立卖点。',
-        '每个非微距镜头 content_prompt 必须以人物开头，例如“店长林…站在/走入/低头查看/指向…”，并且同一句里写清楚背景和产品证据。',
+        '每个非微距镜头 content_prompt 必须以当前剧情角色开头，例如“角色A…站在/走入/低头查看/指向…”，并且同一句里写清楚背景和主体证据；角色身份必须来自 brief/人物表，不能套用店长、顾问、客户等固定职业。',
         '每个镜头必须继承一个 beat.role，并把 purpose 写成中文剧情目的，不允许只写 context、feature_1、product_reveal、proof、offer、cta 等内部标签。',
         '不得复制上一镜的 visual/action/voiceover；每一镜必须在痛点、产品登场、解决方案、证明、行动之间向前推进。'
         ,
@@ -12486,7 +12439,7 @@ ${JSON.stringify(scenes, null, 2)}
           .replace(/@参考(\d*)/g, '参考画面$1')
           .replace(/主产品|主商品/g, productSubject);
         const styleNote = String(x.style_note || x.other || '').trim()
-          || `风格：高级商业广告，镜头克制；光线：强调主体和材质；转场：${i === 0 ? '由暗到亮开场' : '顺接下一镜'}。`;
+          || `风格：真实商业剧情广告，镜头克制；光线：强调已确认主体和场景证据；转场：${i === 0 ? '由暗到亮开场' : '顺接下一镜'}。`;
         const rawReferenceIndex = Math.max(1, Math.round(Number(x.reference_index ?? x.referenceImageIndex ?? (i + 1)) || (i + 1)));
         const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
         const referenceLabel = x.reference_label || `@参考${referenceIndex}`;
@@ -12624,7 +12577,7 @@ ${JSON.stringify(scenes, null, 2)}
       }, productSubject);
       const productOnlyMaterialShot = !corePersonRequired && _luxuryIsMaterialProductShot({ title: s.title || '', content_prompt: visual, visual }, productSubject);
       if (productOnlyMaterialShot) {
-        action = _luxurySanitizeProductOnlyAction(action) || '光线从产品/材料表面掠过，镜头克制推进，建立第一眼质感和空间关系。';
+        action = _luxurySanitizeProductOnlyAction(action) || '主体证据在已确认场景中被清楚呈现，镜头克制推进，建立第一眼识别和业务关系。';
       }
       const emotion = String(s.emotion || s.mood || '').replace(/\s+/g, ' ').trim()
         || _fallbackLuxuryAdEmotion({ role });
@@ -12635,7 +12588,7 @@ ${JSON.stringify(scenes, null, 2)}
         .replace(/@主商品/g, productSubject)
         .replace(/@参考(\d*)/g, '参考画面$1')
         .replace(/主产品|主商品/g, productSubject);
-      const styleNote = s.style_note || s.other || `风格：高级商业广告，镜头克制，光影和材质清晰；转场：顺接下一镜。`;
+      const styleNote = s.style_note || s.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`;
       const rawReferenceIndex = Math.max(1, Math.round(Number(s.reference_index ?? s.referenceImageIndex ?? (i + 1)) || (i + 1)));
       const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
       const referenceLabel = s.reference_label || `@参考${referenceIndex}`;
@@ -13069,7 +13022,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       visual_action: action,
     }, subject);
     if (!corePersonRequired && _luxuryIsMaterialProductShot({ title: raw.title || '', content_prompt: visual, visual }, subject)) {
-      action = _luxurySanitizeProductOnlyAction(action) || '光线从产品/材料表面掠过，镜头克制推进，建立第一眼质感和空间关系。';
+      action = _luxurySanitizeProductOnlyAction(action) || '主体证据在已确认场景中被清楚呈现，镜头克制推进，建立第一眼识别和业务关系。';
     }
     const emotion = String(raw.emotion || raw.mood || '').replace(/\s+/g, ' ').trim()
       || _fallbackLuxuryAdEmotion({ role });
@@ -13089,7 +13042,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     }, text);
     const shotAngle = String(raw.shot_angle || raw.angle || raw.shot_size || raw.framing || '').trim();
     const materialUsage = String(raw.material_usage || raw.material_hint || '').trim() || `@主商品 + ${referenceLabel}`;
-    const styleNote = String(raw.style_note || raw.other || `风格：高级商业广告，镜头克制，光影和材质清晰；转场：顺接下一镜。`).replace(/成片广告词/g, '成片广告词');
+    const styleNote = String(raw.style_note || raw.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`).replace(/成片广告词/g, '成片广告词');
     const lockedVisualPrompt = [
       corePersonRequired ? 'STORYBOARD-FIRST IMAGE PROMPT: create a live-action commercial storyboard frame. The visible human actor, real environment, and advertised product evidence must all appear in the same image.' : productLockPrompt,
       corePersonRequired ? `The product/material evidence is ${subject}, visible in the scene, but do not make a product-only catalogue image.` : '',
@@ -16693,7 +16646,7 @@ function _luxuryGptImage2EditPrompt({
   const refKinds = (Array.isArray(refs) ? refs : []).slice(0, 6).map((ref, idx) => {
     const kind = String(ref?.kind || '').trim();
     const label = /^identity_reference/.test(kind)
-      ? 'same adult presenter identity / actor view'
+      ? 'same campaign person identity / actor view'
       : (kind === 'human_environment_layout' || kind === 'human_story_layout')
         ? 'composition guide'
         : kind.includes('scene')
@@ -16705,7 +16658,7 @@ function _luxuryGptImage2EditPrompt({
     /identity_reference|presenter/i.test(String(ref?.kind || '')));
   const needsPresenter = !!personRequired || hasHumanReference || !!characterLock;
   const presenterRule = needsPresenter
-    ? 'Use the same adult professional shown in the presenter reference group when provided. Treat all identity_reference images as different views of one actor, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene.'
+    ? 'Use the same campaign person shown in the identity reference group when provided. Treat all identity_reference images as different views of one person, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene.'
     : 'Only include people if the shot description asks for them.';
   const location = _luxuryExpectedEnvironmentFromContract(scene);
   const locationRule = location.wantsInterior && !location.wantsExterior

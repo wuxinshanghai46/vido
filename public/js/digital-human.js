@@ -133,7 +133,7 @@
       personSpec: {
         castMode: 'auto',
         gender: 'auto',
-        age: 'young_adult',
+        age: 'match_brief',
         origin: 'east_asian_cn',
       },
       briefInfo: null,
@@ -3442,7 +3442,7 @@
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
-      age: 'young_adult',
+      age: 'match_brief',
       origin: 'east_asian_cn',
     };
     state.luxuryAd.briefInfo = null;
@@ -4766,11 +4766,16 @@
       all_female: '双人/多人全女性',
     },
     age: {
+      match_brief: '按广告需求判断',
+      infant_0_1: '婴儿 / 0-1',
+      toddler_1_3: '幼儿 / 1-3',
+      child_4_7: '儿童 / 4-7',
+      child_8_12: '少儿 / 8-12',
+      teen_13_17: '青少年 / 13-17',
       young_adult: '青年 / 25-32',
       adult_30_40: '成熟青年 / 30-40',
       middle_40_55: '中年 / 40-55',
       senior_55_plus: '年长 / 55+',
-      match_brief: '按广告需求判断',
     },
   };
 
@@ -4778,7 +4783,7 @@
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
-      age: 'young_adult',
+      age: 'match_brief',
       origin: 'east_asian_cn',
       ...(state.luxuryAd.personSpec || {}),
     };
@@ -4802,7 +4807,7 @@
     const spec = specOverride || luxuryAdPersonSpec();
     const castMode = LUXURY_PERSON_SPEC_LABELS.castMode[spec.castMode] || spec.castMode || '单人';
     const gender = LUXURY_PERSON_SPEC_LABELS.gender[spec.gender] || String(spec.gender || '').trim() || 'AI 按故事判断';
-    const age = LUXURY_PERSON_SPEC_LABELS.age[spec.age] || String(spec.age || '').trim() || '青年 / 25-32';
+    const age = LUXURY_PERSON_SPEC_LABELS.age[spec.age] || String(spec.age || '').trim() || '按广告需求判断';
     const origin = LUXURY_PERSON_SPEC_LABELS.origin[spec.origin] || String(spec.origin || '').trim() || '按广告需求判断';
     const referencePerson = selectedAvatarImageUrl(state.selectedAvatar || {}) ? (state.selectedAvatar?.name || '已选数字人形象') : '';
     return [
@@ -4855,6 +4860,11 @@
   function luxuryPersonAgeSpecValue(value = '') {
     const raw = String(value || '').trim().toLowerCase();
     if (!raw) return '';
+    if (/infant|baby|newborn|0[_\s-]?1|婴儿|宝宝|新生儿|母婴|奶粉|乳制品/.test(raw)) return 'infant_0_1';
+    if (/toddler|1[_\s-]?3|幼儿/.test(raw)) return 'toddler_1_3';
+    if (/child[_\s-]?4|4[_\s-]?7|儿童|小孩/.test(raw)) return 'child_4_7';
+    if (/child[_\s-]?8|8[_\s-]?12|少儿|小学生/.test(raw)) return 'child_8_12';
+    if (/teen|13[_\s-]?17|青少年|少年|少女|中学生/.test(raw)) return 'teen_13_17';
     if (/young[_\s-]?adult|25|26|27|28|29|30|31|32|青年|年轻/.test(raw)) return 'young_adult';
     if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(raw)) return 'adult_30_40';
     if (/middle|40|45|50|55|中年/.test(raw)) return 'middle_40_55';
@@ -6844,55 +6854,32 @@
   }
 
   function luxuryProductSubjectForCopy() {
-    const text = [state.luxuryAd.content || '', state.luxuryAd.productAsset?.name || ''].join(' ');
-    if (/钢|金属|板材|建材|材料|材质/i.test(text)) return 'material';
-    if (/墙|艺术墙|背景墙|展墙/i.test(text)) return 'wall';
-    return 'product';
+    return 'confirmed_subject';
   }
 
   function luxuryFallbackCopyByRole(role = '') {
     const r = String(role || '').toLowerCase();
-    const isMaterial = ['material', 'wall'].includes(luxuryProductSubjectForCopy());
-    const material = {
-      hook: '一眼看见材质的高级感',
-      display: '让材料成为空间主角',
-      macro: '纹理在光影里更清晰',
-      benefit: '高级空间，需要高级材质',
-      proof: '细节经得起近看',
-      cta: '定制方案，现在咨询',
+    const map = {
+      hook: '问题出现，需求变清楚',
+      display: '主体出现，答案更具体',
+      macro: '关键细节，被清楚看见',
+      benefit: '真实体验，变化更自然',
+      proof: '证据成立，选择更放心',
+      cta: '现在行动，获取适合方案',
     };
-    const product = {
-      hook: '第一眼，就记住它',
-      display: '主角登场，价值看得见',
-      macro: '细节被放大，质感被看见',
-      benefit: '真实场景里，更懂需求',
-      proof: '每一处细节，都是选择理由',
-      cta: '现在咨询，了解更多方案',
-    };
-    const map = isMaterial ? material : product;
     return map[r] || map.display;
   }
 
   function luxuryFallbackVisualByRole(role = '') {
     const r = String(role || '').toLowerCase();
-    const isMaterial = ['material', 'wall'].includes(luxuryProductSubjectForCopy());
-    const material = {
-      hook: '纯净深色背景或高端空间中，材料被一束侧光缓慢带出，表面纹理先被看见，再过渡到下一镜。',
-      display: '中远景缓慢推进到完整应用画面，顶部灯光扫过表面，建立空间高级感和产品第一印象。',
-      macro: '极近景贴近材质表面横向平移，纹理、边缘、反光和工艺细节被逐层放大。',
-      benefit: '切入真实会所、展厅或设计空间，材料作为空间视觉中心，与灯光、墙面和陈设自然融合。',
-      proof: '轻微环绕或移焦强调核心卖点，让观众看到材质差异、定制质感和经得起近看的细节。',
-      cta: '固定收尾镜头留出字幕和行动引导空间，主商品与品牌记忆点清晰停留。',
+    const map = {
+      hook: '已确认的真实场景中，主体相关的问题或期待被清楚建立，画面不替换行业和主体。',
+      display: '主体以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。',
+      macro: '靠近主体的关键证据或使用细节，只放大当前业务真正需要看见的内容。',
+      benefit: '真实使用或互动场景中，主体带来的变化被人物动作、结果或对比自然说明。',
+      proof: '通过一个已确认的证据点证明主体价值，不新增无关道具、场地或 UI。',
+      cta: '主体与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。',
     };
-    const product = {
-      hook: '干净背景中，主商品以克制光线缓慢出现，先建立品牌第一印象，再过渡到完整展示。',
-      display: '中远景缓慢推进到主商品完整形态，主体位于画面中心，环境只服务于产品识别。',
-      macro: '极近景贴近产品细节和关键结构，光线沿边缘移动，强调质感、做工和核心卖点。',
-      benefit: '切入真实使用场景，主商品解决需求的瞬间被看见，画面保持高级、真实和克制。',
-      proof: '用特写或轻微环绕强化一个可记忆卖点，让观众看见选择它的理由。',
-      cta: '固定收尾镜头保留干净留白，品牌记忆和行动引导自然出现。',
-    };
-    const map = isMaterial ? material : product;
     return map[r] || map.display;
   }
 
@@ -6976,15 +6963,11 @@
       return raw.slice(0, 120);
     }
     const role = String(seg.shot_role || seg.role || seg.type || '').toLowerCase();
-    if (productOnly && role === 'hook') return '光线从产品/材料表面掠过，镜头克制推进，建立第一眼质感和空间关系。';
-    if (role === 'hook') return '主体从安静画面中被光线带出，镜头保持克制停顿，建立第一眼吸引。';
-    if (productOnly && role === 'macro') return '镜头贴近产品或材质细节，光线或焦点轻微移动，让纹理和边缘被看见。';
-    if (role === 'macro') return '镜头贴近产品或材质细节，手部、光线或焦点轻微移动，让细节被看见。';
-    if (productOnly && (role === 'benefit' || role === 'proof')) return '产品与场景自然建立关系，镜头引导观众看到材料价值，不做夸张表演。';
-    if (role === 'benefit' || role === 'proof') return '人物与场景自然互动，视线或手势引导观众看到产品价值，不做夸张表演。';
-    if (productOnly && role === 'cta') return '主体稳定留在画面中，镜头停留在产品和空间关系上，给行动引导留出干净空间。';
-    if (role === 'cta') return '主体稳定留在画面中，人物微笑或镜头停留，给行动引导留出干净空间。';
-    return '主体按剧本完成展示动作，镜头轻微推进或横移，动作与广告词同步。';
+    if (role === 'hook') return '人物或主体用一个明确动作引出当前问题或期待。';
+    if (role === 'macro') return '人物手部或主体关键部位完成一次细节展示动作。';
+    if (role === 'benefit' || role === 'proof') return '人物或主体完成体验、展示、确认或对比动作，让价值通过证据成立。';
+    if (role === 'cta') return '人物或主体完成收束动作，表达选择、确认或行动意图。';
+    return '人物或主体按剧本完成当前动作，动作与广告词同步。';
   }
 
   function luxuryShotEmotionText(seg = {}) {
@@ -7117,7 +7100,7 @@
     const binding = luxuryAdShotBoundAssets(seg, index);
     const visual = String(seg.display_visual || seg.visual || seg.scene_content || seg.content_prompt || '').trim();
     const refTag = binding.ref ? ` 和 @分镜画面${binding.refIndex}` : '';
-    return `使用 @主商品${refTag} 生成这一镜头：${visual || '成品材料/产品主体在高端商业空间中展示'}。保持主商品身份、材质、安装关系、构图和光线稳定。画面保持为纯产品、材料和空间展示，不加入额外主体或画面文字。`;
+    return `使用 @主商品${refTag} 生成这一镜头：${visual || '按确认业务主体呈现当前镜头证据'}。保持已确认主体、场景证据、构图和光线稳定。画面只呈现当前镜头确认的主体/服务/场景证据，不加入额外主体或画面文字。`;
   }
 
   function luxuryAdTopviewPrompt(seg = {}, index = 0) {
@@ -7137,7 +7120,7 @@
       }
     }
     if (productOnly) return luxuryProductOnlyPrompt(seg, index);
-    return `使用 ${productTag}${refTag} 生成这一镜头：${visual || '按镜头任务呈现商品'}。镜头运动：${motion}。保持主商品身份、材质和构图稳定，不生成画面文字。`;
+    return `使用 ${productTag}${refTag} 生成这一镜头：${visual || '按镜头任务呈现确认主体'}。镜头运动：${motion}。保持已确认主体、人物、场景证据和构图稳定，不生成画面文字。`;
   }
 
   function luxuryNormalizeUiOverlay(value, seg = {}) {
@@ -8066,7 +8049,14 @@
       state.luxuryAd.content,
       ...(state.luxuryAd.segments || []).flatMap(seg => [seg.title, seg.text, seg.visual, seg.action, seg.voiceover, seg.material_usage]),
     ].filter(Boolean).join(' ');
-    return /AI\s*Order\s*Assistant|订单助手|智能订单|订单管理|库存管理|补货|软件|系统|平台|SaaS|APP|小程序|workflow|software|assistant|order|inventory|restock/i.test(text);
+    if (/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text)) return false;
+    const creativeVideo = /视频创作|漫剧|短剧|剧情广告|视频生成|文生视频|图生视频|分镜|剧本|剪辑|成片|数字人|创作工具|AI视频|video\s*(creation|generation|editing)|storyboard|script|drama|comic|manga/i.test(text);
+    const orderWorkflow = /AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|采购订单|采购单|库存管理|补货|库存预警|排单|收银|点餐|OMS|WMS|ordering|order\s*management|purchase\s*order|procurement|inventory|restock|retail\s*ops|store\s*ops/i.test(text);
+    if (orderWorkflow) return true;
+    if (creativeVideo) return false;
+    const softwareSubject = /软件|系统|SaaS|小程序|应用|App\b|APP\b|后台|看板|仪表盘|界面|数据|算法|人工智能|workflow|software|dashboard|interface|screen|app|service/i.test(text);
+    const concreteWorkflow = /流程|审批|工单|客服|CRM|ERP|排期|调度|报表|表单|同步|协同|自动化|管理后台|业务操作|workflow|ticket|approval|crm|erp|report|form|sync|automation|operation/i.test(text);
+    return softwareSubject && concreteWorkflow;
   }
 
   function luxuryAttemptKey(attempt = {}) {
@@ -8141,7 +8131,7 @@
     }).join('');
     const cards = [
       ['演员库 / 人物锁', actorLabel, actorSub, hasActorAsset ? 'ready' : 'warn'],
-      ['产品类型识别', workflow ? '软件服务工作流' : '实体/场景商品', workflow ? '手机、订单纸、货架、确认 UI 会作为产品证据。' : '按商品主体、空间和材质证据生成。', workflow ? 'ready' : ''],
+      ['产品类型识别', workflow ? '软件/服务工作流' : '按需求识别主体', workflow ? '只使用 brief、素材或剧本明确要求的载体证据，不套订单/货架模板。' : '按确认主体、场景和业务证据生成。', workflow ? 'ready' : ''],
       ['模型调用链', attempts.length ? '已记录最近一次尝试' : '按模型调用管理执行', '人物演员包走 luxury_ad.person_sheet；分镜图走 luxury_ad.keyframe；成片视频走 luxury_ad.video。', topviewAllFailed ? 'fail' : (attempts.length ? 'warn' : '')],
       ['严格 QA 门禁', qaAttempt ? `最近评分 ${qaAttempt.qa?.score ?? '-'}` : '等待生成后评分', 'Vision QA 会检查人物一致、剧情动作、写实度、产品/场景和 UI 遮挡。', qaAttempt?.qa?.pass ? 'ready' : (qaAttempt ? 'warn' : '')],
     ].map(([title, value, sub, cls]) => `<div class="dh-lux-commercial-guard-card ${cls || ''}"><small>${escapeHtml(title)}</small><b>${escapeHtml(value)}</b><span>${escapeHtml(sub)}</span></div>`).join('');
@@ -8550,7 +8540,7 @@
           <div class="dh-luxgen-ai-edit">
             <label class="dh-field">
               <span>AI 修改要求</span>
-              <textarea class="dh-input" id="dhLuxShotAiInstruction" rows="3" placeholder="把你想要的效果写给 AI，例如：这一镜从门店外景推进到产品细节，画面更有高级感，广告词像品牌片，不要写成说明文。"></textarea>
+              <textarea class="dh-input" id="dhLuxShotAiInstruction" rows="3" placeholder="把你想要的效果写给 AI，例如：这一镜从真实问题推进到主体证据，画面更可信，广告词像品牌片，不要写成说明文。"></textarea>
             </label>
             <div class="dh-luxgen-ai-edit-actions">
               <small>AI 会根据广告需求、当前分镜、素材绑定和你的要求，回填场景目标、动作表情、镜头内容、成片广告词、声音和转场。</small>
@@ -8608,12 +8598,12 @@
           </label>
           <label class="dh-field">
             <span>成片旁白 / 字幕广告词</span>
-            <textarea class="dh-input" id="dhLuxShotVoice" rows="3" placeholder="写观众最终听到或看到的话，例如：一眼看见材质的高级感。不要写镜头说明或提示词。">${escapeHtml(luxuryShotNarrationText(seg))}</textarea>
+            <textarea class="dh-input" id="dhLuxShotVoice" rows="3" placeholder="写观众最终听到或看到的话，例如：关键变化，现在看得见。不要写镜头说明或提示词。">${escapeHtml(luxuryShotNarrationText(seg))}</textarea>
           </label>
           <div class="dh-luxgen-writer-grid">
             <label class="dh-field">
               <span>动作 / 表情</span>
-              <textarea class="dh-input" id="dhLuxShotAction" rows="3" placeholder="例如：人物眉头放松，手势展开，UI 卡片从杂乱变成清晰列表。">${escapeHtml(luxuryShotActionText(seg))}</textarea>
+              <textarea class="dh-input" id="dhLuxShotAction" rows="3" placeholder="例如：人物眉头放松，手势展开，主体证据从问题状态变成清晰结果。">${escapeHtml(luxuryShotActionText(seg))}</textarea>
             </label>
             <label class="dh-field">
               <span>情绪 / 氛围</span>
@@ -8622,7 +8612,7 @@
           </div>
           <label class="dh-field">
             <span>UI 浮层 / 视觉特效</span>
-            <textarea class="dh-input" id="dhLuxShotUiOverlay" rows="3" placeholder="例如：手机旁弹出半透明订单确认卡片，绿色对勾轻微发光，不遮挡人物和产品。">${escapeHtml(luxuryUiOverlaySummary(seg.ui_overlay || seg.uiOverlay || seg.overlay_prompt || seg.vfx_prompt || null, seg))}</textarea>
+            <textarea class="dh-input" id="dhLuxShotUiOverlay" rows="3" placeholder="例如：主体旁出现克制的半透明结果提示，不遮挡人物、手部和主体证据。">${escapeHtml(luxuryUiOverlaySummary(seg.ui_overlay || seg.uiOverlay || seg.overlay_prompt || seg.vfx_prompt || null, seg))}</textarea>
           </label>
           <label class="dh-field">
             <span>镜头运动</span>
