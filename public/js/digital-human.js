@@ -192,6 +192,10 @@
     voiceClone: { file: null, name: '', gender: 'female', list: [] },
     activeTab: 'step1',
     activeTaskType: 'digital_human',
+    activeTaskStatus: 'active',
+    luxuryAdProjects: [],
+    luxuryAdProjectsLoading: false,
+    luxuryAdProjectsLoadedAt: 0,
     subtitleTarget: 's3',
     voiceModalTarget: 'space',
   };
@@ -3485,7 +3489,7 @@
     if (!quiet) toast('已清空剧情广告表单，可以重新创建', 'success');
   }
   const DH_TASK_STORE_KEY = 'dh_video_tasks_v1';
-  const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
+  const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing', 'draft', 'working']);
 
   function readVideoTasks() {
     try {
@@ -3533,6 +3537,10 @@
       error: '失败',
       invalid: '已失效',
       timeout: '超时',
+      draft: '进行中',
+      working: '进行中',
+      ready: '待合成',
+      failed: '需处理',
     }[status] || '等待中';
   }
 
@@ -3786,20 +3794,31 @@
   function renderTaskCenter() {
     const host = $('#dhTaskList');
     if (!host) { updateTaskBadge(); return; }
-    const tasks = readVideoTasks();
+    if (state.activeTaskType === 'luxury_ad') refreshLuxuryAdProjectsForTaskCenter({ silent: true });
+    const projectTasks = state.activeTaskType === 'luxury_ad'
+      ? (state.luxuryAdProjects || []).map(luxuryAdProjectToTask)
+      : [];
+    const tasks = [...readVideoTasks(), ...projectTasks];
     $$('#dhTaskTypeTabs [data-task-type]').forEach(btn => {
       const type = btn.dataset.taskType;
       const count = tasks.filter(t => getTaskType(t) === type).length;
       btn.classList.toggle('active', type === state.activeTaskType);
       btn.textContent = count ? `${getTaskTypeLabel(type)} ${count}` : getTaskTypeLabel(type);
     });
+    $$('#dhTaskStatusTabs [data-task-status]').forEach(btn => {
+      const status = btn.dataset.taskStatus || 'active';
+      const count = tasks.filter(t => getTaskType(t) === state.activeTaskType && (status === 'all' || taskStatusBucket(t.status) === status)).length;
+      btn.classList.toggle('active', status === state.activeTaskStatus);
+      btn.textContent = count ? `${btn.dataset.label || btn.textContent.replace(/\s+\d+$/, '')} ${count}` : (btn.dataset.label || btn.textContent.replace(/\s+\d+$/, ''));
+    });
     updateTaskBadge();
-    const scopedTasks = tasks.filter(t => getTaskType(t) === state.activeTaskType);
+    const scopedTasks = tasks.filter(t => getTaskType(t) === state.activeTaskType)
+      .filter(t => state.activeTaskStatus === 'all' || taskStatusBucket(t.status) === state.activeTaskStatus);
     if (!scopedTasks.length) {
       host.innerHTML = `<div class="dh-empty">
         <div class="dh-empty-icon">&#8987;</div>
-        <div class="dh-empty-text">&#26242;&#26080;${getTaskTypeLabel(state.activeTaskType)}&#20219;&#21153;</div>
-        <div class="dh-empty-sub">&#25552;&#20132;&#29983;&#25104;&#21518;&#21487;&#31163;&#24320;&#39029;&#38754;&#32487;&#32493;&#21019;&#24314;&#65292;&#36825;&#37324;&#20250;&#25353;&#31867;&#22411;&#38598;&#20013;&#23637;&#31034;&#36827;&#24230;</div>
+        <div class="dh-empty-text">&#26242;&#26080;${getTaskTypeLabel(state.activeTaskType)}${state.activeTaskStatus === 'active' ? '进行中' : ''}&#20219;&#21153;</div>
+        <div class="dh-empty-sub">&#21046;&#20316;&#36807;&#31243;&#20013;&#28857;&#20987;&#20445;&#23384;&#36827;&#24230;&#65292;&#21047;&#26032;&#21518;&#21487;&#20174;&#36825;&#37324;&#32487;&#32493;&#23436;&#25104;</div>
       </div>`;
       return;
     }
@@ -3822,7 +3841,9 @@
       const ratioClass = taskRatio.includes('16:9') || taskRatio.includes('1280x720') || taskRatio.includes('1920x1080')
         ? ' dh-task-thumb-landscape'
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
-      const preview = active
+      const preview = t.isLuxuryProjectDraft
+        ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
+        : active
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
         : (t.videoUrl
           ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}" data-task-preview="${escapeHtml(t.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;">
@@ -3836,7 +3857,7 @@
         ? `<div class="dh-task-warning">${escapeHtml(t.subtitleWarning)}</div>`
         : (t.subtitleBurned ? `<div class="dh-task-ok">&#23383;&#24149;&#24050;&#28903;&#24405;&#21040;&#35270;&#39057;</div>` : '');
       const progressBar = active ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>` : '';
-      const canRetry = ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
+      const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
       return `<div class="dh-task-card ${active ? 'active' : ''}" data-task-id="${escapeHtml(t.taskId)}">
         ${preview}
         <div class="dh-task-main">
@@ -3856,12 +3877,13 @@
           <div class="dh-task-text">${escapeHtml(t.textPreview || '')}</div>
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
+            ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-lux-project-continue="${escapeHtml(t.projectId)}">继续制作</button>` : ''}
             ${t.videoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
             ${canRetry ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(t.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>` : ''}
-            <button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>
+            ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>` : ''}
             ${t.videoUrl ? `<a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(withAuthQuery(t.videoUrl))}" download>&#19979;&#36733;</a>` : ''}
-            <button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">&#20316;&#21697;&#24211;</button>
-            <button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>
+            ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">&#20316;&#21697;&#24211;</button>` : ''}
+            ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -7950,13 +7972,14 @@
           const img = kf.image_url || kf.imageUrl || '';
           const preview = img ? luxuryAssetPreviewUrl({ url: img }) : '';
           const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
+          const pendingLabel = `镜头 ${String(i + 1).padStart(2, '0')} · 待生成分镜图`;
           const camera = luxuryShotMotionLabel(seg);
           const action = luxuryShotActionText(seg);
           const ui = luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg);
           return `<article class="dh-lux-sheet-shot">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
             <div class="dh-lux-sheet-frame ${preview ? '' : 'pending'}">
-              ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : `<span>${escapeHtml(seg.title || `镜头 ${i + 1}`)}</span>`}
+              ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : `<span>${escapeHtml(pendingLabel)}</span>`}
             </div>
             <dl>
               <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
@@ -8206,6 +8229,142 @@
     state.luxuryAd.productionProject = project;
     state.luxuryAd.productionProjectId = project.id || state.luxuryAd.productionProjectId || '';
     if (project.production_contract) state.luxuryAd.productionContract = project.production_contract;
+  }
+
+  function luxuryAdCurrentDraftPayload(projectState = '') {
+    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    // 中文注释：这里仅保存当前制作事实，不按行业补写兜底内容，避免把用户 brief 改成固定场景。
+    return {
+      project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+      production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+      project_state: projectState || (state.luxuryAd.keyframeError ? 'frame_failed' : (state.luxuryAd.keyframes?.length ? 'frame_ready' : (state.luxuryAd.storyboardDetailed ? 'frame_reviewing' : 'script_reviewing'))),
+      text,
+      title: state.luxuryAd.briefInfo?.title || '剧情广告项目',
+      brief_info: state.luxuryAd.briefInfo || null,
+      duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
+      aspect_ratio: state.luxuryAd.outputRatio || $('#dhLuxAdRatio')?.value || '9:16',
+      output_size: state.luxuryAd.outputSize || $('#dhLuxAdSize')?.value || 'standard',
+      current_step: state.luxuryAd.currentStep || 1,
+      storyboard_detailed: !!state.luxuryAd.storyboardDetailed,
+      keyframe_planning_only: !!state.luxuryAd.keyframePlanningOnly,
+      ad_type: state.luxuryAd.adType || 'auto',
+      auto_enhance: state.luxuryAd.autoEnhance !== false,
+      expand_brief: state.luxuryAd.expandBrief !== false,
+      voice_id: state.luxuryAd.voiceId || '',
+      subtitle: state.luxuryAd.subtitle !== false,
+      person_spec: luxuryAdPersonSpec(),
+      person_asset: luxuryAdPersonAssetPayload(),
+      product_asset: state.luxuryAd.productAsset || null,
+      brief_reference_assets: filledLuxuryAdBriefReferences(),
+      reference_assets: luxuryAdReferenceAssets().filter(luxuryAdAssetFilled),
+      bgm_asset: state.luxuryAd.bgmAsset || null,
+      scenes: compactLuxurySegments(state.luxuryAd.segments || []),
+      keyframes: state.luxuryAd.keyframes || [],
+      storyboard_sheets: state.luxuryAd.storyboardSheets || [],
+      production_contract: state.luxuryAd.productionContract || null,
+      asset_manifest: state.luxuryAd.assetManifest || null,
+      visual_locks: state.luxuryAd.visualLocks || null,
+      global_visual_bible: state.luxuryAd.globalVisualBible || null,
+      keyframe_error: state.luxuryAd.keyframeError || '',
+    };
+  }
+
+  async function saveLuxuryAdDraft({ silent = false, projectState = '' } = {}) {
+    const payload = luxuryAdCurrentDraftPayload(projectState);
+    if (!payload.text && !payload.scenes.length && !payload.keyframes.length) {
+      if (!silent) toast('当前还没有可保存的制作内容', 'error');
+      return null;
+    }
+    const r = await api('/api/dh/luxury-ad/projects/save', { method: 'POST', body: payload });
+    if (r?.production_project || r?.project) applyLuxuryProductionProject(r.production_project || r.project);
+    await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
+    if (!silent) toast('制作进度已保存到任务中心', 'success');
+    return r?.production_project || r?.project || null;
+  }
+
+  function restoreLuxuryAdProject(project = null) {
+    if (!project || typeof project !== 'object') return;
+    const draft = project.draft_state || {};
+    state.luxuryAd.content = project.text || state.luxuryAd.content || '';
+    state.luxuryAd.currentStep = draft.current_step || (project.keyframes?.length ? 5 : (project.scenes?.length ? 3 : 1));
+    state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
+    state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
+    state.luxuryAd.outputSize = project.output_size || state.luxuryAd.outputSize || 'standard';
+    state.luxuryAd.adType = draft.ad_type || state.luxuryAd.adType || 'auto';
+    state.luxuryAd.autoEnhance = draft.auto_enhance !== false;
+    state.luxuryAd.expandBrief = draft.expand_brief !== false;
+    state.luxuryAd.voiceId = draft.voice_id || state.luxuryAd.voiceId || '';
+    state.luxuryAd.subtitle = draft.subtitle !== false;
+    state.luxuryAd.personSpec = draft.person_spec || state.luxuryAd.personSpec;
+    state.luxuryAd.personAsset = draft.person_asset || state.luxuryAd.personAsset || null;
+    state.luxuryAd.productAsset = draft.product_asset || state.luxuryAd.productAsset || null;
+    state.luxuryAd.briefRefAssets = draft.brief_reference_assets || [];
+    state.luxuryAd.refAssets = draft.reference_assets || [];
+    state.luxuryAd.bgmAsset = draft.bgm_asset || null;
+    state.luxuryAd.briefInfo = project.brief_info || state.luxuryAd.briefInfo || null;
+    state.luxuryAd.assetManifest = project.asset_manifest || null;
+    state.luxuryAd.visualLocks = project.visual_locks || null;
+    state.luxuryAd.globalVisualBible = project.global_visual_bible || null;
+    state.luxuryAd.productionContract = project.production_contract || null;
+    state.luxuryAd.productionProject = project;
+    state.luxuryAd.productionProjectId = project.id || '';
+    state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
+    state.luxuryAd.keyframePlanningOnly = !!draft.keyframe_planning_only;
+    state.luxuryAd.segments = Array.isArray(project.scenes) ? project.scenes : [];
+    state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
+    state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
+    state.luxuryAd.keyframeError = project.last_error || '';
+    state.luxuryAd.keyframeErrorDetails = project.last_error ? { production_project: project } : null;
+    const input = $('#dhLuxAdText');
+    if (input) input.value = state.luxuryAd.content || '';
+    syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
+    syncLuxuryPersonSpecControls();
+    switchTab('luxury-ad');
+    showLuxuryAdStep(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))), { silent: true });
+    renderLuxuryAd();
+    toast('已从任务中心恢复制作进度', 'success');
+  }
+
+  function luxuryAdProjectToTask(project = {}) {
+    const status = project.status === 'failed' ? 'failed' : (project.status === 'ready' ? 'ready' : 'working');
+    return {
+      taskId: `luxury_project_${project.id}`,
+      projectId: project.id,
+      isLuxuryProjectDraft: true,
+      taskType: 'luxury_ad',
+      status,
+      stage: project.project_state || 'storyboard',
+      avatarName: project.title || project.brief_info?.title || '剧情广告制作中',
+      startedAt: Date.parse(project.updated_at || project.created_at || '') || Date.now(),
+      ratio: project.ratio || '',
+      textPreview: project.text || '',
+      progress: status === 'ready' ? 90 : (project.scenes?.length ? (project.keyframes?.length ? 75 : 45) : 15),
+      project,
+    };
+  }
+
+  function taskStatusBucket(status = '') {
+    if (['draft', 'working', 'ready'].includes(status)) return 'active';
+    if (ACTIVE_TASK_STATUSES.has(status)) return 'generating';
+    if (status === 'done') return 'done';
+    if (['error', 'invalid', 'timeout', 'failed'].includes(status)) return 'failed';
+    return 'active';
+  }
+
+  async function refreshLuxuryAdProjectsForTaskCenter({ force = false, silent = false } = {}) {
+    if (state.luxuryAdProjectsLoading) return;
+    if (!force && Date.now() - Number(state.luxuryAdProjectsLoadedAt || 0) < 20000) return;
+    state.luxuryAdProjectsLoading = true;
+    try {
+      const r = await api('/api/dh/luxury-ad/projects?limit=80');
+      state.luxuryAdProjects = Array.isArray(r.projects) ? r.projects : [];
+      state.luxuryAdProjectsLoadedAt = Date.now();
+      renderTaskCenter();
+    } catch (err) {
+      if (!silent) toast('剧情广告制作进度读取失败：' + err.message, 'error');
+    } finally {
+      state.luxuryAdProjectsLoading = false;
+    }
   }
 
   function renderLuxuryProductionProjectStatus() {
@@ -8956,6 +9115,8 @@
       if (r.asset_manifest) state.luxuryAd.assetManifest = r.asset_manifest;
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
+      if (r.production_project) applyLuxuryProductionProject(r.production_project);
+      else if (r.production_project_id) state.luxuryAd.productionProjectId = r.production_project_id;
       if (!detail && r.person_spec && typeof r.person_spec === 'object') {
         const prevSpec = luxuryAdPersonSpec();
         state.luxuryAd.personSpec = { ...prevSpec, ...r.person_spec };
@@ -8969,10 +9130,9 @@
       state.luxuryAd.storyboardDetailed = !!detail || String(r.planning_mode || '').toLowerCase() === 'detailed';
       state.luxuryAd.keyframes = [];
       state.luxuryAd.storyboardSheets = [];
-      state.luxuryAd.productionProjectId = '';
-      state.luxuryAd.productionProject = null;
       state.luxuryAd.productionContract = null;
       renderLuxuryAdStoryboard();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
       toast(detail
         ? `剧本已生成：${state.luxuryAd.segments.length} 个镜头，现在确认人物来源后再生成分镜`
         : `AI 已生成视频基础信息和广告结构，下一步确认主体后生成剧本`, 'success');
@@ -9133,6 +9293,9 @@
     try {
       const requestKey = luxuryKeyframeRequestKey(singleIndex);
       activeRequestKey = requestKey;
+      if (!state.luxuryAd.productionProjectId && singleIndex === null) {
+        await saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => null);
+      }
       const requestBody = {
         avatar_id: state.selectedAvatar?.id || '',
         background_url: compactLuxuryUrl(refs[0] || ''),
@@ -9258,6 +9421,7 @@
       state.luxuryAd.keyframeError = planningSheetMode ? (deferredPlanning ? '' : (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板')) : '';
       state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (deferredPlanning ? null : (r.details || null)) : null;
       renderLuxuryAdStoryboard();
+      saveLuxuryAdDraft({ silent: true, projectState: planningSheetMode ? 'frame_reviewing' : 'frame_ready' }).catch(() => {});
       const lockedCount = state.luxuryAd.keyframes.filter(k => String(k.reference_mode || '').includes('reference_locked')).length;
       toast(singleIndex !== null
         ? `第 ${singleIndex + 1} 镜已重新生成`
@@ -9283,6 +9447,7 @@
       else if (err?.data?.details?.production_project_id) state.luxuryAd.productionProjectId = err.data.details.production_project_id;
       if (err?.data?.details?.production_contract) state.luxuryAd.productionContract = err.data.details.production_contract;
       renderLuxuryAdStoryboard();
+      saveLuxuryAdDraft({ silent: true, projectState: 'frame_failed' }).catch(() => {});
       toast('剧情广告分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
     } finally {
       if (progressTimer) clearInterval(progressTimer);
@@ -12145,6 +12310,19 @@
     }
     if (closest('#dhLuxAdWrite')) { openLuxuryAdWriterModal(); return; }
     if (closest('#dhLuxAdClean')) { rewriteLuxuryAdContent(); return; }
+    if (closest('#dhLuxAdSaveDraft') || closest('#dhLuxAdSaveDraftStep2') || closest('#dhLuxAdSaveDraftStep3') || closest('#dhLuxAdSaveDraftStep4') || closest('#dhLuxAdSaveDraftStep5')) {
+      const btn = closest('#dhLuxAdSaveDraft') || closest('#dhLuxAdSaveDraftStep2') || closest('#dhLuxAdSaveDraftStep3') || closest('#dhLuxAdSaveDraftStep4') || closest('#dhLuxAdSaveDraftStep5');
+      const old = btn?.innerHTML;
+      try {
+        if (btn) { btn.disabled = true; btn.innerHTML = '保存中…'; }
+        await saveLuxuryAdDraft({ silent: false });
+      } catch (err) {
+        toast('保存制作进度失败：' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = old || '保存进度'; }
+      }
+      return;
+    }
     if (closest('#dhLuxAdDetectStyle')) { buildLuxuryAdStoryboard({ autoNext: false, detail: false }); return; }
     if (closest('#dhLuxAdAutoVisuals')) { autoGenerateLuxuryAdAiVisuals(); return; }
     if (closest('#dhLuxAdStoryboard')) {
@@ -12181,11 +12359,33 @@
       return;
     }
     const plazaUse = closest('[data-plaza-use]'); if (plazaUse) { e.stopPropagation(); usePlazaAvatar(plazaUse.dataset.plazaUse); return; }
-    if (closest('#dhTaskRefresh')) { await restoreVideoTasks(); toast('任务状态已刷新', 'success'); return; }
+    if (closest('#dhTaskRefresh')) {
+      await restoreVideoTasks();
+      await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
+      toast('任务状态已刷新', 'success');
+      return;
+    }
     const taskTypeTab = closest('[data-task-type]');
     if (taskTypeTab) {
       state.activeTaskType = taskTypeTab.dataset.taskType || 'digital_human';
       renderTaskCenter();
+      return;
+    }
+    const taskStatusTab = closest('[data-task-status]');
+    if (taskStatusTab) {
+      state.activeTaskStatus = taskStatusTab.dataset.taskStatus || 'active';
+      renderTaskCenter();
+      return;
+    }
+    const luxProjectContinue = closest('[data-lux-project-continue]');
+    if (luxProjectContinue) {
+      try {
+        const id = luxProjectContinue.dataset.luxProjectContinue;
+        const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`);
+        restoreLuxuryAdProject(r.project);
+      } catch (err) {
+        toast('恢复制作进度失败：' + err.message, 'error');
+      }
       return;
     }
     const taskPreview = closest('[data-task-preview]');

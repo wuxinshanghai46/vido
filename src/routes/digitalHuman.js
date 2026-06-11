@@ -198,6 +198,48 @@ function _compactLuxuryAdProjectSheets(storyboardSheets = []) {
   }));
 }
 
+function _compactLuxuryAdDraftAsset(asset = null) {
+  if (!asset || typeof asset !== 'object') return null;
+  const cleanUrl = value => {
+    const url = String(value || '').trim();
+    if (!url || /^blob:|^data:|^file:/i.test(url)) return '';
+    return url;
+  };
+  const url = cleanUrl(asset.url || asset.image_url || asset.previewUrl || '');
+  return {
+    id: asset.id || '',
+    name: _projectText(asset.name || '', 180),
+    type: asset.type || asset.role || '',
+    role: asset.role || '',
+    url,
+    image_url: cleanUrl(asset.image_url || asset.url || '') || url,
+    previewUrl: cleanUrl(asset.previewUrl || asset.url || asset.image_url || '') || url,
+  };
+}
+
+function _compactLuxuryAdDraftBody(body = {}) {
+  const pickAssets = value => (Array.isArray(value) ? value : [])
+    .map(_compactLuxuryAdDraftAsset)
+    .filter(Boolean)
+    .slice(0, 40);
+  return {
+    current_step: Math.max(1, Math.min(5, Number(body.current_step || body.currentStep || 1) || 1)),
+    storyboard_detailed: !!(body.storyboard_detailed ?? body.storyboardDetailed),
+    keyframe_planning_only: !!(body.keyframe_planning_only ?? body.keyframePlanningOnly),
+    person_spec: _jsonClone(body.person_spec || body.personSpec || null),
+    person_asset: _compactLuxuryAdDraftAsset(body.person_asset || body.personAsset || null),
+    product_asset: _compactLuxuryAdDraftAsset(body.product_asset || body.productAsset || null),
+    brief_reference_assets: pickAssets(body.brief_reference_assets || body.briefRefAssets),
+    reference_assets: pickAssets(body.reference_assets || body.refAssets || body.assets),
+    bgm_asset: _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || null),
+    voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
+    subtitle: body.subtitle !== false,
+    ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
+    auto_enhance: body.auto_enhance !== false,
+    expand_brief: body.expand_brief !== false,
+  };
+}
+
 function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {}) {
   const now = new Date().toISOString();
   const data = _readLuxuryAdProjectStore();
@@ -205,19 +247,19 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
   const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
   const id = existing?.id || requestedId || uuidv4();
-  const scenes = Array.isArray(result.scenes) ? result.scenes : [];
-  const keyframes = Array.isArray(result.keyframes) ? result.keyframes : [];
-  const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : [];
+  const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
+  const keyframes = Array.isArray(result.keyframes) ? result.keyframes : (Array.isArray(body.keyframes) ? body.keyframes : null);
+  const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : (Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : null);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
     || result.keyframe_generation_status === 'deferred_for_review';
   const finalKeyframes = body.storyboard_final_keyframes === true;
-  const project_state = patch.project_state || _luxuryAdProductionStage({
+  const project_state = patch.project_state || body.project_state || _luxuryAdProductionStage({
     reviewOnly,
     finalKeyframes,
-    scenes,
-    keyframes,
+    scenes: scenes || existing?.scenes || [],
+    keyframes: keyframes || existing?.keyframes || [],
     contract,
     errorCode: patch.error_code || result.code || result.details?.code || '',
     keyframeError: patch.error || result.keyframe_error || '',
@@ -239,16 +281,26 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
     resolution: result.resolution || existing?.resolution || '',
     brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
-    scenes: scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
-    keyframes: keyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
-    storyboard_sheets: _compactLuxuryAdProjectSheets(storyboardSheets),
-    visual_asset: _luxuryAdProjectVisualAsset(storyboardSheets),
+    scenes: Array.isArray(scenes) ? scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)) : (existing?.scenes || []),
+    keyframes: Array.isArray(keyframes) ? keyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)) : (existing?.keyframes || []),
+    storyboard_sheets: Array.isArray(storyboardSheets) ? _compactLuxuryAdProjectSheets(storyboardSheets) : (existing?.storyboard_sheets || []),
+    visual_asset: Array.isArray(storyboardSheets) ? _luxuryAdProjectVisualAsset(storyboardSheets) : (existing?.visual_asset || _luxuryAdProjectVisualAsset([])),
     production_contract: _jsonClone(contract || existing?.production_contract || null),
     asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
     global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
     keyframe_generation_status: result.keyframe_generation_status || existing?.keyframe_generation_status || '',
     reference_mode: result.reference_mode || existing?.reference_mode || '',
+    // 中文注释：保存前端制作中的真实快照，刷新/清缓存后任务中心可以继续恢复，不做行业或场景写死。
+    draft_state: { ...(existing?.draft_state || {}), ..._compactLuxuryAdDraftBody(body) },
+    request_keys: {
+      ...(existing?.request_keys || {}),
+      storyboard: body.storyboard_request_key || (body.request_stage === 'storyboard' ? body.request_key : '') || existing?.request_keys?.storyboard || '',
+      keyframe: body.keyframe_request_key
+        || (body.request_stage === 'keyframe' ? body.request_key : '')
+        || (body.storyboard_review_only !== undefined || body.storyboard_final_keyframes !== undefined ? body.request_key : '')
+        || existing?.request_keys?.keyframe || '',
+    },
     last_error: patch.error || result.keyframe_error || '',
     last_error_code: patch.error_code || result.code || '',
     updated_at: now,
@@ -11074,11 +11126,49 @@ function _publicLuxuryStoryboardResult(item) {
   return { success: true, status: item.status || 'running', started_at: item.started_at || null, updated_at: item.updated_at || null };
 }
 
+function _findLuxuryAdProjectByRequestKey(req, requestKey = '', type = 'keyframe') {
+  const clean = String(requestKey || '').trim();
+  if (!clean) return null;
+  const rows = _readLuxuryAdProjectStore().projects || [];
+  return rows
+    .filter(row => _luxuryAdProjectBelongsTo(req, row))
+    .find(row => {
+      const keys = row.request_keys || {};
+      return keys[type] === clean || keys.storyboard === clean || keys.keyframe === clean || row.request_key === clean;
+    }) || null;
+}
+
+function _storyboardResultFromLuxuryProject(row = null) {
+  if (!row || !Array.isArray(row.scenes) || !row.scenes.length) return null;
+  return {
+    success: true,
+    status: 'done',
+    result: {
+      success: true,
+      segments: row.scenes,
+      scenes: row.scenes,
+      brief_info: row.brief_info || null,
+      visual_reference_brief: row.visual_reference_brief || null,
+      asset_manifest: row.asset_manifest || null,
+      visual_locks: row.visual_locks || null,
+      global_visual_bible: row.global_visual_bible || null,
+      person_spec: row.draft_state?.person_spec || row.brief_info?.person_spec || null,
+      total_duration: row.duration_sec || null,
+      planning_mode: row.draft_state?.storyboard_detailed ? 'detailed' : 'outline',
+    },
+    recovered_from_project: true,
+  };
+}
+
 router.get('/luxury-ad/storyboard/result/:requestKey', (req, res) => {
   const key = _luxuryStoryboardResultKey(req, req.params.requestKey);
   const item = key ? luxuryStoryboardResults.get(key) : null;
   const body = _publicLuxuryStoryboardResult(item);
-  if (!body) return res.status(404).json({ success: false, status: 'missing', error: '生成结果还未产生或已过期' });
+  if (!body) {
+    const recovered = _storyboardResultFromLuxuryProject(_findLuxuryAdProjectByRequestKey(req, req.params.requestKey, 'storyboard'));
+    if (recovered) return res.json(recovered);
+    return res.status(404).json({ success: false, status: 'missing', error: '生成结果还未产生或已过期' });
+  }
   res.json(body);
 });
 
@@ -11131,7 +11221,38 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
   const key = _luxuryKeyframeResultKey(req, req.params.requestKey);
   const item = key ? luxuryKeyframeResults.get(key) : null;
   const body = _publicLuxuryKeyframeResult(item);
-  if (!body) return res.status(404).json({ success: false, status: 'missing', error: '分镜生成结果还未产生或已过期' });
+  if (!body) {
+    const project = _findLuxuryAdProjectByRequestKey(req, req.params.requestKey, 'keyframe');
+    if (project && (Array.isArray(project.keyframes) || Array.isArray(project.storyboard_sheets))) {
+      if (project.last_error) {
+        const publicProject = _publicLuxuryAdProject(project);
+        return res.json({
+          success: false,
+          status: 'error',
+          error: project.last_error,
+          details: { code: project.last_error_code || '', production_project: publicProject, production_project_id: project.id },
+          recovered_from_project: true,
+        });
+      }
+      const result = {
+        success: true,
+        scenes: project.scenes || [],
+        keyframes: project.keyframes || [],
+        storyboard_sheets: project.storyboard_sheets || [],
+        production_contract: project.production_contract || null,
+        production_project: _publicLuxuryAdProject(project),
+        production_project_id: project.id,
+        asset_manifest: project.asset_manifest || null,
+        visual_locks: project.visual_locks || null,
+        global_visual_bible: project.global_visual_bible || null,
+        keyframe_generation_status: project.keyframe_generation_status || '',
+        reference_mode: project.reference_mode || '',
+        keyframe_error: '',
+      };
+      return res.json({ success: true, status: 'done', result, recovered_from_project: true });
+    }
+    return res.status(404).json({ success: false, status: 'missing', error: '分镜生成结果还未产生或已过期' });
+  }
   res.json(body);
 });
 
@@ -11150,6 +11271,30 @@ router.get('/luxury-ad/projects/:id', (req, res) => {
     res.json({ success: true, project });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message || '剧情广告生产包读取失败' });
+  }
+});
+
+router.post('/luxury-ad/projects/save', (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = {
+      scenes: Array.isArray(body.scenes) ? body.scenes : undefined,
+      keyframes: Array.isArray(body.keyframes) ? body.keyframes : undefined,
+      storyboard_sheets: Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : undefined,
+      production_contract: body.production_contract || null,
+      asset_manifest: body.asset_manifest || null,
+      visual_locks: body.visual_locks || null,
+      global_visual_bible: body.global_visual_bible || null,
+    };
+    // 中文注释：保存的是制作进度，不替用户推断行业，不写死场景；恢复时按原快照继续。
+    const project = _upsertLuxuryAdProductionProject(req, body, result, {
+      project_state: body.project_state || (body.keyframe_error ? 'frame_failed' : (body.keyframes?.length ? 'frame_ready' : (body.storyboard_detailed ? 'frame_reviewing' : 'script_reviewing'))),
+      error: body.keyframe_error || '',
+      error_code: body.keyframe_error_code || '',
+    });
+    res.json({ success: true, project, production_project: project, production_project_id: project.id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '制作进度保存失败' });
   }
 });
 
@@ -13032,6 +13177,9 @@ ${JSON.stringify(scenes, null, 2)}
       briefInfo.characters = storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
     }
     const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: luxuryGlobalVisualBible, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const productionProject = _upsertLuxuryAdProductionProject(req, { ...req.body, request_stage: 'storyboard', storyboard_request_key: request_key, storyboard_detailed: isDetailedMode }, responseBody, { project_state: isDetailedMode ? 'frame_reviewing' : 'script_reviewing' });
+    responseBody.production_project = productionProject;
+    responseBody.production_project_id = productionProject.id;
     _storeLuxuryStoryboardResult(req, request_key, { status: 'done', result: responseBody });
     res.json(responseBody);
   } catch (err) {
