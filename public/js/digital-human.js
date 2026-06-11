@@ -5767,6 +5767,30 @@
     renderLuxuryWorkflowProgress();
   }
 
+  function reconcileLuxuryAdGenerationState() {
+    const hasOutline = Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length > 0;
+    const hasScript = hasOutline && !!state.luxuryAd.storyboardDetailed;
+    let changed = false;
+    if (hasOutline && state.luxuryAd.sceneGenerating) {
+      state.luxuryAd.sceneGenerating = false;
+      changed = true;
+    }
+    if (hasScript && state.luxuryAd.scriptGenerating) {
+      state.luxuryAd.scriptGenerating = false;
+      changed = true;
+    }
+    const progress = state.luxuryAd.workflowProgress;
+    if (progress?.active && !progress.keyframes) {
+      const progressIsDone = (progress.detail && hasScript) || (!progress.detail && hasOutline);
+      if (progressIsDone || (!state.luxuryAd.sceneGenerating && !state.luxuryAd.scriptGenerating)) {
+        state.luxuryAd.workflowProgress = null;
+        changed = true;
+      }
+    }
+    if (changed) renderLuxuryWorkflowProgress();
+    return changed;
+  }
+
   function updateLuxuryStoryStageHeading() {
     const pill = $('#dhLuxStoryStagePill');
     const title = $('#dhLuxStoryStageTitle');
@@ -5989,6 +6013,7 @@
   }
 
   function luxuryAdGateState() {
+    reconcileLuxuryAdGenerationState();
     const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
     const segments = state.luxuryAd.segments || [];
     const refs = luxuryAdRefs();
@@ -8490,6 +8515,9 @@
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
     state.luxuryAd.keyframeError = project.last_error || '';
     state.luxuryAd.keyframeErrorDetails = project.last_error ? { production_project: project } : null;
+    state.luxuryAd.sceneGenerating = false;
+    state.luxuryAd.scriptGenerating = false;
+    state.luxuryAd.workflowProgress = null;
     const input = $('#dhLuxAdText');
     if (input) input.value = state.luxuryAd.content || '';
     syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
@@ -8709,6 +8737,7 @@
   }
 
   function renderLuxuryAdStoryboard() {
+    reconcileLuxuryAdGenerationState();
     const sceneHost = $('#dhLuxAdSceneConfigHost') || $('#dhLuxAdStoryboardHost');
     const scriptHost = $('#dhLuxAdScriptHost');
     const frameHost = $('#dhLuxAdFrameHost');
