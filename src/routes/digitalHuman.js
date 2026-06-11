@@ -2908,32 +2908,36 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
   };
 }
 
-function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = 'male', scenes = [], brief = '' } = {}) {
-  const gender = /female|woman|girl|女/i.test(String(guideGender || '')) ? 'female' : 'male';
+function _luxuryPresenterSeedPrompt({ productSubject = '', guideGender = '', scenes = [], brief = '' } = {}) {
+  const genderText = String(guideGender || '');
+  const gender = /female|woman|girl|女/i.test(genderText) ? 'female' : (/male|man|boy|男/i.test(genderText) ? 'male' : 'brief-derived');
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes, brief });
   return [
     'STRICT LIVE-ACTION CASTING PHOTO for a premium commercial storyboard.',
-    'This image becomes the mandatory actor identity reference for every later keyframe that contains a human. Create one stable reusable campaign actor, not a poster model and not a digital avatar.',
+    'This image becomes the mandatory person identity reference for every later keyframe that contains a human. Create one stable reusable campaign character derived from the confirmed script, not a poster model and not a digital avatar.',
     `Industry context: ${contract.industry}.`,
-    `Create one real East Asian ${gender} campaign person appropriate for this industry and the confirmed brief; if the brief is for baby, child, teen, parent-child, maternity or family advertising, use an age-appropriate person instead of forcing an adult presenter. Waist-up or three-quarter view, front-facing face clearly visible, natural expression, wardrobe matching the age, industry and brand tone.`,
+    `Create one real campaign person/subject appropriate for the confirmed brief and script; gender is ${gender === 'brief-derived' ? 'derived from the brief/person table' : gender}. If the brief is for baby, child, teen, parent-child, maternity, family, non-presenter product/service or story-character advertising, use the age/person relationship required by the script instead of forcing an adult presenter. Waist-up or three-quarter view when age-appropriate, front-facing face clearly visible when the subject has a face, natural expression, wardrobe matching the age, industry and brand tone.`,
     'Stable identity requirements: clear face impression, consistent age, hairstyle, skin tone, body proportions, outfit family and color palette. Use ordinary professional styling that can plausibly appear in every scene.',
     'Photographic realism requirements: real commercial casting photo, natural skin pores and slight facial asymmetry, realistic hair strands, normal hands, practical soft location light, optical 50mm/85mm lens feel.',
+    'Forbidden defaulting: do not invent a host, consultant, office worker, adult spokesperson, business suit, phone, tablet, order papers, shelves, showroom or UI dashboard unless the confirmed script requires it.',
     'Forbidden style drift: no cyberpunk, no sci-fi goggles, no sunglasses, no tinted glasses, no mask, no hat covering hair, no profile-only face, no cropped/hidden face, no plastic AI skin, no CGI, no 3D render, no illustration, no glamour fashion poster, no jewelry/cosmetics boutique styling, no text, no logo, no extra people.',
-    'Use a neutral premium workplace/commercial background so this exact person can be reused across storyboard keyframes.',
+    'Use a neutral casting reference background so this exact person can be reused across storyboard keyframes without implying a fixed industry scene.',
     productSubject ? `The campaign subject is ${_luxurySceneFriendlyProductSubject(productSubject)}; do not turn this seed into a product-only shot.` : '',
   ].filter(Boolean).join(' ');
 }
 
-function _luxuryPresenterSeedRetryPrompt({ productSubject = '', guideGender = 'male', scenes = [], previousReason = '' } = {}) {
-  const gender = /female|woman|girl|女/i.test(String(guideGender || '')) ? 'female' : 'male';
+function _luxuryPresenterSeedRetryPrompt({ productSubject = '', guideGender = '', scenes = [], previousReason = '' } = {}) {
+  const genderText = String(guideGender || '');
+  const gender = /female|woman|girl|女/i.test(genderText) ? 'female' : (/male|man|boy|男/i.test(genderText) ? 'male' : 'brief-derived');
   const contract = _luxuryIndustrySeedContract({ productSubject, scenes });
   return [
-    'SECOND ATTEMPT: create a plain, real, identity-lockable commercial actor reference.',
-    `One ${gender} campaign person only, matching the confirmed brief age. Front-facing clear face, both eyes fully visible, no sunglasses, no glasses tint, no mask, no hat, no hair covering eyes, no profile angle, no cropped face.`,
+    'SECOND ATTEMPT: create a plain, real, identity-lockable campaign character reference derived from the confirmed script.',
+    `One campaign person/subject only, gender ${gender === 'brief-derived' ? 'derived from the brief/person table' : gender}, matching the confirmed brief age. Front-facing clear face when the subject has a face, both eyes fully visible, no sunglasses, no glasses tint, no mask, no hat, no hair covering eyes, no profile angle, no cropped face.`,
     'The person must look like a real live-action commercial person photographed by a camera: natural skin pores, normal facial asymmetry, realistic hair, age-appropriate wardrobe, calm natural expression.',
+    'Do not invent a host, consultant, office worker, adult spokesperson, business suit, phone, tablet, order papers, shelves, showroom or UI dashboard unless the confirmed script requires it.',
     'Avoid fashion poster styling, beauty campaign glamour, plastic AI skin, CGI render, mannequin, wax figure, editorial pose, dramatic lighting, luxury boutique background, jewelry/cosmetics shelf, generated text, logo or watermark.',
-    `Industry context: ${contract.industry}. Use a simple neutral workplace or soft commercial background appropriate for ${contract.scene}.`,
-    productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}. This is a presenter identity seed, not a product-only image.` : '',
+    `Industry context: ${contract.industry}. Use a simple neutral casting reference background unless the confirmed script explicitly needs a scene clue from ${contract.scene}.`,
+    productSubject ? `Campaign subject: ${_luxurySceneFriendlyProductSubject(productSubject)}. This is a person identity seed, not a product-only image.` : '',
     previousReason ? `Previous failed QA reason to avoid exactly: ${String(previousReason).slice(0, 260)}.` : '',
   ].filter(Boolean).join(' ');
 }
@@ -10508,7 +10512,7 @@ function _luxuryActorAgePrompt(spec = {}, text = '') {
   if (/middle|40|45|50|中年/.test(combined)) return { value: 'middle_40_55', prompt: '40 to 55 years old mature adult' };
   if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(combined)) return { value: 'adult_30_40', prompt: '30 to 40 years old adult' };
   if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age range inferred from the confirmed story brief; avoid making the actor older unless the brief requires it' };
-  return { value: 'young_adult', prompt: '25 to 32 years old young adult' };
+  return { value: 'match_brief', prompt: 'age range inferred from the confirmed advertising brief and script character table; do not default to an adult unless the brief requires it' };
 }
 
 function _luxuryActorAgeSafetyPrompt(age = {}) {
@@ -10521,6 +10525,19 @@ function _luxuryActorAgeSafetyPrompt(age = {}) {
     ].join(' ');
   }
   return 'Age-appropriate commercial styling; do not force business clothing unless the brief requires it.';
+}
+
+function _luxuryActorBriefDerivedContract({ text = '', descriptionText = '', personContextNotes = '', sceneNotes = '', roleHint = '' } = {}) {
+  const source = [text, descriptionText, personContextNotes, sceneNotes, roleHint].filter(Boolean).join('\n');
+  const childOrFamily = /婴儿|宝宝|新生儿|幼儿|儿童|少儿|青少年|母婴|奶粉|乳制品|亲子|家庭|baby|infant|toddler|child|teen|family|maternity/i.test(source);
+  return [
+    // 中文说明：演员包不是行业模板，必须由 brief、剧本人物表和分镜上下文动态推导。
+    'BRIEF-DERIVED CASTING CONTRACT: derive the visible person, industry context, age, gender, role relationship, wardrobe, props and action only from the confirmed advertising brief, script character table, person context and scene context below.',
+    'Never use a fixed persona, fixed industry, fixed occupation, fixed adult host, fixed business presenter, fixed consultant, office worker, store manager, procurement/order clerk, showroom guide, business suit, tablet, phone, shelves, order papers or UI dashboard unless the confirmed brief/script explicitly requires it.',
+    'If the confirmed brief is about a product, service, place, story character, family moment, baby/child/teen subject, mascot, object or non-human subject, follow that subject and relationship exactly; do not replace it with a presenter.',
+    childOrFamily ? 'The current source text contains child/family/baby-related signals, so infant, toddler, child, teen, parent-child or guardian-safe casting is allowed when it matches the script.' : '',
+    'When the brief does not confirm a persona or occupation, keep the reference as a neutral age-appropriate campaign character with no occupational props and no invented business scene.',
+  ].filter(Boolean).join(' ');
 }
 
 async function _generateLuxuryRealisticActorPackage({
@@ -10541,20 +10558,22 @@ async function _generateLuxuryRealisticActorPackage({
   const origin = _luxuryActorOriginPrompt(spec, text);
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
-  const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'commercial person selected from the brief' : `${gender.value} commercial person`}`;
-  const wardrobe = 'the exact same clean age-appropriate outfit chosen from the confirmed brief and product category, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
+  const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
+  const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
+  const wardrobe = 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
   const common = [
-    'Create a fixed commercial actor asset package for a realistic live-action advertisement.',
-    'Generate one consistent real-looking professional actor for casting reference photos.',
+    'Create a consistent campaign character asset package for a realistic live-action advertisement.',
+    'Generate one consistent real-looking person or character subject for casting reference photos, only when the brief/script requires a visible person.',
+    briefDerivedContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
     'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible when age-appropriate. Show the person from head to shoes whenever possible; for infants/toddlers, full-body seated, supported, held-safe, or standing pose is acceptable. At minimum show head, torso and lower body. Do not crop at chest, waist or hips.',
     'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.',
-    'The result should look like practical studio casting photography of a real commercial person.',
+    'The result should look like practical studio casting photography of a real brief-derived campaign subject.',
     'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
-    'Commercial casting reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible, no text, no labels, no watermark.',
+    'Casting reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
     'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
     'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, fashion beauty poster, illustration, CGI, plastic AI skin.',
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
@@ -10576,7 +10595,7 @@ async function _generateLuxuryRealisticActorPackage({
     },
     {
       key: 'action',
-      prompt: `${common} ACTION VIEW: same person performing one age-appropriate commercial action suggested by the confirmed brief, such as looking, reaching, holding a safe product, being safely supported, presenting, operating, comparing, demonstrating or reacting. Use props only when the brief or reference explicitly requires them; do not invent order papers, shelves, phones or fixed industry objects. Visible from head to knees or full body when possible, clothing silhouette and lower body clearly visible, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
+      prompt: `${common} ACTION VIEW: same person performing one age-appropriate action derived from the confirmed script and scene context. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, clothing silhouette and lower body clearly visible, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
     },
   ];
   const outputs = [];
@@ -10610,12 +10629,12 @@ async function _generateLuxuryRealisticActorPackage({
     reference_kind: 'synthetic_realistic_actor',
     production_usable_actor: true,
     is_ai_generated: false,
-    name: 'AI 真人感固定演员',
+    name: 'AI 真人感一致性演员',
     gender: gender.value,
     age: age.value,
     age_range: age.prompt,
     origin: origin.value,
-    role: 'commercial_actor',
+    role: 'brief_derived_campaign_character',
     image_url: outputs[0]?.url || '',
     extra_image_urls: outputs.slice(1).map(x => x.url).filter(Boolean),
     stable_attributes: [
@@ -10627,7 +10646,7 @@ async function _generateLuxuryRealisticActorPackage({
       'same natural skin texture',
     ],
     forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
-    prompt: `FIXED REAL ACTOR ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
+    prompt: `CONSISTENT REAL CAMPAIGN CHARACTER ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes required by the confirmed script. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
   };
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
@@ -10669,25 +10688,11 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       : '';
     const spec = (person_spec && typeof person_spec === 'object') ? person_spec : {};
     const genderMap = {
-      adult_woman_25_35: { en: 'female woman, 25-35 years old', lock: 'Keep a consistent female professional actor presentation across all views.' },
-      adult_woman_35_50: { en: 'female woman, 35-50 years old', lock: 'Keep a consistent female professional actor presentation across all views.' },
-      adult_man_25_35: { en: 'male man, 25-35 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
-      adult_man_30_45: { en: 'male man, 30-45 years old', lock: 'Keep a consistent male professional actor presentation across all views.' },
+      adult_woman_25_35: { en: 'female person, 25-35 years old when explicitly requested', lock: 'Keep a consistent female person presentation across all views.' },
+      adult_woman_35_50: { en: 'female person, 35-50 years old when explicitly requested', lock: 'Keep a consistent female person presentation across all views.' },
+      adult_man_25_35: { en: 'male person, 25-35 years old when explicitly requested', lock: 'Keep a consistent male person presentation across all views.' },
+      adult_man_30_45: { en: 'male person, 30-45 years old when explicitly requested', lock: 'Keep a consistent male person presentation across all views.' },
       auto_real_adult: { en: 'real human selected from the advertising brief age/person contract', lock: '' },
-    };
-    const roleMap = {
-      premium_ad_actor: 'premium commercial advertising actor',
-      real_user: 'authentic real product user, approachable and believable',
-      business_presenter: 'professional business presenter',
-      product_expert: 'credible product experience specialist',
-      lifestyle_actor: 'natural lifestyle commercial actor',
-    };
-    const outfitMap = {
-      minimal_premium_casual: 'minimal premium smart-casual outfit',
-      business_suit: 'modern business suit',
-      warm_lifestyle: 'warm natural lifestyle outfit',
-      sporty_modern: 'modern sporty casual outfit',
-      match_brief: 'outfit chosen to match the advertising brief',
     };
     const selectedGender = genderMap[String(spec.genderAge || spec.gender_age || '')] || null;
     const descriptionText = String(description || '').trim();
@@ -10695,18 +10700,19 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     const inferredMale = /男性|男主|男士|男人|man|male/i.test([descriptionText, text].join(' '));
     const genderLock = selectedGender?.lock
       || (inferredFemale ? genderMap.adult_woman_25_35.lock : (inferredMale ? genderMap.adult_man_30_45.lock : ''));
+    const userRole = String(spec.role || spec.character_role || spec.role_hint || '').trim();
+    const userOutfit = String(spec.outfit || spec.wardrobe || spec.outfit_hint || '').trim();
+    // 中文说明：这里不再使用角色/服装枚举兜底，避免把任何行业误导成主持人、顾问或商务场景。
     const roleHint = [
       selectedGender?.en || '',
-      roleMap[String(spec.role || '')] || '',
-      outfitMap[String(spec.outfit || '')] || '',
+      userRole ? `User provided role hint, must still be validated against brief/script: ${userRole}` : '',
+      userOutfit ? `User provided wardrobe hint, must still be validated against brief/script: ${userOutfit}` : '',
       descriptionText,
     ].filter(Boolean).join('; ') || [
       /女性|女主|女士|女人|女孩|woman|female|girl|amy/i.test(text) ? 'female advertising person selected from the brief' : '',
       /男性|男主|男士|男人|男孩|man|male|boy/i.test(text) ? 'male advertising person selected from the brief' : '',
       /婴儿|宝宝|幼儿|儿童|少儿|青少年|母婴|奶粉|乳制品|baby|infant|toddler|child|teen/i.test(text) ? 'age-appropriate child or baby commercial subject selected from the brief' : '',
-      /家庭|生活|客厅|日程|家务|智能/i.test(text) ? 'lifestyle advertising character selected from the brief' : '',
-      /商务|办公|经理|职场/i.test(text) ? 'commercial advertising character selected from the brief' : '',
-    ].filter(Boolean).join(', ') || 'real human advertising character selected from the brief';
+    ].filter(Boolean).join(', ') || 'campaign character/person must be inferred from the confirmed brief and script, with no default industry or occupation';
     const referencePersonUrl = reference_person && (reference_person.image_url || reference_person.url)
       ? await _resolveImageForExternalApi(req, reference_person.image_url || reference_person.url)
       : '';
@@ -10747,7 +10753,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         id: actorAsset.actor_asset_id,
         actor_id: actorAsset.actor_id,
         actor_asset_id: actorAsset.actor_asset_id,
-        name: actorAsset.name || 'AI 真人感固定演员',
+        name: actorAsset.name || 'AI 真人感一致性演员',
         type: 'luxury_ad_actor_package',
         source: actorAsset.source || 'local_actor_library_generated',
         reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
@@ -10758,7 +10764,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感固定演员包：正面定妆、侧面/半侧、动作参考。已按 Lin 演员资产模式生成：${roleHint.slice(0, 80)}。`,
+        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     });
   } catch (err) {

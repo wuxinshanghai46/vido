@@ -4799,7 +4799,7 @@
       el.value = spec[field] || '';
       const locked = !!(lock && (field === 'castMode' || field === 'gender' || field === 'origin' || field === 'age') && (field !== 'origin' || lock.origin) && (field !== 'age' || lock.age));
       el.disabled = locked;
-      el.title = locked ? `已按固定演员「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '';
+      el.title = locked ? `已按人物一致性参考「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '';
     });
   }
 
@@ -5017,7 +5017,7 @@
         id: generated.id || 'luxury_ad_person_sheet',
         actor_asset_id: generated.actor_asset_id || generated.asset_library_id || generated.material_id || '',
         actor_id: generated.actor_id || generated.metadata?.actor_id || '',
-        name: generated.name || (isSyntheticActor ? 'AI 真人感固定演员' : (isAiGenerated ? 'AI 拟真演员三视图' : '真人照片参考')),
+        name: generated.name || (isSyntheticActor ? 'AI 真人感一致性演员' : (isAiGenerated ? 'AI 拟真演员三视图' : '真人照片参考')),
         type: generated.type || 'luxury_ad_character_sheet',
         source: generated.source || 'person_asset',
         reference_kind: referenceKind,
@@ -5244,13 +5244,13 @@
         <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
         <span style="min-width:0;display:block">
           <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
-          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
+          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告人物一致性参考')}</small>
         </span>
       </button>`;
     }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传真人参考或生成 AI 真人感演员包后会自动入库。</div>';
     mask.innerHTML = `<div style="width:min(760px,94vw);max-height:82vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)">
-        <div><b>角色素材库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择一个固定演员，后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
+        <div><b>角色素材库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择一个人物一致性参考，后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
         <button type="button" data-lux-actor-close style="border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer">×</button>
       </div>
       <div style="padding:14px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${cards}</div>
@@ -5304,9 +5304,9 @@
         genderText,
         ageText,
       ].filter(Boolean).join(' · ');
-      const defaultName = isSyntheticActor ? 'AI 真人感固定演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考');
+      const defaultName = isSyntheticActor ? 'AI 真人感一致性演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考');
       const defaultDesc = isSyntheticActor
-        ? '这是按角色库演员包模式生成的真人感固定演员，会作为后续分镜的人物一致性锁。'
+        ? '这是按广告需求、剧本人物表和分镜上下文生成的真人感一致性演员，会作为后续分镜的人物一致性锁。'
         : isAiActor
         ? '这是 AI 生成的拟真演员参考，不等同于真实真人照片。需要真人请上传真人照片或使用授权真人演员素材。'
         : '真人照片参考会作为广告人物身份和气质锁定。';
@@ -6430,7 +6430,7 @@
       { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
       { at: 2500, percent: 24, phase: '生成正面定妆照', message: '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
       { at: 8500, percent: 48, phase: '生成侧面/半侧参考', message: '复用同一脸型、发型、服装和身形比例。' },
-      { at: 15000, percent: 70, phase: '生成动作参考照', message: '同一演员进入商业动作姿态，检查衣服和发型不漂移。' },
+      { at: 15000, percent: 70, phase: '生成动作参考照', message: '同一演员进入剧本需要的动作姿态，检查衣服和发型不漂移。' },
       { at: 22000, percent: 86, phase: '构图 QA 与素材入库', message: '检查是否看得到裤子/膝盖等下半身证据，通过后才绑定 actor_id。' },
     ];
     const updatePersonProgress = () => {
@@ -6459,7 +6459,7 @@
     const personProgressTimer = setInterval(updatePersonProgress, 1400);
     state.luxuryAd.personAsset = {
       id: 'luxury_ad_actor_package',
-      name: 'AI 真人感固定演员',
+      name: 'AI 真人感一致性演员',
       type: 'luxury_ad_actor_package',
       source: 'local_actor_library_generated',
       reference_kind: 'synthetic_realistic_actor',
@@ -6472,7 +6472,8 @@
       gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
       age: generationSpec.age || '',
       origin: generationSpec.origin || '',
-      description: '正在按角色素材库标准生成真人感固定演员包。',
+      // 中文说明：演员包只锁定人物一致性，行业、职业、年龄和动作必须由用户内容/剧本推导。
+      description: '正在根据广告需求、剧本人物表和分镜上下文生成真人感一致性演员包。',
       spec_description: personDescription,
     };
     state.selectedAvatar = null;
@@ -6508,7 +6509,7 @@
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
         actor_id: character.actor_id || r.actor_asset?.actor_id || '',
         actor_asset_id: character.actor_asset_id || r.actor_asset?.actor_asset_id || '',
-        name: character.name || 'AI 真人感固定演员',
+        name: character.name || 'AI 真人感一致性演员',
         type: character.type || 'luxury_ad_actor_package',
         source: character.source || 'local_actor_library_generated',
         reference_kind: character.reference_kind || 'synthetic_realistic_actor',
@@ -6525,7 +6526,7 @@
           : (Array.isArray(r.extra_image_urls) ? r.extra_image_urls : []),
         view_count: 3,
         uploading: false,
-        description: character.description || 'AI 真人感固定演员包：正面定妆、侧面/半侧、动作参考。',
+        description: character.description || 'AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。',
         spec_description: personDescription,
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -6534,7 +6535,7 @@
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'local_actor_library_generated');
-      toast('AI 真人感固定演员包已生成，并会写入角色素材库用于后续分镜锁定', 'success');
+      toast('AI 真人感一致性演员包已生成，并会写入角色素材库用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.luxuryAd.personGenerationError = {
         endpoint: '/api/dh/luxury-ad/person-sheet',
@@ -6547,7 +6548,7 @@
       state.luxuryAd.personGenerationProgress = null;
       state.luxuryAd.personAsset = {
         id: 'luxury_ad_actor_package_failed',
-        name: 'AI 真人感固定演员',
+        name: 'AI 真人感一致性演员',
         type: 'luxury_ad_actor_package',
         source: 'local_actor_library_generated',
         reference_kind: 'synthetic_realistic_actor',
@@ -8092,7 +8093,7 @@
     const hasActorAsset = !!(state.luxuryAd.personAsset?.url
       || state.luxuryAd.productionContract?.actor_reference?.status === 'confirmed'
       || keyframes.find(k => k?.character_lock?.actor_asset || k?.visual_locks?.character_lock?.actor_asset));
-    const actorLabel = hasActorAsset ? '固定演员已启用' : '待选演员';
+    const actorLabel = hasActorAsset ? '人物一致性参考已启用' : '待选人物参考';
     const actorSub = hasActorAsset
       ? '后端会把正脸/侧脸/动作参考作为人物一致性锁。'
       : '建议先生成 AI 真人感演员包、上传真人参考或选择角色素材库演员。';
@@ -8142,7 +8143,7 @@
         : (finishedFrames ? `当前已生成 ${finishedFrames}/${totalFrames || finishedFrames} 个真实分镜。` : '确认剧本后会先按演员和工作流合同生成关键帧，失败时这里会显示模型链路和原因。'));
     const html = `<section>
       <div class="dh-lux-commercial-guard-head">
-        <div><b>商用分镜生成链路</b><span>固定演员、软件工作流、模型调用管理和严格 QA 会在这里显性展示。</span></div>
+        <div><b>商用分镜生成链路</b><span>人物一致性参考、软件工作流、模型调用管理和严格 QA 会在这里显性展示。</span></div>
         <em>${escapeHtml(state.luxuryAd.keyframeGenerating ? '生成中' : (finishedFrames ? '已有结果' : '待生成'))}</em>
       </div>
       <div class="dh-lux-commercial-guard-grid">${cards}</div>
@@ -8190,7 +8191,7 @@
     const map = {
       script_reviewing: '剧本审核中',
       frame_reviewing: '分镜板审核中',
-      actor_required: '等待固定演员',
+      actor_required: '等待人物一致性参考',
       model_required: '等待保参考模型',
       frame_failed: '关键帧失败',
       frame_ready: '关键帧已就绪',
