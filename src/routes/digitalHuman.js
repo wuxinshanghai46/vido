@@ -1867,8 +1867,8 @@ function _luxurySoftwareWorkflowEvidencePrompt(productSubject = 'software workfl
   const subject = String(productSubject || 'software workflow').trim();
   return [
     `The visible product evidence for "${subject}" is the real service workflow, not a physical package.`,
-    'Acceptable evidence: a real actor using a phone/tablet/computer, order papers, inventory shelves, product boxes, confirmation/check UI, dashboard-like overlay, or a store/warehouse restock decision.',
-    'Readable brand text is not required; the workflow must be visually clear through action, props and environment.',
+    'Acceptable evidence must come from the confirmed brief, assets or storyboard: actor/action, device, document, tool, place, interface, result, before-after state or other explicitly required carrier.',
+    'Readable brand text is not required; the workflow must be visually clear through confirmed action, evidence and environment without defaulting to any industry template.',
   ].join(' ');
 }
 
@@ -9271,9 +9271,6 @@ async function _createLuxurySteelApplicationSceneAnchor(req, {
 }
 function _luxuryImageSubjectAlias(productSubject = '', scene = {}) {
   const subject = String(productSubject || 'uploaded main product').trim();
-  if (_isLuxurySteelMaterialSubject(subject, scene)) {
-    return 'finished architectural facade cladding panels / premium installed dark metallic wall panels';
-  }
   return subject || 'uploaded main product';
 }
 
@@ -9285,22 +9282,18 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
     return [
       `SERVICE/WORKFLOW SUBJECT LOCK: the advertised subject is "${rawSubject || subject}".`,
       _luxurySoftwareWorkflowEvidencePrompt(rawSubject || subject),
-      'The phone/screen is only the carrier of the service; do not turn this into a phone product ad.',
-      'The frame must show the workflow in a real store, retail office, stockroom or warehouse shelf context: actor + order/inventory evidence + action.',
-      'Do not invent cosmetics, perfume, skincare bottles, jewelry, watches, beverage packs, material showrooms, sci-fi UI labs, or unrelated retail goods.',
+      'Any device/interface/tool/place is only an evidence carrier when explicitly confirmed; do not turn the campaign into a default carrier ad.',
+      'The frame must show the confirmed workflow/use/result evidence in the confirmed context.',
+      'Do not invent unrelated goods, places, UI, props, logos, readable text or default industry scenes.',
     ].filter(Boolean).join(' ');
   }
-  const steelLock = _isLuxurySteelMaterialSubject(rawSubject || subject, scene)
-    ? 'For this finished architectural facade panel product: show installed cladding panels, a premium sample wall, precise panel edges, brushed or mirror-like surface texture and reflected side light as the hero subject. Keep it in a designed showroom, building lobby, clean facade entrance, or luxury sample area.'
-    : '';
   return [
     `PRODUCT SUBJECT LOCK: the advertised product category is "${subject}".`,
     'The hero subject must stay in this product category and must be visually derived from reference image 1.',
-    'Do not invent a different product category, unrelated packaged goods, cosmetics, perfume bottles, skincare bottles, beverage bottles, phones, watches, jewelry or random retail props unless the confirmed brief explicitly names that category.',
-    'If the uploaded main product is a material, surface, panel, wall, showroom sample or texture reference, treat that material/display as the product itself instead of placing unrelated consumer goods on it.',
+    'Do not invent a different product/service category, unrelated packaged goods, default props, default UI carrier, default place, logo or readable text unless the confirmed brief explicitly names it.',
+    'If the uploaded main subject is abstract, material, service, scene or relationship evidence, treat that confirmed evidence as the subject itself instead of placing unrelated objects on it.',
     rawSubject && rawSubject !== subject ? `Original product wording: ${rawSubject}. Preserve that exact advertised category from the user brief and references.` : '',
     'The product should look finished, installed, polished, premium and commercially usable.',
-    steelLock,
   ].filter(Boolean).join(' ');
 }
 
@@ -9316,37 +9309,15 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}) {
       'Never output a generic phone ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, or empty workplace.',
     ].join(' ');
   }
-  const isSteelOrMaterial = _isLuxurySteelMaterialSubject(rawSubject || subject, scene);
   return [
     `ABSOLUTE FIRST PRIORITY: the visible hero subject must be "${subject}".`,
-    isSteelOrMaterial
-      ? '正向主体锚点：画面必须清楚出现成品建筑外立面板、墙面安装、样板展示、细腻板缝、表面纹理和高级侧光之一，主体要占据画面主要视觉权重。'
-      : `正向主体锚点：画面主要视觉权重必须属于"${subject}"，不要只拍氛围、空场景或随机道具。`,
-    isSteelOrMaterial
-      ? 'Draw finished architectural facade-panel visuals: polished installed cladding panels, premium wall panels, showroom material boards, profile/edge details, brushed or mirror-like texture and reflected light. The setting must be a designed commercial space, not a logistics, manufacturing or construction environment.'
-      : 'Never replace the advertised subject with cosmetics, perfume, skincare, jewelry, phones, watches, beverages or unrelated packaged goods.',
+    `正向主体锚点：画面主要视觉权重必须属于"${subject}"，不要只拍氛围、空场景、随机道具或默认行业模板。`,
+    'Never replace the advertised subject with an unrelated category, default carrier, default place, default prop, fake UI, logo or readable generated text.',
   ].filter(Boolean).join(' ');
 }
 
 function _luxurySteelEnvironmentLockPrompt(productSubject = '', scene = {}) {
-  if (!_isLuxurySteelMaterialSubject(productSubject, scene)) return '';
-  const text = [scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.camera, scene.shot_angle, scene.voiceover]
-    .filter(Boolean)
-    .join(' ');
-  const wantsExterior = /外立面|建筑外观|外观|facade|exterior|building/i.test(text);
-  const wantsShowroom = /展厅|室内|成品区|样板|showroom|interior|display|sample/i.test(text);
-  const allowed = wantsExterior && !wantsShowroom
-    ? 'a premium modern building facade or facade mockup made of finished stainless-steel / dark metal panels, photographed like a high-end architectural commercial'
-    : wantsShowroom && !wantsExterior
-    ? 'a high-end material showroom, design consultation area, sample-wall display, or finished product zone with installed steel/metal panels'
-    : 'a high-end material showroom or premium modern building facade mockup with installed finished steel/metal panels';
-  return [
-    'NONNEGOTIABLE STEEL CAMPAIGN ENVIRONMENT LOCK:',
-    `The only acceptable world is ${allowed}.`,
-    'Use a designed commercial environment: bright premium showroom, building lobby, clean facade entrance, or refined sample-wall display. Use side light, polished/brushed reflections, clean installed panels, visible seams and refined product finish.',
-    'Do not depict manufacturing, logistics, storage, unfinished construction, raw inventory, heavy machinery or dusty work areas.',
-    '中文硬约束：只能是高端成品外立面、展厅、样板墙或成品展示区；不要出现制造、仓储、施工、原料库存或重型设备环境。',
-  ].join(' ');
+  return '';
 }
 
 function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
@@ -9359,11 +9330,11 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
   if (personRequired && softwareWorkflow) {
     return [
-      'REQUIRED SOFTWARE STORY VISUAL ANCHOR:',
-      'The first readable subject must be the fixed real actor performing the confirmed order/inventory assistant workflow in a believable store, retail office, stockroom or shelf aisle.',
-      `The advertised service evidence must remain visible as "${subject}" through phone/screen/order papers/inventory shelves/confirmation UI; do not require a physical package for the service itself.`,
-      'The frame must look like a live-action commercial storyboard panel: same actor + real work environment + workflow evidence + requested emotion/action.',
-      '中文硬约束：画面必须像真人实拍广告，固定演员在店铺/货架/仓库中处理订单或库存；手机、订单纸、货架、确认界面是产品证据，不能变成纯手机广告或空场景。',
+      'REQUIRED SERVICE STORY VISUAL ANCHOR:',
+      'The first readable subject must be the confirmed person/role performing the confirmed workflow, service use, transformation or result in the confirmed environment.',
+      `The advertised service evidence must remain visible as "${subject}" through the carriers explicitly required by the brief/assets/script; do not require a physical package for the service itself.`,
+      'The frame must look like a live-action commercial storyboard panel: confirmed role + confirmed environment + confirmed evidence + requested emotion/action.',
+      '中文硬约束：画面必须像真人实拍广告，主体证据、人物动作和场景都来自已确认需求；不能自动套用手机、订单、货架、仓库、后台等模板。',
     ].join(' ');
   }
   if (personRequired) {
@@ -9372,26 +9343,14 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
       'The first readable subject must be a real human actor inside a believable commercial scene, performing the storyboard action.',
       `The advertised product evidence must remain visible and recognizable as "${subject}", but it is proof inside the story scene, not a product-only catalogue hero.`,
       'The frame must look like a live-action commercial storyboard panel: person + environment + product/material evidence in one coherent shot.',
-      isSteelOrMaterial
-        ? 'For architectural facade-panel products, show finished installed panels in a showroom, design studio, building lobby, facade sample area or real application space beside the actor. Keep it like a premium interior/architecture campaign, not an industrial supply scene.'
-        : 'Do not output an isolated product packshot, empty background, or catalogue still.',
-      '中文硬约束：画面第一眼必须有人物在真实商业空间中行动，同时看见产品/材料证据；不能只有材料、外立面、仓库、工厂或纯产品图。',
+      'Do not output an isolated product packshot, empty background, catalogue still, or default scene template.',
+      '中文硬约束：画面第一眼必须有人物在已确认场景中行动，同时看见主体证据；不能自动改成固定行业场景或纯产品图。',
     ].filter(Boolean).join(' ');
-  }
-  if (isSteelOrMaterial) {
-    return [
-      'REQUIRED POSITIVE VISUAL ANCHOR:',
-      'Main subject must be finished architectural facade-panel material, not a lifestyle product.',
-      'It must look like a premium installed facade or wall panel system: clean polished panels, facade cladding, showroom sample boards, precise edge/profile details, brushed or mirror-like texture and controlled side light reflection.',
-      'Show at least two visible cues: installed panels, facade/wall application, polished texture, panel edge/profile detail, showroom material board, side light reflected across the surface.',
-      'Keep the world designed and commercial; avoid industrial supply, storage, unfinished construction, random props, bottles, jewelry or consumer packaging.',
-      '中文硬约束：主体必须是成品钢材、金属板材、建筑外立面材料、墙面安装或钢材样板；质感要干净、抛光、精致、成品化。不能生成生锈、腐蚀、仓库钢梁、钢筋、原材料乱堆、化妆品、香水瓶、首饰、饮料瓶、手机或手表。',
-    ].join(' ');
   }
   return [
     'REQUIRED POSITIVE VISUAL ANCHOR:',
     `The main visible subject must be "${subject}".`,
-    'The subject must be readable in the first glance and should not be replaced by generic luxury props, abstract atmosphere, unrelated retail objects or empty scenery.',
+    'The subject must be readable in the first glance and should not be replaced by generic luxury props, abstract atmosphere, unrelated objects, default UI carriers or empty scenery.',
   ].join(' ');
 }
 
@@ -9399,48 +9358,13 @@ function _luxuryKeyframeSceneRecipe(productSubject = '', scene = {}) {
   const text = [productSubject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.objective, scene.voiceover]
     .filter(Boolean)
     .join(' ');
-  const isSteel = _isLuxurySteelMaterialSubject(productSubject || scene.product_subject, scene);
-  if (_luxuryIsSoftwareWorkflowSubject(productSubject, scene)) {
-    const wantsPaperInHand = /纸|订单|单据|文件|paper|order sheets?|documents?|invoice/i.test(text);
-    const wantsWorried = /焦虑|担心|压力|worried|pressure|cannot keep up|messy/i.test(text);
-    const wantsRestockPoint = /补货|推荐|建议|指向|货架|shelf|shelves|restock|recommend|advice|points?\s+(from|toward|to)|pointing/i.test(text);
-    const wantsCalmEnding = /收尾|结束|释然|放松|松一口气|放下|放到|抬头|日常|calm ending|relieved|relief|puts?\s+(the\s+)?paper|paper stack down|looks? up|routine/i.test(text);
-    return [
-      'CONCRETE SOFTWARE WORKFLOW SCENE RECIPE:',
-      'Create a realistic live-action retail operations scene: back-of-house retail stockroom, order-processing counter, package area, plain inventory shelf zone, or small warehouse shelf zone.',
-      'Show the fixed actor using a phone or computer while holding or reviewing paper orders, inventory sheets, product boxes, shelves, or a subtle confirmation/check UI.',
-      wantsPaperInHand ? 'This shot mentions paper/order sheets: at least one paper order sheet or document must be in the actor hand or actively reviewed, not only lying far away on a table.' : '',
-      wantsWorried ? 'This shot mentions pressure/worry: actor expression must show mild worried concentration, furrowed brow or tense focus, not a calm beauty portrait.' : '',
-      wantsRestockPoint ? 'This shot is a restock recommendation/action shot: the actor must clearly point with one hand or extended index finger from the phone/workflow toward a specific visible shelf item, product box, stock location or empty shelf gap. The phone/order assistant and the target shelf item must both be readable in one frame.' : '',
-      wantsRestockPoint ? 'Use a medium or medium-wide composition with shelf depth so the pointing gesture has a visible target. Do not let a stack of papers dominate the foreground, and do not reduce the action to merely looking at a phone.' : '',
-      wantsCalmEnding ? 'This shot is the calm ending/relief beat: the actor must put the paper stack down on the counter or release it onto the table, with the phone resting nearby as workflow evidence instead of being the main hand action.' : '',
-      wantsCalmEnding ? 'The actor should look up or slightly toward camera/customer with a relieved, calmer expression. Do not show him still worried, still checking the phone, or actively flipping papers.' : '',
-      'Use practical natural lighting, ordinary work details and real camera perspective. Avoid supermarket shopping aisles, colorful consumer-goods shelves, cleaning-product aisles, bathroom/home-goods/towel displays, cosmetics shelves, material showrooms, sci-fi interfaces, empty office glamour and pure phone packshots.',
-    ].join(' ');
-  }
-  if (!isSteel) return '';
-  if (_luxuryStoryboardRequiresPerson(scene, productSubject)) {
-    return [
-      'CONCRETE STORY SCENE RECIPE:',
-      'Create a premium live-action commercial scene in a real showroom, design consultation area, building lobby, architectural sample room or high-end application space.',
-      'A realistic presenter/designer/customer must be visible in the same frame, interacting with or guiding attention to finished architectural facade-panel evidence.',
-      'The environment needs depth and lived details: shelves, sample boards, consultation table, architectural lighting, wall/facade mockup, or installed material panels.',
-      'Avoid empty facade-only shots, product-only panels, industrial supply scenes, unfinished construction stock and abstract material textures.',
-    ].join(' ');
-  }
-  if (/外立面|facade|building exterior|建筑/i.test(text)) {
-    return [
-      'CONCRETE SCENE RECIPE:',
-      'Create a polished modern building facade or premium showroom facade mockup made of finished architectural cladding panels.',
-      'Use a clean dark high-end background or architectural space, one side light sweeping across the installed panels, visible seams, panel edges, brushed texture and premium reflections.',
-      'The panels must be installed vertically or as facade/wall cladding, not loose material on a table.',
-    ].join(' ');
-  }
   return [
-    'CONCRETE SCENE RECIPE:',
-    'Create a premium material showroom display of finished architectural facade panels, with clean installed wall panels, sample boards, edge/profile details and controlled side light.',
-    'The surface must look new, clean, polished and commercially finished inside a designed showroom or facade application space.',
-  ].join(' ');
+    'GENERIC CONFIRMED-SCENE RECIPE:',
+    'Create a realistic live-action commercial scene from the confirmed storyboard contract only.',
+    'Show the explicitly required subject, person/action, evidence carriers, result state and environment; do not add carriers or places that are not present in the brief, assets, script or manual edits.',
+    text ? `Confirmed shot evidence text: ${_luxuryStrictText(text, 260)}.` : '',
+    'Use practical natural lighting, believable real-world details and real camera perspective. Avoid default carrier ads, default workplace scenes, unrelated props, fake readable UI and template locations.',
+  ].filter(Boolean).join(' ');
 }
 
 function _luxuryKeyframeHumanAnchor(scene = {}, hasAvatar = false) {
@@ -9453,9 +9377,9 @@ function _luxuryKeyframeHumanAnchor(scene = {}, hasAvatar = false) {
     hasAvatar
       ? 'This shot requires the selected human identity to be visible as the presenter.'
       : 'This shot requires exactly one realistic adult presenter to be visible; generate an anonymous professional presenter if no identity reference is uploaded.',
-    'The person must be part of the actual scene, not a sticker or cutout, and must perform the storyboard action such as walking into frame, guiding, pointing or touching the material.',
-    'Do not return a product-only, warehouse-only or empty scene when the storyboard action asks for a live person.',
-    '中文硬约束：如果动作/画面要求真人入场、讲解、指向或触摸材料，画面必须出现一个真实成年人，不能只有钢材或空仓库。',
+    'The person must be part of the actual scene, not a sticker or cutout, and must perform the confirmed storyboard action.',
+    'Do not return a subject-only, template-location-only or empty scene when the storyboard action asks for a live person.',
+    '中文硬约束：如果动作/画面要求真人入场、讲解、指向或触摸主体证据，画面必须出现一个真实成年人，不能只有主体空镜或默认场景。',
   ].join(' ');
 }
 
@@ -9669,13 +9593,13 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   if (missedSubject || wrongProduct || productLow) {
     repairNotes.push('required_subject');
     mustShow.push(`the advertised subject evidence must be visibly readable as ${_luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || contract.product_subject || 'the advertised product/service')}`);
-    mustShow.push('the exact storyboard-required product/service/material/use moment in the same frame, not a generic substitute');
-    mustNotShow.push('cosmetics, perfume, skincare bottle, beverage bottle, phone, watch, jewelry, or unrelated consumer goods unless explicitly requested');
+    mustShow.push('the exact storyboard-required subject/evidence/use moment in the same frame, not a generic substitute');
+    mustNotShow.push('any unrelated category, stock prop, default industry carrier, or unconfirmed product/service/person/place unless explicitly requested');
   }
   if (sceneLow || wrongScene) {
     repairNotes.push('scene_environment');
-    mustShow.push('the same industry-appropriate real social/commercial setting required by the storyboard, with product evidence integrated into that location');
-    mustNotShow.push('jumping to a different warehouse, factory, office, boutique, retail shelf, exterior facade or empty studio unless the storyboard explicitly requires it');
+    mustShow.push('the same confirmed real-world setting required by the storyboard, with advertised subject evidence integrated into that location');
+    mustNotShow.push('jumping to any different template location or default industry scene unless the storyboard explicitly requires it');
   }
   if (characterLow || wrongActor || scene.character_lock || scene.identity_reference_image) {
     repairNotes.push('character_identity');
@@ -9692,7 +9616,7 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
     must_show: _mergeLuxuryMustList(scene.visual_contract?.must_show || contract.must_show, mustShow, 14),
     must_not_show: _mergeLuxuryMustList(scene.visual_contract?.must_not_show || contract.must_not_show, mustNotShow, 14),
     allowed_environment: wrongScene || sceneLow
-      ? _luxuryStrictText(contract.allowed_environment || scene.environment_lock || scene.visual_contract?.allowed_environment || 'the exact industry-appropriate real-world setting from this storyboard, not a substituted generic scene', 280)
+      ? _luxuryStrictText(contract.allowed_environment || scene.environment_lock || scene.visual_contract?.allowed_environment || 'the exact confirmed real-world setting from this storyboard, not a substituted generic scene', 280)
       : (scene.visual_contract?.allowed_environment || contract.allowed_environment),
     qa_contract: [
       'QA-REWRITTEN HARD CONTRACT:',
@@ -9722,11 +9646,22 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
     qa_contract: visualContract.qa_contract,
   };
   const compiledPrompt = _compileLuxuryShotImagePrompt(rewritten, rewrittenContract, { aspectRatio });
+  const imageContract = _buildLuxuryImageContract(rewritten, rewrittenContract);
+  const videoContract = _buildLuxuryVideoContract(rewritten, rewrittenContract);
+  const videoMotionPrompt = _compileLuxuryShotVideoMotionPrompt(
+    { ...rewritten, video_contract: videoContract },
+    rewrittenContract,
+    { adStyle: scene.ad_style || scene.adStyle || 'luxury_soft' },
+  );
   return {
     ...rewritten,
     strict_storyboard_contract_required: true,
     strict_storyboard_contract: rewrittenContract,
+    image_contract: imageContract,
     compiled_image_prompt: compiledPrompt,
+    video_contract: videoContract,
+    video_motion_prompt: videoMotionPrompt,
+    video_prompt: videoMotionPrompt,
     prompt_preflight: {
       ...(scene.prompt_preflight || {}),
       pass: true,
@@ -12367,7 +12302,7 @@ ${JSON.stringify(scenes, null, 2)}
         const camera = isDetailedMode ? String(x.camera || x.camera_motion || x.motion || 'smooth_slide').trim() : '';
         const shotAngle = isDetailedMode ? String(x.shot_angle || x.angle || x.shot_size || x.framing || '').trim() : '素材进入后生成';
         const materialUsage = (String(x.material_usage || x.material_hint || '').trim()
-          || (i === 0 ? `${productSubject}主体画面` : `${productSubject}与展厅场景画面`))
+          || `${productSubject}与当前镜头确认的可见证据`)
           .replace(/@主商品/g, productSubject)
           .replace(/@参考(\d*)/g, '参考画面$1')
           .replace(/主产品|主商品/g, productSubject);
@@ -12581,7 +12516,7 @@ ${JSON.stringify(scenes, null, 2)}
         display_visual: visual,
         topview_prompt: cleanTopviewPrompt || (productOnlyMaterialShot
           ? _luxuryProductOnlyTopviewPrompt({ visual, referenceLabel: Number(referenceIndex) > 0 ? referenceLabel : '', subject: productSubject })
-          : `使用 @主商品${Number(referenceIndex) > 0 ? ` 和 ${referenceLabel}` : ''} 生成这一镜头：${visual} 镜头运动：${s.camera_label || _luxuryCameraLabel(s.camera || s.camera_motion || s.motion)}。`),
+          : `使用已确认主体${Number(referenceIndex) > 0 ? `和${referenceLabel}` : ''}生成这一镜头的静态分镜画面：${visual}。只遵守当前剧本和素材证据，不套用默认行业场景。`),
         ui_overlay: uiOverlay,
         camera_label: s.camera_label || _luxuryCameraLabel(s.camera || s.camera_motion || s.motion),
         reference_index: referenceIndex,
@@ -13054,36 +12989,55 @@ function _luxuryDirectorList(value, fallback = []) {
   return clean.length ? clean : fallback;
 }
 
+// 中文说明：剧情广告必须是通用业务协议，不能在系统层写死手机、订单、货架、展厅等行业场景。
+// 这里把“主体如何被证明”抽象为可见证据，让模型按用户需求、素材和已确认剧本动态填写。
+function _luxuryGenericEvidenceList(scene = {}, subject = '') {
+  const textEvidence = _luxuryDirectorText([
+    scene.content_prompt,
+    scene.scene_content,
+    scene.visual,
+    scene.action,
+    scene.material_usage,
+    scene.material_hint,
+  ].filter(Boolean).join(' '), 260);
+  return [
+    subject ? `confirmed advertised subject remains readable as: ${subject}` : 'confirmed advertised subject remains readable',
+    textEvidence ? `current-shot visible evidence: ${textEvidence}` : 'visible evidence comes only from the current shot script, uploaded assets, or user edits',
+    'a clear relationship between subject, environment, interaction, transformation, result or emotion as required by this shot',
+  ].filter(Boolean);
+}
+
+function _luxuryGenericForbiddenDriftList() {
+  return [
+    'unconfirmed product, service, person, place, industry, prop, UI, logo, subtitle or readable text',
+    'replacing the confirmed subject with another category or stock scene',
+    'adding a default presenter, device, dashboard, shelf, showroom, warehouse, order, material, cosmetic, phone or any other scene template unless explicitly required by the user, asset or confirmed script',
+  ];
+}
+
 function _luxuryDirectorSceneType(scene = {}, index = 0, total = 6, productSubject = '') {
   const role = _luxuryRoleAt(index, total, scene.role || scene.shot_role);
   const text = [role, scene.title, scene.visual, scene.content_prompt, scene.scene_content, scene.topview_prompt, scene.voiceover]
     .filter(Boolean)
     .join(' ');
-  if (/高端空间|室内|展厅|样板|展示区|showroom|sample|display|interior|premium space|design studio/i.test(text)) return 'high_end_showroom';
+  if (/place|space|environment|location|场景|空间|环境|地点|室内|室外|内景|外景/i.test(text)) return 'confirmed_environment_scene';
   if (/macro|detail|texture|close|特写|纹理|材质|细节/i.test(text)) return 'macro_detail';
   if (/cta|end|咨询|收束|行动|结尾|call to action/i.test(text) || index >= total - 1) return 'consultation_cta';
-  if (/外立面|建筑外观|facade|exterior|building/i.test(text)) return 'exterior_facade';
-  if (/展厅|样板|成品区|showroom|sample|display|interior/i.test(text)) return 'high_end_showroom';
-  if (_isLuxurySteelMaterialSubject(productSubject, scene)) {
-    if (index === 0) return 'brand_world_establishing';
-    if (role === 'proof' || role === 'display' || role === 'benefit') return 'high_end_showroom';
-  }
   return index === 0 ? 'brand_world_establishing' : 'premium_story_scene';
 }
 
 function _luxuryDirectorAllowedEnvironment(sceneType = '', scene = {}, productSubject = '') {
-  const isSteel = _isLuxurySteelMaterialSubject(productSubject, scene);
-  if (isSteel) {
-    if (sceneType === 'macro_detail') return 'close-up of finished installed steel/metal facade panels, sample wall, edge profile or brushed/mirror texture inside a high-end material showroom; never raw beams or factory stock';
-    if (sceneType === 'exterior_facade') return 'premium modern building facade, facade mockup or architectural entrance made of finished dark stainless-steel / metal panels, shot like a high-end architecture commercial';
-    if (sceneType === 'consultation_cta') return 'high-end material showroom or design consultation desk beside finished steel/metal panel samples and facade mockups';
-    return 'high-end material showroom, sample-wall display, design studio, finished product zone, or premium facade mockup with installed steel/metal panels';
-  }
-  if (sceneType === 'macro_detail') return 'premium product/material close-up in the same campaign environment, with finished texture and controlled commercial light';
-  if (sceneType === 'exterior_facade') return 'premium exterior/application scene that directly matches the product/service reference and campaign style';
-  if (sceneType === 'consultation_cta') return 'clean premium consultation or brand closing scene in the same campaign world';
-  if (sceneType === 'high_end_showroom') return 'high-end showroom, sample wall, design studio or finished display area matching the uploaded references';
-  return 'same premium campaign world inferred from the uploaded references, not a random stock location';
+  const explicit = _luxuryDirectorText([
+    scene.environment_lock,
+    scene.scene_prompt,
+    scene.scene_content,
+    scene.content_prompt,
+    scene.visual,
+  ].filter(Boolean).join(' '), 360);
+  if (explicit) return explicit;
+  if (sceneType === 'macro_detail') return 'the close-up environment explicitly implied by the current shot evidence and reference assets';
+  if (sceneType === 'consultation_cta') return 'the closing environment explicitly implied by the current shot story and user brief';
+  return 'the environment explicitly required by this user brief, uploaded assets, confirmed script or manual edit; never substitute a default industry template';
 }
 
 function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
@@ -13100,36 +13054,20 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     aiContract.allowed_environment || aiContract.environment || locks?.scene_lock?.scene_basis || _luxuryDirectorAllowedEnvironment(sceneType, scene, subject),
     360,
   );
-  const isSteel = _isLuxurySteelMaterialSubject(subject, scene);
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
   const visual = _luxuryDirectorText(scene.content_prompt || scene.scene_content || scene.visual || scene.visual_prompt || scene.title, 260);
   const action = _luxuryDirectorText(scene.action || scene.visual_action || '', 180);
   const camera = _luxuryDirectorText([scene.shot_angle, scene.shot_size, scene.camera_label, scene.camera, scene.lighting_style].filter(Boolean).join('; '), 220);
   const mustShow = _luxuryDirectorList(aiContract.must_show || aiContract.mustShow, [
-    personRequired ? 'the same campaign presenter/designer/customer integrated in the physical scene' : 'the advertised product/material as the readable hero evidence',
-    `${subject} visible as finished commercial product evidence`,
-    locks?.reality_lock?.scene_basis ? `real-world location basis: ${locks.reality_lock.scene_basis}` : '',
+    ..._luxuryGenericEvidenceList(scene, subject),
+    locks?.reality_lock?.scene_basis ? `real-world basis from asset/user lock: ${locks.reality_lock.scene_basis}` : '',
     locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
     visual || 'the confirmed storyboard visual',
     action || 'one clear storyboard action',
   ]).filter(Boolean).slice(0, 8);
-  const steelNegatives = [
-    'industrial factory',
-    'warehouse',
-    'steel mill',
-    'construction site',
-    'cranes',
-    'raw steel beams',
-    'raw sheets on floor',
-    'rust',
-    'workers or forklifts',
-    'storage racks',
-  ];
   const mustNotShow = _luxuryDirectorList(aiContract.must_not_show || aiContract.mustNotShow, [
-    ...(isSteel ? steelNegatives : ['unrelated stock location', 'unrelated product category']),
-    'cosmetics, perfume, skincare bottles, beverage bottles, phones, watches, jewelry or random props',
-    'generated text, subtitles, watermark or fake logos in the image',
-    personRequired ? 'product-only, empty facade-only, material-only or catalogue packshot composition' : '',
+    ..._luxuryGenericForbiddenDriftList(),
+    personRequired ? 'omitting the confirmed person/role when this shot explicitly requires one' : '',
   ]).filter(Boolean).slice(0, 12);
   const referenceStrategy = _luxuryDirectorText(
     aiContract.reference_strategy || aiContract.referenceStrategy || [
@@ -13141,17 +13079,16 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     520,
   );
   const productEvidence = _luxuryDirectorText(
-    aiContract.product_evidence || aiContract.productEvidence || (isSteel
-      ? `${subject}: finished installed metal/facade panels, brushed or mirror surface, seams, edge profiles, material wall or premium application area must be visible.`
-      : `${subject}: visible product/service evidence must match the uploaded references, asset manifest and storyboard.`),
+    aiContract.product_evidence || aiContract.productEvidence || [
+      `${subject}: visible evidence must come from the user brief, uploaded assets, confirmed script or manual edits.`,
+      'Do not invent a fixed industry carrier; choose evidence dynamically from the current shot contract.',
+    ].join(' '),
     320,
   );
   const composition = _luxuryDirectorText(aiContract.composition || (personRequired
-    ? 'real commercial storyboard frame: real person + practical real-world environment + product/material evidence in one coherent shot'
-    : 'real commercial insert frame: product/material texture and application evidence, not an unrelated still life'), 280);
-  const lighting = _luxuryDirectorText(aiContract.lighting || scene.lighting_style || (isSteel
-    ? 'practical showroom or workplace lighting, controlled reflections, natural shadows, no glossy CGI'
-    : 'practical real-location commercial lighting consistent with the reference mood'), 220);
+    ? 'real commercial storyboard frame: confirmed person/role + confirmed environment + subject evidence in one coherent shot'
+    : 'real commercial frame: confirmed subject evidence and scene relationship, not an unrelated still life'), 280);
+  const lighting = _luxuryDirectorText(aiContract.lighting || scene.lighting_style || 'practical lighting consistent with the confirmed scene and reference mood', 220);
   const qaContract = _luxuryDirectorText(
     aiContract.qa_contract || aiContract.qaContract || [
       `Pass only if scene type is ${sceneType}.`,
@@ -13174,7 +13111,11 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     `Avoid: ${mustNotShow.join('; ')}.`,
   ].filter(Boolean).join(' '), 1200);
   const topviewPrompt = _luxuryDirectorText(aiContract.topview_prompt || aiContract.topviewPrompt || imagePrompt, 1200);
-  const uiOverlay = _luxuryNormalizeUiOverlay(aiContract.ui_overlay || aiContract.uiOverlay || scene.ui_overlay || null, scene);
+  const uiPolicy = aiContract.ui_policy || aiContract.uiPolicy || scene.ui_policy || null;
+  const uiOverlay = _luxuryNormalizeUiOverlay(aiContract.ui_overlay || aiContract.uiOverlay || scene.ui_overlay || null, {
+    ...scene,
+    ui_policy: uiPolicy,
+  });
   return {
     scene_type: sceneType,
     allowed_environment: allowedEnvironment,
@@ -13188,6 +13129,13 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
     camera: _luxuryDirectorText(aiContract.camera || camera || 'premium commercial camera language', 220),
     image_prompt: imagePrompt,
     topview_prompt: topviewPrompt,
+    ui_policy: uiPolicy || {
+      required: !!uiOverlay,
+      reason: uiOverlay ? 'explicit director/user UI evidence' : '',
+      carrier: uiOverlay?.carrier || '',
+      readable_text_allowed: uiOverlay?.readable_text_allowed === true,
+      placement_rule: uiOverlay?.placement || '',
+    },
     ui_overlay: uiOverlay,
     qa_contract: qaContract,
   };
@@ -13258,49 +13206,51 @@ function _luxuryStrictList(value, maxItems = 8) {
 }
 
 function _luxuryNormalizeUiOverlay(value = null, scene = {}, brief = '') {
-  const sourceText = [
+  // 中文说明：UI 不是默认镜头元素。只有用户/素材/分镜导演显式要求 UI 证据时才生成，
+  // 避免“平台/系统/数据”等业务词被误解成漂浮大字或乱码后台界面。
+  const obj = value && typeof value === 'object' ? value : {};
+  const policy = scene.ui_policy && typeof scene.ui_policy === 'object' ? scene.ui_policy : {};
+  const explicitSource = [
     typeof value === 'string' ? value : '',
-    value && typeof value === 'object' ? [value.type, value.content, value.motion, value.style, value.placement].filter(Boolean).join(' ') : '',
+    value && typeof value === 'object' ? [value.type, value.content, value.motion, value.style, value.placement, value.carrier].filter(Boolean).join(' ') : '',
     scene.ui_overlay_text,
     scene.overlay_prompt,
     scene.vfx_prompt,
-    scene.action,
-    scene.visual,
-    scene.content_prompt,
-    brief,
+    policy.required === true ? [policy.reason, policy.carrier, policy.placement_rule].filter(Boolean).join(' ') : '',
+  ].filter(Boolean).join(' ');
+  if (!String(explicitSource || '').trim()) return null;
+  const sourceText = [
+    explicitSource,
   ].filter(Boolean).join(' ');
   const cleanText = String(sourceText || '').replace(/\s+/g, ' ').trim();
   if (!cleanText) return null;
-  const shouldHaveOverlay = /(UI|app|screen|phone|mobile|popup|card|notification|dashboard|chart|waveform|check|tick|order|chat|message|interface|floating|hologram|overlay|弹窗|卡片|界面|手机|订单|通知|勾|对勾|确认|数据|波形|图表|悬浮|全息|智能体|助手)/i.test(cleanText);
-  if (!shouldHaveOverlay && !value) return null;
-  const obj = value && typeof value === 'object' ? value : {};
   const type = String(obj.type || '').trim()
-    || (/(check|tick|确认|对勾|勾)/i.test(cleanText) ? 'confirmation_badge'
-      : (/(waveform|音频|波形)/i.test(cleanText) ? 'audio_waveform'
-        : (/(dashboard|chart|数据|图表)/i.test(cleanText) ? 'data_panel'
-          : (/(chat|message|消息|对话)/i.test(cleanText) ? 'message_cards' : 'app_ui_cards'))));
-  const placement = String(obj.placement || obj.position || '').trim()
-    || (/(phone|mobile|手机)/i.test(cleanText) ? 'anchored near phone screen' : 'floating beside the subject, not covering face or product');
-  const content = String(obj.content || obj.text || obj.label || cleanText).replace(/\s+/g, ' ').trim().slice(0, 260);
+    || String(policy.type || '').trim()
+    || 'subject_evidence_ui';
+  const carrier = String(obj.carrier || policy.carrier || '').trim();
+  const placement = String(obj.placement || obj.position || policy.placement_rule || '').trim()
+    || 'attached to the confirmed visual carrier or a designated safe area; never floating unless explicitly requested';
+  const content = String(obj.content || obj.text || obj.label || policy.reason || cleanText).replace(/\s+/g, ' ').trim().slice(0, 220);
   const motion = String(obj.motion || obj.animation || '').trim()
-    || (/(check|tick|确认|对勾|勾)/i.test(cleanText) ? 'soft pop-in with subtle glow'
-      : 'soft translucent cards slide in and settle');
+    || 'minimal motion that supports the confirmed subject evidence without becoming the main subject';
   const style = String(obj.style || '').trim()
-    || 'minimal translucent glass UI, clean rounded cards, no readable brand text unless specified';
-  return { type, placement, content, motion, style };
+    || 'restrained non-readable visual indicator; no fake text, no invented brand words';
+  const readableTextAllowed = obj.readable_text_allowed === true || policy.readable_text_allowed === true;
+  return { type, carrier, placement, content, motion, style, readable_text_allowed: readableTextAllowed };
 }
 
 function _luxuryUiOverlayPrompt(overlay = null) {
   const ui = _luxuryNormalizeUiOverlay(overlay);
   if (!ui) return '';
   return [
-    `UI/VFX overlay: ${ui.type}.`,
+    `Optional subject-evidence UI/VFX: ${ui.type}.`,
+    ui.carrier ? `Carrier: ${ui.carrier}.` : 'Carrier: bind to the current shot evidence carrier or designated safe area only.',
     `Placement: ${ui.placement}.`,
     `Content intent: ${ui.content}.`,
     `Motion: ${ui.motion}.`,
     `Style: ${ui.style}.`,
-    'The overlay must feel like a premium app/product interaction layer; keep it subtle, translucent and integrated with the live-action scene.',
-    'Do not cover the actor face, product evidence, or key hand action.',
+    ui.readable_text_allowed ? 'Readable text is allowed only if the confirmed script explicitly requires exact text.' : 'Do not generate readable text, fake brand words, subtitles, labels or乱码.',
+    'Keep UI secondary to the confirmed subject evidence; do not cover face, hands, product/service/place evidence or the key action.',
   ].join(' ');
 }
 
@@ -13533,12 +13483,17 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
   const currentShot = packet?.current_shot && typeof packet.current_shot === 'object'
     ? packet.current_shot
     : null;
+  const currentShotForImage = currentShot ? { ...currentShot } : null;
+  if (currentShotForImage?.dialogue) {
+    currentShotForImage.spoken_intent = _luxuryStrictText(currentShotForImage.dialogue, 180);
+    delete currentShotForImage.dialogue;
+  }
   const prompt = [
     `${aspectRatio} photorealistic commercial storyboard keyframe.`,
     'Use this confirmed per-shot execution packet only; do not rewrite the story, subject, scene or shot role.',
     globalBible ? `Global visual bible: ${_luxuryStrictText(JSON.stringify(globalBible), 1400)}.` : '',
-    currentShot?.story_extract ? `Per-shot story extraction from the full script, highest priority: ${_luxuryStrictText(JSON.stringify(currentShot.story_extract), 1400)}.` : '',
-    currentShot ? `Current shot execution packet: ${_luxuryStrictText(JSON.stringify(currentShot), 1800)}.` : '',
+    currentShotForImage?.story_extract ? `Per-shot story extraction from the full script, highest priority: ${_luxuryStrictText(JSON.stringify(currentShotForImage.story_extract), 1400)}.` : '',
+    currentShotForImage ? `Current shot image execution packet: ${_luxuryStrictText(JSON.stringify(currentShotForImage), 1800)}.` : '',
     `Shot: ${contract.shot_id}/${contract.shot_count}; role: ${contract.role}; duration: ${contract.duration}s.`,
     `Product subject: ${contract.product_subject}.`,
     `Visible subject: ${contract.visible_subject}.`,
@@ -13555,9 +13510,62 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     _luxuryUiOverlayPrompt(scene.ui_overlay),
     scene.continuity_bible ? `Campaign continuity: ${_luxuryStrictText(scene.continuity_bible, 520)}.` : '',
     scene.reference_prompt ? `Reference strategy: ${_luxuryStrictText(scene.reference_prompt, 420)}.` : '',
-    'No generated subtitles, no text overlay, no watermark, no random extra people, no unrelated product category, no scene replacement.',
+    'This is an image keyframe prompt only. Do not describe video motion beyond the frozen pose/frame. Do not render voiceover, ad copy, dialogue or UI words as visible text.',
+    'No generated subtitles, no text overlay, no fake readable UI text, no watermark, no random extra people, no unrelated product category, no scene replacement.',
   ].filter(Boolean).join(' ');
   return prompt.slice(0, 6000);
+}
+
+// 中文说明：图片分镜和图生视频是两套提示词。图片 prompt 决定“这一帧长什么样”，
+// 视频 prompt 只决定“已通过 QA 的这一帧如何运动”，不能复用图片 prompt 重新描述画面。
+function _buildLuxuryImageContract(scene = {}, contract = {}) {
+  return {
+    contract_type: 'luxury_image_keyframe_contract_v1',
+    subject: contract.product_subject || scene.product_subject || '',
+    visible_subject: contract.visible_subject || '',
+    visible_evidence: Array.isArray(contract.must_show) ? contract.must_show : [],
+    scene: contract.scene || '',
+    composition: contract.composition || '',
+    lighting: contract.lighting || '',
+    negative_constraints: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
+    ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
+  };
+}
+
+function _buildLuxuryVideoContract(scene = {}, contract = {}) {
+  const cameraPlan = scene.camera_plan && typeof scene.camera_plan === 'object' ? scene.camera_plan : {};
+  return {
+    contract_type: 'luxury_i2v_motion_contract_v1',
+    source_keyframe_lock: true,
+    subject: contract.product_subject || scene.product_subject || '',
+    camera_motion: _luxuryStrictText(scene.i2v_brief || cameraPlan.movement || scene.camera_label || scene.camera || '', 260),
+    subject_motion: _luxuryStrictText(scene.action || scene.visual_action || '', 260),
+    timing: _luxuryStrictText(`${contract.duration || scene.duration || ''}s`, 40),
+    continuity_constraints: [
+      'preserve the approved keyframe subject, identity, scene, props, composition and lighting',
+      'animate only the confirmed motion/action/camera intent',
+      'do not redraw into a new scene or introduce unconfirmed subjects',
+    ],
+    negative_constraints: [
+      'no face morphing, product redesign, category drift, scene replacement, new readable text, logo, subtitle or watermark',
+    ],
+  };
+}
+
+function _compileLuxuryShotVideoMotionPrompt(scene = {}, contract = {}, { adStyle = 'luxury_soft' } = {}) {
+  const videoContract = scene.video_contract && typeof scene.video_contract === 'object'
+    ? scene.video_contract
+    : _buildLuxuryVideoContract(scene, contract);
+  return _luxuryStrictText([
+    'Image-to-video motion prompt. Use the approved keyframe as the locked first frame and visual source.',
+    `Advertised subject: ${videoContract.subject || contract.product_subject || scene.product_subject || ''}.`,
+    videoContract.camera_motion ? `Camera motion: ${videoContract.camera_motion}.` : 'Camera motion: subtle controlled movement only.',
+    videoContract.subject_motion ? `Subject/action motion: ${videoContract.subject_motion}.` : '',
+    videoContract.timing ? `Timing: ${videoContract.timing}.` : '',
+    `Continuity: ${(videoContract.continuity_constraints || []).join('; ')}.`,
+    `Negative: ${(videoContract.negative_constraints || []).join('; ')}.`,
+    `Style continuity: ${_luxuryAdStylePrompt(adStyle)}.`,
+  ].filter(Boolean).join(' '), 1500);
 }
 
 function _compactLuxuryObject(value, maxChars = 1200) {
@@ -13628,10 +13636,11 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
     product_or_prop: _luxuryStrictText(scene.material_usage || scene.material_hint || contract.product_subject || contract.product_lock?.subject || '', 320),
     visual: contract.visual,
     action: contract.action,
-    dialogue: _luxuryStrictText(scene.dialogue || scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 420),
+    spoken_intent: _luxuryStrictText(scene.dialogue || scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 260),
     camera: contract.camera,
     composition: contract.composition,
     lighting: contract.lighting,
+    ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
     ui_or_vfx: _luxuryStrictText(_luxuryUiOverlayPrompt(scene.ui_overlay), 260),
   };
   const roleMap = referenceRoleMap && typeof referenceRoleMap === 'object'
@@ -13910,6 +13919,13 @@ function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1,
   });
   const sceneWithPacket = { ...scene, shot_execution_packet: packet, global_visual_bible: packet.global_visual_bible };
   const compiledPrompt = _compileLuxuryShotImagePrompt(sceneWithPacket, contract, { aspectRatio: opts.aspectRatio || '16:9' });
+  const imageContract = _buildLuxuryImageContract(sceneWithPacket, contract);
+  const videoContract = _buildLuxuryVideoContract(sceneWithPacket, contract);
+  const videoMotionPrompt = _compileLuxuryShotVideoMotionPrompt(
+    { ...sceneWithPacket, video_contract: videoContract },
+    contract,
+    { adStyle: opts.adStyle || opts.ad_style || scene.adStyle || scene.ad_style || 'luxury_soft' },
+  );
   return {
     ...scene,
     strict_storyboard_contract_required: true,
@@ -13917,7 +13933,11 @@ function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1,
     global_visual_bible: packet.global_visual_bible,
     shot_execution_packet: packet,
     prompt_preflight: preflight,
+    image_contract: imageContract,
     compiled_image_prompt: compiledPrompt,
+    video_contract: videoContract,
+    video_motion_prompt: videoMotionPrompt,
+    video_prompt: videoMotionPrompt,
   };
 }
 
@@ -13942,6 +13962,13 @@ function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 
   const compiledPrompt = preflight.pass
     ? _compileLuxuryShotImagePrompt(sceneWithPacket, contract, { aspectRatio: opts.aspectRatio || '16:9' })
     : '';
+  const imageContract = _buildLuxuryImageContract(sceneWithPacket, contract);
+  const videoContract = _buildLuxuryVideoContract(sceneWithPacket, contract);
+  const videoMotionPrompt = _compileLuxuryShotVideoMotionPrompt(
+    { ...sceneWithPacket, video_contract: videoContract },
+    contract,
+    { adStyle: opts.adStyle || opts.ad_style || scene.adStyle || scene.ad_style || 'luxury_soft' },
+  );
   return {
     ...scene,
     strict_storyboard_contract_required: false,
@@ -13949,7 +13976,11 @@ function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 
     global_visual_bible: packet.global_visual_bible,
     shot_execution_packet: packet,
     prompt_preflight: preflight,
+    image_contract: imageContract,
     compiled_image_prompt: compiledPrompt,
+    video_contract: videoContract,
+    video_motion_prompt: videoMotionPrompt,
+    video_prompt: videoMotionPrompt,
   };
 }
 
@@ -14101,7 +14132,10 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     'You are luxury_ad.storyboard_director, a senior commercial storyboard director and AI image prompt strategist.',
     'Your job happens after script generation and before keyframe image generation.',
     'Do not rewrite plot, narration, dialogue, timing or shot order. Convert each confirmed script shot into an executable visual contract for image models and QA.',
-    'The contract must lock scene type, allowed environment, reference usage, actor blocking, product evidence, composition, lighting, camera and hard negatives.',
+    'The contract must lock scene type, allowed environment, reference usage, subject evidence, interaction evidence, composition, lighting, camera and hard negatives.',
+    'Use a universal business-agnostic protocol: infer the current subject and visible evidence from the user brief, uploaded assets, confirmed script and manual edits only.',
+    'Never default to any fixed industry scene, prop, device, person, shelf, order, dashboard, showroom, warehouse, material, cosmetic, phone, or platform UI unless it is explicitly present in the brief/assets/script.',
+    'UI is only one optional evidence type. Add ui_policy.required=true only when the confirmed shot explicitly needs UI/interface evidence; otherwise keep ui_policy.required=false and omit ui_overlay.',
     'Return ONLY a JSON array with the same length and order as the input shots.',
   ].join(' ');
   const userPrompt = [
@@ -14116,16 +14150,13 @@ function _buildLuxuryStoryboardDirectorAgentPrompts({
     '- The frame must feel like real commercial photography in a believable social/workplace scene; avoid AI poster, glossy render, fantasy lighting and generic luxury stock locations.',
     '- Demand references guide actor identity, space, material, mood and quality. They are not a fixed shot count.',
     '- If references show one person or the script is single-person, keep a single same presenter/actor across human shots.',
-    _isLuxurySteelMaterialSubject(productSubject, { visual: brief, content_prompt: visualReferenceSummary })
-      ? '- For explicit steel/metal/building-material/facade products, never choose factory, warehouse, steel mill, cranes, raw beams, raw sheets, construction site, rust, forklifts or storage racks.'
-      : '',
-    _isLuxurySteelMaterialSubject(productSubject, { visual: brief, content_prompt: visualReferenceSummary })
-      ? '- Steel/facade shots must use finished premium facade panels, installed wall panels, high-end showroom sample wall, design consultation area or finished product zone.'
-      : '',
-    '- Every non-macro shot should look like a live-action commercial storyboard panel: confirmed script subject, real environment and product/service evidence in one coherent frame. Require a human only when the script or references explicitly require one.',
+    '- Every non-macro shot should look like a live-action commercial storyboard panel: confirmed script subject, confirmed environment and dynamic visible evidence in one coherent frame. Require a human only when the script or references explicitly require one.',
+    '- Build must_show from dynamic evidence categories: appearance, interaction, environment, transformation, result, interface, material, relationship or emotion. Do not hard-code the category; choose only what this shot actually needs.',
+    '- Build must_not_show as anti-drift rules: no unconfirmed subject, scene, person, prop, UI, readable text, logo, subtitle, watermark or category replacement.',
+    '- If UI is required, describe carrier/placement/reason/readable_text_allowed in ui_policy. UI must be attached to a confirmed carrier or safe area; never ask the image model to create readable fake text.',
     '',
     'Return array items with this schema:',
-    '{"index":0,"scene_type":"","allowed_environment":"","must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_overlay":{"type":"","placement":"","content":"","motion":"","style":""},"image_prompt":"","topview_prompt":"","qa_contract":""}',
+    '{"index":0,"scene_type":"","allowed_environment":"","subject_evidence":[],"interaction_evidence":[],"must_show":[],"must_not_show":[],"reference_strategy":"","actor_blocking":"","product_evidence":"","composition":"","lighting":"","camera":"","ui_policy":{"required":false,"reason":"","carrier":"","readable_text_allowed":false,"placement_rule":""},"ui_overlay":null,"image_prompt":"","topview_prompt":"","qa_contract":""}',
     '',
     `Confirmed script shots:\n${JSON.stringify(compactScenes, null, 2)}`,
   ].join('\n');
@@ -14333,8 +14364,12 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     productName: kf.product_subject || '',
   });
   const shotVisual = _compactProviderPromptText(kf.content_prompt || kf.scene_content || kf.visual || kf.display_visual || kf.title || title, 260);
+  const videoContract = kf.video_contract && typeof kf.video_contract === 'object' ? kf.video_contract : null;
   const motion = _compactProviderPromptText([
-    kf.video_prompt,
+    kf.video_motion_prompt,
+    videoContract?.camera_motion,
+    videoContract?.subject_motion,
+    kf.video_prompt && kf.video_prompt !== kf.compiled_image_prompt ? kf.video_prompt : '',
     meta.i2v_brief,
     kf.action || kf.visual_action || meta.action,
     meta.camera_plan?.movement,
@@ -14351,16 +14386,18 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     meta.photography?.color,
   ].filter(Boolean).join('; '), 260);
   return _compactProviderPromptText([
-    'Image-to-video commercial shot from the provided keyframe only. Use the keyframe as the locked first frame and identity reference.',
+    'Image-to-video commercial shot from the provided approved keyframe only. Motion prompt only; do not use any image prompt to redraw the frame.',
+    'Use the keyframe as the locked first frame, locked subject evidence and identity reference.',
     `Advertised subject: ${subject}. Preserve the exact product/material category, shape, texture, color and scene visible in the keyframe.`,
     shotVisual ? `Shot visual: ${shotVisual}.` : '',
     photo ? `Photography: ${photo}.` : '',
     motion ? `Camera motion: ${motion}.` : 'Camera motion: slow premium push-in with subtle parallax and stable composition.',
     emotion ? `Emotion and atmosphere: ${emotion}.` : '',
     audio ? `SFX/audio intent: ${audio}.` : '',
-    voice ? `Voiceover meaning: ${voice}.` : '',
+    voice ? `Spoken/narration intent for rhythm only: ${voice}. Do not render it as subtitles or visible text.` : '',
     scenePrompt ? `Brief context: ${_compactProviderPromptText(scenePrompt, 220)}.` : '',
     `Style: ${_luxuryAdStylePrompt(adStyle)}.`,
+    videoContract?.source_keyframe_lock ? 'Source keyframe lock: preserve subject, identity, scene, props, composition and lighting from the approved keyframe.' : '',
     characterLock?.enabled
       ? 'Preserve the same person from the keyframe; do not change face identity, age impression, hairstyle, body proportions or outfit family.'
       : 'Do not introduce a random new person if the keyframe is product/scene focused.',
@@ -16714,10 +16751,10 @@ function _buildLuxuryImageModelStrictPrompt({
     : 'Reference rule: no uploaded shot reference is available; generate directly from the shot contract.';
   const expectedEnv = _luxuryExpectedEnvironmentFromContract(scene);
   const locationRule = expectedEnv.wantsInterior && !expectedEnv.wantsExterior
-    ? 'LOCATION LOCK: create an interior high-end showroom, sample-wall display, design studio, consultation area or premium indoor display space. Uploaded facade/exterior references are material/style evidence only; do not copy their exterior location.'
+    ? 'LOCATION LOCK: create the confirmed interior/environment from the storyboard contract and references. Uploaded references are evidence only; do not copy an unrelated location template.'
     : (expectedEnv.wantsExterior && !expectedEnv.wantsInterior
-      ? 'LOCATION LOCK: an exterior facade/application scene is allowed only because the confirmed storyboard contract asks for it.'
-      : 'LOCATION LOCK: make a coherent ad scene with depth, human scale and product evidence; do not default to an empty facade wall.');
+      ? 'LOCATION LOCK: an exterior/application scene is allowed only because the confirmed storyboard contract asks for it.'
+      : 'LOCATION LOCK: make a coherent ad scene with depth, human scale and confirmed subject evidence; do not default to an empty template location.');
   const productLockForScene = expectedEnv.wantsInterior
     ? [
         _compactLuxuryKeyframeText(productLockPrompt, 260),
@@ -16759,7 +16796,7 @@ function _buildLuxuryImageModelStrictPrompt({
     subjectGuard,
     productLockForScene,
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
-    'NEGATIVE: missing presenter when required, inconsistent random actor, wrong industry/location, fashion boutique, jewelry store, cosmetics shelf, subject-only packshot when action requires a story scene, cyber goggles, sunglasses, helmet, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated cosmetics/perfume/skincare/beverage/phone/watch/jewelry, raw material factory, warehouse, catalog packshot.',
+    'NEGATIVE: missing confirmed person when required, inconsistent random actor, wrong industry/location, unconfirmed scene template, subject-only packshot when action requires a story scene, cyber goggles, sunglasses, helmet, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated category drift, unconfirmed prop/UI/logo/text, catalog packshot.',
   ], 2600);
 }
 
@@ -17670,32 +17707,23 @@ function _buildLuxuryKeyframePrompt({
   const visibleSubjectRequired = visibleSubject.required;
   const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject, scene);
   const effectiveSubjectGuard = visibleSubjectRequired
-    ? (softwareWorkflowSubject
-      ? (subjectGuard || [
-        `SOFTWARE WORKFLOW EVIDENCE GUARD: the advertised service is "${productSubject || scene.product_subject}".`,
-        'Keep actor action, phone/screen/order papers/inventory evidence and work scene visible together. Do not convert this into a physical product packshot.',
-      ].join(' '))
-      : [
+    ? (subjectGuard || [
       `PRODUCT EVIDENCE GUARD: the advertised product/material category is "${productSubject || scene.product_subject}".`,
-      'Keep this product/material visibly present when the script needs it, but the confirmed script subject remains authoritative.',
-      'Reject unrelated product categories and generic stock props. Do not force a human if the script subject is not human.',
+      'Keep the confirmed subject evidence visibly present when the script needs it, but the confirmed script subject remains authoritative.',
+      'Reject unrelated categories, generic stock props, and default industry carriers. Do not force a human if the script subject is not human.',
       ].join(' '))
     : subjectGuard;
   const effectiveProductLockPrompt = visibleSubjectRequired
-    ? (softwareWorkflowSubject
-      ? productLockPrompt
-      : [
+    ? (productLockPrompt || [
       `PRODUCT EVIDENCE LOCK: the product/material evidence must still read as "${productSubject || scene.product_subject}".`,
-      'Show finished, premium, commercially usable product/material in the same frame when the script calls for product evidence.',
-      'Do not change it into cosmetics, perfume, skincare, beverage, phone, watch, jewelry or unrelated props.',
+      'Show confirmed subject evidence in the same frame when the script calls for it.',
+      'Do not change it into any unrelated product, service, prop, person, place, UI, logo or text.',
       ].join(' '))
     : productLockPrompt;
   const refRule = hasStoryLayoutReference
     ? 'Reference rule: reference image 1 is only a rough storyboard composition guide. Follow its relationship: one visible real presenter inside the same scene, beside or in front of the product/material evidence zone. If more reference images are provided, they are user-uploaded demand references for actor appearance, space, material, mood, and brand style. Use scene/material/style references as visual guidance, but if a person identity reference exists it is mandatory for all human shots. Do not treat demand references as fixed shot count or exact locked frames. Do not copy the layout guide as illustration; turn the result into a photorealistic commercial frame.'
     : hasOnlyAvatarReference
     ? 'Reference rule: reference image 1 is a human character sheet. Preserve the same identity only when this shot includes a person; do not treat the human sheet as the product.'
-    : (personRequired && softwareWorkflowSubject && hasAnyReference)
-    ? 'Reference rule: provided reference images are fixed actor identity references only. Preserve the same actor face, age, hairstyle and pale blue shirt family. Do not treat actor references as product, scene, grocery shelf, or catalogue layout. Generate the order/inventory work scene from the shot contract.'
     : hasAnyReference
     ? 'Reference rule: reference image 1 is the main product or visual anchor. If reference image 2 exists, it is the current shot reference. Preserve product identity, material, shape, color, category and recognizable selling point.'
     : 'Reference rule: no uploaded shot reference is available. Generate the product/service scene directly from the shot contract; keep the same product category across shots.';
@@ -17735,11 +17763,9 @@ function _buildLuxuryKeyframePrompt({
     characterLock?.prompt || '',
     'Create one premium commercial storyboard keyframe that exactly matches the shot contract above. The frame must be a still keyframe, realistic, cinematic, product-readable, and coherent with the story.',
     'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
-    softwareWorkflowSubject
-      ? 'Hard negative: pure phone advertisement, supermarket shopping aisle, colorful consumer-goods aisle, cleaning-product shelf, bathroom/home-goods/towel display, cosmetics/perfume/skincare shelf, jewelry/watch display, material showroom, sci-fi UI lab, unrelated packaged product, random retail prop, changed actor identity.'
-      : 'Hard negative: unrelated packaged product, random retail prop, wrong industry/location, changing the confirmed advertised subject into a different category.',
+    'Hard negative: unrelated subject/category, random stock prop, wrong industry/location, default scene template, unconfirmed UI carrier, fake readable text, changing the confirmed advertised subject into a different category.',
   ].filter(Boolean).join(' ');
-  return prompt.slice(0, softwareWorkflowSubject ? 2400 : 1950);
+  return prompt.slice(0, softwareWorkflowSubject ? 2400 : 2100);
 }
 
 async function _createLuxuryAdReferenceKeyframeFallback({
@@ -18157,9 +18183,10 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         if (isLuxury) {
           sc = _repairLuxuryHumanStoryKeyframeScene(sc, i, scenes.length, productSubject);
           sc = _prepareLuxuryStrictShotForGeneration(sc, i, scenes.length, {
-            productSubject,
-            aspectRatio,
-            globalVisualBible: luxuryAsyncGlobalVisualBible,
+          productSubject,
+          aspectRatio,
+          adStyle,
+          globalVisualBible: luxuryAsyncGlobalVisualBible,
           });
           scenes[i] = sc;
         }
@@ -18426,18 +18453,27 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       for (let i = 0; i < keyframes.length; i++) {
         const kf = keyframes[i];
         _taskPatch(taskId, { stage: 'video', progress: 45 + Math.round((i / keyframes.length) * 35), message: `${isLuxury ? '生成剧情广告镜头' : '生成广告镜头'} ${i + 1}/${keyframes.length}` });
-        const prompt = [
-          kf.video_prompt,
-          kf.workflow_type === 'luxury_ad_storyboard' ? `Luxury workflow metadata: ${JSON.stringify(_compactLuxuryShotMeta(kf)).slice(0, 1000)}.` : '',
-          videoKbContext ? `Knowledge-base direction:\n${videoKbContext}` : '',
-          `Voiceover meaning: ${kf.voiceover || ''}`,
-          isLuxury ? `Style: ${_luxuryAdStylePrompt(adStyle)}.` : '',
-          isShowroomGuide ? 'Single continuous showroom-guide shot: presenter begins near the left third, may take small guided steps or a forward settling movement, and keeps the right display wall visible. No cuts or scene replacement.' : '',
-          isShowroomGuide ? _showroomGuideMotionBible({ text: kf.voiceover || text, scenePrompt }) : '',
-          isShowroomGuide ? _adPresenterActionPrompt({ scenePrompt, text: kf.voiceover || text }) : '',
-          isShowroomGuide ? 'Scene extension: animate the still frame with a subtle push-in, slight lateral parallax, gentle focus shift across wall/material details, and natural lighting continuity. The background should feel like a real video space, not a frozen flat image.' : '',
-          'Keep the presenter identity, face, outfit and the background stable from the keyframe. Smooth natural talking and guide gestures, subtle camera movement, no face morphing, no scene replacement, no generated text.',
-        ].join(' ');
+        // 中文说明：剧情广告图生视频只读取运动合同，不能复用文生图/分镜图片 prompt。
+        const prompt = isLuxury
+          ? _buildLuxuryI2VPrompt(kf, {
+            text,
+            title,
+            scenePrompt,
+            adStyle,
+            characterLock: kf.character_lock || luxuryCharacterLock,
+            maxChars: 1800,
+          })
+          : [
+            kf.video_prompt,
+            kf.workflow_type === 'luxury_ad_storyboard' ? `Luxury workflow metadata: ${JSON.stringify(_compactLuxuryShotMeta(kf)).slice(0, 1000)}.` : '',
+            videoKbContext ? `Knowledge-base direction:\n${videoKbContext}` : '',
+            `Voiceover meaning: ${kf.voiceover || ''}`,
+            isShowroomGuide ? 'Single continuous showroom-guide shot: presenter begins near the left third, may take small guided steps or a forward settling movement, and keeps the right display wall visible. No cuts or scene replacement.' : '',
+            isShowroomGuide ? _showroomGuideMotionBible({ text: kf.voiceover || text, scenePrompt }) : '',
+            isShowroomGuide ? _adPresenterActionPrompt({ scenePrompt, text: kf.voiceover || text }) : '',
+            isShowroomGuide ? 'Scene extension: animate the still frame with a subtle push-in, slight lateral parallax, gentle focus shift across wall/material details, and natural lighting continuity. The background should feel like a real video space, not a frozen flat image.' : '',
+            'Keep the presenter identity, face, outfit and the background stable from the keyframe. Smooth natural talking and guide gestures, subtle camera movement, no face morphing, no scene replacement, no generated text.',
+          ].join(' ');
         const storyboardDuration = Math.max(1, Math.min(12, Number(kf.duration) || 5));
         const seedanceDuration = (isShowroomGuide || isLuxury)
           ? Math.max(5, Math.min(10, storyboardDuration))
@@ -19814,6 +19850,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         sc = _prepareLuxuryStrictShotForGeneration(sc, i, scenes.length, {
           productSubject,
           aspectRatio,
+          adStyle,
           globalVisualBible: luxuryGlobalVisualBible,
         });
         scenes[i] = sc;
@@ -19877,6 +19914,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         }, i, scenes.length, {
           productSubject,
           aspectRatio,
+          adStyle,
           globalVisualBible: luxuryGlobalVisualBible,
         });
         scenes[i] = sc;
@@ -19911,6 +19949,9 @@ router.post('/spaces/keyframes', async (req, res) => {
             locked_reference_image: lockedLuxuryReference,
             active_reference_image: lockedLuxuryReference,
             compiled_image_prompt: sc.compiled_image_prompt || '',
+            image_contract: sc.image_contract || null,
+            video_motion_prompt: sc.video_motion_prompt || '',
+            video_contract: sc.video_contract || null,
             strict_storyboard_contract: sc.strict_storyboard_contract || null,
             prompt_preflight: sc.prompt_preflight || null,
             fusion_model: 'none_reference_locked',

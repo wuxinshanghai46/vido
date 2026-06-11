@@ -150,20 +150,28 @@ const STAGE_DEFAULTS = {
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
   // 剧情广告
+  // 中文说明：剧本、分镜导演和修复阶段负责生成“业务无关的视觉合同”，
+  // 需要更强的结构化视觉推理模型优先；DeepSeek 只作为末位后备，避免把具体行业场景写死。
   'luxury_ad.scene_config': [
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 20, enabled: true },
   ],
   'luxury_ad.script': [
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 20, enabled: true },
   ],
   'luxury_ad.storyboard_director': [
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 20, enabled: true },
   ],
   'luxury_ad.reference_analyze': [
     { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
@@ -231,9 +239,11 @@ const STAGE_DEFAULTS = {
     { provider_id: 'zhipu', model_id: 'glm-4.6v', priority: 23, enabled: true },
   ],
   'luxury_ad.keyframe_repair': [
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 3, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 4, enabled: true },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 20, enabled: true },
   ],
   'luxury_ad.video': [
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
