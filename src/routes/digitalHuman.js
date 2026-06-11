@@ -5149,6 +5149,9 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
     prompt,
     n: 1,
     size,
+    // 中文说明：部分漫路图像模型只认比例字段，不稳定遵守 size；三种写法同时传，避免 9:16 被代理层退回默认横图。
+    aspect_ratio: _normalizeAspectRatio(aspectRatio, '9:16'),
+    aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
   };
   const refs = (referenceImages || []).filter(Boolean).slice(0, 4);
   if (refs.length) {
@@ -5271,6 +5274,7 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
     prompt,
     n: 1,
     size,
+    aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
     referenceImages: (referenceImages || []).filter(Boolean).slice(0, 4),
     timeoutMs: 180000,
     agentId: 'digital_human_step1',

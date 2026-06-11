@@ -156,7 +156,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  * @param {string} [opts.agentId]
  * @returns {Promise<{ urls:string[], taskId:string }>}
  */
-async function generateImage({ model, prompt, n = 1, size = '1024x1024', referenceImages = [], timeoutMs = 180000, userId = null, agentId = null }) {
+async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], timeoutMs = 180000, userId = null, agentId = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
@@ -172,6 +172,11 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
         quality: 'auto',
         size: size || 'auto',
       };
+      if (aspectRatio) {
+        // 中文说明：GPT Image 2 企业通道有时按 aspect_ratio 而不是 size 约束画幅。
+        body.aspect_ratio = aspectRatio;
+        body.aspectRatio = aspectRatio;
+      }
       if (isEdit) {
         const normalizedRefs = [];
         for (const ref of refs) {
@@ -200,6 +205,11 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', referen
     }
 
     const body = { model, prompt, n, size };
+    if (aspectRatio) {
+      // 中文说明：不同漫路模型/代理对画幅字段兼容性不同，保留 size 同时补比例字段。
+      body.aspect_ratio = aspectRatio;
+      body.aspectRatio = aspectRatio;
+    }
     if (Array.isArray(referenceImages) && referenceImages.length) {
       body.image_url = referenceImages[0];
       if (referenceImages.length > 1) body.image_urls = referenceImages;
