@@ -5941,6 +5941,7 @@
   }
 
   function syncLuxuryBriefInfoToControls(info = state.luxuryAd.briefInfo || {}) {
+    info = (info && typeof info === 'object') ? info : {};
     const duration = Number(info.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.durationSec = duration;
     state.luxuryAd.outputRatio = info.aspect_ratio || state.luxuryAd.outputRatio || '9:16';
@@ -8350,6 +8351,7 @@
       project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
       production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
       project_state: projectState || (state.luxuryAd.keyframeError ? 'frame_failed' : (state.luxuryAd.keyframes?.length ? 'frame_ready' : (state.luxuryAd.storyboardDetailed ? 'frame_reviewing' : 'script_reviewing'))),
+      flow_mode: state.luxuryAd.flowMode || 'story',
       text,
       title: state.luxuryAd.briefInfo?.title || '剧情广告项目',
       brief_info: state.luxuryAd.briefInfo || null,
@@ -8394,7 +8396,61 @@
     return r?.production_project || r?.project || null;
   }
 
-  function restoreLuxuryAdProject(project = null) {
+  function ensureLuxuryResumeModal() {
+    let modal = document.getElementById('dhLuxuryResumeModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'dhLuxuryResumeModal';
+    modal.className = 'dh-video-modal dh-lux-resume-modal';
+    modal.innerHTML = `
+      <div class="dh-video-modal-backdrop" data-lux-resume-close></div>
+      <div class="dh-video-modal-card dh-lux-resume-modal-card">
+        <div class="dh-video-modal-head">
+          <span class="dh-video-modal-title">继续制作剧情广告</span>
+          <button class="dh-video-modal-close" data-lux-resume-close type="button" title="关闭">×</button>
+        </div>
+        <div class="dh-lux-resume-modal-body"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => {
+      if (e.target.closest('[data-lux-resume-close]')) closeLuxuryResumeModal();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && modal.classList.contains('open')) closeLuxuryResumeModal();
+    });
+    return modal;
+  }
+
+  function openLuxuryResumeModal() {
+    const pane = document.querySelector('[data-pane="luxury-ad"]');
+    if (!pane) return false;
+    const modal = ensureLuxuryResumeModal();
+    const body = modal.querySelector('.dh-lux-resume-modal-body');
+    if (!body) return false;
+    if (!state.luxuryResumeModalAnchor) {
+      state.luxuryResumeModalAnchor = document.createComment('luxury-ad-pane-anchor');
+      pane.parentNode?.insertBefore(state.luxuryResumeModalAnchor, pane);
+    }
+    body.appendChild(pane);
+    pane.classList.add('active');
+    pane.dataset.resumeModal = 'true';
+    modal.classList.add('open');
+    return true;
+  }
+
+  function closeLuxuryResumeModal() {
+    const modal = document.getElementById('dhLuxuryResumeModal');
+    const pane = document.querySelector('[data-pane="luxury-ad"][data-resume-modal="true"]');
+    if (pane && state.luxuryResumeModalAnchor?.parentNode) {
+      state.luxuryResumeModalAnchor.parentNode.insertBefore(pane, state.luxuryResumeModalAnchor);
+      delete pane.dataset.resumeModal;
+      pane.classList.toggle('active', state.activeTab === 'luxury-ad' || state.activeTab === 'material-film');
+    }
+    if (modal) modal.classList.remove('open');
+    renderTaskCenter();
+  }
+
+  function restoreLuxuryAdProject(project = null, opts = {}) {
     if (!project || typeof project !== 'object') return;
     const draft = project.draft_state || {};
     const inferredStep = project.keyframes?.length
@@ -8405,6 +8461,7 @@
     state.luxuryAd.content = project.text || state.luxuryAd.content || '';
     // 中文注释：旧页面补存可能把 current_step 写成 1；恢复时以已保存产物和项目阶段为准。
     state.luxuryAd.currentStep = Math.max(Number(draft.current_step || 1), inferredStep);
+    state.luxuryAd.flowMode = draft.flow_mode || project.flow_mode || 'story';
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = project.output_size || state.luxuryAd.outputSize || 'standard';
@@ -8437,13 +8494,16 @@
     if (input) input.value = state.luxuryAd.content || '';
     syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
     syncLuxuryPersonSpecControls();
-    switchTab('luxury-ad');
+    const inModal = opts.modal === true && openLuxuryResumeModal();
+    if (!inModal) switchTab('luxury-ad');
     showLuxuryAdStep(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))), { silent: true });
     renderLuxuryAd();
-    requestAnimationFrame(() => {
-      const target = document.querySelector('#dhLuxAdPanel') || document.querySelector('[data-pane="luxury-ad"]');
-      target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    });
+    if (!inModal) {
+      requestAnimationFrame(() => {
+        const target = document.querySelector('#dhLuxAdPanel') || document.querySelector('[data-pane="luxury-ad"]');
+        target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      });
+    }
     toast('已从任务中心恢复制作进度', 'success');
   }
 
@@ -12520,7 +12580,7 @@
       try {
         const id = luxProjectContinue.dataset.luxProjectContinue;
         const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`);
-        restoreLuxuryAdProject(r.project);
+        restoreLuxuryAdProject(r.project, { modal: true });
       } catch (err) {
         toast('恢复制作进度失败：' + err.message, 'error');
       }

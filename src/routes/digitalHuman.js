@@ -240,6 +240,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     bgm_asset: _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || null),
     voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
     subtitle: body.subtitle !== false,
+    flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
     ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,

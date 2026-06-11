@@ -1228,6 +1228,12 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-video-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dh-lux-failed-modal-card { width: min(1180px, 94vw); }
 .dh-lux-failed-modal-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; overflow: auto; padding-right: 2px; }
+.dh-lux-resume-modal { z-index: 10000; }
+.dh-lux-resume-modal-card { width: min(1440px, 96vw); height: min(900px, 92vh); max-height: 92vh; overflow: hidden; }
+.dh-lux-resume-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 20px 24px; }
+.dh-lux-resume-modal-body .dh-tab-pane[data-pane="luxury-ad"] { display: block; padding: 0; }
+.dh-lux-resume-modal-body .dh-wizard-head { margin-top: 0; }
+.dh-lux-resume-modal-body .dh-luxgen-stage { min-height: auto; }
 .dh-lux-failed-candidate { display: grid; gap: 10px; padding: 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.035); min-width: 0; }
 .dh-lux-failed-candidate-img { position: relative; width: 100%; aspect-ratio: 16 / 9; border: 1px solid rgba(33,255,243,.24); border-radius: 8px; overflow: hidden; background: #05070b; cursor: zoom-in; }
 .dh-lux-failed-candidate-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
@@ -1238,6 +1244,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-failed-candidate-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 @media (max-width: 720px) {
   .dh-video-modal-video { width: 90vw; height: auto; max-height: 70vh; }
+  .dh-lux-resume-modal-card { width: 96vw; height: 94vh; }
 }
 .dh-task-error, .dh-task-warning, .dh-task-ok { padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.5; }
 .dh-task-error, .dh-task-warning { color: var(--dh-error); background: rgba(255,77,109,0.10); border: 1px solid var(--dh-error); }
