@@ -17887,7 +17887,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   };
   const runCandidate = async (model, idx, promptForAttempt) => {
     const provider = String(model?.provider_id || '').toLowerCase();
-    const modelId = String(model?.model_id || '').toLowerCase();
+    const rawModelId = String(model?.model_id || model?.model || '').trim();
+    if (!rawModelId) throw new Error(`分镜生成阶段模型配置缺少 model_id，provider=${provider || 'unknown'}`);
+    const modelId = rawModelId.toLowerCase();
     if (provider === 'deyunai') {
       if (/nano-banana/.test(modelId)) {
         return _generateViaDeyunaiNanoBanana({
@@ -17897,7 +17899,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           destDir,
           referenceImages,
           outputSize,
-          preferredModel: model.model_id,
+          preferredModel: rawModelId,
         });
       }
       if (modelId === 'gpt-image-2') {
@@ -17911,7 +17913,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         });
         if (!refModes.length) refModes.push(['generation', []]);
         const runGptImage2 = (refItemsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
-          model: model.model_id,
+          model: rawModelId,
           prompt: promptForAttempt,
           aspectRatio: safeAspectRatio,
           filename: `${filename}_deyunai_${idx}${suffix}`,
@@ -17949,7 +17951,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         throw lastGptErr || new Error('gpt-image-2 edits 未返回可用图片');
       }
       return _generateViaDeyunaiSpecificImageModel({
-        model: model.model_id,
+        model: rawModelId,
         prompt: promptForAttempt,
         aspectRatio: safeAspectRatio,
         filename: `${filename}_deyunai_${idx}`,
