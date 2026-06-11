@@ -10610,7 +10610,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
       lastErr = err;
       const framingFailed = /LUXURY_ACTOR_FRAMING_QA_FAILED|LUXURY_ACTOR_FRAME_ORIENTATION_FAILED/.test(String(err.code || ''));
       if (framingFailed) {
-        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection', ...candidatePayload(outPath, '首次候选图') });
+        // 中文说明：有些供应商在抛错对象里带了已生成图片，outPath 还没赋值；失败回执也要带候选图给前端预览。
+        const firstCandidatePath = outPath || err._luxuryCandidatePath || '';
+        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection', ...candidatePayload(firstCandidatePath, '首次候选图') });
         let retryPath = '';
         try {
           const retryPrompt = fullBodyRetryPrompt(err.details?.reason || err.details?.observed || err.message);
@@ -10623,12 +10625,13 @@ async function _generateLuxuryPersonSheetWithPipeline({
           return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa: retryQa };
         } catch (retryErr) {
           lastErr = retryErr;
-          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed', ...candidatePayload(retryPath, '全身重试候选图') });
+          const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
+          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed', ...candidatePayload(retryCandidatePath, '全身重试候选图') });
           console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body retry failed:`, shortError(retryErr));
           continue;
         }
       }
-      addAttempt(model, false, err, candidatePayload(outPath, '失败候选图'));
+      addAttempt(model, false, err, candidatePayload(outPath || err._luxuryCandidatePath || '', '失败候选图'));
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed:`, shortError(err));
     }
   }
@@ -10636,6 +10639,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   err.status = 502;
   err.code = 'LUXURY_PERSON_SHEET_ALL_MODELS_FAILED';
   err.luxuryKeyframeAttempts = attempts;
+  err.details = { attempts };
   err.cause = lastErr;
   throw err;
 }

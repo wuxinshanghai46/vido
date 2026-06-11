@@ -5301,7 +5301,12 @@
 
   function renderLuxuryPersonFailedCandidates(error = {}) {
     const candidates = luxuryPersonFailedCandidates(error);
-    if (!candidates.length) return '';
+    if (!candidates.length) {
+      return `<div class="dh-lux-person-candidates dh-lux-person-candidates-empty">
+        <b>本次没有可保留候选图</b>
+        <small>上游审核拒绝或生成结果没有返回可访问图片，系统没有把失败图写入演员库。请重新生成，或上传真人参考/角色素材后继续。</small>
+      </div>`;
+    }
     // 中文说明：失败候选图只能人工选择保留，不能自动冒充 QA 通过的商用演员包。
     return `<div class="dh-lux-person-candidates">
       <b>可预览失败候选图</b>
