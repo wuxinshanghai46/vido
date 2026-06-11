@@ -222,8 +222,14 @@ function _compactLuxuryAdDraftBody(body = {}) {
     .map(_compactLuxuryAdDraftAsset)
     .filter(Boolean)
     .slice(0, 40);
-  return {
-    current_step: Math.max(1, Math.min(5, Number(body.current_step || body.currentStep || 1) || 1)),
+  const hasCurrentStep = body.current_step !== undefined || body.currentStep !== undefined;
+  const inferredStep = body.storyboard_final_keyframes !== undefined || body.storyboard_review_only !== undefined || body.keyframe_error
+    ? 4
+    : (Array.isArray(body.keyframes) && body.keyframes.length ? 5
+      : ((body.storyboard_detailed === true || body.storyboardDetailed === true) ? 3
+        : (Array.isArray(body.scenes) && body.scenes.length ? 2 : undefined)));
+  const out = {
+    current_step: hasCurrentStep ? Math.max(1, Math.min(5, Number(body.current_step || body.currentStep || 1) || 1)) : inferredStep,
     storyboard_detailed: !!(body.storyboard_detailed ?? body.storyboardDetailed),
     keyframe_planning_only: !!(body.keyframe_planning_only ?? body.keyframePlanningOnly),
     person_spec: _jsonClone(body.person_spec || body.personSpec || null),
@@ -238,6 +244,8 @@ function _compactLuxuryAdDraftBody(body = {}) {
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,
   };
+  Object.keys(out).forEach(key => out[key] === undefined && delete out[key]);
+  return out;
 }
 
 function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {}) {
@@ -1065,7 +1073,8 @@ function _luxuryIsAiGeneratedActorReference(asset = {}) {
   const kind = _luxuryActorReferenceKind(asset);
   return asset.is_ai_generated === true
     || metadata.is_ai_generated === true
-    || kind === 'ai_generated';
+    || kind === 'ai_generated'
+    || kind === 'synthetic_realistic_actor';
 }
 
 function _luxuryIsProductionUsableActorReference(asset = {}) {
@@ -2158,23 +2167,25 @@ function _luxuryBuildMultiCharacterContract(scene = {}, subject = '') {
       ? visualContract.multi_character_contract
       : null);
   if (explicit) {
-    const chars = Array.isArray(explicit.characters) ? explicit.characters : [];
+    const chars = Array.isArray(explicit.characters) ? explicit.characters.filter(Boolean) : [];
     const expected = Math.max(0, Math.min(6, Number(explicit.expected_count || explicit.count || chars.length || 0)));
+    const enabled = expected >= 2 && chars.length >= 2;
     return {
-      required: explicit.required === true || expected >= 2,
-      expected_count: expected >= 2 ? expected : 0,
+      // 中文注释：空的多人合同模板不能触发多人校验；单人剧本必须保持单人合同。
+      required: enabled,
+      expected_count: enabled ? expected : 0,
       source: 'explicit_multi_character_contract',
-      characters: chars.slice(0, 6).map((c, i) => ({
+      characters: enabled ? chars.slice(0, 6).map((c, i) => ({
         id: _luxuryStrictText(c.id || c.character_id || `角色${i + 1}`, 40),
         role: _luxuryStrictText(c.role || c.name || c.identity || `角色${i + 1}`, 80),
         appearance_lock: _luxuryStrictText(c.appearance_lock || c.appearance || c.description || '', 220),
         position: _luxuryStrictText(c.position || c.blocking || '', 120),
         speaking_role: _luxuryStrictText(c.speaking_role || c.dialogue_role || c.speaks || '', 120),
         relation: _luxuryStrictText(c.relation || c.relationship || '', 120),
-      })),
-      dialogue_roles: Array.isArray(explicit.dialogue_roles) ? explicit.dialogue_roles.slice(0, 8).map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [],
-      blocking: _luxuryStrictText(explicit.blocking || explicit.actor_blocking || '', 320),
-      qa_rule: _luxuryStrictText(explicit.qa_rule || explicit.qa_contract || '', 420),
+      })) : [],
+      dialogue_roles: enabled && Array.isArray(explicit.dialogue_roles) ? explicit.dialogue_roles.slice(0, 8).map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [],
+      blocking: enabled ? _luxuryStrictText(explicit.blocking || explicit.actor_blocking || '', 320) : '',
+      qa_rule: enabled ? _luxuryStrictText(explicit.qa_rule || explicit.qa_contract || '', 420) : '',
     };
   }
 

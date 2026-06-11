@@ -8285,8 +8285,14 @@
   function restoreLuxuryAdProject(project = null) {
     if (!project || typeof project !== 'object') return;
     const draft = project.draft_state || {};
+    const inferredStep = project.keyframes?.length
+      ? 5
+      : (['frame_reviewing', 'frame_ready', 'frame_failed'].includes(project.project_state) || project.storyboard_sheets?.length
+        ? 4
+        : (project.scenes?.length ? 3 : 1));
     state.luxuryAd.content = project.text || state.luxuryAd.content || '';
-    state.luxuryAd.currentStep = draft.current_step || (project.keyframes?.length ? 5 : (project.scenes?.length ? 3 : 1));
+    // 中文注释：旧页面补存可能把 current_step 写成 1；恢复时以已保存产物和项目阶段为准。
+    state.luxuryAd.currentStep = Math.max(Number(draft.current_step || 1), inferredStep);
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = project.output_size || state.luxuryAd.outputSize || 'standard';
