@@ -133,6 +133,7 @@
       personSpec: {
         castMode: 'auto',
         gender: 'auto',
+        age: 'young_adult',
         origin: 'east_asian_cn',
       },
       briefInfo: null,
@@ -3441,6 +3442,7 @@
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
+      age: 'young_adult',
       origin: 'east_asian_cn',
     };
     state.luxuryAd.briefInfo = null;
@@ -4763,12 +4765,20 @@
       all_male: '双人/多人全男性',
       all_female: '双人/多人全女性',
     },
+    age: {
+      young_adult: '青年 / 25-32',
+      adult_30_40: '成熟青年 / 30-40',
+      middle_40_55: '中年 / 40-55',
+      senior_55_plus: '年长 / 55+',
+      match_brief: '按广告需求判断',
+    },
   };
 
   function luxuryAdPersonSpec() {
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
+      age: 'young_adult',
       origin: 'east_asian_cn',
       ...(state.luxuryAd.personSpec || {}),
     };
@@ -4782,7 +4792,7 @@
       const field = el.dataset.luxPersonSpec;
       if (!field) return;
       el.value = spec[field] || '';
-      const locked = !!(lock && (field === 'castMode' || field === 'gender' || field === 'origin') && (field !== 'origin' || lock.origin));
+      const locked = !!(lock && (field === 'castMode' || field === 'gender' || field === 'origin' || field === 'age') && (field !== 'origin' || lock.origin) && (field !== 'age' || lock.age));
       el.disabled = locked;
       el.title = locked ? `已按固定演员「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '';
     });
@@ -4792,15 +4802,17 @@
     const spec = specOverride || luxuryAdPersonSpec();
     const castMode = LUXURY_PERSON_SPEC_LABELS.castMode[spec.castMode] || spec.castMode || '单人';
     const gender = LUXURY_PERSON_SPEC_LABELS.gender[spec.gender] || String(spec.gender || '').trim() || 'AI 按故事判断';
+    const age = LUXURY_PERSON_SPEC_LABELS.age[spec.age] || String(spec.age || '').trim() || '青年 / 25-32';
     const origin = LUXURY_PERSON_SPEC_LABELS.origin[spec.origin] || String(spec.origin || '').trim() || '按广告需求判断';
     const referencePerson = selectedAvatarImageUrl(state.selectedAvatar || {}) ? (state.selectedAvatar?.name || '已选数字人形象') : '';
     return [
       `人物数量：${castMode}`,
       `人物性别：${gender}`,
+      `人物年龄：${age}`,
       `地域/种族：${origin}`,
       referencePerson ? `参考数字人形象：${referencePerson}` : '',
       'AI 生成只作为拟真演员参考；需要真人请上传真人照片或使用授权真人演员素材。',
-      '姓名、年龄、五官、发型、服装、道具、气质、动作和妆造必须由 AI 在剧本人物表里生成。',
+      '姓名、五官、发型、服装、道具、气质、动作和妆造必须由 AI 在剧本人物表里生成。',
     ].filter(Boolean).join('；');
   }
 
@@ -4838,6 +4850,17 @@
     if (/south[_\s-]?asian/.test(key)) return '南亚';
     if (/latino|latin/.test(key)) return '拉美';
     return raw;
+  }
+
+  function luxuryPersonAgeSpecValue(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/young[_\s-]?adult|25|26|27|28|29|30|31|32|青年|年轻/.test(raw)) return 'young_adult';
+    if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(raw)) return 'adult_30_40';
+    if (/middle|40|45|50|55|中年/.test(raw)) return 'middle_40_55';
+    if (/senior|55|60|65|年长|老年/.test(raw)) return 'senior_55_plus';
+    if (/match|auto|brief|按/.test(raw)) return 'match_brief';
+    return '';
   }
 
   function luxuryPersonGenderSpecValue(value = '') {
@@ -4943,16 +4966,19 @@
     const spec = luxuryAdPersonSpec();
     const isRealPerson = luxuryAdActorReferenceKind(asset) === 'real_photo';
     const gender = luxuryPersonGenderSpecValue(asset.gender || metadata.gender || metadata.sex || asset.description || metadata.prompt || '');
+    const age = luxuryPersonAgeSpecValue(asset.age || asset.age_range || metadata.age || metadata.age_range || metadata.prompt || asset.description || '');
     const origin = luxuryPersonOriginSpecValue(asset.origin || asset.region || asset.ethnicity || asset.race || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || metadata.prompt || asset.description || '');
     const next = { ...spec, castMode: 'single' };
     if (gender) next.gender = gender;
     else if (isRealPerson) next.gender = 'auto';
+    if (age) next.age = age;
     if (origin) next.origin = origin;
     state.luxuryAd.personSpec = next;
     state.luxuryAd.personSpecLock = {
       source: asset.name || asset.actor_asset_id || asset.id || '已选演员',
       actor_asset_id: asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id || '',
       gender: gender || '',
+      age: age || '',
       origin: origin || '',
       castMode: 'single',
       reference_kind: luxuryAdActorReferenceKind(asset),
@@ -4989,6 +5015,7 @@
         production_usable_actor: isSyntheticActor,
         real_person_reference: referenceKind === 'real_photo',
         gender: generated.gender || generated.metadata?.gender || '',
+        age: generated.age || generated.age_range || generated.metadata?.age || generated.metadata?.age_range || '',
         origin: generated.origin || generated.metadata?.origin || '',
         image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
         extra_image_urls: Array.isArray(generated.extra_image_urls) ? generated.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
@@ -5202,11 +5229,12 @@
       const thumb = urls[0] || '';
       const refLabel = luxuryAdActorReferenceLabel(asset);
       const genderLabel = luxuryPersonGenderLabel(asset.gender || asset.metadata?.gender || '');
+      const ageLabel = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '')] || '';
       return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:86px">
         <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
         <span style="min-width:0;display:block">
           <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
-          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
+          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告固定演员')}</small>
         </span>
       </button>`;
     }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传真人参考或生成 AI 真人感演员包后会自动入库。</div>';
@@ -5234,7 +5262,8 @@
       updateLuxuryAdStepLocks();
       close();
       const gender = luxuryPersonGenderLabel(state.luxuryAd.personAsset.gender || state.luxuryAd.personSpecLock?.gender || '');
-      toast(`已选择角色素材「${asset.name || '演员'}」${gender ? `，人物性别已同步为${gender}` : ''}`, 'success');
+      const age = LUXURY_PERSON_SPEC_LABELS.age[state.luxuryAd.personSpecLock?.age || state.luxuryAd.personAsset.age || ''] || '';
+      toast(`已选择角色素材「${asset.name || '演员'}」${[gender ? `人物性别已同步为${gender}` : '', age ? `年龄已同步为${age}` : ''].filter(Boolean).join('，')}`, 'success');
     });
   }
 
@@ -5255,11 +5284,15 @@
       const genderText = generated.gender
         ? `性别：${luxuryPersonGenderLabel(generated.gender)}`
         : (isRealActor ? '性别：按真人照片参考' : '');
+      const ageText = generated.age || generated.age_range
+        ? `年龄：${LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(generated.age || generated.age_range)] || generated.age || generated.age_range}`
+        : '';
       const actorMeta = [
         generated.source ? luxuryAdActorReferenceLabel(generated) : '',
         actorId ? '已绑定 actor_id' : '',
         actorUrls.length ? `${actorUrls.length} 张演员参考` : '',
         genderText,
+        ageText,
       ].filter(Boolean).join(' · ');
       const defaultName = isSyntheticActor ? 'AI 真人感固定演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考');
       const defaultDesc = isSyntheticActor
@@ -6384,7 +6417,7 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '生成演员包中…'; }
     state.luxuryAd.personGenerationError = null;
     const personProgressStages = [
-      { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别和地域约束。' },
+      { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
       { at: 2500, percent: 24, phase: '生成正面定妆照', message: '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
       { at: 8500, percent: 48, phase: '生成侧面/半侧参考', message: '复用同一脸型、发型、服装和身形比例。' },
       { at: 15000, percent: 70, phase: '生成动作参考照', message: '同一演员进入商业动作姿态，检查衣服和发型不漂移。' },
@@ -6411,7 +6444,7 @@
       label: 'AI 真人感演员包',
       percent: 10,
       phase: '准备人物设定',
-      message: '读取广告需求、人物性别和地域约束。',
+      message: '读取广告需求、人物性别、年龄和地域约束。',
     };
     const personProgressTimer = setInterval(updatePersonProgress, 1400);
     state.luxuryAd.personAsset = {
@@ -6427,6 +6460,7 @@
       uploading: true,
       view_count: 3,
       gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
+      age: generationSpec.age || '',
       origin: generationSpec.origin || '',
       description: '正在按角色素材库标准生成真人感固定演员包。',
       spec_description: personDescription,
@@ -6471,6 +6505,7 @@
         is_ai_generated: character.is_ai_generated === true,
         production_usable_actor: character.production_usable_actor !== false,
         gender: character.gender || generationSpec.gender || '',
+        age: character.age || character.age_range || generationSpec.age || '',
         origin: character.origin || generationSpec.origin || '',
         url: imageUrl,
         image_url: imageUrl,
@@ -6514,6 +6549,7 @@
         failed: true,
         view_count: 3,
         gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
+        age: generationSpec.age || '',
         origin: generationSpec.origin || '',
         description: '人物演员包生成失败，请展开完整错误回执查看模型链路。',
         error: err?.data?.message || err?.data?.error || err.message || '',

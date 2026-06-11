@@ -1858,9 +1858,17 @@ function _luxuryIsSoftwareWorkflowSubject(productSubject = '', scene = {}) {
     scene.scene,
     manifestText,
   ].filter(Boolean).join(' ');
-  if (/AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|库存管理|补货|库存预警|AI助手|智能助手/i.test(text)) return true;
-  return /软件|系统|平台|SaaS|小程序|应用|App\b|APP\b|后台|看板|仪表盘|界面|数据|算法|AI|人工智能|助手|订单|库存|补货|排单|收银|点餐|客服|CRM|ERP|OMS|WMS|workflow|software|platform|dashboard|interface|screen|app|assistant|ordering|order management|inventory|restock|retail ops|store ops|service/i.test(text)
-    && !/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text);
+  if (/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text)) return false;
+  const creativeVideo = /视频创作|漫剧|短剧|剧情广告|视频生成|文生视频|图生视频|分镜|剧本|剪辑|成片|数字人|创作工具|AI视频|video\s*(creation|generation|editing)|storyboard|script|drama|comic|manga/i.test(text);
+  const orderWorkflow = /AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|采购订单|采购单|库存管理|补货|库存预警|排单|收银|点餐|OMS|WMS|ordering|order\s*management|purchase\s*order|procurement|inventory|restock|retail\s*ops|store\s*ops/i.test(text);
+  if (orderWorkflow) return true;
+  if (creativeVideo) return false;
+
+  // 中文说明：这里不能把“平台/AI/系统/助手/接口”这些泛词直接判成订单/采购工作流。
+  // 必须同时出现明确的软件服务主体和具体业务流程证据，避免不同业务被套进固定行业模板。
+  const softwareSubject = /软件|系统|SaaS|小程序|应用|App\b|APP\b|后台|看板|仪表盘|界面|数据|算法|人工智能|workflow|software|dashboard|interface|screen|app|service/i.test(text);
+  const concreteWorkflow = /流程|审批|工单|客服|CRM|ERP|排期|调度|报表|表单|同步|协同|自动化|管理后台|业务操作|workflow|ticket|approval|crm|erp|report|form|sync|automation|operation/i.test(text);
+  return softwareSubject && concreteWorkflow;
 }
 
 function _luxurySoftwareWorkflowEvidencePrompt(productSubject = 'software workflow') {
@@ -1870,6 +1878,22 @@ function _luxurySoftwareWorkflowEvidencePrompt(productSubject = 'software workfl
     'Acceptable evidence must come from the confirmed brief, assets or storyboard: actor/action, device, document, tool, place, interface, result, before-after state or other explicitly required carrier.',
     'Readable brand text is not required; the workflow must be visually clear through confirmed action, evidence and environment without defaulting to any industry template.',
   ].join(' ');
+}
+
+// 中文说明：动作字段只描述人物/主体行为；背景、镜头、光线和构图应留在 visual/camera 字段，
+// 否则分镜表会把“动作”显示成背景描述，并继续污染图片和图生视频提示词。
+function _luxuryCleanActionField(value = '', scene = {}) {
+  let raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  const visualLike = /背景|场景|环境|画面|主商品|主体位于|产品(登场|露出|亮相|扬场)|光线|镜头|构图|特写|中远景|近景|远景|景别|缓慢|推进|平移|转场|background|scene|environment|camera|shot|lighting|composition|close[-\s]?up|wide shot/i;
+  const actionLike = /人物|角色|演员|主体|用户|客户|顾客|观众|手|眼神|表情|指|拿|持|触摸|点击|操作|走|看|说|回应|点头|展示|打开|切换|拖拽|生成|编辑|上传|选择|确认|actor|character|person|user|customer|hand|point|hold|touch|click|operate|walk|look|speak|respond|nod|show|open|switch|confirm/i;
+  if (visualLike && !actionLike) return '';
+  raw = raw
+    .replace(/^(?:在)?[^，。；;]{0,50}(?:背景|场景|环境|画面|光线|镜头|构图|景别)[^，。；;]*[，。；;]\s*/i, '')
+    .replace(/^(?:极近景|近景|中景|中远景|远景|特写|镜头|画面)[^，。；;]{0,40}[，。；;]\s*/i, '')
+    .trim();
+  if (visualLike && !actionLike.test(raw)) return '';
+  return _luxuryStrictText(raw, 260);
 }
 
 function _luxuryShouldApplyUiOverlay(scene = {}, productSubject = '') {
@@ -2236,9 +2260,9 @@ function _luxuryQaExpectedVisual(scene = {}, subject = '') {
 }
 
 function _luxuryQaExpectedAction(scene = {}, subject = '', personRequired = false) {
-  const base = _compactQaText(scene.action || scene.visual_action || '', 260);
+  const base = _compactQaText(_luxuryCleanActionField(scene.action || scene.visual_action || '', scene), 260);
   if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
-    return _compactQaText([base, 'Software workflow action: judge whether the actor, phone/screen/order papers, shelves/inventory or confirmation UI communicate the requested order/inventory assistant story.'].filter(Boolean).join(' '), 420);
+    return _compactQaText([base, 'Software/service workflow action: judge whether the confirmed actor, tool, device, document, interface, place or result evidence communicates the requested service story. Use only evidence named by the brief, assets or storyboard; do not inject an order/inventory template.'].filter(Boolean).join(' '), 420);
   }
   if (personRequired) return base;
   if (_luxuryIsMaterialProductShot(scene, subject)) {
@@ -2459,7 +2483,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   const sceneEnv = industryContract.scene;
   const evidenceText = industryContract.evidence;
   const visibleSubject = softwareWorkflow
-    ? `one visible fixed realistic store manager/operator actor performing the ${subject} order/inventory workflow in the same real retail operations frame`
+    ? `one visible fixed realistic actor performing the confirmed ${subject} service workflow in the same real story frame`
     : `one visible realistic presenter/consultant/professional with the advertised subject evidence in the same ${industryContract.industry} commercial frame`;
   const referenceStrategy = [
     'Use uploaded reference images only according to their classified role: person identity, industry scene, subject evidence, or style.',
@@ -2470,8 +2494,8 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     ? [
       `QA must require one visible fixed actor in the confirmed ${industryContract.industry} scene.`,
       `The advertised service/workflow must be visible through this evidence: ${evidenceText}.`,
-      'Accept phone/screen/order papers/inventory shelves/packages/check UI as product evidence for the software service.',
-      'Reject material showrooms, cosmetics shelves, pure phone packshots, sci-fi UI labs, missing actor, wrong scene, CGI/3D render/AI illustration looks, and unrelated products or props.',
+      'Accept only the carrier evidence confirmed by the brief, assets or storyboard; do not require any fixed device, order paper, shelf, inventory or UI template.',
+      'Reject unrelated material showrooms, cosmetics shelves, pure carrier packshots, sci-fi UI labs, missing actor, wrong scene, CGI/3D render/AI illustration looks, and unrelated products or props.',
     ].join(' ')
     : [
       `QA must require one visible human presenter/consultant/professional in the confirmed ${industryContract.industry} scene.`,
@@ -2479,7 +2503,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
       'Reject missing presenter, wrong industry scene, subject-only catalogue output, generic stock background, CGI/3D render/AI illustration looks, and unrelated products or props.',
     ].join(' ');
   const confirmedVisual = _luxuryStrictText(scene.visual_prompt || scene.content_prompt || scene.scene_content || scene.visual || '', 620);
-  const confirmedAction = _luxuryStrictText(scene.action || scene.visual_action || scene.character_action || '', 420);
+  const confirmedAction = _luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene);
   const confirmedCamera = _luxuryStrictText(scene.camera || scene.shot_angle || scene.camera_label || '', 280);
   const legacyMaterialPollution = softwareWorkflow
     && /architectural materials|building finishing|premium material showroom|sample[- ]?wall|wall panels|facade|cladding|finish texture|material display|材料展厅|建材|墙板|外立面/i.test(confirmedVisual);
@@ -2497,7 +2521,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
   const topviewPrompt = [
     'STORYBOARD-FIRST IMAGE PROMPT: create a natural commercial storyboard still.',
     softwareWorkflow
-      ? `One visible fixed realistic store manager/operator actor is inside the confirmed ${industryContract.industry} story scene.`
+      ? `One visible fixed realistic actor is inside the confirmed ${industryContract.industry} story scene.`
       : `One visible realistic presenter/consultant/professional is inside the confirmed ${industryContract.industry} story scene.`,
     `Advertised subject evidence appears in the same frame: ${evidenceText}.`,
     softwareWorkflow
@@ -2507,7 +2531,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     actionToUse,
   ].filter(Boolean).join(' ');
   const mustShow = [
-    softwareWorkflow ? 'visible fixed store manager/operator actor' : 'visible human presenter/consultant/professional',
+    softwareWorkflow ? 'visible fixed realistic actor performing the confirmed service workflow' : 'visible human presenter/consultant/professional',
     `${industryContract.industry} scene matching the confirmed storyboard`,
     `${subject} advertised subject evidence in the same frame`,
   ];
@@ -2517,7 +2541,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
     'CGI, 3D render, AI illustration, waxy synthetic skin, plastic over-polished look',
     'hidden presenter face, cropped face, back-view-only presenter',
     'unrelated consumer product, random prop, fake readable text',
-    softwareWorkflow ? 'material showroom, facade panel display, cosmetics shelf, pure phone packshot, sci-fi UI lab' : '',
+    softwareWorkflow ? 'unconfirmed material showroom, facade panel display, cosmetics shelf, pure carrier packshot, sci-fi UI lab or fixed order/inventory template' : '',
   ].filter(Boolean);
 
   return {
@@ -2833,9 +2857,9 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
   const subject = _luxurySceneFriendlyProductSubject(productSubject || 'advertised subject') || 'advertised subject';
   if (_luxuryIsSoftwareWorkflowSubject(productSubject || subject, { visual: text, content_prompt: text })) {
     return {
-      industry: 'retail operations / software workflow',
-      scene: `real store back office, stockroom shelf aisle, order-processing counter, package desk, retail operations room or small warehouse workflow area appropriate for ${subject}`,
-      evidence: `workflow evidence for ${subject}: fixed actor using phone/tablet/computer, paper orders, inventory sheets, shelves, product boxes, confirmation/check UI or dashboard-like service result`,
+      industry: 'software / service workflow',
+      scene: `real workflow environment explicitly implied by the confirmed brief, assets or storyboard for ${subject}`,
+      evidence: `workflow evidence for ${subject}: confirmed actor, tool, device, document, interface moment, place, before-after state, result proof or other carrier explicitly required by the brief/assets/storyboard`,
     };
   }
   const rules = [
@@ -2860,8 +2884,8 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
     {
       test: /软件|系统|平台|SaaS|app|应用|手机|电脑|AI|智能|数据|software|platform|dashboard|technology|tech/i,
       industry: 'technology / software service',
-      scene: `real workplace workflow scene, retail back office, stockroom, order counter, device-use scene or clean operations workspace appropriate for ${subject}`,
-      evidence: `device screen, interface moment, workflow proof, order/inventory documents, dashboard-style visual or service-use evidence for ${subject}, without readable fake UI text`,
+      scene: `real workplace, creation, service-use, operations or collaboration environment appropriate for ${subject} according to the confirmed brief`,
+      evidence: `device, interface moment, workflow proof, creator/user action, result state or service-use evidence for ${subject}, without readable fake UI text or a fixed industry template`,
     },
     {
       test: /酒店|民宿|地产|空间|家居|家具|装修|室内|hotel|real estate|home|furniture|interior|property/i,
@@ -3734,18 +3758,18 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'When identity_reference_mode is strict_user_or_selected_identity or strict_generated_presenter_seed_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
     'A generated presenter seed is an internal identity lock, not loose inspiration. Treat it like a casting reference selected by the system from the user brief.',
     softwareWorkflowSubject
-      ? 'Hard fail if the generated scene ignores the requested retail operations / stockroom / order-counter world and jumps into an unrelated cosmetics boutique, material showroom, sci-fi lab, luxury office, generic exterior, or inconsistent lighting/color palette. Retail shelves, stockroom shelves, boxes and order counters are acceptable when the storyboard asks for retail/order/inventory workflow.'
+      ? 'Hard fail if the generated scene ignores the confirmed service workflow, user role, environment or result evidence and jumps into an unrelated retail, warehouse, cosmetics boutique, material showroom, sci-fi lab, luxury office, generic exterior, or inconsistent lighting/color palette. Fixed order/inventory props are acceptable only when the confirmed storyboard explicitly asks for them.'
       : 'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
     'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
     'Hard fail if uploaded product/person/scene/UI references are treated as generic inspiration instead of role-specific locks.',
     softwareWorkflowSubject
-      ? 'For software/service/workflow products, subject_match must be true when the generated keyframe shows the advertised service through the confirmed workflow: same actor using phone/tablet/computer, order papers, inventory shelves, packages, dashboard/check UI, or restock/order confirmation in the requested scene. Do not require a physical product package or readable brand UI.'
+      ? 'For software/service/workflow products, subject_match must be true when the generated keyframe shows the advertised service through confirmed workflow evidence: same actor/user role, required tool/device/document/interface/place/result or other carrier named by the brief/assets/storyboard. Do not require a physical product package or readable brand UI.'
       : '',
     softwareWorkflowSubject
-      ? 'For software/service/workflow products, product_fidelity means workflow/service proof and scene relevance, not package/material preservation. A phone or screen is acceptable as a carrier when it supports the order/inventory workflow; fail only if it becomes a generic phone ad or unrelated UI.'
+      ? 'For software/service/workflow products, product_fidelity means workflow/service proof and scene relevance, not package/material preservation. A device or screen is acceptable only when it supports the confirmed workflow; fail if it becomes a generic carrier ad or unrelated UI.'
       : '',
     softwareWorkflowSubject
-      ? 'For problem/setup shots, phone + paper orders + shelves/stockroom + worried actor is valid workflow evidence even before the AI confirmation UI appears. Require a confirmation/check/dashboard overlay only when the confirmed storyboard explicitly asks for it.'
+      ? 'For problem/setup shots, accept the specific pain-point evidence named by the confirmed storyboard. Require confirmation/check/dashboard/UI overlays only when the confirmed storyboard explicitly asks for them.'
       : '',
     'Storyboard_match is judged on a single still frame: accept an equivalent frozen pose, facial expression, prop relationship and camera framing that clearly represents the requested action. Do not fail only because a continuous verb such as flipping, tapping, checking or reviewing cannot literally animate in one image.',
     'Score quality_dimensions strictly and output all six numeric fields. Put scene_continuity and product_fidelity before character_consistency. realism means real commercial photography, scene_continuity means same real-world campaign setting, product_fidelity means product/category/workflow/package/material preservation according to product_subject_type, asset_fidelity means uploaded/reference lock fidelity, ui_overlay means subtle readable post-production UI without covering face/hands/product, character_consistency means same actor if required.',
@@ -9448,9 +9472,9 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}) {
   if (softwareWorkflow) {
     return [
       `ABSOLUTE FIRST PRIORITY: the visible advertised subject is the "${rawSubject || subject}" workflow.`,
-      '正向主体锚点：必须看见同一真人演员在真实零售/仓库/店铺场景中处理订单、库存、补货或确认动作。',
-      '画面证据必须包含手机/电脑屏幕、订单纸、货架库存、商品盒、确认卡片或数据界面中的至少两类；手机只是服务载体，不是广告主体。',
-      'Never output a generic phone ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, or empty workplace.',
+      '正向主体锚点：必须看见同一真人演员/用户角色在已确认业务场景中执行已确认的使用、创作、协作、操作、转化或结果动作。',
+      '画面证据只能来自用户需求、上传素材、已确认剧本或人工编辑；不要自动套用手机、订单、货架、仓库、后台等模板。',
+      'Never output a generic carrier ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, fixed order/inventory setup, or empty workplace.',
     ].join(' ');
   }
   return [
@@ -10215,12 +10239,12 @@ function _fallbackLuxuryAdVisual({ role = '', productSubject = '主商品' } = {
 function _fallbackLuxuryAdAction({ role = '', productSubject = '主商品' } = {}) {
   const name = String(productSubject || '主商品').trim() || '主商品';
   const action = {
-    hook: `主商品在克制光线中缓慢出现，镜头轻推，先让观众看到${name}的第一印象。`,
-    display: `镜头平稳推进到主体应用场景，空间关系逐步清晰，动作保持真实克制。`,
-    macro: '镜头贴近边缘和纹理横向移动，焦点从前景滑到关键细节。',
-    benefit: '人物或场景与主体产生自然互动，动作从观察转为使用或靠近，节奏放松。',
-    proof: '镜头围绕一个可信细节轻微移动，让卖点通过画面被看见。',
-    cta: '主体和人物回到稳定构图，动作收束，留出字幕和行动引导空间。',
+    hook: `人物或主体用一个明确动作引出${name}的核心问题。`,
+    display: `人物或主体进行展示、操作或体验，让${name}的作用被看见。`,
+    macro: '人物手部或主体关键部位完成一次细节展示动作。',
+    benefit: '人物从观察转为使用、比较或确认，表现变化已经发生。',
+    proof: '人物指向、展示或确认一个可信证据点，让卖点通过动作成立。',
+    cta: '人物或主体完成收束动作，表达选择、确认或行动意图。',
   };
   return action[_luxuryRoleAt(0, 1, role)] || action.display;
 }
@@ -10237,12 +10261,12 @@ function _fallbackLuxuryStoreOpsAction({ role = '', index = 0, total = 10, produ
   const name = String(productSubject || '门店 AI 点餐系统').trim() || '门店 AI 点餐系统';
   const beat = _luxuryRoleAt(index, total, role);
   const actions = {
-    hook: `店长一手拿纸质订单，一手接电话催单，眉头紧皱地看向前台和后厨方向，建立营业高峰的混乱感。`,
-    display: `店长把纸质订单放到柜台旁，转身看向平板里的订单列表，手势引导观众看到${name}开始接管流程。`,
-    product_reveal: `店长抬手点开${name}界面，屏幕里的电话单、外卖单和堂食单被整理成清晰队列。`,
-    benefit: `店长在平板上确认订单和库存状态，随后转头向后厨示意，动作从紧张变得有条理。`,
-    proof: `店长指向后厨大屏或前台订单列表，员工按系统提示处理下一单，画面呈现协同变顺。`,
-    cta: `店长站在前台旁面向镜头，右手指向稳定运行的${name}界面，用放松表情完成收束。`,
+    hook: `人物执行一个与当前痛点直接相关的动作，表情或姿态体现问题正在发生。`,
+    display: `人物把注意力转向${name}的使用证据，动作从发现问题过渡到尝试解决。`,
+    product_reveal: `人物操作、展示或确认${name}带来的关键变化。`,
+    benefit: `人物继续完成一次使用或协作动作，状态从紧张转为清晰有序。`,
+    proof: `人物指向、展示或复核一个结果证据，让价值通过动作成立。`,
+    cta: `人物面向镜头或目标对象完成确认、推荐或行动收束动作。`,
   };
   return actions[beat] || actions.display;
 }
@@ -10254,9 +10278,9 @@ function _cleanLuxuryAdAction(value = '', fallbackOpts = {}) {
   const s = String(value || '').replace(/\s+/g, ' ').trim();
   if (_luxuryIsStoreOpsContext(context)) {
     if (!s || _luxuryHasMaterialActionLeak(s)) return _fallbackLuxuryStoreOpsAction(fallbackOpts);
-    return s.slice(0, 220);
+    return (_luxuryCleanActionField(s, fallbackOpts) || _fallbackLuxuryStoreOpsAction(fallbackOpts)).slice(0, 220);
   }
-  return (s || _fallbackLuxuryAdAction({ role, productSubject })).slice(0, 260);
+  return (_luxuryCleanActionField(s, fallbackOpts) || _fallbackLuxuryAdAction({ role, productSubject })).slice(0, 260);
 }
 
 function _fallbackLuxuryAdEmotion({ role = '' } = {}) {
@@ -10332,9 +10356,8 @@ function _buildLuxurySubjectKeywords(productSubject = '', context = '') {
   }
   if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: context, content_prompt: context })) {
     extra.push(
-      'AI', '智能', '助手', '订单', '库存', '补货', '确认', '手机', '屏幕', '界面', '看板',
-      'AI助手', '订单助手', '订单管理', '库存管理', '零售', '货架',
-      'workflow', 'software', 'assistant', 'order', 'ordering', 'inventory', 'restock', 'dashboard', 'screen', 'phone',
+      'AI', '智能', '软件', '系统', '平台', '服务', '流程', '操作', '协作', '确认', '结果', '界面', '看板',
+      'workflow', 'software', 'service', 'platform', 'process', 'operation', 'result', 'dashboard', 'interface', 'screen',
     );
   }
   if (/建筑|空间|墙面|展厅|场景/.test(source)) extra.push('建筑', '空间', '墙面', '展厅');
@@ -10359,7 +10382,7 @@ function _luxurySubjectHit(value = '', subjectKeywords = [], productSubject = ''
     return /钢|钢材|钢板|不锈钢|金属板材|金属板|建筑钢|幕墙钢/.test(normalized);
   }
   if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: raw, content_prompt: raw })) {
-    return /AI|智能|助手|订单|库存|补货|确认|手机|屏幕|界面|看板|货架|零售|workflow|software|assistant|order|ordering|inventory|restock|dashboard|screen|phone/i.test(raw);
+    return /AI|智能|软件|系统|平台|服务|流程|操作|协作|确认|结果|界面|看板|workflow|software|service|platform|process|operation|result|dashboard|interface|screen/i.test(raw);
   }
   return false;
 }
@@ -10512,20 +10535,20 @@ function _luxuryActorGenderFromContext({ text = '', descriptionText = '', spec =
   if (/female|woman|girl|女士|女性|女人|女主/.test(specGender) || /女性|女主|女士|女人|woman|female/i.test(combined)) {
     return {
       value: 'female',
-      prompt: 'East Asian female professional advertising actor, about 30 to 42 years old',
+      prompt: 'female professional advertising actor',
       lock: 'Keep the selected female presentation consistent across all actor views.',
     };
   }
   if (/male|man|boy|男士|男性|男人|男主/.test(specGender) || /男性|男主|男士|男人|man|male/i.test(combined)) {
     return {
       value: 'male',
-      prompt: 'East Asian male professional advertising actor, about 30 to 42 years old',
+      prompt: 'male professional advertising actor',
       lock: 'Keep the selected male presentation consistent across all actor views.',
     };
   }
   return {
     value: 'male',
-    prompt: 'East Asian male retail store manager and business operator actor, about 30 to 42 years old',
+    prompt: 'male professional advertising actor',
     lock: 'Keep the selected male presentation consistent across all actor views.',
   };
 }
@@ -10539,6 +10562,16 @@ function _luxuryActorOriginPrompt(spec = {}, text = '') {
   if (/latino|latin/.test(origin)) return { value: 'latino', prompt: 'Latino facial features' };
   if (/middle[_\s-]?eastern/.test(origin)) return { value: 'middle_eastern', prompt: 'Middle Eastern facial features' };
   return { value: 'east_asian_cn', prompt: 'Chinese / East Asian facial features' };
+}
+
+function _luxuryActorAgePrompt(spec = {}, text = '') {
+  const raw = String(spec.age || spec.age_range || spec.ageRange || '').toLowerCase();
+  const combined = [raw, text].filter(Boolean).join(' ');
+  if (/senior|55|60|65|年长|老年/.test(combined)) return { value: 'senior_55_plus', prompt: '55+ years old senior adult' };
+  if (/middle|40|45|50|中年/.test(combined)) return { value: 'middle_40_55', prompt: '40 to 55 years old mature adult' };
+  if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(combined)) return { value: 'adult_30_40', prompt: '30 to 40 years old adult' };
+  if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age range inferred from the confirmed story brief; avoid making the actor older unless the brief requires it' };
+  return { value: 'young_adult', prompt: '25 to 32 years old young adult' };
 }
 
 async function _generateLuxuryRealisticActorPackage({
@@ -10557,13 +10590,12 @@ async function _generateLuxuryRealisticActorPackage({
   const actorAssetId = `actor_asset_${actorId}`;
   const gender = _luxuryActorGenderFromContext({ text, descriptionText, spec, roleHint });
   const origin = _luxuryActorOriginPrompt(spec, text);
-  const wardrobe = /店长|经理|门店|零售|订单|库存|仓库|store|manager|retail|order|inventory/i.test([text, descriptionText, roleHint].join(' '))
-    ? 'the exact same pale blue long-sleeve business shirt tucked into the exact same dark tailored trousers, black belt, clean business-casual shoes'
-    : 'the exact same clean premium business-casual outfit: pale blue or light neutral long-sleeve shirt tucked into dark tailored trousers, black belt, clean business shoes';
+  const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
+  const wardrobe = 'the exact same clean contemporary business-casual outfit appropriate to the confirmed brief, with consistent shirt/top, trousers or skirt, belt/accessories and shoes across all views';
   const common = [
     'Create a fixed commercial actor asset package for a realistic live-action advertisement.',
     'Generate one consistent real-looking professional actor for casting reference photos.',
-    `${gender.prompt}; ${origin.prompt}.`,
+    `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     `Wardrobe lock: ${wardrobe}.`,
     'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible, standing pose. Show the actor from head to shoes whenever possible; at minimum show head, torso, belt, trousers/skirt, thighs and knees. Do not crop at chest, waist or hips.',
@@ -10584,15 +10616,15 @@ async function _generateLuxuryRealisticActorPackage({
   const views = [
     {
       key: 'front',
-      prompt: `${common} FRONT VIEW: actor standing naturally, facing camera directly, calm professional expression, both eyes visible, full body visible from head to shoes or at least down to knees, pants/trousers and belt clearly visible, hands relaxed or lightly in pockets, real store manager casting photo. Do not crop as a bust portrait.`,
+      prompt: `${common} FRONT VIEW: actor standing naturally, facing camera directly, calm professional expression, both eyes visible, full body visible from head to shoes or at least down to knees, clothing silhouette and footwear clearly visible, hands relaxed or lightly in pockets, real commercial casting photo. Do not crop as a bust portrait.`,
     },
     {
       key: 'side',
-      prompt: `${common} SIDE / THREE-QUARTER VIEW: same actor, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes or at least down to knees, pants/trousers and belt clearly visible, neutral professional posture, same body proportions, real casting reference photo. Do not change jacket, shirt, hair or age.`,
+      prompt: `${common} SIDE / THREE-QUARTER VIEW: same actor, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes or at least down to knees, clothing silhouette and footwear clearly visible, neutral professional posture, same body proportions, real casting reference photo. Do not change jacket, shirt, hair or age.`,
     },
     {
       key: 'action',
-      prompt: `${common} ACTION VIEW: same actor in a realistic retail/store/office workflow pose, holding a phone and a few order papers, visible from head to knees or full body, pants/trousers and belt clearly visible, looking professional and believable, same face identity, exact same haircut, exact same shirt, trousers and belt, natural commercial photo. No wardrobe drift.`,
+      prompt: `${common} ACTION VIEW: same actor performing one neutral commercial action suggested by the confirmed brief, such as presenting, operating, comparing, demonstrating or reacting. Use props only when the brief or reference explicitly requires them; do not invent order papers, shelves, phones or fixed industry objects. Visible from head to knees or full body, clothing silhouette and footwear clearly visible, looking professional and believable, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
     },
   ];
   const outputs = [];
@@ -10628,20 +10660,22 @@ async function _generateLuxuryRealisticActorPackage({
     is_ai_generated: false,
     name: 'AI 真人感固定演员',
     gender: gender.value,
+    age: age.value,
+    age_range: age.prompt,
     origin: origin.value,
-    role: /店长|经理|门店|零售|订单|库存|仓库|store|manager|retail|order|inventory/i.test([text, descriptionText, roleHint].join(' ')) ? 'store_manager' : 'commercial_actor',
+    role: 'commercial_actor',
     image_url: outputs[0]?.url || '',
     extra_image_urls: outputs.slice(1).map(x => x.url).filter(Boolean),
     stable_attributes: [
       'same realistic face identity',
-      'same age impression',
+      `same age impression: ${age.prompt}`,
       'same exact hairstyle and hair color',
       'same body proportions',
-      'same exact pale blue shirt, trousers, belt and shoes',
+      'same exact outfit, accessories and shoes',
       'same natural skin texture',
     ],
     forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
-    prompt: `FIXED REAL ACTOR ASSET: use the same ${origin.prompt} ${gender.value} commercial actor across all human keyframes. Preserve face identity, age, exact hairstyle, body proportions, exact pale blue shirt, trousers, belt and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
+    prompt: `FIXED REAL ACTOR ASSET: use the same ${origin.prompt} ${gender.value} commercial actor (${age.prompt}) across all human keyframes. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
   };
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
@@ -10866,7 +10900,7 @@ ${userInstruction}
   "content_prompt": "镜头内容提示词：写画面、主体、背景、镜头运动和过场，不写广告词",
   "scene_content": "镜头画面说明，只描述看见什么和怎么运动",
   "visual": "镜头画面说明短句",
-  "action": "人物/物体/镜头的行为动作，写清楚表情、手部、主体如何运动",
+  "action": "只写人物/主体行为动作，写清楚表情、手部、操作、展示、回应或主体变化；不要写背景、光线、构图、景别或镜头运动",
   "emotion": "这一镜的情绪和氛围，例如焦虑、放松、信任、高级克制",
   "sfx_audio": "SFX / Audio，包含环境声、音效、提示音或旁白语气",
   "voiceover": "成片旁白/字幕广告词：真正会出现在成片里或朗读出来的话，不是镜头说明或提示词",
@@ -10887,7 +10921,7 @@ ${userInstruction}
 - 广告词必须像成片上真实出现的短句，克制、具体、有品牌感；禁止空泛套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求就是这类表达。
 - 不要把主商品改成化妆品、香水瓶、护肤品瓶、饮料瓶、手机或其他无关商品。
 - content_prompt/scene_content/visual 是镜头画面说明，不是旁白。
-- action/emotion/sfx_audio 必须像导演给执行团队的说明，不能只写“高级”“自然”。
+- action/emotion/sfx_audio 必须像导演给执行团队的说明；action 只能是人物/主体动作，背景、光线、构图和镜头运动放到对应字段。
 - voiceover/narration/ad_copy 是最终给观众听到或看到的广告词/字幕，不能写“我想要、帮我、广告需求、目标客户、画面风格、最后引导”等需求描述，也不能写成镜头提示词。
 - 如果用户要求更换表达、角度、场景、情绪或卖点，要同时改镜头、提示词、广告词和 Topview 提示词。
 - 不要生成价格、资质、疗效、承诺、虚假品牌信息。`;
@@ -10900,7 +10934,7 @@ ${userInstruction}
     const nextRole = String(x.role || role || 'display').trim();
     const voiceover = _cleanLuxuryAdCopy(x.narration || x.voiceover || x.ad_copy || x.subtitle || '', { role: nextRole, productSubject, index: shotIndex, total: totalShots, brief });
     const visual = _cleanLuxuryAdVisual(x.content_prompt || x.scene_content || x.visual || '', { role: nextRole, productSubject });
-    const action = String(x.action || x.visual_action || currentShot.action || _fallbackLuxuryAdAction({ role: nextRole, productSubject })).replace(/\s+/g, ' ').trim();
+    const action = _cleanLuxuryAdAction(x.action || x.visual_action || currentShot.action || '', { role: nextRole, productSubject, index: shotIndex, total: totalShots, brief });
     const emotion = String(x.emotion || x.mood || currentShot.emotion || _fallbackLuxuryAdEmotion({ role: nextRole })).replace(/\s+/g, ' ').trim();
     const sfxAudio = String(x.sfx_audio || x.audio || currentShot.sfx_audio || _fallbackLuxuryAdAudio({ role: nextRole })).replace(/\s+/g, ' ').trim();
     const camera = String(x.camera || x.camera_label || x.motion || currentShot.camera || 'smooth_slide').trim();
@@ -13202,7 +13236,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
   const multiCharacterContract = _luxuryBuildMultiCharacterContract({ ...scene, visual_contract: aiContract }, subject);
   const visual = _luxuryDirectorText(scene.content_prompt || scene.scene_content || scene.visual || scene.visual_prompt || scene.title, 260);
-  const action = _luxuryDirectorText(scene.action || scene.visual_action || '', 180);
+  const action = _luxuryDirectorText(_luxuryCleanActionField(scene.action || scene.visual_action || '', scene), 180);
   const camera = _luxuryDirectorText([scene.shot_angle, scene.shot_size, scene.camera_label, scene.camera, scene.lighting_style].filter(Boolean).join('; '), 220);
   const mustShow = _luxuryDirectorList(aiContract.must_show || aiContract.mustShow, [
     ..._luxuryGenericEvidenceList(scene, subject),
@@ -13520,7 +13554,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const subject = _luxuryStrictText(productSubject || scene.product_subject || '', 140);
   const multiCharacterContract = _luxuryBuildMultiCharacterContract(scene, subject);
   const visual = _luxuryStrictText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 520);
-  const action = _luxuryStrictText(scene.action || scene.visual_action || '', 260);
+  const action = _luxuryCleanActionField(scene.action || scene.visual_action || '', scene);
   const sceneText = _luxuryStrictText(
     visualContract.allowed_environment || scene.environment_lock || scene.scene_type_lock || scene.material_usage || scene.material_hint || visual,
     420,
@@ -13703,7 +13737,7 @@ function _buildLuxuryVideoContract(scene = {}, contract = {}) {
     subject: contract.product_subject || scene.product_subject || '',
     multi_character_contract: scene.multi_character_contract || contract.multi_character_contract || null,
     camera_motion: _luxuryStrictText(scene.i2v_brief || cameraPlan.movement || scene.camera_label || scene.camera || '', 260),
-    subject_motion: _luxuryStrictText(scene.action || scene.visual_action || '', 260),
+    subject_motion: _luxuryCleanActionField(scene.action || scene.visual_action || '', scene),
     timing: _luxuryStrictText(`${contract.duration || scene.duration || ''}s`, 40),
     continuity_constraints: [
       'preserve the approved keyframe subject, identity, scene, props, composition and lighting',
@@ -13916,7 +13950,7 @@ function _mergeLuxuryStoryExtractIntoScene(scene = {}, extract = {}, index = 0) 
   const mustShow = Array.isArray(shot.must_show) ? shot.must_show.map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [];
   const mustNotShow = Array.isArray(shot.must_not_show) ? shot.must_not_show.map(x => _luxuryStrictText(x, 120)).filter(Boolean) : [];
   const visual = _luxuryStrictText(shot.visual || shot.key_visual || shot.frame || '', 520);
-  const action = _luxuryStrictText(shot.action || shot.performance || '', 320);
+  const action = _luxuryCleanActionField(shot.action || shot.performance || '', shot);
   const sceneText = _luxuryStrictText(shot.scene || shot.environment || '', 320);
   const camera = _luxuryStrictText(shot.camera || shot.framing || shot.composition || '', 280);
   const dialogue = _luxuryStrictText(shot.dialogue || shot.voiceover || shot.copy || '', 420);
@@ -13950,9 +13984,9 @@ function _mergeLuxuryStoryExtractIntoScene(scene = {}, extract = {}, index = 0) 
     display_visual: scene.display_visual || visual,
     visual: scene.visual || visual,
     visual_prompt: scene.visual_prompt || visual,
-    action: scene.action || action,
-    visual_action: scene.visual_action || action,
-    character_action: scene.character_action || action,
+    action: _luxuryCleanActionField(scene.action || action, scene) || action,
+    visual_action: _luxuryCleanActionField(scene.visual_action || action, scene) || action,
+    character_action: _luxuryCleanActionField(scene.character_action || action, scene) || action,
     scene_prompt: scene.scene_prompt || sceneText,
     environment_lock: scene.environment_lock || sceneText,
     shot_angle: scene.shot_angle || camera,
@@ -13973,7 +14007,7 @@ function _lockLuxuryScenesToProvidedSegments(scenes = [], segments = []) {
     const title = _luxuryStrictText(segment.title || scene.title || '', 120);
     const voiceover = _luxuryStrictText(segment.voiceover || segment.narration || segment.text || scene.voiceover || scene.narration || '', 500);
     const visual = _luxuryStrictText(segment.visual_prompt || segment.visual || segment.content_prompt || segment.scene_content || segment.text || scene.visual || scene.content_prompt || '', 900);
-    const action = _luxuryStrictText(segment.action || segment.visual_action || scene.action || scene.visual_action || '', 500);
+    const action = _luxuryCleanActionField(segment.action || segment.visual_action || scene.action || scene.visual_action || '', segment);
     const camera = _luxuryStrictText(segment.camera || segment.shot_angle || scene.camera || scene.shot_angle || '', 320);
     const directorPrompt = _luxuryStrictText(scene.director_prompt || '', 1200);
     const visualPrompt = [directorPrompt, visual].filter(Boolean).join(' ').slice(0, 2800);
@@ -14023,7 +14057,7 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
     duration: Number(scene.duration || scene.duration_sec || 0) || 0,
     voiceover: _luxuryStrictText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 220),
     visual: _luxuryStrictText(scene.visual || scene.visual_prompt || scene.content_prompt || scene.scene_content || '', 260),
-    action: _luxuryStrictText(scene.action || scene.visual_action || scene.character_action || '', 180),
+    action: _luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene),
   }));
   const systemPrompt = [
     '你是剧情广告分镜图生成前的逐镜头剧情抽取器。',
@@ -16650,7 +16684,7 @@ function _luxuryGptImage2EditPrompt({
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || prompt,
     260,
   );
-  const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 180);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 180);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     150,
@@ -16909,7 +16943,7 @@ function _buildLuxuryImageModelStrictPrompt({
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
     260,
   );
-  const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 220);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 220);
   const displayProductSubject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
@@ -17861,7 +17895,7 @@ function _buildLuxuryKeyframePrompt({
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
     520,
   );
-  const action = _compactLuxuryKeyframeText(scene.action || scene.visual_action || scene.character_action || '', 260);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 260);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     260,
