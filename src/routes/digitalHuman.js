@@ -11411,6 +11411,8 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       request_key = '',
       request_async = false,
     } = req.body || {};
+    // 中文注释：外部接口字段使用 snake_case，内部生成链路沿用 adStyle；统一映射，避免分镜阶段变量名漏定义。
+    const adStyle = ad_style || 'luxury_soft';
     _storeLuxuryStoryboardResult(req, request_key, { status: 'running', started_at: Date.now() });
     const brief = String(text || '').trim();
     if (brief.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求' });
@@ -20032,6 +20034,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       storyboard_review_only = null,
       storyboard_final_keyframes = false,
     } = req.body || {};
+    // 中文注释：外部接口字段使用 snake_case，内部生成链路沿用 adStyle；统一映射，避免分镜阶段变量名漏定义。
+    const adStyle = ad_style || 'luxury_soft';
     const isLuxuryRequest = ad_mode === 'luxury_ad';
     if (!background_url && !isLuxuryRequest) return res.status(400).json({ success: false, error: 'background_url 必填' });
     if (!text?.trim()) return res.status(400).json({ success: false, error: 'text 必填' });
