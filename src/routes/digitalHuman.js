@@ -34,6 +34,7 @@ fs.mkdirSync(DH_PUBLIC_ASSETS_DIR, { recursive: true });
 const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
 const luxuryKeyframeResults = new Map();
+const luxuryPersonSheetResults = new Map();
 
 function _jsonClone(value, fallback = null) {
   try {
@@ -10866,9 +10867,16 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       reference_person = null,
       person_context = null,
       flow_mode = '',
+      request_key = '',
+      request_async = false,
     } = req.body || {};
     const text = String(brief || '').trim();
+    _storeLuxuryPersonSheetResult(req, request_key, { status: 'running', started_at: Date.now() });
     if (text.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求，再生成 AI 真人感演员包' });
+    if (request_async && request_key) {
+      _startLuxuryPersonSheetBackgroundJob(req, req.body || {});
+      return res.json({ success: true, status: 'accepted', request_key });
+    }
     const flowMode = String(flow_mode || '').toLowerCase();
     const sceneList = Array.isArray(scene_config) ? scene_config : [];
     const context = person_context && typeof person_context === 'object' ? person_context : {};
@@ -10969,7 +10977,40 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     });
+    _storeLuxuryPersonSheetResult(req, request_key, { status: 'done', result: {
+      success: true,
+      imageUrl,
+      image_url: imageUrl,
+      extra_image_urls: actorAsset.extra_image_urls || [],
+      filename: path.basename(imageUrl || ''),
+      model: actorPack.outputs?.[0]?.model || '',
+      attempts: actorPack.attempts || [],
+      actor_asset: actorAsset,
+      outputs: actorPack.outputs || [],
+      character: {
+        id: actorAsset.actor_asset_id,
+        actor_id: actorAsset.actor_id,
+        actor_asset_id: actorAsset.actor_asset_id,
+        name: actorAsset.name || 'AI 真人感一致性演员',
+        type: 'luxury_ad_actor_package',
+        source: actorAsset.source || 'local_actor_library_generated',
+        reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
+        is_ai_generated: false,
+        production_usable_actor: true,
+        gender: actorAsset.gender || '',
+        origin: actorAsset.origin || '',
+        image_url: imageUrl,
+        extra_image_urls: actorAsset.extra_image_urls || [],
+        view_count: 1 + (actorAsset.extra_image_urls || []).length,
+        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
+      },
+    } });
   } catch (err) {
+    _storeLuxuryPersonSheetResult(req, req.body?.request_key, {
+      status: 'error',
+      error: err.message || '人物演员包生成失败',
+      details: _extractPublicError(err, '剧情广告人物演员包生成失败').body,
+    });
     _sendApiError(res, err, '剧情广告人物演员包生成失败');
   }
 });
@@ -11454,6 +11495,80 @@ function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
     }
   });
 }
+
+function _luxuryPersonSheetResultKey(req, requestKey = '') {
+  const key = String(requestKey || '').trim().slice(0, 120);
+  if (!key) return '';
+  return `${req.user?.id || 'anon'}:${key}`;
+}
+
+function _storeLuxuryPersonSheetResult(req, requestKey = '', patch = {}) {
+  const key = _luxuryPersonSheetResultKey(req, requestKey);
+  if (!key) return;
+  luxuryPersonSheetResults.set(key, {
+    ...(luxuryPersonSheetResults.get(key) || {}),
+    ...patch,
+    updated_at: Date.now(),
+  });
+  setTimeout(() => luxuryPersonSheetResults.delete(key), 90 * 60 * 1000).unref?.();
+}
+
+function _publicLuxuryPersonSheetResult(item) {
+  if (!item) return null;
+  if (item.status === 'done') return { success: true, status: 'done', result: item.result };
+  if (item.status === 'error') {
+    const details = item.details && typeof item.details === 'object'
+      ? {
+        code: item.details.code || item.details.error?.code || undefined,
+        attempts: Array.isArray(item.details.details?.attempts)
+          ? item.details.details.attempts.slice(-10)
+          : (Array.isArray(item.details.attempts) ? item.details.attempts.slice(-10) : undefined),
+      }
+      : null;
+    return { success: false, status: 'error', error: _compactDhPublicMessage(item.error || '人物演员包生成失败'), details };
+  }
+  return { success: true, status: item.status || 'running', started_at: item.started_at || null, updated_at: item.updated_at || null };
+}
+
+function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
+  const requestKey = String(body.request_key || '').trim();
+  const port = process.env.PORT || 3000;
+  const authHeader = req.headers.authorization || '';
+  // 中文说明：人物演员包要连续生成多张图并做 QA，同步 fetch 容易被浏览器/代理断开，所以改为后台任务+轮询结果。
+  setImmediate(async () => {
+    try {
+      const resp = await axios.post(`http://127.0.0.1:${port}/api/dh/luxury-ad/person-sheet`, {
+        ...body,
+        request_async: false,
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        timeout: 0,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+      _storeLuxuryPersonSheetResult(req, requestKey, { status: 'done', result: resp.data });
+    } catch (err) {
+      const message = err.response?.data?.error || err.message || '人物演员包生成失败';
+      _storeLuxuryPersonSheetResult(req, requestKey, {
+        status: 'error',
+        error: message,
+        details: err.response?.data || null,
+      });
+      console.error('[DH/luxury-ad/person-sheet/async] failed:', message);
+    }
+  });
+}
+
+router.get('/luxury-ad/person-sheet/result/:requestKey', (req, res) => {
+  const key = _luxuryPersonSheetResultKey(req, req.params.requestKey);
+  const item = key ? luxuryPersonSheetResults.get(key) : null;
+  const body = _publicLuxuryPersonSheetResult(item);
+  if (!body) return res.status(404).json({ success: false, status: 'missing', error: '人物演员包结果还未产生或已过期' });
+  res.json(body);
+});
 
 router.post('/luxury-ad/storyboard', async (req, res) => {
   try {

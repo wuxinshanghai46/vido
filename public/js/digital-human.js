@@ -6654,20 +6654,44 @@
     };
     state.selectedAvatar = null;
     renderLuxuryAdPerson();
+    const requestKey = luxuryPersonSheetRequestKey();
     try {
-      const r = await api('/api/dh/luxury-ad/person-sheet', {
-        method: 'POST',
-        body: {
-          brief: text,
-          scene_config: compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 5),
-          description: personDescription,
-          person_spec: generationSpec,
-          person_context: luxuryAdPersonContextPayload(generationSpec),
-          flow_mode: state.luxuryAd.flowMode || (luxuryAdIsMaterialMode() ? 'material' : 'story'),
-          reference_person: referencePerson,
-          output_ratio: '9:16',
-        },
-      });
+      const requestBody = {
+        brief: text,
+        scene_config: compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 5),
+        description: personDescription,
+        person_spec: generationSpec,
+        person_context: luxuryAdPersonContextPayload(generationSpec),
+        flow_mode: state.luxuryAd.flowMode || (luxuryAdIsMaterialMode() ? 'material' : 'story'),
+        reference_person: referencePerson,
+        output_ratio: '9:16',
+        request_key: requestKey,
+        request_async: true,
+      };
+      let r;
+      try {
+        r = await api('/api/dh/luxury-ad/person-sheet', {
+          method: 'POST',
+          body: requestBody,
+        });
+      } catch (submitErr) {
+        // 中文说明：人物包是长任务，提交连接可能被浏览器/代理切断；只要 request_key 已发出，就继续轮询后台结果。
+        if (!isLuxuryStoryboardLongRunningError(submitErr)) throw submitErr;
+      }
+      if (r?.status === 'accepted' && r?.request_key) {
+        state.luxuryAd.personGenerationProgress = {
+          ...(state.luxuryAd.personGenerationProgress || {}),
+          active: true,
+          label: 'AI 真人感演员包',
+          percent: 88,
+          phase: '后台生成中',
+          message: '人物包已提交到后台，正在等待模型和 QA 返回。',
+        };
+        renderLuxuryAdPerson();
+        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 0 });
+      } else if (!r && requestKey) {
+        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 45000 });
+      }
       if (!r.success) throw new Error(r.error || '人物演员包生成失败');
       const imageUrl = r.imageUrl || r.image_url || r.url || r.character?.image_url || '';
       if (!imageUrl) throw new Error('人物演员包生成成功但没有返回图片地址');
@@ -9111,6 +9135,10 @@
     return `keyframes_${shot}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  function luxuryPersonSheetRequestKey() {
+    return `person_sheet_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
   async function pollLuxuryStoryboardResult(requestKey, { detail = false, timeoutMs = 0, missingRetryMs = 45000 } = {}) {
     const started = Date.now();
     let lastStatus = '';
@@ -9177,6 +9205,40 @@
       }
     }
     throw new Error('服务器仍在生成分镜，请稍后刷新页面或重新进入本步骤查看');
+  }
+
+  async function pollLuxuryPersonSheetResult(requestKey, { timeoutMs = 0, missingRetryMs = 45000 } = {}) {
+    const started = Date.now();
+    let seenServerJob = false;
+    const missingUntil = Date.now() + Math.max(0, Number(missingRetryMs) || 0);
+    while (!timeoutMs || Date.now() - started < timeoutMs) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      try {
+        const r = await api(`/api/dh/luxury-ad/person-sheet/result/${encodeURIComponent(requestKey)}`);
+        seenServerJob = true;
+        if (r.status === 'done' && r.result) return r.result;
+        if (r.status === 'error') {
+          const err = new Error(r.error || '人物演员包生成失败');
+          err.data = r.details || null;
+          throw err;
+        }
+        state.luxuryAd.personGenerationProgress = {
+          ...(state.luxuryAd.personGenerationProgress || {}),
+          active: true,
+          label: 'AI 真人感演员包',
+          phase: '后台生成中',
+          message: '服务器正在继续生成演员包，页面会自动刷新结果。',
+          percent: Math.max(86, Number(state.luxuryAd.personGenerationProgress?.percent || 86)),
+        };
+        renderLuxuryAdPerson();
+      } catch (err) {
+        const missing = err?.status === 404 || /还未产生|已过期|missing|404/i.test(String(err.message || ''));
+        if (missing && (!seenServerJob || Date.now() < missingUntil)) continue;
+        if (isLuxuryStoryboardLongRunningError(err)) continue;
+        throw err;
+      }
+    }
+    throw new Error('服务器仍在生成演员包，请稍后重新进入本步骤查看');
   }
 
   function isLuxuryStoryboardLongRunningError(err) {
