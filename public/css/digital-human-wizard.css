@@ -1092,6 +1092,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-person-error { margin-top: 10px; display: grid; gap: 8px; padding: 10px; border: 1px solid rgba(255,77,109,.34); border-radius: 8px; background: rgba(255,77,109,.08); text-align: left; }
 .dh-lux-person-error b { color: #ffd5df; font-size: 13px; }
 .dh-lux-person-error span { color: rgba(255,255,255,.78); font-size: 12px; line-height: 1.5; }
+.dh-lux-person-error small { color: rgba(255,255,255,.68); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .dh-lux-person-progress { display: grid; gap: 7px; padding: 9px; border: 1px solid rgba(33,255,243,.22); border-radius: 8px; background: rgba(33,255,243,.055); }
 .dh-lux-person-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dh-lux-person-progress-head b { color: var(--dh-text); font-size: 12px; }
@@ -1135,6 +1136,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-hidden-control { display: none !important; }
 .dh-luxgen-inline-drop { min-height: 82px; margin: 0 0 10px; }
 .dh-luxgen-character-sheet { display: grid; gap: 8px; }
+.dh-luxgen-character-sheet.is-failed { min-width: min(560px, 100%); }
 .dh-luxgen-character-sheet img { width: 100%; height: 132px; object-fit: contain; object-position: center; display: block; background: #05070b; border-radius: var(--dh-radius-sm); border: 1px solid rgba(33,255,243,.18); }
 .dh-lux-actor-main-preview { width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; display: block; }
 .dh-lux-actor-main-preview:hover img { border-color: rgba(33,255,243,.72); box-shadow: 0 0 0 2px rgba(33,255,243,.10); }
@@ -1145,6 +1147,8 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-actor-views span { display: block; padding: 0 4px 5px; font-size: 10px; font-weight: 800; line-height: 1.2; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dh-luxgen-character-sheet b { color: var(--dh-text); font-size: 13px; }
 .dh-luxgen-character-sheet small { color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; }
+.dh-demo-person-source:has(.dh-luxgen-character-sheet.is-failed) { grid-template-columns: minmax(0, 1fr) auto; }
+.dh-demo-person-source:has(.dh-luxgen-character-sheet.is-failed) .dh-luxgen-person-current { grid-column: 1 / -1; align-items: stretch; width: 100%; }
 @media (max-width: 1280px) {
   .dh-demo-grid, .dh-demo-grid.two, .dh-demo-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dh-demo-frame-card, .dh-demo-task-shell, .dh-demo-compose-grid { grid-template-columns: 1fr; }

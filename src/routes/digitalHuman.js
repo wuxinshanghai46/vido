@@ -10493,12 +10493,15 @@ async function _generateLuxuryPersonSheetWithPipeline({
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
   const shortError = err => String(err?.message || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 240);
-  const addAttempt = (model, ok, err = null) => {
+  const addAttempt = (model, ok, err = null, extra = {}) => {
     attempts.push({
       provider_id: model?.provider_id || '',
       model_id: model?.model_id || '',
       ok: !!ok,
+      code: err?.code || '',
       error: err ? shortError(err) : '',
+      qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING)/.test(String(err.code || '')) ? err.details : null,
+      ...extra,
     });
   };
   const configuredModels = _uniquePipelineModels(_pickRunnablePipelineModels(stageId));
@@ -10519,15 +10522,24 @@ async function _generateLuxuryPersonSheetWithPipeline({
 
   const safeAspectRatio = _normalizeAspectRatio(aspectRatio, '4:3');
   const refs = (referenceImages || []).filter(Boolean).slice(0, 4);
-  const runCandidate = async (model, idx) => {
+  const fullBodyRetryPrompt = (reason = '') => [
+    // 中文说明：人物包最常被模型画成胸像；QA 失败后用更短、更硬的全身提示词重试同一模型，不能放松 QA 放行。
+    'STRICT RETRY: generate a vertical 9:16 full-body commercial casting reference photo, not a portrait.',
+    'Show exactly one person from head to shoes in one frame; visible floor line or ground shadow; visible hips, legs and shoes or age-appropriate lower body.',
+    'Leave clean margin above head and below feet. Camera pulled back, plain gray studio background, realistic phone-camera photo, natural skin texture, real fabric folds.',
+    'Hard negative: headshot, bust portrait, chest-up, waist-up, half-body, cropped at hips, beauty poster, fashion portrait, plastic AI skin, porcelain skin, doll face, extra people.',
+    reason ? `Previous QA rejection to avoid: ${String(reason).slice(0, 220)}.` : '',
+    `Original brief contract, keep identity/age/gender/wardrobe but override any crop: ${String(prompt || '').slice(0, 1200)}`,
+  ].filter(Boolean).join(' ');
+  const runCandidate = async (model, idx, promptText = prompt, suffix = '') => {
     const provider = String(model?.provider_id || '').toLowerCase();
     const modelId = String(model?.model_id || '').toLowerCase();
     if (provider === 'deyunai') {
       if (/nano-banana/.test(modelId)) {
         return _generateViaDeyunaiNanoBanana({
-          prompt,
+          prompt: promptText,
           aspectRatio: safeAspectRatio,
-          filename: `${filename}_person_${idx}`,
+          filename: `${filename}_person_${idx}${suffix}`,
           destDir,
           referenceImages: refs,
           outputSize,
@@ -10536,9 +10548,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
       }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
-        prompt,
+        prompt: promptText,
         aspectRatio: safeAspectRatio,
-        filename: `${filename}_person_${idx}`,
+        filename: `${filename}_person_${idx}${suffix}`,
         destDir,
         referenceImages: refs,
         outputSize,
@@ -10554,7 +10566,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       };
       const result = refs.length
         ? await tv.generateImageEdit({
-          prompt,
+          prompt: promptText,
           referenceImages: refs,
           model: model.model_id,
           aspectRatio: safeAspectRatio,
@@ -10562,13 +10574,13 @@ async function _generateLuxuryPersonSheetWithPipeline({
           ...usageMeta,
         })
         : await tv.generateTextToImage({
-          prompt,
+          prompt: promptText,
           model: model.model_id,
           aspectRatio: safeAspectRatio,
           resolution: _topviewImageResolutionFromOutputSize(outputSize),
           ...usageMeta,
         });
-      const outPath = path.join(destDir, `${filename}_person_topview_${idx}.png`);
+      const outPath = path.join(destDir, `${filename}_person_topview_${idx}${suffix}.png`);
       const imageBuffer = await _fetchImageBuffer(result.imageUrl);
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, imageBuffer);
@@ -10590,6 +10602,25 @@ async function _generateLuxuryPersonSheetWithPipeline({
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
     } catch (err) {
       lastErr = err;
+      const framingFailed = /LUXURY_ACTOR_FRAMING_QA_FAILED|LUXURY_ACTOR_FRAME_ORIENTATION_FAILED/.test(String(err.code || ''));
+      if (framingFailed) {
+        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection' });
+        try {
+          const retryPrompt = fullBodyRetryPrompt(err.details?.reason || err.details?.observed || err.message);
+          const retryPath = await runCandidate(model, i + 1, retryPrompt, '_fullbody_retry');
+          const retryQa = await _checkLuxuryActorAssetFramingQa(req, retryPath, {
+            viewKey: `${filename}_fullbody_retry`,
+            model: `${model.provider_id}/${model.model_id}`,
+          });
+          addAttempt(model, true, null, { retry: 'full_body_reprompt_passed' });
+          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa: retryQa };
+        } catch (retryErr) {
+          lastErr = retryErr;
+          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed' });
+          console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body retry failed:`, shortError(retryErr));
+          continue;
+        }
+      }
       addAttempt(model, false, err);
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed:`, shortError(err));
     }

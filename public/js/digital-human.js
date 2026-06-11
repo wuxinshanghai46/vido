@@ -5257,6 +5257,27 @@
     return '人物演员包生成失败：请展开完整错误回执查看具体模型、状态码和返回内容。';
   }
 
+  function luxuryPersonGenerationUserAction(error = {}) {
+    const code = String(error.code || '').toUpperCase();
+    const msg = String(error.message || error.error || '');
+    const raw = JSON.stringify(error.raw || error.details || error || {});
+    const text = `${code} ${msg} ${raw}`;
+    // 中文说明：完整模型回执很长，只放在折叠详情；主界面只给用户能执行的中文结论。
+    if (/LUXURY_ACTOR_FRAMING_QA_FAILED|LOWER_BODY|TROUSERS|GARMENT|BUST|HEADSHOT|WAIST_UP|半身|头像|胸像/i.test(text)) {
+      return '这次不是系统继续乱跑，而是图片模型把演员画成了头像/胸像/半身，系统按商用人物锁规则拦截了。已在后端加入全身重试；请重新点一次“AI 真人感演员包”。';
+    }
+    if (/AUDITSUBMITILLEGAL|SUBMIT\s+IS\s+ILLEGAL|审核|ILLEGAL/i.test(text)) {
+      return '当前人物描述或参考图被上游平台审核拒绝。请把人物描述改得更中性，或换一张参考图后重试。';
+    }
+    if (/MODEL_NOT_CONFIGURED|未在模型调用管理|候选/i.test(text)) {
+      return '人物包模型链路没有可运行图片模型，请先到模型调用管理启用 luxury_ad.person_sheet 的图片模型。';
+    }
+    if (/500|INTERNAL SERVER ERROR|NO_IMAGE|未返回图片|没有返回图片/i.test(text)) {
+      return '上游图片通道没有产出可用演员图。系统不会把失败图写入演员库，可以切换模型或直接重试。';
+    }
+    return '系统没有把失败结果写入演员库。完整模型链路已折叠在下方，方便排查供应商或 QA 原因。';
+  }
+
   function luxuryPersonGenerationProgressHtml() {
     const progress = state.luxuryAd.personGenerationProgress;
     if (!progress || !progress.active) return '';
@@ -5443,7 +5464,7 @@
         ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#ffd28a;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考，真实关键帧会要求真人照片或授权真人演员。</div>'
         : '';
       const errorHtml = generated.failed && state.luxuryAd.personGenerationError
-        ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><span>${escapeHtml(state.luxuryAd.personGenerationError.message || generated.error || '模型未返回可用图片')}</span>${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}</div>`
+        ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}</div>`
         : '';
       const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面和动作演员照。' : (isAiActor ? '正在生成正面、侧面、背面三视图。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
@@ -5453,7 +5474,7 @@
             <span>${escapeHtml(luxuryActorAssetViewLabel(i))}</span>
           </button>`).join('')}</div>`
         : '';
-      host.innerHTML = `<div class="dh-luxgen-character-sheet">
+      host.innerHTML = `<div class="dh-luxgen-character-sheet ${generated.failed ? 'is-failed' : ''}">
         ${src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || defaultName)}"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>'}
         <b>${escapeHtml(generated.name || defaultName)}</b>
         <small>${escapeHtml(generated.uploading ? loadingText : (actorMeta || generated.description || defaultDesc))}</small>
