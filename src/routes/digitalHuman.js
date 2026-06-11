@@ -1309,7 +1309,8 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
     'The acceptable frame is full body, knee-up, or at minimum thigh-up where lower-body clothing is clearly visible below the waist/hips. For infants/toddlers, a full-body seated, standing, held-safe, or supported pose is acceptable when legs/onesie/diaper/lower garment are visible.',
     'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no lower-body clothing/legs are visible.',
-    'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, or more than one person.',
+    'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, porcelain skin, beauty-filter face, generic AI influencer face, doll-like face, uncanny smile, frozen stare, empty eyes, or more than one person.',
+    'Pass realistic age-appropriate human skin and identity diversity: natural skin texture, believable facial asymmetry, normal eye spacing and expression that matches the role. Do not require wrinkles or pores for babies/children; only reject plastic or fake-looking skin.',
     `View being checked: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
   ].join(' ');
   const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
@@ -10589,6 +10590,28 @@ function _luxuryActorBriefDerivedContract({ text = '', descriptionText = '', per
   ].filter(Boolean).join(' ');
 }
 
+function _luxuryActorAuthenticFaceContract({ age = {}, text = '', descriptionText = '', personContextNotes = '', roleHint = '' } = {}) {
+  const source = [text, descriptionText, personContextNotes, roleHint].filter(Boolean).join('\n');
+  const ageValue = String(age.value || '').toLowerCase();
+  const childOrTeen = /infant|toddler|child|teen/.test(ageValue)
+    || /婴儿|宝宝|新生儿|幼儿|儿童|少儿|青少年|baby|infant|toddler|child|teen/i.test(source);
+  const matureAdult = /middle|senior|elder|older|40|50|60|中年|年长|老人|银发/.test(ageValue + source);
+  const ageTexture = childOrTeen
+    ? 'Use age-appropriate natural child/teen skin: soft but not plastic, no adult beauty makeup, no glamour retouch, no mature facial styling.'
+    : (matureAdult
+      ? 'Preserve age-appropriate mature skin detail: natural lines, realistic texture and facial character when the brief implies it; do not erase age into a beauty-filter face.'
+      : 'Use natural adult skin detail: visible but subtle pores, real skin texture, slight facial asymmetry and believable under-eye/cheek/nose texture without making the face dirty or exaggerated.');
+  return [
+    // 中文说明：反 AI 脸协议只约束真实质感和辨识度，不指定固定脸型、固定五官或固定审美模板。
+    'AUTHENTIC HUMAN FACE CONTRACT: make the actor look like a real brief-derived person, not a generic AI beauty template.',
+    ageTexture,
+    'Avoid template influencer aesthetics: do not enlarge eyes, sharpen chin, over-symmetrize the face, over-whiten skin, smooth away pores, or create a doll/mannequin expression.',
+    'Keep distinctive but realistic facial identity derived from the story context: natural eye shape and spacing, real jaw/cheek/nose proportions, believable lips, ordinary human asymmetry and a relaxed non-forced expression.',
+    'Expression must feel lived-in and emotionally coherent with the role; avoid uncanny smile, frozen stare, empty eyes, exaggerated grin, wax-figure face or fake commercial enthusiasm.',
+    'Negative face cues: porcelain skin, beauty filter, AI influencer face, doll-like face, plastic skin, uncanny smile, wax figure, mannequin, over-smoothed face, airbrushed skin, perfect symmetric face.',
+  ].join(' ');
+}
+
 async function _generateLuxuryRealisticActorPackage({
   req,
   text,
@@ -10608,6 +10631,7 @@ async function _generateLuxuryRealisticActorPackage({
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
   const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
+  const authenticFaceContract = _luxuryActorAuthenticFaceContract({ age, text, descriptionText, personContextNotes, roleHint });
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
   const wardrobe = 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
   const hardFramingLead = [
@@ -10617,12 +10641,14 @@ async function _generateLuxuryRealisticActorPackage({
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
     'Plain documentary camera photo, real skin pores, normal facial asymmetry, natural hands, real fabric folds, no beauty retouch, no poster lighting.',
     'This is not a headshot, not a bust portrait, not a waist-up presenter photo, not a fashion poster.',
+    'No porcelain skin, no beauty filter, no AI influencer face, no doll-like face, no plastic skin, no uncanny smile.',
   ].join(' ');
   const common = [
     hardFramingLead,
     'Create a consistent person identity reference package for a realistic live-action storyboard.',
     'Generate one consistent real-looking person or character subject for neutral identity reference photos, only when the brief/script requires a visible person.',
     briefDerivedContract,
+    authenticFaceContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     ageSafety,
@@ -10633,7 +10659,7 @@ async function _generateLuxuryRealisticActorPackage({
     'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
     'Reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
     'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
-    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, presenter pose, fashion beauty poster, illustration, CGI, plastic AI skin, over-smoothed face.',
+    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, presenter pose, fashion beauty poster, illustration, CGI, plastic AI skin, over-smoothed face, porcelain skin, beauty filter, AI influencer face, doll-like face, uncanny smile.',
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
     `Advertising brief: ${String(text || '').slice(0, 900)}.`,
     personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
