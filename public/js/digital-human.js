@@ -3194,6 +3194,7 @@
   }
 
   function getTaskProgressPercent(task = {}) {
+    if (task.status === 'draft' || task.status === 'working') return Math.max(1, Math.min(99, Number(task.progress || 1)));
     if (task.status === 'done' || task.stage === 'done') return 100;
     if (task.status === 'error' || task.status === 'invalid' || task.status === 'timeout') return Math.max(1, Number(task.progress || 1));
     const stageBase = {
@@ -3220,9 +3221,10 @@
 
   function renderTaskPercentBlock(task = {}) {
     const pct = getTaskProgressPercent(task);
+    const label = task.status === 'draft' || task.status === 'working' ? getTaskStatusText(task.status) : '&#29983;&#25104;&#20013;';
     return `<div class="dh-task-percent">
       <div class="dh-task-percent-ring" style="--p:${pct}"><span>${pct}%</span></div>
-      <div class="dh-task-percent-label">&#29983;&#25104;&#20013;</div>
+      <div class="dh-task-percent-label">${label}</div>
     </div>`;
   }
 
@@ -3489,7 +3491,7 @@
     if (!quiet) toast('已清空剧情广告表单，可以重新创建', 'success');
   }
   const DH_TASK_STORE_KEY = 'dh_video_tasks_v1';
-  const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing', 'draft', 'working']);
+  const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
 
   function readVideoTasks() {
     try {
@@ -3537,8 +3539,8 @@
       error: '失败',
       invalid: '已失效',
       timeout: '超时',
-      draft: '进行中',
-      working: '进行中',
+      draft: '草稿',
+      working: '待继续',
       ready: '待合成',
       failed: '需处理',
     }[status] || '等待中';
@@ -3556,6 +3558,9 @@
       running: '视频生成',
       storyboard: isLuxury ? '生成剧本' : '生成分镜',
       keyframes: isLuxury ? '生成分镜' : '生成关键帧',
+      draft: '制作进度已保存',
+      script_reviewing: '剧本待继续编辑',
+      frame_reviewing: '分镜待继续编辑',
       video: '图生视频',
       post_effects: '字幕/特效合成',
       done: '成品保存',
@@ -3934,6 +3939,7 @@
       const elapsed = t.elapsed != null
         ? `${t.elapsed}s`
         : (t.startedAt ? `${Math.max(0, Math.round((Date.now() - t.startedAt) / 1000))}s` : '--');
+      const elapsedLabel = t.isLuxuryProjectDraft ? '已保存' : `&#24050;&#29992; ${escapeHtml(elapsed)}`;
       const created = t.startedAt ? new Date(t.startedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
       const poster = t.thumbnailUrl || t.thumbnail_url || t.imageUrl || t.image_url || t.previewUrl
         || (t.taskId ? `/api/dh/videos/tasks/${encodeURIComponent(t.taskId)}/thumbnail` : '');
@@ -3943,7 +3949,7 @@
         ? ' dh-task-thumb-landscape'
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
       const preview = t.isLuxuryProjectDraft
-        ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
+        ? `<div class="dh-task-thumb dh-task-thumb-empty">${escapeHtml(getTaskStatusText(t.status))}</div>`
         : active
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
         : (t.videoUrl
@@ -3972,7 +3978,7 @@
           <div class="dh-task-progress">
             <span>${getTaskStageText(t.stage, t)}</span>
             <span>${active ? `${progressPct}%` : escapeHtml(getTaskStatusText(t.status))}</span>
-            <span>&#24050;&#29992; ${escapeHtml(elapsed)}</span>
+            <span>${elapsedLabel}</span>
           </div>
           ${progressBar}
           <div class="dh-task-text">${escapeHtml(t.textPreview || '')}</div>
@@ -8317,8 +8323,9 @@
 
   function luxuryProductionProjectStageLabel(stage = '') {
     const map = {
-      script_reviewing: '剧本审核中',
-      frame_reviewing: '分镜板审核中',
+      draft: '制作进度已保存',
+      script_reviewing: '剧本待继续编辑',
+      frame_reviewing: '分镜板待继续编辑',
       actor_required: '等待人物一致性参考',
       model_required: '等待保参考模型',
       frame_failed: '关键帧失败',
@@ -8374,7 +8381,7 @@
     };
   }
 
-  async function saveLuxuryAdDraft({ silent = false, projectState = '' } = {}) {
+  async function saveLuxuryAdDraft({ silent = false, projectState = 'draft' } = {}) {
     const payload = luxuryAdCurrentDraftPayload(projectState);
     if (!payload.text && !payload.scenes.length && !payload.keyframes.length) {
       if (!silent) toast('当前还没有可保存的制作内容', 'error');
@@ -8433,11 +8440,15 @@
     switchTab('luxury-ad');
     showLuxuryAdStep(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))), { silent: true });
     renderLuxuryAd();
+    requestAnimationFrame(() => {
+      const target = document.querySelector('#dhLuxAdPanel') || document.querySelector('[data-pane="luxury-ad"]');
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
     toast('已从任务中心恢复制作进度', 'success');
   }
 
   function luxuryAdProjectToTask(project = {}) {
-    const status = project.status === 'failed' ? 'failed' : (project.status === 'ready' ? 'ready' : 'working');
+    const status = project.status === 'failed' ? 'failed' : (project.status === 'ready' ? 'ready' : 'draft');
     return {
       taskId: `luxury_project_${project.id}`,
       projectId: project.id,

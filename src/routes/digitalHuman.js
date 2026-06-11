@@ -280,7 +280,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     user_id: existing?.user_id || scopeUserId(req) || req.user?.id || null,
     title,
     project_state,
-    status: ['frame_ready', 'video_ready'].includes(project_state) ? 'ready' : (project_state.endsWith('_failed') || project_state === 'frame_failed' ? 'failed' : 'working'),
+    status: ['frame_ready', 'video_ready'].includes(project_state) ? 'ready' : (project_state.endsWith('_failed') || project_state === 'frame_failed' ? 'failed' : (project_state === 'draft' ? 'draft' : 'working')),
     text: String(body.text || existing?.text || '').slice(0, 12000),
     product_name: body.product_name || body.product_asset?.name || existing?.product_name || '',
     product_subject: result.production_contract?.visual_locks?.product_lock?.subject || existing?.product_subject || '',
@@ -11322,7 +11322,7 @@ router.post('/luxury-ad/projects/save', (req, res) => {
     };
     // 中文注释：保存的是制作进度，不替用户推断行业，不写死场景；恢复时按原快照继续。
     const project = _upsertLuxuryAdProductionProject(req, body, result, {
-      project_state: body.project_state || (body.keyframe_error ? 'frame_failed' : (body.keyframes?.length ? 'frame_ready' : (body.storyboard_detailed ? 'frame_reviewing' : 'script_reviewing'))),
+      project_state: body.project_state || (body.keyframe_error ? 'frame_failed' : (body.keyframes?.length ? 'frame_ready' : 'draft')),
       error: body.keyframe_error || '',
       error_code: body.keyframe_error_code || '',
     });
@@ -11442,6 +11442,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       outline_segments = [],
       person_spec = null,
       person_asset = null,
+      ad_style = 'luxury_soft',
       request_key = '',
       request_async = false,
     } = req.body || {};
