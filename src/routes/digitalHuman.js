@@ -10494,6 +10494,10 @@ async function _generateLuxuryPersonSheetWithPipeline({
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
   const shortError = err => String(err?.message || err || 'unknown error').replace(/\s+/g, ' ').slice(0, 240);
+  const candidatePayload = (localPath = '', label = '') => localPath ? {
+    candidate_url: `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(localPath)}`,
+    candidate_label: label || path.basename(localPath),
+  } : {};
   const addAttempt = (model, ok, err = null, extra = {}) => {
     attempts.push({
       provider_id: model?.provider_id || '',
@@ -10593,8 +10597,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
   let lastErr = null;
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
+    let outPath = '';
     try {
-      const outPath = await runCandidate(model, i + 1);
+      outPath = await runCandidate(model, i + 1);
       const frameQa = await _checkLuxuryActorAssetFramingQa(req, outPath, {
         viewKey: filename,
         model: `${model.provider_id}/${model.model_id}`,
@@ -10605,10 +10610,11 @@ async function _generateLuxuryPersonSheetWithPipeline({
       lastErr = err;
       const framingFailed = /LUXURY_ACTOR_FRAMING_QA_FAILED|LUXURY_ACTOR_FRAME_ORIENTATION_FAILED/.test(String(err.code || ''));
       if (framingFailed) {
-        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection' });
+        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection', ...candidatePayload(outPath, '首次候选图') });
+        let retryPath = '';
         try {
           const retryPrompt = fullBodyRetryPrompt(err.details?.reason || err.details?.observed || err.message);
-          const retryPath = await runCandidate(model, i + 1, retryPrompt, '_fullbody_retry');
+          retryPath = await runCandidate(model, i + 1, retryPrompt, '_fullbody_retry');
           const retryQa = await _checkLuxuryActorAssetFramingQa(req, retryPath, {
             viewKey: `${filename}_fullbody_retry`,
             model: `${model.provider_id}/${model.model_id}`,
@@ -10617,12 +10623,12 @@ async function _generateLuxuryPersonSheetWithPipeline({
           return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa: retryQa };
         } catch (retryErr) {
           lastErr = retryErr;
-          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed' });
+          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed', ...candidatePayload(retryPath, '全身重试候选图') });
           console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body retry failed:`, shortError(retryErr));
           continue;
         }
       }
-      addAttempt(model, false, err);
+      addAttempt(model, false, err, candidatePayload(outPath, '失败候选图'));
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed:`, shortError(err));
     }
   }

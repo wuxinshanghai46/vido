@@ -5278,6 +5278,42 @@
     return '系统没有把失败结果写入演员库。完整模型链路已折叠在下方，方便排查供应商或 QA 原因。';
   }
 
+  function luxuryPersonFailedCandidates(error = {}) {
+    const attempts = [
+      ...(Array.isArray(error.details?.attempts) ? error.details.attempts : []),
+      ...(Array.isArray(error.raw?.details?.attempts) ? error.raw.details.attempts : []),
+      ...(Array.isArray(error.raw?.attempts) ? error.raw.attempts : []),
+    ];
+    const seen = new Set();
+    return attempts.map((a, i) => {
+      const url = compactLuxuryUrl(a.candidate_url || a.image_url || a.url || '');
+      if (!url || seen.has(url)) return null;
+      seen.add(url);
+      return {
+        index: i,
+        url,
+        label: a.candidate_label || a.retry || '失败候选图',
+        provider: [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/'),
+        reason: a.qa?.reason || a.qa?.observed || a.error || '',
+      };
+    }).filter(Boolean).slice(0, 8);
+  }
+
+  function renderLuxuryPersonFailedCandidates(error = {}) {
+    const candidates = luxuryPersonFailedCandidates(error);
+    if (!candidates.length) return '';
+    // 中文说明：失败候选图只能人工选择保留，不能自动冒充 QA 通过的商用演员包。
+    return `<div class="dh-lux-person-candidates">
+      <b>可预览失败候选图</b>
+      <div>${candidates.map((item, i) => `<article>
+        <button type="button" data-lux-person-failed-preview="${i}" title="预览候选图"><img src="${escapeHtml(withAuthQuery(item.url))}" alt="${escapeHtml(item.label)}"></button>
+        <span>${escapeHtml(item.provider || item.label)}</span>
+        <small>${escapeHtml(String(item.reason || '').slice(0, 90))}</small>
+        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-person-failed-adopt="${i}">保留为人物参考</button>
+      </article>`).join('')}</div>
+    </div>`;
+  }
+
   function luxuryPersonGenerationProgressHtml() {
     const progress = state.luxuryAd.personGenerationProgress;
     if (!progress || !progress.active) return '';
@@ -5464,7 +5500,7 @@
         ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#ffd28a;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考，真实关键帧会要求真人照片或授权真人演员。</div>'
         : '';
       const errorHtml = generated.failed && state.luxuryAd.personGenerationError
-        ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}</div>`
+        ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${renderLuxuryPersonFailedCandidates(state.luxuryAd.personGenerationError)}${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}</div>`
         : '';
       const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面和动作演员照。' : (isAiActor ? '正在生成正面、侧面、背面三视图。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
@@ -6777,6 +6813,40 @@
       if (btn) { btn.disabled = false; btn.innerHTML = old || 'AI 真人感演员包'; }
       updateLuxuryAdStepLocks();
     }
+  }
+
+  function adoptLuxuryPersonFailedCandidate(index = 0) {
+    const candidates = luxuryPersonFailedCandidates(state.luxuryAd.personGenerationError || {});
+    const item = candidates[Number(index) || 0];
+    if (!item?.url) return toast('没有可保留的人物候选图', 'error');
+    state.luxuryAd.personGenerationError = null;
+    state.luxuryAd.personGenerationProgress = null;
+    state.luxuryAd.personAsset = {
+      id: `manual_actor_candidate_${Date.now()}`,
+      name: '人工保留人物参考',
+      type: 'luxury_ad_actor_package',
+      source: 'manual_failed_person_sheet_candidate',
+      reference_kind: 'synthetic_realistic_actor',
+      is_ai_generated: true,
+      production_usable_actor: true,
+      manual_override: true,
+      url: item.url,
+      image_url: item.url,
+      previewUrl: item.url,
+      extra_image_urls: [],
+      view_count: 1,
+      uploading: false,
+      description: `人工从未通过 QA 的人物包候选图中保留：${item.provider || item.label || '候选图'}。后续分镜会把它作为人物身份参考，但建议仍优先上传真人参考或角色素材。`,
+    };
+    state.selectedAvatar = null;
+    applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
+    state.luxuryAd.keyframes = [];
+    renderLuxuryAdPerson();
+    renderLuxuryAdStoryboard();
+    updateLuxuryAdStepLocks();
+    persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'manual_failed_person_sheet_candidate');
+    saveLuxuryAdDraft({ silent: true }).catch(() => {});
+    toast('已人工保留为人物参考，可继续生成分镜；如需更稳定一致性，建议上传真人参考', 'success');
   }
 
   async function uploadLuxuryAdBriefReferences(fileList) {
@@ -12532,6 +12602,17 @@
       const urls = luxuryActorAssetUrls(asset);
       const url = urls[idx] || urls[0] || '';
       if (url) openImagePreviewModal(url, `${asset.name || '演员参考'} · ${luxuryActorAssetViewLabel(idx)}`);
+      return;
+    }
+    const luxPersonFailedPreview = closest('[data-lux-person-failed-preview]');
+    if (luxPersonFailedPreview) {
+      const item = luxuryPersonFailedCandidates(state.luxuryAd.personGenerationError || {})[Number(luxPersonFailedPreview.dataset.luxPersonFailedPreview || 0)];
+      if (item?.url) openImagePreviewModal(item.url, item.provider || item.label || '人物候选图');
+      return;
+    }
+    const luxPersonFailedAdopt = closest('[data-lux-person-failed-adopt]');
+    if (luxPersonFailedAdopt) {
+      adoptLuxuryPersonFailedCandidate(Number(luxPersonFailedAdopt.dataset.luxPersonFailedAdopt || 0));
       return;
     }
     const luxAssetPreview = closest('[data-lux-asset-preview]');
