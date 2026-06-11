@@ -10572,21 +10572,30 @@ async function _generateLuxuryRealisticActorPackage({
   const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
   const wardrobe = 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
+  const hardFramingLead = [
+    // 中文说明：人物包最常失败在半身/塑料脸，所以把构图和真实质感放在 prompt 第一屏。
+    'VERTICAL 9:16 FULL-BODY IDENTITY REFERENCE PHOTO.',
+    'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
+    'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
+    'Plain documentary camera photo, real skin pores, normal facial asymmetry, natural hands, real fabric folds, no beauty retouch, no poster lighting.',
+    'This is not a headshot, not a bust portrait, not a waist-up presenter photo, not a fashion poster.',
+  ].join(' ');
   const common = [
-    'Create a consistent campaign character asset package for a realistic live-action advertisement.',
-    'Generate one consistent real-looking person or character subject for casting reference photos, only when the brief/script requires a visible person.',
+    hardFramingLead,
+    'Create a consistent person identity reference package for a realistic live-action storyboard.',
+    'Generate one consistent real-looking person or character subject for neutral identity reference photos, only when the brief/script requires a visible person.',
     briefDerivedContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
-    'CRITICAL FRAMING LOCK: vertical full-length commercial casting photo, camera pulled back, floor visible when age-appropriate. Show the person from head to shoes whenever possible; for infants/toddlers, full-body seated, supported, held-safe, or standing pose is acceptable. At minimum show head, torso and lower body. Do not crop at chest, waist or hips.',
+    'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; for infants/toddlers, full-body seated, supported, held-safe, or standing pose is acceptable. At minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.',
     'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.',
-    'The result should look like practical studio casting photography of a real brief-derived campaign subject.',
+    'The result should look like practical plain studio identity-reference photography of a real brief-derived subject.',
     'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
-    'Casting reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
+    'Reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
     'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
-    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, fashion beauty poster, illustration, CGI, plastic AI skin.',
+    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, presenter pose, fashion beauty poster, illustration, CGI, plastic AI skin, over-smoothed face.',
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
     `Advertising brief: ${String(text || '').slice(0, 900)}.`,
     personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
@@ -10598,15 +10607,15 @@ async function _generateLuxuryRealisticActorPackage({
   const views = [
     {
       key: 'front',
-      prompt: `${common} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, clothing silhouette and lower body clearly visible, real commercial casting photo. For infants/toddlers, use a safe supported full-body pose. Do not crop as a bust portrait.`,
+      prompt: `${hardFramingLead} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common} For infants/toddlers, use a safe supported full-body pose. Do not crop as a bust portrait.`,
     },
     {
       key: 'side',
-      prompt: `${common} SIDE / THREE-QUARTER VIEW: same person, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes when possible, clothing silhouette and lower body clearly visible, natural age-appropriate posture, same body proportions, real casting reference photo. Do not change clothing, hair or age.`,
+      prompt: `${hardFramingLead} SIDE / THREE-QUARTER VIEW: same person, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions, plain real-camera identity reference photo. ${common} Do not change clothing, hair or age.`,
     },
     {
       key: 'action',
-      prompt: `${common} ACTION VIEW: same person performing one age-appropriate action derived from the confirmed script and scene context. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, clothing silhouette and lower body clearly visible, same face identity, exact same haircut and outfit, natural commercial photo. No wardrobe drift.`,
+      prompt: `${hardFramingLead} ACTION VIEW: same person performing one age-appropriate small action derived from the confirmed script and scene context, while still showing head, torso and lower body. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, lower-body clothing clearly visible, same face identity, exact same haircut and outfit, plain real-camera identity reference photo. ${common} No wardrobe drift.`,
     },
   ];
   const outputs = [];
