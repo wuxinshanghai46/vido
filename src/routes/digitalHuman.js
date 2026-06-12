@@ -207,14 +207,34 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     return url;
   };
   const url = cleanUrl(asset.url || asset.image_url || asset.previewUrl || '');
+  const extraImageUrls = [
+    ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
+    ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
+  ].map(cleanUrl).filter(Boolean).filter(x => x !== url).slice(0, 8);
   return {
     id: asset.id || '',
+    actor_id: asset.actor_id || '',
+    actor_asset_id: asset.actor_asset_id || asset.asset_library_id || asset.material_id || '',
+    asset_library_id: asset.asset_library_id || asset.material_id || '',
+    material_id: asset.material_id || asset.asset_library_id || '',
     name: _projectText(asset.name || '', 180),
     type: asset.type || asset.role || '',
     role: asset.role || '',
+    source: asset.source || '',
+    reference_kind: asset.reference_kind || asset.metadata?.reference_kind || '',
+    production_usable_actor: asset.production_usable_actor === true || asset.metadata?.production_usable_actor === true,
+    is_ai_generated: asset.is_ai_generated === true || asset.metadata?.is_ai_generated === true,
+    gender: asset.gender || asset.metadata?.gender || '',
+    age: asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '',
+    age_range: asset.age_range || asset.metadata?.age_range || '',
+    origin: asset.origin || asset.region || asset.metadata?.origin || asset.metadata?.region || '',
     url,
     image_url: cleanUrl(asset.image_url || asset.url || '') || url,
     previewUrl: cleanUrl(asset.previewUrl || asset.url || asset.image_url || '') || url,
+    extra_image_urls: extraImageUrls,
+    view_count: Math.max(Number(asset.view_count || 0), url ? 1 + extraImageUrls.length : extraImageUrls.length),
+    description: _projectText(asset.description || asset.spec_description || '', 600),
+    spec_description: _projectText(asset.spec_description || '', 600),
   };
 }
 

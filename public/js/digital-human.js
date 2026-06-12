@@ -5224,6 +5224,33 @@
     ].map(compactLuxuryUrl).filter(Boolean);
   }
 
+  function luxuryActorUrlsFromSources(...sources) {
+    const urls = [];
+    const push = value => {
+      const url = compactLuxuryUrl(value || '');
+      if (url && !urls.includes(url)) urls.push(url);
+    };
+    const walk = source => {
+      if (!source) return;
+      if (typeof source === 'string') return push(source);
+      if (Array.isArray(source)) return source.forEach(walk);
+      if (typeof source !== 'object') return;
+      push(source.image_url || source.imageUrl || source.file_url || source.url || source.previewUrl || '');
+      [
+        source.extra_image_urls,
+        source.extra_images,
+        source.image_urls,
+        source.images,
+        source.views,
+      ].forEach(walk);
+      if (Array.isArray(source.outputs)) {
+        source.outputs.forEach(item => push(item?.url || item?.image_url || item?.imageUrl || item?.file_url || ''));
+      }
+    };
+    sources.forEach(walk);
+    return urls;
+  }
+
   function luxuryActorAssetViewLabel(index = 0) {
     return ['正面', '侧面/半侧', '动作'][Number(index) || 0] || `参考 ${Number(index) + 1}`;
   }
@@ -6737,6 +6764,9 @@
       const imageUrl = r.imageUrl || r.image_url || r.url || r.character?.image_url || '';
       if (!imageUrl) throw new Error('人物演员包生成成功但没有返回图片地址');
       const character = r.character || {};
+      const actorUrls = luxuryActorUrlsFromSources(character, r.actor_asset, r, r.outputs);
+      const primaryActorUrl = actorUrls[0] || imageUrl;
+      const extraActorUrls = actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
       state.luxuryAd.personGenerationError = null;
       state.luxuryAd.personGenerationProgress = {
         active: true,
@@ -6759,13 +6789,11 @@
         gender: character.gender || generationSpec.gender || '',
         age: character.age || character.age_range || generationSpec.age || '',
         origin: character.origin || generationSpec.origin || '',
-        url: imageUrl,
-        image_url: imageUrl,
-        previewUrl: imageUrl,
-        extra_image_urls: Array.isArray(character.extra_image_urls)
-          ? character.extra_image_urls
-          : (Array.isArray(r.extra_image_urls) ? r.extra_image_urls : []),
-        view_count: 3,
+        url: primaryActorUrl,
+        image_url: primaryActorUrl,
+        previewUrl: primaryActorUrl,
+        extra_image_urls: extraActorUrls,
+        view_count: Math.max(1, actorUrls.length || (1 + extraActorUrls.length)),
         uploading: false,
         description: character.description || 'AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。',
         spec_description: personDescription,
@@ -8638,7 +8666,24 @@
     state.luxuryAd.voiceId = draft.voice_id || state.luxuryAd.voiceId || '';
     state.luxuryAd.subtitle = draft.subtitle !== false;
     state.luxuryAd.personSpec = draft.person_spec || state.luxuryAd.personSpec;
-    state.luxuryAd.personAsset = draft.person_asset || state.luxuryAd.personAsset || null;
+    const restoredPersonAsset = draft.person_asset || state.luxuryAd.personAsset || null;
+    const contractActorAsset = project.production_contract?.actor_asset
+      || project.production_contract?.actor_reference
+      || null;
+    if (restoredPersonAsset) {
+      const restoredUrls = luxuryActorUrlsFromSources(restoredPersonAsset, contractActorAsset);
+      state.luxuryAd.personAsset = {
+        ...restoredPersonAsset,
+        ...(contractActorAsset && !restoredPersonAsset.actor_asset_id ? {
+          actor_id: contractActorAsset.actor_id || restoredPersonAsset.actor_id || '',
+          actor_asset_id: contractActorAsset.actor_asset_id || restoredPersonAsset.actor_asset_id || '',
+        } : {}),
+        extra_image_urls: restoredUrls.slice(1),
+        view_count: Math.max(Number(restoredPersonAsset.view_count || 0), restoredUrls.length || 1),
+      };
+    } else {
+      state.luxuryAd.personAsset = null;
+    }
     state.luxuryAd.productAsset = draft.product_asset || state.luxuryAd.productAsset || null;
     state.luxuryAd.briefRefAssets = draft.brief_reference_assets || [];
     state.luxuryAd.refAssets = draft.reference_assets || [];
