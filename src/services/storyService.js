@@ -69,6 +69,7 @@ function _pickPreferredStoryModel(p) {
   // 按"当前可用性 + 输出标准 + 速度 + 成本"综合排序。
   const preferred = [
     /^gemini-2\.5-flash\b/i,                 // 当前漫路可用，速度和结构化输出更均衡
+    /^claude.*sonnet.*4-5/i,                 // 漫路海外 Claude Messages 文档示例模型
     /^claude.*sonnet.*4-6\b/i,               // 当前漫路可用，复杂文案兜底
     /^gpt-4o\b/i,                            // OpenAI 旗舰
     /^gpt-4o-mini\b/i,                       // 漫路当前可能禁用，降级候选
@@ -255,6 +256,68 @@ function callAnthropicLLM(config, systemPrompt, userPrompt) {
   });
 }
 
+function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const maxTokens = Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096));
+    const payload = {
+      model: config.model,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: userPrompt }],
+    };
+    if (String(systemPrompt || '').trim()) payload.system = systemPrompt;
+    const body = JSON.stringify(payload);
+    const req = https.request({
+      hostname: 'api.deyunai.com',
+      path: '/c35/v1/messages',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: Math.max(30000, Math.min(180000, Number(opts.timeoutMs) || 120000)),
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const raw = Buffer.concat(chunks).toString();
+        let data = null;
+        try { data = JSON.parse(raw); } catch (_) {}
+        if (res.statusCode >= 400) {
+          const msg = data?.error?.message || data?.message || raw.slice(0, 300) || `HTTP ${res.statusCode}`;
+          return reject(new Error(`漫路 Claude Messages HTTP ${res.statusCode}: ${msg}`));
+        }
+        if (!data) return reject(new Error(`漫路 Claude Messages 返回非 JSON: ${raw.slice(0, 300)}`));
+        if (data.error) {
+          const msg = data.error?.message || data.error?.type || JSON.stringify(data.error).slice(0, 300);
+          return reject(new Error(`漫路 Claude Messages: ${msg}`));
+        }
+        const content = Array.isArray(data.content) ? data.content : [];
+        const text = content
+          .map(part => (typeof part === 'string' ? part : (part?.text || '')))
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        if (!text) return reject(new Error(`漫路 Claude Messages 未返回文本内容: ${raw.slice(0, 300)}`));
+        resolve({
+          text,
+          usage: {
+            input_tokens: data.usage?.input_tokens || 0,
+            output_tokens: data.usage?.output_tokens || 0,
+          },
+          raw: data,
+        });
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(new Error('漫路 Claude Messages 请求超时'));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
 /**
  * 统一 LLM 调用入口（自动记录到 tokenTracker）
  * @param {string} systemPrompt
@@ -312,6 +375,14 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       inputTokens = usage.input_tokens;
       outputTokens = usage.output_tokens;
     } else {
+      const _isDeyunaiConfig = config.providerId === 'deyunai' || /deyunai|漫路/i.test(config.providerId || '');
+      if (_isDeyunaiConfig && /^claude-/i.test(String(config.model || ''))) {
+        const { text: t, usage } = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts);
+        text = t;
+        inputTokens = usage.input_tokens;
+        outputTokens = usage.output_tokens;
+        return text;
+      }
       const sdkOpts = { apiKey: config.apiKey };
       if (config.baseURL) sdkOpts.baseURL = config.baseURL;
 

@@ -157,6 +157,7 @@ const PROVIDER_PRESETS = {
     // ——— 海外通道 /c35/v1 ———
     { id: 'gpt-4o',                            name: 'GPT-4o（OpenAI 旗舰）',                 type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gpt-4o-mini',                       name: 'GPT-4o Mini（最快最便宜·默认）',       type: 'chat', use: 'story', channel: 'overseas' },
+    { id: 'claude-sonnet-4-5-20250929',         name: 'Claude Sonnet 4.5（Messages API）',     type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'claude-sonnet-4-6',                 name: 'Claude Sonnet 4.6',                    type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gemini-2.0-flash',                  name: 'Gemini 2.0 Flash',                     type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gemini-2.5-pro',                    name: 'Gemini 2.5 Pro（旗舰）',               type: 'chat', use: 'story', channel: 'overseas' },
@@ -272,7 +273,7 @@ const ENV_PROVIDER_EXTRA_MAP = {
 function loadSettings() {
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      return mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
+      return mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))));
     } catch {}
   }
   // 首次启动：从 .env 自动初始化
@@ -338,6 +339,26 @@ function mergeEnvSeededProviders(settings = {}) {
   return out;
 }
 
+function mergePresetModelsForExistingProviders(settings = {}) {
+  const out = { ...settings };
+  out.providers = Array.isArray(settings.providers) ? [...settings.providers] : [];
+  for (const provider of out.providers) {
+    const presetId = String(provider?.preset || provider?.id || '').trim();
+    const preset = PROVIDER_PRESETS[presetId];
+    if (!preset || !Array.isArray(preset.defaultModels)) continue;
+    if (!provider.api_url) provider.api_url = preset.api_url;
+    if (!Array.isArray(provider.models)) provider.models = [];
+    const existingModelIds = new Set(provider.models.map(m => String(m?.id || '').trim()).filter(Boolean));
+    for (const model of preset.defaultModels) {
+      const modelId = String(model?.id || '').trim();
+      if (!modelId || existingModelIds.has(modelId)) continue;
+      provider.models.push({ ...model, enabled: true });
+      existingModelIds.add(modelId);
+    }
+  }
+  return out;
+}
+
 function seedFromEnv() {
   const providers = [];
   for (const { envKey, presetId } of ENV_SEED_MAP) {
@@ -351,7 +372,7 @@ function seedFromEnv() {
 
 function saveSettings(data) {
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(mergePresetModelsForExistingProviders(data), null, 2), 'utf8');
 }
 
 // 获取某供应商的 API Key（供其他 service 调用）
