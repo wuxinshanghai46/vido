@@ -7546,6 +7546,20 @@
     });
   }
 
+  function luxuryShotObjectiveText(seg = {}) {
+    return String(
+      seg.objective
+      || seg.intent
+      || seg.purpose
+      || seg.script_purpose
+      || seg.purpose_label
+      || seg.source_beat?.spoken_intent
+      || seg.source_beat?.character_goal
+      || seg.source_beat?.solution_step
+      || ''
+    ).trim();
+  }
+
   function compactLuxurySegments(segments = []) {
     return applyLuxuryShotBindings(segments).map((seg, i) => ({
       index: i,
@@ -7554,7 +7568,9 @@
       story_stage: luxuryNormalizeSceneStage(seg.story_stage, seg.shot_role || seg.role || seg.type, i, segments.length || 5),
       shot_size: seg.shot_size || seg.framing || '',
       shot_angle: luxuryShotAngleText(seg),
-      objective: seg.objective || seg.intent || seg.purpose || '',
+      objective: luxuryShotObjectiveText(seg),
+      purpose: seg.purpose || seg.script_purpose || seg.purpose_label || '',
+      script_purpose: seg.script_purpose || seg.purpose_label || seg.purpose || '',
       duration: seg.duration || seg.duration_sec || 6,
       content_prompt: luxuryShotContentPrompt(seg),
       narration: luxuryShotNarrationText(seg),
@@ -8060,7 +8076,7 @@
       if (/[?？]{3,}|�/.test(scenePayload)) errors.push(`第 ${n} 镜包含乱码或无法识别的占位符。`);
       if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`第 ${n} 镜缺少画面内容。`);
       if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`第 ${n} 镜缺少动作/表情。`);
-      if (!String(seg.objective || seg.intent || seg.purpose || '').trim()) errors.push(`第 ${n} 镜缺少编剧目的。`);
+      if (!luxuryShotObjectiveText(seg)) errors.push(`第 ${n} 镜缺少编剧目的。`);
       const dialogue = Array.isArray(seg.dialogue_lines)
         ? seg.dialogue_lines.join('\n')
         : String(seg.dialogue || seg.dialogue_text || seg.conversation || '').trim();
