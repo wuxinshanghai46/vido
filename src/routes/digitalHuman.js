@@ -14671,6 +14671,12 @@ function _buildLuxuryActorAssetPackage({
 } = {}) {
   const url = String(imageUrl || '').trim();
   if (!url) return null;
+  const normalizedGender = (() => {
+    const raw = String(gender || '').trim().toLowerCase();
+    if (/^male$|男|男性|man/.test(raw)) return 'male';
+    if (/^female$|女|女性|woman/.test(raw)) return 'female';
+    return '';
+  })();
   const stableSeed = String(actorAssetId || url).trim();
   const actorId = `actor_${crypto.createHash('sha1').update(stableSeed).digest('hex').slice(0, 12)}`;
   const extraRefs = Array.isArray(extraImageUrls)
@@ -14698,7 +14704,7 @@ function _buildLuxuryActorAssetPackage({
   const prompt = [
     `FIXED ACTOR ASSET PACKAGE: actor_id=${actorId}.`,
     `Use the exact same campaign actor for every human keyframe: ${actorName}.`,
-    gender ? `Requested gender presentation: ${gender}.` : '',
+    normalizedGender ? `Requested gender presentation: ${normalizedGender}.` : '',
     description ? `Actor description: ${_luxuryLockCleanText(description, 420)}.` : '',
     `Mandatory identity reference image: ${url}.`,
     extraRefs.length ? `Additional actor reference views: ${extraRefs.join(' | ')}.` : '',
@@ -14712,7 +14718,7 @@ function _buildLuxuryActorAssetPackage({
     status: 'confirmed',
     source: source || 'person_asset',
     name: actorName,
-    gender: gender || '',
+    gender: normalizedGender,
     role: role || '',
     image_url: url,
     extra_image_urls: extraRefs,
@@ -20855,7 +20861,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         image_url: luxuryPersonAssetImageUrl,
         extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
         actor_asset_id: person_asset.actor_asset_id || person_asset.asset_library_id || person_asset.material_id || '',
-        gender: person_asset.gender || '',
+        gender: person_asset.gender || person_asset.detected_gender || '',
       }
       : null;
     const luxuryBriefReferenceAvatar = isLuxury && (luxuryBriefPersonReferenceImage || luxuryGeneratedPresenterImage)

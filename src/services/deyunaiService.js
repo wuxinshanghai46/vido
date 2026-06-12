@@ -53,11 +53,11 @@ function isGptImage2Model(modelId) {
   return String(modelId || '').toLowerCase() === 'gpt-image-2';
 }
 
-function normalizeGptImage2EditReference(imageUrl) {
+function normalizeGptImage2Reference(imageUrl) {
   const value = String(imageUrl || '').trim();
   if (!value) return '';
   if (value.startsWith('data:image/')) {
-    throw new Error('gpt-image-2 edits 通道不支持 base64/data URL 参考图，请先保存为公网可访问的图片 URL');
+    throw new Error('gpt-image-2 通道不支持 base64/data URL 参考图，请先保存为公网可访问的图片 URL');
   }
   return value;
 }
@@ -126,6 +126,53 @@ function publicHttpImageRefs(referenceImages = []) {
     .map(x => String(x || '').trim())
     .filter(Boolean)
     .filter(url => /^https?:\/\//i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(url));
+}
+
+function normalizeGptImage2N(value) {
+  const n = Math.round(Number(value) || 1);
+  return Math.max(1, Math.min(10, n));
+}
+
+function normalizeGptImage2Size(size) {
+  const raw = String(size || '').trim().toLowerCase();
+  if (!raw || raw === 'auto') return 'auto';
+  const m = raw.match(/^(\d{2,5})x(\d{2,5})$/);
+  if (!m) return 'auto';
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 'auto';
+  const ratio = w / h;
+  if (ratio > 3 || ratio < 1 / 3) return 'auto';
+  return `${w}x${h}`;
+}
+
+function assertGptImage2BodyContract(body) {
+  const allowed = new Set([
+    'images',
+    'prompt',
+    'background',
+    'n',
+    'output_compression',
+    'output_format',
+    'quality',
+    'size',
+    'input_fidelity',
+    'mask_url',
+  ]);
+  const unexpected = Object.keys(body || {}).filter(k => !allowed.has(k));
+  if (unexpected.length) {
+    throw new Error(`gpt-image-2 请求体包含接口文档未声明字段: ${unexpected.join(', ')}`);
+  }
+  if (body.images !== undefined && (!Array.isArray(body.images) || body.images.some(x => {
+    if (typeof x === 'string') return !/^https?:\/\//i.test(x);
+    if (x && typeof x === 'object') return !/^https?:\/\//i.test(String(x.image_url || ''));
+    return true;
+  }))) {
+    throw new Error('gpt-image-2 images 必须是公网 http(s) URL，图片编辑按文档示例发送 { image_url } 数组');
+  }
+  if (body.output_compression !== undefined && !/^(webp|jpeg)$/i.test(String(body.output_format || ''))) {
+    throw new Error('gpt-image-2 output_compression 只允许在 output_format 为 webp 或 jpeg 时发送');
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -201,29 +248,23 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
       const refs = publicHttpImageRefs(referenceImages).slice(0, 14);
       if (rawRefCount > 0 && refs.length === 0) throw new Error('漫路图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
-      const isEdit = refs.length > 0;
       const body = {
         prompt,
         background: 'auto',
-        n,
-        output_compression: 100,
+        n: normalizeGptImage2N(n),
         output_format: 'png',
         quality: 'auto',
-        size: size || 'auto',
+        size: normalizeGptImage2Size(size),
       };
-      if (aspectRatio) {
-        // 中文说明：GPT Image 2 企业通道有时按 aspect_ratio 而不是 size 约束画幅。
-        body.aspect_ratio = aspectRatio;
-        body.aspectRatio = aspectRatio;
-      }
+      const isEdit = refs.length > 0;
       if (isEdit) {
-        const normalizedRefs = [];
-        for (const ref of refs) {
-          const image_url = normalizeGptImage2EditReference(ref);
-          if (image_url) normalizedRefs.push({ image_url });
-        }
-        body.images = normalizedRefs;
+        body.images = refs
+          .map(normalizeGptImage2Reference)
+          .filter(Boolean)
+          .map(image_url => ({ image_url }));
+        body.input_fidelity = 'high';
       }
+      assertGptImage2BodyContract(body);
       const submitRes = await axios.post(
         buildEnterpriseImageUrl(isEdit ? '/images/edits' : '/images/generations'),
         body,
