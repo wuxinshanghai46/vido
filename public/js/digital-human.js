@@ -7691,6 +7691,21 @@
     }).filter(k => k.image_url);
   }
 
+  function luxuryFrameHasImage(frame = {}) {
+    return !!(frame && (frame.image_url || frame.imageUrl || frame.url));
+  }
+
+  function mergeLuxuryKeyframesPreservingImages(existing = [], incoming = [], total = 0) {
+    const size = Math.max(total || 0, existing.length || 0, incoming.length || 0);
+    return Array.from({ length: size }, (_, i) => {
+      const next = incoming[i] || {};
+      const prev = existing[i] || {};
+      if (luxuryFrameHasImage(next)) return next;
+      if (luxuryFrameHasImage(prev)) return prev;
+      return Object.keys(next).length ? next : prev;
+    });
+  }
+
   function luxuryAdOutlineMaterialNeed(seg = {}, index = 0) {
     const raw = String(seg.required_material || seg.material_need || seg.material_requirement || seg.material_usage || seg.material_hint || '').replace(/\s+/g, ' ').trim();
     if (raw && !/@(?:主商品|参考|分镜画面)\d*/.test(raw)) return raw.slice(0, 80);
@@ -8951,18 +8966,25 @@
     const errorText = String(state.luxuryAd.keyframeError || '').trim();
     const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
+    const sheetCount = Array.isArray(state.luxuryAd.storyboardSheets)
+      ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url)).length
+      : 0;
+    const generatedFrameCount = Array.isArray(keyframes) ? keyframes.filter(luxuryFrameHasImage).length : 0;
+    const reviewLabel = sheetCount
+      ? `审核板 ${segments.length} 个镜头 · ${sheetCount} 页`
+      : `镜头表 ${segments.length} 个镜头 · ${generatedFrameCount ? `已保留 ${generatedFrameCount} 张真实关键帧` : '真实关键帧未生成'}`;
     const regenerateLabel = planningOnly ? '生成真实关键帧' : '重新生成真实关键帧';
     const planningNotice = planningOnly && !errorText
       ? `<div class="dh-lux-keyframe-notice">
-          <b>当前只完成了审核分镜板</b>
-          <span>这些白色分镜板用于检查镜头、动作、台词和人物一致性，还没有生成真实画面。确认无误后点击“生成真实关键帧”。</span>
+          <b>${sheetCount ? '当前只完成了审核分镜板' : '当前只完成了镜头表'}</b>
+          <span>${sheetCount ? '这些审核板用于检查镜头、动作、台词和人物一致性。' : '当前没有审核板图片，先按镜头表检查内容。'}确认无误后点击“生成真实关键帧”。</span>
         </div>`
       : '';
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
           <b>分镜结果</b>
-          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? `审核板 ${segments.length} 个镜头 · 真实关键帧未生成` : `共 ${segments.length} 个镜头`)}</span>
+          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? reviewLabel : `共 ${segments.length} 个镜头`)}</span>
         </div>
         <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
       </div>
@@ -9948,9 +9970,13 @@
         validateLuxuryAdKeyframes(nextKeyframes, requestSegments);
       }
       if (singleIndex === null) {
+        const existingFrames = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
+        const existingSheets = Array.isArray(state.luxuryAd.storyboardSheets) ? state.luxuryAd.storyboardSheets : [];
         if (returnedScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(returnedScenes);
-        state.luxuryAd.keyframes = nextKeyframes;
-        state.luxuryAd.storyboardSheets = nextStoryboardSheets;
+        state.luxuryAd.keyframes = planningSheetMode
+          ? mergeLuxuryKeyframesPreservingImages(existingFrames, nextKeyframes, previewSegments.length || totalShots)
+          : nextKeyframes;
+        state.luxuryAd.storyboardSheets = nextStoryboardSheets.length ? nextStoryboardSheets : existingSheets;
         state.luxuryAd.keyframePlanningOnly = planningSheetMode;
       } else {
         const existingFrames = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
@@ -9970,8 +9996,8 @@
         startedAt,
         message: planningSheetMode
           ? (deferredPlanning
-            ? `分镜板已生成：${totalShots}/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
-            : `分镜板已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`)
+            ? `镜头表已生成：${totalShots}/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
+            : `镜头表已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`)
           : singleIndex === null
           ? `分镜已完成：${state.luxuryAd.keyframes.length}/${previewSegments.length || state.luxuryAd.keyframes.length}（静态分镜；合成广告时才逐镜生成动态视频）。`
           : `第 ${singleIndex + 1} 镜已重新生成。`,
@@ -9984,7 +10010,7 @@
         startedAt,
         elapsedSec: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
         percent: 100,
-        label: planningSheetMode ? '分镜板已生成' : '分镜生成完成',
+        label: planningSheetMode ? '镜头表已生成' : '分镜生成完成',
         phase: planningSheetMode ? (deferredPlanning ? '待生成真实关键帧' : '关键帧待重新生成') : '已完成剧本一致性检查',
         message: state.luxuryAd.keyframeProgress.message,
       };
@@ -9998,7 +10024,7 @@
       toast(singleIndex !== null
         ? `第 ${singleIndex + 1} 镜已重新生成`
         : planningSheetMode
-          ? (deferredPlanning ? '已生成可审核分镜板，确认后再生成真实关键帧' : '已先生成可审核分镜板，关键帧可重新生成')
+          ? (deferredPlanning ? '已生成可审核镜头表，确认后再生成真实关键帧' : '已先生成可审核镜头表，关键帧可重新生成')
         : (lockedCount
           ? `已锁定 ${lockedCount} 个参考镜头作为分镜，请点击“合成广告”；提交后会显示逐镜图生视频进度`
           : `已生成 ${state.luxuryAd.keyframes.length} 个分镜`), 'success');
