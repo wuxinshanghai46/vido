@@ -13,6 +13,7 @@ const MODEL_PRICES = {
   'deepseek-chat':              { in: 0.14,  out: 0.28  },
   'deepseek-reasoner':          { in: 0.55,  out: 2.19  },
   'deepseek-v3':                { in: 0.27,  out: 1.10  },
+  'gpt-5.5':                    { in: 0,     out: 0     },
   'gpt-4o':                     { in: 2.5,   out: 10    },
   'gpt-4o-mini':                { in: 0.15,  out: 0.60  },
   'gpt-4-turbo':                { in: 10,    out: 30    },

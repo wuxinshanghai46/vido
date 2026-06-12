@@ -155,8 +155,10 @@ const PROVIDER_PRESETS = {
     { id: 'qwen3-32b',                         name: 'Qwen3 32B',                            type: 'chat', use: 'story', channel: 'cn' },
     { id: 'gemini-3.1-flash-lite-preview',     name: 'Gemini 3.1 Flash Lite Preview',         type: 'chat', use: 'story', channel: 'cn' },
     // ——— 海外通道 /c35/v1 ———
+    { id: 'gpt-5.5',                           name: 'GPT-5.5（OpenAI · 海外）',              type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gpt-4o',                            name: 'GPT-4o（OpenAI 旗舰）',                 type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gpt-4o-mini',                       name: 'GPT-4o Mini（最快最便宜·默认）',       type: 'chat', use: 'story', channel: 'overseas' },
+    { id: 'claude-opus-4-7',                   name: 'Claude Opus 4.7（Messages API）',       type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'claude-sonnet-4-5-20250929',         name: 'Claude Sonnet 4.5（Messages API）',     type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'claude-sonnet-4-6',                 name: 'Claude Sonnet 4.6',                    type: 'chat', use: 'story', channel: 'overseas' },
     { id: 'gemini-2.0-flash',                  name: 'Gemini 2.0 Flash',                     type: 'chat', use: 'story', channel: 'overseas' },
