@@ -3990,7 +3990,7 @@
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>` : ''}
             ${t.videoUrl ? `<a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(withAuthQuery(t.videoUrl))}" download>&#19979;&#36733;</a>` : ''}
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">&#20316;&#21697;&#24211;</button>` : ''}
-            ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>` : ''}
+            ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-project-delete="${escapeHtml(t.projectId)}">删除</button>` : `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>`}
           </div>
         </div>
       </div>`;
@@ -9484,6 +9484,8 @@
       const requestKey = luxuryStoryboardRequestKey(detail);
       activeRequestKey = requestKey;
       const requestBody = {
+        production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+        project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         text,
         duration_sec: state.luxuryAd.durationSec,
         shot_count: shotCount,
@@ -12845,6 +12847,25 @@
       const id = luxProjectContinue.dataset.luxProjectContinue;
       const opened = window.open(luxuryAdProjectResumeUrl(id), '_blank', 'noopener');
       if (!opened) window.location.href = luxuryAdProjectResumeUrl(id);
+      return;
+    }
+    const luxProjectDelete = closest('[data-lux-project-delete]');
+    if (luxProjectDelete) {
+      const id = luxProjectDelete.dataset.luxProjectDelete;
+      if (!id) return;
+      try {
+        await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        state.luxuryAdProjects = (state.luxuryAdProjects || []).filter(x => String(x.id || '') !== String(id));
+        if (state.luxuryAd.productionProjectId === id) {
+          state.luxuryAd.productionProjectId = '';
+          state.luxuryAd.productionProject = null;
+        }
+        await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
+        renderTaskCenter();
+        toast('待继续任务已删除', 'success');
+      } catch (err) {
+        toast('删除失败：' + err.message, 'error');
+      }
       return;
     }
     const taskPreview = closest('[data-task-preview]');

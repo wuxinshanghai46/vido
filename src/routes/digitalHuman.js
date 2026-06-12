@@ -83,9 +83,19 @@ function _publicLuxuryAdProject(row = {}) {
 
 function _listLuxuryAdProjects(req, limit = 20) {
   const max = Math.max(1, Math.min(100, Number(limit) || 20));
+  const seenDraftText = new Set();
   return _readLuxuryAdProjectStore().projects
     .filter(row => _luxuryAdProjectBelongsTo(req, row))
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
+    .filter(row => {
+      const state = String(row.project_state || '');
+      const textKey = String(row.text || '').replace(/\s+/g, ' ').trim();
+      if (textKey && ['draft', 'script_reviewing', 'frame_reviewing', 'frame_failed'].includes(state)) {
+        if (seenDraftText.has(textKey)) return false;
+        seenDraftText.add(textKey);
+      }
+      return true;
+    })
     .slice(0, max)
     .map(_publicLuxuryAdProject);
 }
@@ -274,7 +284,24 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const now = new Date().toISOString();
   const data = _readLuxuryAdProjectStore();
   const requestedId = String(body.production_project_id || body.project_id || result.production_project_id || '').trim();
-  const existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
+  const cleanText = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const bodyText = cleanText(body.text || body.brief || '');
+  const requestKey = String(body.request_key || body.storyboard_request_key || body.keyframe_request_key || '').trim();
+  let existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
+  if (existingIndex < 0 && requestKey) {
+    existingIndex = data.projects.findIndex(p => {
+      if (!_luxuryAdProjectBelongsTo(req, p)) return false;
+      const keys = p.request_keys || {};
+      return keys.storyboard === requestKey || keys.keyframe === requestKey || p.request_key === requestKey;
+    });
+  }
+  if (existingIndex < 0 && bodyText) {
+    existingIndex = data.projects.findIndex(p => {
+      if (!_luxuryAdProjectBelongsTo(req, p)) return false;
+      if (!['draft', 'script_reviewing', 'frame_reviewing', 'frame_failed'].includes(String(p.project_state || ''))) return false;
+      return cleanText(p.text) === bodyText;
+    });
+  }
   const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
   const id = existing?.id || requestedId || uuidv4();
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
@@ -11429,6 +11456,20 @@ router.get('/luxury-ad/projects/:id', (req, res) => {
   }
 });
 
+router.delete('/luxury-ad/projects/:id', (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const data = _readLuxuryAdProjectStore();
+    const before = data.projects.length;
+    data.projects = data.projects.filter(project => !(project.id === id && _luxuryAdProjectBelongsTo(req, project)));
+    if (data.projects.length === before) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
+    _writeLuxuryAdProjectStore(data);
+    res.json({ success: true, id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '剧情广告项目删除失败' });
+  }
+});
+
 router.post('/luxury-ad/projects/save', (req, res) => {
   try {
     const body = req.body || {};
@@ -11713,9 +11754,12 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       productSubject,
       brief,
     });
-    const continuousHuman = _luxuryNeedsContinuousHuman(brief, enrichedAssetSummary, productSubject, person_asset);
+    const hasConfirmedPersonAsset = !!(person_asset && (person_asset.image_url || person_asset.url || person_asset.actor_asset_id || person_asset.id));
+    const continuousHuman = hasConfirmedPersonAsset || _luxuryNeedsContinuousHuman(brief, enrichedAssetSummary, productSubject);
     const continuousHumanInstruction = continuousHuman
-      ? '用户明确要求有真人从头贯穿整条视频：第 1 镜必须让同一位真人从外部入口或外部场景进入；中间每一镜都要让同一位真人带看、指向、触摸、讲解或引导观众；最后必须回到可坐下或面对镜头沟通的位置，收束到方案、性价比和售后服务。每一镜的画面和动作都必须出现同一位真人，不允许写成纯产品空镜或无人镜头。'
+      ? (hasConfirmedPersonAsset
+        ? '用户已经确认人物演员包：剧本人物表必须包含这位核心人物，涉及讲解、体验、演示或行动引导的镜头必须让同一位人物参与画面和动作；不能把人物丢掉写成纯产品/纯场景空镜。'
+        : '用户明确要求有真人从头贯穿整条视频：第 1 镜必须让同一位真人从外部入口或外部场景进入；中间每一镜都要让同一位真人带看、指向、触摸、讲解或引导观众；最后必须回到可坐下或面对镜头沟通的位置，收束到方案、性价比和售后服务。每一镜的画面和动作都必须出现同一位真人，不允许写成纯产品空镜或无人镜头。')
       : '';
     const rawCastMode = String(person_spec?.castMode || 'auto');
     const inferredCastMode = rawCastMode === 'auto' ? _inferLuxuryCastModeFromBrief(brief, enrichedAssetSummary) : rawCastMode;
@@ -11824,6 +11868,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       continuousHuman ? '本条广告有人物贯穿要求：每一镜都必须有同一位真人参与画面和动作，人物要带看、引导、讲解或完成咨询收束，不能写成纯产品空镜。' : '',
       '竞品级故事板规则：第 3 步不是随意产品静物摄影。除 macro/detail 这类极近景细节镜外，每一镜都必须像广告 storyboard panel：脚本指定的主体/角色 + 真实场景 + 主商品/服务证据在同一画面逻辑里推动故事；主体可以是人，也可以是动物、机器人、外星人、吉祥物、产品、空间或服务场景。',
       '行业规则：只有当用户需求或已确认剧本明确需要真人讲解/带看时，才安排真人角色；否则按用户确认的行业主体生成产品、空间、服务、动物、机器人、外星人、吉祥物或其它主体叙事。画面必须服务已确认剧本，不能套用历史行业场景或抽象高级背景。',
+      '跨行业防污染规则：严禁从历史案例、知识库或默认样例迁移“建筑空间、建材展厅、材料墙、外立面、样板间、钢材、金属板、设计师带看”等词；只有用户原文、上传素材分析或已确认剧本明确出现这些内容时才能使用。视频网站、软件平台、AI工具、SaaS、内容创作类广告必须围绕界面、创作工作流、内容形态、用户使用场景和平台价值展开，不得变成建筑空间或建材场景。',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
     const user = `主商品：${productSubject}
@@ -11948,7 +11993,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         try {
           const out = await callLLM(systemPrompt, userPrompt, {
             kb: skipKB ? undefined : { scene: 'luxury_ad', query: `${product_name} ${brief}`.slice(0, 160), limit: 3, maxCharsPerDoc: 500 },
-            skipKB,
+            skipKB: skipKB || /^luxury_ad\.(script|scene_config)$/.test(String(pipelineStageId || '')),
             pipelineStageId,
             agentId: name,
             requestId,
