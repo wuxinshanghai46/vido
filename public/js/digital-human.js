@@ -9051,7 +9051,12 @@
           <div class="dh-demo-card"><small>AI 生成指令</small><b>${escapeHtml(luxuryAdTopviewPrompt(seg, i))}</b><span>${escapeHtml(materialUsage)}${materialName ? ` · ${escapeHtml(materialName)}` : ''}</span></div>
           <div class="dh-demo-card"><small>严格合约 / 预检</small><b>${escapeHtml(preflightText)}</b><span>必须出现：${escapeHtml(mustShow || '待生成')}；禁止：${escapeHtml(mustNotShow || '待生成')}</span></div>
           <div class="dh-demo-card wide"><small>图片提示词编译结果</small><b>${escapeHtml(compiledPrompt || '等待后端编译')}</b><span>该提示词是图片模型唯一执行指令；缺失时后端会停止。</span></div>
-          <div class="dh-demo-card wide"><small>操作</small><b>${escapeHtml(status)}</b><span><button type="button" class="dh-luxgen-edit" data-lux-shot-regenerate="${i}" ${disabledAttr}>重新生成本镜</button> <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}">编辑分镜</button> <button type="button" class="dh-luxgen-shot-upload" data-lux-shot-upload="${i}">${binding.ref ? '替换分镜画面' : '上传分镜画面'}</button></span></div>
+          <div class="dh-demo-card wide"><small>操作</small><b>${escapeHtml(status)}</b><span>
+            ${img ? `<button type="button" class="dh-luxgen-edit" disabled>已选用此图</button> <button type="button" class="dh-luxgen-edit" data-lux-shot-preview="${i}">查看全图</button>` : ''}
+            <button type="button" class="dh-luxgen-edit" data-lux-shot-regenerate="${i}" ${disabledAttr}>重新生成本镜</button>
+            <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}">编辑分镜</button>
+            <button type="button" class="dh-luxgen-shot-upload" data-lux-shot-upload="${i}">${binding.ref ? '替换分镜画面' : '上传分镜画面'}</button>
+          </span></div>
         </div>
       </article>`;
     }).join('');
