@@ -10826,13 +10826,19 @@ async function _generateLuxuryRealisticActorPackage({
   const outputs = [];
   const attempts = [];
   for (const view of views) {
+    const generatedViewRefs = outputs.map(x => x.url).filter(Boolean).slice(0, 2);
+    const viewReferenceImages = [
+      ...(referencePersonUrl ? [referencePersonUrl] : []),
+      ...generatedViewRefs,
+    ].filter(Boolean).slice(0, 4);
     const generated = await _generateLuxuryPersonSheetWithPipeline({
       req,
       prompt: view.prompt,
       aspectRatio,
       filename: `${actorId}_${view.key}`,
       destDir: JIMENG_ASSETS_DIR,
-      referenceImages: referencePersonUrl ? [referencePersonUrl] : [],
+      // 中文说明：侧面/动作参考必须继承前序已通过图的人物和服装，避免第三张动作图换衣服或换人。
+      referenceImages: viewReferenceImages,
       outputSize: 'hd',
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));

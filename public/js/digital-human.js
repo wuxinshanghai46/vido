@@ -8583,6 +8583,28 @@
     return true;
   }
 
+  function luxuryAdProjectResumeUrl(projectId = '') {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'luxury-ad');
+    url.searchParams.set('luxury_project', String(projectId || ''));
+    url.hash = '';
+    return url.toString();
+  }
+
+  async function restoreLuxuryAdProjectFromUrl() {
+    const params = new URLSearchParams(window.location.search || '');
+    const projectId = String(params.get('luxury_project') || '').trim();
+    if (!projectId) return false;
+    try {
+      const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(projectId)}`);
+      restoreLuxuryAdProject(r.project, { modal: false, fromUrl: true });
+      return true;
+    } catch (err) {
+      toast('打开制作项目失败：' + err.message, 'error');
+      return false;
+    }
+  }
+
   function closeLuxuryResumeModal() {
     const modal = document.getElementById('dhLuxuryResumeModal');
     const pane = document.querySelector('[data-pane="luxury-ad"][data-resume-modal="true"]');
@@ -12775,13 +12797,9 @@
     }
     const luxProjectContinue = closest('[data-lux-project-continue]');
     if (luxProjectContinue) {
-      try {
-        const id = luxProjectContinue.dataset.luxProjectContinue;
-        const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`);
-        restoreLuxuryAdProject(r.project, { modal: true });
-      } catch (err) {
-        toast('恢复制作进度失败：' + err.message, 'error');
-      }
+      const id = luxProjectContinue.dataset.luxProjectContinue;
+      const opened = window.open(luxuryAdProjectResumeUrl(id), '_blank', 'noopener');
+      if (!opened) window.location.href = luxuryAdProjectResumeUrl(id);
       return;
     }
     const taskPreview = closest('[data-task-preview]');
@@ -14618,6 +14636,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxExpandBrief) luxExpandBrief.addEventListener('change', e => { state.luxuryAd.expandBrief = !!e.target.checked; state.luxuryAd.segments = []; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
     updateOutputHints();
     switchTab(getInitialTab());
+    await restoreLuxuryAdProjectFromUrl();
     renderLuxuryAdStoryboard();
     updateLuxuryAdStepLocks();
     await loadMyAvatars();
