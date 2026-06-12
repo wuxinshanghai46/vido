@@ -35,6 +35,7 @@ const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
 const luxuryKeyframeResults = new Map();
 const luxuryPersonSheetResults = new Map();
+const SERVER_STARTED_AT = Date.now();
 
 function _jsonClone(value, fallback = null) {
   try {
@@ -90,7 +91,7 @@ function _listLuxuryAdProjects(req, limit = 20) {
     .filter(row => {
       const state = String(row.project_state || '');
       const textKey = String(row.text || '').replace(/\s+/g, ' ').trim();
-      if (textKey && ['draft', 'script_reviewing', 'frame_reviewing', 'frame_failed'].includes(state)) {
+      if (textKey && ['draft', 'script_reviewing', 'frame_generating', 'frame_reviewing', 'frame_failed'].includes(state)) {
         if (seenDraftText.has(textKey)) return false;
         seenDraftText.add(textKey);
       }
@@ -298,7 +299,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   if (existingIndex < 0 && bodyText) {
     existingIndex = data.projects.findIndex(p => {
       if (!_luxuryAdProjectBelongsTo(req, p)) return false;
-      if (!['draft', 'script_reviewing', 'frame_reviewing', 'frame_failed'].includes(String(p.project_state || ''))) return false;
+      if (!['draft', 'script_reviewing', 'frame_generating', 'frame_reviewing', 'frame_failed'].includes(String(p.project_state || ''))) return false;
       return cleanText(p.text) === bodyText;
     });
   }
@@ -11405,9 +11406,9 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
   const body = _publicLuxuryKeyframeResult(item);
   if (!body) {
     const project = _findLuxuryAdProjectByRequestKey(req, req.params.requestKey, 'keyframe');
-    if (project && (Array.isArray(project.keyframes) || Array.isArray(project.storyboard_sheets))) {
+    if (project) {
+      const publicProject = _publicLuxuryAdProject(project);
       if (project.last_error) {
-        const publicProject = _publicLuxuryAdProject(project);
         return res.json({
           success: false,
           status: 'error',
@@ -11416,13 +11417,42 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
           recovered_from_project: true,
         });
       }
+      const hasKeyframes = Array.isArray(project.keyframes) && project.keyframes.some(k => k && (k.image_url || k.imageUrl));
+      const hasStoryboardSheets = Array.isArray(project.storyboard_sheets) && project.storyboard_sheets.some(s => s && (s.image_url || s.imageUrl || s.url));
+      const hasReviewResult = String(project.keyframe_generation_status || '') === 'deferred_for_review'
+        || String(project.reference_mode || '') === 'storyboard_planning_sheet';
+      const projectState = String(project.project_state || '');
+      if (!hasKeyframes && !hasStoryboardSheets && !hasReviewResult) {
+        const updatedAt = Date.parse(project.updated_at || project.created_at || '') || 0;
+        if (projectState === 'frame_generating') {
+          if (updatedAt && updatedAt < SERVER_STARTED_AT - 2000) {
+            return res.json({
+              success: false,
+              status: 'error',
+              error: '分镜生成任务在服务重启后中断，请重新生成真实关键帧。',
+              details: { code: 'LUXURY_KEYFRAME_JOB_INTERRUPTED', production_project: publicProject, production_project_id: project.id },
+              recovered_from_project: true,
+            });
+          }
+          return res.json({
+            success: true,
+            status: 'running',
+            started_at: updatedAt || null,
+            updated_at: updatedAt || null,
+            production_project: publicProject,
+            production_project_id: project.id,
+            recovered_from_project: true,
+          });
+        }
+        return res.status(404).json({ success: false, status: 'missing', error: '分镜生成结果还未产生或已过期' });
+      }
       const result = {
         success: true,
         scenes: project.scenes || [],
         keyframes: project.keyframes || [],
         storyboard_sheets: project.storyboard_sheets || [],
         production_contract: project.production_contract || null,
-        production_project: _publicLuxuryAdProject(project),
+        production_project: publicProject,
         production_project_id: project.id,
         asset_manifest: project.asset_manifest || null,
         visual_locks: project.visual_locks || null,
@@ -20492,6 +20522,18 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (avatar_id && !avatar.image_url) return res.status(400).json({ success: false, error: '形象缺少图片' });
     _storeLuxuryKeyframeResult(req, request_key, { status: 'running', started_at: Date.now() });
     if (isLuxuryRequest && request_async && request_key) {
+      _upsertLuxuryAdProductionProject(req, {
+        ...(req.body || {}),
+        request_stage: 'keyframe',
+        keyframe_request_key: request_key,
+        project_state: 'frame_generating',
+      }, {
+        scenes: Array.isArray(req.body?.segments) ? req.body.segments : [],
+        keyframes: [],
+        storyboard_sheets: [],
+      }, {
+        project_state: 'frame_generating',
+      });
       _startLuxuryKeyframeBackgroundJob(req, req.body || {});
       return res.json({ success: true, status: 'accepted', request_key });
     }

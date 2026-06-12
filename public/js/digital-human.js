@@ -3560,6 +3560,7 @@
       keyframes: isLuxury ? '生成分镜' : '生成关键帧',
       draft: '制作进度已保存',
       script_reviewing: '剧本待继续编辑',
+      frame_generating: '真实关键帧生成中',
       frame_reviewing: '分镜待继续编辑',
       video: '图生视频',
       post_effects: '字幕/特效合成',
@@ -8522,6 +8523,7 @@
     const map = {
       draft: '制作进度已保存',
       script_reviewing: '剧本待继续编辑',
+      frame_generating: '真实关键帧生成中',
       frame_reviewing: '分镜板待继续编辑',
       actor_required: '等待人物一致性参考',
       model_required: '等待保参考模型',
@@ -9362,13 +9364,14 @@
       if (r.status === 'done' && r.result) return r.result;
       if (r.status === 'error') {
         const err = new Error(r.error || '分镜生成失败');
-        err.data = { code: r.code || r.details?.code || '', details: r.details || {} };
+        err.data = { code: r.code || r.details?.code || '', details: r.details || {}, production_project: r.details?.production_project || null };
         err.status = r.http_status || r.status_code || 422;
         throw err;
       }
       if (r.status && r.status !== lastStatus) {
         lastStatus = r.status;
         const elapsed = Math.max(1, Math.round((Date.now() - started) / 1000));
+        if (r.production_project) applyLuxuryProductionProject(r.production_project);
         state.luxuryAd.keyframeProgress = {
           current: Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots),
           total: totalShots,
