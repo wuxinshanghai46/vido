@@ -8326,8 +8326,8 @@
           return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
             ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
-              <b>已生成真实分镜图</b>
-              <span>下方单镜卡片查看全图</span>
+              <img src="${escapeHtml(preview)}" alt="镜头 ${i + 1} 已生成分镜图">
+              <span>已生成 · 点击查看</span>
             </button>` : `<div class="dh-lux-sheet-frame pending"><span>${escapeHtml(pendingLabel)}</span></div>`}
             <dl>
               <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
