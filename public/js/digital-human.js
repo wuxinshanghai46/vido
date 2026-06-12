@@ -6767,6 +6767,7 @@
       const actorUrls = luxuryActorUrlsFromSources(character, r.actor_asset, r, r.outputs);
       const primaryActorUrl = actorUrls[0] || imageUrl;
       const extraActorUrls = actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
+      const detectedGender = await detectLuxuryAdPersonGender(primaryActorUrl);
       state.luxuryAd.personGenerationError = null;
       state.luxuryAd.personGenerationProgress = {
         active: true,
@@ -6786,7 +6787,8 @@
         reference_kind: character.reference_kind || 'synthetic_realistic_actor',
         is_ai_generated: character.is_ai_generated === true,
         production_usable_actor: character.production_usable_actor !== false,
-        gender: character.gender || generationSpec.gender || '',
+        gender: detectedGender || character.gender || generationSpec.gender || '',
+        detected_gender: detectedGender || character.detected_gender || '',
         age: character.age || character.age_range || generationSpec.age || '',
         origin: character.origin || generationSpec.origin || '',
         url: primaryActorUrl,
@@ -9483,6 +9485,21 @@
         : undefined;
       const requestKey = luxuryStoryboardRequestKey(detail);
       activeRequestKey = requestKey;
+      const personAssetForGender = state.luxuryAd.personAsset || null;
+      const personAssetGender = String(personAssetForGender?.gender || personAssetForGender?.detected_gender || '').toLowerCase();
+      if (personAssetForGender && !['male', 'female'].includes(personAssetGender)) {
+        const personImageUrl = personAssetForGender.image_url || personAssetForGender.url || personAssetForGender.previewUrl || '';
+        const detectedGender = await detectLuxuryAdPersonGender(personImageUrl);
+        if (detectedGender) {
+          state.luxuryAd.personAsset = {
+            ...personAssetForGender,
+            gender: detectedGender,
+            detected_gender: detectedGender,
+          };
+          applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
+          renderLuxuryAdPerson();
+        }
+      }
       const requestBody = {
         production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',

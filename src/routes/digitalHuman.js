@@ -11800,6 +11800,43 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       match_brief: '按广告需求判断',
     };
     const selectedOrigin = originLabels[resolvedPersonSpec?.origin] || String(resolvedPersonSpec?.origin || '按广告需求判断');
+    const lockedActorGender = (() => {
+      const raw = String(person_asset?.gender || person_asset?.detected_gender || resolvedPersonSpec?.gender || '').toLowerCase();
+      if (/^male$|男|男性|man/.test(raw)) return 'male';
+      if (/^female$|女|女性|woman/.test(raw)) return 'female';
+      return '';
+    })();
+    const nonBuildingSubject = !_luxuryHasExplicitSteelSubject(`${brief}\n${productSubject}\n${enrichedAssetSummary}`)
+      && !/建筑|建材|空间设计|室内设计|外立面|墙面|展厅|样板间|材料|钢材|金属板|building|architecture|showroom|facade|material/i.test(`${brief}\n${productSubject}\n${enrichedAssetSummary}`);
+    const lockedActorRole = /视频|网站|平台|AI|软件|SaaS|创作|剪辑|小说|漫画|数字人|video|platform|software|website|creator|content/i.test(`${brief}\n${productSubject}`)
+      ? 'VIDO平台体验者 / 内容创作者'
+      : '广告核心体验人物';
+    const cleanCrossIndustryLeak = value => {
+      let text = String(value || '');
+      if (!nonBuildingSubject) return text;
+      return text
+        .replace(/建筑设计师\s*\/\s*空间叙事设计师|建筑设计师|空间叙事设计师|空间设计师|室内设计师|设计会客区|建筑空间|建材展厅|材料展厅|材料墙|外立面|样板间|钢材|金属板材|金属板/g, match => {
+          if (/设计师|叙事/.test(match)) return lockedActorRole;
+          if (/建筑空间|展厅|材料墙|外立面|样板间/.test(match)) return /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '平台创作流程' : '已确认业务场景';
+          return productSubject || '已确认主体';
+        })
+        .replace(/建筑|建材|展厅|外立面|样板间/g, /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '平台' : '业务');
+    };
+    const lockedActorCharacter = () => ({
+      name: person_asset?.name && !/^AI 真人感/.test(String(person_asset.name)) ? String(person_asset.name).slice(0, 24) : '核心人物',
+      gender: lockedActorGender || (resolvedPersonSpec?.gender === 'male' || resolvedPersonSpec?.gender === 'female' ? resolvedPersonSpec.gender : '按演员包识别'),
+      origin: selectedOrigin || person_asset?.origin || '按演员包参考',
+      role: lockedActorRole,
+      appearance: cleanCrossIndustryLeak([
+        person_asset?.description,
+        person_asset?.spec_description,
+        lockedActorGender === 'male' ? '男性青年，保持演员包里的脸型、发型、身形和真实照片质感' : '',
+        lockedActorGender === 'female' ? '女性青年，保持演员包里的脸型、发型、身形和真实照片质感' : '',
+      ].filter(Boolean).join('；')).slice(0, 220),
+      outfit: '保持演员包中的同一套服装、发型和整体气质',
+      hand_prop: /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '可自然操作电脑、平板或创作界面，按镜头需要出现' : '按剧本动作自然使用相关道具',
+      behavior: '围绕已确认广告主体完成体验、讲解、演示和行动引导',
+    });
     const castSourceInstruction = rawCastMode === 'auto'
       ? `人物数量由系统根据原文自动判断为「${castMode === 'dual' ? '双人对话' : (castMode === 'group' ? '多人/群体' : '单人')}」。如果原文明确出现销售人员和客户、两人问答、先说/回答或双方回应关系，才按双人对话处理；“一个人/一位/单人”优先按单人执行。`
       : '人物数量由用户手动选择。';
@@ -12748,6 +12785,13 @@ beats 数量：${explicitShotTarget ? `正好 ${Math.max(3, wantedShots)} 个剧
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
+      if (hasConfirmedPersonAsset) {
+        storyPlan.characters = [lockedActorCharacter()];
+        storyPlan.scene_bible = storyPlan.scene_bible && typeof storyPlan.scene_bible === 'object'
+          ? Object.fromEntries(Object.entries(storyPlan.scene_bible).map(([key, value]) => [key, cleanCrossIndustryLeak(value)]))
+          : storyPlan.scene_bible;
+        storyCharacters = collectLuxuryCharacters(storyPlan.characters);
+      }
       storyPlan = padLuxuryStoryPlanBeats(storyPlan);
       let storyCharacterIssue = describeLuxuryCharacterIssue(storyCharacters, { label: '编剧 agent 人物表' });
       if (storyCharacterIssue) {
@@ -13132,9 +13176,13 @@ ${JSON.stringify(scenes, null, 2)}
         let visual = isDetailedMode
           ? _cleanLuxuryAdVisual(rawMaterialNeed, fallbackOpts)
           : (rawMaterialNeed || _fallbackLuxuryAdVisual(fallbackOpts)).slice(0, 120);
-        const rawCharacters = Array.isArray(x.characters)
+        const rawCharacters = hasConfirmedPersonAsset ? [lockedActorCharacter()] : (Array.isArray(x.characters)
           ? x.characters
-          : (Array.isArray(x.character_profiles) ? x.character_profiles : storyCharacters);
+          : (Array.isArray(x.character_profiles) ? x.character_profiles : storyCharacters));
+        if (nonBuildingSubject) {
+          visual = cleanCrossIndustryLeak(visual);
+          action = cleanCrossIndustryLeak(action);
+        }
         if (isDetailedMode && continuousHuman) {
           visual = _luxuryForceHumanGuideVisual({ visual, index: i, total: roleCount, productSubject });
           action = _luxuryForceHumanGuideAction({ action, index: i, total: roleCount, productSubject });
@@ -13154,7 +13202,7 @@ ${JSON.stringify(scenes, null, 2)}
           .replace(/@主商品/g, productSubject)
           .replace(/@参考(\d*)/g, '参考画面$1')
           .replace(/主产品|主商品/g, productSubject);
-        const styleNote = String(x.style_note || x.other || '').trim()
+        const styleNote = cleanCrossIndustryLeak(String(x.style_note || x.other || '').trim())
           || `风格：真实商业剧情广告，镜头克制；光线：强调已确认主体和场景证据；转场：${i === 0 ? '由暗到亮开场' : '顺接下一镜'}。`;
         const rawReferenceIndex = Math.max(1, Math.round(Number(x.reference_index ?? x.referenceImageIndex ?? (i + 1)) || (i + 1)));
         const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
@@ -13277,6 +13325,10 @@ ${JSON.stringify(scenes, null, 2)}
         visual = _luxuryStoryFirstHumanVisual({ visual, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
         action = _luxuryStoryFirstHumanAction({ action, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
       }
+      if (nonBuildingSubject) {
+        visual = cleanCrossIndustryLeak(visual);
+        action = cleanCrossIndustryLeak(action);
+      }
       action = _cleanLuxuryAdAction(action, fallbackOpts);
       const corePersonRequired = _luxuryStoryboardRequiresPerson({
         role,
@@ -13304,7 +13356,7 @@ ${JSON.stringify(scenes, null, 2)}
         .replace(/@主商品/g, productSubject)
         .replace(/@参考(\d*)/g, '参考画面$1')
         .replace(/主产品|主商品/g, productSubject);
-      const styleNote = s.style_note || s.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`;
+      const styleNote = cleanCrossIndustryLeak(s.style_note || s.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`);
       const rawReferenceIndex = Math.max(1, Math.round(Number(s.reference_index ?? s.referenceImageIndex ?? (i + 1)) || (i + 1)));
       const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
       const referenceLabel = s.reference_label || `@参考${referenceIndex}`;
@@ -13320,9 +13372,9 @@ ${JSON.stringify(scenes, null, 2)}
       const finalDialogue = Array.isArray(s.dialogue_lines)
         ? s.dialogue_lines.join('\n')
         : String(s.dialogue || s.dialogue_text || s.conversation || '').trim();
-      const finalCharacters = Array.isArray(s.characters)
+      const finalCharacters = hasConfirmedPersonAsset ? [lockedActorCharacter()] : (Array.isArray(s.characters)
         ? s.characters
-        : (Array.isArray(s.character_profiles) ? s.character_profiles : []);
+        : (Array.isArray(s.character_profiles) ? s.character_profiles : []));
       return {
         ...s,
         index: i,
@@ -13450,10 +13502,39 @@ ${JSON.stringify(scenes, null, 2)}
     briefInfo.shot_count_range = isDetailedMode
       ? { min: minAllowedShots, max: maxAllowedShots }
       : { min: 3, max: 8 };
-    if (isDetailedMode && storyCharacters.length) {
-      briefInfo.characters = storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
+    if (nonBuildingSubject) {
+      ['main_scene', 'theme', 'style', 'tone'].forEach(key => {
+        if (briefInfo[key]) briefInfo[key] = cleanCrossIndustryLeak(briefInfo[key]);
+      });
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: luxuryGlobalVisualBible, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    if (hasConfirmedPersonAsset) {
+      briefInfo.characters = [lockedActorCharacter()];
+    }
+    if (isDetailedMode && storyCharacters.length) {
+      briefInfo.characters = hasConfirmedPersonAsset
+        ? [lockedActorCharacter()]
+        : storyCharacters.slice(0, Math.max(expectedPeople, storyCharacters.length));
+    }
+    const finalGlobalVisualBible = _buildLuxuryGlobalVisualBible({
+      briefInfo,
+      visualLocks: luxuryVisualLocks,
+      visualReferenceBrief,
+      productSubject,
+      personSpec: resolvedPersonSpec,
+      aspectRatio: output_ratio || '9:16',
+    });
+    if (nonBuildingSubject && finalGlobalVisualBible) {
+      finalGlobalVisualBible.main_scene = cleanCrossIndustryLeak(finalGlobalVisualBible.main_scene);
+      if (Array.isArray(finalGlobalVisualBible.character_table)) {
+        finalGlobalVisualBible.character_table = finalGlobalVisualBible.character_table.map(c => ({
+          ...c,
+          role: cleanCrossIndustryLeak(c.role),
+          appearance: cleanCrossIndustryLeak(c.appearance),
+          behavior: cleanCrossIndustryLeak(c.behavior),
+        }));
+      }
+    }
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     const productionProject = _upsertLuxuryAdProductionProject(req, { ...req.body, request_stage: 'storyboard', storyboard_request_key: request_key, storyboard_detailed: isDetailedMode }, responseBody, { project_state: isDetailedMode ? 'frame_reviewing' : 'script_reviewing' });
     responseBody.production_project = productionProject;
     responseBody.production_project_id = productionProject.id;
