@@ -5659,6 +5659,7 @@
     const progress = state.luxuryAd.workflowProgress;
     renderLuxuryWorkflowProgressBox($('#dhLuxAdLiveProgress'), progress);
     renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptProgress'), progress);
+    renderLuxuryWorkflowProgressBox($('#dhLuxAdFrameProgress'), progress);
   }
 
   function formatLuxuryUsageCost(value, currency = 'usd') {
@@ -6247,7 +6248,11 @@
     setText('#dhLuxAdTaskMeta', `提交后进入任务中心 · ${seconds} 秒 · ${ratio}`);
     setText('#dhLuxAdSceneSummary', material ? `${materialCount} 个用户素材` : (gate.storyboardReady ? `${shots} 个场景配置` : '待生成'));
     setText('#dhLuxAdScriptSummary', material ? '按广告需求生成口播广告词' : (gate.detailedReady ? `${shots} 镜头 · 按时间段拆解` : '待生成'));
-    setText('#dhLuxAdFrameSummary', material ? '基础版不生成分镜图片' : (gate.previewReady ? `已确认 ${frames} 个分镜` : (frames ? `${frames}/${shots} 个分镜` : '待生成')));
+    setText('#dhLuxAdFrameSummary', material
+      ? '基础版不生成分镜图片'
+      : (state.luxuryAd.keyframePlanningOnly
+        ? '审核板已生成 · 待真实关键帧'
+        : (gate.previewReady ? `已确认 ${frames} 个分镜` : (frames ? `${frames}/${shots} 个分镜` : '待生成'))));
     setText('#dhLuxAdVoiceSummary', voice ? (voice.name || voice.label || state.luxuryAd.voiceId) : '未选择');
     setText('#dhLuxAdSubtitleSummary', state.luxuryAd.subtitle === false ? '关闭字幕' : '默认开启');
   }
@@ -6267,6 +6272,10 @@
     );
     setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : '')));
     setLuxuryButtonLock('#dhLuxAdPreviewFrames', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.detailedReady && !gate.materialMode ? '请先生成剧本' : '')));
+    const previewBtn = $('#dhLuxAdPreviewFrames');
+    if (previewBtn && !gate.materialMode && state.luxuryAd.keyframePlanningOnly && !busyGenerating) {
+      previewBtn.textContent = '生成真实关键帧';
+    }
     const personSheetLocked = gate.materialMode
       ? (busyGenerating || !gate.contentReady)
       : (busyGenerating || !gate.contentReady || !luxuryAdPersonDesignReady());
@@ -8211,6 +8220,7 @@
     if (!segments.length) return '';
     const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
     const ratio = String(state.luxuryAd.outputRatio || '9:16');
+    const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
     const manifest = state.luxuryAd.assetManifest
       || segments.find(x => x?.asset_manifest)?.asset_manifest
       || keyframes.find(x => x?.asset_manifest)?.asset_manifest
@@ -8235,14 +8245,14 @@
       <div class="dh-lux-sheet-head">
         <div>
           <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '剧情广告分镜板')}</b>
-          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · 剧本确认后直接生成分镜板</span>
+          <span>${segments.length} 镜 · ${totalSeconds} 秒 · ${escapeHtml(ratio)} · live action storyboard · ${planningOnly ? '当前为审核分镜板，真实关键帧尚未生成' : '真实关键帧生成后进入成片流程'}</span>
         </div>
         <em>Storyboard Workbench</em>
       </div>
       ${generatedSheets.length ? `<div class="dh-lux-sheet-output">
         <div class="dh-lux-sheet-output-title">
-          <b>分镜板成品</b>
-          <span>${generatedSheets.length} 页 · 直接进入绘制首帧/成片流程</span>
+          <b>${planningOnly ? '审核分镜板' : '真实分镜板成品'}</b>
+          <span>${generatedSheets.length} 页 · ${planningOnly ? '仅用于审核镜头和动作，不能直接合成广告' : '可进入绘制首帧/成片流程'}</span>
         </div>
         <div class="dh-lux-sheet-output-grid">
           ${generatedSheets.map((sheet, i) => {
@@ -8861,14 +8871,22 @@
     const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
     const regenerateLabel = planningOnly ? '生成真实关键帧' : '重新生成真实关键帧';
+    const planningNotice = planningOnly && !errorText
+      ? `<div class="dh-lux-keyframe-notice">
+          <b>当前只完成了审核分镜板</b>
+          <span>这些白色分镜板用于检查镜头、动作、台词和人物一致性，还没有生成真实画面。确认无误后点击“生成真实关键帧”。</span>
+        </div>`
+      : '';
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
           <b>分镜结果</b>
-          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : `共 ${segments.length} 个镜头`}</span>
+          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? `审核板 ${segments.length} 个镜头 · 真实关键帧未生成` : `共 ${segments.length} 个镜头`)}</span>
         </div>
         <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
       </div>
+      <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdFrameProgress" hidden></div>
+      ${planningNotice}
       ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '关键帧待重新生成' : '分镜生成已停止'}</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
       ${renderLuxuryProductionProjectStatus()}
       ${renderLuxuryProductionContractStatus()}
@@ -8934,6 +8952,7 @@
         </div>
       </article>`;
     }).join('');
+    renderLuxuryWorkflowProgress();
   }
 
   function renderLuxuryAdStoryboard() {
@@ -9741,6 +9760,7 @@
     showLuxuryAdStep(4, { silent: true });
     renderLuxuryAdStoryboard();
     let activeRequestKey = '';
+    let keepWorkflowProgress = false;
     progressTimer = setInterval(() => {
       const elapsed = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       const total = totalShots;
@@ -9885,6 +9905,7 @@
         phase: planningSheetMode ? (deferredPlanning ? '待生成真实关键帧' : '关键帧待重新生成') : '已完成剧本一致性检查',
         message: state.luxuryAd.keyframeProgress.message,
       };
+      keepWorkflowProgress = planningSheetMode;
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeError = planningSheetMode ? (deferredPlanning ? '' : (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板')) : '';
       state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (deferredPlanning ? null : (r.details || null)) : null;
@@ -9920,7 +9941,7 @@
     } finally {
       if (progressTimer) clearInterval(progressTimer);
       state.luxuryAd.keyframeGenerating = false;
-      state.luxuryAd.workflowProgress = null;
+      if (!keepWorkflowProgress) state.luxuryAd.workflowProgress = null;
       if (activeRequestKey) await refreshLuxuryAdUsage(activeRequestKey);
       renderLuxuryWorkflowProgress();
       updateLuxuryAdStepLocks();
@@ -12848,7 +12869,7 @@
     }
     if (closest('#dhLuxAdPreviewFrames')) {
       if (luxuryAdIsMaterialMode()) showLuxuryAdStep(5);
-      else generateLuxuryAdKeyframes({ autoSubmit: false });
+      else generateLuxuryAdKeyframes({ autoSubmit: false, force: state.luxuryAd.keyframePlanningOnly === true });
       return;
     }
     if (closest('#dhLuxAdGoCompose') || closest('[data-lux-material-compose]')) { showLuxuryAdStep(5); return; }

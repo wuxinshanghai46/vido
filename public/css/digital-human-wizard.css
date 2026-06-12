@@ -973,6 +973,9 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-demo-script-review p { margin: 0; color: var(--dh-text-soft); font-size: 12px; line-height: 1.5; }
 /* High-end ad QA failures expose rejected candidates without approving them as usable keyframes. */
 .dh-lux-keyframe-error { align-items: stretch; flex-direction: column; border-color: rgba(255,74,112,.55); background: rgba(255,74,112,.08); color: #ffd5df; }
+.dh-lux-keyframe-notice { display: grid; gap: 5px; margin: 12px; padding: 12px 14px; border: 1px solid rgba(255,200,87,.34); border-radius: var(--dh-radius-sm); background: rgba(255,200,87,.075); color: var(--dh-text); }
+.dh-lux-keyframe-notice b { color: #ffd36b; font-size: 13px; }
+.dh-lux-keyframe-notice span { color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
 .dh-lux-error-attempts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; width: 100%; }
 .dh-lux-error-attempt { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 10px; align-items: center; min-height: 76px; padding: 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(0,0,0,.22); }
 .dh-lux-error-attempt b, .dh-lux-error-attempt span, .dh-lux-error-attempt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
