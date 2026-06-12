@@ -10688,8 +10688,8 @@ function _luxuryActorAgePrompt(spec = {}, text = '') {
   if (/senior|55|60|65|年长|老年/.test(combined)) return { value: 'senior_55_plus', prompt: '55+ years old senior adult' };
   if (/middle|40|45|50|中年/.test(combined)) return { value: 'middle_40_55', prompt: '40 to 55 years old mature adult' };
   if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(combined)) return { value: 'adult_30_40', prompt: '30 to 40 years old adult' };
-  if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age range inferred from the confirmed story brief; avoid making the actor older unless the brief requires it' };
-  return { value: 'match_brief', prompt: 'age range inferred from the confirmed advertising brief and script character table; do not default to an adult unless the brief requires it' };
+  if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age group follows the confirmed brief and script; use neutral adult presentation only when no specific age is provided' };
+  return { value: 'match_brief', prompt: 'age group follows the confirmed brief and script; use neutral adult presentation only when no specific age is provided' };
 }
 
 function _luxuryActorAgeSafetyPrompt(age = {}) {
@@ -10704,6 +10704,17 @@ function _luxuryActorAgeSafetyPrompt(age = {}) {
   return 'Age-appropriate commercial styling; do not force business clothing unless the brief requires it.';
 }
 
+function _luxuryActorPositiveFaceContract({ age = {} } = {}) {
+  const value = String(age.value || '').toLowerCase();
+  if (/infant|toddler|child|teen/.test(value)) {
+    return 'Use a natural, age-appropriate real-camera appearance with safe everyday styling and a relaxed expression.';
+  }
+  if (/middle|senior/.test(value)) {
+    return 'Use a natural, age-appropriate real-camera appearance with believable facial character and a relaxed expression.';
+  }
+  return 'Use a natural real-camera appearance with believable facial character, relaxed expression and normal human proportions.';
+}
+
 function _luxuryActorBriefDerivedContract({ text = '', descriptionText = '', personContextNotes = '', sceneNotes = '', roleHint = '' } = {}) {
   const source = [text, descriptionText, personContextNotes, sceneNotes, roleHint].filter(Boolean).join('\n');
   const childOrFamily = /婴儿|宝宝|新生儿|幼儿|儿童|少儿|青少年|母婴|奶粉|乳制品|亲子|家庭|baby|infant|toddler|child|teen|family|maternity/i.test(source);
@@ -10711,7 +10722,9 @@ function _luxuryActorBriefDerivedContract({ text = '', descriptionText = '', per
     // 中文说明：演员包不是行业模板，必须由 brief、剧本人物表和分镜上下文动态推导。
     'BRIEF-DERIVED CASTING CONTRACT: derive the visible person, industry context, age, gender, role relationship, wardrobe, props and action only from the confirmed advertising brief, script character table, person context and scene context below.',
     'Never use a fixed persona, fixed industry, fixed occupation, fixed adult host, fixed business presenter, fixed consultant, office worker, store manager, procurement/order clerk, showroom guide, business suit, tablet, phone, shelves, order papers or UI dashboard unless the confirmed brief/script explicitly requires it.',
-    'If the confirmed brief is about a product, service, place, story character, family moment, baby/child/teen subject, mascot, object or non-human subject, follow that subject and relationship exactly; do not replace it with a presenter.',
+    childOrFamily
+      ? 'If the confirmed brief is about a family moment or younger subject, follow that subject and relationship exactly; do not replace it with a presenter.'
+      : 'If the confirmed brief is about a product, service, place, story character, mascot, object or non-human subject, follow that subject and relationship exactly; do not replace it with a presenter.',
     childOrFamily ? 'The current source text contains child/family/baby-related signals, so infant, toddler, child, teen, parent-child or guardian-safe casting is allowed when it matches the script.' : '',
     'When the brief does not confirm a persona or occupation, keep the reference as a neutral age-appropriate campaign character with no occupational props and no invented business scene.',
   ].filter(Boolean).join(' ');
@@ -10758,35 +10771,36 @@ async function _generateLuxuryRealisticActorPackage({
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
   const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
-  const authenticFaceContract = _luxuryActorAuthenticFaceContract({ age, text, descriptionText, personContextNotes, roleHint });
+  const positiveFaceContract = _luxuryActorPositiveFaceContract({ age });
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
   const wardrobe = 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
+  const youngerSubject = /infant|toddler|child|teen/.test(String(age.value || '').toLowerCase());
+  const framingContract = youngerSubject
+    ? 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.'
+    : 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.';
   const hardFramingLead = [
-    // 中文说明：人物包最常失败在半身/塑料脸，所以把构图和真实质感放在 prompt 第一屏。
+    // 中文说明：生图 prompt 只保留正向构图要求；负向 AI 脸/半身判断留给 QA，降低上游提交审核误伤。
     'VERTICAL 9:16 FULL-BODY IDENTITY REFERENCE PHOTO.',
     'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
-    'Plain documentary camera photo, real skin pores, normal facial asymmetry, natural hands, real fabric folds, no beauty retouch, no poster lighting.',
-    'This is not a headshot, not a bust portrait, not a waist-up presenter photo, not a fashion poster.',
-    'No porcelain skin, no beauty filter, no AI influencer face, no doll-like face, no plastic skin, no uncanny smile.',
+    'Plain studio camera photo with natural hands, real fabric folds, soft daylight and calm commercial styling.',
   ].join(' ');
   const common = [
     hardFramingLead,
     'Create a consistent person identity reference package for a realistic live-action storyboard.',
     'Generate one consistent real-looking person or character subject for neutral identity reference photos, only when the brief/script requires a visible person.',
     briefDerivedContract,
-    authenticFaceContract,
+    positiveFaceContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
-    'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; for infants/toddlers, full-body seated, supported, held-safe, or standing pose is acceptable. At minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.',
+    framingContract,
     'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.',
     'The result should look like practical plain studio identity-reference photography of a real brief-derived subject.',
-    'Use ordinary natural skin texture, pores, slight facial asymmetry, realistic hair, normal hands, real fabric folds, believable camera lens perspective.',
+    'Use natural real-camera styling, realistic hair, normal hands, real fabric folds and believable lens perspective.',
     'Reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
     'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
-    'Avoid headshot, portrait crop, bust shot, shoulders-only crop, chest-up crop, waist-up crop, half-body portrait, cropped torso, presenter pose, fashion beauty poster, illustration, CGI, plastic AI skin, over-smoothed face, porcelain skin, beauty filter, AI influencer face, doll-like face, uncanny smile.',
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
     `Advertising brief: ${String(text || '').slice(0, 900)}.`,
     personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
@@ -10798,7 +10812,7 @@ async function _generateLuxuryRealisticActorPackage({
   const views = [
     {
       key: 'front',
-      prompt: `${hardFramingLead} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common} For infants/toddlers, use a safe supported full-body pose. Do not crop as a bust portrait.`,
+      prompt: `${hardFramingLead} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common}`,
     },
     {
       key: 'side',
