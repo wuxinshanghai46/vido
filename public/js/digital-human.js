@@ -8305,11 +8305,12 @@
           const camera = luxuryShotMotionLabel(seg);
           const action = luxuryShotActionText(seg);
           const ui = luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg);
-          return `<article class="dh-lux-sheet-shot">
+          return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
-            <div class="dh-lux-sheet-frame ${preview ? '' : 'pending'}">
-              ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : `<span>${escapeHtml(pendingLabel)}</span>`}
-            </div>
+            ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
+              <b>已生成真实分镜图</b>
+              <span>下方单镜卡片查看全图</span>
+            </button>` : `<div class="dh-lux-sheet-frame pending"><span>${escapeHtml(pendingLabel)}</span></div>`}
             <dl>
               <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
               <div><dt>ACTION</dt><dd>${escapeHtml(action || luxuryShotContentPrompt(seg))}</dd></div>
@@ -8953,10 +8954,10 @@
       ].filter(Boolean).join('；');
       const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
       return `<article class="dh-demo-frame-card">
-        <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" ${preview ? `data-lux-shot-preview="${i}" title="点击预览"` : 'disabled'}>
+        <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(previewUrl)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : ''}
           <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || storyStage)}</b>
-          <span>${escapeHtml(timeRange)} · ${escapeHtml(status)}${isLockedReference ? ' · 已锁定参考' : ''}</span>
+          <span>${escapeHtml(timeRange)} · ${escapeHtml(status)}${isLockedReference ? ' · 已锁定参考' : ''}${preview ? ' · 点击查看全图' : ''}</span>
         </button>
         <div class="dh-demo-frame-info">
           <div class="dh-demo-card"><small>时间 / 目的</small><b>${escapeHtml(timeRange)} · ${escapeHtml(seg.objective || seg.intent || seg.purpose || storyStage)}</b><span>${escapeHtml(emotionText || '按广告节奏推进。')}</span></div>
@@ -9946,6 +9947,15 @@
     } catch (err) {
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
+      const failedPayload = err?.data && typeof err.data === 'object' ? err.data : null;
+      const partialKeyframes = Array.isArray(failedPayload?.keyframes) ? failedPayload.keyframes.slice(0, totalShots) : [];
+      const partialScenes = Array.isArray(failedPayload?.scenes) ? failedPayload.scenes.slice(0, totalShots) : [];
+      const partialSheets = Array.isArray(failedPayload?.storyboard_sheets) ? failedPayload.storyboard_sheets : [];
+      if (partialScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(partialScenes);
+      if (partialKeyframes.length) state.luxuryAd.keyframes = partialKeyframes;
+      if (partialSheets.length) state.luxuryAd.storyboardSheets = partialSheets;
+      if (failedPayload?.production_project) applyLuxuryProductionProject(failedPayload.production_project);
+      else if (failedPayload?.production_project_id) state.luxuryAd.productionProjectId = failedPayload.production_project_id;
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
       state.luxuryAd.keyframeErrorDetails = {
         endpoint: '/api/dh/spaces/keyframes',

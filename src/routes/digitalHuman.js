@@ -890,6 +890,7 @@ function _attachLuxuryUiOverlayFailureCandidates(err, req, {
     base_image_url: baseUrl,
     overlay_image_url: overlayUrl,
     attempts,
+    user_action: '后期 UI 合成后的图片未通过严格 QA。系统不会自动放行；可以打开失败内容对比 UI 前原始关键帧和 UI 后候选图，人工决定保留哪一张或重新生成本镜。',
     candidate_images: attempts.map(item => ({
       image_url: item.image_url,
       candidate_url: item.candidate_url,
@@ -20538,6 +20539,7 @@ router.post('/spaces/keyframes', async (req, res) => {
   let luxuryPlanningScenes = [];
   let luxuryPlanningMeta = null;
   let luxuryActorAssetPackage = null;
+  let luxuryGeneratedKeyframes = [];
   try {
     if (_isStrictShowroomMode(req.body || {})) {
       try {
@@ -20918,7 +20920,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       await _assertLuxuryKeyframeQaAvailable(req);
     }
     const base = _publicBaseUrl(req);
-    const keyframes = [];
+    const keyframes = luxuryGeneratedKeyframes;
     if (isLuxury) {
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
@@ -21332,7 +21334,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         const blockedBody = {
           success: false,
           scenes: luxuryPlanningScenes,
-          keyframes: [],
+          keyframes: luxuryGeneratedKeyframes,
           storyboard_sheets: luxuryPlanningStoryboardSheets,
           details: errorDetails,
           ...(luxuryPlanningMeta || {}),
@@ -21358,7 +21360,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         keyframe_generation_status: 'failed',
         keyframe_error: e,
         scenes: luxuryPlanningScenes,
-        keyframes: [],
+        keyframes: luxuryGeneratedKeyframes,
         storyboard_sheets: luxuryPlanningStoryboardSheets,
         details: errorDetails,
         ...(luxuryPlanningMeta || {}),
