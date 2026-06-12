@@ -3722,6 +3722,7 @@
           _url: url,
           _label: [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/') || '图片模型',
           _reason: String(a.candidate_label || a.qa?.reason || a.error || '视觉 QA 未通过').slice(0, 260),
+          _review: luxuryCandidateManualReviewState(a),
         };
       })
       .filter(a => {
@@ -3730,6 +3731,37 @@
         seen.add(key);
         return true;
       });
+  }
+
+  function luxuryCandidateQaScore(candidate = {}) {
+    const qa = candidate.qa || candidate.vision_qa || candidate.quality_qa || {};
+    const direct = Number(qa.score ?? qa.overall_score ?? qa.match_score ?? candidate.score ?? candidate.qa_score);
+    if (Number.isFinite(direct)) return Math.max(0, Math.min(100, direct));
+    const dims = qa.quality_dimensions || candidate.quality_dimensions || {};
+    const values = Object.values(dims).map(Number).filter(Number.isFinite);
+    if (values.length) return Math.round(values.reduce((sum, n) => sum + n, 0) / values.length);
+    return 0;
+  }
+
+  function luxuryCandidateManualReviewState(candidate = {}) {
+    const qa = candidate.qa || candidate.vision_qa || candidate.quality_qa || {};
+    const score = luxuryCandidateQaScore(candidate);
+    const hardMismatch = [
+      qa.subject_match,
+      qa.storyboard_match,
+      qa.product_match,
+      qa.identity_match,
+      qa.character_match,
+    ].some(v => v === false);
+    const explicitReject = qa.explicit_reject === true || qa.reject === true || candidate.explicit_reject === true;
+    const minScore = 70;
+    const adoptable = score >= minScore && !hardMismatch && !explicitReject;
+    const reason = adoptable
+      ? `QA ${score} 分，可人工审片保留`
+      : (hardMismatch || explicitReject
+        ? `QA ${score || '未评分'}，存在硬性错配，只能预览`
+        : `QA ${score || '未评分'}，低于 ${minScore} 分，只能预览`);
+    return { score, minScore, adoptable, reason, hardMismatch, explicitReject };
   }
 
   function openLuxuryFailedCandidatesModal() {
@@ -3769,11 +3801,14 @@
         </button>
         <div>
           <b>镜头 ${item._shotIndex + 1} · ${escapeHtml(item._label)}</b>
+          <em>${escapeHtml(item._review.reason)}</em>
           <span>${escapeHtml(item._reason)}</span>
           <small>${escapeHtml(item.fallback_mode || item.prompt_mode || 'QA rejected candidate')}</small>
           <div class="dh-lux-failed-candidate-actions">
             <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-preview="${i}">预览</button>
-            <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-lux-adopt-failed="${i}">保留到第 ${item._shotIndex + 1} 镜</button>
+            ${item._review.adoptable
+              ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-lux-adopt-failed="${i}">保留到第 ${item._shotIndex + 1} 镜</button>`
+              : `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" disabled title="${escapeHtml(item._review.reason)}">不可保留</button>`}
           </div>
         </div>
       </article>`).join('');
@@ -3784,6 +3819,10 @@
     const candidates = luxuryFailedKeyframeCandidates(state.luxuryAd.keyframeErrorDetails);
     const item = candidates[Number(candidateIndex)];
     if (!item?._url) return;
+    if (!item._review?.adoptable) {
+      toast(item._review?.reason || '该候选图 QA 分数不足，不能保留到分镜', 'error');
+      return;
+    }
     const idx = Math.max(0, Number(item._shotIndex || 0));
     const seg = (state.luxuryAd.segments || [])[idx] || {};
     const keyframes = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes.slice() : [];

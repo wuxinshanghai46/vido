@@ -1258,6 +1258,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-failed-candidate-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .dh-lux-failed-candidate b, .dh-lux-failed-candidate span, .dh-lux-failed-candidate small { display: block; overflow-wrap: anywhere; }
 .dh-lux-failed-candidate b { color: var(--dh-text); font-size: 13px; }
+.dh-lux-failed-candidate em { display: inline-block; margin-top: 5px; padding: 3px 7px; border: 1px solid rgba(33,255,243,.22); border-radius: 999px; color: var(--dh-primary); font-size: 11px; font-style: normal; font-weight: 900; }
 .dh-lux-failed-candidate span { margin-top: 5px; color: var(--dh-text-soft); font-size: 12px; line-height: 1.5; }
 .dh-lux-failed-candidate small { margin-top: 4px; color: var(--dh-text-muted); font-size: 11px; }
 .dh-lux-failed-candidate-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
