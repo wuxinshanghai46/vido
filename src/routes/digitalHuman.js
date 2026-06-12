@@ -2010,26 +2010,16 @@ function _luxuryCleanActionField(value = '', scene = {}) {
 
 function _luxuryShouldApplyUiOverlay(scene = {}, productSubject = '') {
   if (!scene || !scene.ui_overlay) return false;
-  if (!_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject, scene)) return true;
-  const text = [
-    scene.title,
-    scene.role,
-    scene.story_stage,
-    scene.visual,
-    scene.visual_prompt,
-    scene.content_prompt,
-    scene.scene_content,
-    scene.action,
-    scene.visual_action,
-    scene.voiceover,
-    scene.narration,
-    scene.ui_overlay?.type,
-    scene.ui_overlay?.content,
-    scene.ui_overlay?.motion,
-  ].filter(Boolean).join(' ');
-  const explicitUiMoment = /AI recognition|确认|界面|看板|浮层|弹窗|识别|检查库存|推荐|补货|confirmed|confirmation|dashboard|interface|overlay|check UI|recognizes?|restock|recommend/i.test(text);
-  const problemSetup = /Order pressure|problem|压力|焦虑|担心|混乱|cannot keep up|worried|messy/i.test(text);
-  return explicitUiMoment && !problemSetup;
+  const policy = scene.ui_policy && typeof scene.ui_policy === 'object' ? scene.ui_policy : {};
+  const overlay = scene.ui_overlay && typeof scene.ui_overlay === 'object' ? scene.ui_overlay : {};
+  const locks = scene.visual_locks && typeof scene.visual_locks === 'object' ? scene.visual_locks : {};
+  const lock = locks.ui_lock && typeof locks.ui_lock === 'object' ? locks.ui_lock : {};
+  const uiLock = scene.ui_lock && typeof scene.ui_lock === 'object' ? scene.ui_lock : {};
+  return policy.required === true
+    || overlay.required === true
+    || overlay.mandatory === true
+    || lock.required === true
+    || uiLock.required === true;
 }
 
 function _luxuryShotImpliesHumanPresenter(scene = {}) {
@@ -3928,20 +3918,15 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   ];
   const hasNonPersonAssetLocks = manifestItems.some(item => !/person|actor|character|presenter/i.test(String(item?.role || item?.source || '')));
   const hasCharacterLock = !!(scene.character_lock || scene.visual_locks?.character_lock || strictIdentityReferenceUrl);
-  const explicitUiText = [
-    scene.ui_overlay,
-    scene.ui_lock,
-    scene.visual_locks?.ui_lock?.required === true ? 'required' : '',
-    scene.visual,
-    scene.visual_prompt,
-    scene.content_prompt,
-    scene.scene_content,
-    scene.action,
-    scene.voiceover,
-  ].filter(Boolean).join(' ');
-  const hasUiLock = !!(scene.ui_overlay || scene.ui_lock || scene.visual_locks?.ui_lock?.required === true)
-    || (!softwareWorkflowSubject && !!scene.visual_locks?.ui_lock)
-    || (softwareWorkflowSubject && /确认|界面|看板|浮层|overlay|dashboard|interface|confirmation|check UI/i.test(explicitUiText));
+  const uiOverlay = scene.ui_overlay && typeof scene.ui_overlay === 'object' ? scene.ui_overlay : {};
+  const uiLock = scene.ui_lock && typeof scene.ui_lock === 'object' ? scene.ui_lock : {};
+  const visualUiLock = scene.visual_locks?.ui_lock && typeof scene.visual_locks.ui_lock === 'object'
+    ? scene.visual_locks.ui_lock
+    : {};
+  const hasUiLock = uiOverlay.required === true
+    || uiOverlay.mandatory === true
+    || uiLock.required === true
+    || visualUiLock.required === true;
   const productFidelityThreshold = softwareWorkflowSubject ? 58 : 74;
   const assetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 45 : 76;
   const manualProductFidelityThreshold = softwareWorkflowSubject ? 55 : 74;
@@ -14229,14 +14214,15 @@ function _luxuryNormalizeUiOverlay(value = null, scene = {}, brief = '') {
   const style = String(obj.style || '').trim()
     || 'restrained non-readable visual indicator; no fake text, no invented brand words';
   const readableTextAllowed = obj.readable_text_allowed === true || policy.readable_text_allowed === true;
-  return { type, carrier, placement, content, motion, style, readable_text_allowed: readableTextAllowed };
+  const required = policy.required === true || obj.required === true || obj.mandatory === true;
+  return { type, carrier, placement, content, motion, style, readable_text_allowed: readableTextAllowed, required };
 }
 
 function _luxuryUiOverlayPrompt(overlay = null) {
   const ui = _luxuryNormalizeUiOverlay(overlay);
   if (!ui) return '';
   return [
-    `Optional subject-evidence UI/VFX: ${ui.type}.`,
+    `${ui.required ? 'Required' : 'Optional'} subject-evidence UI/VFX: ${ui.type}.`,
     ui.carrier ? `Carrier: ${ui.carrier}.` : 'Carrier: bind to the current shot evidence carrier or designated safe area only.',
     `Placement: ${ui.placement}.`,
     `Content intent: ${ui.content}.`,
@@ -21320,12 +21306,18 @@ function _luxuryFrameRequiresCharacterConsistency(k = {}) {
 
 function _luxuryFrameRequiresUiOverlayScore(k = {}) {
   const locks = k.visual_locks && typeof k.visual_locks === 'object' ? k.visual_locks : {};
-  return !!(k.ui_overlay
-    || k.uiOverlay
-    || k.shot_plan?.ui_overlay
-    || k.shot_plan?.ui_overlay_post?.applied
-    || locks.ui_overlay
-    || locks.ui_lock);
+  const overlay = k.ui_overlay && typeof k.ui_overlay === 'object' ? k.ui_overlay : {};
+  const altOverlay = k.uiOverlay && typeof k.uiOverlay === 'object' ? k.uiOverlay : {};
+  const shotOverlay = k.shot_plan?.ui_overlay && typeof k.shot_plan.ui_overlay === 'object' ? k.shot_plan.ui_overlay : {};
+  const lock = locks.ui_lock && typeof locks.ui_lock === 'object' ? locks.ui_lock : {};
+  return !!(k.shot_plan?.ui_overlay_post?.applied
+    || overlay.required === true
+    || overlay.mandatory === true
+    || altOverlay.required === true
+    || altOverlay.mandatory === true
+    || shotOverlay.required === true
+    || shotOverlay.mandatory === true
+    || lock.required === true);
 }
 
 function _numScore(v) {
