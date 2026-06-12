@@ -3699,14 +3699,21 @@
   }
 
   function luxuryFailedKeyframeCandidates(details = null) {
-    const rawAttempts = Array.isArray(details?.attempts)
-      ? details.attempts
-      : (Array.isArray(details?.raw?.details?.attempts) ? details.raw.details.attempts : []);
+    const rawAttempts = [
+      details?.attempts,
+      details?.details?.attempts,
+      details?.raw?.attempts,
+      details?.raw?.details?.attempts,
+      details?.raw?.details?.details?.attempts,
+      details?.candidate_images,
+      details?.details?.candidate_images,
+      details?.raw?.details?.candidate_images,
+    ].find(Array.isArray) || [];
     const seen = new Set();
     return rawAttempts
-      .filter(a => a && !a.ok && (a.image_url || a.imageUrl || a.url))
+      .filter(a => a && a.ok !== true && (a.image_url || a.imageUrl || a.url || a.candidate_url))
       .map((a, i) => {
-        const url = a.image_url || a.imageUrl || a.url || '';
+        const url = a.image_url || a.imageUrl || a.url || a.candidate_url || '';
         const shotIndex = Number.isFinite(Number(a.shot_index)) ? Number(a.shot_index) : 0;
         return {
           ...a,
@@ -3714,7 +3721,7 @@
           _shotIndex: Math.max(0, shotIndex),
           _url: url,
           _label: [a.provider_id || a.provider, a.model_id || a.model].filter(Boolean).join('/') || '图片模型',
-          _reason: String(a.qa?.reason || a.error || '视觉 QA 未通过').slice(0, 260),
+          _reason: String(a.candidate_label || a.qa?.reason || a.error || '视觉 QA 未通过').slice(0, 260),
         };
       })
       .filter(a => {

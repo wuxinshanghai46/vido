@@ -833,6 +833,75 @@ function _sendApiError(res, err, fallback = '接口请求失败') {
   return res.status(status).json(body);
 }
 
+function _luxuryAssetPublicUrl(req, localPath = '') {
+  if (!localPath || !fs.existsSync(localPath)) return '';
+  return `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(localPath)}`;
+}
+
+function _attachLuxuryUiOverlayFailureCandidates(err, req, {
+  baseOutPath = '',
+  overlayOutPath = '',
+  postQa = null,
+  uiOverlayPost = null,
+  imageResult = null,
+  shotIndex = 0,
+} = {}) {
+  const attempts = [];
+  const baseUrl = _luxuryAssetPublicUrl(req, baseOutPath);
+  const overlayUrl = _luxuryAssetPublicUrl(req, overlayOutPath);
+  const safeShotIndex = Math.max(0, Number.isFinite(Number(shotIndex)) ? Number(shotIndex) : 0);
+  const shortReason = String(postQa?.reason || err?.message || 'UI overlay post-composite QA failed').replace(/\s+/g, ' ').slice(0, 260);
+  if (baseUrl) {
+    attempts.push({
+      provider_id: 'post',
+      model_id: 'ui-overlay-composite',
+      ok: false,
+      shot_index: safeShotIndex,
+      image_url: baseUrl,
+      candidate_url: baseUrl,
+      candidate_label: '已生成原始关键帧（UI贴层前）',
+      fallback_mode: 'ui-overlay-base-keyframe',
+      prompt_mode: 'generated-keyframe-before-ui-overlay',
+      error: shortReason,
+      qa: imageResult?.qa || null,
+      ui_overlay_failed: true,
+    });
+  }
+  if (overlayUrl && overlayUrl !== baseUrl) {
+    attempts.push({
+      provider_id: 'post',
+      model_id: 'ui-overlay-composite',
+      ok: false,
+      shot_index: safeShotIndex,
+      image_url: overlayUrl,
+      candidate_url: overlayUrl,
+      candidate_label: 'UI贴层后失败候选图',
+      fallback_mode: 'ui-overlay-post-composite',
+      prompt_mode: 'post-composite-ui-overlay',
+      error: shortReason,
+      qa: postQa || null,
+      ui_overlay_failed: true,
+    });
+  }
+  err.details = {
+    ...(err.details || {}),
+    qa: postQa || err.details?.qa || null,
+    overlay: uiOverlayPost?.overlay || err.details?.overlay || null,
+    base_image_url: baseUrl,
+    overlay_image_url: overlayUrl,
+    attempts,
+    candidate_images: attempts.map(item => ({
+      image_url: item.image_url,
+      candidate_url: item.candidate_url,
+      candidate_label: item.candidate_label,
+      shot_index: item.shot_index,
+      qa: item.qa || null,
+    })),
+  };
+  err.luxuryKeyframeAttempts = attempts;
+  return err;
+}
+
 function _compactDhPublicMessage(value = '', max = 1800) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
@@ -11369,6 +11438,9 @@ function _publicLuxuryKeyframeResult(item) {
         code: item.details.code || item.details.error?.code || undefined,
         reason: item.details.reason || undefined,
         attempts: nestedAttempts.length ? nestedAttempts.slice(-8) : undefined,
+        candidate_images: Array.isArray(item.details.candidate_images) ? item.details.candidate_images.slice(-8) : undefined,
+        base_image_url: item.details.base_image_url || undefined,
+        overlay_image_url: item.details.overlay_image_url || undefined,
         production_contract: item.details.production_contract || undefined,
         production_project: item.details.production_project || undefined,
         production_project_id: item.details.production_project_id || item.details.production_project?.id || undefined,
@@ -17121,6 +17193,7 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     shotIndex: index,
   });
   let outPath = imageResult.outPath;
+  const baseOutPath = outPath;
   let uiOverlayPost = null;
   if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
@@ -17143,6 +17216,14 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
           err.status = 422;
           err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
           err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          _attachLuxuryUiOverlayFailureCandidates(err, req, {
+            baseOutPath,
+            overlayOutPath: outPath,
+            postQa,
+            uiOverlayPost,
+            imageResult,
+            shotIndex: index,
+          });
           throw err;
         }
         imageResult.qa = postQa;
@@ -18093,6 +18174,7 @@ async function _createLuxuryAdReferenceKeyframe({
     shotIndex: index,
   });
   let outPath = imageResult.outPath;
+  const baseOutPath = outPath;
   let uiOverlayPost = null;
   if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
@@ -18115,6 +18197,14 @@ async function _createLuxuryAdReferenceKeyframe({
           err.status = 422;
           err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
           err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          _attachLuxuryUiOverlayFailureCandidates(err, req, {
+            baseOutPath,
+            overlayOutPath: outPath,
+            postQa,
+            uiOverlayPost,
+            imageResult,
+            shotIndex: index,
+          });
           throw err;
         }
         imageResult.qa = postQa;
@@ -19032,6 +19122,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     characterLock,
   });
   let outPath = imageResult.outPath;
+  const baseOutPath = outPath;
   let uiOverlayPost = null;
   if (_luxuryShouldApplyUiOverlay(scene, productSubject)) {
     uiOverlayPost = await _applyLuxuryUiOverlayComposite({
@@ -19054,6 +19145,14 @@ async function _createLuxuryAdReferenceKeyframeFallback({
           err.status = 422;
           err.code = 'LUXURY_UI_OVERLAY_QA_FAILED';
           err.details = { qa: postQa, overlay: uiOverlayPost.overlay };
+          _attachLuxuryUiOverlayFailureCandidates(err, req, {
+            baseOutPath,
+            overlayOutPath: outPath,
+            postQa,
+            uiOverlayPost,
+            imageResult,
+            shotIndex,
+          });
           throw err;
         }
         imageResult.qa = postQa;
