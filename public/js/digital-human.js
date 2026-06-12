@@ -5629,18 +5629,10 @@
     return current;
   }
 
-  function renderLuxuryWorkflowProgress() {
-    const box = $('#dhLuxAdLiveProgress');
-    if (!box) return;
-    const progress = state.luxuryAd.workflowProgress;
-    if (!progress || !progress.active) {
-      box.hidden = true;
-      box.innerHTML = '';
-      return;
-    }
+  function luxuryWorkflowProgressMarkup(progress) {
+    if (!progress || !progress.active) return '';
     const pct = Math.max(6, Math.min(96, Math.round(Number(progress.percent) || 6)));
-    box.hidden = false;
-    box.innerHTML = `
+    return `
       <div class="dh-luxgen-live-head">
         <span>${escapeHtml(progress.label || '生成中')}</span>
         <b>${pct}%</b>
@@ -5650,6 +5642,23 @@
         <span>${escapeHtml(progress.phase || '正在生成')}</span>
         <small>${escapeHtml(progress.message || '请保持页面打开，完成后会自动进入下一步。')}</small>
       </div>`;
+  }
+
+  function renderLuxuryWorkflowProgressBox(box, progress) {
+    if (!box) return;
+    if (!progress || !progress.active) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = luxuryWorkflowProgressMarkup(progress);
+  }
+
+  function renderLuxuryWorkflowProgress() {
+    const progress = state.luxuryAd.workflowProgress;
+    renderLuxuryWorkflowProgressBox($('#dhLuxAdLiveProgress'), progress);
+    renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptProgress'), progress);
   }
 
   function formatLuxuryUsageCost(value, currency = 'usd') {
@@ -8156,6 +8165,7 @@
         <span class="dh-luxgen-status ready">待确认</span>
       </div>
     </div>
+    <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdScriptProgress" hidden></div>
     <div class="dh-demo-script-mainline">
       <b>剧本主线</b>
       <span>${escapeHtml([info.style || '高端商业广告', info.theme || '品牌广告', `${segments.length} 个镜头`, characters.length >= 2 ? '双人互动对白' : '旁白/单人讲解'].filter(Boolean).join(' · '))}</span>
@@ -8194,6 +8204,7 @@
         }).join('')}
       </tbody>
     </table>`;
+    renderLuxuryWorkflowProgress();
   }
 
   function renderLuxuryStoryboardSheet(segments = [], keyframes = []) {

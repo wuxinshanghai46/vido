@@ -11822,8 +11822,33 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         })
         .replace(/建筑|建材|展厅|外立面|样板间/g, /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '平台' : '业务');
     };
+    const stableIndex = (seed, size) => {
+      const raw = String(seed || `${brief}\n${productSubject}\n${person_asset?.actor_asset_id || person_asset?.actor_id || ''}`);
+      let hash = 2166136261;
+      for (let i = 0; i < raw.length; i += 1) {
+        hash ^= raw.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return Math.abs(hash >>> 0) % Math.max(1, size);
+    };
+    const stableActorName = () => {
+      const explicitName = String(person_asset?.character_name || person_asset?.display_name || person_asset?.name || '').trim();
+      if (explicitName && !/^(AI\s*)?真人感|一致性演员|真人照片参考|已选演员|核心人物|person_asset|luxury_ad_actor_package/i.test(explicitName)) {
+        return explicitName.slice(0, 24);
+      }
+      const surnameSeed = `${person_asset?.actor_asset_id || person_asset?.actor_id || person_asset?.id || ''}\n${brief}\n${productSubject}`;
+      const givenSeed = `${surnameSeed}\n${lockedActorGender || resolvedPersonSpec?.gender || ''}\n${enrichedAssetSummary}`;
+      const surnames = ['林', '沈', '顾', '陆', '陈', '周', '许', '程', '苏', '何', '韩', '宋'];
+      const maleGiven = ['明远', '承宇', '亦辰', '景行', '修远', '子昂', '予安', '一川'];
+      const femaleGiven = ['知夏', '云舒', '若澄', '予晴', '安宁', '语桐', '清禾', '念真'];
+      const neutralGiven = ['清越', '予安', '明澈', '知远', '亦然', '云起', '安和', '景然'];
+      const givenPool = lockedActorGender === 'male'
+        ? maleGiven
+        : (lockedActorGender === 'female' ? femaleGiven : neutralGiven);
+      return `${surnames[stableIndex(surnameSeed, surnames.length)]}${givenPool[stableIndex(givenSeed, givenPool.length)]}`;
+    };
     const lockedActorCharacter = () => ({
-      name: person_asset?.name && !/^AI 真人感/.test(String(person_asset.name)) ? String(person_asset.name).slice(0, 24) : '核心人物',
+      name: stableActorName(),
       gender: lockedActorGender || (resolvedPersonSpec?.gender === 'male' || resolvedPersonSpec?.gender === 'female' ? resolvedPersonSpec.gender : '按演员包识别'),
       origin: selectedOrigin || person_asset?.origin || '按演员包参考',
       role: lockedActorRole,
