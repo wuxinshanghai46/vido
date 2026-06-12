@@ -9432,7 +9432,7 @@
     return msg || '分镜生成失败';
   }
 
-  async function buildLuxuryAdStoryboard({ autoNext = false, detail = false } = {}) {
+  async function buildLuxuryAdStoryboard({ autoNext = false, detail = false, triggerButton = null } = {}) {
     if (luxuryAdIsMaterialMode()) {
       buildMaterialFilmCopyPlan();
       return true;
@@ -9457,7 +9457,9 @@
     state.luxuryAd.subtitle = $('#dhLuxAdSubtitleToggle')
       ? !!$('#dhLuxAdSubtitleToggle')?.checked
       : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off');
-    const btn = detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'));
+    const btn = triggerButton || (
+      detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'))
+    );
     const old = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = detail ? '生成剧本中…' : '生成场景配置中…'; }
     state.luxuryAd.sceneGenerating = !detail;
@@ -9602,7 +9604,7 @@
       state.luxuryAd.scriptGenerating = false;
       if (activeRequestKey) await refreshLuxuryAdUsage(activeRequestKey);
       stopLuxuryWorkflowProgress(progressTimer);
-      if (btn) { btn.disabled = false; btn.innerHTML = old || (detail ? '3 生成剧本' : (autoNext ? '2 生成场景配置' : '重新生成场景配置')); }
+      if (btn) { btn.disabled = false; btn.innerHTML = old || (detail ? '重新生成剧本' : (autoNext ? '2 生成场景配置' : '重新生成场景配置')); }
       syncLuxuryAdStepPanels();
       updateLuxuryAdStepLocks();
     }
@@ -12805,21 +12807,25 @@
       }
       return;
     }
-    if (closest('#dhLuxAdDetectStyle')) { buildLuxuryAdStoryboard({ autoNext: false, detail: false }); return; }
+    const luxDetectStyleBtn = closest('#dhLuxAdDetectStyle');
+    if (luxDetectStyleBtn) { await buildLuxuryAdStoryboard({ autoNext: false, detail: false, triggerButton: luxDetectStyleBtn }); return; }
     if (closest('#dhLuxAdAutoVisuals')) { autoGenerateLuxuryAdAiVisuals(); return; }
-    if (closest('#dhLuxAdStoryboard')) {
+    const luxStoryboardBtn = closest('#dhLuxAdStoryboard');
+    if (luxStoryboardBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
-      else buildLuxuryAdStoryboard({ autoNext: false, detail: true });
+      else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxStoryboardBtn });
       return;
     }
-    if (closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop')) {
+    const luxScriptRegenerateBtn = closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop');
+    if (luxScriptRegenerateBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
-      else buildLuxuryAdStoryboard({ autoNext: false, detail: true });
+      else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxScriptRegenerateBtn });
       return;
     }
-    if (closest('#dhLuxAdGenerate')) {
+    const luxGenerateBtn = closest('#dhLuxAdGenerate');
+    if (luxGenerateBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
-      else buildLuxuryAdStoryboard({ autoNext: true, detail: false });
+      else await buildLuxuryAdStoryboard({ autoNext: true, detail: false, triggerButton: luxGenerateBtn });
       return;
     }
     if (closest('#dhLuxAdRegenerateFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
