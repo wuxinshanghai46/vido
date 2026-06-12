@@ -10399,6 +10399,17 @@ function _looksLikeLuxuryBrief(value = '') {
     || /\.(png|jpe?g|webp|gif)/i.test(s);
 }
 
+function _isLuxuryPersonSheetPreImageProviderFailure(err) {
+  const text = [
+    err?.code,
+    err?.message,
+    err?.response?.data?.code,
+    err?.response?.data?.reason,
+    err?.response?.data?.message,
+  ].filter(Boolean).join(' ');
+  return /AuditSubmitIllegal|submit is illegal|审核拒绝|NO_IMAGE|没有返回图片|未返回图片|returned no image|provider error|HTTP\s*400|code=400|HTTP\s*500|Internal Server Error|timeout|ETIMEDOUT|ECONNRESET/i.test(text);
+}
+
 function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
   const s = _stripLuxuryBriefNoise(value)
     .replace(/[。；;，,]\s*$/g, '')
@@ -10525,7 +10536,6 @@ async function _generateLuxuryPersonSheetWithPipeline({
     throw err;
   }
 
-  const activeModels = configuredModels.slice(0, 1);
   const safeAspectRatio = _normalizeAspectRatio(aspectRatio, '4:3');
   const refs = (referenceImages || []).filter(Boolean).slice(0, 4);
   const runCandidate = async (model, idx, promptText = prompt, suffix = '') => {
@@ -10587,8 +10597,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
   };
 
   let lastErr = null;
-  for (let i = 0; i < activeModels.length; i++) {
-    const model = activeModels[i];
+  let stoppedAfterGeneratedCandidate = false;
+  for (let i = 0; i < configuredModels.length; i++) {
+    const model = configuredModels[i];
     let outPath = '';
     try {
       outPath = await runCandidate(model, i + 1);
@@ -10600,18 +10611,33 @@ async function _generateLuxuryPersonSheetWithPipeline({
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
     } catch (err) {
       lastErr = err;
-      // 中文说明：人物包生成消耗高，且审核失败通常说明该提示/参考触发了平台规则；失败后立即停，不再自动重试或切换模型。
-      addAttempt(model, false, err, candidatePayload(outPath || err._luxuryCandidatePath || '', '失败候选图'));
+      const candidatePath = outPath || err._luxuryCandidatePath || '';
+      addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
+      const canTryNextWithoutExtraImage = !candidatePath && _isLuxuryPersonSheetPreImageProviderFailure(err) && i < configuredModels.length - 1;
+      if (canTryNextWithoutExtraImage) {
+        console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed before image output, try next configured model:`, shortError(err));
+        continue;
+      }
+      // 中文说明：只要已经产出过一张候选图但没有通过 QA，就按用户要求立即停止，不再重试或切换模型。
+      stoppedAfterGeneratedCandidate = !!candidatePath;
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed, stop without retry:`, shortError(err));
       break;
     }
   }
-  const skippedModels = configuredModels.slice(1).map(model => `${model.provider_id}/${model.model_id}`);
-  const err = new Error(`${stageId} 首个模型未生成人物演员包，已按单次失败策略停止：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
+  const attemptedKeys = new Set(attempts.map(a => `${a.provider_id}/${a.model_id}`));
+  const skippedModels = configuredModels
+    .map(model => `${model.provider_id}/${model.model_id}`)
+    .filter(key => !attemptedKeys.has(key));
+  const err = new Error(`${stageId} 未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${stoppedAfterGeneratedCandidate ? '；已有候选图未通过 QA，已按单次失败策略停止' : ''}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
   err.status = 502;
-  err.code = 'LUXURY_PERSON_SHEET_FIRST_MODEL_FAILED';
+  err.code = stoppedAfterGeneratedCandidate ? 'LUXURY_PERSON_SHEET_CANDIDATE_FAILED_STOPPED' : 'LUXURY_PERSON_SHEET_NO_MODEL_OUTPUT';
   err.luxuryKeyframeAttempts = attempts;
-  err.details = { attempts, stopped_after_first_failure: true, skipped_models: skippedModels };
+  err.details = {
+    attempts,
+    stopped_after_generated_candidate: stoppedAfterGeneratedCandidate,
+    pre_image_failover_enabled: true,
+    skipped_models: skippedModels,
+  };
   err.cause = lastErr;
   throw err;
 }
