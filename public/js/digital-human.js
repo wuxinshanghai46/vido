@@ -7553,6 +7553,8 @@
       || seg.purpose
       || seg.script_purpose
       || seg.purpose_label
+      || seg.ui_overlay?.content
+      || seg.uiOverlay?.content
       || seg.source_beat?.spoken_intent
       || seg.source_beat?.character_goal
       || seg.source_beat?.solution_step

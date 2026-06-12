@@ -13244,6 +13244,8 @@ ${JSON.stringify(scenes, null, 2)}
           || x.purpose
           || x.script_purpose
           || x.purpose_label
+          || x.ui_overlay?.content
+          || x.uiOverlay?.content
           || x.source_beat?.spoken_intent
           || x.source_beat?.character_goal
           || x.source_beat?.solution_step
