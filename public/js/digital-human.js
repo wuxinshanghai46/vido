@@ -5691,7 +5691,8 @@
 
   function luxuryWorkflowProgressMarkup(progress) {
     if (!progress || !progress.active) return '';
-    const pct = Math.max(6, Math.min(96, Math.round(Number(progress.percent) || 6)));
+    const rawPct = Math.round(Number(progress.percent) || 6);
+    const pct = progress.done || rawPct >= 100 ? 100 : Math.max(6, Math.min(96, rawPct));
     return `
       <div class="dh-luxgen-live-head">
         <span>${escapeHtml(progress.label || '生成中')}</span>
@@ -9977,6 +9978,7 @@
       };
       state.luxuryAd.workflowProgress = {
         active: true,
+        done: true,
         detail: true,
         keyframes: true,
         startedAt,
