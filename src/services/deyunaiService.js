@@ -175,6 +175,24 @@ function assertGptImage2BodyContract(body) {
   }
 }
 
+function summarizeGptImage2Request(endpoint, body = {}) {
+  const images = Array.isArray(body.images) ? body.images : [];
+  const firstImage = images[0];
+  return {
+    endpoint,
+    body_keys: Object.keys(body || {}).sort(),
+    size: body.size || '',
+    output_format: body.output_format || '',
+    n: body.n || 0,
+    image_count: images.length,
+    images_shape: !images.length
+      ? 'none'
+      : (typeof firstImage === 'string' ? 'string_url_array' : (firstImage && typeof firstImage === 'object' && firstImage.image_url ? 'object_image_url_array' : typeof firstImage)),
+    has_aspect_ratio_field: Object.prototype.hasOwnProperty.call(body, 'aspect_ratio') || Object.prototype.hasOwnProperty.call(body, 'aspectRatio'),
+    has_output_compression: Object.prototype.hasOwnProperty.call(body, 'output_compression'),
+  };
+}
+
 // ════════════════════════════════════════════════
 // 1. 文本 chat completions
 // ════════════════════════════════════════════════
@@ -265,21 +283,31 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         body.input_fidelity = 'high';
       }
       assertGptImage2BodyContract(body);
+      const endpoint = isEdit ? '/images/edits' : '/images/generations';
+      const requestSummary = summarizeGptImage2Request(endpoint, body);
       const submitRes = await axios.post(
-        buildEnterpriseImageUrl(isEdit ? '/images/edits' : '/images/generations'),
+        buildEnterpriseImageUrl(endpoint),
         body,
         { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, validateStatus: () => true }
       );
       if (submitRes.status >= 400) {
-        throw buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
+        const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
+        err.providerRequest = requestSummary;
+        throw err;
       }
       const businessError = extractProviderBusinessError(submitRes.data);
       if (businessError) {
-        throw buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} provider error: ${businessError}`, submitRes.data);
+        const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} provider error: ${businessError}`, submitRes.data);
+        err.providerRequest = requestSummary;
+        throw err;
       }
       _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
       const urls = extractImageUrlsFromSyncPayload(submitRes.data);
-      if (!urls.length) throw new Error('漫路 GPT Image 2 未返回图片数据: ' + JSON.stringify(submitRes.data).slice(0, 300));
+      if (!urls.length) {
+        const err = new Error('漫路 GPT Image 2 未返回图片数据: ' + JSON.stringify(submitRes.data).slice(0, 300));
+        err.providerRequest = requestSummary;
+        throw err;
+      }
       _ok = true;
       return { urls, taskId: _taskId, raw: submitRes.data };
     }

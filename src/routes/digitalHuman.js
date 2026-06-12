@@ -11815,12 +11815,11 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       match_brief: '按广告需求判断',
     };
     const selectedOrigin = originLabels[resolvedPersonSpec?.origin] || String(resolvedPersonSpec?.origin || '按广告需求判断');
-    const lockedActorGender = (() => {
-      const raw = String(person_asset?.gender || person_asset?.detected_gender || resolvedPersonSpec?.gender || '').toLowerCase();
-      if (/^male$|男|男性|man/.test(raw)) return 'male';
-      if (/^female$|女|女性|woman/.test(raw)) return 'female';
-      return '';
-    })();
+    const lockedActorGender = _luxuryFirstConfirmedGender(
+      person_asset?.detected_gender,
+      person_asset?.gender,
+      resolvedPersonSpec?.gender,
+    );
     const nonBuildingSubject = !_luxuryHasExplicitSteelSubject(`${brief}\n${productSubject}\n${enrichedAssetSummary}`)
       && !/建筑|建材|空间设计|室内设计|外立面|墙面|展厅|样板间|材料|钢材|金属板|building|architecture|showroom|facade|material/i.test(`${brief}\n${productSubject}\n${enrichedAssetSummary}`);
     const lockedActorRole = /视频|网站|平台|AI|软件|SaaS|创作|剪辑|小说|漫画|数字人|video|platform|software|website|creator|content/i.test(`${brief}\n${productSubject}`)
@@ -14671,12 +14670,7 @@ function _buildLuxuryActorAssetPackage({
 } = {}) {
   const url = String(imageUrl || '').trim();
   if (!url) return null;
-  const normalizedGender = (() => {
-    const raw = String(gender || '').trim().toLowerCase();
-    if (/^male$|男|男性|man/.test(raw)) return 'male';
-    if (/^female$|女|女性|woman/.test(raw)) return 'female';
-    return '';
-  })();
+  const normalizedGender = _luxuryNormalizeBinaryGender(gender);
   const stableSeed = String(actorAssetId || url).trim();
   const actorId = `actor_${crypto.createHash('sha1').update(stableSeed).digest('hex').slice(0, 12)}`;
   const extraRefs = Array.isArray(extraImageUrls)
@@ -18308,6 +18302,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               reference_count: refItemsForMode.length,
               all_reference_count: refs.length,
               reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+              provider_request: err.providerRequest || null,
               image_url: candidateImageUrl(err._luxuryCandidatePath),
               next_retry: mayRetryWithFewerRefs ? 'same-model-fewer-references' : '',
               rule: 'reference_preserving_required_for_locked_actor_keyframe',
@@ -20672,7 +20667,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         identityExtraImageUrls: Array.isArray(person_asset?.extra_image_urls) ? person_asset.extra_image_urls : [],
         identitySource: confirmedIdentitySource,
         identityName: avatar?.name || person_asset?.name || '',
-        identityGender: avatar?.gender || person_asset?.gender || '',
+        identityGender: _luxuryFirstConfirmedGender(avatar?.detected_gender, avatar?.gender, person_asset?.detected_gender, person_asset?.gender),
         identityRole: person_asset?.role || person_asset?.type || '',
         identityDescription: [
           person_asset?.description,
@@ -20861,7 +20856,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         image_url: luxuryPersonAssetImageUrl,
         extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
         actor_asset_id: person_asset.actor_asset_id || person_asset.asset_library_id || person_asset.material_id || '',
-        gender: person_asset.gender || person_asset.detected_gender || '',
+        gender: _luxuryFirstConfirmedGender(person_asset.detected_gender, person_asset.gender),
       }
       : null;
     const luxuryBriefReferenceAvatar = isLuxury && (luxuryBriefPersonReferenceImage || luxuryGeneratedPresenterImage)
@@ -21324,6 +21319,22 @@ function _luxuryFrameRequiresUiOverlayScore(k = {}) {
     || shotOverlay.required === true
     || shotOverlay.mandatory === true
     || lock.required === true);
+}
+
+function _luxuryNormalizeBinaryGender(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw || raw === 'auto' || /按故事|按演员包|unknown|unspecified|neutral/.test(raw)) return '';
+  if (/^male$|男|男性|man/.test(raw)) return 'male';
+  if (/^female$|女|女性|woman/.test(raw)) return 'female';
+  return '';
+}
+
+function _luxuryFirstConfirmedGender(...values) {
+  for (const value of values) {
+    const gender = _luxuryNormalizeBinaryGender(value);
+    if (gender) return gender;
+  }
+  return '';
 }
 
 function _numScore(v) {

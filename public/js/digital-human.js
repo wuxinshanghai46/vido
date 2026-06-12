@@ -5012,6 +5012,14 @@
     return '';
   }
 
+  function luxuryPersonConfirmedGender(...values) {
+    for (const value of values) {
+      const gender = luxuryPersonGenderSpecValue(value);
+      if (gender === 'male' || gender === 'female') return gender;
+    }
+    return '';
+  }
+
   function luxuryPersonOriginSpecValue(value = '') {
     const raw = String(value || '').trim().toLowerCase();
     if (!raw) return '';
@@ -5154,7 +5162,8 @@
         is_ai_generated: isAiGenerated,
         production_usable_actor: isSyntheticActor,
         real_person_reference: referenceKind === 'real_photo',
-        gender: generated.gender || generated.metadata?.gender || '',
+        gender: luxuryPersonConfirmedGender(generated.detected_gender, generated.gender, generated.metadata?.detected_gender, generated.metadata?.gender),
+        detected_gender: luxuryPersonConfirmedGender(generated.detected_gender, generated.metadata?.detected_gender),
         age: generated.age || generated.age_range || generated.metadata?.age || generated.metadata?.age_range || '',
         origin: generated.origin || generated.metadata?.origin || '',
         image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
@@ -5490,7 +5499,11 @@
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       close();
-      const gender = luxuryPersonGenderLabel(state.luxuryAd.personAsset.gender || state.luxuryAd.personSpecLock?.gender || '');
+      const gender = luxuryPersonGenderLabel(luxuryPersonConfirmedGender(
+        state.luxuryAd.personAsset.detected_gender,
+        state.luxuryAd.personAsset.gender,
+        state.luxuryAd.personSpecLock?.gender,
+      ));
       const age = LUXURY_PERSON_SPEC_LABELS.age[state.luxuryAd.personSpecLock?.age || state.luxuryAd.personAsset.age || ''] || '';
       toast(`已选择角色素材「${asset.name || '演员'}」${[gender ? `人物性别已同步为${gender}` : '', age ? `年龄已同步为${age}` : ''].filter(Boolean).join('，')}`, 'success');
     });
@@ -9521,7 +9534,7 @@
       const requestKey = luxuryStoryboardRequestKey(detail);
       activeRequestKey = requestKey;
       const personAssetForGender = state.luxuryAd.personAsset || null;
-      const personAssetGender = String(personAssetForGender?.gender || personAssetForGender?.detected_gender || '').toLowerCase();
+      const personAssetGender = luxuryPersonConfirmedGender(personAssetForGender?.detected_gender, personAssetForGender?.gender);
       if (personAssetForGender && !['male', 'female'].includes(personAssetGender)) {
         const personImageUrl = personAssetForGender.image_url || personAssetForGender.url || personAssetForGender.previewUrl || '';
         const detectedGender = await detectLuxuryAdPersonGender(personImageUrl);
