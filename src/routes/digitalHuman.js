@@ -10525,17 +10525,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
     throw err;
   }
 
+  const activeModels = configuredModels.slice(0, 1);
   const safeAspectRatio = _normalizeAspectRatio(aspectRatio, '4:3');
   const refs = (referenceImages || []).filter(Boolean).slice(0, 4);
-  const fullBodyRetryPrompt = (reason = '') => [
-    // 中文说明：人物包最常被模型画成胸像；QA 失败后用更短、更硬的全身提示词重试同一模型，不能放松 QA 放行。
-    'STRICT RETRY: generate a vertical 9:16 full-body commercial casting reference photo, not a portrait.',
-    'Show exactly one person from head to shoes in one frame; visible floor line or ground shadow; visible hips, legs and shoes or age-appropriate lower body.',
-    'Leave clean margin above head and below feet. Camera pulled back, plain gray studio background, realistic phone-camera photo, natural skin texture, real fabric folds.',
-    'Hard negative: headshot, bust portrait, chest-up, waist-up, half-body, cropped at hips, beauty poster, fashion portrait, plastic AI skin, porcelain skin, doll face, extra people.',
-    reason ? `Previous QA rejection to avoid: ${String(reason).slice(0, 220)}.` : '',
-    `Original brief contract, keep identity/age/gender/wardrobe but override any crop: ${String(prompt || '').slice(0, 1200)}`,
-  ].filter(Boolean).join(' ');
   const runCandidate = async (model, idx, promptText = prompt, suffix = '') => {
     const provider = String(model?.provider_id || '').toLowerCase();
     const modelId = String(model?.model_id || '').toLowerCase();
@@ -10595,8 +10587,8 @@ async function _generateLuxuryPersonSheetWithPipeline({
   };
 
   let lastErr = null;
-  for (let i = 0; i < configuredModels.length; i++) {
-    const model = configuredModels[i];
+  for (let i = 0; i < activeModels.length; i++) {
+    const model = activeModels[i];
     let outPath = '';
     try {
       outPath = await runCandidate(model, i + 1);
@@ -10608,38 +10600,18 @@ async function _generateLuxuryPersonSheetWithPipeline({
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
     } catch (err) {
       lastErr = err;
-      const framingFailed = /LUXURY_ACTOR_FRAMING_QA_FAILED|LUXURY_ACTOR_FRAME_ORIENTATION_FAILED/.test(String(err.code || ''));
-      if (framingFailed) {
-        // 中文说明：有些供应商在抛错对象里带了已生成图片，outPath 还没赋值；失败回执也要带候选图给前端预览。
-        const firstCandidatePath = outPath || err._luxuryCandidatePath || '';
-        addAttempt(model, false, err, { retry: 'full_body_reprompt_first_rejection', ...candidatePayload(firstCandidatePath, '首次候选图') });
-        let retryPath = '';
-        try {
-          const retryPrompt = fullBodyRetryPrompt(err.details?.reason || err.details?.observed || err.message);
-          retryPath = await runCandidate(model, i + 1, retryPrompt, '_fullbody_retry');
-          const retryQa = await _checkLuxuryActorAssetFramingQa(req, retryPath, {
-            viewKey: `${filename}_fullbody_retry`,
-            model: `${model.provider_id}/${model.model_id}`,
-          });
-          addAttempt(model, true, null, { retry: 'full_body_reprompt_passed' });
-          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa: retryQa };
-        } catch (retryErr) {
-          lastErr = retryErr;
-          const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
-          addAttempt(model, false, retryErr, { retry: 'full_body_reprompt_failed', ...candidatePayload(retryCandidatePath, '全身重试候选图') });
-          console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body retry failed:`, shortError(retryErr));
-          continue;
-        }
-      }
+      // 中文说明：人物包生成消耗高，且审核失败通常说明该提示/参考触发了平台规则；失败后立即停，不再自动重试或切换模型。
       addAttempt(model, false, err, candidatePayload(outPath || err._luxuryCandidatePath || '', '失败候选图'));
-      console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed:`, shortError(err));
+      console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed, stop without retry:`, shortError(err));
+      break;
     }
   }
-  const err = new Error(`${stageId} 所有可运行模型均未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}`);
+  const skippedModels = configuredModels.slice(1).map(model => `${model.provider_id}/${model.model_id}`);
+  const err = new Error(`${stageId} 首个模型未生成人物演员包，已按单次失败策略停止：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
   err.status = 502;
-  err.code = 'LUXURY_PERSON_SHEET_ALL_MODELS_FAILED';
+  err.code = 'LUXURY_PERSON_SHEET_FIRST_MODEL_FAILED';
   err.luxuryKeyframeAttempts = attempts;
-  err.details = { attempts };
+  err.details = { attempts, stopped_after_first_failure: true, skipped_models: skippedModels };
   err.cause = lastErr;
   throw err;
 }

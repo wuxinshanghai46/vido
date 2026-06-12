@@ -5264,7 +5264,7 @@
     const text = `${code} ${msg} ${raw}`;
     // 中文说明：完整模型回执很长，只放在折叠详情；主界面只给用户能执行的中文结论。
     if (/LUXURY_ACTOR_FRAMING_QA_FAILED|LOWER_BODY|TROUSERS|GARMENT|BUST|HEADSHOT|WAIST_UP|半身|头像|胸像/i.test(text)) {
-      return '这次不是系统继续乱跑，而是图片模型把演员画成了头像/胸像/半身，系统按商用人物锁规则拦截了。已在后端加入全身重试；请重新点一次“AI 真人感演员包”。';
+      return '这次不是系统继续乱跑，而是图片模型把演员画成了头像/胸像/半身，系统按商用人物锁规则拦截了。当前已改为单次失败即停止；请调整人物描述/参考图后重新生成。';
     }
     if (/AUDITSUBMITILLEGAL|SUBMIT\s+IS\s+ILLEGAL|审核|ILLEGAL/i.test(text)) {
       return '当前人物描述或参考图被上游平台审核拒绝。请把人物描述改得更中性，或换一张参考图后重试。';
