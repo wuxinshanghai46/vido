@@ -13238,7 +13238,17 @@ ${JSON.stringify(scenes, null, 2)}
         }
         const visualRaw = String(x.content_prompt || x.scene_content || x.visual || x.display_visual || x.visual_prompt || '').trim();
         const actionRaw = String(x.action || x.visual_action || x.character_action || x.body_action || '').trim();
-        const objectiveRaw = String(x.objective || x.intent || x.purpose || '').trim();
+        const objectiveRaw = String(
+          x.objective
+          || x.intent
+          || x.purpose
+          || x.script_purpose
+          || x.purpose_label
+          || x.source_beat?.spoken_intent
+          || x.source_beat?.character_goal
+          || x.source_beat?.solution_step
+          || ''
+        ).trim();
         const dialogueRaw = Array.isArray(x.dialogue_lines)
           ? x.dialogue_lines.join('\n')
           : String(x.dialogue || x.dialogue_text || x.conversation || '').trim();
