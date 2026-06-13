@@ -2170,6 +2170,10 @@ function _luxuryIsSoftwareWorkflowSubject(productSubject = '', scene = {}) {
     scene.material_usage,
     scene.material_hint,
     scene.scene,
+    scene.visual_contract?.image_prompt,
+    scene.visual_contract?.qa_contract,
+    scene.visual_contract?.ui_policy,
+    scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
     manifestText,
   ].filter(Boolean).join(' ');
   if (/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text)) return false;
@@ -2218,6 +2222,8 @@ function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = '
     scene.qa_contract,
     scene.director_prompt,
     scene.visual_contract?.image_prompt,
+    scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
+    scene.visual_contract?.ui_policy,
     Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.join(' ') : '',
   ].filter(Boolean).join(' ');
   const evidence = [];
@@ -2238,6 +2244,36 @@ function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = '
   return `Script-derived workflow evidence for this shot: ${evidence.join('; ')}. Do not require all platform capabilities in every frame; visualize only the evidence named or clearly implied by this shot.`;
 }
 
+function _luxuryIsApiIntegrationWorkflowShot(scene = {}, productSubject = '') {
+  const text = [
+    productSubject,
+    scene.product_subject,
+    scene.title,
+    scene.objective,
+    scene.intent,
+    scene.purpose,
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.display_visual,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.material_usage,
+    scene.material_hint,
+    scene.qa_contract,
+    scene.director_prompt,
+    scene.visual_contract?.image_prompt,
+    scene.visual_contract?.qa_contract,
+    scene.visual_contract?.ui_policy,
+    scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
+    Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.join(' ') : '',
+  ].filter(Boolean).join(' ');
+  return /API|接口|开放平台|开发者|开发接入|编程|代码|集成|调用|请求|响应|回调|状态码|SDK|IDE|控制台|api|endpoint|request|response|webhook|callback|developer|integration|code\s*editor|console|json/i.test(text);
+}
+
 function _luxuryLooksLikeGenericProductReveal(value = '') {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return false;
@@ -2250,13 +2286,17 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
   const emotion = String(scene.emotion || scene.mood || scene.emotional_change || '').replace(/\s+/g, ' ').trim();
   const role = String(scene.role || scene.shot_role || scene.title || '').replace(/\s+/g, ' ').trim();
   const combined = [subject, role, voiceover, emotion, scene.objective, scene.intent, scene.purpose, scene.visual, scene.action].filter(Boolean).join(' ');
+  const apiIntegrationBeat = _luxuryIsApiIntegrationWorkflowShot(scene, subject);
   const problemBeat = /(困惑|无奈|烦|乱|卡|痛点|少得可怜|很少|太多|分散|切来切去|找不到|problem|pain|confused|frustrated|scattered|too many)/i.test(combined);
   const discoveryBeat = /(发现|直到|终于|进入|看到|确信|期待|解决|solution|discover|found|relief|confident)/i.test(combined);
   const aggregationBeat = /(聚合|多模型|一站式|整合|集中|数字人|漫剧|剧本|提示词|成片|all[- ]?in[- ]?one|aggregation|multi[-\s]?model)/i.test(combined);
   const person = 'a real creator/operator in a practical desk or studio workflow environment';
   let visual = `${person}, using a laptop or desktop with workflow evidence for ${subject}; the frame is a lived work moment, not a product poster.`;
   let action = 'the actor actively works through the current task with a natural expression derived from the narration';
-  if (problemBeat) {
+  if (apiIntegrationBeat) {
+    visual = `${person}, at a laptop or desktop developer workstation for ${subject}; the main screen shows a realistic IDE/code editor beside an integration console with abstract pseudo-code line blocks, request-response panels, status dots and a preview/result pane.`;
+    action = 'the actor types, checks or points at the computer screen while verifying an integration request and response; the frame should feel like practical software development, not a mobile app demo';
+  } else if (problemBeat) {
     visual = `${person}, facing several messy tool windows, tabs, notes or unfinished assets that prove the workflow is fragmented before ${subject} solves it.`;
     action = 'the actor looks genuinely confused, helpless or frustrated while comparing tools on the screen and desk, matching the problem beat';
   } else if (aggregationBeat) {
@@ -2274,14 +2314,18 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
       voiceover ? `the visual beat must express this narration meaning: ${_luxuryStrictText(voiceover, 180)}` : 'the visual beat must match this shot narration meaning',
       emotion ? `actor expression must visibly match: ${_luxuryStrictText(emotion, 120)}` : 'actor expression must match the shot beat, not a generic calm smile',
       _luxurySoftwareWorkflowEvidenceFromScene(scene, subject),
+      apiIntegrationBeat ? 'API/integration shots must be visualized as a developer computer workflow: IDE/code editor, request and response console, status indicators and result preview on laptop/desktop screens' : '',
     ],
     mustNotShow: [
       'product feature poster, marketing infographic, floating storyboard panels, UI flow diagram, dashboard presentation board',
       'generic physical product reveal, packshot, catalogue hero shot, product box, retail shelf or luxury object display',
       'calm presenter posing beside a screen when the script requires confusion, comparison, discovery or workflow action',
       'fake readable UI text, subtitles, logo text, watermark or decorative brand slogan',
+      apiIntegrationBeat ? 'phone app mockup as the main subject, comic/storyboard editor, video editing timeline, bright generic home-office app promo, or storyboard-planning workflow when the shot is about API/integration' : '',
     ],
-    qaRule: 'For software/service subjects, QA should accept a real user workflow moment that matches the narration and reject poster-like UI explainers, floating flow charts, product packshots, or generic feature dashboards.',
+    qaRule: apiIntegrationBeat
+      ? 'For API/integration shots, QA should accept a developer laptop/desktop scene with IDE/code-like blocks, request-response console, status indicators and result preview. Reject phone-app mockups, comic/storyboard editing workflows, video-editing references, generic UI explainers, or unrelated office demos.'
+      : 'For software/service subjects, QA should accept a real user workflow moment that matches the narration and reject poster-like UI explainers, floating flow charts, product packshots, or generic feature dashboards.',
   };
 }
 
@@ -18011,7 +18055,7 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
   if (softwareWorkflowSubject) {
     text = [
       text,
-      'Provider-submission safety: render all software, account, integration, audio, presenter-output and campaign modules as abstract non-readable interface icons, status blocks, timelines, thumbnails or video-preview cards. Do not render actual credential strings, account data, real code snippets, sensitive readable records, or explicit speech bubbles.',
+      'Provider-submission safety: render software, account, integration, audio, presenter-output and campaign modules as abstract non-readable interface icons, status blocks, timelines, thumbnails, preview cards, or pseudo-code line blocks. Do not render actual credential strings, account data, sensitive readable records, or explicit speech bubbles.',
     ].join(' ');
   }
   return _luxuryCapImageModelPrompt(text, softwareWorkflowSubject ? 1900 : 1500);
@@ -18044,18 +18088,24 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
   const narration = _luxuryDeyunaiAuditNeutralText(scene.voiceover || scene.narration || scene.text || '', 140);
   const action = _luxuryDeyunaiAuditNeutralText(scene.action || scene.visual_action || scene.character_action || '', 150);
   const emotion = _luxuryDeyunaiAuditNeutralText(scene.emotion || scene.mood || scene.emotional_change || scene.objective || '', 140);
+  const apiIntegrationShot = _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
   const actor = personRequired
     ? 'Use the same actor appearance from the reference image; keep face impression, age range, hairstyle and outfit family consistent.'
     : 'Include a person only if the shot requires it.';
   return _luxuryCapImageModelPrompt([
-    `Photorealistic storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
+    `${apiIntegrationShot ? 'Photorealistic commercial still frame' : 'Photorealistic storyboard still'}, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     actor,
     `Subject context: ${subject} shown as a real creator workflow moment.`,
     narration ? `Story beat to express: ${narration}.` : '',
     action ? `Actor action: ${action}.` : 'Actor works naturally at a desk with a laptop or monitor.',
     emotion ? `Expression direction: ${emotion}.` : '',
-    'Scene: practical creator workspace, desk, laptop or monitor, notes and abstract interface shapes.',
-    'Screen content: abstract blocks, module icons, thumbnails, timeline shapes, status dots and preview cards; all marks are unreadable.',
+    apiIntegrationShot
+      ? 'Scene: practical developer workstation, desk, laptop or desktop monitor, keyboard, notes and abstract interface shapes.'
+      : 'Scene: practical creator workspace, desk, laptop or monitor, notes and abstract interface shapes.',
+    apiIntegrationShot
+      ? 'Screen content: abstract pseudo-code line blocks, request and response panels, status dots and a result preview card; all marks are unreadable.'
+      : 'Screen content: abstract blocks, module icons, thumbnails, timeline shapes, status dots and preview cards; all marks are unreadable.',
+    apiIntegrationShot ? 'Avoid phone-centered app mockups, comic/storyboard editing boards, video editing timelines and generic UI poster layouts.' : '',
     'Keep the frame clean: no captions, slogans, watermarks, posters, floating diagrams, product packaging, extra people or readable documents.',
     'Natural live-action photography, realistic hands, practical light and believable depth.',
   ].filter(Boolean).join(' '), 1150);
@@ -18089,6 +18139,7 @@ function _luxuryGptImage2EditPrompt({
   );
   const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
   const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || subject, scene);
+  const apiIntegrationShot = softwareWorkflowSubject && _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
   const workflowEvidenceRule = softwareWorkflowSubject
     ? _luxurySoftwareWorkflowEvidenceFromScene(scene, productSubject || scene.product_subject || subject)
     : '';
@@ -18121,12 +18172,14 @@ function _luxuryGptImage2EditPrompt({
       ? 'Place the action in the confirmed real exterior or storefront environment.'
       : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
   const promptText = _luxuryFitImagePromptParts([
-    `SHOT EXECUTION CONTRACT: create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
+    `SHOT EXECUTION CONTRACT: create one ${apiIntegrationShot ? 'photorealistic commercial still frame' : 'photorealistic commercial storyboard still'}, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
     softwareWorkflowSubject ? `SOFTWARE/SERVICE WORKFLOW LOCK: the advertised subject is the lived workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
+    apiIntegrationShot ? 'API/INTEGRATION VISUAL LOCK: show a laptop or desktop developer workstation, not a phone mockup. The screen should contain an IDE/code editor with abstract pseudo-code line blocks, a request-response console, connection/status indicators and a small result preview pane.' : '',
     workflowShotContract ? `MUST SHOW: ${workflowShotContract.mustShow.join('; ')}.` : '',
     workflowShotContract ? `MUST NOT SHOW: ${workflowShotContract.mustNotShow.join('; ')}.` : '',
     workflowShotContract ? 'FAIL IF the frame looks like a product feature poster, UI explainer, floating flowchart, storyboard planning board, calm presenter demo, or physical product packshot instead of a real user work moment.' : '',
+    apiIntegrationShot ? 'FAIL IF this API/integration shot becomes comic/storyboard editing, video editing reference, mobile app promo, generic dashboard poster, or bright phone-centered interface.' : '',
     presenterRule,
     visual ? `Scene content: ${visual}.` : '',
     action ? `Actor action and expression: ${action}.` : '',
