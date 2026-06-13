@@ -19674,7 +19674,13 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       }
     }
 
-    const storyboardSheets = isLuxury
+    const generatedKeyframeCount = keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
+    const shouldCreateResultStoryboardSheets = isLuxury
+      && generatedKeyframeCount > 0
+      && !luxuryKeyframeShotFailures.length
+      && scenes.length > 1
+      && generatedKeyframeCount >= scenes.length;
+    const storyboardSheets = shouldCreateResultStoryboardSheets
       ? await _createLuxuryStoryboardSheetImages(req, {
         scenes,
         keyframes,
@@ -21567,7 +21573,13 @@ router.post('/spaces/keyframes', async (req, res) => {
         qa: isLuxury ? keyframeQa : undefined,
       });
     }
-    const storyboardSheets = isLuxury
+    const routeGeneratedKeyframeCount = keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
+    const routeShouldCreateResultStoryboardSheets = isLuxury
+      && routeGeneratedKeyframeCount > 0
+      && !luxuryKeyframeShotFailures.length
+      && scenes.length > 1
+      && routeGeneratedKeyframeCount >= scenes.length;
+    const storyboardSheets = routeShouldCreateResultStoryboardSheets
       ? await _createLuxuryStoryboardSheetImages(req, {
         scenes,
         keyframes,
