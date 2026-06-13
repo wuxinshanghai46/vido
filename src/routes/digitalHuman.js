@@ -5475,11 +5475,10 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
   const knownPresetModel = dy ? _providerPresetHasModel(dy, model) : false;
   if (!dy || (m && m.enabled === false) || (!m && !knownPresetModel)) throw new Error(`deyunai 未启用 ${model}`);
 
-  const size = String(model || '').toLowerCase() === 'gpt-image-2'
-    ? 'auto'
-    : (/^\d+x\d+$/i.test(String(resolution || ''))
-      ? String(resolution).toLowerCase()
-      : _outputSizeString(aspectRatio, outputSize));
+  const requestedSize = /^\d+x\d+$/i.test(String(resolution || ''))
+    ? String(resolution).toLowerCase()
+    : _outputSizeString(aspectRatio, outputSize);
+  const size = requestedSize;
   const dyClient = require('../services/deyunaiService');
   console.log(`[DH/images] 调 deyunai ${model} (refs=${(referenceImages || []).filter(Boolean).length}, prompt=${prompt.length}c)`);
   let r;
@@ -18479,7 +18478,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             addAttempt(model, false, err, {
               prompt_chars: Array.from(String(promptForAttempt || '')).length,
               prompt_mode: 'gpt-image-2-audit-safe-edit',
-              fallback_mode: `gpt-image-2-edits-${modeName}`,
+              reference_retry_mode: `gpt-image-2-edits-${modeName}`,
               reference_count: refItemsForMode.length,
               all_reference_count: refs.length,
               reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
@@ -18874,6 +18873,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
 
   const limitHit = attempts.some(a => /SetLimitExceeded|inference limit|safe experience mode|quota|rate limit|额度|上限/i.test(a.error));
   const qaRejected = attempts.some(a => /QA未通过|视觉质检|分镜图与剧本不一致|Wrong product|Wrong scene|Missing required subject|cosmetic|perfume/i.test(a.error || ''));
+  const configuredLabels = configuredModels
+    .map(model => `${model.provider_id}/${model.model_id}`)
+    .join(', ') || '无';
   const summary = attempts
     .filter(a => a.model_id)
     .map(a => `${a.provider_id}/${a.model_id}${a.ok ? ' 成功' : ` 失败：${a.error || '未知错误'}`}`)
@@ -18881,7 +18883,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const err = new Error([
     '剧情广告分镜画面生成失败。',
     summary ? `已尝试：${summary}。` : '',
-    hasReferenceLock ? '当前镜头已绑定参考图；系统已优先尝试可保参考图的编辑模型，随后也尝试了已配置的可用图像模型。' : '',
+    hasReferenceLock ? `当前镜头已绑定参考图；严格模式只允许尝试满足“图像编辑/保参考/人物一致/写实照片”的关键帧模型。当前满足条件候选：${configuredLabels}。` : '',
     'Seedance2、可灵、海螺等属于后续图生视频阶段，必须先生成分镜画面后才会执行；当前阶段请检查具备“图像编辑/保参考/人物一致”的关键帧模型额度、授权和模型配置。',
   ].filter(Boolean).join(''));
   err.status = qaRejected ? 422 : (limitHit ? 429 : 500);
