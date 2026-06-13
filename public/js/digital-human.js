@@ -8377,8 +8377,9 @@
       ['UI浮层', locks?.ui_lock?.prompt],
       ['风格边界', locks?.style_lock?.prompt],
     ].filter(([, value]) => value).slice(0, 6);
-    const generatedSheets = Array.isArray(state.luxuryAd.storyboardSheets)
-      ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url))
+    const generatedFrameCount = Array.isArray(keyframes) ? keyframes.filter(luxuryFrameHasImage).length : 0;
+    const generatedSheets = !planningOnly && generatedFrameCount >= segments.length && Array.isArray(state.luxuryAd.storyboardSheets)
+      ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url) && !luxuryStoryboardSheetIsPlanningOnly(x))
       : [];
     return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板">
       <div class="dh-lux-sheet-head">
@@ -8439,6 +8440,16 @@
         }).join('')}
       </div>
     </section>`;
+  }
+
+  function luxuryStoryboardSheetIsPlanningOnly(sheet = {}) {
+    const kind = String(sheet.kind || sheet.mode || sheet.reference_mode || '').toLowerCase();
+    const url = String(sheet.image_url || sheet.imageUrl || sheet.url || '').toLowerCase();
+    return sheet.planning_only === true
+      || sheet.planningOnly === true
+      || /planning|review|placeholder/.test(kind)
+      || /storyboard_sheet_[^/]*_plan_/.test(url)
+      || /_plan_/.test(url);
   }
 
   function luxuryRoleLabel(role = '') {

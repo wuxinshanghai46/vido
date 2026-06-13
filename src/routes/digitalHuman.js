@@ -175,7 +175,8 @@ function _luxuryAdProductionStage({ reviewOnly = false, finalKeyframes = false, 
 }
 
 function _luxuryAdProjectVisualAsset(storyboardSheets = []) {
-  const sheets = Array.isArray(storyboardSheets) ? storyboardSheets : [];
+  const sheets = (Array.isArray(storyboardSheets) ? storyboardSheets : [])
+    .filter(_isFinalLuxuryStoryboardSheet);
   const urls = sheets.map(s => s?.image_url || s?.url || '').filter(Boolean);
   return {
     sheet_url: urls[0] || '',
@@ -183,6 +184,15 @@ function _luxuryAdProjectVisualAsset(storyboardSheets = []) {
     segment_sheet_urls: urls,
     sheet_count: urls.length,
   };
+}
+
+function _isFinalLuxuryStoryboardSheet(sheet = {}) {
+  if (!sheet || typeof sheet !== 'object') return false;
+  const kind = String(sheet.kind || sheet.mode || sheet.reference_mode || '').toLowerCase();
+  const url = String(sheet.image_url || sheet.imageUrl || sheet.url || '').toLowerCase();
+  if (/planning|review|placeholder/.test(kind)) return false;
+  if (/storyboard_sheet_[^/]*_plan_/.test(url) || /_plan_/.test(url)) return false;
+  return !!(sheet.image_url || sheet.imageUrl || sheet.url);
 }
 
 function _projectText(value = '', max = 1200) {
@@ -256,6 +266,7 @@ function _compactLuxuryAdProjectSheets(storyboardSheets = []) {
   return (Array.isArray(storyboardSheets) ? storyboardSheets : []).map(sheet => ({
     index: sheet.index,
     kind: sheet.kind || 'storyboard_sheet',
+    planning_only: sheet.planning_only === true || sheet.planningOnly === true,
     layout: sheet.layout || '',
     shot_start: sheet.shot_start,
     shot_end: sheet.shot_end,
@@ -379,6 +390,10 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     keyframeError: patch.error || result.keyframe_error || '',
   });
   const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
+  const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
+  const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
+    ? mergedStoryboardSheets.filter(_isFinalLuxuryStoryboardSheet)
+    : [];
   const row = {
     ...(existing || {}),
     id,
@@ -398,7 +413,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     scenes: mergedScenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
     keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
     storyboard_sheets: _compactLuxuryAdProjectSheets(mergedStoryboardSheets),
-    visual_asset: mergedStoryboardSheets.length ? _luxuryAdProjectVisualAsset(mergedStoryboardSheets) : (existing?.visual_asset || _luxuryAdProjectVisualAsset([])),
+    visual_asset: finalStoryboardSheets.length ? _luxuryAdProjectVisualAsset(finalStoryboardSheets) : _luxuryAdProjectVisualAsset([]),
     production_contract: _jsonClone(contract || existing?.production_contract || null),
     asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
@@ -4365,6 +4380,7 @@ async function _createLuxuryStoryboardSheetImages(req, {
   title = '剧情广告',
   aspectRatio = '9:16',
   destDir = JIMENG_ASSETS_DIR,
+  planningOnly = false,
 } = {}) {
   const sharp = _loadSharp();
   if (!sharp || !Array.isArray(scenes) || !scenes.length) return [];
@@ -4444,9 +4460,11 @@ async function _createLuxuryStoryboardSheetImages(req, {
     const filename = `storyboard_sheet_${safeTaskId}_${String(sheetIndex).padStart(2, '0')}.png`;
     const outPath = path.join(destDir, filename);
     await sharp(Buffer.from(svg)).png().toFile(outPath);
+    const sheetPlanningOnly = planningOnly || !frameList.some(kf => _localStoryboardImagePath(kf));
     sheets.push({
       index: sheetIndex,
-      kind: 'storyboard_sheet',
+      kind: sheetPlanningOnly ? 'storyboard_planning_sheet' : 'storyboard_sheet',
+      planning_only: sheetPlanningOnly,
       layout: '2x2_storyboard_sheet',
       shot_start: start + 1,
       shot_end: start + slice.length,
@@ -21093,6 +21111,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         title: brief_info?.title || title || '剧情广告',
         aspectRatio,
         destDir: JIMENG_ASSETS_DIR,
+        planningOnly: true,
       });
       if (luxuryStoryboardReviewOnly) {
         const reviewBody = {
