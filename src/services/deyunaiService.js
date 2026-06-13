@@ -163,12 +163,10 @@ function assertGptImage2BodyContract(body) {
   if (unexpected.length) {
     throw new Error(`gpt-image-2 请求体包含接口文档未声明字段: ${unexpected.join(', ')}`);
   }
-  if (body.images !== undefined && (!Array.isArray(body.images) || body.images.some(x => {
-    if (typeof x === 'string') return !/^https?:\/\//i.test(x);
-    if (x && typeof x === 'object') return !/^https?:\/\//i.test(String(x.image_url || ''));
-    return true;
-  }))) {
-    throw new Error('gpt-image-2 images 必须是公网 http(s) URL，图片编辑按文档示例发送 { image_url } 数组');
+  if (body.images !== undefined && (!Array.isArray(body.images) || body.images.some(x =>
+    typeof x !== 'string' || !/^https?:\/\//i.test(x)
+  ))) {
+    throw new Error('gpt-image-2 images 必须按企业接口文档发送公网 http(s) URL 字符串数组');
   }
   if (body.output_compression !== undefined && !/^(webp|jpeg)$/i.test(String(body.output_format || ''))) {
     throw new Error('gpt-image-2 output_compression 只允许在 output_format 为 webp 或 jpeg 时发送');
@@ -187,7 +185,7 @@ function summarizeGptImage2Request(endpoint, body = {}) {
     image_count: images.length,
     images_shape: !images.length
       ? 'none'
-      : (typeof firstImage === 'string' ? 'string_url_array' : (firstImage && typeof firstImage === 'object' && firstImage.image_url ? 'object_image_url_array' : typeof firstImage)),
+      : (typeof firstImage === 'string' ? 'string_url_array' : typeof firstImage),
     has_aspect_ratio_field: Object.prototype.hasOwnProperty.call(body, 'aspect_ratio') || Object.prototype.hasOwnProperty.call(body, 'aspectRatio'),
     has_output_compression: Object.prototype.hasOwnProperty.call(body, 'output_compression'),
   };
@@ -278,8 +276,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       if (isEdit) {
         body.images = refs
           .map(normalizeGptImage2Reference)
-          .filter(Boolean)
-          .map(image_url => ({ image_url }));
+          .filter(Boolean);
         body.input_fidelity = 'high';
       }
       assertGptImage2BodyContract(body);
