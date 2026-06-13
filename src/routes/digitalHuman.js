@@ -111,6 +111,22 @@ function _mergeLuxuryProjectKeyframes(incoming, existing) {
   return merged;
 }
 
+function _mergeLuxuryProjectScenes(incoming, existing) {
+  if (!Array.isArray(incoming)) return Array.isArray(existing) ? existing : [];
+  if (!Array.isArray(existing) || !existing.length) return incoming;
+  if (!incoming.length) return existing;
+  const incomingMax = incoming.reduce((max, scene, fallbackIndex) => Math.max(max, _luxuryProjectFrameIndex(scene || {}, fallbackIndex) + 1), 0);
+  const merged = existing.slice();
+  const shouldMergeByIndex = incoming.length < existing.length || incomingMax > incoming.length;
+  if (!shouldMergeByIndex && incoming.length >= existing.length) return incoming;
+  incoming.forEach((scene, fallbackIndex) => {
+    if (!scene || typeof scene !== 'object') return;
+    const idx = _luxuryProjectFrameIndex(scene, fallbackIndex);
+    merged[idx] = { ...(merged[idx] || {}), ...scene, index: idx, shot_index: idx };
+  });
+  return merged;
+}
+
 function _mergeLuxuryProjectSheets(incoming, existing) {
   if (!Array.isArray(incoming)) return Array.isArray(existing) ? existing : [];
   if (incoming.length) return incoming;
@@ -345,6 +361,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
   const keyframes = Array.isArray(result.keyframes) ? result.keyframes : (Array.isArray(body.keyframes) ? body.keyframes : null);
   const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : (Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : null);
+  const mergedScenes = _mergeLuxuryProjectScenes(scenes, existing?.scenes);
   const mergedKeyframes = _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
   const mergedStoryboardSheets = _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
@@ -355,7 +372,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const project_state = patch.project_state || body.project_state || _luxuryAdProductionStage({
     reviewOnly,
     finalKeyframes,
-    scenes: scenes || existing?.scenes || [],
+    scenes: mergedScenes,
     keyframes: mergedKeyframes,
     contract,
     errorCode: patch.error_code || result.code || result.details?.code || '',
@@ -378,7 +395,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
     resolution: result.resolution || existing?.resolution || '',
     brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
-    scenes: Array.isArray(scenes) ? scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)) : (existing?.scenes || []),
+    scenes: mergedScenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
     keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
     storyboard_sheets: _compactLuxuryAdProjectSheets(mergedStoryboardSheets),
     visual_asset: mergedStoryboardSheets.length ? _luxuryAdProjectVisualAsset(mergedStoryboardSheets) : (existing?.visual_asset || _luxuryAdProjectVisualAsset([])),
@@ -14014,12 +14031,17 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
   assetSummary = '',
 } = {}) {
   const providedCount = Array.isArray(segments) ? segments.length : 0;
+  const providedDurationSum = (Array.isArray(segments) ? segments : []).reduce((sum, seg) => {
+    const n = Number(seg?.duration ?? seg?.duration_sec ?? seg?.seconds ?? 0);
+    return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
   const targetDuration = providedCount
-    ? Math.max(1, Math.min(180, Math.round(Number(durationSec) || providedCount * 3 || 30)))
+    ? Math.max(1, Math.min(180, Math.round((providedDurationSum || Number(durationSec) || providedCount * 3 || 30) * 10) / 10))
     : Math.max(12, Math.min(90, Math.round(Number(durationSec) || 30)));
   const total = providedCount
     ? Math.max(1, Math.min(18, providedCount))
     : Math.max(4, Math.min(18, Number(shotCount) || 6));
+  const storyTotal = Math.max(total, Math.min(18, Math.round(Number(shotCount) || total)));
   const subject = productSubject || _deriveLuxuryProductSubject({ text, productName: '', assetSummary });
   const productLockPrompt = _luxuryProductLockPrompt(subject, { visual: text, content_prompt: text, asset_summary: assetSummary });
   let list = (Array.isArray(segments) ? segments : [])
@@ -14036,14 +14058,15 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
   }
   let cursor = 0;
   return list.map((raw, i) => {
+    const shotIndex = _luxuryProjectFrameIndex(raw, i);
     const remainingSlots = Math.max(0, list.length - i - 1);
     const dur = i === list.length - 1
       ? Math.max(2, Math.round((targetDuration - cursor) * 10) / 10)
       : Math.max(2, Math.min(Number(raw.duration) || Math.round((targetDuration / list.length) * 10) / 10, Math.round((targetDuration - cursor - remainingSlots * 2) * 10) / 10));
     const start = cursor;
     cursor += dur;
-    const role = _luxuryRoleAt(i, list.length, raw.role);
-    const fallbackOpts = { role, productSubject: subject, index: i, total: list.length, brief: text };
+    const role = _luxuryRoleAt(shotIndex, storyTotal, raw.role);
+    const fallbackOpts = { role, productSubject: subject, index: shotIndex, total: storyTotal, brief: text };
     const voiceover = _cleanLuxuryAdCopy(raw.narration || raw.voiceover || raw.ad_copy || raw.text || '', fallbackOpts);
     let visual = _cleanLuxuryAdVisual(raw.content_prompt || raw.scene_content || raw.visual || raw.scene || '', fallbackOpts);
     let action = String(raw.action || raw.visual_action || '').replace(/\s+/g, ' ').trim()
@@ -14052,10 +14075,10 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       ? raw.characters
       : (Array.isArray(raw.character_profiles) ? raw.character_profiles : []);
     const storyPanelNeeded = !_luxuryIsMacroDetailShot({ role, title: raw.title || '', content_prompt: visual, visual })
-      && _luxuryRoleNeedsStoryHuman(role, i, list.length);
+      && _luxuryRoleNeedsStoryHuman(role, shotIndex, storyTotal);
     if (storyPanelNeeded) {
-      visual = _luxuryStoryFirstHumanVisual({ visual, productSubject: subject, role, index: i, total: list.length, characters: storyCharactersForShot });
-      action = _luxuryStoryFirstHumanAction({ action, productSubject: subject, role, index: i, total: list.length, characters: storyCharactersForShot });
+      visual = _luxuryStoryFirstHumanVisual({ visual, productSubject: subject, role, index: shotIndex, total: storyTotal, characters: storyCharactersForShot });
+      action = _luxuryStoryFirstHumanAction({ action, productSubject: subject, role, index: shotIndex, total: storyTotal, characters: storyCharactersForShot });
     }
     action = _cleanLuxuryAdAction(action, fallbackOpts);
     const corePersonRequired = _luxuryStoryboardRequiresPerson({
@@ -14075,7 +14098,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       || _fallbackLuxuryAdEmotion({ role });
     const sfxAudio = String(raw.sfx_audio || raw.audio || '').replace(/\s+/g, ' ').trim()
       || _fallbackLuxuryAdAudio({ role });
-    const referenceIndex = Math.max(1, Math.round(Number(raw.reference_index ?? raw.referenceImageIndex ?? (i + 1)) || (i + 1)));
+    const referenceIndex = Math.max(1, Math.round(Number(raw.reference_index ?? raw.referenceImageIndex ?? (shotIndex + 1)) || (shotIndex + 1)));
     const referenceLabel = raw.reference_label || `@参考${referenceIndex}`;
     const rawTopviewPrompt = String(raw.topview_prompt || raw.reference_prompt || '').trim();
     const topviewPrompt = (!corePersonRequired && _luxuryIsMaterialProductShot({ title: raw.title || '', content_prompt: visual, visual }, subject) && _luxuryLooksLikeHumanInstruction(rawTopviewPrompt))
@@ -14107,9 +14130,10 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     ].filter(Boolean).join(' ');
     return _enrichLuxuryStoryboardScene({
       ...raw,
-      index: i,
+      index: shotIndex,
+      shot_index: shotIndex,
       role,
-      story_stage: _normalizeLuxurySceneStage(raw.story_stage, role, i, list.length),
+      story_stage: _normalizeLuxurySceneStage(raw.story_stage, role, shotIndex, storyTotal),
       shot_size: shotAngle,
       shot_angle: shotAngle,
       start,
@@ -14150,7 +14174,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       topview_prompt: topviewPrompt || (corePersonRequired
         ? `生成真人广告故事板画面：${visual || voiceover}。人物、真实空间和${subject}证据必须同框；不要生成纯产品、纯材料、空仓库或空外立面；不生成画面文字。`
         : _luxuryProductOnlyTopviewPrompt({ visual: visual || voiceover, referenceLabel, subject })),
-    }, i, list.length, adStyle);
+    }, shotIndex, storyTotal, adStyle);
   });
 }
 
@@ -15010,6 +15034,7 @@ function _lockLuxuryScenesToProvidedSegments(scenes = [], segments = []) {
   return scenes.map((scene, index) => {
     const segment = segments[index] && typeof segments[index] === 'object' ? segments[index] : null;
     if (!segment) return scene;
+    const shotIndex = _luxuryProjectFrameIndex(segment, _luxuryProjectFrameIndex(scene, index));
     const title = _luxuryStrictText(segment.title || scene.title || '', 120);
     const voiceover = _luxuryStrictText(segment.voiceover || segment.narration || segment.text || scene.voiceover || scene.narration || '', 500);
     const visual = _luxuryStrictText(segment.visual_prompt || segment.visual || segment.content_prompt || segment.scene_content || segment.text || scene.visual || scene.content_prompt || '', 900);
@@ -15019,6 +15044,8 @@ function _lockLuxuryScenesToProvidedSegments(scenes = [], segments = []) {
     const visualPrompt = [directorPrompt, visual].filter(Boolean).join(' ').slice(0, 2800);
     return {
       ...scene,
+      index: shotIndex,
+      shot_index: shotIndex,
       confirmed_segment_locked: true,
       title: title || scene.title,
       role: segment.role || scene.role,
