@@ -1967,19 +1967,48 @@ function _jsonFromVisionReply(raw = '') {
   if (!text) {
     throw new Error('视觉质检模型未返回 JSON 内容');
   }
-  const stripped = text
+  const stripFence = value => String(value || '')
+    .trim()
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
-  const jsonObject = _extractFirstBalancedJsonObject(stripped);
-  if (!jsonObject && !stripped.startsWith('{')) {
+  const parseObject = (value, depth = 0) => {
+    const stripped = stripFence(value);
+    if (!stripped) return null;
+    const directCandidates = [stripped];
+    if (/^["']\s*\{/.test(stripped) || /\\"pass\\"|\\"score\\"|\\"subject_match\\"/.test(stripped)) {
+      directCandidates.push(stripped.replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
+    }
+    for (const candidate of directCandidates) {
+      try {
+        const parsed = JSON.parse(candidate);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+        if (typeof parsed === 'string' && depth < 2) {
+          const nested = parseObject(parsed, depth + 1);
+          if (nested) return nested;
+        }
+      } catch (_) {}
+      const jsonObject = _extractFirstBalancedJsonObject(candidate);
+      if (jsonObject) {
+        try {
+          const parsed = JSON.parse(jsonObject);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+          if (typeof parsed === 'string' && depth < 2) {
+            const nested = parseObject(parsed, depth + 1);
+            if (nested) return nested;
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  };
+  const parsed = parseObject(text);
+  if (parsed) return parsed;
+  const stripped = stripFence(text);
+  if (!_extractFirstBalancedJsonObject(stripped) && !stripped.startsWith('{') && !stripped.startsWith('"')) {
     throw new Error(`视觉质检模型返回内容不是 JSON：${stripped.slice(0, 120)}`);
   }
-  try {
-    return JSON.parse(jsonObject || stripped);
-  } catch (err) {
-    throw new Error(`视觉质检模型返回 JSON 不完整或格式错误：${stripped.slice(0, 180)}`);
-  }
+  throw new Error(`视觉质检模型返回 JSON 不完整或格式错误：${stripped.slice(0, 180)}`);
 }
 
 function _qaJsonFromVisionProse(raw = '') {
@@ -3155,6 +3184,42 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
       } catch (parseErr) {
         const repairedParsed = _qaJsonFromMalformedVisionJson(raw);
         if (repairedParsed) {
+          if (/malformed JSON with positive fields/i.test(String(repairedParsed.reason || ''))) {
+            try {
+              const retryPrompt = [
+                'STRICT JSON OUTPUT RETRY. The previous QA answer contained positive fields but was not parseable JSON.',
+                'Return exactly one valid JSON object. Do not wrap it in quotes. Do not escape JSON quotes. No markdown. No prose.',
+                'Required schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
+                'All six quality_dimensions fields are mandatory numbers. Empty arrays must be [].',
+                'Re-evaluate the attached image(s) using this original QA contract:',
+                _compactQaText(prompt, 5200),
+              ].join(' ');
+              const retryContent = [
+                { type: 'text', text: retryPrompt },
+                ...imageDataUrls.filter(Boolean).map(url => ({ type: 'image_url', image_url: { url } })),
+              ];
+              const retryPayload = {
+                ...payload,
+                messages: [{ role: 'user', content: retryContent }],
+                max_tokens: Math.max(maxTokens, 2200),
+              };
+              const retryResponse = await axios.post(`${candidate.baseUrl}/chat/completions`, retryPayload, {
+                headers: candidate.headers,
+                timeout: 45000,
+              });
+              const retryRaw = retryResponse.data?.choices?.[0]?.message?.content || '';
+              const retryParsed = _jsonFromVisionReply(retryRaw);
+              attempts.push({ provider: `${candidate.id}/${candidate.model}`, ok: true, repaired_json: true, qa_json_retry: true });
+              return { parsed: retryParsed, provider: `${candidate.id}/${candidate.model}` };
+            } catch (retryErr) {
+              attempts.push({
+                provider: `${candidate.id}/${candidate.model}`,
+                ok: false,
+                repaired_json_retry_failed: true,
+                error: _extractProviderErrorMessage(retryErr),
+              });
+            }
+          }
           attempts.push({ provider: `${candidate.id}/${candidate.model}`, ok: true, repaired_json: true });
           return { parsed: repairedParsed, provider: `${candidate.id}/${candidate.model}` };
         }
