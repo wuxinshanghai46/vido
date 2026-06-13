@@ -2059,9 +2059,51 @@ function _luxurySoftwareWorkflowEvidencePrompt(productSubject = 'software workfl
   const subject = String(productSubject || 'software workflow').trim();
   return [
     `The visible product evidence for "${subject}" is the real service workflow, not a physical package.`,
-    'Acceptable evidence must come from the confirmed brief, assets or storyboard: actor/action, device, document, tool, place, interface, result, before-after state or other explicitly required carrier.',
+    'Acceptable evidence must come from the confirmed brief, uploaded assets, storyboard contract or this shot text; do not invent a fixed carrier that the script did not require.',
     'Readable brand text is not required; the workflow must be visually clear through confirmed action, evidence and environment without defaulting to any industry template.',
   ].join(' ');
+}
+
+function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = 'software workflow') {
+  const text = [
+    productSubject,
+    scene.product_subject,
+    scene.title,
+    scene.objective,
+    scene.intent,
+    scene.purpose,
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.display_visual,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.material_usage,
+    scene.material_hint,
+    scene.qa_contract,
+    scene.director_prompt,
+    scene.visual_contract?.image_prompt,
+    Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.join(' ') : '',
+  ].filter(Boolean).join(' ');
+  const evidence = [];
+  const add = (pattern, label) => {
+    if (pattern.test(text) && !evidence.includes(label)) evidence.push(label);
+  };
+  add(/UI|界面|工作台|看板|仪表盘|后台|屏幕|interface|workspace|dashboard|screen/i, 'interface/workspace evidence named by the shot');
+  add(/API|接口|开放平台|api/i, 'API/interface access evidence named by the shot');
+  add(/小说|剧本|文案|脚本|script|novel|copywriting/i, 'writing or script creation output named by the shot');
+  add(/漫剧|漫画|分镜|storyboard|comic|manga|drama/i, 'comic/drama/storyboard creation output named by the shot');
+  add(/广告|商业片|宣传片|ad\b|advertising|campaign/i, 'advertising creation workflow or result named by the shot');
+  add(/数字人|口播|讲解员|digital human|avatar/i, 'digital-human creation evidence named by the shot');
+  add(/视频|成片|剪辑|图生视频|文生视频|video|editing/i, 'video creation or finished-output evidence named by the shot');
+  add(/多模型|聚合|稳定|便捷|窗口|一站式|multi[-\s]?model|aggregation|stable|convenient/i, 'workflow consolidation or multi-model aggregation evidence named by the shot');
+  if (!evidence.length) {
+    return 'Script-derived workflow evidence: use only the concrete workflow/use/result evidence stated by this shot and the confirmed brief; do not invent a fixed device, retail scene, dashboard, order form or physical package.';
+  }
+  return `Script-derived workflow evidence for this shot: ${evidence.join('; ')}. Do not require all platform capabilities in every frame; visualize only the evidence named or clearly implied by this shot.`;
 }
 
 // 中文说明：动作字段只描述人物/主体行为；背景、镜头、光线和构图应留在 visual/camera 字段，
@@ -17609,6 +17651,9 @@ function _luxuryGptImage2EditPrompt({
   );
   const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
   const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || subject, scene);
+  const workflowEvidenceRule = softwareWorkflowSubject
+    ? _luxurySoftwareWorkflowEvidenceFromScene(scene, productSubject || scene.product_subject || subject)
+    : '';
   const refKinds = (Array.isArray(refs) ? refs : []).slice(0, 6).map((ref, idx) => {
     const kind = String(ref?.kind || '').trim();
     const label = /^identity_reference/.test(kind)
@@ -17628,7 +17673,7 @@ function _luxuryGptImage2EditPrompt({
     : 'Only include people if the shot description asks for them.';
   const location = _luxuryExpectedEnvironmentFromContract(scene);
   const locationRule = softwareWorkflowSubject
-    ? 'Place the action in a real creator/workplace environment for the confirmed software platform workflow: desk, laptop/tablet, creation workspace, production console, review room or practical collaboration setting. Do not use a fashion boutique, handbag shelf, cosmetics counter, retail showroom, jewelry store or unrelated luxury product background.'
+    ? 'Place the action in the real environment required or implied by this shot and its confirmed workflow evidence. Do not copy the identity-reference background or switch to an unrelated retail, boutique, shelf, cosmetics, jewelry, warehouse, order-management or physical-package scene unless this exact shot asks for it.'
     : location.wantsInterior && !location.wantsExterior
       ? 'Place the action in a real premium indoor store, showroom, counter, office or consultation area with believable depth.'
       : location.wantsExterior && !location.wantsInterior
@@ -17637,7 +17682,7 @@ function _luxuryGptImage2EditPrompt({
   return _luxuryFitImagePromptParts([
     `Create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
-    softwareWorkflowSubject ? 'Software/service workflow lock: the advertised subject is the platform workflow and result, not a physical retail product. Show VIDO-like creation evidence through an actor using or reacting to a creation workspace/interface/document/output; avoid readable fake UI text.' : '',
+    softwareWorkflowSubject ? `Software/service workflow lock: the advertised subject is the workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
     presenterRule,
     visual ? `Scene content: ${visual}.` : '',
     action ? `Actor action and expression: ${action}.` : '',
