@@ -182,6 +182,7 @@ function summarizeGptImage2Request(endpoint, body = {}) {
     endpoint,
     body_keys: Object.keys(body || {}).sort(),
     size: body.size || '',
+    input_fidelity: body.input_fidelity || '',
     output_format: body.output_format || '',
     n: body.n || 0,
     image_count: images.length,
@@ -258,7 +259,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  * @param {string} [opts.agentId]
  * @returns {Promise<{ urls:string[], taskId:string }>}
  */
-async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], timeoutMs = 180000, userId = null, agentId = null }) {
+async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = 180000, userId = null, agentId = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
@@ -280,7 +281,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
           .map(normalizeGptImage2Reference)
           .filter(Boolean)
           .map(image_url => ({ image_url }));
-        body.input_fidelity = 'high';
+        const fidelity = String(inputFidelity || 'high').trim().toLowerCase();
+        body.input_fidelity = fidelity === 'low' ? 'low' : 'high';
       }
       assertGptImage2BodyContract(body);
       const endpoint = isEdit ? '/images/edits' : '/images/generations';

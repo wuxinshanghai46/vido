@@ -5457,7 +5457,7 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
   return outPath;
 }
 
-async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRatio, filename, destDir, referenceImages = [], outputSize = 'standard', resolution = '' }) {
+async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRatio, filename, destDir, referenceImages = [], outputSize = 'standard', resolution = '', inputFidelity = 'high' }) {
   if (!model) throw new Error('missing image model');
   const promptCap = String(model || '').toLowerCase() === 'gpt-image-2' ? 30000 : 2000;
   if (typeof prompt === 'string' && prompt.length > promptCap) {
@@ -5490,6 +5490,7 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
       size,
       aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
       referenceImages: (referenceImages || []).filter(Boolean).slice(0, 4),
+      inputFidelity,
       timeoutMs: 180000,
       agentId: 'digital_human_step1',
     });
@@ -18463,7 +18464,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           return key && arr.findIndex(x => x[1].map(ref => ref.resolved).filter(Boolean).join('|') === key) === i;
         });
         if (!refModes.length) refModes.push(['generation', []]);
-        const runGptImage2 = (refItemsForMode, suffix) => _generateViaDeyunaiSpecificImageModel({
+        const runGptImage2 = (refItemsForMode, suffix, inputFidelity = 'high') => _generateViaDeyunaiSpecificImageModel({
           model: rawModelId,
           prompt: promptForAttempt,
           aspectRatio: safeAspectRatio,
@@ -18471,32 +18472,51 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           destDir,
           referenceImages: refItemsForMode.map(ref => ref.resolved).filter(Boolean),
           outputSize,
+          inputFidelity,
         });
         let lastGptErr = null;
         for (let modeIndex = 0; modeIndex < refModes.length; modeIndex++) {
           const [modeName, refItemsForMode] = refModes[modeIndex];
-          try {
-            // 中文说明：保身份降参重试。不是去掉演员身份，而是逐步减少非必要参考图，
-            // 规避通道 500/审核不稳，同时保留主身份照和少量主体证据。
-            return await runGptImage2(refItemsForMode, modeIndex === 0 ? '' : `_${modeName}`);
-          } catch (err) {
-            lastGptErr = err;
-            const mayRetryWithFewerRefs = modeIndex < refModes.length - 1
-              && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
-            addAttempt(model, false, err, {
-              prompt_chars: Array.from(String(promptForAttempt || '')).length,
-              prompt_mode: 'gpt-image-2-audit-safe-edit',
-              reference_retry_mode: `gpt-image-2-edits-${modeName}`,
-              reference_count: refItemsForMode.length,
-              all_reference_count: refs.length,
-              reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
-              provider_request: err.providerRequest || null,
-              image_url: candidateImageUrl(err._luxuryCandidatePath),
-              next_retry: mayRetryWithFewerRefs ? 'same-model-fewer-references' : '',
-              rule: 'reference_preserving_required_for_locked_actor_keyframe',
-            });
-            console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}); ${mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry'}:`, shortError(err));
-            if (!mayRetryWithFewerRefs) break;
+          const fidelityModes = refItemsForMode.length ? ['high', 'low'] : ['high'];
+          for (let fidelityIndex = 0; fidelityIndex < fidelityModes.length; fidelityIndex++) {
+            const inputFidelity = fidelityModes[fidelityIndex];
+            try {
+              // 中文说明：仍使用漫路 Image2。先按高保真保身份，若供应商 500，
+              // 再按接口文档默认 low fidelity 排查同一参考组，最后才减少参考图。
+              const suffixParts = [
+                modeIndex === 0 ? '' : modeName,
+                inputFidelity === 'low' ? 'lowfid' : '',
+              ].filter(Boolean);
+              return await runGptImage2(refItemsForMode, suffixParts.length ? `_${suffixParts.join('_')}` : '', inputFidelity);
+            } catch (err) {
+              lastGptErr = err;
+              const mayRetryLowFidelity = inputFidelity === 'high'
+                && fidelityIndex < fidelityModes.length - 1
+                && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
+              const mayRetryWithFewerRefs = !mayRetryLowFidelity
+                && fidelityIndex === fidelityModes.length - 1
+                && modeIndex < refModes.length - 1
+                && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
+              addAttempt(model, false, err, {
+                prompt_chars: Array.from(String(promptForAttempt || '')).length,
+                prompt_mode: 'gpt-image-2-audit-safe-edit',
+                reference_retry_mode: `gpt-image-2-edits-${modeName}`,
+                input_fidelity: inputFidelity,
+                reference_count: refItemsForMode.length,
+                all_reference_count: refs.length,
+                reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+                reference_urls: refItemsForMode.map(x => x.resolved || '').filter(Boolean).slice(0, 8),
+                provider_request: err.providerRequest || null,
+                image_url: candidateImageUrl(err._luxuryCandidatePath),
+                next_retry: mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : ''),
+                rule: 'reference_preserving_required_for_locked_actor_keyframe',
+              });
+              console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}, input_fidelity=${inputFidelity}); ${mayRetryLowFidelity ? 'retrying low fidelity' : (mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry')}:`, shortError(err));
+              if (mayRetryLowFidelity) continue;
+              if (mayRetryWithFewerRefs) break;
+              modeIndex = refModes.length;
+              break;
+            }
           }
         }
         if (lastGptErr) lastGptErr._luxuryAttemptRecorded = true;
