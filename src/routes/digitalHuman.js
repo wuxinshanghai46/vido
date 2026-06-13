@@ -4249,6 +4249,49 @@ async function _fetchImageBuffer(url) {
   return Buffer.from(r.data);
 }
 
+async function _prepareDeyunaiGptImage2ReferenceUrl(req, imageUrl, { kind = '', index = 0 } = {}) {
+  const url = String(imageUrl || '').trim();
+  if (!url) return '';
+  const sharp = _loadSharp();
+  if (!sharp) return url;
+  const hash = crypto
+    .createHash('sha1')
+    .update([url, kind, 'gpt-image-2-clean-jpeg-v1'].join('|'))
+    .digest('hex')
+    .slice(0, 16);
+  const outName = `gpt_image2_ref_${hash}_${Math.max(0, Number(index) || 0)}.jpg`;
+  const outPath = path.join(JIMENG_ASSETS_DIR, outName);
+  if (!fs.existsSync(outPath)) {
+    const buf = await _fetchImageBuffer(url);
+    await sharp(buf)
+      .rotate()
+      .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 92, mozjpeg: true })
+      .toFile(outPath);
+  }
+  return `${_publicBaseUrl(req)}/public/jimeng-assets/${outName}`;
+}
+
+async function _prepareDeyunaiGptImage2ReferenceItems(req, refItems = [], { maxRefs = 1 } = {}) {
+  const limit = Math.max(1, Math.min(4, Math.round(Number(maxRefs) || 1)));
+  const items = Array.isArray(refItems) ? refItems.filter(ref => ref?.resolved) : [];
+  const prepared = [];
+  for (let i = 0; i < items.length && prepared.length < limit; i++) {
+    const ref = items[i];
+    const cleanUrl = await _prepareDeyunaiGptImage2ReferenceUrl(req, ref.resolved, { kind: ref.kind || '', index: i });
+    if (cleanUrl) {
+      prepared.push({
+        ...ref,
+        original_resolved: ref.resolved,
+        resolved: cleanUrl,
+        normalized_for_provider: 'deyunai_gpt_image_2_clean_jpeg',
+      });
+    }
+  }
+  return prepared;
+}
+
 function _publicBaseUrl(req) {
   const fromEnv = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -18586,17 +18629,21 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         });
         if (!refModes.length) refModes.push(['generation', []]);
         const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 2)) || 2));
+        const maxGptImage2RefsPerCall = Math.max(1, Math.min(2, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_REFS_PER_CALL || 1)) || 1));
         let gptImage2CallCount = 0;
-        const runGptImage2 = (refItemsForMode, suffix, inputFidelity = 'high') => _generateViaDeyunaiSpecificImageModel({
-          model: rawModelId,
-          prompt: promptForAttempt,
-          aspectRatio: safeAspectRatio,
-          filename: `${filename}_deyunai_${idx}${suffix}`,
-          destDir,
-          referenceImages: refItemsForMode.map(ref => ref.resolved).filter(Boolean),
-          outputSize,
-          inputFidelity,
-        });
+        const runGptImage2 = async (refItemsForMode, suffix, inputFidelity = 'high') => {
+          const preparedRefs = await _prepareDeyunaiGptImage2ReferenceItems(req, refItemsForMode, { maxRefs: maxGptImage2RefsPerCall });
+          return _generateViaDeyunaiSpecificImageModel({
+            model: rawModelId,
+            prompt: promptForAttempt,
+            aspectRatio: safeAspectRatio,
+            filename: `${filename}_deyunai_${idx}${suffix}`,
+            destDir,
+            referenceImages: preparedRefs.map(ref => ref.resolved).filter(Boolean),
+            outputSize,
+            inputFidelity,
+          });
+        };
         let lastGptErr = null;
         for (let modeIndex = 0; modeIndex < refModes.length; modeIndex++) {
           const [modeName, refItemsForMode] = refModes[modeIndex];
@@ -18633,13 +18680,15 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 prompt_mode: 'gpt-image-2-audit-safe-edit',
                 reference_retry_mode: `gpt-image-2-edits-${modeName}`,
                 input_fidelity: inputFidelity,
-                reference_count: refItemsForMode.length,
+                reference_count: Math.min(refItemsForMode.length, maxGptImage2RefsPerCall),
                 all_reference_count: refs.length,
                 reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
-                reference_urls: refItemsForMode.map(x => x.resolved || '').filter(Boolean).slice(0, 8),
+                reference_urls: refItemsForMode.map(x => x.resolved || '').filter(Boolean).slice(0, maxGptImage2RefsPerCall),
                 provider_request: err.providerRequest || null,
                 image_url: candidateImageUrl(err._luxuryCandidatePath),
                 call_budget: `${gptImage2CallCount}/${maxGptImage2Calls}`,
+                max_refs_per_call: maxGptImage2RefsPerCall,
+                reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
                 next_retry: mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : ''),
                 rule: 'reference_preserving_required_for_locked_actor_keyframe',
               });
