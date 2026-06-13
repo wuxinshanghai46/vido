@@ -18017,6 +18017,50 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
   return _luxuryCapImageModelPrompt(text, softwareWorkflowSubject ? 1900 : 1500);
 }
 
+function _luxuryDeyunaiAuditNeutralText(value = '', max = 180) {
+  return _compactLuxuryKeyframeText(value, max)
+    .replace(/\bDigital\s+Human\b|\bdigital[-\s]?human\b/gi, 'onscreen presenter output')
+    .replace(/\bAPI\s*key\b|\bAPI\b|\bsecret\b|\btoken\b|\bpassword\b|\bcallback\b|\bvoice\b|\bspeaking\b/gi, 'abstract interface signal')
+    .replace(/数字人|口播|说话|开口说话/g, '屏幕演示人物')
+    .replace(/广告|投放|营销/g, '内容成品')
+    .replace(/密钥|密码|令牌|接口|回调|调用成功|代码|账号|登录/g, '抽象状态')
+    .replace(/可读文字|文字|字幕|品牌口号|logo/gi, '抽象界面标记')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
+  scene = {},
+  productSubject = '',
+  aspectRatio = '16:9',
+  personRequired = false,
+} = {}) {
+  const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
+  const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
+  const subject = _luxuryDeyunaiAuditNeutralText(
+    _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || 'creative workflow'),
+    80,
+  ) || 'creative workflow';
+  const narration = _luxuryDeyunaiAuditNeutralText(scene.voiceover || scene.narration || scene.text || '', 140);
+  const action = _luxuryDeyunaiAuditNeutralText(scene.action || scene.visual_action || scene.character_action || '', 150);
+  const emotion = _luxuryDeyunaiAuditNeutralText(scene.emotion || scene.mood || scene.emotional_change || scene.objective || '', 140);
+  const actor = personRequired
+    ? 'Use the same actor appearance from the reference image; keep face impression, age range, hairstyle and outfit family consistent.'
+    : 'Include a person only if the shot requires it.';
+  return _luxuryCapImageModelPrompt([
+    `Photorealistic storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
+    actor,
+    `Subject context: ${subject} shown as a real creator workflow moment.`,
+    narration ? `Story beat to express: ${narration}.` : '',
+    action ? `Actor action: ${action}.` : 'Actor works naturally at a desk with a laptop or monitor.',
+    emotion ? `Expression direction: ${emotion}.` : '',
+    'Scene: practical creator workspace, desk, laptop or monitor, notes and abstract interface shapes.',
+    'Screen content: abstract blocks, module icons, thumbnails, timeline shapes, status dots and preview cards; all marks are unreadable.',
+    'Keep the frame clean: no captions, slogans, watermarks, posters, floating diagrams, product packaging, extra people or readable documents.',
+    'Natural live-action photography, realistic hands, practical light and believable depth.',
+  ].filter(Boolean).join(' '), 1150);
+}
+
 function _luxuryGptImage2EditPrompt({
   prompt = '',
   scene = {},
@@ -18878,11 +18922,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 2)) || 2));
         const maxGptImage2RefsPerCall = Math.max(1, Math.min(2, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_REFS_PER_CALL || 1)) || 1));
         let gptImage2CallCount = 0;
-        const runGptImage2 = async (refItemsForMode, suffix, inputFidelity = 'high') => {
+        const runGptImage2 = async (refItemsForMode, suffix, inputFidelity = 'high', promptOverride = promptForAttempt) => {
           const preparedRefs = await _prepareDeyunaiGptImage2ReferenceItems(req, refItemsForMode, { maxRefs: maxGptImage2RefsPerCall });
           return _generateViaDeyunaiSpecificImageModel({
             model: rawModelId,
-            prompt: promptForAttempt,
+            prompt: promptOverride,
             aspectRatio: safeAspectRatio,
             filename: `${filename}_deyunai_${idx}${suffix}`,
             destDir,
@@ -18914,6 +18958,40 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               lastGptErr = err;
               const auditSubmitRejected = /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(err.message || err?.response?.data || ''));
               const reachedCallBudget = gptImage2CallCount >= maxGptImage2Calls;
+              if (auditSubmitRejected && !reachedCallBudget) {
+                const minimalAuditPrompt = _luxuryDeyunaiGptImage2MinimalAuditPrompt({
+                  scene: currentScene,
+                  productSubject,
+                  aspectRatio: safeAspectRatio,
+                  personRequired,
+                });
+                try {
+                  gptImage2CallCount += 1;
+                  return await runGptImage2(refItemsForMode, '_auditminimal', 'high', minimalAuditPrompt);
+                } catch (minimalErr) {
+                  lastGptErr = minimalErr;
+                  addAttempt(model, false, minimalErr, {
+                    prompt_chars: Array.from(String(minimalAuditPrompt || '')).length,
+                    prompt_mode: 'gpt-image-2-audit-minimal-edit',
+                    reference_retry_mode: `gpt-image-2-edits-${modeName}-auditminimal`,
+                    input_fidelity: 'high',
+                    reference_count: Math.min(refItemsForMode.length, maxGptImage2RefsPerCall),
+                    all_reference_count: refs.length,
+                    reference_kinds: refItemsForMode.map(x => x.kind || '').filter(Boolean).slice(0, 8),
+                    reference_urls: refItemsForMode.map(x => x.resolved || '').filter(Boolean).slice(0, maxGptImage2RefsPerCall),
+                    provider_request: minimalErr.providerRequest || null,
+                    image_url: candidateImageUrl(minimalErr._luxuryCandidatePath),
+                    call_budget: `${gptImage2CallCount}/${maxGptImage2Calls}`,
+                    max_refs_per_call: maxGptImage2RefsPerCall,
+                    reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
+                    audit_rejection: /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(minimalErr.message || minimalErr?.response?.data || ''))
+                      ? 'provider_submit_audit_rejected_minimal_prompt'
+                      : undefined,
+                    rule: 'same_model_minimal_audit_safe_prompt_after_submit_rejection',
+                  });
+                  console.warn(`[DH/luxury-ad] deyunai gpt-image-2 minimal audit prompt failed (${modeName}):`, shortError(minimalErr));
+                }
+              }
               const mayRetryLowFidelity = inputFidelity === 'high'
                 && !auditSubmitRejected
                 && !reachedCallBudget
