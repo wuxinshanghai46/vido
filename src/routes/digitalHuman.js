@@ -119,14 +119,20 @@ function _luxuryProjectKeyframeHasTrustedQa(kf = {}) {
   const qa = kf.qa && typeof kf.qa === 'object' ? kf.qa : null;
   if (!qa) return false;
   const reason = String(qa.reason || '').toLowerCase();
-  if (/malformed json|prose approval|not auditable|不可审计/.test(reason)) return false;
+  if (/malformed json|prose approval|not auditable|weak match|workflow mismatch|scene differ|mismatch|reject|not match|不可审计|不一致|拒绝/.test(reason)) return false;
   const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : null;
   const requiredDims = ['realism', 'asset_fidelity', 'scene_continuity', 'product_fidelity'];
   const dimsReady = !!dims && requiredDims.every(key => Number.isFinite(Number(dims[key])) && Number(dims[key]) > 0);
+  const explicitSubjectMatch = qa.subject_match === true || qa.subjectMatch === true || qa.character_match === true || qa.characterConsistency === true;
+  const explicitStoryboardMatch = qa.storyboard_match === true || qa.storyboardMatch === true || qa.scene_match === true || qa.sceneMatch === true;
+  const explicitSubjectReject = qa.subject_match === false || qa.subjectMatch === false || qa.character_match === false || qa.characterConsistency === false;
+  const explicitStoryboardReject = qa.storyboard_match === false || qa.storyboardMatch === false || qa.scene_match === false || qa.sceneMatch === false;
+  const scoreReady = Number(qa.score) >= 70;
+  const explicitMatchesReady = explicitSubjectMatch && explicitStoryboardMatch;
+  const legacyPositiveReady = scoreReady && !explicitSubjectReject && !explicitStoryboardReject;
   return dimsReady
     && (qa.pass === true || qa.accepted_with_warning === true)
-    && qa.subject_match === true
-    && qa.storyboard_match === true;
+    && (explicitMatchesReady || legacyPositiveReady);
 }
 
 function _luxuryProjectFrameIndex(kf = {}, fallback = 0) {
