@@ -211,6 +211,7 @@ function _compactLuxuryAdProjectScene(scene = {}, index = 0) {
 
 function _compactLuxuryAdProjectKeyframe(kf = {}, index = 0) {
   if (!kf || typeof kf !== 'object') return {};
+  const shotIndex = _luxuryProjectFrameIndex(kf, index);
   const qa = kf.qa && typeof kf.qa === 'object'
     ? {
       pass: !!kf.qa.pass,
@@ -220,7 +221,8 @@ function _compactLuxuryAdProjectKeyframe(kf = {}, index = 0) {
     }
     : undefined;
   return {
-    index,
+    index: shotIndex,
+    shot_index: shotIndex,
     image_url: kf.image_url || kf.imageUrl || kf.url || '',
     reference_mode: kf.reference_mode || '',
     source_avatar_url: kf.source_avatar_url || '',
@@ -21306,6 +21308,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         });
         scenes[i] = sc;
       }
+      const publicShotIndex = _luxuryProjectFrameIndex(sc, i);
       const lockedLuxuryReference = isLuxury && luxuryShotRefInfo.canLockReference ? (luxuryShotRefInfo.active || luxuryShotRefs[0] || '') : '';
       if (isLuxury) {
         _assertLuxuryKeyframeContractReady({
@@ -21323,6 +21326,8 @@ router.post('/spaces/keyframes', async (req, res) => {
         const lockedIndex = Math.max(0, luxuryReferences.indexOf(lockedLuxuryReference));
         keyframes.push({
           ...sc,
+          index: publicShotIndex,
+          shot_index: publicShotIndex,
           image_url: lockedUrl,
           local_path: '',
           reference_mode: 'reference_locked_keyframe',
@@ -21394,9 +21399,9 @@ router.post('/spaces/keyframes', async (req, res) => {
           },
           aspectRatio,
           outputSize: normalizedOutputSize,
-          filename: `digital_ad_preview_${taskId}_kf_${String(i + 1).padStart(2, '0')}`,
+          filename: `digital_ad_preview_${taskId}_kf_${String(publicShotIndex + 1).padStart(2, '0')}`,
           destDir: JIMENG_ASSETS_DIR,
-          index: i,
+          index: publicShotIndex,
           guideGender: guide_gender,
           qaCheck: isLuxury ? ({ outPath }) => _checkLuxuryKeyframeMatchesStoryboard(req, {
             resultPath: outPath,
@@ -21429,7 +21434,7 @@ router.post('/spaces/keyframes', async (req, res) => {
                 ...(briefReferenceImages || []),
               ].filter(Boolean),
             },
-            shotIndex: i,
+            shotIndex: publicShotIndex,
             totalShots: scenes.length,
             productSubject,
           }) : null,
@@ -21440,13 +21445,13 @@ router.post('/spaces/keyframes', async (req, res) => {
         if (!isLuxury) throw shotErr;
         const shotAttempts = shotErr.luxuryKeyframeAttempts || shotErr.details?.luxuryKeyframeAttempts || shotErr.details?.attempts || [];
         luxuryKeyframeShotFailures.push({
-          shot_index: i,
-          title: sc.title || sc.label || `镜头 ${i + 1}`,
+          shot_index: publicShotIndex,
+          title: sc.title || sc.label || `镜头 ${publicShotIndex + 1}`,
           error: shotErr.message || String(shotErr),
           code: shotErr.code || '',
           attempts: Array.isArray(shotAttempts) ? shotAttempts : [],
         });
-        console.warn(`[DH/spaces/keyframes] shot ${i + 1} keyframe failed; continuing remaining shots:`, shotErr.message || shotErr);
+        console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} keyframe failed; continuing remaining shots:`, shotErr.message || shotErr);
         continue;
       }
       let keyframeQa = shotPlan?.qa || null;
@@ -21482,7 +21487,7 @@ router.post('/spaces/keyframes', async (req, res) => {
               ...(briefReferenceImages || []),
             ].filter(Boolean),
           },
-          shotIndex: i,
+          shotIndex: publicShotIndex,
           totalShots: scenes.length,
           productSubject,
         });
@@ -21500,19 +21505,21 @@ router.post('/spaces/keyframes', async (req, res) => {
             throw err;
           }
           luxuryKeyframeShotFailures.push({
-            shot_index: i,
-            title: sc.title || sc.label || `镜头 ${i + 1}`,
-            error: `第 ${i + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`,
+            shot_index: publicShotIndex,
+            title: sc.title || sc.label || `镜头 ${publicShotIndex + 1}`,
+            error: `第 ${publicShotIndex + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`,
             code: 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED',
             qa: keyframeQa,
           });
-          console.warn(`[DH/spaces/keyframes] shot ${i + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
+          console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
           continue;
         }
       }
       const url = `${base}/public/jimeng-assets/${path.basename(keyframePath)}`;
       keyframes.push({
         ...sc,
+        index: publicShotIndex,
+        shot_index: publicShotIndex,
         image_url: url,
         local_path: keyframePath,
         reference_mode: shotPlan?.kind === 'integrated_avatar_background'
