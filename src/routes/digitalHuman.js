@@ -2042,8 +2042,10 @@ function _luxuryIsSoftwareWorkflowSubject(productSubject = '', scene = {}) {
   ].filter(Boolean).join(' ');
   if (/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text)) return false;
   const creativeVideo = /视频创作|漫剧|短剧|剧情广告|视频生成|文生视频|图生视频|分镜|剧本|剪辑|成片|数字人|创作工具|AI视频|video\s*(creation|generation|editing)|storyboard|script|drama|comic|manga/i.test(text);
+  const creativePlatformEvidence = /VIDO|平台|软件|工具|系统|SaaS|应用|App\b|APP\b|工作台|界面|API|接口|多模型|聚合|platform|software|tool|workspace|interface|api|multi[-\s]?model/i.test(text);
   const orderWorkflow = /AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|采购订单|采购单|库存管理|补货|库存预警|排单|收银|点餐|OMS|WMS|ordering|order\s*management|purchase\s*order|procurement|inventory|restock|retail\s*ops|store\s*ops/i.test(text);
   if (orderWorkflow) return true;
+  if (creativeVideo && creativePlatformEvidence) return true;
   if (creativeVideo) return false;
 
   // 中文说明：这里不能把“平台/AI/系统/助手/接口”这些泛词直接判成订单/采购工作流。
@@ -17606,6 +17608,7 @@ function _luxuryGptImage2EditPrompt({
     150,
   );
   const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
+  const softwareWorkflowSubject = _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || subject, scene);
   const refKinds = (Array.isArray(refs) ? refs : []).slice(0, 6).map((ref, idx) => {
     const kind = String(ref?.kind || '').trim();
     const label = /^identity_reference/.test(kind)
@@ -17621,17 +17624,20 @@ function _luxuryGptImage2EditPrompt({
     /identity_reference|presenter/i.test(String(ref?.kind || '')));
   const needsPresenter = !!personRequired || hasHumanReference || !!characterLock;
   const presenterRule = needsPresenter
-    ? 'Use the same campaign person shown in the identity reference group when provided. Treat all identity_reference images as different views of one person, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene.'
+    ? 'Use the same campaign person shown in the identity reference group when provided. Treat all identity_reference images as different views of one person, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene. Identity references provide actor identity only; do not copy their original background, store shelves, handbags, cosmetics, studio props or unrelated goods.'
     : 'Only include people if the shot description asks for them.';
   const location = _luxuryExpectedEnvironmentFromContract(scene);
-  const locationRule = location.wantsInterior && !location.wantsExterior
-    ? 'Place the action in a real premium indoor store, showroom, counter, office or consultation area with believable depth.'
-    : location.wantsExterior && !location.wantsInterior
+  const locationRule = softwareWorkflowSubject
+    ? 'Place the action in a real creator/workplace environment for the confirmed software platform workflow: desk, laptop/tablet, creation workspace, production console, review room or practical collaboration setting. Do not use a fashion boutique, handbag shelf, cosmetics counter, retail showroom, jewelry store or unrelated luxury product background.'
+    : location.wantsInterior && !location.wantsExterior
+      ? 'Place the action in a real premium indoor store, showroom, counter, office or consultation area with believable depth.'
+      : location.wantsExterior && !location.wantsInterior
       ? 'Place the action in the confirmed real exterior or storefront environment.'
       : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
   return _luxuryFitImagePromptParts([
     `Create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
+    softwareWorkflowSubject ? 'Software/service workflow lock: the advertised subject is the platform workflow and result, not a physical retail product. Show VIDO-like creation evidence through an actor using or reacting to a creation workspace/interface/document/output; avoid readable fake UI text.' : '',
     presenterRule,
     visual ? `Scene content: ${visual}.` : '',
     action ? `Actor action and expression: ${action}.` : '',
@@ -17853,7 +17859,7 @@ function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
         return `Reference image ${n}: real premium location style and lighting only. Use it as the commercial space family, but add the required presenter and product evidence in the same shot.`;
       }
       if (/^identity_reference/.test(kind)) {
-        return `Reference image ${n}: strict fixed-actor identity reference${kind === 'identity_reference_view' ? ' view' : ''}. All identity references depict the same actor; preserve one continuous person across shots, including face impression, age, hairstyle, body proportions and wardrobe family, while placing the actor naturally in the scene.`;
+        return `Reference image ${n}: strict fixed-actor identity reference${kind === 'identity_reference_view' ? ' view' : ''}. All identity references depict the same actor; preserve one continuous person across shots, including face impression, age, hairstyle, body proportions and wardrobe family, while placing the actor naturally in the scene. Do not copy the identity reference background, retail shelves, boutique displays, handbags, cosmetics, studio props or any unrelated product category.`;
       }
       if (kind === 'main_reference' || kind === 'shot_reference' || kind === 'demand_reference') {
         return `Reference image ${n}: product/scene/style evidence only. Preserve the requested category while obeying the shot contract.`;
