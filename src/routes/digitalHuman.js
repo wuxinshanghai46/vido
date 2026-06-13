@@ -78,12 +78,41 @@ function _publicLuxuryAdProject(row = {}) {
     return next;
   };
   safe.storyboard_sheets = Array.isArray(safe.storyboard_sheets) ? safe.storyboard_sheets.map(stripLocal) : [];
-  safe.keyframes = Array.isArray(safe.keyframes) ? safe.keyframes.map(stripLocal) : [];
+  safe.keyframes = Array.isArray(safe.keyframes)
+    ? safe.keyframes.map((item, fallbackIndex) => {
+      const clean = stripLocal(item);
+      if (_luxuryProjectKeyframeHasTrustedQa(clean)) return clean;
+      const idx = _luxuryProjectFrameIndex(clean || {}, fallbackIndex);
+      return {
+        index: idx,
+        shot_index: idx,
+        image_url: '',
+        invalid_keyframe_removed: !!_luxuryProjectFrameImage(clean || {}),
+        invalid_reason: _luxuryProjectFrameImage(clean || {}) ? 'keyframe_without_trusted_storyboard_qa' : '',
+      };
+    })
+    : [];
   return safe;
 }
 
 function _luxuryProjectFrameImage(kf = {}) {
   return String(kf.image_url || kf.imageUrl || kf.url || kf.path || kf.local_path || '').trim();
+}
+
+function _luxuryProjectKeyframeHasTrustedQa(kf = {}) {
+  if (!kf || typeof kf !== 'object' || !_luxuryProjectFrameImage(kf)) return false;
+  if (_isReferenceLockedLuxuryKeyframe(kf)) return true;
+  const qa = kf.qa && typeof kf.qa === 'object' ? kf.qa : null;
+  if (!qa) return false;
+  const reason = String(qa.reason || '').toLowerCase();
+  if (/malformed json|prose approval|not auditable|不可审计/.test(reason)) return false;
+  const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : null;
+  const requiredDims = ['realism', 'asset_fidelity', 'scene_continuity', 'product_fidelity'];
+  const dimsReady = !!dims && requiredDims.every(key => Number.isFinite(Number(dims[key])) && Number(dims[key]) > 0);
+  return dimsReady
+    && (qa.pass === true || qa.accepted_with_warning === true)
+    && qa.subject_match === true
+    && qa.storyboard_match === true;
 }
 
 function _luxuryProjectFrameIndex(kf = {}, fallback = 0) {
@@ -1960,15 +1989,18 @@ function _qaJsonFromVisionProse(raw = '') {
   const positive = /meets? the requirements?|matches?|符合|通过|一致/i.test(text)
     && !/does not meet|not meet|不符合|不匹配|失败|无关/i.test(text);
   if (!negative && !positive) return null;
+  const strictReject = negative || positive;
   return {
-    pass: positive && !negative,
-    score: positive && !negative ? 86 : 35,
-    subject_match: positive && !negative,
-    storyboard_match: positive && !negative,
-    major_mismatches: negative ? [text.slice(0, 180)] : [],
+    pass: false,
+    score: negative ? 35 : 45,
+    subject_match: false,
+    storyboard_match: false,
+    major_mismatches: strictReject ? [text.slice(0, 180)] : [],
     unrelated_subjects: [],
     observed: text.slice(0, 220),
-    reason: negative ? 'Vision QA provider returned prose rejection instead of JSON; normalized as strict QA failure.' : 'Vision QA provider returned prose approval instead of JSON; normalized as QA pass.',
+    reason: negative
+      ? 'Vision QA provider returned prose rejection instead of JSON; normalized as strict QA failure.'
+      : 'Vision QA provider returned prose approval instead of JSON; strict mode rejects it because the QA result is not auditable JSON.',
   };
 }
 
@@ -1991,7 +2023,7 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
     return m ? Math.max(0, Math.min(100, Number(m[1]) || 0)) : null;
   };
   if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
-  const ok = pass === true && score >= 82 && subjectMatch !== false && storyboardMatch !== false;
+  const ok = false;
   const dimOrDefault = (name) => {
     const value = numberField(name);
     if (value !== null) return value;
@@ -2013,8 +2045,8 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
     major_mismatches: ok ? [] : [text.slice(0, 180)],
     unrelated_subjects: [],
     observed: text.slice(0, 220),
-    reason: ok
-      ? 'Vision QA returned malformed JSON but explicit pass fields were recovered.'
+    reason: pass === true
+      ? 'Vision QA returned malformed JSON with positive fields; strict mode rejects it because the QA result is not auditable JSON.'
       : 'Vision QA returned malformed JSON with explicit reject or weak match fields.',
   };
 }
@@ -4003,6 +4035,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     objective: _compactQaText(scene.objective || scene.intent || scene.purpose || '', 180),
     visual: _luxuryQaExpectedVisual(scene, subject),
     action: _luxuryQaExpectedAction(scene, subject, personRequired),
+    emotion: _compactQaText(scene.emotion || scene.mood || scene.emotional_change || '', 180),
     storyboard_panel_requirement: visibleSubject.required
       ? 'The generated keyframe must show the required visible subject/entity exactly as defined by the confirmed script. If the script asks for a human, show a human. If it asks for an animal, robot, alien, mascot, object, vehicle, product or place, show that subject instead. Do not substitute a generic human presenter.'
       : 'No character is required by this shot. Product-only, material-only, place-only or service-context framing is acceptable when it matches the confirmed script.',
@@ -4068,6 +4101,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       ? 'For problem/setup shots, accept the specific pain-point evidence named by the confirmed storyboard. Require confirmation/check/dashboard/UI overlays only when the confirmed storyboard explicitly asks for them.'
       : '',
     'Storyboard_match is judged on a single still frame: accept an equivalent frozen pose, facial expression, prop relationship and camera framing that clearly represents the requested action. Do not fail only because a continuous verb such as flipping, tapping, checking or reviewing cannot literally animate in one image.',
+    'Hard fail storyboard_match if the frame misses the required story emotion or role transition. If expected emotion says tired, anxious, frustrated, troubled, doubtful, relieved, confident, inviting, 疲惫, 烦躁, 困扰, 半信半疑, 释然, 自信 or 邀请, the actor face, gaze, posture or gesture must visibly express that beat. A calm neutral presenter cannot pass a frustration/problem shot.',
     'Score quality_dimensions strictly and output all six numeric fields. Put scene_continuity and product_fidelity before character_consistency. realism means real commercial photography, scene_continuity means same real-world campaign setting, product_fidelity means product/category/workflow/package/material preservation according to product_subject_type, asset_fidelity means uploaded/reference lock fidelity, ui_overlay means subtle readable post-production UI without covering face/hands/product, character_consistency means same actor if required.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
     'Hard fail if the frame looks like an AI poster, CGI render, over-smoothed plastic face, mannequin, wax figure, fashion catalogue, jewelry store, cosmetics shelf, or illustrated concept art instead of a real live-action commercial frame.',
@@ -4115,10 +4149,10 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     || uiOverlay.mandatory === true
     || uiLock.required === true
     || visualUiLock.required === true;
-  const productFidelityThreshold = softwareWorkflowSubject ? 58 : 74;
-  const assetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 45 : 76;
-  const manualProductFidelityThreshold = softwareWorkflowSubject ? 55 : 74;
-  const manualAssetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 40 : 74;
+  const productFidelityThreshold = softwareWorkflowSubject ? 70 : 74;
+  const assetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 58 : 76;
+  const usableProductFidelityThreshold = softwareWorkflowSubject ? 70 : 72;
+  const usableAssetFidelityThreshold = softwareWorkflowSubject && !hasNonPersonAssetLocks ? 55 : 70;
   const qualityPass = qualityDimensions.realism >= 76
     && (!hasAssetLocks || qualityDimensions.asset_fidelity >= assetFidelityThreshold)
     && (!hasCharacterLock || qualityDimensions.character_consistency >= 74)
@@ -4127,45 +4161,32 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && (!hasUiLock || qualityDimensions.ui_overlay >= 70);
   const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
   const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
-  const manualReviewPass = parsed.subject_match === true
-    && unrelatedSubjects.length === 0
-    && !hardForbiddenMismatch
-    && qualityDimensions.realism >= 76
-    && qualityDimensions.product_fidelity >= manualProductFidelityThreshold
-    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= manualAssetFidelityThreshold)
-    && qualityDimensions.scene_continuity >= 68;
-  const softwareWorkflowManualPass = softwareWorkflowSubject
-    && parsed.subject_match === true
+  const usableQualityPass = parsed.subject_match === true
     && parsed.storyboard_match === true
     && unrelatedSubjects.length === 0
     && !hardForbiddenMismatch
-    && qualityDimensions.realism >= 80
-    && qualityDimensions.product_fidelity >= 80
-    && qualityDimensions.scene_continuity >= 50;
-  const relaxedCandidatePass = parsed.subject_match === true
-    && unrelatedSubjects.length === 0
-    && !hardForbiddenMismatch
-    && qualityDimensions.realism >= (softwareWorkflowSubject ? 70 : 72)
-    && qualityDimensions.product_fidelity >= (softwareWorkflowSubject ? 48 : 62)
-    && qualityDimensions.scene_continuity >= (softwareWorkflowSubject ? 42 : 58)
-    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= (softwareWorkflowSubject && !hasNonPersonAssetLocks ? 35 : 58))
-    && (!hasCharacterLock || qualityDimensions.character_consistency >= 60)
-    && (!hasUiLock || qualityDimensions.ui_overlay >= 45)
-    && score >= (softwareWorkflowSubject ? 55 : 62);
+    && parsed.pass === true
+    && score >= 70
+    && qualityDimensions.realism >= 70
+    && qualityDimensions.product_fidelity >= usableProductFidelityThreshold
+    && qualityDimensions.scene_continuity >= 65
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= usableAssetFidelityThreshold)
+    && (!hasCharacterLock || qualityDimensions.character_consistency >= 68)
+    && (!hasUiLock || qualityDimensions.ui_overlay >= 60);
   const strictPass = parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass && !hardForbiddenMismatch;
   const qa = {
-    pass: strictPass || manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass,
+    pass: strictPass || usableQualityPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
     quality_dimensions: qualityDimensions,
     quality_pass: qualityPass,
     strict_pass: strictPass,
-    manual_review_required: !strictPass && (manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass),
-    accepted_with_warning: !strictPass && (manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass),
+    manual_review_required: !strictPass && usableQualityPass,
+    accepted_with_warning: !strictPass && usableQualityPass,
     acceptance_mode: strictPass
       ? 'strict'
-      : ((manualReviewPass || softwareWorkflowManualPass) ? 'manual_review' : (relaxedCandidatePass ? 'relaxed_candidate' : 'rejected')),
+      : (usableQualityPass ? 'usable_70_80_quality_band' : 'rejected'),
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -11667,17 +11688,17 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
       }
       const result = {
         success: true,
-        scenes: project.scenes || [],
-        keyframes: project.keyframes || [],
-        storyboard_sheets: project.storyboard_sheets || [],
-        production_contract: project.production_contract || null,
+        scenes: publicProject.scenes || [],
+        keyframes: publicProject.keyframes || [],
+        storyboard_sheets: publicProject.storyboard_sheets || [],
+        production_contract: publicProject.production_contract || null,
         production_project: publicProject,
         production_project_id: project.id,
-        asset_manifest: project.asset_manifest || null,
-        visual_locks: project.visual_locks || null,
-        global_visual_bible: project.global_visual_bible || null,
-        keyframe_generation_status: project.keyframe_generation_status || '',
-        reference_mode: project.reference_mode || '',
+        asset_manifest: publicProject.asset_manifest || null,
+        visual_locks: publicProject.visual_locks || null,
+        global_visual_bible: publicProject.global_visual_bible || null,
+        keyframe_generation_status: publicProject.keyframe_generation_status || '',
+        reference_mode: publicProject.reference_mode || '',
         keyframe_error: '',
       };
       return res.json({ success: true, status: 'done', result, recovered_from_project: true });
@@ -18564,6 +18585,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           return key && arr.findIndex(x => x[1].map(ref => ref.resolved).filter(Boolean).join('|') === key) === i;
         });
         if (!refModes.length) refModes.push(['generation', []]);
+        const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 2)) || 2));
+        let gptImage2CallCount = 0;
         const runGptImage2 = (refItemsForMode, suffix, inputFidelity = 'high') => _generateViaDeyunaiSpecificImageModel({
           model: rawModelId,
           prompt: promptForAttempt,
@@ -18579,6 +18602,10 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           const [modeName, refItemsForMode] = refModes[modeIndex];
           const fidelityModes = refItemsForMode.length ? ['high', 'low'] : ['high'];
           for (let fidelityIndex = 0; fidelityIndex < fidelityModes.length; fidelityIndex++) {
+            if (gptImage2CallCount >= maxGptImage2Calls) {
+              modeIndex = refModes.length;
+              break;
+            }
             const inputFidelity = fidelityModes[fidelityIndex];
             try {
               // 中文说明：仍使用漫路 Image2。先按高保真保身份，若供应商 500，
@@ -18587,13 +18614,17 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 modeIndex === 0 ? '' : modeName,
                 inputFidelity === 'low' ? 'lowfid' : '',
               ].filter(Boolean);
+              gptImage2CallCount += 1;
               return await runGptImage2(refItemsForMode, suffixParts.length ? `_${suffixParts.join('_')}` : '', inputFidelity);
             } catch (err) {
               lastGptErr = err;
+              const reachedCallBudget = gptImage2CallCount >= maxGptImage2Calls;
               const mayRetryLowFidelity = inputFidelity === 'high'
+                && !reachedCallBudget
                 && fidelityIndex < fidelityModes.length - 1
                 && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
               const mayRetryWithFewerRefs = !mayRetryLowFidelity
+                && !reachedCallBudget
                 && fidelityIndex === fidelityModes.length - 1
                 && modeIndex < refModes.length - 1
                 && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
@@ -18608,6 +18639,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 reference_urls: refItemsForMode.map(x => x.resolved || '').filter(Boolean).slice(0, 8),
                 provider_request: err.providerRequest || null,
                 image_url: candidateImageUrl(err._luxuryCandidatePath),
+                call_budget: `${gptImage2CallCount}/${maxGptImage2Calls}`,
                 next_retry: mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : ''),
                 rule: 'reference_preserving_required_for_locked_actor_keyframe',
               });
@@ -21790,11 +21822,11 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
   };
   const warningThresholds = {
     realism: 70,
-    asset_fidelity: 58,
-    scene_continuity: 50,
-    product_fidelity: 58,
-    character_consistency: 60,
-    ui_overlay: 45,
+    asset_fidelity: 55,
+    scene_continuity: 65,
+    product_fidelity: 70,
+    character_consistency: 68,
+    ui_overlay: 60,
   };
 
   if (!frames.length) {

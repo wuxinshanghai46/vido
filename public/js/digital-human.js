@@ -3763,12 +3763,10 @@
     ].some(v => v === false);
     const explicitReject = qa.explicit_reject === true || qa.reject === true || candidate.explicit_reject === true;
     const minScore = 70;
-    const adoptable = score >= minScore && !hardMismatch && !explicitReject;
-    const reason = adoptable
-      ? `QA ${score} 分，可人工审片保留`
-      : (hardMismatch || explicitReject
-        ? `QA ${score || '未评分'}，存在硬性错配，只能预览`
-        : `QA ${score || '未评分'}，低于 ${minScore} 分，只能预览`);
+    const adoptable = false;
+    const reason = hardMismatch || explicitReject
+      ? `QA ${score || '未评分'}，存在硬性错配，只能预览`
+      : `失败候选图未通过正式 QA，只能预览诊断，不能保留到镜头`;
     return { score, minScore, adoptable, reason, hardMismatch, explicitReject };
   }
 
@@ -3828,7 +3826,7 @@
     const item = candidates[Number(candidateIndex)];
     if (!item?._url) return;
     if (!item._review?.adoptable) {
-      toast(item._review?.reason || '该候选图 QA 分数不足，不能保留到分镜', 'error');
+      toast(item._review?.reason || '失败候选图未通过正式 QA，不能保留到分镜', 'error');
       return;
     }
     const idx = Math.max(0, Number(item._shotIndex || 0));
@@ -3849,7 +3847,7 @@
     renderLuxuryAd();
     document.getElementById('dhLuxFailedCandidateModal')?.classList.remove('open');
     toast(`已保留到第 ${idx + 1} 镜，可继续后续分镜或单镜重试`, 'success');
-    // 中文说明：人工保留失败候选图后立即保存进任务中心，刷新页面也能恢复当前取舍。
+    // 中文说明：当前关键帧失败候选图默认禁止保留；此分支只兼容未来显式授权的审片流程。
     await saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => null);
   }
 
@@ -8284,7 +8282,7 @@
     return `<div class="dh-lux-error-attempts">
       ${summaryParts.length ? `<div class="dh-lux-error-summary">${summaryParts.map(x => `<span>${escapeHtml(x)}</span>`).join('')}</div>` : ''}
       <div class="dh-lux-error-summary"><span>${escapeHtml(failedLabels.length ? `已阻止/拒绝的通道：${failedLabels.join('、')}` : '没有可展示的合格候选图。')}</span></div>
-      ${failedCandidates.length ? `<div class="dh-lux-error-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-candidates>查看失败内容（${failedCandidates.length}）</button><span>可人工预览并保留到对应镜头</span></div>` : ''}
+      ${failedCandidates.length ? `<div class="dh-lux-error-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-failed-candidates>查看失败内容（${failedCandidates.length}）</button><span>仅用于诊断，不再允许保留失败候选图</span></div>` : ''}
       ${receiptHtml}
     </div>`;
   }
