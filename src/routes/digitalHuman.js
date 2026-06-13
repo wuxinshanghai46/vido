@@ -4007,7 +4007,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'Use person_required only for explicitly human shots. Do not require a human actor for ads whose confirmed script calls for an animal, robot, alien, mascot, product, object, place or service moment.',
     'When visible_subject_required is false, absence of people is acceptable; still judge product/material subject, scene type, composition, camera intent, and visible story purpose.',
     `Confirmed storyboard contract: ${JSON.stringify(expected)}`,
-    'Set pass=false when there is any serious mismatch. Do not be lenient.',
+    'Set pass=false for serious mismatches: wrong subject, wrong actor identity, unrelated category, missing required person/subject, forbidden scene, or non-photographic output. For minor acceptable deviations in pose, exact camera crop, UI detail, or frozen action timing, keep subject_match=true, explain the deviation in major_mismatches/reason, and use the numeric scores to express reduced quality instead of turning every small deviation into a hard fail.',
   ].join(' ');
   const { parsed, provider } = await _callMultimodalQaJson(req, prompt, images);
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
@@ -4068,17 +4068,30 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && qualityDimensions.realism >= 80
     && qualityDimensions.product_fidelity >= 80
     && qualityDimensions.scene_continuity >= 50;
+  const relaxedCandidatePass = parsed.subject_match === true
+    && unrelatedSubjects.length === 0
+    && !hardForbiddenMismatch
+    && qualityDimensions.realism >= (softwareWorkflowSubject ? 70 : 72)
+    && qualityDimensions.product_fidelity >= (softwareWorkflowSubject ? 48 : 62)
+    && qualityDimensions.scene_continuity >= (softwareWorkflowSubject ? 42 : 58)
+    && (!hasAssetLocks || qualityDimensions.asset_fidelity >= (softwareWorkflowSubject && !hasNonPersonAssetLocks ? 35 : 58))
+    && (!hasCharacterLock || qualityDimensions.character_consistency >= 60)
+    && (!hasUiLock || qualityDimensions.ui_overlay >= 45)
+    && score >= (softwareWorkflowSubject ? 55 : 62);
   const strictPass = parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass && !hardForbiddenMismatch;
   const qa = {
-    pass: strictPass || manualReviewPass || softwareWorkflowManualPass,
+    pass: strictPass || manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
     quality_dimensions: qualityDimensions,
     quality_pass: qualityPass,
     strict_pass: strictPass,
-    manual_review_required: !strictPass && (manualReviewPass || softwareWorkflowManualPass),
-    accepted_with_warning: !strictPass && (manualReviewPass || softwareWorkflowManualPass),
+    manual_review_required: !strictPass && (manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass),
+    accepted_with_warning: !strictPass && (manualReviewPass || softwareWorkflowManualPass || relaxedCandidatePass),
+    acceptance_mode: strictPass
+      ? 'strict'
+      : ((manualReviewPass || softwareWorkflowManualPass) ? 'manual_review' : (relaxedCandidatePass ? 'relaxed_candidate' : 'rejected')),
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -21613,6 +21626,14 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
     character_consistency: 74,
     ui_overlay: 70,
   };
+  const warningThresholds = {
+    realism: 70,
+    asset_fidelity: 58,
+    scene_continuity: 50,
+    product_fidelity: 58,
+    character_consistency: 60,
+    ui_overlay: 45,
+  };
 
   if (!frames.length) {
     return {
@@ -21658,10 +21679,13 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
 
     requiredDims.forEach(dim => {
       const score = _numScore(dims[dim]);
+      const threshold = qa.accepted_with_warning === true
+        ? (warningThresholds[dim] ?? thresholds[dim])
+        : thresholds[dim];
       if (score === null) {
-        failures.push({ index, reason: `${dim}_missing`, dimension: dim, threshold: thresholds[dim], message: `Missing ${dim} QA score.` });
-      } else if (score < thresholds[dim]) {
-        failures.push({ index, reason: `${dim}_low`, dimension: dim, score, threshold: thresholds[dim], message: `${dim} score is below the luxury ad threshold.` });
+        failures.push({ index, reason: `${dim}_missing`, dimension: dim, threshold, message: `Missing ${dim} QA score.` });
+      } else if (score < threshold) {
+        failures.push({ index, reason: `${dim}_low`, dimension: dim, score, threshold, message: `${dim} score is below the luxury ad threshold.` });
       }
     });
   });
