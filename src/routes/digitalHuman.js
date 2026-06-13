@@ -552,8 +552,54 @@ function _toneTtsParams(tone) {
     gentle: { speed: 0.97, pitch: 1.01 },
     urgent: { speed: 1.08, pitch: 1.02 },
     humorous: { speed: 1.05, pitch: 1.03 },
+    anxious: { speed: 1.09, pitch: 1.02 },
+    relieved: { speed: 0.98, pitch: 1.01 },
+    happy: { speed: 1.05, pitch: 1.04 },
+    premium: { speed: 0.97, pitch: 0.98 },
+    passionate: { speed: 1.08, pitch: 1.04 },
+    inspiring: { speed: 1.04, pitch: 1.03 },
+    moved: { speed: 0.96, pitch: 1.0 },
   };
   return map[t] || map.natural;
+}
+
+function _normalizeLuxuryVoiceDirection(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (/anxious|焦虑|痛点|relief|释然/.test(raw)) return 'anxious_relief';
+  if (/excited|sales|passionate|种草|兴奋|转化/.test(raw)) return 'excited_sales';
+  if (/happy|bright|开心|轻快|愉悦/.test(raw)) return 'happy_bright';
+  if (/premium|trust|高端|信任|克制|专业/.test(raw)) return 'premium_trust';
+  return 'story_dynamic';
+}
+
+function _inferExpressiveSegmentTone(seg = {}, index = 0, total = 1, voiceDirection = '') {
+  const direction = _normalizeLuxuryVoiceDirection(voiceDirection || seg.voice_direction || seg.voiceDirection || '');
+  const explicit = String(seg.tone || seg.delivery || seg.voice_tone || '').trim().toLowerCase();
+  if (explicit && !/^natural|professional|premium$/i.test(explicit)) return explicit;
+  const text = [
+    seg.text,
+    seg.voiceover,
+    seg.narration,
+    seg.dialogue,
+    seg.emotion,
+    seg.mood,
+    seg.objective,
+    seg.purpose,
+    seg.role,
+    seg.story_stage,
+  ].filter(Boolean).join(' ');
+  if (/焦虑|着急|紧张|卡住|失败|混乱|痛点|问题|担心|不安|anxious|urgent|pain|problem|stuck|failed/i.test(text)) return 'anxious';
+  if (/兴奋|惊喜|亮点|终于|立刻|马上|爆发|种草|excited|wow|breakthrough/i.test(text)) return 'excited';
+  if (/开心|轻松|愉悦|喜欢|好用|顺手|happy|bright|delight/i.test(text)) return 'happy';
+  if (/释然|放心|解决|稳定|安心|relief|solved|stable|reliable/i.test(text)) return 'relieved';
+  if (/信任|专业|高端|品质|权威|证明|premium|trust|professional|proof/i.test(text)) return 'premium';
+  if (direction === 'anxious_relief') return index < Math.max(1, total / 2) ? 'anxious' : 'relieved';
+  if (direction === 'excited_sales') return index >= total - 1 ? 'encouraging' : 'excited';
+  if (direction === 'happy_bright') return index >= total - 1 ? 'encouraging' : 'happy';
+  if (direction === 'premium_trust') return index >= total - 1 ? 'confident' : 'premium';
+  if (index === 0) return 'curious';
+  if (index >= total - 1) return 'encouraging';
+  return 'confident';
 }
 
 function _cleanTtsSegmentText(text) {
@@ -574,6 +620,9 @@ function _cleanTtsSegmentText(text) {
 function _segmentPauseSeconds(seg, nextSeg) {
   const explicit = Number(seg?.pause_ms ?? seg?.pauseMs ?? seg?.pause);
   if (Number.isFinite(explicit)) return Math.max(0.04, Math.min(0.28, explicit > 2 ? explicit / 1000 : explicit));
+  const tone = String(seg?.tone || seg?.delivery || seg?.voice_tone || '').toLowerCase();
+  if (/anxious|urgent|excited|passionate/.test(tone)) return 0.07;
+  if (/premium|confident|serious|relieved|moved/.test(tone)) return 0.16;
   const tail = String(seg?.text || '').trim().slice(-1);
   const nextLen = String(nextSeg?.text || '').trim().length;
   if (/^[。！？!?]$/.test(tail)) return 0.14;
@@ -606,7 +655,7 @@ function _tightenSpeechPauses(ffmpegPath, audioPath, { maxSilence = 0.28 } = {})
   return audioPath;
 }
 
-async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments }) {
+async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments, voiceDirection = '' }) {
   const usable = (Array.isArray(segments) ? segments : [])
     .map(s => ({ ...s, text: _cleanTtsSegmentText(s?.text || s?.voiceover || '') }))
     .filter(s => s?.text && String(s.text).trim())
@@ -619,30 +668,34 @@ async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments }) {
   const workDir = path.join(JIMENG_ASSETS_DIR, `segtts_${Date.now()}_${uuidv4().slice(0, 8)}`);
   fs.mkdirSync(workDir, { recursive: true });
   const files = [];
-  let silencePath = '';
+  const silenceFiles = new Map();
   for (let i = 0; i < usable.length; i++) {
     const seg = usable[i];
-    const tone = seg.tone || seg.delivery || seg.voice_tone || 'natural';
+    const tone = _inferExpressiveSegmentTone(seg, i, usable.length, voiceDirection);
     const p = _toneTtsParams(tone);
+    seg.tone = tone;
     const outBase = path.join(workDir, `seg_${String(i).padStart(2, '0')}`);
     const file = await generateSpeech(seg.text, outBase, { voiceId: voiceId || null, speed: p.speed, pitch: p.pitch });
     if (!file || !fs.existsSync(file)) throw new Error(`第 ${i + 1} 段语气合成失败`);
     files.push(file);
     if (i < usable.length - 1) {
       try {
+        const pauseSec = _segmentPauseSeconds(seg, usable[i + 1]);
+        const pauseKey = Math.round(pauseSec * 1000);
+        let silencePath = silenceFiles.get(pauseKey);
         if (!silencePath) {
-          silencePath = path.join(workDir, 'pause_100ms.mp3');
+          silencePath = path.join(workDir, `pause_${pauseKey}ms.mp3`);
           execFileSync(ffmpegPath, [
             '-y',
             '-f', 'lavfi',
             '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-            '-t', '0.10',
+            '-t', String(pauseSec.toFixed(2)),
             '-c:a', 'libmp3lame',
             '-q:a', '5',
             silencePath,
           ], { stdio: 'pipe', timeout: 15000 });
+          silenceFiles.set(pauseKey, silencePath);
         }
-        const pauseSec = _segmentPauseSeconds(seg, usable[i + 1]);
         if (silencePath && fs.existsSync(silencePath) && pauseSec >= 0.09) files.push(silencePath);
       } catch (pauseErr) {
         console.warn('[DH/segtts] pause insert skipped:', pauseErr.message);
@@ -659,8 +712,8 @@ async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments }) {
   return `${_publicBaseUrl(req)}/public/jimeng-assets/${finalName}`;
 }
 
-async function _synthesizeSegmentedSpeechFile(req, { text, voiceId, segments, outputBase }) {
-  const audioUrl = await _synthesizeSegmentedSpeech(req, { text, voiceId, segments });
+async function _synthesizeSegmentedSpeechFile(req, { text, voiceId, segments, outputBase, voiceDirection = '' }) {
+  const audioUrl = await _synthesizeSegmentedSpeech(req, { text, voiceId, segments, voiceDirection });
   if (!audioUrl) return null;
   const rel = new URL(audioUrl, _publicBaseUrl(req)).pathname;
   const source = path.join(JIMENG_ASSETS_DIR, path.basename(rel));
@@ -6993,6 +7046,7 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
     subtitle = null,
     bgmAsset = null,
     personAsset = null,
+    voiceDirection = '',
   } = payload;
   const materialUrls = _normalizeMaterialFilmUrls([
     personAsset && (personAsset.image_url || personAsset.url),
@@ -7030,6 +7084,7 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
       voiceId,
       segments: _fallbackGuideSegments(text, totalDuration),
       outputBase: audioBase,
+      voiceDirection,
     });
     if (!audioPath) {
       const { generateSpeech } = require('../services/ttsService');
@@ -7271,7 +7326,7 @@ function _publishAdClipAssets(req, taskId, clipPaths = [], prefix = 'ad_clip') {
     .filter(Boolean);
 }
 
-async function _runProductAdTask(req, taskId, { avatar, product, topic, title = '', durationSec, voiceId, voiceProvider, subtitle, segments = [], aspectRatio = '9:16', outputSize = 'standard' }) {
+async function _runProductAdTask(req, taskId, { avatar, product, topic, title = '', durationSec, voiceId, voiceProvider, subtitle, segments = [], voiceDirection = '', aspectRatio = '9:16', outputSize = 'standard' }) {
   const taskDir = path.join(JIMENG_ASSETS_DIR, `product_ad_${taskId}`);
   fs.mkdirSync(taskDir, { recursive: true });
   const base = _publicBaseUrl(req);
@@ -7536,6 +7591,7 @@ async function _runProductAdTask(req, taskId, { avatar, product, topic, title = 
           voiceId: voiceId || null,
           segments: voiceSegments,
           outputBase: audioBase,
+          voiceDirection,
         });
         if (!audioPath) audioPath = await generateSpeech(voiceover, audioBase, { voiceId: voiceId || null, speed: 1.0 });
         const muxPath = path.join(taskDir, 'product_ad_audio.mp4');
@@ -19942,7 +19998,7 @@ async function _createLuxuryAdReferenceKeyframeFallback({
 }
 
 async function _runSpaceStoryboardTask(req, taskId, payload) {
-  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard' } = payload;
+  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', voiceDirection = '', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard' } = payload;
   const aspectRatio = _normalizeAspectRatio(rawAspectRatio, '16:9');
   const outputSize = _normalizeOutputSize(rawOutputSize);
   const isLuxury = adMode === 'luxury_ad';
@@ -22412,6 +22468,7 @@ router.post('/material-film/generate', async (req, res) => {
       person_asset = null,
       subtitle = null,
       bgm_asset = null,
+      voice_direction = '',
       replaces_task_id = '',
     } = body;
     if (!String(text || '').trim()) return res.status(400).json({ success: false, error: 'text 必填' });
@@ -22443,6 +22500,7 @@ router.post('/material-film/generate', async (req, res) => {
       person_asset,
       subtitle,
       bgm_asset,
+      voice_direction,
       user_id: req.user?.id,
       created_at: new Date().toISOString(),
       started_at: Date.now(),
@@ -22467,6 +22525,7 @@ router.post('/material-film/generate', async (req, res) => {
       personAsset: person_asset,
       subtitle,
       bgmAsset: bgm_asset,
+      voiceDirection: voice_direction,
       aspectRatio: normalizedAspectRatio,
       outputSize: normalizedOutputSize,
     }).catch(err => {
@@ -22716,6 +22775,7 @@ router.post('/spaces/generate', async (req, res) => {
       generation_mode = 'topview',
       ad_mode = 'digital_ad',
       ad_style = 'luxury_soft',
+      voice_direction = '',
       shot_count = null,
       keyframes = [],
       guide_gender = 'female',
@@ -22785,6 +22845,7 @@ router.post('/spaces/generate', async (req, res) => {
       generation_mode,
       ad_mode,
       ad_style,
+      voice_direction,
       shot_count,
       guide_gender,
       ratio: aspectRatio,
@@ -22811,6 +22872,7 @@ router.post('/spaces/generate', async (req, res) => {
       generationMode: generation_mode,
       adMode: ad_mode,
       adStyle: ad_style,
+      voiceDirection: voice_direction,
       shotCount: shot_count,
       keyframes,
       guideGender: guide_gender,
