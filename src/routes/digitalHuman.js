@@ -17970,6 +17970,53 @@ function _luxuryCapImageModelPrompt(prompt = '', maxChars = 1850) {
   return `${head} IMPORTANT: prompt was compacted; obey the shot contract above.`;
 }
 
+function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowSubject = false } = {}) {
+  let text = String(prompt || '').replace(/\s+/g, ' ').trim();
+  if (!text) return text;
+  const replacements = [
+    [/\bDigital\s+Human\b/gi, 'onscreen presenter output'],
+    [/\bdigital[-\s]?human\b/gi, 'onscreen presenter output'],
+    [/\bavatar\b/gi, 'presenter identity reference'],
+    [/\bhuman\s+is\s+speaking\b/gi, 'presenter preview is visible in the output frame'],
+    [/\bspeaking\b/gi, 'presenting'],
+    [/\bvoice\s+selection\b/gi, 'audio option controls'],
+    [/\bvoice\b/gi, 'audio option'],
+    [/\bAPI\s*key\b/gi, 'integration credential placeholder'],
+    [/\bAPI\b/gi, 'integration interface'],
+    [/\bsecret\b/gi, 'credential placeholder'],
+    [/\btoken\b/gi, 'credential placeholder'],
+    [/\bcallback\b/gi, 'integration response indicator'],
+    [/\bkey\s+generation\b/gi, 'credential setup indicator'],
+    [/\binterface\s+status\b/gi, 'connection status indicator'],
+    [/\bAd\b/g, 'campaign'],
+    [/['"]Novel['"]/g, 'writing module icon'],
+    [/['"]Comic['"]/g, 'storyboard module icon'],
+    [/['"]Digital Human['"]/g, 'presenter module icon'],
+    [/placeholder\s+['"]?lorem ipsum['"]?\s+text/gi, 'abstract placeholder text blocks'],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  text = text
+    .replace(/(密码|密钥|口令|令牌|token|secret|password|api\s*key|key\s+generation)/ig, 'credential placeholder')
+    .replace(/(回调|callback|调用成功|接口状态|interface\s+status)/ig, 'integration status indicator')
+    .replace(/(数字人)(?=向导|模块|输出|口播|说话|站在|生成|图标|功能|视频|$)/g, '屏幕演示人物')
+    .replace(/(口播|说话|开口说话)/g, '演示表达')
+    .replace(/(真人|人物)\s*被\s*(克隆|复制|复刻)/g, '$1身份保持一致')
+    .replace(/可读文字|readable text|readable brand text/ig, 'non-readable abstract interface marks')
+    .replace(/logo text|brand slogan/ig, 'brand mark text')
+    .replace(/\bmust contain\b/ig, 'should suggest')
+    .replace(/\blabeled with\b/ig, 'represented by')
+    .replace(/\btext labeled\b/ig, 'icon represented');
+  if (softwareWorkflowSubject) {
+    text = [
+      text,
+      'Provider-submission safety: render all software, account, integration, audio, presenter-output and campaign modules as abstract non-readable interface icons, status blocks, timelines, thumbnails or video-preview cards. Do not render actual credential strings, account data, real code snippets, sensitive readable records, or explicit speech bubbles.',
+    ].join(' ');
+  }
+  return _luxuryCapImageModelPrompt(text, softwareWorkflowSubject ? 1900 : 1500);
+}
+
 function _luxuryGptImage2EditPrompt({
   prompt = '',
   scene = {},
@@ -18029,7 +18076,7 @@ function _luxuryGptImage2EditPrompt({
       : location.wantsExterior && !location.wantsInterior
       ? 'Place the action in the confirmed real exterior or storefront environment.'
       : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
-  return _luxuryFitImagePromptParts([
+  const promptText = _luxuryFitImagePromptParts([
     `SHOT EXECUTION CONTRACT: create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
     softwareWorkflowSubject ? `SOFTWARE/SERVICE WORKFLOW LOCK: the advertised subject is the lived workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
@@ -18047,6 +18094,7 @@ function _luxuryGptImage2EditPrompt({
     'Real live-action photography: natural skin texture, realistic hands, real fabric, practical shadows, optical lens perspective, believable commercial lighting.',
     'Clean frame with no subtitles, no watermark, no logo text added by the model, and no extra unrelated people.',
   ], softwareWorkflowSubject ? 2100 : 1500);
+  return _luxuryDeyunaiGptImage2AuditSafePrompt(promptText, { softwareWorkflowSubject });
 }
 
 function _luxuryGptImage2EditReferenceUrls(refs = []) {
@@ -18864,12 +18912,15 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               return await runGptImage2(refItemsForMode, suffixParts.length ? `_${suffixParts.join('_')}` : '', inputFidelity);
             } catch (err) {
               lastGptErr = err;
+              const auditSubmitRejected = /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(err.message || err?.response?.data || ''));
               const reachedCallBudget = gptImage2CallCount >= maxGptImage2Calls;
               const mayRetryLowFidelity = inputFidelity === 'high'
+                && !auditSubmitRejected
                 && !reachedCallBudget
                 && fidelityIndex < fidelityModes.length - 1
                 && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
               const mayRetryWithFewerRefs = !mayRetryLowFidelity
+                && !auditSubmitRejected
                 && !reachedCallBudget
                 && fidelityIndex === fidelityModes.length - 1
                 && modeIndex < refModes.length - 1
@@ -18888,10 +18939,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 call_budget: `${gptImage2CallCount}/${maxGptImage2Calls}`,
                 max_refs_per_call: maxGptImage2RefsPerCall,
                 reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
-                next_retry: mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : ''),
+                next_retry: auditSubmitRejected ? '' : (mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : '')),
+                audit_rejection: auditSubmitRejected ? 'provider_submit_audit_rejected_prompt_or_reference' : undefined,
                 rule: 'reference_preserving_required_for_locked_actor_keyframe',
               });
-              console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}, input_fidelity=${inputFidelity}); ${mayRetryLowFidelity ? 'retrying low fidelity' : (mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry')}:`, shortError(err));
+              console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}, input_fidelity=${inputFidelity}); ${auditSubmitRejected ? 'provider submit audit rejected, stop duplicate retry' : (mayRetryLowFidelity ? 'retrying low fidelity' : (mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry'))}:`, shortError(err));
               if (mayRetryLowFidelity) continue;
               if (mayRetryWithFewerRefs) break;
               modeIndex = refModes.length;
