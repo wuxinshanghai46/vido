@@ -3630,6 +3630,9 @@
       script_reviewing: '剧本待继续编辑',
       frame_generating: '真实关键帧生成中',
       frame_reviewing: '分镜待继续编辑',
+      frame_ready: '关键帧已就绪',
+      video_generating: '成片生成中',
+      video_ready: '成片已就绪',
       video: '图生视频',
       post_effects: '字幕/特效合成',
       done: '成品保存',
@@ -4133,7 +4136,9 @@
       const ratioClass = taskRatio.includes('16:9') || taskRatio.includes('1280x720') || taskRatio.includes('1920x1080')
         ? ' dh-task-thumb-landscape'
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
-      const preview = t.isLuxuryProjectDraft
+      const preview = t.isLuxuryProjectDraft && posterUrl
+        ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}"><img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt=""></div>`
+        : t.isLuxuryProjectDraft
         ? `<div class="dh-task-thumb dh-task-thumb-empty">${escapeHtml(getTaskStatusText(t.status))}</div>`
         : active
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
@@ -8892,7 +8897,7 @@
     };
   }
 
-  async function saveLuxuryAdDraft({ silent = false, projectState = 'draft' } = {}) {
+  async function saveLuxuryAdDraft({ silent = false, projectState = '' } = {}) {
     const payload = luxuryAdCurrentDraftPayload(projectState);
     if (!payload.text && !payload.scenes.length && !payload.keyframes.length) {
       if (!silent) toast('当前还没有可保存的制作内容', 'error');
@@ -9060,7 +9065,25 @@
   }
 
   function luxuryAdProjectToTask(project = {}) {
-    const status = project.status === 'failed' ? 'failed' : (project.status === 'ready' ? 'ready' : 'draft');
+    const keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
+    const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+    const keyframeCount = keyframes.filter(k => k?.image_url || k?.imageUrl || k?.url).length;
+    const shotCount = scenes.length;
+    const inferredReady = keyframeCount > 0 && (!shotCount || keyframeCount >= shotCount);
+    const status = project.status === 'failed' ? 'failed' : ((project.status === 'ready' || inferredReady) ? 'ready' : 'draft');
+    const firstKeyframe = keyframes.find(k => k?.image_url || k?.imageUrl || k?.url) || null;
+    const firstSheet = (Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : []).find(s => s?.image_url || s?.imageUrl || s?.url) || null;
+    const thumbnailUrl = project.thumbnail_url
+      || project.cover_url
+      || project.visual_asset?.master_sheet_url
+      || project.visual_asset?.sheet_url
+      || firstKeyframe?.image_url
+      || firstKeyframe?.imageUrl
+      || firstKeyframe?.url
+      || firstSheet?.image_url
+      || firstSheet?.imageUrl
+      || firstSheet?.url
+      || '';
     return {
       taskId: `luxury_project_${project.id}`,
       projectId: project.id,
@@ -9071,8 +9094,10 @@
       avatarName: project.title || project.brief_info?.title || '剧情广告制作中',
       startedAt: Date.parse(project.updated_at || project.created_at || '') || Date.now(),
       ratio: project.ratio || '',
+      thumbnailUrl,
+      imageUrl: thumbnailUrl,
       textPreview: project.text || '',
-      progress: status === 'ready' ? 90 : (project.scenes?.length ? (project.keyframes?.length ? 75 : 45) : 15),
+      progress: status === 'ready' ? 90 : (shotCount ? (keyframeCount ? 75 : 45) : 15),
       project,
     };
   }

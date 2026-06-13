@@ -92,6 +92,20 @@ function _publicLuxuryAdProject(row = {}) {
       };
     })
     : [];
+  const normalized = _normalizeLuxuryAdProjectRuntimeState(safe);
+  safe.project_state = normalized.project_state;
+  safe.status = normalized.status;
+  const coverKeyframe = safe.keyframes.find(kf => _luxuryProjectFrameImage(kf));
+  const coverSheet = safe.storyboard_sheets.find(sheet => sheet && (sheet.image_url || sheet.imageUrl || sheet.url));
+  safe.thumbnail_url = safe.thumbnail_url
+    || safe.cover_url
+    || safe.visual_asset?.master_sheet_url
+    || safe.visual_asset?.sheet_url
+    || _luxuryProjectFrameImage(coverKeyframe)
+    || coverSheet?.image_url
+    || coverSheet?.imageUrl
+    || coverSheet?.url
+    || '';
   return safe;
 }
 
@@ -183,20 +197,99 @@ function _canMergeLuxuryAdProjectByText(row = {}) {
   return LUXURY_AD_PROJECT_MERGE_STATES.has(String(row.project_state || '').trim());
 }
 
+function _luxuryAdProjectShotCount(row = {}) {
+  return Array.isArray(row.scenes) ? row.scenes.length : 0;
+}
+
+function _luxuryAdProjectKeyframeCount(row = {}) {
+  return Array.isArray(row.keyframes)
+    ? row.keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length
+    : 0;
+}
+
+function _luxuryAdProjectSheetCount(row = {}) {
+  return Array.isArray(row.storyboard_sheets)
+    ? row.storyboard_sheets.filter(sheet => _isFinalLuxuryStoryboardSheet(sheet)).length
+    : 0;
+}
+
+function _normalizeLuxuryAdProjectRuntimeState(row = {}) {
+  const storedState = String(row.project_state || '').trim();
+  const shotCount = _luxuryAdProjectShotCount(row);
+  const frameCount = _luxuryAdProjectKeyframeCount(row);
+  const sheetCount = _luxuryAdProjectSheetCount(row);
+  let project_state = storedState || 'draft';
+  if (project_state !== 'video_ready' && project_state !== 'video_generating') {
+    if (frameCount > 0 && (!shotCount || frameCount >= shotCount)) {
+      project_state = 'frame_ready';
+    } else if (storedState === 'draft' && (shotCount > 0 || sheetCount > 0)) {
+      project_state = sheetCount > 0 ? 'frame_reviewing' : 'script_reviewing';
+    }
+  }
+  const status = ['frame_ready', 'video_ready'].includes(project_state)
+    ? 'ready'
+    : (project_state.endsWith('_failed') || project_state === 'frame_failed'
+      ? 'failed'
+      : (project_state === 'draft' ? 'draft' : 'working'));
+  return { project_state, status };
+}
+
+function _luxuryAdProjectCompletenessScore(row = {}) {
+  const normalized = _normalizeLuxuryAdProjectRuntimeState(row);
+  const stageWeight = {
+    video_ready: 12000,
+    video_generating: 11000,
+    frame_ready: 10000,
+    frame_reviewing: 7000,
+    frame_generating: 6500,
+    frame_failed: 5000,
+    script_reviewing: 3000,
+    actor_required: 2500,
+    model_required: 2500,
+    draft: 1000,
+  }[normalized.project_state] || 0;
+  return stageWeight
+    + (_luxuryAdProjectKeyframeCount(row) * 160)
+    + (_luxuryAdProjectSheetCount(row) * 60)
+    + Math.min(_luxuryAdProjectShotCount(row), 30);
+}
+
+function _compareLuxuryAdProjectCandidate(a = {}, b = {}) {
+  const scoreDelta = _luxuryAdProjectCompletenessScore(b) - _luxuryAdProjectCompletenessScore(a);
+  if (scoreDelta) return scoreDelta;
+  return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''));
+}
+
+function _findBestLuxuryAdProjectIndexByText(projects = [], req, bodyText = '') {
+  const textKey = _luxuryAdProjectTextKey(bodyText);
+  if (!textKey) return -1;
+  let bestIndex = -1;
+  projects.forEach((project, index) => {
+    if (!_luxuryAdProjectBelongsTo(req, project)) return;
+    if (!_canMergeLuxuryAdProjectByText(project)) return;
+    if (_luxuryAdProjectTextKey(project.text) !== textKey) return;
+    if (bestIndex < 0 || _compareLuxuryAdProjectCandidate(project, projects[bestIndex]) < 0) bestIndex = index;
+  });
+  return bestIndex;
+}
+
 function _listLuxuryAdProjects(req, limit = 20) {
   const max = Math.max(1, Math.min(100, Number(limit) || 20));
-  const seenText = new Set();
-  return _readLuxuryAdProjectStore().projects
+  const groupedByText = new Map();
+  const ungrouped = [];
+  _readLuxuryAdProjectStore().projects
     .filter(row => _luxuryAdProjectBelongsTo(req, row))
-    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
-    .filter(row => {
+    .forEach(row => {
       const textKey = _luxuryAdProjectTextKey(row.text);
-      if (textKey && _canMergeLuxuryAdProjectByText(row)) {
-        if (seenText.has(textKey)) return false;
-        seenText.add(textKey);
+      if (!textKey || !_canMergeLuxuryAdProjectByText(row)) {
+        ungrouped.push(row);
+        return;
       }
-      return true;
-    })
+      const current = groupedByText.get(textKey);
+      if (!current || _compareLuxuryAdProjectCandidate(row, current) < 0) groupedByText.set(textKey, row);
+    });
+  return [...groupedByText.values(), ...ungrouped]
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
     .slice(0, max)
     .map(_publicLuxuryAdProject);
 }
@@ -409,13 +502,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
       return keys.storyboard === requestKey || keys.keyframe === requestKey || p.request_key === requestKey;
     });
   }
-  if (existingIndex < 0 && bodyText) {
-    existingIndex = data.projects.findIndex(p => {
-      if (!_luxuryAdProjectBelongsTo(req, p)) return false;
-      if (!_canMergeLuxuryAdProjectByText(p)) return false;
-      return cleanText(p.text) === bodyText;
-    });
-  }
+  if (existingIndex < 0 && bodyText) existingIndex = _findBestLuxuryAdProjectIndexByText(data.projects, req, bodyText);
   const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
   const id = existing?.id || requestedId || uuidv4();
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
@@ -429,7 +516,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     || result.reference_mode === 'storyboard_planning_sheet'
     || result.keyframe_generation_status === 'deferred_for_review';
   const finalKeyframes = body.storyboard_final_keyframes === true;
-  const project_state = patch.project_state || body.project_state || _luxuryAdProductionStage({
+  const inferredProjectState = _luxuryAdProductionStage({
     reviewOnly,
     finalKeyframes,
     scenes: mergedScenes,
@@ -438,6 +525,14 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     errorCode: patch.error_code || result.code || result.details?.code || '',
     keyframeError: patch.error || result.keyframe_error || '',
   });
+  const requestedProjectState = patch.project_state || body.project_state || '';
+  const project_state = _normalizeLuxuryAdProjectRuntimeState({
+    ...(existing || {}),
+    project_state: requestedProjectState || inferredProjectState,
+    scenes: mergedScenes,
+    keyframes: mergedKeyframes,
+    storyboard_sheets: mergedStoryboardSheets,
+  }).project_state;
   const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
   const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
   const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
@@ -450,7 +545,12 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     user_id: existing?.user_id || scopeUserId(req) || req.user?.id || null,
     title,
     project_state,
-    status: ['frame_ready', 'video_ready'].includes(project_state) ? 'ready' : (project_state.endsWith('_failed') || project_state === 'frame_failed' ? 'failed' : (project_state === 'draft' ? 'draft' : 'working')),
+    status: _normalizeLuxuryAdProjectRuntimeState({
+      project_state,
+      scenes: mergedScenes,
+      keyframes: mergedKeyframes,
+      storyboard_sheets: mergedStoryboardSheets,
+    }).status,
     text: String(body.text || existing?.text || '').slice(0, 12000),
     product_name: body.product_name || body.product_asset?.name || existing?.product_name || '',
     product_subject: result.production_contract?.visual_locks?.product_lock?.subject || existing?.product_subject || '',
