@@ -3976,7 +3976,10 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     product_subject: _compactQaText(subject, 120),
     product_subject_type: softwareWorkflowSubject ? 'software_service_workflow' : 'physical_or_material_product',
     software_workflow_evidence_required: softwareWorkflowSubject
-      ? _luxurySoftwareWorkflowEvidencePrompt(subject)
+      ? [
+          _luxurySoftwareWorkflowEvidencePrompt(subject),
+          _luxurySoftwareWorkflowEvidenceFromScene(scene, subject),
+        ].filter(Boolean).join(' ')
       : '',
     person_required: personRequired,
     visible_subject_required: visibleSubject.required,

@@ -8208,8 +8208,12 @@
     if (frames.length !== segments.length) errors.push(`分镜数量不一致：剧本 ${segments.length} 镜，返回 ${frames.length} 张。`);
     segments.forEach((seg, i) => {
       const kf = frames[i] || {};
-      const labelIndex = luxuryFrameIndex(kf, luxuryFrameIndex(seg, i));
+      const expectedIndex = luxuryFrameIndex(seg, i);
+      const labelIndex = luxuryFrameIndex(kf, expectedIndex);
       const shotLabel = `第 ${labelIndex + 1} 镜`;
+      if (luxuryFrameHasExplicitIndex(kf) && labelIndex !== expectedIndex) {
+        errors.push(`第 ${expectedIndex + 1} 镜返回了第 ${labelIndex + 1} 镜的内容。`);
+      }
       if (!(kf.image_url || kf.imageUrl)) errors.push(`${shotLabel}没有生成图片。`);
       const referenceLocked = String(kf.reference_mode || '').includes('reference_locked');
       const qa = kf.qa || kf.shot_plan?.qa || null;
@@ -8226,11 +8230,6 @@
       ].filter(([key, , min]) => Number(dims[key]) > 0 && Number(dims[key]) < min);
       if (!referenceLocked && lowDims.length) {
         errors.push(`${shotLabel} QA 维度不足：${lowDims.map(([key, label]) => `${label}${Math.round(Number(dims[key]))}`).join('、')}`);
-      }
-      const frameText = JSON.stringify(kf).slice(0, 1600);
-      const scriptVisual = String(luxuryShotContentPrompt(seg) || '').slice(0, 20);
-      if (scriptVisual && frameText && !frameText.includes(scriptVisual.slice(0, 6)) && kf.scene_content) {
-        errors.push(`${shotLabel}返回内容疑似与剧本文案不一致。`);
       }
     });
     if (errors.length) throw new Error(errors.slice(0, 8).join('；'));
