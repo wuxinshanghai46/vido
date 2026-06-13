@@ -14503,6 +14503,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const multiCharacterContract = _luxuryBuildMultiCharacterContract(scene, subject);
   const visual = _luxuryStrictText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 520);
   const action = _luxuryCleanActionField(scene.action || scene.visual_action || '', scene);
+  const emotion = _luxuryStrictText(scene.emotion || scene.mood || scene.emotional_change || '', 260);
   const sceneText = _luxuryStrictText(
     visualContract.allowed_environment || scene.environment_lock || scene.scene_type_lock || scene.material_usage || scene.material_hint || visual,
     420,
@@ -14558,6 +14559,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     scene: sceneText,
     visual,
     action,
+    emotion,
     camera: cameraText,
     composition,
     lighting,
@@ -14643,6 +14645,8 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     `Scene: ${contract.scene}.`,
     `Visual event: ${contract.visual}.`,
     `Action and expression: ${contract.action}.`,
+    contract.emotion ? `Emotion and facial expression direction: ${contract.emotion}.` : '',
+    _luxuryShotExpressionDirection(scene, contract, 420),
     `Camera: ${contract.camera}.`,
     `Composition: ${contract.composition}.`,
     _luxuryMultiCharacterPrompt(contract.multi_character_contract || scene.multi_character_contract, 'image'),
@@ -17644,6 +17648,7 @@ function _luxuryGptImage2EditPrompt({
     260,
   );
   const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 180);
+  const expressionDirection = _luxuryShotExpressionDirection(scene, null, 320);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     150,
@@ -17668,7 +17673,7 @@ function _luxuryGptImage2EditPrompt({
     /identity_reference|presenter/i.test(String(ref?.kind || '')));
   const needsPresenter = !!personRequired || hasHumanReference || !!characterLock;
   const presenterRule = needsPresenter
-    ? 'Use the same campaign person shown in the identity reference group when provided. Treat all identity_reference images as different views of one person, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene. Identity references provide actor identity only; do not copy their original background, store shelves, handbags, cosmetics, studio props or unrelated goods.'
+    ? 'Use the same campaign person shown in the identity reference group when provided. Treat all identity_reference images as different views of one person, not different people. Keep their overall face impression, age range, hairstyle, clothing style and build consistent; adapt pose, expression and placement naturally for this scene. Identity references provide actor identity only; do not copy their original facial expression, background, store shelves, handbags, cosmetics, studio props or unrelated goods.'
     : 'Only include people if the shot description asks for them.';
   const location = _luxuryExpectedEnvironmentFromContract(scene);
   const locationRule = softwareWorkflowSubject
@@ -17685,6 +17690,7 @@ function _luxuryGptImage2EditPrompt({
     presenterRule,
     visual ? `Scene content: ${visual}.` : '',
     action ? `Actor action and expression: ${action}.` : '',
+    needsPresenter ? expressionDirection : '',
     narration ? `Meaning to show: ${narration}.` : '',
     camera ? `Camera and lighting: ${camera}.` : '',
     refKinds.length ? `Use references as: ${refKinds.join('; ')}.` : '',
@@ -17894,7 +17900,7 @@ function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
         return `Reference image ${n}: composition map only. Final frame must be a real camera photo: visible presenter in medium shot with face/expression readable, standing beside or gesturing toward product/material evidence. Do not copy the diagram style, small distant figure, or illustration look.`;
       }
       if (kind === 'generated_presenter_guidance' || sameRef(source, presenterSeedUrl)) {
-        return `Reference image ${n}: mandatory system-generated campaign presenter identity lock. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family in every human shot; do not copy its background, portrait pose, fashion retail, jewelry, cosmetics, or studio category.`;
+        return `Reference image ${n}: mandatory system-generated campaign presenter identity lock. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family in every human shot; change pose and facial expression according to each shot's action/emotion. Do not copy its background, portrait pose, fixed smile/neutral expression, fashion retail, jewelry, cosmetics, or studio category.`;
       }
       if (sameRef(source, subjectSeedUrl)) {
         return `Reference image ${n}: advertised product/material evidence. The final frame must clearly show these finished panels/sample wall/material surfaces, not generic luxury props.`;
@@ -17903,7 +17909,7 @@ function _luxuryKeyframeReferenceRoleGuide(refs = [], scene = {}) {
         return `Reference image ${n}: real premium location style and lighting only. Use it as the commercial space family, but add the required presenter and product evidence in the same shot.`;
       }
       if (/^identity_reference/.test(kind)) {
-        return `Reference image ${n}: strict fixed-actor identity reference${kind === 'identity_reference_view' ? ' view' : ''}. All identity references depict the same actor; preserve one continuous person across shots, including face impression, age, hairstyle, body proportions and wardrobe family, while placing the actor naturally in the scene. Do not copy the identity reference background, retail shelves, boutique displays, handbags, cosmetics, studio props or any unrelated product category.`;
+        return `Reference image ${n}: strict fixed-actor identity reference${kind === 'identity_reference_view' ? ' view' : ''}. All identity references depict the same actor; preserve one continuous person across shots, including face impression, age, hairstyle, body proportions and wardrobe family, while placing the actor naturally in the scene. The reference locks identity, not the exact facial expression; vary mouth, eyes and micro-expression according to this shot. Do not copy the identity reference background, retail shelves, boutique displays, handbags, cosmetics, studio props or any unrelated product category.`;
       }
       if (kind === 'main_reference' || kind === 'shot_reference' || kind === 'demand_reference') {
         return `Reference image ${n}: product/scene/style evidence only. Preserve the requested category while obeying the shot contract.`;
@@ -17941,6 +17947,7 @@ function _buildLuxuryImageModelStrictPrompt({
     260,
   );
   const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 220);
+  const expressionDirection = _luxuryShotExpressionDirection(scene, null, 360);
   const displayProductSubject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
@@ -17970,7 +17977,7 @@ function _buildLuxuryImageModelStrictPrompt({
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
   const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || scene.visual_contract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
-    ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change only pose, expression, camera angle and scene placement. Do not copy its background or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
+    ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change pose, expression, camera angle and scene placement according to the current shot. Do not copy its background, fixed smile/neutral expression, or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
@@ -17988,6 +17995,7 @@ function _buildLuxuryImageModelStrictPrompt({
     humanAnchor,
     multiCharacterPrompt,
     generatedPresenterGuidance,
+    personRequired ? expressionDirection : '',
     visual ? `MUST SHOW: ${visual}.` : '',
     action ? `REQUIRED ACTION: ${action}.` : '',
     camera ? `CAMERA/SCENE: ${camera}.` : '',
@@ -17996,7 +18004,7 @@ function _buildLuxuryImageModelStrictPrompt({
     compiled ? `COMPILED CONTRACT: ${compiled}.` : '',
     locationRule,
     refRule,
-    hasAvatar ? 'Identity reference rule: preserve the selected presenter identity only when a human appears; redraw naturally in-scene, no pasted cutout.' : '',
+    hasAvatar ? 'Identity reference rule: preserve the selected presenter identity only when a human appears; redraw naturally in-scene, no pasted cutout, and do not copy the reference photo expression as a fixed expression across shots.' : '',
     characterLock?.prompt ? _compactLuxuryKeyframeText(characterLock.prompt, 220) : '',
     subjectGuard,
     productLockForScene,
@@ -18896,6 +18904,41 @@ function _compactLuxuryKeyframeText(value = '', max = 260) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function _luxuryShotExpressionDirection(scene = {}, contract = null, max = 360) {
+  const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
+  const storyExtract = scene.shot_execution_packet?.current_shot?.story_extract || scene.story_extract || {};
+  const pieces = [
+    contract?.emotion,
+    contract?.mood,
+    scene.expression,
+    scene.facial_expression,
+    scene.emotion,
+    scene.mood,
+    scene.emotional_change,
+    storyExtract.emotional_change,
+    storyExtract.character_goal,
+    storyExtract.conflict_or_question,
+    scene.objective,
+    scene.purpose,
+    scene.intent,
+    scene.action,
+    scene.visual_action,
+    scene.character_action,
+    visualContract.action,
+    visualContract.expression,
+    visualContract.emotion,
+    visualContract.image_prompt,
+    scene.voiceover,
+    scene.narration,
+    scene.ad_copy,
+    scene.text,
+  ].filter(Boolean).join(' ');
+  const evidence = _compactLuxuryKeyframeText(pieces, max);
+  return evidence
+    ? `EXPRESSION DIRECTION: derive the actor's facial expression from this shot only: ${evidence}. Keep identity stable, but do not copy the neutral/smile/frozen expression from the identity reference; the face must show the current beat's emotion with subtle real human variation.`
+    : 'EXPRESSION DIRECTION: keep the same actor identity but vary the facial expression to match this shot action and story beat; do not copy the neutral/smile/frozen expression from the identity reference or repeat the same face across shots.';
+}
+
 function _buildLuxuryKeyframePrompt({
   scene = {},
   productSubject = '',
@@ -18914,7 +18957,8 @@ function _buildLuxuryKeyframePrompt({
     const packetPrompt = scene.shot_execution_packet && typeof scene.shot_execution_packet === 'object'
       ? `SHOT EXECUTION PACKET: ${_luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 2600)}.`
       : '';
-    const compiledPrompt = _luxuryStrictText([packetPrompt, scene.compiled_image_prompt || ''].filter(Boolean).join(' '), 6000);
+    const expressionDirection = _luxuryShotExpressionDirection(scene, null, 520);
+    const compiledPrompt = _luxuryStrictText([packetPrompt, scene.compiled_image_prompt || '', expressionDirection].filter(Boolean).join(' '), 6000);
     if (!compiledPrompt) {
       const err = new Error('剧情广告分镜缺少 compiled_image_prompt，已停止，未调用图片模型。');
       err.status = 422;
@@ -18931,6 +18975,7 @@ function _buildLuxuryKeyframePrompt({
     520,
   );
   const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 260);
+  const expressionDirection = _luxuryShotExpressionDirection(scene, null, 360);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     260,
@@ -18989,6 +19034,7 @@ function _buildLuxuryKeyframePrompt({
     purpose ? `Story purpose: ${purpose}.` : '',
     visual ? `Must show exactly: ${visual}.` : '',
     action ? `Action/expression: ${action}.` : '',
+    personRequired ? expressionDirection : '',
     visibleSubjectRequired
       ? 'Storyboard panel requirement: show the script-required subject/entity integrated inside the same physical scene as the product/material evidence when applicable. Do not output an unrelated catalogue packshot, empty warehouse, raw material pile, or abstract facade-only image unless that is the confirmed shot.'
       : '',
@@ -19006,6 +19052,7 @@ function _buildLuxuryKeyframePrompt({
     effectiveSubjectGuard,
     effectiveProductLockPrompt,
     characterLock?.prompt || '',
+    hasAvatar ? 'Actor identity lock excludes expression lock: preserve facial identity and age impression, not the exact mouth shape, smile level, eye openness or emotional expression from the reference image.' : '',
     'Create one premium commercial storyboard keyframe that exactly matches the shot contract above. The frame must be a still keyframe, realistic, cinematic, product-readable, and coherent with the story.',
     'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
     'Hard negative: unrelated subject/category, random stock prop, wrong industry/location, default scene template, unconfirmed UI carrier, fake readable text, changing the confirmed advertised subject into a different category.',
