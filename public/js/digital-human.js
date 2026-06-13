@@ -3654,6 +3654,76 @@
     return 'digital_human';
   }
 
+  function normalizeTaskTextKey(value = '') {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  }
+
+  function luxuryTaskProjectId(task = {}) {
+    return String(
+      task.projectId ||
+      task.project?.id ||
+      task.production_project_id ||
+      task.productionProjectId ||
+      task.retryPayload?.production_project_id ||
+      task.retryPayload?.project_id ||
+      task.createDetail?.productionProjectId ||
+      '',
+    ).trim();
+  }
+
+  function luxuryTaskTextKey(task = {}) {
+    return normalizeTaskTextKey(
+      task.project?.text ||
+      task.retryPayload?.text ||
+      task.createDetail?.text ||
+      task.text ||
+      task.textPreview ||
+      '',
+    );
+  }
+
+  function taskCenterDedupeKey(task = {}) {
+    const type = getTaskType(task);
+    if (type !== 'luxury_ad') return `${type}:${task.taskId || ''}`;
+    const projectId = luxuryTaskProjectId(task);
+    if (projectId) return `luxury-project:${projectId}`;
+    const textKey = luxuryTaskTextKey(task);
+    if (textKey) return `luxury-text:${textKey}`;
+    return `luxury-task:${task.taskId || ''}`;
+  }
+
+  function mergeLuxuryTaskGroup(items = []) {
+    const list = items.filter(Boolean);
+    if (list.length <= 1) return list[0] || null;
+    const projectTask = list.find(t => t.isLuxuryProjectDraft);
+    const activeTask = list.find(t => ACTIVE_TASK_STATUSES.has(t.status));
+    const doneTask = list.find(t => t.status === 'done' && (t.videoUrl || t.video_url));
+    const newest = list.slice().sort((a, b) => (b.startedAt || b.updatedAt || 0) - (a.startedAt || a.updatedAt || 0))[0];
+    const primary = activeTask || doneTask || projectTask || newest;
+    return {
+      ...(projectTask || {}),
+      ...(primary || {}),
+      project: projectTask?.project || primary?.project || null,
+      projectId: projectTask?.projectId || luxuryTaskProjectId(primary) || '',
+      isLuxuryProjectDraft: !!projectTask && !activeTask && !doneTask,
+      taskId: activeTask?.taskId || doneTask?.taskId || projectTask?.taskId || primary?.taskId,
+      startedAt: Math.max(...list.map(t => Number(t.startedAt || t.updatedAt || 0) || 0)),
+    };
+  }
+
+  function taskCenterVisibleTasks(rawTasks = []) {
+    const groups = new Map();
+    (Array.isArray(rawTasks) ? rawTasks : []).filter(Boolean).forEach(task => {
+      const key = taskCenterDedupeKey(task);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(task);
+    });
+    return Array.from(groups.values()).map(group => {
+      const first = group[0] || {};
+      return getTaskType(first) === 'luxury_ad' ? mergeLuxuryTaskGroup(group) : first;
+    }).filter(Boolean);
+  }
+
   function getTaskTypeLabel(type) {
     return {
       digital_human: '数字人',
@@ -4017,7 +4087,7 @@
     const projectTasks = state.activeTaskType === 'luxury_ad'
       ? (state.luxuryAdProjects || []).map(luxuryAdProjectToTask)
       : [];
-    const tasks = [...readVideoTasks(), ...projectTasks];
+    const tasks = taskCenterVisibleTasks([...readVideoTasks(), ...projectTasks]);
     $$('#dhTaskTypeTabs [data-task-type]').forEach(btn => {
       const type = btn.dataset.taskType;
       const count = tasks.filter(t => getTaskType(t) === type).length;
@@ -4357,6 +4427,8 @@
       outputSize: t.output_size || t.outputSize || '',
       subtitleBurned: !!(t.subtitle_burned || t.subtitleBurned),
       subtitleWarning: t.subtitle_warning || t.subtitleWarning || '',
+      production_project_id: t.production_project_id || t.productionProjectId || t.project_id || '',
+      projectId: t.production_project_id || t.productionProjectId || t.project_id || '',
       scenes: t.scenes || [],
       keyframes: t.keyframes || [],
       clips: t.clips || t.clip_urls || [],
@@ -10286,6 +10358,8 @@
         avatar_id: state.selectedAvatar?.id || '',
         background_url: compactLuxuryUrl(refs[0] || primaryFrame),
         reference_images: refs.slice(1).map(compactLuxuryUrl).filter(Boolean),
+        production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+        project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         text,
         title,
         product_name: productAsset.name || '',
@@ -10341,9 +10415,12 @@
           previewUrl: state.luxuryAd.keyframes?.[0]?.image_url || refs[0] || primaryFrame,
           textPreview: `${state.luxuryAd.durationSec}s · ${state.luxuryAd.segments.length || 4} 镜头 · ${text.slice(0, 50)}`,
           taskType: 'luxury_ad',
+          production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+          projectId: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
           retryPayload: payload,
           createDetail: {
             title,
+            productionProjectId: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
             durationSec: state.luxuryAd.durationSec,
             text,
             backgroundUrl: refs[0],

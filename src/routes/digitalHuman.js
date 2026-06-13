@@ -162,18 +162,38 @@ function _mergeLuxuryProjectSheets(incoming, existing) {
   return Array.isArray(existing) ? existing : [];
 }
 
+const LUXURY_AD_PROJECT_MERGE_STATES = new Set([
+  'draft',
+  'script_reviewing',
+  'frame_generating',
+  'frame_reviewing',
+  'frame_failed',
+  'frame_ready',
+  'actor_required',
+  'model_required',
+  'video_generating',
+  'video_ready',
+]);
+
+function _luxuryAdProjectTextKey(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function _canMergeLuxuryAdProjectByText(row = {}) {
+  return LUXURY_AD_PROJECT_MERGE_STATES.has(String(row.project_state || '').trim());
+}
+
 function _listLuxuryAdProjects(req, limit = 20) {
   const max = Math.max(1, Math.min(100, Number(limit) || 20));
-  const seenDraftText = new Set();
+  const seenText = new Set();
   return _readLuxuryAdProjectStore().projects
     .filter(row => _luxuryAdProjectBelongsTo(req, row))
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
     .filter(row => {
-      const state = String(row.project_state || '');
-      const textKey = String(row.text || '').replace(/\s+/g, ' ').trim();
-      if (textKey && ['draft', 'script_reviewing', 'frame_generating', 'frame_reviewing', 'frame_failed'].includes(state)) {
-        if (seenDraftText.has(textKey)) return false;
-        seenDraftText.add(textKey);
+      const textKey = _luxuryAdProjectTextKey(row.text);
+      if (textKey && _canMergeLuxuryAdProjectByText(row)) {
+        if (seenText.has(textKey)) return false;
+        seenText.add(textKey);
       }
       return true;
     })
@@ -378,7 +398,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const now = new Date().toISOString();
   const data = _readLuxuryAdProjectStore();
   const requestedId = String(body.production_project_id || body.project_id || result.production_project_id || '').trim();
-  const cleanText = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const cleanText = _luxuryAdProjectTextKey;
   const bodyText = cleanText(body.text || body.brief || '');
   const requestKey = String(body.request_key || body.storyboard_request_key || body.keyframe_request_key || '').trim();
   let existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
@@ -392,7 +412,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   if (existingIndex < 0 && bodyText) {
     existingIndex = data.projects.findIndex(p => {
       if (!_luxuryAdProjectBelongsTo(req, p)) return false;
-      if (!['draft', 'script_reviewing', 'frame_generating', 'frame_reviewing', 'frame_failed'].includes(String(p.project_state || ''))) return false;
+      if (!_canMergeLuxuryAdProjectByText(p)) return false;
       return cleanText(p.text) === bodyText;
     });
   }
@@ -19998,10 +20018,11 @@ async function _createLuxuryAdReferenceKeyframeFallback({
 }
 
 async function _runSpaceStoryboardTask(req, taskId, payload) {
-  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', voiceDirection = '', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard' } = payload;
+  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', voiceDirection = '', productionProjectId = '', production_project_id = '', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard' } = payload;
   const aspectRatio = _normalizeAspectRatio(rawAspectRatio, '16:9');
   const outputSize = _normalizeOutputSize(rawOutputSize);
   const isLuxury = adMode === 'luxury_ad';
+  const linkedProductionProjectId = String(productionProjectId || production_project_id || '').trim();
   const isShowroomGuide = adMode === 'showroom_guide';
   const bgmAsset = isLuxury ? _luxuryBgmAssetFromPayload(payload) : null;
   const luxuryPayloadRefCount = isLuxury && Array.isArray(payload.reference_images)
@@ -20577,6 +20598,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       generation_mode: isLuxury ? 'luxury_storyboard' : (isShowroomGuide ? 'showroom_guide' : 'storyboard'),
       ad_mode: adMode,
       ad_style: adStyle,
+      production_project_id: linkedProductionProjectId,
+      project_id: linkedProductionProjectId,
       shot_count: scenes.length,
       user_id: productAdTasks.get(taskId)?.user_id,
       ratio: aspectRatio,
@@ -22776,6 +22799,8 @@ router.post('/spaces/generate', async (req, res) => {
       ad_mode = 'digital_ad',
       ad_style = 'luxury_soft',
       voice_direction = '',
+      production_project_id = '',
+      project_id = '',
       shot_count = null,
       keyframes = [],
       guide_gender = 'female',
@@ -22846,6 +22871,8 @@ router.post('/spaces/generate', async (req, res) => {
       ad_mode,
       ad_style,
       voice_direction,
+      production_project_id: production_project_id || project_id || '',
+      project_id: production_project_id || project_id || '',
       shot_count,
       guide_gender,
       ratio: aspectRatio,
@@ -22873,6 +22900,7 @@ router.post('/spaces/generate', async (req, res) => {
       adMode: ad_mode,
       adStyle: ad_style,
       voiceDirection: voice_direction,
+      productionProjectId: production_project_id || project_id || '',
       shotCount: shot_count,
       keyframes,
       guideGender: guide_gender,
