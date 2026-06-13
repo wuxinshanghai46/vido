@@ -200,7 +200,7 @@
     voiceClone: { file: null, name: '', gender: 'female', list: [] },
     activeTab: 'step1',
     activeTaskType: 'digital_human',
-    activeTaskStatus: 'active',
+    activeTaskStatus: 'pending',
     luxuryAdProjects: [],
     luxuryAdProjectsLoading: false,
     luxuryAdProjectsLoadedAt: 0,
@@ -3965,7 +3965,7 @@
       btn.textContent = count ? `${getTaskTypeLabel(type)} ${count}` : getTaskTypeLabel(type);
     });
     $$('#dhTaskStatusTabs [data-task-status]').forEach(btn => {
-      const status = btn.dataset.taskStatus || 'active';
+      const status = btn.dataset.taskStatus || 'pending';
       const count = tasks.filter(t => getTaskType(t) === state.activeTaskType && (status === 'all' || taskStatusBucket(t.status) === status)).length;
       btn.classList.toggle('active', status === state.activeTaskStatus);
       btn.textContent = count ? `${btn.dataset.label || btn.textContent.replace(/\s+\d+$/, '')} ${count}` : (btn.dataset.label || btn.textContent.replace(/\s+\d+$/, ''));
@@ -3974,9 +3974,10 @@
     const scopedTasks = tasks.filter(t => getTaskType(t) === state.activeTaskType)
       .filter(t => state.activeTaskStatus === 'all' || taskStatusBucket(t.status) === state.activeTaskStatus);
     if (!scopedTasks.length) {
+      const statusLabel = $(`#dhTaskStatusTabs [data-task-status="${state.activeTaskStatus}"]`)?.dataset?.label || '';
       host.innerHTML = `<div class="dh-empty">
         <div class="dh-empty-icon">&#8987;</div>
-        <div class="dh-empty-text">&#26242;&#26080;${getTaskTypeLabel(state.activeTaskType)}${state.activeTaskStatus === 'active' ? '进行中' : ''}&#20219;&#21153;</div>
+        <div class="dh-empty-text">暂无${getTaskTypeLabel(state.activeTaskType)}${statusLabel ? statusLabel : ''}任务</div>
         <div class="dh-empty-sub">&#21046;&#20316;&#36807;&#31243;&#20013;&#28857;&#20987;&#20445;&#23384;&#36827;&#24230;&#65292;&#21047;&#26032;&#21518;&#21487;&#20174;&#36825;&#37324;&#32487;&#32493;&#23436;&#25104;</div>
       </div>`;
       return;
@@ -3994,9 +3995,10 @@
         : (t.startedAt ? `${Math.max(0, Math.round((Date.now() - t.startedAt) / 1000))}s` : '--');
       const elapsedLabel = t.isLuxuryProjectDraft ? '已保存' : `&#24050;&#29992; ${escapeHtml(elapsed)}`;
       const created = t.startedAt ? new Date(t.startedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
-      const poster = t.thumbnailUrl || t.thumbnail_url || t.imageUrl || t.image_url || t.previewUrl
-        || (t.taskId ? `/api/dh/videos/tasks/${encodeURIComponent(t.taskId)}/thumbnail` : '');
+      const videoUrl = t.videoUrl || t.video_url || '';
+      const poster = t.thumbnailUrl || t.thumbnail_url || t.imageUrl || t.image_url || t.previewUrl || '';
       const posterUrl = poster ? withAuthQuery(poster) : '';
+      const playableVideoUrl = videoUrl ? withAuthQuery(videoUrl) : '';
       const taskRatio = String(t.ratio || t.aspectRatio || t.aspect_ratio || t.resolution || '').toLowerCase();
       const ratioClass = taskRatio.includes('16:9') || taskRatio.includes('1280x720') || taskRatio.includes('1920x1080')
         ? ' dh-task-thumb-landscape'
@@ -4005,12 +4007,14 @@
         ? `<div class="dh-task-thumb dh-task-thumb-empty">${escapeHtml(getTaskStatusText(t.status))}</div>`
         : active
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
-        : (t.videoUrl
+        : (playableVideoUrl
           ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}" data-task-preview="${escapeHtml(t.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;">
-               ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt="">` : ''}
+               <video class="dh-task-thumb-video" src="${escapeHtml(playableVideoUrl)}" ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} muted playsinline preload="metadata"></video>
                <span class="dh-task-thumb-play">&#9654;</span>
              </div>`
-          : `<div class="dh-task-thumb dh-task-thumb-empty">${getTaskStatusText(t.status)}</div>`);
+          : (posterUrl
+            ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}"><img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt=""></div>`
+            : `<div class="dh-task-thumb dh-task-thumb-empty">${getTaskStatusText(t.status)}</div>`));
       const video = '';
       const error = t.error ? `<div class="dh-task-error">${escapeHtml(t.error)}</div>` : '';
       const subtitle = t.subtitleWarning
@@ -4038,10 +4042,10 @@
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-lux-project-continue="${escapeHtml(t.projectId)}">继续制作</button>` : ''}
-            ${t.videoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
+            ${playableVideoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
             ${canRetry ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(t.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>` : ''}
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>` : ''}
-            ${t.videoUrl ? `<a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(withAuthQuery(t.videoUrl))}" download>&#19979;&#36733;</a>` : ''}
+            ${playableVideoUrl ? `<a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(playableVideoUrl)}" download>&#19979;&#36733;</a>` : ''}
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">&#20316;&#21697;&#24211;</button>` : ''}
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-project-delete="${escapeHtml(t.projectId)}">删除</button>` : `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>`}
           </div>
@@ -8914,11 +8918,10 @@
   }
 
   function taskStatusBucket(status = '') {
-    if (['draft', 'working', 'ready'].includes(status)) return 'active';
+    if (['draft', 'working', 'ready', 'error', 'invalid', 'timeout', 'failed'].includes(status)) return 'pending';
     if (ACTIVE_TASK_STATUSES.has(status)) return 'generating';
     if (status === 'done') return 'done';
-    if (['error', 'invalid', 'timeout', 'failed'].includes(status)) return 'failed';
-    return 'active';
+    return 'pending';
   }
 
   async function refreshLuxuryAdProjectsForTaskCenter({ force = false, silent = false } = {}) {
@@ -13100,7 +13103,7 @@
     }
     const taskStatusTab = closest('[data-task-status]');
     if (taskStatusTab) {
-      state.activeTaskStatus = taskStatusTab.dataset.taskStatus || 'active';
+      state.activeTaskStatus = taskStatusTab.dataset.taskStatus || 'pending';
       renderTaskCenter();
       return;
     }
@@ -13134,7 +13137,8 @@
     if (taskPreview) {
       const id = taskPreview.dataset.taskPreview;
       const meta = state.s3.runningTasks.get(id) || readVideoTasks().find(x => x.taskId === id);
-      if (meta?.videoUrl) openVideoPreviewModal(meta.videoUrl, meta.avatarName || '数字人作品');
+      const url = meta?.videoUrl || meta?.video_url || '';
+      if (url) openVideoPreviewModal(url, meta.avatarName || '数字人作品');
       return;
     }
     const taskFocus = closest('[data-task-focus]');
