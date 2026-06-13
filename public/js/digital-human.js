@@ -22,6 +22,14 @@
     return { aspect_ratio: ratio, aspectRatio: ratio, output_size: size, outputSize: size, resolution: pixels, pixels };
   }
 
+  function luxuryAspectRatioStyle(ratio = '9:16') {
+    const m = String(ratio || '').match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+    if (!m) return '--dh-frame-ratio: 16 / 9;';
+    const w = Math.max(1, Number(m[1]) || 16);
+    const h = Math.max(1, Number(m[2]) || 9);
+    return `--dh-frame-ratio: ${w} / ${h};`;
+  }
+
   const SPACE_GUIDE_TRACKS_MODE = 'showroom_guide_tracks';
   function spaceGuideGenerationMode(isLuxury) {
     return isLuxury ? 'luxury_storyboard' : SPACE_GUIDE_TRACKS_MODE;
@@ -8314,6 +8322,7 @@
     if (!segments.length) return '';
     const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
     const ratio = String(state.luxuryAd.outputRatio || '9:16');
+    const ratioStyle = luxuryAspectRatioStyle(ratio);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
     const manifest = state.luxuryAd.assetManifest
       || segments.find(x => x?.asset_manifest)?.asset_manifest
@@ -8380,10 +8389,10 @@
           const ui = luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg);
           return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
-            ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
+            ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" style="${ratioStyle}" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
               <img src="${escapeHtml(preview)}" alt="镜头 ${i + 1} 已生成分镜图">
               <span>已生成 · 点击查看</span>
-            </button>` : `<div class="dh-lux-sheet-frame pending"><span>${escapeHtml(pendingLabel)}</span></div>`}
+            </button>` : `<div class="dh-lux-sheet-frame pending" style="${ratioStyle}"><span>${escapeHtml(pendingLabel)}</span></div>`}
             <dl>
               <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
               <div><dt>ACTION</dt><dd>${escapeHtml(action || luxuryShotContentPrompt(seg))}</dd></div>
@@ -8969,7 +8978,9 @@
     const sheetCount = Array.isArray(state.luxuryAd.storyboardSheets)
       ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url)).length
       : 0;
+    const ratioStyle = luxuryAspectRatioStyle(state.luxuryAd.outputRatio || '9:16');
     const generatedFrameCount = Array.isArray(keyframes) ? keyframes.filter(luxuryFrameHasImage).length : 0;
+    const missingFrameCount = Math.max(0, segments.length - generatedFrameCount);
     const reviewLabel = sheetCount
       ? `审核板 ${segments.length} 个镜头 · ${sheetCount} 页`
       : `镜头表 ${segments.length} 个镜头 · ${generatedFrameCount ? `已保留 ${generatedFrameCount} 张真实关键帧` : '真实关键帧未生成'}`;
@@ -8986,7 +8997,10 @@
           <b>分镜结果</b>
           <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? reviewLabel : `共 ${segments.length} 个镜头`)}</span>
         </div>
-        <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
+        <div class="dh-lux-frame-actions">
+          ${missingFrameCount ? `<button type="button" class="dh-luxgen-edit" id="dhLuxAdFillMissingFrames" ${disabledAttr}>补齐未生成镜头（${missingFrameCount}）</button>` : ''}
+          <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
+        </div>
       </div>
       <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdFrameProgress" hidden></div>
       ${planningNotice}
@@ -9034,7 +9048,7 @@
       ].filter(Boolean).join('；');
       const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
       return `<article class="dh-demo-frame-card">
-        <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
+        <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" style="${ratioStyle}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(previewUrl)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : ''}
           <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || storyStage)}</b>
           <span>${escapeHtml(timeRange)} · ${escapeHtml(status)}${isLockedReference ? ' · 已锁定参考' : ''}${preview ? ' · 点击查看全图' : ''}</span>
@@ -10069,6 +10083,24 @@
       renderLuxuryWorkflowProgress();
       updateLuxuryAdStepLocks();
       if (btn) { btn.disabled = false; btn.innerHTML = old || (singleIndex === null ? '4 生成分镜' : '重新生成本镜'); }
+    }
+  }
+
+  function luxuryMissingKeyframeIndexes() {
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const keyframes = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
+    return segments
+      .map((_, i) => i)
+      .filter(i => !luxuryFrameHasImage(keyframes[i]));
+  }
+
+  async function fillMissingLuxuryAdKeyframes() {
+    const missing = luxuryMissingKeyframeIndexes();
+    if (!missing.length) return toast('当前没有缺失的分镜图', 'info');
+    for (const idx of missing) {
+      if (luxuryFrameHasImage((state.luxuryAd.keyframes || [])[idx])) continue;
+      await generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
+      if (!luxuryFrameHasImage((state.luxuryAd.keyframes || [])[idx])) break;
     }
   }
 
@@ -12983,6 +13015,7 @@
       else await buildLuxuryAdStoryboard({ autoNext: true, detail: false, triggerButton: luxGenerateBtn });
       return;
     }
+    if (closest('#dhLuxAdFillMissingFrames')) { fillMissingLuxuryAdKeyframes(); return; }
     if (closest('#dhLuxAdRegenerateFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
     const luxuryShotRegenerate = closest('[data-lux-shot-regenerate]');
     if (luxuryShotRegenerate) {

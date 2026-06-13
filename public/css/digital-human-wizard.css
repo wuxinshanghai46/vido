@@ -1018,6 +1018,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 }
 .dh-demo-frame-visual {
   position: relative;
+  aspect-ratio: var(--dh-frame-ratio, 16 / 9);
   min-height: 360px;
   border: 1px solid rgba(33,255,243,.2);
   border-radius: var(--dh-radius-sm);
@@ -1044,6 +1045,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-sheet-output-title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .dh-lux-sheet-output-title b { color: var(--dh-text); font-size: 13px; }
 .dh-lux-sheet-output-title span { color: var(--dh-text-muted); font-size: 11px; font-weight: 800; }
+.dh-lux-frame-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .dh-lux-sheet-output-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .dh-lux-sheet-output-card { min-width: 0; display: grid; gap: 6px; color: var(--dh-text-soft); text-decoration: none; }
 .dh-lux-sheet-output-card img { width: 100%; aspect-ratio: 8 / 11; object-fit: cover; display: block; border: 1px solid rgba(255,255,255,.14); background: #05070b; }
@@ -1058,7 +1060,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-sheet-shot { min-width: 0; border-right: 1px solid rgba(33,255,243,.10); border-bottom: 1px solid rgba(33,255,243,.10); background: rgba(255,255,255,.018); }
 .dh-lux-sheet-shot header { height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 10px; border-bottom: 1px solid rgba(33,255,243,.10); color: var(--dh-text-soft); font-size: 11px; font-weight: 900; }
 .dh-lux-sheet-shot header strong { width: 24px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(33,255,243,.32); color: var(--dh-primary); font-size: 12px; }
-.dh-lux-sheet-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; display: grid; place-items: center; border: 0; border-radius: 0; background: #05070b; overflow: hidden; color: inherit; cursor: zoom-in; }
+.dh-lux-sheet-frame { position: relative; width: 100%; aspect-ratio: var(--dh-frame-ratio, 16 / 9); min-height: 260px; display: grid; place-items: center; border: 0; border-radius: 0; background: #05070b; overflow: hidden; color: inherit; cursor: zoom-in; }
 .dh-lux-sheet-frame.pending { background: repeating-linear-gradient(135deg, rgba(33,255,243,.08), rgba(33,255,243,.08) 9px, rgba(255,255,255,.03) 9px, rgba(255,255,255,.03) 18px), #081018; }
 .dh-lux-sheet-frame img { width: 100%; height: 100%; object-fit: contain; display: block; background: #05070b; }
 .dh-lux-sheet-frame > span { padding: 10px; color: var(--dh-text-muted); font-size: 12px; font-weight: 800; text-align: center; line-height: 1.45; }
