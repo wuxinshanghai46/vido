@@ -5513,6 +5513,35 @@ function _isPublicHttpImageUrl(url = '') {
   }
 }
 
+function _canonicalLocalJimengAssetPathFromUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  let clean = url.split('?')[0];
+  try {
+    const u = new URL(clean);
+    clean = u.pathname;
+  } catch {}
+  if (!clean.includes('/public/jimeng-assets/') && !clean.startsWith('/public/jimeng-assets/')) return '';
+  const rawName = path.basename(clean);
+  if (!rawName) return '';
+  const exact = path.join(JIMENG_ASSETS_DIR, rawName);
+  if (fs.existsSync(exact)) return exact;
+  const stem = rawName.replace(/\.(png|jpe?g|webp)$/i, '');
+  if (!stem || /[\\/:*?"<>|]/.test(stem)) return '';
+  let matches = [];
+  try {
+    matches = fs.readdirSync(JIMENG_ASSETS_DIR)
+      .filter(name => /\.(png|jpe?g|webp)$/i.test(name))
+      .filter(name => name === `${stem}.png` || name === `${stem}.jpg` || name === `${stem}.jpeg` || name === `${stem}.webp` || name.startsWith(`${stem}_`))
+      .map(name => {
+        const full = path.join(JIMENG_ASSETS_DIR, name);
+        const stat = fs.statSync(full);
+        return { full, mtimeMs: stat.mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  } catch {}
+  return matches[0]?.full || '';
+}
+
 // Resolve an image reference for external providers.
 // 中文说明：外部生图/图生视频供应商统一使用公网 URL；不再把本地文件转 base64/data URL。
 async function _resolveImageForExternalApi(req, url, options = {}) {
@@ -5524,6 +5553,10 @@ async function _resolveImageForExternalApi(req, url, options = {}) {
   if (!_isPublicHttpImageUrl(publicUrl)) {
     if (options?.required) throw new Error(`供应商图片参考不是公网 URL：${publicUrl}`);
     return '';
+  }
+  const localAssetPath = _canonicalLocalJimengAssetPathFromUrl(publicUrl);
+  if (localAssetPath) {
+    return `${_publicBaseUrl(req)}/public/jimeng-assets/${path.basename(localAssetPath)}`;
   }
   return publicUrl;
 }
@@ -5566,21 +5599,15 @@ async function _probeLuxuryImageReferenceAvailability(req, url) {
 }
 
 function _localAssetPathFromUrl(url) {
+  const canonical = _canonicalLocalJimengAssetPathFromUrl(url);
+  if (canonical) return canonical;
   if (!url || typeof url !== 'string') return '';
   let clean = url.split('?')[0];
   try {
     const u = new URL(clean);
     clean = u.pathname;
   } catch {}
-  if (clean.includes('/public/jimeng-assets/')) {
-    const p = path.join(JIMENG_ASSETS_DIR, path.basename(clean));
-    return fs.existsSync(p) ? p : '';
-  }
   if (clean.includes('/api/dh/my-avatars/')) return '';
-  if (clean.startsWith('/public/jimeng-assets/')) {
-    const p = path.join(JIMENG_ASSETS_DIR, path.basename(clean));
-    return fs.existsSync(p) ? p : '';
-  }
   return '';
 }
 
