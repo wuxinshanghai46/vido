@@ -2209,6 +2209,85 @@ function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = '
   return `Script-derived workflow evidence for this shot: ${evidence.join('; ')}. Do not require all platform capabilities in every frame; visualize only the evidence named or clearly implied by this shot.`;
 }
 
+function _luxuryLooksLikeGenericProductReveal(value = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return /(主商品|主体|商品|产品).{0,18}(克制光线|缓慢出现|完整形态|完整展示|中心|被光线带出|建立品牌第一印象|环境只服务于产品识别|先建立.*印象)|产品(慢慢|缓慢)?出现|packshot|catalogue|hero product reveal|product reveal/i.test(text);
+}
+
+function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || 'software/service workflow') || 'software/service workflow';
+  const voiceover = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '').replace(/\s+/g, ' ').trim();
+  const emotion = String(scene.emotion || scene.mood || scene.emotional_change || '').replace(/\s+/g, ' ').trim();
+  const role = String(scene.role || scene.shot_role || scene.title || '').replace(/\s+/g, ' ').trim();
+  const combined = [subject, role, voiceover, emotion, scene.objective, scene.intent, scene.purpose, scene.visual, scene.action].filter(Boolean).join(' ');
+  const problemBeat = /(困惑|无奈|烦|乱|卡|痛点|少得可怜|很少|太多|分散|切来切去|找不到|problem|pain|confused|frustrated|scattered|too many)/i.test(combined);
+  const discoveryBeat = /(发现|直到|终于|进入|看到|确信|期待|解决|solution|discover|found|relief|confident)/i.test(combined);
+  const aggregationBeat = /(聚合|多模型|一站式|整合|集中|数字人|漫剧|剧本|提示词|成片|all[- ]?in[- ]?one|aggregation|multi[-\s]?model)/i.test(combined);
+  const person = 'a real creator/operator in a practical desk or studio workflow environment';
+  let visual = `${person}, using a laptop or desktop with workflow evidence for ${subject}; the frame is a lived work moment, not a product poster.`;
+  let action = 'the actor actively works through the current task with a natural expression derived from the narration';
+  if (problemBeat) {
+    visual = `${person}, facing several messy tool windows, tabs, notes or unfinished assets that prove the workflow is fragmented before ${subject} solves it.`;
+    action = 'the actor looks genuinely confused, helpless or frustrated while comparing tools on the screen and desk, matching the problem beat';
+  } else if (aggregationBeat) {
+    visual = `${person}, comparing multiple creation workflow fragments that are being brought into one coherent workspace for ${subject}.`;
+    action = 'the actor shifts from scattered comparison to focused attention, hands on keyboard or pointing at the workflow evidence';
+  } else if (discoveryBeat) {
+    visual = `${person}, noticing one cleaner unified workspace or result evidence for ${subject} on the device, with the surrounding scene still real and practical.`;
+    action = 'the actor becomes focused, relieved or convinced while leaning toward the screen or gesturing to the result evidence';
+  }
+  return {
+    visual,
+    action,
+    mustShow: [
+      `real human workflow moment for ${subject}`,
+      voiceover ? `the visual beat must express this narration meaning: ${_luxuryStrictText(voiceover, 180)}` : 'the visual beat must match this shot narration meaning',
+      emotion ? `actor expression must visibly match: ${_luxuryStrictText(emotion, 120)}` : 'actor expression must match the shot beat, not a generic calm smile',
+      _luxurySoftwareWorkflowEvidenceFromScene(scene, subject),
+    ],
+    mustNotShow: [
+      'product feature poster, marketing infographic, floating storyboard panels, UI flow diagram, dashboard presentation board',
+      'generic physical product reveal, packshot, catalogue hero shot, product box, retail shelf or luxury object display',
+      'calm presenter posing beside a screen when the script requires confusion, comparison, discovery or workflow action',
+      'fake readable UI text, subtitles, logo text, watermark or decorative brand slogan',
+    ],
+    qaRule: 'For software/service subjects, QA should accept a real user workflow moment that matches the narration and reject poster-like UI explainers, floating flow charts, product packshots, or generic feature dashboards.',
+  };
+}
+
+function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = '') {
+  if (!_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || '', scene)) return scene;
+  const contract = _luxurySoftwareWorkflowShotContract(scene, productSubject || scene.product_subject || '');
+  const visualRaw = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
+  const actionRaw = scene.action || scene.visual_action || scene.character_action || '';
+  const shouldReplaceVisual = !String(visualRaw || '').trim() || _luxuryLooksLikeGenericProductReveal(visualRaw);
+  const shouldReplaceAction = !String(actionRaw || '').trim() || _luxuryLooksLikeGenericProductReveal(actionRaw);
+  const visual = shouldReplaceVisual ? contract.visual : visualRaw;
+  const action = shouldReplaceAction ? contract.action : actionRaw;
+  const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
+  return {
+    ...scene,
+    software_workflow_prompt_normalized: shouldReplaceVisual || shouldReplaceAction || scene.software_workflow_prompt_normalized === true,
+    visual,
+    content_prompt: visual,
+    scene_content: visual,
+    display_visual: visual,
+    action: _luxuryCleanActionField(action, scene) || action,
+    visual_action: _luxuryCleanActionField(action, scene) || action,
+    character_action: _luxuryCleanActionField(action, scene) || action,
+    visual_contract: {
+      ...visualContract,
+      must_show: _mergeLuxuryMustList(visualContract.must_show || scene.must_show, contract.mustShow, 14),
+      must_not_show: _mergeLuxuryMustList(visualContract.must_not_show || scene.must_not_show, contract.mustNotShow, 14),
+      qa_contract: _luxuryStrictText([visualContract.qa_contract || scene.qa_contract || '', contract.qaRule].filter(Boolean).join(' '), 1100),
+      image_prompt: _luxuryStrictText([contract.visual, contract.action].join(' '), 520),
+      ui_policy: visualContract.ui_policy || 'workflow evidence only; no generated poster UI or readable fake UI text',
+    },
+    qa_contract: _luxuryStrictText([scene.qa_contract || '', contract.qaRule].filter(Boolean).join(' '), 1100),
+  };
+}
+
 // 中文说明：动作字段只描述人物/主体行为；背景、镜头、光线和构图应留在 visual/camera 字段，
 // 否则分镜表会把“动作”显示成背景描述，并继续污染图片和图生视频提示词。
 function _luxuryCleanActionField(value = '', scene = {}) {
@@ -2570,9 +2649,13 @@ function _luxurySceneFriendlyProductSubject(subject = '') {
 }
 
 function _luxuryQaExpectedVisual(scene = {}, subject = '') {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, subject || scene.product_subject || '');
   const base = _compactQaText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 420);
   if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
-    const workflowContract = _luxurySoftwareWorkflowEvidencePrompt(subject);
+    const workflowContract = [
+      _luxurySoftwareWorkflowEvidencePrompt(subject),
+      _luxurySoftwareWorkflowShotContract(scene, subject).qaRule,
+    ].join(' ');
     return _compactQaText([base, workflowContract].filter(Boolean).join(' '), 760);
   }
   if (!_luxuryIsMaterialProductShot(scene, subject)) return base;
@@ -2581,6 +2664,7 @@ function _luxuryQaExpectedVisual(scene = {}, subject = '') {
 }
 
 function _luxuryQaExpectedAction(scene = {}, subject = '', personRequired = false) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, subject || scene.product_subject || '');
   const base = _compactQaText(_luxuryCleanActionField(scene.action || scene.visual_action || '', scene), 260);
   if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
     return _compactQaText([base, 'Software/service workflow action: judge whether the confirmed actor, tool, device, document, interface, place or result evidence communicates the requested service story. Use only evidence named by the brief, assets or storyboard; do not inject an order/inventory template.'].filter(Boolean).join(' '), 420);
@@ -10151,6 +10235,7 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   index = 0,
   total = 1,
 } = {}) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '');
   const failureText = _luxuryQaFailureText(qa).toLowerCase();
   const dims = qa?.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
   const contract = scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object'
@@ -10199,6 +10284,16 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   if (assetLow || scene.visual_locks || scene.asset_manifest) {
     repairNotes.push('asset_fidelity');
     mustShow.push('all uploaded or generated lock references must be treated as role-specific locks: person as identity, scene as place family, product as subject evidence, UI as post-production overlay guide');
+  }
+  if (_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || contract.product_subject, scene)) {
+    const workflowContract = _luxurySoftwareWorkflowShotContract(scene, productSubject || scene.product_subject || contract.product_subject);
+    repairNotes.push('software_workflow_story_match');
+    mustShow.push(...workflowContract.mustShow);
+    mustNotShow.push(...workflowContract.mustNotShow);
+    if (/storyboard|script|visual|scene|poster|flow|diagram|ui|weak|malformed|不一致|剧本|画面|流程图|海报/.test(failureText)) {
+      mustShow.push('a lived user work moment with actor emotion and action matching the narration, not a generic platform demonstration');
+      mustNotShow.push('software/platform feature explainer poster, floating storyboard board, calm product demo presenter, abstract UI flow diagram');
+    }
   }
 
   const visualContract = {
@@ -14656,6 +14751,7 @@ async function _applyLuxuryUiOverlayComposite({ inputPath = '', scene = {}, file
 // Build the mandatory director contract used by image generation and QA.
 // This is a deterministic compiler from the confirmed storyboard fields.
 function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, { productSubject = '' } = {}) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '');
   const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
   const photography = scene.photography && typeof scene.photography === 'object' ? scene.photography : {};
   const cameraPlan = scene.camera_plan && typeof scene.camera_plan === 'object' ? scene.camera_plan : {};
@@ -15229,6 +15325,7 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
 // Prepare one strict high-end ad shot for the keyframe stage. This keeps the
 // contract, preflight result and compiled image prompt attached to the scene.
 function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1, opts = {}) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, opts.productSubject || scene.product_subject || '');
   const contract = _buildLuxuryStrictStoryboardContract(scene, index, total, opts);
   const preflight = _assertLuxuryStrictStoryboardContract(contract, { shotIndex: index });
   const packet = _buildLuxuryShotExecutionPacket(scene, contract, {
@@ -15265,6 +15362,7 @@ function _prepareLuxuryStrictShotForGeneration(scene = {}, index = 0, total = 1,
 // contract is incomplete. Attach the contract readiness status and let the
 // keyframe stage enforce the hard gate before spending image-model cost.
 function _prepareLuxuryStrictShotForScriptReview(scene = {}, index = 0, total = 1, opts = {}) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, opts.productSubject || scene.product_subject || '');
   const contract = _buildLuxuryStrictStoryboardContract(scene, index, total, opts);
   const issues = _luxuryStrictStoryboardContractIssues(contract);
   const preflight = {
@@ -17436,10 +17534,24 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     preferControlledCandidate: false,
     allowControlledFinal: false,
     // Strict mode: configured reference-preserving models may be tried in
-    // model-management order, but QA is a hard gate and never rewrites prompts.
+    // model-management order. If visual QA reports a storyboard/content
+    // mismatch, rewrite the same model prompt from the QA contract once instead
+    // of silently falling through to unrelated compositions.
     strictSingleCandidate: false,
-    allowQaRepair: false,
-    qaRepairHook: null,
+    allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: scene.totalShots || scene.total_shots || scene.shotCount || 1,
+    }),
     personRequired,
     characterLock,
     shotIndex: index,
@@ -17802,6 +17914,7 @@ function _luxuryGptImage2EditPrompt({
   characterLock = null,
   aspectRatio = '16:9',
 } = {}) {
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '');
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
   const subject = _compactLuxuryKeyframeText(
@@ -17823,6 +17936,9 @@ function _luxuryGptImage2EditPrompt({
   const workflowEvidenceRule = softwareWorkflowSubject
     ? _luxurySoftwareWorkflowEvidenceFromScene(scene, productSubject || scene.product_subject || subject)
     : '';
+  const workflowShotContract = softwareWorkflowSubject
+    ? _luxurySoftwareWorkflowShotContract(scene, productSubject || scene.product_subject || subject)
+    : null;
   const refKinds = (Array.isArray(refs) ? refs : []).slice(0, 6).map((ref, idx) => {
     const kind = String(ref?.kind || '').trim();
     const label = /^identity_reference/.test(kind)
@@ -17849,9 +17965,12 @@ function _luxuryGptImage2EditPrompt({
       ? 'Place the action in the confirmed real exterior or storefront environment.'
       : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
   return _luxuryFitImagePromptParts([
-    `Create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
+    `SHOT EXECUTION CONTRACT: create one photorealistic commercial storyboard still, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
-    softwareWorkflowSubject ? `Software/service workflow lock: the advertised subject is the workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
+    softwareWorkflowSubject ? `SOFTWARE/SERVICE WORKFLOW LOCK: the advertised subject is the lived workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
+    workflowShotContract ? `MUST SHOW: ${workflowShotContract.mustShow.join('; ')}.` : '',
+    workflowShotContract ? `MUST NOT SHOW: ${workflowShotContract.mustNotShow.join('; ')}.` : '',
+    workflowShotContract ? 'FAIL IF the frame looks like a product feature poster, UI explainer, floating flowchart, storyboard planning board, calm presenter demo, or physical product packshot instead of a real user work moment.' : '',
     presenterRule,
     visual ? `Scene content: ${visual}.` : '',
     action ? `Actor action and expression: ${action}.` : '',
@@ -17862,7 +17981,7 @@ function _luxuryGptImage2EditPrompt({
     locationRule,
     'Real live-action photography: natural skin texture, realistic hands, real fabric, practical shadows, optical lens perspective, believable commercial lighting.',
     'Clean frame with no subtitles, no watermark, no logo text added by the model, and no extra unrelated people.',
-  ], 1150);
+  ], softwareWorkflowSubject ? 2100 : 1500);
 }
 
 function _luxuryGptImage2EditReferenceUrls(refs = []) {
@@ -18428,10 +18547,24 @@ async function _createLuxuryAdReferenceKeyframe({
     preferControlledCandidate: false,
     allowControlledFinal: false,
     // Strict mode: configured reference-preserving models may be tried in
-    // model-management order, but QA is a hard gate and never rewrites prompts.
+    // model-management order. If visual QA reports a storyboard/content
+    // mismatch, rewrite the same model prompt from the QA contract once instead
+    // of silently falling through to unrelated compositions.
     strictSingleCandidate: false,
-    allowQaRepair: false,
-    qaRepairHook: null,
+    allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: scene.totalShots || scene.total_shots || scene.shotCount || 1,
+    }),
     personRequired,
     characterLock,
     shotIndex: index,
@@ -18538,6 +18671,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const attempts = [];
   let repairInstruction = '';
   let currentPrompt = prompt;
+  let currentScene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '');
   const referenceImages = refs.map(x => x.resolved).filter(Boolean);
   const hasReferenceLock = referenceImages.length > 0;
   const hasShotReferenceLock = referenceImages.length > 1;
@@ -18574,7 +18708,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     if (modelId === 'gpt-image-2') {
       return _luxuryGptImage2EditPrompt({
         prompt: cappedPrompt,
-        scene,
+        scene: currentScene,
         productSubject,
         refs,
         personRequired,
@@ -18976,6 +19110,9 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             if (repairPatch && typeof repairPatch === 'object') {
               if (repairPatch.prompt) currentPrompt = String(repairPatch.prompt);
               if (repairPatch.repairInstruction) repairInstruction = String(repairPatch.repairInstruction);
+              if (repairPatch.scene && typeof repairPatch.scene === 'object') {
+                currentScene = _luxuryApplySoftwareWorkflowSceneContract(repairPatch.scene, productSubject || repairPatch.scene.product_subject || '');
+              }
               attempts.push({
                 provider_id: 'qa-repair',
                 model_id: 'contract-rewrite',
@@ -19457,8 +19594,20 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     preferControlledCandidate: false,
     allowControlledFinal: false,
     strictSingleCandidate: false,
-    allowQaRepair: false,
-    qaRepairHook: null,
+    allowQaRepair: true,
+    qaRepairHook: _luxuryQaContractRepairHook({
+      scene,
+      productSubject,
+      productLockPrompt,
+      subjectGuard,
+      refs,
+      hasAvatar,
+      personRequired,
+      characterLock,
+      aspectRatio,
+      index,
+      total: scene.totalShots || scene.total_shots || scene.shotCount || 1,
+    }),
     personRequired,
     characterLock,
   });
