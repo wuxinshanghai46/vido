@@ -7714,6 +7714,27 @@
     return fallback;
   }
 
+  function luxuryFrameHasExplicitIndex(frame = {}) {
+    return ['shot_index', 'index', 'scene_index', 'shotNo', 'shot_no'].some(key => {
+      const n = Number(frame?.[key]);
+      return Number.isFinite(n) && n >= 0;
+    });
+  }
+
+  function luxurySelectItemsForShotRequest(items = [], singleIndex = null, total = 0) {
+    const list = Array.isArray(items) ? items : [];
+    if (!Number.isInteger(singleIndex)) return list.slice(0, total || list.length);
+    const exact = list.filter((item, i) => {
+      if (!luxuryFrameHasExplicitIndex(item)) return false;
+      return luxuryFrameIndex(item, i) === singleIndex;
+    });
+    if (exact.length) return exact.slice(0, 1);
+    if (list.length === 1 && !luxuryFrameHasExplicitIndex(list[0])) {
+      return [{ ...(list[0] || {}), index: singleIndex, shot_index: singleIndex }];
+    }
+    return [];
+  }
+
   function mergeLuxuryKeyframesPreservingImages(existing = [], incoming = [], total = 0) {
     const incomingMax = (Array.isArray(incoming) ? incoming : []).reduce((max, frame, i) => Math.max(max, luxuryFrameIndex(frame, i) + 1), 0);
     const size = Math.max(total || 0, existing.length || 0, incoming.length || 0, incomingMax);
@@ -8187,12 +8208,14 @@
     if (frames.length !== segments.length) errors.push(`分镜数量不一致：剧本 ${segments.length} 镜，返回 ${frames.length} 张。`);
     segments.forEach((seg, i) => {
       const kf = frames[i] || {};
-      if (!(kf.image_url || kf.imageUrl)) errors.push(`第 ${i + 1} 镜没有生成图片。`);
+      const labelIndex = luxuryFrameIndex(kf, luxuryFrameIndex(seg, i));
+      const shotLabel = `第 ${labelIndex + 1} 镜`;
+      if (!(kf.image_url || kf.imageUrl)) errors.push(`${shotLabel}没有生成图片。`);
       const referenceLocked = String(kf.reference_mode || '').includes('reference_locked');
       const qa = kf.qa || kf.shot_plan?.qa || null;
       if (!referenceLocked) {
-        if (!qa) errors.push(`第 ${i + 1} 镜缺少视觉 QA 结果，不能进入成片。`);
-        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`第 ${i + 1} 镜视觉 QA 未通过：${qa.reason || '未说明原因'}`);
+        if (!qa) errors.push(`${shotLabel}缺少视觉 QA 结果，不能进入成片。`);
+        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`${shotLabel}视觉 QA 未通过：${qa.reason || '未说明原因'}`);
       }
       const dims = qa?.quality_dimensions || {};
       const lowDims = [
@@ -8202,12 +8225,12 @@
         ['product_fidelity', '产品保真', 74],
       ].filter(([key, , min]) => Number(dims[key]) > 0 && Number(dims[key]) < min);
       if (!referenceLocked && lowDims.length) {
-        errors.push(`第 ${i + 1} 镜 QA 维度不足：${lowDims.map(([key, label]) => `${label}${Math.round(Number(dims[key]))}`).join('、')}`);
+        errors.push(`${shotLabel} QA 维度不足：${lowDims.map(([key, label]) => `${label}${Math.round(Number(dims[key]))}`).join('、')}`);
       }
       const frameText = JSON.stringify(kf).slice(0, 1600);
       const scriptVisual = String(luxuryShotContentPrompt(seg) || '').slice(0, 20);
       if (scriptVisual && frameText && !frameText.includes(scriptVisual.slice(0, 6)) && kf.scene_content) {
-        errors.push(`第 ${i + 1} 镜返回内容疑似与剧本文案不一致。`);
+        errors.push(`${shotLabel}返回内容疑似与剧本文案不一致。`);
       }
     });
     if (errors.length) throw new Error(errors.slice(0, 8).join('；'));
@@ -9983,9 +10006,9 @@
         r = await pollLuxuryKeyframeResult(requestKey, { timeoutMs: 0, totalShots });
       }
       if (!r.success) throw new Error(r.error || '分镜生成失败');
-      const nextKeyframes = (r.keyframes || []).slice(0, totalShots);
+      const nextKeyframes = luxurySelectItemsForShotRequest(r.keyframes || [], singleIndex, totalShots);
       const nextStoryboardSheets = Array.isArray(r.storyboard_sheets) ? r.storyboard_sheets : [];
-      const returnedScenes = Array.isArray(r.scenes) ? r.scenes.slice(0, totalShots) : [];
+      const returnedScenes = luxurySelectItemsForShotRequest(r.scenes || [], singleIndex, totalShots);
       const planningSheetMode = r.storyboard_mode === 'planning_sheet'
         || r.reference_mode === 'storyboard_planning_sheet'
         || r.keyframe_generation_status === 'failed'
@@ -10066,8 +10089,8 @@
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
       const failedPayload = err?.data && typeof err.data === 'object' ? err.data : null;
-      const partialKeyframes = Array.isArray(failedPayload?.keyframes) ? failedPayload.keyframes.slice(0, totalShots) : [];
-      const partialScenes = Array.isArray(failedPayload?.scenes) ? failedPayload.scenes.slice(0, totalShots) : [];
+      const partialKeyframes = luxurySelectItemsForShotRequest(failedPayload?.keyframes || [], singleIndex, totalShots);
+      const partialScenes = luxurySelectItemsForShotRequest(failedPayload?.scenes || [], singleIndex, totalShots);
       const partialSheets = Array.isArray(failedPayload?.storyboard_sheets) ? failedPayload.storyboard_sheets : [];
       if (partialScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(partialScenes);
       if (partialKeyframes.length) {
