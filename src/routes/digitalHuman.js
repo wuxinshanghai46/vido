@@ -82,6 +82,41 @@ function _publicLuxuryAdProject(row = {}) {
   return safe;
 }
 
+function _luxuryProjectFrameImage(kf = {}) {
+  return String(kf.image_url || kf.imageUrl || kf.url || kf.path || kf.local_path || '').trim();
+}
+
+function _luxuryProjectFrameIndex(kf = {}, fallback = 0) {
+  const raw = kf.shot_index ?? kf.index ?? kf.scene_index ?? kf.shotNo ?? kf.shot_no;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  return fallback;
+}
+
+function _mergeLuxuryProjectKeyframes(incoming, existing) {
+  if (!Array.isArray(incoming)) return Array.isArray(existing) ? existing : [];
+  if (!Array.isArray(existing) || !existing.length) return incoming;
+  const incomingHasImage = incoming.some(kf => _luxuryProjectFrameImage(kf));
+  const existingHasImage = existing.some(kf => _luxuryProjectFrameImage(kf));
+  if ((!incoming.length || !incomingHasImage) && existingHasImage) return existing;
+  const merged = existing.slice();
+  incoming.forEach((kf, fallbackIndex) => {
+    if (!kf || typeof kf !== 'object') return;
+    const idx = _luxuryProjectFrameIndex(kf, fallbackIndex);
+    const prev = merged[idx];
+    if (!prev || _luxuryProjectFrameImage(kf) || !_luxuryProjectFrameImage(prev)) {
+      merged[idx] = kf;
+    }
+  });
+  return merged;
+}
+
+function _mergeLuxuryProjectSheets(incoming, existing) {
+  if (!Array.isArray(incoming)) return Array.isArray(existing) ? existing : [];
+  if (incoming.length) return incoming;
+  return Array.isArray(existing) ? existing : [];
+}
+
 function _listLuxuryAdProjects(req, limit = 20) {
   const max = Math.max(1, Math.min(100, Number(limit) || 20));
   const seenDraftText = new Set();
@@ -308,6 +343,8 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
   const keyframes = Array.isArray(result.keyframes) ? result.keyframes : (Array.isArray(body.keyframes) ? body.keyframes : null);
   const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : (Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : null);
+  const mergedKeyframes = _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
+  const mergedStoryboardSheets = _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
@@ -317,7 +354,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     reviewOnly,
     finalKeyframes,
     scenes: scenes || existing?.scenes || [],
-    keyframes: keyframes || existing?.keyframes || [],
+    keyframes: mergedKeyframes,
     contract,
     errorCode: patch.error_code || result.code || result.details?.code || '',
     keyframeError: patch.error || result.keyframe_error || '',
@@ -340,9 +377,9 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     resolution: result.resolution || existing?.resolution || '',
     brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
     scenes: Array.isArray(scenes) ? scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)) : (existing?.scenes || []),
-    keyframes: Array.isArray(keyframes) ? keyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)) : (existing?.keyframes || []),
-    storyboard_sheets: Array.isArray(storyboardSheets) ? _compactLuxuryAdProjectSheets(storyboardSheets) : (existing?.storyboard_sheets || []),
-    visual_asset: Array.isArray(storyboardSheets) ? _luxuryAdProjectVisualAsset(storyboardSheets) : (existing?.visual_asset || _luxuryAdProjectVisualAsset([])),
+    keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
+    storyboard_sheets: _compactLuxuryAdProjectSheets(mergedStoryboardSheets),
+    visual_asset: mergedStoryboardSheets.length ? _luxuryAdProjectVisualAsset(mergedStoryboardSheets) : (existing?.visual_asset || _luxuryAdProjectVisualAsset([])),
     production_contract: _jsonClone(contract || existing?.production_contract || null),
     asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
@@ -21093,6 +21130,7 @@ router.post('/spaces/keyframes', async (req, res) => {
     }
     const base = _publicBaseUrl(req);
     const keyframes = luxuryGeneratedKeyframes;
+    const luxuryKeyframeShotFailures = [];
     if (isLuxury) {
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
@@ -21318,64 +21356,29 @@ router.post('/spaces/keyframes', async (req, res) => {
         continue;
       }
       const shotBackgroundUrl = isLuxury ? background_url : background_url;
-      const { outPath: keyframePath, plan: shotPlan } = await keyframeMaker({
-        req,
-        avatar: luxuryEffectiveIdentityAvatar,
-        avatarUrl: luxuryEffectiveIdentityAvatar?.image_url || '',
-        backgroundUrl: shotBackgroundUrl,
-        referenceImages: isLuxury ? luxuryShotRefs : luxuryReferences,
-        scene: {
-          ...sc,
-          totalShots: scenes.length,
-          reference_images: isLuxury ? [background_url, ...luxuryShotRefs] : luxuryReferences,
-          referenceImageCount: luxuryReferences.length,
-          referenceImageIndex: isLuxury ? Math.max(0, luxuryShotRefInfo.referenceIndex - 1) : 0,
-          active_reference_image: luxuryShotRefs[0] || background_url,
-          asset_manifest: luxuryAssetManifest || undefined,
-          visual_locks: luxuryVisualLocks || undefined,
-          character_lock: luxuryCharacterLock || undefined,
-          actor_asset: luxuryActorAssetPackage || undefined,
-          identity_reference_group: luxuryIdentityReferenceGroup,
-          brief_reference_assets: briefReferenceAssets,
-          brief_reference_images: briefReferenceImages,
-          brief_reference_summary: visualReferenceSummary,
-          seed_reference_images: luxurySeedReferenceImages,
-          luxury_seed_assets: luxurySeedAssets,
-          continuity_bible: luxuryReferenceContinuityBible,
-          identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
-          qa_reference_images: [
-            ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
-            luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
-            luxurySubjectEvidenceSeedImage,
-            ...briefReferenceImages,
-          ].filter(Boolean),
-          visual_reference_brief: visualReferenceBrief || undefined,
-        },
-        aspectRatio,
-        outputSize: normalizedOutputSize,
-        filename: `digital_ad_preview_${taskId}_kf_${String(i + 1).padStart(2, '0')}`,
-        destDir: JIMENG_ASSETS_DIR,
-        index: i,
-        guideGender: guide_gender,
-        qaCheck: isLuxury ? ({ outPath }) => _checkLuxuryKeyframeMatchesStoryboard(req, {
-          resultPath: outPath,
-          referenceUrl: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+      let keyframePath = '';
+      let shotPlan = null;
+      try {
+        const made = await keyframeMaker({
+          req,
+          avatar: luxuryEffectiveIdentityAvatar,
+          avatarUrl: luxuryEffectiveIdentityAvatar?.image_url || '',
+          backgroundUrl: shotBackgroundUrl,
+          referenceImages: isLuxury ? luxuryShotRefs : luxuryReferences,
           scene: {
             ...sc,
-            product_subject: productSubject,
-            product_lock_prompt: _luxuryProductLockPrompt(productSubject, {
-              ...sc,
-              asset_manifest: luxuryAssetManifest || undefined,
-              visual_locks: luxuryVisualLocks || undefined,
-            }),
-            active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+            totalShots: scenes.length,
+            reference_images: isLuxury ? [background_url, ...luxuryShotRefs] : luxuryReferences,
+            referenceImageCount: luxuryReferences.length,
+            referenceImageIndex: isLuxury ? Math.max(0, luxuryShotRefInfo.referenceIndex - 1) : 0,
+            active_reference_image: luxuryShotRefs[0] || background_url,
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
             character_lock: luxuryCharacterLock || undefined,
             actor_asset: luxuryActorAssetPackage || undefined,
             identity_reference_group: luxuryIdentityReferenceGroup,
-            topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
-            visual_prompt: sc.visual_prompt || '',
+            brief_reference_assets: briefReferenceAssets,
+            brief_reference_images: briefReferenceImages,
             brief_reference_summary: visualReferenceSummary,
             seed_reference_images: luxurySeedReferenceImages,
             luxury_seed_assets: luxurySeedAssets,
@@ -21385,14 +21388,67 @@ router.post('/spaces/keyframes', async (req, res) => {
               ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
               luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
               luxurySubjectEvidenceSeedImage,
-              ...(briefReferenceImages || []),
+              ...briefReferenceImages,
             ].filter(Boolean),
+            visual_reference_brief: visualReferenceBrief || undefined,
           },
-          shotIndex: i,
-          totalShots: scenes.length,
-          productSubject,
-        }) : null,
-      });
+          aspectRatio,
+          outputSize: normalizedOutputSize,
+          filename: `digital_ad_preview_${taskId}_kf_${String(i + 1).padStart(2, '0')}`,
+          destDir: JIMENG_ASSETS_DIR,
+          index: i,
+          guideGender: guide_gender,
+          qaCheck: isLuxury ? ({ outPath }) => _checkLuxuryKeyframeMatchesStoryboard(req, {
+            resultPath: outPath,
+            referenceUrl: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+            scene: {
+              ...sc,
+              product_subject: productSubject,
+              product_lock_prompt: _luxuryProductLockPrompt(productSubject, {
+                ...sc,
+                asset_manifest: luxuryAssetManifest || undefined,
+                visual_locks: luxuryVisualLocks || undefined,
+              }),
+              active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
+              asset_manifest: luxuryAssetManifest || undefined,
+              visual_locks: luxuryVisualLocks || undefined,
+              character_lock: luxuryCharacterLock || undefined,
+              actor_asset: luxuryActorAssetPackage || undefined,
+              identity_reference_group: luxuryIdentityReferenceGroup,
+              topview_prompt: sc.topview_prompt || sc.reference_prompt || '',
+              visual_prompt: sc.visual_prompt || '',
+              brief_reference_summary: visualReferenceSummary,
+              seed_reference_images: luxurySeedReferenceImages,
+              luxury_seed_assets: luxurySeedAssets,
+              continuity_bible: luxuryReferenceContinuityBible,
+              identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
+              qa_reference_images: [
+                ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
+                luxurySceneSeedImage || luxuryBriefSceneReferenceImage,
+                luxurySubjectEvidenceSeedImage,
+                ...(briefReferenceImages || []),
+              ].filter(Boolean),
+            },
+            shotIndex: i,
+            totalShots: scenes.length,
+            productSubject,
+          }) : null,
+        });
+        keyframePath = made?.outPath || '';
+        shotPlan = made?.plan || null;
+      } catch (shotErr) {
+        if (!isLuxury) throw shotErr;
+        const shotAttempts = shotErr.luxuryKeyframeAttempts || shotErr.details?.luxuryKeyframeAttempts || shotErr.details?.attempts || [];
+        luxuryKeyframeShotFailures.push({
+          shot_index: i,
+          title: sc.title || sc.label || `镜头 ${i + 1}`,
+          error: shotErr.message || String(shotErr),
+          code: shotErr.code || '',
+          attempts: Array.isArray(shotAttempts) ? shotAttempts : [],
+        });
+        console.warn(`[DH/spaces/keyframes] shot ${i + 1} keyframe failed; continuing remaining shots:`, shotErr.message || shotErr);
+        continue;
+      }
       let keyframeQa = shotPlan?.qa || null;
       if (isLuxury && !keyframeQa) {
         keyframeQa = await _checkLuxuryKeyframeMatchesStoryboard(req, {
@@ -21436,11 +21492,22 @@ router.post('/spaces/keyframes', async (req, res) => {
             ...(Array.isArray(keyframeQa?.unrelated_subjects) ? keyframeQa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
             keyframeQa?.reason || '',
           ].filter(Boolean).slice(0, 5).join('；');
-          const err = new Error(`第 ${i + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`);
-          err.status = 422;
-          err.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
-          err.details = { qa: keyframeQa };
-          throw err;
+          if (!isLuxury) {
+            const err = new Error(`第 ${i + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`);
+            err.status = 422;
+            err.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
+            err.details = { qa: keyframeQa };
+            throw err;
+          }
+          luxuryKeyframeShotFailures.push({
+            shot_index: i,
+            title: sc.title || sc.label || `镜头 ${i + 1}`,
+            error: `第 ${i + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`,
+            code: 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED',
+            qa: keyframeQa,
+          });
+          console.warn(`[DH/spaces/keyframes] shot ${i + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
+          continue;
         }
       }
       const url = `${base}/public/jimeng-assets/${path.basename(keyframePath)}`;
@@ -21476,6 +21543,21 @@ router.post('/spaces/keyframes', async (req, res) => {
         destDir: JIMENG_ASSETS_DIR,
       })
       : [];
+    if (isLuxury) luxuryPlanningStoryboardSheets = storyboardSheets;
+    if (isLuxury && luxuryKeyframeShotFailures.length) {
+      const failedShots = luxuryKeyframeShotFailures.map(x => Number(x.shot_index) + 1).filter(Number.isFinite);
+      const err = new Error(`分镜生成部分失败：第 ${failedShots.join('、')} 镜未生成可用关键帧；已保留其它已生成镜头，可先审片并单独重试失败镜头。`);
+      err.status = 422;
+      err.code = 'LUXURY_KEYFRAME_PARTIAL_FAILED';
+      err.details = {
+        code: err.code,
+        shot_failures: luxuryKeyframeShotFailures,
+        attempts: luxuryKeyframeShotFailures.flatMap(x => Array.isArray(x.attempts) ? x.attempts : []).slice(0, 40),
+        generated_count: keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length,
+        total_shots: scenes.length,
+      };
+      throw err;
+    }
     const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     if (isLuxury) {
       const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, responseBody);
@@ -21518,6 +21600,12 @@ router.post('/spaces/keyframes', async (req, res) => {
           error: e,
           error_code: err.code,
         });
+        if ((!Array.isArray(blockedBody.keyframes) || !blockedBody.keyframes.some(kf => _luxuryProjectFrameImage(kf))) && Array.isArray(productionProject?.keyframes)) {
+          blockedBody.keyframes = productionProject.keyframes;
+        }
+        if ((!Array.isArray(blockedBody.storyboard_sheets) || !blockedBody.storyboard_sheets.length) && Array.isArray(productionProject?.storyboard_sheets)) {
+          blockedBody.storyboard_sheets = productionProject.storyboard_sheets;
+        }
         errorDetails.production_project = productionProject;
         errorDetails.production_project_id = productionProject.id;
       }
@@ -21544,6 +21632,12 @@ router.post('/spaces/keyframes', async (req, res) => {
       });
       partialBody.production_project = productionProject;
       partialBody.production_project_id = productionProject.id;
+      if ((!Array.isArray(partialBody.keyframes) || !partialBody.keyframes.some(kf => _luxuryProjectFrameImage(kf))) && Array.isArray(productionProject?.keyframes)) {
+        partialBody.keyframes = productionProject.keyframes;
+      }
+      if ((!Array.isArray(partialBody.storyboard_sheets) || !partialBody.storyboard_sheets.length) && Array.isArray(productionProject?.storyboard_sheets)) {
+        partialBody.storyboard_sheets = productionProject.storyboard_sheets;
+      }
       if (finalKeyframesRequested) {
         partialBody.code = err.code || 'LUXURY_FINAL_KEYFRAME_GENERATION_FAILED';
         _storeLuxuryKeyframeResult(req, req.body?.request_key, { status: 'error', error: e, details: partialBody });
