@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260613-task-center-v51">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260614-voice-modal-polish-v63">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1359,9 +1359,15 @@
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhLuxAdConfirmGenerate" type="button">合成广告</button>
                 </div>
               </div>
-              <div class="dh-demo-compose-grid">
-                <div class="dh-demo-card">
-                  <small>配音</small>
+              <div class="dh-demo-compose-grid dh-luxgen-compose-audio">
+                <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-voice-card">
+                  <div class="dh-luxgen-audio-head">
+                    <div>
+                      <small>配音</small>
+                      <b>旁白声音</b>
+                    </div>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdVoiceOpen">选择配音</button>
+                  </div>
                   <div class="dh-space-voice-current" id="dhLuxAdVoiceCurrent">
                     <div class="dh-voice-opt-icon">TV</div>
                     <div class="dh-voice-opt-body">
@@ -1369,10 +1375,43 @@
                       <div class="dh-voice-opt-sub">剧情广告必须手动选择声音</div>
                     </div>
                   </div>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdVoiceOpen">选择配音</button>
+                  <div class="dh-luxgen-mix-row dh-luxgen-mix-row-voice">
+                    <label for="dhLuxAdVoiceVolume">旁白音量 <b id="dhLuxAdVoiceVolumeLabel">100%</b></label>
+                    <input id="dhLuxAdVoiceVolume" type="range" min="60" max="120" step="5" value="100">
+                  </div>
                   <div class="dh-luxgen-voice-direction" id="dhLuxAdVoiceDirection"></div>
                 </div>
-                <div class="dh-demo-card">
+                <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-bgm-card" id="dhLuxAdBgmCard">
+                  <div class="dh-luxgen-audio-head">
+                    <div>
+                      <small>背景音乐</small>
+                      <b id="dhLuxAdBgmStatus">未配置，可先合成无配乐广告片</b>
+                    </div>
+                    <div class="dh-luxgen-bgm-actions">
+                      <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" id="dhLuxAdMusicLibrary">公开曲库</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdBgmUpload">上传 BGM</button>
+                    </div>
+                  </div>
+                  <span id="dhLuxAdBgmLicense">优先从公开曲库选择真实纯音乐；本地程序化 BGM 已不作为默认推荐。</span>
+                  <div class="dh-luxgen-bgm-picker" id="dhLuxAdBgmProfiles">
+                    <button class="dh-luxgen-bgm-select" type="button" id="dhLuxAdBgmProfileToggle" aria-expanded="false">
+                      <span>
+                        <em>曲风</em>
+                        <b id="dhLuxAdBgmProfileLabel">自动匹配</b>
+                        <small id="dhLuxAdBgmProfileDesc">按广告内容自动选择曲风。</small>
+                      </span>
+                      <i aria-hidden="true">⌄</i>
+                    </button>
+                    <div class="dh-luxgen-bgm-menu" id="dhLuxAdBgmProfileMenu" hidden></div>
+                  </div>
+                  <div class="dh-luxgen-mix-row dh-luxgen-mix-row-bgm">
+                    <label for="dhLuxAdBgmVolume">BGM 音量 <b id="dhLuxAdBgmVolumeLabel">16%</b></label>
+                    <input id="dhLuxAdBgmVolume" type="range" min="0" max="35" step="1" value="16">
+                  </div>
+                  <div class="dh-luxgen-bgm-preview" id="dhLuxAdBgmPreview"></div>
+                  <input type="file" id="dhLuxAdBgmFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden>
+                </div>
+                <div class="dh-demo-card dh-luxgen-compose-card">
                   <small>字幕</small>
                   <label class="dh-switch dh-luxgen-subtitle-switch">
                     <input type="checkbox" id="dhLuxAdSubtitleToggle" checked>
@@ -1383,19 +1422,7 @@
                     <option value="off">不生成字幕</option>
                   </select>
                 </div>
-                <div class="dh-demo-card dh-luxgen-bgm-card" id="dhLuxAdBgmCard">
-                  <div class="dh-luxgen-bgm-main">
-                    <small>背景音乐</small>
-                    <b id="dhLuxAdBgmStatus">未配置，可先合成无配乐广告片</b>
-                    <span id="dhLuxAdBgmLicense">可自动匹配本地免第三方纯 BGM，也可上传自有授权音乐。</span>
-                  </div>
-                  <div class="dh-luxgen-bgm-actions">
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdBgmAuto">自动匹配 BGM</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhLuxAdBgmUpload">上传 BGM</button>
-                  </div>
-                  <input type="file" id="dhLuxAdBgmFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden>
-                </div>
-                <div class="dh-demo-card">
+                <div class="dh-demo-card dh-luxgen-compose-card">
                   <small>合成检查</small>
                   <b id="dhLuxAdComposeSummary">未生成分镜</b>
                   <span id="dhLuxAdProgressHint">当前：等待填写广告需求，之后先生成场景配置</span>
@@ -1708,7 +1735,7 @@ B: ...
             <div class="dh-task-type-tabs" id="dhTaskTypeTabs">
               <button class="active" data-task-type="digital_human">数字人</button>
               <button data-task-type="product_ad">商品口播视频</button>
-              <button data-task-type="digital_ad">素材审片</button>
+              <button data-task-type="material_film">素材审片</button>
               <button data-task-type="luxury_ad">剧情广告</button>
             </div>
             <div class="dh-task-type-tabs dh-task-status-tabs" id="dhTaskStatusTabs">
@@ -1898,10 +1925,12 @@ B: ...
       <div class="dh-modal-body dh-space-voice-modal-body">
         <div class="dh-modal-head">
           <div>
-            <div>选择配音</div>
+            <div class="dh-modal-title">选择配音</div>
             <div class="dh-modal-sub">公共音色、我的声音和试听都在这里选择</div>
           </div>
-          <button class="dh-link-btn" type="button" data-space-voice-close>×</button>
+          <button class="dh-modal-close-btn" type="button" data-space-voice-close aria-label="关闭选择配音弹窗" title="关闭">
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
         <div class="dh-space-voice-tools">
           <input type="text" id="dhSpaceVoiceModalSearch" class="dh-input dh-input-sm" placeholder="搜索配音名或性别">
@@ -1922,6 +1951,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260613-task-center-v51"></script>
+  <script src="/js/digital-human.js?v=20260614-voice-modal-polish-v63"></script>
 </body>
 </html>

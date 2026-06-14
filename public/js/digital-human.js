@@ -154,6 +154,10 @@
       refAssets: [],
       assets: [],
       bgmAsset: null,
+      bgmProfile: 'auto',
+      voiceVolume: 1,
+      bgmVolume: 0.16,
+      openMusic: { query: '', results: [], loading: false, note: '' },
       voiceDirection: 'story_dynamic',
       uploading: false,
       pendingShotUploadIndex: null,
@@ -298,6 +302,16 @@
       desc: '适合高端品牌、B2B、专业服务，稳重但保留关键词停顿。',
       preview: '好的系统不需要喧哗。它只需要稳定、清晰，并且在关键时刻交付结果。',
     },
+  ];
+  const LUXURY_BGM_PROFILES = [
+    { id: 'auto', label: '自动推荐', desc: '按广告内容搜索真实纯音乐。' },
+    { id: 'majestic-brand', label: '品牌大片', desc: '管弦、钢琴、宽广叙事，适合品牌形象片。' },
+    { id: 'epic-cinematic', label: '大气管弦', desc: '真实管弦乐感，适合恢弘开场。' },
+    { id: 'inspirational-anthem', label: '励志企业', desc: '钢琴/弦乐为主，适合团队与愿景。' },
+    { id: 'warm-corporate', label: '品牌温暖', desc: '温和钢琴、轻企业感，适合服务与生活。' },
+    { id: 'documentary-human', label: '纪录片温度', desc: '温柔钢琴和氛围铺底，适合人物和案例。' },
+    { id: 'chinese-grand', label: '东方国风', desc: '东方器乐和庄重叙事，适合文化品牌。' },
+    { id: 'cinematic-story', label: '剧情叙事', desc: '钢琴/弦乐叙事，适合故事广告。' },
   ];
   const EXPRESSION_PRESETS = [
     { id: 'natural',    label: '自然' },  { id: 'smile',      label: '微笑' },
@@ -2144,6 +2158,17 @@
     }
   };
 
+  window.__dhTaskCoverFallback = function(media) {
+    if (!media) return;
+    const cover = media.closest?.('.dh-task-thumb-cover');
+    if (!cover) return;
+    cover.classList.add('is-missing');
+    cover.querySelectorAll('img, video').forEach(node => {
+      try { node.removeAttribute('src'); } catch {}
+      node.remove();
+    });
+  };
+
   function openImagePreview(src, title = '') {
     if (!src) return;
     let mask = document.getElementById('__dh_image_preview');
@@ -3060,6 +3085,7 @@
   function _inferGender(v) {
     const rawGender = String(v.gender || '').trim().toLowerCase();
     const n = `${v.name || ''} ${v.id || ''} ${v.provider || ''}`;
+    if (/^(female|male|child|neutral|auto)$/.test(rawGender)) return rawGender;
     if (/child|kid|童|儿童|小宝|longhua/i.test(n)) return 'child';
     const maleWord = /(^|[^a-z])male([^a-z]|$)/i;
     const maleStrong = /boy|男|男声|男性|磁性|沉稳|成熟|稳重|少年|青年|大叔|先生|许久|哲|锤锤|博睿|奥特|Kazi|Douji|Jam|Luodo|longcheng|longshu|longxiaocheng|longxiang|longyuan|longanyang|longhua|aisjiuxu|aisfzh|x4_yeting|x4_xiaoguo|x4_pengfei|zh_male/i;
@@ -3087,6 +3113,91 @@
       .slice(0, 2)
       .join('。');
     return (scripted && scripted.length >= 12 ? scripted : dir.preview).slice(0, 90);
+  }
+
+  function luxuryVoiceRecommendationContext() {
+    const dir = luxuryVoiceDirection();
+    const text = [
+      state.luxuryAd.content,
+      state.luxuryAd.briefText,
+      state.luxuryAd.briefInfo?.title,
+      state.luxuryAd.briefInfo?.product,
+      state.luxuryAd.briefInfo?.audience,
+      state.luxuryAd.briefInfo?.tone,
+      ...(Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.flatMap(seg => [
+        seg.title,
+        seg.story_stage,
+        seg.emotion,
+        seg.mood,
+        seg.objective,
+        seg.voiceover,
+        seg.narration,
+        seg.dialogue,
+        seg.text,
+      ]) : []),
+    ].filter(Boolean).join(' ');
+    const lower = text.toLowerCase();
+    let profile = dir.id || 'story_dynamic';
+    if (/高端|信任|专业|企业|b2b|品牌|稳重|权威|premium|corporate|trust/i.test(lower)) profile = 'premium_trust';
+    else if (/焦虑|痛点|卡住|压力|担心|释然|relief|anxious/i.test(lower)) profile = 'anxious_relief';
+    else if (/新品|种草|转化|促销|活动|立刻|马上|增长|excited|sales/i.test(lower)) profile = 'excited_sales';
+    else if (/开心|轻松|生活|温暖|亲和|服务|happy|warm|bright/i.test(lower)) profile = 'happy_bright';
+    const labelMap = {
+      premium_trust: '高端信任',
+      anxious_relief: '焦虑到释然',
+      excited_sales: '兴奋种草',
+      happy_bright: '开心轻快',
+      story_dynamic: '剧情起伏',
+    };
+    return { profile, label: labelMap[profile] || dir.label || '剧情起伏', text: lower };
+  }
+
+  function luxuryVoiceKeywordScore(v = {}, ctx = luxuryVoiceRecommendationContext()) {
+    const name = `${v.name || ''} ${v.id || ''} ${v.provider || ''}`.toLowerCase();
+    const gender = v._gender || _inferGender(v);
+    let score = 0;
+    if (v.isCloned) score += 4;
+    if (gender === 'child') score -= 20;
+    if (/test|demo|试听|测试/i.test(name)) score -= 8;
+    const has = re => re.test(name);
+    if (ctx.profile === 'premium_trust') {
+      if (gender === 'male') score += 8;
+      if (gender === 'neutral') score += 3;
+      if (has(/沉稳|成熟|稳重|磁性|低沉|专业|新闻|商务|男|male|deep|calm|trust|narrator/)) score += 12;
+      if (has(/甜美|萌|童|可爱|cute|child/)) score -= 8;
+    } else if (ctx.profile === 'anxious_relief') {
+      if (gender === 'female' || gender === 'male') score += 4;
+      if (has(/自然|真实|温柔|知性|稳|叙事|旁白|calm|natural|story|narrator/)) score += 10;
+      if (has(/激情|兴奋|喊麦|童|cute/)) score -= 5;
+    } else if (ctx.profile === 'excited_sales') {
+      if (has(/活力|元气|清亮|年轻|热情|兴奋|促销|女|男|bright|energetic|sales|happy/)) score += 12;
+      if (gender === 'female') score += 4;
+      if (has(/低沉|严肃|新闻|沉稳/)) score -= 4;
+    } else if (ctx.profile === 'happy_bright') {
+      if (gender === 'female') score += 6;
+      if (has(/温柔|甜美|亲和|清亮|开心|轻快|自然|warm|bright|happy|soft/)) score += 12;
+      if (has(/低沉|严肃|威严|新闻/)) score -= 6;
+    } else {
+      if (has(/自然|旁白|叙事|知性|沉稳|温柔|natural|story|narrator|calm/)) score += 10;
+      if (gender === 'neutral') score += 2;
+    }
+    return score;
+  }
+
+  function recommendedLuxuryVoice() {
+    const ctx = luxuryVoiceRecommendationContext();
+    const voices = (state.voices || [])
+      .filter(v => v?.id && !state.badVoices.has(v.id))
+      .map(v => {
+        v._gender = _inferGender(v);
+        return v;
+      });
+    if (!voices.length) return null;
+    const ranked = voices
+      .map(v => ({ voice: v, score: luxuryVoiceKeywordScore(v, ctx) }))
+      .sort((a, b) => b.score - a.score);
+    const picked = ranked[0]?.voice || voices[0];
+    return picked ? { voice: picked, ctx, score: ranked[0]?.score || 0 } : null;
   }
 
   function renderLuxuryVoiceDirection() {
@@ -3187,13 +3298,19 @@
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
-        const r = await fetch('/api/avatar/preview-voice', {
+        const useExpressivePreview = !!previewText;
+        const r = await fetch(useExpressivePreview ? '/api/dh/product-ads/preview-voice' : '/api/avatar/preview-voice', {
           method: 'POST',
           signal: ac.signal,
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-          body: JSON.stringify({
+          body: JSON.stringify(useExpressivePreview ? {
+            voice_id: voiceId,
+            text: previewText,
+            segments: compactLuxurySegments(state.luxuryAd.segments || []),
+            voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
+          } : {
             voiceId,
-            text: previewText || '你好，这是 VIDO 数字人配音试听。现在你听到的是当前选择的音色。',
+            text: '你好，这是 VIDO 数字人配音试听。现在你听到的是当前选择的音色。',
             gender: voice._gender || voice.gender || '',
             providerId: voice.providerId || voice.provider_id || '',
             provider: voice.provider || '',
@@ -3226,13 +3343,24 @@
         state.badVoices.add(voiceId);
         localStorage.setItem('dh_bad_voices', JSON.stringify([...state.badVoices]));
         if (state.s3.voiceId === voiceId) state.s3.voiceId = null;
+        if (state.luxuryAd.voiceId === voiceId) state.luxuryAd.voiceId = '';
+        if (state.space.voiceId === voiceId) state.space.voiceId = '';
         renderVoices();
+        renderLuxuryAdVoice();
+        renderSpaceVoiceOptions();
+        updateLuxuryAdStepLocks();
+        saveLuxuryAdDraft({ silent: true }).catch(() => {});
       }
+      const rawMsg = String(err.message || '');
+      const providerName = voice.provider || voice.providerId || voice.provider_id || '当前 TTS 供应商';
+      const expired = /token|access.?key|api.?key|unauthori[sz]ed|鉴权|认证|过期|expired|401|403/i.test(rawMsg);
       const msg = err.name === 'AbortError'
         ? '超时'
         : isTopviewVoice
           ? '暂未返回可试听音频，但该音色仍可用于生成视频'
-          : err.message;
+          : expired
+            ? `${providerName} Token/API Key 已过期或无效，已临时移除该音色；请到 AI 配置更新后再用。`
+            : rawMsg;
       toast('试听失败：' + msg, 'error');
     } finally {
       clearTimeout(timer);
@@ -3293,6 +3421,44 @@
     return `<div class="dh-task-percent">
       <div class="dh-task-percent-ring" style="--p:${pct}"><span>${pct}%</span></div>
       <div class="dh-task-percent-label">${label}</div>
+    </div>`;
+  }
+
+  function taskCoverInitial(task = {}) {
+    const title = String(task.avatarName || task.title || getTaskTypeLabel(getTaskType(task)) || 'VIDO').trim();
+    const hit = title.match(/[A-Za-z0-9]/);
+    return (hit ? hit[0] : title.slice(0, 1) || 'V').toUpperCase();
+  }
+
+  function taskCoverText(task = {}) {
+    const type = getTaskType(task);
+    if (type === 'luxury_ad') return '剧情广告片';
+    if (type === 'material_film') return '素材审片';
+    if (type === 'product_ad') return '商品口播';
+    return getTaskTypeLabel(type) || '视频任务';
+  }
+
+  function renderTaskCoverFallback(task = {}) {
+    return `<div class="dh-task-cover-fallback" aria-hidden="true">
+      <b>${escapeHtml(taskCoverInitial(task))}</b>
+      <span>${escapeHtml(taskCoverText(task))}</span>
+      <small>${escapeHtml(getTaskStatusText(task.status))}</small>
+    </div>`;
+  }
+
+  function renderTaskImageCover(task = {}, posterUrl = '', ratioClass = '', attrs = '') {
+    return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${posterUrl ? '' : ' is-missing'}${ratioClass}" ${attrs}>
+      ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt="${escapeHtml(taskCoverText(task))}" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)">` : ''}
+      ${renderTaskCoverFallback(task)}
+    </div>`;
+  }
+
+  function renderTaskVideoCover(task = {}, videoUrl = '', posterUrl = '', ratioClass = '') {
+    if (!videoUrl) return renderTaskImageCover(task, posterUrl, ratioClass);
+    return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${ratioClass}" data-task-preview="${escapeHtml(task.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;">
+      <video class="dh-task-thumb-video" src="${escapeHtml(videoUrl)}" ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} muted playsinline preload="metadata" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)"></video>
+      ${renderTaskCoverFallback(task)}
+      <span class="dh-task-thumb-play">&#9654;</span>
     </div>`;
   }
 
@@ -3392,24 +3558,32 @@
     const detail = data.createDetail || {};
     const type = getTaskType(data);
     const isLuxury = type === 'luxury_ad';
+    const project = data.project || {};
+    const projectDraft = project.draft || {};
     const snapshot = data.snapshot || {};
-    const segments = detail.segments || data.segments || snapshot.segments || data.retryPayload?.segments || [];
-    const scenes = detail.scenes || data.scenes || snapshot.scenes || [];
-    const keyframes = detail.keyframes || data.keyframes || snapshot.keyframes || [];
-    const clips = detail.clips || data.clips || snapshot.clips || data.clip_urls || snapshot.clip_urls || [];
-    const subtitle = detail.subtitle || data.subtitle || data.retryPayload?.subtitle || null;
+    const segments = detail.segments || data.segments || snapshot.segments || project.scenes || projectDraft.scenes || data.retryPayload?.segments || [];
+    const scenes = detail.scenes || data.scenes || snapshot.scenes || project.scenes || projectDraft.scenes || [];
+    const keyframes = detail.keyframes || data.keyframes || snapshot.keyframes || project.keyframes || projectDraft.keyframes || [];
+    const clips = detail.clips || data.clips || snapshot.clips || data.clip_urls || snapshot.clip_urls || project.clips || project.clip_urls || [];
+    const subtitle = detail.subtitle || data.subtitle || project.subtitle || projectDraft.subtitle || data.retryPayload?.subtitle || null;
+    const bgm = detail.bgmAsset || data.bgmAsset || project.bgm_asset || projectDraft.bgm_asset || data.retryPayload?.bgm_asset || null;
+    const person = detail.personAsset || project.person_asset || projectDraft.person_asset || data.retryPayload?.person_asset || null;
+    const product = detail.productAsset || project.product_asset || projectDraft.product_asset || data.retryPayload?.product_asset || null;
+    const materialAssets = detail.materialAssets || data.material_assets || data.retryPayload?.material_assets || project.reference_assets || projectDraft.reference_assets || [];
     const basics = taskDetailItems([
       ['任务类型', detail.adMode || getTaskTypeLabel(type)],
-      ['标题', detail.title || data.avatarName || ''],
-      ['生成时长', detail.durationSec ? `${detail.durationSec}s` : ''],
-      ['形象', detail.avatarName || ''],
-      ['背景/产品图', detail.backgroundName || detail.productName || ''],
+      ['标题', detail.title || data.avatarName || project.title || project.brief_info?.title || ''],
+      ['生成时长', (detail.durationSec || project.duration_sec) ? `${detail.durationSec || project.duration_sec}s` : ''],
+      ['形象', detail.avatarName || person?.name || person?.actor_asset_id || ''],
+      ['背景/产品图', detail.backgroundName || detail.productName || product?.name || project.brief_info?.product || ''],
       ['配音', detail.voiceName || detail.voiceId || '自动/未指定'],
+      ['BGM', bgm ? `${bgm.name || bgm.original_name || bgm.matched_mood || '已配置'}${bgm.volume ? ` · 音量 ${Math.round(Number(bgm.volume) * 100)}%` : ''}` : ''],
       ['广告风格', detail.adStyle || ''],
-      ['镜头数量', detail.shotCount ? `${detail.shotCount} 镜头` : ''],
+      ['镜头数量', (detail.shotCount || scenes.length || keyframes.length) ? `${detail.shotCount || scenes.length || keyframes.length} 镜头` : ''],
+      ['素材数量', Array.isArray(materialAssets) && materialAssets.length ? `${materialAssets.length} 个素材` : ''],
       ['字幕', subtitle ? (subtitle.show === false ? '关闭' : `${subtitle.style || 'popup'} · ${subtitle.fontSize || 60}px`) : ''],
     ]);
-    const script = taskDetailValue(detail.text || data.textPreview || '');
+    const script = taskDetailValue(detail.text || project.text || project.brief_text || data.textPreview || '');
     const prompts = taskDetailItems([
       ['镜头提示词', detail.scenePrompt || ''],
       ['镜头顺序', detail.cameraPrompt || ''],
@@ -3652,6 +3826,7 @@
     const generationMode = String(task?.generation_mode || task?.generationMode || task?.retryPayload?.generation_mode || '').toLowerCase();
     const title = String(task?.title || task?.avatarName || task?.createDetail?.title || '').toLowerCase();
     if (task?.taskType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('剧情广告')) return 'luxury_ad';
+    if (task?.taskType === 'material_film' || adMode === 'material_film' || generationMode.includes('material_film') || title.includes('素材成片') || title.includes('素材审片')) return 'material_film';
     if (task?.taskType === 'product_ad') return 'product_ad';
     if (task?.taskType === 'digital_ad' || task?.taskType === 'space_guide') return 'digital_ad';
     return 'digital_human';
@@ -3731,7 +3906,8 @@
     return {
       digital_human: '数字人',
       product_ad: '商品口播视频',
-      digital_ad: '素材审片',
+      material_film: '素材审片',
+      digital_ad: '空间导览',
       luxury_ad: '剧情广告',
     }[type] || '数字人';
   }
@@ -4013,6 +4189,14 @@
     modal.classList.add('open');
     refreshTaskProgressModal();
   }
+  function findTaskCenterTask(taskId) {
+    const id = String(taskId || '');
+    const projectTasks = (state.luxuryAdProjects || []).map(luxuryAdProjectToTask);
+    return state.s3.runningTasks.get(id)
+      || readVideoTasks().find(x => String(x.taskId) === id)
+      || projectTasks.find(x => String(x.taskId) === id || String(x.projectId) === id)
+      || null;
+  }
   function closeTaskProgressModal() {
     const modal = document.getElementById('dhTaskProgressModal');
     if (!modal) return;
@@ -4025,9 +4209,7 @@
     if (!modal || !modal.classList.contains('open')) return;
     const taskId = modal.dataset.taskId;
     if (!taskId) return;
-    const meta = state.s3.runningTasks.get(taskId);
-    const stored = readVideoTasks().find(x => String(x.taskId) === String(taskId));
-    const data = meta || stored;
+    const data = findTaskCenterTask(taskId);
     const body = modal.querySelector('.dh-task-progress-modal-body');
     const title = modal.querySelector('.dh-video-modal-title');
     if (title) title.textContent = '任务详情';
@@ -4136,20 +4318,13 @@
       const ratioClass = taskRatio.includes('16:9') || taskRatio.includes('1280x720') || taskRatio.includes('1920x1080')
         ? ' dh-task-thumb-landscape'
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
-      const preview = t.isLuxuryProjectDraft && posterUrl
-        ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}"><img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt=""></div>`
-        : t.isLuxuryProjectDraft
-        ? `<div class="dh-task-thumb dh-task-thumb-empty">${escapeHtml(getTaskStatusText(t.status))}</div>`
+      const preview = t.isLuxuryProjectDraft
+        ? renderTaskImageCover(t, posterUrl, ratioClass)
         : active
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
         : (playableVideoUrl
-          ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}" data-task-preview="${escapeHtml(t.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;">
-               <video class="dh-task-thumb-video" src="${escapeHtml(playableVideoUrl)}" ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} muted playsinline preload="metadata"></video>
-               <span class="dh-task-thumb-play">&#9654;</span>
-             </div>`
-          : (posterUrl
-            ? `<div class="dh-task-thumb dh-task-thumb-done${ratioClass}"><img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt=""></div>`
-            : `<div class="dh-task-thumb dh-task-thumb-empty">${getTaskStatusText(t.status)}</div>`));
+          ? renderTaskVideoCover(t, playableVideoUrl, posterUrl, ratioClass)
+          : renderTaskImageCover(t, posterUrl, ratioClass));
       const video = '';
       const error = t.error ? `<div class="dh-task-error">${escapeHtml(t.error)}</div>` : '';
       const subtitle = t.subtitleWarning
@@ -4177,6 +4352,7 @@
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-lux-project-continue="${escapeHtml(t.projectId)}">继续制作</button>` : ''}
+            ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">查看详情</button>` : ''}
             ${playableVideoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
             ${canRetry ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(t.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>` : ''}
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>` : ''}
@@ -4569,14 +4745,23 @@
     const groupLabel = { female: '👩 女声', male: '👨 男声', child: '🧒 童声', neutral: '🎙️ 其他' };
     const genderIcon = g => ({ female: '👩', male: '👨', child: '🧒', auto: '⚡' }[g] || '🎙️');
     const voiceDataAttr = modalTarget === 'luxury-ad' ? 'data-luxury-voice-id' : 'data-space-voice-id';
-    const card = v => `<div class="dh-voice-opt ${v.isCloned ? 'cloned' : ''} ${String(v.id) === String(current) ? 'selected' : ''}" ${voiceDataAttr}="${escapeHtml(v.id)}">
+    const rec = modalTarget === 'luxury-ad' ? recommendedLuxuryVoice() : null;
+    const recVoiceId = rec?.voice?.id ? String(rec.voice.id) : '';
+    const card = v => {
+      const isSelected = String(v.id) === String(current);
+      const isRecommended = String(v.id) === recVoiceId;
+      return `<div class="dh-voice-opt ${v.isCloned ? 'cloned' : ''} ${isSelected ? 'selected dh-voice-opt-selected' : ''} ${isRecommended ? 'dh-luxgen-voice-recommend' : ''}" ${voiceDataAttr}="${escapeHtml(v.id)}" ${isSelected ? 'aria-current="true"' : ''}>
       <div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
+        ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${isRecommended ? '<span class="dh-voice-status-badge recommend">推荐</span>' : ''}</div>` : ''}
         <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
-        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
+        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}${isRecommended ? ` · 按内容推荐：${escapeHtml(rec.ctx.label)}` : ''}</div>
+        ${isRecommended ? `<div class="dh-luxgen-voice-reason">更适合当前广告内容的情绪、节奏和旁白方向。</div>` : ''}
       </div>
       ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}
+      ${isSelected ? '<div class="dh-voice-selected-check" aria-hidden="true">✓</div>' : ''}
     </div>`;
+    };
     const selectedVoice = (state.voices || []).find(v => String(v.id) === String(current) && !state.badVoices.has(v.id));
     const currentHost = $('#dhSpaceVoiceCurrent');
     if (currentHost && modalTarget !== 'luxury-ad') {
@@ -4603,13 +4788,21 @@
     }
     if (modalTarget === 'luxury-ad') {
       const dir = luxuryVoiceDirection();
+      const recLine = rec?.voice ? `推荐旁白：${rec.voice.name || rec.voice.id} · ${rec.ctx.label}` : '暂无可推荐音色';
       html = `<div class="dh-luxgen-voice-modal-brief">
         <b>当前配音方向：${escapeHtml(dir.label)}</b>
-        <span>${escapeHtml(dir.desc)} 点每个音色的试听，会用当前广告台词或该方向示例来判断是否合适。</span>
+        <span>${escapeHtml(dir.desc)} ${escapeHtml(recLine)}。点每个音色的试听，会用当前广告台词或该方向示例来判断是否合适。</span>
       </div>${html}`;
     }
     if (host) host.innerHTML = html;
     if (modalHost) modalHost.innerHTML = html;
+  }
+
+  function closeSpaceVoiceModal() {
+    const modal = $('#dhSpaceVoiceModal');
+    if (modal) modal.style.display = 'none';
+    stopAudibleMedia({ reset: true });
+    state.voiceModalTarget = 'space';
   }
 
   async function uploadSpaceBackground(file) {
@@ -4915,7 +5108,23 @@
     if (!host) return;
     const current = state.luxuryAd.voiceId || '';
     const v = (state.voices || []).find(x => String(x.id || '') === String(current) && !state.badVoices.has(x.id));
+    const genderIcon = g => ({ female: '👩', male: '👨', child: '🧒', auto: '⚡' }[g] || '🎙️');
     if (!v) {
+      const rec = recommendedLuxuryVoice();
+      if (rec?.voice) {
+        const rv = rec.voice;
+        rv._gender = _inferGender(rv);
+        host.innerHTML = `<div class="dh-voice-opt-icon">${rv.providerIcon || genderIcon(rv._gender || rv.gender)}</div>
+          <div class="dh-voice-opt-body">
+            <div class="dh-voice-opt-name">推荐：${escapeHtml(rv.name || rv.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(rv._gender || rv.gender)}</span></div>
+            <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · 先试听，满意后选用</div>
+            <div class="dh-luxgen-voice-recommend-actions">
+              <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-lux-recommended-voice="${escapeHtml(rv.id)}">选用推荐</button>
+              <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-voice-preview="${escapeHtml(rv.id)}">试听</button>
+            </div>
+          </div>`;
+        return;
+      }
       host.innerHTML = `<div class="dh-voice-opt-icon">TV</div>
         <div class="dh-voice-opt-body">
           <div class="dh-voice-opt-name">未选择配音</div>
@@ -4924,7 +5133,6 @@
       return;
     }
     v._gender = _inferGender(v);
-    const genderIcon = g => ({ female: '👩', male: '👨', child: '🧒', auto: '⚡' }[g] || '🎙️');
     host.innerHTML = `<div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
         <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
@@ -4938,15 +5146,73 @@
     return !!(bgm.file_url || bgm.file_path || bgm.url || bgm.path);
   }
 
+  function clampLuxuryAudioVolume(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function luxuryAdVoiceVolume() {
+    return clampLuxuryAudioVolume(state.luxuryAd.voiceVolume, 1, 0.6, 1.2);
+  }
+
+  function luxuryAdBgmVolume() {
+    return clampLuxuryAudioVolume(state.luxuryAd.bgmVolume ?? state.luxuryAd.bgmAsset?.volume, 0.16, 0, 0.35);
+  }
+
+  function luxuryAdBgmAssetPayload() {
+    if (!luxuryAdHasBgm()) return null;
+    return {
+      ...(state.luxuryAd.bgmAsset || {}),
+      volume: luxuryAdBgmVolume(),
+      voice_volume: luxuryAdVoiceVolume(),
+    };
+  }
+
+  function renderLuxuryAdAudioMix() {
+    const voiceSlider = $('#dhLuxAdVoiceVolume');
+    const bgmSlider = $('#dhLuxAdBgmVolume');
+    const voiceLabel = $('#dhLuxAdVoiceVolumeLabel');
+    const bgmLabel = $('#dhLuxAdBgmVolumeLabel');
+    const voicePct = Math.round(luxuryAdVoiceVolume() * 100);
+    const bgmPct = Math.round(luxuryAdBgmVolume() * 100);
+    if (voiceSlider && document.activeElement !== voiceSlider) voiceSlider.value = String(voicePct);
+    if (bgmSlider && document.activeElement !== bgmSlider) bgmSlider.value = String(bgmPct);
+    if (voiceLabel) voiceLabel.textContent = `${voicePct}%`;
+    if (bgmLabel) bgmLabel.textContent = `${bgmPct}%`;
+    if (state.luxuryAd.bgmAsset) {
+      state.luxuryAd.bgmAsset.volume = luxuryAdBgmVolume();
+      state.luxuryAd.bgmAsset.voice_volume = luxuryAdVoiceVolume();
+    }
+  }
+
   function renderLuxuryAdBgm() {
     const card = $('#dhLuxAdBgmCard');
     const status = $('#dhLuxAdBgmStatus');
     const license = $('#dhLuxAdBgmLicense');
+    const profilesHost = $('#dhLuxAdBgmProfiles');
+    const profileLabel = $('#dhLuxAdBgmProfileLabel');
+    const profileDesc = $('#dhLuxAdBgmProfileDesc');
+    const profileMenu = $('#dhLuxAdBgmProfileMenu');
+    const profileToggle = $('#dhLuxAdBgmProfileToggle');
     if (!card || !status) return;
     const bgm = state.luxuryAd.bgmAsset || null;
     const ready = luxuryAdHasBgm();
-    const main = card.querySelector('.dh-luxgen-bgm-main');
+    const main = $('#dhLuxAdBgmPreview', card) || card.querySelector('.dh-luxgen-bgm-main');
+    const currentProfile = state.luxuryAd.bgmProfile || 'auto';
+    const activeProfile = LUXURY_BGM_PROFILES.find(item => item.id === currentProfile) || LUXURY_BGM_PROFILES[0];
+    const menuOpen = !!profilesHost?.classList.contains('open');
     card.classList.toggle('ready', ready);
+    renderLuxuryAdAudioMix();
+    if (profileLabel) profileLabel.textContent = activeProfile.label;
+    if (profileDesc) profileDesc.textContent = activeProfile.desc;
+    if (profileMenu) {
+      profileMenu.innerHTML = LUXURY_BGM_PROFILES.map(item => `<button type="button" class="dh-luxgen-bgm-option ${item.id === activeProfile.id ? 'active' : ''}" data-lux-bgm-profile="${escapeHtml(item.id)}" title="${escapeHtml(item.desc)}">
+        <b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.desc)}</span>
+      </button>`).join('');
+      profileMenu.hidden = !menuOpen;
+    }
+    if (profileToggle) profileToggle.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
     status.textContent = ready
       ? (bgm.original_name || bgm.name || '背景音乐已配置，成片合成后叠加')
       : '未配置，可先合成无配乐广告片';
@@ -4957,7 +5223,7 @@
         const mood = bgm.matched_mood ? ` · ${bgm.matched_mood}` : '';
         license.textContent = `${source}${mood} · ${auth}`;
       } else {
-        license.textContent = '可自动匹配本地免第三方纯 BGM，也可上传自有授权音乐。';
+        license.textContent = '可选择曲风并生成本地免第三方采样 BGM，也可上传自有授权音乐。';
       }
     }
     let audio = $('#dhLuxAdBgmAudio');
@@ -4976,6 +5242,188 @@
       try { audio.pause(); } catch {}
       audio.removeAttribute('src');
       audio.remove();
+    }
+  }
+
+  function openMusicSearchText() {
+    return [
+      state.luxuryAd.briefText,
+      state.luxuryAd.content,
+      state.luxuryAd.briefInfo?.product,
+      state.luxuryAd.briefInfo?.product_subject,
+      state.luxuryAd.briefInfo?.audience,
+      state.luxuryAd.briefInfo?.selling_point,
+      state.luxuryAd.briefInfo?.tone,
+      ...(Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.map(s => [
+        s.title,
+        s.story_stage,
+        s.role,
+        s.objective,
+        s.emotion,
+        s.mood,
+        s.action,
+        s.visual,
+        s.voiceover,
+        s.narration,
+        s.sfx_audio,
+      ].filter(Boolean).join(' ')) : []),
+    ].filter(Boolean).join(' ').slice(0, 1200);
+  }
+
+  function ensureOpenMusicModal() {
+    let modal = $('#dhOpenMusicModal');
+    if (modal) {
+      bindOpenMusicModalEvents(modal);
+      return modal;
+    }
+    modal = document.createElement('div');
+    modal.id = 'dhOpenMusicModal';
+    modal.className = 'dh-modal dh-open-music-modal';
+    modal.hidden = true;
+    modal.style.display = 'none';
+    modal.innerHTML = `<div class="dh-modal-card dh-open-music-card">
+      <div class="dh-modal-head">
+        <div>
+          <div class="dh-modal-title">公开曲库</div>
+          <div class="dh-open-music-sub">只推荐真实纯音乐，过滤电子、游戏、音效类素材；CC BY 曲目需保留作者署名。</div>
+        </div>
+        <button class="dh-icon-btn" type="button" data-open-music-close aria-label="关闭公开曲库">×</button>
+      </div>
+      <div class="dh-open-music-search">
+        <input class="dh-input" id="dhOpenMusicQuery" placeholder="例如：orchestral cinematic / inspiring piano / corporate acoustic">
+        <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" id="dhOpenMusicSearchBtn">搜索</button>
+      </div>
+      <div class="dh-open-music-note" id="dhOpenMusicNote"></div>
+      <div class="dh-open-music-list" id="dhOpenMusicList"></div>
+    </div>`;
+    document.body.appendChild(modal);
+    bindOpenMusicModalEvents(modal);
+    return modal;
+  }
+
+  function bindOpenMusicModalEvents(modal) {
+    if (!modal || modal.dataset.boundOpenMusicClose === 'true') return;
+    modal.dataset.boundOpenMusicClose = 'true';
+    modal.addEventListener('click', e => {
+      const target = e.target;
+      if (target?.closest?.('[data-open-music-close]') || target === modal) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeOpenMusicModal();
+      }
+    }, true);
+    modal.addEventListener('pointerdown', e => {
+      const target = e.target;
+      if (target?.closest?.('[data-open-music-close]')) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeOpenMusicModal();
+      }
+    }, true);
+  }
+
+  function renderOpenMusicModal() {
+    const modal = ensureOpenMusicModal();
+    const list = $('#dhOpenMusicList', modal);
+    const note = $('#dhOpenMusicNote', modal);
+    const queryInput = $('#dhOpenMusicQuery', modal);
+    const lib = state.luxuryAd.openMusic || {};
+    if (queryInput && document.activeElement !== queryInput) queryInput.value = lib.query || '';
+    if (note) note.textContent = lib.loading ? '正在搜索公开曲库…' : `${lib.note || '优先选择 CC0；CC BY 可商用但需要保留作者和来源署名。'}${Array.isArray(lib.results) && lib.results.length ? ` 当前显示 ${lib.results.length} 首。` : ''}`;
+    if (!list) return;
+    if (lib.loading) {
+      list.innerHTML = '<div class="dh-open-music-empty">搜索中…</div>';
+      return;
+    }
+    const results = Array.isArray(lib.results) ? lib.results : [];
+    if (!results.length) {
+      list.innerHTML = '<div class="dh-open-music-empty">暂无结果。可以换成 “orchestral cinematic music” 或 “inspiring piano corporate”。</div>';
+      return;
+    }
+    list.innerHTML = results.map(item => `<article class="dh-open-music-item">
+      <div class="dh-open-music-meta">
+        <b>${escapeHtml(item.title || '未命名音乐')}</b>
+        <span>${escapeHtml(item.creator || 'Unknown')} · ${escapeHtml(item.license_label || item.license || '开放许可')}</span>
+        ${item.recommend_reason ? `<span>${escapeHtml(item.recommend_reason)}</span>` : ''}
+        ${item.foreign_landing_url ? `<a href="${escapeHtml(item.foreign_landing_url)}" target="_blank" rel="noopener">查看来源页</a>` : ''}
+      </div>
+      <audio controls preload="none" src="${escapeHtml(item.url || '')}"></audio>
+      <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-open-music-import="${escapeHtml(item.id)}">选用</button>
+    </article>`).join('');
+    $$('audio', list).forEach(audio => {
+      audio.addEventListener('play', () => {
+        $$('audio', list).forEach(other => {
+          if (other === audio) return;
+          try {
+            other.pause();
+            other.currentTime = 0;
+          } catch {}
+        });
+      });
+    });
+  }
+
+  function closeOpenMusicModal() {
+    const modal = $('#dhOpenMusicModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.classList.remove('show');
+    modal.hidden = true;
+    modal.style.display = 'none';
+    stopAudibleMedia({ reset: true });
+  }
+
+  async function searchOpenMusic(customQuery = '') {
+    const modal = ensureOpenMusicModal();
+    modal.hidden = false;
+    modal.style.display = 'flex';
+    modal.classList.add('open');
+    const queryInput = $('#dhOpenMusicQuery', modal);
+    const query = String(customQuery || queryInput?.value || '').trim();
+    stopAudibleMedia({ reset: true });
+    state.luxuryAd.openMusic = { ...(state.luxuryAd.openMusic || {}), query, loading: true, results: [], note: '' };
+    renderOpenMusicModal();
+    try {
+      const params = new URLSearchParams({
+        profile_id: state.luxuryAd.bgmProfile || 'auto',
+        text: openMusicSearchText(),
+        page_size: '24',
+      });
+      if (query) params.set('q', query);
+      const r = await api(`/api/dh/luxury-ad/open-music/search?${params.toString()}`, { method: 'GET' });
+      state.luxuryAd.openMusic = {
+        query: r.query || query,
+        results: Array.isArray(r.results) ? r.results : [],
+        loading: false,
+        note: r.license_note || '',
+      };
+      renderOpenMusicModal();
+    } catch (err) {
+      state.luxuryAd.openMusic = { ...(state.luxuryAd.openMusic || {}), loading: false, note: err.message || '公开曲库搜索失败' };
+      renderOpenMusicModal();
+      toast(err.message || '公开曲库搜索失败', 'error');
+    }
+  }
+
+  async function importOpenMusic(id) {
+    const item = (state.luxuryAd.openMusic?.results || []).find(x => String(x.id) === String(id));
+    if (!item) return;
+    closeOpenMusicModal();
+    try {
+      toast('正在导入公开曲目，完成后会自动配置到 BGM…', 'info');
+      const r = await api('/api/dh/luxury-ad/open-music/import', { method: 'POST', body: { item } });
+      if (!r.success || !r.bgm_asset) throw new Error(r.error || '公开曲目导入失败');
+      state.luxuryAd.bgmAsset = {
+        ...r.bgm_asset,
+        volume: luxuryAdBgmVolume(),
+        voice_volume: luxuryAdVoiceVolume(),
+      };
+      renderLuxuryAdBgm();
+      updateLuxuryAdStepLocks();
+      await saveLuxuryAdDraft({ silent: true });
+      toast(`已选用：${r.bgm_asset.name || '公开曲目'}`, 'success');
+    } catch (err) {
+      toast(err.message || '公开曲目导入失败', 'error');
     }
   }
 
@@ -6378,7 +6826,7 @@
         hint = '第 2 步：上传产品图、场景图、界面截图或门店素材；也可以从角色素材库选择演员。';
       } else if (!state.luxuryAd.voiceId) {
         step = 4;
-        hint = '素材已就绪。第 5 步：请选择配音音色，也可自动匹配 BGM 后合成。';
+        hint = '素材已就绪。第 5 步：请选择配音音色，并从公开曲库或上传自有授权 BGM 后合成。';
       } else {
         step = 4;
         hint = '素材、广告词和配音已就绪，可以合成素材成片。';
@@ -7324,7 +7772,8 @@
         original_name: data.original_name || file.name || '背景音乐',
         file_url: data.file_url || '',
         file_path: data.file_path || '',
-        volume: 0.18,
+        volume: luxuryAdBgmVolume(),
+        voice_volume: luxuryAdVoiceVolume(),
         source: '用户上传',
         license: '用户自有或已获授权音乐',
       };
@@ -7336,38 +7785,6 @@
       toast('背景音乐上传失败：' + err.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = old || '上传背景音乐'; }
-    }
-  }
-
-  async function autoMatchLuxuryAdBgm() {
-    const text = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
-    if (!text) return toast('请先输入广告需求，再自动匹配 BGM', 'error');
-    const btn = $('#dhLuxAdBgmAuto');
-    const old = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = '匹配中…'; }
-    try {
-      const r = await api('/api/dh/luxury-ad/auto-bgm', {
-        method: 'POST',
-        body: {
-          text,
-          title: '剧情广告',
-          ad_type: state.luxuryAd.adType || 'auto',
-          ad_style: 'luxury_soft',
-          duration_sec: state.luxuryAd.durationSec || 30,
-          segments: compactLuxurySegments(state.luxuryAd.segments || []),
-          brief_info: state.luxuryAd.briefInfo || null,
-        },
-      });
-      if (!r.success || !r.bgm_asset) throw new Error(r.error || 'BGM 自动匹配失败');
-      state.luxuryAd.bgmAsset = r.bgm_asset;
-      renderLuxuryAdBgm();
-      updateLuxuryAdStepLocks();
-      setLuxuryProgress('bgm');
-      toast(`已匹配 BGM：${r.bgm_asset.name || r.bgm_asset.matched_mood || '背景音乐'}`, 'success');
-    } catch (err) {
-      toast('自动匹配 BGM 失败：' + err.message, 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = old || '自动匹配 BGM'; }
     }
   }
 
@@ -8834,6 +9251,66 @@
     </section>`;
   }
 
+  function renderLuxuryStoryboardBriefingContent(segments = [], keyframes = []) {
+    return [
+      renderLuxuryProductionProjectStatus(),
+      renderLuxuryProductionContractStatus(),
+      renderLuxuryAssetLocksPanel(segments, keyframes),
+      renderLuxuryGlobalVisualBible(),
+    ].filter(Boolean).join('');
+  }
+
+  function renderLuxuryStoryboardBriefingEntry(segments = [], keyframes = []) {
+    const html = renderLuxuryStoryboardBriefingContent(segments, keyframes);
+    if (!html) return '';
+    const project = state.luxuryAd.productionProject || {};
+    const title = project.title || state.luxuryAd.briefInfo?.title || '剧情广告';
+    const count = Math.max(
+      Array.isArray(segments) ? segments.length : 0,
+      Array.isArray(keyframes) ? keyframes.length : 0
+    );
+    return `<section class="dh-lux-storyboard-briefing-entry">
+      <div>
+        <b>分镜制作说明</b>
+        <span>${escapeHtml(title)} · ${count || 0} 个镜头 · 查看制作合同、资产合同、视觉锁和全局画面规则。</span>
+      </div>
+      <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-storyboard-briefing>查看说明</button>
+    </section>`;
+  }
+
+  function ensureLuxuryStoryboardBriefingModal() {
+    let modal = $('#dhLuxuryStoryboardBriefingModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'dhLuxuryStoryboardBriefingModal';
+    modal.className = 'dh-video-modal dh-lux-storyboard-briefing-modal';
+    modal.innerHTML = `<div class="dh-video-modal-backdrop" data-lux-storyboard-briefing-close></div>
+      <div class="dh-video-modal-card dh-lux-storyboard-briefing-card">
+        <div class="dh-video-modal-head">
+          <span class="dh-video-modal-title">分镜制作说明</span>
+          <button class="dh-video-modal-close" data-lux-storyboard-briefing-close type="button" title="关闭">×</button>
+        </div>
+        <div class="dh-lux-storyboard-briefing-body"></div>
+      </div>`;
+    modal.addEventListener('click', e => {
+      if (e.target.closest('[data-lux-storyboard-briefing-close]')) closeLuxuryStoryboardBriefingModal();
+    });
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function openLuxuryStoryboardBriefingModal() {
+    const modal = ensureLuxuryStoryboardBriefingModal();
+    const body = modal.querySelector('.dh-lux-storyboard-briefing-body');
+    const html = renderLuxuryStoryboardBriefingContent(state.luxuryAd.segments || [], state.luxuryAd.keyframes || []);
+    if (body) body.innerHTML = html || luxuryAdEmptyBlock('暂无说明', '完成剧本和分镜生成后，这里会显示制作合同、资产合同和视觉锁。');
+    modal.classList.add('open');
+  }
+
+  function closeLuxuryStoryboardBriefingModal() {
+    $('#dhLuxuryStoryboardBriefingModal')?.classList.remove('open');
+  }
+
   function luxuryProductionProjectStageLabel(stage = '') {
     const map = {
       draft: '制作进度已保存',
@@ -8885,7 +9362,10 @@
       product_asset: state.luxuryAd.productAsset || null,
       brief_reference_assets: filledLuxuryAdBriefReferences(),
       reference_assets: luxuryAdReferenceAssets().filter(luxuryAdAssetFilled),
-      bgm_asset: state.luxuryAd.bgmAsset || null,
+      bgm_asset: luxuryAdBgmAssetPayload(),
+      bgm_profile: state.luxuryAd.bgmProfile || 'auto',
+      voice_volume: luxuryAdVoiceVolume(),
+      bgm_volume: luxuryAdBgmVolume(),
       scenes: compactLuxurySegments(state.luxuryAd.segments || []),
       keyframes: state.luxuryAd.keyframes || [],
       storyboard_sheets: state.luxuryAd.storyboardSheets || [],
@@ -9030,6 +9510,13 @@
     state.luxuryAd.briefRefAssets = draft.brief_reference_assets || [];
     state.luxuryAd.refAssets = draft.reference_assets || [];
     state.luxuryAd.bgmAsset = draft.bgm_asset || null;
+    state.luxuryAd.bgmProfile = draft.bgm_profile || state.luxuryAd.bgmAsset?.matched_genre || 'auto';
+    state.luxuryAd.voiceVolume = clampLuxuryAudioVolume(draft.voice_volume ?? state.luxuryAd.bgmAsset?.voice_volume, 1, 0.6, 1.2);
+    state.luxuryAd.bgmVolume = clampLuxuryAudioVolume(draft.bgm_volume ?? state.luxuryAd.bgmAsset?.volume, 0.16, 0, 0.35);
+    if (state.luxuryAd.bgmAsset) {
+      state.luxuryAd.bgmAsset.volume = luxuryAdBgmVolume();
+      state.luxuryAd.bgmAsset.voice_volume = luxuryAdVoiceVolume();
+    }
     state.luxuryAd.briefInfo = project.brief_info || state.luxuryAd.briefInfo || null;
     state.luxuryAd.assetManifest = project.asset_manifest || null;
     state.luxuryAd.visualLocks = project.visual_locks || null;
@@ -9238,8 +9725,7 @@
       <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdFrameProgress" hidden></div>
       ${planningNotice}
       ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '关键帧待重新生成' : '分镜生成已停止'}</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
-      ${renderLuxuryProductionProjectStatus()}
-      ${renderLuxuryProductionContractStatus()}
+      ${renderLuxuryStoryboardBriefingEntry(segments, keyframes)}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {
       const kf = keyframes[i] || {};
@@ -10408,7 +10894,7 @@
         voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
         duration_sec: state.luxuryAd.durationSec,
         subtitle: subtitlePayload,
-        bgm_asset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+        bgm_asset: luxuryAdBgmAssetPayload(),
         scene_prompt: text,
           camera_prompt: '剧情广告：按分镜顺序生成镜头，镜头语言高级克制，保留产品故事与品牌质感。',
         ad_mode: 'luxury_ad',
@@ -10467,7 +10953,7 @@
             scenes: state.luxuryAd.segments || [],
             keyframes: state.luxuryAd.keyframes || [],
             subtitle: subtitlePayload,
-            bgmAsset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+            bgmAsset: luxuryAdBgmAssetPayload(),
             shotCount: state.luxuryAd.segments.length || state.luxuryAd.keyframes.length || 4,
             composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · ${luxuryAdHasBgm() ? 'BGM 已配置' : '无 BGM'} · 提交后在任务中心查看逐镜视频`,
             workflow: '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成（配音 / 字幕 / 视频）',
@@ -10513,7 +10999,7 @@
         background_url: materialUrls[0],
         person_asset: luxuryAdPersonAssetPayload(),
         subtitle: subtitlePayload,
-        bgm_asset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+        bgm_asset: luxuryAdBgmAssetPayload(),
         generation_mode: 'material_film',
         ad_mode: 'material_film',
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
@@ -10547,7 +11033,7 @@
             materialAssets: materialUrls,
             personAsset: luxuryAdPersonAssetPayload(),
             subtitle: subtitlePayload,
-            bgmAsset: luxuryAdHasBgm() ? state.luxuryAd.bgmAsset : null,
+            bgmAsset: luxuryAdBgmAssetPayload(),
             workflow: '广告需求 → 素材/演员 → 广告词 → 本地剪辑合成 → 配音/字幕/BGM',
             submittedAt: new Date().toISOString(),
           },
@@ -12958,7 +13444,48 @@
     if (!closest('audio, video, [data-voice-preview], [data-vc-preview], #pdhPreviewScriptBtn, [data-preview-video], .dh-video-modal-card')) {
       stopAudibleMedia({ reset: false });
     }
+    const openMusicModal = $('#dhOpenMusicModal');
+    if (closest('[data-open-music-close]') || (openMusicModal?.classList.contains('open') && target === openMusicModal)) {
+      closeOpenMusicModal();
+      return;
+    }
+    if (closest('[data-lux-storyboard-briefing]')) {
+      openLuxuryStoryboardBriefingModal();
+      return;
+    }
+    if (closest('[data-lux-storyboard-briefing-close]')) {
+      closeLuxuryStoryboardBriefingModal();
+      return;
+    }
     if (target.matches?.('input[type="file"]')) return;
+
+    const bgmPicker = closest('#dhLuxAdBgmProfiles');
+    const bgmProfileToggle = closest('#dhLuxAdBgmProfileToggle');
+    if (bgmProfileToggle) {
+      const menu = $('#dhLuxAdBgmProfileMenu');
+      const willOpen = !bgmPicker?.classList.contains('open');
+      bgmPicker?.classList.toggle('open', willOpen);
+      bgmProfileToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (menu) menu.hidden = !willOpen;
+      return;
+    }
+    if (!bgmPicker) {
+      const picker = $('#dhLuxAdBgmProfiles');
+      const toggle = $('#dhLuxAdBgmProfileToggle');
+      const menu = $('#dhLuxAdBgmProfileMenu');
+      picker?.classList.remove('open');
+      toggle?.setAttribute('aria-expanded', 'false');
+      if (menu) menu.hidden = true;
+    }
+    const openMusicImport = closest('[data-open-music-import]');
+    if (openMusicImport) {
+      importOpenMusic(openMusicImport.dataset.openMusicImport);
+      return;
+    }
+    if (closest('#dhOpenMusicSearchBtn')) {
+      searchOpenMusic();
+      return;
+    }
 
     const luxStep = closest('[data-lux-step]');
     if (luxStep) {
@@ -13469,8 +13996,7 @@
       return;
     }
     if (closest('[data-space-voice-close]') || target === $('#dhSpaceVoiceModal')) {
-      $('#dhSpaceVoiceModal').style.display = 'none';
-      state.voiceModalTarget = 'space';
+      closeSpaceVoiceModal();
       return;
     }
     if (closest('#dhSpaceSampleText')) {
@@ -13644,6 +14170,29 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       saveLuxuryAdDraft({ silent: true }).catch(() => {});
       return;
     }
+    const luxRecommendedVoice = closest('[data-lux-recommended-voice]');
+    if (luxRecommendedVoice) {
+      state.luxuryAd.voiceId = luxRecommendedVoice.dataset.luxRecommendedVoice || '';
+      renderLuxuryAdVoice();
+      renderSpaceVoiceOptions();
+      updateLuxuryAdStepLocks();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
+      toast('已选用推荐旁白声音', 'success');
+      return;
+    }
+    const luxBgmProfile = closest('[data-lux-bgm-profile]');
+    if (luxBgmProfile) {
+      state.luxuryAd.bgmProfile = luxBgmProfile.dataset.luxBgmProfile || 'auto';
+      state.luxuryAd.bgmAsset = null;
+      $('#dhLuxAdBgmProfiles')?.classList.remove('open');
+      $('#dhLuxAdBgmProfileToggle')?.setAttribute('aria-expanded', 'false');
+      const profileMenu = $('#dhLuxAdBgmProfileMenu');
+      if (profileMenu) profileMenu.hidden = true;
+      renderLuxuryAdBgm();
+      updateLuxuryAdStepLocks();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
+      return;
+    }
 
     // 音色
     const voiceCard = closest('[data-voice-id]');
@@ -13660,7 +14209,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (spaceVoiceCard && !target.closest('[data-voice-preview]')) {
       state.space.voiceId = spaceVoiceCard.dataset.spaceVoiceId || '';
       renderSpaceVoiceOptions();
-      if (closest('#dhSpaceVoiceModal')) $('#dhSpaceVoiceModal').style.display = 'none';
+      if (closest('#dhSpaceVoiceModal')) closeSpaceVoiceModal();
       return;
     }
     const luxuryVoiceCard = closest('[data-luxury-voice-id]');
@@ -13669,8 +14218,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       renderLuxuryAdVoice();
       updateLuxuryAdStepLocks();
       if (closest('#dhSpaceVoiceModal')) {
-        $('#dhSpaceVoiceModal').style.display = 'none';
-        state.voiceModalTarget = 'space';
+        closeSpaceVoiceModal();
       }
       return;
     }
@@ -15034,8 +15582,27 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     });
     const luxBgmUpload = $('#dhLuxAdBgmUpload');
     if (luxBgmUpload) luxBgmUpload.addEventListener('click', () => $('#dhLuxAdBgmFile')?.click());
-    const luxBgmAuto = $('#dhLuxAdBgmAuto');
-    if (luxBgmAuto) luxBgmAuto.addEventListener('click', autoMatchLuxuryAdBgm);
+    const luxMusicLibrary = $('#dhLuxAdMusicLibrary');
+    if (luxMusicLibrary) luxMusicLibrary.addEventListener('click', () => searchOpenMusic());
+    const bindAudioVolumeSlider = (selector, key, min, max, scale = 100) => {
+      const el = $(selector);
+      if (!el) return;
+      el.addEventListener('input', e => {
+        state.luxuryAd[key] = clampLuxuryAudioVolume(Number(e.target.value) / scale, key === 'bgmVolume' ? 0.16 : 1, min, max);
+        renderLuxuryAdAudioMix();
+      });
+      el.addEventListener('change', () => saveLuxuryAdDraft({ silent: true }));
+    };
+    bindAudioVolumeSlider('#dhLuxAdVoiceVolume', 'voiceVolume', 0.6, 1.2);
+    bindAudioVolumeSlider('#dhLuxAdBgmVolume', 'bgmVolume', 0, 0.35);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.target?.id === 'dhOpenMusicQuery') {
+        e.preventDefault();
+        searchOpenMusic();
+      }
+      if (e.key === 'Escape') closeOpenMusicModal();
+      if (e.key === 'Escape') closeLuxuryStoryboardBriefingModal();
+    });
     const luxProductDrop = $('#dhLuxAdProductDrop');
     if (luxProductDrop) {
       luxProductDrop.addEventListener('keydown', e => {

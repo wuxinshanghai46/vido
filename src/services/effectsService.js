@@ -784,6 +784,7 @@ async function applyEffects(config) {
     images = [],
     pointers = [],
     bgm = null,
+    voiceVolume = 1,
     cameraMotion = 'static',
     cameraSegments = [],
     coverWatermark = false,
@@ -1027,14 +1028,16 @@ async function applyEffects(config) {
     inputFiles.push(bgm.path);
     const bgmIdx = inputFiles.length - 1;
     const vol = bgm.volume ?? 0.3;
+    const voiceVol = Math.max(0.6, Math.min(1.2, Number(bgm.voiceVolume ?? bgm.voice_volume ?? voiceVolume) || 1));
     const fadeIn = bgm.fadeIn ?? 1;
     const fadeOut = bgm.fadeOut ?? 2;
     const dur = videoInfo.duration;
 
     if (videoInfo.hasAudio) {
       // 混合原声 + BGM（先裁剪BGM到视频时长）
+      filterParts.push(`[0:a]volume=${voiceVol}[voice_a]`);
       filterParts.push(`[${bgmIdx}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${Math.max(0, dur - fadeOut)}:d=${fadeOut}[bgm_a]`);
-      filterParts.push(`[0:a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[a_out]`);
+      filterParts.push(`[voice_a][bgm_a]amix=inputs=2:duration=first:dropout_transition=2[a_out]`);
       finalAudioLabel = 'a_out';
     } else {
       // 没有原声，用 BGM（裁剪到视频时长）

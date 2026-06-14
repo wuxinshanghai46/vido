@@ -434,6 +434,8 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
     ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
   ].map(cleanUrl).filter(Boolean).filter(x => x !== url).slice(0, 8);
+  const volume = Number(asset.volume);
+  const voiceVolume = Number(asset.voice_volume ?? asset.voiceVolume);
   return {
     id: asset.id || '',
     actor_id: asset.actor_id || '',
@@ -444,6 +446,12 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     type: asset.type || asset.role || '',
     role: asset.role || '',
     source: asset.source || '',
+    provider: asset.provider || '',
+    creator: asset.creator || '',
+    license: asset.license || asset.license_name || '',
+    license_code: asset.license_code || '',
+    license_url: asset.license_url || '',
+    landing_url: asset.landing_url || asset.foreign_landing_url || '',
     reference_kind: asset.reference_kind || asset.metadata?.reference_kind || '',
     production_usable_actor: asset.production_usable_actor === true || asset.metadata?.production_usable_actor === true,
     is_ai_generated: asset.is_ai_generated === true || asset.metadata?.is_ai_generated === true,
@@ -452,8 +460,13 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     age_range: asset.age_range || asset.metadata?.age_range || '',
     origin: asset.origin || asset.region || asset.metadata?.origin || asset.metadata?.region || '',
     url,
+    file_url: cleanUrl(asset.file_url || asset.url || '') || url,
+    file_path: cleanUrl(asset.file_path || asset.path || '') || '',
+    path: cleanUrl(asset.path || asset.file_path || '') || '',
     image_url: cleanUrl(asset.image_url || asset.url || '') || url,
     previewUrl: cleanUrl(asset.previewUrl || asset.url || asset.image_url || '') || url,
+    volume: Number.isFinite(volume) ? Math.max(0, Math.min(1.2, volume)) : undefined,
+    voice_volume: Number.isFinite(voiceVolume) ? Math.max(0.6, Math.min(1.2, voiceVolume)) : undefined,
     extra_image_urls: extraImageUrls,
     view_count: Math.max(Number(asset.view_count || 0), url ? 1 + extraImageUrls.length : extraImageUrls.length),
     description: _projectText(asset.description || asset.spec_description || '', 600),
@@ -482,6 +495,8 @@ function _compactLuxuryAdDraftBody(body = {}) {
     brief_reference_assets: pickAssets(body.brief_reference_assets || body.briefRefAssets),
     reference_assets: pickAssets(body.reference_assets || body.refAssets || body.assets),
     bgm_asset: _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || null),
+    voice_volume: Math.max(0.6, Math.min(1.2, Number(body.voice_volume ?? body.voiceVolume ?? body.bgm_asset?.voice_volume ?? 1) || 1)),
+    bgm_volume: Math.max(0, Math.min(0.35, Number(body.bgm_volume ?? body.bgmVolume ?? body.bgm_asset?.volume ?? 0.16) || 0.16)),
     voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
     subtitle: body.subtitle !== false,
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
@@ -7049,6 +7064,12 @@ function _luxuryBgmRef(bgm = {}) {
   return String(bgm.file_path || bgm.path || bgm.file_url || bgm.url || bgm.background_music_url || '').trim();
 }
 
+function _luxuryClampAudioVolume(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 function _resolveLuxuryBgmPath(bgm = {}) {
   const raw = _luxuryBgmRef(bgm);
   if (!raw) return '';
@@ -7081,10 +7102,12 @@ async function _applyLuxuryBgmIfConfigured(taskId, videoPath, bgm = {}) {
     videoPath,
     bgm: {
       path: bgmPath,
-      volume: Number(bgm.volume) > 0 ? Number(bgm.volume) : 0.18,
+      volume: _luxuryClampAudioVolume(bgm.volume, 0.16, 0, 0.35),
+      voice_volume: _luxuryClampAudioVolume(bgm.voice_volume || bgm.voiceVolume, 1, 0.6, 1.2),
       fadeIn: 1,
       fadeOut: 2,
     },
+    voiceVolume: _luxuryClampAudioVolume(bgm.voice_volume || bgm.voiceVolume, 1, 0.6, 1.2),
   });
   if (fx?.outputPath && fs.existsSync(fx.outputPath)) return fx.outputPath;
   throw new Error('剧情广告背景音乐叠加失败');
@@ -7263,6 +7286,141 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
   else db.updateAvatarTask(taskId, taskData);
 }
 
+function _luxuryBgmProfiles() {
+  return [
+    {
+      id: 'ambient-tech',
+      mood: '科技高级',
+      genre: 'ambient-tech',
+      tempo: 92,
+      root: 196,
+      scale: [0, 2, 3, 7, 9, 12],
+      progression: [0, 3, 5, 2],
+      keywords: ['ai', '人工智能', '科技', '智能', '平台', '系统', '数据', '模型', '接口', '未来', '效率', 'saas'],
+    },
+    {
+      id: 'warm-corporate',
+      mood: '品牌温暖',
+      genre: 'warm-corporate',
+      tempo: 78,
+      root: 220,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 4, 3, 5],
+      keywords: ['家庭', '生活', '陪伴', '温暖', '安心', '用户', '服务', '关怀', '故事'],
+    },
+    {
+      id: 'luxury-minimal',
+      mood: '高端质感',
+      genre: 'luxury-minimal',
+      tempo: 68,
+      root: 174.61,
+      scale: [0, 2, 3, 7, 10, 12],
+      progression: [0, 5, 3, 2],
+      keywords: ['高端', '质感', '奢华', '精品', '空间', '展厅', '精致', '极简', '品牌'],
+    },
+    {
+      id: 'upbeat-commercial',
+      mood: '增长动感',
+      genre: 'upbeat-commercial',
+      tempo: 112,
+      root: 246.94,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 3, 4, 5],
+      keywords: ['爆发', '增长', '转化', '活动', '上新', '发布', '促销', '年轻', '快节奏'],
+    },
+    {
+      id: 'cinematic-story',
+      mood: '剧情叙事',
+      genre: 'cinematic-story',
+      tempo: 84,
+      root: 185,
+      scale: [0, 2, 3, 5, 7, 10, 12],
+      progression: [0, 2, 5, 3],
+      keywords: ['剧情', '故事', '转折', '焦虑', '释然', '情绪', '镜头', '分镜'],
+    },
+    {
+      id: 'epic-cinematic',
+      mood: '大气史诗',
+      genre: 'epic-cinematic',
+      tempo: 76,
+      root: 164.81,
+      scale: [0, 2, 3, 5, 7, 10, 12],
+      progression: [0, 5, 3, 6],
+      keywords: ['大气', '史诗', '震撼', '大片', '宏大', '开场', '磅礴', '恢弘', '燃'],
+    },
+    {
+      id: 'majestic-brand',
+      mood: '品牌大片',
+      genre: 'majestic-brand',
+      tempo: 82,
+      root: 196,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 4, 5, 3],
+      keywords: ['品牌', '形象片', '愿景', '企业', '信任', '长期', '价值', '专业', '大气'],
+    },
+    {
+      id: 'launch-event',
+      mood: '发布会开场',
+      genre: 'launch-event',
+      tempo: 118,
+      root: 220,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 5, 4, 3],
+      keywords: ['发布会', '新品', '揭幕', '亮相', '开场', '倒计时', '科技', '发布', '上市'],
+    },
+    {
+      id: 'inspirational-anthem',
+      mood: '励志燃点',
+      genre: 'inspirational-anthem',
+      tempo: 96,
+      root: 185,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 3, 5, 4],
+      keywords: ['励志', '团队', '成长', '突破', '梦想', '愿景', '向上', '奋斗', '燃点'],
+    },
+    {
+      id: 'chinese-grand',
+      mood: '东方国风',
+      genre: 'chinese-grand',
+      tempo: 72,
+      root: 196,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 4, 3, 5],
+      keywords: ['国风', '东方', '文化', '传承', '中式', '国潮', '茶', '文旅', '非遗'],
+    },
+    {
+      id: 'fashion-runway',
+      mood: '奢华秀场',
+      genre: 'fashion-runway',
+      tempo: 104,
+      root: 174.61,
+      scale: [0, 2, 3, 7, 10, 12],
+      progression: [0, 5, 2, 3],
+      keywords: ['时尚', '秀场', '高奢', '美妆', '香氛', '高级', '冷峻', '质感', '潮流'],
+    },
+    {
+      id: 'suspense-trailer',
+      mood: '悬疑预告',
+      genre: 'suspense-trailer',
+      tempo: 88,
+      root: 146.83,
+      scale: [0, 1, 3, 6, 7, 10, 12],
+      progression: [0, 2, 1, 5],
+      keywords: ['悬疑', '预告', '反转', '危机', '问题', '焦虑', '冲突', '紧张', '压迫'],
+    },
+    {
+      id: 'documentary-human',
+      mood: '纪录片温度',
+      genre: 'documentary-human',
+      tempo: 70,
+      root: 220,
+      scale: [0, 2, 4, 7, 9, 12],
+      progression: [0, 5, 3, 4],
+      keywords: ['纪录片', '人物', '真实', '案例', '温度', '人文', '访谈', '故事', '客户'],
+    },
+  ];
+}
+
 function _inferLuxuryBgmProfile(input = {}) {
   const text = [
     input.text,
@@ -7273,53 +7431,463 @@ function _inferLuxuryBgmProfile(input = {}) {
     input.brief_info?.audience,
     ...(Array.isArray(input.segments) ? input.segments.map(s => `${s.visual || ''} ${s.dialogue || ''} ${s.camera || ''}`) : []),
   ].filter(Boolean).join(' ').toLowerCase();
-  const profiles = [
-    {
-      mood: '科技高级',
-      genre: 'ambient-tech',
-      baseFrequency: 196,
-      overlayFrequency: 392,
-      tempo: 92,
-      keywords: ['ai', '人工智能', '科技', '智能', '平台', '系统', '数据', '模型', '接口', '未来', '效率', 'saas'],
-    },
-    {
-      mood: '品牌温暖',
-      genre: 'warm-corporate',
-      baseFrequency: 220,
-      overlayFrequency: 330,
-      tempo: 78,
-      keywords: ['家庭', '生活', '陪伴', '温暖', '安心', '用户', '服务', '关怀', '故事'],
-    },
-    {
-      mood: '高端质感',
-      genre: 'luxury-minimal',
-      baseFrequency: 174,
-      overlayFrequency: 261,
-      tempo: 68,
-      keywords: ['高端', '质感', '奢华', '精品', '空间', '展厅', '精致', '极简', '品牌'],
-    },
-    {
-      mood: '增长动感',
-      genre: 'upbeat-commercial',
-      baseFrequency: 247,
-      overlayFrequency: 494,
-      tempo: 112,
-      keywords: ['爆发', '增长', '转化', '活动', '上新', '发布', '促销', '年轻', '快节奏'],
-    },
-  ];
+  const requested = String(input.profile_id || input.profileId || '').trim();
+  const profiles = _luxuryBgmProfiles();
+  if (requested && requested !== 'auto') {
+    const exact = profiles.find(p => p.id === requested || p.genre === requested);
+    if (exact) return { ...exact, baseFrequency: exact.root, overlayFrequency: exact.root * 2, tags: [] };
+  }
   const scored = profiles.map(p => ({
     ...p,
     score: p.keywords.reduce((sum, kw) => sum + (text.includes(kw) ? 1 : 0), 0),
   })).sort((a, b) => b.score - a.score);
   const selected = scored[0]?.score > 0 ? scored[0] : profiles[0];
   return {
+    id: selected.id,
     mood: selected.mood,
     genre: selected.genre,
-    baseFrequency: selected.baseFrequency,
-    overlayFrequency: selected.overlayFrequency,
+    root: selected.root,
+    baseFrequency: selected.root,
+    overlayFrequency: selected.root * 2,
     tempo: selected.tempo,
+    scale: selected.scale,
+    progression: selected.progression,
     tags: selected.keywords.filter(kw => text.includes(kw)).slice(0, 6),
   };
+}
+
+function _openMusicScriptSignals(profileId = 'auto', text = '') {
+  const raw = `${profileId || ''} ${text || ''}`.toLowerCase();
+  const signals = [];
+  const add = (tag, weight, query, reason, re) => {
+    if (re.test(raw)) signals.push({ tag, weight, query, reason });
+  };
+  add('orchestral', 5, 'orchestral cinematic corporate instrumental music', '按剧本的品牌感/大气收束推荐', /epic|majestic|大片|大气|史诗|品牌|高端|发布|亮相|愿景|信任|专业|商业|成果|转化|平台/i);
+  add('uplifting', 4, 'inspiring piano strings corporate instrumental music', '按剧本的成长/激励节奏推荐', /anthem|励志|团队|成长|突破|改变|提升|效率|增长|兴奋|种草|行动|解决/i);
+  add('documentary', 4, 'documentary piano acoustic instrumental music', '按剧本的真实案例/叙事推进推荐', /documentary|纪录|案例|真实|人物|用户|客户|痛点|焦虑|困扰|问题|场景|日常|审片|素材/i);
+  add('warm', 3, 'warm piano acoustic background instrumental music', '按剧本的温暖/安心情绪推荐', /warm|温暖|安心|释然|服务|陪伴|生活|家庭|轻松|开心|治愈/i);
+  add('asian', 3, 'cinematic asian acoustic instrumental music', '按剧本的东方/文化气质推荐', /chinese|asian|东方|国风|文化|传统|中式|匠心/i);
+  add('tension', 2, 'cinematic piano strings tension instrumental music', '按剧本的悬念/转折段落推荐', /suspense|trailer|悬疑|预告|转折|冲突|犹豫|对比|危机|倒计时/i);
+  if (!signals.length) {
+    signals.push({
+      tag: 'orchestral',
+      weight: 2,
+      query: 'orchestral cinematic corporate instrumental music',
+      reason: '按默认商业广告片方向推荐',
+    });
+  }
+  return signals.sort((a, b) => b.weight - a.weight);
+}
+
+function _openMusicQueryForProfile(profileId = 'auto', text = '') {
+  return _openMusicScriptSignals(profileId, text)[0].query;
+}
+
+function _openMusicLicenseLabel(item = {}) {
+  const license = String(item.license || '').toLowerCase();
+  const version = String(item.license_version || item.licenseVersion || '').trim();
+  if (license === 'cc0') return 'CC0 公共领域';
+  if (license === 'by') return `CC BY${version ? ` ${version}` : ''}，使用时需保留作者署名`;
+  return license ? license.toUpperCase() : '开放许可';
+}
+
+function _curatedOpenMusicItems(query = '', profileId = 'auto', scriptText = '') {
+  const items = [
+    {
+      id: 'curated_epic_heroic_orchestral',
+      title: 'Epic Heroic Orchestral Dramatic',
+      creator: 'SoundFlakes',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/423/423499_6596968-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/SoundFlakes/sounds/423499',
+      tags: ['epic', 'orchestral', 'cinematic', 'brand'],
+    },
+    {
+      id: 'curated_orchestral_hero_theme',
+      title: 'Orchestral Hero Theme',
+      creator: 'TheoJT',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/510/510955_6627602-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/TheoJT/sounds/510955',
+      tags: ['epic', 'brand', 'orchestral', 'launch'],
+    },
+    {
+      id: 'curated_lucky_ticket_cc0',
+      title: 'The Lucky Ticket',
+      creator: 'Antenalosmusic',
+      license: 'cc0',
+      license_version: '1.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/714/714932_15403889-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Antenalosmusic/sounds/714932',
+      tags: ['corporate', 'uplifting', 'cc0', 'bright'],
+    },
+    {
+      id: 'curated_cinematic_piano',
+      title: 'Soundscape - Last 31 - Cinematic Piano',
+      creator: 'Tri-Tachyon',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/353/353156_3492460-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Tri-Tachyon/sounds/353156',
+      tags: ['cinematic', 'piano', 'story', 'documentary'],
+    },
+    {
+      id: 'curated_unpretentious_reveal_cc0',
+      title: 'Unpretentious Reveal (no drums)',
+      creator: 'Drakensson',
+      license: 'cc0',
+      license_version: '1.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/529/529381_6628165-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Drakensson/sounds/529381',
+      tags: ['documentary', 'warm', 'reveal', 'cc0'],
+    },
+    {
+      id: 'curated_beautiful_romantic_piano',
+      title: 'Beautiful Romantic Piano',
+      creator: 'UNIVERSFIELD',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/702/702866_15090270-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/UNIVERSFIELD/sounds/702866',
+      tags: ['piano', 'documentary', 'warm', 'corporate'],
+    },
+    {
+      id: 'curated_orchestral_music',
+      title: 'Orchestral Music',
+      creator: 'Migfus20',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/591/591488_12295155-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Migfus20/sounds/591488',
+      tags: ['orchestral', 'cinematic', 'brand'],
+    },
+    {
+      id: 'curated_epic_orchestral_strings',
+      title: 'Epic Orchestral Strings',
+      creator: 'TheoJT',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/511/511196_6627602-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/TheoJT/sounds/511196',
+      tags: ['epic', 'orchestral', 'strings', 'brand'],
+    },
+    {
+      id: 'curated_awesome_emotional_piano',
+      title: 'Awesome Emotional Piano 2',
+      creator: 'Endersniper123',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/266/266415_4013639-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Endersniper123/sounds/266415',
+      tags: ['piano', 'emotional', 'documentary', 'story'],
+    },
+    {
+      id: 'curated_soundscape_dust_ambient_guitar',
+      title: 'Soundscape - Dust - Ambient Guitar',
+      creator: 'Tri-Tachyon',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/478/478318_3492460-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/Tri-Tachyon/sounds/478318',
+      tags: ['acoustic', 'guitar', 'documentary', 'warm'],
+    },
+    {
+      id: 'curated_flying_in_a_balloon',
+      title: 'Flying In A Balloon',
+      creator: 'UNIVERSFIELD',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/700/700301_15090270-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/UNIVERSFIELD/sounds/700301',
+      tags: ['corporate', 'uplifting', 'warm', 'piano'],
+    },
+    {
+      id: 'curated_soft_ambient_nature_documentary',
+      title: 'Soft Ambient Atmosphere for Nature Documentaries',
+      creator: 'UNIVERSFIELD',
+      license: 'by',
+      license_version: '4.0',
+      source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/726/726894_15090270-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/UNIVERSFIELD/sounds/726894',
+      tags: ['documentary', 'ambient', 'warm', 'acoustic'],
+    },
+    {
+      id: 'curated_commons_all_this',
+      title: 'All This',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/3/3a/All_This_%28ISRC_USUAN1300001%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:All_This_(ISRC_USUAN1300001).mp3',
+      tags: ['cinematic', 'documentary', 'warm', 'piano'],
+    },
+    {
+      id: 'curated_commons_autumn_day',
+      title: 'Autumn Day',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/7/71/Autumn_Day_%28ISRC_USUAN1100765%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Autumn_Day_(ISRC_USUAN1100765).mp3',
+      tags: ['warm', 'acoustic', 'documentary', 'corporate'],
+    },
+    {
+      id: 'curated_commons_clean_soul',
+      title: 'Clean Soul',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/Clean_Soul_%28ISRC_USUAN1300033%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Clean_Soul_(ISRC_USUAN1300033).mp3',
+      tags: ['corporate', 'warm', 'uplifting', 'acoustic'],
+    },
+    {
+      id: 'curated_commons_music_for_manatees',
+      title: 'Music for Manatees',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/4/4b/Music_for_Manatees_%28ISRC_USUAN1400009%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Music_for_Manatees_(ISRC_USUAN1400009).mp3',
+      tags: ['piano', 'documentary', 'warm', 'story'],
+    },
+    {
+      id: 'curated_commons_carpe_diem',
+      title: 'Carpe Diem',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/6/6f/Carpe_Diem_%28ISRC_USUAN1600023%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Carpe_Diem_(ISRC_USUAN1600023).mp3',
+      tags: ['orchestral', 'cinematic', 'uplifting', 'brand'],
+    },
+    {
+      id: 'curated_commons_americana',
+      title: 'Americana',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/f/f1/Americana_%28ISRC_USUAN1200092%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Americana_(ISRC_USUAN1200092).mp3',
+      tags: ['orchestral', 'cinematic', 'documentary', 'brand'],
+    },
+    {
+      id: 'curated_commons_air_prelude',
+      title: 'Air Prelude',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/5/59/Air_Prelude_%28ISRC_USUAN1100337%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Air_Prelude_(ISRC_USUAN1100337).mp3',
+      tags: ['piano', 'cinematic', 'story', 'warm'],
+    },
+    {
+      id: 'curated_commons_clear_waters',
+      title: 'Clear Waters',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/a/ae/Clear_Waters_%28ISRC_USUAN1100290%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Clear_Waters_(ISRC_USUAN1100290).mp3',
+      tags: ['piano', 'warm', 'documentary', 'acoustic'],
+    },
+    {
+      id: 'curated_commons_angel_share',
+      title: 'Angel Share',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/8/85/Angel_Share_%28ISRC_USUAN1700021%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Angel_Share_(ISRC_USUAN1700021).mp3',
+      tags: ['cinematic', 'warm', 'documentary', 'story'],
+    },
+    {
+      id: 'curated_commons_carefree',
+      title: 'Carefree',
+      creator: 'Kevin MacLeod',
+      license: 'by',
+      license_version: '3.0',
+      source: 'Wikimedia Commons / Incompetech',
+      url: 'https://upload.wikimedia.org/wikipedia/commons/f/f5/Carefree_%28ISRC_USUAN1400037%29.mp3',
+      foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Carefree_(ISRC_USUAN1400037).mp3',
+      tags: ['corporate', 'uplifting', 'warm', 'acoustic'],
+    },
+  ];
+  const text = `${query || ''} ${profileId || ''} ${scriptText || ''}`.toLowerCase();
+  const signals = _openMusicScriptSignals(profileId, `${query || ''} ${scriptText || ''}`);
+  const signalTags = new Map(signals.map(s => [s.tag, s]));
+  return items
+    .map(item => {
+      const hay = `${item.title} ${item.tags.join(' ')}`.toLowerCase();
+      const score = item.tags.reduce((sum, tag) => sum + (text.includes(tag) ? 2 : 0), 0)
+        + (signals.reduce((sum, signal) => sum + (item.tags.includes(signal.tag) ? signal.weight : 0), 0))
+        + (/epic|orchestral|大气|史诗|brand|品牌|launch|发布|高端|信任/.test(text) && (item.tags.includes('epic') || item.tags.includes('orchestral') || item.tags.includes('brand')) ? 4 : 0)
+        + (/corporate|inspiring|励志|uplifting|增长|效率|突破/.test(text) && (item.tags.includes('corporate') || item.tags.includes('uplifting')) ? 4 : 0)
+        + (/documentary|人物|纪录|案例|真实|痛点|焦虑|场景/.test(text) && item.tags.includes('documentary') ? 4 : 0)
+        + (/温暖|安心|释然|生活|服务|warm/.test(text) && item.tags.includes('warm') ? 3 : 0)
+        + (item.license === 'cc0' ? 1 : 0)
+        + (hay.includes(String(query || '').toLowerCase()) ? 1 : 0);
+      const matchedSignal = item.tags.map(tag => signalTags.get(tag)).find(Boolean) || signals[0];
+      return _normalizeOpenMusicItem({ ...item, score, recommend_reason: matchedSignal?.reason || '' });
+    })
+    .sort((a, b) => (b.score || 0) - (a.score || 0));
+}
+
+function _normalizeOpenMusicItem(item = {}) {
+  const id = String(item.id || crypto.createHash('sha1').update(`${item.url || ''}${item.title || ''}`).digest('hex').slice(0, 12));
+  const license = String(item.license || '').toLowerCase();
+  return {
+    id,
+    title: String(item.title || '未命名音乐').trim().slice(0, 160),
+    creator: String(item.creator || item.author || 'Unknown').trim().slice(0, 120),
+    license,
+    license_version: String(item.license_version || item.licenseVersion || '').trim(),
+    license_url: String(item.license_url || item.licenseUrl || '').trim(),
+    license_label: _openMusicLicenseLabel(item),
+    source: String(item.source || item.provider || 'Openverse').trim(),
+    foreign_landing_url: String(item.foreign_landing_url || item.landing_url || item.foreignLandingUrl || '').trim(),
+    url: String(item.url || item.audio_url || '').trim(),
+    duration: Number(item.duration || item.duration_sec || 0) || null,
+    score: Number(item.score || 0) || 0,
+    tags: Array.isArray(item.tags) ? item.tags.map(x => String(x || '').trim()).filter(Boolean).slice(0, 12) : [],
+    recommend_reason: String(item.recommend_reason || item.recommendReason || '').trim().slice(0, 80),
+  };
+}
+
+function _isPureInstrumentalCandidate(item = {}) {
+  const text = `${item.title || ''} ${item.creator || ''} ${(item.tags || []).join(' ')}`.toLowerCase();
+  if (/electronic|synth|synthwave|techno|edm|dubstep|idm|chiptune|8bit|8-bit|game|video game|arcade|looperman|sfx|sound effect|noise|glitch|riser|whoosh|drone only|horror|spooky|vox|voice|vocal|christmas|jingle/i.test(text)) return false;
+  return /piano|orchestral|orchestra|strings|string|cinematic|corporate|documentary|acoustic|instrumental|romantic|hero|reveal|uplifting|inspiring|ambient guitar|soundscape/i.test(text);
+}
+
+function _openMusicAllowedDownloadUrl(raw = '') {
+  let u = null;
+  try { u = new URL(String(raw || '')); } catch { return null; }
+  if (u.protocol !== 'https:') return null;
+  const host = u.hostname.toLowerCase();
+  const allowed = [
+    'cdn.freesound.org',
+    'upload.wikimedia.org',
+    'files.freemusicarchive.org',
+    'freemusicarchive.org',
+    'archive.org',
+    'commons.wikimedia.org',
+  ];
+  if (!allowed.some(x => host === x || host.endsWith(`.${x}`))) return null;
+  return u;
+}
+
+async function _downloadOpenMusicToLocal(item = {}) {
+  const normalized = _normalizeOpenMusicItem(item);
+  const u = _openMusicAllowedDownloadUrl(normalized.url);
+  if (!u) throw new Error('该公开曲目来源暂不支持导入，请换一首或上传自有授权音乐');
+  if (!['cc0', 'by'].includes(normalized.license)) throw new Error('仅支持导入 CC0 或 CC BY 授权曲目');
+  const outDir = path.join(OUTPUT_ROOT_DIR, 'music');
+  fs.mkdirSync(outDir, { recursive: true });
+  const extFromPath = path.extname(u.pathname || '').toLowerCase();
+  const ext = ['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac'].includes(extFromPath) ? extFromPath : '.mp3';
+  const hash = crypto.createHash('sha1').update(`${normalized.id}:${normalized.url}`).digest('hex').slice(0, 16);
+  const filename = `openverse_${hash}${ext}`;
+  const outputPath = path.join(outDir, filename);
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+    let written = false;
+    try {
+      const r = await axios.get(normalized.url, {
+        responseType: 'arraybuffer',
+        timeout: 45000,
+        maxContentLength: 35 * 1024 * 1024,
+        headers: { 'User-Agent': 'VIDO/1.0 open-music-import' },
+        validateStatus: s => s >= 200 && s < 300,
+      });
+      const contentType = String(r.headers['content-type'] || '').toLowerCase();
+      if (!/audio|mpeg|octet-stream/.test(contentType)) throw new Error('公开曲目下载地址未返回音频文件');
+      const buf = Buffer.from(r.data);
+      if (buf.length < 1000 || buf.length > 35 * 1024 * 1024) throw new Error('公开曲目文件大小异常');
+      fs.writeFileSync(outputPath, buf);
+      written = true;
+    } catch (err) {
+      const tmpPath = `${outputPath}.download`;
+      try { fs.unlinkSync(tmpPath); } catch {}
+      const curlBin = process.platform === 'win32' ? 'curl.exe' : 'curl';
+      execFileSync(curlBin, ['-L', '--fail', '--max-time', '60', '-A', 'VIDO/1.0 open-music-import', '-o', tmpPath, normalized.url], {
+        stdio: 'pipe',
+        timeout: 70000,
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      const size = fs.existsSync(tmpPath) ? fs.statSync(tmpPath).size : 0;
+      if (size < 1000 || size > 35 * 1024 * 1024) {
+        try { fs.unlinkSync(tmpPath); } catch {}
+        throw new Error('公开曲目文件大小异常');
+      }
+      fs.renameSync(tmpPath, outputPath);
+      written = true;
+    }
+    if (!written || !fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
+      throw new Error('公开曲目下载失败');
+    }
+  }
+  return {
+    id: `openverse_${hash}`,
+    name: normalized.title,
+    original_name: normalized.title,
+    source: 'Openverse 公开曲库',
+    provider: normalized.source || 'Openverse',
+    creator: normalized.creator,
+    license: normalized.license_label,
+    license_code: normalized.license,
+    license_url: normalized.license_url,
+    landing_url: normalized.foreign_landing_url,
+    file_path: outputPath,
+    file_url: `/api/projects/music/${filename}`,
+    url: `/api/projects/music/${filename}`,
+    volume: _luxuryClampAudioVolume(item.volume, 0.16, 0, 0.35),
+    voice_volume: _luxuryClampAudioVolume(item.voice_volume || item.voiceVolume, 1, 0.6, 1.2),
+    imported_at: new Date().toISOString(),
+  };
+}
+
+async function _searchOpenverseAudio(params = {}) {
+  const searchParams = new URLSearchParams(params);
+  const url = `https://api.openverse.org/v1/audio/?${searchParams.toString()}`;
+  try {
+    const r = await axios.get('https://api.openverse.org/v1/audio/', {
+      timeout: 8000,
+      headers: { 'User-Agent': 'VIDO/1.0 open-music-search' },
+      params,
+    });
+    return r.data || {};
+  } catch (err) {
+    const curlBin = process.platform === 'win32' ? 'curl.exe' : 'curl';
+    const out = execFileSync(curlBin, ['-L', '--max-time', '10', '-s', url], {
+      encoding: 'utf8',
+      timeout: 12000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return JSON.parse(out);
+  }
 }
 
 function _generateLocalLicensedBgm({ durationSec = 30, profile = {}, filename = '' } = {}) {
@@ -7328,26 +7896,137 @@ function _generateLocalLicensedBgm({ durationSec = 30, profile = {}, filename = 
   fs.mkdirSync(outDir, { recursive: true });
   const safeName = filename || `luxury_auto_bgm_${Date.now()}_${uuidv4().slice(0, 8)}.m4a`;
   const outputPath = path.join(outDir, safeName);
-  const base = Number(profile.baseFrequency) || 196;
-  const overlay = Number(profile.overlayFrequency) || 392;
-  const tick = Math.max(0.25, Math.min(0.8, 60 / (Number(profile.tempo) || 90) / 2));
-  const fadeOutStart = Math.max(0, duration - 2);
-  const filter = [
-    `sine=frequency=${base}:duration=${duration}:sample_rate=44100[a0]`,
-    `sine=frequency=${overlay}:duration=${duration}:sample_rate=44100[a1]`,
-    `sine=frequency=${Math.round(base * 1.5)}:duration=${tick}:sample_rate=44100,aloop=loop=-1:size=${Math.round(44100 * tick)},atrim=0:${duration},volume=0.012[a2]`,
-    '[a0]volume=0.028[a0v]',
-    '[a1]volume=0.012,adelay=1400|1400[a1v]',
-    '[a0v][a1v][a2]amix=inputs=3:duration=longest,afade=t=in:ss=0:d=1.2,afade=t=out:st=' + fadeOutStart + ':d=2,alimiter=limit=0.35[aout]',
-  ].join(';');
+  const sampleRate = 44100;
+  const channels = 2;
+  const totalSamples = Math.ceil(duration * sampleRate);
+  const data = new Float32Array(totalSamples * channels);
+  const root = Number(profile.root || profile.baseFrequency) || 196;
+  const tempo = Math.max(60, Math.min(128, Number(profile.tempo) || 90));
+  const beat = 60 / tempo;
+  const bar = beat * 4;
+  const scale = Array.isArray(profile.scale) && profile.scale.length ? profile.scale : [0, 2, 4, 7, 9, 12];
+  const progression = Array.isArray(profile.progression) && profile.progression.length ? profile.progression : [0, 3, 4, 5];
+  const genre = String(profile.genre || '');
+  const isEpic = /epic|majestic|anthem|launch/.test(genre);
+  const isTrailer = /suspense|trailer/.test(genre);
+  const isRunway = /runway|fashion/.test(genre);
+  const isChinese = /chinese/.test(genre);
+  const isDocumentary = /documentary/.test(genre);
+  const bright = /upbeat|warm|anthem|documentary/.test(genre) ? 1.15 : /luxury|runway|suspense/.test(genre) ? 0.82 : 1;
+  const drive = /upbeat|launch|runway/.test(genre) ? 1.35 : isEpic ? 1.18 : /cinematic|suspense/.test(genre) ? 1.05 : 0.9;
+  const grandeur = isEpic ? 1.55 : isTrailer ? 1.35 : isChinese ? 1.18 : 1;
+  const midiToFreq = semi => root * Math.pow(2, semi / 12);
+  const env = (pos, len, a = 0.02, r = 0.18) => {
+    if (pos < 0 || pos > len) return 0;
+    if (pos < a) return pos / a;
+    if (pos > len - r) return Math.max(0, (len - pos) / r);
+    return 1;
+  };
+  const addTone = (start, len, freq, amp, pan = 0, type = 'sine') => {
+    const from = Math.max(0, Math.floor(start * sampleRate));
+    const to = Math.min(totalSamples, Math.floor((start + len) * sampleRate));
+    for (let i = from; i < to; i++) {
+      const t = i / sampleRate - start;
+      const phase = 2 * Math.PI * freq * t;
+      const raw = type === 'triangle'
+        ? (2 / Math.PI) * Math.asin(Math.sin(phase))
+        : type === 'softsquare'
+        ? Math.tanh(Math.sin(phase) * 2.2)
+        : Math.sin(phase);
+      const wobble = 1 + 0.06 * Math.sin(2 * Math.PI * 0.18 * (i / sampleRate));
+      const v = raw * amp * env(t, len, 0.03, Math.min(0.45, len * 0.35)) * wobble;
+      const l = v * (pan <= 0 ? 1 : 1 - pan * 0.45);
+      const r = v * (pan >= 0 ? 1 : 1 + pan * 0.45);
+      data[i * 2] += l;
+      data[i * 2 + 1] += r;
+    }
+  };
+  const addNoiseBurst = (start, len, amp, pan = 0, tone = 0.55) => {
+    const from = Math.max(0, Math.floor(start * sampleRate));
+    const to = Math.min(totalSamples, Math.floor((start + len) * sampleRate));
+    let last = 0;
+    for (let i = from; i < to; i++) {
+      const tt = i / sampleRate - start;
+      const n = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+      const white = (n - Math.floor(n)) * 2 - 1;
+      last = last * tone + white * (1 - tone);
+      const v = last * amp * env(tt, len, 0.006, Math.min(0.38, len * 0.65));
+      data[i * 2] += v * (pan <= 0 ? 1 : 1 - pan * 0.45);
+      data[i * 2 + 1] += v * (pan >= 0 ? 1 : 1 + pan * 0.45);
+    }
+  };
+  const addRise = (start, len, baseFreq, amp) => {
+    const slices = Math.max(8, Math.floor(len / Math.max(0.08, beat / 4)));
+    for (let s = 0; s < slices; s++) {
+      const p = s / slices;
+      addTone(start + p * len, len / slices * 1.35, baseFreq * (1 + p * 1.15), amp * (0.3 + p * 0.9), p - 0.5, 'sine');
+    }
+  };
+  for (let t = 0; t < duration; t += bar) {
+    const chordRoot = progression[Math.floor(t / bar) % progression.length];
+    const degrees = [0, 2, 4].map(i => scale[(chordRoot + i) % scale.length]);
+    degrees.forEach((semi, idx) => {
+      addTone(t, Math.min(bar * 1.08, duration - t), midiToFreq(semi), 0.045 * bright * grandeur / (idx + 1), idx === 0 ? -0.18 : 0.18, 'triangle');
+      if (isEpic || isTrailer) addTone(t, Math.min(bar * 1.2, duration - t), midiToFreq(semi + 12), 0.018 * grandeur / (idx + 1), idx === 1 ? -0.42 : 0.42, 'sine');
+    });
+    addTone(t, Math.min(bar, duration - t), midiToFreq(scale[chordRoot % scale.length] - 12), 0.075 * drive * grandeur, -0.05, 'softsquare');
+    if (isEpic || isTrailer || isRunway) {
+      addTone(t, Math.min(beat * 1.1, duration - t), midiToFreq(scale[chordRoot % scale.length] - 24), 0.12 * drive, 0, 'softsquare');
+      addNoiseBurst(t, Math.min(beat * 0.42, duration - t), isTrailer ? 0.06 : 0.04, 0, isTrailer ? 0.82 : 0.65);
+      if (t + beat * 2 < duration) addNoiseBurst(t + beat * 2, beat * 0.26, isRunway ? 0.035 : 0.025, isRunway ? 0.25 : -0.2, 0.72);
+    }
+    if (isEpic || /launch/.test(genre)) addRise(Math.max(0, t + bar - beat * 1.5), Math.min(beat * 1.35, duration - t), root * 1.5, 0.008 * grandeur);
+    for (let step = 0; step < 8; step++) {
+      const st = t + step * beat / 2;
+      if (st >= duration) break;
+      const semi = scale[(chordRoot + step * (isChinese ? 2 : 1)) % scale.length] + (step % 3 === 0 ? 12 : 0);
+      const stepAmp = isRunway && step % 2 === 1 ? 0.034 : isDocumentary ? 0.018 : 0.026;
+      addTone(st, beat * (isChinese ? 0.48 : 0.34), midiToFreq(semi), stepAmp * bright, step % 2 ? 0.28 : -0.28, isChinese ? 'triangle' : 'sine');
+    }
+  }
+  for (let t = bar * 0.5; t < duration; t += beat * 2) {
+    const n = Math.floor(t / (beat * 2));
+    const semi = scale[(n * 2 + 1) % scale.length] + 12;
+    const leadAmp = genre.includes('luxury') || isRunway ? 0.022 : isEpic ? 0.038 : isDocumentary ? 0.026 : 0.034;
+    addTone(t, beat * (genre.includes('luxury') ? 0.85 : isEpic ? 1.35 : 1.15), midiToFreq(semi), leadAmp, n % 2 ? 0.34 : -0.34, 'triangle');
+    if (isEpic && t + beat < duration) addTone(t + beat, beat * 0.8, midiToFreq(semi + 7), 0.024, n % 2 ? -0.4 : 0.4, 'sine');
+  }
+  for (let i = 0; i < totalSamples; i++) {
+    const t = i / sampleRate;
+    const fade = Math.min(1, t / 1.2, (duration - t) / 2);
+    const pulse = (Math.sin(2 * Math.PI * (1 / beat) * t) > 0.72 ? 0.016 : 0) * drive;
+    data[i * 2] = Math.tanh((data[i * 2] + pulse) * fade * 1.8) * 0.58;
+    data[i * 2 + 1] = Math.tanh((data[i * 2 + 1] + pulse) * fade * 1.8) * 0.58;
+  }
+  const wavPath = outputPath.replace(/\.[^.]+$/, '.wav');
+  const pcmBytes = data.length * 2;
+  const wav = Buffer.alloc(44 + pcmBytes);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(36 + pcmBytes, 4);
+  wav.write('WAVE', 8);
+  wav.write('fmt ', 12);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(channels, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * channels * 2, 28);
+  wav.writeUInt16LE(channels * 2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(pcmBytes, 40);
+  for (let i = 0; i < data.length; i++) {
+    wav.writeInt16LE(Math.max(-32767, Math.min(32767, Math.round(data[i] * 32767))), 44 + i * 2);
+  }
+  fs.writeFileSync(wavPath, wav);
   execFileSync(_ffmpegBin(), [
     '-y',
-    '-filter_complex', filter,
-    '-map', '[aout]',
+    '-i', wavPath,
+    '-af', 'alimiter=limit=0.85,afade=t=in:ss=0:d=0.8,afade=t=out:st=' + Math.max(0, duration - 2) + ':d=2',
     '-c:a', 'aac',
-    '-b:a', '128k',
+    '-b:a', '160k',
     outputPath,
   ], { stdio: 'pipe', timeout: 120000 });
+  try { fs.unlinkSync(wavPath); } catch {}
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error('本地 BGM 生成失败');
   }
@@ -7953,8 +8632,9 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
   const modelId = pipelineVideoModel.model_id;
 
   for (let i = 0; i < keyframes.length; i++) {
-    const kf = keyframes[i];
+    const kf = isLuxury ? _mergeLuxurySceneIntoKeyframe(keyframes[i], _luxurySceneForKeyframe(scenes, keyframes[i], i)) : keyframes[i];
     if (!kf?.image_url) continue;
+    if (isLuxury) _assertLuxuryI2VScriptReady(kf, i);
     const shotDuration = Math.max(5, Math.min(10, Math.round(Number(kf.duration) || Number(durationSec) / Math.max(1, keyframes.length) || 5)));
     _taskPatch(taskId, {
       stage: 'deyunai_i2v',
@@ -8240,7 +8920,8 @@ async function _runTopviewLuxuryImageToVideo(req, taskId, {
   const clips = [];
   const topviewTaskIds = [];
   for (let i = 0; i < keyframes.length; i++) {
-    const kf = keyframes[i];
+    const kf = _mergeLuxurySceneIntoKeyframe(keyframes[i], _luxurySceneForKeyframe(scenes, keyframes[i], i));
+    _assertLuxuryI2VScriptReady(kf, i);
     const characterLock = kf.character_lock || kf.shot_plan?.character_lock || null;
     const progress = 48 + Math.round((i / keyframes.length) * 32);
     _taskPatch(taskId, {
@@ -8613,7 +9294,7 @@ router.post('/product-ads/generate', async (req, res) => {
 
 router.post('/product-ads/preview-voice', async (req, res) => {
   try {
-    const { voice_id = '', text = '', segments = [] } = req.body || {};
+    const { voice_id = '', text = '', segments = [], voice_direction = '' } = req.body || {};
     if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填' });
     if (!String(text || '').trim()) return res.status(400).json({ success: false, error: 'text 必填' });
     const taskDir = path.join(JIMENG_ASSETS_DIR, `preview_product_voice_${Date.now()}_${uuidv4().slice(0, 8)}`);
@@ -8624,6 +9305,7 @@ router.post('/product-ads/preview-voice', async (req, res) => {
       voiceId: voice_id,
       segments,
       outputBase: outBase,
+      voiceDirection: voice_direction,
     });
     if (!audioPath || !fs.existsSync(audioPath)) {
       const { generateSpeech } = require('../services/ttsService');
@@ -16067,6 +16749,60 @@ function _compactProviderPromptText(value = '', max = 1600) {
     .slice(0, max);
 }
 
+function _luxurySceneForKeyframe(scenes = [], kf = {}, index = 0) {
+  const rows = Array.isArray(scenes) ? scenes : [];
+  if (!rows.length) return null;
+  const refIndex = Number(kf.reference_index ?? kf.scene_index ?? kf.index);
+  if (Number.isFinite(refIndex) && rows[refIndex]) return rows[refIndex];
+  const keyTitle = String(kf.title || '').trim();
+  if (keyTitle) {
+    const byTitle = rows.find(s => String(s.title || '').trim() === keyTitle);
+    if (byTitle) return byTitle;
+  }
+  return rows[index] || null;
+}
+
+function _mergeLuxurySceneIntoKeyframe(kf = {}, scene = null) {
+  if (!scene || typeof scene !== 'object') return kf || {};
+  const merged = { ...(scene || {}), ...(kf || {}) };
+  const fill = (key, ...values) => {
+    if (merged[key]) return;
+    const value = values.find(v => v !== undefined && v !== null && String(v).trim());
+    if (value !== undefined) merged[key] = value;
+  };
+  fill('title', scene.title);
+  fill('role', scene.role);
+  fill('story_stage', scene.story_stage);
+  fill('objective', scene.objective, scene.intent, scene.purpose);
+  fill('voiceover', scene.voiceover, scene.narration, scene.ad_copy, scene.subtitle, scene.text);
+  fill('narration', scene.narration, scene.voiceover, scene.ad_copy, scene.subtitle, scene.text);
+  fill('ad_copy', scene.ad_copy, scene.voiceover, scene.narration, scene.subtitle, scene.text);
+  fill('action', scene.action, scene.visual_action);
+  fill('visual_action', scene.visual_action, scene.action);
+  fill('emotion', scene.emotion, scene.mood);
+  fill('sfx_audio', scene.sfx_audio, scene.audio);
+  fill('camera_label', scene.camera_label, scene.motion, scene.camera);
+  fill('motion', scene.motion, scene.camera_label, scene.camera);
+  fill('content_prompt', scene.content_prompt, scene.scene_content, scene.visual, scene.visual_prompt);
+  fill('scene_content', scene.scene_content, scene.content_prompt, scene.visual);
+  fill('visual', scene.visual, scene.scene_content, scene.content_prompt);
+  fill('duration', scene.duration, scene.duration_sec);
+  return merged;
+}
+
+function _assertLuxuryI2VScriptReady(kf = {}, index = 0) {
+  const missing = [];
+  if (!(kf.image_url || kf.imageUrl)) missing.push('关键帧图');
+  if (!(kf.voiceover || kf.narration || kf.ad_copy || kf.text)) missing.push('剧本/旁白');
+  if (!(kf.action || kf.visual_action || kf.video_motion_prompt || kf.video_prompt)) missing.push('可见动作/运动');
+  if (!(kf.objective || kf.role || kf.story_stage)) missing.push('镜头目标/剧情阶段');
+  if (missing.length) {
+    const err = new Error(`剧情广告第 ${index + 1} 镜图生视频缺少${missing.join('、')}，已停止提交。请先补齐分镜剧本层。`);
+    err.code = 'LUXURY_I2V_SCRIPT_NOT_READY';
+    throw err;
+  }
+}
+
 function _buildLuxuryI2VPrompt(kf = {}, {
   text = '',
   title = '',
@@ -16095,7 +16831,15 @@ function _buildLuxuryI2VPrompt(kf = {}, {
   ].filter(Boolean).join('; '), 420);
   const emotion = _compactProviderPromptText(kf.emotion || kf.mood || meta.emotion || '', 180);
   const audio = _compactProviderPromptText(kf.sfx_audio || kf.audio || meta.sfx_audio || '', 180);
-  const voice = _compactProviderPromptText(kf.voiceover || kf.narration || kf.ad_copy || text || '', 180);
+  const voice = _compactProviderPromptText(kf.voiceover || kf.narration || kf.ad_copy || text || '', 360);
+  const scriptContinuity = _compactProviderPromptText([
+    kf.story_stage ? `story stage: ${kf.story_stage}` : '',
+    kf.role ? `shot role: ${kf.role}` : '',
+    kf.objective ? `dramatic objective: ${kf.objective}` : '',
+    voice ? `script/narration to follow: ${voice}` : '',
+    kf.action || kf.visual_action || meta.action ? `required visible action: ${kf.action || kf.visual_action || meta.action}` : '',
+    emotion ? `required emotion: ${emotion}` : '',
+  ].filter(Boolean).join('; '), 620);
   const photo = _compactProviderPromptText([
     meta.photography?.framing,
     meta.photography?.lens,
@@ -16107,6 +16851,7 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     'Use the keyframe as the locked first frame, locked subject evidence and identity reference.',
     `Advertised subject: ${subject}. Preserve the exact product/material category, shape, texture, color and scene visible in the keyframe.`,
     shotVisual ? `Shot visual: ${shotVisual}.` : '',
+    scriptContinuity ? `Script continuity: ${scriptContinuity}. The animation must follow this shot's script beat and must not invent a different action, emotion, product moment, or story meaning.` : '',
     photo ? `Photography: ${photo}.` : '',
     motion ? `Camera motion: ${motion}.` : 'Camera motion: slow premium push-in with subtle parallax and stable composition.',
     emotion ? `Emotion and atmosphere: ${emotion}.` : '',
@@ -20544,7 +21289,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     );
     try {
       for (let i = 0; i < keyframes.length; i++) {
-        const kf = keyframes[i];
+        const kf = isLuxury ? _mergeLuxurySceneIntoKeyframe(keyframes[i], _luxurySceneForKeyframe(scenes, keyframes[i], i)) : keyframes[i];
+        if (isLuxury) _assertLuxuryI2VScriptReady(kf, i);
         _taskPatch(taskId, { stage: 'video', progress: 45 + Math.round((i / keyframes.length) * 35), message: `${isLuxury ? '生成剧情广告镜头' : '生成广告镜头'} ${i + 1}/${keyframes.length}` });
         // 中文说明：剧情广告图生视频只读取运动合同，不能复用文生图/分镜图片 prompt。
         const prompt = isLuxury
@@ -20871,7 +21617,9 @@ async function _runSpaceGuideTask(req, taskId, payload) {
       'One continuous realistic showroom/space docent video. Presenter looks at the camera and speaks naturally with expressive but controlled delivery.',
       'Keep the presenter on the left side and keep the right wall/display visible for the whole video.',
       'Natural open-palm gesture toward the display area on the right, subtle head movement, realistic lip sync.',
+      text ? `Script continuity: the visible gestures and pacing must follow this narration meaning: ${String(text).slice(0, 520)}.` : '',
       scenePrompt ? `Scene context to emphasize: ${scenePrompt}.` : '',
+      cameraPrompt ? `User camera/script direction: ${String(cameraPrompt).slice(0, 260)}.` : '',
       text ? `Narration meaning: ${String(text).slice(0, 420)}.` : '',
       `Camera motion: ${_spaceCameraPrompt(cameraMotion, cameraPrompt)}.`,
       'No subtitles generated by the model itself, no stickers, no extra people, no layout changes.',
@@ -22538,6 +23286,7 @@ router.post('/luxury-ad/auto-bgm', async (req, res) => {
       segments = [],
       ad_type = 'auto',
       ad_style = 'luxury_soft',
+      profile_id = 'auto',
       brief_info = null,
     } = req.body || {};
     if (!String(text || '').trim()) {
@@ -22550,11 +23299,12 @@ router.post('/luxury-ad/auto-bgm', async (req, res) => {
       segments,
       ad_type,
       ad_style,
+      profile_id,
       brief_info,
     });
     const outputPath = _generateLocalLicensedBgm({ durationSec: duration, profile });
     const filename = path.basename(outputPath);
-    const name = `${profile.mood} · 本地纯 BGM`;
+    const name = `${profile.mood} · 本地程序化 BGM`;
     const bgmAsset = {
       name,
       original_name: name,
@@ -22562,8 +23312,9 @@ router.post('/luxury-ad/auto-bgm', async (req, res) => {
       file_url: `/api/projects/music/${filename}`,
       url: `/api/projects/music/${filename}`,
       volume: 0.16,
+      voice_volume: 1,
       source: 'VIDO 本地生成',
-      license: 'VIDO 本地生成纯背景音；未使用第三方采样，可用于本项目商用测试与成片混音',
+      license: 'VIDO 本地程序化生成音乐；未使用第三方采样，可用于本项目商用测试与成片混音',
       license_url: '',
       requires_attribution: false,
       matched_mood: profile.mood,
@@ -22576,6 +23327,73 @@ router.post('/luxury-ad/auto-bgm', async (req, res) => {
   } catch (err) {
     console.error('[DH/luxury-ad/auto-bgm] 失败:', err.message);
     res.status(500).json({ success: false, error: err.message || 'BGM 自动匹配失败' });
+  }
+});
+
+router.get('/luxury-ad/open-music/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 120);
+    const profileId = String(req.query.profile_id || req.query.profileId || 'auto').trim().slice(0, 64);
+    const text = String(req.query.text || '').trim().slice(0, 600);
+    const query = q || _openMusicQueryForProfile(profileId, text);
+    const pageSize = Math.max(12, Math.min(32, Math.round(Number(req.query.page_size || req.query.pageSize) || 16)));
+    const scriptSignals = _openMusicScriptSignals(profileId, `${query} ${text}`);
+    const curated = _curatedOpenMusicItems(query, profileId, text);
+    let data = {};
+    let searchWarning = '';
+    try {
+      data = await _searchOpenverseAudio({
+        q: query,
+        license: 'cc0,by',
+        extension: 'mp3',
+        page_size: pageSize,
+      });
+    } catch (err) {
+      searchWarning = 'Openverse 在线搜索暂时较慢，已先返回内置核验公开曲目。';
+    }
+    const blocked = /electronic|synth|techno|edm|dubstep|idm|chiptune|horror|sfx|sound effect|noise|ambience only|looperman|8bit|8-bit|game|riser|whoosh|vox|voice|vocal|jingle/i;
+    const positive = /music|cinematic|corporate|background|inspiring|uplifting|piano|orchestral|orchestra|strings|acoustic|instrumental|documentary/i;
+    const remoteResults = (Array.isArray(data?.results) ? data.results : [])
+      .map(_normalizeOpenMusicItem)
+      .filter(x => x.url && ['cc0', 'by'].includes(x.license) && _openMusicAllowedDownloadUrl(x.url) && _isPureInstrumentalCandidate(x))
+      .map(x => {
+        const title = `${x.title} ${x.creator} ${(x.tags || []).join(' ')}`;
+        const lower = title.toLowerCase();
+        const scriptScore = scriptSignals.reduce((sum, signal) => sum + (lower.includes(signal.tag) || lower.includes(signal.query.split(' ')[0]) ? signal.weight : 0), 0);
+        const score = (positive.test(title) ? 2 : 0) - (blocked.test(title) ? 3 : 0) + (x.license === 'cc0' ? 1 : 0) + scriptScore;
+        return { ...x, score, recommend_reason: scriptSignals[0]?.reason || '' };
+      })
+      .sort((a, b) => b.score - a.score);
+    const seen = new Set();
+    const results = [...curated.filter(_isPureInstrumentalCandidate), ...remoteResults]
+      .filter(x => {
+        const key = x.url || x.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, pageSize);
+    res.json({
+      success: true,
+      query,
+      source: 'Openverse',
+      license_note: searchWarning || '结果来自 Openverse/Freesound 等公开来源；CC0 可较自由使用，CC BY 使用时需保留作者和来源署名，导入前仍建议复核来源页。',
+      results,
+    });
+  } catch (err) {
+    console.error('[DH/luxury-ad/open-music/search] 失败:', err.message);
+    res.status(500).json({ success: false, error: err.message || '公开曲库搜索失败' });
+  }
+});
+
+router.post('/luxury-ad/open-music/import', async (req, res) => {
+  try {
+    const item = req.body?.item || req.body || {};
+    const bgmAsset = await _downloadOpenMusicToLocal(item);
+    res.json({ success: true, bgm_asset: bgmAsset });
+  } catch (err) {
+    console.error('[DH/luxury-ad/open-music/import] 失败:', err.message);
+    res.status(500).json({ success: false, error: err.message || '公开曲目导入失败' });
   }
 });
 
