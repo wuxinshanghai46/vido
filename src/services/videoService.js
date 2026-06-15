@@ -1438,20 +1438,19 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
 
-  let content = prompt.substring(0, 2000) + ` --ratio ${ratioFlag} --dur ${durSec}`;
-  if (image_url) content += ' --mode i2v';
-
   const body = {
     model,
-    content,
+    prompt: String(prompt || '').trim().substring(0, 4000),
+    size: ratioFlag,
     ratio: ratioFlag,
     duration: durSec,
+    resolution: '480p',
     generate_audio: false,
     watermark: false
   };
   if (image_url) {
-    body.image = image_url;
-    body.image_url = image_url;
+    body.image_urls = [image_url];
+    body.image_with_roles = [{ url: image_url, role: 'first_frame' }];
   }
 
   const _started = Date.now();
