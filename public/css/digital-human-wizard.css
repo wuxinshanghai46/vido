@@ -791,7 +791,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-voice-direction p { margin: 0; color: var(--dh-text-muted); font-size: 12px; line-height: 1.5; }
 .dh-luxgen-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 .dh-luxgen-bgm-card { display: grid; gap: 12px; align-content: start; margin-top: 0; padding: 14px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: var(--dh-bg); }
-.dh-luxgen-bgm-card.ready { border-color: rgba(33,255,243,0.45); background: rgba(33,255,243,0.06); }
+.dh-luxgen-bgm-card.ready { border-color: var(--dh-border); background: var(--dh-bg); }
 .dh-luxgen-bgm-main { display: grid; gap: 3px; min-width: 0; }
 .dh-luxgen-bgm-main b { color: var(--dh-text); font-size: 13px; }
 .dh-luxgen-bgm-main span { color: var(--dh-text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

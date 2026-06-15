@@ -12,6 +12,10 @@
     '3:4': { standard: '768×1024', hd: '960×1280', fullhd: '1080×1440' },
     '4:3': { standard: '1024×768', hd: '1280×960', fullhd: '1440×1080' },
   };
+  const VOICE_PREVIEW_CACHE_TTL = 10 * 60 * 1000;
+  const VOICE_PREVIEW_CACHE_LIMIT = 12;
+  const voicePreviewCache = new Map();
+  const voicePreviewPending = new Map();
 
   function outputPixels(ratio = '9:16', size = 'standard') {
     return OUTPUT_SIZE_MAP[ratio]?.[size] || OUTPUT_SIZE_MAP['9:16'].standard;
@@ -3349,14 +3353,29 @@
     const isTopviewVoice = providerId.includes('topview');
     const demoUrl = voice.demoAudioUrl || voice.demo_audio_url || voice.preview_url || voice.previewUrl || voice.sample_url || '';
     const useExpressivePreview = !!previewText;
+    const previewSegments = useExpressivePreview
+      ? compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 3)
+      : [];
+    const previewTextForRequest = previewText || '你好，这是 VIDO 数字人配音试听。先听这一句的自然开场，再听中段的情绪推进，最后用更有感染力的语气收住。';
+    const cacheKey = JSON.stringify({
+      voiceId: String(voiceId),
+      text: String(previewTextForRequest || '').slice(0, 600),
+      direction: useExpressivePreview ? (state.luxuryAd.voiceDirection || 'story_dynamic') : '',
+      segments: previewSegments.map(seg => ({
+        index: seg.index,
+        title: seg.title,
+        text: String(seg.text || seg.ad_copy || seg.voiceover || '').slice(0, 220),
+        stage: seg.story_stage,
+      })),
+    });
     const btn = document.querySelector(`[data-voice-preview="${CSS.escape(String(voiceId))}"]`);
     const oldText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '...';
+      btn.textContent = useExpressivePreview ? '合成中' : '...';
       btn.classList.add('loading');
     }
-    toast('正在准备试听...');
+    toast(useExpressivePreview ? '正在合成广告试听，首次约 5-20 秒，请稍等...' : '正在准备试听...');
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), useExpressivePreview ? 90000 : 30000);
     try {
@@ -3366,27 +3385,51 @@
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
-        const r = await fetch('/api/dh/tts/preview-voice', {
-          method: 'POST',
-          signal: ac.signal,
-          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-          body: JSON.stringify({
-            voice_id: voiceId,
-            voiceId,
-            text: previewText || '你好，这是 VIDO 数字人配音试听。先听这一句的自然开场，再听中段的情绪推进，最后用更有感染力的语气收住。',
-            segments: useExpressivePreview ? compactLuxurySegments(state.luxuryAd.segments || []) : [],
-            voice_direction: useExpressivePreview ? (state.luxuryAd.voiceDirection || 'story_dynamic') : '',
-            gender: voice._gender || voice.gender || '',
-            providerId: voice.providerId || voice.provider_id || '',
-            provider: voice.provider || '',
-          }),
-        });
-        if (!r.ok) {
-          let detail = '';
-          try { detail = (await r.json())?.error || ''; } catch {}
-          throw new Error(detail || ('HTTP ' + r.status));
+        const now = Date.now();
+        for (const [key, item] of voicePreviewCache.entries()) {
+          if (!item || now - item.createdAt > VOICE_PREVIEW_CACHE_TTL) voicePreviewCache.delete(key);
         }
-        const blob = await r.blob();
+        let blob = voicePreviewCache.get(cacheKey)?.blob || null;
+        if (blob) {
+          toast('正在播放已缓存试听');
+        } else {
+          let pending = voicePreviewPending.get(cacheKey);
+          if (!pending) {
+            pending = fetch('/api/dh/tts/preview-voice', {
+              method: 'POST',
+              signal: ac.signal,
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
+              body: JSON.stringify({
+                voice_id: voiceId,
+                voiceId,
+                text: previewTextForRequest,
+                segments: previewSegments,
+                voice_direction: useExpressivePreview ? (state.luxuryAd.voiceDirection || 'story_dynamic') : '',
+                gender: voice._gender || voice.gender || '',
+                providerId: voice.providerId || voice.provider_id || '',
+                provider: voice.provider || '',
+              }),
+            }).then(async (r) => {
+              if (!r.ok) {
+                let detail = '';
+                try { detail = (await r.json())?.error || ''; } catch {}
+                throw new Error(detail || ('HTTP ' + r.status));
+              }
+              return r.blob();
+            }).finally(() => {
+              voicePreviewPending.delete(cacheKey);
+            });
+            voicePreviewPending.set(cacheKey, pending);
+          } else {
+            toast('上一段试听还在合成，完成后自动播放...');
+          }
+          blob = await pending;
+          voicePreviewCache.set(cacheKey, { blob, createdAt: Date.now() });
+          while (voicePreviewCache.size > VOICE_PREVIEW_CACHE_LIMIT) {
+            const firstKey = voicePreviewCache.keys().next().value;
+            voicePreviewCache.delete(firstKey);
+          }
+        }
         if (!/^audio\//i.test(blob.type || '') || blob.size < 2048) {
           let detail = '';
           try { detail = await blob.text(); } catch {}
