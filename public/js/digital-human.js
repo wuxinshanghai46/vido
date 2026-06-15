@@ -4912,6 +4912,11 @@
     const card = v => {
       const isSelected = String(v.id) === String(current);
       const isRecommended = String(v.id) === recVoiceId;
+      const hasVendorDemo = !!voiceDemoUrl(v);
+      const canPreviewHere = modalTarget !== 'luxury-ad' || hasVendorDemo;
+      const previewControl = canPreviewHere
+        ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="${modalTarget === 'luxury-ad' ? '试听厂商样音' : '试听'}">▶</button>`
+        : '<span class="dh-voice-opt-preview-note">选中后试听分镜</span>';
       const recBadges = isRecommended
         ? `<span class="dh-voice-status-badge recommend">推荐</span>${rec.ctx.targetGenderLabel ? `<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.targetGenderLabel)}</span>` : ''}<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.label)}</span>`
         : '';
@@ -4920,9 +4925,9 @@
       <div class="dh-voice-opt-body">
         ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${recBadges}</div>` : ''}
         <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)}</div>
-        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
+        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}${modalTarget === 'luxury-ad' && !hasVendorDemo ? ' · 暂无厂商样音' : ''}</div>
       </div>
-      ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}
+      ${v.id ? previewControl : ''}
       ${isSelected ? '<div class="dh-voice-selected-check" aria-hidden="true">✓</div>' : ''}
     </div>`;
     };
@@ -5280,13 +5285,14 @@
       if (rec?.voice) {
         const rv = rec.voice;
         rv._gender = _inferGender(rv);
+        const hasVendorDemo = !!voiceDemoUrl(rv);
         host.innerHTML = `<div class="dh-voice-opt-icon">${rv.providerIcon || genderIcon(rv._gender || rv.gender)}</div>
           <div class="dh-voice-opt-body">
             <div class="dh-voice-opt-name">推荐：${escapeHtml(rv.name || rv.id)}</div>
-            <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · 先试听，满意后选用</div>
+            <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · ${hasVendorDemo ? '可先试听厂商样音' : '选用后试听分镜台词'}</div>
             <div class="dh-luxgen-voice-recommend-actions">
               <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-lux-recommended-voice="${escapeHtml(rv.id)}">选用推荐</button>
-              <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-voice-preview="${escapeHtml(rv.id)}">试听</button>
+              ${hasVendorDemo ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-voice-preview="${escapeHtml(rv.id)}">试听样音</button>` : '<span class="dh-voice-opt-preview-note">暂无厂商样音</span>'}
             </div>
           </div>`;
         return;
