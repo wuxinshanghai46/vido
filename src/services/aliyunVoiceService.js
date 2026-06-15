@@ -230,6 +230,17 @@ async function waitForEnroll(taskOrVoiceId) {
 const _synthCache = new Map();  // key → cachedFilePath
 const _CACHE_MAX = 200;
 const _CACHE_VERSION = 'cosyvoice-direct-voice-v3-instruct';
+function _fitInstruction(text = '', maxUnits = 100) {
+  let out = '';
+  let units = 0;
+  for (const ch of Array.from(String(text || '').replace(/\s+/g, ' ').trim())) {
+    const cost = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/.test(ch) ? 2 : 1;
+    if (units + cost > maxUnits) break;
+    out += ch;
+    units += cost;
+  }
+  return out.trim();
+}
 function _cacheKey(voiceId, text, speed, pitch, format, instruction = '') {
   const instHash = instruction ? require('crypto').createHash('md5').update(String(instruction)).digest('hex').slice(0, 10) : 'noinst';
   return `${_CACHE_VERSION}::${voiceId}::${format}::${speed}::${pitch}::${instHash}::${text.length}::${text.slice(0,80)}::${require('crypto').createHash('md5').update(text).digest('hex').slice(0,12)}`;
@@ -264,7 +275,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
   const outPath = outputPath.replace(/\.[^.]+$/, '') + '.' + format;
   const safeSpeed0 = Math.min(2.0, Math.max(0.5, Number(opts.speed) || 0.85));
   const safePitch0 = Math.min(2.0, Math.max(0.5, Number(opts.pitch) || 1));
-  const instruction = String(opts.instruction || opts.stylePrompt || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+  const instruction = _fitInstruction(opts.instruction || opts.stylePrompt || '', 100);
 
   // 缓存命中：直接复制
   const cKey = _cacheKey(voiceId, cleanText, safeSpeed0, safePitch0, format, instruction);

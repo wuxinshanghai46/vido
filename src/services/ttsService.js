@@ -229,7 +229,18 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     if (!aliyun.hasKey()) {
       throw new Error('未配置阿里 CosyVoice API Key（去后台 AI 配置 → aliyun-tts 设置）');
     }
-    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction });
+    let result;
+    try {
+      result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction });
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (instruction && /instruction|invalid|parameter|param|unsupported|not support|不支持|参数|字段/i.test(msg)) {
+        console.warn(`[TTS] 自定义音色 CosyVoice instruction 失败，降级为无 instruction 合成: ${msg}`);
+        result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction: '' });
+      } else {
+        throw err;
+      }
+    }
     if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
       console.log(`[TTS] 阿里 CosyVoice 定制音色合成成功: ${voice.name} voice_id=${voice.aliyun_voice_id}`);
       return result;
@@ -606,7 +617,16 @@ async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, v
   const voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
   const aliyun = require('./aliyunVoiceService');
   // aliyunVoiceService.synthesize 自动从 voice id 推断 model（v3-flash for 预设/v3.5-plus for 真克隆）
-  return aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction });
+  try {
+    return await aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction });
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (instruction && /instruction|invalid|parameter|param|unsupported|not support|不支持|参数|字段/i.test(msg)) {
+      console.warn(`[TTS] CosyVoice instruction 失败，降级为无 instruction 合成: ${msg}`);
+      return aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction: '' });
+    }
+    throw err;
+  }
 }
 
 async function _downloadUrlToFile(url, outputPath) {

@@ -933,42 +933,37 @@ function _cosyVoiceAdInstruction(tone = 'natural', seg = {}, index = 0, total = 
   const t = _normalizeAdTone(tone) || 'natural';
   const dir = _normalizeLuxuryVoiceDirection(voiceDirection);
   const toneMap = {
-    anxious: '带一点真实焦虑和急迫感，句尾不要拖平，像在点出用户痛点。',
-    relieved: '从紧张转为释然，声音放松，语气有解决问题后的安心感。',
-    excited: '有兴奋和种草感，节奏更有推动力，重点词稍微上扬。',
-    passionate: '广告转化型热情口播，能量更强，但不要喊叫。',
-    encouraging: '结尾 CTA 语气，坚定、有感染力，最后一句要收得有力量。',
-    happy: '轻快愉悦，语气明亮，有自然笑意。',
-    friendly: '亲和自然，像真实介绍视频里的温和讲解。',
-    premium: '高端克制，语速稍慢，停顿更讲究，声音稳定有质感。',
-    confident: '自信可靠，卖点处略加重，语气明确。',
-    firm: '强调关键点，语气更重，转折处有停顿。',
-    curious: '开场带悬念和吸引力，像宣传片开头抓住注意力。',
-    warm: '温暖共情，语气柔和但不虚假。',
-    moved: '走心、有情绪层次，轻微放慢并保留呼吸感。',
-    professional: '专业介绍片旁白，清晰、稳重、有节奏。',
+    anxious: '焦虑痛点，急迫但真实。',
+    relieved: '释然安心，放松自然。',
+    excited: '兴奋种草，有推动力。',
+    passionate: '热情转化，有感染力。',
+    encouraging: 'CTA收束，坚定有力。',
+    happy: '轻快愉悦，带笑意。',
+    friendly: '亲和讲解，自然口播。',
+    premium: '高端克制，慢速留白。',
+    confident: '自信可靠，卖点加重。',
+    firm: '强调关键，转折停顿。',
+    curious: '开场悬念，抓注意力。',
+    warm: '温暖共情，柔和真实。',
+    moved: '走心情绪，保留呼吸感。',
+    professional: '专业宣传片旁白，清晰有节奏。',
   };
   const stage = index === 0
-    ? '这是开场句，要有吸引力。'
-    : (index >= total - 1 ? '这是结尾收束句，要坚定有记忆点。' : '这是中段讲解句，要有推进感。');
+    ? '开场吸引。'
+    : (index >= total - 1 ? '结尾收束。' : '中段推进。');
   const dirText = {
-    anxious_relief: '整体情绪曲线是从痛点焦虑到解决后的释然。',
-    excited_sales: '整体风格是短视频广告种草和转化口播。',
-    happy_bright: '整体风格是轻快、愉悦、有亲和力的宣传介绍。',
-    premium_trust: '整体风格是高端、克制、可信赖的品牌宣传片。',
-    story_dynamic: '整体风格是有起伏的剧情广告旁白。',
-  }[dir] || '整体风格是有起伏的剧情广告旁白。';
-  const contentHint = [seg.role, seg.story_stage, seg.objective, seg.emotion, seg.mood]
-    .filter(Boolean)
-    .join('，')
-    .slice(0, 120);
+    anxious_relief: '痛点到释然。',
+    excited_sales: '短视频广告种草。',
+    happy_bright: '轻快宣传介绍。',
+    premium_trust: '高端可信品牌片。',
+    story_dynamic: '剧情广告旁白。',
+  }[dir] || '剧情广告旁白。';
   return [
-    '请按真实宣传介绍视频/广告旁白的方式朗读，不要像新闻播报或机器平读。',
+    '真实广告口播，勿平读。',
     dirText,
     stage,
     toneMap[t] || toneMap.professional,
-    contentHint ? `本句剧情提示：${contentHint}。` : '',
-    '注意自然重音、语速变化和停顿，只朗读输入文本，不添加任何额外文字。',
+    '注意重音、语速变化和停顿。',
   ].filter(Boolean).join(' ');
 }
 
