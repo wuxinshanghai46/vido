@@ -1449,23 +1449,20 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
   const promptText = String(prompt || '').trim().substring(0, 4000);
+  const content = [{ type: 'text', text: promptText }];
+  if (image_url) {
+    content.push({ type: 'image_url', image_url: { url: image_url }, role: 'reference_image' });
+  }
 
   const body = {
     model,
-    content: [{ type: 'text', text: promptText }],
+    content,
     ratio: ratioFlag,
     duration: durSec,
     resolution: '720p',
     generate_audio: false,
     watermark: false
   };
-  if (image_url) {
-    body.image = image_url;
-    body.image_url = image_url;
-    body.image_urls = [image_url];
-    body.image_with_roles = [{ url: image_url, role: 'first_frame' }];
-  }
-
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
