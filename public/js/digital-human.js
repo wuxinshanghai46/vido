@@ -3137,6 +3137,7 @@
       ]) : []),
     ].filter(Boolean).join(' ');
     const lower = text.toLowerCase();
+    const target = luxuryVoiceTargetGender();
     let profile = dir.id || 'story_dynamic';
     if (/高端|信任|专业|企业|b2b|品牌|稳重|权威|premium|corporate|trust/i.test(lower)) profile = 'premium_trust';
     else if (/焦虑|痛点|卡住|压力|担心|释然|relief|anxious/i.test(lower)) profile = 'anxious_relief';
@@ -3149,13 +3150,59 @@
       happy_bright: '开心轻快',
       story_dynamic: '剧情起伏',
     };
-    return { profile, label: labelMap[profile] || dir.label || '剧情起伏', text: lower };
+    const genderLabel = target.gender === 'male' ? '男声匹配' : (target.gender === 'female' ? '女声匹配' : '');
+    return { profile, label: labelMap[profile] || dir.label || '剧情起伏', text: lower, targetGender: target.gender, targetGenderLabel: genderLabel, targetGenderSource: target.source };
+  }
+
+  function luxuryVoiceTargetGender() {
+    const spec = luxuryAdPersonSpec();
+    const specGender = String(spec.gender || '').toLowerCase();
+    if (specGender === 'male' || specGender === 'all_male') return { gender: 'male', source: '人物设定为男性' };
+    if (specGender === 'female' || specGender === 'all_female') return { gender: 'female', source: '人物设定为女性' };
+    if (specGender === 'mixed') return { gender: '', source: '多人混合性别' };
+
+    const direct = luxuryPersonConfirmedGender(
+      state.luxuryAd.personSpecLock?.gender,
+      state.luxuryAd.personAsset?.detected_gender,
+      state.luxuryAd.personAsset?.gender,
+      state.luxuryAd.personAsset?.metadata?.detected_gender,
+      state.luxuryAd.personAsset?.metadata?.gender,
+      state.selectedAvatar?.detected_gender,
+      state.selectedAvatar?.gender
+    );
+    if (direct) return { gender: direct, source: direct === 'male' ? '角色素材识别为男性' : '角色素材识别为女性' };
+
+    const characterGenders = []
+      .concat(Array.isArray(state.luxuryAd.briefInfo?.characters) ? state.luxuryAd.briefInfo.characters : [])
+      .concat(Array.isArray(state.luxuryAd.briefInfo?.character_profiles) ? state.luxuryAd.briefInfo.character_profiles : [])
+      .concat(...(Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.map(s => Array.isArray(s.characters) ? s.characters : []) : []))
+      .map(c => luxuryPersonGenderSpecValue(typeof c === 'string' ? c : (c?.gender || c?.sex || c?.role || c?.description || '')))
+      .filter(g => g === 'male' || g === 'female');
+    const unique = Array.from(new Set(characterGenders));
+    if (unique.length === 1) return { gender: unique[0], source: unique[0] === 'male' ? '剧情人物表为男性' : '剧情人物表为女性' };
+
+    const content = [
+      state.luxuryAd.content,
+      state.luxuryAd.briefText,
+      state.luxuryAd.briefInfo?.title,
+      state.luxuryAd.briefInfo?.audience,
+    ].filter(Boolean).join(' ');
+    const inferred = luxuryPersonGenderSpecValue(content);
+    if (inferred === 'male' || inferred === 'female') return { gender: inferred, source: inferred === 'male' ? '剧情文本提到男性角色' : '剧情文本提到女性角色' };
+    return { gender: '', source: '' };
   }
 
   function luxuryVoiceKeywordScore(v = {}, ctx = luxuryVoiceRecommendationContext()) {
     const name = `${v.name || ''} ${v.id || ''} ${v.provider || ''}`.toLowerCase();
     const gender = v._gender || _inferGender(v);
     let score = 0;
+    if (ctx.targetGender === 'male') {
+      if (gender === 'male') score += 80;
+      else if (gender === 'female') score -= 80;
+    } else if (ctx.targetGender === 'female') {
+      if (gender === 'female') score += 80;
+      else if (gender === 'male') score -= 80;
+    }
     if (v.isCloned) score += 4;
     if (gender === 'child') score -= 20;
     if (/test|demo|试听|测试/i.test(name)) score -= 8;
@@ -3193,10 +3240,14 @@
         return v;
       });
     if (!voices.length) return null;
-    const ranked = voices
+    const genderMatched = (ctx.targetGender === 'male' || ctx.targetGender === 'female')
+      ? voices.filter(v => (v._gender || _inferGender(v)) === ctx.targetGender)
+      : voices;
+    const pool = genderMatched.length ? genderMatched : voices;
+    const ranked = pool
       .map(v => ({ voice: v, score: luxuryVoiceKeywordScore(v, ctx) }))
       .sort((a, b) => b.score - a.score);
-    const picked = ranked[0]?.voice || voices[0];
+    const picked = ranked[0]?.voice || pool[0] || voices[0];
     return picked ? { voice: picked, ctx, score: ranked[0]?.score || 0 } : null;
   }
 
@@ -4750,13 +4801,15 @@
     const card = v => {
       const isSelected = String(v.id) === String(current);
       const isRecommended = String(v.id) === recVoiceId;
+      const recBadges = isRecommended
+        ? `<span class="dh-voice-status-badge recommend">推荐</span>${rec.ctx.targetGenderLabel ? `<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.targetGenderLabel)}</span>` : ''}<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.label)}</span>`
+        : '';
       return `<div class="dh-voice-opt ${v.isCloned ? 'cloned' : ''} ${isSelected ? 'selected dh-voice-opt-selected' : ''} ${isRecommended ? 'dh-luxgen-voice-recommend' : ''}" ${voiceDataAttr}="${escapeHtml(v.id)}" ${isSelected ? 'aria-current="true"' : ''}>
       <div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
-        ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${isRecommended ? '<span class="dh-voice-status-badge recommend">推荐</span>' : ''}</div>` : ''}
+        ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${recBadges}</div>` : ''}
         <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
-        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}${isRecommended ? ` · 按内容推荐：${escapeHtml(rec.ctx.label)}` : ''}</div>
-        ${isRecommended ? `<div class="dh-luxgen-voice-reason">更适合当前广告内容的情绪、节奏和旁白方向。</div>` : ''}
+        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
       </div>
       ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}
       ${isSelected ? '<div class="dh-voice-selected-check" aria-hidden="true">✓</div>' : ''}
@@ -4788,7 +4841,8 @@
     }
     if (modalTarget === 'luxury-ad') {
       const dir = luxuryVoiceDirection();
-      const recLine = rec?.voice ? `推荐旁白：${rec.voice.name || rec.voice.id} · ${rec.ctx.label}` : '暂无可推荐音色';
+      const targetLine = rec?.ctx?.targetGenderSource ? ` · ${rec.ctx.targetGenderSource}` : '';
+      const recLine = rec?.voice ? `推荐旁白：${rec.voice.name || rec.voice.id} · ${rec.ctx.label}${targetLine}` : '暂无可推荐音色';
       html = `<div class="dh-luxgen-voice-modal-brief">
         <b>当前配音方向：${escapeHtml(dir.label)}</b>
         <span>${escapeHtml(dir.desc)} ${escapeHtml(recLine)}。点每个音色的试听，会用当前广告台词或该方向示例来判断是否合适。</span>

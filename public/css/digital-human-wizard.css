@@ -846,16 +846,16 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
   padding-right: 16px;
 }
 .dh-space-voice-modal-list .dh-voice-opt-selected .dh-voice-opt-name { color: #fff; }
-.dh-voice-status-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; }
-.dh-voice-status-badge { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; line-height: 1; font-weight: 900; }
+.dh-voice-status-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 7px; }
+.dh-voice-status-badge { display: inline-flex; align-items: center; min-height: 19px; padding: 0 7px; border-radius: 999px; font-size: 10px; line-height: 1; font-weight: 900; letter-spacing: 0; white-space: nowrap; }
 .dh-voice-status-badge.selected { background: #21fff3; color: #061014; }
 .dh-voice-status-badge.recommend { background: rgba(172,255,47,.16); color: #acff2f; border: 1px solid rgba(172,255,47,.32); }
+.dh-voice-status-badge.basis { background: rgba(255,255,255,.07); color: rgba(255,255,255,.68); border: 1px solid rgba(255,255,255,.1); }
 .dh-voice-selected-check { position: absolute; right: 14px; bottom: 14px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: #21fff3; color: #061014; font-size: 18px; font-weight: 1000; box-shadow: 0 8px 22px rgba(33,255,243,.22); pointer-events: none; }
 .dh-space-voice-modal-list .dh-voice-opt-selected .dh-voice-opt-preview { margin-right: 0; }
-.dh-luxgen-voice-recommend { border-color: rgba(172,255,47,.35) !important; background: rgba(172,255,47,.045) !important; }
+.dh-luxgen-voice-recommend { border-color: rgba(172,255,47,.34) !important; background: linear-gradient(135deg, rgba(172,255,47,.06), rgba(255,255,255,.012)) !important; }
 .dh-luxgen-voice-recommend.dh-voice-opt-selected { border-color: #21fff3 !important; background: linear-gradient(135deg, rgba(33,255,243,.16), rgba(172,255,47,.07)) !important; }
 .dh-luxgen-voice-recommend-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
-.dh-luxgen-voice-reason { color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; }
 .dh-luxgen-option-list { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--dh-border); }
 .dh-luxgen-option-list .dh-switch { justify-content: space-between; }
 .dh-luxgen-subtitle-switch { justify-content: space-between; min-height: 38px; padding: 0 12px; border: 1px solid var(--dh-border); border-radius: 8px; background: rgba(255,255,255,.02); }
