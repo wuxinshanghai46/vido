@@ -3961,12 +3961,108 @@
     }
   }
 
+  function compactStoredVideoTask(task = {}) {
+    const compactList = (list = [], mapper = x => x) => (Array.isArray(list) ? list : [])
+      .slice(0, 12)
+      .map(mapper)
+      .filter(Boolean);
+    const compactScene = scene => scene && typeof scene === 'object' ? {
+      title: scene.title || scene.scene_title || '',
+      voiceover: String(scene.voiceover || scene.text || '').slice(0, 260),
+      duration: scene.duration || scene.duration_sec || '',
+    } : null;
+    const compactFrame = frame => frame && typeof frame === 'object' ? {
+      title: frame.title || frame.scene_title || '',
+      image_url: frame.image_url || frame.imageUrl || '',
+      video_prompt: String(frame.video_prompt || frame.prompt || '').slice(0, 260),
+      duration: frame.duration || frame.duration_sec || '',
+    } : null;
+    const detail = task.createDetail && typeof task.createDetail === 'object' ? task.createDetail : {};
+    const retry = task.retryPayload && typeof task.retryPayload === 'object' ? task.retryPayload : null;
+    return {
+      taskId: task.taskId,
+      taskType: task.taskType,
+      status: task.status,
+      stage: task.stage,
+      progress: task.progress,
+      startedAt: task.startedAt,
+      updatedAt: task.updatedAt,
+      elapsed: task.elapsed,
+      avatarName: task.avatarName,
+      previewUrl: task.previewUrl,
+      textPreview: task.textPreview,
+      videoUrl: task.videoUrl,
+      error: task.error || task.error_message || task.errorMessage || '',
+      message: task.message || '',
+      production_project_id: task.production_project_id || task.projectId || '',
+      projectId: task.projectId || task.production_project_id || '',
+      retryPayload: retry ? {
+        generation_mode: retry.generation_mode || '',
+        ad_mode: retry.ad_mode || '',
+        production_project_id: retry.production_project_id || retry.project_id || '',
+      } : null,
+      createDetail: {
+        title: detail.title || task.avatarName || '',
+        productionProjectId: detail.productionProjectId || task.projectId || task.production_project_id || '',
+        durationSec: detail.durationSec || '',
+        text: String(detail.text || '').slice(0, 800),
+        backgroundUrl: detail.backgroundUrl || task.previewUrl || '',
+        avatarName: detail.avatarName || '',
+        avatarId: detail.avatarId || '',
+        voiceId: detail.voiceId || '',
+        voiceName: detail.voiceName || '',
+        adMode: detail.adMode || '',
+        outputRatio: detail.outputRatio || '',
+        outputSize: detail.outputSize || '',
+        resolution: detail.resolution || '',
+        productName: detail.productName || '',
+        personName: detail.personName || '',
+        scenePrompt: String(detail.scenePrompt || '').slice(0, 800),
+        cameraPrompt: String(detail.cameraPrompt || '').slice(0, 300),
+        segments: compactList(detail.segments || detail.scenes, compactScene),
+        scenes: compactList(detail.scenes || detail.segments, compactScene),
+        keyframes: compactList(detail.keyframes, compactFrame),
+        clips: compactList(detail.clips, clip => typeof clip === 'string' ? clip : (clip?.video_url || clip?.url || null)),
+        shotCount: detail.shotCount || '',
+        composeNote: detail.composeNote || '',
+        workflow: detail.workflow || '',
+        submittedAt: detail.submittedAt || '',
+      },
+    };
+  }
+
   function writeVideoTasks(list) {
     const trimmed = (Array.isArray(list) ? list : [])
       .filter(t => t && t.taskId)
       .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
-      .slice(0, 50);
-    localStorage.setItem(DH_TASK_STORE_KEY, JSON.stringify(trimmed));
+      .slice(0, 50)
+      .map(compactStoredVideoTask);
+    try {
+      localStorage.setItem(DH_TASK_STORE_KEY, JSON.stringify(trimmed));
+    } catch (err) {
+      try {
+        const smaller = trimmed.slice(0, 12).map(t => ({
+          taskId: t.taskId,
+          taskType: t.taskType,
+          status: t.status,
+          stage: t.stage,
+          progress: t.progress,
+          startedAt: t.startedAt,
+          updatedAt: t.updatedAt,
+          elapsed: t.elapsed,
+          avatarName: t.avatarName,
+          previewUrl: t.previewUrl,
+          textPreview: t.textPreview,
+          videoUrl: t.videoUrl,
+          error: t.error || '',
+          message: t.message || '',
+          projectId: t.projectId || t.production_project_id || '',
+        }));
+        localStorage.setItem(DH_TASK_STORE_KEY, JSON.stringify(smaller));
+      } catch {
+        console.warn('[DH] local task cache skipped:', err?.message || err);
+      }
+    }
     renderTaskCenter();
   }
 
