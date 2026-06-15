@@ -21338,6 +21338,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       }
     }
 
+    const luxuryKeyframeShotFailures = [];
     const generatedKeyframeCount = keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
     const shouldCreateResultStoryboardSheets = isLuxury
       && generatedKeyframeCount > 0
