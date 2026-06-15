@@ -3310,7 +3310,7 @@
     const voiceCard = v => `<div class="dh-voice-opt ${v.isCloned ? 'cloned' : ''} ${v.id === state.s3.voiceId ? 'selected' : ''}" data-voice-id="${escapeHtml(v.id)}">
       <div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
-        <div class="dh-voice-opt-name">${escapeHtml(v.name)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
+        <div class="dh-voice-opt-name">${escapeHtml(v.name)}</div>
         <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
       </div>
       ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}
@@ -4867,7 +4867,7 @@
       <div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
         ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${recBadges}</div>` : ''}
-        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
+        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)}</div>
         <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
       </div>
       ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}
@@ -4880,7 +4880,7 @@
       currentHost.innerHTML = selectedVoice ? `
         <div class="dh-voice-opt-icon">${selectedVoice.providerIcon || genderIcon(selectedVoice._gender || selectedVoice.gender)}</div>
         <div class="dh-voice-opt-body">
-          <div class="dh-voice-opt-name">${escapeHtml(selectedVoice.name || selectedVoice.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(selectedVoice._gender || selectedVoice.gender)}</span></div>
+          <div class="dh-voice-opt-name">${escapeHtml(selectedVoice.name || selectedVoice.id)}</div>
           <div class="dh-voice-opt-sub">${selectedVoice.isCloned ? '我的声音' : '系统音色'}</div>
         </div>
         ${selectedVoice.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(selectedVoice.id)}" title="试听">▶</button>` : ''}`
@@ -5230,7 +5230,7 @@
         rv._gender = _inferGender(rv);
         host.innerHTML = `<div class="dh-voice-opt-icon">${rv.providerIcon || genderIcon(rv._gender || rv.gender)}</div>
           <div class="dh-voice-opt-body">
-            <div class="dh-voice-opt-name">推荐：${escapeHtml(rv.name || rv.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(rv._gender || rv.gender)}</span></div>
+            <div class="dh-voice-opt-name">推荐：${escapeHtml(rv.name || rv.id)}</div>
             <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · 先试听，满意后选用</div>
             <div class="dh-luxgen-voice-recommend-actions">
               <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-lux-recommended-voice="${escapeHtml(rv.id)}">选用推荐</button>
@@ -5249,7 +5249,7 @@
     v._gender = _inferGender(v);
     host.innerHTML = `<div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
-        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
+        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)}</div>
         <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
       </div>
       ${v.id ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>` : ''}`;
@@ -15129,7 +15129,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const card = v => `<div class="dh-voice-opt ${v.isCloned ? 'cloned' : ''} ${String(v.id) === String(pdh.voiceId || '') ? 'selected' : ''}" data-pdh-voice-id="${escapeHtml(v.id)}">
       <div class="dh-voice-opt-icon">${v.providerIcon || genderIcon(v._gender || v.gender)}</div>
       <div class="dh-voice-opt-body">
-        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)} <span style="font-size:10px;color:var(--dh-text-muted)">${_genderLabel(v._gender || v.gender)}</span></div>
+        <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)}</div>
         <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}</div>
       </div>
       <button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="试听">▶</button>
