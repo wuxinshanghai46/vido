@@ -443,6 +443,9 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     actor_asset_id: asset.actor_asset_id || asset.asset_library_id || asset.material_id || '',
     asset_library_id: asset.asset_library_id || asset.material_id || '',
     material_id: asset.material_id || asset.asset_library_id || '',
+    webang_asset_id: asset.webang_asset_id || asset.metadata?.webang_asset_id || '',
+    webang_asset_url: asset.webang_asset_url || asset.metadata?.webang_asset_url || '',
+    webang_asset_group_id: asset.webang_asset_group_id || asset.metadata?.webang_asset_group_id || '',
     name: _projectText(asset.name || '', 180),
     type: asset.type || asset.role || '',
     role: asset.role || '',
@@ -12523,6 +12526,31 @@ async function _generateLuxuryRealisticActorPackage({
     forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
     prompt: `CONSISTENT REAL CAMPAIGN CHARACTER ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes required by the confirmed script. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
   };
+  try {
+    const { loadSettings, getApiKey } = require('../services/settingsService');
+    const { ensureWebangImageAsset, webangProviderAssetGroupId } = require('../services/videoService');
+    const settings = loadSettings();
+    const webangProvider = (settings.providers || []).find(p => {
+      const text = [p.id, p.preset, p.name, p.api_url, ...(Array.isArray(p.models) ? p.models.map(m => m && m.id) : [])].filter(Boolean).join(' ');
+      return p.enabled !== false && /webang|微众|test-tk\.iserviceapi\.com|iserviceapi\.com/i.test(text);
+    });
+    const webangApiKey = (webangProvider?.id ? getApiKey(webangProvider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
+    const webangGroupId = webangProviderAssetGroupId(webangProvider || {});
+    if (webangProvider && webangApiKey && webangGroupId && actorAsset.image_url) {
+      const webangAssetUrl = await ensureWebangImageAsset({
+        provider: webangProvider,
+        apiKey: webangApiKey,
+        imageUrl: actorAsset.image_url,
+        filename: actorAsset.actor_id || actorAsset.actor_asset_id,
+      });
+      actorAsset.webang_asset_url = webangAssetUrl;
+      actorAsset.webang_asset_id = String(webangAssetUrl || '').replace(/^asset:\/\//i, '');
+      actorAsset.webang_asset_group_id = webangGroupId;
+      actorAsset.asset_library_provider = 'webang-seedance';
+    }
+  } catch (err) {
+    console.warn('[Luxury Actor] Webang asset upload skipped:', err.message);
+  }
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
   return { actorAsset, outputs, attempts };

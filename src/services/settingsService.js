@@ -270,6 +270,9 @@ const ENV_PROVIDER_EXTRA_MAP = {
   topview: {
     topview_uid: 'TOPVIEW_UID',
   },
+  'webang-seedance': {
+    webang_asset_group_id: 'WEBANG_SEEDANCE_ASSET_GROUP_ID',
+  },
 };
 
 function loadSettings() {

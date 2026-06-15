@@ -10,6 +10,8 @@ const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmp
   ? process.env.FFMPEG_PATH
   : ffmpegStatic;
 
+const WEBANG_ASSET_CACHE = new Map();
+
 // ——— 工具函数 ———
 function downloadFile(url, destPath) {
   return new Promise((resolve, reject) => {
@@ -1356,6 +1358,18 @@ function _normaliseWebangBaseUrl(apiUrl = '') {
   return `${base}/api/v1`;
 }
 
+function _normaliseWebangApiRoot(apiUrl = '') {
+  let root = (apiUrl || 'https://test-tk.iserviceapi.com/api').replace(/\/+$/, '');
+  if (root.endsWith('/api/v1')) return root.replace(/\/v1$/, '');
+  if (root.endsWith('/v1')) return root.replace(/\/v1$/, '');
+  if (root.endsWith('/api')) return root;
+  return `${root}/api`;
+}
+
+function _normaliseWebangOpenBaseUrl(apiUrl = '') {
+  return `${_normaliseWebangApiRoot(apiUrl)}/v3/open`;
+}
+
 function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(baseUrl + pathName);
@@ -1414,6 +1428,89 @@ function _pickWebangVideoUrl(result) {
     || data?.items?.[0]?.url;
 }
 
+function _pickWebangAssetId(result) {
+  const data = result?.data || result;
+  return data?.Id
+    || data?.id
+    || data?.AssetId
+    || data?.asset_id
+    || data?.assetId
+    || data?.material_id
+    || data?.materialId
+    || data?.asset?.Id
+    || data?.asset?.id
+    || data?.result?.Id
+    || data?.result?.id;
+}
+
+function _webangProviderAssetGroupId(provider = {}) {
+  return String(
+    provider.webang_asset_group_id
+    || provider.asset_group_id
+    || provider.material_group_id
+    || provider.group_id
+    || provider.GroupId
+    || provider.material_library_id
+    || provider.asset_library_group_id
+    || process.env.WEBANG_SEEDANCE_ASSET_GROUP_ID
+    || process.env.WEBANG_ASSET_GROUP_ID
+    || process.env.WEBANG_MATERIAL_GROUP_ID
+    || ''
+  ).trim();
+}
+
+function _webangAssetUrl(assetId = '') {
+  const value = String(assetId || '').trim();
+  if (!value) return '';
+  return /^asset:\/\//i.test(value) ? value : `asset://${value}`;
+}
+
+function _webangAssetNameFromUrl(imageUrl = '', filename = '') {
+  const cleanFilename = String(filename || '').replace(/[^\w.-]+/g, '_').slice(0, 48);
+  let tail = '';
+  try {
+    const urlObj = new URL(imageUrl);
+    tail = path.basename(urlObj.pathname || '');
+  } catch {
+    tail = path.basename(String(imageUrl || '').split('?')[0] || '');
+  }
+  tail = String(tail || '').replace(/[^\w.-]+/g, '_').slice(0, 48);
+  return (`vido_${cleanFilename || tail || Date.now()}`).slice(0, 80);
+}
+
+async function _ensureWebangImageAsset({ provider, apiKey, imageUrl, filename }) {
+  const sourceUrl = String(imageUrl || '').trim();
+  if (!sourceUrl) return '';
+  if (/^asset:\/\//i.test(sourceUrl) || /^asset-[\w-]+$/i.test(sourceUrl)) {
+    return _webangAssetUrl(sourceUrl);
+  }
+
+  const groupId = _webangProviderAssetGroupId(provider);
+  if (!groupId) {
+    throw new Error('微众 Seedance 检测到真人/人物图片，需要先上传素材库，但未配置素材库 GroupId；请在供应商配置 webang_asset_group_id，或设置环境变量 WEBANG_SEEDANCE_ASSET_GROUP_ID 为对方给的素材库 ID');
+  }
+
+  const cacheKey = `${groupId}|${sourceUrl}`;
+  if (WEBANG_ASSET_CACHE.has(cacheKey)) {
+    return _webangAssetUrl(WEBANG_ASSET_CACHE.get(cacheKey));
+  }
+
+  const body = {
+    GroupId: groupId,
+    Name: _webangAssetNameFromUrl(sourceUrl, filename),
+    AssetType: 'Image',
+    URL: sourceUrl,
+  };
+  const result = await _webangRequest('POST', _normaliseWebangOpenBaseUrl(provider?.api_url), '/CreateAsset', apiKey, body, 60000);
+  const assetId = _pickWebangAssetId(result);
+  if (!assetId) {
+    throw new Error('微众素材库上传成功但未返回素材 Id: ' + JSON.stringify(result).substring(0, 500));
+  }
+  WEBANG_ASSET_CACHE.set(cacheKey, assetId);
+  console.log(`[Webang Seedance] uploaded reference image to asset library: ${String(assetId).slice(0, 24)}`);
+  return _webangAssetUrl(assetId);
+}
+
 function _pickWebangStatus(result) {
   const data = result?.data || result;
   return String(data?.status || data?.state || data?.task_status || data?.taskStatus || '').toLowerCase();
@@ -1449,23 +1546,25 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
   const promptText = String(prompt || '').trim().substring(0, 4000);
-  const content = [{ type: 'text', text: promptText }];
-  if (image_url) {
-    content.push({ type: 'image_url', image_url: { url: image_url }, role: 'reference_image' });
-  }
-
-  const body = {
-    model,
-    content,
-    ratio: ratioFlag,
-    duration: durSec,
-    resolution: '720p',
-    generate_audio: false,
-    watermark: false
-  };
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
+    const content = [{ type: 'text', text: promptText }];
+    if (image_url) {
+      const imageAssetUrl = await _ensureWebangImageAsset({ provider, apiKey, imageUrl: image_url, filename });
+      content.push({ type: 'image_url', image_url: { url: imageAssetUrl }, role: 'reference_image' });
+    }
+
+    const body = {
+      model,
+      content,
+      ratio: ratioFlag,
+      duration: durSec,
+      resolution: '720p',
+      generate_audio: false,
+      watermark: false
+    };
+
     console.log(`[Webang Seedance] submit model=${model}, prompt长度=${prompt.length}, image=${!!image_url}`);
     const submit = await _webangRequest('POST', baseUrl, '/videos/generations', apiKey, body);
     _taskId = _pickWebangTaskId(submit);
@@ -2070,4 +2169,8 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
   return { filePath: outputPath };
 }
 
-module.exports = { generateVideoClip };
+module.exports = {
+  generateVideoClip,
+  ensureWebangImageAsset: _ensureWebangImageAsset,
+  webangProviderAssetGroupId: _webangProviderAssetGroupId,
+};
