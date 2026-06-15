@@ -3120,6 +3120,18 @@
     return (scripted && scripted.length >= 12 ? scripted : dir.preview).slice(0, 90);
   }
 
+  function luxuryVoiceQuickPreviewText() {
+    const id = state.luxuryAd.voiceDirection || 'story_dynamic';
+    const map = {
+      story_dynamic: '你好，这是我的音色试听效果，语气会有自然的起伏和转折。',
+      anxious_relief: '你好，这是我的音色试听效果，语气会从紧张慢慢放松下来。',
+      energetic: '你好，这是我的音色试听效果，语气会更明亮、有行动感。',
+      light_happy: '你好，这是我的音色试听效果，语气会轻松一点、亲切一点。',
+      premium_trust: '你好，这是我的音色试听效果，语气会更沉稳、更有信任感。',
+    };
+    return map[id] || '你好，这是我的音色试听效果，请听一下声音质感和情绪色彩。';
+  }
+
   function luxuryVoiceRecommendationContext() {
     const dir = luxuryVoiceDirection();
     const text = [
@@ -14389,9 +14401,12 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const voicePrevBtn = closest('[data-voice-preview]');
     if (voicePrevBtn) {
       e.stopPropagation();
-      const isLuxuryVoicePreview = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent')
-        || (!!voicePrevBtn.closest('#dhSpaceVoiceModal') && state.voiceModalTarget === 'luxury-ad');
-      previewVoice(voicePrevBtn.dataset.voicePreview, isLuxuryVoicePreview ? luxuryVoicePreviewText() : '');
+      const isLuxuryCurrentPreview = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent');
+      const isLuxuryModalPreview = !!voicePrevBtn.closest('#dhSpaceVoiceModal') && state.voiceModalTarget === 'luxury-ad';
+      const luxuryText = isLuxuryCurrentPreview
+        ? luxuryVoicePreviewText()
+        : (isLuxuryModalPreview ? luxuryVoiceQuickPreviewText() : '');
+      previewVoice(voicePrevBtn.dataset.voicePreview, luxuryText);
       return;
     }
     const spaceVoiceCard = closest('[data-space-voice-id]');
