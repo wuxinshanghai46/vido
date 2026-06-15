@@ -16,6 +16,7 @@
   const VOICE_PREVIEW_CACHE_LIMIT = 12;
   const voicePreviewCache = new Map();
   const voicePreviewPending = new Map();
+  let activeVoicePreviewSeq = 0;
 
   function outputPixels(ratio = '9:16', size = 'standard') {
     return OUTPUT_SIZE_MAP[ratio]?.[size] || OUTPUT_SIZE_MAP['9:16'].standard;
@@ -3348,6 +3349,7 @@
   async function previewVoice(voiceId, previewText = '') {
     if (!voiceId) return;
     stopAudibleMedia({ reset: true });
+    const previewSeq = ++activeVoicePreviewSeq;
     const voice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
     const providerId = String(voice.providerId || voice.provider_id || voice.provider || '').toLowerCase();
     const isTopviewVoice = providerId.includes('topview');
@@ -3382,6 +3384,7 @@
       let audio;
       let objectUrl = '';
       if (demoUrl && !useExpressivePreview) {
+        if (previewSeq !== activeVoicePreviewSeq) return;
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
@@ -3421,9 +3424,10 @@
             });
             voicePreviewPending.set(cacheKey, pending);
           } else {
-            toast('上一段试听还在合成，完成后自动播放...');
+            toast('上一段试听还在合成，完成后只播放最新一次试听...');
           }
           blob = await pending;
+          if (previewSeq !== activeVoicePreviewSeq || ac.signal.aborted) return;
           voicePreviewCache.set(cacheKey, { blob, createdAt: Date.now() });
           while (voicePreviewCache.size > VOICE_PREVIEW_CACHE_LIMIT) {
             const firstKey = voicePreviewCache.keys().next().value;
@@ -3435,9 +3439,14 @@
           try { detail = await blob.text(); } catch {}
           throw new Error(detail || '试听音频为空或格式不可播放');
         }
+        if (previewSeq !== activeVoicePreviewSeq || ac.signal.aborted) return;
         objectUrl = URL.createObjectURL(blob);
         audio = ensurePreviewAudio();
         audio.src = objectUrl;
+      }
+      if (previewSeq !== activeVoicePreviewSeq || ac.signal.aborted) {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        return;
       }
       if (objectUrl) audio.addEventListener('ended', () => URL.revokeObjectURL(objectUrl), { once: true });
       audio.muted = false;
@@ -3447,6 +3456,7 @@
       markDetachedAudio(audio);
       await audio.play();
     } catch (err) {
+      if (previewSeq !== activeVoicePreviewSeq || err.name === 'AbortError') return;
       const rawMsg = String(err.message || '');
       const transient = err.name === 'AbortError'
         || /timeout|timed out|network|fetch|aborted|超时|网络/i.test(rawMsg);
