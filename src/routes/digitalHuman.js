@@ -908,6 +908,25 @@ function _voiceSegmentsFromKeyframes(keyframes, fallbackText = '') {
   }));
 }
 
+function _expressivePreviewSegments(text = '', segments = [], voiceDirection = '') {
+  const existing = (Array.isArray(segments) ? segments : [])
+    .map(s => ({ ...s, text: _cleanTtsSegmentText(s?.text || s?.voiceover || s?.narration || '') }))
+    .filter(s => s.text);
+  if (existing.length >= 2) return existing;
+
+  const cleanText = _cleanTtsSegmentText(text);
+  if (!cleanText) return [];
+  const generated = _fallbackGuideSegments(cleanText, Math.max(8, Math.ceil(cleanText.length / 4)))
+    .map((s, i, arr) => ({
+      ...s,
+      text: _cleanTtsSegmentText(s.text),
+      tone: _inferExpressiveSegmentTone(s, i, arr.length, voiceDirection),
+    }))
+    .filter(s => s.text);
+  if (generated.length >= 2) return generated;
+  return existing;
+}
+
 function _segmentControlPrompt(seg = {}) {
   const tone = seg.tone || seg.delivery || seg.voice_tone || 'natural';
   const expression = seg.expression || 'natural';
@@ -9324,10 +9343,11 @@ async function _handleDhTtsPreviewVoice(req, res) {
     const taskDir = path.join(JIMENG_ASSETS_DIR, `preview_tts_voice_${Date.now()}_${uuidv4().slice(0, 8)}`);
     fs.mkdirSync(taskDir, { recursive: true });
     const outBase = path.join(taskDir, 'preview');
+    const expressiveSegments = _expressivePreviewSegments(text, segments, voice_direction || voiceDirection);
     let audioPath = await _synthesizeSegmentedSpeechFile(req, {
       text,
       voiceId: effectiveVoiceId,
-      segments,
+      segments: expressiveSegments,
       outputBase: outBase,
       voiceDirection: voice_direction || voiceDirection,
     });

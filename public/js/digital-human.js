@@ -3306,7 +3306,7 @@
           body: JSON.stringify({
             voice_id: voiceId,
             voiceId,
-            text: previewText || '你好，这是 VIDO 数字人配音试听。现在你听到的是当前选择的音色。',
+            text: previewText || '你好，这是 VIDO 数字人配音试听。先听这一句的自然开场，再听中段的情绪推进，最后用更有感染力的语气收住。',
             segments: useExpressivePreview ? compactLuxurySegments(state.luxuryAd.segments || []) : [],
             voice_direction: useExpressivePreview ? (state.luxuryAd.voiceDirection || 'story_dynamic') : '',
             gender: voice._gender || voice.gender || '',
