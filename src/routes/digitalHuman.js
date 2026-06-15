@@ -389,6 +389,7 @@ function _compactLuxuryAdProjectKeyframe(kf = {}, index = 0) {
   const qa = kf.qa && typeof kf.qa === 'object'
     ? {
       pass: !!kf.qa.pass,
+      accepted_with_warning: kf.qa.accepted_with_warning === true,
       score: kf.qa.score,
       reason: _projectText(kf.qa.reason || '', 500),
       quality_dimensions: kf.qa.quality_dimensions || undefined,
@@ -23974,8 +23975,29 @@ router.post('/spaces/generate', async (req, res) => {
     if (!text?.trim()) return res.status(400).json({ success: false, error: 'text 必填' });
     if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填，请先选择配音音色' });
     const requestBgmAsset = _luxuryBgmAssetFromPayload({ bgm_asset, background_music, bgm_url, background_music_url });
+    let effectiveKeyframes = keyframes;
     if (ad_mode === 'luxury_ad') {
-      const luxuryPrecheck = _validateLuxuryAdVideoPrecheck({ keyframes });
+      const projectKeyframes = _getLuxuryAdProject(req, production_project_id || project_id)?.keyframes || [];
+      if (Array.isArray(projectKeyframes) && projectKeyframes.length) {
+        const submitted = Array.isArray(keyframes) ? keyframes : [];
+        effectiveKeyframes = (submitted.length ? submitted : projectKeyframes).map((kf, i) => {
+          const shotIndex = _luxuryProjectFrameIndex(kf, i);
+          const stored = projectKeyframes.find(item => _luxuryProjectFrameIndex(item, i) === shotIndex) || projectKeyframes[i] || {};
+          return {
+            ...stored,
+            ...kf,
+            qa: kf?.qa || stored.qa || stored.shot_plan?.qa || null,
+            shot_plan: {
+              ...(stored.shot_plan || {}),
+              ...(kf?.shot_plan || {}),
+              qa: kf?.shot_plan?.qa || kf?.qa || stored.shot_plan?.qa || stored.qa || null,
+            },
+            reference_mode: kf?.reference_mode || stored.reference_mode || '',
+            reference_locked: kf?.reference_locked === true || kf?.referenceLocked === true || stored.reference_locked === true || stored.referenceLocked === true,
+          };
+        });
+      }
+      const luxuryPrecheck = _validateLuxuryAdVideoPrecheck({ keyframes: effectiveKeyframes });
       if (!luxuryPrecheck.pass) {
         return res.status(422).json({
           success: false,
@@ -24016,7 +24038,7 @@ router.post('/spaces/generate', async (req, res) => {
       segments,
       speech_segments,
       subtitle,
-      keyframes,
+      keyframes: effectiveKeyframes,
       user_id: req.user?.id,
       created_at: new Date().toISOString(),
       started_at: Date.now(),
@@ -24057,7 +24079,7 @@ router.post('/spaces/generate', async (req, res) => {
       voiceDirection: voice_direction,
       productionProjectId: production_project_id || project_id || '',
       shotCount: shot_count,
-      keyframes,
+      keyframes: effectiveKeyframes,
       guideGender: guide_gender,
       referenceImages: reference_images,
       aspectRatio,

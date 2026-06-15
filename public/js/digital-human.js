@@ -8551,6 +8551,15 @@
         reference_index: Number(kf.reference_index ?? seg.reference_index ?? 0),
         reference_label: kf.reference_label || seg.reference_label || '',
         active_reference_image: compactLuxuryUrl(kf.active_reference_image || ''),
+        reference_mode: kf.reference_mode || '',
+        reference_locked: kf.reference_locked === true || kf.referenceLocked === true,
+        shot_plan: kf.shot_plan ? {
+          kind: kf.shot_plan.kind || '',
+          qa: kf.shot_plan.qa || null,
+        } : null,
+        qa: kf.qa || kf.vision_qa || kf.quality_qa || kf.shot_plan?.qa || null,
+        character_lock: kf.character_lock || null,
+        visual_locks: kf.visual_locks || null,
         ui_overlay: luxuryNormalizeUiOverlay(kf.ui_overlay || seg.ui_overlay || null, { ...seg, ...kf }),
       };
     }).filter(k => k.image_url);
