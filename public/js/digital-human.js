@@ -16,6 +16,7 @@
   const VOICE_PREVIEW_CACHE_LIMIT = 12;
   const voicePreviewCache = new Map();
   const voicePreviewPending = new Map();
+  const voiceDemoPreloadCache = new Set();
   let activeVoicePreviewSeq = 0;
 
   function outputPixels(ratio = '9:16', size = 'standard') {
@@ -3120,18 +3121,6 @@
     return (scripted && scripted.length >= 12 ? scripted : dir.preview).slice(0, 90);
   }
 
-  function luxuryVoiceQuickPreviewText() {
-    const id = state.luxuryAd.voiceDirection || 'story_dynamic';
-    const map = {
-      story_dynamic: '你好，这是我的音色试听效果，语气会有自然的起伏和转折。',
-      anxious_relief: '你好，这是我的音色试听效果，语气会从紧张慢慢放松下来。',
-      energetic: '你好，这是我的音色试听效果，语气会更明亮、有行动感。',
-      light_happy: '你好，这是我的音色试听效果，语气会轻松一点、亲切一点。',
-      premium_trust: '你好，这是我的音色试听效果，语气会更沉稳、更有信任感。',
-    };
-    return map[id] || '你好，这是我的音色试听效果，请听一下声音质感和情绪色彩。';
-  }
-
   function luxuryVoiceRecommendationContext() {
     const dir = luxuryVoiceDirection();
     const text = [
@@ -3358,14 +3347,46 @@
     renderVoices();
   }
 
-  async function previewVoice(voiceId, previewText = '') {
+  function voiceDemoUrl(voice = {}) {
+    return voice.expressiveDemoUrl
+      || voice.expressive_demo_url
+      || voice.emotionDemoUrl
+      || voice.emotion_demo_url
+      || voice.styleDemoUrl
+      || voice.style_demo_url
+      || voice.demoAudioUrl
+      || voice.demo_audio_url
+      || voice.preview_url
+      || voice.previewUrl
+      || voice.sample_url
+      || '';
+  }
+
+  function preloadVoiceDemos(voices = [], limit = 18) {
+    let count = 0;
+    for (const voice of voices) {
+      const url = voiceDemoUrl(voice);
+      if (!url || voiceDemoPreloadCache.has(url)) continue;
+      voiceDemoPreloadCache.add(url);
+      try {
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audio.load();
+      } catch {}
+      count += 1;
+      if (count >= limit) break;
+    }
+  }
+
+  async function previewVoice(voiceId, previewText = '', options = {}) {
     if (!voiceId) return;
     stopAudibleMedia({ reset: true });
     const previewSeq = ++activeVoicePreviewSeq;
     const voice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
     const providerId = String(voice.providerId || voice.provider_id || voice.provider || '').toLowerCase();
     const isTopviewVoice = providerId.includes('topview');
-    const demoUrl = voice.demoAudioUrl || voice.demo_audio_url || voice.preview_url || voice.previewUrl || voice.sample_url || '';
+    const demoUrl = voiceDemoUrl(voice);
+    const demoOnly = !!options.demoOnly;
     const useExpressivePreview = !!previewText;
     const previewSegments = useExpressivePreview
       ? compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 3)
@@ -3397,9 +3418,14 @@
       let objectUrl = '';
       if (demoUrl && !useExpressivePreview) {
         if (previewSeq !== activeVoicePreviewSeq) return;
+        toast('正在播放厂商音色样音');
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
+        if (demoOnly) {
+          toast('该音色暂未提供厂商样音，选中后可试听分镜台词效果');
+          return;
+        }
         const now = Date.now();
         for (const [key, item] of voicePreviewCache.entries()) {
           if (!item || now - item.createdAt > VOICE_PREVIEW_CACHE_TTL) voicePreviewCache.delete(key);
@@ -4879,6 +4905,10 @@
     const voiceDataAttr = modalTarget === 'luxury-ad' ? 'data-luxury-voice-id' : 'data-space-voice-id';
     const rec = modalTarget === 'luxury-ad' ? recommendedLuxuryVoice() : null;
     const recVoiceId = rec?.voice?.id ? String(rec.voice.id) : '';
+    preloadVoiceDemos([
+      ...(rec?.voice ? [rec.voice] : []),
+      ...list,
+    ]);
     const card = v => {
       const isSelected = String(v.id) === String(current);
       const isRecommended = String(v.id) === recVoiceId;
@@ -14401,12 +14431,16 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const voicePrevBtn = closest('[data-voice-preview]');
     if (voicePrevBtn) {
       e.stopPropagation();
-      const isLuxuryCurrentPreview = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent');
+      const previewVoiceId = voicePrevBtn.dataset.voicePreview || '';
+      const isLuxuryCurrentArea = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent');
+      const isLuxurySelectedCurrentPreview = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent')
+        && String(state.luxuryAd.voiceId || '') === String(previewVoiceId);
       const isLuxuryModalPreview = !!voicePrevBtn.closest('#dhSpaceVoiceModal') && state.voiceModalTarget === 'luxury-ad';
-      const luxuryText = isLuxuryCurrentPreview
+      const demoOnlyPreview = isLuxuryModalPreview || (isLuxuryCurrentArea && !isLuxurySelectedCurrentPreview);
+      const luxuryText = isLuxurySelectedCurrentPreview
         ? luxuryVoicePreviewText()
-        : (isLuxuryModalPreview ? luxuryVoiceQuickPreviewText() : '');
-      previewVoice(voicePrevBtn.dataset.voicePreview, luxuryText);
+        : '';
+      previewVoice(previewVoiceId, luxuryText, { demoOnly: demoOnlyPreview });
       return;
     }
     const spaceVoiceCard = closest('[data-space-voice-id]');
