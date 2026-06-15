@@ -272,6 +272,7 @@ const ENV_PROVIDER_EXTRA_MAP = {
   },
   'webang-seedance': {
     webang_asset_group_id: 'WEBANG_SEEDANCE_ASSET_GROUP_ID',
+    webang_asset_api_url: 'WEBANG_SEEDANCE_ASSET_API_URL',
   },
 };
 

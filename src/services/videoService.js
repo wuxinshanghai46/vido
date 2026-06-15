@@ -11,6 +11,7 @@ const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmp
   : ffmpegStatic;
 
 const WEBANG_ASSET_CACHE = new Map();
+const WEBANG_GROUP_CACHE = new Map();
 
 // ——— 工具函数 ———
 function downloadFile(url, destPath) {
@@ -1370,6 +1371,37 @@ function _normaliseWebangOpenBaseUrl(apiUrl = '') {
   return `${_normaliseWebangApiRoot(apiUrl)}/v3/open`;
 }
 
+function _webangAssetBaseUrls(provider = {}) {
+  const explicit = String(
+    provider.webang_asset_api_url
+    || provider.asset_api_url
+    || process.env.WEBANG_SEEDANCE_ASSET_API_URL
+    || process.env.WEBANG_ASSET_API_URL
+    || ''
+  ).trim().replace(/\/+$/, '');
+  if (explicit) return [explicit];
+
+  const root = _normaliseWebangApiRoot(provider.api_url).replace(/\/api$/, '');
+  return [
+    `${root}/api/volc/asset`,
+    `${root}/volc/asset`,
+    `${_normaliseWebangApiRoot(provider.api_url)}/v3/open`,
+  ];
+}
+
+async function _webangAssetRequest(provider, apiKey, action, body, timeoutMs = 60000) {
+  const bases = _webangAssetBaseUrls(provider);
+  const errors = [];
+  for (const base of bases) {
+    try {
+      return await _webangRequest('POST', base, `/${action}`, apiKey, body, timeoutMs);
+    } catch (err) {
+      errors.push(`${base}/${action}: ${err.message}`);
+    }
+  }
+  throw new Error('微众素材库接口调用失败；已尝试：' + errors.join('；').slice(0, 900));
+}
+
 function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(baseUrl + pathName);
@@ -1443,6 +1475,22 @@ function _pickWebangAssetId(result) {
     || data?.result?.id;
 }
 
+function _pickWebangAssetGroupId(result) {
+  const data = result?.data || result;
+  return data?.GroupId
+    || data?.group_id
+    || data?.groupId
+    || data?.Id
+    || data?.id
+    || data?.AssetGroupId
+    || data?.asset_group_id
+    || data?.assetGroupId
+    || data?.result?.GroupId
+    || data?.result?.Id
+    || data?.group?.Id
+    || data?.group?.id;
+}
+
 function _webangProviderAssetGroupId(provider = {}) {
   return String(
     provider.webang_asset_group_id
@@ -1478,37 +1526,73 @@ function _webangAssetNameFromUrl(imageUrl = '', filename = '') {
   return (`vido_${cleanFilename || tail || Date.now()}`).slice(0, 80);
 }
 
+async function _ensureWebangAssetGroup({ provider, apiKey, name = '' }) {
+  const configuredGroupId = _webangProviderAssetGroupId(provider);
+  if (configuredGroupId) return configuredGroupId;
+
+  const providerKey = [
+    provider?.id || 'webang-seedance',
+    provider?.api_url || '',
+    name || 'vido-seedance-assets',
+  ].join('|');
+  if (WEBANG_GROUP_CACHE.has(providerKey)) return WEBANG_GROUP_CACHE.get(providerKey);
+
+  const body = {
+    model: 'volc-asset',
+    Name: String(name || `vido-seedance-assets-${Date.now()}`).replace(/[^\w.-]+/g, '_').slice(0, 64),
+  };
+  const result = await _webangAssetRequest(provider, apiKey, 'CreateAssetGroup', body, 60000);
+  const groupId = _pickWebangAssetGroupId(result);
+  if (!groupId) {
+    throw new Error('微众素材库分组创建成功但未返回 GroupId: ' + JSON.stringify(result).substring(0, 500));
+  }
+  WEBANG_GROUP_CACHE.set(providerKey, groupId);
+  console.log(`[Webang Seedance] created asset group: ${String(groupId).slice(0, 24)}`);
+  return groupId;
+}
+
 async function _ensureWebangImageAsset({ provider, apiKey, imageUrl, filename }) {
   const sourceUrl = String(imageUrl || '').trim();
   if (!sourceUrl) return '';
   if (/^asset:\/\//i.test(sourceUrl) || /^asset-[\w-]+$/i.test(sourceUrl)) {
-    return _webangAssetUrl(sourceUrl);
+    return {
+      assetId: sourceUrl.replace(/^asset:\/\//i, ''),
+      assetUrl: _webangAssetUrl(sourceUrl),
+      groupId: _webangProviderAssetGroupId(provider),
+    };
   }
 
-  const groupId = _webangProviderAssetGroupId(provider);
-  if (!groupId) {
-    throw new Error('微众 Seedance 检测到真人/人物图片，需要先上传素材库，但未配置素材库 GroupId；请在供应商配置 webang_asset_group_id，或设置环境变量 WEBANG_SEEDANCE_ASSET_GROUP_ID 为对方给的素材库 ID');
-  }
+  const groupId = await _ensureWebangAssetGroup({ provider, apiKey, name: filename || 'vido-seedance-assets' });
 
   const cacheKey = `${groupId}|${sourceUrl}`;
   if (WEBANG_ASSET_CACHE.has(cacheKey)) {
-    return _webangAssetUrl(WEBANG_ASSET_CACHE.get(cacheKey));
+    const cachedAssetId = WEBANG_ASSET_CACHE.get(cacheKey);
+    return {
+      assetId: String(cachedAssetId),
+      assetUrl: _webangAssetUrl(cachedAssetId),
+      groupId: String(groupId),
+    };
   }
 
   const body = {
+    model: 'volc-asset',
     GroupId: groupId,
     Name: _webangAssetNameFromUrl(sourceUrl, filename),
     AssetType: 'Image',
     URL: sourceUrl,
   };
-  const result = await _webangRequest('POST', _normaliseWebangOpenBaseUrl(provider?.api_url), '/CreateAsset', apiKey, body, 60000);
+  const result = await _webangAssetRequest(provider, apiKey, 'CreateAsset', body, 60000);
   const assetId = _pickWebangAssetId(result);
   if (!assetId) {
     throw new Error('微众素材库上传成功但未返回素材 Id: ' + JSON.stringify(result).substring(0, 500));
   }
   WEBANG_ASSET_CACHE.set(cacheKey, assetId);
   console.log(`[Webang Seedance] uploaded reference image to asset library: ${String(assetId).slice(0, 24)}`);
-  return _webangAssetUrl(assetId);
+  return {
+    assetId: String(assetId),
+    assetUrl: _webangAssetUrl(assetId),
+    groupId: String(groupId),
+  };
 }
 
 function _pickWebangStatus(result) {
@@ -1551,8 +1635,8 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
   try {
     const content = [{ type: 'text', text: promptText }];
     if (image_url) {
-      const imageAssetUrl = await _ensureWebangImageAsset({ provider, apiKey, imageUrl: image_url, filename });
-      content.push({ type: 'image_url', image_url: { url: imageAssetUrl }, role: 'reference_image' });
+      const imageAsset = await _ensureWebangImageAsset({ provider, apiKey, imageUrl: image_url, filename });
+      content.push({ type: 'image_url', image_url: { url: imageAsset.assetUrl }, role: 'reference_image' });
     }
 
     const body = {

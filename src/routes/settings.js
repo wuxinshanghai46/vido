@@ -65,7 +65,7 @@ router.post('/providers/refresh-all', async (req, res) => {
 
 // 新增供应商
 router.post('/providers', (req, res) => {
-  const { id, name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, models = [] } = req.body;
+  const { id, name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, models = [] } = req.body;
   if (!name || !api_url) return res.status(400).json({ success: false, error: '请填写供应商名称和 API 地址' });
   const settings = loadSettings();
   const newId = (id || name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || Date.now().toString());
@@ -81,6 +81,7 @@ router.post('/providers', (req, res) => {
   if (api_uid !== undefined) provider.api_uid = String(api_uid || '').trim();
   if (uid !== undefined) provider.uid = String(uid || '').trim();
   if (webang_asset_group_id !== undefined) provider.webang_asset_group_id = String(webang_asset_group_id || '').trim();
+  if (webang_asset_api_url !== undefined) provider.webang_asset_api_url = String(webang_asset_api_url || '').trim();
   settings.providers.push(provider);
   saveSettings(settings);
   res.json({ success: true, data: { id: newId } });
@@ -88,7 +89,7 @@ router.post('/providers', (req, res) => {
 
 // 更新供应商基本信息（名称/URL/Key）
 router.put('/providers/:id', (req, res) => {
-  const { name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id } = req.body;
+  const { name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url } = req.body;
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
@@ -99,6 +100,7 @@ router.put('/providers/:id', (req, res) => {
   if (api_uid !== undefined) p.api_uid = String(api_uid || '').trim();
   if (uid !== undefined) p.uid = String(uid || '').trim();
   if (webang_asset_group_id !== undefined) p.webang_asset_group_id = String(webang_asset_group_id || '').trim();
+  if (webang_asset_api_url !== undefined) p.webang_asset_api_url = String(webang_asset_api_url || '').trim();
   saveSettings(settings);
   res.json({ success: true });
 });

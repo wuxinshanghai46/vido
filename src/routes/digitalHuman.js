@@ -12536,16 +12536,16 @@ async function _generateLuxuryRealisticActorPackage({
     });
     const webangApiKey = (webangProvider?.id ? getApiKey(webangProvider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
     const webangGroupId = webangProviderAssetGroupId(webangProvider || {});
-    if (webangProvider && webangApiKey && webangGroupId && actorAsset.image_url) {
-      const webangAssetUrl = await ensureWebangImageAsset({
+    if (webangProvider && webangApiKey && actorAsset.image_url) {
+      const webangAsset = await ensureWebangImageAsset({
         provider: webangProvider,
         apiKey: webangApiKey,
         imageUrl: actorAsset.image_url,
         filename: actorAsset.actor_id || actorAsset.actor_asset_id,
       });
-      actorAsset.webang_asset_url = webangAssetUrl;
-      actorAsset.webang_asset_id = String(webangAssetUrl || '').replace(/^asset:\/\//i, '');
-      actorAsset.webang_asset_group_id = webangGroupId;
+      actorAsset.webang_asset_url = webangAsset.assetUrl;
+      actorAsset.webang_asset_id = webangAsset.assetId;
+      actorAsset.webang_asset_group_id = webangAsset.groupId || webangGroupId;
       actorAsset.asset_library_provider = 'webang-seedance';
     }
   } catch (err) {
