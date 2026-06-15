@@ -838,6 +838,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-open-music-item audio { width: 100%; height: 34px; filter: invert(1) hue-rotate(160deg) saturate(.7); }
 .dh-luxgen-voice-modal-brief { grid-column: 1 / -1; padding: 12px 14px; border: 1px solid rgba(33,255,243,.22); border-radius: 8px; background: rgba(33,255,243,.055); color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
 .dh-luxgen-voice-modal-brief b { display: block; color: var(--dh-primary); margin-bottom: 4px; }
+.dh-luxgen-voice-modal-brief em { display: block; margin-top: 8px; color: rgba(255,255,255,.66); font-style: normal; }
 .dh-space-voice-modal-list .dh-voice-opt { position: relative; }
 .dh-space-voice-modal-list .dh-voice-opt-selected {
   border-color: #21fff3 !important;

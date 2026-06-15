@@ -3167,6 +3167,12 @@
       state.luxuryAd.personAsset?.gender,
       state.luxuryAd.personAsset?.metadata?.detected_gender,
       state.luxuryAd.personAsset?.metadata?.gender,
+      state.luxuryAd.visualLocks?.actor?.gender,
+      state.luxuryAd.visualLocks?.actor_gender,
+      state.luxuryAd.productionContract?.actor_reference?.gender,
+      state.luxuryAd.productionContract?.actor_reference?.detected_gender,
+      state.luxuryAd.productionContract?.identityGender,
+      state.luxuryAd.productionContract?.guide_gender,
       state.selectedAvatar?.detected_gender,
       state.selectedAvatar?.gender
     );
@@ -3190,6 +3196,16 @@
     const inferred = luxuryPersonGenderSpecValue(content);
     if (inferred === 'male' || inferred === 'female') return { gender: inferred, source: inferred === 'male' ? '剧情文本提到男性角色' : '剧情文本提到女性角色' };
     return { gender: '', source: '' };
+  }
+
+  function luxuryVoiceRecommendationReason(rec) {
+    if (!rec?.voice) return '暂无推荐依据';
+    const gender = rec.voice._gender || _inferGender(rec.voice);
+    const genderName = gender === 'male' ? '男声' : (gender === 'female' ? '女声' : '中性/其他音色');
+    if (rec.ctx?.targetGenderSource) {
+      return `${rec.ctx.targetGenderSource}，所以优先从${rec.ctx.targetGenderLabel || genderName}里筛选；再按「${rec.ctx.label}」的情绪和节奏排序。`;
+    }
+    return `当前草稿里没有可确认的单一角色性别信号，因此没有强制男/女声；该音色作为${genderName}，是按「${rec.ctx?.label || '剧情起伏'}」内容风格、音色名称关键词和可用性综合推荐。`;
   }
 
   function luxuryVoiceKeywordScore(v = {}, ctx = luxuryVoiceRecommendationContext()) {
@@ -3248,7 +3264,7 @@
       .map(v => ({ voice: v, score: luxuryVoiceKeywordScore(v, ctx) }))
       .sort((a, b) => b.score - a.score);
     const picked = ranked[0]?.voice || pool[0] || voices[0];
-    return picked ? { voice: picked, ctx, score: ranked[0]?.score || 0 } : null;
+    return picked ? { voice: picked, ctx, score: ranked[0]?.score || 0, genderMatchedCount: genderMatched.length, totalCount: voices.length } : null;
   }
 
   function renderLuxuryVoiceDirection() {
@@ -3346,7 +3362,7 @@
     try {
       let audio;
       let objectUrl = '';
-      if (demoUrl) {
+      if (demoUrl && !useExpressivePreview) {
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
@@ -4846,6 +4862,7 @@
       html = `<div class="dh-luxgen-voice-modal-brief">
         <b>当前配音方向：${escapeHtml(dir.label)}</b>
         <span>${escapeHtml(dir.desc)} ${escapeHtml(recLine)}。点每个音色的试听，会用当前广告台词或该方向示例来判断是否合适。</span>
+        ${rec?.voice ? `<em>${escapeHtml(luxuryVoiceRecommendationReason(rec))}</em>` : ''}
       </div>${html}`;
     }
     if (host) host.innerHTML = html;
