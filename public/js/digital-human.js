@@ -14,6 +14,7 @@
   };
   const VOICE_PREVIEW_CACHE_TTL = 10 * 60 * 1000;
   const VOICE_PREVIEW_CACHE_LIMIT = 12;
+  const VOICE_PREVIEW_STORAGE = 'vido-voice-preview-v1';
   const voicePreviewCache = new Map();
   const voicePreviewPending = new Map();
   const voiceDemoPreloadCache = new Set();
@@ -3362,6 +3363,44 @@
       || '';
   }
 
+  function voicePreviewCacheUrl(cacheKey) {
+    let hash = 2166136261;
+    for (let i = 0; i < cacheKey.length; i += 1) {
+      hash ^= cacheKey.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `/__voice-preview-cache/${(hash >>> 0).toString(36)}`;
+  }
+
+  async function getStoredVoicePreview(cacheKey) {
+    if (!('caches' in window)) return null;
+    try {
+      const cache = await caches.open(VOICE_PREVIEW_STORAGE);
+      const res = await cache.match(voicePreviewCacheUrl(cacheKey));
+      if (!res) return null;
+      return await res.blob();
+    } catch {
+      return null;
+    }
+  }
+
+  async function storeVoicePreview(cacheKey, blob) {
+    if (!('caches' in window) || !blob) return;
+    try {
+      const cache = await caches.open(VOICE_PREVIEW_STORAGE);
+      await cache.put(voicePreviewCacheUrl(cacheKey), new Response(blob, {
+        headers: {
+          'Content-Type': blob.type || 'audio/mpeg',
+          'Cache-Control': 'max-age=604800',
+        },
+      }));
+    } catch {}
+  }
+
+  function quickVoicePreviewText() {
+    return '您好，这里是试听效果。';
+  }
+
   function preloadVoiceDemos(voices = [], limit = 18) {
     let count = 0;
     for (const voice of voices) {
@@ -3386,10 +3425,10 @@
     const providerId = String(voice.providerId || voice.provider_id || voice.provider || '').toLowerCase();
     const isTopviewVoice = providerId.includes('topview');
     const demoUrl = voiceDemoUrl(voice);
-    const demoOnly = !!options.demoOnly;
+    const quickPreview = !!options.quickPreview;
     const useExpressivePreview = !!previewText;
     const previewSegments = useExpressivePreview
-      ? compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 3)
+      ? (quickPreview ? [] : compactLuxurySegments(state.luxuryAd.segments || []).slice(0, 3))
       : [];
     const previewTextForRequest = previewText || '你好，这是 VIDO 数字人配音试听。先听这一句的自然开场，再听中段的情绪推进，最后用更有感染力的语气收住。';
     const cacheKey = JSON.stringify({
@@ -3407,10 +3446,12 @@
     const oldText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
-      btn.textContent = useExpressivePreview ? '合成中' : '...';
+      btn.textContent = useExpressivePreview ? (quickPreview ? '生成中' : '合成中') : '...';
       btn.classList.add('loading');
     }
-    toast(useExpressivePreview ? '正在合成广告试听，首次约 5-20 秒，请稍等...' : '正在准备试听...');
+    toast(useExpressivePreview
+      ? (quickPreview ? '正在生成试听效果，完成后会缓存，下次可直接播放...' : '正在合成广告试听，首次约 5-20 秒，请稍等...')
+      : '正在准备试听...');
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), useExpressivePreview ? 90000 : 30000);
     try {
@@ -3422,10 +3463,6 @@
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
-        if (demoOnly) {
-          toast('该音色暂未提供厂商样音，选中后可试听分镜台词效果');
-          return;
-        }
         const now = Date.now();
         for (const [key, item] of voicePreviewCache.entries()) {
           if (!item || now - item.createdAt > VOICE_PREVIEW_CACHE_TTL) voicePreviewCache.delete(key);
@@ -3434,6 +3471,12 @@
         if (blob) {
           toast('正在播放已缓存试听');
         } else {
+          blob = await getStoredVoicePreview(cacheKey);
+          if (blob) {
+            toast('正在播放已缓存试听');
+          }
+        }
+        if (!blob) {
           let pending = voicePreviewPending.get(cacheKey);
           if (!pending) {
             pending = fetch('/api/dh/tts/preview-voice', {
@@ -3467,6 +3510,7 @@
           blob = await pending;
           if (previewSeq !== activeVoicePreviewSeq || ac.signal.aborted) return;
           voicePreviewCache.set(cacheKey, { blob, createdAt: Date.now() });
+          storeVoicePreview(cacheKey, blob).catch(() => {});
           while (voicePreviewCache.size > VOICE_PREVIEW_CACHE_LIMIT) {
             const firstKey = voicePreviewCache.keys().next().value;
             voicePreviewCache.delete(firstKey);
@@ -4913,10 +4957,10 @@
       const isSelected = String(v.id) === String(current);
       const isRecommended = String(v.id) === recVoiceId;
       const hasVendorDemo = !!voiceDemoUrl(v);
-      const canPreviewHere = modalTarget !== 'luxury-ad' || hasVendorDemo;
-      const previewControl = canPreviewHere
-        ? `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="${modalTarget === 'luxury-ad' ? '试听厂商样音' : '试听'}">▶</button>`
-        : '<span class="dh-voice-opt-preview-note">选中后试听分镜</span>';
+      const previewTitle = modalTarget === 'luxury-ad'
+        ? (hasVendorDemo ? '试听厂商样音' : '生成并缓存试听效果')
+        : '试听';
+      const previewControl = `<button class="dh-voice-opt-preview" data-voice-preview="${escapeHtml(v.id)}" title="${previewTitle}">▶</button>`;
       const recBadges = isRecommended
         ? `<span class="dh-voice-status-badge recommend">推荐</span>${rec.ctx.targetGenderLabel ? `<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.targetGenderLabel)}</span>` : ''}<span class="dh-voice-status-badge basis">${escapeHtml(rec.ctx.label)}</span>`
         : '';
@@ -4925,7 +4969,7 @@
       <div class="dh-voice-opt-body">
         ${(isSelected || isRecommended) ? `<div class="dh-voice-status-row">${isSelected ? '<span class="dh-voice-status-badge selected">当前已选</span>' : ''}${recBadges}</div>` : ''}
         <div class="dh-voice-opt-name">${escapeHtml(v.name || v.id)}</div>
-        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}${modalTarget === 'luxury-ad' && !hasVendorDemo ? ' · 暂无厂商样音' : ''}</div>
+        <div class="dh-voice-opt-sub">${v.isCloned ? '我的声音' : '系统音色'}${modalTarget === 'luxury-ad' && !hasVendorDemo ? ' · 首次生成试听' : ''}</div>
       </div>
       ${v.id ? previewControl : ''}
       ${isSelected ? '<div class="dh-voice-selected-check" aria-hidden="true">✓</div>' : ''}
@@ -5289,10 +5333,10 @@
         host.innerHTML = `<div class="dh-voice-opt-icon">${rv.providerIcon || genderIcon(rv._gender || rv.gender)}</div>
           <div class="dh-voice-opt-body">
             <div class="dh-voice-opt-name">推荐：${escapeHtml(rv.name || rv.id)}</div>
-            <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · ${hasVendorDemo ? '可先试听厂商样音' : '选用后试听分镜台词'}</div>
+            <div class="dh-voice-opt-sub">按内容推荐 · ${escapeHtml(rec.ctx.label)} · ${hasVendorDemo ? '可先试听厂商样音' : '首次生成试听后缓存'}</div>
             <div class="dh-luxgen-voice-recommend-actions">
               <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-lux-recommended-voice="${escapeHtml(rv.id)}">选用推荐</button>
-              ${hasVendorDemo ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-voice-preview="${escapeHtml(rv.id)}">试听样音</button>` : '<span class="dh-voice-opt-preview-note">暂无厂商样音</span>'}
+              <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-voice-preview="${escapeHtml(rv.id)}">${hasVendorDemo ? '试听样音' : '生成试听'}</button>
             </div>
           </div>`;
         return;
@@ -14438,15 +14482,16 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (voicePrevBtn) {
       e.stopPropagation();
       const previewVoiceId = voicePrevBtn.dataset.voicePreview || '';
+      const previewVoiceData = (state.voices || []).find(v => String(v.id || '') === String(previewVoiceId)) || {};
+      const hasVendorDemo = !!voiceDemoUrl(previewVoiceData);
       const isLuxuryCurrentArea = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent');
       const isLuxurySelectedCurrentPreview = !!voicePrevBtn.closest('#dhLuxAdVoiceCurrent')
         && String(state.luxuryAd.voiceId || '') === String(previewVoiceId);
       const isLuxuryModalPreview = !!voicePrevBtn.closest('#dhSpaceVoiceModal') && state.voiceModalTarget === 'luxury-ad';
-      const demoOnlyPreview = isLuxuryModalPreview || (isLuxuryCurrentArea && !isLuxurySelectedCurrentPreview);
       const luxuryText = isLuxurySelectedCurrentPreview
         ? luxuryVoicePreviewText()
-        : '';
-      previewVoice(previewVoiceId, luxuryText, { demoOnly: demoOnlyPreview });
+        : ((isLuxuryModalPreview || isLuxuryCurrentArea) && !hasVendorDemo ? quickVoicePreviewText() : '');
+      previewVoice(previewVoiceId, luxuryText, { quickPreview: !!luxuryText && !isLuxurySelectedCurrentPreview });
       return;
     }
     const spaceVoiceCard = closest('[data-space-voice-id]');
