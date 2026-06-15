@@ -474,6 +474,20 @@ function _compactLuxuryAdDraftAsset(asset = null) {
   };
 }
 
+function _compactLuxuryAdSubtitle(subtitle = null) {
+  if (subtitle === false) return false;
+  if (!subtitle || typeof subtitle !== 'object') return subtitle === true ? { show: true } : null;
+  return {
+    show: subtitle.show !== false,
+    style: String(subtitle.style || 'popup').slice(0, 40),
+    smartEmphasis: subtitle.smartEmphasis !== false,
+    fontName: String(subtitle.fontName || '抖音美好体').slice(0, 80),
+    fontSize: Math.max(24, Math.min(120, Number(subtitle.fontSize) || 72)),
+    color: String(subtitle.color || '#FFFFFF').slice(0, 32),
+    outlineColor: String(subtitle.outlineColor || '#000000').slice(0, 32),
+  };
+}
+
 function _compactLuxuryAdDraftBody(body = {}) {
   const pickAssets = value => (Array.isArray(value) ? value : [])
     .map(_compactLuxuryAdDraftAsset)
@@ -498,7 +512,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     voice_volume: Math.max(0.6, Math.min(1.2, Number(body.voice_volume ?? body.voiceVolume ?? body.bgm_asset?.voice_volume ?? 1) || 1)),
     bgm_volume: Math.max(0, Math.min(0.35, Number(body.bgm_volume ?? body.bgmVolume ?? body.bgm_asset?.volume ?? 0.16) || 0.16)),
     voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
-    subtitle: body.subtitle !== false,
+    subtitle: _compactLuxuryAdSubtitle(body.subtitle) || (body.subtitle !== false ? { show: true } : false),
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
     ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
     auto_enhance: body.auto_enhance !== false,
@@ -555,6 +569,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     storyboard_sheets: mergedStoryboardSheets,
   }).project_state;
   const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
+  const compactBgmAsset = _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || existing?.bgm_asset || existing?.draft_state?.bgm_asset || null);
   const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
   const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
     ? mergedStoryboardSheets.filter(_isFinalLuxuryStoryboardSheet)
@@ -588,6 +603,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
     global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
+    bgm_asset: compactBgmAsset,
     keyframe_generation_status: result.keyframe_generation_status || existing?.keyframe_generation_status || '',
     reference_mode: result.reference_mode || existing?.reference_mode || '',
     // 中文注释：保存前端制作中的真实快照，刷新/清缓存后任务中心可以继续恢复，不做行业或场景写死。
@@ -9292,24 +9308,32 @@ router.post('/product-ads/generate', async (req, res) => {
   }
 });
 
-router.post('/product-ads/preview-voice', async (req, res) => {
+async function _handleDhTtsPreviewVoice(req, res) {
   try {
-    const { voice_id = '', text = '', segments = [], voice_direction = '' } = req.body || {};
-    if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填' });
+    const {
+      voice_id = '',
+      voiceId = '',
+      text = '',
+      segments = [],
+      voice_direction = '',
+      voiceDirection = '',
+    } = req.body || {};
+    const effectiveVoiceId = voice_id || voiceId;
+    if (!String(effectiveVoiceId || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填' });
     if (!String(text || '').trim()) return res.status(400).json({ success: false, error: 'text 必填' });
-    const taskDir = path.join(JIMENG_ASSETS_DIR, `preview_product_voice_${Date.now()}_${uuidv4().slice(0, 8)}`);
+    const taskDir = path.join(JIMENG_ASSETS_DIR, `preview_tts_voice_${Date.now()}_${uuidv4().slice(0, 8)}`);
     fs.mkdirSync(taskDir, { recursive: true });
     const outBase = path.join(taskDir, 'preview');
     let audioPath = await _synthesizeSegmentedSpeechFile(req, {
       text,
-      voiceId: voice_id,
+      voiceId: effectiveVoiceId,
       segments,
       outputBase: outBase,
-      voiceDirection: voice_direction,
+      voiceDirection: voice_direction || voiceDirection,
     });
     if (!audioPath || !fs.existsSync(audioPath)) {
       const { generateSpeech } = require('../services/ttsService');
-      audioPath = await generateSpeech(String(text).slice(0, 1000), outBase, { voiceId: voice_id, speed: 1.0 });
+      audioPath = await generateSpeech(String(text).slice(0, 1000), outBase, { voiceId: effectiveVoiceId, speed: 1.0 });
     }
     if (!audioPath || !fs.existsSync(audioPath) || fs.statSync(audioPath).size < 2048) {
       return res.status(500).json({ success: false, error: '试听音频生成失败或为空' });
@@ -9320,6 +9344,12 @@ router.post('/product-ads/preview-voice', async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+}
+
+router.post('/tts/preview-voice', _handleDhTtsPreviewVoice);
+
+router.post('/product-ads/preview-voice', async (req, res) => {
+  return _handleDhTtsPreviewVoice(req, res);
 });
 
 router.get('/product-ads/:taskId', (req, res) => {

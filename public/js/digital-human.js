@@ -3281,6 +3281,7 @@
     const providerId = String(voice.providerId || voice.provider_id || voice.provider || '').toLowerCase();
     const isTopviewVoice = providerId.includes('topview');
     const demoUrl = voice.demoAudioUrl || voice.demo_audio_url || voice.preview_url || voice.previewUrl || voice.sample_url || '';
+    const useExpressivePreview = !!previewText;
     const btn = document.querySelector(`[data-voice-preview="${CSS.escape(String(voiceId))}"]`);
     const oldText = btn ? btn.textContent : '';
     if (btn) {
@@ -3290,7 +3291,7 @@
     }
     toast('正在准备试听...');
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 20000);
+    const timer = setTimeout(() => ac.abort(), useExpressivePreview ? 90000 : 30000);
     try {
       let audio;
       let objectUrl = '';
@@ -3298,19 +3299,16 @@
         audio = ensurePreviewAudio();
         audio.src = demoUrl;
       } else {
-        const useExpressivePreview = !!previewText;
-        const r = await fetch(useExpressivePreview ? '/api/dh/product-ads/preview-voice' : '/api/avatar/preview-voice', {
+        const r = await fetch('/api/dh/tts/preview-voice', {
           method: 'POST',
           signal: ac.signal,
           headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-          body: JSON.stringify(useExpressivePreview ? {
+          body: JSON.stringify({
             voice_id: voiceId,
-            text: previewText,
-            segments: compactLuxurySegments(state.luxuryAd.segments || []),
-            voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
-          } : {
             voiceId,
-            text: '你好，这是 VIDO 数字人配音试听。现在你听到的是当前选择的音色。',
+            text: previewText || '你好，这是 VIDO 数字人配音试听。现在你听到的是当前选择的音色。',
+            segments: useExpressivePreview ? compactLuxurySegments(state.luxuryAd.segments || []) : [],
+            voice_direction: useExpressivePreview ? (state.luxuryAd.voiceDirection || 'story_dynamic') : '',
             gender: voice._gender || voice.gender || '',
             providerId: voice.providerId || voice.provider_id || '',
             provider: voice.provider || '',
@@ -3339,7 +3337,10 @@
       markDetachedAudio(audio);
       await audio.play();
     } catch (err) {
-      if (!isTopviewVoice) {
+      const rawMsg = String(err.message || '');
+      const transient = err.name === 'AbortError'
+        || /timeout|timed out|network|fetch|aborted|超时|网络/i.test(rawMsg);
+      if (!isTopviewVoice && !transient) {
         state.badVoices.add(voiceId);
         localStorage.setItem('dh_bad_voices', JSON.stringify([...state.badVoices]));
         if (state.s3.voiceId === voiceId) state.s3.voiceId = null;
@@ -3351,11 +3352,10 @@
         updateLuxuryAdStepLocks();
         saveLuxuryAdDraft({ silent: true }).catch(() => {});
       }
-      const rawMsg = String(err.message || '');
       const providerName = voice.provider || voice.providerId || voice.provider_id || '当前 TTS 供应商';
       const expired = /token|access.?key|api.?key|unauthori[sz]ed|鉴权|认证|过期|expired|401|403/i.test(rawMsg);
       const msg = err.name === 'AbortError'
-        ? '超时'
+        ? (useExpressivePreview ? '整稿试听仍在合成中，生产环境可能需要 1 分钟以上；音色已保留，可稍后重试或直接合成' : '超时')
         : isTopviewVoice
           ? '暂未返回可试听音频，但该音色仍可用于生成视频'
           : expired
@@ -5143,7 +5143,36 @@
 
   function luxuryAdHasBgm() {
     const bgm = state.luxuryAd.bgmAsset || {};
-    return !!(bgm.file_url || bgm.file_path || bgm.url || bgm.path);
+    return !!(bgm.file_url || bgm.file_path || bgm.url || bgm.path || bgm.background_music_url || bgm.music_url);
+  }
+
+  function normalizeLuxuryAdBgmAsset(bgm = null) {
+    if (!bgm || typeof bgm !== 'object') return null;
+    let publicUrl = [
+      bgm.file_url,
+      bgm.url,
+      bgm.preview_url,
+      bgm.background_music_url,
+      bgm.music_url,
+    ].map(x => String(x || '').trim()).find(x => /^https?:\/\//i.test(x) || x.startsWith('/')) || '';
+    if (!publicUrl) {
+      const pathLike = String(bgm.file_path || bgm.path || '').trim();
+      const filename = pathLike.split(/[\\/]/).pop() || '';
+      if (/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(filename)) {
+        publicUrl = `/api/projects/music/${encodeURIComponent(filename)}`;
+      }
+    }
+    const raw = publicUrl || bgm.file_path || bgm.path || '';
+    if (!raw) return null;
+    return {
+      ...bgm,
+      name: bgm.name || bgm.original_name || bgm.title || '背景音乐',
+      original_name: bgm.original_name || bgm.name || bgm.title || '背景音乐',
+      file_url: publicUrl,
+      url: publicUrl,
+      file_path: bgm.file_path || bgm.path || '',
+      path: bgm.path || bgm.file_path || '',
+    };
   }
 
   function clampLuxuryAudioVolume(value, fallback, min, max) {
@@ -5163,9 +5192,31 @@
   function luxuryAdBgmAssetPayload() {
     if (!luxuryAdHasBgm()) return null;
     return {
-      ...(state.luxuryAd.bgmAsset || {}),
+      ...(normalizeLuxuryAdBgmAsset(state.luxuryAd.bgmAsset) || state.luxuryAd.bgmAsset || {}),
       volume: luxuryAdBgmVolume(),
       voice_volume: luxuryAdVoiceVolume(),
+    };
+  }
+
+  function luxuryAdSubtitleEnabled() {
+    const cfg = state.luxuryAd.subtitle;
+    if (cfg === false) return false;
+    if (cfg && typeof cfg === 'object' && cfg.show === false) return false;
+    return true;
+  }
+
+  function getLuxuryAdSubtitlePayload(show = luxuryAdSubtitleEnabled()) {
+    const saved = state.luxuryAd.subtitle && typeof state.luxuryAd.subtitle === 'object' ? state.luxuryAd.subtitle : {};
+    return {
+      ...(state.s3.subtitle || {}),
+      ...saved,
+      show,
+      style: saved.style || state.s3.subtitle?.style || 'popup',
+      smartEmphasis: saved.smartEmphasis ?? state.s3.subtitle?.smartEmphasis ?? true,
+      fontName: saved.fontName || state.s3.subtitle?.fontName || '抖音美好体',
+      fontSize: Number(saved.fontSize || state.s3.subtitle?.fontSize) || 72,
+      color: saved.color || state.s3.subtitle?.color || '#FFFFFF',
+      outlineColor: saved.outlineColor || state.s3.subtitle?.outlineColor || '#000000',
     };
   }
 
@@ -5227,7 +5278,8 @@
       }
     }
     let audio = $('#dhLuxAdBgmAudio');
-    const audioUrl = ready ? (bgm.file_url || bgm.url || bgm.preview_url || '') : '';
+    const normalizedBgm = normalizeLuxuryAdBgmAsset(bgm);
+    const audioUrl = ready ? (normalizedBgm?.file_url || normalizedBgm?.url || '') : '';
     if (ready && audioUrl && main) {
       if (!audio) {
         audio = document.createElement('audio');
@@ -6936,7 +6988,10 @@
         ? '审核板已生成 · 待真实关键帧'
         : (gate.previewReady ? `已确认 ${frames} 个分镜` : (frames ? `${frames}/${shots} 个分镜` : '待生成'))));
     setText('#dhLuxAdVoiceSummary', voice ? (voice.name || voice.label || state.luxuryAd.voiceId) : '未选择');
-    setText('#dhLuxAdSubtitleSummary', state.luxuryAd.subtitle === false ? '关闭字幕' : '默认开启');
+    const subCfg = getLuxuryAdSubtitlePayload();
+    setText('#dhLuxAdSubtitleSummary', luxuryAdSubtitleEnabled()
+      ? `${SUB_STYLE_LABELS[subCfg.style] || subCfg.style || '默认'} · ${subCfg.fontSize || 72}px`
+      : '关闭字幕');
   }
 
   function updateLuxuryAdStepLocks() {
@@ -7069,9 +7124,9 @@
     const size = $('#dhLuxAdSize');
     if (size) size.value = state.luxuryAd.outputSize || 'standard';
     const subtitle = $('#dhLuxAdSubtitle');
-    if (subtitle) subtitle.value = state.luxuryAd.subtitle === false ? 'off' : 'on';
+    if (subtitle) subtitle.value = luxuryAdSubtitleEnabled() ? 'on' : 'off';
     const subtitleToggle = $('#dhLuxAdSubtitleToggle');
-    if (subtitleToggle) subtitleToggle.checked = state.luxuryAd.subtitle !== false;
+    if (subtitleToggle) subtitleToggle.checked = luxuryAdSubtitleEnabled();
     const autoEnhance = $('#dhLuxAdAutoEnhance');
     if (autoEnhance) autoEnhance.checked = state.luxuryAd.autoEnhance !== false;
     const expandBrief = $('#dhLuxAdExpandBrief');
@@ -9356,7 +9411,7 @@
       expand_brief: state.luxuryAd.expandBrief !== false,
       voice_id: state.luxuryAd.voiceId || '',
       voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
-      subtitle: state.luxuryAd.subtitle !== false,
+      subtitle: getLuxuryAdSubtitlePayload(),
       person_spec: luxuryAdPersonSpec(),
       person_asset: luxuryAdPersonAssetPayload(),
       product_asset: state.luxuryAd.productAsset || null,
@@ -9486,7 +9541,9 @@
     state.luxuryAd.expandBrief = draft.expand_brief !== false;
     state.luxuryAd.voiceId = draft.voice_id || state.luxuryAd.voiceId || '';
     state.luxuryAd.voiceDirection = draft.voice_direction || state.luxuryAd.voiceDirection || 'story_dynamic';
-    state.luxuryAd.subtitle = draft.subtitle !== false;
+    state.luxuryAd.subtitle = draft.subtitle && typeof draft.subtitle === 'object'
+      ? draft.subtitle
+      : (draft.subtitle !== false);
     state.luxuryAd.personSpec = draft.person_spec || state.luxuryAd.personSpec;
     const restoredPersonAsset = draft.person_asset || state.luxuryAd.personAsset || null;
     const contractActorAsset = project.production_contract?.actor_asset
@@ -9509,7 +9566,14 @@
     state.luxuryAd.productAsset = draft.product_asset || state.luxuryAd.productAsset || null;
     state.luxuryAd.briefRefAssets = draft.brief_reference_assets || [];
     state.luxuryAd.refAssets = draft.reference_assets || [];
-    state.luxuryAd.bgmAsset = draft.bgm_asset || null;
+    state.luxuryAd.bgmAsset = normalizeLuxuryAdBgmAsset(
+      draft.bgm_asset
+        || project.bgm_asset
+        || project.background_music
+        || project.backgroundMusic
+        || project.music
+        || null
+    );
     state.luxuryAd.bgmProfile = draft.bgm_profile || state.luxuryAd.bgmAsset?.matched_genre || 'auto';
     state.luxuryAd.voiceVolume = clampLuxuryAudioVolume(draft.voice_volume ?? state.luxuryAd.bgmAsset?.voice_volume, 1, 0.6, 1.2);
     state.luxuryAd.bgmVolume = clampLuxuryAudioVolume(draft.bgm_volume ?? state.luxuryAd.bgmAsset?.volume, 0.16, 0, 0.35);
@@ -10326,9 +10390,9 @@
     state.luxuryAd.durationSec = Number($('#dhLuxAdDuration')?.value || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard';
-    state.luxuryAd.subtitle = $('#dhLuxAdSubtitleToggle')
+    state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload($('#dhLuxAdSubtitleToggle')
       ? !!$('#dhLuxAdSubtitleToggle')?.checked
-      : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off');
+      : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off'));
     const btn = triggerButton || (
       detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'))
     );
@@ -10864,7 +10928,7 @@
       const productAsset = state.luxuryAd.productAsset || {};
       const referenceAssets = luxuryAdReferenceAssets();
       const selectedVoice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
-      const subtitlePayload = getDhSubtitlePayload(state.luxuryAd.subtitle !== false);
+      const subtitlePayload = getLuxuryAdSubtitlePayload();
       const payload = {
         avatar_id: state.selectedAvatar?.id || '',
         background_url: compactLuxuryUrl(refs[0] || primaryFrame),
@@ -10987,7 +11051,7 @@
     try {
       const title = state.luxuryAd.briefInfo?.title || '素材成片';
       const selectedVoice = (state.voices || []).find(v => String(v.id || '') === String(voiceId)) || {};
-      const subtitlePayload = getDhSubtitlePayload(state.luxuryAd.subtitle !== false);
+      const subtitlePayload = getLuxuryAdSubtitlePayload();
       const payload = {
         text,
         title,
@@ -14085,6 +14149,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (closest('#dhS3SubtitleStyleBtn')) { openSubtitleModal('s3'); return; }
     if (closest('#pdhSubtitleStyleBtn')) { openSubtitleModal('pdh'); return; }
     if (closest('#dhSpaceSubtitleStyleBtn')) { openSubtitleModal('space'); return; }
+    if (closest('#dhLuxAdSubtitleStyleBtn')) { openSubtitleModal('luxury-ad'); return; }
     if (closest('[data-subtitle-close]')) { closeSubtitleModal(); return; }
     const subStyleBtn = closest('.dh-sub-style');
     if (subStyleBtn) { setActiveSubStyle(subStyleBtn.dataset.subStyle); return; }
@@ -14343,7 +14408,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const stage = document.getElementById('dhSubPreviewStage');
     const el = document.getElementById('dhSubPreviewText');
     if (!el || !stage) return;
-    const styleKey = state.s3.subtitle.style || 'popup';
+    const activeSubtitle = state.subtitleTarget === 'luxury-ad'
+      ? getLuxuryAdSubtitlePayload()
+      : state.s3.subtitle;
+    const styleKey = activeSubtitle.style || 'popup';
     const fontName = ($('#dhSubFont')?.value || '抖音美好体').trim();
     const sizeRaw = parseInt($('#dhSubSize')?.value) || 72;
     const previewSize = Math.max(14, Math.round(sizeRaw * 0.5));
@@ -14379,18 +14447,29 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   }
 
   function setActiveSubStyle(styleKey) {
-    state.s3.subtitle.style = styleKey;
+    if (state.subtitleTarget === 'luxury-ad') {
+      state.luxuryAd.subtitle = {
+        ...getLuxuryAdSubtitlePayload(),
+        style: styleKey,
+      };
+    } else {
+      state.s3.subtitle.style = styleKey;
+    }
     $$('.dh-sub-style').forEach(b => b.classList.toggle('active', b.dataset.subStyle === styleKey));
     refreshSubtitlePreview();
   }
 
   function openSubtitleModal(target = 's3') {
-    state.subtitleTarget = target === 'space' ? 'space' : (target === 'pdh' ? 'pdh' : 's3');
+    state.subtitleTarget = target === 'space' ? 'space'
+      : (target === 'pdh' ? 'pdh'
+        : (target === 'luxury-ad' ? 'luxury-ad' : 's3'));
     const modal = $('#dhSubtitleModal');
     if (modal?.closest('.dh-tab-pane')) {
       ($('#dhApp') || document.body).appendChild(modal);
     }
-    const sub = state.s3.subtitle;
+    const sub = state.subtitleTarget === 'luxury-ad'
+      ? getLuxuryAdSubtitlePayload()
+      : state.s3.subtitle;
     if ($('#dhSubFont')) $('#dhSubFont').value = sub.fontName || '抖音美好体';
     if ($('#dhSubSize')) $('#dhSubSize').value = sub.fontSize || 72;
     if ($('#dhSubColor')) $('#dhSubColor').value = sub.color || '#FFFFFF';
@@ -14411,16 +14490,32 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   function saveSubtitleSettings() {
     const showInput = state.subtitleTarget === 'space' ? $('#dhSpaceSubtitleOn')
       : state.subtitleTarget === 'pdh' ? $('#pdhSubtitleOn')
+        : state.subtitleTarget === 'luxury-ad' ? $('#dhLuxAdSubtitleToggle')
         : $('#dhS3SubtitleOn');
-    state.s3.subtitle = {
+    const nextSubtitle = {
       show: showInput?.checked !== false,
-      style: state.s3.subtitle.style || 'popup',
+      style: state.subtitleTarget === 'luxury-ad'
+        ? (getLuxuryAdSubtitlePayload().style || 'popup')
+        : (state.s3.subtitle.style || 'popup'),
       smartEmphasis: $('#dhSubSmartEmphasis')?.checked !== false,
       fontName: $('#dhSubFont')?.value || '抖音美好体',
       fontSize: parseInt($('#dhSubSize')?.value) || 72,
       color: $('#dhSubColor')?.value || '',
       outlineColor: $('#dhSubOutline')?.value || '',
     };
+    if (state.subtitleTarget === 'luxury-ad') {
+      state.luxuryAd.subtitle = nextSubtitle;
+      const toggle = $('#dhLuxAdSubtitleToggle');
+      const select = $('#dhLuxAdSubtitle');
+      if (toggle) toggle.checked = nextSubtitle.show !== false;
+      if (select) select.value = nextSubtitle.show === false ? 'off' : 'on';
+      updateLuxuryAdStepLocks();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
+      closeSubtitleModal();
+      toast(`字幕已保存：${SUB_STYLE_LABELS[nextSubtitle.style] || nextSubtitle.style}`, 'success');
+      return;
+    }
+    state.s3.subtitle = nextSubtitle;
     const s3On = $('#dhS3SubtitleOn');
     const spaceOn = $('#dhSpaceSubtitleOn');
     const pdhOn = $('#pdhSubtitleOn');
@@ -14991,14 +15086,17 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const btn = $('#pdhPreviewScriptBtn');
     const old = btn?.textContent || '';
     if (btn) { btn.disabled = true; btn.textContent = '试听中…'; }
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 90000);
     try {
       if (!pdh.segments || !pdh.segments.length) {
         pdh.segments = buildProductSegmentsLocal(text, pdh.targetDurationSec || Math.ceil(text.length / 4), pdhProductMeta().motion_style || 'hold');
         state.s3.segments = pdh.segments;
         renderPdhTimeline(pdh.segments);
       }
-      const r = await fetch('/api/dh/product-ads/preview-voice', {
+      const r = await fetch('/api/dh/tts/preview-voice', {
         method: 'POST',
+        signal: ac.signal,
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
         body: JSON.stringify({ voice_id: voiceId, text, segments: pdh.segments || [] }),
       });
@@ -15021,8 +15119,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       await audio.play();
       toast('正在播放分段语调整稿试听', 'success');
     } catch (err) {
-      toast('试听失败：' + err.message, 'error');
+      toast('试听失败：' + (err.name === 'AbortError' ? '整稿试听仍在合成中，请稍后重试或直接合成' : err.message), 'error');
     } finally {
+      clearTimeout(timer);
       if (btn) { btn.disabled = false; btn.textContent = old || '▶ 试听整稿'; }
     }
   }
@@ -15725,15 +15824,19 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxSize) luxSize.addEventListener('change', e => { state.luxuryAd.outputSize = e.target.value || 'standard'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
     const luxSubtitle = $('#dhLuxAdSubtitle');
     if (luxSubtitle) luxSubtitle.addEventListener('change', e => {
-      state.luxuryAd.subtitle = e.target.value !== 'off';
+      state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload(e.target.value !== 'off');
       const toggle = $('#dhLuxAdSubtitleToggle');
-      if (toggle) toggle.checked = state.luxuryAd.subtitle !== false;
+      if (toggle) toggle.checked = luxuryAdSubtitleEnabled();
+      updateLuxuryAdStepLocks();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
     });
     const luxSubtitleToggle = $('#dhLuxAdSubtitleToggle');
     if (luxSubtitleToggle) luxSubtitleToggle.addEventListener('change', e => {
-      state.luxuryAd.subtitle = !!e.target.checked;
+      state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload(!!e.target.checked);
       const select = $('#dhLuxAdSubtitle');
-      if (select) select.value = state.luxuryAd.subtitle ? 'on' : 'off';
+      if (select) select.value = luxuryAdSubtitleEnabled() ? 'on' : 'off';
+      updateLuxuryAdStepLocks();
+      saveLuxuryAdDraft({ silent: true }).catch(() => {});
     });
     const luxAutoEnhance = $('#dhLuxAdAutoEnhance');
     if (luxAutoEnhance) luxAutoEnhance.addEventListener('change', e => { state.luxuryAd.autoEnhance = !!e.target.checked; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });

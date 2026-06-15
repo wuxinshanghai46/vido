@@ -859,6 +859,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-option-list { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--dh-border); }
 .dh-luxgen-option-list .dh-switch { justify-content: space-between; }
 .dh-luxgen-subtitle-switch { justify-content: space-between; min-height: 38px; padding: 0 12px; border: 1px solid var(--dh-border); border-radius: 8px; background: rgba(255,255,255,.02); }
+.dh-luxgen-subtitle-style { justify-self: flex-start; margin-top: 2px; }
 .dh-luxgen-progress { display: grid; gap: 10px; margin-top: 12px; }
 .dh-luxgen-progress div { display: flex; align-items: center; gap: 10px; color: var(--dh-text-muted); font-size: 13px; }
 .dh-luxgen-progress span { width: 9px; height: 9px; border-radius: 50%; background: var(--dh-border); }
