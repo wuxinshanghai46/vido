@@ -381,7 +381,21 @@ function saveSettings(data) {
 function getApiKey(providerId) {
   try {
     const settings = loadSettings();
-    const p = settings.providers.find(p => (p.id === providerId || p.preset === providerId) && p.enabled !== false);
+    const p = settings.providers.find(p => {
+      if (!(p.enabled !== false)) return false;
+      if (p.id === providerId || p.preset === providerId) return true;
+      if (providerId === 'webang-seedance') {
+        const text = [
+          p.id,
+          p.preset,
+          p.name,
+          p.api_url,
+          ...(Array.isArray(p.models) ? p.models.map(m => m && m.id) : []),
+        ].filter(Boolean).join(' ');
+        return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+      }
+      return false;
+    });
     return p?.api_key || '';
   } catch { return ''; }
 }

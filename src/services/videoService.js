@@ -1419,15 +1419,26 @@ function _pickWebangStatus(result) {
   return String(data?.status || data?.state || data?.task_status || data?.taskStatus || '').toLowerCase();
 }
 
+function _isWebangSeedanceProvider(provider = {}) {
+  const text = [
+    provider.id,
+    provider.preset,
+    provider.name,
+    provider.api_url,
+    ...(Array.isArray(provider.models) ? provider.models.map(m => m && m.id) : []),
+  ].filter(Boolean).join(' ');
+  return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+}
+
 // ——— 微众 Seedance 2.0（一站式 AI 模型服务平台，OpenAI-compatible /api/v1）———
 async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   let provider = null;
   try {
     const settings = loadSettings();
-    provider = (settings.providers || []).find(p => (p.id === 'webang-seedance' || p.preset === 'webang-seedance') && p.enabled !== false);
+    provider = (settings.providers || []).find(p => p.enabled !== false && _isWebangSeedanceProvider(p));
   } catch {}
-  const apiKey = getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
+  const apiKey = (provider?.id ? getApiKey(provider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
   if (!apiKey) throw new Error('未配置微众 Seedance API Key');
 
   const baseUrl = _normaliseWebangBaseUrl(provider?.api_url);
@@ -1437,10 +1448,13 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
 
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
+  const promptText = String(prompt || '').trim().substring(0, 4000);
+  const contentText = promptText + ` --ratio ${ratioFlag} --dur ${durSec}` + (image_url ? ' --mode i2v' : '');
 
   const body = {
     model,
-    prompt: String(prompt || '').trim().substring(0, 4000),
+    content: contentText,
+    prompt: promptText,
     size: ratioFlag,
     ratio: ratioFlag,
     duration: durSec,
@@ -1449,6 +1463,8 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
     watermark: false
   };
   if (image_url) {
+    body.image = image_url;
+    body.image_url = image_url;
     body.image_urls = [image_url];
     body.image_with_roles = [{ url: image_url, role: 'first_frame' }];
   }

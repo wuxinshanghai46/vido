@@ -6960,6 +6960,16 @@ function _getSeedanceAdConfig(preferred = null) {
   const { loadSettings } = require('../services/settingsService');
   const settings = loadSettings();
   const providers = settings.providers || [];
+  const isWebangProvider = provider => {
+    const text = [
+      provider?.id,
+      provider?.preset,
+      provider?.name,
+      provider?.api_url,
+      ...(Array.isArray(provider?.models) ? provider.models.map(m => m && m.id) : []),
+    ].filter(Boolean).join(' ');
+    return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+  };
   let p = preferred?.provider_id
     ? providers.find(x => (x.id === preferred.provider_id || x.preset === preferred.provider_id) && x.enabled && x.api_key)
     : null;
@@ -6983,13 +6993,14 @@ function _getSeedanceAdConfig(preferred = null) {
     'doubao-seedance-1-0-pro-250528',
     'doubao-seedance-1-0-pro-fast-251015',
   ];
+  const providerId = isWebangProvider(p) ? 'webang-seedance' : p.id;
   if (preferred?.model_id && !unsupportedModels.has(preferred.model_id)) {
-    return { apiKey: p.api_key, model: preferred.model_id, providerId: p.id };
+    return { apiKey: p.api_key, model: preferred.model_id, providerId };
   }
   const model = preferredModels.find(id => models.some(m => m.id === id && m.enabled !== false))
     || models.find(m => /seedance/i.test(m.id || '') && m.enabled !== false && !unsupportedModels.has(m.id))?.id
     || 'doubao-seedance-2-0-260128';
-  return { apiKey: p.api_key, model, providerId: p.id };
+  return { apiKey: p.api_key, model, providerId };
 }
 
 function _taskPatch(taskId, patch) {
