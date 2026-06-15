@@ -1427,7 +1427,7 @@ function _isWebangSeedanceProvider(provider = {}) {
     provider.api_url,
     ...(Array.isArray(provider.models) ? provider.models.map(m => m && m.id) : []),
   ].filter(Boolean).join(' ');
-  return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+  return /webang|微众|test-tk\.iserviceapi\.com|iserviceapi\.com/i.test(text);
 }
 
 // ——— 微众 Seedance 2.0（一站式 AI 模型服务平台，OpenAI-compatible /api/v1）———

@@ -3592,6 +3592,7 @@
   }
 
   function getTaskProgressPercent(task = {}) {
+    if (isTaskTerminalError(task)) return 100;
     if (task.status === 'draft' || task.status === 'working') return Math.max(1, Math.min(99, Number(task.progress || 1)));
     if (task.status === 'done' || task.stage === 'done') return 100;
     if (task.status === 'error' || task.status === 'invalid' || task.status === 'timeout') return Math.max(1, Number(task.progress || 1));
@@ -3618,6 +3619,12 @@
   }
 
   function renderTaskPercentBlock(task = {}) {
+    if (isTaskTerminalError(task)) {
+      return `<div class="dh-task-percent dh-task-percent-failed">
+      <div class="dh-task-percent-ring" style="--p:100"><span>×</span></div>
+      <div class="dh-task-percent-label">失败</div>
+    </div>`;
+    }
     const pct = getTaskProgressPercent(task);
     const label = task.status === 'draft' || task.status === 'working' ? getTaskStatusText(task.status) : '&#29983;&#25104;&#20013;';
     return `<div class="dh-task-percent">
@@ -3938,6 +3945,13 @@
   const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
   const TERMINAL_ERROR_TASK_STATUSES = new Set(['error', 'invalid', 'timeout', 'failed']);
 
+  function isTaskTerminalError(task = {}) {
+    const status = String(task.status || '').toLowerCase();
+    if (TERMINAL_ERROR_TASK_STATUSES.has(status)) return true;
+    if (status === 'done' || status === 'ready') return false;
+    return !!String(task.error || task.error_message || task.errorMessage || '').trim();
+  }
+
   function readVideoTasks() {
     try {
       const list = JSON.parse(localStorage.getItem(DH_TASK_STORE_KEY) || '[]');
@@ -3987,12 +4001,13 @@
       draft: '草稿',
       working: '待继续',
       ready: '待合成',
-      failed: '需处理',
+      failed: '失败',
     }[status] || '等待中';
   }
 
   function getTaskStageText(stage, task = null) {
     const isLuxury = task ? getTaskType(task) === 'luxury_ad' : false;
+    if (task && isTaskTerminalError(task)) return '生成失败';
     return {
       prepare_image: '准备形象',
       prepare_audio: '准备语音',
@@ -4514,7 +4529,8 @@
       return bw - aw || (b.startedAt || 0) - (a.startedAt || 0);
     });
     host.innerHTML = ordered.map(t => {
-      const active = ACTIVE_TASK_STATUSES.has(t.status);
+      const failed = isTaskTerminalError(t);
+      const active = ACTIVE_TASK_STATUSES.has(t.status) && !failed;
       const progressPct = getTaskProgressPercent(t);
       const elapsed = t.elapsed != null
         ? `${t.elapsed}s`
@@ -4531,17 +4547,20 @@
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
       const preview = t.isLuxuryProjectDraft
         ? renderTaskImageCover(t, posterUrl, ratioClass)
-        : active
+        : (active || failed)
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
         : (playableVideoUrl
           ? renderTaskVideoCover(t, playableVideoUrl, posterUrl, ratioClass)
           : renderTaskImageCover(t, posterUrl, ratioClass));
       const video = '';
-      const error = t.error ? `<div class="dh-task-error">${escapeHtml(t.error)}</div>` : '';
+      const errorText = t.error || t.error_message || t.errorMessage || '';
+      const error = errorText ? `<div class="dh-task-error">${escapeHtml(errorText)}</div>` : '';
       const subtitle = t.subtitleWarning
         ? `<div class="dh-task-warning">${escapeHtml(t.subtitleWarning)}</div>`
         : (t.subtitleBurned ? `<div class="dh-task-ok">&#23383;&#24149;&#24050;&#28903;&#24405;&#21040;&#35270;&#39057;</div>` : '');
-      const progressBar = active ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>` : '';
+      const progressBar = active
+        ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>`
+        : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
       const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
       return `<div class="dh-task-card ${active ? 'active' : ''}" data-task-id="${escapeHtml(t.taskId)}">
         ${preview}
@@ -4555,7 +4574,7 @@
           </div>
           <div class="dh-task-progress">
             <span>${getTaskStageText(t.stage, t)}</span>
-            <span>${active ? `${progressPct}%` : escapeHtml(getTaskStatusText(t.status))}</span>
+            <span>${failed ? '失败' : (active ? `${progressPct}%` : escapeHtml(getTaskStatusText(t.status)))}</span>
             <span>${elapsedLabel}</span>
           </div>
           ${progressBar}
@@ -4801,14 +4820,19 @@
         : (mode.includes('digital_ad') || mode.includes('showroom') || adMode.includes('showroom') ? 'digital_ad' : 'digital_human'));
     const createdAt = t.created_at || t.startedAt || t.createdAt || Date.now();
     const startedAt = typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now());
+    const rawStatus = String(t.status || '').trim() || 'done';
+    const errorText = t.error || t.error_message || t.errorMessage || '';
+    const status = rawStatus !== 'done' && rawStatus !== 'ready' && String(errorText || '').trim()
+      ? 'error'
+      : rawStatus;
     return {
       taskId,
       taskType,
-      status: t.status || 'done',
-      stage: t.stage || (t.status === 'done' ? 'done' : ''),
-      progress: Number(t.progress) || (t.status === 'done' ? 100 : 0),
-      error: t.error || t.message || '',
-      message: t.message || t.error || '',
+      status,
+      stage: status === 'error' ? 'error' : (t.stage || (status === 'done' ? 'done' : '')),
+      progress: Number(t.progress) || (status === 'done' ? 100 : 0),
+      error: errorText || (status === 'error' ? t.message : ''),
+      message: t.message || errorText || '',
       avatarName: t.title || t.avatarName || getTaskTypeLabel(taskType),
       textPreview: t.text || t.textPreview || '',
       videoUrl: t.videoUrl || t.video_url || '',

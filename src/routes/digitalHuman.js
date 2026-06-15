@@ -6968,7 +6968,7 @@ function _getSeedanceAdConfig(preferred = null) {
       provider?.api_url,
       ...(Array.isArray(provider?.models) ? provider.models.map(m => m && m.id) : []),
     ].filter(Boolean).join(' ');
-    return /webang|微众|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text);
+    return /webang|微众|test-tk\.iserviceapi\.com|iserviceapi\.com/i.test(text);
   };
   let p = preferred?.provider_id
     ? providers.find(x => (x.id === preferred.provider_id || x.preset === preferred.provider_id) && x.enabled && x.api_key)
@@ -21770,9 +21770,25 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     console.error('[DH/space-ad/storyboard] failed:', err);
     _taskPatch(taskId, { status: 'error', stage: 'error', error: err.message, message: err.message });
     try {
+      const t = productAdTasks.get(taskId) || {};
+      const errorTaskData = {
+        ...t,
+        id: taskId,
+        taskId,
+        status: 'error',
+        stage: 'error',
+        error: err.message,
+        message: err.message,
+        kind: 'production',
+        mode: isLuxury ? 'luxury_ad' : 'digital_ad',
+        generation_mode: isLuxury ? 'luxury_storyboard' : (isShowroomGuide ? 'showroom_guide' : 'storyboard'),
+        progress: Number(t.progress) || 90,
+        updated_at: new Date().toISOString(),
+      };
       if (!db.getAvatarTask(taskId)) {
-        const t = productAdTasks.get(taskId);
-        db.insertAvatarTask({ ...t, status: 'error', error: err.message, kind: 'production', mode: isLuxury ? 'luxury_ad' : 'digital_ad', generation_mode: isLuxury ? 'luxury_storyboard' : (isShowroomGuide ? 'showroom_guide' : 'storyboard') });
+        db.insertAvatarTask(errorTaskData);
+      } else {
+        db.updateAvatarTask(taskId, errorTaskData);
       }
     } catch {}
   }
