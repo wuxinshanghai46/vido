@@ -694,28 +694,28 @@ function _publicProductFuseTask(task) {
 function _toneTtsParams(tone) {
   const t = String(tone || 'natural').toLowerCase();
   const map = {
-    natural: { speed: 1.0, pitch: 1.0 },
-    calm: { speed: 0.92, pitch: 0.96 },
-    serious: { speed: 0.94, pitch: 0.95 },
-    professional: { speed: 0.98, pitch: 0.98 },
-    focused: { speed: 1.02, pitch: 0.98 },
-    friendly: { speed: 1.04, pitch: 1.04 },
-    excited: { speed: 1.15, pitch: 1.10 },
-    encouraging: { speed: 1.10, pitch: 1.08 },
-    warm: { speed: 0.96, pitch: 1.03 },
-    firm: { speed: 0.96, pitch: 0.94 },
-    curious: { speed: 1.08, pitch: 1.08 },
-    confident: { speed: 1.04, pitch: 0.95 },
-    gentle: { speed: 0.93, pitch: 1.03 },
-    urgent: { speed: 1.17, pitch: 1.06 },
-    humorous: { speed: 1.12, pitch: 1.09 },
-    anxious: { speed: 1.16, pitch: 1.06 },
-    relieved: { speed: 0.94, pitch: 1.02 },
-    happy: { speed: 1.11, pitch: 1.10 },
-    premium: { speed: 0.92, pitch: 0.94 },
-    passionate: { speed: 1.16, pitch: 1.10 },
-    inspiring: { speed: 1.09, pitch: 1.07 },
-    moved: { speed: 0.91, pitch: 0.99 },
+    natural: { speed: 1.0, pitch: 1.0, volume: 1.0 },
+    calm: { speed: 0.90, pitch: 0.96, volume: 0.98 },
+    serious: { speed: 0.93, pitch: 0.95, volume: 1.0 },
+    professional: { speed: 0.97, pitch: 0.98, volume: 1.0 },
+    focused: { speed: 1.02, pitch: 0.98, volume: 1.02 },
+    friendly: { speed: 1.05, pitch: 1.04, volume: 1.03 },
+    excited: { speed: 1.18, pitch: 1.12, volume: 1.08 },
+    encouraging: { speed: 1.12, pitch: 1.09, volume: 1.08 },
+    warm: { speed: 0.95, pitch: 1.03, volume: 1.0 },
+    firm: { speed: 0.95, pitch: 0.93, volume: 1.06 },
+    curious: { speed: 1.10, pitch: 1.10, volume: 1.03 },
+    confident: { speed: 1.03, pitch: 0.95, volume: 1.06 },
+    gentle: { speed: 0.92, pitch: 1.03, volume: 0.98 },
+    urgent: { speed: 1.20, pitch: 1.07, volume: 1.08 },
+    humorous: { speed: 1.14, pitch: 1.10, volume: 1.04 },
+    anxious: { speed: 1.18, pitch: 1.07, volume: 1.05 },
+    relieved: { speed: 0.92, pitch: 1.02, volume: 0.99 },
+    happy: { speed: 1.13, pitch: 1.12, volume: 1.06 },
+    premium: { speed: 0.90, pitch: 0.93, volume: 1.0 },
+    passionate: { speed: 1.18, pitch: 1.12, volume: 1.1 },
+    inspiring: { speed: 1.10, pitch: 1.08, volume: 1.08 },
+    moved: { speed: 0.90, pitch: 0.99, volume: 0.98 },
   };
   return map[t] || map.natural;
 }
@@ -729,9 +729,27 @@ function _normalizeLuxuryVoiceDirection(value = '') {
   return 'story_dynamic';
 }
 
+function _normalizeAdTone(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (/anxious|urgent|焦虑|痛点|着急|紧张|压力|问题|卡住/.test(raw)) return 'anxious';
+  if (/relieved|relief|释然|放心|解决|安心|稳定/.test(raw)) return 'relieved';
+  if (/excited|sales|passionate|兴奋|种草|转化|促销|爆发|立刻|马上/.test(raw)) return 'excited';
+  if (/encouraging|cta|call.?to.?action|推荐|收束|行动|下单|点击|咨询|购买/.test(raw)) return 'encouraging';
+  if (/happy|bright|friendly|开心|轻快|愉悦|亲和|欢迎/.test(raw)) return 'friendly';
+  if (/premium|trust|高端|信任|克制|质感|品质/.test(raw)) return 'premium';
+  if (/proof|confident|证明|背书|可靠|确定|结果/.test(raw)) return 'confident';
+  if (/firm|emphasis|强调|重点|关键|转折|但是|其实/.test(raw)) return 'firm';
+  if (/warm|温暖|共情|陪伴/.test(raw)) return 'warm';
+  if (/moved|感动|情绪|走心/.test(raw)) return 'moved';
+  if (/curious|开场|悬念|提问|引入/.test(raw)) return 'curious';
+  if (/serious|professional|专业|严肃|客观/.test(raw)) return 'professional';
+  return raw;
+}
+
 function _inferExpressiveSegmentTone(seg = {}, index = 0, total = 1, voiceDirection = '') {
   const direction = _normalizeLuxuryVoiceDirection(voiceDirection || seg.voice_direction || seg.voiceDirection || '');
-  const explicit = String(seg.tone || seg.delivery || seg.voice_tone || '').trim().toLowerCase();
+  const explicit = _normalizeAdTone(seg.tone || seg.delivery || seg.voice_tone || '');
   if (explicit && !/^natural|professional|premium$/i.test(explicit)) return explicit;
   const text = [
     seg.text,
@@ -765,26 +783,150 @@ function _cleanTtsSegmentText(text) {
     .replace(/（[^）]{1,80}）/g, '')
     .replace(/\([^)]{1,80}\)/g, '')
     .replace(/[·•●◆◇★☆]+/g, '，')
-    .replace(/[…]{2,}|\.{3,}/g, '。')
+    .replace(/[…]{2,}|\.{3,}/g, '，')
     .replace(/[，,、]{2,}/g, '，')
     .replace(/[；;：:]{1,}/g, '，')
-    .replace(/[。.!！？?]{2,}/g, '。')
+    .replace(/[。.!！？?]{3,}/g, '。')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^[，。！？、\s]+|[，、\s]+$/g, '');
 }
 
+function _splitAdSpeechClauses(text = '') {
+  const clean = _cleanTtsSegmentText(text);
+  if (!clean) return [];
+  const raw = clean
+    .replace(/([。！？!?])/g, '$1|')
+    .split(/[|]/)
+    .flatMap(part => part.split(/(?<=[，,、])|(?<=\s)/))
+    .map(s => _cleanTtsSegmentText(s))
+    .filter(Boolean);
+  const out = [];
+  let buf = '';
+  for (const piece of raw) {
+    if (!buf) {
+      buf = piece;
+      continue;
+    }
+    const next = `${buf}${/[，。！？!?]$/.test(buf) ? '' : '，'}${piece}`;
+    if (buf.length < 8 || next.length <= 22) buf = next;
+    else {
+      out.push(buf);
+      buf = piece;
+    }
+  }
+  if (buf) out.push(buf);
+  return out.flatMap(s => {
+    if (s.length <= 30) return [s];
+    const chunks = [];
+    for (let i = 0; i < s.length; i += 18) chunks.push(_cleanTtsSegmentText(s.slice(i, i + 18)));
+    return chunks.filter(Boolean);
+  });
+}
+
+function _adPositionTone(index, total, voiceDirection = '') {
+  const dir = _normalizeLuxuryVoiceDirection(voiceDirection);
+  if (dir === 'anxious_relief') {
+    if (index === 0) return 'curious';
+    if (index < Math.max(2, total * 0.45)) return 'anxious';
+    if (index >= total - 1) return 'encouraging';
+    return 'relieved';
+  }
+  if (dir === 'premium_trust') {
+    if (index === 0) return 'premium';
+    if (index >= total - 1) return 'confident';
+    return index % 2 ? 'focused' : 'firm';
+  }
+  if (dir === 'excited_sales') {
+    if (index === 0) return 'curious';
+    if (index >= total - 1) return 'passionate';
+    return index % 2 ? 'excited' : 'confident';
+  }
+  if (dir === 'happy_bright') {
+    if (index >= total - 1) return 'encouraging';
+    return index % 2 ? 'happy' : 'friendly';
+  }
+  if (index === 0) return 'curious';
+  if (index >= total - 1) return 'encouraging';
+  if (index === Math.floor(total / 2)) return 'firm';
+  return index % 2 ? 'confident' : 'focused';
+}
+
+function _expandAdSpeechSegments(segments = [], text = '', voiceDirection = '') {
+  const source = (Array.isArray(segments) && segments.length)
+    ? segments
+    : _fallbackGuideSegments(text, Math.max(10, Math.ceil(String(text || '').length / 4)));
+  const expanded = [];
+  for (const seg of source) {
+    const raw = seg?.text || seg?.voiceover || seg?.narration || '';
+    const clauses = _splitAdSpeechClauses(raw);
+    if (!clauses.length) continue;
+    for (const clause of clauses) expanded.push({ ...seg, text: clause });
+  }
+  const limited = expanded.slice(0, 32);
+  return limited.map((seg, i, arr) => {
+    const explicit = _normalizeAdTone(seg.tone || seg.delivery || seg.voice_tone || '');
+    return {
+      ...seg,
+      text: _shapeAdSpeechText(seg.text, explicit || _inferExpressiveSegmentTone(seg, i, arr.length, voiceDirection), i, arr.length),
+      tone: explicit || _inferExpressiveSegmentTone(seg, i, arr.length, voiceDirection) || _adPositionTone(i, arr.length, voiceDirection),
+    };
+  });
+}
+
+function _shapeAdSpeechText(text = '', tone = 'natural', index = 0, total = 1) {
+  let value = _cleanTtsSegmentText(text);
+  if (!value) return '';
+  const t = String(tone || '').toLowerCase();
+  if (!/[。！？!?]$/.test(value)) {
+    if (/curious|anxious|urgent/.test(t) && index <= 1) value += '？';
+    else if (/excited|encouraging|passionate|happy|inspiring/.test(t) || index >= total - 1) value += '！';
+    else value += '。';
+  }
+  if (index > 0 && index < total - 1 && value.length <= 10 && !/[。！？!?]$/.test(value)) value += '，';
+  return value;
+}
+
 function _segmentPauseSeconds(seg, nextSeg) {
   const explicit = Number(seg?.pause_ms ?? seg?.pauseMs ?? seg?.pause);
-  if (Number.isFinite(explicit)) return Math.max(0.04, Math.min(0.28, explicit > 2 ? explicit / 1000 : explicit));
+  if (Number.isFinite(explicit)) return Math.max(0.06, Math.min(0.62, explicit > 2 ? explicit / 1000 : explicit));
   const tone = String(seg?.tone || seg?.delivery || seg?.voice_tone || '').toLowerCase();
-  if (/anxious|urgent|excited|passionate/.test(tone)) return 0.07;
-  if (/premium|confident|serious|relieved|moved/.test(tone)) return 0.16;
+  if (/anxious|urgent/.test(tone)) return 0.12;
+  if (/excited|passionate|happy/.test(tone)) return 0.16;
+  if (/premium|serious|moved/.test(tone)) return 0.34;
+  if (/confident|firm|relieved|encouraging/.test(tone)) return 0.26;
   const tail = String(seg?.text || '').trim().slice(-1);
   const nextLen = String(nextSeg?.text || '').trim().length;
-  if (/^[。！？!?]$/.test(tail)) return 0.14;
-  if (/^[，,、]$/.test(tail)) return 0.07;
-  return nextLen <= 8 ? 0.06 : 0.10;
+  if (/^[！？!?]$/.test(tail)) return 0.24;
+  if (/^[。]$/.test(tail)) return 0.30;
+  if (/^[，,、]$/.test(tail)) return 0.14;
+  return nextLen <= 8 ? 0.16 : 0.22;
+}
+
+function _postProcessSpeechSegment(ffmpegPath, audioPath, params = {}) {
+  if (!ffmpegPath || !audioPath || !fs.existsSync(audioPath)) return audioPath;
+  const volume = Number(params.volume);
+  if (!Number.isFinite(volume) || Math.abs(volume - 1) < 0.01) return audioPath;
+  const ext = path.extname(audioPath) || '.mp3';
+  const outPath = audioPath.replace(new RegExp(`${ext.replace('.', '\\.')}$`), `_voice${ext}`);
+  try {
+    execFileSync(ffmpegPath, [
+      '-y',
+      '-i', audioPath,
+      '-af', `volume=${Math.max(0.85, Math.min(1.18, volume)).toFixed(2)},afade=t=in:st=0:d=0.015`,
+      '-c:a', 'libmp3lame',
+      '-q:a', '3',
+      outPath,
+    ], { stdio: 'pipe', timeout: 30000 });
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 500) {
+      try { fs.unlinkSync(audioPath); } catch {}
+      fs.renameSync(outPath, audioPath);
+    }
+  } catch (err) {
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
+    console.warn('[DH/segtts] segment postprocess skipped:', err.message);
+  }
+  return audioPath;
 }
 
 function _tightenSpeechPauses(ffmpegPath, audioPath, { maxSilence = 0.28 } = {}) {
@@ -813,10 +955,10 @@ function _tightenSpeechPauses(ffmpegPath, audioPath, { maxSilence = 0.28 } = {})
 }
 
 async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments, voiceDirection = '' }) {
-  const usable = (Array.isArray(segments) ? segments : [])
+  const usable = _expandAdSpeechSegments(segments, text, voiceDirection)
     .map(s => ({ ...s, text: _cleanTtsSegmentText(s?.text || s?.voiceover || '') }))
     .filter(s => s?.text && String(s.text).trim())
-    .slice(0, 20);
+    .slice(0, 32);
   if (usable.length < 2) return null;
   const { generateSpeech } = require('../services/ttsService');
   const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmpeg')
@@ -834,7 +976,7 @@ async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments, voiceD
     const outBase = path.join(workDir, `seg_${String(i).padStart(2, '0')}`);
     const file = await generateSpeech(seg.text, outBase, { voiceId: voiceId || null, speed: p.speed, pitch: p.pitch });
     if (!file || !fs.existsSync(file)) throw new Error(`第 ${i + 1} 段语气合成失败`);
-    files.push(file);
+    files.push(_postProcessSpeechSegment(ffmpegPath, file, p));
     if (i < usable.length - 1) {
       try {
         const pauseSec = _segmentPauseSeconds(seg, usable[i + 1]);
@@ -864,7 +1006,7 @@ async function _synthesizeSegmentedSpeech(req, { text, voiceId, segments, voiceD
   const finalName = `segtts_${Date.now()}_${uuidv4().slice(0, 8)}.mp3`;
   const finalPath = path.join(JIMENG_ASSETS_DIR, finalName);
   execFileSync(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:a', 'libmp3lame', '-q:a', '3', finalPath], { stdio: 'pipe', timeout: 120000 });
-  _tightenSpeechPauses(ffmpegPath, finalPath, { maxSilence: 0.28 });
+  _tightenSpeechPauses(ffmpegPath, finalPath, { maxSilence: 0.42 });
   if (!fs.existsSync(finalPath) || fs.statSync(finalPath).size < 500) throw new Error('分段语气音频拼接失败');
   return `${_publicBaseUrl(req)}/public/jimeng-assets/${finalName}`;
 }
