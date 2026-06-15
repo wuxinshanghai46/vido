@@ -4000,7 +4000,7 @@
       submitted: '等待调度',
       polling: '第三方渲染',
       running: '视频生成',
-      storyboard: isLuxury ? '生成剧本' : '生成分镜',
+      storyboard: isLuxury ? '生成视频' : '生成分镜',
       keyframes: isLuxury ? '生成分镜' : '生成关键帧',
       draft: '制作进度已保存',
       script_reviewing: '剧本待继续编辑',
@@ -4711,8 +4711,7 @@
       };
       syncRunningTask(r.taskId, taskMeta);
       pollVideoTask(r.taskId);
-      state.activeTaskType = type === 'luxury_ad' ? 'luxury_ad' : 'digital_ad';
-      renderTaskCenter();
+      openGeneratingTaskCenter(type === 'luxury_ad' ? 'luxury_ad' : 'digital_ad');
       toast(type === 'luxury_ad' ? '已重新提交剧情广告任务' : '已重新提交素材审片任务', 'success');
       return;
     }
@@ -4777,8 +4776,7 @@
     };
     syncRunningTask(r.taskId, taskMeta);
     pollVideoTask(r.taskId);
-    state.activeTaskType = 'product_ad';
-    renderTaskCenter();
+    openGeneratingTaskCenter('product_ad');
     toast('已重新提交商品口播视频任务', 'success');
   }
 
@@ -5360,6 +5358,13 @@
   function luxuryAdHasBgm() {
     const bgm = state.luxuryAd.bgmAsset || {};
     return !!(bgm.file_url || bgm.file_path || bgm.url || bgm.path || bgm.background_music_url || bgm.music_url);
+  }
+
+  function openGeneratingTaskCenter(type = 'digital_human') {
+    state.activeTaskType = type;
+    state.activeTaskStatus = 'generating';
+    renderTaskCenter();
+    switchTab('tasks');
   }
 
   function normalizeLuxuryAdBgmAsset(bgm = null) {
@@ -11251,10 +11256,8 @@
         });
         pollVideoTask(state.luxuryAd.taskId);
       }
-      state.activeTaskType = 'luxury_ad';
-        toast('剧情广告任务已提交，任务中心会显示剧本、分镜、配音、字幕和逐镜视频生成进度', 'success');
-      renderTaskCenter();
-      switchTab('tasks');
+      toast('剧情广告任务已提交，任务中心会显示剧本、分镜、配音、字幕和逐镜视频生成进度', 'success');
+      openGeneratingTaskCenter('luxury_ad');
     } catch (err) {
       toast('剧情广告生成失败：' + err.message, 'error');
     } finally {
@@ -11329,10 +11332,8 @@
         });
         pollVideoTask(state.luxuryAd.taskId);
       }
-      state.activeTaskType = 'material_film';
       toast('素材成片任务已提交，任务中心会显示合成进度', 'success');
-      renderTaskCenter();
-      switchTab('tasks');
+      openGeneratingTaskCenter('material_film');
     } catch (err) {
       toast('素材成片提交失败：' + err.message, 'error');
     } finally {
@@ -12233,7 +12234,6 @@
       };
       syncRunningTask(r.taskId, taskMeta);
       pollVideoTask(r.taskId);
-      state.activeTaskType = 'digital_ad';
       if (box) {
         box.innerHTML = `<div class="dh-space-result">
           <div>
@@ -12244,7 +12244,7 @@
         </div>`;
       }
       updateSpaceStoryboardButtons();
-      switchTab('tasks');
+      openGeneratingTaskCenter('digital_ad');
       resetSpaceGuideFormForNext();
       toast('素材审片视频已提交到任务中心', 'success');
     } catch (err) {
@@ -12357,8 +12357,7 @@
       // 加入后台任务中心（切换 tab 或继续创建不会停止轮询）
       syncRunningTask(r.taskId, taskMeta);
       pollVideoTask(r.taskId);
-      state.activeTaskType = 'digital_human';
-      switchTab('tasks');
+      openGeneratingTaskCenter('digital_human');
       // 任务中心是唯一的进度展示位置 —— 切走后清空 step3 的渲染框，
       // 用户回到"生成数字人"时不应该再看到上一次的进度内容。
       state.s3.taskId = null;
@@ -12443,8 +12442,7 @@
       };
       syncRunningTask(r.taskId, taskMeta);
       pollVideoTask(r.taskId);
-      state.activeTaskType = 'product_ad';
-      switchTab('tasks');
+      openGeneratingTaskCenter('product_ad');
       state.s3.taskId = null;
       if (box) box.innerHTML = '';
       toast('已提交商品口播视频任务，可以继续做其他内容', 'success');
@@ -12546,7 +12544,7 @@
           submitted:     { name: '⏳ 等待中', sub: '已提交，等服务端调度' },
           polling:       { name: '⏳ 等待中', sub: '渲染中，请稍候' },
           running:       { name: '🎨 渲染中', sub: `引擎状态 ${t.cv_status || '...'}` },
-          storyboard:    { name: isLuxuryTask ? '🧩 生成剧本' : '🧩 生成分镜', sub: t.message || (isLuxuryTask ? '生成画面、动作、台词和目的' : '规划产品广告镜头') },
+          storyboard:    { name: isLuxuryTask ? '🎬 生成视频' : '🧩 生成分镜', sub: t.message || (isLuxuryTask ? '正在按已确认分镜生成逐镜视频' : '规划产品广告镜头') },
           keyframes:     { name: isLuxuryTask ? '🖼️ 生成分镜' : '🖼️ 生成关键帧', sub: t.message || (isLuxuryTask ? '生成每段分镜画面' : '固定商品和场景画面') },
           guide_keyframe:{ name: '🖼️ 生成导览预览', sub: t.message || '融合讲解员和空间背景' },
           guide_video:   { name: '🎬 生成讲解视频', sub: t.message || '驱动数字人一镜到底讲解' },
@@ -15604,7 +15602,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       `);
       toast('商品数字人成片已提交到任务中心', 'success');
       pdhResetForNextTask();
-      switchTab('tasks');
+      openGeneratingTaskCenter('product_ad');
     } catch (e) {
       pdhCardTag(cardId, '失败', 'pdh2-result-tag-yellow');
       pdhCardBody(cardId, `<span style="color:var(--dh-danger);font-size:12px">${escapeHtml(e.message)}</span>`);
