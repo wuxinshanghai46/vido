@@ -1383,20 +1383,19 @@ function _webangAssetBaseUrls(provider = {}) {
 
   const root = _normaliseWebangApiRoot(provider.api_url).replace(/\/api$/, '');
   return [
-    `${root}/api/volc/asset`,
-    `${root}/volc/asset`,
-    `${_normaliseWebangApiRoot(provider.api_url)}/v3/open`,
+    _normaliseWebangBaseUrl(provider.api_url),
+    `${root}/v1`,
   ];
 }
 
-async function _webangAssetRequest(provider, apiKey, action, body, timeoutMs = 60000) {
+async function _webangAssetRequest(provider, apiKey, method, pathName, body = null, timeoutMs = 60000) {
   const bases = _webangAssetBaseUrls(provider);
   const errors = [];
   for (const base of bases) {
     try {
-      return await _webangRequest('POST', base, `/${action}`, apiKey, body, timeoutMs);
+      return await _webangRequest(method, base, pathName, apiKey, body, timeoutMs);
     } catch (err) {
-      errors.push(`${base}/${action}: ${err.message}`);
+      errors.push(`${method} ${base}${pathName}: ${err.message}`);
     }
   }
   throw new Error('微众素材库接口调用失败；已尝试：' + errors.join('；').slice(0, 900));
@@ -1491,6 +1490,11 @@ function _pickWebangAssetGroupId(result) {
     || data?.group?.id;
 }
 
+function _pickWebangAssetStatus(result) {
+  const data = result?.data || result;
+  return String(data?.Status || data?.status || data?.asset?.Status || data?.asset?.status || '').trim();
+}
+
 function _webangProviderAssetGroupId(provider = {}) {
   return String(
     provider.webang_asset_group_id
@@ -1538,10 +1542,11 @@ async function _ensureWebangAssetGroup({ provider, apiKey, name = '' }) {
   if (WEBANG_GROUP_CACHE.has(providerKey)) return WEBANG_GROUP_CACHE.get(providerKey);
 
   const body = {
-    model: 'volc-asset',
     Name: String(name || `vido-seedance-assets-${Date.now()}`).replace(/[^\w.-]+/g, '_').slice(0, 64),
+    Description: 'VIDO auto-created actor material group',
+    GroupType: 'AIGC',
   };
-  const result = await _webangAssetRequest(provider, apiKey, 'CreateAssetGroup', body, 60000);
+  const result = await _webangAssetRequest(provider, apiKey, 'POST', '/assets/groups', body, 60000);
   const groupId = _pickWebangAssetGroupId(result);
   if (!groupId) {
     throw new Error('微众素材库分组创建成功但未返回 GroupId: ' + JSON.stringify(result).substring(0, 500));
@@ -1549,6 +1554,26 @@ async function _ensureWebangAssetGroup({ provider, apiKey, name = '' }) {
   WEBANG_GROUP_CACHE.set(providerKey, groupId);
   console.log(`[Webang Seedance] created asset group: ${String(groupId).slice(0, 24)}`);
   return groupId;
+}
+
+async function _waitWebangAssetActive({ provider, apiKey, assetId, timeoutMs = 180000 }) {
+  const started = Date.now();
+  let lastStatus = '';
+  while (Date.now() - started < timeoutMs) {
+    const detail = await _webangAssetRequest(provider, apiKey, 'GET', `/assets/${encodeURIComponent(assetId)}`, null, 30000);
+    const status = _pickWebangAssetStatus(detail);
+    lastStatus = status || lastStatus;
+    if (/^active$/i.test(status)) return detail;
+    if (/^failed$/i.test(status)) {
+      const data = detail?.data || detail;
+      const err = data?.Error || data?.error || {};
+      const code = err?.Code || err?.code || '';
+      const message = err?.Message || err?.message || JSON.stringify(detail).substring(0, 500);
+      throw new Error(`微众素材处理失败${code ? ` (${code})` : ''}: ${message}`);
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  throw new Error(`微众素材处理超时，asset=${assetId}, lastStatus=${lastStatus || 'unknown'}`);
 }
 
 async function _ensureWebangImageAsset({ provider, apiKey, imageUrl, filename }) {
@@ -1575,17 +1600,17 @@ async function _ensureWebangImageAsset({ provider, apiKey, imageUrl, filename })
   }
 
   const body = {
-    model: 'volc-asset',
     GroupId: groupId,
     Name: _webangAssetNameFromUrl(sourceUrl, filename),
     AssetType: 'Image',
     URL: sourceUrl,
   };
-  const result = await _webangAssetRequest(provider, apiKey, 'CreateAsset', body, 60000);
+  const result = await _webangAssetRequest(provider, apiKey, 'POST', '/assets', body, 60000);
   const assetId = _pickWebangAssetId(result);
   if (!assetId) {
     throw new Error('微众素材库上传成功但未返回素材 Id: ' + JSON.stringify(result).substring(0, 500));
   }
+  await _waitWebangAssetActive({ provider, apiKey, assetId });
   WEBANG_ASSET_CACHE.set(cacheKey, assetId);
   console.log(`[Webang Seedance] uploaded reference image to asset library: ${String(assetId).slice(0, 24)}`);
   return {
