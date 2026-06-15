@@ -21515,6 +21515,62 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     const { _seedanceAVGenerate } = require('../services/avatarService');
     const { apiKey, model, providerId } = _getSeedanceAdConfig(preferredVideoModel);
     const clips = [];
+    const luxuryVideoPersonAsset = isLuxury && payload.person_asset && typeof payload.person_asset === 'object'
+      ? payload.person_asset
+      : null;
+    const luxuryVideoPersonAssetImageUrl = luxuryVideoPersonAsset && (luxuryVideoPersonAsset.image_url || luxuryVideoPersonAsset.url)
+      ? String(luxuryVideoPersonAsset.image_url || luxuryVideoPersonAsset.url || '').trim()
+      : '';
+    const luxuryVideoBriefPersonReferenceImage = isLuxury
+      ? _selectLuxuryBriefReferenceImage(luxuryAsyncBriefReferenceAssets, luxuryAsyncVisualReferenceBrief, ['person'])
+      : '';
+    const luxuryVideoBriefReferenceAvatar = isLuxury && luxuryVideoBriefPersonReferenceImage
+      ? {
+        id: 'luxury_brief_reference_person',
+        name: '需求参考人物',
+        title: '需求参考人物',
+        image_url: luxuryVideoBriefPersonReferenceImage,
+        gender: '',
+      }
+      : null;
+    const luxuryVideoPersonAvatar = luxuryVideoPersonAssetImageUrl
+      ? {
+        id: luxuryVideoPersonAsset.id || 'luxury_ad_person_sheet',
+        name: luxuryVideoPersonAsset.name || 'AI 真人感演员包',
+        title: luxuryVideoPersonAsset.name || 'AI 真人感演员包',
+        image_url: luxuryVideoPersonAssetImageUrl,
+        extra_image_urls: Array.isArray(luxuryVideoPersonAsset.extra_image_urls) ? luxuryVideoPersonAsset.extra_image_urls : [],
+        actor_asset_id: luxuryVideoPersonAsset.actor_asset_id || luxuryVideoPersonAsset.asset_library_id || luxuryVideoPersonAsset.material_id || '',
+        gender: _luxuryFirstConfirmedGender(luxuryVideoPersonAsset.detected_gender, luxuryVideoPersonAsset.gender),
+      }
+      : null;
+    const luxuryVideoIdentityAvatar = isLuxury
+      ? (avatar || luxuryVideoPersonAvatar || luxuryVideoBriefReferenceAvatar)
+      : null;
+    const luxuryVideoBriefCharacterLock = isLuxury
+      ? _buildLuxuryReferenceCharacterLock(luxuryAsyncVisualReferenceBrief, luxuryVideoBriefPersonReferenceImage)
+      : null;
+    const luxuryCharacterLock = isLuxury && (luxuryVideoIdentityAvatar?.image_url || luxuryVideoBriefCharacterLock)
+      ? {
+        ...(typeof _buildLuxuryCharacterConsistencyLock === 'function'
+          ? _buildLuxuryCharacterConsistencyLock(luxuryVideoIdentityAvatar || {})
+          : {
+            enabled: true,
+            mode: luxuryVideoBriefCharacterLock?.mode || 'optional_identity_reference',
+            identity_name: String(luxuryVideoIdentityAvatar?.name || luxuryVideoIdentityAvatar?.title || luxuryVideoBriefCharacterLock?.identity_name || 'selected presenter').trim().slice(0, 60),
+            stable_attributes: luxuryVideoBriefCharacterLock?.stable_attributes || ['face identity', 'age impression', 'hairstyle', 'body proportions', 'outfit family', 'skin tone'],
+            mutable_attributes: ['pose', 'gesture', 'expression', 'camera angle', 'lighting adaptation', 'scene placement'],
+            prompt: 'CHARACTER CONSISTENCY LOCK: keep the same selected identity across shots that include a human; do not invent another actor.',
+          }),
+        ...(luxuryVideoBriefCharacterLock || {}),
+        prompt: [
+          typeof _buildLuxuryCharacterConsistencyLock === 'function'
+            ? _buildLuxuryCharacterConsistencyLock(luxuryVideoIdentityAvatar || {})?.prompt
+            : '',
+          luxuryVideoBriefCharacterLock?.prompt,
+        ].filter(Boolean).join(' '),
+      }
+      : null;
     const videoKbContext = _buildDhKbContext(
       isShowroomGuide ? 'showroom_guide' : 'digital_ad',
       _dhKbQuery(title, text, scenePrompt, keyframes, scenes, adMode, adStyle),

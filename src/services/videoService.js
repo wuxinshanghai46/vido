@@ -1378,10 +1378,10 @@ function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutM
         let json = null;
         try { json = text ? JSON.parse(text) : {}; } catch {}
         if (res.statusCode >= 400) {
-          const msg = json?.error?.message || json?.message || text.substring(0, 200);
+          const msg = json?.error?.message || json?.message || text.substring(0, 500);
           return reject(new Error(`微众 Seedance HTTP ${res.statusCode}: ${msg}`));
         }
-        if (!json) return reject(new Error('微众 Seedance 返回格式错误: ' + text.substring(0, 160)));
+        if (!json) return reject(new Error('微众 Seedance 返回格式错误: ' + text.substring(0, 300)));
         resolve(json);
       });
     });
@@ -1467,7 +1467,7 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
       _ok = true;
       return { filePath: outputPath };
     }
-    if (!_taskId) throw new Error('微众 Seedance 未返回任务 ID: ' + JSON.stringify(submit).substring(0, 300));
+    if (!_taskId) throw new Error('微众 Seedance 未返回任务 ID: ' + JSON.stringify(submit).substring(0, 500));
 
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 5000));
@@ -1480,10 +1480,10 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
         return { filePath: outputPath };
       }
       if (['succeeded', 'success', 'completed', 'done', 'finished'].includes(state)) {
-        throw new Error('微众 Seedance 生成成功但未返回视频 URL');
+        throw new Error('微众 Seedance 生成成功但未返回视频 URL: ' + JSON.stringify(status).substring(0, 500));
       }
       if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(state)) {
-        const msg = status?.error?.message || status?.message || JSON.stringify(status).substring(0, 200);
+        const msg = status?.error?.message || status?.message || JSON.stringify(status).substring(0, 500);
         throw new Error('微众 Seedance 生成失败: ' + msg);
       }
       console.log(`[Webang Seedance] 状态: ${state || 'pending'} (${(i + 1) * 5}秒)`);
