@@ -21414,12 +21414,12 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     };
     // Showroom-guide ads need full-scene motion first. Lip-sync/avatar routes are only a fallback,
     // because they mostly animate mouth/head and then post-process crop/zoom the whole frame.
-    let seedancePipelineModel = null;
+    const seedancePipelineModels = [];
     for (const candidateVideoModel of pipelineVideoModels) {
       if (_isSeedancePipelineModel(candidateVideoModel)) {
         // Only run Seedance when it is explicitly enabled in model-call management.
         // This keeps luxury ads from using a hidden fallback while still allowing real manual switching.
-        seedancePipelineModel = seedancePipelineModel || candidateVideoModel;
+        seedancePipelineModels.push(candidateVideoModel);
         continue;
       }
       if (isLuxury && _isTopviewImageToVideoPipelineModel(candidateVideoModel)) {
@@ -21518,14 +21518,19 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       providerErrors.push(`${_pipelineModelLabel(candidateVideoModel)}: unsupported video pipeline`);
     }
     if (!isShowroomGuide && !isLuxury && await tryLipSyncPipeline()) return;
-    const preferredVideoModel = seedancePipelineModel || (!isLuxury && _isSeedancePipelineModel(pipelineVideoModel) ? pipelineVideoModel : null);
-    if (isLuxury && !preferredVideoModel) {
+    const seedanceModelsToTry = seedancePipelineModels.length
+      ? seedancePipelineModels
+      : (!isLuxury && _isSeedancePipelineModel(pipelineVideoModel) ? [pipelineVideoModel] : []);
+    if (isLuxury && !seedanceModelsToTry.length) {
       const detail = providerErrors.length ? `已按模型调用管理顺序尝试：${providerErrors.join('；').slice(0, 800)}` : '没有可用的剧情广告图生视频模型';
       throw new Error(`剧情广告图生视频生成失败：${detail}`);
     }
     const { _seedanceAVGenerate } = require('../services/avatarService');
-    const { apiKey, model, providerId } = _getSeedanceAdConfig(preferredVideoModel);
-    const clips = [];
+    const seedanceAttempts = seedanceModelsToTry.length ? seedanceModelsToTry : [null];
+    let clips = [];
+    let selectedVideoModel = null;
+    let selectedVideoProviderId = 'seedance';
+    let selectedVideoModelId = '';
     const luxuryVideoPersonAsset = isLuxury && payload.person_asset && typeof payload.person_asset === 'object'
       ? payload.person_asset
       : null;
@@ -21587,8 +21592,20 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       _dhKbQuery(title, text, scenePrompt, keyframes, scenes, adMode, adStyle),
       { limit: 4, maxCharsPerDoc: 520 }
     );
-    try {
-      for (let i = 0; i < keyframes.length; i++) {
+    let seedanceCompleted = false;
+    for (const seedanceAttemptModel of seedanceAttempts) {
+      let attemptClips = [];
+      let apiKey;
+      let model;
+      let providerId;
+      try {
+        ({ apiKey, model, providerId } = _getSeedanceAdConfig(seedanceAttemptModel));
+        _taskPatch(taskId, {
+          stage: 'video',
+          progress: 45,
+          message: `尝试 ${providerId === 'webang-seedance' ? '微众 Seedance' : 'Seedance'} ${model}`,
+        });
+        for (let i = 0; i < keyframes.length; i++) {
         const kf = isLuxury ? _mergeLuxurySceneIntoKeyframe(keyframes[i], _luxurySceneForKeyframe(scenes, keyframes[i], i)) : keyframes[i];
         if (isLuxury) _assertLuxuryI2VScriptReady(kf, i);
         _taskPatch(taskId, { stage: 'video', progress: 45 + Math.round((i / keyframes.length) * 35), message: `${isLuxury ? '生成剧情广告镜头' : '生成广告镜头'} ${i + 1}/${keyframes.length}` });
@@ -21654,12 +21671,31 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         } else {
           fs.writeFileSync(clipPath, videoBuffer);
         }
-        clips.push(clipPath);
+        attemptClips.push(clipPath);
       }
-    } catch (seedanceErr) {
-      providerErrors.push(`${model}: ${seedanceErr.message}`);
-      const detail = providerErrors.length ? `；已尝试：${providerErrors.join('；').slice(0, 500)}` : '';
-      throw new Error(`${isLuxury ? '剧情广告' : '广告'}图生视频生成失败：${seedanceErr.message}${detail}`);
+        clips = attemptClips;
+        selectedVideoModel = seedanceAttemptModel;
+        selectedVideoProviderId = providerId;
+        selectedVideoModelId = model;
+        seedanceCompleted = true;
+        break;
+      } catch (seedanceErr) {
+        const label = seedanceAttemptModel ? _pipelineModelLabel(seedanceAttemptModel) : (model || 'seedance');
+        providerErrors.push(`${label}: ${seedanceErr.message}`);
+        console.error('[DH/space-ad/storyboard] Seedance pipeline failed:', label, seedanceErr.message);
+        for (const clipPath of attemptClips) {
+          try { if (clipPath && fs.existsSync(clipPath)) fs.unlinkSync(clipPath); } catch {}
+        }
+        _taskPatch(taskId, {
+          stage: 'topview_i2v_error',
+          progress: 54,
+          message: `Seedance video failed, trying next provider: ${seedanceErr.message}`,
+        });
+      }
+    }
+    if (!seedanceCompleted) {
+      const detail = providerErrors.length ? `；已尝试：${providerErrors.join('；').slice(0, 800)}` : '';
+      throw new Error(`${isLuxury ? '剧情广告' : '广告'}图生视频生成失败${detail}`);
     }
 
     _taskPatch(taskId, { stage: 'post_effects', progress: 84, message: isLuxury ? '平滑拼接剧情广告镜头' : '平滑拼接广告镜头' });
@@ -21757,10 +21793,10 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       ratio: aspectRatio,
       output_size: outputSize,
       resolution: _outputSizeString(aspectRatio, outputSize),
-      model,
-      provider_id: preferredVideoModel?.provider_id || 'seedance',
-      pipeline_video_provider: preferredVideoModel?.provider_id || 'seedance',
-      pipeline_video_model: model,
+      model: selectedVideoModelId,
+      provider_id: selectedVideoModel?.provider_id || selectedVideoProviderId || 'seedance',
+      pipeline_video_provider: selectedVideoModel?.provider_id || selectedVideoProviderId || 'seedance',
+      pipeline_video_model: selectedVideoModelId,
       created_at: productAdTasks.get(taskId)?.created_at || new Date().toISOString(),
     };
     productAdTasks.set(taskId, { ...productAdTasks.get(taskId), ...taskData, progress: 100, updated_at: new Date().toISOString() });

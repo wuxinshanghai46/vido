@@ -12593,13 +12593,17 @@
         };
         const elapsed = Math.round((Date.now() - start) / 1000);
         const stg = stageMap[t.stage] || { name: '⏳ 等待中', sub: '' };
+        const remoteErrorText = String(t.error || t.error_message || t.errorMessage || '').trim();
+        const remoteStatus = (remoteErrorText && t.status !== 'done' && t.status !== 'ready') ? 'error' : (t.status || 'running');
+        const remoteStage = remoteStatus === 'error' ? 'error' : (t.stage || 'running');
         syncRunningTask(taskId, {
           ...meta,
-          status: t.status || 'running',
-          stage: t.stage || 'running',
+          status: remoteStatus,
+          stage: remoteStage,
           elapsed,
           videoUrl: t.video_url || t.videoUrl || meta.videoUrl,
-          error: t.error || '',
+          error: remoteErrorText,
+          message: t.message || remoteErrorText || '',
           subtitleBurned: !!t.subtitle_burned,
           subtitleWarning: t.subtitle_warning || '',
           snapshot: t,
@@ -12661,22 +12665,22 @@
           toast(`🎉 ${meta.avatarName || ''} 渲染完成`, 'success');
           return;
         }
-        if (t.status === 'error') {
+        if (remoteStatus === 'error') {
           clearInterval(meta.pollTimer);
           state.s3.runningTasks.delete(taskId);
           upsertVideoTask({
             ...meta,
             taskId,
             status: 'error',
-            stage: t.stage || 'error',
+            stage: remoteStage,
             elapsed,
-            error: t.error || '渲染失败',
+            error: remoteErrorText || '渲染失败',
           });
           if (box) box.innerHTML = `<div class="dh-render-stage">
             <div class="dh-render-stage-name" style="color:var(--dh-error)">❌ 渲染失败</div>
-            <div class="dh-render-stage-sub">${escapeHtml(t.error || '')}</div>
+            <div class="dh-render-stage-sub">${escapeHtml(remoteErrorText || '')}</div>
           </div>`;
-          toast(`渲染失败：${meta.avatarName || ''} · ${t.error || ''}`, 'error');
+          toast(`渲染失败：${meta.avatarName || ''} · ${remoteErrorText || ''}`, 'error');
           return;
         }
 
