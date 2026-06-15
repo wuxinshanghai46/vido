@@ -3936,6 +3936,7 @@
   }
   const DH_TASK_STORE_KEY = 'dh_video_tasks_v1';
   const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
+  const TERMINAL_ERROR_TASK_STATUSES = new Set(['error', 'invalid', 'timeout', 'failed']);
 
   function readVideoTasks() {
     try {
@@ -4075,11 +4076,19 @@
   function mergeLuxuryTaskGroup(items = []) {
     const list = items.filter(Boolean);
     if (list.length <= 1) return list[0] || null;
+    const taskTime = (t = {}) => Number(t.updatedAt || t.startedAt || Date.parse(t.updated_at || t.created_at || '') || 0) || 0;
+    const newestFirst = list.slice().sort((a, b) => taskTime(b) - taskTime(a));
     const projectTask = list.find(t => t.isLuxuryProjectDraft);
-    const activeTask = list.find(t => ACTIVE_TASK_STATUSES.has(t.status));
-    const doneTask = list.find(t => t.status === 'done' && (t.videoUrl || t.video_url));
-    const newest = list.slice().sort((a, b) => (b.startedAt || b.updatedAt || 0) - (a.startedAt || a.updatedAt || 0))[0];
-    const primary = activeTask || doneTask || projectTask || newest;
+    const activeTask = newestFirst.find(t => ACTIVE_TASK_STATUSES.has(t.status));
+    const errorTask = newestFirst.find(t => TERMINAL_ERROR_TASK_STATUSES.has(t.status));
+    const doneTask = newestFirst.find(t => t.status === 'done' && (t.videoUrl || t.video_url));
+    const newest = newestFirst[0];
+    const primary = doneTask
+      || (errorTask && (!activeTask || taskTime(errorTask) >= taskTime(activeTask)) ? errorTask : null)
+      || activeTask
+      || errorTask
+      || projectTask
+      || newest;
     return {
       ...(projectTask || {}),
       ...(primary || {}),
@@ -4798,6 +4807,8 @@
       status: t.status || 'done',
       stage: t.stage || (t.status === 'done' ? 'done' : ''),
       progress: Number(t.progress) || (t.status === 'done' ? 100 : 0),
+      error: t.error || t.message || '',
+      message: t.message || t.error || '',
       avatarName: t.title || t.avatarName || getTaskTypeLabel(taskType),
       textPreview: t.text || t.textPreview || '',
       videoUrl: t.videoUrl || t.video_url || '',
@@ -4814,7 +4825,7 @@
       keyframes: t.keyframes || [],
       clips: t.clips || t.clip_urls || [],
       startedAt,
-      updatedAt: Date.now(),
+      updatedAt: Date.parse(t.updated_at || t.updatedAt || t.created_at || '') || Date.now(),
     };
   }
 
