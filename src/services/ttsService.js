@@ -18,7 +18,7 @@ const http = require('http');
  * @param {object} options - { gender: 'female'|'male', speed: 1.0, voiceId: null }
  * @returns {string|null} 生成的音频文件路径，失败返回 null
  */
-async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null } = {}) {
+async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '' } = {}) {
   if (!text || !text.trim()) return null;
 
   if (voiceId && String(voiceId).startsWith('hifly:')) {
@@ -32,7 +32,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
 
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
-    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch });
+    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction });
     if (result) {
       console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`);
       return _postProcessAudio(result);
@@ -44,7 +44,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const chain = [
-    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId } },
+    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId, instruction } },
     { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId } },
   ];
 
@@ -205,7 +205,7 @@ async function uploadVoiceToFishAudio(voiceFilePath, voiceName, apiKey) {
   });
 }
 
-async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0 }) {
+async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0, instruction = '' }) {
   const db = require('../models/database');
   const voice = db.getVoice(voiceId);
   if (!voice?.file_path || !fs.existsSync(voice.file_path)) {
@@ -229,7 +229,7 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     if (!aliyun.hasKey()) {
       throw new Error('未配置阿里 CosyVoice API Key（去后台 AI 配置 → aliyun-tts 设置）');
     }
-    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch });
+    const result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction });
     if (result && fs.existsSync(result) && fs.statSync(result).size > 100) {
       console.log(`[TTS] 阿里 CosyVoice 定制音色合成成功: ${voice.name} voice_id=${voice.aliyun_voice_id}`);
       return result;
@@ -602,11 +602,11 @@ async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, v
 
 // 阿里 TTS 现在统一走 aliyunVoiceService.synthesize（CosyVoice WebSocket）
 // CosyVoice 已经不支持 HTTP REST 了，旧的 cosyvoice-v1 HTTP 端点已停服
-async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey }) {
+async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey, instruction = '' }) {
   const voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
   const aliyun = require('./aliyunVoiceService');
   // aliyunVoiceService.synthesize 自动从 voice id 推断 model（v3-flash for 预设/v3.5-plus for 真克隆）
-  return aliyun.synthesize(text, voice, outputPath, { speed, pitch });
+  return aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction });
 }
 
 async function _downloadUrlToFile(url, outputPath) {

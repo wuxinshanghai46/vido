@@ -229,9 +229,10 @@ async function waitForEnroll(taskOrVoiceId) {
 // 内存 LRU 缓存：同 voice_id + text + speed 命中直接复制结果文件，省 5-10 秒 WebSocket 时间
 const _synthCache = new Map();  // key → cachedFilePath
 const _CACHE_MAX = 200;
-const _CACHE_VERSION = 'cosyvoice-direct-voice-v2';
-function _cacheKey(voiceId, text, speed, pitch, format) {
-  return `${_CACHE_VERSION}::${voiceId}::${format}::${speed}::${pitch}::${text.length}::${text.slice(0,80)}::${require('crypto').createHash('md5').update(text).digest('hex').slice(0,12)}`;
+const _CACHE_VERSION = 'cosyvoice-direct-voice-v3-instruct';
+function _cacheKey(voiceId, text, speed, pitch, format, instruction = '') {
+  const instHash = instruction ? require('crypto').createHash('md5').update(String(instruction)).digest('hex').slice(0, 10) : 'noinst';
+  return `${_CACHE_VERSION}::${voiceId}::${format}::${speed}::${pitch}::${instHash}::${text.length}::${text.slice(0,80)}::${require('crypto').createHash('md5').update(text).digest('hex').slice(0,12)}`;
 }
 function _cacheGet(key) {
   const v = _synthCache.get(key);
@@ -263,9 +264,10 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
   const outPath = outputPath.replace(/\.[^.]+$/, '') + '.' + format;
   const safeSpeed0 = Math.min(2.0, Math.max(0.5, Number(opts.speed) || 0.85));
   const safePitch0 = Math.min(2.0, Math.max(0.5, Number(opts.pitch) || 1));
+  const instruction = String(opts.instruction || opts.stylePrompt || '').replace(/\s+/g, ' ').trim().slice(0, 500);
 
   // 缓存命中：直接复制
-  const cKey = _cacheKey(voiceId, cleanText, safeSpeed0, safePitch0, format);
+  const cKey = _cacheKey(voiceId, cleanText, safeSpeed0, safePitch0, format, instruction);
   if (!opts.skipCache) {
     const cached = _cacheGet(cKey);
     if (cached) {
@@ -340,6 +342,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
             volume: 50,
             rate: safeSpeed,
             pitch: safePitch,
+            ...(instruction ? { instruction } : {}),
           },
           input: {},
         },
