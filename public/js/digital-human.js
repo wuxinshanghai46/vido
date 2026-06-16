@@ -4727,7 +4727,10 @@
       const elapsedLabel = t.isLuxuryProjectDraft ? '已保存' : `&#24050;&#29992; ${escapeHtml(elapsed)}`;
       const created = t.startedAt ? new Date(t.startedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
       const videoUrl = t.videoUrl || t.video_url || '';
-      const poster = t.thumbnailUrl || t.thumbnail_url || t.imageUrl || t.image_url || t.previewUrl || '';
+      const onDemandPoster = (!t.isLuxuryProjectDraft && videoUrl && t.taskId)
+        ? `/api/dh/videos/tasks/${encodeURIComponent(t.taskId)}/thumbnail`
+        : '';
+      const poster = onDemandPoster || t.thumbnailUrl || t.thumbnail_url || t.imageUrl || t.image_url || t.previewUrl || '';
       const posterUrl = poster ? withAuthQuery(poster) : '';
       const playableVideoUrl = videoUrl ? withAuthQuery(videoUrl) : '';
       const taskRatio = String(t.ratio || t.aspectRatio || t.aspect_ratio || t.resolution || '').toLowerCase();
@@ -13502,9 +13505,8 @@
 
       const renderCard = (t) => {
         const url = t.videoUrl || t.video_url;
-        const tokenQ = state.token ? ('?token=' + encodeURIComponent(state.token)) : '';
-        const onDemandPoster = `/api/dh/videos/tasks/${t.id}/thumbnail${tokenQ}`;
-        const poster = t.thumbnail_url || t.imageUrl || t.image_url || onDemandPoster;
+        const onDemandPoster = `/api/dh/videos/tasks/${encodeURIComponent(t.id)}/thumbnail`;
+        const poster = (url && t.id ? onDemandPoster : '') || t.thumbnail_url || t.imageUrl || t.image_url || onDemandPoster;
         const title = t.title || '未命名';
         const when = t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : '';
         const posterUrl = poster ? withAuthQuery(poster) : '';

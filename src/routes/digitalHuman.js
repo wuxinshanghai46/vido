@@ -25093,15 +25093,16 @@ router.get('/videos/tasks', (req, res) => {
       if (!kind) {
         kind = (t.title && /预览样片|sample/i.test(t.title)) ? 'sample' : 'production';
       }
-      // 统一 thumbnail_url：优先已有 image_url（生成数字人时的形象图），
-      // 否则走 on-demand 首帧端点（懒生成，第一次访问时 ffmpeg 抽帧+缓存）
+      // 统一 thumbnail_url：有视频时优先走 on-demand 首帧端点，避免成片卡片显示分镜/角色图。
+      // 无视频时才回退到生成过程中的图片资产。
       const hasVideo = !!(t.videoUrl || t.video_url || t.local_path || t.videoPath);
       const onDemandThumbnail = hasVideo ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
       const imageUrl = _localJimengAssetUrl(t.image_url || t.imageUrl, req);
       const thumbnailCandidate = _localJimengAssetUrl(t.thumbnail_url, req);
-      const thumbnail_url = (!_isStaleJimengAssetUrl(thumbnailCandidate) && thumbnailCandidate)
+      const fallbackThumbnail = (!_isStaleJimengAssetUrl(thumbnailCandidate) && thumbnailCandidate)
         || (!_isStaleJimengAssetUrl(imageUrl) && imageUrl)
-        || onDemandThumbnail;
+        || null;
+      const thumbnail_url = onDemandThumbnail || fallbackThumbnail;
       const video_url = _localJimengAssetUrl(t.video_url || t.videoUrl, req);
       const videoUrl = _localJimengAssetUrl(t.videoUrl || t.video_url, req);
       return { ...t, kind, image_url: imageUrl || t.image_url, thumbnail_url, video_url, videoUrl };
