@@ -12623,28 +12623,8 @@ async function _generateLuxuryRealisticActorPackage({
     forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
     prompt: `CONSISTENT REAL CAMPAIGN CHARACTER ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes required by the confirmed script. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
   };
-  try {
-    const { loadSettings, getApiKey } = require('../services/settingsService');
-    const { ensureWebangImageAsset, webangProviderAssetGroupId, findWebangSeedanceProvider } = require('../services/videoService');
-    const settings = loadSettings();
-    const webangProvider = findWebangSeedanceProvider(settings);
-    const webangApiKey = (webangProvider?.id ? getApiKey(webangProvider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
-    const webangGroupId = webangProviderAssetGroupId(webangProvider || {});
-    if (webangProvider && webangApiKey && actorAsset.image_url) {
-      const webangAsset = await ensureWebangImageAsset({
-        provider: webangProvider,
-        apiKey: webangApiKey,
-        imageUrl: actorAsset.image_url,
-        filename: actorAsset.actor_id || actorAsset.actor_asset_id,
-      });
-      actorAsset.webang_asset_url = webangAsset.assetUrl;
-      actorAsset.webang_asset_id = webangAsset.assetId;
-      actorAsset.webang_asset_group_id = webangAsset.groupId || webangGroupId;
-      actorAsset.asset_library_provider = 'webang-seedance';
-    }
-  } catch (err) {
-    console.warn('[Luxury Actor] Webang asset upload skipped:', err.message);
-  }
+  // Keep actor package creation provider-neutral. Webang MediaKit upload happens only
+  // when the selected video model is Webang Seedance; Topview uses its own upload flow.
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
   return { actorAsset, outputs, attempts };
