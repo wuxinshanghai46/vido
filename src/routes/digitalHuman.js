@@ -12403,19 +12403,12 @@ async function _generateLuxuryPersonSheetWithPipeline({
         console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed before image output, try next configured model:`, shortError(err));
         continue;
       }
-      const qa = err?.details && typeof err.details === 'object' ? err.details : {};
-      const canTryNextForRealismOnlyQa = !!candidatePath
-        && String(err?.code || '') === 'LUXURY_ACTOR_FRAMING_QA_FAILED'
-        && qa.realistic_photo !== true
-        && qa.lower_body_visible === true
-        && qa.trousers_or_skirt_visible === true
-        && /^(full_body|knee_up|thigh_up)$/i.test(String(qa.framing || ''))
-        && i < configuredModels.length - 1;
-      if (canTryNextForRealismOnlyQa) {
-        console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed realism QA, try next configured model:`, shortError(err));
+      const canTryNextAfterRejectedCandidate = !!candidatePath && i < configuredModels.length - 1;
+      if (canTryNextAfterRejectedCandidate) {
+        console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} candidate rejected by QA, try next configured model:`, shortError(err));
         continue;
       }
-      // 中文说明：头像/半身/裁切等构图失败仍立即停止；构图合格但真实质感不足时，上方允许切换一次后续模型。
+      // 中文说明：坏候选图不入库；只有全部模型都试完仍不通过时才停止。
       stoppedAfterGeneratedCandidate = !!candidatePath;
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed, stop without retry:`, shortError(err));
       break;
@@ -12425,7 +12418,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   const skippedModels = configuredModels
     .map(model => `${model.provider_id}/${model.model_id}`)
     .filter(key => !attemptedKeys.has(key));
-  const err = new Error(`${stageId} 未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${stoppedAfterGeneratedCandidate ? '；已有候选图未通过 QA，已按单次失败策略停止' : ''}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
+  const err = new Error(`${stageId} 未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${stoppedAfterGeneratedCandidate ? '；所有已尝试候选图均未通过 QA，未写入演员库' : ''}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
   err.status = 502;
   err.code = stoppedAfterGeneratedCandidate ? 'LUXURY_PERSON_SHEET_CANDIDATE_FAILED_STOPPED' : 'LUXURY_PERSON_SHEET_NO_MODEL_OUTPUT';
   err.luxuryKeyframeAttempts = attempts;
