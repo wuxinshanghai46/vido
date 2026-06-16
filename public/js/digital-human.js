@@ -4798,6 +4798,78 @@
     return next;
   }
 
+  const DH_TASK_DONE_NOTICE_KEY = 'dh_task_done_notices_v1';
+  function readTaskDoneNotices() {
+    try {
+      const ids = JSON.parse(localStorage.getItem(DH_TASK_DONE_NOTICE_KEY) || '[]');
+      return new Set(Array.isArray(ids) ? ids.map(String) : []);
+    } catch {
+      return new Set();
+    }
+  }
+  function markTaskDoneNotified(taskId) {
+    const id = String(taskId || '');
+    if (!id) return false;
+    const notices = readTaskDoneNotices();
+    if (notices.has(id)) return false;
+    notices.add(id);
+    try {
+      localStorage.setItem(DH_TASK_DONE_NOTICE_KEY, JSON.stringify(Array.from(notices).slice(-200)));
+    } catch {}
+    return true;
+  }
+  function focusCompletedTaskInCenter(task = {}) {
+    const type = getTaskType(task);
+    if (type) state.activeTaskType = type;
+    state.activeTaskStatus = 'done';
+    rememberTaskCenterState();
+  }
+  function announceCompletedVideoTask(task = {}, opts = {}) {
+    if (!task?.taskId || !(task.videoUrl || task.video_url)) return;
+    if (opts.focus !== false) focusCompletedTaskInCenter(task);
+    renderTaskCenter();
+    renderRunningTasksBanner();
+    refreshTaskProgressModal();
+    warmVideoPreviews([task.videoUrl || task.video_url]);
+    if (opts.toast !== false && markTaskDoneNotified(task.taskId)) {
+      toast(`🎉 ${task.avatarName || getTaskTypeLabel(getTaskType(task))} 生成完成，已保存到作品库`, 'success');
+    }
+  }
+  function completeVideoTaskFromRemote(taskId, meta = {}, remote = {}, elapsed = 0, opts = {}) {
+    if (meta.pollTimer) clearInterval(meta.pollTimer);
+    const doneVideoUrl = remote.video_url || remote.videoUrl || meta.videoUrl || meta.video_url || '';
+    const completed = {
+      ...meta,
+      taskId,
+      status: 'done',
+      stage: 'done',
+      progress: 100,
+      elapsed,
+      videoUrl: doneVideoUrl,
+      error: '',
+      message: '',
+      subtitleBurned: !!remote.subtitle_burned,
+      subtitleWarning: remote.subtitle_warning || '',
+      snapshot: remote || meta.snapshot || null,
+      scenes: remote.scenes || meta.scenes || meta.createDetail?.scenes || [],
+      keyframes: remote.keyframes || meta.keyframes || meta.createDetail?.keyframes || [],
+      clips: remote.clips || remote.clip_urls || meta.clips || meta.createDetail?.clips || [],
+      production_project_id: taskProjectId(remote) || taskProjectId(meta),
+      projectId: taskProjectId(remote) || taskProjectId(meta),
+      createDetail: {
+        ...(meta.createDetail || {}),
+        scenes: remote.scenes || meta.createDetail?.scenes || [],
+        keyframes: remote.keyframes || meta.createDetail?.keyframes || [],
+        clips: remote.clips || remote.clip_urls || meta.createDetail?.clips || [],
+        shotCount: remote.shot_count || meta.createDetail?.shotCount || '',
+      },
+    };
+    state.s3.runningTasks.delete(taskId);
+    upsertVideoTask(completed);
+    announceCompletedVideoTask(completed, opts);
+    return completed;
+  }
+
   function replaceRetriedTask(oldTaskId, newTaskId) {
     const oldMeta = state.s3.runningTasks.get(oldTaskId);
     if (oldMeta?.pollTimer) clearInterval(oldMeta.pollTimer);
@@ -5055,6 +5127,7 @@
       const remoteTasks = (r?.data || []).map(normalizeRemoteVideoTask).filter(Boolean);
       if (remoteTasks.length) {
         const merged = new Map(local.map(t => [String(t.taskId), t]));
+        const newlyCompleted = [];
         const remoteDoneByProject = new Map();
         remoteTasks.filter(taskDoneWithPlayableVideo).forEach(t => {
           const projectId = taskProjectId(t);
@@ -5062,7 +5135,9 @@
         });
         remoteTasks.forEach(t => {
           const old = merged.get(String(t.taskId)) || {};
-          merged.set(String(t.taskId), mergeStoredTaskWithRemote(old, t));
+          const next = mergeStoredTaskWithRemote(old, t);
+          merged.set(String(t.taskId), next);
+          if (taskDoneWithPlayableVideo(next) && old.status !== 'done') newlyCompleted.push(next);
         });
         local.filter(isTaskTerminalError).forEach(old => {
           const projectId = taskProjectId(old);
@@ -5070,9 +5145,17 @@
           if (!matched) return;
           merged.delete(String(old.taskId));
           const current = merged.get(String(matched.taskId)) || {};
-          merged.set(String(matched.taskId), mergeStoredTaskWithRemote({ ...old, ...current }, matched));
+          const next = mergeStoredTaskWithRemote({ ...old, ...current }, matched);
+          merged.set(String(matched.taskId), next);
+          if (taskDoneWithPlayableVideo(next)) newlyCompleted.push(next);
         });
         writeVideoTasks(Array.from(merged.values()));
+        newlyCompleted.forEach(t => {
+          const running = state.s3.runningTasks.get(t.taskId);
+          if (running?.pollTimer) clearInterval(running.pollTimer);
+          state.s3.runningTasks.delete(t.taskId);
+          announceCompletedVideoTask(t);
+        });
       } else {
         renderTaskCenter();
       }
@@ -12995,29 +13078,8 @@
         refreshTaskProgressModal();
 
         const doneVideoUrl = t.video_url || t.videoUrl;
-        if (t.status === 'done' && doneVideoUrl) {
-          clearInterval(meta.pollTimer);
-          state.s3.runningTasks.delete(taskId);
-          upsertVideoTask({
-            ...meta,
-            taskId,
-            status: 'done',
-            stage: 'done',
-            elapsed,
-            videoUrl: doneVideoUrl,
-            subtitleBurned: !!t.subtitle_burned,
-            subtitleWarning: t.subtitle_warning || '',
-            scenes: t.scenes || meta.scenes || meta.createDetail?.scenes || [],
-            keyframes: t.keyframes || meta.keyframes || meta.createDetail?.keyframes || [],
-            clips: t.clips || t.clip_urls || meta.clips || meta.createDetail?.clips || [],
-            createDetail: {
-              ...(meta.createDetail || {}),
-              scenes: t.scenes || meta.createDetail?.scenes || [],
-              keyframes: t.keyframes || meta.createDetail?.keyframes || [],
-              clips: t.clips || t.clip_urls || meta.createDetail?.clips || [],
-              shotCount: t.shot_count || meta.createDetail?.shotCount || '',
-            },
-          });
+        if ((t.status === 'done' || t.status === 'ready') && doneVideoUrl) {
+          const completed = completeVideoTaskFromRemote(taskId, meta, t, elapsed);
           // 字幕状态提示（让用户知道字幕到底烧没烧上）
           let subtitleNote = '';
           if (t.subtitle_warning) {
@@ -13026,17 +13088,16 @@
             subtitleNote = `<div style="margin-top:6px;padding:6px 10px;background:rgba(33,255,243,0.06);border:1px solid var(--dh-primary);border-radius:6px;font-size:12px;color:var(--dh-primary)">✅ 字幕已烧录到视频</div>`;
           }
           if (box) box.innerHTML = `<div class="dh-render-stage">
-            <div class="dh-render-stage-name">✅ 生成完成 · ${escapeHtml(meta.avatarName || '')}</div>
+            <div class="dh-render-stage-name">✅ 生成完成 · ${escapeHtml(completed.avatarName || '')}</div>
             <div class="dh-render-stage-sub">耗时 ${elapsed}s · 已自动保存到作品库</div>
           </div>
-          <video class="dh-render-video" src="${doneVideoUrl}" controls playsinline></video>
+          <video class="dh-render-video" src="${escapeHtml(doneVideoUrl)}" controls playsinline></video>
           ${subtitleNote}
           <div style="display:flex;gap:6px;margin-top:8px">
             <a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(withAuthQuery(doneVideoUrl))}" download>⬇ 下载</a>
             <button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">📚 作品库</button>
           </div>`;
           warmVideoPreviews([doneVideoUrl]);
-          toast(`🎉 ${meta.avatarName || ''} 渲染完成`, 'success');
           return;
         }
         if (remoteStatus === 'error') {
