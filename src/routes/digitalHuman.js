@@ -2048,7 +2048,7 @@ async function _checkIsFullBodyImage(localPath) {
   }
 }
 
-async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single' } = {}) {
+async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
   if (!localPath || !fs.existsSync(localPath)) {
     const err = new Error('演员包图片文件不存在，无法做构图质检');
     err.status = 500;
@@ -2056,9 +2056,27 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     throw err;
   }
   const peopleCount = Math.max(1, Math.min(5, Math.round(Number(expectedPeople) || 1)));
+  const requiredGender = /female|woman|girl|女/.test(String(expectedGender || '').toLowerCase())
+    ? 'female'
+    : (/male|man|boy|男/.test(String(expectedGender || '').toLowerCase()) ? 'male' : '');
   const sharp = _loadSharp();
   if (sharp) {
-    await sharp(localPath).rotate().metadata();
+    const meta = await sharp(localPath).rotate().metadata();
+    const width = Number(meta.width) || 0;
+    const height = Number(meta.height) || 0;
+    if (width && height && height < width * 1.12) {
+      const err = new Error(`演员包构图 QA 未通过：图片不是竖构图演员定妆照（${width}x${height}），容易形成横向半身肖像；必须生成 9:16 竖图并露出裤子/下半身。`);
+      err.status = 422;
+      err.code = 'LUXURY_ACTOR_FRAME_ORIENTATION_FAILED';
+      err.details = {
+        pass: false,
+        width,
+        height,
+        framing: 'landscape_or_not_vertical',
+        reason: 'actor package image must be vertical 9:16 or near-vertical casting photo',
+      };
+      throw err;
+    }
   }
   const isMultiCast = peopleCount > 1;
   const castLabel = castMode === 'group' ? 'group/multi-person cast' : (castMode === 'dual' ? 'two-person dialogue cast' : 'single-person cast');
@@ -2066,8 +2084,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'You are a strict QA gate for a commercial actor asset package.',
     'The attached image is one generated actor reference photo.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"gender_presentation":"male|female|ambiguous|unknown","realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
     `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
+    requiredGender ? `Hard fail if the visible actor gender presentation is not ${requiredGender}. The user explicitly selected ${requiredGender}; do not pass an opposite-gender actor.` : '',
     isMultiCast
       ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
       : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
@@ -2084,6 +2103,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   });
   const mismatches = _cleanQaList(parsed.major_mismatches, 140, 6);
   const framing = String(parsed.framing || '').toLowerCase();
+  const observedGender = String(parsed.gender_presentation || parsed.gender || '').toLowerCase();
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const lowerBodyVisible = parsed.lower_body_visible === true;
   const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true;
@@ -2092,9 +2112,11 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     ? Math.max(0, Math.round(Number(parsed.person_count)))
     : (parsed.single_person === true ? 1 : 0);
   const peopleOk = isMultiCast ? parsedPersonCount === peopleCount : parsed.single_person === true;
+  const genderOk = !requiredGender || observedGender === requiredGender;
   const pass = parsed.pass === true
     && score >= 82
     && peopleOk
+    && genderOk
     && parsed.realistic_photo === true
     && lowerBodyVisible
     && lowerGarmentVisible
@@ -2107,6 +2129,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     expected_people: peopleCount,
     person_count: parsedPersonCount,
     cast_mode: castMode || 'single',
+    expected_gender: requiredGender,
+    gender_presentation: observedGender || 'unknown',
+    gender_match: genderOk,
     single_person: parsed.single_person === true,
     realistic_photo: parsed.realistic_photo === true,
     lower_body_visible: lowerBodyVisible,
@@ -2118,9 +2143,10 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     provider,
   };
   if (!pass) {
-    const err = new Error(`演员包构图 QA 未通过：${qa.reason || qa.observed || '未达到全身/膝上参考照要求'}；framing=${qa.framing}，lower_body=${qa.lower_body_visible}，garment=${qa.trousers_or_skirt_visible}`);
+    const genderMsg = requiredGender && !genderOk ? `；gender=${qa.gender_presentation}，expected=${requiredGender}` : '';
+    const err = new Error(`演员包构图 QA 未通过：${qa.reason || qa.observed || '未达到全身/膝上参考照要求'}；framing=${qa.framing}，lower_body=${qa.lower_body_visible}，garment=${qa.trousers_or_skirt_visible}${genderMsg}`);
     err.status = 422;
-    err.code = 'LUXURY_ACTOR_FRAMING_QA_FAILED';
+    err.code = requiredGender && !genderOk ? 'LUXURY_ACTOR_GENDER_QA_FAILED' : 'LUXURY_ACTOR_FRAMING_QA_FAILED';
     err.details = qa;
     throw err;
   }
@@ -12201,7 +12227,7 @@ function _isLuxuryActorCropQaFailure(err) {
     qa.observed,
     ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
   ].filter(Boolean).join(' ');
-  return /LUXURY_ACTOR_(FRAME|FRAMING)_QA_FAILED/i.test(String(err?.code || ''))
+  return /LUXURY_ACTOR_(FRAME|FRAMING).*FAILED/i.test(String(err?.code || ''))
     && (
       /headshot|bust|shoulders|chest|waist|hip|hips|upper thigh|half-body|cropp|lower[-_\s]?body|garment|trousers|skirt|legs|shoes|头像|胸像|半身|肩|胸|腰|髋|裁切|下半身|腿|鞋/i.test(text)
       || /^(headshot|bust|waist_up|chest_up|shoulders_only|half_body|other|unknown)$/.test(framing)
@@ -12210,8 +12236,15 @@ function _isLuxuryActorCropQaFailure(err) {
     );
 }
 
-function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single' } = {}) {
+function _isLuxuryActorGenderQaFailure(err) {
+  return /LUXURY_ACTOR_GENDER_QA_FAILED/i.test(String(err?.code || ''));
+}
+
+function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const gender = /female|woman|girl|女/.test(String(expectedGender || '').toLowerCase())
+    ? 'female'
+    : (/male|man|boy|男/.test(String(expectedGender || '').toLowerCase()) ? 'male' : '');
   const castLabel = castMode === 'dual'
     ? 'two independent cast members'
     : (castMode === 'group' ? `${people} independent cast members` : 'one standalone person');
@@ -12224,6 +12257,7 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
     `CRITICAL FULL-BODY REFRAME RETRY for a ${aspectRatio} actor reference photo.`,
     qaNote ? `The previous candidate failed framing QA: ${qaNote}.` : 'The previous candidate failed because the person was cropped or too close.',
     `Generate a NEW pulled-back studio casting photo of ${castLabel}.`,
+    gender ? `The visible actor gender presentation must be ${gender}; do not generate an opposite-gender actor.` : '',
     people === 1
       ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
@@ -12328,6 +12362,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   outputSize = 'hd',
   expectedPeople = 1,
   castMode = 'single',
+  expectedGender = '',
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
@@ -12343,7 +12378,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       ok: !!ok,
       code: err?.code || '',
       error: err ? shortError(err) : '',
-      qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING)/.test(String(err.code || '')) ? err.details : null,
+      qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING|GENDER)/.test(String(err.code || '')) ? err.details : null,
       ...extra,
     });
   };
@@ -12436,6 +12471,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
         model: `${model.provider_id}/${model.model_id}`,
         expectedPeople,
         castMode,
+        expectedGender,
       });
       addAttempt(model, true);
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
@@ -12444,12 +12480,13 @@ async function _generateLuxuryPersonSheetWithPipeline({
       const candidatePath = outPath || err._luxuryCandidatePath || '';
       if (candidatePath) rejectedCandidateCount += 1;
       addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
-      if (candidatePath && _isLuxuryActorCropQaFailure(err)) {
+      if (candidatePath && (_isLuxuryActorCropQaFailure(err) || _isLuxuryActorGenderQaFailure(err))) {
         const retryPrompt = _buildLuxuryActorFullBodyRetryPrompt(prompt, {
           qa: err.details || {},
           aspectRatio: safeAspectRatio,
           expectedPeople,
           castMode,
+          expectedGender,
         });
         let retryPath = '';
         try {
@@ -12459,6 +12496,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
             model: `${model.provider_id}/${model.model_id}`,
             expectedPeople,
             castMode,
+            expectedGender,
           });
           addAttempt(model, true, null, { retry: 'full_body_reframe' });
           return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
@@ -12746,6 +12784,11 @@ async function _generateLuxuryRealisticActorPackage({
     ? 'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.'
     : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
+  const genderHardLock = gender.value === 'female'
+    ? 'USER SELECTED GENDER LOCK: generate a female-presenting woman/girl as age-appropriate; do not generate a male-presenting actor.'
+    : (gender.value === 'male'
+      ? 'USER SELECTED GENDER LOCK: generate a male-presenting man/boy as age-appropriate; do not generate a female-presenting actor.'
+      : '');
   const wardrobe = expectedPeople === 1
     ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
     : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
@@ -12754,11 +12797,11 @@ async function _generateLuxuryRealisticActorPackage({
   const framingContract = expectedPeople > 1
     ? `CRITICAL FRAMING LOCK: ${expectedPeople}-person full-cast identity reference photo. Show every required cast member from head to shoes whenever possible; at minimum show each person's head, torso and lower body below the hips. Do not crop any required cast member at chest, waist or hips.`
     : (youngerSubject
-      ? `CRITICAL FRAMING LOCK: ${normalizedActorAspectRatio} identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.`
-      : `CRITICAL FRAMING LOCK: ${normalizedActorAspectRatio} identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.`);
+      ? 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.'
+      : 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.');
   const hardFramingLead = [
     // 中文说明：生图 prompt 只保留正向构图要求；负向 AI 脸/半身判断留给 QA，降低上游提交审核误伤。
-    expectedPeople > 1 ? `FULL-CAST IDENTITY REFERENCE PHOTO WITH EXACTLY ${expectedPeople} PEOPLE.` : `${normalizedActorAspectRatio} FULL-BODY IDENTITY REFERENCE PHOTO.`,
+    expectedPeople > 1 ? `FULL-CAST IDENTITY REFERENCE PHOTO WITH EXACTLY ${expectedPeople} PEOPLE.` : 'VERTICAL 9:16 FULL-BODY IDENTITY REFERENCE PHOTO.',
     expectedPeople > 1
       ? `Camera is pulled far enough back to show all ${expectedPeople} people with head, torso, hips, legs and shoes or age-appropriate lower bodies in one frame.`
       : 'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
@@ -12774,6 +12817,7 @@ async function _generateLuxuryRealisticActorPackage({
     positiveFaceContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
+    genderHardLock,
     ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
     framingContract,
@@ -12825,6 +12869,7 @@ async function _generateLuxuryRealisticActorPackage({
       outputSize: 'hd',
       expectedPeople,
       castMode,
+      expectedGender: gender.value,
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
     outputs.push({
@@ -12925,6 +12970,12 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       auto_real_adult: { en: 'real human selected from the advertising brief age/person contract', lock: '' },
     };
     const selectedGender = genderMap[String(spec.genderAge || spec.gender_age || '')] || null;
+    const specGender = String(spec.gender || spec.sex || '').toLowerCase();
+    const selectedSpecGender = /female|all_female|woman|girl|女/.test(specGender)
+      ? { en: 'user selected female actor; visible gender presentation must be female', lock: 'Hard lock: keep every generated actor candidate female-presenting.' }
+      : (/male|all_male|man|boy|男/.test(specGender)
+        ? { en: 'user selected male actor; visible gender presentation must be male', lock: 'Hard lock: keep every generated actor candidate male-presenting.' }
+        : null);
     const descriptionText = String(description || '').trim();
     const inferredFemale = /女性|女主|女士|女人|woman|female/i.test([descriptionText, text].join(' '));
     const inferredMale = /男性|男主|男士|男人|man|male/i.test([descriptionText, text].join(' '));
@@ -12934,7 +12985,8 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     const userOutfit = String(spec.outfit || spec.wardrobe || spec.outfit_hint || '').trim();
     // 中文说明：这里不再使用角色/服装枚举兜底，避免把任何行业误导成主持人、顾问或商务场景。
     const roleHint = [
-      selectedGender?.en || '',
+      selectedSpecGender?.en || selectedGender?.en || '',
+      selectedSpecGender?.lock || '',
       userRole ? `User provided role hint, must still be validated against brief/script: ${userRole}` : '',
       userOutfit ? `User provided wardrobe hint, must still be validated against brief/script: ${userOutfit}` : '',
       descriptionText,

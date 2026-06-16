@@ -6127,7 +6127,6 @@
     spec.person_count = spec.expected_people;
     const current = state.luxuryAd.personAsset || null;
     if (current && luxuryAdActorReferenceKind(current) === 'ai_generated') {
-      spec.gender = 'auto';
       spec.origin = spec.origin || 'east_asian_cn';
     }
     return spec;
