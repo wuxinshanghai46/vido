@@ -12400,6 +12400,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       code: err?.code || '',
       error: err ? shortError(err) : '',
       qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING|GENDER)/.test(String(err.code || '')) ? err.details : null,
+      provider_request: err?.providerRequest || null,
       ...extra,
     });
   };
@@ -12463,13 +12464,25 @@ async function _generateLuxuryPersonSheetWithPipeline({
           preferredModel: model.model_id,
         });
       }
+      const providerReferenceImages = modelId === 'gpt-image-2'
+        ? (await Promise.all(refs.map((url, refIdx) =>
+          _prepareDeyunaiGptImage2ReferenceUrl(req, url, { kind: 'person_sheet', index: refIdx })
+            .catch(err => {
+              console.warn(`[DH/luxury-ad/person-sheet] gpt-image-2 reference prepare failed #${refIdx + 1}:`, shortError(err));
+              return '';
+            })
+        ))).filter(Boolean)
+        : refs;
+      if (modelId === 'gpt-image-2' && refs.length) {
+        console.log(`[DH/luxury-ad/person-sheet] prepared ${providerReferenceImages.length}/${refs.length} refs for deyunai gpt-image-2 clean public JPEG`);
+      }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
         prompt: promptText,
         aspectRatio: safeAspectRatio,
         filename: `${filename}_person_${idx}${suffix}`,
         destDir,
-        referenceImages: refs,
+        referenceImages: providerReferenceImages,
         outputSize,
       });
     }
