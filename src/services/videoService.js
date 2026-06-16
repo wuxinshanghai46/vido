@@ -1372,20 +1372,15 @@ function _normaliseWebangOpenBaseUrl(apiUrl = '') {
 }
 
 function _webangAssetBaseUrls(provider = {}) {
-  const explicit = String(
+  const base = String(
     provider.webang_asset_api_url
     || provider.asset_api_url
     || process.env.WEBANG_SEEDANCE_ASSET_API_URL
     || process.env.WEBANG_ASSET_API_URL
-    || ''
+    || provider.api_url
+    || 'https://test-tk.iserviceapi.com/api'
   ).trim().replace(/\/+$/, '');
-  if (explicit) return [_normaliseWebangBaseUrl(explicit)];
-
-  const root = _normaliseWebangApiRoot(provider.api_url).replace(/\/api$/, '');
-  return [
-    _normaliseWebangBaseUrl(provider.api_url),
-    `${root}/v1`,
-  ];
+  return [_normaliseWebangBaseUrl(base)];
 }
 
 async function _webangAssetRequest(provider, apiKey, method, pathName, body = null, timeoutMs = 60000) {
@@ -1405,16 +1400,19 @@ function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutM
   return new Promise((resolve, reject) => {
     const urlObj = new URL(baseUrl + pathName);
     const bodyStr = body ? JSON.stringify(body) : '';
+    const headers = {
+      'Authorization': 'Bearer ' + apiKey,
+      'User-Agent': 'VIDO/1.0'
+    };
+    if (bodyStr) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
     const req = https.request({
       hostname: urlObj.hostname,
       path: urlObj.pathname + (urlObj.search || ''),
       method,
-      headers: {
-        'Authorization': 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(bodyStr),
-        'User-Agent': 'VIDO/1.0'
-      }
+      headers
     }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
@@ -1682,7 +1680,7 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
     const content = [{ type: 'text', text: promptText }];
     if (image_url) {
       const imageAsset = await _ensureWebangImageAsset({ provider, apiKey, imageUrl: image_url, filename });
-      content.push({ type: 'image_url', image_url: { url: imageAsset.assetUrl }, role: 'reference_image' });
+      content.push({ type: 'image_url', image_url: { url: imageAsset.assetUrl } });
     }
 
     const body = {
