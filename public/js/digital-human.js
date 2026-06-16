@@ -4079,6 +4079,41 @@
     return next;
   }
 
+  function taskDoneWithPlayableVideo(task = {}) {
+    const status = String(task.status || '').toLowerCase();
+    return (status === 'done' || status === 'ready') && !!(task.videoUrl || task.video_url);
+  }
+
+  function taskProjectId(task = {}) {
+    return String(
+      task.production_project_id
+      || task.productionProjectId
+      || task.project_id
+      || task.projectId
+      || task.retryPayload?.production_project_id
+      || task.retryPayload?.project_id
+      || task.createDetail?.productionProjectId
+      || ''
+    ).trim();
+  }
+
+  function mergeStoredTaskWithRemote(oldTask = {}, remoteTask = {}) {
+    const done = taskDoneWithPlayableVideo(remoteTask);
+    return {
+      ...oldTask,
+      ...remoteTask,
+      taskId: remoteTask.taskId || oldTask.taskId,
+      status: done ? 'done' : (remoteTask.status || oldTask.status),
+      stage: done ? 'done' : (remoteTask.stage || oldTask.stage),
+      progress: done ? 100 : (remoteTask.progress ?? oldTask.progress),
+      videoUrl: remoteTask.videoUrl || remoteTask.video_url || oldTask.videoUrl || '',
+      error: done ? '' : (remoteTask.error || oldTask.error || ''),
+      message: done ? '' : (remoteTask.message || oldTask.message || ''),
+      projectId: taskProjectId(remoteTask) || taskProjectId(oldTask),
+      production_project_id: taskProjectId(remoteTask) || taskProjectId(oldTask),
+    };
+  }
+
   function removeStoredVideoTask(taskId) {
     writeVideoTasks(readVideoTasks().filter(t => String(t.taskId) !== String(taskId)));
   }
@@ -4657,13 +4692,16 @@
         ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>`
         : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
       const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
+      const idLabel = t.isLuxuryProjectDraft
+        ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
+        : `ID ${String(t.taskId).slice(0, 8)}`;
       return `<div class="dh-task-card ${active ? 'active' : ''}" data-task-id="${escapeHtml(t.taskId)}">
         ${preview}
         <div class="dh-task-main">
           <div class="dh-task-head">
             <div>
               <div class="dh-task-title">${escapeHtml(t.avatarName || '\u6570\u5b57\u4eba\u4efb\u52a1')}</div>
-              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ID ${escapeHtml(String(t.taskId).slice(0, 8))} · ${escapeHtml(created)}</div>
+              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)} · ${escapeHtml(created)}</div>
             </div>
             <span class="dh-task-status ${escapeHtml(t.status || '')}">${getTaskStatusText(t.status)}</span>
           </div>
@@ -4955,9 +4993,22 @@
       const remoteTasks = (r?.data || []).map(normalizeRemoteVideoTask).filter(Boolean);
       if (remoteTasks.length) {
         const merged = new Map(local.map(t => [String(t.taskId), t]));
+        const remoteDoneByProject = new Map();
+        remoteTasks.filter(taskDoneWithPlayableVideo).forEach(t => {
+          const projectId = taskProjectId(t);
+          if (projectId && !remoteDoneByProject.has(projectId)) remoteDoneByProject.set(projectId, t);
+        });
         remoteTasks.forEach(t => {
           const old = merged.get(String(t.taskId)) || {};
-          merged.set(String(t.taskId), { ...old, ...t });
+          merged.set(String(t.taskId), mergeStoredTaskWithRemote(old, t));
+        });
+        local.filter(isTaskTerminalError).forEach(old => {
+          const projectId = taskProjectId(old);
+          const matched = projectId ? remoteDoneByProject.get(projectId) : null;
+          if (!matched) return;
+          merged.delete(String(old.taskId));
+          const current = merged.get(String(matched.taskId)) || {};
+          merged.set(String(matched.taskId), mergeStoredTaskWithRemote({ ...old, ...current }, matched));
         });
         writeVideoTasks(Array.from(merged.values()));
       } else {

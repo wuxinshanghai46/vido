@@ -608,6 +608,11 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
     global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
     bgm_asset: compactBgmAsset,
+    avatar_task_id: result.avatar_task_id || result.task_id || body.avatar_task_id || existing?.avatar_task_id || '',
+    video_url: result.video_url || result.videoUrl || body.video_url || body.videoUrl || existing?.video_url || '',
+    videoUrl: result.videoUrl || result.video_url || body.videoUrl || body.video_url || existing?.videoUrl || '',
+    clips: Array.isArray(result.clips) ? result.clips : (Array.isArray(existing?.clips) ? existing.clips : []),
+    clip_urls: Array.isArray(result.clip_urls) ? result.clip_urls : (Array.isArray(existing?.clip_urls) ? existing.clip_urls : []),
     keyframe_generation_status: result.keyframe_generation_status || existing?.keyframe_generation_status || '',
     reference_mode: result.reference_mode || existing?.reference_mode || '',
     // 中文注释：保存前端制作中的真实快照，刷新/清缓存后任务中心可以继续恢复，不做行业或场景写死。
@@ -21829,6 +21834,38 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
     productAdTasks.set(taskId, { ...productAdTasks.get(taskId), ...taskData, progress: 100, updated_at: new Date().toISOString() });
     if (!db.getAvatarTask(taskId)) db.insertAvatarTask(taskData);
     else db.updateAvatarTask(taskId, taskData);
+    if (isLuxury && linkedProductionProjectId) {
+      try {
+        _upsertLuxuryAdProductionProject(req, {
+          ...payload,
+          production_project_id: linkedProductionProjectId,
+          project_id: linkedProductionProjectId,
+          text,
+          title: title || '剧情广告',
+          duration_sec: durationSec,
+          aspectRatio,
+          outputSize,
+        }, {
+          scenes,
+          keyframes,
+          clips: clipAssets,
+          clip_urls: taskData.clip_urls,
+          video_url: taskData.video_url,
+          videoUrl: taskData.videoUrl,
+          avatar_task_id: taskId,
+          task_id: taskId,
+          ratio: aspectRatio,
+          output_size: outputSize,
+          resolution: taskData.resolution,
+        }, {
+          project_state: 'video_ready',
+          error: '',
+          error_code: '',
+        });
+      } catch (projectErr) {
+        console.warn('[DH/luxury-ad] project video_ready sync failed:', projectErr.message);
+      }
+    }
   } catch (err) {
     console.error('[DH/space-ad/storyboard] failed:', err);
     _taskPatch(taskId, { status: 'error', stage: 'error', error: err.message, message: err.message });
