@@ -385,9 +385,11 @@ function saveSettings(data) {
 function getApiKey(providerId) {
   try {
     const settings = loadSettings();
-    const p = settings.providers.find(p => {
+    const providers = (settings.providers || []).filter(p => p && p.enabled !== false);
+    const exact = providers.find(p => p.id === providerId || p.preset === providerId);
+    if (exact?.api_key) return exact.api_key || '';
+    const p = providers.find(p => {
       if (!(p.enabled !== false)) return false;
-      if (p.id === providerId || p.preset === providerId) return true;
       if (providerId === 'webang-seedance') {
         const text = [
           p.id,

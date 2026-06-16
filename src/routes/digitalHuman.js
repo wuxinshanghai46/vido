@@ -6961,6 +6961,7 @@ async function _runInstantIDForProduct({ apiKey, refFaceUrl, poseImageUrl, promp
 
 function _getSeedanceAdConfig(preferred = null) {
   const { loadSettings } = require('../services/settingsService');
+  const { findWebangSeedanceProvider } = require('../services/videoService');
   const settings = loadSettings();
   const providers = settings.providers || [];
   const isWebangProvider = provider => {
@@ -6980,6 +6981,7 @@ function _getSeedanceAdConfig(preferred = null) {
     p = _findRunnableSeedanceProvider(preferred);
     if (!p) throw new Error(`模型调用管理配置了 ${preferred.provider_id}/${preferred.model_id}，但该供应商或模型未启用`);
   }
+  if (!p) p = findWebangSeedanceProvider(settings);
   if (!p) p = providers.find(x => x.enabled && x.api_key && (
       /火山方舟|seedance|^ark$/i.test(x.name || x.id || '') || String(x.id || '').includes('202604')
     ));
@@ -12528,12 +12530,9 @@ async function _generateLuxuryRealisticActorPackage({
   };
   try {
     const { loadSettings, getApiKey } = require('../services/settingsService');
-    const { ensureWebangImageAsset, webangProviderAssetGroupId } = require('../services/videoService');
+    const { ensureWebangImageAsset, webangProviderAssetGroupId, findWebangSeedanceProvider } = require('../services/videoService');
     const settings = loadSettings();
-    const webangProvider = (settings.providers || []).find(p => {
-      const text = [p.id, p.preset, p.name, p.api_url, ...(Array.isArray(p.models) ? p.models.map(m => m && m.id) : [])].filter(Boolean).join(' ');
-      return p.enabled !== false && /webang|微众|test-tk\.iserviceapi\.com|iserviceapi\.com/i.test(text);
-    });
+    const webangProvider = findWebangSeedanceProvider(settings);
     const webangApiKey = (webangProvider?.id ? getApiKey(webangProvider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
     const webangGroupId = webangProviderAssetGroupId(webangProvider || {});
     if (webangProvider && webangApiKey && actorAsset.image_url) {

@@ -1379,7 +1379,7 @@ function _webangAssetBaseUrls(provider = {}) {
     || process.env.WEBANG_ASSET_API_URL
     || ''
   ).trim().replace(/\/+$/, '');
-  if (explicit) return [explicit];
+  if (explicit) return [_normaliseWebangBaseUrl(explicit)];
 
   const root = _normaliseWebangApiRoot(provider.api_url).replace(/\/api$/, '');
   return [
@@ -1423,7 +1423,14 @@ function _webangRequest(method, baseUrl, pathName, apiKey, body = null, timeoutM
         let json = null;
         try { json = text ? JSON.parse(text) : {}; } catch {}
         if (res.statusCode >= 400) {
-          const msg = json?.error?.message || json?.message || text.substring(0, 500);
+          const msg = json?.error?.message
+            || json?.Error?.Message
+            || json?.error?.code
+            || json?.Error?.Code
+            || json?.message
+            || text.substring(0, 500)
+            || res.statusMessage
+            || 'empty response';
           return reject(new Error(`微众 Seedance HTTP ${res.statusCode}: ${msg}`));
         }
         if (!json) return reject(new Error('微众 Seedance 返回格式错误: ' + text.substring(0, 300)));
@@ -1637,12 +1644,26 @@ function _isWebangSeedanceProvider(provider = {}) {
 }
 
 // ——— 微众 Seedance 2.0（一站式 AI 模型服务平台，OpenAI-compatible /api/v1）———
+function _webangProviderPriority(provider = {}) {
+  if (provider.id === 'webang-seedance' || provider.preset === 'webang-seedance') return 0;
+  if (/webang|寰紬/i.test([provider.id, provider.preset, provider.name].filter(Boolean).join(' '))) return 1;
+  if (/test-tk\.iserviceapi\.com|iserviceapi\.com/i.test(String(provider.api_url || ''))) return 2;
+  if (String(provider.id || '').startsWith('api-key-')) return 3;
+  return 4;
+}
+
+function _findWebangSeedanceProvider(settings = {}) {
+  return (settings.providers || [])
+    .filter(p => p && p.enabled !== false && _isWebangSeedanceProvider(p))
+    .sort((a, b) => _webangProviderPriority(a) - _webangProviderPriority(b))[0] || null;
+}
+
 async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   let provider = null;
   try {
     const settings = loadSettings();
-    provider = (settings.providers || []).find(p => p.enabled !== false && _isWebangSeedanceProvider(p));
+    provider = _findWebangSeedanceProvider(settings);
   } catch {}
   const apiKey = (provider?.id ? getApiKey(provider.id) : '') || getApiKey('webang-seedance') || process.env.WEBANG_SEEDANCE_API_KEY;
   if (!apiKey) throw new Error('未配置微众 Seedance API Key');
@@ -2282,4 +2303,5 @@ module.exports = {
   generateVideoClip,
   ensureWebangImageAsset: _ensureWebangImageAsset,
   webangProviderAssetGroupId: _webangProviderAssetGroupId,
+  findWebangSeedanceProvider: _findWebangSeedanceProvider,
 };
