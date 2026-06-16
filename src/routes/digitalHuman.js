@@ -2574,6 +2574,10 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   const pass = boolField('pass');
   const subjectMatch = boolField('subject_match');
   const storyboardMatch = boolField('storyboard_match');
+  const actorRealisticPhoto = boolField('realistic_photo');
+  const lowerBodyVisible = boolField('lower_body_visible');
+  const lowerGarmentVisible = boolField('trousers_or_skirt_visible');
+  const kneesOrShoesVisible = boolField('knees_or_shoes_visible');
   const scoreMatch = text.match(/["']?score["']?\s*:\s*(\d{1,3})/i);
   const score = Math.max(0, Math.min(100, Number(scoreMatch?.[1]) || (pass ? 86 : 35)));
   const numberField = name => {
@@ -2582,6 +2586,7 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
     return m ? Math.max(0, Math.min(100, Number(m[1]) || 0)) : null;
   };
   if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
+  const actorQaShape = /realistic_photo|lower_body_visible|trousers_or_skirt_visible|gender_presentation|person_count|framing/i.test(text);
   const ok = pass === true
     && subjectMatch !== false
     && storyboardMatch !== false
@@ -2612,6 +2617,16 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
       ? 'Vision QA JSON repaired from positive malformed response.'
       : 'Vision QA returned malformed JSON with explicit reject or weak match fields.',
     repaired_from_malformed_json: ok,
+    ...(actorQaShape ? {
+      framing: (text.match(/["']?framing["']?\s*:\s*["']?([a-z_ -]{3,32})["']?/i)?.[1] || '').trim(),
+      person_count: numberField('person_count'),
+      single_person: boolField('single_person'),
+      gender_presentation: (text.match(/["']?gender_presentation["']?\s*:\s*["']?(male|female|ambiguous|unknown)["']?/i)?.[1] || '').trim(),
+      realistic_photo: actorRealisticPhoto === null ? ok : actorRealisticPhoto,
+      lower_body_visible: lowerBodyVisible === null ? ok : lowerBodyVisible,
+      trousers_or_skirt_visible: lowerGarmentVisible === null ? ok : lowerGarmentVisible,
+      knees_or_shoes_visible: kneesOrShoesVisible === null ? ok : kneesOrShoesVisible,
+    } : {}),
   };
 }
 
@@ -12614,6 +12629,65 @@ function _luxuryActorAgeSafetyPrompt(age = {}) {
   return 'Age-appropriate commercial styling; do not force business clothing unless the brief requires it.';
 }
 
+function _luxuryCastCharactersFromSpec(spec = {}) {
+  const sources = []
+    .concat(Array.isArray(spec.cast_characters) ? spec.cast_characters : [])
+    .concat(Array.isArray(spec.characters) ? spec.characters : [])
+    .concat(Array.isArray(spec.character_profiles) ? spec.character_profiles : []);
+  const seen = new Set();
+  return sources
+    .filter(x => x && typeof x === 'object')
+    .map((c, i) => {
+      const gender = _normalizeLuxuryRequestedGender(c.gender || c.sex || '');
+      const item = {
+        name: _luxuryStrictText(c.name || c.character || c.label || `角色${i + 1}`, 40),
+        role: _luxuryStrictText(c.role || c.identity || c.job || c.position || `角色${i + 1}`, 80),
+        gender,
+        age: _luxuryStrictText(c.age || c.age_range || c.ageRange || '', 80),
+        origin: _luxuryStrictText(c.origin || c.region || c.ethnicity || c.race || '', 80),
+        appearance: _luxuryStrictText(c.appearance || c.look || c.visual_description || c.description || '', 180),
+        outfit: _luxuryStrictText(c.outfit || c.clothing || c.wardrobe || '', 140),
+      };
+      const key = [item.name, item.role, item.gender, item.age, item.appearance].join('|').replace(/\s+/g, '');
+      if (!key || seen.has(key)) return null;
+      seen.add(key);
+      return item;
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function _luxuryCastMemberGenderFromSpec(spec = {}, index = 0, castMode = 'single') {
+  const raw = String(spec.gender || spec.genderAge || spec.gender_age || '').toLowerCase();
+  const selected = _normalizeLuxuryRequestedGender(raw);
+  const members = _luxuryCastCharactersFromSpec(spec);
+  const memberGender = _normalizeLuxuryRequestedGender(members[index]?.gender || '');
+  if (memberGender) return memberGender;
+  if (raw === 'all_male') return 'male';
+  if (raw === 'all_female') return 'female';
+  if (raw === 'mixed' || raw === 'auto' || raw === 'neutral' || raw === 'any') return 'auto';
+  if (castMode === 'single') return selected || 'auto';
+  // 中文说明：多人/双人里的 male/female 只作为主角色偏好。
+  // 真正需要全员同属性时，前端有 all_male/all_female，不能把男女对话误杀成全女性或全男性。
+  if (selected && index === 0) return selected;
+  return 'auto';
+}
+
+function _luxuryCastMemberRoleHint(member = {}, memberName = '', memberNo = 1, total = 1) {
+  const parts = [
+    member.name ? `角色名：${member.name}` : memberName,
+    member.role ? `角色关系/身份：${member.role}` : '',
+    member.gender ? `性别：${member.gender}` : '',
+    member.age ? `年龄：${member.age}` : '',
+    member.origin ? `地域/种族：${member.origin}` : '',
+    member.appearance ? `外观：${member.appearance}` : '',
+    member.outfit ? `服装：${member.outfit}` : '',
+  ].filter(Boolean);
+  return parts.length
+    ? `第 ${memberNo}/${total} 个演员成员的剧本人物表：${parts.join('；')}。`
+    : '';
+}
+
 function _luxuryActorPositiveFaceContract({ age = {} } = {}) {
   const value = String(age.value || '').toLowerCase();
   if (/infant|toddler|child|teen/.test(value)) {
@@ -12691,28 +12765,31 @@ async function _generateLuxuryRealisticActorPackage({
     const attempts = [];
     const castLabel = castMode === 'dual' ? '双人' : '多人';
     const castName = castMode === 'dual' ? 'AI 真人感双人演员组' : 'AI 真人感多人演员组';
-    const memberGender = (index) => {
-      const raw = String(spec.gender || '').toLowerCase();
-      if (raw === 'all_male' || raw === 'male') return 'male';
-      if (raw === 'all_female' || raw === 'female') return 'female';
-      return 'auto';
-    };
+    const castCharacters = _luxuryCastCharactersFromSpec(spec);
     for (let i = 0; i < expectedPeople; i += 1) {
       const memberNo = i + 1;
+      const memberCharacter = castCharacters[i] || {};
       const memberName = castMode === 'dual'
         ? `角色${memberNo === 1 ? 'A' : 'B'}`
         : `角色${memberNo}`;
+      const memberGender = _luxuryCastMemberGenderFromSpec(spec, i, castMode);
       const memberSpec = {
         ...spec,
         castMode: 'single',
         cast_mode: 'single',
-        gender: memberGender(i),
+        gender: memberGender,
         cast_member_index: memberNo,
         cast_member_count: expectedPeople,
+        cast_member_role: memberCharacter.role || memberName,
+        cast_member_name: memberCharacter.name || memberName,
       };
       const memberRoleHint = [
         roleHint,
+        _luxuryCastMemberRoleHint(memberCharacter, memberName, memberNo, expectedPeople),
         `${castLabel}演员组的${memberName}：只生成这一个独立人物，不要同框生成其他人，不要复用其他成员五官。`,
+        memberGender === 'auto'
+          ? 'This cast member gender must follow the script character table and role relationship; do not force the global primary gender onto every member.'
+          : `This cast member has a locked visible gender presentation: ${memberGender}.`,
         `This is independent cast member ${memberNo} of ${expectedPeople}; generate exactly one standalone person reference package for this member only.`,
       ].filter(Boolean).join('；');
       const memberPack = await _generateLuxuryRealisticActorPackage({
@@ -12734,7 +12811,8 @@ async function _generateLuxuryRealisticActorPackage({
         cast_member_index: memberNo,
         cast_member_count: expectedPeople,
         cast_role: memberName,
-        name: `${castName}${memberName}`,
+        script_character: memberCharacter,
+        name: memberCharacter.name ? `${castName}${memberName} · ${memberCharacter.name}` : `${castName}${memberName}`,
       };
       castAssets.push(memberAsset);
       outputs.push(...(memberPack.outputs || []).map(x => ({ ...x, cast_member_index: memberNo, cast_role: memberName })));

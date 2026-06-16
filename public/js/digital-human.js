@@ -6125,6 +6125,32 @@
       ? Math.max(3, Math.min(6, characterCount || Number(spec.expected_people) || 3))
       : (spec.castMode === 'dual' ? 2 : 1);
     spec.person_count = spec.expected_people;
+    const characterSources = []
+      .concat(Array.isArray(state.luxuryAd.briefInfo?.characters) ? state.luxuryAd.briefInfo.characters : [])
+      .concat(...(Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.map(seg => Array.isArray(seg?.characters) ? seg.characters : []) : []))
+      .concat(...(Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.map(seg => Array.isArray(seg?.character_profiles) ? seg.character_profiles : []) : []));
+    const seenCharacters = new Set();
+    spec.cast_characters = characterSources
+      .map((c, i) => typeof c === 'string' ? { name: c, role: i === 0 ? '角色A' : `角色${i + 1}` } : (c || {}))
+      .map((c, i) => {
+        const gender = luxuryPersonGenderSpecValue(c.gender || c.sex || '');
+        return {
+          name: normalizeLuxuryCharacterName(c.name || c.character || c.label, i === 0 ? '角色A' : `角色${i + 1}`),
+          role: normalizeLuxuryCharacterRole(c.role || c.identity || c.job || c.position, i === 0 ? '主角色' : '互动角色'),
+          gender,
+          age: c.age || c.age_range || '',
+          origin: luxuryPersonOriginSpecValue(c.origin || c.region || c.ethnicity || c.race || '') || '',
+          appearance: cleanLuxuryCharacterField(c.appearance || c.look || c.visual_description || c.description || ''),
+          outfit: cleanLuxuryCharacterField(c.outfit || c.clothing || c.wardrobe || ''),
+        };
+      })
+      .filter(c => {
+        const key = [c.name, c.role, c.gender, c.age, c.appearance].join('|').replace(/\s+/g, '');
+        if (!key || seenCharacters.has(key)) return false;
+        seenCharacters.add(key);
+        return true;
+      })
+      .slice(0, Math.max(1, Math.min(6, Number(spec.expected_people) || 1)));
     const current = state.luxuryAd.personAsset || null;
     if (current && luxuryAdActorReferenceKind(current) === 'ai_generated') {
       spec.origin = spec.origin || 'east_asian_cn';
