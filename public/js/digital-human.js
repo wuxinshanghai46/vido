@@ -3581,13 +3581,12 @@
 
   function renderProgressPreview(stageName, sub, elapsed, meta = {}) {
     const pct = getTaskProgressPercent({ ...meta, elapsed });
-    const remain = elapsed != null ? Math.max(1, Math.ceil((180 - Math.min(170, elapsed)) / 60)) : 4;
     return `<div class="dh-progress-clean">
       <div class="dh-progress-clean-title">${escapeHtml(stageName || '生成中')}</div>
       <div class="dh-progress-ring" style="--p:${pct}">
         <span>${pct}%</span>
       </div>
-      <div class="dh-progress-clean-sub">${escapeHtml(sub || '')} · 预计约 ${remain} 分钟</div>
+      <div class="dh-progress-clean-activity" aria-hidden="true"><i></i></div>
     </div>`;
   }
 

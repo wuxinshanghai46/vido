@@ -524,11 +524,16 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-render-stage-sub { font-size: 11px; color: var(--dh-text-muted); }
 .dh-render-video { width: 100%; aspect-ratio: 9/16; border-radius: var(--dh-radius-sm); background: var(--dh-bg); margin-top: 8px; }
 .dh-progress-clean { flex: 1; min-height: 230px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--dh-text-muted); }
-.dh-progress-ring { --p: 8; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--dh-primary) calc(var(--p) * 1%), rgba(255,255,255,0.10) 0); position: relative; }
+.dh-progress-ring { --p: 8; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--dh-primary) calc(var(--p) * 1%), rgba(255,255,255,0.10) 0); position: relative; box-shadow: 0 0 24px rgba(33,255,243,.16); }
 .dh-progress-ring::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: var(--dh-bg-soft); }
+.dh-progress-ring::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid transparent; border-top-color: rgba(33,255,243,.82); border-right-color: rgba(172,255,47,.35); filter: drop-shadow(0 0 10px rgba(33,255,243,.35)); animation: dh-progress-spin 1.1s linear infinite; }
 .dh-progress-ring span { position: relative; z-index: 1; color: var(--dh-text); font-weight: 800; font-size: 15px; }
 .dh-progress-clean-title { color: var(--dh-text); font-size: 14px; font-weight: 900; }
 .dh-progress-clean-sub { font-size: 12px; color: var(--dh-text-muted); }
+.dh-progress-clean-activity { position: relative; width: 116px; height: 4px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.08); }
+.dh-progress-clean-activity i { position: absolute; inset: 0 auto 0 -42%; width: 42%; border-radius: inherit; background: linear-gradient(90deg, transparent, var(--dh-primary), var(--dh-accent)); animation: dh-progress-flow 1.35s ease-in-out infinite; }
+@keyframes dh-progress-spin { to { transform: rotate(360deg); } }
+@keyframes dh-progress-flow { 0% { transform: translateX(0); opacity: .35; } 45% { opacity: 1; } 100% { transform: translateX(340%); opacity: .35; } }
 
 /* ——— Toast ——— */
 .dh-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--dh-bg-elevate); color: var(--dh-text); padding: 12px 20px; border-radius: 999px; box-shadow: var(--dh-shadow-lg); border: 1px solid var(--dh-border); font-size: 13px; z-index: 99; }
