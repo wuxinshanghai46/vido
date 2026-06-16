@@ -12403,7 +12403,19 @@ async function _generateLuxuryPersonSheetWithPipeline({
         console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed before image output, try next configured model:`, shortError(err));
         continue;
       }
-      // 中文说明：只要已经产出过一张候选图但没有通过 QA，就按用户要求立即停止，不再重试或切换模型。
+      const qa = err?.details && typeof err.details === 'object' ? err.details : {};
+      const canTryNextForRealismOnlyQa = !!candidatePath
+        && String(err?.code || '') === 'LUXURY_ACTOR_FRAMING_QA_FAILED'
+        && qa.realistic_photo !== true
+        && qa.lower_body_visible === true
+        && qa.trousers_or_skirt_visible === true
+        && /^(full_body|knee_up|thigh_up)$/i.test(String(qa.framing || ''))
+        && i < configuredModels.length - 1;
+      if (canTryNextForRealismOnlyQa) {
+        console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed realism QA, try next configured model:`, shortError(err));
+        continue;
+      }
+      // 中文说明：头像/半身/裁切等构图失败仍立即停止；构图合格但真实质感不足时，上方允许切换一次后续模型。
       stoppedAfterGeneratedCandidate = !!candidatePath;
       console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed, stop without retry:`, shortError(err));
       break;
@@ -12560,7 +12572,8 @@ async function _generateLuxuryRealisticActorPackage({
   const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
     ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
     : 'single';
-  const expectedPeople = castMode === 'group' ? 3 : (castMode === 'dual' ? 2 : 1);
+  const requestedPeople = Math.max(1, Math.min(6, Math.round(Number(spec.expected_people || spec.person_count || 0) || 0)));
+  const expectedPeople = castMode === 'group' ? Math.max(3, requestedPeople || 3) : (castMode === 'dual' ? 2 : 1);
   if (expectedPeople > 1) {
     const castAssets = [];
     const outputs = [];
@@ -12873,7 +12886,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         ? `人物表/约束：${context.person_notes.slice(0, 10).join('；')}`
         : '',
     ].filter(Boolean).join('\n');
-    const actorAspectRatio = _normalizeAspectRatio(output_ratio || spec.output_ratio || spec.aspect_ratio || '9:16', '9:16');
+    // Actor references are always generated as standalone casting sheets. The
+    // final storyboard/video ratio is handled later by keyframes and I2V.
+    const actorAspectRatio = '9:16';
     const actorPack = await _generateLuxuryRealisticActorPackage({
       req,
       text,

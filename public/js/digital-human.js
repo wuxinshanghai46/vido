@@ -6113,12 +6113,61 @@
 
   function luxuryAdPersonGenerationSpec() {
     const spec = { ...luxuryAdPersonSpec() };
+    const characterCount = luxuryAdScriptCharacterCount();
+    if (characterCount >= 3 && spec.castMode !== 'single') {
+      spec.castMode = 'group';
+    } else if (characterCount === 2 && spec.castMode === 'auto') {
+      spec.castMode = 'dual';
+    } else if (characterCount === 1 && spec.castMode === 'auto') {
+      spec.castMode = 'single';
+    }
+    spec.expected_people = spec.castMode === 'group'
+      ? Math.max(3, Math.min(6, characterCount || Number(spec.expected_people) || 3))
+      : (spec.castMode === 'dual' ? 2 : 1);
+    spec.person_count = spec.expected_people;
     const current = state.luxuryAd.personAsset || null;
     if (current && luxuryAdActorReferenceKind(current) === 'ai_generated') {
       spec.gender = 'auto';
       spec.origin = spec.origin || 'east_asian_cn';
     }
     return spec;
+  }
+
+  function luxuryAdScriptCharacterCount() {
+    const names = new Set();
+    const push = value => {
+      const name = String(value?.name || value?.character_name || value?.role || value || '').replace(/\s+/g, ' ').trim();
+      if (name) names.add(name);
+    };
+    const briefChars = Array.isArray(state.luxuryAd.briefInfo?.characters) ? state.luxuryAd.briefInfo.characters : [];
+    briefChars.forEach(push);
+    (Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : []).forEach(seg => {
+      (Array.isArray(seg?.characters) ? seg.characters : []).forEach(push);
+      (Array.isArray(seg?.character_profiles) ? seg.character_profiles : []).forEach(push);
+    });
+    return names.size || briefChars.length || 0;
+  }
+
+  function luxuryCastModeExpectedPeople(castMode = 'single') {
+    const raw = String(castMode || 'single').toLowerCase();
+    if (raw === 'group') return 3;
+    if (raw === 'dual') return 2;
+    return 1;
+  }
+
+  function luxuryPlaceholderCastAssets(castMode = 'single', expectedPeople = 1) {
+    const people = Math.max(1, Math.min(6, Number(expectedPeople) || luxuryCastModeExpectedPeople(castMode)));
+    return Array.from({ length: people }, (_, index) => ({
+      cast_member_index: index + 1,
+      cast_role: String(castMode || '').toLowerCase() === 'dual'
+        ? `角色${index === 0 ? 'A' : 'B'}`
+        : `角色${index + 1}`,
+      name: String(castMode || '').toLowerCase() === 'dual'
+        ? `角色${index === 0 ? 'A' : 'B'}`
+        : `角色${index + 1}`,
+      image_url: '',
+      extra_image_urls: [],
+    }));
   }
 
   function luxuryPersonGenderLabel(value = '') {
@@ -6429,7 +6478,10 @@
   }
 
   function luxuryCastMemberAssets(asset = {}) {
-    return (Array.isArray(asset.cast_assets) ? asset.cast_assets : [])
+    const rawMembers = Array.isArray(asset.cast_assets) && asset.cast_assets.length
+      ? asset.cast_assets
+      : luxuryPlaceholderCastAssets(asset.cast_mode || asset.castMode || 'single', asset.expected_people || asset.person_count || 1);
+    return rawMembers
       .map((member, index) => {
         const urls = luxuryActorAssetUrls(member);
         return {
@@ -6440,8 +6492,7 @@
           urls,
           image_url: urls[0] || '',
         };
-      })
-      .filter(member => member.image_url);
+      });
   }
 
   function luxuryActorUrlsFromSources(...sources) {
@@ -6782,8 +6833,10 @@
           const previewIndex = Math.max(0, actorUrls.indexOf(member.image_url));
           const label = member.cast_role || (generated.cast_mode === 'dual' ? `角色${i === 0 ? 'A' : 'B'}` : `角色${i + 1}`);
           return `<button type="button" data-lux-person-preview="${previewIndex}" title="预览${escapeHtml(label)}">
-            <img src="${escapeHtml(withAuthQuery(member.image_url))}" alt="${escapeHtml(label)}">
-            <span><b>${escapeHtml(label)}</b><small>${escapeHtml((member.urls?.length || 1) + ' 张独立参考')}</small></span>
+            ${member.image_url
+              ? `<img src="${escapeHtml(withAuthQuery(member.image_url))}" alt="${escapeHtml(label)}">`
+              : `<i class="dh-lux-actor-cast-placeholder">${escapeHtml(generated.failed ? '未生成' : '生成中')}</i>`}
+            <span><b>${escapeHtml(label)}</b><small>${escapeHtml(member.image_url ? ((member.urls?.length || 1) + ' 张独立参考') : '独立人物包')}</small></span>
           </button>`;
         }).join('')}</div>`
         : '';
@@ -7934,6 +7987,13 @@
     }
     const generationSpec = luxuryAdPersonGenerationSpec();
     const personDescription = luxuryAdPersonDescription(generationSpec);
+    const generationCastMode = ['single', 'dual', 'group'].includes(String(generationSpec.castMode || '').toLowerCase())
+      ? String(generationSpec.castMode || '').toLowerCase()
+      : 'single';
+    const generationPeople = generationCastMode === 'group'
+      ? Math.max(3, Math.min(6, Number(generationSpec.expected_people || generationSpec.person_count || 3) || 3))
+      : luxuryCastModeExpectedPeople(generationCastMode);
+    const generationCastAssets = generationPeople > 1 ? luxuryPlaceholderCastAssets(generationCastMode, generationPeople) : [];
     const referenceCandidate = luxuryAdPersonAssetPayload();
     const referenceKind = luxuryAdActorReferenceKind(referenceCandidate || {});
     const referencePerson = referenceKind === 'real_photo' || referenceKind === 'synthetic_realistic_actor'
@@ -7945,9 +8005,9 @@
     state.luxuryAd.personGenerationError = null;
     const personProgressStages = [
       { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
-      { at: 2500, percent: 24, phase: '生成正面定妆照', message: '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
-      { at: 8500, percent: 48, phase: '生成侧面/半侧参考', message: '复用同一脸型、发型、服装和身形比例。' },
-      { at: 15000, percent: 70, phase: '生成动作参考照', message: '同一演员进入剧本需要的动作姿态，检查衣服和发型不漂移。' },
+      { at: 2500, percent: 24, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
+      { at: 8500, percent: 48, phase: generationPeople > 1 ? '逐个生成侧面/半侧参考' : '生成侧面/半侧参考', message: generationPeople > 1 ? '每个人单独复用自己的脸型、发型、服装和身形比例。' : '复用同一脸型、发型、服装和身形比例。' },
+      { at: 15000, percent: 70, phase: generationPeople > 1 ? '逐个生成动作参考照' : '生成动作参考照', message: generationPeople > 1 ? '每个人单独生成动作参考，不把多人混成一张图。' : '同一演员进入剧本需要的动作姿态，检查衣服和发型不漂移。' },
       { at: 22000, percent: 86, phase: '构图 QA 与素材入库', message: '检查是否看得到裤子/膝盖等下半身证据，通过后才绑定 actor_id。' },
     ];
     const updatePersonProgress = () => {
@@ -7976,7 +8036,7 @@
     const personProgressTimer = setInterval(updatePersonProgress, 1400);
     state.luxuryAd.personAsset = {
       id: 'luxury_ad_actor_package',
-      name: 'AI 真人感一致性演员',
+      name: generationPeople > 1 ? (generationCastMode === 'group' ? 'AI 真人感多人演员组' : 'AI 真人感双人演员组') : 'AI 真人感一致性演员',
       type: 'luxury_ad_actor_package',
       source: 'local_actor_library_generated',
       reference_kind: 'synthetic_realistic_actor',
@@ -7985,12 +8045,18 @@
       url: '',
       previewUrl: '',
       uploading: true,
-      view_count: 3,
+      view_count: generationPeople > 1 ? generationPeople : 3,
+      cast_mode: generationCastMode,
+      expected_people: generationPeople,
+      person_count: generationPeople,
+      cast_assets: generationCastAssets,
       gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
       age: generationSpec.age || '',
       origin: generationSpec.origin || '',
       // 中文说明：演员包只锁定人物一致性，行业、职业、年龄和动作必须由用户内容/剧本推导。
-      description: '正在根据广告需求、剧本人物表和分镜上下文生成真人感一致性演员包。',
+      description: generationPeople > 1
+        ? `正在根据广告需求、剧本人物表和分镜上下文逐个生成 ${generationPeople} 个独立真人感演员包。`
+        : '正在根据广告需求、剧本人物表和分镜上下文生成真人感一致性演员包。',
       spec_description: personDescription,
     };
     state.selectedAvatar = null;
@@ -8101,7 +8167,7 @@
       state.luxuryAd.personGenerationProgress = null;
       state.luxuryAd.personAsset = {
         id: 'luxury_ad_actor_package_failed',
-        name: 'AI 真人感一致性演员',
+        name: generationPeople > 1 ? (generationCastMode === 'group' ? 'AI 真人感多人演员组' : 'AI 真人感双人演员组') : 'AI 真人感一致性演员',
         type: 'luxury_ad_actor_package',
         source: 'local_actor_library_generated',
         reference_kind: 'synthetic_realistic_actor',
@@ -8111,7 +8177,11 @@
         previewUrl: '',
         uploading: false,
         failed: true,
-        view_count: 3,
+        view_count: generationPeople > 1 ? generationPeople : 3,
+        cast_mode: generationCastMode,
+        expected_people: generationPeople,
+        person_count: generationPeople,
+        cast_assets: generationCastAssets,
         gender: generationSpec.gender === 'male' || generationSpec.gender === 'female' ? generationSpec.gender : '',
         age: generationSpec.age || '',
         origin: generationSpec.origin || '',
