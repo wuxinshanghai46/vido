@@ -623,7 +623,16 @@
   // ══════════════ Tabs ══════════════
   const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'material-film', 'luxury-ad'];
   const DH_LAST_TAB_KEY = 'vido_dh_active_tab';
+  const DH_LAST_TASK_TYPE_KEY = 'vido_dh_active_task_type';
+  const DH_LAST_TASK_STATUS_KEY = 'vido_dh_active_task_status';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
+
+  try {
+    const savedTaskType = localStorage.getItem(DH_LAST_TASK_TYPE_KEY);
+    const savedTaskStatus = localStorage.getItem(DH_LAST_TASK_STATUS_KEY);
+    if (savedTaskType) state.activeTaskType = savedTaskType;
+    if (savedTaskStatus) state.activeTaskStatus = savedTaskStatus;
+  } catch {}
 
   function spacePaneForTab(tab) {
     if (tab === 'material-film') return 'luxury-ad';
@@ -669,7 +678,18 @@
       const urlTab = new URLSearchParams(location.search).get('tab');
       if (DH_VALID_TABS.includes(urlTab)) return urlTab;
     } catch {}
+    try {
+      const savedTab = localStorage.getItem(DH_LAST_TAB_KEY);
+      if (DH_VALID_TABS.includes(savedTab)) return savedTab;
+    } catch {}
     return 'step1';
+  }
+
+  function rememberTaskCenterState() {
+    try {
+      localStorage.setItem(DH_LAST_TASK_TYPE_KEY, state.activeTaskType || 'digital_human');
+      localStorage.setItem(DH_LAST_TASK_STATUS_KEY, state.activeTaskStatus || 'pending');
+    } catch {}
   }
 
   function switchTab(tab, opts = {}) {
@@ -4271,7 +4291,7 @@
   const warmedVideoUrls = new Set();
   function warmVideoPreviews(urls = []) {
     (urls || []).filter(Boolean).slice(0, 2).forEach(raw => {
-      const url = String(raw || '');
+      const url = withAuthQuery(String(raw || ''));
       if (!url || warmedVideoUrls.has(url)) return;
       warmedVideoUrls.add(url);
       try {
@@ -4300,6 +4320,7 @@
             <span class="dh-video-modal-title"></span>
             <button class="dh-video-modal-close" data-modal-close type="button" title="关闭">×</button>
           </div>
+          <div class="dh-video-modal-state">视频加载中...</div>
           <video class="dh-video-modal-video" controls playsinline></video>
           <div class="dh-video-modal-actions">
             <a class="dh-btn dh-btn-ghost dh-btn-sm dh-video-modal-download" download>下载</a>
@@ -4315,13 +4336,30 @@
     }
     modal.querySelector('.dh-video-modal-title').textContent = title || '预览';
     const v = modal.querySelector('.dh-video-modal-video');
-    v.preload = 'auto';
-    if (v.dataset.src !== videoUrl) {
-      v.src = videoUrl;
-      v.dataset.src = videoUrl;
-      try { v.currentTime = 0; } catch {}
+    const stateEl = modal.querySelector('.dh-video-modal-state');
+    const src = withAuthQuery(videoUrl);
+    if (stateEl) {
+      stateEl.textContent = '视频加载中...';
+      stateEl.classList.remove('error');
+      stateEl.hidden = false;
     }
-    modal.querySelector('.dh-video-modal-download').href = withAuthQuery(videoUrl);
+    v.onloadedmetadata = () => { if (stateEl) stateEl.hidden = true; };
+    v.oncanplay = () => { if (stateEl) stateEl.hidden = true; };
+    v.onerror = () => {
+      if (!stateEl) return;
+      const mediaError = v.error?.code ? `（错误码 ${v.error.code}）` : '';
+      stateEl.textContent = `视频加载失败${mediaError}，请点击下载确认文件，或刷新后重试。`;
+      stateEl.classList.add('error');
+      stateEl.hidden = false;
+    };
+    v.preload = 'auto';
+    if (v.dataset.src !== src) {
+      v.src = src;
+      v.dataset.src = src;
+      try { v.currentTime = 0; } catch {}
+      try { v.load(); } catch {}
+    }
+    modal.querySelector('.dh-video-modal-download').href = src;
     modal.classList.add('open');
     setTimeout(() => {
       stopAudibleMedia({ keep: v, reset: true });
@@ -5544,6 +5582,7 @@
   function openGeneratingTaskCenter(type = 'digital_human') {
     state.activeTaskType = type;
     state.activeTaskStatus = 'generating';
+    rememberTaskCenterState();
     renderTaskCenter();
     switchTab('tasks');
   }
@@ -14295,12 +14334,14 @@
     const taskTypeTab = closest('[data-task-type]');
     if (taskTypeTab) {
       state.activeTaskType = taskTypeTab.dataset.taskType || 'digital_human';
+      rememberTaskCenterState();
       renderTaskCenter();
       return;
     }
     const taskStatusTab = closest('[data-task-status]');
     if (taskStatusTab) {
       state.activeTaskStatus = taskStatusTab.dataset.taskStatus || 'pending';
+      rememberTaskCenterState();
       renderTaskCenter();
       return;
     }

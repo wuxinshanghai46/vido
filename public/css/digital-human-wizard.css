@@ -1350,6 +1350,9 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
   display: flex; align-items: center; justify-content: center;
 }
 .dh-video-modal-close:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.25); }
+.dh-video-modal-state { position: absolute; left: 16px; right: 16px; top: 58px; min-height: 42px; display: grid; place-items: center; padding: 10px 12px; border-radius: 8px; background: rgba(5,7,11,.72); color: var(--dh-text-soft); font-size: 13px; text-align: center; pointer-events: none; z-index: 2; }
+.dh-video-modal-state[hidden] { display: none; }
+.dh-video-modal-state.error { color: var(--dh-error); border: 1px solid rgba(255,77,109,.42); background: rgba(40,10,18,.82); }
 .dh-video-modal-video {
   width: auto; max-width: 80vw; max-height: 75vh;
   background: #000; border-radius: 8px;

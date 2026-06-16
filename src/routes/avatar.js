@@ -901,18 +901,29 @@ router.get('/tasks/:id/stream', (req, res) => {
   const stat = fs.statSync(task.videoPath);
   const range = req.headers.range;
   const etag = `"${stat.mtimeMs}-${stat.size}"`;
+  const headers = {
+    'Accept-Ranges': 'bytes',
+    'Content-Type': 'video/mp4',
+    'Cache-Control': 'private, max-age=86400',
+    'ETag': etag,
+    'Content-Disposition': 'inline',
+  };
   if (range) {
     const [s, e] = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(s, 10);
-    const end = e ? parseInt(e, 10) : stat.size - 1;
+    const start = Math.max(0, parseInt(s, 10) || 0);
+    const end = Math.min(stat.size - 1, e ? parseInt(e, 10) : stat.size - 1);
+    if (start > end || start >= stat.size) {
+      res.writeHead(416, { ...headers, 'Content-Range': `bytes */${stat.size}` });
+      return res.end();
+    }
     res.writeHead(206, {
+      ...headers,
       'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-      'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Content-Type': 'video/mp4',
-      'Cache-Control': 'no-cache', 'ETag': etag
+      'Content-Length': end - start + 1,
     });
     fs.createReadStream(task.videoPath, { start, end }).pipe(res);
   } else {
-    res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': 'video/mp4', 'Cache-Control': 'no-cache', 'ETag': etag });
+    res.writeHead(200, { ...headers, 'Content-Length': stat.size });
     fs.createReadStream(task.videoPath).pipe(res);
   }
 });
