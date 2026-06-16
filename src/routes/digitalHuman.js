@@ -1098,6 +1098,42 @@ function _voiceSegmentsFromKeyframes(keyframes, fallbackText = '') {
   }));
 }
 
+function _subtitleTextsFromVoiceSegments(segments = [], totalDuration = 0, subtitle = {}) {
+  const usable = (Array.isArray(segments) ? segments : [])
+    .map(s => ({ ...s, text: _cleanTtsSegmentText(s?.text || s?.voiceover || s?.narration || '') }))
+    .filter(s => s.text);
+  if (!usable.length) return [];
+  const total = Math.max(1, Number(totalDuration) || usable.reduce((sum, s) => sum + Math.max(1.2, String(s.text).length / 5.5), 0));
+  const weights = usable.map(s => {
+    const explicit = Number(s.duration || (Number(s.end) - Number(s.start)));
+    return Number.isFinite(explicit) && explicit > 0.2 ? explicit : Math.max(1.1, String(s.text).length / 5.5);
+  });
+  const weightTotal = weights.reduce((sum, n) => sum + n, 0) || usable.length;
+  let cursor = 0;
+  return usable.map((s, i) => {
+    const dur = i === usable.length - 1
+      ? Math.max(0.6, total - cursor)
+      : Math.max(0.8, total * (weights[i] / weightTotal));
+    const startTime = cursor;
+    const endTime = Math.min(total, startTime + dur);
+    cursor = endTime;
+    return {
+      text: s.text,
+      preset: 'subtitle',
+      style: 'subtitle',
+      subtitleStyle: subtitle?.style || 'popup',
+      smartEmphasis: subtitle?.smartEmphasis !== false,
+      position: subtitle?.style === 'comic' ? 'top-center' : 'bottom-center',
+      startTime,
+      endTime,
+      fontName: subtitle?.fontName || '抖音美好体',
+      fontSize: subtitle?.fontSize || 64,
+      color: subtitle?.color || '#FFFFFF',
+      outlineColor: subtitle?.outlineColor || '#000000',
+    };
+  }).filter(x => x.endTime > x.startTime + 0.2);
+}
+
 function _expressivePreviewSegments(text = '', segments = [], voiceDirection = '') {
   const existing = (Array.isArray(segments) ? segments : [])
     .map(s => ({ ...s, text: _cleanTtsSegmentText(s?.text || s?.voiceover || s?.narration || '') }))
@@ -7253,14 +7289,20 @@ async function _trimVideoClipToStoryboardDuration(inputPath, outputPath, duratio
 }
 
 function _probeMediaDuration(ffmpegPath, filePath, fallback = 5) {
+  const parseDuration = text => {
+    const m = String(text || '').match(/Duration:\s*(\d+):(\d+):(\d+)(?:\.(\d+))?/);
+    if (!m) return null;
+    const fraction = m[4] ? Number(`0.${m[4]}`) : 0;
+    return +m[1] * 3600 + +m[2] * 60 + +m[3] + fraction;
+  };
   try {
     const out = execFileSync(ffmpegPath, ['-i', filePath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 });
-    const m = String(out).match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
-    if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 100;
+    const parsed = parseDuration(out);
+    if (parsed !== null) return parsed;
   } catch (err) {
     const s = String(err.stderr || err.stdout || '');
-    const m = s.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/);
-    if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 100;
+    const parsed = parseDuration(s);
+    if (parsed !== null) return parsed;
   }
   return fallback;
 }
@@ -7274,18 +7316,65 @@ async function _concatVideos(videoPaths, outputPath) {
   }
 }
 
-async function _muxAudio(videoPath, audioPath, outputPath) {
-  execFileSync(_ffmpegBin(), [
+async function _muxAudio(videoPath, audioPath, outputPath, opts = {}) {
+  const ffmpeg = _ffmpegBin();
+  const videoDur = _probeMediaDuration(ffmpeg, videoPath, 0);
+  const audioDur = _probeMediaDuration(ffmpeg, audioPath, 0);
+  let sourceVideo = videoPath;
+  let copyVideo = true;
+  let targetDur = Math.max(videoDur || 0, audioDur || 0);
+  if (opts.fitVideoToAudio !== false && audioDur > videoDur + 0.18) {
+    const fitPath = outputPath.replace(/\.mp4$/i, '_fit_video.mp4');
+    const ratio = Math.min(1.28, Math.max(1.0, audioDur / Math.max(0.1, videoDur || audioDur)));
+    const stretchedDur = Math.max(0.1, (videoDur || audioDur) * ratio);
+    const padDur = Math.max(0, audioDur - stretchedDur);
+    const [w, h] = _outputPixels(opts.ratio || '9:16', opts.outputSize || 'standard');
+    const vf = [
+      `scale=${w}:${h}:force_original_aspect_ratio=increase`,
+      `crop=${w}:${h}`,
+      'setsar=1',
+      'fps=30',
+      `setpts=${ratio.toFixed(4)}*PTS`,
+      padDur > 0.05 ? `tpad=stop_mode=clone:stop_duration=${padDur.toFixed(2)}` : '',
+      'format=yuv420p',
+    ].filter(Boolean).join(',');
+    execFileSync(ffmpeg, [
+      '-y',
+      '-i', videoPath,
+      '-vf', vf,
+      '-an',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '22',
+      '-movflags', '+faststart',
+      fitPath,
+    ], { stdio: 'pipe', timeout: 240000 });
+    if (fs.existsSync(fitPath) && fs.statSync(fitPath).size > 1000) {
+      sourceVideo = fitPath;
+      copyVideo = true;
+      targetDur = audioDur;
+    }
+  }
+  const audioFilter = videoDur > audioDur + 0.18
+    ? 'apad,aformat=channel_layouts=stereo,aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=9'
+    : 'aformat=channel_layouts=stereo,aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=9,acompressor=threshold=-18dB:ratio=2.2:attack=8:release=80';
+  const args = [
     '-y',
-    '-i', videoPath,
+    '-i', sourceVideo,
     '-i', audioPath,
     '-map', '0:v:0',
     '-map', '1:a:0',
-    '-c:v', 'copy',
+    '-c:v', copyVideo ? 'copy' : 'libx264',
+    '-af', audioFilter,
     '-c:a', 'aac',
-    '-shortest',
-    outputPath,
-  ], { stdio: 'pipe', timeout: 180000 });
+    '-b:a', '160k',
+    '-movflags', '+faststart',
+  ];
+  if (targetDur > 0 && videoDur > audioDur + 0.18) {
+    args.push('-t', targetDur.toFixed(2));
+  }
+  args.push(outputPath);
+  execFileSync(ffmpeg, args, { stdio: 'pipe', timeout: 240000 });
   if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1000) {
     throw new Error('产品广告片音频合成失败');
   }
@@ -7299,6 +7388,7 @@ function _luxuryBgmAssetFromPayload(payload = {}) {
 }
 
 function _luxuryBgmRef(bgm = {}) {
+  if (!bgm || typeof bgm !== 'object') return '';
   return String(bgm.file_path || bgm.path || bgm.file_url || bgm.url || bgm.background_music_url || '').trim();
 }
 
@@ -21150,7 +21240,11 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
   const isLuxury = adMode === 'luxury_ad';
   const linkedProductionProjectId = String(productionProjectId || production_project_id || '').trim();
   const isShowroomGuide = adMode === 'showroom_guide';
-  const bgmAsset = isLuxury ? _luxuryBgmAssetFromPayload(payload) : null;
+  let bgmAsset = isLuxury ? _luxuryBgmAssetFromPayload(payload) : null;
+  if (isLuxury && !_luxuryBgmRef(bgmAsset) && linkedProductionProjectId) {
+    const existingProject = _getLuxuryAdProject(req, linkedProductionProjectId);
+    bgmAsset = existingProject?.bgm_asset || existingProject?.draft_state?.bgm_asset || bgmAsset;
+  }
   const luxuryPayloadRefCount = isLuxury && Array.isArray(payload.reference_images)
     ? payload.reference_images.filter(Boolean).length
     : 0;
@@ -21744,6 +21838,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       : _voiceSegmentsFromKeyframes(keyframes, text || title || '');
     const voiceover = voiceSegments.map(s => s.text).filter(Boolean).join('，') || text;
     let finalPath = concatPath;
+    let voiceAudioDuration = 0;
     if (voiceover) {
       try {
         _taskPatch(taskId, { message: '合成广告口播音频' });
@@ -21754,11 +21849,13 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           voiceId: voiceId || null,
           segments: voiceSegments,
           outputBase: audioBase,
+          voiceDirection,
         });
         if (!audioPath) audioPath = await generateSpeech(voiceover, audioBase, { voiceId: voiceId || null, speed: 1.0 });
+        voiceAudioDuration = _probeMediaDuration(_ffmpegBin(), audioPath, 0);
         const muxPath = path.join(taskDir, 'digital_ad_audio.mp4');
         if (isShowroomGuide) await _muxAudioWithLoopedVideo(concatPath, audioPath, muxPath, aspectRatio, outputSize);
-        else await _muxAudio(concatPath, audioPath, muxPath);
+        else await _muxAudio(concatPath, audioPath, muxPath, { ratio: aspectRatio, outputSize, fitVideoToAudio: true });
         finalPath = muxPath;
       } catch (audioErr) {
         console.warn('[DH/space-ad] voiceover failed:', audioErr.message);
@@ -21769,22 +21866,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       try {
         _taskPatch(taskId, { message: '烧录广告字幕' });
         const { applyEffects } = require('../services/effectsService');
-        let cursor = 0;
-        const texts = keyframes.filter(k => k.voiceover).map(k => {
-          const startTime = cursor;
-          cursor += Number(k.duration) || 4;
-          return {
-            text: k.voiceover,
-            preset: 'subtitle',
-            position: 'bottom',
-            startTime,
-            endTime: cursor,
-            fontName: subtitle?.fontName || '抖音美好体',
-            fontSize: subtitle?.fontSize || 64,
-            color: subtitle?.color || '#FFFFFF',
-            outlineColor: subtitle?.outlineColor || '#000000',
-          };
-        });
+        const timedDuration = voiceAudioDuration || _probeMediaDuration(_ffmpegBin(), finalPath, 0);
+        const texts = _subtitleTextsFromVoiceSegments(voiceSegments, timedDuration, subtitle);
         const fx = await applyEffects({ videoPath: finalPath, texts });
         if (fx?.outputPath && fs.existsSync(fx.outputPath)) finalPath = fx.outputPath;
       } catch (fxErr) {
@@ -21818,6 +21901,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
       generation_mode: isLuxury ? 'luxury_storyboard' : (isShowroomGuide ? 'showroom_guide' : 'storyboard'),
       ad_mode: adMode,
       ad_style: adStyle,
+      bgm_asset: isLuxury && _luxuryBgmRef(bgmAsset) ? bgmAsset : null,
       production_project_id: linkedProductionProjectId,
       project_id: linkedProductionProjectId,
       shot_count: scenes.length,
