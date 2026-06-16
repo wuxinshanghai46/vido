@@ -313,12 +313,25 @@ function setStageConfig(stageId, models) {
   // 校验：每条必须有 provider_id + model_id，priority 不能重复
   const validated = (models || [])
     .filter(m => m && m.provider_id && m.model_id)
-    .map((m, i) => ({
-      provider_id: String(m.provider_id),
-      model_id: String(m.model_id),
-      priority: Number.isFinite(+m.priority) ? +m.priority : i + 1,
-      enabled: m.enabled !== false,
-    }))
+    .map((m, i) => {
+      const item = {
+        provider_id: String(m.provider_id),
+        model_id: String(m.model_id),
+        priority: Number.isFinite(+m.priority) ? +m.priority : i + 1,
+        enabled: m.enabled !== false,
+      };
+      if (Array.isArray(m.capabilities)) {
+        item.capabilities = m.capabilities.map(String).filter(Boolean);
+      } else if (m.capabilities && typeof m.capabilities === 'object') {
+        item.capabilities = Object.fromEntries(
+          Object.entries(m.capabilities).map(([key, value]) => [String(key), value === true])
+        );
+      }
+      ['actor_sheet_full_body', 'portrait_aspect_lock'].forEach(key => {
+        if (m[key] === true || m[key] === false) item[key] = m[key] === true;
+      });
+      return item;
+    })
     .sort((a, b) => a.priority - b.priority);
   config.stages[stageId] = validated;
   saveConfig(config);

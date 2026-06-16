@@ -15,6 +15,8 @@ const CAPABILITY_LABELS = {
   image_to_video: '图生视频',
   video_motion_control: '运镜控制',
   seedance2_compatible: 'Seedance2',
+  actor_sheet_full_body: 'Actor sheet full body',
+  portrait_aspect_lock: 'Portrait aspect lock',
 };
 
 function normalizeModel(model = {}) {
@@ -38,7 +40,29 @@ function _baseCapabilities() {
     image_to_video: false,
     video_motion_control: false,
     seedance2_compatible: false,
+    actor_sheet_full_body: false,
+    portrait_aspect_lock: false,
   };
+}
+
+function applyExplicitCapabilityOverrides(caps, model = {}) {
+  const explicit = model.capabilities || model.capability_flags || {};
+  if (Array.isArray(explicit)) {
+    explicit.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(caps, key)) caps[key] = true;
+    });
+    return caps;
+  }
+  if (explicit && typeof explicit === 'object') {
+    Object.keys(explicit).forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(caps, key)) caps[key] = explicit[key] === true;
+    });
+  }
+  ['actor_sheet_full_body', 'portrait_aspect_lock'].forEach(key => {
+    if (model[key] === true) caps[key] = true;
+    if (model[key] === false) caps[key] = false;
+  });
+  return caps;
 }
 
 function inferModelCapabilities(model = {}) {
@@ -66,6 +90,11 @@ function inferModelCapabilities(model = {}) {
     caps.realistic_photo = true;
   }
 
+  if (/gpt-image-2/.test(modelId) || /topview-gpt-image-2/.test(modelId)) {
+    caps.actor_sheet_full_body = true;
+    caps.portrait_aspect_lock = true;
+  }
+
   if (/nano-banana|qwen-image-edit|flux-kontext|kontext/.test(text)) {
     caps.multi_reference = true;
   }
@@ -80,7 +109,7 @@ function inferModelCapabilities(model = {}) {
     caps.seedance2_compatible = true;
   }
 
-  return caps;
+  return applyExplicitCapabilityOverrides(caps, model);
 }
 
 function hasCapability(model, capability) {
@@ -99,6 +128,14 @@ function canGenerateReferencePreservingKeyframe(model) {
 function canGenerateImageToVideo(model) {
   const caps = inferModelCapabilities(model);
   return caps.image_to_video === true;
+}
+
+function canGenerateActorPersonSheet(model) {
+  const caps = inferModelCapabilities(model);
+  return caps.image_generation === true
+    && caps.realistic_photo === true
+    && caps.actor_sheet_full_body === true
+    && caps.portrait_aspect_lock === true;
 }
 
 function capabilityLabels(caps = {}) {
@@ -131,6 +168,7 @@ module.exports = {
   hasCapability,
   canGenerateReferencePreservingKeyframe,
   canGenerateImageToVideo,
+  canGenerateActorPersonSheet,
   capabilityLabels,
   modelCapabilityReport,
 };

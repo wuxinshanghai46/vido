@@ -6593,6 +6593,9 @@
     if (/AUDITSUBMITILLEGAL|SUBMIT\s+IS\s+ILLEGAL|审核|ILLEGAL/i.test(text)) {
       return '当前人物描述或参考图被上游平台审核拒绝。请把人物描述改得更中性，或换一张参考图后重试。';
     }
+    if (/LUXURY_PERSON_SHEET_CAPABILITY_REQUIRED|actor-person-sheet-capability-gate|演员包全身参考|竖构图锁定|普通图片模型盲试/i.test(text)) {
+      return '人物包模型链路缺少“真人全身演员包/竖构图锁定”能力，系统已在生成前停止，不会继续用普通图片模型盲试。请在模型调用管理启用或标记具备该能力的 luxury_ad.person_sheet 模型。';
+    }
     if (/MODEL_NOT_CONFIGURED|未在模型调用管理|候选/i.test(text)) {
       return '人物包模型链路没有可运行图片模型，请先到模型调用管理启用 luxury_ad.person_sheet 的图片模型。';
     }

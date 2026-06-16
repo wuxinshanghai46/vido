@@ -12403,11 +12403,11 @@ async function _generateLuxuryPersonSheetWithPipeline({
       ...extra,
     });
   };
-  const configuredModels = _uniquePipelineModels(_pickRunnablePipelineModels(stageId));
+  const configuredModelsRaw = _uniquePipelineModels(_pickRunnablePipelineModels(stageId));
   const rawModels = _pickConfiguredPipelineModels(stageId);
-  if (!configuredModels.length) {
+  if (!configuredModelsRaw.length) {
     const rawLabels = rawModels.map(model => `${model.provider_id}/${model.model_id}:${_pipelineModelNotRunnableReason(model)}`).join('；') || '未配置';
-    const err = new Error(`${stageId} 未在模型调用管理中配置可运行图片模型，已停止生成人物演员包；请先启用漫路 image2/nano/qwen 或其他可用图片模型。当前候选：${rawLabels}`);
+    const err = new Error(`${stageId} 未在模型调用管理中配置可运行图片模型，已停止生成人物演员包；请先启用具备演员包全身竖构图能力的图片模型。当前候选：${rawLabels}`);
     err.status = 422;
     err.code = 'LUXURY_PERSON_SHEET_MODEL_NOT_CONFIGURED';
     err.luxuryKeyframeAttempts = [{
@@ -12416,6 +12416,33 @@ async function _generateLuxuryPersonSheetWithPipeline({
       ok: false,
       error: rawLabels,
     }];
+    throw err;
+  }
+  const requiredPersonSheetCapabilities = ['image_generation', 'realistic_photo', 'actor_sheet_full_body', 'portrait_aspect_lock'];
+  const capabilityCandidates = configuredModelsRaw.map(model =>
+    modelCapabilityService.modelCapabilityReport(model, requiredPersonSheetCapabilities));
+  const configuredModels = configuredModelsRaw.filter(model =>
+    modelCapabilityService.canGenerateActorPersonSheet(model));
+  if (!configuredModels.length) {
+    const rawLabels = configuredModelsRaw.map(model => `${model.provider_id}/${model.model_id}`).join('、') || '无可运行图片模型';
+    const err = new Error(`${stageId} 已配置可运行图片模型，但没有模型同时满足“真人写实 + 演员包全身参考 + 竖构图锁定”能力，已停止生成人物演员包；不会继续用普通图片模型盲试。当前候选：${rawLabels}`);
+    err.status = 422;
+    err.code = 'LUXURY_PERSON_SHEET_CAPABILITY_REQUIRED';
+    err.luxuryKeyframeAttempts = [{
+      provider_id: 'preflight',
+      model_id: 'actor-person-sheet-capability-gate',
+      ok: false,
+      error: `${stageId} has runnable image models but none match actor person-sheet capabilities`,
+      configured_models: rawLabels,
+      capability_required: requiredPersonSheetCapabilities,
+      capability_candidates: capabilityCandidates,
+    }];
+    err.details = {
+      attempts: err.luxuryKeyframeAttempts,
+      capability_required: requiredPersonSheetCapabilities,
+      capability_candidates: capabilityCandidates,
+      skipped_models: configuredModelsRaw.map(model => `${model.provider_id}/${model.model_id}`),
+    };
     throw err;
   }
 
