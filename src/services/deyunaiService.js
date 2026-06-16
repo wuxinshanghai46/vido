@@ -136,6 +136,7 @@ function normalizeGptImage2N(value) {
 function normalizeGptImage2Size(size) {
   const raw = String(size || '').trim().toLowerCase();
   if (!raw || raw === 'auto') return 'auto';
+  if (['1024x1024', '1536x1024', '1024x1536'].includes(raw)) return raw;
   const m = raw.match(/^(\d{2,5})x(\d{2,5})$/);
   if (!m) return 'auto';
   const w = Number(m[1]);
@@ -143,7 +144,9 @@ function normalizeGptImage2Size(size) {
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 'auto';
   const ratio = w / h;
   if (ratio > 3 || ratio < 1 / 3) return 'auto';
-  return `${w}x${h}`;
+  if (ratio > 1.2) return '1536x1024';
+  if (ratio < 0.84) return '1024x1536';
+  return '1024x1024';
 }
 
 function assertGptImage2BodyContract(body) {
