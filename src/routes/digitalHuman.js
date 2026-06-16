@@ -2048,6 +2048,20 @@ async function _checkIsFullBodyImage(localPath) {
   }
 }
 
+function _normalizeLuxuryRequestedGender(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw || raw === 'auto' || raw === 'mixed' || raw === 'any' || raw === 'neutral' || /按|auto|brief|story|mixed|不限|自动|混合/.test(raw)) return '';
+  if (/^(all_)?female$|woman|girl|女士|女性|女人|女孩|女/.test(raw)) return 'female';
+  if (/^(all_)?male$|man|boy|男士|男性|男人|男孩|男/.test(raw)) return 'male';
+  return '';
+}
+
+function _luxuryRequestedGenderInstruction(value = '') {
+  const gender = _normalizeLuxuryRequestedGender(value);
+  if (!gender) return '';
+  return `REQUESTED ACTOR ATTRIBUTE LOCK: visible gender presentation must match "${gender}" exactly because it was selected in the person source controls. Do not generate a candidate with a conflicting gender presentation.`;
+}
+
 async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
   if (!localPath || !fs.existsSync(localPath)) {
     const err = new Error('演员包图片文件不存在，无法做构图质检');
@@ -2056,9 +2070,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     throw err;
   }
   const peopleCount = Math.max(1, Math.min(5, Math.round(Number(expectedPeople) || 1)));
-  const requiredGender = /female|woman|girl|女/.test(String(expectedGender || '').toLowerCase())
-    ? 'female'
-    : (/male|man|boy|男/.test(String(expectedGender || '').toLowerCase()) ? 'male' : '');
+  const requiredGender = _normalizeLuxuryRequestedGender(expectedGender);
   const sharp = _loadSharp();
   if (sharp) {
     const meta = await sharp(localPath).rotate().metadata();
@@ -12242,9 +12254,7 @@ function _isLuxuryActorGenderQaFailure(err) {
 
 function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
-  const gender = /female|woman|girl|女/.test(String(expectedGender || '').toLowerCase())
-    ? 'female'
-    : (/male|man|boy|男/.test(String(expectedGender || '').toLowerCase()) ? 'male' : '');
+  const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
   const castLabel = castMode === 'dual'
     ? 'two independent cast members'
     : (castMode === 'group' ? `${people} independent cast members` : 'one standalone person');
@@ -12257,7 +12267,7 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
     `CRITICAL FULL-BODY REFRAME RETRY for a ${aspectRatio} actor reference photo.`,
     qaNote ? `The previous candidate failed framing QA: ${qaNote}.` : 'The previous candidate failed because the person was cropped or too close.',
     `Generate a NEW pulled-back studio casting photo of ${castLabel}.`,
-    gender ? `The visible actor gender presentation must be ${gender}; do not generate an opposite-gender actor.` : '',
+    genderInstruction,
     people === 1
       ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
@@ -12691,8 +12701,7 @@ async function _generateLuxuryRealisticActorPackage({
       const raw = String(spec.gender || '').toLowerCase();
       if (raw === 'all_male' || raw === 'male') return 'male';
       if (raw === 'all_female' || raw === 'female') return 'female';
-      if (raw === 'mixed') return index % 2 === 0 ? 'female' : 'male';
-      return raw || 'auto';
+      return 'auto';
     };
     for (let i = 0; i < expectedPeople; i += 1) {
       const memberNo = i + 1;
@@ -12784,11 +12793,7 @@ async function _generateLuxuryRealisticActorPackage({
     ? 'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.'
     : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
-  const genderHardLock = gender.value === 'female'
-    ? 'USER SELECTED GENDER LOCK: generate a female-presenting woman/girl as age-appropriate; do not generate a male-presenting actor.'
-    : (gender.value === 'male'
-      ? 'USER SELECTED GENDER LOCK: generate a male-presenting man/boy as age-appropriate; do not generate a female-presenting actor.'
-      : '');
+  const genderHardLock = _luxuryRequestedGenderInstruction(gender.value);
   const wardrobe = expectedPeople === 1
     ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
     : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
@@ -12970,12 +12975,10 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       auto_real_adult: { en: 'real human selected from the advertising brief age/person contract', lock: '' },
     };
     const selectedGender = genderMap[String(spec.genderAge || spec.gender_age || '')] || null;
-    const specGender = String(spec.gender || spec.sex || '').toLowerCase();
-    const selectedSpecGender = /female|all_female|woman|girl|女/.test(specGender)
-      ? { en: 'user selected female actor; visible gender presentation must be female', lock: 'Hard lock: keep every generated actor candidate female-presenting.' }
-      : (/male|all_male|man|boy|男/.test(specGender)
-        ? { en: 'user selected male actor; visible gender presentation must be male', lock: 'Hard lock: keep every generated actor candidate male-presenting.' }
-        : null);
+    const selectedSpecGender = _normalizeLuxuryRequestedGender(spec.gender || spec.sex || '');
+    const selectedSpecGenderHint = selectedSpecGender
+      ? `User selected actor gender presentation: ${selectedSpecGender}.`
+      : '';
     const descriptionText = String(description || '').trim();
     const inferredFemale = /女性|女主|女士|女人|woman|female/i.test([descriptionText, text].join(' '));
     const inferredMale = /男性|男主|男士|男人|man|male/i.test([descriptionText, text].join(' '));
@@ -12985,8 +12988,8 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     const userOutfit = String(spec.outfit || spec.wardrobe || spec.outfit_hint || '').trim();
     // 中文说明：这里不再使用角色/服装枚举兜底，避免把任何行业误导成主持人、顾问或商务场景。
     const roleHint = [
-      selectedSpecGender?.en || selectedGender?.en || '',
-      selectedSpecGender?.lock || '',
+      selectedSpecGenderHint || selectedGender?.en || '',
+      _luxuryRequestedGenderInstruction(selectedSpecGender),
       userRole ? `User provided role hint, must still be validated against brief/script: ${userRole}` : '',
       userOutfit ? `User provided wardrobe hint, must still be validated against brief/script: ${userOutfit}` : '',
       descriptionText,
