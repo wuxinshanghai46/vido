@@ -3633,7 +3633,8 @@
   function getTaskPollTimeoutMs(taskType = '') {
     const type = String(taskType || '').toLowerCase();
     if (type === 'product_ad') return 25 * 60 * 1000;
-    if (type === 'digital_ad' || type === 'space_guide' || type === 'luxury_ad') return 30 * 60 * 1000;
+    if (type === 'luxury_ad') return 90 * 60 * 1000;
+    if (type === 'digital_ad' || type === 'space_guide') return 50 * 60 * 1000;
     return 12 * 60 * 1000;
   }
 
@@ -4115,6 +4116,19 @@
       || task.createDetail?.productionProjectId
       || ''
     ).trim();
+  }
+
+  function isServerPolledVideoTask(task = {}) {
+    const type = getTaskType(task);
+    return type === 'product_ad' || type === 'digital_ad' || type === 'luxury_ad';
+  }
+
+  function isRecoverableServerTimeoutTask(task = {}) {
+    if (!task?.taskId || !isServerPolledVideoTask(task)) return false;
+    if (String(task.status || '').toLowerCase() !== 'timeout') return false;
+    const startedAt = Number(task.startedAt || Date.parse(task.created_at || task.createdAt || '') || 0);
+    if (!startedAt) return true;
+    return Date.now() - startedAt < 6 * 60 * 60 * 1000;
   }
 
   function mergeStoredTaskWithRemote(oldTask = {}, remoteTask = {}) {
@@ -5057,10 +5071,21 @@
       renderTaskCenter();
     }
     readVideoTasks()
-      .filter(t => ACTIVE_TASK_STATUSES.has(t.status))
+      .filter(t => ACTIVE_TASK_STATUSES.has(t.status) || isRecoverableServerTimeoutTask(t))
       .forEach(t => {
         if (state.s3.runningTasks.has(t.taskId)) return;
-        state.s3.runningTasks.set(t.taskId, { ...t, snapshot: null });
+        const task = isRecoverableServerTimeoutTask(t)
+          ? {
+              ...t,
+              status: 'running',
+              stage: t.stage || 'polling',
+              error: '',
+              message: t.message || '网络恢复后继续查询后台生成状态',
+              snapshot: null,
+            }
+          : { ...t, snapshot: null };
+        state.s3.runningTasks.set(t.taskId, task);
+        if (task !== t) upsertVideoTask(task);
         pollVideoTask(t.taskId);
       });
   }
@@ -13026,6 +13051,23 @@
         if (box) box.innerHTML = renderProgressPreview(stg.name, stg.sub || '正在生成预览效果', elapsed, meta);
 
         if (Date.now() - start > MAX) {
+          if (isServerPolledVideoTask(meta) && remoteStatus !== 'error') {
+            syncRunningTask(taskId, {
+              ...meta,
+              taskId,
+              status: 'running',
+              stage: t.stage || remoteStage || 'polling',
+              elapsed,
+              error: '',
+              message: t.message || '后台仍在生成，已继续自动查询结果',
+              snapshot: t,
+            });
+            if (!meta.longRunningNotified) {
+              meta.longRunningNotified = true;
+              toast(`${meta.avatarName || ''} 后台仍在生成，页面会继续自动查询`, 'info');
+            }
+            return;
+          }
           clearInterval(meta.pollTimer);
           state.s3.runningTasks.delete(taskId);
           upsertVideoTask({
