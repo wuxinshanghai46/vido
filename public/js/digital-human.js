@@ -4262,7 +4262,14 @@
     const errorTask = newestFirst.find(t => TERMINAL_ERROR_TASK_STATUSES.has(t.status));
     const doneTask = newestFirst.find(t => t.status === 'done' && (t.videoUrl || t.video_url));
     const newest = newestFirst[0];
+    const projectState = String(projectTask?.project?.project_state || projectTask?.stage || '').toLowerCase();
+    const projectRolledBackForRegenerate = !!projectTask
+      && !activeTask
+      && !doneTask
+      && ['frame_ready', 'frame_reviewing', 'script_reviewing'].includes(projectState)
+      && (!errorTask || taskTime(projectTask) >= taskTime(errorTask));
     const primary = doneTask
+      || (projectRolledBackForRegenerate ? projectTask : null)
       || (errorTask && (!activeTask || taskTime(errorTask) >= taskTime(activeTask)) ? errorTask : null)
       || activeTask
       || errorTask
