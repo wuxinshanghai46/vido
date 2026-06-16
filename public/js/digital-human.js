@@ -6605,14 +6605,13 @@
         <small>上游审核拒绝或生成结果没有返回可访问图片，系统没有把失败图写入演员库。请重新生成，或上传真人参考/角色素材后继续。</small>
       </div>`;
     }
-    // 中文说明：失败候选图只能人工选择保留，不能自动冒充 QA 通过的商用演员包。
+    // 中文说明：失败候选图只做诊断预览，不能进入角色素材库，避免坏图污染后续分镜。
     return `<div class="dh-lux-person-candidates">
       <b>可预览失败候选图</b>
       <div>${candidates.map((item, i) => `<article>
         <button type="button" data-lux-person-failed-preview="${i}" title="预览候选图"><img src="${escapeHtml(withAuthQuery(item.url))}" alt="${escapeHtml(item.label)}"></button>
         <span>${escapeHtml(item.provider || item.label)}</span>
         <small>${escapeHtml(String(item.reason || '').slice(0, 90))}</small>
-        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-person-failed-adopt="${i}">保留为人物参考</button>
       </article>`).join('')}</div>
     </div>`;
   }
@@ -6739,11 +6738,16 @@
       const refLabel = luxuryAdActorReferenceLabel(asset);
       const genderLabel = luxuryPersonGenderLabel(asset.gender || asset.metadata?.gender || '');
       const ageLabel = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '')] || '';
-      return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:86px">
+      const desc = String(asset.description || '可作为剧情广告人物一致性参考')
+        .replace(/\s+/g, ' ')
+        .replace(/CONSISTENT REAL CAMPAIGN CHARACTER ASSET:?/ig, '一致性演员参考')
+        .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
+        .slice(0, 72);
+      return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:92px;max-height:112px;overflow:hidden">
         <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
-        <span style="min-width:0;display:block">
+        <span style="min-width:0;display:block;overflow:hidden">
           <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
-          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(asset.description || '可作为剧情广告人物一致性参考')}</small>
+          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35;max-height:38px;overflow:hidden">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
         </span>
       </button>`;
     }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传真人参考或生成 AI 真人感演员包后会自动入库。</div>';
@@ -8199,40 +8203,6 @@
       if (btn) { btn.disabled = false; btn.innerHTML = old || 'AI 真人感演员包'; }
       updateLuxuryAdStepLocks();
     }
-  }
-
-  function adoptLuxuryPersonFailedCandidate(index = 0) {
-    const candidates = luxuryPersonFailedCandidates(state.luxuryAd.personGenerationError || {});
-    const item = candidates[Number(index) || 0];
-    if (!item?.url) return toast('没有可保留的人物候选图', 'error');
-    state.luxuryAd.personGenerationError = null;
-    state.luxuryAd.personGenerationProgress = null;
-    state.luxuryAd.personAsset = {
-      id: `manual_actor_candidate_${Date.now()}`,
-      name: '人工保留人物参考',
-      type: 'luxury_ad_actor_package',
-      source: 'manual_failed_person_sheet_candidate',
-      reference_kind: 'synthetic_realistic_actor',
-      is_ai_generated: true,
-      production_usable_actor: true,
-      manual_override: true,
-      url: item.url,
-      image_url: item.url,
-      previewUrl: item.url,
-      extra_image_urls: [],
-      view_count: 1,
-      uploading: false,
-      description: `人工从未通过 QA 的人物包候选图中保留：${item.provider || item.label || '候选图'}。后续分镜会把它作为人物身份参考，但建议仍优先上传真人参考或角色素材。`,
-    };
-    state.selectedAvatar = null;
-    applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
-    state.luxuryAd.keyframes = [];
-    renderLuxuryAdPerson();
-    renderLuxuryAdStoryboard();
-    updateLuxuryAdStepLocks();
-    persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'manual_failed_person_sheet_candidate');
-    saveLuxuryAdDraft({ silent: true }).catch(() => {});
-    toast('已人工保留为人物参考，可继续生成分镜；如需更稳定一致性，建议上传真人参考', 'success');
   }
 
   async function uploadLuxuryAdBriefReferences(fileList) {
@@ -14327,11 +14297,6 @@
     if (luxPersonFailedPreview) {
       const item = luxuryPersonFailedCandidates(state.luxuryAd.personGenerationError || {})[Number(luxPersonFailedPreview.dataset.luxPersonFailedPreview || 0)];
       if (item?.url) openImagePreviewModal(item.url, item.provider || item.label || '人物候选图');
-      return;
-    }
-    const luxPersonFailedAdopt = closest('[data-lux-person-failed-adopt]');
-    if (luxPersonFailedAdopt) {
-      adoptLuxuryPersonFailedCandidate(Number(luxPersonFailedAdopt.dataset.luxPersonFailedAdopt || 0));
       return;
     }
     const luxAssetPreview = closest('[data-lux-asset-preview]');

@@ -12680,8 +12680,6 @@ async function _generateLuxuryRealisticActorPackage({
   const origin = _luxuryActorOriginPrompt(spec, text);
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
-  const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
-  const positiveFaceContract = _luxuryActorPositiveFaceContract({ age });
   const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
     ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
     : 'single';
@@ -12794,7 +12792,6 @@ async function _generateLuxuryRealisticActorPackage({
     ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
     : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
   const youngerSubject = /infant|toddler|child|teen/.test(String(age.value || '').toLowerCase());
-  const normalizedActorAspectRatio = _normalizeAspectRatio(aspectRatio, '9:16');
   const framingContract = expectedPeople > 1
     ? `CRITICAL FRAMING LOCK: ${expectedPeople}-person full-cast identity reference photo. Show every required cast member from head to shoes whenever possible; at minimum show each person's head, torso and lower body below the hips. Do not crop any required cast member at chest, waist or hips.`
     : (youngerSubject
@@ -12809,13 +12806,11 @@ async function _generateLuxuryRealisticActorPackage({
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
     'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, natural hands, real fabric folds and calm non-editorial styling.',
   ].join(' ');
-  const common = [
+  const castingSheetCore = [
     hardFramingLead,
-    `Create a consistent ${castReferenceKind} for a realistic live-action storyboard.`,
-    `Generate ${castNoun} for neutral identity reference photos, only when the brief/script requires visible people.`,
+    `Create a ${castReferenceKind} only as a practical casting-sheet reference for later storyboard use.`,
+    `Subject count: ${castNoun}.`,
     castFrameLead,
-    briefDerivedContract,
-    positiveFaceContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
     gender.lock,
     genderHardLock,
@@ -12823,32 +12818,28 @@ async function _generateLuxuryRealisticActorPackage({
     `Wardrobe lock: ${wardrobe}.`,
     framingContract,
     castConsistencyLock,
-    'The result should look like practical plain studio identity-reference photography of a real brief-derived subject.',
-    'Use natural real-camera styling, realistic hair, normal hands, real fabric folds and believable lens perspective.',
-    'Reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
+    'Real-camera full-length fitting photo: centered standing body, complete outfit, shoes or age-appropriate lower body visible, visible floor contact, neutral seamless studio, soft daylight, natural skin texture, normal hands, real fabric folds.',
+    'Use simple everyday styling appropriate to the selected age and brief. Keep lighting flat and documentary, like an actor casting sheet or wardrobe fitting photo.',
     castIdentityStable,
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
-    `Advertising brief: ${String(text || '').slice(0, 900)}.`,
-    personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
-    sceneNotes ? `Scene context: ${sceneNotes.slice(0, 650)}.` : '',
-    roleHint ? `Role hint: ${roleHint.slice(0, 500)}.` : '',
+    roleHint ? `Selected person controls and short role hint: ${roleHint.slice(0, 240)}.` : '',
+    personContextNotes ? `Short person table hints only: ${personContextNotes.slice(0, 220)}.` : '',
     expectedPeople === 1
       ? 'Keep the selected demographic, wardrobe, age impression, identity and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or extra people.'
       : `Keep the selected demographics, relationship, wardrobe, age impressions, identities and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or people beyond the required ${expectedPeople}-person cast.`,
-    REALISTIC_PHOTO_GUIDE,
   ].filter(Boolean).join(' ');
   const views = [
     {
       key: 'front',
-      prompt: `${hardFramingLead} FRONT VIEW: ${expectedPeople === 1 ? 'person facing camera directly' : `all ${expectedPeople} cast members facing camera directly in one clean lineup`} with age-appropriate calm natural expressions, eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common}`,
+      prompt: `${castingSheetCore} FRONT VIEW: ${expectedPeople === 1 ? 'the selected person facing camera directly' : `all ${expectedPeople} cast members facing camera directly in one clean lineup`}, calm natural expression, eyes visible, complete body visible from head to shoes when possible, lower-body clothing clearly visible.`,
     },
     {
       key: 'side',
-      prompt: `${hardFramingLead} SIDE / THREE-QUARTER VIEW: ${expectedPeople === 1 ? 'same person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, side or three-quarter profile, full body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions, plain real-camera identity reference photo. ${common} Do not change clothing, hair, age, cast count or relationship.`,
+      prompt: `${castingSheetCore} SIDE / THREE-QUARTER VIEW: ${expectedPeople === 1 ? 'same selected person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, side or three-quarter profile, complete body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions.`,
     },
     {
       key: 'action',
-      prompt: `${hardFramingLead} ACTION VIEW: ${expectedPeople === 1 ? 'same person performing one age-appropriate small action' : `same ${expectedPeople} cast members performing one age-appropriate small relationship/dialogue action together`} derived from the confirmed script and scene context, while still showing head, torso and lower body for the required cast. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families, plain real-camera identity reference photo. ${common} No wardrobe drift, cast count drift or role swap.`,
+      prompt: `${castingSheetCore} ACTION VIEW: ${expectedPeople === 1 ? 'same selected person performing one small natural gesture' : `same ${expectedPeople} cast members performing one small natural relationship/dialogue gesture together`}, complete body visible from head to knees or shoes when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families.`,
     },
   ];
   const outputs = [];
