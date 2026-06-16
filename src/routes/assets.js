@@ -74,6 +74,12 @@ function serializeAsset(asset) {
     reference_kind: referenceKind,
     gender: asset.gender || metadata.gender || '',
     origin: asset.origin || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || '',
+    cast_mode: asset.cast_mode || metadata.cast_mode || '',
+    expected_people: asset.expected_people || metadata.expected_people || metadata.person_count || '',
+    person_count: asset.person_count || metadata.person_count || metadata.expected_people || '',
+    cast_assets: Array.isArray(asset.cast_assets)
+      ? asset.cast_assets
+      : (Array.isArray(metadata.cast_assets) ? metadata.cast_assets : []),
     is_ai_generated: asset.is_ai_generated === true || metadata.is_ai_generated === true || referenceKind === 'ai_generated',
     production_usable_actor: asset.production_usable_actor === true
       || metadata.production_usable_actor === true
@@ -137,6 +143,10 @@ function syncGeneratedActorLibraryAssets(userId) {
       reference_kind: actor.reference_kind || 'synthetic_realistic_actor',
       gender: actor.gender || '',
       origin: actor.origin || actor.region || actor.ethnicity || actor.race || '',
+      cast_mode: actor.cast_mode || '',
+      expected_people: actor.expected_people || actor.person_count || '',
+      person_count: actor.person_count || actor.expected_people || '',
+      cast_assets: Array.isArray(actor.cast_assets) ? actor.cast_assets : [],
       is_ai_generated: actor.reference_kind === 'ai_generated' || actor.is_ai_generated === true,
       production_usable_actor: actor.production_usable_actor !== false,
       description: actor.prompt || actor.description || '',

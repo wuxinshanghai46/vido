@@ -6276,7 +6276,13 @@
     const gender = luxuryPersonGenderSpecValue(asset.gender || metadata.gender || metadata.sex || asset.description || metadata.prompt || '');
     const age = luxuryPersonAgeSpecValue(asset.age || asset.age_range || metadata.age || metadata.age_range || metadata.prompt || asset.description || '');
     const origin = luxuryPersonOriginSpecValue(asset.origin || asset.region || asset.ethnicity || asset.race || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || metadata.prompt || asset.description || '');
-    const next = { ...spec, castMode: 'single' };
+    const rawCastMode = String(asset.cast_mode || asset.castMode || metadata.cast_mode || metadata.castMode || '').toLowerCase();
+    const castAssetCount = Array.isArray(asset.cast_assets) ? asset.cast_assets.length : (Array.isArray(metadata.cast_assets) ? metadata.cast_assets.length : 0);
+    const rawPersonCount = Number(asset.expected_people || asset.person_count || metadata.expected_people || metadata.person_count || castAssetCount || 0);
+    const assetCastMode = ['single', 'dual', 'group'].includes(rawCastMode)
+      ? rawCastMode
+      : (rawPersonCount >= 3 ? 'group' : (rawPersonCount === 2 ? 'dual' : 'single'));
+    const next = { ...spec, castMode: assetCastMode };
     if (gender) next.gender = gender;
     else if (isRealPerson) next.gender = 'auto';
     if (age) next.age = age;
@@ -6288,7 +6294,8 @@
       gender: gender || '',
       age: age || '',
       origin: origin || '',
-      castMode: 'single',
+      castMode: assetCastMode,
+      expected_people: rawPersonCount || (assetCastMode === 'group' ? 3 : (assetCastMode === 'dual' ? 2 : 1)),
       reference_kind: luxuryAdActorReferenceKind(asset),
     };
     syncLuxuryPersonSpecControls();
@@ -6318,6 +6325,15 @@
         webang_asset_id: generated.webang_asset_id || generated.metadata?.webang_asset_id || '',
         webang_asset_url: generated.webang_asset_url || generated.metadata?.webang_asset_url || '',
         webang_asset_group_id: generated.webang_asset_group_id || generated.metadata?.webang_asset_group_id || '',
+        cast_mode: generated.cast_mode || generated.castMode || generated.metadata?.cast_mode || generated.metadata?.castMode || '',
+        expected_people: generated.expected_people || generated.person_count || generated.metadata?.expected_people || generated.metadata?.person_count || '',
+        person_count: generated.person_count || generated.expected_people || generated.metadata?.person_count || generated.metadata?.expected_people || '',
+        cast_assets: Array.isArray(generated.cast_assets) ? generated.cast_assets.map((member, index) => ({
+          ...member,
+          cast_member_index: member.cast_member_index || index + 1,
+          image_url: compactLuxuryUrl(member.image_url || member.url || member.previewUrl || ''),
+          extra_image_urls: Array.isArray(member.extra_image_urls) ? member.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
+        })).filter(member => member.image_url) : [],
         name: generated.name || (isSyntheticActor ? 'AI 真人感一致性演员' : (isAiGenerated ? 'AI 拟真演员三视图' : '真人照片参考')),
         type: generated.type || 'luxury_ad_character_sheet',
         source: generated.source || 'person_asset',
@@ -6343,6 +6359,10 @@
       webang_asset_id: a.webang_asset_id || '',
       webang_asset_url: a.webang_asset_url || '',
       webang_asset_group_id: a.webang_asset_group_id || '',
+      cast_mode: a.cast_mode || a.castMode || '',
+      expected_people: a.expected_people || a.person_count || '',
+      person_count: a.person_count || a.expected_people || '',
+      cast_assets: Array.isArray(a.cast_assets) ? a.cast_assets : [],
       name: a.name || '已选人物',
       type: a.avatar_type || a.type || 'selected_avatar',
       source: a.source || 'selected_avatar',
@@ -6393,11 +6413,35 @@
   }
 
   function luxuryActorAssetUrls(asset = {}) {
+    const castUrls = Array.isArray(asset.cast_assets)
+      ? asset.cast_assets.flatMap(member => [
+        member?.image_url || member?.url || member?.previewUrl || '',
+        ...(Array.isArray(member?.extra_image_urls) ? member.extra_image_urls : []),
+        ...(Array.isArray(member?.extra_images) ? member.extra_images : []),
+      ])
+      : [];
     return [
       asset.image_url || asset.file_url || asset.url || '',
       ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
       ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
-    ].map(compactLuxuryUrl).filter(Boolean);
+      ...castUrls,
+    ].map(compactLuxuryUrl).filter(Boolean).filter((url, index, arr) => arr.indexOf(url) === index);
+  }
+
+  function luxuryCastMemberAssets(asset = {}) {
+    return (Array.isArray(asset.cast_assets) ? asset.cast_assets : [])
+      .map((member, index) => {
+        const urls = luxuryActorAssetUrls(member);
+        return {
+          ...member,
+          cast_member_index: Number(member.cast_member_index || member.index || index + 1) || index + 1,
+          cast_role: member.cast_role || member.role || `角色${index + 1}`,
+          name: member.name || member.cast_role || `角色${index + 1}`,
+          urls,
+          image_url: urls[0] || '',
+        };
+      })
+      .filter(member => member.image_url);
   }
 
   function luxuryActorUrlsFromSources(...sources) {
@@ -6418,6 +6462,7 @@
         source.image_urls,
         source.images,
         source.views,
+        source.cast_assets,
       ].forEach(walk);
       if (Array.isArray(source.outputs)) {
         source.outputs.forEach(item => push(item?.url || item?.image_url || item?.imageUrl || item?.file_url || ''));
@@ -6567,6 +6612,12 @@
       image_url: urls[0] || '',
       previewUrl: urls[0] || '',
       extra_image_urls: urls.slice(1),
+      cast_assets: Array.isArray(asset.cast_assets)
+        ? asset.cast_assets
+        : (Array.isArray(metadata.cast_assets) ? metadata.cast_assets : []),
+      cast_mode: asset.cast_mode || metadata.cast_mode || '',
+      expected_people: asset.expected_people || metadata.expected_people || '',
+      person_count: asset.person_count || metadata.person_count || '',
       view_count: Number(asset.view_count || urls.length) || 1,
       description: asset.description || asset.metadata?.description || '',
     };
@@ -6581,6 +6632,7 @@
         name: asset.name || '剧情广告演员',
         image_url: url,
         extra_image_urls: Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
+        cast_assets: Array.isArray(asset.cast_assets) ? asset.cast_assets : [],
         view_count: Number(asset.view_count || 1) || 1,
         source,
         description: asset.spec_description || asset.description || luxuryAdPersonDescription(),
@@ -6592,6 +6644,9 @@
           source: asset.source || source,
           gender: asset.gender || '',
           origin: asset.origin || '',
+          cast_mode: asset.cast_mode || asset.castMode || '',
+          expected_people: asset.expected_people || asset.person_count || '',
+          cast_assets: Array.isArray(asset.cast_assets) ? asset.cast_assets : [],
           is_ai_generated: !!asset.is_ai_generated,
           person_spec: luxuryAdPersonSpec(),
         },
@@ -6685,6 +6740,7 @@
     if (generated && (generated.url || generated.image_url || generated.previewUrl || generated.uploading || generated.failed)) {
       const src = generated.url || generated.image_url || generated.previewUrl || '';
       const actorUrls = luxuryActorAssetUrls(generated);
+      const castMembers = luxuryCastMemberAssets(generated);
       const actorId = generated.actor_asset_id || generated.asset_library_id || generated.material_id || '';
       const isAiActor = luxuryAdActorIsAiGenerated(generated);
       const isSyntheticActor = luxuryAdActorIsSyntheticRealistic(generated);
@@ -6698,13 +6754,18 @@
       const actorMeta = [
         generated.source ? luxuryAdActorReferenceLabel(generated) : '',
         actorId ? '已绑定 actor_id' : '',
+        castMembers.length > 1 ? `${castMembers.length} 个独立人物` : '',
         actorUrls.length ? `${actorUrls.length} 张演员参考` : '',
         genderText,
         ageText,
       ].filter(Boolean).join(' · ');
-      const defaultName = isSyntheticActor ? 'AI 真人感一致性演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考');
+      const defaultName = castMembers.length > 1
+        ? (generated.cast_mode === 'group' ? 'AI 真人感多人演员组' : 'AI 真人感双人演员组')
+        : (isSyntheticActor ? 'AI 真人感一致性演员' : (isAiActor ? 'AI 拟真演员三视图' : '真人照片参考'));
       const defaultDesc = isSyntheticActor
-        ? '这是按广告需求、剧本人物表和分镜上下文生成的真人感一致性演员，会作为后续分镜的人物一致性锁。'
+        ? (castMembers.length > 1
+          ? '这是按广告需求、剧本人物表和分镜上下文生成的独立演员组；每个人都有自己的参考图和身份锁。'
+          : '这是按广告需求、剧本人物表和分镜上下文生成的真人感一致性演员，会作为后续分镜的人物一致性锁。')
         : isAiActor
         ? '这是 AI 生成的拟真演员参考，不等同于真实真人照片。需要真人请上传真人照片或使用授权真人演员素材。'
         : '真人照片参考会作为广告人物身份和气质锁定。';
@@ -6716,14 +6777,24 @@
         : '';
       const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面和动作演员照。' : (isAiActor ? '正在生成正面、侧面、背面三视图。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
-      const previewButtons = actorUrls.length
+      const castGrid = castMembers.length > 1
+        ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => {
+          const previewIndex = Math.max(0, actorUrls.indexOf(member.image_url));
+          const label = member.cast_role || (generated.cast_mode === 'dual' ? `角色${i === 0 ? 'A' : 'B'}` : `角色${i + 1}`);
+          return `<button type="button" data-lux-person-preview="${previewIndex}" title="预览${escapeHtml(label)}">
+            <img src="${escapeHtml(withAuthQuery(member.image_url))}" alt="${escapeHtml(label)}">
+            <span><b>${escapeHtml(label)}</b><small>${escapeHtml((member.urls?.length || 1) + ' 张独立参考')}</small></span>
+          </button>`;
+        }).join('')}</div>`
+        : '';
+      const previewButtons = !castGrid && actorUrls.length
         ? `<div class="dh-lux-actor-views">${actorUrls.slice(0, 6).map((url, i) => `<button type="button" data-lux-person-preview="${i}" title="预览${escapeHtml(luxuryActorAssetViewLabel(i))}">
             <img src="${escapeHtml(withAuthQuery(url))}" alt="${escapeHtml(luxuryActorAssetViewLabel(i))}">
             <span>${escapeHtml(luxuryActorAssetViewLabel(i))}</span>
           </button>`).join('')}</div>`
         : '';
       host.innerHTML = `<div class="dh-luxgen-character-sheet ${generated.failed ? 'is-failed' : ''}">
-        ${src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || defaultName)}"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>'}
+        ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || defaultName)}"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>')}
         <b>${escapeHtml(generated.name || defaultName)}</b>
         <small>${escapeHtml(generated.uploading ? loadingText : (actorMeta || generated.description || defaultDesc))}</small>
         ${progressHtml}
@@ -7934,7 +8005,7 @@
         person_context: luxuryAdPersonContextPayload(generationSpec),
         flow_mode: state.luxuryAd.flowMode || (luxuryAdIsMaterialMode() ? 'material' : 'story'),
         reference_person: referencePerson,
-        output_ratio: '9:16',
+        output_ratio: state.luxuryAd.outputRatio || $('#dhLuxAdRatio')?.value || '9:16',
         request_key: requestKey,
         request_async: true,
       };
@@ -7967,8 +8038,13 @@
       if (!imageUrl) throw new Error('人物演员包生成成功但没有返回图片地址');
       const character = r.character || {};
       const actorUrls = luxuryActorUrlsFromSources(character, r.actor_asset, r, r.outputs);
-      const primaryActorUrl = actorUrls[0] || imageUrl;
-      const extraActorUrls = actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
+      const castAssets = Array.isArray(character.cast_assets)
+        ? character.cast_assets
+        : (Array.isArray(r.actor_asset?.cast_assets) ? r.actor_asset.cast_assets : (Array.isArray(r.cast_assets) ? r.cast_assets : []));
+      const primaryActorUrl = imageUrl || actorUrls[0] || '';
+      const extraActorUrls = castAssets.length
+        ? (Array.isArray(character.extra_image_urls) ? character.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [])
+        : actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
       const detectedGender = await detectLuxuryAdPersonGender(primaryActorUrl);
       state.luxuryAd.personGenerationError = null;
       state.luxuryAd.personGenerationProgress = {
@@ -7993,6 +8069,10 @@
         detected_gender: detectedGender || character.detected_gender || '',
         age: character.age || character.age_range || generationSpec.age || '',
         origin: character.origin || generationSpec.origin || '',
+        cast_mode: character.cast_mode || r.actor_asset?.cast_mode || generationSpec.castMode || 'single',
+        expected_people: character.expected_people || r.actor_asset?.expected_people || castAssets.length || '',
+        person_count: character.person_count || r.actor_asset?.person_count || castAssets.length || '',
+        cast_assets: castAssets,
         url: primaryActorUrl,
         image_url: primaryActorUrl,
         previewUrl: primaryActorUrl,

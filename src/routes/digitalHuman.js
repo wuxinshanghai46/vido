@@ -435,6 +435,32 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
     ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
   ].map(cleanUrl).filter(Boolean).filter(x => x !== url).slice(0, 8);
+  const castAssets = (Array.isArray(asset.cast_assets) ? asset.cast_assets : [])
+    .map((member, index) => {
+      if (!member || typeof member !== 'object') return null;
+      const memberUrl = cleanUrl(member.image_url || member.url || member.previewUrl || '');
+      const memberExtraUrls = [
+        ...(Array.isArray(member.extra_image_urls) ? member.extra_image_urls : []),
+        ...(Array.isArray(member.extra_images) ? member.extra_images : []),
+      ].map(cleanUrl).filter(Boolean).filter(x => x !== memberUrl).slice(0, 8);
+      if (!memberUrl && !memberExtraUrls.length) return null;
+      return {
+        id: member.id || '',
+        actor_id: member.actor_id || '',
+        actor_asset_id: member.actor_asset_id || member.asset_library_id || member.material_id || '',
+        name: _projectText(member.name || member.cast_role || `角色${index + 1}`, 120),
+        cast_role: _projectText(member.cast_role || member.role || `角色${index + 1}`, 80),
+        cast_member_index: Number(member.cast_member_index || index + 1) || index + 1,
+        image_url: memberUrl,
+        url: memberUrl,
+        previewUrl: memberUrl,
+        extra_image_urls: memberExtraUrls,
+        source: member.source || '',
+        reference_kind: member.reference_kind || '',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
   const volume = Number(asset.volume);
   const voiceVolume = Number(asset.voice_volume ?? asset.voiceVolume);
   return {
@@ -463,6 +489,10 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     age: asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '',
     age_range: asset.age_range || asset.metadata?.age_range || '',
     origin: asset.origin || asset.region || asset.metadata?.origin || asset.metadata?.region || '',
+    cast_mode: asset.cast_mode || asset.castMode || asset.metadata?.cast_mode || '',
+    expected_people: asset.expected_people || asset.person_count || asset.metadata?.expected_people || asset.metadata?.person_count || (castAssets.length || ''),
+    person_count: asset.person_count || asset.expected_people || asset.metadata?.person_count || asset.metadata?.expected_people || (castAssets.length || ''),
+    cast_assets: castAssets,
     url,
     file_url: cleanUrl(asset.file_url || asset.url || '') || url,
     file_path: cleanUrl(asset.file_path || asset.path || '') || '',
@@ -1666,6 +1696,9 @@ function _buildLuxuryProductionContract({
   identityGender = '',
   identityRole = '',
   identityDescription = '',
+  identityCastMode = 'single',
+  identityExpectedPeople = 1,
+  identityCastAssets = [],
   identityAvailability = null,
   globalVisualBible = null,
   assetManifest = null,
@@ -1691,6 +1724,9 @@ function _buildLuxuryProductionContract({
     gender: identityGender,
     role: identityRole,
     description: identityDescription,
+    castMode: identityCastMode,
+    expectedPeople: identityExpectedPeople,
+    castAssets: identityCastAssets,
   }) : null;
   const finalKeyframesReady = !humanShotIndexes.length || (actorReady && modelGate.reference_preserving_ready);
   const requiredActions = [];
@@ -1712,6 +1748,7 @@ function _buildLuxuryProductionContract({
       actor_id: actorAsset?.actor_id || '',
       actor_asset_id: identityActorAssetId || actorAsset?.actor_asset_id || '',
       extra_image_urls: Array.isArray(identityExtraImageUrls) ? identityExtraImageUrls.slice(0, 8) : [],
+      cast_assets: Array.isArray(identityCastAssets) ? identityCastAssets : [],
       availability: identityAvailability || null,
     },
     actor_asset: actorAsset,
@@ -2011,41 +2048,34 @@ async function _checkIsFullBodyImage(localPath) {
   }
 }
 
-async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '' } = {}) {
+async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single' } = {}) {
   if (!localPath || !fs.existsSync(localPath)) {
     const err = new Error('演员包图片文件不存在，无法做构图质检');
     err.status = 500;
     err.code = 'LUXURY_ACTOR_FRAME_FILE_MISSING';
     throw err;
   }
+  const peopleCount = Math.max(1, Math.min(5, Math.round(Number(expectedPeople) || 1)));
   const sharp = _loadSharp();
   if (sharp) {
-    const meta = await sharp(localPath).rotate().metadata();
-    const width = Number(meta.width) || 0;
-    const height = Number(meta.height) || 0;
-    if (width && height && height < width * 1.12) {
-      const err = new Error(`演员包构图 QA 未通过：图片不是竖构图演员定妆照（${width}x${height}），容易形成横向半身肖像；必须生成 9:16 竖图并露出裤子/下半身。`);
-      err.status = 422;
-      err.code = 'LUXURY_ACTOR_FRAME_ORIENTATION_FAILED';
-      err.details = {
-        pass: false,
-        width,
-        height,
-        framing: 'landscape_or_not_vertical',
-        reason: 'actor package image must be vertical 9:16 or near-vertical casting photo',
-      };
-      throw err;
-    }
+    await sharp(localPath).rotate().metadata();
   }
+  const isMultiCast = peopleCount > 1;
+  const castLabel = castMode === 'group' ? 'group/multi-person cast' : (castMode === 'dual' ? 'two-person dialogue cast' : 'single-person cast');
   const prompt = [
     'You are a strict QA gate for a commercial actor asset package.',
     'The attached image is one generated actor reference photo.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","single_person":boolean,"realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
-    'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
-    'The acceptable frame is full body, knee-up, or at minimum thigh-up where lower-body clothing is clearly visible below the waist/hips. For infants/toddlers, a full-body seated, standing, held-safe, or supported pose is acceptable when legs/onesie/diaper/lower garment are visible.',
-    'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no lower-body clothing/legs are visible.',
-    'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, porcelain skin, beauty-filter face, generic AI influencer face, doll-like face, uncanny smile, frozen stare, empty eyes, or more than one person.',
+    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
+    isMultiCast
+      ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
+      : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
+    'The acceptable frame is full body, knee-up, or at minimum thigh-up where lower-body clothing is clearly visible below the waist/hips for every required visible person. For infants/toddlers, a full-body seated, standing, held-safe, or supported pose is acceptable when legs/onesie/diaper/lower garment are visible.',
+    'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no lower-body clothing/legs are visible for the required cast.',
+    isMultiCast
+      ? 'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI faces, beauty-filter faces, doll-like faces, uncanny smiles, frozen stares, empty eyes, or if the person_count is not exactly the expected cast count.'
+      : 'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI face, porcelain skin, beauty-filter face, generic AI influencer face, doll-like face, uncanny smile, frozen stare, empty eyes, or more than one person.',
     'Pass realistic age-appropriate human skin and identity diversity: natural skin texture, believable facial asymmetry, normal eye spacing and expression that matches the role. Do not require wrinkles or pores for babies/children; only reject plastic or fake-looking skin.',
     `View being checked: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
   ].join(' ');
@@ -2058,9 +2088,13 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   const lowerBodyVisible = parsed.lower_body_visible === true;
   const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true;
   const acceptableFraming = /^(full_body|knee_up|thigh_up)$/.test(framing);
+  const parsedPersonCount = Number.isFinite(Number(parsed.person_count))
+    ? Math.max(0, Math.round(Number(parsed.person_count)))
+    : (parsed.single_person === true ? 1 : 0);
+  const peopleOk = isMultiCast ? parsedPersonCount === peopleCount : parsed.single_person === true;
   const pass = parsed.pass === true
     && score >= 82
-    && parsed.single_person === true
+    && peopleOk
     && parsed.realistic_photo === true
     && lowerBodyVisible
     && lowerGarmentVisible
@@ -2070,6 +2104,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     pass,
     score,
     framing: framing || 'unknown',
+    expected_people: peopleCount,
+    person_count: parsedPersonCount,
+    cast_mode: castMode || 'single',
     single_person: parsed.single_person === true,
     realistic_photo: parsed.realistic_photo === true,
     lower_body_visible: lowerBodyVisible,
@@ -4464,7 +4501,7 @@ function _lockItemsByRole(assetManifest = {}, roles = []) {
   const wanted = new Set((Array.isArray(roles) ? roles : [roles]).filter(Boolean));
   return (Array.isArray(assetManifest.items) ? assetManifest.items : [])
     .filter(item => wanted.has(item.role))
-    .slice(0, 6);
+    .slice(0, 12);
 }
 
 function _buildLuxuryVisualLocks({
@@ -12245,6 +12282,8 @@ async function _generateLuxuryPersonSheetWithPipeline({
   destDir = JIMENG_ASSETS_DIR,
   referenceImages = [],
   outputSize = 'hd',
+  expectedPeople = 1,
+  castMode = 'single',
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
@@ -12350,6 +12389,8 @@ async function _generateLuxuryPersonSheetWithPipeline({
       const frameQa = await _checkLuxuryActorAssetFramingQa(req, outPath, {
         viewKey: filename,
         model: `${model.provider_id}/${model.model_id}`,
+        expectedPeople,
+        castMode,
       });
       addAttempt(model, true);
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
@@ -12516,23 +12557,137 @@ async function _generateLuxuryRealisticActorPackage({
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
   const briefDerivedContract = _luxuryActorBriefDerivedContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
   const positiveFaceContract = _luxuryActorPositiveFaceContract({ age });
+  const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
+    ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
+    : 'single';
+  const expectedPeople = castMode === 'group' ? 3 : (castMode === 'dual' ? 2 : 1);
+  if (expectedPeople > 1) {
+    const castAssets = [];
+    const outputs = [];
+    const attempts = [];
+    const castLabel = castMode === 'dual' ? '双人' : '多人';
+    const castName = castMode === 'dual' ? 'AI 真人感双人演员组' : 'AI 真人感多人演员组';
+    const memberGender = (index) => {
+      const raw = String(spec.gender || '').toLowerCase();
+      if (raw === 'all_male' || raw === 'male') return 'male';
+      if (raw === 'all_female' || raw === 'female') return 'female';
+      if (raw === 'mixed') return index % 2 === 0 ? 'female' : 'male';
+      return raw || 'auto';
+    };
+    for (let i = 0; i < expectedPeople; i += 1) {
+      const memberNo = i + 1;
+      const memberName = castMode === 'dual'
+        ? `角色${memberNo === 1 ? 'A' : 'B'}`
+        : `角色${memberNo}`;
+      const memberSpec = {
+        ...spec,
+        castMode: 'single',
+        cast_mode: 'single',
+        gender: memberGender(i),
+        cast_member_index: memberNo,
+        cast_member_count: expectedPeople,
+      };
+      const memberRoleHint = [
+        roleHint,
+        `${castLabel}演员组的${memberName}：只生成这一个独立人物，不要同框生成其他人，不要复用其他成员五官。`,
+        `This is independent cast member ${memberNo} of ${expectedPeople}; generate exactly one standalone person reference package for this member only.`,
+      ].filter(Boolean).join('；');
+      const memberPack = await _generateLuxuryRealisticActorPackage({
+        req,
+        text,
+        descriptionText,
+        personContextNotes,
+        sceneNotes,
+        roleHint: memberRoleHint,
+        spec: memberSpec,
+        referencePersonUrl: memberNo === 1 ? referencePersonUrl : '',
+        aspectRatio,
+        baseUrl,
+      });
+      const memberAsset = {
+        ...(memberPack.actorAsset || {}),
+        cast_mode: 'single',
+        cast_parent_mode: castMode,
+        cast_member_index: memberNo,
+        cast_member_count: expectedPeople,
+        cast_role: memberName,
+        name: `${castName}${memberName}`,
+      };
+      castAssets.push(memberAsset);
+      outputs.push(...(memberPack.outputs || []).map(x => ({ ...x, cast_member_index: memberNo, cast_role: memberName })));
+      attempts.push(...(memberPack.attempts || []).map(x => ({ ...x, cast_member_index: memberNo, cast_role: memberName })));
+    }
+    const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
+    fs.mkdirSync(actorDir, { recursive: true });
+    const primary = castAssets[0] || {};
+    const actorAsset = {
+      actor_id: actorId,
+      actor_asset_id: actorAssetId,
+      status: 'confirmed',
+      source: 'local_actor_library_generated',
+      reference_kind: 'synthetic_realistic_actor',
+      production_usable_actor: true,
+      is_ai_generated: false,
+      name: castName,
+      cast_mode: castMode,
+      expected_people: expectedPeople,
+      person_count: expectedPeople,
+      gender: spec.gender || 'auto',
+      age: age.value,
+      age_range: age.prompt,
+      origin: origin.value,
+      role: 'brief_derived_campaign_cast',
+      image_url: primary.image_url || '',
+      extra_image_urls: [],
+      cast_assets: castAssets,
+      stable_attributes: [
+        `${expectedPeople} independent actor identities`,
+        'each cast member has separate face identity, age impression, hairstyle, body proportions and outfit family',
+        'never merge cast members into one image or one asset id',
+      ],
+      forbidden_drift: ['combined group reference as one actor', 'merged bodies', 'duplicated cast member', 'missing cast member', 'extra cast member', 'swapped identities'],
+      prompt: `CONSISTENT INDEPENDENT CAST PACKAGE: use ${expectedPeople} separate actor assets as ${castName}. Each cast member is an independent person with its own reference images; preserve each identity separately and never collapse them into one shared actor.`,
+    };
+    fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
+    fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+    return { actorAsset, outputs, attempts };
+  }
+  const castNoun = expectedPeople === 1 ? 'one consistent real-looking person or character subject' : `${expectedPeople} consistent real-looking people as one fixed cast`;
+  const castReferenceKind = expectedPeople === 1 ? 'person identity reference package' : `${expectedPeople}-person cast identity reference package`;
+  const castFrameLead = expectedPeople === 1
+    ? 'Show exactly one person total.'
+    : `Show exactly ${expectedPeople} distinct people total in the same frame, with clear separation between bodies and faces; no extra people, no missing people, no merged bodies.`;
+  const castConsistencyLock = expectedPeople === 1
+    ? 'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.'
+    : `CRITICAL CAST CONSISTENCY LOCK: all three photos must show the exact same ${expectedPeople} people as a fixed cast, each with stable face identity, age impression, hairstyle, body proportions, outfit family and lower-body clothing. Do not add, remove, merge, duplicate or swap any cast member.`;
+  const castIdentityStable = expectedPeople === 1
+    ? 'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.'
+    : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
-  const wardrobe = 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views';
+  const wardrobe = expectedPeople === 1
+    ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
+    : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
   const youngerSubject = /infant|toddler|child|teen/.test(String(age.value || '').toLowerCase());
-  const framingContract = youngerSubject
-    ? 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.'
-    : 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.';
+  const normalizedActorAspectRatio = _normalizeAspectRatio(aspectRatio, '9:16');
+  const framingContract = expectedPeople > 1
+    ? `CRITICAL FRAMING LOCK: ${expectedPeople}-person full-cast identity reference photo. Show every required cast member from head to shoes whenever possible; at minimum show each person's head, torso and lower body below the hips. Do not crop any required cast member at chest, waist or hips.`
+    : (youngerSubject
+      ? `CRITICAL FRAMING LOCK: ${normalizedActorAspectRatio} identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.`
+      : `CRITICAL FRAMING LOCK: ${normalizedActorAspectRatio} identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.`);
   const hardFramingLead = [
     // 中文说明：生图 prompt 只保留正向构图要求；负向 AI 脸/半身判断留给 QA，降低上游提交审核误伤。
-    'VERTICAL 9:16 FULL-BODY IDENTITY REFERENCE PHOTO.',
-    'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
+    expectedPeople > 1 ? `FULL-CAST IDENTITY REFERENCE PHOTO WITH EXACTLY ${expectedPeople} PEOPLE.` : `${normalizedActorAspectRatio} FULL-BODY IDENTITY REFERENCE PHOTO.`,
+    expectedPeople > 1
+      ? `Camera is pulled far enough back to show all ${expectedPeople} people with head, torso, hips, legs and shoes or age-appropriate lower bodies in one frame.`
+      : 'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
     'Plain studio camera photo with natural hands, real fabric folds, soft daylight and calm commercial styling.',
   ].join(' ');
   const common = [
     hardFramingLead,
-    'Create a consistent person identity reference package for a realistic live-action storyboard.',
-    'Generate one consistent real-looking person or character subject for neutral identity reference photos, only when the brief/script requires a visible person.',
+    `Create a consistent ${castReferenceKind} for a realistic live-action storyboard.`,
+    `Generate ${castNoun} for neutral identity reference photos, only when the brief/script requires visible people.`,
+    castFrameLead,
     briefDerivedContract,
     positiveFaceContract,
     `${gender.prompt}; ${origin.prompt}; ${age.prompt}.`,
@@ -12540,31 +12695,33 @@ async function _generateLuxuryRealisticActorPackage({
     ageSafety,
     `Wardrobe lock: ${wardrobe}.`,
     framingContract,
-    'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.',
+    castConsistencyLock,
     'The result should look like practical plain studio identity-reference photography of a real brief-derived subject.',
     'Use natural real-camera styling, realistic hair, normal hands, real fabric folds and believable lens perspective.',
     'Reference style: clean neutral gray studio background with visible floor line or floor shadow, soft daylight, full body or knee-up body visible when age-appropriate, no text, no labels, no watermark.',
-    'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.',
+    castIdentityStable,
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
     `Advertising brief: ${String(text || '').slice(0, 900)}.`,
     personContextNotes ? `Character/story context: ${personContextNotes.slice(0, 900)}.` : '',
     sceneNotes ? `Scene context: ${sceneNotes.slice(0, 650)}.` : '',
     roleHint ? `Role hint: ${roleHint.slice(0, 500)}.` : '',
-    'Keep the selected demographic, wardrobe, age impression, identity and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or extra people.',
+    expectedPeople === 1
+      ? 'Keep the selected demographic, wardrobe, age impression, identity and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or extra people.'
+      : `Keep the selected demographics, relationship, wardrobe, age impressions, identities and realistic photography style consistent. Keep the frame clean with no text, logos, watermarks or people beyond the required ${expectedPeople}-person cast.`,
     REALISTIC_PHOTO_GUIDE,
   ].filter(Boolean).join(' ');
   const views = [
     {
       key: 'front',
-      prompt: `${hardFramingLead} FRONT VIEW: person facing camera directly with an age-appropriate calm natural expression, both eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common}`,
+      prompt: `${hardFramingLead} FRONT VIEW: ${expectedPeople === 1 ? 'person facing camera directly' : `all ${expectedPeople} cast members facing camera directly in one clean lineup`} with age-appropriate calm natural expressions, eyes visible, full body visible from head to shoes when possible, lower-body clothing clearly visible, plain real-camera identity reference photo. ${common}`,
     },
     {
       key: 'side',
-      prompt: `${hardFramingLead} SIDE / THREE-QUARTER VIEW: same person, same haircut and exact same outfit, left side or three-quarter profile, full body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions, plain real-camera identity reference photo. ${common} Do not change clothing, hair or age.`,
+      prompt: `${hardFramingLead} SIDE / THREE-QUARTER VIEW: ${expectedPeople === 1 ? 'same person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, side or three-quarter profile, full body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions, plain real-camera identity reference photo. ${common} Do not change clothing, hair, age, cast count or relationship.`,
     },
     {
       key: 'action',
-      prompt: `${hardFramingLead} ACTION VIEW: same person performing one age-appropriate small action derived from the confirmed script and scene context, while still showing head, torso and lower body. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, lower-body clothing clearly visible, same face identity, exact same haircut and outfit, plain real-camera identity reference photo. ${common} No wardrobe drift.`,
+      prompt: `${hardFramingLead} ACTION VIEW: ${expectedPeople === 1 ? 'same person performing one age-appropriate small action' : `same ${expectedPeople} cast members performing one age-appropriate small relationship/dialogue action together`} derived from the confirmed script and scene context, while still showing head, torso and lower body for the required cast. Use props only when the brief, person table or reference explicitly requires them; do not invent order papers, shelves, phones, dashboards, office props or fixed industry objects. Visible from head to knees or full body when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families, plain real-camera identity reference photo. ${common} No wardrobe drift, cast count drift or role swap.`,
     },
   ];
   const outputs = [];
@@ -12584,6 +12741,8 @@ async function _generateLuxuryRealisticActorPackage({
       // 中文说明：侧面/动作参考必须继承前序已通过图的人物和服装，避免第三张动作图换衣服或换人。
       referenceImages: viewReferenceImages,
       outputSize: 'hd',
+      expectedPeople,
+      castMode,
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
     outputs.push({
@@ -12604,7 +12763,10 @@ async function _generateLuxuryRealisticActorPackage({
     reference_kind: 'synthetic_realistic_actor',
     production_usable_actor: true,
     is_ai_generated: false,
-    name: 'AI 真人感一致性演员',
+    name: expectedPeople === 1 ? 'AI 真人感一致性演员' : (castMode === 'dual' ? 'AI 真人感双人演员组' : 'AI 真人感多人演员组'),
+    cast_mode: castMode,
+    expected_people: expectedPeople,
+    person_count: expectedPeople,
     gender: gender.value,
     age: age.value,
     age_range: age.prompt,
@@ -12613,15 +12775,17 @@ async function _generateLuxuryRealisticActorPackage({
     image_url: outputs[0]?.url || '',
     extra_image_urls: outputs.slice(1).map(x => x.url).filter(Boolean),
     stable_attributes: [
-      'same realistic face identity',
+      expectedPeople === 1 ? 'same realistic face identity' : `same ${expectedPeople} realistic face identities`,
       `same age impression: ${age.prompt}`,
-      'same exact hairstyle and hair color',
-      'same body proportions',
-      'same exact outfit, accessories and shoes',
+      expectedPeople === 1 ? 'same exact hairstyle and hair color' : 'same exact hairstyle/hair color per cast member',
+      expectedPeople === 1 ? 'same body proportions' : 'same body proportions per cast member',
+      expectedPeople === 1 ? 'same exact outfit, accessories and shoes' : 'same outfit family, accessories and shoes per cast member',
       'same natural skin texture',
     ],
-    forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
-    prompt: `CONSISTENT REAL CAMPAIGN CHARACTER ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes required by the confirmed script. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`,
+    forbidden_drift: ['anime', 'cartoon', '3D render', 'CGI', 'different actor', 'missing cast member', 'extra cast member', 'merged bodies', 'beauty poster model', 'plastic AI skin', 'wrong ethnicity'],
+    prompt: expectedPeople === 1
+      ? `CONSISTENT REAL CAMPAIGN CHARACTER ASSET: use the same ${personIdentityPrompt} (${age.prompt}) across all human keyframes required by the confirmed script. Preserve face identity, age impression, exact hairstyle, body proportions, exact outfit, accessories and shoes, natural skin texture. Change only pose, expression, lighting and scene placement.`
+      : `CONSISTENT REAL CAMPAIGN CAST ASSET: use the same fixed ${expectedPeople}-person cast (${personIdentityPrompt}; ${age.prompt}) across all human keyframes required by the confirmed script. Preserve each person's face identity, age impression, hairstyle, body proportions, outfit family, accessories, shoes, relationship and natural skin texture. Change only pose, expression, lighting and scene placement; never add, remove, merge or swap cast members.`,
   };
   // Keep actor package creation provider-neutral. Webang MediaKit upload happens only
   // when the selected video model is Webang Seedance; Topview uses its own upload flow.
@@ -12709,6 +12873,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         ? `人物表/约束：${context.person_notes.slice(0, 10).join('；')}`
         : '',
     ].filter(Boolean).join('\n');
+    const actorAspectRatio = _normalizeAspectRatio(output_ratio || spec.output_ratio || spec.aspect_ratio || '9:16', '9:16');
     const actorPack = await _generateLuxuryRealisticActorPackage({
       req,
       text,
@@ -12718,7 +12883,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       roleHint,
       spec,
       referencePersonUrl,
-      aspectRatio: '9:16',
+      aspectRatio: actorAspectRatio,
       baseUrl,
     });
     const actorAsset = actorPack.actorAsset;
@@ -12728,6 +12893,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       imageUrl,
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
+      cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
       attempts: actorPack.attempts || [],
@@ -12745,6 +12911,10 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         production_usable_actor: true,
         gender: actorAsset.gender || '',
         origin: actorAsset.origin || '',
+        cast_mode: actorAsset.cast_mode || 'single',
+        expected_people: actorAsset.expected_people || actorAsset.person_count || 1,
+        person_count: actorAsset.person_count || actorAsset.expected_people || 1,
+        cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
@@ -12756,6 +12926,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       imageUrl,
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
+      cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
       attempts: actorPack.attempts || [],
@@ -12773,6 +12944,10 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         production_usable_actor: true,
         gender: actorAsset.gender || '',
         origin: actorAsset.origin || '',
+        cast_mode: actorAsset.cast_mode || 'single',
+        expected_people: actorAsset.expected_people || actorAsset.person_count || 1,
+        person_count: actorAsset.person_count || actorAsset.expected_people || 1,
+        cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
@@ -16407,6 +16582,9 @@ function _buildLuxuryActorAssetPackage({
   gender = '',
   role = '',
   description = '',
+  castMode = 'single',
+  expectedPeople = 1,
+  castAssets = [],
 } = {}) {
   const url = String(imageUrl || '').trim();
   if (!url) return null;
@@ -16417,8 +16595,26 @@ function _buildLuxuryActorAssetPackage({
     ? extraImageUrls.map(x => String(x || '').trim()).filter(Boolean).slice(0, 8)
     : [];
   const actorName = String(name || role || 'fixed campaign actor').trim().slice(0, 80);
+  const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const castMembers = Array.isArray(castAssets)
+    ? castAssets
+      .filter(x => x && typeof x === 'object')
+      .slice(0, peopleCount)
+      .map((member, index) => ({
+        index: index + 1,
+        actor_id: member.actor_id || '',
+        actor_asset_id: member.actor_asset_id || member.id || '',
+        name: member.name || member.cast_role || `cast member ${index + 1}`,
+        image_url: String(member.image_url || member.url || member.previewUrl || '').trim(),
+        extra_image_urls: Array.isArray(member.extra_image_urls)
+          ? member.extra_image_urls.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4)
+          : [],
+      }))
+      .filter(member => member.image_url)
+    : [];
+  const multiCast = peopleCount > 1 || castMembers.length > 1;
   const stable = [
-    'same face identity / closest visible face impression',
+    multiCast ? `same ${peopleCount} fixed cast members and relationship` : 'same face identity / closest visible face impression',
     'same age impression',
     'same hairstyle and hair color',
     'same body proportions',
@@ -16428,6 +16624,9 @@ function _buildLuxuryActorAssetPackage({
   ];
   const forbidden = [
     'new random actor',
+    'missing required cast member',
+    'extra cast member',
+    'merged or duplicated cast member',
     'changed gender or age',
     'changed face structure',
     'fashion poster beauty model',
@@ -16436,15 +16635,21 @@ function _buildLuxuryActorAssetPackage({
     'back-only person when the story needs expression',
   ];
   const prompt = [
-    `FIXED ACTOR ASSET PACKAGE: actor_id=${actorId}.`,
-    `Use the exact same campaign actor for every human keyframe: ${actorName}.`,
+    `${multiCast ? 'FIXED CAST ASSET PACKAGE' : 'FIXED ACTOR ASSET PACKAGE'}: actor_id=${actorId}.`,
+    multiCast
+      ? `Use the exact same ${peopleCount}-person campaign cast for every human keyframe that requires this relationship: ${actorName}.`
+      : `Use the exact same campaign actor for every human keyframe: ${actorName}.`,
     normalizedGender ? `Requested gender presentation: ${normalizedGender}.` : '',
     description ? `Actor description: ${_luxuryLockCleanText(description, 420)}.` : '',
-    `Mandatory identity reference image: ${url}.`,
-    extraRefs.length ? `Additional actor reference views: ${extraRefs.join(' | ')}.` : '',
+    castMembers.length
+      ? `Independent cast member references: ${castMembers.map(member => `member ${member.index} ${member.name} actor_asset_id=${member.actor_asset_id || '-'} primary=${member.image_url}${member.extra_image_urls.length ? ` views=${member.extra_image_urls.join(' | ')}` : ''}`).join(' ; ')}.`
+      : `Mandatory identity reference image: ${url}.`,
+    !castMembers.length && extraRefs.length ? `Additional actor reference views: ${extraRefs.join(' | ')}.` : '',
     `Preserve: ${stable.join(', ')}.`,
     `Never output: ${forbidden.join(', ')}.`,
-    'Only pose, gesture, expression, camera angle, lighting and placement may change between shots.',
+    multiCast
+      ? 'Only pose, gesture, expression, camera angle, lighting and placement may change between shots. Never add, remove, merge, duplicate or swap cast members.'
+      : 'Only pose, gesture, expression, camera angle, lighting and placement may change between shots.',
   ].filter(Boolean).join(' ');
   return {
     actor_id: actorId,
@@ -16452,10 +16657,14 @@ function _buildLuxuryActorAssetPackage({
     status: 'confirmed',
     source: source || 'person_asset',
     name: actorName,
+    cast_mode: multiCast ? (castMode === 'group' ? 'group' : 'dual') : 'single',
+    expected_people: peopleCount,
+    person_count: peopleCount,
     gender: normalizedGender,
     role: role || '',
     image_url: url,
     extra_image_urls: extraRefs,
+    cast_assets: castMembers,
     stable_attributes: stable,
     forbidden_drift: forbidden,
     prompt,
@@ -16463,6 +16672,15 @@ function _buildLuxuryActorAssetPackage({
 }
 
 function _luxuryActorReferenceGroup(actor = {}, primaryUrl = '') {
+  const castUrls = Array.isArray(actor?.cast_assets)
+    ? actor.cast_assets.flatMap(member => [
+      member?.image_url,
+      member?.url,
+      member?.previewUrl,
+      ...(Array.isArray(member?.extra_image_urls) ? member.extra_image_urls : []),
+      ...(Array.isArray(member?.extra_images) ? member.extra_images : []),
+    ])
+    : [];
   const urls = [
     primaryUrl,
     actor?.image_url,
@@ -16471,6 +16689,7 @@ function _luxuryActorReferenceGroup(actor = {}, primaryUrl = '') {
     ...(Array.isArray(actor?.extra_image_urls) ? actor.extra_image_urls : []),
     ...(Array.isArray(actor?.extra_images) ? actor.extra_images : []),
     ...(Array.isArray(actor?.views) ? actor.views : []),
+    ...castUrls,
   ];
   return urls
     .map(x => String(x || '').trim())
@@ -22936,6 +23155,9 @@ router.post('/spaces/keyframes', async (req, res) => {
           person_asset?.appearance,
           person_asset?.outfit,
         ].filter(Boolean).join(' '),
+        identityCastMode: person_asset?.cast_mode || person_asset?.castMode || req.body?.person_spec?.castMode || 'single',
+        identityExpectedPeople: person_asset?.expected_people || person_asset?.person_count || (req.body?.person_spec?.castMode === 'group' ? 3 : (req.body?.person_spec?.castMode === 'dual' ? 2 : 1)),
+        identityCastAssets: Array.isArray(person_asset?.cast_assets) ? person_asset.cast_assets : [],
         identityAvailability: confirmedIdentityAvailability,
         globalVisualBible: luxuryGlobalVisualBible,
         assetManifest: luxuryAssetManifest,
@@ -23119,6 +23341,9 @@ router.post('/spaces/keyframes', async (req, res) => {
         title: person_asset.name || 'AI 真人感演员包',
         image_url: luxuryPersonAssetImageUrl,
         extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
+        cast_assets: Array.isArray(person_asset.cast_assets) ? person_asset.cast_assets : [],
+        cast_mode: person_asset.cast_mode || person_asset.castMode || 'single',
+        expected_people: person_asset.expected_people || person_asset.person_count || 1,
         actor_asset_id: person_asset.actor_asset_id || person_asset.asset_library_id || person_asset.material_id || '',
         gender: _luxuryFirstConfirmedGender(person_asset.detected_gender, person_asset.gender),
       }
@@ -23149,6 +23374,9 @@ router.post('/spaces/keyframes', async (req, res) => {
         name: luxuryActorAssetPackage?.name || luxuryIdentityAvatar?.name || luxuryIdentityAvatar?.title || '',
         image_url: luxuryIdentityReferenceGroup[0],
         extra_image_urls: luxuryIdentityReferenceGroup.slice(1),
+        cast_assets: Array.isArray(luxuryActorAssetPackage?.cast_assets)
+          ? luxuryActorAssetPackage.cast_assets
+          : (Array.isArray(luxuryIdentityAvatar?.cast_assets) ? luxuryIdentityAvatar.cast_assets : []),
       }
       : luxuryIdentityAvatar;
     const luxuryBriefCharacterLock = isLuxury
