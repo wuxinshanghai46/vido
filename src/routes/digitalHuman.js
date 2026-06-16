@@ -12191,6 +12191,50 @@ function _isLuxuryPersonSheetPreImageProviderFailure(err) {
   return /AuditSubmitIllegal|submit is illegal|审核拒绝|NO_IMAGE|没有返回图片|未返回图片|returned no image|provider error|HTTP\s*400|code=400|HTTP\s*500|Internal Server Error|timeout|ETIMEDOUT|ECONNRESET/i.test(text);
 }
 
+function _isLuxuryActorCropQaFailure(err) {
+  const qa = err?.details && typeof err.details === 'object' ? err.details : {};
+  const framing = String(qa.framing || '').toLowerCase();
+  const text = [
+    err?.code,
+    err?.message,
+    qa.reason,
+    qa.observed,
+    ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
+  ].filter(Boolean).join(' ');
+  return /LUXURY_ACTOR_(FRAME|FRAMING)_QA_FAILED/i.test(String(err?.code || ''))
+    && (
+      /headshot|bust|shoulders|chest|waist|hip|hips|upper thigh|half-body|cropp|lower[-_\s]?body|garment|trousers|skirt|legs|shoes|头像|胸像|半身|肩|胸|腰|髋|裁切|下半身|腿|鞋/i.test(text)
+      || /^(headshot|bust|waist_up|chest_up|shoulders_only|half_body|other|unknown)$/.test(framing)
+      || qa.lower_body_visible !== true
+      || qa.trousers_or_skirt_visible !== true
+    );
+}
+
+function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single' } = {}) {
+  const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const castLabel = castMode === 'dual'
+    ? 'two independent cast members'
+    : (castMode === 'group' ? `${people} independent cast members` : 'one standalone person');
+  const qaNote = [
+    qa.framing ? `previous framing=${qa.framing}` : '',
+    qa.reason ? `QA reason=${String(qa.reason).slice(0, 160)}` : '',
+    qa.observed ? `observed=${String(qa.observed).slice(0, 160)}` : '',
+  ].filter(Boolean).join('; ');
+  return [
+    `CRITICAL FULL-BODY REFRAME RETRY for a ${aspectRatio} actor reference photo.`,
+    qaNote ? `The previous candidate failed framing QA: ${qaNote}.` : 'The previous candidate failed because the person was cropped or too close.',
+    `Generate a NEW pulled-back studio casting photo of ${castLabel}.`,
+    people === 1
+      ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
+      : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
+    'Leave clean margin above the head and below the feet, with visible floor line or ground shadow. Use a neutral plain studio background and real-camera perspective.',
+    'Use a longer distance portrait/photo lens feel; the subject should occupy about 55-70% of frame height, never fill the frame as a portrait.',
+    'Do not crop at head, shoulders, chest, waist, hips, knees or shoes. Do not create a headshot, bust portrait, waist-up portrait, beauty portrait or poster crop.',
+    'If reference images are provided, use them only for identity, age, haircut and outfit evidence; do not copy their crop, composition or close-up framing.',
+    basePrompt,
+  ].filter(Boolean).join(' ');
+}
+
 function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
   const s = _stripLuxuryBriefNoise(value)
     .replace(/[。；;，,]\s*$/g, '')
@@ -12381,6 +12425,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
 
   let lastErr = null;
   let stoppedAfterGeneratedCandidate = false;
+  let rejectedCandidateCount = 0;
   for (let i = 0; i < configuredModels.length; i++) {
     const model = configuredModels[i];
     let outPath = '';
@@ -12397,7 +12442,37 @@ async function _generateLuxuryPersonSheetWithPipeline({
     } catch (err) {
       lastErr = err;
       const candidatePath = outPath || err._luxuryCandidatePath || '';
+      if (candidatePath) rejectedCandidateCount += 1;
       addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
+      if (candidatePath && _isLuxuryActorCropQaFailure(err)) {
+        const retryPrompt = _buildLuxuryActorFullBodyRetryPrompt(prompt, {
+          qa: err.details || {},
+          aspectRatio: safeAspectRatio,
+          expectedPeople,
+          castMode,
+        });
+        let retryPath = '';
+        try {
+          retryPath = await runCandidate(model, i + 1, retryPrompt, '_fullbody_retry');
+          const frameQa = await _checkLuxuryActorAssetFramingQa(req, retryPath, {
+            viewKey: `${filename}_fullbody_retry`,
+            model: `${model.provider_id}/${model.model_id}`,
+            expectedPeople,
+            castMode,
+          });
+          addAttempt(model, true, null, { retry: 'full_body_reframe' });
+          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
+        } catch (retryErr) {
+          lastErr = retryErr;
+          const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
+          if (retryCandidatePath) rejectedCandidateCount += 1;
+          addAttempt(model, false, retryErr, {
+            ...candidatePayload(retryCandidatePath, '全身重试候选图'),
+            retry: 'full_body_reframe',
+          });
+          console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body reframe retry failed:`, shortError(retryErr));
+        }
+      }
       const canTryNextWithoutExtraImage = !candidatePath && _isLuxuryPersonSheetPreImageProviderFailure(err) && i < configuredModels.length - 1;
       if (canTryNextWithoutExtraImage) {
         console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} failed before image output, try next configured model:`, shortError(err));
@@ -12414,6 +12489,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       break;
     }
   }
+  stoppedAfterGeneratedCandidate = stoppedAfterGeneratedCandidate || rejectedCandidateCount > 0;
   const attemptedKeys = new Set(attempts.map(a => `${a.provider_id}/${a.model_id}`));
   const skippedModels = configuredModels
     .map(model => `${model.provider_id}/${model.model_id}`)
