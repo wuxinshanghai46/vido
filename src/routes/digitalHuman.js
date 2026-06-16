@@ -2059,7 +2059,7 @@ function _normalizeLuxuryRequestedGender(value = '') {
 function _luxuryRequestedGenderInstruction(value = '') {
   const gender = _normalizeLuxuryRequestedGender(value);
   if (!gender) return '';
-  return `REQUESTED ACTOR ATTRIBUTE LOCK: visible gender presentation must match "${gender}" exactly because it was selected in the person source controls. Do not generate a candidate with a conflicting gender presentation.`;
+  return `REQUESTED ACTOR ATTRIBUTE LOCK: selected visible gender presentation is "${gender}". Keep every generated casting-sheet candidate aligned to this selected attribute.`;
 }
 
 async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
@@ -2098,7 +2098,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'Return ONLY compact JSON, no markdown.',
     'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"gender_presentation":"male|female|ambiguous|unknown","realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
     `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
-    requiredGender ? `Hard fail if the visible actor gender presentation is not ${requiredGender}. The user explicitly selected ${requiredGender}; do not pass an opposite-gender actor.` : '',
+    requiredGender ? `Hard fail if the visible actor gender presentation does not match the selected required value "${requiredGender}".` : '',
     isMultiCast
       ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
       : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
@@ -12258,16 +12258,12 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
   const castLabel = castMode === 'dual'
     ? 'two independent cast members'
     : (castMode === 'group' ? `${people} independent cast members` : 'one standalone person');
-  const qaNote = [
-    qa.framing ? `previous framing=${qa.framing}` : '',
-    qa.reason ? `QA reason=${String(qa.reason).slice(0, 160)}` : '',
-    qa.observed ? `observed=${String(qa.observed).slice(0, 160)}` : '',
-  ].filter(Boolean).join('; ');
   return [
     `CRITICAL FULL-BODY REFRAME RETRY for a ${aspectRatio} actor reference photo.`,
-    qaNote ? `The previous candidate failed framing QA: ${qaNote}.` : 'The previous candidate failed because the person was cropped or too close.',
+    'The previous candidate failed QA. Generate a fresh clean casting-sheet image from the target attributes only.',
     `Generate a NEW pulled-back studio casting photo of ${castLabel}.`,
     genderInstruction,
+    'CASTING SHEET STYLE LOCK: practical full-length commercial casting photo, wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, no fashion editorial styling.',
     people === 1
       ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
@@ -12811,7 +12807,7 @@ async function _generateLuxuryRealisticActorPackage({
       ? `Camera is pulled far enough back to show all ${expectedPeople} people with head, torso, hips, legs and shoes or age-appropriate lower bodies in one frame.`
       : 'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
-    'Plain studio camera photo with natural hands, real fabric folds, soft daylight and calm commercial styling.',
+    'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, natural hands, real fabric folds and calm non-editorial styling.',
   ].join(' ');
   const common = [
     hardFramingLead,
