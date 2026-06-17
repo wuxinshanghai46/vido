@@ -670,12 +670,32 @@
     }
   }
 
-  function rememberActiveTab(tab) {
+  function getLuxuryAdProjectRouteId() {
+    try {
+      return String(new URLSearchParams(location.search || '').get('luxury_project') || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  function clearLuxuryAdProjectRouteParam(tab = '') {
+    try {
+      const url = new URL(location.href);
+      // 中文注释：luxury_project 只作为“继续制作”的一次性入口参数，普通刷新不能一直被旧项目 ID 劫持。
+      url.searchParams.delete('luxury_project');
+      if (tab && DH_VALID_TABS.includes(tab)) url.searchParams.set('tab', tab);
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch {}
+  }
+
+  function rememberActiveTab(tab, opts = {}) {
     if (!DH_VALID_TABS.includes(tab)) return;
     try { localStorage.setItem(DH_LAST_TAB_KEY, tab); } catch {}
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', tab);
+      // 中文注释：除继续制作的首屏恢复外，任何普通切换栏目都要清理项目详情参数。
+      if (opts.preserveLuxuryProject !== true) url.searchParams.delete('luxury_project');
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
   }
@@ -704,7 +724,7 @@
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     if (tab !== state.activeTab) stopAudibleMedia({ reset: true });
     state.activeTab = tab;
-    if (opts.remember !== false) rememberActiveTab(tab);
+    if (opts.remember !== false) rememberActiveTab(tab, opts);
     $$('.dh-nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     const paneTab = spacePaneForTab(tab);
     $$('.dh-tab-pane').forEach(el => el.classList.toggle('active', el.dataset.pane === paneTab));
@@ -10395,20 +10415,25 @@
   function luxuryAdProjectResumeUrl(projectId = '') {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', 'luxury-ad');
-    url.searchParams.set('luxury_project', String(projectId || ''));
+    const cleanProjectId = String(projectId || '').trim();
+    // 中文注释：只有明确传入项目 ID 时才写入继续制作参数，避免空参数污染普通剧情广告入口。
+    if (cleanProjectId) url.searchParams.set('luxury_project', cleanProjectId);
+    else url.searchParams.delete('luxury_project');
     url.hash = '';
     return url.toString();
   }
 
   async function restoreLuxuryAdProjectFromUrl() {
-    const params = new URLSearchParams(window.location.search || '');
-    const projectId = String(params.get('luxury_project') || '').trim();
+    const projectId = getLuxuryAdProjectRouteId();
     if (!projectId) return false;
     try {
       const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(projectId)}`);
       restoreLuxuryAdProject(r.project, { modal: false, fromUrl: true });
+      // 中文注释：项目恢复成功后立即清掉 URL 参数，后续刷新回到剧情广告入口而不是重复打开旧项目。
+      clearLuxuryAdProjectRouteParam('luxury-ad');
       return true;
     } catch (err) {
+      clearLuxuryAdProjectRouteParam('luxury-ad');
       toast('打开制作项目失败：' + err.message, 'error');
       return false;
     }
@@ -16813,7 +16838,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const luxExpandBrief = $('#dhLuxAdExpandBrief');
     if (luxExpandBrief) luxExpandBrief.addEventListener('change', e => { state.luxuryAd.expandBrief = !!e.target.checked; state.luxuryAd.segments = []; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
     updateOutputHints();
-    switchTab(getInitialTab());
+    const initialLuxuryProjectRouteId = getLuxuryAdProjectRouteId();
+    // 中文注释：首屏如果来自“继续制作”深链，先保留一次项目参数，等恢复项目后再主动清理。
+    switchTab(getInitialTab(), { preserveLuxuryProject: !!initialLuxuryProjectRouteId });
     await restoreLuxuryAdProjectFromUrl();
     renderLuxuryAdStoryboard();
     updateLuxuryAdStepLocks();
