@@ -144,6 +144,13 @@
       expandBrief: true,
       voiceId: '',
       productAsset: null,
+      // 中文注释：增强控制默认全部关闭；只有用户主动选择非自动场景、商品入镜或风格锁时才进入 controlled 链路。
+      controlledProduction: {
+        environment: { mode: 'auto', custom: '' },
+        product: { enabled: false, presence: 'medium', lockStrength: 'standard', methods: [] },
+        style: { mode: 'classic', notes: '' },
+        negative: { text: '' },
+      },
       personAsset: null,
       personSpec: {
         castMode: 'auto',
@@ -3914,6 +3921,12 @@
     state.luxuryAd.expandBrief = true;
     state.luxuryAd.voiceId = '';
     state.luxuryAd.productAsset = null;
+    state.luxuryAd.controlledProduction = {
+      environment: { mode: 'auto', custom: '' },
+      product: { enabled: false, presence: 'medium', lockStrength: 'standard', methods: [] },
+      style: { mode: 'classic', notes: '' },
+      negative: { text: '' },
+    };
     state.luxuryAd.personAsset = null;
     state.luxuryAd.personGenerationError = null;
     state.luxuryAd.personSpec = {
@@ -6143,6 +6156,174 @@
     }).join('');
   }
 
+  const LUXURY_CONTROL_ENVIRONMENT_OPTIONS = [
+    ['auto', '自动'],
+    ['indoor', '室内'],
+    ['outdoor', '室外'],
+    ['mixed', '室内+室外'],
+    ['tech_commercial', '科技感商业'],
+    ['custom', '自定义'],
+  ];
+
+  const LUXURY_CONTROL_PRODUCT_METHODS = [
+    ['detail', '细节特写'],
+    ['in_hand', '手持展示'],
+    ['usage_demo', '使用演示'],
+    ['scene_evidence', '场景证据'],
+    ['proof', '效果证明'],
+    ['cta', '收束引导'],
+  ];
+
+  const LUXURY_CONTROL_PRODUCT_METHOD_LABELS = Object.fromEntries(LUXURY_CONTROL_PRODUCT_METHODS);
+
+  function normalizeLuxuryControlledProduction(input = null) {
+    const src = input && typeof input === 'object' ? input : {};
+    // 中文注释：草稿接口使用 snake_case，前端状态使用短对象名；恢复时必须两种都识别，避免刷新后规则丢失。
+    const environment = src.environment_control && typeof src.environment_control === 'object' ? src.environment_control : (src.environment && typeof src.environment === 'object' ? src.environment : {});
+    const product = src.product_control && typeof src.product_control === 'object' ? src.product_control : (src.product && typeof src.product === 'object' ? src.product : {});
+    const style = src.style_control && typeof src.style_control === 'object' ? src.style_control : (src.style && typeof src.style === 'object' ? src.style : {});
+    const negative = src.negative_control && typeof src.negative_control === 'object' ? src.negative_control : (src.negative && typeof src.negative === 'object' ? src.negative : {});
+    const allowedEnvironment = new Set(LUXURY_CONTROL_ENVIRONMENT_OPTIONS.map(([value]) => value));
+    const allowedMethods = new Set(LUXURY_CONTROL_PRODUCT_METHODS.map(([value]) => value));
+    const methods = Array.isArray(product.methods)
+      ? product.methods.map(x => String(x || '').trim()).filter(x => allowedMethods.has(x))
+      : [];
+    return {
+      environment: {
+        mode: allowedEnvironment.has(String(environment.mode || 'auto')) ? String(environment.mode || 'auto') : 'auto',
+        custom: String(environment.custom || '').trim().slice(0, 160),
+      },
+      product: {
+        enabled: !!product.enabled,
+        presence: ['low', 'medium', 'high'].includes(String(product.presence || 'medium')) ? String(product.presence || 'medium') : 'medium',
+        lockStrength: ['loose', 'standard', 'strict'].includes(String(product.lockStrength || product.lock_strength || 'standard')) ? String(product.lockStrength || product.lock_strength || 'standard') : 'standard',
+        methods,
+      },
+      style: {
+        mode: ['classic', 'tech_commercial'].includes(String(style.mode || 'classic')) ? String(style.mode || 'classic') : 'classic',
+        notes: String(style.notes || '').trim().slice(0, 240),
+      },
+      negative: {
+        text: String(negative.text || src.negative_text || '').trim().slice(0, 240),
+      },
+    };
+  }
+
+  function luxuryControlledProduction() {
+    state.luxuryAd.controlledProduction = normalizeLuxuryControlledProduction(state.luxuryAd.controlledProduction);
+    return state.luxuryAd.controlledProduction;
+  }
+
+  function luxuryControlledProductionEnabled(ctrl = luxuryControlledProduction()) {
+    return ctrl.environment.mode !== 'auto'
+      || !!ctrl.environment.custom
+      || ctrl.product.enabled === true
+      || ctrl.style.mode !== 'classic'
+      || !!ctrl.style.notes
+      || !!ctrl.negative.text;
+  }
+
+  function luxuryControlledProductionPayload() {
+    const ctrl = luxuryControlledProduction();
+    return {
+      enabled: luxuryControlledProductionEnabled(ctrl),
+      mode: luxuryControlledProductionEnabled(ctrl) ? 'controlled' : 'classic',
+      environment_control: {
+        mode: ctrl.environment.mode,
+        custom: ctrl.environment.custom,
+      },
+      product_control: {
+        enabled: ctrl.product.enabled === true,
+        presence: ctrl.product.presence,
+        lock_strength: ctrl.product.lockStrength,
+        methods: ctrl.product.methods,
+      },
+      style_control: {
+        mode: ctrl.style.mode,
+        notes: ctrl.style.notes,
+      },
+      negative_control: {
+        text: ctrl.negative.text,
+      },
+    };
+  }
+
+  function markLuxuryControlledProductionDirty({ renderControl = true } = {}) {
+    // 中文注释：制作控制改变会影响后续剧本/分镜，所以只清掉派生产物，不改用户原始需求和已上传素材。
+    state.luxuryAd.briefInfo = null;
+    state.luxuryAd.visualReferenceBrief = null;
+    state.luxuryAd.assetManifest = null;
+    state.luxuryAd.visualLocks = null;
+    state.luxuryAd.globalVisualBible = null;
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.segments = [];
+    state.luxuryAd.storyboardDetailed = false;
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    if (renderControl) renderLuxuryAdControlledProduction();
+    renderLuxuryAdStoryboard();
+    updateLuxuryAdStepLocks();
+  }
+
+  function renderLuxuryAdControlledProduction() {
+    const host = $('#dhLuxAdControlledProduction');
+    if (!host) return;
+    const ctrl = luxuryControlledProduction();
+    const enabled = luxuryControlledProductionEnabled(ctrl);
+    const productReady = !!(state.luxuryAd.productAsset?.url || state.luxuryAd.productAsset?.previewUrl);
+    const methodSet = new Set(ctrl.product.methods || []);
+    host.innerHTML = `
+      <details class="dh-luxgen-control-box" ${enabled ? 'open' : ''}>
+        <summary>
+          <span>
+            <b>制作控制</b>
+            <small>${enabled ? '已启用增强控制，后续只在 controlled 链路生效' : '默认不启用，不影响当前剧情广告流程'}</small>
+          </span>
+          <em>${enabled ? 'controlled' : 'classic'}</em>
+        </summary>
+        <div class="dh-luxgen-control-grid">
+          <section class="dh-luxgen-control-card">
+            <div class="dh-luxgen-control-title"><b>场景方向</b><span>控制室内、室外或科技感，不写死行业场景。</span></div>
+            <div class="dh-luxgen-segmented" role="group" aria-label="场景方向">
+              ${LUXURY_CONTROL_ENVIRONMENT_OPTIONS.map(([value, label]) => `<button type="button" data-lux-control-env="${value}" class="${ctrl.environment.mode === value ? 'active' : ''}">${label}</button>`).join('')}
+            </div>
+            <input class="dh-input" data-lux-control-custom-env placeholder="自定义场景要求，例如：城市街区外景 + 门店入口 + 夜间霓虹" value="${escapeHtml(ctrl.environment.custom)}">
+          </section>
+          <section class="dh-luxgen-control-card">
+            <div class="dh-luxgen-control-title"><b>商品融入</b><span>${productReady ? '已上传主体图，可设置入镜强度和展示方式。' : '启用商品融入前建议先上传主体主图。'}</span></div>
+            <label class="dh-luxgen-inline-check"><input type="checkbox" data-lux-control-product-enabled ${ctrl.product.enabled ? 'checked' : ''}> <span>按镜头规则要求商品入镜</span></label>
+            <div class="dh-luxgen-control-fields">
+              <label><span>入镜强度</span><select class="dh-input" data-lux-control-product-presence>
+                <option value="low" ${ctrl.product.presence === 'low' ? 'selected' : ''}>低：只在必要镜头出现</option>
+                <option value="medium" ${ctrl.product.presence === 'medium' ? 'selected' : ''}>中：关键镜头必须出现</option>
+                <option value="high" ${ctrl.product.presence === 'high' ? 'selected' : ''}>高：多数镜头有证据</option>
+              </select></label>
+              <label><span>锁定强度</span><select class="dh-input" data-lux-control-product-lock>
+                <option value="loose" ${ctrl.product.lockStrength === 'loose' ? 'selected' : ''}>宽松：类别正确</option>
+                <option value="standard" ${ctrl.product.lockStrength === 'standard' ? 'selected' : ''}>标准：外观和用途一致</option>
+                <option value="strict" ${ctrl.product.lockStrength === 'strict' ? 'selected' : ''}>严格：按上传商品图锁定</option>
+              </select></label>
+            </div>
+            <div class="dh-luxgen-check-grid">
+              ${LUXURY_CONTROL_PRODUCT_METHODS.map(([value, label]) => `<label><input type="checkbox" data-lux-control-product-method="${value}" ${methodSet.has(value) ? 'checked' : ''}> <span>${label}</span></label>`).join('')}
+            </div>
+          </section>
+          <section class="dh-luxgen-control-card">
+            <div class="dh-luxgen-control-title"><b>风格方向</b><span>科技感商业只作为新规则进入，不污染普通写实模式。</span></div>
+            <select class="dh-input" data-lux-control-style-mode>
+              <option value="classic" ${ctrl.style.mode === 'classic' ? 'selected' : ''}>保持普通真实商业广告</option>
+              <option value="tech_commercial" ${ctrl.style.mode === 'tech_commercial' ? 'selected' : ''}>科技感商业 / 轻科幻 UI</option>
+            </select>
+            <textarea class="dh-input" rows="3" data-lux-control-style-notes placeholder="参考视频风格要点，例如：浅色零售空间、透明 UI 浮层、经理看手机确认订单，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
+          </section>
+          <section class="dh-luxgen-control-card">
+            <div class="dh-luxgen-control-title"><b>禁止项</b><span>错了就报错，不把禁止内容偷偷换成兜底画面。</span></div>
+            <textarea class="dh-input" rows="4" data-lux-control-negative placeholder="例如：不要室内办公室；不要塑料 AI 脸；不要无关化妆品瓶；不要纯 UI 海报。">${escapeHtml(ctrl.negative.text)}</textarea>
+          </section>
+        </div>
+      </details>`;
+  }
+
   function selectedAvatarImageUrl(a = state.selectedAvatar || {}) {
     return a.image_url || a.photo_url || a.cover_url || a.thumbnail_url || (a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : '');
   }
@@ -7855,6 +8036,7 @@
     $$('[data-lux-ad-type]').forEach(b => b.classList.toggle('active', b.dataset.luxAdType === (state.luxuryAd.adType || 'auto')));
     $$('[data-lux-ratio]').forEach(b => b.classList.toggle('active', b.dataset.luxRatio === (state.luxuryAd.outputRatio || '9:16')));
     updateLuxuryAdOutputHint();
+    renderLuxuryAdControlledProduction();
     renderLuxuryAdAssets();
     renderLuxuryAdPerson();
     renderLuxuryAdVoice();
@@ -10135,6 +10317,7 @@
       voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
       subtitle: getLuxuryAdSubtitlePayload(),
       person_spec: luxuryAdPersonSpec(),
+      controlled_production: luxuryControlledProductionPayload(),
       person_asset: luxuryAdPersonAssetPayload(),
       product_asset: state.luxuryAd.productAsset || null,
       brief_reference_assets: filledLuxuryAdBriefReferences(),
@@ -10286,6 +10469,7 @@
       state.luxuryAd.personAsset = null;
     }
     state.luxuryAd.productAsset = draft.product_asset || state.luxuryAd.productAsset || null;
+    state.luxuryAd.controlledProduction = normalizeLuxuryControlledProduction(draft.controlled_production || draft.controlledProduction || project.controlled_production || null);
     state.luxuryAd.briefRefAssets = draft.brief_reference_assets || [];
     state.luxuryAd.refAssets = draft.reference_assets || [];
     state.luxuryAd.bgmAsset = normalizeLuxuryAdBgmAsset(
@@ -11172,6 +11356,7 @@
         output_ratio: state.luxuryAd.outputRatio || '9:16',
         expand_brief: state.luxuryAd.expandBrief !== false,
         planning_mode: detail ? 'detailed' : 'outline',
+        controlled_production: luxuryControlledProductionPayload(),
         product_asset: state.luxuryAd.productAsset || null,
         brief_reference_assets: filledLuxuryAdBriefReferences().map((asset, i) => ({
           index: i + 1,
@@ -11430,6 +11615,7 @@
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
         global_visual_bible: state.luxuryAd.globalVisualBible || null,
         production_contract: state.luxuryAd.productionContract || null,
+        controlled_production: luxuryControlledProductionPayload(),
         production_project_id: state.luxuryAd.productionProjectId || '',
         brief_info: state.luxuryAd.briefInfo || null,
         person_asset: luxuryAdPersonAssetPayload(),
@@ -11669,6 +11855,7 @@
         })).filter(x => x.url || x.name),
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
         global_visual_bible: state.luxuryAd.globalVisualBible || null,
+        controlled_production: luxuryControlledProductionPayload(),
         person_asset: luxuryAdPersonAssetPayload(),
         brief_info: state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(text, state.luxuryAd.segments || {}),
         reference_assets: referenceAssets
@@ -14321,6 +14508,26 @@
       updateLuxuryAdStepLocks();
       return;
     }
+    const luxControlEnv = closest('[data-lux-control-env]');
+    if (luxControlEnv) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.environment.mode = luxControlEnv.dataset.luxControlEnv || 'auto';
+      if (ctrl.environment.mode === 'tech_commercial') ctrl.style.mode = 'tech_commercial';
+      markLuxuryControlledProductionDirty();
+      return;
+    }
+    const luxControlMethod = closest('[data-lux-control-product-method]');
+    if (luxControlMethod) {
+      const ctrl = luxuryControlledProduction();
+      const value = luxControlMethod.dataset.luxControlProductMethod || '';
+      const checked = !!luxControlMethod.checked;
+      const methods = new Set(ctrl.product.methods || []);
+      if (checked) methods.add(value);
+      else methods.delete(value);
+      ctrl.product.methods = Array.from(methods).filter(Boolean);
+      markLuxuryControlledProductionDirty();
+      return;
+    }
     const shotUpload = closest('[data-lux-shot-upload]');
     if (shotUpload) {
       if (state.luxuryAd.keyframeGenerating) {
@@ -15248,6 +15455,24 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   }
 
   document.addEventListener('input', (e) => {
+    if (e.target.matches?.('[data-lux-control-custom-env]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.environment.custom = e.target.value || '';
+      markLuxuryControlledProductionDirty({ renderControl: false });
+      return;
+    }
+    if (e.target.matches?.('[data-lux-control-style-notes]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.style.notes = e.target.value || '';
+      markLuxuryControlledProductionDirty({ renderControl: false });
+      return;
+    }
+    if (e.target.matches?.('[data-lux-control-negative]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.negative.text = e.target.value || '';
+      markLuxuryControlledProductionDirty({ renderControl: false });
+      return;
+    }
     if (e.target.dataset?.luxPersonSpec) {
       const field = e.target.dataset.luxPersonSpec;
       luxuryAdPersonSpec()[field] = e.target.value || '';
@@ -15282,6 +15507,33 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   });
 
   document.addEventListener('change', (e) => {
+    if (e.target.matches?.('[data-lux-control-product-enabled]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.product.enabled = !!e.target.checked;
+      markLuxuryControlledProductionDirty();
+      return;
+    }
+    if (e.target.matches?.('[data-lux-control-product-presence]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.product.presence = e.target.value || 'medium';
+      markLuxuryControlledProductionDirty();
+      return;
+    }
+    if (e.target.matches?.('[data-lux-control-product-lock]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.product.lockStrength = e.target.value || 'standard';
+      markLuxuryControlledProductionDirty();
+      return;
+    }
+    if (e.target.matches?.('[data-lux-control-style-mode]')) {
+      const ctrl = luxuryControlledProduction();
+      ctrl.style.mode = e.target.value || 'classic';
+      if (ctrl.style.mode === 'tech_commercial' && ctrl.environment.mode === 'auto') {
+        ctrl.environment.mode = 'tech_commercial';
+      }
+      markLuxuryControlledProductionDirty();
+      return;
+    }
     if (e.target.dataset?.luxPersonSpec) {
       const field = e.target.dataset.luxPersonSpec;
       luxuryAdPersonSpec()[field] = e.target.value || '';

@@ -522,6 +522,140 @@ function _compactLuxuryAdSubtitle(subtitle = null) {
   };
 }
 
+function _normalizeLuxuryControlledProduction(input = null) {
+  const src = input && typeof input === 'object' ? input : {};
+  const enabled = src.enabled === true || src.mode === 'controlled';
+  const env = src.environment_control || src.environment || {};
+  const product = src.product_control || src.product || {};
+  const style = src.style_control || src.style || {};
+  const negative = src.negative_control || src.negative || {};
+  const envMode = ['auto', 'indoor', 'outdoor', 'mixed', 'tech_commercial', 'custom'].includes(String(env.mode || 'auto')) ? String(env.mode || 'auto') : 'auto';
+  const styleMode = ['classic', 'tech_commercial'].includes(String(style.mode || 'classic')) ? String(style.mode || 'classic') : 'classic';
+  const methods = (Array.isArray(product.methods) ? product.methods : [])
+    .map(x => String(x || '').trim())
+    .filter(x => ['detail', 'in_hand', 'usage_demo', 'scene_evidence', 'proof', 'cta'].includes(x))
+    .slice(0, 8);
+  const clean = {
+    enabled: !!enabled || envMode !== 'auto' || styleMode !== 'classic' || !!String(env.custom || '').trim() || !!String(style.notes || '').trim() || !!String(negative.text || '').trim() || product.enabled === true,
+    mode: (!!enabled || envMode !== 'auto' || styleMode !== 'classic' || product.enabled === true) ? 'controlled' : 'classic',
+    environment_control: {
+      mode: envMode,
+      custom: _projectText(env.custom || '', 200),
+    },
+    product_control: {
+      enabled: product.enabled === true,
+      presence: ['low', 'medium', 'high'].includes(String(product.presence || 'medium')) ? String(product.presence || 'medium') : 'medium',
+      lock_strength: ['loose', 'standard', 'strict'].includes(String(product.lock_strength || product.lockStrength || 'standard')) ? String(product.lock_strength || product.lockStrength || 'standard') : 'standard',
+      methods,
+    },
+    style_control: {
+      mode: styleMode,
+      notes: _projectText(style.notes || '', 300),
+    },
+    negative_control: {
+      text: _projectText(negative.text || src.negative_text || '', 300),
+    },
+  };
+  clean.enabled = clean.enabled || clean.environment_control.mode !== 'auto'
+    || !!clean.environment_control.custom
+    || clean.product_control.enabled
+    || clean.style_control.mode !== 'classic'
+    || !!clean.style_control.notes
+    || !!clean.negative_control.text;
+  clean.mode = clean.enabled ? 'controlled' : 'classic';
+  return clean;
+}
+
+function _luxuryControlledProductionEnabled(controlledProduction = null) {
+  const clean = _normalizeLuxuryControlledProduction(controlledProduction);
+  return clean.enabled === true && clean.mode === 'controlled';
+}
+
+function _buildLuxuryControlledProductionGuide(controlledProduction = null, { productSubject = '', productAsset = null } = {}) {
+  const clean = _normalizeLuxuryControlledProduction(controlledProduction);
+  if (!_luxuryControlledProductionEnabled(clean)) {
+    return { enabled: false, summary: '', storyboard_rules: '', keyframe_rules: '', video_rules: '', qa_rules: [], control: clean };
+  }
+  const envLabels = {
+    auto: '按广告需求自动判断',
+    indoor: '室内真实商业场景',
+    outdoor: '室外真实商业场景',
+    mixed: '室内和室外混合推进',
+    tech_commercial: '科技感商业 / 轻科幻真实商业场景',
+    custom: '用户自定义场景方向',
+  };
+  const methodLabels = {
+    detail: '细节特写',
+    in_hand: '手持展示',
+    usage_demo: '使用演示',
+    scene_evidence: '场景证据',
+    proof: '效果证明',
+    cta: '收束引导',
+  };
+  const productMethods = clean.product_control.methods.map(x => methodLabels[x] || x).filter(Boolean);
+  const productName = productSubject || productAsset?.name || '已确认商品/服务主体';
+  const envRule = [
+    `场景方向：${envLabels[clean.environment_control.mode] || envLabels.auto}`,
+    clean.environment_control.custom ? `用户自定义场景要求：${clean.environment_control.custom}` : '',
+    clean.environment_control.mode === 'outdoor' ? '必须规划真实室外镜头，场景应来自用户需求和行业真实使用地点，不得退回默认室内办公室。' : '',
+    clean.environment_control.mode === 'mixed' ? '必须让室内和室外镜头都有明确剧情功能，不能只在文字里提到室外。' : '',
+    clean.environment_control.mode === 'tech_commercial' || clean.style_control.mode === 'tech_commercial'
+      ? '科技感商业规则：允许透明 UI、数据浮层、屏幕确认、智能设备和轻科幻质感；人物、空间、商品仍必须是真实商业摄影，不允许变成纯 3D CG、塑料 AI 脸、抽象海报或无法落地的未来实验室。'
+      : '',
+  ].filter(Boolean).join(' ');
+  const productRule = clean.product_control.enabled ? [
+    `商品融入：必须围绕「${productName}」规划入镜，不把商品当成可有可无的参考图。`,
+    `入镜强度：${clean.product_control.presence}；锁定强度：${clean.product_control.lock_strength}。`,
+    productMethods.length ? `允许/期望展示方式：${productMethods.join('、')}。` : '展示方式由剧本按用户需求判断，但必须写清楚商品或服务证据如何进入镜头。',
+    clean.product_control.lock_strength === 'strict' ? '严格锁定时，如果上传商品图不可用或镜头无法表达商品证据，应返回失败，不得换成无关商品。' : '',
+  ].filter(Boolean).join(' ') : '';
+  const styleRule = [
+    clean.style_control.mode === 'tech_commercial' ? '风格方向：科技感商业，保留真人实拍和产品可读性，UI/VFX 只能作为后期增强层。' : '',
+    clean.style_control.notes ? `用户风格说明：${clean.style_control.notes}` : '',
+  ].filter(Boolean).join(' ');
+  const negativeRule = clean.negative_control.text ? `禁止项：${clean.negative_control.text}。这些内容出现时应判定失败，不得静默替换为兜底画面。` : '';
+  const qaRules = [
+    clean.environment_control.mode !== 'auto' || clean.environment_control.custom ? `QA 必须检查场景是否符合：${envRule}` : '',
+    clean.product_control.enabled ? `QA 必须检查商品/服务证据是否符合：${productRule}` : '',
+    clean.style_control.mode !== 'classic' || clean.style_control.notes ? `QA 必须检查风格是否符合：${styleRule}` : '',
+    negativeRule ? `QA 必须检查禁止项：${negativeRule}` : '',
+  ].filter(Boolean);
+  const summary = [envRule, productRule, styleRule, negativeRule].filter(Boolean).join('\n');
+  return {
+    enabled: true,
+    summary,
+    storyboard_rules: [
+      'CONTROLLED PRODUCTION MODE: user explicitly enabled production controls. These controls are hard requirements, not decoration.',
+      summary,
+      'Do not invent a fixed carrier, product category, location, UI template or fallback scene. Derive every shot from the user brief, uploaded assets and these controls.',
+    ].filter(Boolean).join('\n'),
+    keyframe_rules: [
+      'CONTROLLED KEYFRAME RULES: the generated image must satisfy the confirmed script plus the controlled production requirements.',
+      summary,
+      'If a requirement cannot be satisfied, fail QA with the specific missing rule; do not silently replace it with a generic indoor presenter or unrelated product shot.',
+    ].filter(Boolean).join('\n'),
+    video_rules: [
+      'CONTROLLED VIDEO RULES: preserve the controlled environment, product evidence and style direction from every approved keyframe.',
+      summary,
+    ].filter(Boolean).join('\n'),
+    qa_rules: qaRules,
+    control: clean,
+  };
+}
+
+function _assertLuxuryControlledProductionReady(controlledProduction = null, { productAsset = null } = {}) {
+  const clean = _normalizeLuxuryControlledProduction(controlledProduction);
+  if (!_luxuryControlledProductionEnabled(clean)) return;
+  const productUrl = productAsset && (productAsset.url || productAsset.image_url || productAsset.previewUrl);
+  if (clean.product_control.enabled && clean.product_control.lock_strength === 'strict' && !productUrl) {
+    const err = new Error('已启用商品严格锁定，但没有可用的主体主图 URL。请先上传商品/主体图，或把商品锁定强度改为标准。');
+    err.status = 422;
+    err.code = 'LUXURY_CONTROLLED_PRODUCT_ASSET_REQUIRED';
+    err.details = { controlled_production: clean };
+    throw err;
+  }
+}
+
 function _compactLuxuryAdDraftBody(body = {}) {
   const pickAssets = value => (Array.isArray(value) ? value : [])
     .map(_compactLuxuryAdDraftAsset)
@@ -538,6 +672,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     storyboard_detailed: !!(body.storyboard_detailed ?? body.storyboardDetailed),
     keyframe_planning_only: !!(body.keyframe_planning_only ?? body.keyframePlanningOnly),
     person_spec: _jsonClone(body.person_spec || body.personSpec || null),
+    controlled_production: _normalizeLuxuryControlledProduction(body.controlled_production || body.controlledProduction || null),
     person_asset: _compactLuxuryAdDraftAsset(body.person_asset || body.personAsset || null),
     product_asset: _compactLuxuryAdDraftAsset(body.product_asset || body.productAsset || null),
     brief_reference_assets: pickAssets(body.brief_reference_assets || body.briefRefAssets),
@@ -604,6 +739,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   }).project_state;
   const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
   const compactBgmAsset = _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || existing?.bgm_asset || existing?.draft_state?.bgm_asset || null);
+  const controlledProduction = _normalizeLuxuryControlledProduction(body.controlled_production || body.controlledProduction || existing?.controlled_production || existing?.draft_state?.controlled_production || null);
   const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
   const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
     ? mergedStoryboardSheets.filter(_isFinalLuxuryStoryboardSheet)
@@ -629,6 +765,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
     resolution: result.resolution || existing?.resolution || '',
     brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
+    controlled_production: controlledProduction,
     scenes: mergedScenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
     keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
     storyboard_sheets: _compactLuxuryAdProjectSheets(mergedStoryboardSheets),
@@ -13828,6 +13965,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       outline_segments = [],
       person_spec = null,
       person_asset = null,
+      controlled_production = null,
       ad_style = 'luxury_soft',
       request_key = '',
       request_async = false,
@@ -13888,6 +14026,8 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       ? `本次用户只上传了 ${uploadedReferenceAssets.length} 张顺序分镜/场景画面，只允许输出 ${wantedShots} 个镜头；不得新增没有上传素材支撑的额外镜头。`
       : '';
     const productSubject = _deriveLuxuryProductSubject({ text: brief, productName: product_name || visualReferenceBrief?.product_subject || '', assetSummary: enrichedAssetSummary });
+    const controlledGuide = _buildLuxuryControlledProductionGuide(controlled_production, { productSubject, productAsset: product_asset });
+    _assertLuxuryControlledProductionReady(controlled_production, { productAsset: product_asset });
     const luxuryAssetManifest = _buildLuxuryAssetManifest({
       visualReferenceBrief,
       briefReferenceAssets,
@@ -14040,6 +14180,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       resolvedPersonSpec ? `人物配置：${JSON.stringify(resolvedPersonSpec).slice(0, 600)}` : '',
       person_asset && (person_asset.name || person_asset.id || person_asset.image_url) ? `人物参考：${person_asset.name || person_asset.id || 'AI 真人感演员包'}${person_asset.image_url ? ` (${person_asset.image_url})` : ''}` : '',
       continuousHuman ? '人物要求：同一位真人从头贯穿整条广告' : '',
+      controlledGuide.enabled ? `制作控制：${controlledGuide.summary}` : '',
     ].filter(Boolean).join('；');
     const outlineNotes = Array.isArray(outline_segments) && outline_segments.length
       ? outline_segments.slice(0, isDetailedMode ? maxAllowedShots : 8).map((s, i) => ({
@@ -14080,6 +14221,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '竞品级故事板规则：第 3 步不是随意产品静物摄影。除 macro/detail 这类极近景细节镜外，每一镜都必须像广告 storyboard panel：脚本指定的主体/角色 + 真实场景 + 主商品/服务证据在同一画面逻辑里推动故事；主体可以是人，也可以是动物、机器人、外星人、吉祥物、产品、空间或服务场景。',
       '行业规则：只有当用户需求或已确认剧本明确需要真人讲解/带看时，才安排真人角色；否则按用户确认的行业主体生成产品、空间、服务、动物、机器人、外星人、吉祥物或其它主体叙事。画面必须服务已确认剧本，不能套用历史行业场景或抽象高级背景。',
       '跨行业防污染规则：严禁从历史案例、知识库或默认样例迁移“建筑空间、建材展厅、材料墙、外立面、样板间、钢材、金属板、设计师带看”等词；只有用户原文、上传素材分析或已确认剧本明确出现这些内容时才能使用。视频网站、软件平台、AI工具、SaaS、内容创作类广告必须围绕界面、创作工作流、内容形态、用户使用场景和平台价值展开，不得变成建筑空间或建材场景。',
+      controlledGuide.enabled ? controlledGuide.storyboard_rules : '',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
     const user = `主商品：${productSubject}
@@ -14095,6 +14237,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
 目标时长：${targetDuration} 秒
 画面比例：${output_ratio}
 是否允许补全合理镜头细节：${expand_brief ? '允许，但不能虚构价格、资质、疗效、金融承诺' : '不允许，只根据用户资料'}
+制作控制：${controlledGuide.enabled ? controlledGuide.summary : 'classic 默认模式，未启用增强控制'}
 生成阶段：${isDetailedMode ? '第 3 步剧本生成' : '第 2 步场景配置'}
 阶段要求：${modeInstruction}
 
@@ -15610,6 +15753,9 @@ ${JSON.stringify(scenes, null, 2)}
         reference_mentions: Array.isArray(s.reference_mentions) && s.reference_mentions.length ? s.reference_mentions : [productSubject, referenceLabel],
         product_subject: productSubject,
         product_lock_prompt: productLockPrompt,
+        controlled_production: controlledGuide.enabled ? controlledGuide.control : undefined,
+        controlled_rules: controlledGuide.enabled ? controlledGuide.summary : '',
+        controlled_qa_rules: controlledGuide.enabled ? controlledGuide.qa_rules : [],
         person_required: corePersonRequired,
         storyboard_panel_required: corePersonRequired || (!_luxuryIsMacroDetailShot({ role, title: s.title || '', content_prompt: visual, visual }) && _luxuryRoleNeedsStoryHuman(role, i, scenes.length)),
       };
@@ -15720,7 +15866,7 @@ ${JSON.stringify(scenes, null, 2)}
         }));
       }
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, controlled_production: controlledGuide.control, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     const productionProject = _upsertLuxuryAdProductionProject(req, { ...req.body, request_stage: 'storyboard', storyboard_request_key: request_key, storyboard_detailed: isDetailedMode }, responseBody, { project_state: isDetailedMode ? 'frame_reviewing' : 'script_reviewing' });
     responseBody.production_project = productionProject;
     responseBody.production_project_id = productionProject.id;
@@ -16527,6 +16673,10 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   ].filter(Boolean).join('; '), 360);
   const composition = _luxuryStrictText(visualContract.composition || scene.composition || photography.framing || scene.image2_brief || '', 320);
   const lighting = _luxuryStrictText(visualContract.lighting || scene.lighting_style || scene.lighting || photography.lighting || '', 260);
+  const controlledGuide = scene.controlled_rules || scene.controlled_production || scene.controlled_qa_rules
+    ? _buildLuxuryControlledProductionGuide(scene.controlled_production || null, { productSubject: subject })
+    : null;
+  const controlledRuleText = _luxuryStrictText(scene.controlled_rules || controlledGuide?.summary || '', 900);
   const mustShow = _luxuryStrictList(visualContract.must_show || scene.must_show, 10);
   [
     locks?.reality_lock?.scene_basis ? `real-world scene basis: ${locks.reality_lock.scene_basis}` : '',
@@ -16535,10 +16685,13 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     multiCharacterContract.required ? `exactly ${multiCharacterContract.expected_count} distinct visible characters required by the confirmed script` : '',
     locks?.scene_lock?.prompt ? 'same uploaded/inferred scene family and practical lighting' : '',
     locks?.prop_lock?.prompt ? 'story-appropriate real props/evidence from asset manifest' : '',
+    controlledRuleText ? `controlled production requirements: ${controlledRuleText}` : '',
   ].filter(Boolean).forEach(item => {
     if (!mustShow.includes(item) && mustShow.length < 10) mustShow.push(item);
   });
   const mustNotShow = _luxuryStrictList(visualContract.must_not_show || scene.must_not_show, 14);
+  const controlledNegative = _luxuryStrictText(scene.controlled_production?.negative_control?.text || controlledGuide?.control?.negative_control?.text || '', 260);
+  if (controlledNegative && !mustNotShow.includes(controlledNegative)) mustNotShow.push(controlledNegative);
   while (mustNotShow.length < 3) {
     const fallbackNegatives = ['generated text or subtitle overlay', 'unrelated product category', 'random extra people or scene replacement'];
     const next = fallbackNegatives[mustNotShow.length] || fallbackNegatives[fallbackNegatives.length - 1];
@@ -16548,6 +16701,8 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const qaContract = _luxuryStrictText([
     scene.qa_contract || visualContract.qa_contract || '',
     multiCharacterContract.required ? multiCharacterContract.qa_rule : '',
+    controlledRuleText ? `Controlled production QA: ${controlledRuleText}` : '',
+    ...(Array.isArray(scene.controlled_qa_rules) ? scene.controlled_qa_rules : (controlledGuide?.qa_rules || [])),
   ].filter(Boolean).join(' '), 1100);
   return {
     shot_id: Number(index || 0) + 1,
@@ -16566,6 +16721,9 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     must_show: mustShow,
     must_not_show: mustNotShow,
     qa_contract: qaContract,
+    controlled_production: controlledGuide?.control || scene.controlled_production || null,
+    controlled_rules: controlledRuleText,
+    controlled_qa_rules: Array.isArray(scene.controlled_qa_rules) ? scene.controlled_qa_rules : (controlledGuide?.qa_rules || []),
     asset_manifest: locks?.asset_manifest || scene.asset_manifest || null,
     reality_lock: locks?.reality_lock || scene.reality_lock || null,
     character_lock: locks?.character_lock || scene.character_lock || null,
@@ -16652,6 +16810,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     _luxuryMultiCharacterPrompt(contract.multi_character_contract || scene.multi_character_contract, 'image'),
     `Lighting: ${contract.lighting}.`,
     contract.visual_locks_prompt ? `Mandatory asset/reality locks: ${contract.visual_locks_prompt}.` : '',
+    contract.controlled_rules ? `Controlled production rules: ${contract.controlled_rules}.` : '',
     `Must show: ${contract.must_show.join('; ')}.`,
     `Must not show: ${contract.must_not_show.join('; ')}.`,
     `QA acceptance rule: ${contract.qa_contract}.`,
@@ -16676,6 +16835,8 @@ function _buildLuxuryImageContract(scene = {}, contract = {}) {
     composition: contract.composition || '',
     lighting: contract.lighting || '',
     negative_constraints: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
+    controlled_production: contract.controlled_production || scene.controlled_production || null,
+    controlled_rules: contract.controlled_rules || scene.controlled_rules || '',
     ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
     multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
   };
@@ -16693,12 +16854,14 @@ function _buildLuxuryVideoContract(scene = {}, contract = {}) {
     timing: _luxuryStrictText(`${contract.duration || scene.duration || ''}s`, 40),
     continuity_constraints: [
       'preserve the approved keyframe subject, identity, scene, props, composition and lighting',
+      contract.controlled_rules ? `preserve controlled production rules: ${contract.controlled_rules}` : '',
       (scene.multi_character_contract || contract.multi_character_contract)?.required ? 'preserve the approved keyframe character count, separate identities and dialogue relationship blocking' : '',
       'animate only the confirmed motion/action/camera intent',
       'do not redraw into a new scene or introduce unconfirmed subjects',
     ].filter(Boolean),
     negative_constraints: [
       'no face morphing, product redesign, category drift, scene replacement, new readable text, logo, subtitle or watermark',
+      scene.controlled_production?.negative_control?.text || contract.controlled_production?.negative_control?.text || '',
     ],
   };
 }
@@ -23202,6 +23365,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       visual_reference_brief = null,
       global_visual_bible = null,
       production_contract = null,
+      controlled_production = null,
       production_project_id = '',
       guide_gender = 'female',
       aspect_ratio,
@@ -23319,6 +23483,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       productName: luxuryProductName,
       assetSummary: enrichedAssetSummary,
     }) : '';
+    const controlledGuide = isLuxury ? _buildLuxuryControlledProductionGuide(controlled_production, { productSubject, productAsset: product_asset }) : null;
+    if (isLuxury) _assertLuxuryControlledProductionReady(controlled_production, { productAsset: product_asset });
     const luxuryAssetManifest = isLuxury ? _buildLuxuryAssetManifest({
       visualReferenceBrief,
       briefReferenceAssets,
@@ -23357,6 +23523,15 @@ router.post('/spaces/keyframes', async (req, res) => {
       })
       : await _buildSpaceAdStoryboard({ title, text, durationSec: duration_sec, segments: guideSegments, scenePrompt: scene_prompt, adMode: ad_mode, adStyle: ad_style, shotCount: limit });
     if (isLuxury) {
+      if (controlledGuide?.enabled) {
+        // 中文注释：关键帧阶段只把已确认的增强规则附到镜头合同，不在这里新增兜底镜头。
+        scenes = scenes.map(scene => ({
+          ...scene,
+          controlled_production: controlledGuide.control,
+          controlled_rules: scene.controlled_rules || controlledGuide.summary,
+          controlled_qa_rules: Array.isArray(scene.controlled_qa_rules) && scene.controlled_qa_rules.length ? scene.controlled_qa_rules : controlledGuide.qa_rules,
+        }));
+      }
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
       scenes = _mergeLuxuryStoryboardDirectorContracts(scenes, [], {
         productSubject,
