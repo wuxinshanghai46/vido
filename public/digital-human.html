@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260617-luxury-control-ai-v90">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260617-actor-picker-copy-v91">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1226,7 +1226,7 @@
                 <div class="dh-demo-section-title">人物配置</div>
                 <div class="dh-demo-guide">
                   <b>先定人物约束</b>
-                  <span>剧本前先确认人数、性别、年龄、地域/种族或人物一致性参考；可生成 AI 真人感演员包，也可上传真人照片或选择授权演员。</span>
+                  <span>剧本前先确认人数、性别、年龄、地域/种族或人物一致性参考；真人演员请上传真人照片或从演员库选择授权演员，AI 拟真演员包只作为一致性参考。</span>
                 </div>
                 <div class="dh-demo-person-source">
                   <input type="file" id="dhLuxAdPersonFile" accept="image/*" hidden>
@@ -1236,7 +1236,7 @@
                   </div>
                   <div>
                     <b>人物来源</b>
-                    <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；AI 真人感演员包会作为后续分镜的人物一致性锁。</p>
+                    <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；真人演员入口是“上传真人参考”和“选择真人演员/演员库”。</p>
                     <div class="dh-luxgen-person-spec">
                       <label>
                         <span>人物数量</span>
@@ -1291,9 +1291,9 @@
                   </div>
                   <div class="dh-demo-person-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdUploadPersonRef" type="button">上传真人参考</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickActorAsset" type="button">角色素材库</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickActorAsset" type="button">选择真人演员/演员库</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickPerson" type="button">参考数字人形象</button>
-                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhLuxAdGeneratePersonSheet" type="button">AI 真人感演员包</button>
+                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhLuxAdGeneratePersonSheet" type="button">生成 AI 拟真演员包</button>
                   </div>
                 </div>
               </div>
@@ -1953,6 +1953,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260617-luxury-control-ai-v90"></script>
+  <script src="/js/digital-human.js?v=20260617-actor-picker-copy-v91"></script>
 </body>
 </html>

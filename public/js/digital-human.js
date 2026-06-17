@@ -7168,10 +7168,10 @@
           <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35;max-height:38px;overflow:hidden">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
         </span>
       </button>`;
-    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">角色素材库还没有可用演员。先上传真人参考或生成 AI 真人感演员包后会自动入库。</div>';
+    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">演员库还没有可选人物。真人演员请先上传真人参考；AI 拟真演员可先生成演员包后入库。</div>';
     mask.innerHTML = `<div style="width:min(760px,94vw);max-height:82vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)">
-        <div><b>角色素材库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择一个人物一致性参考，后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
+        <div><b>选择真人演员/演员库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择授权真人或已入库人物参考；后续剧本、分镜和关键帧会使用同一个 actor_id。</div></div>
         <button type="button" data-lux-actor-close style="border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer">×</button>
       </div>
       <div style="padding:14px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${cards}</div>
@@ -7280,7 +7280,7 @@
     }
     const a = state.selectedAvatar;
     if (!a) {
-      host.innerHTML = `<span>未选</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>先生成基础信息/人物设定后可生成 AI 真人感演员包；真人请上传照片或选授权演员。</small></div>`;
+      host.innerHTML = `<span>未选</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>真人演员请选择演员库或上传真人参考；AI 拟真演员包不是授权真人。</small></div>`;
       return;
     }
     const src = selectedAvatarImageUrl(a);
@@ -7300,7 +7300,7 @@
       ? '当前已使用真人照片参考，系统会按这张真人图锁定人物身份和气质；AI 演员包不会参与本次真人参考。'
       : isAi
         ? '当前是 AI 拟真演员参考，不等同于真人照片；需要真人广告请上传真人照片或选择授权真人演员。'
-        : '用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；上传真人照片/授权演员才按真人参考处理。';
+        : '用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；真人演员请上传真人照片或选择授权演员库。';
   }
 
   function renderLuxuryAdPostScriptPerson() {
