@@ -981,18 +981,24 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-brief-ref-card button { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: rgba(8,14,24,.78); color: #fff; cursor: pointer; }
 /* 需求参考图上传时保留图片可见，只在底部提示上传状态。 */
 .dh-luxgen-brief-ref-card.uploading::after { content: "上传中"; position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2; display: grid; place-items: center; min-height: 22px; color: var(--dh-primary); font-weight: 800; font-size: 12px; background: rgba(5,12,18,.78); border: 1px solid rgba(33,255,243,.24); border-radius: 999px; }
-.dh-luxgen-control-box { margin-top: 12px; border: 1px solid rgba(33,255,243,.18); border-radius: var(--dh-radius-sm); background: rgba(8,14,24,.44); overflow: hidden; }
-.dh-luxgen-control-box summary { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.dh-luxgen-control-box { margin-top: 12px; border: 1px solid rgba(33,255,243,.18); border-radius: 8px; background: rgba(8,14,24,.44); overflow: hidden; }
+.dh-luxgen-control-box[open] { background: rgba(8,14,24,.58); }
+.dh-luxgen-control-box summary { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; cursor: pointer; list-style: none; }
 .dh-luxgen-control-box summary::-webkit-details-marker { display: none; }
 .dh-luxgen-control-box summary b { display: block; color: var(--dh-text); font-size: 14px; line-height: 1.35; }
 .dh-luxgen-control-box summary small { display: block; margin-top: 3px; color: var(--dh-text-muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
-.dh-luxgen-control-box summary em { flex: 0 0 auto; min-width: 76px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(33,255,243,.30); background: rgba(33,255,243,.07); color: var(--dh-primary); font-style: normal; font-size: 11px; font-weight: 900; text-align: center; }
+.dh-luxgen-control-meta { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; min-width: 156px; justify-content: flex-end; }
+.dh-luxgen-control-meta em { min-width: 76px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(33,255,243,.30); background: rgba(33,255,243,.07); color: var(--dh-primary); font-style: normal; font-size: 11px; font-weight: 900; text-align: center; }
+.dh-luxgen-control-meta i { min-width: 62px; color: var(--dh-text-soft); font-style: normal; font-size: 12px; font-weight: 800; text-align: right; }
+.dh-luxgen-control-meta i::after { content: "▾"; display: inline-block; margin-left: 6px; color: var(--dh-primary); transition: transform .15s ease; }
+.dh-luxgen-control-box[open] .dh-luxgen-control-meta i::after { transform: rotate(180deg); }
+.dh-luxgen-control-box[open] .dh-luxgen-control-meta i { color: var(--dh-primary); }
 .dh-luxgen-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 12px 12px; }
 .dh-luxgen-control-card { min-width: 0; display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(255,255,255,.025); }
 .dh-luxgen-control-title b { display: block; color: var(--dh-primary); font-size: 12px; line-height: 1.35; }
 .dh-luxgen-control-title span { display: block; margin-top: 4px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
-.dh-luxgen-segmented { display: flex; flex-wrap: wrap; gap: 6px; }
-.dh-luxgen-segmented button { min-height: 32px; padding: 0 10px; border: 1px solid rgba(143,178,255,.18); border-radius: 999px; background: rgba(8,14,24,.58); color: var(--dh-text-soft); font-size: 12px; font-weight: 800; cursor: pointer; }
+.dh-luxgen-segmented { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 6px; align-items: stretch; }
+.dh-luxgen-segmented button { width: 100%; min-width: 0; height: 36px; min-height: 36px; padding: 0 8px; border: 1px solid rgba(143,178,255,.18); border-radius: 8px; background: rgba(8,14,24,.58); color: var(--dh-text-soft); font-size: 12px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .dh-luxgen-segmented button.active { border-color: rgba(33,255,243,.54); color: var(--dh-primary); background: rgba(33,255,243,.08); }
 .dh-luxgen-inline-check { display: flex; align-items: center; gap: 8px; color: var(--dh-text-soft); font-size: 12px; font-weight: 800; line-height: 1.4; }
 .dh-luxgen-inline-check input { accent-color: var(--dh-primary); }

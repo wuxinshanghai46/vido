@@ -6299,7 +6299,10 @@
             <b>制作控制</b>
             <small>${enabled ? '已启用增强控制，后续只在 controlled 链路生效' : '默认不启用，不影响当前剧情广告流程'}</small>
           </span>
-          <em>${enabled ? 'controlled' : 'classic'}</em>
+          <span class="dh-luxgen-control-meta">
+            <em>${enabled ? 'controlled' : 'classic'}</em>
+            <i>展开设置</i>
+          </span>
         </summary>
         <div class="dh-luxgen-control-grid">
           <section class="dh-luxgen-control-card">
