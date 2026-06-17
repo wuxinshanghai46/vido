@@ -995,8 +995,13 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-control-box[open] .dh-luxgen-control-meta i { color: var(--dh-primary); }
 .dh-luxgen-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 12px 12px; }
 .dh-luxgen-control-card { min-width: 0; display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(255,255,255,.025); }
+.dh-luxgen-control-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.dh-luxgen-control-title > span { min-width: 0; display: block; }
 .dh-luxgen-control-title b { display: block; color: var(--dh-primary); font-size: 12px; line-height: 1.35; }
-.dh-luxgen-control-title span { display: block; margin-top: 4px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.dh-luxgen-control-title span span { display: block; margin-top: 4px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.dh-luxgen-control-title button { flex: 0 0 auto; height: 28px; padding: 0 10px; border: 1px solid rgba(33,255,243,.32); border-radius: 999px; background: rgba(33,255,243,.06); color: var(--dh-primary); font-size: 11px; font-weight: 900; cursor: pointer; }
+.dh-luxgen-control-title button:hover { border-color: var(--dh-primary); background: rgba(33,255,243,.12); }
+.dh-luxgen-control-title button:disabled { opacity: .55; cursor: not-allowed; }
 .dh-luxgen-segmented { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 6px; align-items: stretch; }
 .dh-luxgen-segmented button { width: 100%; min-width: 0; height: 36px; min-height: 36px; padding: 0 8px; border: 1px solid rgba(143,178,255,.18); border-radius: 8px; background: rgba(8,14,24,.58); color: var(--dh-text-soft); font-size: 12px; font-weight: 800; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .dh-luxgen-segmented button.active { border-color: rgba(33,255,243,.54); color: var(--dh-primary); background: rgba(33,255,243,.08); }

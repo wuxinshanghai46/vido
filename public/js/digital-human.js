@@ -6285,6 +6285,73 @@
     updateLuxuryAdStepLocks();
   }
 
+  function luxuryControlOptionLabel(options = [], value = '', fallback = '') {
+    const found = options.find(([key]) => key === value);
+    return found ? found[1] : (fallback || value || '自动');
+  }
+
+  async function aiWriteLuxuryControlField(field = '') {
+    const ctrl = luxuryControlledProduction();
+    const isStyle = field === 'style';
+    const isNegative = field === 'negative';
+    if (!isStyle && !isNegative) return;
+    const content = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!content) {
+      toast('请先填写广告需求，AI 才能按内容帮你写控制项', 'error');
+      return;
+    }
+    const envLabel = luxuryControlOptionLabel(LUXURY_CONTROL_ENVIRONMENT_OPTIONS, ctrl.environment.mode, '自动');
+    const styleLabel = ctrl.style.mode === 'tech_commercial' ? '科技感商业 / 轻科幻 UI' : '普通真实商业广告';
+    const product = state.luxuryAd.productAsset || null;
+    const productText = product?.name || product?.filename || product?.url ? `已上传主体/商品素材：${product.name || product.filename || '已上传'}` : '未上传主体/商品素材';
+    const currentText = isStyle ? ctrl.style.notes : ctrl.negative.text;
+    const outputRule = isStyle
+      ? '只输出“风格方向补充说明”，80-160字，说明画面质感、光线、空间、UI浮层、镜头情绪；不要写标题、不要分镜编号、不要生成完整剧本。'
+      : '只输出“禁止项”，用中文分号分隔，覆盖场景错误、画风错误、人物错误、商品错误、UI错误；不要写标题、不要解释原因。';
+    const topic = [
+      `广告需求：${content}`,
+      `当前场景方向：${envLabel}${ctrl.environment.custom ? `；自定义：${ctrl.environment.custom}` : ''}`,
+      `当前风格选择：${styleLabel}`,
+      `商品状态：${productText}`,
+      currentText ? `用户已有内容：${currentText}` : '',
+      `输出要求：${outputRule}`,
+    ].filter(Boolean).join('\n');
+    const btn = document.querySelector(`[data-lux-control-ai="${field}"]`);
+    const old = btn?.textContent || 'AI 帮写';
+    if (btn) { btn.disabled = true; btn.textContent = '写作中…'; }
+    try {
+      // 中文注释：复用已有 AI 写作接口，只生成控制字段文本；失败直接提示，不写固定兜底文案。
+      const r = await api('/api/dh/scripts/write', {
+        method: 'POST',
+        body: {
+          topic,
+          duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
+          style: state.luxuryAd.adType || 'auto',
+          tone: isStyle ? '科技感商业广告风格说明' : '严格画面禁止项清单',
+          mode: 'luxury_ad',
+        },
+      });
+      if (!r.success) throw new Error(r.error || 'AI 帮写失败');
+      const text = String(r.text || '').replace(/^["“]|["”]$/g, '').trim();
+      if (!text) throw new Error('AI 没有返回可用内容');
+      if (isStyle) {
+        ctrl.style.notes = text.slice(0, 360);
+        const el = document.querySelector('[data-lux-control-style-notes]');
+        if (el) el.value = ctrl.style.notes;
+      } else {
+        ctrl.negative.text = text.slice(0, 420);
+        const el = document.querySelector('[data-lux-control-negative]');
+        if (el) el.value = ctrl.negative.text;
+      }
+      markLuxuryControlledProductionDirty({ renderControl: false });
+      toast(isStyle ? 'AI 已写好风格方向' : 'AI 已写好禁止项', 'success');
+    } catch (err) {
+      toast('AI 帮写失败：' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old; }
+    }
+  }
+
   function renderLuxuryAdControlledProduction() {
     const host = $('#dhLuxAdControlledProduction');
     if (!host) return;
@@ -6306,14 +6373,14 @@
         </summary>
         <div class="dh-luxgen-control-grid">
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><b>场景方向</b><span>控制室内、室外或科技感，不写死行业场景。</span></div>
+            <div class="dh-luxgen-control-title"><span><b>场景方向</b><span>控制室内、室外或科技感，不写死行业场景。</span></span></div>
             <div class="dh-luxgen-segmented" role="group" aria-label="场景方向">
               ${LUXURY_CONTROL_ENVIRONMENT_OPTIONS.map(([value, label]) => `<button type="button" data-lux-control-env="${value}" class="${ctrl.environment.mode === value ? 'active' : ''}">${label}</button>`).join('')}
             </div>
             <input class="dh-input" data-lux-control-custom-env placeholder="自定义场景要求，例如：城市街区外景 + 门店入口 + 夜间霓虹" value="${escapeHtml(ctrl.environment.custom)}">
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><b>商品融入</b><span>${productReady ? '已上传主体图，可设置入镜强度和展示方式。' : '启用商品融入前建议先上传主体主图。'}</span></div>
+            <div class="dh-luxgen-control-title"><span><b>商品融入</b><span>${productReady ? '已上传主体图，可设置入镜强度和展示方式。' : '启用商品融入前建议先上传主体主图。'}</span></span></div>
             <label class="dh-luxgen-inline-check"><input type="checkbox" data-lux-control-product-enabled ${ctrl.product.enabled ? 'checked' : ''}> <span>按镜头规则要求商品入镜</span></label>
             <div class="dh-luxgen-control-fields">
               <label><span>入镜强度</span><select class="dh-input" data-lux-control-product-presence>
@@ -6332,7 +6399,7 @@
             </div>
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><b>风格方向</b><span>科技感商业只作为新规则进入，不污染普通写实模式。</span></div>
+            <div class="dh-luxgen-control-title"><span><b>风格方向</b><span>科技感商业只作为新规则进入，不污染普通写实模式。</span></span><button type="button" data-lux-control-ai="style">AI 帮写</button></div>
             <select class="dh-input" data-lux-control-style-mode>
               <option value="classic" ${ctrl.style.mode === 'classic' ? 'selected' : ''}>保持普通真实商业广告</option>
               <option value="tech_commercial" ${ctrl.style.mode === 'tech_commercial' ? 'selected' : ''}>科技感商业 / 轻科幻 UI</option>
@@ -6340,7 +6407,7 @@
             <textarea class="dh-input" rows="3" data-lux-control-style-notes placeholder="参考视频风格要点，例如：浅色零售空间、透明 UI 浮层、经理看手机确认订单，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><b>禁止项</b><span>错了就报错，不把禁止内容偷偷换成兜底画面。</span></div>
+            <div class="dh-luxgen-control-title"><span><b>禁止项</b><span>错了就报错，不把禁止内容偷偷换成兜底画面。</span></span><button type="button" data-lux-control-ai="negative">AI 帮写</button></div>
             <textarea class="dh-input" rows="4" data-lux-control-negative placeholder="例如：不要室内办公室；不要塑料 AI 脸；不要无关化妆品瓶；不要纯 UI 海报。">${escapeHtml(ctrl.negative.text)}</textarea>
           </section>
         </div>
@@ -14542,6 +14609,11 @@
       ctrl.environment.mode = luxControlEnv.dataset.luxControlEnv || 'auto';
       if (ctrl.environment.mode === 'tech_commercial') ctrl.style.mode = 'tech_commercial';
       markLuxuryControlledProductionDirty();
+      return;
+    }
+    const luxControlAi = closest('[data-lux-control-ai]');
+    if (luxControlAi) {
+      await aiWriteLuxuryControlField(luxControlAi.dataset.luxControlAi || '');
       return;
     }
     const luxControlMethod = closest('[data-lux-control-product-method]');
