@@ -85,9 +85,7 @@ try:
         table = req["table"]
         rows = req["rows"]
         placeholders = ", ".join(["?"] * len(columns))
-        updates = ", ".join([c + "=excluded." + c for c in columns if c not in conflict_columns])
-        target = ", ".join(conflict_columns)
-        stmt = "INSERT INTO " + table + " (" + ", ".join(columns) + ") VALUES (" + placeholders + ") ON CONFLICT(" + target + ") DO UPDATE SET " + updates
+        stmt = "INSERT OR REPLACE INTO " + table + " (" + ", ".join(columns) + ") VALUES (" + placeholders + ")"
         conn.executemany(stmt, rows)
         conn.commit()
         emit({"changes": conn.total_changes})

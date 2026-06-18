@@ -36,6 +36,26 @@ function normalize(collection, row = {}) {
 function upsert(collection, row) {
   const db = requireDatabase();
   const rec = normalize(collection, row);
+  if (typeof db.upsertMany === 'function') {
+    db.upsertMany(
+      'content_records',
+      ['id', 'collection', 'user_id', 'project_id', 'account_id', 'type', 'status', 'payload_json', 'created_at', 'updated_at'],
+      ['collection', 'id'],
+      [[
+        rec.id,
+        rec.collection,
+        rec.user_id,
+        rec.project_id,
+        rec.account_id,
+        rec.type,
+        rec.status,
+        rec.payload_json,
+        rec.created_at,
+        rec.updated_at,
+      ]]
+    );
+    return jsonParse(rec.payload_json);
+  }
   db.prepare(`
     INSERT INTO content_records (
       id, collection, user_id, project_id, account_id, type, status, payload_json, created_at, updated_at
@@ -108,4 +128,3 @@ module.exports = {
   update,
   upsert,
 };
-
