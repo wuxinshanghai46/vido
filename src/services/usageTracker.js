@@ -4,6 +4,8 @@
  */
 const fs = require('fs');
 const path = require('path');
+const sqliteConfig = require('../db/sqlite');
+const contentRecords = require('../repositories/contentRecordRepository');
 
 const LOG_FILE = path.resolve(process.env.OUTPUT_DIR || './outputs', 'usage_log.jsonl');
 
@@ -66,6 +68,17 @@ function trackUsage(event) {
     : estimateCost(event.model, event.promptTokens, event.completionTokens);
   const rec = { ts: Date.now(), ...event, costUsd };
   try {
+    if (sqliteConfig.getDbConfig().enabled) {
+      contentRecords.upsert('usage_log', {
+        ...rec,
+        id: rec.id || rec.requestId || rec.workflowId || `usage_${rec.ts}_${Math.random().toString(16).slice(2)}`,
+        created_at: new Date(rec.ts).toISOString(),
+      });
+    }
+  } catch (e) {
+    console.warn('[usageTracker] sqlite write failed:', e.message);
+  }
+  try {
     fs.appendFileSync(LOG_FILE, JSON.stringify(rec) + '\n');
   } catch (e) {
     console.warn('[usageTracker] write failed:', e.message);
@@ -104,6 +117,18 @@ function trackUsage(event) {
 }
 
 function readUsage({ limit = 500, userId, source, since } = {}) {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    try {
+      let recs = contentRecords.list('usage_log');
+      if (userId) recs = recs.filter(r => r.userId === userId);
+      if (source) recs = recs.filter(r => r.source === source);
+      if (since) recs = recs.filter(r => r.ts >= since);
+      return recs.slice(0, limit);
+    } catch (error) {
+      if (!dbConfig.jsonFallback) throw error;
+    }
+  }
   if (!fs.existsSync(LOG_FILE)) return [];
   const raw = fs.readFileSync(LOG_FILE, 'utf8').trim();
   if (!raw) return [];

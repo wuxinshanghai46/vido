@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { hashPassword } = require('../utils/crypto');
+const sqliteConfig = require('../db/sqlite');
+const appKv = require('../repositories/appKvRepository');
 
 const DB_PATH = path.resolve(process.env.OUTPUT_DIR || './outputs', 'auth_db.json');
 
@@ -32,6 +34,16 @@ const DEFAULT_ROLES = [
 ];
 
 function load() {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    try {
+      const fromDb = appKv.get('auth.full', null);
+      if (fromDb) return fromDb;
+      if (!dbConfig.jsonFallback) return null;
+    } catch (error) {
+      if (!dbConfig.jsonFallback) throw error;
+    }
+  }
   try {
     if (fs.existsSync(DB_PATH)) return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
   } catch {}
@@ -47,6 +59,9 @@ let _saveTimer = null;
 function _flush() {
   if (!_cachedDb) return;
   try {
+    const dbConfig = sqliteConfig.getDbConfig();
+    if (dbConfig.enabled) appKv.set('auth.full', _cachedDb);
+    if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     const tmp = DB_PATH + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(_cachedDb, null, 2), 'utf-8');

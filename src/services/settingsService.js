@@ -1,6 +1,8 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const sqliteConfig = require('../db/sqlite');
+const appKv = require('../repositories/appKvRepository');
 
 const OUTPUT_DIR = process.env.OUTPUT_DIR
   ? path.resolve(process.env.OUTPUT_DIR)
@@ -277,6 +279,16 @@ const ENV_PROVIDER_EXTRA_MAP = {
 };
 
 function loadSettings() {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    try {
+      const fromDb = appKv.get('settings.full', null);
+      if (fromDb) return mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb));
+      if (!dbConfig.jsonFallback) return seedFromEnv();
+    } catch (error) {
+      if (!dbConfig.jsonFallback) throw error;
+    }
+  }
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
       return mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))));
@@ -377,8 +389,12 @@ function seedFromEnv() {
 }
 
 function saveSettings(data) {
+  const dbConfig = sqliteConfig.getDbConfig();
+  const normalized = mergePresetModelsForExistingProviders(data);
+  if (dbConfig.enabled) appKv.set('settings.full', normalized);
+  if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(mergePresetModelsForExistingProviders(data), null, 2), 'utf8');
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(normalized, null, 2), 'utf8');
 }
 
 // 获取某供应商的 API Key（供其他 service 调用）

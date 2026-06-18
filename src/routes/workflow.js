@@ -4,10 +4,21 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { isAdmin, ownedBy, scopeUserId } = require('../middleware/auth');
+const sqliteConfig = require('../db/sqlite');
+const contentRecords = require('../repositories/contentRecordRepository');
 
 const DB_PATH = path.resolve(process.env.OUTPUT_DIR || './outputs', 'workflow_db.json');
 
 function loadDB() {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    try {
+      const workflows = contentRecords.list('workflows');
+      if (workflows.length || !dbConfig.jsonFallback) return { workflows };
+    } catch (error) {
+      if (!dbConfig.jsonFallback) throw error;
+    }
+  }
   if (fs.existsSync(DB_PATH)) {
     try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf8')); } catch {}
   }
@@ -15,8 +26,12 @@ function loadDB() {
 }
 
 function saveDB(db) {
+  const dbConfig = sqliteConfig.getDbConfig();
+  const workflows = Array.isArray(db.workflows) ? db.workflows : [];
+  if (dbConfig.enabled) contentRecords.replaceCollection('workflows', workflows);
+  if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  fs.writeFileSync(DB_PATH, JSON.stringify({ workflows }, null, 2));
 }
 
 // POST /api/workflow/save — 保存工作流

@@ -21,6 +21,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const sqliteConfig = require('../db/sqlite');
+const appKv = require('../repositories/appKvRepository');
 
 const CONFIG_FILE = path.resolve(__dirname, '../../outputs/pipeline_model_config.json');
 
@@ -287,6 +289,16 @@ function listDefaults() { return STAGE_DEFAULTS; }
 function getStageDefaults(stageId) { return STAGE_DEFAULTS[stageId] || []; }
 
 function loadConfig() {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    try {
+      const c = appKv.get('pipeline_model_config.full', null);
+      if (c) return { stages: c.stages || {} };
+      if (!dbConfig.jsonFallback) return { stages: {} };
+    } catch (error) {
+      if (!dbConfig.jsonFallback) throw error;
+    }
+  }
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
@@ -297,8 +309,12 @@ function loadConfig() {
 }
 
 function saveConfig(config) {
+  const dbConfig = sqliteConfig.getDbConfig();
+  const normalized = { stages: config.stages || {} };
+  if (dbConfig.enabled) appKv.set('pipeline_model_config.full', normalized);
+  if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(normalized, null, 2), 'utf8');
 }
 
 function listSchema() { return PIPELINE_SCHEMA; }

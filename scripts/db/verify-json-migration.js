@@ -59,6 +59,11 @@ function main() {
   assertAtLeast(results, 'provider_models', count(db, 'provider_models'), (settings.providers || []).reduce((sum, provider) => sum + (provider.models || []).length, 0));
   assertAtLeast(results, 'content_records.projects', count(db, 'content_records', 'WHERE collection = ?', ['projects']), (project.projects || []).length);
   assertAtLeast(results, 'content_records.tasks', count(db, 'content_records', "WHERE collection IN ('i2v_tasks','avatar_tasks','comic_tasks','novels','drama_episodes')"), (drama.drama_episodes || []).length + (i2v.i2v_tasks || []).length + (avatar.avatar_tasks || []).length + (comic.comic_tasks || []).length + (novel.novels || []).length);
+  assertAtLeast(results, 'content_records.workflows', count(db, 'content_records', 'WHERE collection = ?', ['workflows']), (workflow.workflows || []).length);
+  assertAtLeast(results, 'content_records.usage_log', count(db, 'content_records', 'WHERE collection = ?', ['usage_log']), readJsonlCount('usage_log.jsonl'));
+  assertAtLeast(results, 'app_kv.settings.full', count(db, 'app_kv', 'WHERE key = ?', ['settings.full']), settings.providers ? 1 : 0);
+  assertAtLeast(results, 'app_kv.pipeline_model_config.full', count(db, 'app_kv', 'WHERE key = ?', ['pipeline_model_config.full']), readJson('pipeline_model_config.json').stages ? 1 : 0);
+  assertAtLeast(results, 'app_kv.auth.full', count(db, 'app_kv', 'WHERE key = ?', ['auth.full']), auth.users ? 1 : 0);
 
   const failed = results.filter(row => !row.ok);
   for (const row of results) {

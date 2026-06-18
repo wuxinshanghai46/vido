@@ -249,6 +249,7 @@ function upsertArtifactFromRow(ctx, row, source, type, projectId = null, taskId 
 
 function migrateAuth(ctx) {
   const data = readJson('auth_db.json', {});
+  saveAppKv(ctx, 'auth.full', data);
   for (const user of data.users || []) {
     saveContentRecord(ctx, 'users', user);
     const created = pickDate(user, 'created_at', nowIso());
@@ -479,6 +480,7 @@ function migrateVoices(ctx) {
 
 function migrateSettings(ctx) {
   const settings = readJson('settings.json', {});
+  saveAppKv(ctx, 'settings.full', settings);
   for (const provider of settings.providers || []) {
     const id = String(provider.id || provider.preset || stableId('provider', provider.name));
     const created = pickDate(provider, 'created_at', nowIso());
@@ -513,6 +515,7 @@ function migrateSettings(ctx) {
   saveAppKv(ctx, 'settings.sync', sanitizeConfig(settings.sync || {}));
 
   const pipeline = readJson('pipeline_model_config.json', {});
+  saveAppKv(ctx, 'pipeline_model_config.full', pipeline);
   saveAppKv(ctx, 'pipeline_model_config.stages', sanitizeConfig(pipeline.stages || {}));
   const search = readJson('search_providers.json', {});
   saveAppKv(ctx, 'search_providers.providers', sanitizeConfig(search.providers || {}));
@@ -577,6 +580,13 @@ function migrateUsage(ctx) {
       created_at: created,
     });
     inc(ctx, 'usage_records');
+  }
+  for (const row of readJsonl('usage_log.jsonl')) {
+    saveContentRecord(ctx, 'usage_log', {
+      ...row,
+      id: row.id || row.requestId || row.workflowId || stableId('usage_log', row.ts, row.provider, row.model),
+      created_at: row.created_at || (row.ts ? new Date(row.ts).toISOString() : nowIso()),
+    });
   }
 }
 
