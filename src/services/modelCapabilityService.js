@@ -81,7 +81,7 @@ function inferModelCapabilities(model = {}) {
     caps.image_edit = true;
   }
 
-  if (/gpt-image-2/.test(modelId) || /topview-(gpt-image-2|nano-banana-pro|nano-banana-2|seedream-5)/.test(modelId)) {
+  if (/gpt-image-2|nano-banana/.test(modelId) || /topview-(gpt-image-2|nano-banana-pro|nano-banana-2|seedream-5)/.test(modelId)) {
     caps.reference_preserving = true;
     caps.multi_reference = true;
     caps.character_consistency = true;
@@ -90,7 +90,7 @@ function inferModelCapabilities(model = {}) {
     caps.realistic_photo = true;
   }
 
-  if (/gpt-image-2/.test(modelId) || /topview-gpt-image-2/.test(modelId)) {
+  if (/^(gpt-image-2|nano-banana-pro|nano-banana|qwen-image)$/.test(modelId) || /topview-(gpt-image-2|nano-banana-pro|nano-banana-2)/.test(modelId)) {
     caps.actor_sheet_full_body = true;
     caps.portrait_aspect_lock = true;
   }
