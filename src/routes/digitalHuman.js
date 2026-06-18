@@ -2314,6 +2314,78 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   return qa;
 }
 
+async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, referencePaths = [], { viewKey = '', model = '', expectedPeople = 1, castMode = 'single' } = {}) {
+  const refs = (Array.isArray(referencePaths) ? referencePaths : [])
+    .filter(p => p && fs.existsSync(p))
+    .slice(0, 2);
+  if (!refs.length) return null;
+  if (!candidatePath || !fs.existsSync(candidatePath)) {
+    const err = new Error('演员包一致性 QA 无法执行：候选图片文件不存在');
+    err.status = 500;
+    err.code = 'LUXURY_ACTOR_CONSISTENCY_FILE_MISSING';
+    throw err;
+  }
+  const peopleCount = Math.max(1, Math.min(5, Math.round(Number(expectedPeople) || 1)));
+  const isMultiCast = peopleCount > 1;
+  const prompt = [
+    'You are a very strict identity-continuity QA gate for a commercial actor reference package.',
+    'Images 1..N-1 are already accepted actor reference images. The last image is the new candidate view.',
+    'Return ONLY compact JSON, no markdown.',
+    'Schema: {"pass":boolean,"score":0-100,"identity_match":boolean,"face_match":boolean,"hairstyle_match":boolean,"age_gender_match":boolean,"body_proportion_match":boolean,"outfit_match":boolean,"lower_body_outfit_match":boolean,"person_count_match":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    isMultiCast
+      ? `Expected: the same fixed ${peopleCount}-person cast across all images. Match each person by face impression, hairstyle, age/gender, body proportions, outfit family, lower-body clothing and shoes.`
+      : 'Expected: exactly the same single actor across all images. The candidate may change pose or camera angle, but must keep the same face identity, facial structure, hairstyle/hair length/hair color, age/gender impression, body proportions, top, bottom garment, accessories and shoes.',
+    'Hard fail if the candidate looks like a different person, different facial identity, different ethnicity/age/gender, different hairstyle, different hair length/color, different outfit, changed pants/skirt/dress/shoes, or a different fashion style.',
+    'Do not excuse differences as lighting, pose or angle when face, hair or clothing identity has visibly changed. Pose, small expression changes and view angle changes are allowed only if the same actor and same wardrobe are still clear.',
+    `Expected person count: ${peopleCount}. Cast mode: ${castMode || 'single'}. View being checked: ${viewKey || 'actor candidate'}. Model: ${model || 'unknown'}.`,
+  ].join(' ');
+  const imageDataUrls = [
+    ...refs.map(p => _imageFileToDataUrl(p)),
+    _imageFileToDataUrl(candidatePath),
+  ];
+  const { parsed, provider } = await _callMultimodalQaJson(req, prompt, imageDataUrls, {
+    stageId: 'luxury_ad.keyframe_qa',
+    maxTokens: 1800,
+  });
+  const mismatches = _cleanQaList(parsed.major_mismatches, 140, 8);
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const qa = {
+    pass: parsed.pass === true
+      && score >= 88
+      && parsed.identity_match === true
+      && parsed.face_match === true
+      && parsed.hairstyle_match === true
+      && parsed.age_gender_match === true
+      && parsed.body_proportion_match === true
+      && parsed.outfit_match === true
+      && parsed.lower_body_outfit_match === true
+      && parsed.person_count_match === true
+      && mismatches.length === 0,
+    score,
+    identity_match: parsed.identity_match === true,
+    face_match: parsed.face_match === true,
+    hairstyle_match: parsed.hairstyle_match === true,
+    age_gender_match: parsed.age_gender_match === true,
+    body_proportion_match: parsed.body_proportion_match === true,
+    outfit_match: parsed.outfit_match === true,
+    lower_body_outfit_match: parsed.lower_body_outfit_match === true,
+    person_count_match: parsed.person_count_match === true,
+    major_mismatches: mismatches,
+    observed: String(parsed.observed || '').slice(0, 260),
+    reason: String(parsed.reason || '').slice(0, 260),
+    provider,
+  };
+  if (!qa.pass) {
+    const err = new Error(`演员包一致性 QA 未通过：${qa.reason || qa.observed || '候选图与正面演员参考不是同一人物/同一服装'}；score=${qa.score}`);
+    err.status = 422;
+    err.code = 'LUXURY_ACTOR_CONSISTENCY_QA_FAILED';
+    err.details = qa;
+    err._luxuryCandidatePath = candidatePath;
+    throw err;
+  }
+  return qa;
+}
+
 function _imageFileToDataUrl(localPath) {
   const ext = path.extname(localPath || '').toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
@@ -12533,6 +12605,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   expectedPeople = 1,
   castMode = 'single',
   expectedGender = '',
+  consistencyReferencePaths = [],
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
@@ -12683,8 +12756,14 @@ async function _generateLuxuryPersonSheetWithPipeline({
         castMode,
         expectedGender,
       });
+      const consistencyQa = await _checkLuxuryActorAssetConsistencyQa(req, outPath, consistencyReferencePaths, {
+        viewKey: filename,
+        model: `${model.provider_id}/${model.model_id}`,
+        expectedPeople,
+        castMode,
+      });
       addAttempt(model, true);
-      return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
+      return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa };
     } catch (err) {
       lastErr = err;
       const candidatePath = outPath || err._luxuryCandidatePath || '';
@@ -12708,8 +12787,14 @@ async function _generateLuxuryPersonSheetWithPipeline({
             castMode,
             expectedGender,
           });
+          const consistencyQa = await _checkLuxuryActorAssetConsistencyQa(req, retryPath, consistencyReferencePaths, {
+            viewKey: `${filename}_fullbody_retry`,
+            model: `${model.provider_id}/${model.model_id}`,
+            expectedPeople,
+            castMode,
+          });
           addAttempt(model, true, null, { retry: 'full_body_reframe' });
-          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa };
+          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa };
         } catch (retryErr) {
           lastErr = retryErr;
           const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
@@ -13152,6 +13237,7 @@ async function _generateLuxuryRealisticActorPackage({
       expectedPeople,
       castMode,
       expectedGender: gender.value,
+      consistencyReferencePaths: outputs.length ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
     outputs.push({
@@ -13160,6 +13246,7 @@ async function _generateLuxuryRealisticActorPackage({
       path: generated.outPath,
       url: `${baseUrl}/public/jimeng-assets/${path.basename(generated.outPath)}`,
       frame_qa: generated.frameQa || null,
+      consistency_qa: generated.consistencyQa || null,
     });
   }
   const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
