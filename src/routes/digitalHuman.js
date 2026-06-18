@@ -12913,6 +12913,27 @@ function _luxuryActorAuthenticFaceContract({ age = {}, text = '', descriptionTex
   ].join(' ');
 }
 
+function _luxuryActorWardrobeStyleContract({ text = '', descriptionText = '', personContextNotes = '', sceneNotes = '', roleHint = '' } = {}) {
+  const source = [text, descriptionText, personContextNotes, sceneNotes, roleHint].filter(Boolean).join('\n');
+  const femaleOrDress = /女性|女主|女士|女人|女孩|裙|连衣裙|半身裙|dress|skirt|woman|female|girl/i.test(source);
+  const casual = /休闲|日常|生活|家庭|朋友|周末|街拍|咖啡|旅行|户外|校园|居家|casual|daily|lifestyle|home|street|travel|outdoor|campus/i.test(source);
+  const fashion = /穿搭|服装|美妆|时尚|约会|轻奢|造型|fashion|beauty|styling|outfit/i.test(source);
+  const sports = /运动|健身|跑步|瑜伽|户外|sports|fitness|yoga|running/i.test(source);
+  const formal = /商务|职业|办公室|会议|顾问|销售|讲师|医生|律师|金融|business|office|consultant|sales|teacher|doctor|lawyer|finance/i.test(source);
+  const options = [];
+  if (femaleOrDress) options.push('women can wear natural dresses, skirts, knit tops, blouses, cardigans, flats or clean casual shoes when the scene supports it');
+  if (casual) options.push('use relaxed everyday lifestyle clothing such as T-shirts, shirts, hoodies, knitwear, jeans, casual trousers, skirts or simple sneakers');
+  if (fashion) options.push('use tasteful fashion/lifestyle styling with real fabric texture, not glamour poster styling');
+  if (sports) options.push('use realistic activewear or outdoor casual clothing only when the script context supports movement or fitness');
+  if (formal) options.push('professional smart-casual or formal clothing is allowed only where the brief/script actually implies work, consultation or office context');
+  return [
+    'WARDROBE VARIETY CONTRACT: choose wardrobe from the confirmed brief, character table and scene context instead of default business attire.',
+    options.length ? `Allowed wardrobe direction: ${options.join('; ')}.` : 'When no occupation is confirmed, prefer believable everyday or smart-casual clothing that can fit multiple scenes; dresses, skirts, casual pants, knitwear, shirts, denim and simple shoes are allowed when age/gender/context supports them.',
+    'Do not force a suit, blazer, office uniform, sales uniform, tablet, phone, folders, showroom props or corporate styling unless the confirmed script explicitly requires it.',
+    'Keep the outfit family stable across actor-package views, but it does not have to be business clothing.',
+  ].join(' ');
+}
+
 async function _generateLuxuryRealisticActorPackage({
   req,
   text,
@@ -12931,6 +12952,7 @@ async function _generateLuxuryRealisticActorPackage({
   const origin = _luxuryActorOriginPrompt(spec, text);
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
+  const wardrobeStyle = _luxuryActorWardrobeStyleContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
   const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
     ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
     : 'single';
@@ -13044,7 +13066,7 @@ async function _generateLuxuryRealisticActorPackage({
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
   const genderHardLock = _luxuryRequestedGenderInstruction(gender.value);
   const wardrobe = expectedPeople === 1
-    ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
+    ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context; it may be casual, dress/skirt, smart-casual, activewear or formal only when context supports it, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
     : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
   const youngerSubject = /infant|toddler|child|teen/.test(String(age.value || '').toLowerCase());
   const framingContract = expectedPeople > 1
@@ -13070,6 +13092,7 @@ async function _generateLuxuryRealisticActorPackage({
     gender.lock,
     genderHardLock,
     ageSafety,
+    wardrobeStyle,
     `Wardrobe lock: ${wardrobe}.`,
     framingContract,
     castConsistencyLock,
@@ -15536,7 +15559,24 @@ ${JSON.stringify(scenes, null, 2)}
         const rawReferenceIndex = Math.max(1, Math.round(Number(x.reference_index ?? x.referenceImageIndex ?? (i + 1)) || (i + 1)));
         const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
         const referenceLabel = x.reference_label || `@参考${referenceIndex}`;
-        const scriptPurpose = _luxuryScriptPurposeLabel(role, i, roleCount, x.script_purpose || x.purpose_label || x.purpose || '');
+        const objectiveText = _cleanLuxuryAdVisual(
+          x.objective
+          || x.intent
+          || x.purpose
+          || x.script_purpose
+          || x.purpose_label
+          || x.ui_overlay?.content
+          || x.uiOverlay?.content
+          || x.source_beat?.spoken_intent
+          || x.source_beat?.character_goal
+          || x.source_beat?.solution_step
+          || '',
+          {
+            role,
+            productSubject,
+          }
+        ).replace(/[。；;，,]\s*$/g, '');
+        const scriptPurpose = _luxuryScriptPurposeLabel(role, i, roleCount, x.script_purpose || x.purpose_label || x.purpose || objectiveText || '');
         const rawDialogue = Array.isArray(x.dialogue_lines)
           ? x.dialogue_lines.join('\n')
           : String(x.dialogue || x.dialogue_text || x.conversation || '').trim();
@@ -15547,10 +15587,7 @@ ${JSON.stringify(scenes, null, 2)}
           story_stage: _normalizeLuxurySceneStage(x.story_stage, role, i, roleCount),
           shot_size: shotAngle,
           shot_angle: shotAngle,
-          objective: _cleanLuxuryAdVisual(x.objective || x.intent || '', {
-            role,
-            productSubject,
-          }).replace(/[。；;，,]\s*$/g, ''),
+          objective: objectiveText || scriptPurpose,
           purpose: scriptPurpose,
           script_purpose: scriptPurpose,
           material_need: isDetailedMode ? String(x.material_need || x.required_material || x.material_requirement || '').trim() : visual,
