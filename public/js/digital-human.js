@@ -11655,13 +11655,16 @@
       return toast(err.message, 'error');
     }
     const lockedShotLimit = luxuryAdLockedShotLimit();
-    let previewSegments = state.luxuryAd.segments || [];
+    let previewSegments = normalizeLuxuryAdSegmentsForHandoff(state.luxuryAd.segments || []);
+    if (previewSegments.length) {
+      state.luxuryAd.segments = previewSegments;
+    }
     if (lockedShotLimit > 0) {
       const lockedSegments = clampLuxuryAdSegmentsToLockedAssets(previewSegments);
       if (lockedSegments.length !== previewSegments.length) {
-        state.luxuryAd.segments = lockedSegments;
+        state.luxuryAd.segments = normalizeLuxuryAdSegmentsForHandoff(lockedSegments);
         state.luxuryAd.keyframes = [];
-        previewSegments = lockedSegments;
+        previewSegments = state.luxuryAd.segments;
         renderLuxuryAdStoryboard();
         toast(`已按上传的 ${lockedShotLimit} 张分镜画面锁定镜头数，不再补生成额外镜头`, 'info');
       }
