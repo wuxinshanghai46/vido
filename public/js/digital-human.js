@@ -6451,6 +6451,7 @@
       child_4_7: '儿童 / 4-7',
       child_8_12: '少儿 / 8-12',
       teen_13_17: '青少年 / 13-17',
+      young_adult_17_25: '年轻成人 / 17-25',
       young_adult: '青年 / 25-32',
       adult_30_40: '成熟青年 / 30-40',
       middle_40_55: '中年 / 40-55',
@@ -6547,6 +6548,16 @@
     return spec;
   }
 
+  function luxuryPersonAgeNeedsRealReference(age = '') {
+    const value = luxuryPersonAgeSpecValue(age);
+    return ['infant_0_1', 'toddler_1_3', 'child_4_7', 'child_8_12', 'teen_13_17'].includes(value);
+  }
+
+  function luxuryPersonAgeRealReferenceMessage(age = '') {
+    const label = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(age)] || '未成年人';
+    return `当前选择的是「${label}」。为避免供应商审核拦截和不合规的 AI 未成年人拟真生成，系统不再用图片模型生成这类真人感演员包；请上传真人授权参考或从演员库选择已授权素材后继续。`;
+  }
+
   function luxuryAdScriptCharacterCount() {
     const names = new Set();
     const push = value => {
@@ -6618,6 +6629,7 @@
     if (/child[_\s-]?4|4[_\s-]?7|儿童|小孩/.test(raw)) return 'child_4_7';
     if (/child[_\s-]?8|8[_\s-]?12|少儿|小学生/.test(raw)) return 'child_8_12';
     if (/teen|13[_\s-]?17|青少年|少年|少女|中学生/.test(raw)) return 'teen_13_17';
+    if (/young[_\s-]?adult[_\s-]?17|17[_\s-]?25|18[_\s-]?25|17|18|19|20|21|22|23|24|年轻成人/.test(raw)) return 'young_adult_17_25';
     if (/young[_\s-]?adult|25|26|27|28|29|30|31|32|青年|年轻/.test(raw)) return 'young_adult';
     if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(raw)) return 'adult_30_40';
     if (/middle|40|45|50|55|中年/.test(raw)) return 'middle_40_55';
@@ -8421,6 +8433,9 @@
       return toast(luxuryAdPersonDesignGateMessage(), 'error');
     }
     const generationSpec = luxuryAdPersonGenerationSpec();
+    if (luxuryPersonAgeNeedsRealReference(generationSpec.age)) {
+      return toast(luxuryPersonAgeRealReferenceMessage(generationSpec.age), 'error');
+    }
     const personDescription = luxuryAdPersonDescription(generationSpec);
     const generationCastMode = ['single', 'dual', 'group'].includes(String(generationSpec.castMode || '').toLowerCase())
       ? String(generationSpec.castMode || '').toLowerCase()

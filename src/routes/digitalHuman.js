@@ -12884,11 +12884,18 @@ function _luxuryActorAgePrompt(spec = {}, text = '') {
   if (/child[_\s-]?4|4[_\s-]?7|儿童|小孩/.test(combined)) return { value: 'child_4_7', prompt: '4 to 7 years old child, age-appropriate commercial subject' };
   if (/child[_\s-]?8|8[_\s-]?12|少儿|小学生/.test(combined)) return { value: 'child_8_12', prompt: '8 to 12 years old child, age-appropriate commercial subject' };
   if (/teen|13[_\s-]?17|青少年|少年|少女|中学生/.test(combined)) return { value: 'teen_13_17', prompt: '13 to 17 years old teenager, age-appropriate commercial subject' };
+  if (/young[_\s-]?adult[_\s-]?17|17[_\s-]?25|18[_\s-]?25|17|18|19|20|21|22|23|24|年轻成人/.test(combined)) return { value: 'young_adult_17_25', prompt: '17 to 25 years old young adult campaign character; keep styling age-appropriate and non-glamour' };
+  if (/young[_\s-]?adult|25|26|27|28|29|30|31|32|青年|年轻/.test(combined)) return { value: 'young_adult', prompt: '25 to 32 years old young adult' };
   if (/senior|55|60|65|年长|老年/.test(combined)) return { value: 'senior_55_plus', prompt: '55+ years old senior adult' };
   if (/middle|40|45|50|中年/.test(combined)) return { value: 'middle_40_55', prompt: '40 to 55 years old mature adult' };
   if (/adult[_\s-]?30|30[_\s-]?40|33|34|35|36|37|38|39|成熟青年/.test(combined)) return { value: 'adult_30_40', prompt: '30 to 40 years old adult' };
   if (/match|auto|brief|按/.test(raw)) return { value: 'match_brief', prompt: 'age group follows the confirmed brief and script; use neutral adult presentation only when no specific age is provided' };
   return { value: 'match_brief', prompt: 'age group follows the confirmed brief and script; use neutral adult presentation only when no specific age is provided' };
+}
+
+function _luxuryPersonSheetMinorAgeValue(spec = {}) {
+  const age = _luxuryActorAgePrompt(spec, '');
+  return /infant|toddler|child|teen_13_17/.test(String(age.value || '')) ? age : null;
 }
 
 function _luxuryActorAgeSafetyPrompt(age = {}) {
@@ -13331,6 +13338,14 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       ? sceneList.slice(0, 6).map((s, i) => `${i + 1}. ${s.title || s.story_stage || ''} ${s.content_prompt || s.visual || s.objective || ''} ${s.action || ''}`).join('\n')
       : '';
     const spec = (person_spec && typeof person_spec === 'object') ? person_spec : {};
+    const minorAge = _luxuryPersonSheetMinorAgeValue(spec);
+    if (minorAge) {
+      return res.status(422).json({
+        success: false,
+        code: 'LUXURY_PERSON_SHEET_REAL_MINOR_REFERENCE_REQUIRED',
+        error: `当前选择的是未成年人年龄段（${minorAge.value}）。AI 真人感演员包不再为 13-17 及以下年龄段直接生成拟真人物，以避免供应商审核拦截；请上传真人授权参考或选择已授权演员库素材后继续。`,
+      });
+    }
     const genderMap = {
       adult_woman_25_35: { en: 'female person, 25-35 years old when explicitly requested', lock: 'Keep a consistent female person presentation across all views.' },
       adult_woman_35_50: { en: 'female person, 35-50 years old when explicitly requested', lock: 'Keep a consistent female person presentation across all views.' },
