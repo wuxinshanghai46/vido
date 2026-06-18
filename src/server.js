@@ -526,6 +526,12 @@ app.get('/api/health', (req, res) => {
   const storyInfo = getStoryInfo();
   const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', 'webang-seedance': '微众 Seedance 2.0' };
   const videoProvider = process.env.VIDEO_PROVIDER || 'auto';
+  let database = { enabled: false, status: 'disabled' };
+  try {
+    database = require('./db/sqlite').healthCheck();
+  } catch (error) {
+    database = { enabled: true, status: 'error', error: error.message };
+  }
   res.json({
     status: 'ok',
     storyProvider: storyInfo.provider,
@@ -533,6 +539,7 @@ app.get('/api/health', (req, res) => {
     hasDeepseekKey: !!process.env.DEEPSEEK_API_KEY,
     hasOpenAIKey: !!process.env.OPENAI_API_KEY,
     hasClaudeKey: !!process.env.CLAUDE_API_KEY,
+    database,
     videoProvider,
     videoModel: videoLabels[videoProvider] || 'auto（由 AI 配置决定）'
   });

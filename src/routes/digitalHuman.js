@@ -21,6 +21,8 @@ const { scopeUserId, ownedBy, requirePermission } = require('../middleware/auth'
 const avatarService = require('../services/avatarService');
 const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackService');
 const modelCapabilityService = require('../services/modelCapabilityService');
+const sqliteConfig = require('../db/sqlite');
+const contentRecords = require('../repositories/contentRecordRepository');
 
 const JIMENG_ASSETS_DIR = path.join(__dirname, '../../outputs/jimeng-assets');
 const DH_IMAGES_DIR = path.join(__dirname, '../../outputs/dh-images');
@@ -47,6 +49,11 @@ function _jsonClone(value, fallback = null) {
 }
 
 function _readLuxuryAdProjectStore() {
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled && dbConfig.readPrimary) {
+    const projects = contentRecords.list('luxury_ad_projects');
+    if (projects.length || !dbConfig.jsonFallback) return { projects };
+  }
   try {
     if (!fs.existsSync(LUXURY_AD_PROJECTS_FILE)) return { projects: [] };
     const data = JSON.parse(fs.readFileSync(LUXURY_AD_PROJECTS_FILE, 'utf8'));
@@ -58,8 +65,13 @@ function _readLuxuryAdProjectStore() {
 }
 
 function _writeLuxuryAdProjectStore(data) {
-  fs.mkdirSync(path.dirname(LUXURY_AD_PROJECTS_FILE), { recursive: true });
-  fs.writeFileSync(LUXURY_AD_PROJECTS_FILE, JSON.stringify({ projects: Array.isArray(data.projects) ? data.projects : [] }, null, 2), 'utf8');
+  const projects = Array.isArray(data.projects) ? data.projects : [];
+  const dbConfig = sqliteConfig.getDbConfig();
+  if (dbConfig.enabled) contentRecords.replaceCollection('luxury_ad_projects', projects);
+  if (!dbConfig.enabled || !dbConfig.readPrimary || dbConfig.dualWrite) {
+    fs.mkdirSync(path.dirname(LUXURY_AD_PROJECTS_FILE), { recursive: true });
+    fs.writeFileSync(LUXURY_AD_PROJECTS_FILE, JSON.stringify({ projects }, null, 2), 'utf8');
+  }
 }
 
 function _luxuryAdProjectBelongsTo(req, row = {}) {

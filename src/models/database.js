@@ -472,4 +472,4 @@ const db = {
   deleteDramaTask(id) { this.deleteDramaEpisode(id); }
 };
 
-module.exports = db;
+module.exports = require('./databaseSqliteAdapter').adapt(db);
