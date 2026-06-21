@@ -210,6 +210,16 @@ textarea, input { outline: none; }
   color: var(--nv-muted);
   font-size: 13px;
 }
+.nv-create-error {
+  margin: 0 20px 12px;
+  border: 1px solid rgba(255, 107, 134, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 107, 134, 0.1);
+  color: #ffd4dc;
+  padding: 12px 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
 .nv-composer-actions {
   padding: 16px 20px 20px;
   display: flex;

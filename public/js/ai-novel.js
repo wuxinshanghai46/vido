@@ -25,6 +25,7 @@
     generation: null,
     taxonomy: null,
     importFile: null,
+    createError: '',
     config: {
       genre: 'auto',
       subtype: 'auto',
@@ -237,6 +238,24 @@
     toast.classList.add('is-visible');
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 3600);
+  }
+
+  function setCreateError(message = '') {
+    state.createError = message || '';
+    const box = document.getElementById('nvCreateError');
+    if (!box) return;
+    box.hidden = !state.createError;
+    box.textContent = state.createError;
+  }
+
+  function createErrorMessage(error) {
+    const attempts = arr(error?.data?.attempts || error?.attempts);
+    const attemptText = attempts
+      .filter(item => item && item.error)
+      .slice(0, 2)
+      .map(item => `${item.provider_id || '模型'}/${item.model_id || ''}: ${item.error}`)
+      .join('；');
+    return [error?.message || '小说方案生成失败', attemptText].filter(Boolean).join('\n');
   }
 
   function setBusy(button, busy, label) {
@@ -524,8 +543,17 @@
     const idea = text(document.getElementById('nvIdeaInput').value);
     const source = text(document.getElementById('nvImportInput').value);
     const mode = state.createMode;
-    if (mode === 'idea' && !idea) throw new Error('请先写下核心想法');
-    if (mode === 'import' && !source) throw new Error('请先粘贴已有作品内容');
+    if (mode === 'idea' && !idea) {
+      document.getElementById('nvCreateModal').classList.remove('is-open');
+      setCreateError('请先写下核心想法：至少包含主角、目标、冲突、背景或一个关键事件。');
+      throw new Error(state.createError);
+    }
+    if (mode === 'import' && !source) {
+      document.getElementById('nvCreateModal').classList.remove('is-open');
+      setCreateError('请先粘贴已有作品内容，或上传文本类文件后再生成小说方案。');
+      throw new Error(state.createError);
+    }
+    setCreateError('');
     state.creating = true;
     setBusy(button, true, '生成方案中...');
     state.panel = 'world';
@@ -570,7 +598,8 @@
     } catch (error) {
       state.generation = null;
       switchView('create');
-      document.getElementById('nvCreateModal').classList.add('is-open');
+      document.getElementById('nvCreateModal').classList.remove('is-open');
+      setCreateError(createErrorMessage(error));
       throw error;
     } finally {
       state.creating = false;
@@ -1662,6 +1691,7 @@
     document.querySelectorAll('[data-create-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
         state.createMode = btn.dataset.createMode;
+        setCreateError('');
         document.querySelectorAll('[data-create-mode]').forEach(item => item.classList.toggle('is-active', item === btn));
         document.getElementById('nvIdeaInput').classList.toggle('is-hidden', state.createMode !== 'idea');
         document.getElementById('nvImportInput').classList.toggle('is-hidden', state.createMode !== 'import');
@@ -1669,9 +1699,11 @@
       });
     });
     document.getElementById('nvImportToggleBtn').addEventListener('click', () => {
+      setCreateError('');
       document.querySelector('[data-create-mode="import"]').click();
     });
     document.getElementById('nvOpenCreateModalBtn').addEventListener('click', () => {
+      setCreateError('');
       renderCreateChoices();
       document.getElementById('nvCreateModal').classList.add('is-open');
     });
@@ -1680,6 +1712,8 @@
     });
     document.getElementById('nvImportFileInput').addEventListener('change', e => run(() => handleImportFile(e.currentTarget.files?.[0])));
     document.getElementById('nvCreateProjectBtn').addEventListener('click', e => run(() => createProject(e.currentTarget)));
+    document.getElementById('nvIdeaInput').addEventListener('input', () => setCreateError(''));
+    document.getElementById('nvImportInput').addEventListener('input', () => setCreateError(''));
 
     document.body.addEventListener('click', e => {
       const open = e.target.closest('[data-open-novel]');

@@ -693,6 +693,16 @@ router.post('/ai-create', async (req, res) => {
     db.insertNovel(novel);
     res.json({ success: true, novel, plan, outline, model: { plan: planMeta, outline: outlineMeta } });
   } catch (error) {
+    console.error('[Novel/ai-create] failed:', {
+      code: error.code || '',
+      message: error.message,
+      status: error.status || '',
+      attempts: arr(error.attempts || []).map(item => ({
+        provider_id: item.provider_id,
+        model_id: item.model_id,
+        error: item.error
+      }))
+    });
     res.status(error.status || (error.attempts?.length ? 502 : 500)).json({ success: false, error: error.message, code: error.code || '', attempts: error.attempts || [] });
   }
 });

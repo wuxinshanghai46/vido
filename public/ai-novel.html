@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI 小说工作台 - VIDO</title>
-  <link rel="stylesheet" href="/css/ai-novel.css?v=20260621-novel-stream-clear9" />
+  <link rel="stylesheet" href="/css/ai-novel.css?v=20260621-novel-create-error" />
 </head>
 <body>
   <div class="nv-shell" id="novelApp">
@@ -62,6 +62,7 @@
               </label>
               <div id="nvImportFileStatus">文本类文件会自动读入；视频文件会作为参考素材记录到方案里。</div>
             </div>
+            <div class="nv-create-error" id="nvCreateError" hidden></div>
             <div class="nv-selected-line" id="nvSelectedLine">类型会在下一步弹窗中选择：AI 判断题材 / AI 判断细分 / AI 判断频道 / 中国语境 / 中篇小说</div>
             <div class="nv-composer-actions">
               <button class="nv-btn nv-btn-muted" type="button" id="nvImportToggleBtn">我已有作品，先分析</button>
@@ -142,6 +143,6 @@
 
   <div class="nv-toast" id="nvToast" role="status" aria-live="polite"></div>
   <script src="/js/auth.js?v=20260620"></script>
-  <script src="/js/ai-novel.js?v=20260621-novel-create-flow" defer></script>
+  <script src="/js/ai-novel.js?v=20260621-novel-create-error" defer></script>
 </body>
 </html>
