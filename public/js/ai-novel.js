@@ -1269,21 +1269,21 @@
             <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter>提交本章</button>
           </div>
         </div>
-        <div class="nv-chapter-stream-status ${state.chapterWriting ? 'is-active' : ''}" id="nvChapterStreamStatus">
+        <div class="nv-chapter-stream-status ${state.chapterWriting ? 'is-active' : ''} ${state.chapterWriting?.isError ? 'is-error' : ''}" id="nvChapterStreamStatus">
           <span class="nv-thinking-dot"></span>
           <div>
-            <b>${esc(state.chapterWriting?.title || 'AI 正在准备正文')}</b>
-            <p>${esc(state.chapterWriting?.detail || '正在读取章节任务书、人物状态和前文事实。')}</p>
+            <b>${esc(state.chapterWriting?.title || '正在生成正文')}</b>
+            <p>${esc(state.chapterWriting?.detail || '请稍候，内容会写入下方编辑区。')}</p>
           </div>
         </div>
-        ${hasCurrentContent ? '' : `<section class="nv-chapter-empty-state">
+        ${hasCurrentContent || state.chapterWriting ? '' : `<section class="nv-chapter-empty-state">
           <div>
             <h3>本章还没有正文</h3>
             <p>当前只有右侧的章节故事点和人物关系，还没有生成或保存过正文。点击“生成本章”后，正文会写入这里；也可以直接在下方手动输入。</p>
           </div>
           <button class="nv-btn nv-btn-primary" type="button" data-generate-chapter>生成本章正文</button>
         </section>`}
-        <textarea class="nv-textarea nv-chapter-content ${hasCurrentContent ? '' : 'is-empty'}" id="nvChapterContent" placeholder="这里是当前章节正文创作区。">${esc(currentContent)}</textarea>
+        <textarea class="nv-textarea nv-chapter-content ${hasCurrentContent ? '' : 'is-empty'}" id="nvChapterContent" placeholder="正文会显示在这里，也可以手动编辑。">${esc(currentContent)}</textarea>
         <section class="nv-finalize ${finalVisible ? 'is-visible' : ''}">
           <div><h3>所有章节已提交</h3><p>确认后小说状态会变为“已完成”，任务中心会进入已完成列表。</p></div>
           <button class="nv-btn nv-btn-primary" type="button" data-complete-novel>确认完结小说</button>
@@ -1397,28 +1397,37 @@
     showToast(status === 'done' ? '本章已保存为已提交' : '本章已保存');
   }
 
-  function stream(url, onChunk) {
+  function stream(url, onChunk, options = {}) {
     return new Promise((resolve, reject) => {
       const es = new EventSource(url);
       let finalText = '';
+      let receivedChunk = false;
+      const firstChunkTimer = setTimeout(() => {
+        if (!receivedChunk) options.onWaiting?.();
+      }, options.firstChunkDelay || 12000);
+      const cleanup = () => {
+        clearTimeout(firstChunkTimer);
+        es.close();
+      };
       es.onmessage = event => {
         let data = {};
         try { data = JSON.parse(event.data); } catch { return; }
         if (data.type === 'chunk') {
+          receivedChunk = true;
           finalText += data.text || '';
           onChunk(data.text || '', finalText);
         }
         if (data.type === 'done') {
-          es.close();
+          cleanup();
           resolve(data);
         }
         if (data.type === 'error') {
-          es.close();
+          cleanup();
           reject(new Error(data.message || '流式生成失败'));
         }
       };
       es.onerror = () => {
-        es.close();
+        cleanup();
         reject(new Error('流式连接失败'));
       };
     });
@@ -1428,11 +1437,12 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  function updateChapterWriteStatus(title, detail) {
-    state.chapterWriting = { title, detail };
+  function updateChapterWriteStatus(title, detail, isError = false) {
+    state.chapterWriting = { title, detail, isError };
     const box = document.getElementById('nvChapterStreamStatus');
     if (!box) return;
     box.classList.add('is-active');
+    box.classList.toggle('is-error', !!isError);
     const titleEl = box.querySelector('b');
     const detailEl = box.querySelector('p');
     if (titleEl) titleEl.textContent = title;
@@ -1442,7 +1452,10 @@
   function finishChapterWriteStatus() {
     state.chapterWriting = null;
     const box = document.getElementById('nvChapterStreamStatus');
-    if (box) box.classList.remove('is-active');
+    if (box) {
+      box.classList.remove('is-active');
+      box.classList.remove('is-error');
+    }
   }
 
   async function showChapterThinking(steps) {
@@ -1514,32 +1527,35 @@
   async function generateChapter(button) {
     if (!token()) throw new Error('登录已失效，请重新登录');
     state.chapterWriting = {
-      title: 'AI 正在准备正文',
-      detail: '正在读取章节任务书、人物状态和前文事实。'
+      title: '正在生成正文',
+      detail: '请稍候，生成内容会直接写入下方编辑区。'
     };
     updateChapterWriteStatus(state.chapterWriting.title, state.chapterWriting.detail);
     setBusy(button, true, '生成中...');
     const area = document.getElementById('nvChapterContent');
     area.value = '';
     const writer = createChapterTypingWriter(area, { mode: 'replace', sourceValue: '', start: 0, end: 0 });
+    let failed = false;
     try {
-      await showChapterThinking([
-        { title: '正在读取章节任务书', detail: '核对本章目标、冲突、选择、代价和钩子。' },
-        { title: '正在组织场景', detail: '按人物动机、对话潜台词和场景细节准备正文。' },
-        { title: '正在逐句写入正文', detail: '正文会像对话一样持续出现，请等待完整写完。' }
-      ]);
+      updateChapterWriteStatus('正在生成正文', '正在连接写作模型，首段内容返回后会开始逐字写入。');
       const url = `/api/novel/${encodeURIComponent(state.current.id)}/generate-chapter-stream?chapter=${encodeURIComponent(state.currentChapter)}&token=${encodeURIComponent(token())}`;
       await stream(url, (chunk) => {
-        updateChapterWriteStatus('正在逐句写入正文', 'AI 正在把真实生成结果按可读节奏写入编辑区。');
+        updateChapterWriteStatus('正在写入正文', '内容正在进入编辑区，可以先阅读，完成后再保存或提交。');
         writer.enqueue(chunk);
+      }, {
+        onWaiting: () => updateChapterWriteStatus('仍在等待模型返回', '模型还没有返回第一段正文，请继续等待；如果接口失败，会显示真实错误。')
       });
       await writer.finish();
       await refreshCurrent();
       state.panel = 'write';
       renderWork();
       showToast('本章已生成，确认后可提交。');
+    } catch (error) {
+      failed = true;
+      updateChapterWriteStatus('生成失败', error.message || '章节生成失败', true);
+      throw error;
     } finally {
-      finishChapterWriteStatus();
+      if (!failed) finishChapterWriteStatus();
       setBusy(button, false);
     }
   }
@@ -1555,8 +1571,8 @@
     const selectionStart = area.selectionStart;
     const selectionEnd = area.selectionEnd;
     state.chapterWriting = {
-      title: mode === 'continue' ? 'AI 正在准备续写' : 'AI 正在准备改写',
-      detail: mode === 'continue' ? '正在读取现有正文、人物状态和本章目标。' : '正在读取选中文字，保持事实不变后重写表达。'
+      title: mode === 'continue' ? '正在续写正文' : '正在改写正文',
+      detail: '请稍候，返回内容会直接写入编辑区。'
     };
     updateChapterWriteStatus(state.chapterWriting.title, state.chapterWriting.detail);
     setBusy(button, true, mode === 'continue' ? '续写中...' : '优化中...');
@@ -1568,27 +1584,26 @@
       start: selectionStart,
       end: selectionEnd
     });
+    let failed = false;
     try {
       let result = '';
-      await showChapterThinking(mode === 'continue'
-        ? [
-          { title: '正在衔接前文', detail: '检查上一句情绪、行动目标和未完成冲突。' },
-          { title: '正在组织续写', detail: '续写会逐句进入正文，不会等到最后一次性出现。' }
-        ]
-        : [
-          { title: '正在分析选中文字', detail: '保持事实不变，只调整节奏、画面感和表达密度。' },
-          { title: '正在逐句改写', detail: '改写内容会在原选区位置逐步替换。' }
-        ]);
+      updateChapterWriteStatus(mode === 'continue' ? '正在续写正文' : '正在改写正文', '正在连接写作模型，首段内容返回后会开始写入。');
       const url = `/api/novel/${encodeURIComponent(state.current.id)}/refine-stream?text=${encodeURIComponent(base)}&instruction=${encodeURIComponent(instruction)}&token=${encodeURIComponent(token())}`;
       await stream(url, (chunk) => {
         result += chunk;
-        updateChapterWriteStatus(mode === 'continue' ? '正在逐句续写' : '正在逐句改写', 'AI 正在把真实生成结果按可读节奏写入编辑区。');
+        updateChapterWriteStatus(mode === 'continue' ? '正在写入续写内容' : '正在写入改写内容', '内容正在进入编辑区，可以先阅读，完成后再保存。');
         writer.enqueue(chunk);
+      }, {
+        onWaiting: () => updateChapterWriteStatus('仍在等待模型返回', '模型还没有返回第一段内容，请继续等待；如果接口失败，会显示真实错误。')
       });
       await writer.finish();
       showToast(mode === 'continue' ? '续写完成，请检查后保存。' : '优化完成，请检查后保存。');
+    } catch (error) {
+      failed = true;
+      updateChapterWriteStatus(mode === 'continue' ? '续写失败' : '改写失败', error.message || '操作失败', true);
+      throw error;
     } finally {
-      finishChapterWriteStatus();
+      if (!failed) finishChapterWriteStatus();
       setBusy(button, false);
     }
   }

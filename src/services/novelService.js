@@ -526,13 +526,15 @@ async function createStreamingCompletionWithAttempts({ preferredProvider, messag
       const chunks = [];
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content;
-        if (delta) chunks.push(delta);
+        if (delta) {
+          chunks.push(delta);
+          onChunk?.(delta);
+        }
       }
       const text = chunks.join('');
       if (!text.trim()) throw new Error('模型未返回正文内容');
       attempt.ok = true;
       attempts.push(attempt);
-      chunks.forEach(chunk => onChunk?.(chunk));
       return { text, config, attempts };
     } catch (error) {
       attempt.status = error.status || error.code || null;
