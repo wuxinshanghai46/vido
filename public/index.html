@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
@@ -6,7 +6,7 @@
   <title>VIDO - AI 视频创作平台</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css?v=20260412g" />
+  <link rel="stylesheet" href="/css/style.css?v=20260619-novel-module" />
   <script src="/js/auth.js?v=20260412g"></script>
 </head>
 <body>
@@ -33,7 +33,7 @@
     <div class="nav-item" data-page="comic"    data-perm="comic"   ><div class="nav-icon">📚</div>AI 漫画</div>
     <div class="nav-item" data-page="drama"    data-perm="drama"   ><div class="nav-icon">🎭</div>AI 网剧</div>
     <div class="nav-item" data-perm="comic" onclick="window.location.href='/ai-manga-drama'"><div class="nav-icon">🎞️</div>AI 漫剧</div>
-    <div class="nav-item" data-page="novel"    data-perm="novel"   ><div class="nav-icon">✍️</div>AI 小说</div>
+    <div class="nav-item" data-perm="novel" onclick="window.location.href='/ai-novel'"><div class="nav-icon">✍️</div>AI 小说</div>
     <div class="nav-item" data-page="workflow" data-perm="workflow"><div class="nav-icon">🔗</div>工作流画布</div>
   </div>
 
@@ -205,7 +205,7 @@
             </div>
             <button class="hub-type-btn">进入漫剧工作台 →</button>
           </div>
-          <div class="hub-type-card" onclick="switchPage('novel')">
+          <div class="hub-type-card" onclick="window.location.href='/ai-novel'">
             <div class="hub-type-head">
               <div class="hub-type-icon">✍️</div>
               <div class="hub-type-info">
@@ -1600,177 +1600,6 @@
           </div>
         </div>
       </div>
-
-      <!-- ══ AI 小说页面（三栏布局，参照原型） ══ -->
-      <div id="page-novel" class="page">
-        <div class="nv-page">
-          <div class="page-top-bar" style="padding:12px 20px 8px;border-bottom:1px solid var(--border)">
-            <div class="page-top-title">AI 小说</div>
-            <div class="page-top-sub">AI 智能创作，支持超短篇 / 短篇 / 长篇，大纲规划与逐章生成</div>
-          </div>
-          <div class="nv-main">
-            <!-- 左侧：小说列表 -->
-            <div class="nv-sidebar">
-              <button class="nv-new-btn" onclick="nvShowCreateDialog()">+ 新建小说</button>
-              <div class="nv-list" id="nv-list">
-                <div class="nv-list-empty">暂无小说</div>
-              </div>
-            </div>
-            <!-- 中央：工作台 -->
-            <div class="nv-editor">
-              <div class="nv-editor-empty" id="nv-editor-empty">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><path d="M4 3h10l5 5v11a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="currentColor" stroke-width="1"/><path d="M14 3v5h5M7 13h10M7 17h7" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".4"/></svg>
-                <span>创建或选择一部小说开始写作</span>
-              </div>
-              <div class="nv-editor-active" id="nv-editor-active" style="display:none">
-                <div class="nv-editor-header">
-                  <input class="nv-title-input" id="nv-title" placeholder="小说标题" onchange="nvSaveField('title',this.value)" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore />
-                  <div class="nv-type-badge" id="nv-type-badge"></div>
-                  <div class="nv-editor-actions">
-                    <button class="nv-act-btn" onclick="nvExport()" title="导出">导出</button>
-                    <button class="nv-act-btn nv-act-danger" onclick="nvDelete()" title="删除">删除</button>
-                  </div>
-                </div>
-                <!-- 工作台模式切换 -->
-                <div class="nv-mode-bar">
-                  <button class="nv-mode-tab active" data-mode="read" onclick="nvSwitchMode('read')">阅读</button>
-                  <button class="nv-mode-tab" data-mode="outline" onclick="nvSwitchMode('outline')">大纲</button>
-                  <button class="nv-mode-tab" data-mode="write" onclick="nvSwitchMode('write')">写作</button>
-                  <div class="nv-mode-stats" id="nv-mode-stats"></div>
-                </div>
-                <!-- 阅读工作台 -->
-                <div class="nv-workspace" id="nv-ws-read">
-                  <div class="nv-chapter-tabs" id="nv-read-chapter-tabs"></div>
-                  <div style="flex:1;overflow-y:auto;border-radius:12px;background:var(--bg2);padding:20px 24px;">
-                    <div id="nv-read-content" style="font-size:15px;line-height:2;color:var(--text);white-space:pre-wrap;min-height:200px;user-select:text;"></div>
-                  </div>
-                </div>
-                <!-- 大纲工作台 -->
-                <div class="nv-workspace" id="nv-ws-outline" style="display:none">
-                  <div class="nv-ol-top">
-                    <div class="nv-ol-synopsis-wrap">
-                      <label class="nv-label" style="margin-top:0">故事简介</label>
-                      <textarea class="nv-ta" id="nv-synopsis" rows="3" placeholder="一句话概括你的故事..." onchange="nvSaveSynopsis()"></textarea>
-                    </div>
-                    <div class="nv-ol-actions">
-                      <button class="nv-ol-ai-btn" id="nv-outline-btn" onclick="nvGenerateOutline()">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M3 13l2-2M11 5l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                        AI 生成大纲
-                      </button>
-                      <button class="nv-ol-import-btn" onclick="nvShowImportOutline()">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 001 1h8a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                        导入大纲
-                      </button>
-                    </div>
-                  </div>
-                  <div class="nv-ol-chapters" id="nv-outline-chapters">
-                    <div class="nv-outline-empty">生成或导入大纲后，章节将在此显示</div>
-                  </div>
-                  <button class="nv-ol-add-ch" onclick="nvAddOutlineChapter()">+ 添加章节</button>
-                </div>
-                <!-- 写作工作台 -->
-                <div class="nv-workspace" id="nv-ws-write" style="display:none">
-                  <div class="nv-chapter-tabs" id="nv-chapter-tabs"></div>
-                  <div class="nv-content-wrap">
-                    <div class="nv-content" id="nv-content" contenteditable="true" oninput="nvAutoSaveContent()"></div>
-                  </div>
-                  <div class="nv-toolbar">
-                    <button class="nv-gen-btn" id="nv-gen-btn" onclick="nvGenerateChapter()">生成本章</button>
-                    <button class="nv-refine-btn" onclick="nvRefine()">AI 优化选中文本</button>
-                    <span class="nv-word-count" id="nv-word-count">0 字</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <!-- 右侧：AI 辅助创作 -->
-            <div class="nv-settings" id="nv-settings">
-              <div class="nv-section">
-                <div class="nv-sec-title">AI 辅助创作</div>
-                <button class="nv-ai-main-btn" onclick="nvGenerateChapter()" id="nv-gen-btn2" style="width:100%;padding:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">✨ 续写（300字）</button>
-                <button class="nv-ai-sec-btn" onclick="nvExpandSelection()" style="width:100%;padding:8px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:6px;">📝 扩写选中段落</button>
-                <button class="nv-ai-sec-btn" onclick="nvRefine()" style="width:100%;padding:8px;background:rgba(var(--accent-rgb),.1);color:var(--accent);border:1px solid rgba(var(--accent-rgb),.2);border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:14px;">🔄 改写优化</button>
-              </div>
-
-              <div class="nv-section">
-                <div class="nv-sec-title">AI 建议</div>
-                <div id="nv-ai-suggestion" style="background:rgba(var(--accent-rgb),.08);border:1px solid rgba(var(--accent-rgb),.15);border-radius:8px;padding:10px;font-size:12px;color:var(--text2);line-height:1.6;min-height:60px;">
-                  选择文本后，AI 将在此给出创作建议
-                </div>
-              </div>
-
-              <div class="nv-section">
-                <div class="nv-sec-title">章节统计</div>
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:4px 0;">
-                  <span>字数：</span><span id="nv-stat-words">0</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:4px 0;">
-                  <span>目标：</span><span id="nv-stat-target">3000 字</span>
-                </div>
-                <div style="margin-top:6px;height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;">
-                  <div id="nv-stat-bar" style="height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width .3s;"></div>
-                </div>
-              </div>
-
-              <div class="nv-advanced-toggle" onclick="toggleNovelAdvanced()" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
-                <span>创作设置</span>
-                <span class="nv-adv-arrow" id="nv-adv-arrow">▾</span>
-              </div>
-              <div class="nv-advanced-body" id="nv-advanced-body">
-              <div class="nv-section">
-                <label class="nv-label">题材</label>
-                <select class="nv-sel" id="nv-genre" onchange="nvSaveField('genre',this.value)">
-                  <option value="fantasy">奇幻</option>
-                  <option value="wuxia">武侠</option>
-                  <option value="xianxia">仙侠</option>
-                  <option value="scifi">科幻</option>
-                  <option value="romance">言情</option>
-                  <option value="mystery">悬疑</option>
-                  <option value="horror">恐怖</option>
-                  <option value="urban">都市</option>
-                  <option value="historical">历史</option>
-                </select>
-                <label class="nv-label">写作风格</label>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;">
-                  <button class="nv-style-tag active" onclick="nvSetStyle(this,'descriptive')">热血爽文</button>
-                  <button class="nv-style-tag" onclick="nvSetStyle(this,'concise')">细腻情感</button>
-                  <button class="nv-style-tag" onclick="nvSetStyle(this,'literary')">悬疑紧张</button>
-                  <button class="nv-style-tag" onclick="nvSetStyle(this,'poetic')">诗意唯美</button>
-                </div>
-                <label class="nv-label">世界观设定</label>
-                <textarea class="nv-ta" id="nv-description" rows="3" placeholder="远古大陆，灵气浮沉，人族、魔族、妖族三方鼎立..." onchange="nvSaveField('description',this.value)"></textarea>
-                <label class="nv-label">AI 模型</label>
-                <select class="nv-sel" id="nv-model" onchange="nvSaveField('provider',this.value)">
-                  <option value="">自动选择</option>
-                </select>
-                <label class="nv-label">每章字数</label>
-                <input type="number" class="nv-inp" id="nv-chapter-words" value="3000" min="300" max="10000" step="100" onchange="nvSaveField('chapter_words',this.value)" />
-              </div>
-
-              <div class="nv-section">
-                <div class="nv-sec-title">篇幅</div>
-                <div class="nv-type-cards" id="nv-type-cards">
-                  <div class="nv-type-card active" data-type="flash" onclick="nvSetType('flash')">
-                    <div class="nv-type-card-name">超短篇</div>
-                    <div class="nv-type-card-desc">1~3章</div>
-                  </div>
-                  <div class="nv-type-card" data-type="short" onclick="nvSetType('short')">
-                    <div class="nv-type-card-name">短篇</div>
-                    <div class="nv-type-card-desc">5~10章</div>
-                  </div>
-                  <div class="nv-type-card" data-type="long" onclick="nvSetType('long')">
-                    <div class="nv-type-card-name">长篇</div>
-                    <div class="nv-type-card-desc">20章+</div>
-                  </div>
-                </div>
-                <label class="nv-label">章节数</label>
-                <input type="number" class="nv-inp" id="nv-chapter-count" value="10" min="1" max="200" onchange="nvSaveField('chapter_count',this.value)" />
-              </div>
-              </div><!-- end nv-advanced-body -->
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- ══ 个人中心 ══ -->
       <div id="page-profile" class="page" style="padding:24px;">
         <div class="page-top-bar">
@@ -3980,6 +3809,6 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=20260419-voiceclone-fix"></script>
+<script src="/js/app.js?v=20260621-novel-replace"></script>
 </body>
 </html>
