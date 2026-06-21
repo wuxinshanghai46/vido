@@ -1045,6 +1045,7 @@
     names.forEach(name => {
       if (savedLayout[name]) positions[name] = savedLayout[name];
     });
+    const activeRelations = relations.filter(r => r.from === active || r.to === active);
     const nodeRadius = names.length > 18 ? 9 : names.length > 10 ? 12 : 16;
     const labelLimit = names.length > 18 ? 4 : names.length > 10 ? 5 : 8;
     const stars = names.map((name, idx) => {
@@ -1057,9 +1058,15 @@
       if (!a || !b) return '';
       const on = r.from === active || r.to === active;
       const showLabel = on || relations.length <= 5;
+      const activeRelationNo = on ? activeRelations.indexOf(r) + 1 : 0;
+      const fromGenderRaw = entityGender(entityByName.get(r.from) || {});
+      const toGenderRaw = entityGender(entityByName.get(r.to) || {});
       const fromGender = endpointDisplayLabel(r, r.from, entityByName);
       const toGender = endpointDisplayLabel(r, r.to, entityByName);
       const relationLabel = `${fromGender}→${toGender} · ${r.type || r.relation || '关系'}`;
+      const labelText = on ? String(activeRelationNo) : relationLabel.slice(0, 12);
+      const labelWidth = on ? 28 : 92;
+      const labelHeight = on ? 24 : 22;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
       const dx = b.x - a.x;
@@ -1074,12 +1081,12 @@
       const labelY = labelBaseY + (dx / length) * offset;
       const curveX = mx + (-dy / length) * (idx % 2 ? 18 : -18);
       const curveY = my + (dx / length) * (idx % 2 ? 18 : -18);
-      return `<g class="nv-web-edge-group ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''}" data-edge-from="${esc(r.from)}" data-edge-to="${esc(r.to)}">
+      return `<g class="nv-web-edge-group ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''} from-${fromGenderRaw} to-${toGenderRaw}" data-edge-from="${esc(r.from)}" data-edge-to="${esc(r.to)}">
         <title>${esc(r.from)} → ${esc(r.to)}：${esc(r.type || r.relation || '关系')} ${esc(r.description || r.evidence || r.tension || '')}</title>
-        <path class="nv-edge ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''}" d="M ${a.x} ${a.y} Q ${curveX} ${curveY} ${b.x} ${b.y}"></path>
-        <g class="nv-edge-label ${on ? 'is-active' : ''} ${showLabel ? 'is-visible' : ''}" transform="translate(${labelX},${labelY})">
-          <rect x="-46" y="-11" width="92" height="22" rx="11"></rect>
-          <text text-anchor="middle" dominant-baseline="middle">${esc(relationLabel.slice(0, 12))}</text>
+        <path class="nv-edge ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''} from-${fromGenderRaw} to-${toGenderRaw}" d="M ${a.x} ${a.y} Q ${curveX} ${curveY} ${b.x} ${b.y}"></path>
+        <g class="nv-edge-label ${on ? 'is-active' : ''} ${showLabel ? 'is-visible' : ''} to-${toGenderRaw}" transform="translate(${labelX},${labelY})">
+          <rect x="${-labelWidth / 2}" y="${-labelHeight / 2}" width="${labelWidth}" height="${labelHeight}" rx="${labelHeight / 2}"></rect>
+          <text text-anchor="middle" dominant-baseline="middle">${esc(labelText)}</text>
         </g>
       </g>`;
     }).join('');
@@ -1090,12 +1097,16 @@
       const on = name === active;
       const dragging = state.graphDrag?.name === name;
       const label = name.length > labelLimit ? `${name.slice(0, labelLimit - 1)}…` : name;
+      const icon = gender === 'male'
+        ? '<path class="nv-node-icon" d="M 0 -15 L 14 0 L 0 15 L -14 0 Z"></path><path class="nv-node-mark" d="M -5 0 H 5 M 0 -5 V 5"></path>'
+        : gender === 'female'
+          ? '<path class="nv-node-icon" d="M 0 -16 C 11 -16 17 -8 13 3 C 10 12 0 17 0 17 C 0 17 -10 12 -13 3 C -17 -8 -11 -16 0 -16 Z"></path><path class="nv-node-mark" d="M -5 -1 H 5 M 0 -6 V 8"></path>'
+          : '<path class="nv-node-icon" d="M -13 -13 H 13 V 13 H -13 Z"></path><path class="nv-node-mark" d="M -5 -5 L 5 5 M 5 -5 L -5 5"></path>';
       return `<g class="nv-node ${on ? 'is-active' : ''} ${dragging ? 'is-dragging' : ''} is-${gender}" data-graph-node="${esc(name)}" transform="translate(${p.x},${p.y})">
-        <circle r="${nodeRadius}"></circle>
+        ${icon}
         <text text-anchor="middle" dominant-baseline="middle" y="${nodeRadius + 13}">${esc(label)}</text>
       </g>`;
     }).join('');
-    const activeRelations = relations.filter(r => r.from === active || r.to === active);
     const activeEntity = entityByName.get(active) || {};
     const chaptersWithCharacters = chapters().filter(ch => arr(ch.characters).length || firstText(ch.summary, ch.title));
     const needMoreCharacters = names.length > 0 && names.length < 5;
@@ -1185,10 +1196,10 @@
         <div class="nv-detail-block"><b>人物弧光</b><span>${esc(firstText(activeEntity.arc, activeEntity.personality, activeEntity.description, '暂无明确弧光。'))}</span></div>
         <div class="nv-detail-relations">
           <b>相关关系</b>
-          ${activeRelations.length ? activeRelations.map(r => {
+          ${activeRelations.length ? activeRelations.map((r, idx) => {
             const fromGender = endpointDisplayLabel(r, r.from, entityByName);
             const toGender = endpointDisplayLabel(r, r.to, entityByName);
-            return `<p>${esc(r.from)}(${esc(fromGender)}) → ${esc(r.to)}(${esc(toGender)})：${esc(r.type || r.relation || '关系')}${r.inferred ? ' · 推导' : ''} ${esc(r.description || r.evidence || r.tension || '')}</p>`;
+            return `<p class="nv-relation-item"><span class="nv-relation-no">${idx + 1}</span><span>${esc(r.from)}(${esc(fromGender)}) → ${esc(r.to)}(${esc(toGender)})：${esc(r.type || r.relation || '关系')}${r.inferred ? ' · 推导' : ''} ${esc(r.description || r.evidence || r.tension || '')}</span></p>`;
           }).join('') : '<p>暂无可追溯关系。生成并提交章节后会自动补充。</p>'}
         </div>` : '<p class="nv-character-summary">请先生成大纲或章节事实。</p>'}
       </aside>

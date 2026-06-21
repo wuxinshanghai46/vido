@@ -647,11 +647,17 @@ textarea, input { outline: none; }
 .nv-edge-label.is-active rect { fill: rgba(46,243,234,.14); stroke: rgba(169,255,69,.55); }
 .nv-edge-label.is-active text { fill: var(--nv-mint); }
 .nv-node circle { fill: #151d2a; stroke: rgba(46,243,234,.75); stroke-width: 2; }
+.nv-node-icon { fill: rgba(21,29,42,.96); stroke: rgba(46,243,234,.75); stroke-width: 2.2; }
+.nv-node-mark { fill: none; stroke: rgba(255,255,255,.5); stroke-width: 1.7; stroke-linecap: round; }
 .nv-node.is-male circle { stroke: #78a9ff; fill: rgba(120,169,255,.13); }
 .nv-node.is-female circle { stroke: #ff7fc8; fill: rgba(255,127,200,.13); }
 .nv-node.is-unknown circle { stroke: rgba(255,211,106,.85); fill: rgba(255,211,106,.1); }
+.nv-node.is-male .nv-node-icon { stroke: #78a9ff; fill: rgba(120,169,255,.14); }
+.nv-node.is-female .nv-node-icon { stroke: #ff7fc8; fill: rgba(255,127,200,.14); }
+.nv-node.is-unknown .nv-node-icon { stroke: rgba(255,211,106,.85); fill: rgba(255,211,106,.12); }
 .nv-node text { fill: var(--nv-text); font-size: 11px; font-weight: 900; pointer-events: none; }
 .nv-node.is-active circle { fill: rgba(46,243,234,.18); stroke: var(--nv-mint); filter: drop-shadow(0 0 12px rgba(46,243,234,.42)); }
+.nv-node.is-active .nv-node-icon { fill: rgba(46,243,234,.18); stroke: var(--nv-mint); filter: drop-shadow(0 0 12px rgba(46,243,234,.42)); }
 .nv-graph-legend {
   position: absolute;
   right: 14px;
@@ -804,11 +810,24 @@ textarea, input { outline: none; }
 .nv-web-stage .nv-edge { stroke: rgba(190, 231, 255, .22); stroke-width: 1.1; }
 .nv-web-stage .nv-edge.is-inferred { stroke-dasharray: 5 7; stroke: rgba(169, 255, 69, .28); }
 .nv-web-stage .nv-edge.is-active { stroke: var(--nv-mint); stroke-width: 2.5; }
+.nv-web-stage .nv-edge.is-inferred.to-male { stroke: rgba(120,169,255,.34); }
+.nv-web-stage .nv-edge.is-inferred.to-female { stroke: rgba(255,127,200,.36); }
+.nv-web-stage .nv-edge.is-inferred.to-unknown { stroke: rgba(255,211,106,.32); }
+.nv-web-stage .nv-edge.is-active.is-inferred.to-male { stroke: #78a9ff; }
+.nv-web-stage .nv-edge.is-active.is-inferred.to-female { stroke: #ff7fc8; }
+.nv-web-stage .nv-edge.is-active.is-inferred.to-unknown { stroke: #ffd36a; }
 .nv-web-stage .nv-edge-label { opacity: 0; transition: opacity .16s ease; }
 .nv-web-stage .nv-edge-label.is-visible,
 .nv-web-stage .nv-web-edge-group:hover .nv-edge-label { opacity: .92; }
 .nv-web-stage .nv-edge-label:not(.is-visible) text,
 .nv-web-stage .nv-edge-label:not(.is-visible) rect { pointer-events: none; }
+.nv-web-stage .nv-edge-label.is-active rect { fill: rgba(7,10,15,.9); stroke-width: 1.8; }
+.nv-web-stage .nv-edge-label.is-active.to-male rect { stroke: rgba(120,169,255,.86); }
+.nv-web-stage .nv-edge-label.is-active.to-male text { fill: #9fc0ff; }
+.nv-web-stage .nv-edge-label.is-active.to-female rect { stroke: rgba(255,127,200,.86); }
+.nv-web-stage .nv-edge-label.is-active.to-female text { fill: #ffaad6; }
+.nv-web-stage .nv-edge-label.is-active.to-unknown rect { stroke: rgba(255,211,106,.86); }
+.nv-web-stage .nv-edge-label.is-active.to-unknown text { fill: #ffe09a; }
 .nv-web-stage .nv-node circle {
   fill: rgba(10,17,28,.92);
   stroke-width: 2;
@@ -852,6 +871,24 @@ textarea, input { outline: none; }
   line-height: 1.7;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+.nv-detail-relations .nv-relation-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.nv-relation-no {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(46,243,234,.1);
+  border: 1px solid rgba(46,243,234,.42);
+  color: var(--nv-mint);
+  font-size: 12px;
+  font-weight: 900;
 }
 .nv-detail-relations {
   border-top: 1px solid var(--nv-line);
