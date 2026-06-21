@@ -714,7 +714,7 @@ textarea, input { outline: none; }
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr) 310px;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
 }
 .nv-relation-side,
 .nv-relation-detail,
@@ -777,7 +777,6 @@ textarea, input { outline: none; }
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: 560px;
   min-height: 560px;
   background:
     radial-gradient(circle at 48% 48%, rgba(46,243,234,.16), transparent 36%),
@@ -829,8 +828,7 @@ textarea, input { outline: none; }
   stroke-linejoin: round;
 }
 .nv-relation-detail {
-  height: 560px;
-  max-height: 560px;
+  max-height: none;
   overflow: auto;
 }
 .nv-detail-block {

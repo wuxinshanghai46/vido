@@ -1056,7 +1056,7 @@
       const b = positions[r.to];
       if (!a || !b) return '';
       const on = r.from === active || r.to === active;
-      const showLabel = relations.length <= 5;
+      const showLabel = on || relations.length <= 5;
       const fromGender = endpointDisplayLabel(r, r.from, entityByName);
       const toGender = endpointDisplayLabel(r, r.to, entityByName);
       const relationLabel = `${fromGender}→${toGender} · ${r.type || r.relation || '关系'}`;
@@ -1066,8 +1066,12 @@
       const dy = b.y - a.y;
       const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
       const offset = on ? 24 : 16;
-      const labelX = mx + (-dy / length) * offset;
-      const labelY = my + (dx / length) * offset;
+      const activePoint = active && r.from === active ? a : active && r.to === active ? b : null;
+      const otherPoint = active && r.from === active ? b : active && r.to === active ? a : null;
+      const labelBaseX = activePoint && otherPoint ? activePoint.x + (otherPoint.x - activePoint.x) * 0.72 : mx;
+      const labelBaseY = activePoint && otherPoint ? activePoint.y + (otherPoint.y - activePoint.y) * 0.72 : my;
+      const labelX = labelBaseX + (-dy / length) * offset;
+      const labelY = labelBaseY + (dx / length) * offset;
       const curveX = mx + (-dy / length) * (idx % 2 ? 18 : -18);
       const curveY = my + (dx / length) * (idx % 2 ? 18 : -18);
       return `<g class="nv-web-edge-group ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''}" data-edge-from="${esc(r.from)}" data-edge-to="${esc(r.to)}">
