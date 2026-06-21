@@ -64,7 +64,7 @@ app.use((req, res, next) => {
 
 // 静态文件（登录页、admin页不需要 auth）
 // 屏蔽未登录直接访问 .html 文件（防绕过路由层直接取源码）
-const _PUBLIC_HTML = new Set(['/home.html', '/login.html']);
+const _PUBLIC_HTML = new Set(['/home.html', '/login.html', '/ai-novel.html']);
 app.use((req, res, next) => {
   if (req.path.endsWith('.html') && !_PUBLIC_HTML.has(req.path)) {
     return requirePageAuth(req, res, next);
@@ -79,6 +79,9 @@ app.use(express.static(path.join(__dirname, '../public'), {
     if (
       normalized.endsWith('/admin.html')
       || normalized.endsWith('/js/admin.js')
+      || normalized.endsWith('/ai-novel.html')
+      || normalized.endsWith('/js/ai-novel.js')
+      || normalized.endsWith('/css/ai-novel.css')
       || normalized.endsWith('/digital-human.html')
       || normalized.endsWith('/js/digital-human.js')
       || normalized.endsWith('/css/digital-human-wizard.css')
@@ -560,8 +563,8 @@ function sendNoStorePage(res, filePath) {
   res.setHeader('Expires', '0');
   return res.sendFile(filePath);
 }
-app.get('/ai-novel', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
-app.get('/ai-novel.html', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
+app.get('/ai-novel', (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
+app.get('/ai-novel.html', (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
 app.get('/ai-manga-drama', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
 app.get('/ai-manga-drama.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
 // /login.html — admin 独立登录入口（公开）
