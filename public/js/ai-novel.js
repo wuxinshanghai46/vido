@@ -363,7 +363,9 @@
     document.querySelectorAll('.nv-nav-item').forEach(btn => {
       btn.classList.toggle('is-active', btn.dataset.view === state.view);
     });
-    const title = state.view === 'tasks' ? '任务中心' : state.current ? state.current.title : 'AI 小说工作台';
+    const title = state.view === 'tasks' ? '任务中心'
+      : state.generation?.type === 'create' ? '生成小说方案'
+        : state.current ? state.current.title : 'AI 小说工作台';
     document.getElementById('nvPageTitle').textContent = title;
     document.getElementById('nvCrumb').textContent = state.current && state.view === 'work'
       ? `AI 小说 / 当前小说`
@@ -526,6 +528,15 @@
     if (mode === 'import' && !source) throw new Error('请先粘贴已有作品内容');
     state.creating = true;
     setBusy(button, true, '生成方案中...');
+    state.panel = 'world';
+    state.generation = {
+      type: 'create',
+      title: '正在生成小说方案',
+      detail: '正在读取你的创作要求、类型选择和知识库，生成作品承诺、世界观、剧情大纲、人物与章节任务书。',
+      steps: ['读取用户要求', '匹配题材知识库', '构建世界观和冲突', '生成大纲与人物关系']
+    };
+    document.getElementById('nvCreateModal').classList.remove('is-open');
+    switchView('work');
 
     try {
       const genre = GENRES.find(item => item.key === state.config.genre) || GENRES[0];
@@ -552,10 +563,15 @@
       state.current = data.novel;
       state.panel = 'world';
       state.currentChapter = 1;
-      document.getElementById('nvCreateModal').classList.remove('is-open');
+      state.generation = null;
       await loadNovels();
       switchView('work');
       showToast('小说方案已生成，请先确认世界观。');
+    } catch (error) {
+      state.generation = null;
+      switchView('create');
+      document.getElementById('nvCreateModal').classList.add('is-open');
+      throw error;
     } finally {
       state.creating = false;
       setBusy(button, false);
@@ -571,6 +587,12 @@
   }
 
   function renderWork() {
+    if (state.generation?.type === 'create') {
+      workView.innerHTML = `<div class="nv-work-page nv-generating-page">
+        ${renderGenerationStatus('create')}
+      </div>`;
+      return;
+    }
     if (!state.current) {
       workView.innerHTML = '<div class="nv-empty">请先创建或选择一部小说。</div>';
       return;
