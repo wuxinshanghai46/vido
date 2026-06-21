@@ -12,6 +12,14 @@ const DRAMA_DIR = path.join(OUTPUT_DIR, 'dramas');
 
 function ensureDir(dir) { fs.mkdirSync(dir, { recursive: true }); }
 
+function dramaScriptModelOpts(extra = {}) {
+  return {
+    pipelineStageId: 'drama.script',
+    pipelineFallbackStageId: 'story.generate',
+    ...extra,
+  };
+}
+
 // ═══════════════════════════════════════════════════
 // 运镜提示词库（22种镜头语言）
 // ═══════════════════════════════════════════════════
@@ -141,7 +149,7 @@ ${(src || '').substring(0, 5000)}
 }`;
 
   try {
-    const raw = await callLLM(systemPrompt, userPrompt);
+    const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'drama', query: `${genre || ''} ${theme || ''}`, limit: 4 } }));
     const lock = repairJSON(raw);
     if (lock && typeof lock === 'object') {
       // 兜底字段
@@ -265,7 +273,7 @@ async function agentDramaScreenwriter({ theme, novelText = '', style, sceneCount
   ]
 }`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
+  const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'screenwriter', query: `${genre || ''} ${theme || ''}`, limit: 6 } }));
   return repairJSON(raw);
 }
 
@@ -396,7 +404,7 @@ ${JSON.stringify(screenplay, null, 2)}
 - 每个场景的 emotion 必须填写
 - visual_prompt_cn 必须和 visual_prompt 同等精确，不是简单翻译，而是用中文专业术语精确描述画面`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
+  const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'director', query: `${genre || ''} ${style || ''}`, limit: 6 } }));
   return repairJSON(raw);
 }
 
@@ -493,7 +501,7 @@ ${novelCtx}${charDesc}
 4. lock_face_cn / lock_wardrobe_cn：必填，用于下游角色一致性锁定
 5. 严禁抽象词（"华丽"、"古香古色"、"韵味"、"美丽"、"帅气"等）— 必须具体到眼见可画`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
+  const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'image', query: `${genre || ''} ${style || ''}`, limit: 6 } }));
   return repairJSON(raw);
 }
 
@@ -580,7 +588,7 @@ ${novelCtx}${charDesc}
 
 重要：保留剧本中已有的所有字段不动，只更新对白相关字段。`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
+  const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'screenwriter', query: `${genre || ''} dialogue`, limit: 5 } }));
   return repairJSON(raw);
 }
 
@@ -795,7 +803,7 @@ ${c.three_view ? '- 已有角色库三视图,需要根据描述生成更精确�
 
   let raw, parsed;
   try {
-    raw = await callLLM(systemPrompt, userPrompt);
+    raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'character_image', query: `${genre || ''} character consistency`, limit: 5 } }));
     parsed = repairJSON(raw);
   } catch (err) {
     console.error('[CharConsistency] LLM 失败:', err.message);

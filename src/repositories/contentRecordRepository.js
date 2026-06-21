@@ -2,6 +2,8 @@ const crypto = require('crypto');
 
 const { jsonParse, jsonStringify, nowIso, requireDatabase } = require('./baseRepository');
 
+const DOMAIN_TABLES = new Set(['novels', 'comic_tasks', 'drama_projects', 'drama_episodes']);
+
 function stableId(collection, row = {}) {
   if (row.id) return String(row.id);
   const raw = JSON.stringify({
@@ -12,6 +14,53 @@ function stableId(collection, row = {}) {
     title: row.title || row.name || row.topic || null,
   });
   return `${collection}_${crypto.createHash('sha1').update(raw).digest('hex').slice(0, 24)}`;
+}
+
+function domainTitle(row = {}) {
+  return row.title || row.name || row.topic || row.theme || null;
+}
+
+function upsertDomainTable(db, rec) {
+  if (!DOMAIN_TABLES.has(rec.collection)) return;
+  const payload = jsonParse(rec.payload_json, {});
+  try {
+    db.prepare(`
+      INSERT INTO ${rec.collection} (
+        id, user_id, project_id, type, status, title, payload_json, created_at, updated_at
+      ) VALUES (
+        @id, @user_id, @project_id, @type, @status, @title, @payload_json, @created_at, @updated_at
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        user_id=excluded.user_id,
+        project_id=excluded.project_id,
+        type=excluded.type,
+        status=excluded.status,
+        title=excluded.title,
+        payload_json=excluded.payload_json,
+        updated_at=excluded.updated_at
+    `).run({
+      id: rec.id,
+      user_id: rec.user_id,
+      project_id: rec.project_id,
+      type: rec.type,
+      status: rec.status,
+      title: domainTitle(payload),
+      payload_json: rec.payload_json,
+      created_at: rec.created_at,
+      updated_at: rec.updated_at,
+    });
+  } catch (err) {
+    if (!/no such table/i.test(String(err.message || ''))) throw err;
+  }
+}
+
+function removeDomainTable(db, collection, id) {
+  if (!DOMAIN_TABLES.has(collection)) return;
+  try {
+    db.prepare(`DELETE FROM ${collection} WHERE id = ?`).run(String(id));
+  } catch (err) {
+    if (!/no such table/i.test(String(err.message || ''))) throw err;
+  }
 }
 
 function normalize(collection, row = {}) {
@@ -54,6 +103,7 @@ function upsert(collection, row) {
         rec.updated_at,
       ]]
     );
+    upsertDomainTable(db, rec);
     return jsonParse(rec.payload_json);
   }
   db.prepare(`
@@ -71,6 +121,7 @@ function upsert(collection, row) {
       payload_json=excluded.payload_json,
       updated_at=excluded.updated_at
   `).run(rec);
+  upsertDomainTable(db, rec);
   return jsonParse(rec.payload_json);
 }
 
@@ -99,6 +150,7 @@ function update(collection, id, fields) {
 function remove(collection, id) {
   const db = requireDatabase();
   db.prepare('DELETE FROM content_records WHERE collection = ? AND id = ?').run(collection, String(id));
+  removeDomainTable(db, collection, id);
 }
 
 function replaceCollection(collection, rows) {

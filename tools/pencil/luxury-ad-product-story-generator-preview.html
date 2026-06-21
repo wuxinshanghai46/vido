@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>高定广告片 · 产品故事生成器原型</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #131720;
+      --panel-2: #171d28;
+      --line: #283141;
+      --text: #f5f7fb;
+      --muted: #8d97aa;
+      --cyan: #28f2df;
+      --lime: #d8ff42;
+      --warn: #ffc857;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Inter", "Noto Sans SC", system-ui, sans-serif; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 220px 1fr; }
+    .nav { border-right: 1px solid var(--line); padding: 22px 16px; background: #090b10; }
+    .brand { font-size: 18px; font-weight: 800; margin-bottom: 28px; }
+    .nav-group { color: var(--muted); font-size: 12px; margin: 20px 0 8px; }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 7px; color: #c9d1df; }
+    .nav-item.active { background: rgba(40,242,223,.1); color: var(--cyan); font-weight: 700; }
+    .page { padding: 24px; overflow: auto; }
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+    h1 { margin: 0; font-size: 24px; letter-spacing: 0; }
+    .sub { margin-top: 6px; color: var(--muted); }
+    .primary { border: 0; border-radius: 999px; padding: 12px 18px; font-weight: 800; color: #061014; background: linear-gradient(135deg, var(--cyan), var(--lime)); }
+    .workspace { display: grid; grid-template-columns: 300px minmax(420px, 1fr) 360px; gap: 16px; margin-top: 18px; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+    .panel h2 { margin: 0 0 12px; font-size: 15px; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .drop { min-height: 150px; border: 1px dashed #3a4659; border-radius: var(--radius); display: grid; place-items: center; text-align: center; padding: 18px; background: #0e1219; }
+    .drop b { display: block; margin-bottom: 4px; }
+    .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+    .thumb { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(135deg,#272f3e,#0d1118); position: relative; overflow: hidden; }
+    .thumb::after { content: attr(data-i); position: absolute; left: 5px; top: 5px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: rgba(0,0,0,.65); font-size: 10px; }
+    .thumb.primary { border-color: var(--cyan); }
+    .avatar-box { margin-top: 16px; padding: 12px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line); }
+    .ghost-btn { width: 100%; margin-top: 10px; border: 1px solid var(--line); border-radius: 999px; padding: 9px; color: var(--text); background: transparent; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: grid; gap: 6px; color: #dce4f2; font-weight: 700; font-size: 12px; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 11px; color: var(--text); background: #0e1219; font: inherit; outline: none; }
+    textarea { min-height: 86px; resize: vertical; }
+    .wide { grid-column: 1 / -1; }
+    .actions { display: flex; gap: 10px; margin-top: 14px; }
+    .secondary { border: 1px solid var(--line); border-radius: 999px; padding: 10px 14px; color: var(--text); background: #0f141d; }
+    .story { margin-top: 16px; }
+    .story-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; background: var(--panel-2); }
+    .shot { height: 96px; border-radius: 6px; background: linear-gradient(135deg,#283242,#121722 65%); margin-bottom: 10px; display: flex; align-items: end; padding: 9px; color: var(--cyan); font-weight: 800; }
+    .card h3 { margin: 0 0 6px; font-size: 14px; }
+    .card p { margin: 0; color: var(--muted); font-size: 12px; }
+    .preview { min-height: 240px; display: grid; place-items: center; border-radius: var(--radius); background: radial-gradient(circle at 50% 30%, rgba(40,242,223,.18), transparent 38%), #0e1219; border: 1px solid var(--line); color: var(--muted); text-align: center; padding: 16px; }
+    .progress { display: grid; gap: 10px; margin-top: 16px; }
+    .step { display: flex; gap: 10px; align-items: center; color: var(--muted); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+    .step.active { color: var(--text); }
+    .step.active .dot { background: var(--cyan); box-shadow: 0 0 0 4px rgba(40,242,223,.12); }
+    .mobile-bar { display: none; }
+    @media (max-width: 1100px) { .workspace { grid-template-columns: 1fr; } .shell { grid-template-columns: 1fr; } .nav { display: none; } }
+    @media (max-width: 640px) { .head { align-items: stretch; flex-direction: column; } .form-grid, .cards { grid-template-columns: 1fr; } .mobile-bar { display: flex; position: sticky; bottom: 0; gap: 8px; padding: 12px; background: rgba(9,11,16,.94); border-top: 1px solid var(--line); } .mobile-bar button { flex: 1; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="nav">
+      <div class="brand">VIDO</div>
+      <div class="nav-group">广告带货</div>
+      <div class="nav-item">广告数字人</div>
+      <div class="nav-item active">高定广告片</div>
+      <div class="nav-item">商品数字人</div>
+      <div class="nav-group">资产</div>
+      <div class="nav-item">我的形象</div>
+      <div class="nav-item">任务中心</div>
+    </aside>
+    <main class="page">
+      <header class="head">
+        <div>
+          <h1>高定广告片</h1>
+          <div class="sub">上传产品/品牌素材，填写宣传内容，生成广告故事板与成片。</div>
+        </div>
+        <button class="primary">生成广告故事板</button>
+      </header>
+
+      <section class="workspace">
+        <aside class="panel">
+          <h2>广告素材</h2>
+          <div class="drop">
+            <div>
+              <b>上传产品、品牌、场景或参考画面</b>
+              <span class="hint">支持 1-8 张，第一张作为主参考</span>
+            </div>
+          </div>
+          <div class="thumbs">
+            <div class="thumb primary" data-i="1"></div>
+            <div class="thumb" data-i="2"></div>
+            <div class="thumb" data-i="3"></div>
+            <div class="thumb" data-i="4"></div>
+          </div>
+          <div class="avatar-box">
+            <h2>人物身份参考（可选）</h2>
+            <div class="hint">不选择人物也能生成产品/场景广告片。选择后只锁定同一人物身份，不是固定数字人讲解。</div>
+            <button class="ghost-btn">选择人物</button>
+          </div>
+        </aside>
+
+        <section class="panel">
+          <h2>产品宣传故事</h2>
+          <div class="form-grid">
+            <label>产品/品牌名称<input value="Time Patina 艺术墙"></label>
+            <label>目标用户<input value="高端住宅、设计师、品牌展厅"></label>
+            <label class="wide">核心卖点<textarea>定制金属肌理、灯光下呈现时间沉淀感，适合高端空间建立品牌记忆点。</textarea></label>
+            <label>使用场景<input value="展厅、会所、酒店大堂、住宅背景墙"></label>
+            <label>想要的感觉<select><option>高级柔光 / 品牌质感</option></select></label>
+            <label class="wide">完整宣传内容<textarea>用一支高定广告片呈现这面艺术墙的品牌质感。开场建立空间第一眼，中段推进材质、纹理和光影细节，最后收束到定制咨询。</textarea></label>
+          </div>
+          <div class="actions">
+            <button class="secondary">AI 整理内容</button>
+            <button class="primary">生成广告故事板</button>
+          </div>
+
+          <div class="story">
+            <div class="story-head">
+              <h2>广告故事板</h2>
+              <button class="secondary">重新生成</button>
+            </div>
+            <div class="cards">
+              <article class="card"><div class="shot">01</div><h3>开场吸引</h3><p>建立完整空间第一眼，让产品成为视觉中心。</p></article>
+              <article class="card"><div class="shot">02</div><h3>产品细节</h3><p>推进到金属肌理、光泽和纹理层次。</p></article>
+              <article class="card"><div class="shot">03</div><h3>使用/互动</h3><p>展示空间里的尺度感和高端定制场景。</p></article>
+              <article class="card"><div class="shot">04</div><h3>品牌收束</h3><p>留出字幕和 Logo 空间，引导咨询。</p></article>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <h2>预览</h2>
+          <div class="preview">
+            <div>
+              <b>关键帧预览区域</b>
+              <div class="hint">确认故事板后生成每个镜头的关键帧</div>
+            </div>
+          </div>
+          <div class="progress">
+            <div class="step active"><span class="dot"></span>生成广告方案</div>
+            <div class="step"><span class="dot"></span>生成关键帧</div>
+            <div class="step"><span class="dot"></span>合成广告片</div>
+            <div class="step"><span class="dot"></span>任务中心查看结果</div>
+          </div>
+        </aside>
+      </section>
+      <footer class="mobile-bar">
+        <button class="secondary">保存草稿</button>
+        <button class="primary">生成故事板</button>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

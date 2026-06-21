@@ -10,6 +10,13 @@ const db = require('../models/database');
 const { generateDrama, CAMERA_MOTIONS, SHOT_SCALES, MOTION_PRESETS, DRAMA_DIR } = require('../services/dramaService');
 
 const progressListeners = new Map();
+function dramaScriptModelOpts(extra = {}) {
+  return {
+    pipelineStageId: 'drama.script',
+    pipelineFallbackStageId: 'story.generate',
+    ...extra,
+  };
+}
 const cancelledEpisodes = new Set(); // 标记被用户取消的剧集
 
 // 启动时：把上次进程遗留的 processing 剧集重置为 draft（PM2 reload 会中断异步任务，
@@ -84,7 +91,7 @@ router.post('/generate-outline', async (req, res) => {
 ${genre ? `类型: ${genre}\n` : ''}集数: ${episode_count}
 请输出大纲 JSON。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'drama', query: `${theme} ${style} ${genre}`, limit: 5 } });
+    const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'drama', query: `${theme} ${style} ${genre}`, limit: 5 } }));
     // 复用 dramaService 的 JSON 修复逻辑
     let outline;
     try {
@@ -128,7 +135,7 @@ router.post('/suggest-scene-params', async (req, res) => {
 - 史诗/奇幻 → 场景 6-8 × 10-12 秒
 严格 JSON，无额外文字。`;
     const userPrompt = `故事简介/主题：${content}\n${title ? '标题：' + title + '\n' : ''}${genre ? '类型：' + genre + '\n' : ''}${style ? '画风：' + style + '\n' : ''}请给出推荐参数。`;
-    const raw = await callLLM(systemPrompt, userPrompt);
+    const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'drama', query: `${theme || ''} ${style || ''} ${genre || ''}`, limit: 4 } }));
     let str = raw.trim();
     const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (m) str = m[1].trim();
@@ -178,7 +185,7 @@ router.post('/projects', async (req, res) => {
       try {
         const { callLLM } = require('../services/storyService');
         const sys = `根据故事简介推荐每集场景数和每镜时长。严格 JSON：{"scene_count":整数4-15,"shot_duration":3|5|8|10|12}`;
-        const raw = await callLLM(sys, `简介：${synopsis || title}\n画风：${style || ''}`);
+        const raw = await callLLM(sys, `简介：${synopsis || title}\n画风：${style || ''}`, dramaScriptModelOpts({ kb: { scene: 'drama', query: `${synopsis || title} ${style || ''}`, limit: 3 } }));
         let str = raw.trim();
         const m = str.match(/```(?:json)?\s*([\s\S]*?)```/);
         if (m) str = m[1].trim();
@@ -1242,7 +1249,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-prompt', async (r
 
 请将上面的场景信息转换为 AI 生图/生视频的提示词。每个角色的提示词必须是独一无二的，包含该角色特有的外貌特征。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'video_prompt', query: `${scene.description||''} ${scene.emotion||''} ${scene.shot_scale||''}`, limit: 3 } });
+    const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'video_prompt', query: `${scene.description||''} ${scene.emotion||''} ${scene.shot_scale||''}`, limit: 3 } }));
     let parsed;
     try {
       let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
@@ -1302,7 +1309,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/rewrite-dialogue', async (
 
 请改写得更有影视感和冲击力。`;
 
-    const raw = await callLLM(systemPrompt, userPrompt, { kb: { scene: 'copy', query: `${description||''} ${dialogue||''} ${narrator||''}`, limit: 2 } });
+    const raw = await callLLM(systemPrompt, userPrompt, dramaScriptModelOpts({ kb: { scene: 'copy', query: `${description||''} ${dialogue||''} ${narrator||''}`, limit: 2 } }));
     let parsed;
     try {
       let str = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();

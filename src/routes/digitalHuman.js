@@ -12698,6 +12698,63 @@ async function _generateLuxuryPersonSheetWithPipeline({
       if (modelId === 'gpt-image-2' && refs.length) {
         console.log(`[DH/luxury-ad/person-sheet] prepared ${providerReferenceImages.length}/${refs.length} refs for deyunai gpt-image-2 clean public JPEG`);
       }
+      if (modelId === 'gpt-image-2' && providerReferenceImages.length) {
+        const baseRefs = providerReferenceImages.slice(0, 2);
+        const refPlans = [
+          { name: 'full', refs: baseRefs },
+          { name: 'core', refs: baseRefs.slice(0, 1) },
+        ].filter((plan, planIdx, arr) =>
+          plan.refs.length
+          && arr.findIndex(x => x.refs.join('|') === plan.refs.join('|')) === planIdx);
+        let lastGptImage2Err = null;
+        for (const plan of refPlans) {
+          for (const inputFidelity of ['high', 'low']) {
+            const suffixParts = [
+              plan.name === 'full' && inputFidelity === 'high' ? '' : plan.name,
+              inputFidelity === 'low' ? 'lowfid' : '',
+            ].filter(Boolean);
+            try {
+              return await _generateViaDeyunaiSpecificImageModel({
+                model: model.model_id,
+                prompt: promptText,
+                aspectRatio: safeAspectRatio,
+                filename: `${filename}_person_${idx}${suffix}${suffixParts.length ? `_${suffixParts.join('_')}` : ''}`,
+                destDir,
+                referenceImages: plan.refs,
+                outputSize,
+                inputFidelity,
+              });
+            } catch (err) {
+              lastGptImage2Err = err;
+              const auditSubmitRejected = /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(err.message || err?.response?.data || ''));
+              const retryableProviderFailure = _isLuxuryPersonSheetPreImageProviderFailure(err) && !auditSubmitRejected && !err._luxuryCandidatePath;
+              const isLastPlan = plan === refPlans[refPlans.length - 1] && inputFidelity === 'low';
+              const nextRetry = retryableProviderFailure && !isLastPlan
+                ? (inputFidelity === 'high' ? 'same-model-low-input-fidelity' : 'same-model-fewer-references')
+                : '';
+              addAttempt(model, false, err, {
+                retry: 'gpt_image2_person_sheet_downgrade',
+                reference_retry_mode: `person-sheet-${plan.name}`,
+                input_fidelity: inputFidelity,
+                reference_count: plan.refs.length,
+                all_reference_count: providerReferenceImages.length,
+                next_retry: nextRetry,
+                reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
+                audit_rejection: auditSubmitRejected ? 'provider_submit_audit_rejected_prompt_or_reference' : undefined,
+              });
+              console.warn(`[DH/luxury-ad/person-sheet] deyunai gpt-image-2 edits failed (${plan.name}, input_fidelity=${inputFidelity}); ${nextRetry || 'stop same-model retry'}:`, shortError(err));
+              if (!retryableProviderFailure) {
+                err._luxuryAttemptRecorded = true;
+                throw err;
+              }
+            }
+          }
+        }
+        if (lastGptImage2Err) {
+          lastGptImage2Err._luxuryAttemptRecorded = true;
+          throw lastGptImage2Err;
+        }
+      }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
         prompt: promptText,
@@ -12768,7 +12825,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
       lastErr = err;
       const candidatePath = outPath || err._luxuryCandidatePath || '';
       if (candidatePath) rejectedCandidateCount += 1;
-      addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
+      if (!err._luxuryAttemptRecorded) {
+        addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
+      }
       if (candidatePath && (_isLuxuryActorCropQaFailure(err) || _isLuxuryActorGenderQaFailure(err))) {
         const retryPrompt = _buildLuxuryActorFullBodyRetryPrompt(prompt, {
           qa: err.details || {},
@@ -25419,10 +25478,13 @@ router.get('/videos/tasks', (req, res) => {
       if (!kind) {
         kind = (t.title && /预览样片|sample/i.test(t.title)) ? 'sample' : 'production';
       }
-      // 统一 thumbnail_url：有视频时优先走 on-demand 首帧端点，避免成片卡片显示分镜/角色图。
-      // 无视频时才回退到生成过程中的图片资产。
-      const hasVideo = !!(t.videoUrl || t.video_url || t.local_path || t.videoPath);
-      const onDemandThumbnail = hasVideo ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
+      // 统一 thumbnail_url：只有本地视频文件可抽帧时才走 on-demand 首帧端点。
+      // 历史任务可能只有远端 video_url 或缺少 local_path，盲目返回首帧端点会得到 204，前端只能显示占位。
+      const rawVideoUrl = t.video_url || t.videoUrl || '';
+      const localVideoPath = (t.videoPath && fs.existsSync(t.videoPath))
+        ? t.videoPath
+        : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : _localJimengPathFromUrl(rawVideoUrl));
+      const onDemandThumbnail = localVideoPath ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
       const imageUrl = _localJimengAssetUrl(t.image_url || t.imageUrl, req);
       const thumbnailCandidate = _localJimengAssetUrl(t.thumbnail_url, req);
       const fallbackThumbnail = (!_isStaleJimengAssetUrl(thumbnailCandidate) && thumbnailCandidate)

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
@@ -6,15 +6,15 @@
 <title>VIDO · AI漫剧模块</title>
 <style>
 :root{
-  --bg:#101018; --bg-1:#171722; --bg-2:#222231; --bg-3:#2f2f42; --bg-4:#3a3a4b;
+  --bg:#0D0E12; --bg-1:#141519; --bg-2:#1E2025; --bg-3:#24262C; --bg-4:#2A2D34;
   --line:rgba(255,255,255,.06); --line-2:rgba(255,255,255,.1);
   --t-1:#fff; --t-2:rgba(255,255,255,.78); --t-3:rgba(255,255,255,.5); --t-4:rgba(255,255,255,.32);
-  --accent:#ffb21a; --accent-2:#ffd166; --accent-soft:rgba(255,178,26,.13);
+  --accent:#21FFF3; --accent-2:#FFF600; --accent-soft:rgba(33,255,243,.10);
   --done:#34d399; --done-soft:rgba(52,211,153,.14);
-  --busy:#fbbf24; --err:#f87171; --err-soft:rgba(248,113,113,.16);
+  --busy:#FFF600; --err:#ff4d6d; --err-soft:rgba(255,77,109,.16);
   --info:#60a5fa; --info-soft:rgba(96,165,250,.12);
-  --pink:#ec4899; --pink-soft:rgba(236,72,153,.14);
-  --purple:#a78bfa; --purple-soft:rgba(167,139,250,.14);
+  --pink:#7CFFF0; --pink-soft:rgba(124,255,240,.14);
+  --purple:#CBFFF8; --purple-soft:rgba(203,255,248,.14);
   --green:#34d399; --green-soft:rgba(52,211,153,.14);
 }
 *{box-sizing:border-box}
@@ -29,7 +29,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 /* 顶栏 */
 .top{background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 22px;gap:14px}
 .brand{display:flex;align-items:center;gap:10px;font-size:14px}
-.brand .m{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;color:#1a1407;font-weight:900;font-size:13px}
+.brand .m{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#CBFFF8 0%,var(--accent) 52%,var(--accent-2) 100%);display:grid;place-items:center;color:#0D0E12;font-weight:900;font-size:13px}
 .brand .s{color:var(--t-4);font-size:12px}
 .proj{display:flex;align-items:center;gap:8px;padding-left:14px;border-left:1px solid var(--line);font-size:13.5px;color:var(--t-2)}
 .proj b{color:var(--t-1);font-weight:500}
@@ -41,8 +41,8 @@ input:focus,textarea:focus{border-color:var(--accent)}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.4}}
 .t-btn{padding:7px 14px;border-radius:7px;font-size:13px;color:var(--t-2)}
 .t-btn:hover{background:var(--bg-1);color:var(--t-1)}
-.t-btn.acc{background:var(--accent);color:#1a1407;font-weight:600}
-.t-btn.play{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.t-btn.acc{background:var(--accent);color:#0D0E12;font-weight:600}
+.t-btn.play{background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#7CFFF0 100%);color:#0D0E12;font-weight:600;display:inline-flex;align-items:center;gap:5px}
 .t-btn.play:hover{filter:brightness(1.08)}
 .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6c5ce7,#7a68ff);display:grid;place-items:center;font-size:11px;font-weight:700}
 
@@ -54,57 +54,57 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .stage-chip.done{color:var(--t-2)}
 .stage-chip.done .num{background:var(--done-soft);color:var(--done)}
 .stage-chip.busy{background:var(--accent-soft);border-color:var(--accent);color:var(--t-1)}
-.stage-chip.busy .num{background:var(--accent);color:#1a1407}
+.stage-chip.busy .num{background:var(--accent);color:#0D0E12}
 .stage-chip.todo{opacity:.5}
 .stage-arrow{color:var(--t-4);padding:0 2px}
 .stage-chip.done + .stage-arrow{color:var(--done)}
-.pipeline .gobtn{margin-left:auto;padding:9px 18px;border-radius:9px;background:var(--accent);color:#1a1407;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.pipeline .gobtn{margin-left:auto;padding:9px 18px;border-radius:9px;background:var(--accent);color:#0D0E12;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-shrink:0}
 .pipeline .gobtn:hover{background:var(--accent-2)}
 
 .studio-home-band{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(460px,1.4fr);gap:18px;margin-bottom:18px}
-.studio-create-panel{border:1px solid rgba(255,178,26,.28);border-radius:16px;background:linear-gradient(145deg,rgba(255,178,26,.14),rgba(124,58,237,.09) 55%,rgba(24,24,33,.75));padding:18px;display:grid;align-content:space-between;min-height:236px;position:relative;overflow:hidden}
-.studio-create-panel:after{content:"";position:absolute;right:-80px;top:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(255,209,102,.22),transparent 65%);pointer-events:none}
+.studio-create-panel{border:1px solid rgba(33,255,243,.28);border-radius:16px;background:linear-gradient(145deg,rgba(33,255,243,.12),rgba(255,246,0,.055) 55%,rgba(20,21,25,.75));padding:18px;display:grid;align-content:space-between;min-height:236px;position:relative;overflow:hidden}
+.studio-create-panel:after{content:"";position:absolute;right:-80px;top:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(33,255,243,.18),transparent 65%);pointer-events:none}
 .studio-create-panel .eyebrow{color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase}
 .studio-create-panel h1{font-size:28px;line-height:1.16;margin:10px 0 8px;letter-spacing:0}
 .studio-create-panel p{margin:0;color:var(--t-3);font-size:13px;line-height:1.65;max-width:440px}
 .studio-create-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 .studio-create-actions button{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:800;border:1px solid var(--line)}
-.studio-create-actions .primary{background:var(--accent);color:#1a1407;border-color:transparent}
+.studio-create-actions .primary{background:var(--accent);color:#0D0E12;border-color:transparent}
 .studio-create-actions .ghost{background:rgba(255,255,255,.05);color:var(--t-2)}
 .studio-capability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .studio-cap-card{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);padding:14px;min-height:112px;display:grid;gap:7px;cursor:pointer}
-.studio-cap-card:hover{border-color:rgba(255,178,26,.45);background:rgba(255,178,26,.075)}
-.studio-cap-card em{font-style:normal;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(255,178,26,.13)}
+.studio-cap-card:hover{border-color:rgba(33,255,243,.45);background:rgba(33,255,243,.075)}
+.studio-cap-card em{font-style:normal;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(33,255,243,.13)}
 .studio-cap-card b{font-size:14px}
 .studio-cap-card span{font-size:12px;color:var(--t-3);line-height:1.5}
 .top-back-btn{padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;color:var(--t-2)}
-.top-back-btn:hover{background:rgba(255,178,26,.12);color:var(--t-1)}
+.top-back-btn:hover{background:var(--accent-soft);border-color:rgba(33,255,243,.5);color:var(--accent)}
 .manga-prod-shell{display:grid;gap:14px;margin:0 0 18px}
 .manga-mode-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .manga-mode-card{min-height:118px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.015));padding:14px;display:grid;align-content:space-between;gap:12px;cursor:pointer;transition:.18s ease}
-.manga-mode-card:hover{border-color:rgba(245,158,11,.55);background:linear-gradient(135deg,rgba(245,158,11,.14),rgba(236,72,153,.06));transform:translateY(-1px)}
+.manga-mode-card:hover{border-color:rgba(33,255,243,.55);background:linear-gradient(135deg,rgba(33,255,243,.12),rgba(255,246,0,.05));transform:translateY(-1px)}
 .manga-mode-card b{display:block;font-size:14px;color:var(--t-1);line-height:1.3}
 .manga-mode-card span{display:block;margin-top:5px;font-size:12px;color:var(--t-3);line-height:1.45}
-.manga-mode-card em{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(245,158,11,.13);color:var(--accent);font-style:normal;font-size:18px}
-.manga-prod-flow{border:1px solid rgba(245,158,11,.22);border-radius:13px;background:rgba(24,24,33,.68);padding:13px 14px;display:grid;gap:11px}
+.manga-mode-card em{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(33,255,243,.13);color:var(--accent);font-style:normal;font-size:18px}
+.manga-prod-flow{border:1px solid rgba(33,255,243,.22);border-radius:13px;background:rgba(20,21,25,.68);padding:13px 14px;display:grid;gap:11px}
 .manga-prod-flow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .manga-prod-flow-head b{font-size:14px;color:var(--t-1)}
 .manga-prod-flow-head span{display:block;margin-top:3px;color:var(--t-3);font-size:12px;line-height:1.45}
-.manga-prod-flow-head .state{flex:0 0 auto;padding:4px 9px;border-radius:999px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.10);color:var(--accent);font-size:11px;font-weight:800}
+.manga-prod-flow-head .state{flex:0 0 auto;padding:4px 9px;border-radius:999px;border:1px solid rgba(33,255,243,.35);background:rgba(33,255,243,.10);color:var(--accent);font-size:11px;font-weight:800}
 .manga-prod-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .manga-prod-step{min-width:0;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025);padding:10px;display:grid;gap:5px}
 .manga-prod-step small{color:var(--accent);font-size:11px;font-weight:900}
 .manga-prod-step b{font-size:12px;color:var(--t-2);line-height:1.35}
 .manga-prod-step span{font-size:11px;color:var(--t-4);line-height:1.4}
 .manga-prod-step.ready{border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.045)}
-.manga-prod-step.busy{border-color:rgba(245,158,11,.30);background:rgba(245,158,11,.065)}
+.manga-prod-step.busy{border-color:rgba(33,255,243,.30);background:rgba(33,255,243,.065)}
 .manga-prod-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(96,165,250,.16);border-radius:9px;background:rgba(96,165,250,.055);color:var(--t-2);font-size:12px;line-height:1.55}
-.manga-prod-note button{flex:0 0 auto;padding:7px 11px;border-radius:8px;background:var(--accent);color:#1a1407;font-size:12px;font-weight:800}
+.manga-prod-note button{flex:0 0 auto;padding:7px 11px;border-radius:8px;background:var(--accent);color:#0D0E12;font-size:12px;font-weight:800}
 .real-cover-img,.real-shot-img,.real-player-img,.real-export-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .real-media-empty{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#22222e,#34343f);color:rgba(255,255,255,.42);font-size:13px;text-align:center;padding:16px}
 .real-action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .real-action-row button{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--t-2);font-size:12px;font-weight:700}
-.real-action-row button.primary{background:var(--accent);color:#1a1407;border-color:transparent}
+.real-action-row button.primary{background:var(--accent);color:#0D0E12;border-color:transparent}
 .real-action-row button.danger{border-color:rgba(248,113,113,.38);color:#fecaca;background:rgba(248,113,113,.08)}
 @media(max-width:1280px){.manga-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manga-prod-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
@@ -118,7 +118,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .chap .nb{color:var(--t-4);font-size:11.5px}
 .chap.done .num{background:var(--done-soft);color:var(--done)}
 .chap.busy{background:var(--accent-soft);border-color:var(--accent);color:var(--t-1)}
-.chap.busy .num{background:var(--accent);color:#1a1407}
+.chap.busy .num{background:var(--accent);color:#0D0E12}
 .chap.busy .nb{color:var(--accent)}
 .chap.todo{opacity:.55}
 .chap-back{padding:6px 11px;border-radius:7px;background:var(--bg-1);font-size:12px;color:var(--t-3);display:flex;align-items:center;gap:5px;flex-shrink:0;border:1px solid var(--line)}
@@ -154,7 +154,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 
 /* ============ v14: 批量操作工具栏 ============ */
 .batch-bar{
-  background:linear-gradient(90deg,var(--accent-soft),rgba(245,158,11,.04));
+  background:linear-gradient(90deg,var(--accent-soft),rgba(33,255,243,.04));
   border-top:1px solid var(--accent);display:none;align-items:center;
   padding:8px 22px;gap:10px;font-size:12.5px;color:var(--t-1);
 }
@@ -168,7 +168,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .batch-bar button:hover{background:var(--bg-3);color:var(--t-1)}
 .batch-bar button.danger{color:var(--err)}
 .batch-bar button.danger:hover{background:var(--err-soft);color:var(--err)}
-.batch-bar button.primary{background:var(--accent);color:#1a1407;font-weight:700}
+.batch-bar button.primary{background:var(--accent);color:#0D0E12;font-weight:700}
 .batch-bar .right{margin-left:auto;display:flex;gap:7px;align-items:center}
 .batch-bar .right .est{color:var(--t-3);font-size:11.5px}
 .batch-bar .right .est b{color:var(--accent);font-weight:700}
@@ -177,7 +177,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .framerow::-webkit-scrollbar-thumb{background:var(--bg-3);border-radius:3px}
 .frame{flex:0 0 116px;height:90px;border-radius:8px;background:var(--bg-3);position:relative;cursor:pointer;border:2px solid transparent;overflow:hidden;transition:.15s}
 .frame:hover{transform:translateY(-2px)}
-.frame.cur{border-color:var(--accent);box-shadow:0 0 0 3px rgba(245,158,11,.22)}
+.frame.cur{border-color:var(--accent);box-shadow:0 0 0 3px rgba(33,255,243,.22)}
 .frame.related{border-color:var(--info);box-shadow:0 0 0 3px var(--info-soft)}
 .frame.selected{border-color:var(--accent-2);box-shadow:0 0 0 3px var(--accent-soft)}
 .frame.dragging{opacity:.5}
@@ -206,7 +206,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .frame.batch-mode .num{display:none}
 .frame.batch-mode .chk{display:block}
 .frame.batch-mode.selected .chk{background:var(--accent);border-color:var(--accent)}
-.frame.batch-mode.selected .chk::after{content:"✓";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#1a1407;font-size:13px;font-weight:900}
+.frame.batch-mode.selected .chk::after{content:"✓";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#0D0E12;font-size:13px;font-weight:900}
 .framerow .arrow{width:32px;height:32px;border-radius:50%;background:var(--bg-2);color:var(--t-3);display:grid;place-items:center;font-size:12px;flex-shrink:0}
 .framerow .nowinfo{margin-left:auto;padding-left:14px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--t-3);flex-shrink:0}
 .framerow .nowinfo b{color:var(--t-1);font-size:13px}
@@ -216,7 +216,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
   display:inline-flex;align-items:center;gap:5px;margin-left:8px;
 }
 .framerow .batch-toggle:hover{background:var(--bg-3);color:var(--t-1)}
-.framerow .batch-toggle.on{background:var(--accent);color:#1a1407;border-color:var(--accent);font-weight:700}
+.framerow .batch-toggle.on{background:var(--accent);color:#0D0E12;border-color:var(--accent);font-weight:700}
 
 /* 右:故事档案 */
 .aside{background:var(--bg-1);overflow:hidden;display:flex;flex-direction:column;position:relative}
@@ -233,7 +233,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .sect h3 .ct{font-size:11px;background:var(--bg-3);color:var(--t-2);padding:1px 7px;border-radius:99px;font-weight:600}
 .sect .toggle{display:flex;background:var(--bg-2);border-radius:7px;padding:2px}
 .sect .toggle button{padding:4px 10px;border-radius:5px;font-size:11.5px;color:var(--t-3);font-weight:600}
-.sect .toggle button.on{background:var(--accent);color:#1a1407}
+.sect .toggle button.on{background:var(--accent);color:#0D0E12}
 .sect .lk{font-size:11.5px;color:var(--t-3);cursor:pointer}
 .sect .lk:hover{color:var(--accent)}
 .sect .swap-btn{
@@ -331,7 +331,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .cell-popover .shot .nm{position:absolute;left:3px;top:3px;background:rgba(0,0,0,.7);color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700}
 .cell-popover .empty{font-size:11.5px;color:var(--t-4);text-align:center;padding:12px;background:var(--bg-3);border-radius:6px;margin-bottom:10px}
 .cell-popover .gen-btn{
-  width:100%;padding:9px;border-radius:7px;background:var(--accent);color:#1a1407;
+  width:100%;padding:9px;border-radius:7px;background:var(--accent);color:#0D0E12;
   font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:6px;justify-content:center;
 }
 .cell-popover .gen-btn:hover{background:var(--accent-2)}
@@ -382,7 +382,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .drawer-h .typetag{font-size:11px;padding:2px 9px;border-radius:99px;background:var(--bg-3);color:var(--t-3);font-weight:600}
 .drawer-h .toggle-vw{display:flex;background:var(--bg-2);border-radius:7px;padding:2px}
 .drawer-h .toggle-vw button{padding:4px 10px;border-radius:5px;font-size:11.5px;color:var(--t-3);font-weight:600}
-.drawer-h .toggle-vw button.on{background:var(--accent);color:#1a1407}
+.drawer-h .toggle-vw button.on{background:var(--accent);color:#0D0E12}
 .drawer-body{flex:1;overflow-y:auto}
 .dr-views{background:linear-gradient(180deg,#1a1a24,#0f0f15);position:relative;padding:14px 0 0;display:grid;height:300px;border-bottom:1px solid var(--line)}
 .dr-views.v3{grid-template-columns:1fr 1fr 1fr}
@@ -404,7 +404,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .dr-acts{border-top:1px solid var(--line);padding:12px 20px;display:flex;gap:7px;flex-shrink:0;background:var(--bg-1)}
 .dr-acts button{flex:1;padding:10px;background:var(--bg-2);border-radius:8px;font-size:12.5px;color:var(--t-2)}
 .dr-acts button:hover{background:var(--bg-3);color:var(--t-1)}
-.dr-acts button.primary{background:var(--accent);color:#1a1407;font-weight:600}
+.dr-acts button.primary{background:var(--accent);color:#0D0E12;font-weight:600}
 
 /* 底部 - chat 增强 */
 .bottom{background:var(--bg-1);border-top:1px solid var(--line);display:flex;align-items:center;padding:0 22px;gap:14px}
@@ -418,7 +418,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .chat-input{display:flex;align-items:center;gap:7px;background:var(--bg);border:1px solid var(--line-2);border-radius:12px;padding:5px 8px 5px 10px;flex-wrap:wrap}
 .chat-input.focused{border-color:var(--accent)}
 .chat-input .pre-btn{padding:5px 11px;border-radius:7px;font-size:11.5px;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;gap:4px}
-.chat-input .pre-btn:hover{background:rgba(245,158,11,.2)}
+.chat-input .pre-btn:hover{background:rgba(33,255,243,.2)}
 .chat-input .attach{padding:6px 8px;border-radius:6px;color:var(--t-3);font-size:14px;display:inline-flex;align-items:center;gap:3px}
 .chat-input .attach:hover{background:var(--bg-2);color:var(--t-1)}
 .chat-input .attach-thumb{
@@ -427,7 +427,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 }
 .chat-input .attach-thumb .x{position:absolute;right:-5px;top:-5px;width:16px;height:16px;border-radius:50%;background:var(--err);color:#fff;font-size:9px;display:grid;place-items:center;font-weight:700}
 .chat-input input.txt{flex:1;border:0;padding:8px 0;background:transparent;font-size:14px;min-width:140px}
-.chat-input .send{width:32px;height:32px;border-radius:8px;background:var(--accent);color:#1a1407;display:grid;place-items:center;font-size:14px;font-weight:700}
+.chat-input .send{width:32px;height:32px;border-radius:8px;background:var(--accent);color:#0D0E12;display:grid;place-items:center;font-size:14px;font-weight:700}
 
 /* @ 下拉 */
 .mention-pop{
@@ -458,7 +458,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .modal-foot .stat .cost{color:var(--accent);font-weight:700}
 .modal-foot button{padding:9px 16px;border-radius:9px;font-size:12.5px;color:var(--t-2);background:var(--bg-3)}
 .modal-foot button:hover{background:var(--bg-4);color:var(--t-1)}
-.modal-foot button.primary{background:var(--accent);color:#1a1407;font-weight:700}
+.modal-foot button.primary{background:var(--accent);color:#0D0E12;font-weight:700}
 .modal-foot button.primary:hover{background:var(--accent-2)}
 
 /* 影响预览模态 (从 v13 沿用) */
@@ -480,8 +480,8 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .imp-shot .th .sev{position:absolute;right:5px;top:5px;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.5px}
 .imp-shot.high{border-color:rgba(248,113,113,.5)}
 .imp-shot.high .th .sev{background:rgba(248,113,113,.9);color:#fff}
-.imp-shot.med{border-color:rgba(245,158,11,.5)}
-.imp-shot.med .th .sev{background:rgba(245,158,11,.9);color:#1a1407}
+.imp-shot.med{border-color:rgba(33,255,243,.5)}
+.imp-shot.med .th .sev{background:rgba(33,255,243,.9);color:#0D0E12}
 .imp-shot.low .th .sev{background:rgba(96,165,250,.85);color:#fff}
 .imp-shot .nb{padding:6px 9px;font-size:10.5px;color:var(--t-3);line-height:1.4}
 .imp-shot .nb b{color:var(--t-1);font-weight:600;font-size:11px}
@@ -492,11 +492,11 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .check-h .summary{margin-top:6px;font-size:11.5px;color:var(--t-3);display:flex;align-items:center;gap:8px}
 .check-h .summary .pill{padding:2px 9px;border-radius:99px;font-weight:700;font-size:11px}
 .check-h .summary .pill.s-red{background:rgba(248,113,113,.18);color:var(--err)}
-.check-h .summary .pill.s-yel{background:rgba(245,158,11,.18);color:var(--accent)}
+.check-h .summary .pill.s-yel{background:rgba(33,255,243,.18);color:var(--accent)}
 .check-h .summary .pill.s-blu{background:var(--info-soft);color:var(--info)}
 .check-filters{display:flex;gap:5px;padding:0 22px 12px}
 .check-filters button{padding:5px 12px;border-radius:7px;background:var(--bg-2);font-size:11.5px;color:var(--t-3);font-weight:500}
-.check-filters button.on{background:var(--accent);color:#1a1407;font-weight:700}
+.check-filters button.on{background:var(--accent);color:#0D0E12;font-weight:700}
 .check-filters button:hover:not(.on){background:var(--bg-3);color:var(--t-1)}
 .check-list{padding:0 22px 18px;display:flex;flex-direction:column;gap:10px}
 .check-issue{background:var(--bg-2);border-radius:11px;border-left:3px solid var(--bg-4);overflow:hidden}
@@ -506,7 +506,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .check-issue .ih{padding:10px 14px;display:flex;align-items:center;gap:10px}
 .check-issue .ih .sev{padding:2px 9px;border-radius:99px;font-size:10.5px;font-weight:700;letter-spacing:.5px;flex-shrink:0}
 .check-issue.s-red .ih .sev{background:rgba(248,113,113,.2);color:var(--err)}
-.check-issue.s-yel .ih .sev{background:rgba(245,158,11,.2);color:var(--accent)}
+.check-issue.s-yel .ih .sev{background:rgba(33,255,243,.2);color:var(--accent)}
 .check-issue.s-blu .ih .sev{background:var(--info-soft);color:var(--info)}
 .check-issue .ih .ttl{font-size:13px;color:var(--t-1);font-weight:600;flex:1}
 .check-issue .ih .scope{font-size:11px;color:var(--t-4)}
@@ -523,7 +523,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .check-issue .actions{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:6px;background:var(--bg-1)}
 .check-issue .actions button{flex:1;padding:7px;border-radius:7px;font-size:11.5px;color:var(--t-2);background:var(--bg-2)}
 .check-issue .actions button:hover{background:var(--bg-3);color:var(--t-1)}
-.check-issue .actions button.fix{background:var(--accent);color:#1a1407;font-weight:700}
+.check-issue .actions button.fix{background:var(--accent);color:#0D0E12;font-weight:700}
 
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-thumb{background:var(--bg-3);border-radius:3px}
@@ -616,7 +616,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .kv-row .v{flex:1;color:var(--t-1)}
 .kv-row .v .seg{display:inline-flex;background:var(--bg-2);border-radius:6px;padding:2px;margin-right:4px;gap:1px}
 .kv-row .v .seg button{padding:4px 9px;border-radius:5px;font-size:11px;color:var(--t-3);font-weight:500}
-.kv-row .v .seg button.on{background:var(--accent);color:#1a1407;font-weight:700}
+.kv-row .v .seg button.on{background:var(--accent);color:#0D0E12;font-weight:700}
 .kv-row .v .pill{background:var(--bg-2);padding:3px 9px;border-radius:99px;font-size:11px;color:var(--t-2);margin-right:4px}
 .kv-row .ed{color:var(--accent);font-size:11px;cursor:pointer;flex-shrink:0}
 
@@ -645,7 +645,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .timeline-box .tl{position:relative;height:28px;background:var(--bg-3);border-radius:5px;overflow:hidden}
 .timeline-box .tl .dur-bar{position:absolute;left:8%;width:64%;top:4px;bottom:4px;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:3px}
 .timeline-box .tl .marker{position:absolute;top:0;bottom:0;width:2px;background:var(--info)}
-.timeline-box .tl .lbl{position:absolute;font-size:9px;color:#1a1407;top:50%;transform:translateY(-50%);left:12px;font-weight:700}
+.timeline-box .tl .lbl{position:absolute;font-size:9px;color:#0D0E12;top:50%;transform:translateY(-50%);left:12px;font-weight:700}
 
 /* 失败原因卡 (在本镜 Tab 内显示) */
 .fail-card{
@@ -677,7 +677,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 }
 .shot-foot-acts button{flex:1;padding:10px;background:var(--bg-2);border-radius:8px;font-size:12.5px;color:var(--t-2)}
 .shot-foot-acts button:hover{background:var(--bg-3);color:var(--t-1)}
-.shot-foot-acts button.primary{background:var(--accent);color:#1a1407;font-weight:700}
+.shot-foot-acts button.primary{background:var(--accent);color:#0D0E12;font-weight:700}
 /* ============ v14: AI 进度 Tab ============ */
 .ai-pipeline{padding:14px 0}
 .ai-overview{
@@ -737,7 +737,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
   border:2px solid var(--bg-3);position:relative;z-index:2;transition:.15s;
 }
 .steps .step.done .ic-circ{background:var(--done);color:#0f1610;border-color:var(--done)}
-.steps .step.busy .ic-circ{background:var(--accent);color:#1a1407;border-color:var(--accent);animation:p 1.5s infinite}
+.steps .step.busy .ic-circ{background:var(--accent);color:#0D0E12;border-color:var(--accent);animation:p 1.5s infinite}
 .steps .step.fail .ic-circ{background:var(--err);color:#fff;border-color:var(--err)}
 .steps .step.todo .ic-circ{opacity:.4}
 .steps .step .lbl{font-size:10px;color:var(--t-4);margin-top:5px;text-align:center;line-height:1.2}
@@ -761,7 +761,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .sp-acts button{padding:6px 10px;border-radius:6px;font-size:11px;color:var(--t-3);background:var(--bg-2)}
 .sp-acts button:hover{background:var(--bg-3);color:var(--t-1)}
 .sp-acts button.danger{color:var(--err)}
-.sp-acts button.primary{background:var(--accent);color:#1a1407;font-weight:700;margin-left:auto}
+.sp-acts button.primary{background:var(--accent);color:#0D0E12;font-weight:700;margin-left:auto}
 .sp-acts .meta{margin-left:auto;font-size:10.5px;color:var(--t-4);align-self:center}
 /* (失败原因卡样式已包含在 .fail-card 中) */
 /* ============ v14: 批量替换 ============ */
@@ -838,7 +838,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
   position:relative;cursor:pointer;overflow:hidden;
 }
 .player-stage .side-thumbs .pt svg{width:100%;height:100%}
-.player-stage .side-thumbs .pt.cur{border-color:var(--accent);box-shadow:0 0 0 2px rgba(245,158,11,.3)}
+.player-stage .side-thumbs .pt.cur{border-color:var(--accent);box-shadow:0 0 0 2px rgba(33,255,243,.3)}
 .player-stage .side-thumbs .pt .n{position:absolute;left:3px;top:3px;font-size:9px;color:#fff;background:rgba(0,0,0,.7);padding:1px 5px;border-radius:3px;font-weight:700}
 
 .player-controls{
@@ -852,7 +852,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .player-controls .timeline .chap-mark{position:absolute;top:-3px;width:2px;height:12px;background:#fff;opacity:.5}
 .player-controls .timeline .head{
   position:absolute;left:32%;top:50%;transform:translate(-50%,-50%);
-  width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(245,158,11,.3);
+  width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(33,255,243,.3);
 }
 .player-controls .ctrl-row{display:flex;align-items:center;gap:14px;color:#fff;font-size:12px}
 .player-controls .ctrl-row .play-btn{
@@ -898,10 +898,10 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .home-side .nav-i.cur{background:var(--accent-soft);color:var(--accent)}
 .home-side .nav-i .ic{font-size:14px;width:18px;text-align:center}
 .home-side .nav-i .ct{margin-left:auto;font-size:10.5px;color:var(--t-4);background:var(--bg-3);padding:1px 7px;border-radius:99px;font-weight:600}
-.home-side .nav-i.cur .ct{background:var(--accent);color:#1a1407}
+.home-side .nav-i.cur .ct{background:var(--accent);color:#0D0E12}
 .home-side .new-btn{
   margin:0 4px 14px;padding:11px 14px;border-radius:9px;
-  background:var(--accent);color:#1a1407;font-weight:700;font-size:13px;
+  background:var(--accent);color:#0D0E12;font-weight:700;font-size:13px;
   display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
 }
 .home-side .new-btn:hover{background:var(--accent-2)}
@@ -920,7 +920,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
   display:flex;background:var(--bg-1);border-radius:8px;padding:3px;border:1px solid var(--line);
 }
 .home-main .home-h .filter button{padding:5px 12px;border-radius:5px;font-size:11.5px;color:var(--t-3);font-weight:500}
-.home-main .home-h .filter button.on{background:var(--accent);color:#1a1407;font-weight:700}
+.home-main .home-h .filter button.on{background:var(--accent);color:#0D0E12;font-weight:700}
 
 .proj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
 .proj-card{
@@ -936,13 +936,13 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .proj-card.p3 .cover{background:linear-gradient(135deg,#3a1a28,#5a2a3a)}
 .proj-card.p4 .cover{background:linear-gradient(135deg,#1a3a2a,#2a4a3a)}
 .proj-card.p5 .cover{background:linear-gradient(135deg,#2a1a3a,#3a2a4a)}
-.proj-card.p6 .cover{background:linear-gradient(135deg,#3d2914,#a16207)}
+.proj-card.p6 .cover{background:linear-gradient(135deg,#123b3b,#215c5a)}
 .proj-card .cover .em{font-size:48px;opacity:.85}
 .proj-card .cover .stat{
   position:absolute;top:10px;left:10px;font-size:10.5px;padding:3px 9px;border-radius:99px;
   background:rgba(0,0,0,.5);backdrop-filter:blur(8px);font-weight:600;
 }
-.proj-card .cover .stat.busy{background:rgba(245,158,11,.95);color:#1a1407}
+.proj-card .cover .stat.busy{background:rgba(33,255,243,.95);color:#0D0E12}
 .proj-card .cover .stat.done{background:rgba(52,211,153,.95);color:#0f1610}
 .proj-card .cover .stat.draft{background:rgba(0,0,0,.65);color:rgba(255,255,255,.8)}
 .proj-card .cover .ep-pill{
@@ -965,7 +965,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 }
 .proj-card .body .acts button:hover{background:var(--bg-3);color:var(--t-1)}
 .proj-card .body .acts button.primary{background:var(--accent-soft);color:var(--accent)}
-.proj-card .body .acts button.primary:hover{background:rgba(245,158,11,.24)}
+.proj-card .body .acts button.primary:hover{background:rgba(33,255,243,.18)}
 .proj-card.add{
   border-style:dashed;background:transparent;color:var(--t-4);
   display:grid;place-items:center;min-height:280px;cursor:pointer;
@@ -977,8 +977,8 @@ input:focus,textarea:focus{border-color:var(--accent)}
 /* 顶部 CTA 按钮 (在 home-h 里) */
 .home-h .home-new-cta{
   padding:8px 18px;border-radius:9px;font-size:13px;font-weight:700;
-  background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff;
-  display:inline-flex;align-items:center;gap:5px;box-shadow:0 4px 12px rgba(245,158,11,.25);
+  background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);color:#0D0E12;
+  display:inline-flex;align-items:center;gap:5px;box-shadow:0 4px 12px rgba(33,255,243,.22);
 }
 .home-h .home-new-cta:hover{filter:brightness(1.08);transform:translateY(-1px)}
 
@@ -993,19 +993,19 @@ input:focus,textarea:focus{border-color:var(--accent)}
 }
 .hero-card:hover{transform:translateY(-2px);border-color:var(--accent)}
 .hero-card.primary{
-  background:linear-gradient(135deg,rgba(124,58,237,.18),rgba(236,72,153,.14),rgba(245,158,11,.12));
-  border-color:rgba(245,158,11,.35);
+  background:linear-gradient(135deg,rgba(33,255,243,.16),rgba(255,246,0,.07),rgba(124,255,240,.08));
+  border-color:rgba(33,255,243,.35);
 }
 .hero-card.primary::before{
   content:"";position:absolute;inset:-1px;border-radius:12px;
-  background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);opacity:0;transition:.2s;z-index:0;
+  background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);opacity:0;transition:.2s;z-index:0;
 }
 .hero-card.primary:hover::before{opacity:.18}
 .hero-card .hero-em{
   width:42px;height:42px;border-radius:10px;background:var(--bg-3);
   display:grid;place-items:center;font-size:20px;flex-shrink:0;position:relative;z-index:1;
 }
-.hero-card.primary .hero-em{background:linear-gradient(135deg,#7c3aed,#ec4899);color:#fff}
+.hero-card.primary .hero-em{background:linear-gradient(135deg,#CBFFF8,#21FFF3);color:#0D0E12}
 .hero-card .hero-body{flex:1;min-width:0;position:relative;z-index:1}
 .hero-card .hero-ttl{font-size:14px;font-weight:700;color:var(--t-1);margin-bottom:3px}
 .hero-card .hero-sub{font-size:11.5px;color:var(--t-3);line-height:1.4;
@@ -1084,7 +1084,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 .field-group label{display:block;font-size:11.5px;color:var(--t-3);margin-bottom:6px;font-weight:600}
 .field-group .seg{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:var(--bg-1);border-radius:7px;padding:3px}
 .field-group .seg button{padding:7px;border-radius:5px;font-size:12px;color:var(--t-2);font-weight:500}
-.field-group .seg button.on{background:var(--accent);color:#1a1407;font-weight:700}
+.field-group .seg button.on{background:var(--accent);color:#0D0E12;font-weight:700}
 .field-group .seg.col3{grid-template-columns:1fr 1fr 1fr}
 .field-group .seg.col4{grid-template-columns:1fr 1fr 1fr 1fr}
 .field-group select{width:100%;padding:8px 10px;font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;color:var(--t-1)}
@@ -1104,7 +1104,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 .stage-foot .spacer{flex:1}
 .stage-foot button{padding:9px 18px;border-radius:9px;font-size:13px;color:var(--t-2);background:var(--bg-2);font-weight:500}
 .stage-foot button:hover{background:var(--bg-3);color:var(--t-1)}
-.stage-foot button.primary{background:var(--accent);color:#1a1407;font-weight:700;display:inline-flex;align-items:center;gap:6px}
+.stage-foot button.primary{background:var(--accent);color:#0D0E12;font-weight:700;display:inline-flex;align-items:center;gap:6px}
 .stage-foot button.primary:hover{background:var(--accent-2)}
 
 /* ============ 阶段 2: 剧本 ============ */
@@ -1137,7 +1137,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 }
 .script-scene .scene-head{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--t-2);margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--line)}
 .script-scene .scene-head .num{
-  width:26px;height:26px;border-radius:6px;background:var(--accent);color:#1a1407;
+  width:26px;height:26px;border-radius:6px;background:var(--accent);color:#0D0E12;
   display:grid;place-items:center;font-size:12px;font-weight:800;
 }
 .script-scene .scene-head .nm{color:var(--t-1);font-weight:700;font-size:14px}
@@ -1173,7 +1173,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 .stage-episodes .ep-h .spacer{flex:1}
 .stage-episodes .ep-h .seg{display:flex;background:var(--bg-2);border-radius:8px;padding:3px}
 .stage-episodes .ep-h .seg button{padding:5px 11px;border-radius:5px;font-size:11.5px;color:var(--t-3);font-weight:500}
-.stage-episodes .ep-h .seg button.on{background:var(--accent);color:#1a1407;font-weight:700}
+.stage-episodes .ep-h .seg button.on{background:var(--accent);color:#0D0E12;font-weight:700}
 
 .ep-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:18px}
 .ep-card{
@@ -1242,7 +1242,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 }
 .stage-export .preview-screen .scrub .timeline{height:4px;background:rgba(255,255,255,.18);border-radius:2px;position:relative;cursor:pointer;margin-bottom:8px}
 .stage-export .preview-screen .scrub .timeline .fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px;width:38%}
-.stage-export .preview-screen .scrub .timeline .head{position:absolute;left:38%;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(245,158,11,.35)}
+.stage-export .preview-screen .scrub .timeline .head{position:absolute;left:38%;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(33,255,243,.35)}
 .stage-export .preview-screen .scrub .ctrl{display:flex;align-items:center;gap:11px;color:#fff;font-size:11.5px}
 .stage-export .preview-screen .scrub .ctrl .play{width:34px;height:34px;border-radius:50%;background:#fff;color:#1a1a24;display:grid;place-items:center;font-size:14px;font-weight:700;cursor:pointer}
 .stage-export .preview-screen .scrub .ctrl .time{margin-left:auto;font-variant-numeric:tabular-nums;opacity:.85}
@@ -1282,7 +1282,7 @@ body[data-stage="0"] .app{grid-template-rows:48px 1fr}
 .export-foot-acts{display:flex;gap:8px;margin-top:auto;padding-top:14px;border-top:1px solid var(--line)}
 .export-foot-acts button{flex:1;padding:11px;border-radius:9px;font-size:13px;color:var(--t-2);background:var(--bg-2);font-weight:500}
 .export-foot-acts button:hover{background:var(--bg-3);color:var(--t-1)}
-.export-foot-acts button.primary{background:var(--accent);color:#1a1407;font-weight:700}
+.export-foot-acts button.primary{background:var(--accent);color:#0D0E12;font-weight:700}
 .export-foot-acts button.primary:hover{background:var(--accent-2)}
 
 /* 简化:阶段 1/2/3/5 时隐藏分镜专用元素 */
@@ -1448,7 +1448,6 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
 
   <header class="top">
     <div class="brand"><div class="m">V</div><div>VIDO <span class="s">/ AI漫剧</span></div></div>
-    <button class="top-back-btn" onclick="location.href='/index.html'">← 返回工作台</button>
     <div class="proj"><b>AI漫剧</b><span class="meta">正式接口</span></div>
     <div class="spacer"></div>
     <button class="t-btn" onclick="goStage(0)">项目首页</button>
@@ -1458,6 +1457,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <button class="t-btn play" onclick="openPlayer()">▶ 连播预览</button>
     <button class="t-btn">📤 分享</button>
     <button class="t-btn acc">导出 ▾</button>
+    <button class="top-back-btn" onclick="location.href='/dashboard'">← 返回工作台</button>
     <div class="av">游</div>
   </header>
 
@@ -1479,22 +1479,21 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
   <!-- ============ 阶段 0: 创作记录 ============ -->
   <section class="stage-view stage-home cur" data-stage="0">
     <aside class="home-side">
-      <button class="new-btn" onclick="location.href='/index.html'">← 返回工作台</button>
-      <div class="nav-i cur"><span class="ic">📂</span>我的漫剧<span class="ct">0</span></div>
-      <div class="nav-i"><span class="ic">⏰</span>最近编辑</div>
-      <div class="nav-i"><span class="ic">⭐</span>已收藏<span class="ct">2</span></div>
-      <div class="nav-i"><span class="ic">🤝</span>共享给我</div>
+      <button class="new-btn" onclick="location.href='/dashboard'">← 返回工作台</button>
+      <div class="nav-i cur"><span class="ic">📁</span>我的漫剧<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">⏰</span>最近编辑<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">⭐</span>已收藏<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">🤝</span>共享给我<span class="ct">0</span></div>
       <h4>资产库</h4>
-      <div class="nav-i"><span class="ic">👥</span>角色库<span class="ct">12</span></div>
-      <div class="nav-i"><span class="ic">🏞️</span>场景库<span class="ct">8</span></div>
-      <div class="nav-i"><span class="ic">🎒</span>道具库<span class="ct">14</span></div>
-      <div class="nav-i"><span class="ic">🎵</span>音色库<span class="ct">9</span></div>
-      <h4>模板</h4>
-      <div class="nav-i"><span class="ic">📚</span>剧本模板</div>
-      <div class="nav-i"><span class="ic">🎨</span>画风模板</div>
+      <div class="nav-i"><span class="ic">👥</span>角色库<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">🖼️</span>场景库<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">🎒</span>道具库<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">🎙️</span>音色库<span class="ct">0</span></div>
       <h4>系统</h4>
-      <div class="nav-i"><span class="ic">⚙️</span>设置</div>
-      <div class="nav-i"><span class="ic">🗑</span>回收站</div>
+      <div class="nav-i"><span class="ic">📜</span>剧本模板<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">🎨</span>画风模板<span class="ct">0</span></div>
+      <div class="nav-i"><span class="ic">⚙</span>设置</div>
+      <div class="nav-i"><span class="ic">🗑</span>回收站<span class="ct">0</span></div>
     </aside>
     <main class="home-main">
       <div class="studio-home-band">
@@ -1502,7 +1501,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
           <div>
             <div class="eyebrow">AI Manga Drama Studio</div>
             <h1>从小说到分镜、配音、成片的一体化生产台</h1>
-            <p>这里不再是静态原型。创建项目后会写入正式 `/api/drama` 项目，生成本集、单镜画面、视频和成片都走真实接口。</p>
+            <p>创建项目后会写入正式 `/api/drama` 项目，生成本集、单镜画面、视频和成片都走真实接口。</p>
           </div>
           <div class="studio-create-actions">
             <button class="primary" onclick="openNewModal()">+ 创建新漫剧</button>
@@ -1518,7 +1517,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         </div>
       </div>
       <div class="home-h">
-        <h2>我的漫剧 <span class="ct">共 6 个项目 · 1 进行中 · 2 已完成</span></h2>
+        <h2>AI 漫剧生产工作台 <span class="ct">正在读取真实项目</span></h2>
         <span class="spacer"></span>
         <input class="search" placeholder="🔎 搜索项目…" />
         <div class="filter">
@@ -1558,127 +1557,17 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         </div>
       </div>
 
-      <div class="home-section">
-        <h3>📌 进行中 <span class="ct">1</span></h3>
+      <div class="home-section" data-real-section="primary">
+        <h3>📌 进行中 <span class="ct">0</span></h3>
         <div class="proj-grid">
-          <div class="proj-card p2">
-            <div class="cover">
-              <span class="stat busy">⏳ 分镜 · EP02 进行中</span>
-              <span class="more">⋯</span>
-              <span class="em">🌸</span>
-              <span class="ep-pill">EP01-04 · 共 4 集</span>
-            </div>
-            <div class="body">
-              <div class="ttl">读取真实项目中</div>
-              <div class="sub">这里将由正式接口返回的漫剧项目替换。</div>
-              <div class="meta">
-                <span><b>4</b> 集 · <b>24</b> 镜</span>
-                <span>·</span>
-                <span>2 小时前</span>
-              </div>
-              <div class="acts">
-                <button class="primary">▶ 打开</button>
-                <button>+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
+          <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取真实项目...</div>
         </div>
       </div>
 
-      <div class="home-section">
-        <h3>✓ 最近 <span class="ct">5</span><span class="lk">查看全部 →</span></h3>
+      <div class="home-section" data-real-section="recent">
+        <h3>✓ 最近 <span class="ct">0</span></h3>
         <div class="proj-grid">
-          <div class="proj-card p3" onclick="alert('打开:真实项目 (正式接口)')">
-            <div class="cover">
-              <span class="stat done">✓ 已完成</span>
-              <span class="more">⋯</span>
-              <span class="em">🌙</span>
-              <span class="ep-pill">EP01-08 · 共 8 集</span>
-            </div>
-            <div class="body">
-              <div class="ttl">真实项目</div>
-              <div class="sub">悬疑短剧 · 老宅里发生的离奇事件,姐妹携手破解…</div>
-              <div class="meta"><span><b>8</b> 集 · <b>56</b> 镜</span><span>·</span><span>3 天前</span></div>
-              <div class="acts">
-                <button class="primary">▶ 重看</button>
-                <button onclick="event.stopPropagation();openSequelModal('暗夜')">+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
-          <div class="proj-card p4" onclick="alert('打开:真实项目 (正式接口)')">
-            <div class="cover">
-              <span class="stat done">✓ 已完成</span>
-              <span class="more">⋯</span>
-              <span class="em">🌸</span>
-              <span class="ep-pill">EP01-12 · 共 12 集</span>
-            </div>
-            <div class="body">
-              <div class="ttl">真实项目</div>
-              <div class="sub">校园治愈 · 高三学子的最后一个春天与告白…</div>
-              <div class="meta"><span><b>12</b> 集 · <b>72</b> 镜</span><span>·</span><span>5 天前</span></div>
-              <div class="acts">
-                <button class="primary">▶ 重看</button>
-                <button onclick="event.stopPropagation();openSequelModal('春暖')">+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
-          <div class="proj-card p5" onclick="alert('打开:真实项目 (正式接口)')">
-            <div class="cover">
-              <span class="stat draft">📝 草稿</span>
-              <span class="more">⋯</span>
-              <span class="em">🌃</span>
-              <span class="ep-pill">EP01 · 仅剧本</span>
-            </div>
-            <div class="body">
-              <div class="ttl">真实项目</div>
-              <div class="sub">都市生活 · 加班归家路上的偶遇,触发的连锁故事…</div>
-              <div class="meta"><span><b>1</b> 集 · 仅剧本</span><span>·</span><span>1 周前</span></div>
-              <div class="acts">
-                <button class="primary">▶ 继续</button>
-                <button onclick="event.stopPropagation();openSequelModal('都市')">+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
-          <div class="proj-card p6" onclick="alert('打开:真实项目 (正式接口)')">
-            <div class="cover">
-              <span class="stat draft">📝 草稿</span>
-              <span class="more">⋯</span>
-              <span class="em">🏯</span>
-              <span class="ep-pill">仅大纲</span>
-            </div>
-            <div class="body">
-              <div class="ttl">长安少女</div>
-              <div class="sub">古风奇幻 · 唐代长安城的少女江湖闯荡录…</div>
-              <div class="meta"><span>未拆集</span><span>·</span><span>2 周前</span></div>
-              <div class="acts">
-                <button class="primary">▶ 继续</button>
-                <button onclick="event.stopPropagation();openSequelModal('长安')">+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
-          <div class="proj-card p1" onclick="alert('打开:真实项目 (正式接口)')">
-            <div class="cover">
-              <span class="stat done">✓ 已完成</span>
-              <span class="more">⋯</span>
-              <span class="em">☔</span>
-              <span class="ep-pill">EP01-03 · 共 3 集</span>
-            </div>
-            <div class="body">
-              <div class="ttl">真实项目</div>
-              <div class="sub">短篇文艺 · 都市夜雨中的内心独白,关于成长与遗憾…</div>
-              <div class="meta"><span><b>3</b> 集 · <b>18</b> 镜</span><span>·</span><span>1 月前</span></div>
-              <div class="acts">
-                <button class="primary">▶ 重看</button>
-                <button onclick="event.stopPropagation();openSequelModal('雨夜')">+ 续集</button>
-                <button>📤</button>
-              </div>
-            </div>
-          </div>
+          <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取真实项目...</div>
         </div>
       </div>
     </main>
@@ -1696,7 +1585,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         <button>🤖 AI 续写补全</button>
         <span class="word-ct" id="word-ct">0 字</span>
       </div>
-      <textarea class="novel-input" id="novel-input" placeholder="在此粘贴小说原文…&#10;&#10;&#10;周五下午,真实角色A兴奋地推开家门,她刚去理发店把头发染成了亮粉色。真实场景里,真实角色B正坐在场景道具上看书,听到动静抬起头…"></textarea>
+      <textarea class="novel-input" id="novel-input" placeholder="粘贴小说原文或项目续写内容。系统不会自动填入演示文本。"></textarea>
     </div>
     <div class="right">
       <h3>⚙️ 生成设置</h3>
@@ -1766,7 +1655,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         <select>
           <option>电影感(推/拉/摇/移混合)</option>
           <option>短剧风(中近景为主)</option>
-          <option>静态漫画(几乎无运镜)</option>
+          <option>低运镜漫画</option>
           <option>动画感(夸张运镜)</option>
         </select>
       </div>
@@ -1806,692 +1695,97 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       <span class="est">预计输出:<b>等待真实项目数据</b></span>
       <span class="spacer"></span>
       <button onclick="loadSampleNovel()">⚡ 填入项目简介</button>
-      <button class="primary" onclick="advanceStage(1,2,'生成剧本')">→ 生成剧本</button>
+      <button class="primary" data-real-generate-current-episode>→ 生成剧本</button>
     </div>
   </section>
 
   <!-- ============ 阶段 2: 剧本 ============ -->
   <section class="stage-view stage-script" data-stage="2">
     <div class="panel left">
-      <h3><span class="ic">👥</span>提取的角色 <span class="ct">3</span></h3>
-      <div class="script-char">
-        <div class="av" style="background:#ec4899">妹</div>
-        <div class="info">
-          <div class="nm">真实角色A<span class="role">主角</span></div>
-          <div class="traits">17 岁 · 短粉发 · 角色服装 · 外向爱炫</div>
-          <div class="stat">出演 14 镜 · 32 句台词</div>
-        </div>
-      </div>
-      <div class="script-char">
-        <div class="av" style="background:#475569">姐</div>
-        <div class="info">
-          <div class="nm">真实角色B<span class="role">主角</span></div>
-          <div class="traits">22 岁 · 黑长直 · 居家服 · 内向克制</div>
-          <div class="stat">出演 12 镜 · 24 句台词</div>
-        </div>
-      </div>
-      <div class="script-char">
-        <div class="av" style="background:#7c5316">妈</div>
-        <div class="info">
-          <div class="nm">角色<span class="role">配角</span></div>
-          <div class="traits">45 岁 · 盘发 · 围裙 · 温和</div>
-          <div class="stat">出演 4 镜 · 8 句台词</div>
-        </div>
-      </div>
-      <button style="width:100%;padding:8px;border-radius:7px;background:var(--bg-2);color:var(--t-3);font-size:12px;border:1px dashed var(--line-2);margin-top:6px">+ 加角色</button>
-
-      <h3 style="margin-top:18px"><span class="ic">🏞️</span>场景 <span class="ct">3</span></h3>
-      <div class="script-char">
-        <div class="av" style="background:#a16207">🏠</div>
-        <div class="info">
-          <div class="nm">真实场景<span class="role">主场</span></div>
-          <div class="traits">夜·暖光·场景道具台灯</div>
-        </div>
-      </div>
-      <div class="script-char">
-        <div class="av" style="background:#475569">🚪</div>
-        <div class="info">
-          <div class="nm">真实场景<span class="role">过场</span></div>
-          <div class="traits">夜·冷光·真实场景灯</div>
-        </div>
-      </div>
-      <div class="script-char">
-        <div class="av" style="background:#1e293b">🍳</div>
-        <div class="info">
-          <div class="nm">厨房<span class="role">辅助</span></div>
-          <div class="traits">夜·白光</div>
-        </div>
-      </div>
+      <h3><span class="ic">C</span>Characters <span class="ct">0</span></h3>
+      <div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实角色数据</div>
+      <h3 style="margin-top:18px"><span class="ic">S</span>Scenes <span class="ct">0</span></h3>
+      <div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实场景数据</div>
     </div>
-
     <div class="script-content">
-      <h2>📝 剧本草稿 <span class="meta">由小说自动生成 · 可直接编辑</span></h2>
-
-      <div class="script-scene">
-        <div class="scene-head">
-          <span class="num">1</span>
-          <span class="nm">偶遇</span>
-          <span class="where">真实场景 · 夜 · 冷光</span>
-          <span class="ct">8 镜 · ~50s</span>
-        </div>
-        <div class="narr">真实角色A刚更新角色特征,蹦跳着穿过真实场景回家,顶灯将她的发丝映得格外明亮。</div>
-        <div class="script-line"><span class="who mei">角色</span><span class="text"><span class="em">(自言自语)</span>嘿嘿,这次角色肯定要被惊到了!</span></div>
-      </div>
-
-      <div class="script-scene">
-        <div class="scene-head">
-          <span class="num">2</span>
-          <span class="nm">炫耀</span>
-          <span class="where">真实场景 · 夜 · 暖光</span>
-          <span class="ct">6 镜 · ~19s</span>
-        </div>
-        <div class="narr">角色推门进真实场景,真实角色B正坐在场景道具上看书。角色冲到她面前,得意地甩头发。</div>
-        <div class="script-line"><span class="who mei">角色</span><span class="text">姐!你看我新染的头!</span></div>
-        <div class="script-line"><span class="who sis">角色</span><span class="text"><span class="em">(勉强笑)</span>嗯…挺好看的。</span></div>
-        <div class="script-line"><span class="who sis">角色</span><span class="text"><span class="em">(心想)</span>又开始了…</span></div>
-      </div>
-
-      <div class="script-scene">
-        <div class="scene-head">
-          <span class="num">3</span>
-          <span class="nm">冲突</span>
-          <span class="where">真实场景 · 夜 · 暖光</span>
-          <span class="ct">5 镜 · ~25s</span>
-        </div>
-        <div class="narr">角色走进真实场景,看到角色的头发后愣住了。</div>
-        <div class="script-line"><span class="who mom">角色</span><span class="text">你们俩在干嘛呢…等等,角色A你这头发是?</span></div>
-        <div class="script-line"><span class="who mei">角色</span><span class="text">妈!这是今年最流行的颜色!</span></div>
-      </div>
-
-      <div class="script-scene">
-        <div class="scene-head">
-          <span class="num">4</span>
-          <span class="nm">和解</span>
-          <span class="where">真实场景 · 夜 · 暖光</span>
-          <span class="ct">5 镜 · ~22s</span>
-        </div>
-        <div class="narr">角色放下书,温柔地看着角色。</div>
-        <div class="script-line"><span class="who sis">角色</span><span class="text">其实…挺适合你的。就是要记得多护理。</span></div>
-        <div class="script-line"><span class="who mei">角色</span><span class="text"><span class="em">(惊讶)</span>角色你竟然不嫌弃?!</span></div>
-      </div>
-
-      <div style="text-align:center;color:var(--t-4);font-size:11.5px;padding:18px;border-top:1px dashed var(--line)">— 全剧本 等待真实剧本数据 / 约 116s —</div>
+      <h2>Script draft <span class="meta">real API data</span></h2>
+      <div class="script-scene"><div style="color:var(--t-3);font-size:13px">暂无真实剧本数据。请打开真实项目并生成剧集。</div></div>
     </div>
-
     <div class="panel right">
-      <h3><span class="ic">🎨</span>画风预览</h3>
-      <div class="style-card">
-        <h4>主画风</h4>
-        <div class="style-thumb-grid">
-          <div class="style-thumb cur" style="background:linear-gradient(135deg,#3d2914,#5a3a1f)">🎨<div class="lab">默认画风</div></div>
-          <div class="style-thumb" style="background:linear-gradient(135deg,#1a3a4a,#2a4a5a)">🎬<div class="lab">剧情漫</div></div>
-          <div class="style-thumb" style="background:linear-gradient(135deg,#4a1a3a,#5a2a4a)">✨<div class="lab">3D Q 版</div></div>
-        </div>
-      </div>
-      <div class="style-card">
-        <h4>滤镜 / 后期</h4>
-        <div class="style-thumb-grid">
-          <div class="style-thumb cur" style="background:#3d2914">☀️<div class="lab">暖色</div></div>
-          <div class="style-thumb" style="background:#1a3a4a">❄️<div class="lab">冷调</div></div>
-          <div class="style-thumb" style="background:#3a3a3a">🎞<div class="lab">胶片</div></div>
-        </div>
-      </div>
-      <div class="style-card">
-        <h4>配音音色</h4>
-        <div class="style-thumb-grid">
-          <div class="style-thumb cur" style="background:linear-gradient(135deg,#ec4899,#a78bfa);font-size:14px;font-weight:700;color:#fff">妹A<div class="lab">少女甜</div></div>
-          <div class="style-thumb" style="background:linear-gradient(135deg,#475569,#1f2937);font-size:14px;font-weight:700;color:#fff">姐B<div class="lab">知性</div></div>
-          <div class="style-thumb" style="background:linear-gradient(135deg,#7c5316,#a16207);font-size:14px;font-weight:700;color:#fff">妈C<div class="lab">温和</div></div>
-        </div>
-      </div>
-      <div class="style-card">
-        <h4>BGM</h4>
-        <div style="display:flex;gap:5px">
-          <button style="flex:1;padding:6px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600">▶ 试听</button>
-          <button style="flex:1;padding:6px;border-radius:6px;background:var(--bg-3);color:var(--t-2);font-size:11px">换一首</button>
-        </div>
-        <div style="margin-top:6px;font-size:11px;color:var(--t-3);text-align:center">🎵 <i>????????</i> · AI 推荐</div>
-      </div>
+      <h3><span class="ic">A</span>Style / voice</h3>
+      <div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实画风或音色数据</div>
     </div>
-
-    <div class="stage-foot" style="grid-column:1/-1">
-      <span class="est">已生成 <b>等待真实剧本数据</b></span>
+    <div class="stage-foot">
+      <span class="est">暂无真实剧本数据</span>
       <span class="spacer"></span>
-      <button onclick="goStage(1)">← 改小说</button>
-      <button>↻ 重新生成剧本</button>
-      <button class="primary" onclick="advanceStage(2,3,'拆分集')">→ 拆分集</button>
+      <button onclick="goStage(1)">返回</button>
+      <button class="primary" data-real-generate-current-episode>生成当前剧集</button>
     </div>
   </section>
 
-  <!-- ============ 阶段 3: 分集 ============ -->
   <section class="stage-view stage-episodes" data-stage="3">
     <div class="ep-h">
-      <h2>📺 第三步:分集</h2>
-      <div class="meta">
-        <span class="pill">共 <b>4</b> 集</span>
-        <span class="pill">总时长 <b>4 分 16 秒</b></span>
-        <span class="pill">总镜数 <b>24</b></span>
-      </div>
+      <h2>Real project episodes</h2>
       <span class="spacer"></span>
-      <div class="seg">
-        <button class="on">网格</button>
-        <button>列表</button>
-        <button>时间轴</button>
-      </div>
-      <button style="padding:7px 12px;border-radius:7px;background:var(--bg-2);color:var(--t-2);font-size:12px">↻ 重新拆集</button>
+      <div class="seg"><button class="on">All</button><button>Empty</button><button>Processing</button><button>Done</button></div>
     </div>
-
     <div class="ep-grid">
-      <div class="ep-card ep-1" onclick="goStage(4)">
-        <div class="ep-th">
-          <span class="stat done">✓ 已完成</span>
-          <span class="ep-num">EP01</span>
-          <span class="dur">00:50</span>
-        </div>
-        <div class="ep-info">
-          <div class="ttl">偶遇 <span class="dr-handle">⋮⋮</span></div>
-          <div class="desc">角色刚更新角色特征,蹦跳着穿过真实场景回家,顶灯将她的发丝映得格外明亮…</div>
-          <div class="chap-list"><span class="chip done">真实场景·夜</span></div>
-          <div class="ep-stat">
-            <span><b>8</b> 镜</span><span><b>12</b> 句台词</span><span><b>1</b> 场景</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="ep-card ep-2" onclick="goStage(4)">
-        <div class="ep-th">
-          <span class="stat busy">⏳ 进行中 67%</span>
-          <span class="ep-num">EP02</span>
-          <span class="dur">00:19</span>
-        </div>
-        <div class="ep-info">
-          <div class="ttl">炫耀 <span class="dr-handle">⋮⋮</span></div>
-          <div class="desc">角色推门进真实场景,真实角色B正坐在场景道具上看书。角色冲到她面前,得意地甩头发…</div>
-          <div class="chap-list"><span class="chip busy">真实场景·夜</span></div>
-          <div class="ep-stat">
-            <span><b>6</b> 镜</span><span><b>16</b> 句台词</span><span><b>1</b> 场景</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="ep-card ep-3" onclick="goStage(4)">
-        <div class="ep-th">
-          <span class="stat todo">○ 未生成</span>
-          <span class="ep-num">EP03</span>
-          <span class="dur">00:25</span>
-        </div>
-        <div class="ep-info">
-          <div class="ttl">冲突 <span class="dr-handle">⋮⋮</span></div>
-          <div class="desc">角色走进真实场景,看到角色的头发后愣住了。家庭氛围瞬间紧张…</div>
-          <div class="chap-list"><span class="chip">真实场景·夜</span></div>
-          <div class="ep-stat">
-            <span><b>5</b> 镜</span><span><b>14</b> 句台词</span><span><b>1</b> 场景</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="ep-card ep-4" onclick="goStage(4)">
-        <div class="ep-th">
-          <span class="stat todo">○ 未生成</span>
-          <span class="ep-num">EP04</span>
-          <span class="dur">00:22</span>
-        </div>
-        <div class="ep-info">
-          <div class="ttl">和解 <span class="dr-handle">⋮⋮</span></div>
-          <div class="desc">角色放下书,温柔地看着角色。角色也舒了口气,一家人重归温馨…</div>
-          <div class="chap-list"><span class="chip">真实场景·夜</span></div>
-          <div class="ep-stat">
-            <span><b>5</b> 镜</span><span><b>10</b> 句台词</span><span><b>1</b> 场景</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="ep-card add" onclick="openSequelModal('当前项目')">
-        <div class="em">+</div>
-        <div class="lbl" style="font-size:14px;font-weight:600;color:var(--accent)">续集 / 加一集</div>
-        <div style="font-size:11px;color:var(--t-4);margin-top:4px;text-align:center;padding:0 14px">导入新章节小说,沿用<br>已有人物 · 场景 · 画风</div>
-      </div>
+      <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">Open a real project first.</div>
     </div>
-
     <div class="ep-summary">
-      <h3>📊 总览</h3>
-      <div class="ep-stat-grid">
-        <div class="ep-stat-cell"><div class="l">总时长</div><div class="val">4:16<span class="u">分钟</span></div></div>
-        <div class="ep-stat-cell"><div class="l">总镜数</div><div class="val">24<span class="u">镜</span></div></div>
-        <div class="ep-stat-cell"><div class="l">已生成</div><div class="val">14<span class="u">/真实镜</span></div></div>
-        <div class="ep-stat-cell"><div class="l">总用时</div><div class="val">14<span class="u">分</span></div></div>
-      </div>
+      <h3>Summary</h3>
+      <div style="padding:18px;color:var(--t-3);font-size:13px">暂无真实分集数据</div>
     </div>
-
     <div class="stage-foot">
-      <span class="est">已完成 <b>1/4 集</b> · 进行中 <b>1 集</b> · 进度 <b>58%</b></span>
+      <span class="est">暂无真实分集数据</span>
       <span class="spacer"></span>
-      <button onclick="goStage(2)">← 改剧本</button>
-      <button class="primary" onclick="goStage(4)">→ 进入分镜</button>
+      <button onclick="goStage(2)">返回</button>
+      <button class="primary" data-real-generate-current-episode>生成当前剧集</button>
     </div>
   </section>
 
-  <!-- ============ 阶段 4: 分镜 (沿用 v14) ============ -->
   <div class="storyboard-stage stage-view" data-stage="4">
-    <nav class="chapters">
-      <button class="chap-back">← 返回分集</button>
-      <div class="chap done"><span class="num">1</span>偶遇<span class="nb">8镜·完成</span></div>
-      <div class="chap busy"><span class="num">2</span>炫耀<span class="nb">6镜·进行中</span></div>
-      <div class="chap todo"><span class="num">3</span>冲突<span class="nb">未生成</span></div>
-      <div class="chap todo"><span class="num">4</span>和解<span class="nb">未生成</span></div>
-    </nav>
-
+    <div class="chapters"><button class="chap-back" onclick="goStage(3)">← 返回分集</button><div class="chap todo"><span class="num">0</span>暂无真实分镜</div></div>
     <div class="main">
-      <div class="stage">
-        <div class="preview-area">
-          <div class="preview" id="preview">
-            <svg class="bg" viewBox="0 0 300 533" preserveAspectRatio="xMidYMid slice">
-              <rect width="300" height="533" fill="url(#bg-warm)"/>
-              <rect width="300" height="533" fill="url(#bg-warm-l)"/>
-              <g transform="translate(20,90) scale(1.3)"><use href="#char-mei-front"/></g>
-              <g transform="translate(180,210) rotate(-10)"><use href="#phone"/></g>
-              <rect width="300" height="533" fill="url(#halftone)"/>
-            </svg>
-            <div class="shot-bar"><span class="d"></span>EP 02 · 镜 02 · 已成片</div>
-            <div class="scene-tag"><span class="swatch"></span>真实场景 · 夜</div>
-            <div class="bubbles">
-              <div class="bubble"><span class="who">角色</span>姐！你看我新染的头！</div>
-              <div class="bubble right"><span class="who">角色</span>嗯…挺好看的。</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="asset-band" id="asset-band"></div>
-
-        <!-- v14 批量操作工具栏 -->
-        <div class="batch-bar" id="batch-bar">
-          <span class="ct" id="batch-ct">已选 0 镜</span>
-          <span class="vert"></span>
-          <button onclick="batchAct('regen')">🔄 重生成</button>
-          <button onclick="batchAct('copy')">📋 复制</button>
-          <button onclick="batchAct('star')">⭐ 标关键</button>
-          <button onclick="batchAct('apply')">🎨 套模板</button>
-          <span class="vert"></span>
-          <button class="danger" onclick="batchAct('del')">🗑 删除</button>
-          <span class="right">
-            <span class="est">预计 <b id="batch-time">~45s</b></span>
-            <button class="primary" onclick="batchAct('run')">▶ 执行</button>
-          </span>
-        </div>
-
-        <div class="framerow" id="framerow">
-          <button class="arrow">◀</button>
-          <div class="frame done" data-no="1" draggable="true">
-            <svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-corridor-grad)"/><g transform="translate(80,130) scale(.7)"><use href="#char-mei-front"/></g></svg>
-            <div class="chk"></div><span class="num">01</span><span class="stat"></span><span class="dur">2.8s</span><span class="lens-mini">远景</span><span class="star">⭐</span>
-            <span class="who-row"><span class="av-mini" style="background:#ec4899">妹</span></span>
-          </div>
-          <div class="frame done cur starred" data-no="2" draggable="true">
-            <svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-warm)"/><g transform="translate(20,40) scale(1.3)"><use href="#char-mei-front"/></g></svg>
-            <div class="chk"></div><span class="num">02</span><span class="stat"></span><span class="dur">3.2s</span><span class="lens-mini">中近</span><span class="star">⭐</span>
-            <span class="who-row"><span class="av-mini" style="background:#ec4899">妹</span><span class="av-mini" style="background:#475569">姐</span></span>
-          </div>
-          <div class="frame busy" data-no="3" draggable="true">
-            <svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-warm)" opacity=".4"/></svg>
-            <div class="chk"></div><span class="num">03</span><span class="stat"></span><span class="lens-mini">特写</span><span class="star">⭐</span>
-            <span class="who-row"><span class="av-mini" style="background:#ec4899">妹</span></span>
-          </div>
-          <div class="frame done" data-no="4" draggable="true">
-            <svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-cool)"/><g transform="translate(50,80)"><use href="#char-sis-front"/></g></svg>
-            <div class="chk"></div><span class="num">04</span><span class="stat"></span><span class="dur">3.4s</span><span class="lens-mini">特写</span><span class="star">⭐</span>
-            <span class="who-row"><span class="av-mini" style="background:#475569">姐</span></span>
-          </div>
-          <div class="frame fail" data-no="5" draggable="true">
-            <div class="chk"></div><span class="num">05</span><span class="stat"></span><span class="star">⭐</span>
-          </div>
-          <div class="frame todo" data-no="6" draggable="true">
-            <svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-cool)"/></svg>
-            <div class="chk"></div><span class="num">06</span><span class="stat"></span><span class="star">⭐</span>
-          </div>
-          <button class="arrow">▶</button>
-          <div class="nowinfo">
-            <b>本章 6 镜 · 19 秒</b>
-            <span>✓ 4 完成 · ⏳ 1 进行 · ❗ 1 失败</span>
-          </div>
-          <button class="batch-toggle" id="batch-toggle" onclick="toggleBatchMode()">☰ 批量</button>
-        </div>
-      </div>
-
-      <aside class="aside">
-        <div class="tabs">
-          <button class="tab active" data-tab="shot">🎬 本镜</button>
-          <button class="tab" data-tab="bible">📚 故事档案</button>
-          <button class="tab" data-tab="check">⚠️ 一致性 <span class="badge-warn">3</span></button>
-          <button class="tab" data-tab="ai">🤖 AI 进度</button>
-        </div>
-
-        <!-- ===== Tab 本镜 (v14 全新) ===== -->
-        <div class="tabpanel active" data-panel="shot" id="panel-shot">
-          <!-- 由 renderShotPanel() 动态填充 -->
-        </div>
-
-        <!-- ===== Tab 故事档案 ===== -->
-        <div class="tabpanel" data-panel="bible">
-          <div class="sect">
-            <h3><span class="ic">👤</span>角色 <span class="ct">3</span></h3>
-            <div class="toggle">
-              <button data-vw="3" class="on">3 视图</button>
-              <button data-vw="6">6 视图</button>
-            </div>
-          </div>
-          <div class="char-bible-list" id="char-list">
-            <div class="char-bible-tile" data-asset="char:mei">
-              <div class="char-views v3">
-                <div class="v" data-lab="正面"><svg viewBox="0 0 200 280"><use href="#char-mei-front"/></svg></div>
-                <div class="v" data-lab="侧面"><svg viewBox="0 0 200 280"><use href="#char-mei-side"/></svg></div>
-                <div class="v" data-lab="背面"><svg viewBox="0 0 200 280"><use href="#char-mei-back"/></svg></div>
-              </div>
-              <div class="info">
-                <div>
-                  <div class="name">真实角色A<span class="role-t">主角</span></div>
-                  <div class="traits">17 岁 · 短粉发 · 角色服装 · 外向爱炫</div>
-                </div>
-                <div class="stat-mini">出演<b>4 镜</b></div>
-              </div>
-            </div>
-            <div class="char-bible-tile" data-asset="char:sis">
-              <div class="char-views v3">
-                <div class="v" data-lab="正面"><svg viewBox="0 0 200 280"><use href="#char-sis-front"/></svg></div>
-                <div class="v" data-lab="侧面"><svg viewBox="0 0 200 280"><use href="#char-sis-side"/></svg></div>
-                <div class="v" data-lab="背面"><svg viewBox="0 0 200 280"><use href="#char-sis-back"/></svg></div>
-              </div>
-              <div class="info">
-                <div>
-                  <div class="name">真实角色B<span class="role-t">主角</span></div>
-                  <div class="traits">22 岁 · 黑长直 · 居家服 · 内向克制</div>
-                </div>
-                <div class="stat-mini">出演<b>4 镜</b></div>
-              </div>
-            </div>
-            <div class="char-bible-tile" data-asset="char:mom">
-              <div class="char-views v3">
-                <div class="v" data-lab="正面"><svg viewBox="0 0 200 280"><use href="#char-mom-front"/></svg></div>
-                <div class="v" data-lab="侧面"><svg viewBox="0 0 200 280"><use href="#char-mom-side"/></svg></div>
-                <div class="v" data-lab="背面"><svg viewBox="0 0 200 280"><use href="#char-mom-back"/></svg></div>
-              </div>
-              <div class="info">
-                <div>
-                  <div class="name">角色<span class="role-t">配角</span></div>
-                  <div class="traits">45 岁 · 盘发 · 围裙 · 温和</div>
-                </div>
-                <div class="stat-mini">出演<b>1 镜</b></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="sect">
-            <h3><span class="ic">🏞️</span>场景 <span class="ct">3</span></h3>
-            <span class="swap-btn" onclick="openSwap('scene')">⇄ 批量替换</span>
-          </div>
-          <div class="scenes-grid">
-            <div class="scene-tile" data-asset="scene:living">
-              <div class="th"><svg viewBox="0 0 300 170" preserveAspectRatio="xMidYMid slice"><use href="#bg-living"/></svg></div>
-              <div class="info"><div class="n">真实场景</div><div class="m">夜·暖光</div><div class="ct">5 镜</div></div>
-            </div>
-            <div class="scene-tile" data-asset="scene:corridor">
-              <div class="th"><svg viewBox="0 0 300 170" preserveAspectRatio="xMidYMid slice"><use href="#bg-corridor"/></svg></div>
-              <div class="info"><div class="n">真实场景</div><div class="m">夜·冷光</div><div class="ct">1 镜</div></div>
-            </div>
-            <div class="scene-tile" data-asset="scene:kitchen">
-              <div class="th"><svg viewBox="0 0 300 170" preserveAspectRatio="xMidYMid slice"><use href="#bg-kitchen"/></svg></div>
-              <div class="info"><div class="n">厨房</div><div class="m">夜·白光</div><div class="ct">0 镜</div></div>
-            </div>
-          </div>
-
-          <div class="sect">
-            <h3><span class="ic">🎒</span>道具 <span class="ct">4</span></h3>
-            <span class="swap-btn" onclick="openSwap('prop')">⇄ 批量替换</span>
-          </div>
-          <div class="props-grid-bible">
-            <div class="prop-tile" data-asset="prop:phone">
-              <div class="th"><svg viewBox="0 0 60 100"><use href="#phone"/></svg></div>
-              <div class="info"><div class="n">手机</div><div class="ct">2 镜</div></div>
-            </div>
-            <div class="prop-tile" data-asset="prop:hair">
-              <div class="th"><svg viewBox="0 0 100 100"><use href="#hairpink"/></svg></div>
-              <div class="info"><div class="n">粉色染发</div><div class="ct">2 镜</div></div>
-            </div>
-            <div class="prop-tile" data-asset="prop:sofa">
-              <div class="th"><svg viewBox="0 0 200 90"><use href="#sofa"/></svg></div>
-              <div class="info"><div class="n">场景道具</div><div class="ct">3 镜</div></div>
-            </div>
-            <div class="prop-tile" data-asset="prop:lamp">
-              <div class="th"><svg viewBox="0 0 60 100"><use href="#lamp"/></svg></div>
-              <div class="info"><div class="n">台灯</div><div class="ct">2 镜</div></div>
-            </div>
-          </div>
-
-          <div class="linkage-section">
-            <div class="h">
-              <div class="t">🔗 资产联动 <span class="badge">LIVE</span></div>
-              <div class="nb">点格子查看共享镜 · 空格点击补镜</div>
-            </div>
-            <div class="matrix" style="grid-template-columns:90px repeat(3,1fr) 8px repeat(4,1fr)">
-              <div class="cell head"></div>
-              <div class="cell head col"><span class="em">🏠</span><br>真实场景</div>
-              <div class="cell head col"><span class="em">🚪</span><br>真实场景</div>
-              <div class="cell head col"><span class="em">🍳</span><br>厨房</div>
-              <div></div>
-              <div class="cell head col"><span class="em">📱</span><br>手机</div>
-              <div class="cell head col"><span class="em">💇</span><br>染发</div>
-              <div class="cell head col"><span class="em">🛋️</span><br>场景道具</div>
-              <div class="cell head col"><span class="em">💡</span><br>台灯</div>
-
-              <div class="cell row-av"><span class="av" style="background:#ec4899">妹</span><span class="nm">角色</span></div>
-              <div class="cell v3" data-link="char:mei|scene:living">3</div>
-              <div class="cell v1" data-link="char:mei|scene:corridor">1</div>
-              <div class="cell v0" data-link="char:mei|scene:kitchen">·</div>
-              <div></div>
-              <div class="cell v2" data-link="char:mei|prop:phone">2</div>
-              <div class="cell v2" data-link="char:mei|prop:hair">2</div>
-              <div class="cell v2" data-link="char:mei|prop:sofa">2</div>
-              <div class="cell v0" data-link="char:mei|prop:lamp">·</div>
-
-              <div class="cell row-av"><span class="av" style="background:#475569">姐</span><span class="nm">角色</span></div>
-              <div class="cell v4" data-link="char:sis|scene:living">4</div>
-              <div class="cell v0" data-link="char:sis|scene:corridor">·</div>
-              <div class="cell v0" data-link="char:sis|scene:kitchen">·</div>
-              <div></div>
-              <div class="cell v0" data-link="char:sis|prop:phone">·</div>
-              <div class="cell v0" data-link="char:sis|prop:hair">·</div>
-              <div class="cell v3" data-link="char:sis|prop:sofa">3</div>
-              <div class="cell v2" data-link="char:sis|prop:lamp">2</div>
-
-              <div class="cell row-av"><span class="av" style="background:#7c5316">妈</span><span class="nm">角色</span></div>
-              <div class="cell v1" data-link="char:mom|scene:living">1</div>
-              <div class="cell v0" data-link="char:mom|scene:corridor">·</div>
-              <div class="cell v0" data-link="char:mom|scene:kitchen">·</div>
-              <div></div>
-              <div class="cell v0" data-link="char:mom|prop:phone">·</div>
-              <div class="cell v0" data-link="char:mom|prop:hair">·</div>
-              <div class="cell v1" data-link="char:mom|prop:sofa">1</div>
-              <div class="cell v0" data-link="char:mom|prop:lamp">·</div>
-            </div>
-
-            <div class="legend-row">
-              <span>共现强度</span>
-              <span>0</span>
-              <div class="ramp"><i style="background:var(--bg-3)"></i><i style="background:rgba(96,165,250,.18)"></i><i style="background:rgba(96,165,250,.32)"></i><i style="background:rgba(96,165,250,.5)"></i><i style="background:rgba(96,165,250,.75)"></i><i style="background:var(--info)"></i></div>
-              <span>5+ 镜</span>
-              <span class="help" title="空格(0)点击可基于该组合补一镜">ⓘ</span>
-            </div>
-
-            <h4 style="margin:14px 0 7px;font-size:11.5px;color:var(--t-3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">👫 角色同框</h4>
-            <div class="coap-list">
-              <div class="coap"><div class="pair"><span class="av" style="background:#ec4899">妹</span><span class="av" style="background:#475569">姐</span></div><span class="lab">角色 ↔ 角色</span><div class="bar-wrap"><div class="bar" style="width:80%"></div></div><span class="ct">2 镜</span></div>
-              <div class="coap"><div class="pair"><span class="av" style="background:#475569">姐</span><span class="av" style="background:#7c5316">妈</span></div><span class="lab">角色 ↔ 角色</span><div class="bar-wrap"><div class="bar" style="width:40%"></div></div><span class="ct">1 镜</span></div>
-              <div class="coap"><div class="pair"><span class="av" style="background:#ec4899">妹</span><span class="av" style="background:#7c5316">妈</span></div><span class="lab">角色 ↔ 角色</span><div class="bar-wrap"><div class="bar" style="width:0%"></div></div><span class="ct">0 镜</span></div>
-            </div>
-
-            <div class="network-section">
-              <div class="h"><div class="t">🕸️ 关系网络</div><span class="badge">GRAPH</span></div>
-              <div class="nb">三层环:角色 / 场景 / 道具 · 连线粗细 = 共现镜数</div>
-              <svg class="network-svg" id="network" viewBox="0 0 400 400"></svg>
-            </div>
-          </div>
-        </div>
-
-        <!-- ===== Tab 一致性 ===== -->
-        <div class="tabpanel" data-panel="check">
-          <div class="check-h">
-            <h3>⚠️ 一致性检查</h3>
-            <div class="summary">
-              <span>AI 在你的分镜里发现</span>
-              <span class="pill s-red">1 严重</span>
-              <span class="pill s-yel">1 提示</span>
-              <span class="pill s-blu">1 风格建议</span>
-            </div>
-          </div>
-          <div class="check-filters">
-            <button class="on">全部 (3)</button>
-            <button>严重</button>
-            <button>提示</button>
-            <button>风格</button>
-            <button>已忽略</button>
-          </div>
-          <div class="check-list">
-            <div class="check-issue s-red">
-              <div class="ih"><span class="sev">严重</span><span class="ttl">角色发色与设定不符</span><span class="scope">镜 03</span></div>
-              <div class="ic-body">
-                <div class="pair-thumb">
-                  <div class="t"><svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-warm)"/><g transform="translate(50,90) scale(1.1)"><use href="#char-mei-front"/></g></svg><span class="nm">#02 ✓</span></div>
-                  <span class="vs">vs</span>
-                  <div class="t bad"><svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-warm)"/><g transform="translate(50,90) scale(1.1)" style="filter:hue-rotate(40deg)"><use href="#char-mei-front"/></g></svg><span class="nm">#03 ✗</span></div>
-                </div>
-                <div class="desc">镜 03 角色发色 <mark>偏紫红 (#c026d3)</mark>,与设定 <mark class="ok">粉色 (#ec4899)</mark> 偏差明显。</div>
-              </div>
-              <div class="actions"><button class="fix">🔄 重生成此镜</button><button>🎨 调色匹配</button><button>跳到镜 03</button><button>忽略</button></div>
-            </div>
-            <div class="check-issue s-yel">
-              <div class="ih"><span class="sev">提示</span><span class="ttl">角色服装与剧本不符</span><span class="scope">镜 05</span></div>
-              <div class="ic-body">
-                <div class="pair-thumb">
-                  <div class="t"><svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-cool)"/><g transform="translate(50,80)"><use href="#char-sis-front"/></g></svg><span class="nm">#04 ✓</span></div>
-                  <span class="vs">vs</span>
-                  <div class="t bad"><svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-cool)"/></svg><span class="nm">#05 ✗</span></div>
-                </div>
-                <div class="desc">镜 05 角色穿了 <mark>睡衣</mark>,但本场景应为 <mark class="ok">居家服</mark>。</div>
-              </div>
-              <div class="actions"><button class="fix">🔄 改成居家服</button><button>跳到镜 05</button><button>忽略</button></div>
-            </div>
-            <div class="check-issue s-blu">
-              <div class="ih"><span class="sev">建议</span><span class="ttl">缺少剧本中的道具</span><span class="scope">镜 06</span></div>
-              <div class="ic-body">
-                <div class="pair-thumb">
-                  <div class="t"><svg viewBox="0 0 300 430" preserveAspectRatio="xMidYMid slice"><rect width="300" height="430" fill="url(#bg-cool)"/></svg><span class="nm">#06</span></div>
-                </div>
-                <div class="desc">剧本里此镜应有 <mark class="ok">手机</mark> 入画,但当前生成画面里没有。</div>
-              </div>
-              <div class="actions"><button class="fix">🔄 加上手机</button><button>跳到镜 06</button><button>忽略</button></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ===== Tab AI 进度 (v14 全新) ===== -->
-        <div class="tabpanel" data-panel="ai" id="panel-ai">
-          <!-- 由 renderAIPanel() 动态填充 -->
-        </div>
-
+      <section class="stage">
+        <div class="preview-area"><div class="preview" id="preview"><div style="height:100%;display:grid;place-items:center;color:var(--t-3);font-size:13px;text-align:center;padding:20px">暂无真实分镜预览<br>请打开真实项目并生成剧集</div></div></div>
+        <div class="framerow" id="framerow"><div class="nowinfo"><b>暂无真实分镜</b><span>请先生成剧集</span></div></div>
+      </section>
+      <aside class="drawer side" style="position:relative;display:flex;flex-direction:column;min-width:0">
+        <div class="tabs"><button class="tab active" data-tab="shot">本镜</button><button class="tab" data-tab="bible">故事档案</button><button class="tab" data-tab="check">一致性</button><button class="tab" data-tab="ai">AI 进度</button></div>
+        <div class="tabpanel active" data-panel="shot" id="panel-shot"><div style="padding:22px;color:var(--t-3);font-size:13px">暂无真实镜头数据</div></div>
+        <div class="tabpanel" data-panel="bible"><div style="padding:22px;color:var(--t-3);font-size:13px">暂无真实故事档案</div></div>
+        <div class="tabpanel" data-panel="check"><div style="padding:22px;color:var(--t-3);font-size:13px">暂无真实一致性检查数据</div></div>
+        <div class="tabpanel" data-panel="ai"><div style="padding:22px;color:var(--t-3);font-size:13px">暂无真实 AI 进度</div></div>
       </aside>
     </div>
   </div>
-  <!-- ============ 阶段 4 结束 ============ -->
 
-  <!-- ============ 阶段 5: 成片导出 ============ -->
   <section class="stage-view stage-export" data-stage="5">
     <div class="preview-side">
       <div class="preview-screen">
-        <div class="ttl-overlay">
-          AI漫剧成片
-          <div class="sub">打开真实项目后显示成片进度</div>
-        </div>
-        <div class="stage-img">
-          <svg viewBox="0 0 300 533" preserveAspectRatio="xMidYMid slice">
-            <rect width="300" height="533" fill="url(#bg-warm)"/>
-            <rect width="300" height="533" fill="url(#bg-warm-l)"/>
-            <g transform="translate(20,90) scale(1.3)"><use href="#char-mei-front"/></g>
-            <g transform="translate(180,210) rotate(-10)"><use href="#phone"/></g>
-            <rect width="300" height="533" fill="url(#halftone)"/>
-          </svg>
-        </div>
-        <div class="scrub">
-          <div class="timeline"><div class="fill"></div><div class="head"></div></div>
-          <div class="ctrl">
-            <span class="play">▶</span>
-            <span>← 上集 | 下集 →</span>
-            <span class="time">00:06 / 04:16</span>
-          </div>
-        </div>
+        <div style="height:100%;display:grid;place-items:center;color:var(--t-3);font-size:13px;text-align:center;padding:24px">暂无真实成片<br>请先完成真实项目生成</div>
       </div>
     </div>
-
     <div class="export-side">
-      <h2>📦 导出与发布<span class="badge">就绪</span></h2>
-      <div class="lead" style="font-size:12px;color:var(--t-3);line-height:1.6;margin-bottom:6px">所有镜次已通过质检,选择平台预设和格式后即可下载或一键推送。</div>
-
-      <div class="field-group">
-        <label>选择目标平台</label>
-        <div class="platform-grid">
-          <div class="platform-card cur"><div class="em">📱</div><div class="nm">小红书</div><div class="ratio">9:16</div></div>
-          <div class="platform-card"><div class="em">🎵</div><div class="nm">抖音</div><div class="ratio">9:16</div></div>
-          <div class="platform-card"><div class="em">📺</div><div class="nm">视频号</div><div class="ratio">9:16</div></div>
-          <div class="platform-card"><div class="em">🅱️</div><div class="nm">B 站</div><div class="ratio">16:9</div></div>
-          <div class="platform-card"><div class="em">📸</div><div class="nm">Instagram</div><div class="ratio">1:1</div></div>
-          <div class="platform-card"><div class="em">▶️</div><div class="nm">YouTube</div><div class="ratio">16:9</div></div>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label>分辨率 / 格式</label>
-        <div class="seg col3">
-          <button>720p</button>
-          <button class="on">1080p</button>
-          <button>4K</button>
-        </div>
-        <div class="seg col3" style="margin-top:6px">
-          <button class="on">MP4</button>
-          <button>MOV</button>
-          <button>切片(每集独立)</button>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <label>水印 / 片头片尾</label>
-        <div class="row">
-          <input type="checkbox" checked /> 项目水印（可选）
-        </div>
-        <div class="row">
-          <input type="checkbox" checked /> AI 自动片头 (3s)
-        </div>
-        <div class="row">
-          <input type="checkbox" /> AI 自动片尾 + CTA
-        </div>
-      </div>
-
-      <h3 style="margin:6px 0 4px;font-size:12.5px;color:var(--t-3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">📊 项目统计</h3>
+      <h2>导出与发布<span class="badge">待生成</span></h2>
+      <div class="lead" style="font-size:12px;color:var(--t-3);line-height:1.6;margin-bottom:6px">没有真实成片数据时，不显示预览视频或统计。</div>
       <div class="export-data-grid">
-        <div class="exp-stat"><div class="l">总时长</div><div class="v acc">4:16</div></div>
-        <div class="exp-stat"><div class="l">总镜数</div><div class="v">24</div></div>
-        <div class="exp-stat"><div class="l">总集数</div><div class="v acc">4<span class="u">集</span></div></div>
-        <div class="exp-stat"><div class="l">生成耗时</div><div class="v">14:32</div></div>
-        <div class="exp-stat"><div class="l">一致性</div><div class="v green">98%</div></div>
-        <div class="exp-stat"><div class="l">质检</div><div class="v green">通过</div></div>
+        <div class="exp-stat"><div class="l">总时长</div><div class="v acc">0s</div></div>
+        <div class="exp-stat"><div class="l">总镜数</div><div class="v">0</div></div>
+        <div class="exp-stat"><div class="l">总集数</div><div class="v acc">0<span class="u">集</span></div></div>
+        <div class="exp-stat"><div class="l">当前剧集</div><div class="v">-</div></div>
+        <div class="exp-stat"><div class="l">成片</div><div class="v">未生成</div></div>
+        <div class="exp-stat"><div class="l">质检</div><div class="v">待分镜</div></div>
       </div>
-
       <div class="export-foot-acts">
         <button onclick="goStage(4)">← 回去改</button>
-        <button>↓ MP4</button>
-        <button class="primary">📤 一键发布</button>
+        <button data-real-compose-images>图片合成</button>
+        <button class="primary" data-real-compose>合成成片</button>
       </div>
     </div>
   </section>
 
-  <!-- 底部 chat -->
   <footer class="bottom">
     <div class="chat-wrap">
       <div class="chat-target-row">
@@ -2533,7 +1827,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <div style="padding:18px 22px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="field-group" style="grid-column:1/-1">
         <label>漫剧标题</label>
-        <input id="new-ttl" placeholder="如:每个冬天的句号都是真实项目" style="background:var(--bg-1);font-size:13.5px;padding:9px 12px" />
+        <input id="new-ttl" placeholder="请输入漫剧标题" style="background:var(--bg-1);font-size:13.5px;padding:9px 12px" />
       </div>
       <div class="field-group" style="grid-column:1/-1">
         <label>故事简介</label>
@@ -2563,7 +1857,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         <select style="width:100%;padding:8px 10px;font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;color:var(--t-1)">
           <option>电影感(推/拉/摇/移混合)</option>
           <option>短剧风(中近景为主)</option>
-          <option>静态漫画(几乎无运镜)</option>
+          <option>低运镜漫画</option>
           <option>动画感(夸张运镜)</option>
         </select>
       </div>
@@ -2656,7 +1950,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <div class="modal-foot">
       <div class="stat" style="font-size:11.5px;color:var(--t-4)">所有字段稍后都可以在创作过程中修改</div>
       <button onclick="closeNewModal()">取消</button>
-      <button class="primary" onclick="createProject()" style="background:linear-gradient(135deg,#7c3aed,#ec4899,#f59e0b);color:#fff">✨ 创建漫剧</button>
+      <button class="primary" onclick="createProject()" style="background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);color:#0D0E12">✨ 创建漫剧</button>
     </div>
   </div>
 </div>
@@ -2670,34 +1964,27 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     </div>
     <div style="padding:18px 22px;overflow-y:auto">
       <div style="background:var(--bg-2);border-radius:9px;padding:11px 14px;margin-bottom:14px;font-size:12.5px;color:var(--t-2);line-height:1.6">
-        💡 续集会自动<b style="color:var(--t-1)">沿用</b>已有的角色、场景、画风、音色,你只需提供新章节的小说内容即可。
-        <br><span style="color:var(--t-4);font-size:11px">已有:3 角色 · 3 场景 · 4 道具 · 4 集已完成</span>
+        续集会沿用当前真实项目的角色、场景、画风、音色；如果项目未加载，系统会直接提示错误。
+        <br><span style="color:var(--t-4);font-size:11px" id="sequel-real-summary">等待真实项目数据</span>
       </div>
 
       <div class="field-group" style="margin-bottom:10px">
         <label>接续到哪一集后</label>
-        <select style="width:100%;padding:8px 10px;font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;color:var(--t-1)">
-          <option>EP04 · 和解(最新)</option>
-          <option>EP03 · 冲突</option>
-          <option>EP02 · 炫耀</option>
-          <option>EP01 · 偶遇</option>
-          <option>放在最前(作为前传)</option>
+        <select id="sequel-episode-select" style="width:100%;padding:8px 10px;font-size:12.5px;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;color:var(--t-1)">
+          <option>等待真实剧集数据</option>
         </select>
       </div>
 
       <div class="field-group" style="margin-bottom:10px">
         <label>新章节内容(小说原文)</label>
-        <textarea id="sequel-text" placeholder="粘贴新章节的小说原文…&#10;&#10;比如:&#10;一周后,角色A的角色特征已经褪色了一些,但她又有了新主意。这天放学回家,她又冲到场景道具上的角色面前…" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;padding:11px 14px;color:var(--t-1);font-family:inherit;font-size:13.5px;line-height:1.7;resize:vertical;min-height:160px;font-family:'SourceHanSerifSC','PingFang SC',serif"></textarea>
+        <textarea id="sequel-text" placeholder="粘贴新章节的小说原文，不会自动填入演示内容。" style="width:100%;background:var(--bg-1);border:1px solid var(--line);border-radius:7px;padding:11px 14px;color:var(--t-1);font-family:inherit;font-size:13.5px;line-height:1.7;resize:vertical;min-height:160px;font-family:'SourceHanSerifSC','PingFang SC',serif"></textarea>
         <div style="font-size:11px;color:var(--t-4);margin-top:5px;text-align:right" id="sequel-wc">0 字</div>
       </div>
 
       <div class="field-group" style="margin-bottom:10px">
         <label>新增 / 复用角色</label>
-        <div style="display:flex;flex-wrap:wrap;gap:5px">
-          <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:var(--bg-2);border-radius:99px;font-size:11.5px"><span style="width:16px;height:16px;border-radius:50%;background:#ec4899;color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700">妹</span>真实角色A ✓</span>
-          <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:var(--bg-2);border-radius:99px;font-size:11.5px"><span style="width:16px;height:16px;border-radius:50%;background:#475569;color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700">姐</span>真实角色B ✓</span>
-          <span style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:var(--bg-2);border-radius:99px;font-size:11.5px"><span style="width:16px;height:16px;border-radius:50%;background:#7c5316;color:#fff;display:grid;place-items:center;font-size:9px;font-weight:700">妈</span>角色 ✓</span>
-          <button style="padding:5px 11px;border-radius:99px;background:transparent;border:1px dashed var(--line-2);color:var(--t-3);font-size:11.5px">+ 加新角色</button>
+        <div id="sequel-character-list" style="display:flex;flex-wrap:wrap;gap:5px">
+          <span style="color:var(--t-4);font-size:12px">等待真实角色数据</span>
         </div>
       </div>
 
@@ -2708,7 +1995,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       </div>
     </div>
     <div class="modal-foot">
-      <div class="stat">将生成 <b>1 集</b> · 沿用已有 <b>3 角色 / 3 场景</b></div>
+      <div class="stat" id="sequel-real-stat">将基于当前真实项目生成</div>
       <button onclick="closeSequelModal()">取消</button>
       <button class="primary" onclick="confirmSequel()">✨ 生成续集</button>
     </div>
@@ -2722,7 +2009,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
 <div class="modal-mask" id="impact-modal">
   <div class="modal-card">
     <div class="modal-h">
-      <h2>🔧 修改资产 · <span class="nm" id="imp-name">真实角色A</span></h2>
+      <h2>🔧 修改资产 · <span class="nm" id="imp-name">未选择资产</span></h2>
       <button class="x" onclick="closeImpact()">✕ 取消</button>
     </div>
     <div class="impact-body">
@@ -2734,7 +2021,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
             <div class="sw on" style="background:#ec4899"></div><div class="sw" style="background:#3b82f6"></div><div class="sw" style="background:#10b981"></div><div class="sw" style="background:#a78bfa"></div><div class="sw" style="background:#fbbf24"></div><div class="sw" style="background:#f87171"></div>
           </div>
         </div>
-        <div class="field"><label>关键描述</label><input value="短发,新染粉色,齐肩" /></div>
+        <div class="field"><label>关键描述</label><input placeholder="来自真实资产数据" /></div>
         <div class="field"><label>风格强度</label><input type="range" min="0" max="100" value="70" style="padding:0" /></div>
       </div>
       <div class="impact-preview">
@@ -3197,21 +2484,19 @@ const AI_STEPS=[
   {k:'compose',ic:'🎬',lbl:'合成'},
   {k:'qa',ic:'✅',lbl:'质检'}
 ];
-// 每个镜次的 7 步状态
-const STEP_STATE={
-  1:['done','done','done','done','done','done','done'],
-  2:['done','done','done','done','done','done','done'],
-  3:['done','done','busy','todo','todo','todo','todo'],
-  4:['done','done','done','done','done','done','done'],
-  5:['done','done','fail','todo','todo','todo','todo'],
-  6:['todo','todo','todo','todo','todo','todo','todo']
-};
+function shotStepStates(s){
+  if(!s)return AI_STEPS.map(()=>'todo');
+  if(s.status==='done')return AI_STEPS.map(()=>'done');
+  if(s.status==='fail')return AI_STEPS.map(st=>st.k==='image'?'fail':(st.k==='understand'||st.k==='prompt')?'done':'todo');
+  if(s.status==='busy')return AI_STEPS.map(st=>st.k==='understand'||st.k==='prompt'?'done':st.k==='image'?'busy':'todo');
+  return AI_STEPS.map(()=>'todo');
+}
 
 function renderAIPanel(){
   const all=Object.values(SHOTS);
   const cnt={done:0,busy:0,fail:0,todo:0};
   all.forEach(s=>cnt[s.status]++);
-  const total=all.length;
+  const total=all.length || 1;
 
   let html=`<div class="ai-pipeline">`;
 
@@ -3224,8 +2509,8 @@ function renderAIPanel(){
       <div class="stat"><b style="color:${cnt.fail?'var(--err)':'var(--t-1)'}">${cnt.fail}</b><span>失败</span></div>
       <div class="stat"><b>${cnt.todo}</b><span>待生成</span></div>
       <div class="vert"></div>
-      <div class="stat"><b>14 min</b><span>累计用时</span></div>
-      <div class="stat"><b>~2 min</b><span>剩余</span></div>
+      <div class="stat"><b>${all.length}</b><span>真实镜头</span></div>
+      <div class="stat"><b>${cnt.todo+cnt.busy}</b><span>队列中</span></div>
     </div>
     <div class="progress">
       <div class="seg done" style="width:${cnt.done/total*100}%"></div>
@@ -3243,16 +2528,15 @@ function renderAIPanel(){
 
   // 队列信息
   html+=`<div class="queue-info">
-    <span><b>2</b> 路并发</span><span class="sep">·</span>
-    <span>GPU <b>1×4090</b></span><span class="sep">·</span>
+    <span>镜头 <b>${all.length}</b></span><span class="sep">·</span>
     <span>队列 <b>${cnt.todo+cnt.busy}</b></span><span class="sep">·</span>
-    <span>预计完成 <b>21:42</b></span>
-    <button>⏸ 暂停队列</button>
+    <span>失败 <b>${cnt.fail}</b></span>
+    <button data-real-generate-current-episode>生成当前剧集</button>
   </div>`;
 
   // 每个镜次的流水线
   all.forEach(s=>{
-    const states=STEP_STATE[s.no]||['todo','todo','todo','todo','todo','todo','todo'];
+    const states=shotStepStates(s);
     const statTxt={done:'已完成',busy:`${s.progress||0}%`,fail:'失败',todo:'待生成'}[s.status];
     html+=`<div class="shot-pipe ${s.status}" data-no="${s.no}">
       <div class="sp-h">
@@ -3271,7 +2555,7 @@ function renderAIPanel(){
       }).join('')}</div>
       <div class="sp-acts">
         ${s.status==='fail'?`<button class="danger">重试失败步骤</button><button>切换轻量模型</button><button>查看日志</button>`:s.status==='busy'?`<button>查看实时画面</button><button>取消</button>`:s.status==='todo'?`<button>立即生成</button>`:`<button>查看产物</button><button>重新合成</button>`}
-        <span class="meta">${s.status==='done'?'用时 ~38s':s.status==='busy'?'已耗 12s':s.status==='fail'?'失败于 picture':''}</span>
+        <span class="meta">${s.status==='done'?'已生成':s.status==='busy'?'生成中':s.status==='fail'?'真实接口返回失败':'等待生成'}</span>
         ${s.status!=='busy'?`<button class="primary" onclick="goToShot(${s.no})">→ 跳到此镜</button>`:''}
       </div>
     </div>`;
@@ -3292,18 +2576,20 @@ function goToShot(no){
 function openSwap(type){
   const titles={scene:'场景',prop:'道具',char:'角色'};
   document.getElementById('swap-title').textContent=titles[type]||'资产';
-
-  // 模拟: 找 = "角色睡衣",换 = "角色居家服"
-  const fromOpts=[
-    {av:'姐',color:'#475569',nm:'角色 · 睡衣',sub:'灰白条纹',ct:1,cur:true},
-    {av:'妹',color:'#ec4899',nm:'角色 · 睡衣',sub:'粉色',ct:0,cur:false},
-    {av:'妈',color:'#7c5316',nm:'角色 · 睡衣',sub:'米色',ct:0,cur:false}
-  ];
-  const toOpts=[
-    {av:'姐',color:'#475569',nm:'角色 · 居家服',sub:'灰色',ct:0,cur:true},
-    {av:'姐',color:'#475569',nm:'角色 · 外出装',sub:'深灰',ct:0,cur:false},
-    {av:'姐',color:'#475569',nm:'角色 · 角色服装',sub:'蓝白',ct:0,cur:false}
-  ];
+  const source = Object.values(ASSETS[type] || {});
+  if(!source.length){
+    alert('当前真实项目没有可替换的资产');
+    return;
+  }
+  const fromOpts = source.map((item,i)=>({
+    av:(item.name||titles[type]||'项')[0],
+    color:item.color||'#21FFF3',
+    nm:item.name||`未命名${titles[type]||'资产'}`,
+    sub:item.role||item.time||item.light||'来自真实项目',
+    ct:(item.shots||[]).length,
+    cur:i===0
+  }));
+  const toOpts = fromOpts.map((item,i)=>({...item,cur:i===0}));
 
   const renderOpts=(arr,id)=>document.getElementById(id).innerHTML=arr.map((o,i)=>`
     <div class="opt ${o.cur?'cur':''}" data-i="${i}">
@@ -3314,8 +2600,8 @@ function openSwap(type){
   renderOpts(fromOpts,'swap-from-list');
   renderOpts(toOpts,'swap-to-list');
 
-  // 受影响镜模拟
-  const shots=[5];
+  const selected = source[0] || {};
+  const shots = selected.shots || [];
   document.getElementById('swap-count').textContent=shots.length;
   document.getElementById('swap-stat-shots').textContent=shots.length;
   document.getElementById('swap-stat-regen').textContent=shots.length;
@@ -3438,7 +2724,7 @@ function insertMention(){
 }
 function addAttach(){
   const inp=document.getElementById('chat-input');
-  // 模拟添加缩略
+  // 添加用户上传缩略入口
   const t=document.createElement('div');
   t.className='attach-thumb';
   t.innerHTML='🖼<span class="x" onclick="this.parentElement.remove()">✕</span>';
@@ -3541,11 +2827,17 @@ function goStage(n){
         if(first) first.click();
         else openNewModal();
       }
-      else if(n===1)advanceStage(1,2,'生成剧本');
-      else if(n===2)advanceStage(2,3,'拆分集');
+      else if(n===1 || n===2) {
+        const btn = document.querySelector('[data-real-generate-current-episode]');
+        if (btn) btn.click();
+        else alert('Open a real project first.');
+      }
       else if(n===3)goStage(4);
-      else if(n===4)advanceStage(4,5,'合成成片');
-      else if(n===5)alert('📤 已推送到 6 个平台 (正式接口)');
+      else if(n===4 || n===5) {
+        const btn = document.querySelector('[data-real-compose]');
+        if (btn) btn.click();
+        else alert('Generate real storyboard data first.');
+      }
     };
   }
   window.scrollTo({top:0,behavior:'smooth'});
@@ -3553,48 +2845,9 @@ function goStage(n){
 
 // AI 处理动画后切到下一阶段
 function advanceStage(from,to,label){
-  const mask=document.getElementById('ai-mask');
-  const fill=document.getElementById('ai-mask-fill');
-  const pct=document.getElementById('ai-mask-pct');
-  const eta=document.getElementById('ai-mask-eta');
-  const step=document.getElementById('ai-mask-step');
-  const ttl=document.getElementById('ai-mask-title');
-
-  const stepsMap={
-    '生成剧本':['读懂故事…','提取角色…','拆分场景…','生成对白…','输出剧本'],
-    '拆分集':['分析节奏…','拆分章节…','计算时长…','生成集卡'],
-    '合成成片':['整合分镜…','拼接音轨…','转场过渡…','加片头片尾…','合成 mp4'],
-    '生成分镜':['解读剧本…','规划镜头…','生成画面…','配音…','对口型…']
-  };
-  const steps=stepsMap[label]||['处理中…'];
-
-  ttl.textContent='AI 正在'+label;
-  mask.classList.add('open');
-  let p=0;
-  fill.style.width='0%';
-  pct.textContent='0%';
-
-  const total=2400;
-  const tickMs=60;
-  const inc=100/(total/tickMs);
-  const timer=setInterval(()=>{
-    p=Math.min(100,p+inc);
-    fill.style.width=p+'%';
-    pct.textContent=Math.round(p)+'%';
-    eta.textContent=Math.max(1,Math.round((100-p)/inc*tickMs/1000))+'s';
-    const idx=Math.min(steps.length-1,Math.floor(p/100*steps.length));
-    step.textContent=steps[idx];
-    if(p>=100){
-      clearInterval(timer);
-      setTimeout(()=>{
-        mask.classList.remove('open');
-        goStage(to);
-      },300);
-    }
-  },tickMs);
+  alert('No local mock workflow is available. Use the real project action buttons.');
 }
 
-// 小说字数统计
 const novelInput=document.getElementById('novel-input');
 if(novelInput){
   novelInput.addEventListener('input',()=>{
@@ -3640,10 +2893,7 @@ function closeSequelModal(){
   document.getElementById('sequel-modal').classList.remove('open');
 }
 function confirmSequel(){
-  closeSequelModal();
-  // 模拟 AI 生成续集 → 进入分镜
-  document.querySelector('.proj b').textContent=document.getElementById('sequel-proj').textContent;
-  advanceStage(0,4,'生成续集');
+  alert('Open a real project first. This button no longer runs a mock sequel workflow.');
 }
 const sequelText=document.getElementById('sequel-text');
 if(sequelText){
@@ -3711,7 +2961,7 @@ document.querySelectorAll('.style-thumb').forEach(t=>{
 goStage(0);
 </script>
 <script>
-// VIDO 正式接口适配层：正式接口适配层，清理静态占位并接入真实数据。
+// VIDO 正式接口适配层：只渲染后端返回的真实数据。
 (() => {
   const token = sessionStorage.getItem('vido_token') || localStorage.getItem('vido_token') || localStorage.getItem('token') || '';
   const real = {
@@ -3751,7 +3001,7 @@ goStage(0);
           <em>🎬</em><div><b>分镜导演工作台</b><span>按剧集查看每镜画面、台词、镜头、角色和生成状态。</span></div>
         </button>
         <button class="manga-mode-card" type="button" data-manga-prod-action="continue">
-          <em>▶</em><div><b>继续最近项目</b><span>直接回到最近未完成的真实项目，不再显示静态 Demo。</span></div>
+          <em>▶</em><div><b>继续最近项目</b><span>直接回到最近未完成的真实项目。</span></div>
         </button>
       </div>
       <div class="manga-prod-flow">
@@ -3761,7 +3011,7 @@ goStage(0);
         </div>
         <div class="manga-prod-steps" id="manga-prod-steps"></div>
         <div class="manga-prod-note">
-          <span id="manga-prod-note">正在读取真实项目数据，静态示例不会参与生产流程。</span>
+          <span id="manga-prod-note">正在读取真实项目数据。</span>
           <button type="button" data-manga-prod-action="new">新建正式项目</button>
         </div>
       </div>`;
@@ -3796,7 +3046,7 @@ goStage(0);
     if (state) state.textContent = activeEpisodes ? `${activeEpisodes} 集生成中` : projects.length ? '真实项目就绪' : '暂无项目';
     const note = $('#manga-prod-note');
     if (note) note.textContent = projects.length
-      ? '请选择项目继续生产；如果要做新漫剧，先新建项目再逐集生成，不再依赖页面静态样机。'
+      ? '请选择项目继续生产；如果要做新漫剧，先新建项目再逐集生成。'
       : '当前账号暂无真实漫剧项目。先新建项目，系统会创建分集占位并进入正式生产流程。';
   }
 
@@ -3832,7 +3082,7 @@ goStage(0);
     const backBtn = $('.home-side .new-btn');
     if (backBtn) {
       backBtn.textContent = '← 返回工作台';
-      backBtn.onclick = () => { location.href = '/index.html'; };
+      backBtn.onclick = () => { location.href = '/dashboard'; };
     }
     const heroPrimary = $('.home-hero .hero-card.primary');
     if (heroPrimary) heroPrimary.remove();
@@ -3859,10 +3109,10 @@ goStage(0);
       input.value = '';
       input.placeholder = '打开真实项目后，这里会显示项目简介；也可以粘贴小说/剧情原文继续生成。';
     }
-    const sampleBtn = $$('.stage-novel button').find(b => /加载示例|当前项目简介/.test(b.textContent || ''));
-    if (sampleBtn) {
-      sampleBtn.textContent = '📋 填入当前项目简介';
-      sampleBtn.onclick = () => note('请先从“我的漫剧”打开一个真实项目');
+    const projectIntroBtn = $$('.stage-novel button').find(b => /填入当前项目简介|当前项目简介/.test(b.textContent || ''));
+    if (projectIntroBtn) {
+      projectIntroBtn.textContent = '📋 填入当前项目简介';
+      projectIntroBtn.onclick = () => note('请先从“我的漫剧”打开一个真实项目');
     }
     const epGrid = $('.stage-episodes .ep-grid');
     if (epGrid) epGrid.innerHTML = emptyCard('请先从“我的漫剧”打开一个真实项目');
@@ -3897,7 +3147,7 @@ goStage(0);
     const exportPreview = $('.stage-export .preview-screen');
     if (exportPreview) exportPreview.innerHTML = '<div style="height:100%;display:grid;place-items:center;color:var(--t-3);font-size:13px;text-align:center;padding:24px">暂无真实成片<br>请先完成真实项目生成</div>';
     const exportSide = $('.stage-export .export-side');
-    if (exportSide) exportSide.innerHTML = '<h2>📦 导出与发布<span class="badge">待生成</span></h2><div class="lead" style="font-size:12px;color:var(--t-3);line-height:1.6;margin-bottom:6px">没有真实成片数据时，不显示任何原型统计或示例视频。</div>';
+    if (exportSide) exportSide.innerHTML = '<h2>📦 导出与发布<span class="badge">待生成</span></h2><div class="lead" style="font-size:12px;color:var(--t-3);line-height:1.6;margin-bottom:6px">没有真实成片数据时，不显示预览视频或统计。</div>';
   }
   clearPrototypeHome();
   clearPrototypeStages();
@@ -3999,6 +3249,14 @@ goStage(0);
   function emptyCard(text) {
     return `<div class="proj-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">${esc(text)}</div>`;
   }
+  function renderRealLoadError(err) {
+    const msg = err?.message || '真实数据读取失败';
+    const title = $('.home-h h2 .ct');
+    if (title) title.textContent = '真实接口读取失败';
+    $$('.home-section .proj-grid').forEach(grid => {
+      grid.innerHTML = `<div class="proj-card" style="border:1px solid rgba(255,77,109,.45);display:grid;gap:10px;align-content:center;min-height:220px;color:#fecaca;background:rgba(255,77,109,.08);padding:18px"><b>真实数据加载失败</b><span style="font-size:12px;line-height:1.6">${esc(msg)}</span></div>`;
+    });
+  }
   function renderAssetCard(title, sub, icon = '📦', image = '') {
     return `<div class="proj-card p2" style="min-height:210px">
       <div class="cover">${image ? `<img src="${esc(image)}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<span class="em">${icon}</span>`}</div>
@@ -4060,7 +3318,7 @@ goStage(0);
   }
   async function ensureDetails() {
     const missing = (real.projects || []).filter(p => !real.details.has(String(p.id)));
-    await Promise.allSettled(missing.map(async p => {
+    await Promise.all(missing.map(async p => {
       const r = await api('/api/drama/projects/' + encodeURIComponent(p.id));
       real.details.set(String(p.id), r.data);
     }));
@@ -4280,10 +3538,10 @@ goStage(0);
         input.placeholder = '当前打开的是真实项目，可在这里补充小说/剧情原文后继续生成。';
         if (!input.value.trim()) input.value = p.synopsis || '';
       }
-      const sampleBtn = $$('.stage-novel button').find(b => /加载示例|当前项目简介/.test(b.textContent || ''));
-      if (sampleBtn) {
-        sampleBtn.textContent = '📋 填入当前项目简介';
-        sampleBtn.onclick = () => { if (input) input.value = p.synopsis || ''; };
+      const projectIntroBtn = $$('.stage-novel button').find(b => /填入当前项目简介|当前项目简介/.test(b.textContent || ''));
+      if (projectIntroBtn) {
+        projectIntroBtn.textContent = '📋 填入当前项目简介';
+        projectIntroBtn.onclick = () => { if (input) input.value = p.synopsis || ''; };
       }
     }
     if (n === 3) renderEpisodes(p);
@@ -4291,9 +3549,9 @@ goStage(0);
       const row = $('#framerow');
       if (row) row.innerHTML = `<div class="nowinfo"><b>暂无真实分镜</b><span>请先在分集页生成本集，完成后这里会显示真实镜头</span></div>`;
     }
-    if (n === 5) renderExportStage();
+    if (n === 5) renderFinalStage();
   }
-  function renderExportStage() {
+  function renderFinalStage() {
     const p = real.currentProject;
     const ep = real.currentEpisode || (p?.episodes || []).find(e => e.result?.final_video_url || e.result?.scenes?.length);
     const scenes = ep?.result?.scenes || [];
@@ -4347,17 +3605,40 @@ goStage(0);
     real.currentProject = fresh.data;
     renderEpisodes(fresh.data);
   }
+  async function generateCurrentEpisode() {
+    if (!real.currentProject?.id) {
+      note('请先打开一个真实项目');
+      return;
+    }
+    const detail = await api('/api/drama/projects/' + encodeURIComponent(real.currentProject.id));
+    real.currentProject = detail.data;
+    real.details.set(String(detail.data.id), detail.data);
+    const ep = (detail.data.episodes || []).find(e => ['empty','draft','error'].includes(e.status)) || (detail.data.episodes || [])[0];
+    real.currentEpisode = ep || null;
+    if (!ep) {
+      note('当前项目没有剧集记录');
+      return;
+    }
+    await generateEpisode(ep.id);
+  }
   async function loadRealData() {
-    const [projects, comics, novels, works] = await Promise.allSettled([
-      api('/api/drama/projects'),
-      api('/api/comic/tasks'),
-      api('/api/novel'),
-      api('/api/works?type=all&limit=80'),
+    const strict = async (label, path) => {
+      try {
+        return await api(path);
+      } catch (err) {
+        throw new Error(`${label} 读取失败: ${err.message || '请求失败'}`);
+      }
+    };
+    const [projects, comics, novels, works] = await Promise.all([
+      strict('漫剧项目', '/api/drama/projects'),
+      strict('漫画任务', '/api/comic/tasks'),
+      strict('小说数据', '/api/novel'),
+      strict('作品数据', '/api/works?type=all&limit=80'),
     ]);
-    real.projects = projects.value?.data || [];
-    real.comics = comics.value?.data || [];
-    real.novels = novels.value?.novels || [];
-    real.works = works.value?.works || [];
+    real.projects = projects.data || [];
+    real.comics = comics.data || [];
+    real.novels = novels.novels || [];
+    real.works = works.works || [];
     await ensureDetails();
     setSideView('我的漫剧');
     syncPipelineState(real.currentProject);
@@ -4404,12 +3685,32 @@ goStage(0);
     } catch (err) { note(err.message); }
   };
   window.openSequelForProject = async function(id) {
-    const p = real.projects.find(x => String(x.id) === String(id));
-    if (p) {
-      real.currentProject = p;
-      document.getElementById('sequel-proj').textContent = p.title || '当前项目';
+    const base = real.projects.find(x => String(x.id) === String(id));
+    const detail = base ? await api('/api/drama/projects/' + encodeURIComponent(base.id)) : null;
+    const p = detail?.data || base;
+    if (!p) return note('请先选择真实项目');
+    real.currentProject = p;
+    real.details.set(String(p.id), p);
+    document.getElementById('sequel-proj').textContent = p.title || '当前项目';
+    const episodes = p.episodes || [];
+    const epSelect = document.getElementById('sequel-episode-select');
+    if (epSelect) {
+      epSelect.innerHTML = episodes.length
+        ? episodes.map((ep, i) => `<option value="${esc(ep.id)}">EP${String(i + 1).padStart(2, '0')} · ${esc(ep.title || statusText(ep.status))}</option>`).join('')
+        : '<option>当前项目没有剧集记录</option>';
     }
-    openSequelModal(p?.title || '当前项目');
+    const chars = p.characters || episodes.flatMap(ep => ep.result?.character_bible?.characters || ep.result?.character_profiles || []);
+    const charBox = document.getElementById('sequel-character-list');
+    if (charBox) {
+      charBox.innerHTML = chars.length
+        ? chars.slice(0, 12).map(c => `<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:var(--bg-2);border-radius:99px;font-size:11.5px"><span style="width:16px;height:16px;border-radius:50%;background:#21FFF3;color:#0D0E12;display:grid;place-items:center;font-size:9px;font-weight:700">${esc((c.name || c.role || '角')[0])}</span>${esc(c.name || c.role || '未命名角色')}</span>`).join('')
+        : '<span style="color:var(--t-4);font-size:12px">当前项目暂无真实角色数据</span>';
+    }
+    const summary = document.getElementById('sequel-real-summary');
+    if (summary) summary.textContent = `已有 ${chars.length} 角色 · ${episodes.length} 集 · ${statusText(p.status)}`;
+    const stat = document.getElementById('sequel-real-stat');
+    if (stat) stat.innerHTML = `将基于 <b>${esc(p.title || '当前项目')}</b> 生成`;
+    openSequelModal(p.title || '当前项目');
   };
   async function refreshCurrentProject() {
     if (!real.currentProject?.id) return null;
@@ -4462,6 +3763,12 @@ goStage(0);
       await generateEpisode(gen.dataset.realGenerateEpisode);
       return;
     }
+    const genCurrent = e.target.closest('[data-real-generate-current-episode]');
+    if (genCurrent) {
+      e.stopPropagation();
+      await generateCurrentEpisode();
+      return;
+    }
     const shotGen = e.target.closest('[data-real-generate-shot]');
     if (shotGen) {
       e.stopPropagation();
@@ -4486,13 +3793,13 @@ goStage(0);
     if (e.target.closest('[data-real-compose]')) {
       e.stopPropagation();
       await runCurrentEpisodeAction('/compose', 'POST', null, '成片合成已提交');
-      renderExportStage();
+      renderFinalStage();
       return;
     }
     if (e.target.closest('[data-real-compose-images]')) {
       e.stopPropagation();
       await runCurrentEpisodeAction('/compose-from-images', 'POST', null, '图片版成片合成已提交');
-      renderExportStage();
+      renderFinalStage();
       return;
     }
     const prodAction = e.target.closest('[data-manga-prod-action]');
@@ -4555,10 +3862,11 @@ goStage(0);
     }
   }
   bindRealControls();
-  window.addEventListener('load', () => loadRealData().catch(err => note(err.message)));
+  window.addEventListener('load', () => loadRealData().catch(err => {
+    renderRealLoadError(err);
+    note(err.message);
+  }));
 })();
 </script>
 </body>
 </html>
-
-

@@ -281,7 +281,7 @@ app.get('/public/workflow-assets/:filename', (req, res) => {
 });
 
 // 即梦数字人 Omni 临时素材（图片/音频）— 必须公网可访问供火山 API 拉取
-app.get('/public/jimeng-assets/:filename', (req, res) => {
+app.get('/public/jimeng-assets/:filename', async (req, res) => {
   const fs = require('fs');
   const filename = path.basename(req.params.filename);
   const filePath = path.join(__dirname, '../outputs/jimeng-assets', filename);
@@ -290,8 +290,86 @@ app.get('/public/jimeng-assets/:filename', (req, res) => {
   const ext = path.extname(filename).toLowerCase();
   const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'video/mp4',
                     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+  const contentType = mimeMap[ext] || 'application/octet-stream';
+  const thumbWidth = Math.max(0, Math.min(1200, Math.round(Number(req.query.thumb || req.query.w || 0))));
+  if (thumbWidth && ['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+    const crypto = require('crypto');
+    const thumbDir = path.join(__dirname, '../outputs/jimeng-thumbs');
+    const cacheKey = crypto
+      .createHash('sha1')
+      .update([filename, stat.size, Math.round(stat.mtimeMs), thumbWidth].join('|'))
+      .digest('hex')
+      .slice(0, 18);
+    const thumbPath = path.join(thumbDir, `${path.basename(filename, ext)}_${thumbWidth}_${cacheKey}.jpg`);
+    try {
+      fs.mkdirSync(thumbDir, { recursive: true });
+      if (!fs.existsSync(thumbPath)) {
+        let made = false;
+        try {
+          const sharp = require('sharp');
+          await sharp(filePath)
+            .rotate()
+            .resize({ width: thumbWidth, withoutEnlargement: true })
+            .flatten({ background: '#111827' })
+            .jpeg({ quality: 78, mozjpeg: true })
+            .toFile(thumbPath);
+          made = true;
+        } catch (sharpErr) {
+          try {
+            const { execFile } = require('child_process');
+            const ffmpegPath = process.env.FFMPEG_PATH || require('ffmpeg-static');
+            await new Promise((resolve, reject) => {
+              execFile(ffmpegPath, [
+                '-y',
+                '-i', filePath,
+                '-vf', `scale=${thumbWidth}:-2`,
+                '-frames:v', '1',
+                '-q:v', '5',
+                thumbPath,
+              ], { timeout: 30000 }, err => err ? reject(err) : resolve());
+            });
+            made = true;
+          } catch (ffmpegErr) {
+            console.warn('[jimeng-thumb] 生成缩略图失败:', ffmpegErr.message || sharpErr.message);
+          }
+        }
+        if (!made || !fs.existsSync(thumbPath)) throw new Error('thumbnail not generated');
+      }
+      const thumbStat = fs.statSync(thumbPath);
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': thumbStat.size,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+      });
+      return fs.createReadStream(thumbPath).pipe(res);
+    } catch (thumbErr) {
+      console.warn('[jimeng-thumb] fallback original:', thumbErr.message);
+    }
+  }
+  if (['.mp4', '.mov', '.webm', '.mkv', '.avi', '.mp3', '.wav', '.m4a'].includes(ext)) {
+    const range = req.headers.range;
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    if (range) {
+      const parts = String(range).replace(/bytes=/, '').split('-');
+      const start = Math.max(0, parseInt(parts[0], 10) || 0);
+      const end = Math.min(stat.size - 1, parts[1] ? parseInt(parts[1], 10) : stat.size - 1);
+      if (start >= stat.size || end < start) {
+        res.writeHead(416, { 'Content-Range': `bytes */${stat.size}` });
+        return res.end();
+      }
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': end - start + 1,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+      });
+      return fs.createReadStream(filePath, { start, end }).pipe(res);
+    }
+  }
   res.writeHead(200, {
-    'Content-Type': mimeMap[ext] || 'application/octet-stream',
+    'Content-Type': contentType,
     'Content-Length': stat.size,
     'Cache-Control': 'public, max-age=3600',
   });
@@ -565,8 +643,8 @@ function sendNoStorePage(res, filePath) {
 }
 app.get('/ai-novel', (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
 app.get('/ai-novel.html', (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
-app.get('/ai-manga-drama', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
-app.get('/ai-manga-drama.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
+app.get('/ai-manga-drama', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-manga-drama.html')));
+app.get('/ai-manga-drama.html', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-manga-drama.html')));
 // /login.html — admin 独立登录入口（公开）
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));
 app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../public/login.html')));

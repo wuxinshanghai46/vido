@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh-CN" data-dh-initial-tab="luxury-ad">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>高定广告片 · 流程 Demo</title>
+  <link rel="stylesheet" href="/css/digital-human.css?v=19">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260526-luxury-duration-retain-v7">
+  <style>
+    .dh-demo-copy { color: var(--dh-text-soft); font-size: 13px; line-height: 1.65; }
+    .dh-demo-muted { color: var(--dh-text-muted); font-size: 12px; line-height: 1.55; }
+    .dh-luxgen-steps { grid-template-columns: repeat(5, minmax(150px, 1fr)); }
+    .dh-luxgen-steps > div { cursor: pointer; }
+    .dh-demo-stage { display: none; }
+    .dh-demo-stage.active { display: block; }
+    .dh-demo-stage:not([data-panel="1"]) { min-height: calc(100vh - 226px); }
+    .dh-demo-entry {
+      width: min(1080px, 100%);
+      margin: 18px auto 0;
+      padding: 24px;
+      border: 1px solid rgba(33,255,243,.26);
+      border-radius: var(--dh-radius-lg);
+      background: linear-gradient(180deg, rgba(33,255,243,.055), rgba(255,255,255,.018));
+      box-shadow: 0 22px 60px rgba(0,0,0,.22);
+    }
+    .dh-demo-entry h2 { margin: 0 0 8px; color: var(--dh-text); font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+    .dh-demo-entry textarea { min-height: 190px; resize: vertical; margin-top: 16px; font-size: 15px; line-height: 1.8; }
+    .dh-demo-entry-tools { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--dh-border); }
+    .dh-demo-chip-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .dh-demo-chip-label { color: var(--dh-text-muted); font-size: 12px; font-weight: 800; }
+    .dh-demo-canvas {
+      min-height: calc(100vh - 296px);
+      padding: 18px;
+      border: 1px solid rgba(33,255,243,.18);
+      border-radius: var(--dh-radius-lg);
+      background: linear-gradient(180deg, rgba(33,255,243,.035), rgba(255,255,255,.018));
+    }
+    .dh-demo-headline { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+    .dh-demo-headline h3 { margin: 0; color: var(--dh-text); font-size: 20px; display: inline-flex; align-items: center; gap: 8px; }
+    .dh-demo-headline p { margin: 6px 0 0; }
+    .dh-demo-guide {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(33,255,243,.22);
+      border-radius: var(--dh-radius-sm);
+      background: rgba(33,255,243,.055);
+    }
+    .dh-demo-guide b { color: var(--dh-primary); }
+    .dh-demo-guide span { color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
+    .dh-demo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .dh-demo-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dh-demo-card {
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid rgba(143,178,255,.16);
+      border-radius: var(--dh-radius-sm);
+      background: rgba(8,14,24,.38);
+    }
+    .dh-demo-card.editable { position: relative; padding-right: 64px; }
+    .dh-demo-card small { display: block; margin-bottom: 7px; color: var(--dh-text-muted); font-size: 11px; font-weight: 900; }
+    .dh-demo-card b { display: block; color: var(--dh-text); font-size: 13px; line-height: 1.5; word-break: break-word; }
+    .dh-demo-card span { display: block; margin-top: 6px; color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; word-break: break-word; }
+    .dh-demo-edit-mini {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      border: 1px solid rgba(33,255,243,.32);
+      border-radius: 999px;
+      background: rgba(33,255,243,.06);
+      color: var(--dh-primary);
+      cursor: pointer;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .dh-demo-section-title { margin: 18px 0 10px; color: var(--dh-text); font-size: 15px; font-weight: 900; }
+    .dh-demo-person-source {
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px;
+      border: 1px solid rgba(33,255,243,.18);
+      border-radius: var(--dh-radius);
+      background: rgba(255,255,255,.018);
+    }
+    .dh-demo-person-preview {
+      min-height: 124px;
+      border: 1px dashed rgba(33,255,243,.3);
+      border-radius: var(--dh-radius-sm);
+      display: grid;
+      place-items: center;
+      color: var(--dh-primary);
+      font-weight: 900;
+      background: radial-gradient(circle at 50% 34%, rgba(33,255,243,.18), transparent 28%), var(--dh-bg);
+    }
+    .dh-demo-person-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .dh-demo-table-wrap { overflow-x: auto; border: 1px solid var(--dh-border); border-radius: var(--dh-radius); background: var(--dh-bg-soft); }
+    .dh-demo-table { width: 100%; min-width: 1180px; border-collapse: collapse; table-layout: fixed; }
+    .dh-demo-table th, .dh-demo-table td { padding: 13px 14px; border-bottom: 1px solid var(--dh-border); text-align: left; vertical-align: top; font-size: 13px; line-height: 1.55; }
+    .dh-demo-table th { color: var(--dh-text-soft); background: var(--dh-bg); font-size: 12px; }
+    .dh-demo-table tr:last-child td { border-bottom: 0; }
+    .dh-demo-table tr.is-active td { background: rgba(33,255,243,.045); box-shadow: inset 3px 0 0 var(--dh-primary); }
+    .dh-demo-table b { color: var(--dh-text); }
+    .dh-demo-table span { color: var(--dh-text-muted); display: block; margin-top: 5px; font-size: 12px; }
+    .dh-demo-frame-list { display: grid; gap: 14px; }
+    .dh-demo-frame-card {
+      display: grid;
+      grid-template-columns: minmax(420px, .8fr) minmax(520px, 1.2fr);
+      gap: 16px;
+      padding: 14px;
+      border: 1px solid var(--dh-border);
+      border-radius: var(--dh-radius);
+      background: rgba(255,255,255,.018);
+    }
+    .dh-demo-frame-visual {
+      min-height: 250px;
+      border: 1px solid rgba(33,255,243,.2);
+      border-radius: var(--dh-radius-sm);
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.68)),
+        url("/demo-assets/competitor-storyboard.png");
+      background-size: 1520px auto;
+      display: grid;
+      align-content: end;
+      padding: 14px;
+    }
+    .dh-demo-frame-card:nth-child(2) .dh-demo-frame-visual { background-position: 38% 16%; }
+    .dh-demo-frame-card:nth-child(3) .dh-demo-frame-visual { background-position: 64% 48%; }
+    .dh-demo-frame-card:nth-child(4) .dh-demo-frame-visual { background-position: 86% 64%; }
+    .dh-demo-frame-card:nth-child(5) .dh-demo-frame-visual { background-position: 52% 72%; }
+    .dh-demo-frame-visual b { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.8); font-size: 16px; }
+    .dh-demo-frame-visual span { color: rgba(255,255,255,.8); font-size: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+    .dh-demo-frame-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+    .dh-demo-frame-info .wide { grid-column: 1 / -1; }
+    .dh-demo-compose-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .dh-demo-task-shell { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; min-height: 420px; }
+    .dh-demo-task-list, .dh-demo-task-detail { border: 1px solid var(--dh-border); border-radius: var(--dh-radius); background: var(--dh-bg-soft); padding: 14px; }
+    .dh-demo-task-card {
+      padding: 14px;
+      border: 1px solid rgba(33,255,243,.34);
+      border-radius: var(--dh-radius-sm);
+      background: rgba(33,255,243,.06);
+    }
+    .dh-demo-progress-line { height: 7px; border-radius: 999px; background: var(--dh-bg); overflow: hidden; margin-top: 12px; }
+    .dh-demo-progress-line i { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--dh-gradient); }
+    .dh-demo-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+    @media (max-width: 1280px) {
+      .dh-demo-grid, .dh-demo-grid.two, .dh-demo-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dh-demo-frame-card, .dh-demo-task-shell, .dh-demo-compose-grid { grid-template-columns: 1fr; }
+      .dh-demo-frame-info { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 900px) {
+      .dh-luxgen-steps { grid-template-columns: 1fr; }
+      .dh-demo-grid, .dh-demo-grid.two, .dh-demo-detail-grid { grid-template-columns: 1fr; }
+      .dh-demo-headline, .dh-demo-guide, .dh-demo-person-source { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+      .dh-demo-person-actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="dh-app" id="dhApp">
+    <aside class="dh-sidebar">
+      <a class="dh-logo" href="/dashboard" title="返回工作台">
+        <span class="dh-logo-icon">V</span>
+        <span class="dh-logo-text">VIDO</span>
+        <span class="dh-logo-sub">数字人</span>
+      </a>
+      <nav class="dh-nav">
+        <div class="dh-nav-group">
+          <div class="dh-nav-title">3 步出片</div>
+          <a class="dh-nav-item"><span class="dh-nav-icon">①</span>生成形象</a>
+          <a class="dh-nav-item"><span class="dh-nav-icon">②</span>我的形象</a>
+          <a class="dh-nav-item"><span class="dh-nav-icon">③</span>生成数字人</a>
+          <a class="dh-nav-item"><span class="dh-nav-icon">⏳</span>任务中心</a>
+        </div>
+        <div class="dh-nav-group">
+          <div class="dh-nav-title">广告带货</div>
+          <a class="dh-nav-item"><span class="dh-nav-icon">🛍️</span>商品数字人</a>
+          <a class="dh-nav-item"><span class="dh-nav-icon">📢</span>广告数字人</a>
+          <a class="dh-nav-item active"><span class="dh-nav-icon">🎞️</span>高定广告片</a>
+        </div>
+        <div class="dh-nav-group">
+          <div class="dh-nav-title">作品</div>
+          <a class="dh-nav-item"><span class="dh-nav-icon">🎬</span>作品库</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main class="dh-main">
+      <header class="dh-topbar">
+        <div class="dh-crumb">高定广告片</div>
+        <div class="dh-topbar-right">
+          <button class="dh-back-vido">返回工作台</button>
+        </div>
+      </header>
+
+      <section class="dh-view">
+        <div class="dh-tab-pane active" data-pane="luxury-ad">
+          <div class="dh-wizard-head">
+            <div>
+              <div class="dh-wizard-title">高定广告片</div>
+              <div class="dh-wizard-sub">广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。</div>
+            </div>
+          </div>
+
+          <div class="dh-luxgen-steps" aria-label="高定广告片完整流程" id="demoSteps">
+            <div class="active" data-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
+            <div class="locked" data-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
+            <div class="locked" data-step="3" role="button" tabindex="0"><b>3</b><span>剧本生成</span><small>按时间段拆解</small></div>
+            <div class="locked" data-step="4" role="button" tabindex="0"><b>4</b><span>分镜生成</span><small>形象和镜头</small></div>
+            <div class="locked" data-step="5" role="button" tabindex="0"><b>5</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
+          </div>
+
+          <section class="dh-demo-stage active" data-panel="1">
+            <div class="dh-demo-entry">
+              <h2>告诉系统一句话，剩下交给导演</h2>
+              <p class="dh-demo-copy">第一步只填广告需求。后面的场景配置、人物来源、剧本和分镜都由系统先生成，用户再确认或编辑。</p>
+              <textarea class="dh-input">我想做一条 AI 机器人智能生活广告。画面要有真实家庭场景，从生活混乱到 AI 机器人帮助用户整理日程、家务和设备，最后引导体验未来科技。</textarea>
+              <div class="dh-demo-entry-tools">
+                <div class="dh-demo-chip-row">
+                  <span class="dh-demo-chip-label">广告类型</span>
+                  <button type="button" class="dh-chip active">自动判断</button>
+                  <button type="button" class="dh-chip">产品宣传</button>
+                  <button type="button" class="dh-chip">品牌故事</button>
+                  <button type="button" class="dh-chip">空间展示</button>
+                </div>
+                <div class="dh-demo-chip-row">
+                  <span class="dh-demo-chip-label">画面比例</span>
+                  <button type="button" class="dh-chip active">9:16</button>
+                  <button type="button" class="dh-chip">16:9</button>
+                  <button type="button" class="dh-chip">1:1</button>
+                </div>
+                <button class="dh-btn dh-btn-primary" type="button" data-next-step="2">生成场景配置</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="dh-demo-stage" data-panel="2">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">2</span>场景配置</h3>
+                  <p class="dh-demo-copy">这些不是让用户从零填写，而是 AI 根据第一步自动生成。用户只需要检查、点编辑，或选择人物来源。</p>
+                </div>
+                <button class="dh-btn dh-btn-primary" type="button" data-next-step="3">确认配置，生成剧本</button>
+              </div>
+              <div class="dh-demo-guide">
+                <b>怎么操作</b>
+                <span>看一遍 AI 生成的创意骨架；字段不对点“编辑”；人物来源在本页直接选择“上传参考”或“AI 生成”。</span>
+              </div>
+              <div class="dh-demo-grid">
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>标题</small><b>AI 机器人智能生活广告</b><span>从混乱生活到智能助理介入。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>主题</small><b>未来家庭秩序</b><span>强调省心、智能和陪伴感。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>情绪</small><b>焦虑 → 好奇 → 信任 → 放松</b><span>先制造痛点，再释放舒适感。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>风格</small><b>真实家庭 + 高级科技光</b><span>生活质感，不做站桩讲解。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>场景</small><b>夜晚客厅、智能面板、明亮清晨</b><span>形成前后对比。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>行动号召</small><b>立即体验未来科技</b><span>收尾保留品牌和预约入口。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>声音方向</small><b>温暖旁白 + 轻科技提示音</b><span>前半段低频压迫，后半段轻盈。</span></div>
+                <div class="dh-demo-card editable"><button class="dh-demo-edit-mini">编辑</button><small>画面约束</small><b>人物、机器人、家庭空间保持一致</b><span>后续分镜都沿用这里的设定。</span></div>
+              </div>
+
+              <div class="dh-demo-section-title">人物与主体来源</div>
+              <div class="dh-demo-grid two">
+                <div class="dh-demo-person-source">
+                  <div class="dh-demo-person-preview">Amy</div>
+                  <div>
+                    <b>主角：都市职业女性</b>
+                    <p class="dh-demo-copy">前半段疲惫，后半段放松。可上传人物参考锁定气质，也可以让 AI 按剧本自动生成。</p>
+                  </div>
+                  <div class="dh-demo-person-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button">上传参考</button>
+                    <button class="dh-btn dh-btn-primary dh-btn-sm" type="button">AI 生成</button>
+                  </div>
+                </div>
+                <div class="dh-demo-person-source">
+                  <div class="dh-demo-person-preview">AI 机器人</div>
+                  <div>
+                    <b>产品角色：家庭 AI 机器人</b>
+                    <p class="dh-demo-copy">亲和、圆润、蓝色灯效。后续剧本和分镜会围绕这个主体保持连续。</p>
+                  </div>
+                  <div class="dh-demo-person-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button">上传产品图</button>
+                    <button class="dh-btn dh-btn-primary dh-btn-sm" type="button">AI 生成</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage" data-panel="3">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
+                  <p class="dh-demo-copy">剧本按时间段拆解，清楚写出画面、动作、台词和目的。这里才是用户确认广告内容节奏的地方。</p>
+                </div>
+                <button class="dh-btn dh-btn-primary" type="button" data-next-step="4">确认剧本，生成分镜</button>
+              </div>
+              <div class="dh-demo-table-wrap">
+                <table class="dh-demo-table">
+                  <thead>
+                    <tr>
+                      <th style="width:84px">镜</th>
+                      <th style="width:86px">时间</th>
+                      <th>画面</th>
+                      <th>动作</th>
+                      <th>台词</th>
+                      <th style="width:160px">目的</th>
+                      <th style="width:118px">状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>01</td>
+                      <td>0-3s</td>
+                      <td><b>Amy 坐在沙发上，账单、平板和便签散落在桌面。</b><span>环境偏暗，建立压力。</span></td>
+                      <td>Amy 皱眉翻看账单，手指停在提醒通知上。</td>
+                      <td>每天都被无序的生活拖住？</td>
+                      <td>痛点建立</td>
+                      <td><span class="dh-luxgen-status ready">待确认</span></td>
+                    </tr>
+                    <tr class="is-active">
+                      <td>05</td>
+                      <td>11.5-15s</td>
+                      <td><b>机器人在客厅中央投射全息 UI，日程、家务和设备自动整理。</b><span>画面从杂乱变清晰。</span></td>
+                      <td>机器人手掌展开，UI 卡片排列成清晰列表，Amy 表情放松。</td>
+                      <td>日程、家务、设备，一目了然。</td>
+                      <td>能力展示</td>
+                      <td><span class="dh-luxgen-status ready">待确认</span></td>
+                    </tr>
+                    <tr>
+                      <td>10</td>
+                      <td>27-30s</td>
+                      <td><b>Amy 与机器人并肩看向镜头，画面留出品牌 CTA。</b><span>客厅明亮整洁。</span></td>
+                      <td>Amy 微笑点头，机器人轻挥手。</td>
+                      <td>立即体验未来科技。</td>
+                      <td>行动号召</td>
+                      <td><span class="dh-luxgen-status ready">待确认</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage" data-panel="4">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
+                  <p class="dh-demo-copy">分镜要像导演表一样丰富：人物形象、镜头画面、时间、台词、动作表情、镜头、声音、字幕和生成指令都在这一屏确认。</p>
+                </div>
+                <button class="dh-btn dh-btn-primary" type="button" data-next-step="5">确认分镜，进入广告合成</button>
+              </div>
+              <div class="dh-demo-guide">
+                <b>分镜内容更完整</b>
+                <span>每个分镜横向铺满：左边是画面框，右边是导演字段。用户能逐镜确认，也能只重生成某一个分镜。</span>
+              </div>
+              <div class="dh-demo-frame-list">
+                <article class="dh-demo-frame-card">
+                  <div class="dh-demo-frame-visual"><b>01 · 焦虑开场</b><span>0-3s</span></div>
+                  <div class="dh-demo-frame-info">
+                    <div class="dh-demo-card"><small>时间 / 目的</small><b>0-3s · 痛点建立</b><span>让用户立刻看懂“生活混乱”的压力。</span></div>
+                    <div class="dh-demo-card"><small>内容 / 台词</small><b>Amy 在凌乱客厅查看平板和账单。</b><span>台词：每天都被无序的生活拖住？</span></div>
+                    <div class="dh-demo-card"><small>动作 / 表情</small><b>眉头紧锁，视线在手机和账单间来回。</b><span>不要喊叫，保持真实压迫感。</span></div>
+                    <div class="dh-demo-card"><small>镜头 / 构图</small><b>35mm Eye-level Medium Shot</b><span>中景浅景深，背景微乱但主体清楚。</span></div>
+                    <div class="dh-demo-card"><small>声音 / 字幕</small><b>纸张声、低频环境声、轻微叹息。</b><span>字幕在下方，跟随疑问句淡入。</span></div>
+                    <div class="dh-demo-card"><small>AI 生成指令</small><b>真实家庭夜景，职业女性疲惫，账单和平板散落。</b><span>保持人物身份和空间连续。</span></div>
+                  </div>
+                </article>
+                <article class="dh-demo-frame-card">
+                  <div class="dh-demo-frame-visual"><b>05 · 能力展示</b><span>11.5-15s</span></div>
+                  <div class="dh-demo-frame-info">
+                    <div class="dh-demo-card"><small>时间 / 目的</small><b>11.5-15s · 能力展示</b><span>展示 AI 如何把混乱整理成秩序。</span></div>
+                    <div class="dh-demo-card"><small>内容 / 台词</small><b>机器人投射全息 UI，日程和家务自动整理。</b><span>台词：日程、家务、设备，一目了然。</span></div>
+                    <div class="dh-demo-card"><small>动作 / 表情</small><b>机器人手掌展开，Amy 从紧张变放松。</b><span>UI 卡片排列有层次，从杂乱到清晰。</span></div>
+                    <div class="dh-demo-card"><small>镜头 / 构图</small><b>Medium Symmetrical Shot</b><span>居中构图，蓝色光效不盖住人物表情。</span></div>
+                    <div class="dh-demo-card"><small>声音 / 字幕</small><b>Airy hologram shimmer，柔和科技提示音。</b><span>字幕随 UI 展开出现。</span></div>
+                    <div class="dh-demo-card"><small>AI 生成指令</small><b>家庭机器人投射半透明日程 UI，温暖客厅光。</b><span>保持机器人外观、人物服装一致。</span></div>
+                  </div>
+                </article>
+                <article class="dh-demo-frame-card">
+                  <div class="dh-demo-frame-visual"><b>07 · 情绪缓和</b><span>18-21s</span></div>
+                  <div class="dh-demo-frame-info">
+                    <div class="dh-demo-card"><small>时间 / 目的</small><b>18-21s · 证明体验</b><span>让观众看到 AI 介入后的生活变化。</span></div>
+                    <div class="dh-demo-card"><small>内容 / 台词</small><b>Amy 端起咖啡，客厅开始变得有序。</b><span>台词：把琐碎交给它，把时间还给自己。</span></div>
+                    <div class="dh-demo-card"><small>动作 / 表情</small><b>Amy 深吸一口气，露出轻松微笑。</b><span>机器人在背景中静静整理提醒。</span></div>
+                    <div class="dh-demo-card"><small>镜头 / 构图</small><b>50mm Soft Push-in</b><span>从中景慢慢推进到人物表情。</span></div>
+                    <div class="dh-demo-card"><small>声音 / 字幕</small><b>环境声变轻，音乐开始抬升。</b><span>字幕短句居中出现。</span></div>
+                    <div class="dh-demo-card"><small>AI 生成指令</small><b>清晨客厅、温暖阳光、人物放松、机器人低调在侧。</b><span>不要变脸，不要更换场景风格。</span></div>
+                  </div>
+                </article>
+                <article class="dh-demo-frame-card">
+                  <div class="dh-demo-frame-visual"><b>10 · 行动引导</b><span>27-30s</span></div>
+                  <div class="dh-demo-frame-info">
+                    <div class="dh-demo-card"><small>时间 / 目的</small><b>27-30s · 行动号召</b><span>收束品牌记忆点，保留转化入口。</span></div>
+                    <div class="dh-demo-card"><small>内容 / 台词</small><b>Amy 与机器人并肩看向镜头，画面留出 CTA。</b><span>台词：立即体验未来科技。</span></div>
+                    <div class="dh-demo-card"><small>动作 / 表情</small><b>Amy 微笑点头，机器人轻挥手。</b><span>可信、轻松，不做夸张表演。</span></div>
+                    <div class="dh-demo-card"><small>镜头 / 构图</small><b>Symmetrical Hero Shot</b><span>品牌区在右侧，人物和产品在左中区域。</span></div>
+                    <div class="dh-demo-card"><small>声音 / 字幕</small><b>音乐抬升，旁白落在行动号召。</b><span>字幕和 CTA 同步出现。</span></div>
+                    <div class="dh-demo-card"><small>AI 生成指令</small><b>明亮整洁家庭空间，人物和机器人并肩，右侧 CTA 留白。</b><span>保持高级科技但不失生活感。</span></div>
+                  </div>
+                </article>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage" data-panel="5">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">5</span>广告合成</h3>
+                  <p class="dh-demo-copy">合成前必须确认配音和字幕。点击“开始合成”后进入任务中心，在任务详情里查看全部内容。</p>
+                </div>
+                <button class="dh-btn dh-btn-primary" type="button">合成广告</button>
+              </div>
+              <div class="dh-demo-compose-grid">
+                <div class="dh-demo-card"><small>配音</small><b>温暖旁白 · 女声 · 中速</b><span>可试听、换音色；会绑定到剧本每句台词。</span></div>
+                <div class="dh-demo-card"><small>字幕</small><b>默认开启 · 跟随台词自动生成</b><span>可选关闭，也可以后续进入字幕样式编辑。</span></div>
+                <div class="dh-demo-card"><small>合成检查</small><b>10 分镜 · 30 秒 · 9:16</b><span>人物、机器人、镜头、台词、配音、字幕都已确认。</span></div>
+              </div>
+              <div class="dh-demo-task-shell">
+                <aside class="dh-demo-task-list">
+                  <div class="dh-demo-task-card">
+                    <b>AI 机器人智能生活广告</b>
+                    <span class="dh-demo-muted">高定广告片 · 合成后进入任务中心 · 30 秒 · 9:16</span>
+                    <div class="dh-demo-progress-line"><i></i></div>
+                    <p class="dh-demo-muted">任务中心会显示逐镜视频、配音、字幕和最终合成进度。</p>
+                  </div>
+                </aside>
+                <div class="dh-demo-task-detail">
+                  <div class="dh-demo-guide">
+                    <b>任务详情</b>
+                    <span>合成后不只是一个进度条。用户可以回看全部生成内容，方便检查、复用或重提。</span>
+                  </div>
+                  <div class="dh-demo-detail-grid">
+                    <div class="dh-demo-card"><small>场景配置</small><b>未来家庭秩序</b><span>Amy、家庭 AI 机器人、夜晚客厅、清晨收尾、行动号召。</span></div>
+                    <div class="dh-demo-card"><small>剧本生成</small><b>10 镜头 · 按时间段拆解</b><span>包含画面、动作、台词、目的。</span></div>
+                    <div class="dh-demo-card"><small>分镜生成</small><b>已确认 10 个分镜</b><span>每镜包含画面、动作表情、镜头、声音。</span></div>
+                    <div class="dh-demo-card"><small>配音</small><b>温暖旁白 · 已绑定</b><span>每句台词可回听，失败可单独重试。</span></div>
+                    <div class="dh-demo-card"><small>字幕</small><b>默认字幕 · 已生成</b><span>跟随剧本台词自动生成，可回看和调整。</span></div>
+                    <div class="dh-demo-card"><small>视频合成</small><b>逐镜生成后拼接成片</b><span>任务中心展示每个片段和最终成片。</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const steps = Array.from(document.querySelectorAll("#demoSteps > div"));
+    const panels = Array.from(document.querySelectorAll(".dh-demo-stage"));
+
+    function showStep(step) {
+      const current = Number(step) || 1;
+      steps.forEach((item) => {
+        const itemStep = Number(item.dataset.step);
+        item.classList.toggle("active", itemStep === current);
+        item.classList.toggle("done", itemStep < current);
+        item.classList.toggle("locked", itemStep > current);
+      });
+      panels.forEach((panel) => {
+        panel.classList.toggle("active", Number(panel.dataset.panel) === current);
+      });
+      const view = document.querySelector(".dh-view");
+      if (view) view.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    steps.forEach((item) => {
+      item.addEventListener("click", () => showStep(item.dataset.step));
+      item.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          showStep(item.dataset.step);
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-next-step]").forEach((button) => {
+      button.addEventListener("click", () => showStep(button.dataset.nextStep));
+    });
+  </script>
+</body>
+</html>

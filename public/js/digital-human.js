@@ -461,6 +461,24 @@
     return `${url}${join}token=${encodeURIComponent(state.token)}`;
   }
 
+  function jimengThumbUrl(url, width = 480) {
+    if (!url || /^(data|blob):/i.test(url)) return url;
+    const clean = String(url);
+    if (!/\/public\/jimeng-assets\//i.test(clean) || !/\.(png|jpe?g|webp)(?:[?#]|$)/i.test(clean)) return clean;
+    try {
+      const u = new URL(clean, location.origin);
+      u.searchParams.set('thumb', String(Math.max(120, Math.min(1200, Number(width) || 480))));
+      return u.origin === location.origin ? (u.pathname + u.search + u.hash) : u.toString();
+    } catch {
+      const join = clean.includes('?') ? '&' : '?';
+      return `${clean}${join}thumb=${encodeURIComponent(String(width || 480))}`;
+    }
+  }
+
+  function withThumbAuth(url, width = 480) {
+    return withAuthQuery(jimengThumbUrl(url, width));
+  }
+
   function workDownloadUrl(t, fallbackUrl) {
     if (t?.id) return withAuthQuery(`/api/dh/videos/tasks/${encodeURIComponent(t.id)}/download`);
     return withAuthQuery(fallbackUrl || '');
@@ -3704,7 +3722,7 @@
 
   function renderTaskImageCover(task = {}, posterUrl = '', ratioClass = '', attrs = '') {
     return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${posterUrl ? '' : ' is-missing'}${ratioClass}" ${attrs}>
-      ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(posterUrl)}" loading="lazy" decoding="async" alt="${escapeHtml(taskCoverText(task))}" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)">` : ''}
+      ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(withThumbAuth(posterUrl, 480))}" loading="lazy" decoding="async" alt="${escapeHtml(taskCoverText(task))}" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)">` : ''}
       ${renderTaskCoverFallback(task)}
     </div>`;
   }
@@ -3712,7 +3730,7 @@
   function renderTaskVideoCover(task = {}, videoUrl = '', posterUrl = '', ratioClass = '') {
     if (!videoUrl) return renderTaskImageCover(task, posterUrl, ratioClass);
     return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${ratioClass}" data-task-preview="${escapeHtml(task.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;">
-      <video class="dh-task-thumb-video" src="${escapeHtml(videoUrl)}" ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} muted playsinline preload="metadata" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)"></video>
+      <video class="dh-task-thumb-video" src="${escapeHtml(videoUrl)}" ${posterUrl ? `poster="${escapeHtml(withThumbAuth(posterUrl, 480))}"` : ''} muted playsinline preload="metadata" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)"></video>
       ${renderTaskCoverFallback(task)}
       <span class="dh-task-thumb-play">&#9654;</span>
     </div>`;
@@ -7267,7 +7285,7 @@
           const label = member.cast_role || (generated.cast_mode === 'dual' ? `角色${i === 0 ? 'A' : 'B'}` : `角色${i + 1}`);
           return `<button type="button" data-lux-person-preview="${previewIndex}" title="预览${escapeHtml(label)}">
             ${member.image_url
-              ? `<img src="${escapeHtml(withAuthQuery(member.image_url))}" alt="${escapeHtml(label)}">`
+              ? `<img src="${escapeHtml(withThumbAuth(member.image_url, 360))}" alt="${escapeHtml(label)}" loading="lazy" decoding="async">`
               : `<i class="dh-lux-actor-cast-placeholder">${escapeHtml(generated.failed ? '未生成' : '生成中')}</i>`}
             <span><b>${escapeHtml(label)}</b><small>${escapeHtml(member.image_url ? ((member.urls?.length || 1) + ' 张独立参考') : '独立人物包')}</small></span>
           </button>`;
@@ -7275,12 +7293,12 @@
         : '';
       const previewButtons = !castGrid && actorUrls.length
         ? `<div class="dh-lux-actor-views">${actorUrls.slice(0, 6).map((url, i) => `<button type="button" data-lux-person-preview="${i}" title="预览${escapeHtml(luxuryActorAssetViewLabel(i))}">
-            <img src="${escapeHtml(withAuthQuery(url))}" alt="${escapeHtml(luxuryActorAssetViewLabel(i))}">
+            <img src="${escapeHtml(withThumbAuth(url, 360))}" alt="${escapeHtml(luxuryActorAssetViewLabel(i))}" loading="lazy" decoding="async">
             <span>${escapeHtml(luxuryActorAssetViewLabel(i))}</span>
           </button>`).join('')}</div>`
         : '';
       host.innerHTML = `<div class="dh-luxgen-character-sheet ${generated.failed ? 'is-failed' : ''}">
-        ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(generated.name || defaultName)}"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>')}
+        ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-lux-person-preview="0" title="点击预览演员参考图"><img src="${escapeHtml(withThumbAuth(src, 420))}" alt="${escapeHtml(generated.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">生成中</div>')}
         <b>${escapeHtml(generated.name || defaultName)}</b>
         <small>${escapeHtml(generated.uploading ? loadingText : (actorMeta || generated.description || defaultDesc))}</small>
         ${progressHtml}
@@ -10101,7 +10119,7 @@
           ${generatedSheets.map((sheet, i) => {
             const src = luxuryAssetPreviewUrl({ url: sheet.image_url || sheet.imageUrl || sheet.url || '' });
             return `<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="dh-lux-sheet-output-card">
-              <img src="${escapeHtml(src)}" alt="分镜板第 ${i + 1} 页">
+              <img src="${escapeHtml(jimengThumbUrl(src, 520))}" alt="分镜板第 ${i + 1} 页" loading="lazy" decoding="async">
               <span>第 ${i + 1} 页 · 镜头 ${escapeHtml(String(sheet.shot_start || ''))}-${escapeHtml(String(sheet.shot_end || ''))}</span>
             </a>`;
           }).join('')}
@@ -10130,7 +10148,7 @@
           return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
             ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" style="${ratioStyle}" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
-              <img src="${escapeHtml(preview)}" alt="镜头 ${i + 1} 已生成分镜图">
+              <img src="${escapeHtml(jimengThumbUrl(preview, 420))}" alt="镜头 ${i + 1} 已生成分镜图" loading="lazy" decoding="async">
               <span>已生成 · 点击查看</span>
             </button>` : `<div class="dh-lux-sheet-frame pending" style="${ratioStyle}"><span>${escapeHtml(pendingLabel)}</span></div>`}
             <dl>
@@ -10907,7 +10925,7 @@
       const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
       return `<article class="dh-demo-frame-card">
         <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" style="${ratioStyle}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
-          ${preview ? `<img src="${escapeHtml(previewUrl)}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}">` : ''}
+          ${preview ? `<img src="${escapeHtml(jimengThumbUrl(previewUrl, 520))}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}" loading="lazy" decoding="async">` : ''}
           <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || storyStage)}</b>
           <span>${escapeHtml(timeRange)} · ${escapeHtml(status)}${isLockedReference ? ' · 已锁定参考' : ''}${preview ? ' · 点击查看全图' : ''}</span>
         </button>
@@ -13941,7 +13959,7 @@
         }
         return `<div class="dh-av-card">
           <button type="button" class="dh-work-cover" data-work-preview="${escapeHtml(t.id)}" title="点击播放">
-            ${posterUrl ? `<img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.closest('.dh-work-cover').classList.add('is-missing');this.remove()">` : ''}
+            ${posterUrl ? `<img src="${escapeHtml(withThumbAuth(posterUrl, 480))}" alt="${escapeHtml(title)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.closest('.dh-work-cover').classList.add('is-missing');this.remove()">` : ''}
             <span class="dh-work-cover-missing">封面生成中</span>
             <span class="dh-work-play">▶</span>
           </button>
