@@ -554,6 +554,14 @@ app.get('/dashboard', requirePageAuth, (req, res) => res.sendFile(path.join(__di
 app.get('/index.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 app.get('/digital-human', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
 app.get('/digital-human.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+function sendNoStorePage(res, filePath) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  return res.sendFile(filePath);
+}
+app.get('/ai-novel', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
+app.get('/ai-novel.html', requirePageAuth, (req, res) => sendNoStorePage(res, path.join(__dirname, '../public/ai-novel.html')));
 app.get('/ai-manga-drama', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
 app.get('/ai-manga-drama.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/ai-manga-drama.html')));
 // /login.html — admin 独立登录入口（公开）
