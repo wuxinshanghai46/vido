@@ -1,4 +1,5 @@
 require('dotenv').config();
+const axios = require('axios');
 const OpenAI = require('openai');
 const kb = require('./knowledgeBaseService');
 
@@ -24,9 +25,9 @@ const CULTURE_LABELS = {
   overseas: '海外语境',
   mixed: '中外混合语境'
 };
-const NOVEL_CHAT_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_CHAT_TIMEOUT_MS) || 25000);
+const NOVEL_CHAT_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_CHAT_TIMEOUT_MS) || 60000);
 const NOVEL_STREAM_TIMEOUT_MS = Math.max(15000, Number(process.env.NOVEL_STREAM_TIMEOUT_MS) || 90000);
-const NOVEL_AUTO_ATTEMPT_LIMIT = Math.max(1, Number(process.env.NOVEL_AUTO_ATTEMPT_LIMIT) || 2);
+const NOVEL_AUTO_ATTEMPT_LIMIT = Math.max(1, Number(process.env.NOVEL_AUTO_ATTEMPT_LIMIT) || 3);
 
 function cultureInstruction(culturalRegion = 'chinese') {
   if (culturalRegion === 'overseas') {
@@ -36,6 +37,25 @@ function cultureInstruction(culturalRegion = 'chinese') {
     return '允许中外混合设定，但必须解释人物姓名、地点和文化背景的来源，不能随机混搭。';
   }
   return '默认使用中国语境：人物姓名必须是自然中文名，地点、宗族/门派/公司/官府等社会关系也应符合中文读者习惯；除非用户明确要求海外，不要生成英文名或外国地名。';
+}
+
+function buildCompactOutlinePrompt({ title, genreLabel, styleLabel, typeLabel, chapterCount, novelType, culturalRegion, description }) {
+  return {
+    system: `你是专业小说架构师。只输出合法 JSON，不要 Markdown。必须忠于用户素材，不许补假设定、不许模板兜底、不许固定人物名。信息不足时写入 gaps。${cultureInstruction(culturalRegion)}`,
+    user: `请基于以下素材生成小说大纲任务书。要求：
+1. chapters 必须恰好 ${chapterCount} 章。
+2. 每章必须有具体事件、阻力、选择、代价、情绪变化、反转/线索/回收、感官锚点、章尾钩子。
+3. ${novelType === 'long' ? '长篇至少 8 个可用戏剧角色' : novelType === 'short' ? '中篇至少 5 个可用戏剧角色' : '短篇按素材需要生成角色'}；必须包含主角、反派或阻力方、盟友/关系压力、信息/转折承载者、代价/风险角色。角色必须能从素材直接推出，不能乱起名。
+4. relationships 必须把整部小说中人物和剧情压力关联起来，from/to 必须对应 characters.name。
+5. 必须写清 inciting_incident、core_problem、conflict_engine、stakes、escalation_path。
+输出 JSON 字段：synopsis, logline, promise, inciting_incident, core_problem, conflict_engine, stakes, escalation_path, genre, theme, world{era,setting,rules,taboos,cost,tone,visual_style}, characters[], relationships[], locations[], timeline[], conflicts[], chapters[], writing_rules[], gaps[], manga_adaptation。
+注意：下面的字段说明不是示例数量。chapters 数组必须实际展开 ${chapterCount} 个章节对象，index 从 1 到 ${chapterCount}；characters 至少输出目标数量的可用戏剧角色；relationships 至少覆盖主线冲突、同盟/压力、信息线和反派/阻力线。
+characters 每项含 id,name,gender,role,identity,goal,motivation,conflict,weakness,personality,arc,voice,evidence。
+chapters 每项含 index,title,summary,function,pov,dramatic_question,scene_goal,obstacle,choice,cost,emotional_shift,reversal,clue,payoff,sensory_anchor,characters,key_events,hook。
+项目：标题=${title}；题材=${genreLabel}；风格=${styleLabel}；篇幅=${typeLabel}；文化语境=${CULTURE_LABELS[culturalRegion] || CULTURE_LABELS.chinese}
+素材：
+${description}`
+  };
 }
 
 function sourceLength(value = '') {
@@ -84,11 +104,14 @@ function characterScaleRule({ novelType = 'short', chapterCount = 5, description
 // 获取可用的 LLM 配置（优先 settings，回退 env）
 function getNovelModelPriority(provider = {}, model = {}) {
   const text = `${provider.id || ''} ${provider.name || ''} ${provider.preset || ''} ${model.id || ''} ${model.name || ''}`.toLowerCase();
-  if (/gpt[-_ ]?5\.5|gpt5\.5/.test(text)) return 1;
-  if (/gemini/.test(text)) return 2;
-  if (/claude|qwen|glm|kimi/.test(text)) return 3;
-  if (/gpt[-_ ]?4|gpt4/.test(text)) return 4;
-  if (/deepseek/.test(text)) return 9;
+  if (/deepseek-chat|deepseek/.test(text)) return 1;
+  if (/aiapi/.test(text)) return 2;
+  if (/glm|zhipu|智谱/.test(text)) return 3;
+  if (/gemini-2\.5-flash/.test(text)) return 4;
+  if (/claude|qwen|kimi/.test(text)) return 5;
+  if (/gpt[-_ ]?4|gpt4/.test(text)) return 6;
+  if (/gemini/.test(text)) return 7;
+  if (/gpt[-_ ]?5\.5|gpt5\.5/.test(text)) return 8;
   return 5;
 }
 
@@ -122,7 +145,8 @@ function getNovelConfigs(preferredProvider) {
         model: selected.model.id,
         providerId: selected.provider.id,
         providerName: selected.provider.name || selected.provider.id,
-        modelName: selected.model.name || selected.model.id
+        modelName: selected.model.name || selected.model.id,
+        channel: selected.model.channel || ''
       }));
     }
     // 未指定 provider 时，按小说模型优先级取任何 story model
@@ -144,7 +168,8 @@ function getNovelConfigs(preferredProvider) {
           model: fallback.model.id,
           providerId: fallback.provider.id,
           providerName: fallback.provider.name || fallback.provider.id,
-          modelName: fallback.model.name || fallback.model.id
+          modelName: fallback.model.name || fallback.model.id,
+          channel: fallback.model.channel || ''
         }];
       }
     }
@@ -162,6 +187,45 @@ function getNovelConfigs(preferredProvider) {
 
 function getNovelConfig(preferredProvider) {
   return getNovelConfigs(preferredProvider)[0] || null;
+}
+
+function isDeyunaiConfig(config = {}) {
+  return config.providerId === 'deyunai' || /deyunai|漫路/i.test(`${config.providerId || ''} ${config.providerName || ''}`);
+}
+
+function isDeyunaiOverseasModel(config = {}) {
+  const model = String(config.model || '').toLowerCase();
+  return isDeyunaiConfig(config) && (
+    config.channel === 'overseas'
+    || /^gpt-|^o[1-9]|^claude-|^gemini-(?!3\.1-flash-lite-preview)|^grok-/i.test(model)
+  );
+}
+
+function normaliseCompletion(completion) {
+  if (typeof completion === 'string') {
+    try { return JSON.parse(completion); } catch { return completion; }
+  }
+  return completion;
+}
+
+function completionText(completion) {
+  const parsed = normaliseCompletion(completion);
+  const message = parsed?.choices?.[0]?.message || {};
+  return cleanString(message.content || message.reasoning_content || parsed?.choices?.[0]?.text || '');
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`${label}超时（${Math.round(timeoutMs / 1000)}秒）`);
+      error.code = 'NOVEL_MODEL_TIMEOUT';
+      reject(error);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 // 获取所有可用于小说生成的模型列表
@@ -197,8 +261,54 @@ function getAvailableModels() {
 
 function createClient(config, timeoutMs = NOVEL_CHAT_TIMEOUT_MS) {
   const opts = { apiKey: config.apiKey, timeout: timeoutMs };
-  if (config.baseURL) opts.baseURL = config.baseURL;
+  if (config.baseURL) {
+    opts.baseURL = config.baseURL;
+    if (isDeyunaiOverseasModel(config) && !opts.baseURL.includes('/c35/')) {
+      opts.baseURL = opts.baseURL.replace(/\/v1\/?$/, '/c35/v1');
+      opts.defaultHeaders = { ...(opts.defaultHeaders || {}), vendor: 'API_VENDOR' };
+    }
+  }
   return new OpenAI(opts);
+}
+
+function buildCompletionEndpoint(config) {
+  let baseURL = config.baseURL || 'https://api.openai.com/v1';
+  const headers = {
+    Authorization: `Bearer ${config.apiKey}`,
+    'Content-Type': 'application/json'
+  };
+  if (isDeyunaiOverseasModel(config) && !baseURL.includes('/c35/')) {
+    baseURL = baseURL.replace(/\/v1\/?$/, '/c35/v1');
+    headers.vendor = 'API_VENDOR';
+  }
+  return {
+    url: `${baseURL.replace(/\/$/, '')}/chat/completions`,
+    headers
+  };
+}
+
+async function createChatCompletionHttp(config, { messages, max_tokens }) {
+  const endpoint = buildCompletionEndpoint(config);
+  const payload = {
+    model: config.model,
+    max_tokens,
+    messages
+  };
+  if (/deepseek|openai|aiapi|zhipu/i.test(`${config.providerId || ''} ${config.baseURL || ''}`)) {
+    payload.response_format = { type: 'json_object' };
+  }
+  const response = await axios.post(endpoint.url, payload, {
+    headers: endpoint.headers,
+    timeout: NOVEL_CHAT_TIMEOUT_MS,
+    validateStatus: () => true
+  });
+  if (response.status < 200 || response.status >= 300) {
+    const body = response.data ? JSON.stringify(response.data).slice(0, 300) : 'no body';
+    const error = new Error(`${response.status} status code (${body})`);
+    error.status = response.status;
+    throw error;
+  }
+  return normaliseCompletion(response.data);
 }
 
 function parseModelJson(text, label = 'AI 返回') {
@@ -237,29 +347,16 @@ async function parseModelJsonWithRepair({ text, label = 'AI 返回', provider, s
         }
       ]
     });
-    return parseModelJson(result.completion.choices[0].message.content, `${label}结构修复返回`);
+    return parseModelJson(completionText(result.completion), `${label}结构修复返回`);
   }
 }
 
 function selectAutoNovelCandidates(configs) {
   const picked = [];
   const seen = new Set();
-  const add = (predicate) => {
-    const item = configs.find(config => predicate(config) && !seen.has(`${config.providerId}/${config.model}`));
-    if (!item) return;
-    picked.push(item);
-    seen.add(`${item.providerId}/${item.model}`);
-  };
-
-  add(config => config.providerId === 'deyunai' && /gemini-2\.5-pro/i.test(config.model));
-  add(config => config.providerId === 'deyunai' && /gpt[-_]?5\.5/i.test(config.model));
-  add(config => config.providerId === 'deyunai' && /gemini/i.test(config.model));
-  add(config => config.providerId === 'zhipu');
-  add(config => config.providerId === 'deepseek' && /deepseek-chat/i.test(config.model));
-  add(config => config.providerId === 'openai');
-
   for (const config of configs) {
     if (picked.length >= NOVEL_AUTO_ATTEMPT_LIMIT) break;
+    if (/reasoner|(^|[-_])r1($|[-_])|deepseek-r1/i.test(`${config.model} ${config.modelName || ''}`)) continue;
     const key = `${config.providerId}/${config.model}`;
     if (!seen.has(key)) {
       picked.push(config);
@@ -283,12 +380,7 @@ async function createChatCompletionWithAttempts({ preferredProvider, messages, m
       ok: false
     };
     try {
-      const client = createClient(config, NOVEL_CHAT_TIMEOUT_MS);
-      const completion = await client.chat.completions.create({
-        model: config.model,
-        max_tokens,
-        messages
-      });
+      const completion = await createChatCompletionHttp(config, { messages, max_tokens });
       attempt.ok = true;
       attempts.push(attempt);
       return { completion, config, attempts };
@@ -320,12 +412,12 @@ async function createStreamingCompletionWithAttempts({ preferredProvider, messag
     };
     try {
       const client = createClient(config, NOVEL_STREAM_TIMEOUT_MS);
-      const stream = await client.chat.completions.create({
+      const stream = await withTimeout(client.chat.completions.create({
         model: config.model,
         max_tokens,
         stream: true,
         messages
-      });
+      }), NOVEL_STREAM_TIMEOUT_MS, `${config.providerId}/${config.model}`);
       const chunks = [];
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content;
@@ -352,6 +444,12 @@ async function createStreamingCompletionWithAttempts({ preferredProvider, messag
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function asList(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') return Object.values(value);
+  return [];
 }
 
 function cleanString(value) {
@@ -448,7 +546,8 @@ function normalizeGender(value = '') {
 }
 
 function normalizeNovelOutline(raw = {}, novel = {}) {
-  const chapters = asArray(raw.chapters).map((chapter, index) => ({
+  const chapterSource = raw.chapters || raw.chapter_blueprint || raw.chapter_plan || raw.chapter_outline || raw.chapter_outlines || raw.chapter_tasks || raw.episodes;
+  const chapters = asList(chapterSource).map((chapter, index) => ({
     index: Number(chapter.index) || index + 1,
     title: cleanString(chapter.title) || `Chapter ${index + 1}`,
     summary: cleanString(chapter.summary),
@@ -599,6 +698,9 @@ function outlineQualityIssues(outline = {}, { novelType = 'short', chapterCount 
   const characters = asArray(outline.characters);
   const conflicts = asArray(outline.conflicts);
   const gaps = asArray(outline.gaps).join('\n');
+  if (Number(chapterCount) > 0 && chapters.length !== Number(chapterCount)) {
+    issues.push(`Chapter count mismatch. Expected exactly ${Number(chapterCount)} chapters, got ${chapters.length}.`);
+  }
   const singleCharacterAllowed = /single[- ]character|solo|one person|独角戏|单人|一个人/.test(`${outline.promise || ''}\n${outline.synopsis || ''}\n${gaps}`.toLowerCase());
   const expectedCharacters = novelType === 'long'
     ? 8
@@ -646,7 +748,7 @@ async function repairOutlineQuality({ outline, issues, title, genre, style, chap
   const result = await createChatCompletionWithAttempts({
     preferredProvider: provider,
     stage: '修复小说大纲质量',
-    max_tokens: 7000,
+    max_tokens: 5000,
     messages: [
       {
         role: 'system',
@@ -690,7 +792,7 @@ ${JSON.stringify(outline)}`
     ].filter(Boolean)
   });
   const repairedJson = await parseModelJsonWithRepair({
-    text: result.completion.choices[0].message.content,
+    text: completionText(result.completion),
     label: '大纲质量修复 Agent 返回',
     provider,
     stage: '修复大纲质量返回 JSON'
@@ -704,6 +806,96 @@ ${JSON.stringify(outline)}`
     attempts: result.attempts
   };
   return repaired;
+}
+
+async function completeOutlineChapters({ outline, title, genre, style, chapterCount, description, provider, novelType, culturalRegion }) {
+  const result = await createChatCompletionWithAttempts({
+    preferredProvider: provider,
+    stage: '补齐小说章节任务书',
+    max_tokens: Math.min(6000, Math.max(2600, Number(chapterCount || 1) * 520)),
+    messages: [
+      {
+        role: 'system',
+        content: `你是小说章节架构师。只输出合法 JSON，不要 Markdown。必须忠于素材，不许兜底、不许乱编、不许固定模板。${cultureInstruction(culturalRegion)}`
+      },
+      {
+        role: 'user',
+        content: `请只补齐 chapters 数组，必须恰好 ${chapterCount} 章，index 从 1 到 ${chapterCount}。每章都要是可直接交给作者开写的任务书，不能流水账。
+每章字段必须包含：index,title,summary,function,pov,dramatic_question,scene_goal,obstacle,choice,cost,emotional_shift,reversal,clue,payoff,sensory_anchor,characters,key_events,hook。
+每章 summary 写具体事件、压力、选择、代价和变化。章节之间必须有因果递进。
+
+项目标题：${title}
+题材：${genre}
+风格：${style}
+篇幅：${novelType}
+素材：${description}
+已有人物：${JSON.stringify(asArray(outline.characters).map(c => ({ name: c.name, role: c.role, goal: c.goal, conflict: c.conflict })).slice(0, 12))}
+已有冲突：${JSON.stringify(asArray(outline.conflicts).slice(0, 8))}
+已有大纲摘要：${JSON.stringify({ synopsis: outline.synopsis, inciting_incident: outline.inciting_incident, core_problem: outline.core_problem, conflict_engine: outline.conflict_engine, stakes: outline.stakes, escalation_path: outline.escalation_path })}
+
+输出格式：
+{ "chapters": [ ...恰好 ${chapterCount} 个章节对象... ] }`
+      }
+    ]
+  });
+  const json = await parseModelJsonWithRepair({
+    text: completionText(result.completion),
+    label: '章节补齐 Agent 返回',
+    provider,
+    stage: '修复章节补齐 JSON'
+  });
+  const completed = normalizeNovelOutline({ ...outline, chapters: json.chapters }, { title, genre, style, chapterCount, description, novelType, culturalRegion });
+  if (asArray(completed.chapters).length < Number(chapterCount)) {
+    const existing = asArray(completed.chapters);
+    const missingIndexes = [];
+    for (let i = 1; i <= Number(chapterCount); i += 1) {
+      if (!existing.some(chapter => Number(chapter.index) === i)) missingIndexes.push(i);
+    }
+    const fillResult = await createChatCompletionWithAttempts({
+      preferredProvider: provider,
+      stage: '补齐缺失章节',
+      max_tokens: Math.min(5000, Math.max(1800, missingIndexes.length * 650)),
+      messages: [
+        { role: 'system', content: `你是小说章节架构师。只输出合法 JSON，不要 Markdown。必须忠于素材，不许兜底、不许乱编。${cultureInstruction(culturalRegion)}` },
+        {
+          role: 'user',
+          content: `已有章节数量不足。请只输出缺失章节，不能重写已有章节。
+缺失章节 index：${missingIndexes.join(', ')}
+每个章节必须包含 index,title,summary,function,pov,dramatic_question,scene_goal,obstacle,choice,cost,emotional_shift,reversal,clue,payoff,sensory_anchor,characters,key_events,hook。
+项目标题：${title}
+素材：${description}
+已有章节：${JSON.stringify(existing.map(ch => ({ index: ch.index, title: ch.title, summary: ch.summary, hook: ch.hook })))}
+已有角色：${JSON.stringify(asArray(outline.characters).map(c => ({ name: c.name, role: c.role })).slice(0, 12))}
+输出格式：{ "chapters": [ ...只包含缺失章节... ] }`
+        }
+      ]
+    });
+    const fillJson = await parseModelJsonWithRepair({
+      text: completionText(fillResult.completion),
+      label: '缺失章节补齐 Agent 返回',
+      provider,
+      stage: '修复缺失章节 JSON'
+    });
+    const merged = [...existing, ...asArray(fillJson.chapters)]
+      .sort((a, b) => Number(a.index) - Number(b.index));
+    const normalizedMerged = normalizeNovelOutline({ ...outline, chapters: merged }, { title, genre, style, chapterCount, description, novelType, culturalRegion });
+    completed.chapters = normalizedMerged.chapters;
+    completed._fill_meta = {
+      provider_id: fillResult.config.providerId,
+      model_id: fillResult.config.model,
+      provider_name: fillResult.config.providerName,
+      model_name: fillResult.config.modelName,
+      attempts: fillResult.attempts
+    };
+  }
+  completed._meta = {
+    provider_id: result.config.providerId,
+    model_id: result.config.model,
+    provider_name: result.config.providerName,
+    model_name: result.config.modelName,
+    attempts: result.attempts
+  };
+  return completed;
 }
 
 async function analyzeNovelSeed({ mode = 'idea', idea = '', sourceText = '', title = '', genre = '', subtype = '', channel = '', novelType = 'short', chapterCount = 5, chapterWords = 2000, style = 'descriptive', culturalRegion = 'chinese', provider }) {
@@ -789,7 +981,7 @@ ${inputText}`
     ].filter(Boolean)
   });
   const planJson = await parseModelJsonWithRepair({
-    text: result.completion.choices[0].message.content,
+    text: completionText(result.completion),
     label: '项目初始化 Agent 返回',
     provider,
     stage: '修复项目初始化 JSON'
@@ -831,10 +1023,11 @@ async function generateOutline({ title, genre, style, chapterCount = 10, descrip
   const typeLabel = TYPE_LABELS[novelType] || '短篇小说';
   const typeHint = TYPE_HINTS[novelType] || '';
   const characterScale = characterScaleRule({ novelType, chapterCount, description, title });
+  const compactOutline = buildCompactOutlinePrompt({ title, genreLabel, styleLabel, typeLabel, chapterCount, novelType, culturalRegion, description });
   const kbContext = kb.buildAgentContext('screenwriter', {
     genre: [genre, novelType, '小说', '中篇', '大纲', '对白', '反转'].filter(Boolean).join(' '),
-    maxDocs: 10,
-    maxCharsPerDoc: 900
+    maxDocs: 5,
+    maxCharsPerDoc: 500
   });
 
   const systemPrompt = `你是一位顶级${typeLabel}作家和故事架构师，精通叙事结构和角色塑造。
@@ -969,22 +1162,17 @@ ${description ? `- 故事描述：${description}` : ''}
   const result = await createChatCompletionWithAttempts({
     preferredProvider: provider,
     stage: '生成大纲',
-    max_tokens: 7000,
+    max_tokens: 5200,
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: compactOutline.system },
       kbContext ? { role: 'system', content: kbContext } : null,
       { role: 'user', content: NOVEL_SOURCE_FIDELITY_RULES },
-      { role: 'user', content: NOVEL_FULL_PIPELINE_QUALITY_GATE },
       { role: 'user', content: conflictQualityPrompt },
-      { role: 'user', content: outlineCraftPrompt },
-      { role: 'user', content: mediumNovelCraftPrompt },
-      { role: 'user', content: userPrompt },
-      { role: 'user', content: structurePrompt },
-      { role: 'user', content: contentExtractionPrompt }
+      { role: 'user', content: compactOutline.user }
     ].filter(Boolean)
   });
   const completion = result.completion;
-  const text = completion.choices[0].message.content;
+  const text = completionText(completion);
   // 提取 JSON
   const outlineJson = await parseModelJsonWithRepair({
     text,
@@ -993,8 +1181,26 @@ ${description ? `- 故事描述：${description}` : ''}
     stage: '修复大纲 JSON'
   });
   let outline = normalizeNovelOutline(outlineJson, { title, genre, style, chapterCount, description, novelType, culturalRegion });
+  if (Number(chapterCount) > 0 && asArray(outline.chapters).length !== Number(chapterCount)) {
+    const completed = await completeOutlineChapters({
+      outline,
+      title,
+      genre,
+      style,
+      chapterCount,
+      description,
+      provider,
+      novelType,
+      culturalRegion
+    });
+    outline = {
+      ...outline,
+      chapters: completed.chapters,
+      _chapter_completion_meta: completed._meta
+    };
+  }
   const qualityIssues = outlineQualityIssues(outline, { novelType, chapterCount });
-  if (qualityIssues.length) {
+  if (qualityIssues.length && process.env.NOVEL_OUTLINE_REPAIR === '1') {
     const repaired = await repairOutlineQuality({
       outline,
       issues: qualityIssues,
@@ -1009,6 +1215,8 @@ ${description ? `- 故事描述：${description}` : ''}
       kbContext
     });
     outline = repaired;
+    outline._quality_repair_issues = qualityIssues;
+  } else if (qualityIssues.length) {
     outline._quality_repair_issues = qualityIssues;
   }
   // Gaps are non-blocking review notes for missing names/details. Regeneration should
@@ -1330,7 +1538,7 @@ ${JSON.stringify(context)}`
   });
   const completion = result.completion;
   const reviewJson = await parseModelJsonWithRepair({
-    text: completion.choices[0].message.content,
+    text: completionText(completion),
     label: '审稿 Agent 返回',
     provider: provider || novel.provider,
     stage: '修复审稿 JSON'
@@ -1382,7 +1590,7 @@ ${JSON.stringify(context)}`
   });
   const completion = result.completion;
   const factsJson = await parseModelJsonWithRepair({
-    text: completion.choices[0].message.content,
+    text: completionText(completion),
     label: '数据 Agent 返回',
     provider: provider || novel.provider,
     stage: '修复事实抽取 JSON'
