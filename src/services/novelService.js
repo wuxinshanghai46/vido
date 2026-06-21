@@ -24,6 +24,9 @@ const CULTURE_LABELS = {
   overseas: '海外语境',
   mixed: '中外混合语境'
 };
+const NOVEL_CHAT_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_CHAT_TIMEOUT_MS) || 25000);
+const NOVEL_STREAM_TIMEOUT_MS = Math.max(15000, Number(process.env.NOVEL_STREAM_TIMEOUT_MS) || 90000);
+const NOVEL_AUTO_ATTEMPT_LIMIT = Math.max(1, Number(process.env.NOVEL_AUTO_ATTEMPT_LIMIT) || 2);
 
 function cultureInstruction(culturalRegion = 'chinese') {
   if (culturalRegion === 'overseas') {
@@ -36,7 +39,8 @@ function cultureInstruction(culturalRegion = 'chinese') {
 }
 
 function sourceLength(value = '') {
-  return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
+  const meaningfulChars = String(value || '').match(/[0-9A-Za-z\u3400-\u9FFF\uF900-\uFAFF]/g);
+  return meaningfulChars ? meaningfulChars.length : 0;
 }
 
 function ensureSufficientSource({ mode = 'idea', title = '', idea = '', sourceText = '', description = '' } = {}) {
@@ -191,8 +195,8 @@ function getAvailableModels() {
   });
 }
 
-function createClient(config) {
-  const opts = { apiKey: config.apiKey };
+function createClient(config, timeoutMs = NOVEL_CHAT_TIMEOUT_MS) {
+  const opts = { apiKey: config.apiKey, timeout: timeoutMs };
   if (config.baseURL) opts.baseURL = config.baseURL;
   return new OpenAI(opts);
 }
@@ -255,21 +259,21 @@ function selectAutoNovelCandidates(configs) {
   add(config => config.providerId === 'openai');
 
   for (const config of configs) {
-    if (picked.length >= 10) break;
+    if (picked.length >= NOVEL_AUTO_ATTEMPT_LIMIT) break;
     const key = `${config.providerId}/${config.model}`;
     if (!seen.has(key)) {
       picked.push(config);
       seen.add(key);
     }
   }
-  return picked;
+  return picked.slice(0, NOVEL_AUTO_ATTEMPT_LIMIT);
 }
 
 async function createChatCompletionWithAttempts({ preferredProvider, messages, max_tokens, stage = '小说生成' }) {
   const configs = getNovelConfigs(preferredProvider);
   if (!configs.length) throw new Error('未配置 AI 供应商');
   const attempts = [];
-  const candidateConfigs = preferredProvider ? configs : selectAutoNovelCandidates(configs);
+  const candidateConfigs = (preferredProvider ? configs : selectAutoNovelCandidates(configs)).slice(0, NOVEL_AUTO_ATTEMPT_LIMIT);
   for (const config of candidateConfigs) {
     const attempt = {
       provider_id: config.providerId,
@@ -279,7 +283,7 @@ async function createChatCompletionWithAttempts({ preferredProvider, messages, m
       ok: false
     };
     try {
-      const client = createClient(config);
+      const client = createClient(config, NOVEL_CHAT_TIMEOUT_MS);
       const completion = await client.chat.completions.create({
         model: config.model,
         max_tokens,
@@ -305,7 +309,7 @@ async function createStreamingCompletionWithAttempts({ preferredProvider, messag
   const configs = getNovelConfigs(preferredProvider);
   if (!configs.length) throw new Error('未配置 AI 供应商');
   const attempts = [];
-  const candidateConfigs = preferredProvider ? configs : selectAutoNovelCandidates(configs);
+  const candidateConfigs = (preferredProvider ? configs : selectAutoNovelCandidates(configs)).slice(0, NOVEL_AUTO_ATTEMPT_LIMIT);
   for (const config of candidateConfigs) {
     const attempt = {
       provider_id: config.providerId,
@@ -315,7 +319,7 @@ async function createStreamingCompletionWithAttempts({ preferredProvider, messag
       ok: false
     };
     try {
-      const client = createClient(config);
+      const client = createClient(config, NOVEL_STREAM_TIMEOUT_MS);
       const stream = await client.chat.completions.create({
         model: config.model,
         max_tokens,
