@@ -1,6 +1,10 @@
 require('dotenv').config();
 const axios = require('axios');
 const OpenAI = require('openai');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
 const kb = require('./knowledgeBaseService');
 
 const GENRE_LABELS = {
@@ -26,8 +30,11 @@ const CULTURE_LABELS = {
   mixed: '中外混合语境'
 };
 const NOVEL_CHAT_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_CHAT_TIMEOUT_MS) || 60000);
+const NOVEL_OVERSEAS_CHAT_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_OVERSEAS_CHAT_TIMEOUT_MS) || 25000);
+const NOVEL_PREMIUM_PROBE_TIMEOUT_MS = Math.max(5000, Number(process.env.NOVEL_PREMIUM_PROBE_TIMEOUT_MS) || 15000);
+const NOVEL_GEMINI_FLASH_TIMEOUT_MS = Math.max(15000, Number(process.env.NOVEL_GEMINI_FLASH_TIMEOUT_MS) || 60000);
 const NOVEL_STREAM_TIMEOUT_MS = Math.max(15000, Number(process.env.NOVEL_STREAM_TIMEOUT_MS) || 90000);
-const NOVEL_AUTO_ATTEMPT_LIMIT = Math.max(1, Number(process.env.NOVEL_AUTO_ATTEMPT_LIMIT) || 3);
+const NOVEL_AUTO_ATTEMPT_LIMIT = Math.max(1, Number(process.env.NOVEL_AUTO_ATTEMPT_LIMIT) || 4);
 
 function cultureInstruction(culturalRegion = 'chinese') {
   if (culturalRegion === 'overseas') {
@@ -104,6 +111,13 @@ function characterScaleRule({ novelType = 'short', chapterCount = 5, description
 // 获取可用的 LLM 配置（优先 settings，回退 env）
 function getNovelModelPriority(provider = {}, model = {}) {
   const text = `${provider.id || ''} ${provider.name || ''} ${provider.preset || ''} ${model.id || ''} ${model.name || ''}`.toLowerCase();
+  if (/gpt[-_ ]?5\.5|gpt5\.5/.test(text)) return 1;
+  if (/gemini-2\.5-pro/.test(text)) return 2;
+  if (/gemini-2\.5-flash/.test(text)) return 3;
+  if (/gemini/.test(text)) return 5;
+  if (/deepseek-chat|deepseek/.test(text)) return 4;
+  if (/gpt[-_ ]?4|gpt4|claude|qwen|kimi|aiapi/.test(text)) return 6;
+  if (/glm|zhipu|鏅鸿氨/.test(text)) return 7;
   if (/deepseek-chat|deepseek/.test(text)) return 1;
   if (/aiapi/.test(text)) return 2;
   if (/glm|zhipu|智谱/.test(text)) return 3;
@@ -121,6 +135,14 @@ function sortNovelModelCandidates(candidates) {
     if (priority !== 0) return priority;
     return String(a.model.name || a.model.id || '').localeCompare(String(b.model.name || b.model.id || ''));
   });
+}
+
+function novelCandidateFamily(config = {}) {
+  const text = `${config.providerId || ''} ${config.providerName || ''} ${config.model || ''} ${config.modelName || ''}`.toLowerCase();
+  if (/gpt[-_ ]?5\.5|gpt5\.5/.test(text)) return 'gpt55';
+  if (/gemini/.test(text)) return 'gemini';
+  if (/deepseek-chat|deepseek/.test(text)) return 'deepseek';
+  return `${config.providerId || 'provider'}/${config.model || 'model'}`;
 }
 
 function getNovelConfigs(preferredProvider) {
@@ -287,6 +309,70 @@ function buildCompletionEndpoint(config) {
   };
 }
 
+function novelChatTimeoutMs(config = {}) {
+  if (!isDeyunaiOverseasModel(config)) return NOVEL_CHAT_TIMEOUT_MS;
+  const model = String(config.model || '').toLowerCase();
+  if (/gpt[-_ ]?5\.5|gemini-2\.5-pro/.test(model)) return NOVEL_PREMIUM_PROBE_TIMEOUT_MS;
+  if (/gemini-2\.5-flash/.test(model)) return NOVEL_GEMINI_FLASH_TIMEOUT_MS;
+  return NOVEL_OVERSEAS_CHAT_TIMEOUT_MS;
+}
+
+function createChatCompletionCurl(endpoint, payload, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let dir = '';
+    try {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-novel-curl-'));
+      const bodyPath = path.join(dir, 'body.json');
+      const configPath = path.join(dir, 'curl.conf');
+      fs.writeFileSync(bodyPath, JSON.stringify(payload), 'utf8');
+      const maxTime = Math.max(5, Math.ceil(timeoutMs / 1000));
+      const connectTime = Math.min(10, Math.max(3, Math.ceil(maxTime / 3)));
+      const configLines = [
+        `url = "${endpoint.url.replace(/"/g, '\\"')}"`,
+        'request = "POST"',
+        'silent',
+        'show-error',
+        `connect-timeout = ${connectTime}`,
+        `max-time = ${maxTime}`,
+        'write-out = "\\n__VIDO_HTTP_STATUS__:%{http_code}"',
+        `data-binary = "@${bodyPath.replace(/\\/g, '/').replace(/"/g, '\\"')}"`,
+      ];
+      Object.entries(endpoint.headers || {}).forEach(([key, value]) => {
+        configLines.push(`header = "${String(key).replace(/"/g, '\\"')}: ${String(value).replace(/"/g, '\\"')}"`);
+      });
+      configLines.push('header = "Expect:"');
+      fs.writeFileSync(configPath, configLines.join('\n'), 'utf8');
+      try { fs.chmodSync(configPath, 0o600); fs.chmodSync(bodyPath, 0o600); } catch {}
+      const child = spawn('curl', ['--config', configPath], { windowsHide: true });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+      child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+      child.on('error', reject);
+      child.on('close', code => {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+        const marker = stdout.match(/\n__VIDO_HTTP_STATUS__:(\d+)\s*$/);
+        const body = marker ? stdout.slice(0, marker.index) : stdout;
+        const status = marker ? Number(marker[1]) : 0;
+        if (code !== 0 && !status) {
+          const error = new Error((stderr || `curl exited ${code}`).trim());
+          error.code = 'NOVEL_CURL_FAILED';
+          reject(error);
+          return;
+        }
+        let data = body;
+        try { data = JSON.parse(body); } catch {}
+        resolve({ status, data });
+      });
+    } catch (error) {
+      if (dir) {
+        try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+      }
+      reject(error);
+    }
+  });
+}
+
 async function createChatCompletionHttp(config, { messages, max_tokens }) {
   const endpoint = buildCompletionEndpoint(config);
   const payload = {
@@ -297,11 +383,24 @@ async function createChatCompletionHttp(config, { messages, max_tokens }) {
   if (/deepseek|openai|aiapi|zhipu/i.test(`${config.providerId || ''} ${config.baseURL || ''}`)) {
     payload.response_format = { type: 'json_object' };
   }
-  const response = await axios.post(endpoint.url, payload, {
-    headers: endpoint.headers,
-    timeout: NOVEL_CHAT_TIMEOUT_MS,
-    validateStatus: () => true
-  });
+  const timeoutMs = novelChatTimeoutMs(config);
+  let response;
+  if (isDeyunaiOverseasModel(config)) {
+    response = await createChatCompletionCurl(endpoint, payload, timeoutMs);
+  } else {
+  try {
+    response = await axios.post(endpoint.url, payload, {
+      headers: endpoint.headers,
+      timeout: timeoutMs,
+      validateStatus: () => true
+    });
+  } catch (error) {
+    if (!isDeyunaiOverseasModel(config) || !/ECONNABORTED|ETIMEDOUT|socket hang up|network timeout/i.test(`${error.code || ''} ${error.message || ''}`)) {
+      throw error;
+    }
+    response = await createChatCompletionCurl(endpoint, payload, timeoutMs);
+  }
+  }
   if (response.status < 200 || response.status >= 300) {
     const body = response.data ? JSON.stringify(response.data).slice(0, 300) : 'no body';
     const error = new Error(`${response.status} status code (${body})`);
@@ -354,13 +453,19 @@ async function parseModelJsonWithRepair({ text, label = 'AI 返回', provider, s
 function selectAutoNovelCandidates(configs) {
   const picked = [];
   const seen = new Set();
+  const familyCount = new Map();
   for (const config of configs) {
     if (picked.length >= NOVEL_AUTO_ATTEMPT_LIMIT) break;
     if (/reasoner|(^|[-_])r1($|[-_])|deepseek-r1/i.test(`${config.model} ${config.modelName || ''}`)) continue;
     const key = `${config.providerId}/${config.model}`;
+    const family = novelCandidateFamily(config);
+    const count = Number(familyCount.get(family) || 0);
+    if (family === 'gemini' && count >= 2) continue;
+    if (family === 'gpt55' && count >= 1) continue;
     if (!seen.has(key)) {
       picked.push(config);
       seen.add(key);
+      familyCount.set(family, count + 1);
     }
   }
   return picked.slice(0, NOVEL_AUTO_ATTEMPT_LIMIT);

@@ -804,6 +804,11 @@ textarea, input { outline: none; }
 .nv-web-stage .nv-edge { stroke: rgba(190, 231, 255, .22); stroke-width: 1.1; }
 .nv-web-stage .nv-edge.is-inferred { stroke-dasharray: 5 7; stroke: rgba(169, 255, 69, .28); }
 .nv-web-stage .nv-edge.is-active { stroke: var(--nv-mint); stroke-width: 2.5; }
+.nv-web-stage .nv-edge-label { opacity: 0; transition: opacity .16s ease; }
+.nv-web-stage .nv-edge-label.is-visible,
+.nv-web-stage .nv-web-edge-group:hover .nv-edge-label { opacity: .92; }
+.nv-web-stage .nv-edge-label:not(.is-visible) text,
+.nv-web-stage .nv-edge-label:not(.is-visible) rect { pointer-events: none; }
 .nv-web-stage .nv-node circle {
   fill: rgba(10,17,28,.92);
   stroke-width: 2;

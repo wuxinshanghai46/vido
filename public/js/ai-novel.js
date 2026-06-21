@@ -1056,6 +1056,7 @@
       const b = positions[r.to];
       if (!a || !b) return '';
       const on = r.from === active || r.to === active;
+      const showLabel = on || relations.length <= 5;
       const fromGender = endpointDisplayLabel(r, r.from, entityByName);
       const toGender = endpointDisplayLabel(r, r.to, entityByName);
       const relationLabel = `${fromGender}→${toGender} · ${r.type || r.relation || '关系'}`;
@@ -1070,8 +1071,9 @@
       const curveX = mx + (-dy / length) * (idx % 2 ? 18 : -18);
       const curveY = my + (dx / length) * (idx % 2 ? 18 : -18);
       return `<g class="nv-web-edge-group ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''}" data-edge-from="${esc(r.from)}" data-edge-to="${esc(r.to)}">
+        <title>${esc(r.from)} → ${esc(r.to)}：${esc(r.type || r.relation || '关系')} ${esc(r.description || r.evidence || r.tension || '')}</title>
         <path class="nv-edge ${on ? 'is-active' : ''} ${r.inferred ? 'is-inferred' : ''}" d="M ${a.x} ${a.y} Q ${curveX} ${curveY} ${b.x} ${b.y}"></path>
-        <g class="nv-edge-label ${on ? 'is-active' : ''}" transform="translate(${labelX},${labelY})">
+        <g class="nv-edge-label ${on ? 'is-active' : ''} ${showLabel ? 'is-visible' : ''}" transform="translate(${labelX},${labelY})">
           <rect x="-46" y="-11" width="92" height="22" rx="11"></rect>
           <text text-anchor="middle" dominant-baseline="middle">${esc(relationLabel.slice(0, 12))}</text>
         </g>
