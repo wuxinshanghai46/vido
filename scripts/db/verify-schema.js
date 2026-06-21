@@ -31,6 +31,10 @@ const REQUIRED_TABLES = [
   'usage_records',
   'audit_logs',
   'content_records',
+  'novels',
+  'comic_tasks',
+  'drama_projects',
+  'drama_episodes',
 ];
 
 function main() {

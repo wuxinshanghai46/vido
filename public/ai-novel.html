@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 小说工作台 - VIDO</title>
+  <link rel="stylesheet" href="/css/ai-novel.css?v=20260621-novel-stream-clear9" />
+</head>
+<body>
+  <div class="nv-shell" id="novelApp">
+    <aside class="nv-sidebar">
+      <a class="nv-brand" href="/dashboard">
+        <span class="nv-brand-mark">V</span>
+        <span>
+          <strong>VIDO</strong>
+          <small>AI 小说独立模块</small>
+        </span>
+      </a>
+      <nav class="nv-nav" aria-label="AI 小说导航">
+        <div class="nv-nav-label">创作入口</div>
+        <button class="nv-nav-item is-active" type="button" data-view="create">
+          <span></span>小说创作
+        </button>
+        <button class="nv-nav-item" type="button" data-view="tasks">
+          <span></span>任务中心
+        </button>
+      </nav>
+    </aside>
+
+    <main class="nv-main">
+      <header class="nv-topbar">
+        <div>
+          <div class="nv-crumb" id="nvCrumb">AI 小说 / 小说创作</div>
+          <h1 id="nvPageTitle">AI 小说工作台</h1>
+        </div>
+        <div class="nv-top-actions">
+          <button class="nv-btn nv-btn-muted" type="button" id="nvBackBtn">← 返回工作台</button>
+          <button class="nv-btn nv-btn-primary nv-save-progress" type="button" id="nvSaveProgressBtn">保存当前进度</button>
+        </div>
+      </header>
+
+      <section class="nv-view is-active" id="nvCreateView" aria-label="小说创作">
+        <div class="nv-page">
+          <section class="nv-hero">
+            <div>
+              <h2>写下想法，选好类型，直接生成小说</h2>
+              <p>先把题材、读者方向、文化语境和篇幅确定下来，AI 再生成标题、世界观、剧情大纲、人物和章节规划；后续每章由用户审核、保存和提交。</p>
+            </div>
+          </section>
+
+          <section class="nv-composer" aria-label="创建小说">
+            <div class="nv-mode-tabs">
+              <button class="is-active" type="button" data-create-mode="idea">一句话成书</button>
+              <button type="button" data-create-mode="import">导入作品分析</button>
+            </div>
+            <textarea id="nvIdeaInput" class="nv-big-input" placeholder="例如：一个魂穿边关小吏，靠现代军事常识守住孤城，却发现敌国统帅也来自现代。"></textarea>
+            <textarea id="nvImportInput" class="nv-big-input is-hidden" placeholder="粘贴你已有作品、旧大纲或章节片段，AI 会先分析再补齐标题、类型、世界观、人物和大纲。"></textarea>
+            <div class="nv-import-tools is-hidden" id="nvImportTools">
+              <label class="nv-file-picker">
+                <input id="nvImportFileInput" type="file" accept=".txt,.md,.json,.srt,.vtt,.ass,.csv,.mp4,.mov,.webm,.m4v,video/*,text/*" />
+                <span>上传小说文本 / 字幕 / 参考视频</span>
+              </label>
+              <div id="nvImportFileStatus">文本类文件会自动读入；视频文件会作为参考素材记录到方案里。</div>
+            </div>
+            <div class="nv-selected-line" id="nvSelectedLine">类型会在下一步弹窗中选择：AI 判断题材 / AI 判断细分 / AI 判断频道 / 中国语境 / 中篇小说</div>
+            <div class="nv-composer-actions">
+              <button class="nv-btn nv-btn-muted" type="button" id="nvImportToggleBtn">我已有作品，先分析</button>
+              <button class="nv-btn nv-btn-primary" type="button" id="nvOpenCreateModalBtn">选择类型并生成</button>
+            </div>
+          </section>
+
+          <section class="nv-library">
+            <div class="nv-section-title">
+              <h3>最近小说</h3>
+              <p>只显示数据库里的真实项目。</p>
+            </div>
+            <div class="nv-project-list" id="nvProjectList"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="nv-view" id="nvWorkView" aria-label="当前小说"></section>
+      <section class="nv-view" id="nvTaskView" aria-label="任务中心"></section>
+    </main>
+  </div>
+
+  <div class="nv-modal-mask" id="nvCreateModal" aria-hidden="true">
+    <div class="nv-modal" role="dialog" aria-modal="true" aria-labelledby="nvCreateModalTitle">
+      <header class="nv-modal-head">
+        <div>
+          <h2 id="nvCreateModalTitle">选择小说类型</h2>
+          <p>按“题材 → 读者方向 → 细分类型 → 文化语境 → 篇幅”确认，生成时一次性写入项目配置。</p>
+        </div>
+        <button class="nv-icon-btn" type="button" id="nvCloseCreateModalBtn" aria-label="关闭">×</button>
+      </header>
+      <div class="nv-modal-body">
+        <section class="nv-choice-section">
+          <div class="nv-choice-head">
+            <h3>1. 先选题材</h3>
+            <p>如果不确定，可以保留 AI 推荐。</p>
+          </div>
+          <div class="nv-chip-grid" id="nvGenreChoices"></div>
+        </section>
+        <section class="nv-choice-section" id="nvSubtypeSection">
+          <div class="nv-choice-head">
+            <h3>2. 选择细分类型</h3>
+            <p>只展示当前题材相关的细分；没有明确要求时默认 AI 推荐。</p>
+          </div>
+          <div class="nv-chip-grid" id="nvSubtypeChoices"></div>
+        </section>
+        <section class="nv-choice-section">
+          <div class="nv-choice-head">
+            <h3>3. 读者方向</h3>
+            <p>决定叙事口味、爽点、情感浓度和文风。</p>
+          </div>
+          <div class="nv-chip-grid" id="nvChannelChoices"></div>
+        </section>
+        <section class="nv-choice-section">
+          <div class="nv-choice-head">
+            <h3>4. 文化语境和篇幅</h3>
+            <p>避免人物命名和世界观语感跑偏。</p>
+          </div>
+          <div class="nv-two-col">
+            <div class="nv-chip-grid" id="nvCultureChoices"></div>
+            <div class="nv-chip-grid" id="nvLengthChoices"></div>
+          </div>
+        </section>
+        <section class="nv-choice-section">
+          <div class="nv-choice-head">
+            <h3>5. 知识库合集</h3>
+            <p>直接使用后台 KB 的网文/剧情分类，不再只显示少量前端硬编码。</p>
+          </div>
+          <div class="nv-kb-preview" id="nvKnowledgePreview"></div>
+        </section>
+      </div>
+      <footer class="nv-modal-foot">
+        <div id="nvModalSummary">AI 判断题材 / AI 判断细分 / AI 判断频道 / 中国语境 / 中篇小说</div>
+        <button class="nv-btn nv-btn-primary" type="button" id="nvCreateProjectBtn">生成小说方案</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="nv-toast" id="nvToast" role="status" aria-live="polite"></div>
+  <script src="/js/auth.js?v=20260620"></script>
+  <script src="/js/ai-novel.js?v=20260621-novel-stream-clear9" defer></script>
+</body>
+</html>

@@ -213,7 +213,7 @@ async function openNovelPicker() {
   modal.classList.add('show');
   list.innerHTML = '<div style="padding:30px;text-align:center;color:var(--c-text-3);">加载中...</div>';
   try {
-    const r = await authFetch('/api/novel/');
+    const r = await authFetch('/api/novel?scope=adaptation&include_unfinished=1');
     const j = await r.json();
     const novels = j.novels || j.data || [];
     const items = Array.isArray(novels) ? novels : [];
@@ -227,11 +227,14 @@ async function openNovelPicker() {
       const statusMap = { draft: '草稿', outline_done: '大纲完成', generating: '生成中', done: '已完成' };
       const statusText = statusMap[n.status] || n.status || '未知';
       const hasContent = chapCount > 0 && (n.chapters || []).some(c => c.content?.length > 0);
+      const adaptStage = n.adaptation?.source_stage || (hasContent ? 'chapters' : n.outline ? 'outline' : 'brief');
+      const adaptText = adaptStage === 'chapters' ? '章节可用' : adaptStage === 'outline' ? '大纲可用' : adaptStage === 'brief' ? '简介可用' : '待完善';
       return `
         <div class="novel-pick-item" onclick="pickNovel('${n.id}')" style="padding:14px;border:1px solid var(--c-border-2);border-radius:8px;margin-bottom:8px;cursor:pointer;transition:all .2s;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
             <span style="font-weight:600;font-size:13px;color:var(--c-text);">${escapeHtml(n.title || '未命名')}</span>
             <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${hasContent ? 'rgba(16,185,129,.15)' : 'rgba(245,158,11,.15)'};color:${hasContent ? '#34d399' : '#fbbf24'};">${statusText}</span>
+            <span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(59,130,246,.14);color:#93c5fd;">${adaptText}</span>
           </div>
           <div style="font-size:10px;color:var(--c-text-3);">${chapCount} 章 · ${wordCount} 字 · ${n.genre || n.type || '短篇'}</div>
           <div style="font-size:10px;color:var(--c-text-2);margin-top:4px;line-height:1.5;">${escapeHtml((n.description || n.synopsis || '').slice(0, 120))}${(n.description || n.synopsis || '').length > 120 ? '...' : ''}</div>
