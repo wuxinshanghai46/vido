@@ -714,7 +714,7 @@ textarea, input { outline: none; }
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr) 310px;
   gap: 12px;
-  align-items: stretch;
+  align-items: start;
 }
 .nv-relation-side,
 .nv-relation-detail,
@@ -777,6 +777,7 @@ textarea, input { outline: none; }
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 560px;
   min-height: 560px;
   background:
     radial-gradient(circle at 48% 48%, rgba(46,243,234,.16), transparent 36%),
@@ -796,7 +797,7 @@ textarea, input { outline: none; }
 .nv-web-toolbar b { display: block; color: var(--nv-text); font-size: 13px; }
 .nv-web-toolbar span { display: block; margin-top: 2px; color: var(--nv-faint); font-size: 12px; }
 .nv-web-toolbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.nv-web-stage .nv-graph-svg { height: 100%; min-height: 500px; }
+.nv-web-stage .nv-graph-svg { height: 100%; min-height: 0; }
 .nv-web-bg { fill: transparent; }
 .nv-web-star { fill: rgba(255,255,255,.75); filter: drop-shadow(0 0 5px rgba(46,243,234,.55)); }
 .nv-web-edge-group { opacity: .58; }
@@ -828,6 +829,7 @@ textarea, input { outline: none; }
   stroke-linejoin: round;
 }
 .nv-relation-detail {
+  height: 560px;
   max-height: 560px;
   overflow: auto;
 }
@@ -844,9 +846,14 @@ textarea, input { outline: none; }
 .nv-detail-relations p {
   display: block;
   margin: 0 0 8px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,.035);
   color: var(--nv-muted);
   line-height: 1.7;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 .nv-detail-relations {
   border-top: 1px solid var(--nv-line);

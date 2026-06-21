@@ -1056,7 +1056,7 @@
       const b = positions[r.to];
       if (!a || !b) return '';
       const on = r.from === active || r.to === active;
-      const showLabel = on || relations.length <= 5;
+      const showLabel = relations.length <= 5;
       const fromGender = endpointDisplayLabel(r, r.from, entityByName);
       const toGender = endpointDisplayLabel(r, r.to, entityByName);
       const relationLabel = `${fromGender}→${toGender} · ${r.type || r.relation || '关系'}`;
