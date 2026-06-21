@@ -22,6 +22,7 @@ const engineering  = require('./seeds/engineering');
 const eraAnchors   = require('./seeds/era_anchors');
 const vidoPremium  = require('./seeds/vido_premium_prompts'); // 2026-04-25 飞书 wiki 同源 fallback 包
 const promptIntel  = require('./seeds/prompt_intelligence');
+const novelWriting = require('./seeds/novel_writing');
 
 const seedDocs = [
   ...digitalHuman,
@@ -33,6 +34,7 @@ const seedDocs = [
   ...eraAnchors,
   ...vidoPremium,
   ...promptIntel,
+  ...novelWriting,
 ];
 
 module.exports = seedDocs;

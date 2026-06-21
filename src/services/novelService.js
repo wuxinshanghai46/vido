@@ -575,11 +575,17 @@ function buildNovelKbContext(stage = 'novel', opts = {}) {
         'chapter taskbook',
         'scene writing',
         'dialogue',
+        'character voice',
+        'characterization',
+        'sensory detail',
+        'deep pov',
+        'anti summary',
+        'commercial web novel pacing',
         'reversal',
         'continuity'
       ].filter(Boolean).join(' '),
-      maxDocs: opts.maxDocs || 10,
-      maxCharsPerDoc: opts.maxCharsPerDoc || 900
+      maxDocs: opts.maxDocs || 14,
+      maxCharsPerDoc: opts.maxCharsPerDoc || 1200
     });
   } catch {
     return '';
@@ -601,6 +607,18 @@ const NOVEL_FULL_PIPELINE_QUALITY_GATE = `Professional novel quality gate for ev
 5. Maintain point of view discipline. Do not use omniscient jumps or let characters know facts they could not know.
 6. Dialogue must carry conflict or concealment. Avoid empty exchanges, generic agreement, and explanatory Q&A.
 7. Review, refinement, and fact extraction must enforce the same standard instead of merely rephrasing text.`;
+
+const NOVEL_ANTI_AI_PROSE_GATE = `Anti-AI prose and commercial web-novel craft gate:
+1. Do not write like an assistant explaining a plot. Write like a novelist staging a lived scene in real time.
+2. Avoid summary-chain prose: "then", "after that", "began to", "realized that", "felt a wave of", "his heart was full of", "the atmosphere became tense", "everything changed". Replace with concrete action, visible reaction, object detail, and irreversible choice.
+3. Every paragraph should do at least one useful job: reveal character, increase pressure, move bodies through space, expose a clue, sharpen relationship tension, or set up/pay off a hook.
+4. Dialogue must be selective and motivated. Each speaker wants something, hides something, tests someone, threatens, bargains, avoids, or reveals status. Do not use dialogue to dump background the characters already know.
+5. Give each important character a distinct speech rhythm and action habit. Let personality show through word choice, silence, interruption, avoidance, and what they notice.
+6. Use deep POV. Filter description through the POV character's fear, desire, bias, memory, and bodily state. Do not jump to an all-knowing narrator.
+7. Description must be specific but economical: choose 2-4 concrete sensory anchors tied to mood and plot pressure. Do not stack decorative adjectives.
+8. Start scenes late and leave them with forward pull. Open on trouble, decision, discovery, confrontation, or unease; end with a concrete new question, cost, threat, or changed relationship.
+9. Vary sentence and paragraph rhythm. Use shorter sentences for danger, interruption, and realization; longer lines only when they carry observation, dread, intimacy, or delay.
+10. Before final output, silently revise once to remove robotic phrasing, generic emotion labels, fake profundity, over-neat transitions, repeated sentence openings, and any line that could appear in any novel.`;
 
 function chapterTaskbookText(chapter = {}) {
   const rows = [
@@ -1402,7 +1420,16 @@ ${NOVEL_SOURCE_FIDELITY_RULES}
 
 ${NOVEL_FULL_PIPELINE_QUALITY_GATE}
 
-For this chapter, execute the taskbook instead of summarizing it. Open in a concrete scene. Give the POV character a visible objective, resistance, a choice under pressure, and a consequence. Use dialogue only when it changes power, emotion, information, or trust. Keep the prose specific; avoid report-like sentences such as "they began to investigate" without showing the investigative action.`;
+${NOVEL_ANTI_AI_PROSE_GATE}
+
+For this chapter, execute the taskbook instead of summarizing it.
+Drafting method:
+- Open directly inside a scene, not with background explanation.
+- Convert every outline beat into observable action, pressure, dialogue, body movement, object interaction, and consequence.
+- Let the POV character notice only what their fear, desire, wound, knowledge, and immediate danger make them notice.
+- Use dialogue only when it changes power, emotion, information, or trust.
+- If a passage reads like a report, rewrite it into a moment: who acts, who resists, what object/space changes, what choice costs, what cannot be undone.
+- Keep transitions invisible. Do not announce "the next step", "after investigation", "they began", or "this made him realize" unless the action is shown on page.`;
 
   const userPrompt = `【故事简介】
 ${outline.synopsis}
@@ -1448,7 +1475,14 @@ ${NOVEL_SOURCE_FIDELITY_RULES}
 
 ${NOVEL_FULL_PIPELINE_QUALITY_GATE}
 
-Do not merely decorate the prose with adjectives. Preserve all established facts and character knowledge. Improve scene pressure, physical action, dialogue subtext, sensory specificity, paragraph rhythm, and emotional causality. Do not add new characters, relationships, powers, backstory, or plot conclusions unless the user's instruction explicitly provides them.`;
+${NOVEL_ANTI_AI_PROSE_GATE}
+
+Do not merely decorate the prose with adjectives. Preserve all established facts and character knowledge. Improve scene pressure, physical action, dialogue subtext, sensory specificity, paragraph rhythm, and emotional causality. Do not add new characters, relationships, powers, backstory, or plot conclusions unless the user's instruction explicitly provides them.
+Revision method:
+- Remove assistant-like explanation, lesson-like summary, slogan sentences, and generic emotional labels.
+- Replace abstract feeling with body reaction, gesture, silence, misdirection, concrete memory trigger, or conflict action.
+- Make dialogue less polite and less direct when tension requires concealment, bargaining, fear, suspicion, attraction, or status pressure.
+- Preserve the original event facts, but make the prose feel written by a human novelist rather than generated from a synopsis.`;
 
   const systemPrompt = `你是一位专业的小说编辑和润色专家${genreLabel ? `，擅长${genreLabel}题材` : ''}。
 请根据用户的指令优化以下文本，保持${styleLabel || '原有'}文风。
@@ -1607,7 +1641,9 @@ ${NOVEL_SOURCE_FIDELITY_RULES}
 
 ${NOVEL_FULL_PIPELINE_QUALITY_GATE}
 
-Judge whether the chapter actually performs the outline taskbook. Flag report-like summaries, generic plot beats, fake completeness, weak character motive, unclear world pressure, empty dialogue, missing sensory anchor, POV violations, continuity breaks, and hooks that do not create a concrete next question. Do not invent issues; cite evidence from the chapter or context.`;
+${NOVEL_ANTI_AI_PROSE_GATE}
+
+Judge whether the chapter actually performs the outline taskbook. Flag report-like summaries, generic plot beats, fake completeness, weak character motive, unclear world pressure, empty dialogue, missing sensory anchor, POV violations, continuity breaks, hooks that do not create a concrete next question, assistant-like phrasing, plastic dialogue, generic inner monologue, decorative adjective stacking, and paragraphs that could appear in any novel. Do not invent issues; cite evidence from the chapter or context.`;
   const result = await createChatCompletionWithAttempts({
     preferredProvider: provider || novel.provider,
     stage: '章节审查',
