@@ -380,6 +380,12 @@ function _compactLuxuryAdProjectScene(scene = {}, index = 0) {
     end: scene.end,
     duration: scene.duration ?? scene.seconds,
     role: _projectText(scene.role || scene.shot_role || '', 80),
+    id: _projectText(scene.id || scene.shot_id || '', 80),
+    shot_id: _projectText(scene.shot_id || scene.id || '', 80),
+    subject_type: _projectText(scene.subject_type || scene.subjectType || scene.scene_subject_type || '', 80),
+    subjectType: _projectText(scene.subjectType || scene.subject_type || scene.scene_subject_type || '', 80),
+    cast_ids: Array.isArray(scene.cast_ids) ? scene.cast_ids.slice(0, 12) : (Array.isArray(scene.castIds) ? scene.castIds.slice(0, 12) : []),
+    product_ids: Array.isArray(scene.product_ids) ? scene.product_ids.slice(0, 12) : (Array.isArray(scene.productIds) ? scene.productIds.slice(0, 12) : []),
     story_stage: _projectText(scene.story_stage || '', 120),
     shot_type: _projectText(scene.shot_type || scene.shot_size || '', 120),
     camera: _projectText(scene.camera || scene.shot_angle || '', 700),
@@ -391,6 +397,9 @@ function _compactLuxuryAdProjectScene(scene = {}, index = 0) {
     ui_overlay: scene.ui_overlay ? _jsonClone(scene.ui_overlay, null) : undefined,
     story_extract: storyExtract,
     requires_person: scene.requires_person === true || scene.person_required === true || scene.character_required === true,
+    person_required: scene.person_required === true || scene.requires_person === true || scene.character_required === true,
+    locks: scene.locks && typeof scene.locks === 'object' ? _jsonClone(scene.locks) : undefined,
+    revision_status: _projectText(scene.revision_status || scene.revisionStatus || '', 80),
     reference_label: _projectText(scene.reference_label || '', 120),
   };
 }
@@ -684,6 +693,13 @@ function _compactLuxuryAdDraftBody(body = {}) {
     storyboard_detailed: !!(body.storyboard_detailed ?? body.storyboardDetailed),
     keyframe_planning_only: !!(body.keyframe_planning_only ?? body.keyframePlanningOnly),
     person_spec: _jsonClone(body.person_spec || body.personSpec || null),
+    cast_profiles: Array.isArray(body.cast_profiles || body.castProfiles)
+      ? _jsonClone(body.cast_profiles || body.castProfiles).slice(0, 12)
+      : [],
+    product_profile: _jsonClone(body.product_profile || body.productProfile || null),
+    revision_history: Array.isArray(body.revision_history || body.revisionHistory)
+      ? _jsonClone(body.revision_history || body.revisionHistory).slice(-80)
+      : [],
     controlled_production: _normalizeLuxuryControlledProduction(body.controlled_production || body.controlledProduction || null),
     person_asset: _compactLuxuryAdDraftAsset(body.person_asset || body.personAsset || null),
     product_asset: _compactLuxuryAdDraftAsset(body.product_asset || body.productAsset || null),
@@ -725,8 +741,9 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const keyframes = Array.isArray(result.keyframes) ? result.keyframes : (Array.isArray(body.keyframes) ? body.keyframes : null);
   const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : (Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : null);
   const mergedScenes = _mergeLuxuryProjectScenes(scenes, existing?.scenes);
-  const mergedKeyframes = _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
-  const mergedStoryboardSheets = _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
+  const clearKeyframes = body.clear_keyframes === true || body.clearKeyframes === true || patch.clear_keyframes === true;
+  const mergedKeyframes = clearKeyframes ? [] : _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
+  const mergedStoryboardSheets = clearKeyframes ? [] : _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
@@ -752,6 +769,13 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const title = body.brief_info?.title || result.brief_info?.title || existing?.title || body.title || '剧情广告项目';
   const compactBgmAsset = _compactLuxuryAdDraftAsset(body.bgm_asset || body.bgmAsset || existing?.bgm_asset || existing?.draft_state?.bgm_asset || null);
   const controlledProduction = _normalizeLuxuryControlledProduction(body.controlled_production || body.controlledProduction || existing?.controlled_production || existing?.draft_state?.controlled_production || null);
+  const castProfiles = Array.isArray(body.cast_profiles || body.castProfiles)
+    ? _jsonClone(body.cast_profiles || body.castProfiles).slice(0, 12)
+    : (Array.isArray(existing?.cast_profiles) ? existing.cast_profiles : (Array.isArray(existing?.draft_state?.cast_profiles) ? existing.draft_state.cast_profiles : []));
+  const productProfile = _jsonClone(body.product_profile || body.productProfile || existing?.product_profile || existing?.draft_state?.product_profile || null);
+  const revisionHistory = Array.isArray(body.revision_history || body.revisionHistory)
+    ? _jsonClone(body.revision_history || body.revisionHistory).slice(-80)
+    : (Array.isArray(existing?.revision_history) ? existing.revision_history : (Array.isArray(existing?.draft_state?.revision_history) ? existing.draft_state.revision_history : []));
   const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
   const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
     ? mergedStoryboardSheets.filter(_isFinalLuxuryStoryboardSheet)
@@ -777,6 +801,9 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
     resolution: result.resolution || existing?.resolution || '',
     brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
+    cast_profiles: castProfiles,
+    product_profile: productProfile,
+    revision_history: revisionHistory,
     controlled_production: controlledProduction,
     scenes: mergedScenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
     keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
@@ -3186,7 +3213,36 @@ function _luxuryShotImpliesHumanPresenter(scene = {}) {
   return /专业身份|入口引入|行业痛点|做了.*年|多年项目|项目经验|介绍员|讲解员|导购|顾问|设计师|店长|经理|客户|业主|入场|走入|走进|看向|拿着|翻看|手持|讲述|开场|身份|professional identity|presenter|host|designer|consultant|store manager|manager|client|customer|walks? in|enters?|holding|looks? at|reviewing/i.test(text);
 }
 
+function _luxuryShotSubjectType(scene = {}) {
+  const raw = String(scene.subject_type || scene.subjectType || scene.scene_subject_type || '').trim().toLowerCase();
+  const aliases = {
+    human: 'human_scene',
+    person: 'human_scene',
+    people: 'human_scene',
+    product: 'product_only',
+    product_closeup: 'product_detail',
+    detail: 'product_detail',
+    ui: 'ui_screen',
+    screen: 'ui_screen',
+    env: 'environment',
+    endcard: 'brand_endcard',
+    proof: 'proof_scene',
+  };
+  return aliases[raw] || raw;
+}
+
+function _luxurySubjectTypeRequiresPerson(subjectType = '') {
+  if (subjectType === 'human_scene') return true;
+  if (['product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard'].includes(subjectType)) return false;
+  return null;
+}
+
 function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
+  const explicitSubjectType = _luxuryShotSubjectType(scene);
+  const subjectTypeDecision = _luxurySubjectTypeRequiresPerson(explicitSubjectType);
+  if (subjectTypeDecision !== null) return subjectTypeDecision;
+  if (scene.person_required === true || scene.character_required === true || scene.requires_person === true) return true;
+  if (scene.person_required === false || scene.character_required === false || scene.requires_person === false) return false;
   const role = String(scene.role || scene.shot_role || scene.story_role || '').toLowerCase();
   const idx = Number(scene.index ?? scene.shot_index ?? 0);
   const total = Number(scene.totalShots || scene.total_shots || scene.shot_count || 6);
@@ -3209,11 +3265,6 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   // "professional identity" or presenter narration cannot be downgraded
   // to product-only just because the shot also mentions material texture.
   if (implicitPresenter) return true;
-
-  if (scene.person_required === true || scene.character_required === true || scene.requires_person === true) return true;
-  if (scene.person_required === false || scene.character_required === false || scene.requires_person === false) {
-    return isMacroDetail;
-  }
 
   const explicitPersonText = _luxurySceneText(scene, [
     'person',
@@ -13720,6 +13771,213 @@ ${userInstruction}
   }
 });
 
+function _normalizeLuxuryRevisionSubjectType(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  const aliases = {
+    human: 'human_scene',
+    person: 'human_scene',
+    people: 'human_scene',
+    product: 'product_only',
+    detail: 'product_detail',
+    ui: 'ui_screen',
+    screen: 'ui_screen',
+    env: 'environment',
+    endcard: 'brand_endcard',
+    proof: 'proof_scene',
+  };
+  const next = aliases[raw] || raw;
+  return ['auto', 'human_scene', 'product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(next)
+    ? next
+    : 'auto';
+}
+
+function _luxuryRevisionRequiresPerson(subjectType = 'auto', existing = {}) {
+  const value = _normalizeLuxuryRevisionSubjectType(subjectType);
+  if (value === 'human_scene') return true;
+  if (['product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard'].includes(value)) return false;
+  return existing.requires_person === true || existing.person_required === true || existing.character_required === true;
+}
+
+function _luxuryRevisionShotId(scene = {}, index = 0) {
+  return String(scene.id || scene.shot_id || scene.shotId || `shot_${index + 1}`).trim();
+}
+
+function _applyLuxuryStoryboardRevision(body = {}) {
+  const command = body.revision_command || body.revisionCommand || {};
+  const type = String(command.type || '').trim();
+  if (!type) {
+    const err = new Error('缺少分镜修改类型');
+    err.status = 400;
+    throw err;
+  }
+  let segments = (Array.isArray(body.segments) ? body.segments : [])
+    .filter(x => x && typeof x === 'object')
+    .map((scene, i) => ({
+      ...scene,
+      id: _luxuryRevisionShotId(scene, i),
+      shot_id: _luxuryRevisionShotId(scene, i),
+      index: i,
+      shot_index: i,
+    }));
+  if (!segments.length) {
+    const err = new Error('没有可修改的分镜');
+    err.status = 422;
+    throw err;
+  }
+  const requestedId = String(command.shotId || command.shot_id || '').trim();
+  const requestedIndex = Number(command.index);
+  let idx = requestedId
+    ? segments.findIndex((scene, i) => _luxuryRevisionShotId(scene, i) === requestedId)
+    : -1;
+  if (idx < 0 && Number.isFinite(requestedIndex)) idx = Math.max(0, Math.min(segments.length - 1, Math.round(requestedIndex)));
+  if (idx < 0 || idx >= segments.length) {
+    const err = new Error('没有找到要修改的分镜');
+    err.status = 404;
+    throw err;
+  }
+  const affected = new Set();
+  const beforeShot = segments[idx];
+  if (type === 'delete_shot') {
+    if (segments.length <= 1) {
+      const err = new Error('至少保留 1 个分镜');
+      err.status = 422;
+      throw err;
+    }
+    affected.add(_luxuryRevisionShotId(beforeShot, idx));
+    segments.splice(idx, 1);
+    segments.slice(Math.max(0, idx - 1), Math.min(segments.length, idx + 2)).forEach((scene, i) => affected.add(_luxuryRevisionShotId(scene, idx + i)));
+  } else if (type === 'extend_shot') {
+    const fromDuration = Math.max(0.5, Number(command.fromDuration || command.from_duration || beforeShot.duration || beforeShot.duration_sec || beforeShot.seconds || 3) || 3);
+    const toDuration = Math.max(0.5, Number(command.toDuration || command.to_duration || fromDuration) || fromDuration);
+    const nextDuration = Math.round(toDuration * 10) / 10;
+    segments[idx] = {
+      ...beforeShot,
+      duration: nextDuration,
+      duration_sec: nextDuration,
+      seconds: nextDuration,
+      revision_status: 'duration_changed_requires_director_recompile',
+      user_edited: true,
+    };
+    affected.add(_luxuryRevisionShotId(beforeShot, idx));
+    if (segments[idx + 1]) affected.add(_luxuryRevisionShotId(segments[idx + 1], idx + 1));
+  } else if (type === 'set_subject_type') {
+    const subjectType = _normalizeLuxuryRevisionSubjectType(command.subjectType || command.subject_type || 'auto');
+    const requiresPerson = _luxuryRevisionRequiresPerson(subjectType, beforeShot);
+    segments[idx] = {
+      ...beforeShot,
+      subject_type: subjectType,
+      subjectType,
+      requires_person: requiresPerson,
+      person_required: requiresPerson,
+      revision_status: 'subject_type_changed_requires_director_recompile',
+      user_edited: true,
+    };
+    affected.add(_luxuryRevisionShotId(beforeShot, idx));
+  } else {
+    const err = new Error(`暂不支持的分镜修改类型：${type}`);
+    err.status = 400;
+    throw err;
+  }
+  let cursor = 0;
+  segments = segments.map((scene, i) => {
+    const duration = Math.max(0.5, Number(scene.duration || scene.duration_sec || scene.seconds || 3) || 3);
+    const subjectType = _normalizeLuxuryRevisionSubjectType(scene.subject_type || scene.subjectType || 'auto');
+    const requiresPerson = _luxuryRevisionRequiresPerson(subjectType, scene);
+    const start = Math.round(cursor * 10) / 10;
+    cursor += duration;
+    const end = Math.round(cursor * 10) / 10;
+    return {
+      ...scene,
+      index: i,
+      shot_index: i,
+      id: _luxuryRevisionShotId(scene, i),
+      shot_id: _luxuryRevisionShotId(scene, i),
+      start,
+      end,
+      duration,
+      duration_sec: duration,
+      seconds: duration,
+      subject_type: subjectType,
+      subjectType,
+      requires_person: requiresPerson,
+      person_required: requiresPerson,
+    };
+  });
+  const revision = {
+    id: uuidv4(),
+    type,
+    command: _jsonClone(command),
+    affected_shot_ids: Array.from(affected),
+    created_at: new Date().toISOString(),
+    summary: type === 'delete_shot'
+      ? `删除第 ${idx + 1} 镜，并重新整理时间线。`
+      : (type === 'extend_shot'
+        ? `延长第 ${idx + 1} 镜，并标记相邻镜头重新编译。`
+        : `第 ${idx + 1} 镜主体类型改为 ${_normalizeLuxuryRevisionSubjectType(command.subjectType || command.subject_type || 'auto')}。`),
+  };
+  return {
+    segments,
+    keyframes: [],
+    revision,
+    affected_shot_ids: Array.from(affected),
+    revision_history: [
+      ...(Array.isArray(body.revision_history || body.revisionHistory) ? (body.revision_history || body.revisionHistory) : []),
+      revision,
+    ].slice(-80),
+    total_duration: Math.round(cursor * 10) / 10,
+  };
+}
+
+router.post('/luxury-ad/revise-storyboard', (req, res) => {
+  try {
+    const body = req.body || {};
+    const result = _applyLuxuryStoryboardRevision(body);
+    const productionContract = {
+      ...(body.production_contract && typeof body.production_contract === 'object' ? body.production_contract : {}),
+      revision_contract: {
+        last_revision: result.revision,
+        affected_shot_ids: result.affected_shot_ids,
+        requires_director_recompile: true,
+      },
+    };
+    const project = _upsertLuxuryAdProductionProject(req, {
+      ...body,
+      duration_sec: result.total_duration || body.duration_sec,
+      scenes: result.segments,
+      keyframes: result.keyframes,
+      production_contract: productionContract,
+      revision_history: result.revision_history,
+      clear_keyframes: true,
+      request_stage: 'revision',
+      storyboard_detailed: true,
+    }, {
+      scenes: result.segments,
+      keyframes: result.keyframes,
+      production_contract: productionContract,
+    }, {
+      project_state: 'frame_reviewing',
+      production_contract: productionContract,
+      clear_keyframes: true,
+    });
+    res.json({
+      success: true,
+      segments: result.segments,
+      keyframes: result.keyframes,
+      affected_shot_ids: result.affected_shot_ids,
+      invalidated_shot_ids: result.affected_shot_ids,
+      revision: result.revision,
+      revision_history: result.revision_history,
+      revision_summary: result.revision.summary,
+      production_contract: productionContract,
+      production_project: project,
+      production_project_id: project.id,
+      duration_sec: result.total_duration,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message || '分镜修改失败' });
+  }
+});
+
 function _inferLuxuryCastModeFromBrief(brief = '', assetSummary = '') {
   const text = `${brief || ''}\n${assetSummary || ''}`;
   const hasSales = /销售|导购|讲解员|主持人|顾问|客服|店员|设计师|业务员|主播|经理/.test(text);
@@ -16352,7 +16610,10 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     const storyCharactersForShot = Array.isArray(raw.characters)
       ? raw.characters
       : (Array.isArray(raw.character_profiles) ? raw.character_profiles : []);
+    const rawSubjectType = _luxuryShotSubjectType(raw);
+    const explicitSubjectTypeDecision = _luxurySubjectTypeRequiresPerson(rawSubjectType);
     const storyPanelNeeded = !_luxuryIsMacroDetailShot({ role, title: raw.title || '', content_prompt: visual, visual })
+      && explicitSubjectTypeDecision !== false
       && _luxuryRoleNeedsStoryHuman(role, shotIndex, storyTotal);
     if (storyPanelNeeded) {
       visual = _luxuryStoryFirstHumanVisual({ visual, productSubject: subject, role, index: shotIndex, total: storyTotal, characters: storyCharactersForShot });
@@ -16360,6 +16621,9 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     }
     action = _cleanLuxuryAdAction(action, fallbackOpts);
     const corePersonRequired = _luxuryStoryboardRequiresPerson({
+      subject_type: rawSubjectType || raw.subject_type || raw.subjectType || '',
+      requires_person: raw.requires_person,
+      person_required: raw.person_required,
       title: raw.title || '',
       objective: raw.objective || raw.intent || raw.purpose || '',
       content_prompt: visual,
@@ -16410,6 +16674,16 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       ...raw,
       index: shotIndex,
       shot_index: shotIndex,
+      id: raw.id || raw.shot_id || `shot_${shotIndex + 1}`,
+      shot_id: raw.shot_id || raw.id || `shot_${shotIndex + 1}`,
+      subject_type: rawSubjectType || (corePersonRequired ? 'human_scene' : 'auto'),
+      subjectType: rawSubjectType || (corePersonRequired ? 'human_scene' : 'auto'),
+      requires_person: corePersonRequired,
+      person_required: corePersonRequired,
+      cast_ids: Array.isArray(raw.cast_ids) ? raw.cast_ids : (Array.isArray(raw.castIds) ? raw.castIds : []),
+      product_ids: Array.isArray(raw.product_ids) ? raw.product_ids : (Array.isArray(raw.productIds) ? raw.productIds : []),
+      locks: raw.locks || null,
+      revision_status: raw.revision_status || raw.revisionStatus || '',
       role,
       story_stage: _normalizeLuxurySceneStage(raw.story_stage, role, shotIndex, storyTotal),
       shot_size: shotAngle,

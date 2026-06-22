@@ -157,7 +157,19 @@
         gender: 'auto',
         age: 'match_brief',
         origin: 'east_asian_cn',
+        identityMode: 'auto',
+        wardrobeMode: 'auto',
+        roleName: '',
+        displayName: '',
+        appearanceText: '',
+        wardrobeText: '',
+        hairMakeupText: '',
+        temperamentText: '',
+        negativeText: '',
       },
+      castProfiles: [],
+      productProfile: null,
+      revisionHistory: [],
       briefInfo: null,
       briefRefAssets: [],
       visualReferenceBrief: null,
@@ -3972,7 +3984,19 @@
       gender: 'auto',
       age: 'match_brief',
       origin: 'east_asian_cn',
+      identityMode: 'auto',
+      wardrobeMode: 'auto',
+      roleName: '',
+      displayName: '',
+      appearanceText: '',
+      wardrobeText: '',
+      hairMakeupText: '',
+      temperamentText: '',
+      negativeText: '',
     };
+    state.luxuryAd.castProfiles = [];
+    state.luxuryAd.productProfile = null;
+    state.luxuryAd.revisionHistory = [];
     state.luxuryAd.briefInfo = null;
     (state.luxuryAd.briefRefAssets || []).forEach(revoke);
     state.luxuryAd.refAssets = [];
@@ -6477,12 +6501,99 @@
     },
   };
 
+  const LUXURY_SHOT_SUBJECT_TYPES = {
+    auto: 'AI 判断',
+    human_scene: '人物场景',
+    product_only: '商品-only',
+    product_detail: '商品特写',
+    hand_operation: '手部操作',
+    ui_screen: '界面 / 数据',
+    environment: '空镜 / 场景',
+    brand_endcard: '品牌收尾',
+    proof_scene: '效果证明',
+  };
+
+  function normalizeLuxuryShotSubjectType(seg = {}) {
+    const raw = String(seg.subject_type || seg.subjectType || seg.scene_subject_type || '').trim();
+    if (raw && LUXURY_SHOT_SUBJECT_TYPES[raw]) return raw;
+    if (seg.requires_person === true || seg.person_required === true || seg.character_required === true) return 'human_scene';
+    if (seg.requires_person === false || seg.person_required === false || seg.character_required === false) {
+      const text = [seg.role, seg.title, seg.visual, seg.content_prompt, seg.scene_content, seg.action].filter(Boolean).join(' ');
+      if (/ui|界面|数据|系统|dashboard|screen/i.test(text)) return 'ui_screen';
+      if (/手部|手持|操作|hand/i.test(text)) return 'hand_operation';
+      if (/特写|细节|macro|detail/i.test(text)) return 'product_detail';
+      return 'product_only';
+    }
+    return 'auto';
+  }
+
+  function luxuryShotRequiresPersonFromType(type = 'auto', seg = {}) {
+    const value = normalizeLuxuryShotSubjectType({ ...seg, subject_type: type });
+    if (value === 'human_scene') return true;
+    if (['product_only', 'product_detail', 'ui_screen', 'environment', 'brand_endcard'].includes(value)) return false;
+    if (value === 'hand_operation') return false;
+    return seg.requires_person === true || seg.person_required === true || seg.character_required === true;
+  }
+
+  function luxuryAdCastProfiles() {
+    const spec = state.luxuryAd.personSpec || {};
+    const current = Array.isArray(state.luxuryAd.castProfiles) ? state.luxuryAd.castProfiles : [];
+    const manualHasProfile = current.some(p => p && Object.values(p).some(v => typeof v === 'string' ? v.trim() : !!v));
+    if (manualHasProfile) return current;
+    const hasUserProfile = [
+      spec.roleName,
+      spec.displayName,
+      spec.appearanceText,
+      spec.wardrobeText,
+      spec.hairMakeupText,
+      spec.temperamentText,
+      spec.negativeText,
+    ].some(v => String(v || '').trim());
+    if (!hasUserProfile) return [];
+    return [{
+      id: 'cast_primary',
+      roleName: String(spec.roleName || '').trim(),
+      displayName: String(spec.displayName || '').trim(),
+      sourceType: state.luxuryAd.personAsset ? luxuryAdActorReferenceKind(state.luxuryAd.personAsset) : 'user_contract',
+      assetId: state.luxuryAd.personAsset?.actor_asset_id || state.luxuryAd.personAsset?.id || '',
+      referenceImageUrl: state.luxuryAd.personAsset?.image_url || state.luxuryAd.personAsset?.url || '',
+      appearance: {
+        gender: spec.gender || 'auto',
+        ageRange: spec.age || 'match_brief',
+        origin: spec.origin || 'match_brief',
+        userPrompt: String(spec.appearanceText || '').trim(),
+        temperament: String(spec.temperamentText || '').trim(),
+      },
+      wardrobe: {
+        mode: spec.wardrobeMode || 'auto',
+        userPrompt: String(spec.wardrobeText || '').trim(),
+      },
+      hairMakeup: {
+        userPrompt: String(spec.hairMakeupText || '').trim(),
+      },
+      negativeText: String(spec.negativeText || '').trim(),
+      identityLock: {
+        face: !!state.luxuryAd.personAsset,
+        outfit: !!String(spec.wardrobeText || '').trim(),
+      },
+    }];
+  }
+
   function luxuryAdPersonSpec() {
     state.luxuryAd.personSpec = {
       castMode: 'auto',
       gender: 'auto',
       age: 'match_brief',
       origin: 'east_asian_cn',
+      identityMode: 'auto',
+      wardrobeMode: 'auto',
+      roleName: '',
+      displayName: '',
+      appearanceText: '',
+      wardrobeText: '',
+      hairMakeupText: '',
+      temperamentText: '',
+      negativeText: '',
       ...(state.luxuryAd.personSpec || {}),
     };
     return state.luxuryAd.personSpec;
@@ -6508,14 +6619,23 @@
     const age = LUXURY_PERSON_SPEC_LABELS.age[spec.age] || String(spec.age || '').trim() || '按广告需求判断';
     const origin = LUXURY_PERSON_SPEC_LABELS.origin[spec.origin] || String(spec.origin || '').trim() || '按广告需求判断';
     const referencePerson = selectedAvatarImageUrl(state.selectedAvatar || {}) ? (state.selectedAvatar?.name || '已选数字人形象') : '';
+    const profileLines = [
+      spec.displayName ? `人物姓名：${spec.displayName}` : '',
+      spec.roleName ? `人物身份：${spec.roleName}` : '',
+      spec.appearanceText ? `外貌气质：${spec.appearanceText}` : '',
+      spec.wardrobeText ? `穿着服装：${spec.wardrobeText}` : '',
+      spec.hairMakeupText ? `发型妆造：${spec.hairMakeupText}` : '',
+      spec.negativeText ? `人物禁止项：${spec.negativeText}` : '',
+    ].filter(Boolean);
     return [
       `人物数量：${castMode}`,
       `人物性别：${gender}`,
       `人物年龄：${age}`,
       `地域/种族：${origin}`,
+      ...profileLines,
       referencePerson ? `参考数字人形象：${referencePerson}` : '',
       'AI 生成只作为拟真演员参考；需要真人请上传真人照片或使用授权真人演员素材。',
-      '姓名、五官、发型、服装、道具、气质、动作和妆造必须由 AI 在剧本人物表里生成。',
+      '没有手动填写姓名时，编剧必须为每个出场人物生成正式姓名；服装、发型、妆造和身份必须进入人物档案。',
     ].filter(Boolean).join('；');
   }
 
@@ -6559,6 +6679,8 @@
         return true;
       })
       .slice(0, Math.max(1, Math.min(6, Number(spec.expected_people) || 1)));
+    const contractProfiles = luxuryAdCastProfiles();
+    if (contractProfiles.length) spec.cast_profiles = contractProfiles;
     const current = state.luxuryAd.personAsset || null;
     if (current && luxuryAdActorReferenceKind(current) === 'ai_generated') {
       spec.origin = spec.origin || 'east_asian_cn';
@@ -9230,8 +9352,14 @@
     return (Array.isArray(segments) ? segments : []).map((seg, i) => {
       const refIndex = luxuryAdShotRefIndex(seg, i);
       const label = luxuryAdReferenceLabel(refIndex);
+      const subjectType = normalizeLuxuryShotSubjectType(seg);
+      const requiresPerson = luxuryShotRequiresPersonFromType(subjectType, seg);
       return {
         ...seg,
+        subject_type: subjectType,
+        subjectType,
+        requires_person: requiresPerson,
+        person_required: requiresPerson,
         story_stage: luxuryNormalizeSceneStage(seg.story_stage, seg.shot_role || seg.role || seg.type, i, segments.length || 5),
         shot_size: seg.shot_size || seg.framing || '',
         shot_angle: luxuryShotAngleText(seg),
@@ -9327,6 +9455,14 @@
         index: shotIndex,
         title: seg.title || `镜头 ${shotIndex + 1}`,
         role: seg.role || seg.shot_role || 'display',
+        subject_type: normalizeLuxuryShotSubjectType(seg),
+        subjectType: normalizeLuxuryShotSubjectType(seg),
+        requires_person: luxuryShotRequiresPersonFromType(normalizeLuxuryShotSubjectType(seg), seg),
+        person_required: luxuryShotRequiresPersonFromType(normalizeLuxuryShotSubjectType(seg), seg),
+        cast_ids: Array.isArray(seg.cast_ids) ? seg.cast_ids : (Array.isArray(seg.castIds) ? seg.castIds : []),
+        product_ids: Array.isArray(seg.product_ids) ? seg.product_ids : (Array.isArray(seg.productIds) ? seg.productIds : []),
+        locks: seg.locks || null,
+        revision_status: seg.revision_status || seg.revisionStatus || '',
         story_stage: luxuryNormalizeSceneStage(seg.story_stage, seg.shot_role || seg.role || seg.type, shotIndex, segments.length || 5),
         shot_size: seg.shot_size || seg.framing || '',
         shot_angle: luxuryShotAngleText(seg),
@@ -9611,6 +9747,61 @@
     }
   }
 
+  async function reviseLuxuryAdStoryboard(command = {}, { silent = false } = {}) {
+    if (!command || !command.type) return null;
+    const segments = compactLuxurySegments(state.luxuryAd.segments || []);
+    if (!segments.length) return null;
+    const r = await api('/api/dh/luxury-ad/revise-storyboard', {
+      method: 'POST',
+      body: {
+        project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+        production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
+        text: state.luxuryAd.content || $('#dhLuxAdText')?.value || '',
+        duration_sec: state.luxuryAd.durationSec || 30,
+        output_ratio: state.luxuryAd.outputRatio || '9:16',
+        product_name: state.luxuryAd.productAsset?.name || '',
+        product_asset: state.luxuryAd.productAsset || null,
+        product_profile: state.luxuryAd.productProfile || null,
+        person_spec: luxuryAdPersonSpec(),
+        cast_profiles: luxuryAdCastProfiles(),
+        person_asset: luxuryAdPersonAssetPayload(),
+        production_contract: state.luxuryAd.productionContract || null,
+        segments,
+        keyframes: state.luxuryAd.keyframes || [],
+        storyboard_sheets: state.luxuryAd.storyboardSheets || [],
+        revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
+        revision_command: command,
+      },
+    });
+    if (!r?.success) throw new Error(r?.error || '分镜修改失败');
+    const nextSegments = Array.isArray(r.segments) ? r.segments : segments;
+    const invalidated = new Set((Array.isArray(r.invalidated_shot_ids) ? r.invalidated_shot_ids : [])
+      .map(x => String(x)));
+    state.luxuryAd.segments = applyLuxuryShotBindings(nextSegments);
+    if (Number(r.duration_sec) > 0) state.luxuryAd.durationSec = Number(r.duration_sec);
+    state.luxuryAd.productionContract = r.production_contract || state.luxuryAd.productionContract || null;
+    state.luxuryAd.revisionHistory = Array.isArray(r.revision_history)
+      ? r.revision_history
+      : [...(state.luxuryAd.revisionHistory || []), r.revision].filter(Boolean);
+    if (Array.isArray(state.luxuryAd.keyframes) && invalidated.size) {
+      state.luxuryAd.keyframes = state.luxuryAd.keyframes.map((kf, i) => {
+        const seg = state.luxuryAd.segments[i] || {};
+        const id = String(seg.id || seg.shot_id || `shot_${i + 1}`);
+        return invalidated.has(id) || invalidated.has(String(i)) || invalidated.has(String(i + 1)) ? {} : kf;
+      });
+    } else if (Array.isArray(state.luxuryAd.keyframes) && ['delete_shot', 'extend_shot', 'set_subject_type'].includes(command.type)) {
+      state.luxuryAd.keyframes = state.luxuryAd.keyframes.map(() => ({}));
+    }
+    if (Array.isArray(r.keyframes)) state.luxuryAd.keyframes = r.keyframes;
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframePlanningOnly = false;
+    if (r.production_project) applyLuxuryProductionProject(r.production_project);
+    renderLuxuryAdStoryboard();
+    saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => {});
+    if (!silent) toast(r.revision_summary || '分镜结构已更新，需要重新生成受影响分镜', 'success');
+    return r;
+  }
+
   function addLuxuryAdSegment(afterIndex = null) {
     const segments = Array.isArray(state.luxuryAd.segments) ? [...state.luxuryAd.segments] : [];
     if (segments.length >= 8) return toast('最多 8 个分镜，建议先删除不需要的分镜', 'error');
@@ -9640,23 +9831,67 @@
       type: 'danger',
     });
     if (!ok) return;
-    segments.splice(idx, 1);
-    const refs = luxuryAdReferenceAssets();
-    refs.splice(idx, 1);
-    const nextRefs = setLuxuryAdReferenceAssets(refs);
-    state.luxuryAd.segments = segments.map((seg, i) => {
-      const refIndex = luxuryAdAssetFilled(nextRefs[i]) ? i + 1 : 0;
-      return {
-        ...seg,
-        reference_index: refIndex,
-        reference_label: luxuryAdReferenceLabel(refIndex),
-        reference_mentions: refIndex > 0 ? ['@主商品', luxuryAdReferenceLabel(refIndex)] : ['@主商品'],
-        user_edited: true,
-      };
-    });
-    if (Array.isArray(state.luxuryAd.keyframes)) state.luxuryAd.keyframes.splice(idx, 1);
-    markLuxuryAdStructureChanged({ keepDetailed: state.luxuryAd.storyboardDetailed });
-    toast('已删除分镜，可以继续新增或重新生成剧本', 'success');
+    try {
+      const seg = segments[idx] || {};
+      await reviseLuxuryAdStoryboard({
+        type: 'delete_shot',
+        shotId: seg.id || seg.shot_id || `shot_${idx + 1}`,
+        index: idx,
+        keepTotalDuration: true,
+        reason: 'user_deleted_storyboard_shot',
+      }, { silent: true });
+      const refs = luxuryAdReferenceAssets();
+      refs.splice(idx, 1);
+      setLuxuryAdReferenceAssets(refs);
+      renderLuxuryAdStoryboard();
+      toast('已删除分镜，并重新整理后续镜头合同', 'success');
+    } catch (err) {
+      toast('删除分镜失败：' + err.message, 'error');
+    }
+  }
+
+  async function extendLuxuryAdSegment(index, deltaSec = 2) {
+    const idx = Number(index);
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const seg = segments[idx];
+    if (!seg) return toast('镜头不存在，请重新生成详细分镜', 'error');
+    if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再修改分镜', 'error');
+    const current = Math.max(2, Number(seg.duration || seg.duration_sec || seg.seconds || 0) || luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length) || 3);
+    const nextDuration = Math.min(18, Math.round((current + Number(deltaSec || 2)) * 10) / 10);
+    try {
+      await reviseLuxuryAdStoryboard({
+        type: 'extend_shot',
+        shotId: seg.id || seg.shot_id || `shot_${idx + 1}`,
+        index: idx,
+        fromDuration: current,
+        toDuration: nextDuration,
+        durationMode: 'increase_total_duration',
+      });
+      updateLuxuryAdOutputHint();
+      renderLuxuryAdStoryboard();
+    } catch (err) {
+      toast('延长分镜失败：' + err.message, 'error');
+    }
+  }
+
+  async function setLuxuryAdSegmentSubjectType(index, subjectType) {
+    const idx = Number(index);
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const seg = segments[idx];
+    if (!seg) return;
+    if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再修改镜头类型', 'error');
+    const nextType = LUXURY_SHOT_SUBJECT_TYPES[subjectType] ? subjectType : 'auto';
+    try {
+      await reviseLuxuryAdStoryboard({
+        type: 'set_subject_type',
+        shotId: seg.id || seg.shot_id || `shot_${idx + 1}`,
+        index: idx,
+        subjectType: nextType,
+      });
+    } catch (err) {
+      renderLuxuryAdStoryboard();
+      toast('修改镜头类型失败：' + err.message, 'error');
+    }
   }
 
   function moveLuxuryAdSegment(index, direction) {
@@ -10497,6 +10732,9 @@
       voice_direction: state.luxuryAd.voiceDirection || 'story_dynamic',
       subtitle: getLuxuryAdSubtitlePayload(),
       person_spec: luxuryAdPersonSpec(),
+      cast_profiles: luxuryAdCastProfiles(),
+      product_profile: state.luxuryAd.productProfile || null,
+      revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
       controlled_production: luxuryControlledProductionPayload(),
       person_asset: luxuryAdPersonAssetPayload(),
       product_asset: state.luxuryAd.productAsset || null,
@@ -10635,6 +10873,13 @@
       ? draft.subtitle
       : (draft.subtitle !== false);
     state.luxuryAd.personSpec = draft.person_spec || state.luxuryAd.personSpec;
+    state.luxuryAd.castProfiles = Array.isArray(project.cast_profiles)
+      ? project.cast_profiles
+      : (Array.isArray(draft.cast_profiles) ? draft.cast_profiles : []);
+    state.luxuryAd.productProfile = project.product_profile || draft.product_profile || null;
+    state.luxuryAd.revisionHistory = Array.isArray(project.revision_history)
+      ? project.revision_history
+      : (Array.isArray(draft.revision_history) ? draft.revision_history : []);
     const restoredPersonAsset = draft.person_asset || state.luxuryAd.personAsset || null;
     const contractActorAsset = project.production_contract?.actor_asset
       || project.production_contract?.actor_reference
@@ -10923,6 +11168,8 @@
         frameLocks?.ui_lock?.prompt ? 'UI：后期浮层锁' : '',
       ].filter(Boolean).join('；');
       const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
+      const subjectType = normalizeLuxuryShotSubjectType(seg);
+      const subjectLabel = LUXURY_SHOT_SUBJECT_TYPES[subjectType] || LUXURY_SHOT_SUBJECT_TYPES.auto;
       return `<article class="dh-demo-frame-card">
         <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" style="${ratioStyle}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(jimengThumbUrl(previewUrl, 520))}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}" loading="lazy" decoding="async">` : ''}
@@ -10931,6 +11178,7 @@
         </button>
         <div class="dh-demo-frame-info">
           <div class="dh-demo-card"><small>时间 / 目的</small><b>${escapeHtml(timeRange)} · ${escapeHtml(seg.objective || seg.intent || seg.purpose || storyStage)}</b><span>${escapeHtml(emotionText || '按广告节奏推进。')}</span></div>
+          <div class="dh-demo-card"><small>镜头主体类型</small><b>${escapeHtml(subjectLabel)}</b><span><select class="dh-input dh-lux-shot-type-select" data-lux-shot-subject-type="${i}" ${disabledAttr}>${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${subjectType === value ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>
           <div class="dh-demo-card"><small>内容 / 台词</small><b>${escapeHtml(promptText)}</b><span>台词：${escapeHtml(voiceText || '待生成')}</span></div>
           <div class="dh-demo-card"><small>动作 / 表情</small><b>${escapeHtml(actionText)}</b><span>${escapeHtml(emotionText)}</span></div>
           <div class="dh-demo-card"><small>镜头 / 构图</small><b>${escapeHtml(shotAngle)}</b><span>镜头运动：${escapeHtml(luxuryShotMotionLabel(seg))}</span></div>
@@ -10945,6 +11193,8 @@
             ${img ? `<button type="button" class="dh-luxgen-edit" disabled>已选用此图</button> <button type="button" class="dh-luxgen-edit" data-lux-shot-preview="${i}">查看全图</button>` : ''}
             <button type="button" class="dh-luxgen-edit" data-lux-shot-regenerate="${i}" ${disabledAttr}>重新生成本镜</button>
             <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}" ${editDisabledAttr}>编辑分镜</button>
+            <button type="button" class="dh-luxgen-edit" data-lux-shot-extend="${i}" ${disabledAttr}>延长 2 秒</button>
+            <button type="button" class="dh-luxgen-edit danger" data-lux-outline-delete="${i}" ${disabledAttr}>删除本镜</button>
             <button type="button" class="dh-luxgen-shot-upload" data-lux-shot-upload="${i}">${binding.ref ? '替换分镜画面' : '上传分镜画面'}</button>
           </span></div>
         </div>
@@ -11005,6 +11255,10 @@
       ...seg,
       reference_index: ref,
       reference_label: luxuryAdReferenceLabel(ref),
+      subject_type: $('#dhLuxShotSubjectType')?.value || normalizeLuxuryShotSubjectType(seg),
+      subjectType: $('#dhLuxShotSubjectType')?.value || normalizeLuxuryShotSubjectType(seg),
+      requires_person: luxuryShotRequiresPersonFromType($('#dhLuxShotSubjectType')?.value || normalizeLuxuryShotSubjectType(seg), seg),
+      person_required: luxuryShotRequiresPersonFromType($('#dhLuxShotSubjectType')?.value || normalizeLuxuryShotSubjectType(seg), seg),
       title: ($('#dhLuxShotTitle')?.value || seg.title || '').trim(),
       role: $('#dhLuxShotRole')?.value || seg.role || 'display',
       story_stage: luxuryShotRoleName($('#dhLuxShotRole')?.value || seg.role || 'display'),
@@ -11043,6 +11297,7 @@
       if (el && value !== undefined && value !== null && String(value).trim()) el.value = String(value);
     };
     set('#dhLuxShotTitle', seg.title);
+    if ($('#dhLuxShotSubjectType')) $('#dhLuxShotSubjectType').value = normalizeLuxuryShotSubjectType(seg);
     if ($('#dhLuxShotRole') && seg.role) $('#dhLuxShotRole').value = seg.role;
     set('#dhLuxShotSize', seg.shot_angle || seg.shot_size);
     set('#dhLuxShotDuration', seg.duration);
@@ -11153,6 +11408,12 @@
                 ].map(([value, label]) => `<option value="${value}" ${String(role) === value ? 'selected' : ''}>${label}</option>`).join('')}
               </select>
             </label>
+            <label class="dh-field">
+              <span>镜头主体类型</span>
+              <select class="dh-input" id="dhLuxShotSubjectType">
+                ${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${normalizeLuxuryShotSubjectType(seg) === value ? 'selected' : ''}>${label}</option>`).join('')}
+              </select>
+            </label>
           </div>
           <div class="dh-luxgen-writer-grid">
             <label class="dh-field">
@@ -11247,11 +11508,17 @@
         motion: editedMotion,
       };
       const hiddenPrompt = seg.topview_prompt || seg.reference_prompt || luxuryAdTopviewPrompt(promptSeed, idx);
+      const nextSubjectType = $('#dhLuxShotSubjectType')?.value || normalizeLuxuryShotSubjectType(seg);
+      const nextRequiresPerson = luxuryShotRequiresPersonFromType(nextSubjectType, seg);
       const next = {
         ...seg,
         reference_index: editedRef,
         reference_label: luxuryAdReferenceLabel(editedRef),
         reference_mentions: editedRef > 0 ? ['@主商品', luxuryAdReferenceLabel(editedRef)] : ['@主商品'],
+        subject_type: nextSubjectType,
+        subjectType: nextSubjectType,
+        requires_person: nextRequiresPerson,
+        person_required: nextRequiresPerson,
         title: ($('#dhLuxShotTitle')?.value || '').trim() || seg.title,
         role: $('#dhLuxShotRole')?.value || seg.role || 'display',
         story_stage: luxuryShotRoleName($('#dhLuxShotRole')?.value || seg.role || 'display'),
@@ -11561,6 +11828,9 @@
         }) : null).filter(Boolean),
         outline_segments: detail ? compactLuxurySegments(sourceSegments) : [],
         person_spec: luxuryAdPersonSpec(),
+        cast_profiles: luxuryAdCastProfiles(),
+        product_profile: state.luxuryAd.productProfile || null,
+        revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
         person_asset: luxuryAdPersonAssetPayload(),
         request_key: requestKey,
         request_async: true,
@@ -11812,6 +12082,9 @@
         brief_info: state.luxuryAd.briefInfo || null,
         person_asset: luxuryAdPersonAssetPayload(),
         person_spec: luxuryAdPersonSpec(),
+        cast_profiles: luxuryAdCastProfiles(),
+        product_profile: state.luxuryAd.productProfile || null,
+        revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
         reference_assets: luxuryAdReferenceAssets()
           .filter(luxuryAdAssetFilled)
           .map((asset, i) => ({ index: i + 1, name: asset.name || `分镜画面${i + 1}`, url: compactLuxuryUrl(asset.url || asset.previewUrl || '') }))
@@ -12049,6 +12322,10 @@
         global_visual_bible: state.luxuryAd.globalVisualBible || null,
         controlled_production: luxuryControlledProductionPayload(),
         person_asset: luxuryAdPersonAssetPayload(),
+        person_spec: luxuryAdPersonSpec(),
+        cast_profiles: luxuryAdCastProfiles(),
+        product_profile: state.luxuryAd.productProfile || null,
+        revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
         brief_info: state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(text, state.luxuryAd.segments || {}),
         reference_assets: referenceAssets
           .filter(luxuryAdAssetFilled)
@@ -14803,8 +15080,14 @@
     }
     const outlineDelete = closest('[data-lux-outline-delete]');
     if (outlineDelete) {
-      if (luxuryAdStepIsLocked(2)) return toast(luxuryAdLockedStepMessage(2), 'error');
+      if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再删除分镜', 'error');
       await deleteLuxuryAdSegment(Number(outlineDelete.dataset.luxOutlineDelete));
+      return;
+    }
+    const shotExtend = closest('[data-lux-shot-extend]');
+    if (shotExtend) {
+      if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再延长分镜', 'error');
+      await extendLuxuryAdSegment(Number(shotExtend.dataset.luxShotExtend));
       return;
     }
     const outlineMove = closest('[data-lux-outline-move]');
@@ -15712,7 +15995,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];
       }
-      if (state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
+      const identityFields = new Set(['castMode', 'gender', 'age', 'origin']);
+      if (identityFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
         state.luxuryAd.personAsset = null;
         state.luxuryAd.keyframes = [];
         renderLuxuryAdPerson();
@@ -15748,7 +16032,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     }
   });
 
-  document.addEventListener('change', (e) => {
+  document.addEventListener('change', async (e) => {
     if (e.target.matches?.('[data-lux-control-product-enabled]')) {
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
       const ctrl = luxuryControlledProduction();
@@ -15779,6 +16063,15 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       markLuxuryControlledProductionDirty();
       return;
     }
+    if (e.target.dataset?.luxShotSubjectType) {
+      if (state.luxuryAd.keyframeGenerating) {
+        renderLuxuryAdStoryboard();
+        toast('正在生成画面预览，完成后再修改镜头类型', 'error');
+        return;
+      }
+      await setLuxuryAdSegmentSubjectType(Number(e.target.dataset.luxShotSubjectType), e.target.value || 'auto');
+      return;
+    }
     if (e.target.dataset?.luxPersonSpec) {
       const field = e.target.dataset.luxPersonSpec;
       luxuryAdPersonSpec()[field] = e.target.value || '';
@@ -15787,7 +16080,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         state.luxuryAd.keyframes = [];
         toast('人物配置已变更，请重新生成剧本，避免人物和对白不一致。', 'info');
       }
-      if (state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
+      const identityFields = new Set(['castMode', 'gender', 'age', 'origin']);
+      if (identityFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
         state.luxuryAd.personAsset = null;
         state.luxuryAd.keyframes = [];
       }

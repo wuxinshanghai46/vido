@@ -17,7 +17,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260618-age-gate-v92">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260622-story-contract-v94">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -54,6 +54,8 @@
       font-weight: 500 !important;
     }
   </style>
+  <script src="/js/vido-theme.js?v=20260622-light-mist-interactions"></script>
+  <link rel="stylesheet" href="/css/vido-ui.css?v=20260622-light-mist-interactions" />
 </head>
 <body>
   <div class="dh-app" id="dhApp">
@@ -1288,6 +1290,30 @@
                           <option value="match_brief">按广告需求判断</option>
                         </select>
                       </label>
+                      <label>
+                        <span>人物身份 / 职业</span>
+                        <input class="dh-input" data-lux-person-spec="roleName" maxlength="80" placeholder="如：店长、用户、品牌顾问；不确定可留空让 AI 从需求判断">
+                      </label>
+                      <label>
+                        <span>人物姓名</span>
+                        <input class="dh-input" data-lux-person-spec="displayName" maxlength="40" placeholder="可手动指定；留空时由编剧生成正式人名">
+                      </label>
+                      <label>
+                        <span>外貌 / 气质</span>
+                        <input class="dh-input" data-lux-person-spec="appearanceText" maxlength="180" placeholder="脸型、体型、年龄感、真实感、气质等">
+                      </label>
+                      <label>
+                        <span>穿着 / 服装</span>
+                        <input class="dh-input" data-lux-person-spec="wardrobeText" maxlength="220" placeholder="上衣、裤装、鞋、配饰、颜色、职业装等">
+                      </label>
+                      <label>
+                        <span>发型 / 妆造</span>
+                        <input class="dh-input" data-lux-person-spec="hairMakeupText" maxlength="160" placeholder="发型、妆容、眼镜、胡须等">
+                      </label>
+                      <label>
+                        <span>人物禁止项</span>
+                        <input class="dh-input" data-lux-person-spec="negativeText" maxlength="220" placeholder="如：不要西装、不要白衬衫、不要夸张表情">
+                      </label>
                     </div>
                   </div>
                   <div class="dh-demo-person-actions">
@@ -1954,6 +1980,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260619-media-thumbs-v93"></script>
+  <script src="/js/digital-human.js?v=20260622-story-contract-v94"></script>
 </body>
 </html>

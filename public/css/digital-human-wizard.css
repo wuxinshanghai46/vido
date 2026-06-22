@@ -729,6 +729,9 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-shot-cell { display: grid; gap: 8px; align-content: start; justify-items: start; }
 .dh-luxgen-edit { border: 1px solid rgba(33,255,243,.32); border-radius: 999px; background: rgba(33,255,243,.06); color: var(--dh-primary); cursor: pointer; padding: 3px 9px; font-size: 11px; font-weight: 800; }
 .dh-luxgen-edit:hover { border-color: var(--dh-primary); background: rgba(33,255,243,.12); }
+.dh-luxgen-edit.danger { border-color: rgba(255,101,125,.35); color: var(--vido-danger, #ff657d); background: rgba(255,101,125,.07); }
+.dh-luxgen-edit.danger:hover { border-color: var(--vido-danger, #ff657d); background: rgba(255,101,125,.12); }
+.dh-lux-shot-type-select { min-height: 34px; margin-top: 6px; font-size: 12px; }
 .dh-luxgen-shot-upload { margin-top: 7px; border: 1px solid rgba(143,178,255,.26); border-radius: 999px; background: rgba(127,180,255,.08); color: #9fc2ff; cursor: pointer; padding: 4px 9px; font-size: 11px; font-weight: 800; }
 .dh-luxgen-shot-upload:hover { border-color: rgba(33,255,243,.55); color: var(--dh-primary); background: rgba(33,255,243,.08); }
 .dh-luxgen-shot-plan { display: grid; gap: 5px; min-width: 0; }
