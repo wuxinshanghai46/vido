@@ -1,11 +1,40 @@
 ﻿const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawn } = require('child_process');
+const multer = require('multer');
+const mammoth = require('mammoth');
+const pdfParse = require('pdf-parse');
+const ffmpegPath = require('ffmpeg-static');
+const ffprobePath = require('ffprobe-static').path;
 const db = require('../models/database');
 const novelService = require('../services/novelService');
 const { deductCredits } = require('../middleware/credits');
 const { ownedBy, scopeUserId } = require('../middleware/auth');
 const orchestrator = require('../services/agentOrchestrator');
+
+const NOVEL_IMPORT_MAX_BYTES = 20 * 1024 * 1024;
+const NOVEL_IMPORT_VIDEO_MAX_BYTES = 300 * 1024 * 1024;
+const NOVEL_IMPORT_EXTENSIONS = new Set(['.txt', '.md', '.json', '.srt', '.vtt', '.ass', '.csv', '.docx', '.pdf', '.mp4', '.mov', '.webm', '.m4v']);
+const NOVEL_IMPORT_VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.m4v']);
+const novelImportUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, file, cb) {
+      const dir = path.join(os.tmpdir(), 'vido-novel-imports');
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename(req, file, cb) {
+      cb(null, `${Date.now()}-${uuidv4()}${novelImportExtension(file.originalname)}`);
+    }
+  }),
+  limits: { fileSize: NOVEL_IMPORT_VIDEO_MAX_BYTES }
+});
+const aiCreateTasks = new Map();
+const AI_CREATE_TASK_TTL_MS = 2 * 60 * 60 * 1000;
 
 const NOVEL_GENRE_PRESETS = [
   { key: 'auto', label: 'AI 推荐', api: 'auto', subtypes: [] },
@@ -119,6 +148,247 @@ function arr(value) {
 
 function str(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function novelImportExtension(filename = '') {
+  return path.extname(String(filename || '')).toLowerCase();
+}
+
+function normalizeImportedText(value = '') {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\u0000/g, '')
+    .replace(/^\uFEFF/, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+function textDecodeScore(text = '') {
+  const value = String(text || '');
+  const replacement = (value.match(/\uFFFD/g) || []).length;
+  const mojibake = (value.match(/[锟斤拷�]/g) || []).length;
+  const cjk = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+  const visible = value.replace(/\s/g, '').length || 1;
+  return (replacement + mojibake) * 8 - cjk / visible;
+}
+
+function decodeImportedTextBuffer(buffer) {
+  if (!buffer || !buffer.length) return '';
+  if (buffer.length >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    return buffer.slice(3).toString('utf8');
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    return buffer.slice(2).toString('utf16le');
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xFE && buffer[1] === 0xFF) {
+    const swapped = Buffer.alloc(Math.max(0, buffer.length - 2));
+    for (let i = 2; i + 1 < buffer.length; i += 2) {
+      swapped[i - 2] = buffer[i + 1];
+      swapped[i - 1] = buffer[i];
+    }
+    return swapped.toString('utf16le');
+  }
+  const utf8 = buffer.toString('utf8');
+  let gb18030 = '';
+  try { gb18030 = new TextDecoder('gb18030', { fatal: false }).decode(buffer); } catch {}
+  return gb18030 && textDecodeScore(gb18030) < textDecodeScore(utf8) ? gb18030 : utf8;
+}
+
+function importedWordCount(value = '') {
+  return sourceLength(value);
+}
+
+function splitImportedChapters(content = '') {
+  const textValue = normalizeImportedText(content);
+  if (!textValue) return [];
+  const headingPattern = /(^|\n)[ \t　]*(第[零〇一二三四五六七八九十百千万两\d]{1,8}[章节回卷部篇][^\n]{0,60}|[（(]?\d{1,4}[）).、．][ \t　]*[^\n]{1,60})[ \t　]*(?=\n)/g;
+  const matches = [];
+  let match;
+  while ((match = headingPattern.exec(textValue)) !== null) {
+    const start = match.index + (match[1] ? match[1].length : 0);
+    const title = str(match[2]).replace(/^[（(]?(\d{1,4})[）).、．]\s*/, '第 $1 章 ');
+    if (title) matches.push({ start, title });
+  }
+  if (matches.length < 2) return [];
+  return matches.map((item, index) => {
+    const next = matches[index + 1]?.start ?? textValue.length;
+    const raw = textValue.slice(item.start, next).trim();
+    const body = normalizeImportedText(raw.replace(item.title, '').trim());
+    return {
+      index: index + 1,
+      title: item.title.replace(/\s+/g, ' ').slice(0, 80),
+      content: body,
+      word_count: importedWordCount(body)
+    };
+  }).filter(ch => ch.word_count > 20 || ch.content.length > 40);
+}
+
+function analyzeImportedNovelText(content = '') {
+  const normalized = normalizeImportedText(content);
+  const chapters = splitImportedChapters(normalized);
+  const totalWords = importedWordCount(normalized);
+  const chapterWords = chapters.reduce((sum, ch) => sum + (Number(ch.word_count) || 0), 0);
+  const avgWords = chapters.length ? Math.round(chapterWords / chapters.length) : 0;
+  const kind = chapters.length >= 2 && chapterWords >= 1500 && avgWords >= 300
+    ? 'full_text'
+    : chapters.length >= 2
+      ? 'outline'
+      : totalWords >= 6000
+        ? 'full_text_unsectioned'
+        : 'outline_or_fragment';
+  return {
+    kind,
+    chapter_count: chapters.length,
+    word_count: totalWords,
+    avg_chapter_words: avgWords,
+    chapters: chapters.map(ch => ({
+      index: ch.index,
+      title: ch.title,
+      word_count: ch.word_count,
+      excerpt: ch.content.slice(0, 220)
+    }))
+  };
+}
+
+function inferImportedTitle({ title = '', sourceText = '', sourceFilename = '', analysis = {} } = {}) {
+  if (str(title)) return str(title);
+  const firstTitle = str(analysis.chapters?.[0]?.title);
+  const textTitle = str(sourceText.match(/《([^》]{2,40})》/)?.[1]);
+  const fileBase = str(path.basename(sourceFilename || '', path.extname(sourceFilename || ''))).replace(/[_-]+/g, ' ');
+  return textTitle || (fileBase && !/^source|upload|novel$/i.test(fileBase) ? fileBase : '') || firstTitle || '导入小说';
+}
+
+function buildImportedOutlineFromChapters(chapters = [], extracted = {}) {
+  const extractedChapters = new Map(arr(extracted.chapters).map((chapter, idx) => [Number(chapter.index) || idx + 1, chapter]));
+  return {
+    ...extracted,
+    logline: str(extracted.logline),
+    synopsis: str(extracted.synopsis),
+    world: extracted.world || {},
+    characters: arr(extracted.characters),
+    relationships: arr(extracted.relationships),
+    chapters: chapters.map(ch => ({
+      ...(extractedChapters.get(Number(ch.index)) || {}),
+      index: Number(ch.index),
+      title: ch.title || `第 ${ch.index} 章`,
+      summary: str(extractedChapters.get(Number(ch.index))?.summary) || ch.content.slice(0, 260),
+      source: 'imported_full_text',
+      imported_word_count: ch.word_count
+    }))
+  };
+}
+
+function runNovelImportCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { windowsHide: true, ...options });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', chunk => { stdout += chunk.toString('utf8'); });
+    child.stderr?.on('data', chunk => { stderr += chunk.toString('utf8'); });
+    child.on('error', reject);
+    child.on('close', code => {
+      if (code === 0) resolve({ stdout, stderr });
+      else {
+        const error = new Error((stderr || stdout || `${command} exited ${code}`).trim());
+        error.code = code;
+        reject(error);
+      }
+    });
+  });
+}
+
+async function probeNovelImportVideo(filePath) {
+  try {
+    const { stdout } = await runNovelImportCommand(ffprobePath, [
+      '-v', 'error',
+      '-print_format', 'json',
+      '-show_format',
+      '-show_streams',
+      filePath
+    ]);
+    return JSON.parse(stdout || '{}');
+  } catch {
+    return {};
+  }
+}
+
+async function extractNovelVideoSubtitle(filePath) {
+  const subtitlePath = path.join(os.tmpdir(), 'vido-novel-imports', `${Date.now()}-${uuidv4()}.srt`);
+  try {
+    await runNovelImportCommand(ffmpegPath, [
+      '-y',
+      '-i', filePath,
+      '-map', '0:s:0',
+      '-f', 'srt',
+      subtitlePath
+    ]);
+    if (!fs.existsSync(subtitlePath)) return '';
+    return normalizeImportedText(fs.readFileSync(subtitlePath, 'utf8'));
+  } catch {
+    return '';
+  } finally {
+    try { if (fs.existsSync(subtitlePath)) fs.unlinkSync(subtitlePath); } catch {}
+  }
+}
+
+function videoMetadataText(meta = {}) {
+  const format = meta.format || {};
+  const streams = arr(meta.streams);
+  const video = streams.find(item => item.codec_type === 'video') || {};
+  const audio = streams.find(item => item.codec_type === 'audio') || {};
+  const subtitles = streams.filter(item => item.codec_type === 'subtitle');
+  return [
+    `视频文件元数据：时长 ${Math.round(Number(format.duration || 0)) || '未知'} 秒，大小 ${format.size ? `${Math.round(Number(format.size) / 1024 / 1024)}MB` : '未知'}。`,
+    video.codec_name ? `画面流：${video.codec_name}，${video.width || '?'}x${video.height || '?'}。` : '',
+    audio.codec_name ? `音频流：${audio.codec_name}。` : '',
+    subtitles.length ? `字幕轨：${subtitles.map(s => s.codec_name || s.tags?.language || 'subtitle').join('、')}。` : '字幕轨：未检测到。'
+  ].filter(Boolean).join('\n');
+}
+
+async function extractNovelImportText(file = {}) {
+  const ext = novelImportExtension(file.originalname);
+  if (!NOVEL_IMPORT_EXTENSIONS.has(ext)) {
+    const error = new Error('不支持的文件格式。请上传 txt、md、json、srt、vtt、ass、csv、docx、pdf、mp4、mov、webm 或 m4v。');
+    error.status = 400;
+    throw error;
+  }
+  if (!NOVEL_IMPORT_VIDEO_EXTENSIONS.has(ext) && Number(file.size || 0) > NOVEL_IMPORT_MAX_BYTES) {
+    const error = new Error('文本/文档文件不能超过 20MB。长篇小说请分卷导入，或先压缩为纯文本。');
+    error.status = 413;
+    throw error;
+  }
+  if (['.txt', '.md', '.json', '.srt', '.vtt', '.ass', '.csv'].includes(ext)) {
+    return normalizeImportedText(decodeImportedTextBuffer(fs.readFileSync(file.path)));
+  }
+  if (ext === '.docx') {
+    const result = await mammoth.extractRawText({ path: file.path });
+    return normalizeImportedText(result.value || '');
+  }
+  if (ext === '.pdf') {
+    const result = await pdfParse(fs.readFileSync(file.path));
+    return normalizeImportedText(result.text || '');
+  }
+  if (NOVEL_IMPORT_VIDEO_EXTENSIONS.has(ext)) {
+    const meta = await probeNovelImportVideo(file.path);
+    const subtitleText = await extractNovelVideoSubtitle(file.path);
+    if (sourceLength(subtitleText) >= 80) {
+      return normalizeImportedText([
+        '视频导入内容：系统已从视频内嵌字幕提取以下文本，用于反推世界观、人物、剧情场景和章节规划。',
+        videoMetadataText(meta),
+        '',
+        '字幕内容：',
+        subtitleText
+      ].join('\n'));
+    }
+    const error = new Error('视频未检测到可读取的内嵌字幕，当前无法只凭画面或声音可靠反推小说内容。请同时上传 srt/vtt/ass 字幕，或粘贴视频文案/剧情文本后再分析。');
+    error.status = 422;
+    error.details = { metadata: videoMetadataText(meta) };
+    throw error;
+  }
+  const error = new Error('该格式暂不支持文本提取。');
+  error.status = 400;
+  throw error;
 }
 
 function objectText(value, keys = []) {
@@ -533,10 +803,419 @@ router.get('/taxonomy', (req, res) => {
   }
 });
 
+// 导入已有小说/字幕/视频素材：服务端统一解析，避免前端假装支持二进制格式。
+router.post('/import-file', (req, res) => {
+  novelImportUpload.single('file')(req, res, async err => {
+    const file = req.file;
+    try {
+      if (err) {
+        const isSize = err.code === 'LIMIT_FILE_SIZE';
+        return res.status(isSize ? 413 : 400).json({
+          success: false,
+          error: isSize ? '上传文件过大。文本/文档请控制在 20MB 内，视频请控制在 300MB 内。' : err.message
+        });
+      }
+      if (!file) return res.status(400).json({ success: false, error: '请先选择要导入的文件' });
+      const ext = novelImportExtension(file.originalname);
+      const content = await extractNovelImportText(file);
+      const analysis = analyzeImportedNovelText(content);
+      if (sourceLength(content) < 24) {
+        return res.status(422).json({ success: false, error: '文件中没有提取到足够的可分析文本，请换一个文件或粘贴正文/字幕。' });
+      }
+      res.json({
+        success: true,
+        file: {
+          name: file.originalname,
+          ext,
+          size: file.size,
+          kind: NOVEL_IMPORT_VIDEO_EXTENSIONS.has(ext) ? 'video' : ext === '.docx' || ext === '.pdf' ? 'document' : 'text'
+        },
+        content,
+        length: content.length,
+        meaningful_length: sourceLength(content),
+        analysis
+      });
+    } catch (error) {
+      res.status(error.status || 500).json({
+        success: false,
+        error: error.message,
+        details: error.details || null
+      });
+    } finally {
+      if (file?.path) {
+        try { fs.unlinkSync(file.path); } catch {}
+      }
+    }
+  });
+});
+
+function validateAiCreatePayload(payload = {}) {
+  const { mode = 'idea', idea = '', source_text = '' } = payload;
+  if (mode === 'import' && !str(source_text)) {
+    const error = new Error('请上传或粘贴已有作品内容');
+    error.status = 400;
+    throw error;
+  }
+  if (mode !== 'import' && !str(idea)) {
+    const error = new Error('请先输入小说想法');
+    error.status = 400;
+    throw error;
+  }
+}
+
+function logAiCreateFailure(error, taskId = '') {
+  console.error('[Novel/ai-create] failed:', {
+    task_id: taskId || '',
+    code: error.code || '',
+    message: error.message,
+    status: error.status || '',
+    attempts: arr(error.attempts || []).map(item => ({
+      provider_id: item.provider_id,
+      model_id: item.model_id,
+      error: item.error
+    }))
+  });
+}
+
+function taskAttempts(error) {
+  return arr(error?.attempts || []).map(item => ({
+    provider_id: item.provider_id,
+    provider_name: item.provider_name,
+    model_id: item.model_id,
+    model_name: item.model_name,
+    status: item.status || null,
+    error: item.error || ''
+  }));
+}
+
+function cleanupAiCreateTasks() {
+  const now = Date.now();
+  for (const [id, task] of aiCreateTasks.entries()) {
+    const updated = Date.parse(task.updated_at || task.created_at || '') || now;
+    if (now - updated > AI_CREATE_TASK_TTL_MS) aiCreateTasks.delete(id);
+  }
+}
+
+function patchAiCreateTask(taskId, fields = {}) {
+  const task = aiCreateTasks.get(taskId);
+  if (!task) return null;
+  Object.assign(task, fields, { updated_at: new Date().toISOString() });
+  return task;
+}
+
+function publicAiCreateTask(task = {}) {
+  const publicTask = {
+    id: task.id,
+    status: task.status,
+    stage: task.stage,
+    progress: task.progress,
+    message: task.message,
+    novel_id: task.novel_id || '',
+    error: task.error || '',
+    code: task.code || '',
+    attempts: task.attempts || [],
+    created_at: task.created_at,
+    updated_at: task.updated_at,
+    finished_at: task.finished_at || ''
+  };
+  if (task.status === 'done') publicTask.result = task.result;
+  return publicTask;
+}
+
+async function createNovelFromAiPayload(req, payload = {}, hooks = {}) {
+  const {
+    mode = 'idea',
+    idea = '',
+    source_text = '',
+    source_filename = '',
+    title = '',
+    genre = '',
+    style = 'descriptive',
+    novel_type = 'short',
+    cultural_region = 'chinese',
+    chapter_count = 5,
+    chapter_words = 2000,
+    subtype = '',
+    channel = '',
+    provider = ''
+  } = payload;
+
+  validateAiCreatePayload(payload);
+  const importAnalysis = mode === 'import' ? analyzeImportedNovelText(source_text) : null;
+  const importedFullChapters = importAnalysis?.kind === 'full_text' ? splitImportedChapters(source_text) : [];
+  if (mode === 'import' && importedFullChapters.length >= 2) {
+    deductCredits(req.user?.id, 'novel_outline', '全文导入作品档案抽取并创建小说');
+    hooks.update?.({
+      stage: 'splitting_source',
+      progress: 18,
+      message: `已识别为全文，正在按原文拆分 ${importedFullChapters.length} 个章节。`
+    });
+    const importedTitle = inferImportedTitle({ title, sourceText: source_text, sourceFilename: source_filename, analysis: importAnalysis });
+    hooks.update?.({
+      stage: 'analyzing',
+      progress: 38,
+      message: '正在从全文原文抽取世界观、人物、关系和章节任务书。'
+    });
+    const extractedOutline = await novelService.extractImportedFullTextDossier({
+      sourceText: source_text,
+      chapters: importedFullChapters,
+      title: importedTitle,
+      genre,
+      style,
+      novelType: importedFullChapters.length >= 20 ? 'long' : importedFullChapters.length <= 4 ? 'flash' : 'short',
+      chapterWords: Number(chapter_words) || 2000,
+      culturalRegion: cultural_region || 'chinese',
+      provider: provider || null
+    });
+    const extractionMeta = extractedOutline._meta || {};
+    delete extractedOutline._meta;
+    hooks.update?.({
+      stage: 'saving',
+      progress: 82,
+      message: '已抽取作品档案，正在保存原文章节正文和人物世界观。'
+    });
+    const exactChapterWords = importedFullChapters.length
+      ? Math.max(800, Math.round(importedFullChapters.reduce((sum, ch) => sum + ch.word_count, 0) / importedFullChapters.length))
+      : Number(chapter_words) || 2000;
+    const outline = buildImportedOutlineFromChapters(importedFullChapters, extractedOutline);
+    const storyBible = buildStoryBible(outline);
+    const baseNovel = {
+      id: uuidv4(),
+      user_id: req.user?.id,
+      title: importedTitle,
+      genre: str(extractedOutline.genre) || genre || 'auto',
+      style,
+      novel_type: importedFullChapters.length >= 20 ? 'long' : importedFullChapters.length <= 4 ? 'flash' : 'short',
+      cultural_region: cultural_region || 'chinese',
+      description: outline.synopsis,
+      logline: outline.logline || '',
+      tags: arr(extractedOutline.tags),
+      chapter_count: importedFullChapters.length,
+      chapter_words: exactChapterWords,
+      provider: provider || null,
+      outline,
+      story_bible: storyBible,
+      contract: {
+        logline: '',
+        audience: '',
+        target_words: importedFullChapters.reduce((sum, ch) => sum + ch.word_count, 0),
+        genre: genre || 'auto',
+        subtype,
+        channel,
+        style,
+        cultural_region: cultural_region || 'chinese',
+        world: outline.world || {},
+        promises: {
+          core_conflict: outline.core_problem || '',
+          long_goal: outline.promise || outline.escalation_path || ''
+        },
+        constraints: {
+          continuity_rules: [
+            '全文导入项目：章节正文来自用户上传原文，AI 优化或补充时必须尊重原文事实、章节顺序和人物关系。',
+            ...arr(outline.writing_rules)
+          ].filter(Boolean).join('\n')
+        },
+        version: 1,
+        updated_at: new Date().toISOString()
+      },
+      chapters: importedFullChapters.map(ch => ({
+        index: ch.index,
+        title: ch.title || `第 ${ch.index} 章`,
+        content: ch.content,
+        status: 'draft',
+        word_count: ch.word_count,
+        source: 'imported_full_text',
+        imported_at: new Date().toISOString()
+      })),
+      total_words: importedFullChapters.reduce((sum, ch) => sum + ch.word_count, 0),
+      source_material: {
+        type: 'user_upload',
+        import_kind: 'full_text',
+        filename: source_filename || '',
+        text_excerpt: str(source_text).slice(0, 12000),
+        length: String(source_text || '').length,
+        word_count: importAnalysis.word_count,
+        chapter_count: importedFullChapters.length,
+        chapters: importAnalysis.chapters,
+        summary: `系统已按上传全文拆分 ${importedFullChapters.length} 个章节，正文已同步到章节编辑区。`,
+        imported_at: new Date().toISOString()
+      },
+      status: 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const longform = buildLongformState(baseNovel);
+    const novel = {
+      ...baseNovel,
+      ...longform,
+      memory_items: [
+        ...arr(longform.memory_items),
+        {
+          id: `source_${Date.now()}`,
+          type: 'source',
+          text: baseNovel.source_material.summary,
+          source: 'user_import',
+          importance: 5,
+          created_at: new Date().toISOString()
+        }
+      ],
+      runtime_status: updateRuntimeStatus({ ...baseNovel, ...longform }, {
+        agent_workflow: 'full_text_imported_chapters_ready',
+        last_error: '',
+        attempts: extractionMeta.attempts || []
+      })
+    };
+    db.insertNovel(novel);
+    hooks.update?.({
+      stage: 'done',
+      progress: 100,
+      message: `全文导入完成：已同步 ${importedFullChapters.length} 章正文。`
+    });
+    return { novel, plan: null, outline, import_analysis: importAnalysis, model: { plan: extractionMeta, outline: extractionMeta } };
+  }
+
+  deductCredits(req.user?.id, 'novel_outline', mode === 'import' ? '导入作品分析并创建小说' : 'AI 创建小说');
+  hooks.update?.({
+    stage: 'analyzing',
+    progress: 18,
+    message: mode === 'import' ? '正在分析上传内容，提取作品事实、人物和世界观。' : '正在分析创作想法和类型要求。'
+  });
+  const plan = await novelService.analyzeNovelSeed({
+    mode,
+    idea,
+    sourceText: source_text,
+    title,
+    genre,
+    style,
+    novelType: novel_type,
+    culturalRegion: cultural_region,
+    chapterCount: chapter_count,
+    chapterWords: chapter_words,
+    subtype,
+    channel,
+    provider: provider || null
+  });
+  const planMeta = plan._meta || {};
+  delete plan._meta;
+
+  hooks.update?.({
+    stage: 'outlining',
+    progress: 56,
+    message: mode === 'import' ? '正在根据真实导入内容生成剧情场景和章节规划。' : '正在生成世界观、人物关系和章节大纲。'
+  });
+  const outline = await novelService.generateOutline({
+    title: plan.title,
+    genre: plan.genre,
+    subtype: plan.subtype || subtype || '',
+    channel: plan.channel || channel || '',
+    style: plan.style,
+    chapterCount: plan.chapter_count,
+    description: [
+      mode === 'idea' && str(idea) ? `用户原始想法：${str(idea)}` : '',
+      mode === 'import' && str(source_text) ? `导入作品原文节选：${str(source_text).slice(0, 6000)}` : '',
+      plan.description,
+      plan.logline ? `一句话卖点：${plan.logline}` : '',
+      plan.core_conflict ? `核心冲突：${plan.core_conflict}` : '',
+      plan.long_goal ? `长期目标：${plan.long_goal}` : '',
+      mode === 'import' && plan.source_summary ? `已有作品摘要：${plan.source_summary}` : ''
+    ].filter(Boolean).join('\n'),
+    provider: provider || null,
+    novelType: plan.novel_type,
+    culturalRegion: plan.cultural_region || cultural_region || 'chinese'
+  });
+  const outlineMeta = outline._meta || {};
+  delete outline._meta;
+
+  hooks.update?.({
+    stage: 'saving',
+    progress: 86,
+    message: '正在保存小说项目和写作档案。'
+  });
+  const storyBible = buildStoryBible(outline);
+  const baseNovel = {
+    id: uuidv4(),
+    user_id: req.user?.id,
+    title: plan.title,
+    genre: plan.genre,
+    style: plan.style,
+    novel_type: plan.novel_type,
+    cultural_region: plan.cultural_region || cultural_region || 'chinese',
+    description: plan.description,
+    logline: outline.logline || plan.logline || '',
+    tags: plan.tags || [],
+    chapter_count: plan.chapter_count,
+    chapter_words: plan.chapter_words,
+    provider: provider || null,
+    outline,
+    story_bible: storyBible,
+    contract: {
+      logline: outline.logline || plan.logline || '',
+      audience: plan.audience || '',
+      target_words: plan.chapter_count * plan.chapter_words,
+      genre: plan.genre,
+      subtype: plan.subtype || subtype || '',
+      channel: plan.channel || channel || '',
+      style: plan.style,
+      cultural_region: plan.cultural_region || cultural_region || 'chinese',
+      world: {
+        setting: plan.description || outline.world?.setting || '',
+        rules: plan.continuity_rules || outline.world?.rules || ''
+      },
+      promises: {
+        core_conflict: plan.core_conflict || '',
+        long_goal: plan.long_goal || ''
+      },
+      constraints: {
+        continuity_rules: plan.continuity_rules || ''
+      },
+      version: 1,
+      updated_at: new Date().toISOString()
+    },
+    chapters: [],
+    total_words: 0,
+    source_material: {
+      type: mode === 'import' ? 'user_upload' : 'idea_seed',
+      text_excerpt: (mode === 'import' ? str(source_text) : str(idea)).slice(0, 12000),
+      length: String(mode === 'import' ? source_text || '' : idea || '').length,
+      summary: plan.source_summary || '',
+      imported_at: new Date().toISOString()
+    },
+    status: 'draft',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  const longform = buildLongformState(baseNovel);
+  const novel = {
+    ...baseNovel,
+    ...longform,
+    memory_items: [
+      ...arr(longform.memory_items),
+      mode === 'import' ? {
+        id: `source_${Date.now()}`,
+        type: 'source',
+        text: plan.source_summary || str(source_text).slice(0, 600),
+        source: 'user_import',
+        importance: 5,
+        created_at: new Date().toISOString()
+      } : null
+    ].filter(Boolean),
+    runtime_status: updateRuntimeStatus({ ...baseNovel, ...longform }, {
+      agent_workflow: mode === 'import' ? 'import_analyzed_outline_completed' : 'idea_analyzed_outline_completed',
+      last_error: '',
+      model_provider: outlineMeta.provider_id || planMeta.provider_id,
+      model_id: outlineMeta.model_id || planMeta.model_id,
+      attempts: [...arr(planMeta.attempts), ...arr(outlineMeta.attempts)]
+    })
+  };
+  db.insertNovel(novel);
+  return { novel, plan, outline, model: { plan: planMeta, outline: outlineMeta } };
+}
+
 // 小说列表
 router.get('/', (req, res) => {
   try {
-    const novels = db.listNovels(scopeUserId(req));
+    const includeDeleted = req.query.include_deleted === '1';
+    const novels = db.listNovels(scopeUserId(req)).filter(novel => includeDeleted || !novel.deleted_at);
     if (req.query.scope === 'adaptation' || req.query.include_unfinished === '1') {
       return res.json({
         success: true,
@@ -554,157 +1233,78 @@ router.get('/', (req, res) => {
 // AI 创建小说：一句想法生成 / 导入已有作品分析补充
 router.post('/ai-create', async (req, res) => {
   try {
-    const {
-      mode = 'idea',
-      idea = '',
-      source_text = '',
-      title = '',
-      genre = '',
-      style = 'descriptive',
-      novel_type = 'short',
-      cultural_region = 'chinese',
-      chapter_count = 5,
-      chapter_words = 2000,
-      subtype = '',
-      channel = '',
-      provider = ''
-    } = req.body || {};
-    if (mode === 'import' && !str(source_text)) return res.status(400).json({ success: false, error: '请上传或粘贴已有作品内容' });
-    if (mode !== 'import' && !str(idea)) return res.status(400).json({ success: false, error: '请先输入小说想法' });
+    const payload = req.body || {};
+    validateAiCreatePayload(payload);
+    if (payload.async === true || payload.background === true) {
+      cleanupAiCreateTasks();
+      const taskId = uuidv4();
+      const now = new Date().toISOString();
+      const task = {
+        id: taskId,
+        user_id: req.user?.id || '',
+        status: 'queued',
+        stage: 'queued',
+        progress: 5,
+        message: '已提交后台分析任务，正在排队启动。',
+        created_at: now,
+        updated_at: now
+      };
+      aiCreateTasks.set(taskId, task);
+      const taskReq = { user: req.user };
+      const taskPayload = { ...payload };
+      setImmediate(async () => {
+        patchAiCreateTask(taskId, {
+          status: 'running',
+          stage: 'starting',
+          progress: 10,
+          message: '后台任务已开始，正在准备分析素材。'
+        });
+        try {
+          const result = await createNovelFromAiPayload(taskReq, taskPayload, {
+            update: fields => patchAiCreateTask(taskId, fields)
+          });
+          patchAiCreateTask(taskId, {
+            status: 'done',
+            stage: 'done',
+            progress: 100,
+            message: '分析完成，小说项目已生成。',
+            novel_id: result.novel?.id || '',
+            result,
+            finished_at: new Date().toISOString()
+          });
+        } catch (error) {
+          logAiCreateFailure(error, taskId);
+          patchAiCreateTask(taskId, {
+            status: 'failed',
+            stage: 'failed',
+            progress: 100,
+            message: error.message || '小说项目生成失败',
+            error: error.message || '小说项目生成失败',
+            code: error.code || '',
+            attempts: taskAttempts(error),
+            finished_at: new Date().toISOString()
+          });
+        }
+      });
+      return res.status(202).json({ success: true, task: publicAiCreateTask(task) });
+    }
 
-    deductCredits(req.user?.id, 'novel_outline', mode === 'import' ? '导入作品分析并创建小说' : 'AI 创建小说');
-    const plan = await novelService.analyzeNovelSeed({
-      mode,
-      idea,
-      sourceText: source_text,
-      title,
-      genre,
-      style,
-      novelType: novel_type,
-      culturalRegion: cultural_region,
-      chapterCount: chapter_count,
-      chapterWords: chapter_words,
-      subtype,
-      channel,
-      provider: provider || null
-    });
-    const planMeta = plan._meta || {};
-    delete plan._meta;
-
-    const outline = await novelService.generateOutline({
-      title: plan.title,
-      genre: plan.genre,
-      subtype: plan.subtype || subtype || '',
-      channel: plan.channel || channel || '',
-      style: plan.style,
-      chapterCount: plan.chapter_count,
-      description: [
-        mode === 'idea' && str(idea) ? `用户原始想法：${str(idea)}` : '',
-        mode === 'import' && str(source_text) ? `导入作品原文节选：${str(source_text).slice(0, 6000)}` : '',
-        plan.description,
-        plan.logline ? `一句话卖点：${plan.logline}` : '',
-        plan.core_conflict ? `核心冲突：${plan.core_conflict}` : '',
-        plan.long_goal ? `长期目标：${plan.long_goal}` : '',
-        mode === 'import' && plan.source_summary ? `已有作品摘要：${plan.source_summary}` : ''
-      ].filter(Boolean).join('\n'),
-      provider: provider || null,
-      novelType: plan.novel_type,
-      culturalRegion: plan.cultural_region || cultural_region || 'chinese'
-    });
-    const outlineMeta = outline._meta || {};
-    delete outline._meta;
-
-    const storyBible = buildStoryBible(outline);
-    const baseNovel = {
-      id: uuidv4(),
-      user_id: req.user?.id,
-      title: plan.title,
-      genre: plan.genre,
-      style: plan.style,
-      novel_type: plan.novel_type,
-      cultural_region: plan.cultural_region || cultural_region || 'chinese',
-      description: plan.description,
-      logline: outline.logline || plan.logline || '',
-      tags: plan.tags || [],
-      chapter_count: plan.chapter_count,
-      chapter_words: plan.chapter_words,
-      provider: provider || null,
-      outline,
-      story_bible: storyBible,
-      contract: {
-        logline: outline.logline || plan.logline || '',
-        audience: plan.audience || '',
-        target_words: plan.chapter_count * plan.chapter_words,
-        genre: plan.genre,
-        subtype: plan.subtype || subtype || '',
-        channel: plan.channel || channel || '',
-        style: plan.style,
-        cultural_region: plan.cultural_region || cultural_region || 'chinese',
-        world: {
-          setting: plan.description || outline.world?.setting || '',
-          rules: plan.continuity_rules || outline.world?.rules || ''
-        },
-        promises: {
-          core_conflict: plan.core_conflict || '',
-          long_goal: plan.long_goal || ''
-        },
-        constraints: {
-          continuity_rules: plan.continuity_rules || ''
-        },
-        version: 1,
-        updated_at: new Date().toISOString()
-      },
-      chapters: [],
-      total_words: 0,
-      source_material: {
-        type: mode === 'import' ? 'user_upload' : 'idea_seed',
-        text_excerpt: (mode === 'import' ? str(source_text) : str(idea)).slice(0, 12000),
-        length: String(mode === 'import' ? source_text || '' : idea || '').length,
-        summary: plan.source_summary || '',
-        imported_at: new Date().toISOString()
-      },
-      status: 'draft',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    const longform = buildLongformState(baseNovel);
-    const novel = {
-      ...baseNovel,
-      ...longform,
-      memory_items: [
-        ...arr(longform.memory_items),
-        mode === 'import' ? {
-          id: `source_${Date.now()}`,
-          type: 'source',
-          text: plan.source_summary || str(source_text).slice(0, 600),
-          source: 'user_import',
-          importance: 5,
-          created_at: new Date().toISOString()
-        } : null
-      ].filter(Boolean),
-      runtime_status: updateRuntimeStatus({ ...baseNovel, ...longform }, {
-        agent_workflow: mode === 'import' ? 'import_analyzed_outline_completed' : 'idea_analyzed_outline_completed',
-        last_error: '',
-        model_provider: outlineMeta.provider_id || planMeta.provider_id,
-        model_id: outlineMeta.model_id || planMeta.model_id,
-        attempts: [...arr(planMeta.attempts), ...arr(outlineMeta.attempts)]
-      })
-    };
-    db.insertNovel(novel);
-    res.json({ success: true, novel, plan, outline, model: { plan: planMeta, outline: outlineMeta } });
+    const result = await createNovelFromAiPayload(req, payload);
+    res.json({ success: true, ...result });
   } catch (error) {
-    console.error('[Novel/ai-create] failed:', {
-      code: error.code || '',
-      message: error.message,
-      status: error.status || '',
-      attempts: arr(error.attempts || []).map(item => ({
-        provider_id: item.provider_id,
-        model_id: item.model_id,
-        error: item.error
-      }))
-    });
+    logAiCreateFailure(error);
     res.status(error.status || (error.attempts?.length ? 502 : 500)).json({ success: false, error: error.message, code: error.code || '', attempts: error.attempts || [] });
   }
+});
+
+router.get('/ai-create/tasks/:taskId', (req, res) => {
+  cleanupAiCreateTasks();
+  const task = aiCreateTasks.get(req.params.taskId);
+  if (!task) return res.status(404).json({ success: false, error: '任务不存在或已过期' });
+  if (task.user_id !== (req.user?.id || '')) {
+    return res.status(403).json({ success: false, error: '无权查看该任务' });
+  }
+  res.json({ success: true, task: publicAiCreateTask(task) });
 });
 
 // 小说详情
@@ -814,9 +1414,34 @@ router.put('/:id', (req, res) => {
 // 删除小说
 router.delete('/:id', (req, res) => {
   try {
-    if (!getOwnedNovel(req, res, req.params.id)) return;
-    db.deleteNovel(req.params.id);
-    res.json({ success: true });
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const now = new Date().toISOString();
+    db.updateNovel(req.params.id, {
+      deleted_at: now,
+      deleted_by: req.user?.id || '',
+      status: 'deleted',
+      updated_at: now
+    });
+    res.json({ success: true, novel: db.getNovel(req.params.id) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 恢复已删除小说
+router.post('/:id/restore', (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const now = new Date().toISOString();
+    db.updateNovel(req.params.id, {
+      deleted_at: null,
+      deleted_by: null,
+      status: novel.chapters?.some(ch => ch.status === 'done') ? 'writing' : 'draft',
+      updated_at: now
+    });
+    res.json({ success: true, novel: db.getNovel(req.params.id) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
@@ -889,6 +1514,64 @@ router.post('/:id/generate-outline', async (req, res) => {
   }
 });
 
+// 只补齐空白/不完整章节任务书，不重写已有完整章节。
+router.post('/:id/outline/fill-gaps', async (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    if (!novel.outline || !arr(novel.outline.chapters).length) {
+      return res.status(400).json({ success: false, error: '当前还没有剧情大纲章节' });
+    }
+    db.updateNovel(req.params.id, {
+      status: 'generating',
+      runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'outline_gap_filling', last_error: '' })
+    });
+    deductCredits(req.user?.id, 'novel_outline', `补齐章节任务书: ${novel.title}`);
+
+    const outline = await novelService.fillOutlineChapterGaps({
+      novel,
+      chapterIndexes: arr(req.body?.chapter_indexes),
+      provider: novel.provider
+    });
+    const meta = outline._meta || {};
+    delete outline._meta;
+    const storyBible = buildStoryBible(outline);
+    const longform = buildLongformState({ ...novel, outline, story_bible: storyBible });
+    db.updateNovel(req.params.id, {
+      outline,
+      story_bible: storyBible,
+      ...longform,
+      runtime_status: updateRuntimeStatus({ ...novel, ...longform }, {
+        model_provider: meta.provider_id || longform.runtime_status?.model_provider,
+        model_id: meta.model_id || longform.runtime_status?.model_id,
+        agent_workflow: 'outline_gap_filled',
+        last_error: '',
+        attempts: meta.attempts || []
+      }),
+      status: 'draft',
+      updated_at: new Date().toISOString()
+    });
+    res.json({
+      success: true,
+      novel: db.getNovel(req.params.id),
+      outline,
+      filled_indexes: meta.filled_indexes || [],
+      filled_count: arr(meta.filled_indexes).length,
+      model: meta
+    });
+  } catch (e) {
+    db.updateNovel(req.params.id, {
+      status: 'draft',
+      runtime_status: updateRuntimeStatus(db.getNovel(req.params.id) || {}, {
+        agent_workflow: 'outline_gap_fill_failed',
+        last_error: e.message,
+        attempts: e.attempts || []
+      })
+    });
+    res.status(e.status || (e.attempts?.length ? 502 : 500)).json({ success: false, error: e.message, code: e.code || '', attempts: e.attempts || [] });
+  }
+});
+
 // SSE 流式生成章节
 router.get('/:id/generate-chapter-stream', async (req, res) => {
   const novel = getOwnedNovel(req, res, req.params.id);
@@ -916,7 +1599,8 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
       style: novel.style,
       chapterWords: novel.chapter_words,
       provider: novel.provider,
-      novelType: novel.novel_type || 'short'
+      novelType: novel.novel_type || 'short',
+      userNote: str(req.query.user_note)
     }, (chunk) => {
       res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
     });
@@ -1082,6 +1766,65 @@ router.get('/:id/refine-stream', async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'error', message: e.message, attempts: e.attempts || [] })}\n\n`);
   }
   res.end();
+});
+
+// 非流式优化/续写：用于长文本改写，避免 EventSource URL 过长或网关中断。
+router.post('/:id/refine', async (req, res) => {
+  const novel = getOwnedNovel(req, res, req.params.id);
+  if (!novel) return;
+
+  const body = req.body || {};
+  const sourceText = str(body.text);
+  const instruction = str(body.instruction);
+  const chapterIndex = parseInt(body.chapter || body.chapter_index || 0);
+  if (!sourceText || !instruction) {
+    return res.status(400).json({ success: false, error: '缺少 text 或 instruction 参数' });
+  }
+
+  try {
+    const chapter = arr(novel.chapters).find(ch => Number(ch.index) === Number(chapterIndex)) || {};
+    const outlineChapter = arr(novel.outline?.chapters).find(ch => Number(ch.index) === Number(chapterIndex)) || arr(novel.outline?.chapters)[chapterIndex - 1] || {};
+    const refined = await novelService.refineTextStream({
+      text: sourceText,
+      instruction,
+      genre: novel.genre,
+      style: novel.style,
+      provider: novel.provider,
+      context: {
+        mode: str(body.mode),
+        user_note: str(body.user_note),
+        novel_title: novel.title,
+        logline: novel.logline,
+        chapter_index: chapterIndex || null,
+        chapter_title: chapter.title || outlineChapter.title || '',
+        chapter_content: chapter.content || '',
+        outline_chapter: outlineChapter,
+        relationships: arr(novel.relationships).slice(0, 12),
+        memory_items: arr(novel.memory_items).slice(-20)
+      }
+    });
+    db.updateNovel(req.params.id, {
+      runtime_status: updateRuntimeStatus(novel, {
+        agent_workflow: 'refine_completed',
+        last_error: '',
+        model_provider: refined.provider_id || novel.runtime_status?.model_provider,
+        model_id: refined.model_id || novel.runtime_status?.model_id,
+        attempts: refined.attempts || []
+      }),
+      updated_at: new Date().toISOString()
+    });
+    res.json({ success: true, text: refined.text, attempts: refined.attempts || [] });
+  } catch (e) {
+    db.updateNovel(req.params.id, {
+      runtime_status: updateRuntimeStatus(novel, {
+        agent_workflow: 'refine_failed',
+        last_error: e.message,
+        attempts: e.attempts || []
+      }),
+      updated_at: new Date().toISOString()
+    });
+    res.status(e.attempts?.length ? 502 : 500).json({ success: false, error: e.message, attempts: e.attempts || [] });
+  }
 });
 
 // 导出小说

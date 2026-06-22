@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI 小说工作台 - VIDO</title>
-  <link rel="stylesheet" href="/css/ai-novel.css?v=20260621-novel-create-error" />
+  <script src="/js/vido-theme.js?v=20260622-ai-novel-light-theme"></script>
+  <link rel="stylesheet" href="/css/ai-novel.css?v=20260623-split-autofill" />
 </head>
 <body>
   <div class="nv-shell" id="novelApp">
@@ -57,10 +58,13 @@
             <textarea id="nvImportInput" class="nv-big-input is-hidden" placeholder="粘贴你已有作品、旧大纲或章节片段，AI 会先分析再补齐标题、类型、世界观、人物和大纲。"></textarea>
             <div class="nv-import-tools is-hidden" id="nvImportTools">
               <label class="nv-file-picker">
-                <input id="nvImportFileInput" type="file" accept=".txt,.md,.json,.srt,.vtt,.ass,.csv,.mp4,.mov,.webm,.m4v,video/*,text/*" />
-                <span>上传小说文本 / 字幕 / 参考视频</span>
+                <input id="nvImportFileInput" type="file" accept=".txt,.md,.json,.srt,.vtt,.ass,.csv,.docx,.pdf,.mp4,.mov,.webm,.m4v,video/*,text/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <span>上传小说 / Word / PDF / 字幕 / 视频</span>
               </label>
-              <div id="nvImportFileStatus">文本类文件会自动读入；视频文件会作为参考素材记录到方案里。</div>
+              <div class="nv-import-status" id="nvImportFileStatus">
+                <b>等待上传内容</b>
+                <span>文本、Word、PDF、字幕会提取正文；视频会优先读取内嵌字幕，用于反推世界观、人物和剧情场景。</span>
+              </div>
             </div>
             <div class="nv-create-error" id="nvCreateError" hidden></div>
             <div class="nv-selected-line" id="nvSelectedLine">类型会在下一步弹窗中选择：AI 判断题材 / AI 判断细分 / AI 判断频道 / 中国语境 / 中篇小说</div>
@@ -143,6 +147,6 @@
 
   <div class="nv-toast" id="nvToast" role="status" aria-live="polite"></div>
   <script src="/js/auth.js?v=20260620"></script>
-  <script src="/js/ai-novel.js?v=20260621-novel-create-error" defer></script>
+  <script src="/js/ai-novel.js?v=20260623-split-autofill" defer></script>
 </body>
 </html>

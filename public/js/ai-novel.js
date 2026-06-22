@@ -23,8 +23,12 @@
     graphSuppressClick: false,
     chapterWriting: null,
     generation: null,
+    taskLoading: false,
+    taskError: '',
     taxonomy: null,
     importFile: null,
+    importAnalysis: null,
+    importUploadRequest: null,
     createError: '',
     config: {
       genre: 'auto',
@@ -109,6 +113,121 @@
       if (v) return v;
     }
     return '';
+  }
+
+  function displayWordCount(value) {
+    return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
+  }
+
+  function currentChapterPlanText(chapter = outlineChapterAt(state.currentChapter)) {
+    return firstText(
+      chapter.summary,
+      chapter.scene_goal,
+      chapter.goal,
+      chapter.description,
+      chapter.function,
+      chapter.hook
+    );
+  }
+
+  function outlineChapterNeedsFill(chapter = {}) {
+    return !firstText(chapter.summary, chapter.scene_goal, chapter.goal, chapter.obstacle, chapter.choice, chapter.cost, chapter.hook);
+  }
+
+  function chapterIndexOf(chapter = {}, fallback = 1) {
+    const explicit = Number(chapter.index);
+    return Number.isFinite(explicit) && explicit > 0 ? explicit : fallback;
+  }
+
+  function isBareChapterNumberTitle(value = '') {
+    return /^第\s*[零〇一二三四五六七八九十百千万两\d]+\s*章$/i.test(text(value));
+  }
+
+  function renumberChapterRecord(record = {}, index = 1) {
+    return {
+      ...record,
+      index,
+      title: isBareChapterNumberTitle(record.title) ? `第 ${index} 章` : record.title
+    };
+  }
+
+  function maxChapterIndex(novel = state.current) {
+    const outlineList = arr(novel?.outline?.chapters);
+    const indexes = [
+      Number(novel?.chapter_count || 0),
+      outlineList.length,
+      arr(novel?.chapters).length,
+      ...arr(novel?.chapters).map((chapter, idx) => chapterIndexOf(chapter, idx + 1)),
+      ...outlineList.map((chapter, idx) => chapterIndexOf(chapter, idx + 1))
+    ].filter(Number.isFinite);
+    return Math.max(0, ...indexes);
+  }
+
+  function normalizedOutlineChapters(novel = state.current) {
+    const raw = arr(novel?.outline?.chapters);
+    const byIndex = new Map();
+    raw.forEach((chapter, idx) => {
+      const index = chapterIndexOf(chapter, idx + 1);
+      byIndex.set(index, renumberChapterRecord(chapter, index));
+    });
+    const total = Math.max(maxChapterIndex(novel), 1);
+    return Array.from({ length: total }, (_, idx) => {
+      const index = idx + 1;
+      return byIndex.get(index) || {
+        index,
+        title: `第 ${index} 章`,
+        summary: '',
+        scene_goal: '',
+        obstacle: '',
+        choice: '',
+        cost: '',
+        hook: '',
+        characters: [],
+        key_events: []
+      };
+    });
+  }
+
+  function outlineChapterAt(index) {
+    const target = Number(index);
+    return normalizedOutlineChapters(state.current).find(chapter => Number(chapter.index) === target) || {};
+  }
+
+  function focusOutlineChapter(index) {
+    window.setTimeout(() => {
+      const card = document.querySelector(`[data-outline-card][data-outline-index="${Number(index)}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('is-new');
+      window.setTimeout(() => card.classList.remove('is-new'), 1800);
+    }, 80);
+  }
+
+  function collectOutlineFromInputs() {
+    const outline = { ...(state.current?.outline || {}) };
+    const synopsisInput = document.getElementById('nvSynopsisInput');
+    if (synopsisInput) outline.synopsis = text(synopsisInput.value);
+    const cards = Array.from(document.querySelectorAll('[data-outline-card]'));
+    if (cards.length) {
+      const baseByIndex = new Map(normalizedOutlineChapters(state.current).map((chapter, idx) => [chapterIndexOf(chapter, idx + 1), chapter]));
+      outline.chapters = cards.map((card, idx) => {
+        const index = Number(card.dataset.outlineIndex) || idx + 1;
+        const base = baseByIndex.get(index) || {};
+        const field = name => text(card.querySelector(`[data-outline-field="${name}"]`)?.value);
+        return {
+          ...base,
+          index,
+          title: field('title') || base.title || `第 ${index} 章`,
+          summary: field('summary'),
+          scene_goal: field('scene_goal'),
+          obstacle: field('obstacle'),
+          choice: field('choice'),
+          cost: field('cost'),
+          hook: field('hook')
+        };
+      }).sort((a, b) => Number(a.index) - Number(b.index));
+    }
+    return outline;
   }
 
   function richText(value, labels = {}) {
@@ -224,7 +343,12 @@
       try { data = JSON.parse(bodyText); } catch { data = { success: false, error: bodyText }; }
     }
     if (!res.ok || data.success === false) {
-      const err = new Error(data.error || data.message || `${res.status} ${res.statusText}`);
+      const rawError = data.error || data.message || '';
+      const looksLikeGatewayHtml = /^<!doctype|^<html[\s>]/i.test(String(rawError).trim()) || /502 Bad Gateway|Tengine|nginx/i.test(String(rawError));
+      const message = looksLikeGatewayHtml
+        ? `服务网关暂时不可用（${res.status || 502}）。通常是后端刚重启、网关连接中断或接口处理超时，请稍后重试。`
+        : (rawError || `${res.status} ${res.statusText}`);
+      const err = new Error(message);
       err.status = res.status;
       err.data = data;
       throw err;
@@ -238,6 +362,76 @@
     toast.classList.add('is-visible');
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 3600);
+  }
+
+  function confirmAction({
+    title = '确认操作',
+    message = '',
+    detail = '',
+    confirmText = '确定',
+    cancelText = '取消',
+    danger = false
+  } = {}) {
+    return new Promise(resolve => {
+      let mask = document.getElementById('nvConfirmModal');
+      if (!mask) {
+        mask = document.createElement('div');
+        mask.id = 'nvConfirmModal';
+        mask.className = 'nv-modal-mask nv-confirm-mask';
+        mask.innerHTML = `
+          <div class="nv-modal nv-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="nvConfirmTitle">
+            <header class="nv-modal-head">
+              <div>
+                <h2 id="nvConfirmTitle"></h2>
+                <p id="nvConfirmMessage"></p>
+              </div>
+            </header>
+            <div class="nv-modal-body">
+              <div class="nv-confirm-detail" id="nvConfirmDetail"></div>
+            </div>
+            <footer class="nv-modal-foot">
+              <div></div>
+              <button class="nv-btn nv-btn-muted" type="button" data-confirm-cancel></button>
+              <button class="nv-btn nv-btn-primary" type="button" data-confirm-ok></button>
+            </footer>
+          </div>`;
+        document.body.appendChild(mask);
+      }
+      const titleEl = mask.querySelector('#nvConfirmTitle');
+      const messageEl = mask.querySelector('#nvConfirmMessage');
+      const detailEl = mask.querySelector('#nvConfirmDetail');
+      const okBtn = mask.querySelector('[data-confirm-ok]');
+      const cancelBtn = mask.querySelector('[data-confirm-cancel]');
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      detailEl.textContent = detail;
+      detailEl.hidden = !detail;
+      okBtn.textContent = confirmText;
+      cancelBtn.textContent = cancelText;
+      okBtn.classList.toggle('is-danger', !!danger);
+      const close = value => {
+        mask.classList.remove('is-open');
+        mask.setAttribute('aria-hidden', 'true');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        mask.onclick = null;
+        document.removeEventListener('keydown', onKeydown);
+        resolve(value);
+      };
+      const onKeydown = event => {
+        if (event.key === 'Escape') close(false);
+        if (event.key === 'Enter') close(true);
+      };
+      okBtn.onclick = () => close(true);
+      cancelBtn.onclick = () => close(false);
+      mask.onclick = event => {
+        if (event.target === mask) close(false);
+      };
+      document.addEventListener('keydown', onKeydown);
+      mask.setAttribute('aria-hidden', 'false');
+      mask.classList.add('is-open');
+      cancelBtn.focus();
+    });
   }
 
   function setCreateError(message = '') {
@@ -255,7 +449,15 @@
       .slice(0, 2)
       .map(item => `${item.provider_id || '模型'}/${item.model_id || ''}: ${item.error}`)
       .join('；');
-    return [error?.message || '小说方案生成失败', attemptText].filter(Boolean).join('\n');
+    const rawMessage = error?.message || '';
+    const message = /Failed to fetch|NetworkError|Load failed/i.test(rawMessage)
+      ? '请求没有拿到服务器响应，可能是网络中断、服务重启或接口连接被关闭。请稍后重试；如果连续出现，联系管理员查看生产日志。'
+      : (rawMessage || '小说方案生成失败');
+    return [message, attemptText].filter(Boolean).join('\n');
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   function setBusy(button, busy, label) {
@@ -278,12 +480,17 @@
       '检查人物、起因、矛盾和风险',
       '生成并修复章节任务书'
     ];
+    const progress = Number.isFinite(Number(state.generation.progress))
+      ? Math.max(0, Math.min(100, Math.round(Number(state.generation.progress))))
+      : null;
+    const activeIndex = progress === null ? 0 : Math.min(steps.length - 1, Math.floor(progress / Math.max(1, Math.ceil(100 / steps.length))));
     return `<section class="nv-generation-status" aria-live="polite">
       <div class="nv-generation-orbit"><span></span><span></span><span></span></div>
       <div>
         <b>${esc(state.generation.title || '正在生成')}</b>
         <p>${esc(state.generation.detail || '正在让写作 agent 重新学习素材、知识库和章节质量门槛。')}</p>
-        <div class="nv-generation-steps">${steps.map((step, index) => `<span class="${index === 0 ? 'is-active' : ''}">${esc(step)}</span>`).join('')}</div>
+        ${progress === null ? '' : `<div class="nv-generation-progress-row"><div class="nv-generation-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div><em>${progress}%</em></div>`}
+        <div class="nv-generation-steps">${steps.map((step, index) => `<span class="${index <= activeIndex ? 'is-active' : ''}">${esc(step)}</span>`).join('')}</div>
       </div>
     </section>`;
   }
@@ -334,15 +541,20 @@
   }
 
   function chapters(novel = state.current) {
-    const count = Number(novel?.chapter_count || novel?.outline?.chapters?.length || 0);
     const existing = arr(novel?.chapters);
-    const byIndex = new Map(existing.map(ch => [Number(ch.index), ch]));
-    const total = Math.max(count, existing.length, 1);
+    const outlineList = normalizedOutlineChapters(novel);
+    const byIndex = new Map(existing.map((chapter, idx) => {
+      const index = chapterIndexOf(chapter, idx + 1);
+      return [index, renumberChapterRecord(chapter, index)];
+    }));
+    const outlineByIndex = new Map(outlineList.map((chapter, idx) => [chapterIndexOf(chapter, idx + 1), chapter]));
+    const total = Math.max(maxChapterIndex(novel), 1);
     return Array.from({ length: total }, (_, i) => {
       const index = i + 1;
+      const outlineChapter = outlineByIndex.get(index) || {};
       return byIndex.get(index) || {
         index,
-        title: arr(novel?.outline?.chapters)[i]?.title || `第 ${index} 章`,
+        title: chapterTitle(outlineChapter, `第 ${index} 章`),
         content: '',
         status: 'draft',
         word_count: 0
@@ -399,7 +611,10 @@
     workView.classList.toggle('is-active', view === 'work');
     taskView.classList.toggle('is-active', view === 'tasks');
     updateShell();
-    if (view === 'tasks') renderTasks();
+    if (view === 'tasks') {
+      renderTasks();
+      run(refreshTasks);
+    }
     if (view === 'work') renderWork();
     if (view === 'create') renderHomeList();
   }
@@ -407,12 +622,28 @@
   async function loadNovels() {
     const data = await api('/api/novel');
     state.novels = arr(data.novels || data.data || data.items);
+    state.taskError = '';
     if (state.current) {
       const fresh = state.novels.find(item => item.id === state.current.id);
       if (fresh) state.current = { ...state.current, ...fresh };
     }
     renderHomeList();
     if (state.view === 'tasks') renderTasks();
+  }
+
+  async function refreshTasks() {
+    if (state.taskLoading) return;
+    state.taskLoading = true;
+    state.taskError = '';
+    renderTasks();
+    try {
+      await loadNovels();
+    } catch (error) {
+      state.taskError = error.message || '任务列表加载失败';
+    } finally {
+      state.taskLoading = false;
+      renderTasks();
+    }
   }
 
   async function loadNovel(id) {
@@ -505,27 +736,217 @@
     renderKnowledgePreview();
     const summary = createSummary();
     document.getElementById('nvModalSummary').textContent = summary;
-    document.getElementById('nvSelectedLine').textContent = '类型会在下一步弹窗中选择：' + summary;
+    if (state.createMode !== 'import') {
+      document.getElementById('nvSelectedLine').textContent = '类型会在下一步弹窗中选择：' + summary;
+    }
+  }
+
+  function formatFileSize(size = 0) {
+    const value = Number(size) || 0;
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)}MB`;
+    if (value >= 1024) return `${Math.ceil(value / 1024)}KB`;
+    return `${value}B`;
+  }
+
+  function setImportStatus(title, detail = '', kind = '', actionLabel = '', progress = null) {
+    const status = document.getElementById('nvImportFileStatus');
+    if (!status) return;
+    status.classList.toggle('is-loading', kind === 'loading');
+    status.classList.toggle('is-ready', kind === 'ready');
+    status.classList.toggle('is-error', kind === 'error');
+    status.classList.toggle('has-action', !!actionLabel);
+    const progressValue = progress && Number.isFinite(progress.percent)
+      ? Math.max(0, Math.min(100, Math.round(progress.percent)))
+      : null;
+    const progressHtml = progress
+      ? `<div class="nv-import-progress" role="progressbar" aria-label="上传进度" aria-valuemin="0" aria-valuemax="100"${progressValue === null ? '' : ` aria-valuenow="${progressValue}"`}>
+          <span style="width:${progressValue === null ? 100 : progressValue}%"></span>
+        </div>`
+      : '';
+    status.innerHTML = `<div><b>${esc(title)}</b>${detail ? `<span>${esc(detail)}</span>` : ''}${progressHtml}</div>${actionLabel ? `<button class="nv-import-clear" type="button" data-clear-import>${esc(actionLabel)}</button>` : ''}`;
+  }
+
+  function resetImportContent() {
+    if (state.importUploadRequest) {
+      state.importUploadRequest.abort();
+      state.importUploadRequest = null;
+    }
+    state.importFile = null;
+    state.importAnalysis = null;
+    const fileInput = document.getElementById('nvImportFileInput');
+    const importInput = document.getElementById('nvImportInput');
+    if (fileInput) fileInput.value = '';
+    if (importInput) importInput.value = '';
+    setCreateError('');
+    setImportStatus(
+      '等待上传内容',
+      '文本、Word、PDF、字幕会提取正文；视频会优先读取内嵌字幕，用于反推世界观、人物和剧情场景。'
+    );
+    state.createMode = 'import';
+    updateCreateModeUI();
+  }
+
+  function xhrImportFile(file, onProgress, onUploaded) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      state.importUploadRequest = xhr;
+      xhr.open('POST', '/api/novel/import-file');
+      if (token()) xhr.setRequestHeader('Authorization', `Bearer ${token()}`);
+      xhr.upload.onprogress = event => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress(Math.min(99, (event.loaded / event.total) * 100), event.loaded, event.total);
+        } else {
+          onProgress(null, event.loaded || 0, event.total || file.size || 0);
+        }
+      };
+      xhr.upload.onload = () => {
+        onUploaded();
+      };
+      xhr.onload = () => {
+        if (state.importUploadRequest === xhr) state.importUploadRequest = null;
+        let data = {};
+        try {
+          data = JSON.parse(xhr.responseText || '{}');
+        } catch (_) {
+          data = {};
+        }
+        resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, data });
+      };
+      xhr.onerror = () => {
+        if (state.importUploadRequest === xhr) state.importUploadRequest = null;
+        reject(new Error('上传失败，请检查网络后重试。'));
+      };
+      xhr.onabort = () => {
+        if (state.importUploadRequest === xhr) state.importUploadRequest = null;
+        const error = new Error('上传已停止');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      const form = new FormData();
+      form.append('file', file);
+      xhr.send(form);
+    });
+  }
+
+  async function uploadImportFile(file, handlers) {
+    let res = await xhrImportFile(file, handlers.onProgress, handlers.onUploaded);
+    if (res.status === 401 && typeof tryRefresh === 'function' && await tryRefresh()) {
+      res = await xhrImportFile(file, handlers.onProgress, handlers.onUploaded);
+    }
+    return res;
+  }
+
+  function updateCreateModeUI() {
+    document.querySelectorAll('[data-create-mode]').forEach(item => {
+      item.classList.toggle('is-active', item.dataset.createMode === state.createMode);
+    });
+    document.getElementById('nvIdeaInput').classList.toggle('is-hidden', state.createMode !== 'idea');
+    document.getElementById('nvImportInput').classList.toggle('is-hidden', state.createMode !== 'import');
+    document.getElementById('nvImportTools').classList.toggle('is-hidden', state.createMode !== 'import');
+    const mainBtn = document.getElementById('nvOpenCreateModalBtn');
+    if (mainBtn) mainBtn.textContent = state.createMode === 'import' ? '解析上传内容' : '选择类型并生成';
+    const selectedLine = document.getElementById('nvSelectedLine');
+    if (selectedLine) {
+      selectedLine.textContent = state.createMode === 'import'
+        ? '导入模式：先解析上传/粘贴内容，再根据真实内容生成并完善世界观、人物、剧情场景和章节规划。'
+        : '类型会在下一步弹窗中选择：' + createSummary();
+    }
   }
 
   async function handleImportFile(file) {
     if (!file) return;
+    if (state.importUploadRequest) {
+      state.importUploadRequest.abort();
+      state.importUploadRequest = null;
+    }
+    state.createMode = 'import';
+    updateCreateModeUI();
     state.importFile = { name: file.name, type: file.type, size: file.size };
-    const status = document.getElementById('nvImportFileStatus');
-    const isTextLike = /^text\//.test(file.type) || /\.(txt|md|json|srt|vtt|ass|csv)$/i.test(file.name);
-    if (isTextLike) {
-      const content = await file.text();
-      document.getElementById('nvImportInput').value = content.slice(0, 180000);
-      status.textContent = `已读取：${file.name}，${content.length} 字符。`;
-      showToast('导入文本已读取，可以继续生成小说方案。');
+    state.importAnalysis = null;
+    const supported = /\.(txt|md|json|srt|vtt|ass|csv|docx|pdf|mp4|mov|webm|m4v)$/i.test(file.name)
+      || /^text\//.test(file.type)
+      || /^video\//.test(file.type)
+      || /pdf|wordprocessingml/.test(file.type);
+    if (!supported) {
+      const message = '不支持该文件格式。请上传 txt、md、json、srt、vtt、ass、csv、docx、pdf、mp4、mov、webm 或 m4v。';
+      setImportStatus(`无法上传：${file.name}`, message, 'error', '清除选择');
+      setCreateError(message);
       return;
     }
-    if (/^video\//.test(file.type) || /\.(mp4|mov|webm|m4v)$/i.test(file.name)) {
-      status.textContent = `已选择参考视频：${file.name}。当前会记录为参考素材；如需解析字幕，请同时上传字幕或粘贴文本。`;
-      showToast('参考视频已选择。');
+    const isVideo = /^video\//.test(file.type) || /\.(mp4|mov|webm|m4v)$/i.test(file.name);
+    const maxSize = isVideo ? 300 * 1024 * 1024 : 20 * 1024 * 1024;
+    if (file.size > maxSize) {
+      const message = isVideo ? '视频文件不能超过 300MB。' : '文本/文档文件不能超过 20MB。';
+      setImportStatus(`无法上传：${file.name}`, message, 'error', '清除选择');
+      setCreateError(message);
       return;
     }
-    status.textContent = `已选择文件：${file.name}。如果无法读取，请粘贴文本内容。`;
+    setCreateError('');
+    setImportStatus(
+      `已选择：${file.name}`,
+      `${formatFileSize(file.size)} · 准备上传，上传完成后会自动解析内容。`,
+      'loading',
+      '',
+      { percent: 0 }
+    );
+    let result;
+    try {
+      result = await uploadImportFile(file, {
+        onProgress: (percent, loaded, total) => {
+          const detail = Number.isFinite(percent)
+            ? `${formatFileSize(loaded)} / ${formatFileSize(total || file.size)} · 上传完成后自动解析内容。`
+            : `已上传 ${formatFileSize(loaded)} · 上传完成后自动解析内容。`;
+          setImportStatus(
+            Number.isFinite(percent) ? `上传中：${Math.round(percent)}%` : '上传中',
+            detail,
+            'loading',
+            '',
+            { percent }
+          );
+        },
+        onUploaded: () => {
+          setImportStatus(
+            `上传完成：${file.name}`,
+            `${formatFileSize(file.size)} · 正在解析内容，请稍候。`,
+            'loading',
+            '',
+            { percent: 100 }
+          );
+        }
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      const message = error?.message || '上传失败，请检查网络后重试。';
+      setImportStatus(`上传失败：${file.name}`, message, 'error', '清除选择');
+      setCreateError(message);
+      return;
+    }
+    const data = result.data || {};
+    if (!result.ok || data.success === false) {
+      const message = data.error || '文件读取失败';
+      setImportStatus(`已上传但解析失败：${file.name}`, message, 'error', '删除上传');
+      setCreateError(message);
+      return;
+    }
+    const content = text(data.content).slice(0, 180000);
+    state.importAnalysis = data.analysis || null;
+    document.getElementById('nvImportInput').value = content;
+    const analysis = state.importAnalysis || {};
+    const importKindText = analysis.kind === 'full_text'
+      ? `识别为全文 · ${analysis.chapter_count || 0} 章 · ${analysis.word_count || data.meaningful_length || content.length} 字`
+      : analysis.kind === 'full_text_unsectioned'
+        ? `识别为全文片段 · 暂未检测到清晰章节标题 · ${analysis.word_count || data.meaningful_length || content.length} 字`
+        : analysis.chapter_count >= 2
+          ? `识别为大纲/章节规划 · ${analysis.chapter_count} 个章节条目`
+          : '识别为大纲/片段内容';
+    setImportStatus(
+      `已上传并解析：${file.name}`,
+      `${formatFileSize(file.size)} · ${importKindText}。下一步点击“解析上传内容”。`,
+      'ready',
+      '删除上传'
+    );
+    updateCreateModeUI();
+    showToast(isVideo ? '视频内容已读取，将用于反推世界观、人物和剧情。' : '导入内容已读取，可以开始分析。');
   }
 
   function createSummary() {
@@ -536,6 +957,54 @@
       optionLabel(CULTURES, state.config.culture),
       optionLabel(LENGTHS, state.config.length)
     ].join(' / ');
+  }
+
+  function updateGenerationFromTask(task = {}) {
+    if (!state.generation || state.generation.type !== 'create') return;
+    state.generation = {
+      ...state.generation,
+      progress: Number.isFinite(Number(task.progress)) ? Number(task.progress) : state.generation.progress,
+      detail: task.message || state.generation.detail,
+      title: task.status === 'done'
+        ? '小说方案已生成'
+        : task.status === 'failed'
+          ? '小说方案生成失败'
+          : state.generation.title
+    };
+    if (state.view === 'work') renderWork();
+    updateShell();
+  }
+
+  async function waitForCreateTask(taskId) {
+    let consecutiveFailures = 0;
+    for (let i = 0; i < 450; i += 1) {
+      if (i > 0) await sleep(2000);
+      try {
+        const data = await api('/api/novel/ai-create/tasks/' + encodeURIComponent(taskId));
+        const task = data.task || {};
+        consecutiveFailures = 0;
+        updateGenerationFromTask(task);
+        if (task.status === 'done') return task.result || {};
+        if (task.status === 'failed') {
+          const error = new Error(task.error || task.message || '小说方案生成失败');
+          error.data = { attempts: task.attempts || [] };
+          throw error;
+        }
+      } catch (error) {
+        if (error?.data?.attempts || error?.status === 400 || error?.status === 401 || error?.status === 403 || error?.status === 404) throw error;
+        consecutiveFailures += 1;
+        if (state.generation?.type === 'create') {
+          state.generation = {
+            ...state.generation,
+            detail: '正在重新连接后台任务状态，请稍候。',
+            progress: state.generation.progress || 10
+          };
+          if (state.view === 'work') renderWork();
+        }
+        if (consecutiveFailures >= 3) throw error;
+      }
+    }
+    throw new Error('后台分析任务等待超时，请稍后刷新任务状态或联系管理员查看生产日志。');
   }
 
   async function createProject(button) {
@@ -550,18 +1019,23 @@
     }
     if (mode === 'import' && !source) {
       document.getElementById('nvCreateModal').classList.remove('is-open');
-      setCreateError('请先粘贴已有作品内容，或上传文本类文件后再生成小说方案。');
+      setCreateError('请先粘贴已有作品内容，或上传文件解析出可分析文本后再继续。');
       throw new Error(state.createError);
     }
     setCreateError('');
     state.creating = true;
-    setBusy(button, true, '生成方案中...');
+    setBusy(button, true, mode === 'import' ? '解析内容中...' : '生成方案中...');
     state.panel = 'world';
     state.generation = {
       type: 'create',
-      title: '正在生成小说方案',
-      detail: '正在读取你的创作要求、类型选择和知识库，生成作品承诺、世界观、剧情大纲、人物与章节任务书。',
-      steps: ['读取用户要求', '匹配题材知识库', '构建世界观和冲突', '生成大纲与人物关系']
+      title: mode === 'import' ? '正在分析导入内容' : '正在生成小说方案',
+      detail: mode === 'import'
+        ? '正在提交后台分析任务，提交成功后会持续显示进度。'
+        : '正在提交后台生成任务，提交成功后会持续显示进度。',
+      progress: 3,
+      steps: mode === 'import'
+        ? ['读取导入文本', '提取作品事实', '反推世界观与人物', '生成剧情场景和章节规划']
+        : ['读取用户要求', '匹配题材知识库', '构建世界观和冲突', '生成大纲与人物关系']
     };
     document.getElementById('nvCreateModal').classList.remove('is-open');
     switchView('work');
@@ -579,22 +1053,27 @@
           mode,
           idea,
           source_text: source,
-          genre: genre.api === 'auto' ? '' : genre.api,
-          subtype,
-          channel: state.config.channel === 'auto' ? '' : channel,
+          source_filename: state.importFile?.name || '',
+          genre: mode === 'import' ? '' : (genre.api === 'auto' ? '' : genre.api),
+          subtype: mode === 'import' ? '' : subtype,
+          channel: mode === 'import' || state.config.channel === 'auto' ? '' : channel,
           cultural_region: culture.api,
           novel_type: length.api,
           chapter_count: length.chapter_count,
-          chapter_words: length.chapter_words
+          chapter_words: length.chapter_words,
+          async: true
         })
       });
-      state.current = data.novel;
+      const result = data.task?.id ? await waitForCreateTask(data.task.id) : data;
+      const novel = result.novel || result.result?.novel;
+      if (!novel) throw new Error('后台任务已结束，但没有返回小说项目数据。');
+      state.current = novel;
       state.panel = 'world';
       state.currentChapter = 1;
       state.generation = null;
       await loadNovels();
       switchView('work');
-      showToast('小说方案已生成，请先确认世界观。');
+      showToast(mode === 'import' ? '导入内容已分析，请先确认世界观和人物。' : '小说方案已生成，请先确认世界观。');
     } catch (error) {
       state.generation = null;
       switchView('create');
@@ -703,6 +1182,24 @@
     const hasOutline = hasNovelOutline();
     const outlineBusy = state.generation?.type === 'outline';
     const busyAttr = outlineBusy ? 'disabled aria-busy="true"' : '';
+    const currentLength = lengthOf(state.current);
+    const targetChapters = Number(state.current.chapter_count || currentLength.chapter_count || 0);
+    const outlineChapterCount = normalizedOutlineChapters(state.current).length;
+    const lengthMismatch = outlineChapterCount > 0 && targetChapters > 0 && outlineChapterCount !== targetChapters;
+    const lengthAdapter = `<section class="nv-card nv-length-adapter">
+      <div class="nv-length-head">
+        <div>
+          <h3>篇幅改编</h3>
+          <p>把当前小说按短篇、中篇或长篇重新规划。这里只保存篇幅目标，不会删除已有正文；重新完善世界观与大纲后，会按目标章节数重构章节任务。</p>
+        </div>
+        <span>${esc(currentLength.label)} · ${targetChapters || currentLength.chapter_count} 章 · 每章约 ${Number(state.current.chapter_words || currentLength.chapter_words || 0)} 字</span>
+      </div>
+      <div class="nv-length-options">${LENGTHS.map(item => `<button class="nv-length-option ${currentLength.key === item.key || state.current.novel_type === item.api ? 'is-active' : ''}" type="button" data-adapt-length="${esc(item.key)}" ${busyAttr}>
+        <b>${esc(item.label)}</b>
+        <span>${item.chapter_count} 章 · 每章约 ${item.chapter_words} 字</span>
+      </button>`).join('')}</div>
+      ${lengthMismatch ? `<div class="nv-length-warning">当前大纲是 ${outlineChapterCount} 章，目标篇幅是 ${targetChapters} 章。请点击“完善世界观与大纲”或“重新生成大纲”完成改编。</div>` : ''}
+    </section>`;
     const actionBand = `<section class="nv-action-band nv-action-band-top">
       <div>
         <h3>当前要做什么</h3>
@@ -720,6 +1217,7 @@
     </section>`;
     return `${actionBand}
     ${renderGenerationStatus('outline')}
+    ${lengthAdapter}
     <div class="nv-panel-grid">
       <section class="nv-card">
         <h3>作品承诺</h3>
@@ -746,7 +1244,8 @@
 
   function renderOutlinePanel() {
     const outline = state.current.outline || {};
-    const outlineChapters = arr(outline.chapters);
+    const outlineChapters = normalizedOutlineChapters(state.current);
+    const incompleteCount = outlineChapters.filter(outlineChapterNeedsFill).length;
     const synopsis = firstText(outline.synopsis, outline.summary, outline.story_summary, outline.description, state.current.description);
     const outlineBusy = state.generation?.type === 'outline';
     const busyAttr = outlineBusy ? 'disabled aria-busy="true"' : '';
@@ -764,6 +1263,8 @@
       </div>
       <div class="nv-action-buttons">
         <button class="nv-btn nv-btn-muted" type="button" data-save-outline ${busyAttr}>保存大纲</button>
+        <button class="nv-btn nv-btn-muted" type="button" data-add-chapter ${busyAttr}>新增章节</button>
+        <button class="nv-btn nv-btn-muted" type="button" data-fill-outline-gaps ${busyAttr}>${outlineBusy ? '补齐中...' : `AI补齐空白章节${incompleteCount ? `（${incompleteCount}）` : ''}`}</button>
         <button class="nv-btn nv-btn-muted" type="button" data-generate-outline ${busyAttr}>${outlineBusy ? '生成中...' : '重新生成大纲'}</button>
         <button class="nv-btn nv-btn-primary" type="button" data-next-graph ${busyAttr}>下一步：查看人物关系图</button>
       </div>
@@ -771,11 +1272,15 @@
     return `${actionBand}
     ${renderGenerationStatus('outline')}
     <section class="nv-card">
-      <h3>剧情大纲</h3>
+      <div class="nv-outline-headline">
+        <h3>剧情大纲</h3>
+        <span>当前共 ${outlineChapters.length} 章${incompleteCount ? ` · ${incompleteCount} 章待补齐` : ''}</span>
+      </div>
       <label class="nv-field-label" for="nvSynopsisInput">故事总纲</label>
       <textarea class="nv-textarea" id="nvSynopsisInput" placeholder="生成大纲后显示，也可以人工修改。">${esc(synopsis)}</textarea>
       ${dramaRows.length ? `<div class="nv-drama-grid">${dramaRows.map(([label, value]) => `<div><b>${esc(label)}</b><span>${esc(value)}</span></div>`).join('')}</div>` : ''}
       <div class="nv-outline-list" id="nvOutlineList">${outlineChapters.length ? outlineChapters.map((ch, idx) => {
+        const chapterIndex = chapterIndexOf(ch, idx + 1);
         const events = arr(ch.key_events || ch.events || ch.beats).map(item => richText(item)).filter(Boolean);
         const chars = arr(ch.characters).map(item => richText(item)).filter(Boolean);
         const craftRows = [
@@ -790,9 +1295,22 @@
           ['回收/兑现', firstText(ch.payoff)],
           ['感官锚点', firstText(ch.sensory_anchor, ch.visual_anchor)]
         ].filter(([, value]) => value);
-        return `<div class="nv-outline-item">
-        <strong>第 ${idx + 1} 章：${esc(chapterTitle(ch, '未命名章节'))}</strong>
-        <p>${esc(firstText(ch.summary, ch.goal, ch.description, '暂无章节目标'))}</p>
+        return `<div class="nv-outline-item" data-outline-card data-outline-index="${esc(chapterIndex)}">
+        <div class="nv-outline-edit-head">
+          <span>第 ${chapterIndex} 章</span>
+          <input class="nv-input" data-outline-field="title" value="${esc(chapterTitle(ch, '未命名章节'))}" placeholder="章节标题" />
+          <button class="nv-btn nv-btn-muted" type="button" data-split-outline-chapter="${esc(chapterIndex)}" ${busyAttr}>拆分章节</button>
+          <button class="nv-btn nv-btn-muted" type="button" data-fill-outline-chapter="${esc(chapterIndex)}" ${busyAttr}>AI补齐本章</button>
+        </div>
+        <label class="nv-field-label">章节任务</label>
+        <textarea class="nv-textarea nv-outline-summary-input" data-outline-field="summary" placeholder="写清这一章要发生什么：起因、行动、冲突、转折、结果。">${esc(firstText(ch.summary, ch.goal, ch.description, ''))}</textarea>
+        <div class="nv-outline-edit-grid">
+          <label><b>场景目标</b><input class="nv-input" data-outline-field="scene_goal" value="${esc(firstText(ch.scene_goal, ch.goal))}" placeholder="本章要完成的具体行动" /></label>
+          <label><b>阻力</b><input class="nv-input" data-outline-field="obstacle" value="${esc(firstText(ch.obstacle, ch.conflict))}" placeholder="谁或什么阻拦人物" /></label>
+          <label><b>选择</b><input class="nv-input" data-outline-field="choice" value="${esc(firstText(ch.choice))}" placeholder="人物必须做出的选择" /></label>
+          <label><b>代价</b><input class="nv-input" data-outline-field="cost" value="${esc(firstText(ch.cost))}" placeholder="选择带来的损失或后果" /></label>
+          <label><b>钩子</b><input class="nv-input" data-outline-field="hook" value="${esc(firstText(ch.hook, ch.conflict))}" placeholder="章末留给读者的悬念" /></label>
+        </div>
         ${craftRows.length ? `<div class="nv-outline-craft">${craftRows.map(([label, value]) => `<div><b>${esc(label)}</b><span>${esc(value)}</span></div>`).join('')}</div>` : ''}
         <div class="nv-outline-meta">
           ${firstText(ch.function, ch.purpose) ? `<span>功能：${esc(firstText(ch.function, ch.purpose))}</span>` : ''}
@@ -909,37 +1427,6 @@
             evidence: firstText(chapter.summary, chapter.scene_goal, chapter.obstacle)
           }, true);
         }
-      }
-    });
-
-    const protagonist = Array.from(names).find(name => /主角|主人公|protagonist|lead/i.test(characterRoleText(entityByName.get(name) || {}))) || Array.from(names)[0];
-    names.forEach(name => {
-      if (!protagonist || name === protagonist) return;
-      const role = characterRoleText(entityByName.get(name) || {});
-      if (/反派|敌|阻力|对手|竞争|威胁|掌控|压迫|antagonist|opponent|rival|pressure|obstacle/i.test(role)) {
-        add({
-          from: protagonist,
-          to: name,
-          type: '主线阻力',
-          description: `${name} 在人物功能中承担阻力/反派压力`,
-          evidence: role
-        }, true);
-      } else if (/线索|信息|秘密|转折|知情|见证|messenger|informant|witness|reveal|information/i.test(role)) {
-        add({
-          from: protagonist,
-          to: name,
-          type: '信息关联',
-          description: `${name} 承担信息/转折功能`,
-          evidence: role
-        }, true);
-      } else if (/盟友|同伴|伙伴|帮手|亲人|朋友|ally|companion|support|relationship/i.test(role)) {
-        add({
-          from: protagonist,
-          to: name,
-          type: '同盟/关系压力',
-          description: `${name} 承担同盟或关系压力功能`,
-          evidence: role
-        }, true);
       }
     });
 
@@ -1125,11 +1612,14 @@
         <span>${esc(genderLabel(gender))} · ${esc(firstText(ent.role, ent.identity, '人物'))}</span>
       </button>`;
     }).join('') : '<div class="nv-empty">暂无人物档案。请先生成剧情大纲。</div>';
+    const outlineBusy = state.generation?.type === 'outline';
+    const busyAttr = outlineBusy ? 'disabled aria-busy="true"' : '';
     const actionBand = `<section class="nv-action-band nv-action-band-top">
-      <div><h3>下一步</h3><p>先检查人物数量、阻力方、关系证据和章节出场线索；确认后进入章节创作。</p></div>
-      <div class="nv-action-buttons"><button class="nv-btn nv-btn-primary" type="button" data-panel-go="write">下一步：进入章节制作</button></div>
+      <div><h3>下一步</h3><p>先检查人物是否来自剧情、关系是否有文本证据、章节出场线索是否清楚；确认后进入章节创作。</p></div>
+      <div class="nv-action-buttons"><button class="nv-btn nv-btn-primary" type="button" data-panel-go="write" ${busyAttr}>下一步：进入章节制作</button></div>
     </section>`;
     return `${actionBand}
+    ${renderGenerationStatus('outline')}
     <section class="nv-relation-workbench">
       <aside class="nv-relation-side">
         <div class="nv-relation-search">
@@ -1143,8 +1633,8 @@
         </div>
         ${needMoreCharacters ? `<div class="nv-relation-warning">
           <b>人物网络偏少</b>
-          <p>当前只沉淀了 ${names.length} 个人物。可以让大纲补齐盟友、阻力、信息携带者和势力代表。</p>
-          <button class="nv-btn nv-btn-primary" type="button" data-expand-characters>完善人物关系</button>
+          <p>当前只沉淀了 ${names.length} 个人物。可以让 AI 只根据剧情证据补齐关键人物和明确关系；没有证据则留空。</p>
+          <button class="nv-btn nv-btn-primary" type="button" data-expand-characters ${busyAttr}>${outlineBusy ? '完善中...' : '完善人物关系'}</button>
         </div>` : ''}
         <div class="nv-clue-list">
           <h3>章节线索</h3>
@@ -1167,7 +1657,7 @@
             <button class="nv-btn nv-btn-muted nv-icon-btn" type="button" data-graph-zoom="in" title="放大">+</button>
             <button class="nv-btn nv-btn-muted" type="button" data-graph-zoom="fit">适配</button>
             <button class="nv-btn nv-btn-muted" type="button" data-reset-graph-layout>重置布局</button>
-            <button class="nv-btn nv-btn-muted" type="button" data-panel-go="outline">返回大纲</button>
+            <button class="nv-btn nv-btn-muted" type="button" data-panel-go="outline" ${busyAttr}>返回大纲</button>
           </div>
         </div>
         <svg class="nv-graph-svg" viewBox="0 0 1200 560" role="img" aria-label="人物关系全息网络">
@@ -1238,19 +1728,22 @@
   function renderWritePanel() {
     const list = chapters();
     const chapter = list.find(item => Number(item.index) === Number(state.currentChapter)) || list[0];
-    const outlineItem = arr(state.current.outline?.chapters)[chapter.index - 1] || {};
+    const outlineItems = normalizedOutlineChapters(state.current);
+    const outlineByIndex = new Map(outlineItems.map((item, idx) => [chapterIndexOf(item, idx + 1), item]));
+    const outlineItem = outlineByIndex.get(Number(chapter.index)) || {};
     const chapterRelations = arr(state.current.relationships).slice(0, 6);
     const finalVisible = allChaptersDone(state.current) && state.current.status !== 'completed';
     const currentContent = chapterContent(chapter);
     const currentTitle = chapterTitle(chapter, chapterTitle(outlineItem, ''));
     const hasCurrentContent = !!text(currentContent);
+    const currentWords = displayWordCount(currentContent);
     return `<div class="nv-chapter-layout">
       <section class="nv-chapter-list">
         <h3>章节目录</h3>
         <div class="nv-chapter-scroll">${list.map(item => `<button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${isChapterDone(item) ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
           <b>第 ${item.index} 章</b>
-          <small>${esc(chapterTitle(item, chapterTitle(arr(state.current.outline?.chapters)[item.index - 1] || {}, '待生成章节标题')))}</small>
-          <span class="nv-status-mini">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'}</span>
+          <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
+          <span class="nv-status-mini">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
         </button>`).join('')}</div>
         <div class="nv-action-buttons" style="margin-top:12px">
           <button class="nv-btn nv-btn-muted" type="button" data-add-chapter>新增章节</button>
@@ -1260,15 +1753,32 @@
       <section class="nv-editor">
         <input class="nv-input nv-chapter-title" id="nvChapterTitle" value="${esc(currentTitle)}" placeholder="章节标题" />
         <div class="nv-editor-toolbar">
-          <div class="nv-project-meta">章节正文可手动修改，也可以让 AI 续写、扩写或优化。</div>
+          <div class="nv-project-meta">当前正文 ${currentWords} 字。章节正文可手动修改，也可以让 AI 续写、扩写或优化。</div>
           <div class="nv-editor-actions">
             <button class="nv-btn nv-btn-muted" type="button" data-generate-chapter>生成本章</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="continue">续写</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="polish">改写优化</button>
+            <button class="nv-btn nv-btn-muted" type="button" data-split-chapter>拆分本章</button>
             <button class="nv-btn nv-btn-muted" type="button" data-save-chapter>保存本章</button>
             <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter>提交本章</button>
           </div>
         </div>
+        <section class="nv-chapter-plan-editor">
+          <label>
+            <b>本章写作任务（给作家）</b>
+            <textarea class="nv-textarea" id="nvChapterPlanInput" placeholder="写清这一章具体要怎么写：开场场景、人物行动、冲突、转折、结尾钩子。">${esc(currentChapterPlanText(outlineItem))}</textarea>
+          </label>
+          <div class="nv-chapter-plan-grid">
+            <label><b>阻力</b><input class="nv-input" id="nvChapterObstacleInput" value="${esc(firstText(outlineItem.obstacle, outlineItem.conflict))}" placeholder="本章阻力或关系张力" /></label>
+            <label><b>选择</b><input class="nv-input" id="nvChapterChoiceInput" value="${esc(firstText(outlineItem.choice))}" placeholder="人物必须做的选择" /></label>
+            <label><b>代价</b><input class="nv-input" id="nvChapterCostInput" value="${esc(firstText(outlineItem.cost))}" placeholder="选择造成的后果" /></label>
+            <label><b>钩子</b><input class="nv-input" id="nvChapterHookInput" value="${esc(firstText(outlineItem.hook))}" placeholder="章末悬念或情绪落点" /></label>
+          </div>
+          <label>
+            <b>本次给作家的具体要求</b>
+            <textarea class="nv-textarea nv-writer-note" id="nvChapterWriterNote" placeholder="例如：这一段改成先压抑后爆发；多写动作和对话；不要增加新人名；保留原剧情但让情绪更疼。"></textarea>
+          </label>
+        </section>
         <div class="nv-chapter-stream-status ${state.chapterWriting ? 'is-active' : ''} ${state.chapterWriting?.isError ? 'is-error' : ''}" id="nvChapterStreamStatus">
           <span class="nv-thinking-dot"></span>
           <div>
@@ -1279,9 +1789,8 @@
         ${hasCurrentContent || state.chapterWriting ? '' : `<section class="nv-chapter-empty-state">
           <div>
             <h3>本章还没有正文</h3>
-            <p>当前只有右侧的章节故事点和人物关系，还没有生成或保存过正文。点击“生成本章”后，正文会写入这里；也可以直接在下方手动输入。</p>
+            <p>当前只有章节故事点和人物线索，还没有生成或保存过正文。可以点击上方“生成本章”，也可以直接在下方手动输入。</p>
           </div>
-          <button class="nv-btn nv-btn-primary" type="button" data-generate-chapter>生成本章正文</button>
         </section>`}
         <textarea class="nv-textarea nv-chapter-content ${hasCurrentContent ? '' : 'is-empty'}" id="nvChapterContent" placeholder="正文会显示在这里，也可以手动编辑。">${esc(currentContent)}</textarea>
         <section class="nv-finalize ${finalVisible ? 'is-visible' : ''}">
@@ -1331,12 +1840,43 @@
     showToast('世界观已保存');
   }
 
+  async function adaptNovelLength(key, button) {
+    const length = LENGTHS.find(item => item.key === key || item.api === key);
+    if (!length || !state.current) return;
+    setBusy(button, true, '保存中...');
+    try {
+      const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
+        method: 'PUT',
+        body: JSON.stringify({
+          novel_type: length.api,
+          chapter_count: length.chapter_count,
+          chapter_words: length.chapter_words
+        })
+      });
+      state.current = data.novel || {
+        ...state.current,
+        novel_type: length.api,
+        chapter_count: length.chapter_count,
+        chapter_words: length.chapter_words
+      };
+      await loadNovels();
+      renderWork();
+      showToast(`已切换为${length.label}。重新生成大纲后，会按 ${length.chapter_count} 章重新规划。`);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   async function generateOutline(button, options = {}) {
     const fromPanel = state.panel;
+    const isGraphRepair = options.nextPanel === 'graph' && fromPanel === 'graph';
     state.generation = {
       type: 'outline',
-      title: '正在重新生成世界观与大纲',
-      detail: '写作 agent 正在重读用户要求、知识库和参考写作规则，并检查人物、起因、矛盾、风险与章节任务书。'
+      title: isGraphRepair ? '正在完善人物关系' : '正在重新生成世界观与大纲',
+      detail: isGraphRepair
+        ? '写作 agent 正在重读大纲、章节任务书和人物线索，只补齐有剧情证据的人物和关系。'
+        : '写作 agent 正在重读用户要求、知识库和参考写作规则，并检查人物、起因、矛盾、风险与章节任务书。',
+      progress: 12
     };
     renderWork();
     if (document.getElementById('nvWorldInput')) {
@@ -1367,27 +1907,145 @@
     }
   }
 
-  async function saveOutline() {
-    const synopsis = text(document.getElementById('nvSynopsisInput')?.value);
-    const outline = { ...(state.current.outline || {}), synopsis };
+  async function saveOutline(options = {}) {
+    const outline = collectOutlineFromInputs();
+    const chapter_count = Math.max(maxChapterIndex({ ...state.current, outline }), arr(outline.chapters).length || 0);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
-      body: JSON.stringify({ outline, description: synopsis })
+      body: JSON.stringify({
+        outline,
+        description: outline.synopsis || state.current.description,
+        chapter_count
+      })
     });
-    state.current = data.novel || { ...state.current, outline, description: synopsis };
-    showToast('大纲已保存');
+    state.current = data.novel || { ...state.current, outline, chapter_count, description: outline.synopsis || state.current.description };
+    if (!options.silent) showToast('大纲已保存');
+    return state.current;
+  }
+
+  async function fillOutlineGaps(button, chapterIndex = null) {
+    state.generation = {
+      type: 'outline',
+      title: chapterIndex ? `正在补齐第 ${chapterIndex} 章任务书` : '正在补齐空白章节任务书',
+      detail: '写作 agent 会读取已有剧情、人物、章节前后关系，只补齐空白或指定章节，不覆盖已有完整章节。',
+      progress: 18
+    };
+    renderWork();
+    setBusy(button, true, '补齐中...');
+    try {
+      await saveOutline({ silent: true });
+      const body = chapterIndex ? { chapter_indexes: [Number(chapterIndex)] } : {};
+      const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/outline/fill-gaps`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+      state.current = data.novel || { ...state.current, outline: data.outline || state.current.outline };
+      state.panel = 'outline';
+      renderWork();
+      showToast(chapterIndex ? `第 ${chapterIndex} 章任务书已补齐` : `已补齐 ${data.filled_count || 0} 个空白章节`);
+    } finally {
+      state.generation = null;
+      setBusy(button, false);
+      renderWork();
+    }
+  }
+
+  async function autoFillSplitChapter(chapterIndex) {
+    if (!state.current?.id || !Number(chapterIndex)) return;
+    state.generation = {
+      type: 'outline',
+      title: `正在补齐第 ${chapterIndex} 章任务书`,
+      detail: '已先完成拆分和顺延，写作 agent 正在根据前后章节补齐场景目标、阻力、选择、代价和钩子。',
+      progress: 24
+    };
+    renderWork();
+    focusOutlineChapter(chapterIndex);
+    try {
+      const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/outline/fill-gaps`, {
+        method: 'POST',
+        body: JSON.stringify({ chapter_indexes: [Number(chapterIndex)] })
+      });
+      state.current = data.novel || { ...state.current, outline: data.outline || state.current.outline };
+      state.panel = 'outline';
+      renderWork();
+      focusOutlineChapter(chapterIndex);
+      showToast(`第 ${chapterIndex} 章任务书已自动补齐`);
+    } catch (error) {
+      showToast(`第 ${chapterIndex} 章已拆分，但 AI 补齐失败：${error.message}`, true);
+    } finally {
+      state.generation = null;
+      renderWork();
+      focusOutlineChapter(chapterIndex);
+    }
+  }
+
+  function readCurrentChapterPlanFromDom() {
+    return {
+      summary: text(document.getElementById('nvChapterPlanInput')?.value),
+      obstacle: text(document.getElementById('nvChapterObstacleInput')?.value),
+      choice: text(document.getElementById('nvChapterChoiceInput')?.value),
+      cost: text(document.getElementById('nvChapterCostInput')?.value),
+      hook: text(document.getElementById('nvChapterHookInput')?.value),
+      user_note: text(document.getElementById('nvChapterWriterNote')?.value)
+    };
+  }
+
+  async function saveChapterPlan(options = {}) {
+    if (!state.current) return state.current;
+    const index = Number(state.currentChapter || 1);
+    const title = text(document.getElementById('nvChapterTitle')?.value) || `第 ${index} 章`;
+    const content = document.getElementById('nvChapterContent')?.value || '';
+    const plan = readCurrentChapterPlanFromDom();
+    const list = chapters().map(ch => Number(ch.index) === index
+      ? {
+          ...ch,
+          title,
+          content,
+          word_count: displayWordCount(content),
+          updated_at: new Date().toISOString()
+        }
+      : ch);
+    const outlineChapters = normalizedOutlineChapters(state.current);
+    const outlinePosition = outlineChapters.findIndex(chapter => Number(chapter.index) === index);
+    if (outlinePosition < 0) {
+      outlineChapters.push({ index, title: `第 ${index} 章`, summary: '' });
+      outlineChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    }
+    const targetPosition = outlineChapters.findIndex(chapter => Number(chapter.index) === index);
+    const previousOutlineChapter = outlineChapters[targetPosition] || {};
+    outlineChapters[targetPosition] = {
+      ...previousOutlineChapter,
+      index,
+      title,
+      summary: plan.summary || previousOutlineChapter.summary || '',
+      scene_goal: plan.summary || previousOutlineChapter.scene_goal || previousOutlineChapter.goal || '',
+      obstacle: plan.obstacle || previousOutlineChapter.obstacle || previousOutlineChapter.conflict || '',
+      choice: plan.choice || previousOutlineChapter.choice || '',
+      cost: plan.cost || previousOutlineChapter.cost || '',
+      hook: plan.hook || previousOutlineChapter.hook || ''
+    };
+    const outline = { ...(state.current.outline || {}), chapters: outlineChapters };
+    const chapter_count = Math.max(maxChapterIndex({ ...state.current, chapters: list, outline }), outlineChapters.length, list.length);
+    const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
+      method: 'PUT',
+      body: JSON.stringify({ chapters: list, outline, chapter_count })
+    });
+    state.current = data.novel || { ...state.current, chapters: list, outline, chapter_count };
+    if (!options.silent) showToast('章节任务已保存');
+    return state.current;
   }
 
   function currentChapterPayload(status) {
     const title = text(document.getElementById('nvChapterTitle')?.value);
     const content = document.getElementById('nvChapterContent')?.value || '';
     const list = chapters().map(ch => Number(ch.index) === Number(state.currentChapter)
-      ? { ...ch, title, content, status: status || ch.status || 'draft', word_count: content.length, updated_at: new Date().toISOString() }
+      ? { ...ch, title, content, status: status || ch.status || 'draft', word_count: displayWordCount(content), updated_at: new Date().toISOString() }
       : ch);
     return list;
   }
 
   async function saveChapter(status) {
+    await saveChapterPlan({ silent: true });
     const list = currentChapterPayload(status);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
@@ -1526,9 +2184,11 @@
 
   async function generateChapter(button) {
     if (!token()) throw new Error('登录已失效，请重新登录');
+    const writerNote = text(document.getElementById('nvChapterWriterNote')?.value);
+    await saveChapterPlan({ silent: true });
     state.chapterWriting = {
       title: '正在生成正文',
-      detail: '请稍候，生成内容会直接写入下方编辑区。'
+      detail: '正在连接写作模型，请稍候。'
     };
     updateChapterWriteStatus(state.chapterWriting.title, state.chapterWriting.detail);
     setBusy(button, true, '生成中...');
@@ -1537,10 +2197,10 @@
     const writer = createChapterTypingWriter(area, { mode: 'replace', sourceValue: '', start: 0, end: 0 });
     let failed = false;
     try {
-      updateChapterWriteStatus('正在生成正文', '正在连接写作模型，首段内容返回后会开始逐字写入。');
-      const url = `/api/novel/${encodeURIComponent(state.current.id)}/generate-chapter-stream?chapter=${encodeURIComponent(state.currentChapter)}&token=${encodeURIComponent(token())}`;
+      updateChapterWriteStatus('正在生成正文', '正在等待模型返回正文。');
+      const url = `/api/novel/${encodeURIComponent(state.current.id)}/generate-chapter-stream?chapter=${encodeURIComponent(state.currentChapter)}&user_note=${encodeURIComponent(writerNote)}&token=${encodeURIComponent(token())}`;
       await stream(url, (chunk) => {
-        updateChapterWriteStatus('正在写入正文', '内容正在进入编辑区，可以先阅读，完成后再保存或提交。');
+        updateChapterWriteStatus('正在生成正文', '已收到正文内容，正在持续生成。');
         writer.enqueue(chunk);
       }, {
         onWaiting: () => updateChapterWriteStatus('仍在等待模型返回', '模型还没有返回第一段正文，请继续等待；如果接口失败，会显示真实错误。')
@@ -1563,16 +2223,29 @@
   async function refineChapter(mode, button) {
     const area = document.getElementById('nvChapterContent');
     const selected = area.value.slice(area.selectionStart, area.selectionEnd);
-    const base = mode === 'continue' ? area.value : selected;
-    if (!text(base)) throw new Error(mode === 'continue' ? '当前章节还没有可续写内容' : '请先选中需要优化的文字');
-    const instruction = mode === 'continue'
-      ? '请在保持设定、人物状态和章节目标一致的前提下，自然续写当前章节，约800字。'
-      : '请优化所选文字的节奏、画面感、网文追读力，并保持事实不变。';
+    const base = mode === 'continue' ? area.value : (selected || area.value);
+    if (!text(base)) throw new Error(mode === 'continue' ? '当前章节还没有可续写内容' : '当前章节还没有可改写内容');
+    const writerNote = text(document.getElementById('nvChapterWriterNote')?.value);
+    const plan = readCurrentChapterPlanFromDom();
+    await saveChapterPlan({ silent: true });
+    const instruction = [
+      mode === 'continue'
+        ? '请在保持设定、人物状态和章节目标一致的前提下，自然续写当前章节，约800字。'
+        : selected
+          ? '请把所选文字改写成可直接替换的小说正文，优化节奏、画面感、对话潜台词和追读力，并保持事实不变。'
+          : '请把当前章节全文改写成可直接替换的小说正文，优化节奏、画面感、对话潜台词和追读力，并保持事实不变。',
+      plan.summary ? `本章写作任务：${plan.summary}` : '',
+      plan.obstacle ? `本章阻力/关系张力：${plan.obstacle}` : '',
+      plan.choice ? `本章选择：${plan.choice}` : '',
+      plan.cost ? `本章代价：${plan.cost}` : '',
+      plan.hook ? `本章钩子：${plan.hook}` : '',
+      writerNote ? `用户给作家的具体要求：${writerNote}` : ''
+    ].filter(Boolean).join('\n');
     const selectionStart = area.selectionStart;
     const selectionEnd = area.selectionEnd;
     state.chapterWriting = {
       title: mode === 'continue' ? '正在续写正文' : '正在改写正文',
-      detail: '请稍候，返回内容会直接写入编辑区。'
+      detail: '正在连接写作模型，请稍候。'
     };
     updateChapterWriteStatus(state.chapterWriting.title, state.chapterWriting.detail);
     setBusy(button, true, mode === 'continue' ? '续写中...' : '优化中...');
@@ -1581,21 +2254,25 @@
     const writer = createChapterTypingWriter(liveArea, {
       mode: mode === 'continue' ? 'append' : 'replace',
       sourceValue: mode === 'continue' ? `${sourceValue}\n\n` : sourceValue,
-      start: selectionStart,
-      end: selectionEnd
+      start: selected ? selectionStart : 0,
+      end: selected ? selectionEnd : sourceValue.length
     });
     let failed = false;
     try {
-      let result = '';
-      updateChapterWriteStatus(mode === 'continue' ? '正在续写正文' : '正在改写正文', '正在连接写作模型，首段内容返回后会开始写入。');
-      const url = `/api/novel/${encodeURIComponent(state.current.id)}/refine-stream?text=${encodeURIComponent(base)}&instruction=${encodeURIComponent(instruction)}&token=${encodeURIComponent(token())}`;
-      await stream(url, (chunk) => {
-        result += chunk;
-        updateChapterWriteStatus(mode === 'continue' ? '正在写入续写内容' : '正在写入改写内容', '内容正在进入编辑区，可以先阅读，完成后再保存。');
-        writer.enqueue(chunk);
-      }, {
-        onWaiting: () => updateChapterWriteStatus('仍在等待模型返回', '模型还没有返回第一段内容，请继续等待；如果接口失败，会显示真实错误。')
+      updateChapterWriteStatus(mode === 'continue' ? '正在续写正文' : '正在改写正文', '正在等待模型返回内容。');
+      const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/refine`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: base,
+          instruction,
+          mode,
+          chapter: state.currentChapter,
+          user_note: writerNote
+        })
       });
+      if (!text(data.text)) throw new Error('模型没有返回可用改写内容');
+      updateChapterWriteStatus(mode === 'continue' ? '正在续写正文' : '正在改写正文', '已收到内容，正在写入编辑区。');
+      writer.enqueue(data.text || '');
       await writer.finish();
       showToast(mode === 'continue' ? '续写完成，请检查后保存。' : '优化完成，请检查后保存。');
     } catch (error) {
@@ -1655,20 +2332,275 @@
   }
 
   async function addChapter() {
-    const list = chapters();
-    const next = list.length + 1;
-    list.push({ index: next, title: `第 ${next} 章`, content: '', status: 'draft', word_count: 0 });
+    const baseOutline = state.panel === 'outline' ? collectOutlineFromInputs() : state.current.outline;
+    const baseNovel = { ...state.current, outline: baseOutline };
+    const list = chapters(baseNovel);
+    const next = maxChapterIndex(baseNovel) + 1;
+    const newChapter = { index: next, title: `第 ${next} 章`, content: '', status: 'draft', word_count: 0 };
+    const newOutlineChapter = {
+      index: next,
+      title: `第 ${next} 章`,
+      summary: '',
+      scene_goal: '',
+      obstacle: '',
+      choice: '',
+      cost: '',
+      hook: '',
+      characters: [],
+      key_events: []
+    };
+    const nextList = [...list.filter(chapter => Number(chapter.index) !== next), newChapter].sort((a, b) => Number(a.index) - Number(b.index));
     const outline = {
       ...(state.current.outline || {}),
-      chapters: [...arr(state.current.outline?.chapters), { title: `第 ${next} 章`, summary: '' }]
+      chapters: [
+        ...normalizedOutlineChapters(baseNovel).filter(chapter => Number(chapter.index) !== next),
+        newOutlineChapter
+      ].sort((a, b) => Number(a.index) - Number(b.index))
     };
+    const chapter_count = Math.max(next, outline.chapters.length, nextList.length);
+    const optimistic = { ...state.current, chapters: nextList, outline, chapter_count };
+    state.current = optimistic;
+    state.currentChapter = next;
+    state.panel = 'outline';
+    renderWork();
+    focusOutlineChapter(next);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
-      body: JSON.stringify({ chapters: list, outline, chapter_count: next })
+      body: JSON.stringify({ chapters: nextList, outline, chapter_count })
     });
-    state.current = data.novel || { ...state.current, chapters: list, outline, chapter_count: next };
+    state.current = data.novel || optimistic;
     state.currentChapter = next;
+    state.panel = 'outline';
     renderWork();
+    focusOutlineChapter(next);
+    showToast(`已新增第 ${next} 章，请先填写本章写作任务，再让作家生成或改写。`);
+  }
+
+  async function splitOutlineChapter(index) {
+    if (!state.current) return;
+    const splitIndex = Number(index || state.currentChapter || 1);
+    if (!Number.isFinite(splitIndex) || splitIndex < 1) throw new Error('请选择要拆分的章节');
+    const insertIndex = splitIndex + 1;
+    const ok = await confirmAction({
+      title: '拆分章节',
+      message: `将在第 ${splitIndex} 章后插入新的第 ${insertIndex} 章。`,
+      detail: '确认后会自动顺延后续章节。新章节会保持空白，你可以在大纲卡片里填写标题和章节任务，再让 AI 补写或改写。',
+      confirmText: '确定拆分',
+      cancelText: '取消'
+    });
+    if (!ok) return;
+    const newTitle = `第 ${insertIndex} 章`;
+    const newTask = '';
+    const previous = state.current;
+    const baseOutline = state.panel === 'outline' ? collectOutlineFromInputs() : previous.outline;
+    const baseNovel = { ...previous, outline: baseOutline };
+    const updatedChapters = chapters(baseNovel).map(chapter => {
+      const currentIndex = Number(chapter.index);
+      return currentIndex >= insertIndex
+        ? renumberChapterRecord(chapter, currentIndex + 1)
+        : renumberChapterRecord(chapter, currentIndex);
+    });
+    updatedChapters.push({
+      index: insertIndex,
+      title: newTitle,
+      content: '',
+      status: 'draft',
+      word_count: 0,
+      source: 'manual_split',
+      updated_at: new Date().toISOString()
+    });
+    updatedChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    const updatedOutlineChapters = normalizedOutlineChapters(baseNovel).map(chapter => {
+      const currentIndex = Number(chapter.index);
+      return currentIndex >= insertIndex
+        ? renumberChapterRecord(chapter, currentIndex + 1)
+        : renumberChapterRecord(chapter, currentIndex);
+    });
+    updatedOutlineChapters.push({
+      index: insertIndex,
+      title: newTitle,
+      summary: newTask,
+      scene_goal: newTask,
+      obstacle: '',
+      choice: '',
+      cost: '',
+      hook: '',
+      characters: [],
+      key_events: [],
+      source: 'manual_split'
+    });
+    updatedOutlineChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    const outline = { ...(baseOutline || {}), chapters: updatedOutlineChapters };
+    const chapter_count = Math.max(maxChapterIndex({ ...previous, chapters: updatedChapters, outline }), updatedChapters.length, updatedOutlineChapters.length);
+    const optimistic = { ...previous, chapters: updatedChapters, outline, chapter_count };
+    state.current = optimistic;
+    state.currentChapter = insertIndex;
+    state.panel = 'outline';
+    renderWork();
+    focusOutlineChapter(insertIndex);
+    showToast(`已先插入第 ${insertIndex} 章，正在保存并让 AI 补齐任务书。`);
+    try {
+      const data = await api('/api/novel/' + encodeURIComponent(previous.id), {
+        method: 'PUT',
+        body: JSON.stringify({ chapters: updatedChapters, outline, chapter_count })
+      });
+      state.current = data.novel || optimistic;
+      state.currentChapter = insertIndex;
+      state.panel = 'outline';
+      renderWork();
+      focusOutlineChapter(insertIndex);
+      await autoFillSplitChapter(insertIndex);
+    } catch (error) {
+      state.current = previous;
+      state.currentChapter = splitIndex;
+      state.panel = 'outline';
+      renderWork();
+      throw error;
+    }
+  }
+
+  async function splitCurrentChapter() {
+    if (!state.current) return;
+    const area = document.getElementById('nvChapterContent');
+    if (!area) throw new Error('当前没有可拆分的正文编辑区');
+    const source = area.value || '';
+    if (!text(source)) throw new Error('当前章节还没有正文，不能拆分');
+    const currentIndex = Number(state.currentChapter || 1);
+    const start = Number(area.selectionStart || 0);
+    const end = Number(area.selectionEnd || 0);
+    let currentContent = '';
+    let newContent = '';
+    if (end > start) {
+      newContent = source.slice(start, end).trim();
+      currentContent = `${source.slice(0, start)}${source.slice(end)}`.trim();
+    } else {
+      if (start <= 0 || start >= source.length) {
+        throw new Error('请先选中要拆出的正文，或把光标放在要拆分的位置');
+      }
+      currentContent = source.slice(0, start).trim();
+      newContent = source.slice(start).trim();
+    }
+    if (!text(currentContent) || !text(newContent)) throw new Error('拆分后两章都需要保留正文内容');
+    const insertIndex = currentIndex + 1;
+    const ok = await confirmAction({
+      title: '拆分本章正文',
+      message: `将当前第 ${currentIndex} 章拆成第 ${currentIndex} 章和第 ${insertIndex} 章。`,
+      detail: end > start
+        ? '确认后，选中的正文会移动到新章节；当前章节会保留剩余正文。'
+        : '确认后，光标后的正文会移动到新章节；当前章节保留光标前的正文。',
+      confirmText: '确定拆分',
+      cancelText: '取消'
+    });
+    if (!ok) return;
+    const currentTitle = text(document.getElementById('nvChapterTitle')?.value) || `第 ${currentIndex} 章`;
+    const newTitle = `第 ${insertIndex} 章`;
+    const newPlan = '';
+    const previous = state.current;
+    const updatedChapters = chapters(previous).map(chapter => {
+      const index = Number(chapter.index);
+      if (index === currentIndex) {
+        return {
+          ...chapter,
+          index,
+          title: currentTitle,
+          content: currentContent,
+          status: 'draft',
+          word_count: displayWordCount(currentContent),
+          updated_at: new Date().toISOString()
+        };
+      }
+      if (index >= insertIndex) return renumberChapterRecord(chapter, index + 1);
+      return renumberChapterRecord(chapter, index);
+    });
+    updatedChapters.push({
+      index: insertIndex,
+      title: newTitle,
+      content: newContent,
+      status: 'draft',
+      word_count: displayWordCount(newContent),
+      updated_at: new Date().toISOString()
+    });
+    updatedChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    const updatedOutlineChapters = normalizedOutlineChapters(previous).map(chapter => {
+      const index = Number(chapter.index);
+      return index >= insertIndex ? renumberChapterRecord(chapter, index + 1) : renumberChapterRecord(chapter, index);
+    });
+    updatedOutlineChapters.push({
+      index: insertIndex,
+      title: newTitle,
+      summary: newPlan,
+      scene_goal: newPlan,
+      obstacle: '',
+      choice: '',
+      cost: '',
+      hook: '',
+      characters: [],
+      key_events: []
+    });
+    updatedOutlineChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    const outline = { ...(previous.outline || {}), chapters: updatedOutlineChapters };
+    const chapter_count = Math.max(maxChapterIndex({ ...previous, chapters: updatedChapters, outline }), updatedChapters.length, updatedOutlineChapters.length);
+    const optimistic = { ...previous, chapters: updatedChapters, outline, chapter_count };
+    state.current = optimistic;
+    state.currentChapter = insertIndex;
+    state.panel = 'outline';
+    renderWork();
+    focusOutlineChapter(insertIndex);
+    showToast(`已先拆出第 ${insertIndex} 章，正在保存并让 AI 补齐任务书。`);
+    try {
+      const data = await api('/api/novel/' + encodeURIComponent(previous.id), {
+        method: 'PUT',
+        body: JSON.stringify({ chapters: updatedChapters, outline, chapter_count })
+      });
+      state.current = data.novel || optimistic;
+      state.currentChapter = insertIndex;
+      state.panel = 'outline';
+      renderWork();
+      focusOutlineChapter(insertIndex);
+      await autoFillSplitChapter(insertIndex);
+    } catch (error) {
+      state.current = previous;
+      state.currentChapter = currentIndex;
+      state.panel = 'write';
+      renderWork();
+      throw error;
+    }
+  }
+
+  async function deleteNovelTask(id) {
+    const novel = state.novels.find(item => item.id === id);
+    const title = novel?.title || '未命名小说';
+    const ok = await confirmAction({
+      title: '删除任务',
+      message: `确定删除《${title}》这个任务吗？`,
+      detail: '这里只会把任务从列表移出，保留小说数据，不会物理删除正文内容。',
+      confirmText: '确定删除',
+      cancelText: '取消',
+      danger: true
+    });
+    if (!ok) return;
+    const previousNovels = state.novels.slice();
+    state.novels = state.novels.filter(item => item.id !== id);
+    if (state.current?.id === id) {
+      state.current = null;
+      state.panel = 'world';
+      state.currentChapter = 1;
+    }
+    renderTasks();
+    try {
+      await api('/api/novel/' + encodeURIComponent(id), { method: 'DELETE' });
+      await loadNovels();
+      renderTasks();
+      showToast('小说任务已移出列表，数据已保留。');
+    } catch (error) {
+      if (error.status === 404) {
+        showToast('服务器上已没有该任务，已从列表移除。');
+        return;
+      }
+      state.novels = previousNovels;
+      renderTasks();
+      throw error;
+    }
   }
 
   function renderTasks() {
@@ -1695,11 +2627,11 @@
       <p>按小说类型查看任务，再在小说下面切换状态。制作中、已完成、制作失败是小说任务的子状态，不和类型并列。</p>
       <div class="nv-task-filters">
         <div class="nv-task-row"><span class="nv-task-label">小说类型</span>${typeFilters.map(f => `<button class="nv-filter ${state.taskType === f.key ? 'is-active' : ''}" type="button" data-task-type="${f.key}">${esc(f.label)}</button>`).join('')}</div>
-        <div class="nv-task-row status"><span class="nv-task-label">任务状态</span>${statusFilters.map(f => `<button class="nv-filter child ${state.taskStatus === f.key ? 'is-active' : ''}" type="button" data-task-status="${f.key}">${esc(f.label)}</button>`).join('')}</div>
+        <div class="nv-task-row status"><span class="nv-task-label">任务状态</span>${statusFilters.map(f => `<button class="nv-filter child ${state.taskStatus === f.key ? 'is-active' : ''}" type="button" data-task-status="${f.key}">${esc(f.label)}</button>`).join('')}<button class="nv-filter child" type="button" data-refresh-tasks ${state.taskLoading ? 'disabled' : ''}>${state.taskLoading ? '加载中' : '刷新'}</button></div>
       </div>
       <table class="nv-task-table">
         <thead><tr><th>小说</th><th>类型</th><th>当前阶段</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead>
-        <tbody>${filtered.length ? filtered.map(novel => {
+        <tbody>${state.taskLoading ? '<tr><td colspan="6">正在加载小说任务...</td></tr>' : state.taskError ? `<tr><td colspan="6"><div class="nv-task-error"><b>任务列表加载失败</b><span>${esc(state.taskError)}</span><button class="nv-btn nv-btn-muted" type="button" data-refresh-tasks>重新加载</button></div></td></tr>` : filtered.length ? filtered.map(novel => {
           const life = lifecycle(novel);
           return `<tr>
             <td>${esc(novel.title || '未命名小说')}</td>
@@ -1707,9 +2639,12 @@
             <td>${esc(chapterPhase(novel))}</td>
             <td><span class="nv-pill ${life.cls}">${esc(life.label)}</span></td>
             <td>${esc((novel.updated_at || '').replace('T', ' ').slice(0, 16) || '-')}</td>
-            <td><button class="nv-btn nv-btn-muted" type="button" data-open-novel="${esc(novel.id)}">进入</button></td>
+            <td><div class="nv-task-actions">
+              <button class="nv-btn nv-btn-muted" type="button" data-open-novel="${esc(novel.id)}">进入</button>
+              <button class="nv-btn nv-btn-danger" type="button" data-delete-novel="${esc(novel.id)}">删除任务</button>
+            </div></td>
           </tr>`;
-        }).join('') : '<tr><td colspan="6">暂无真实小说任务。创建小说后显示。</td></tr>'}</tbody>
+        }).join('') : `<tr><td colspan="6">${state.novels.length ? '当前筛选下没有匹配的小说任务。' : '暂无真实小说任务。创建小说后显示。'}</td></tr>`}</tbody>
       </table>
     </div>`;
   }
@@ -1724,10 +2659,7 @@
       btn.addEventListener('click', () => {
         state.createMode = btn.dataset.createMode;
         setCreateError('');
-        document.querySelectorAll('[data-create-mode]').forEach(item => item.classList.toggle('is-active', item === btn));
-        document.getElementById('nvIdeaInput').classList.toggle('is-hidden', state.createMode !== 'idea');
-        document.getElementById('nvImportInput').classList.toggle('is-hidden', state.createMode !== 'import');
-        document.getElementById('nvImportTools').classList.toggle('is-hidden', state.createMode !== 'import');
+        updateCreateModeUI();
       });
     });
     document.getElementById('nvImportToggleBtn').addEventListener('click', () => {
@@ -1736,6 +2668,7 @@
     });
     document.getElementById('nvOpenCreateModalBtn').addEventListener('click', () => {
       setCreateError('');
+      if (state.createMode === 'import') return run(() => createProject(document.getElementById('nvOpenCreateModalBtn')));
       renderCreateChoices();
       document.getElementById('nvCreateModal').classList.add('is-open');
     });
@@ -1745,11 +2678,24 @@
     document.getElementById('nvImportFileInput').addEventListener('change', e => run(() => handleImportFile(e.currentTarget.files?.[0])));
     document.getElementById('nvCreateProjectBtn').addEventListener('click', e => run(() => createProject(e.currentTarget)));
     document.getElementById('nvIdeaInput').addEventListener('input', () => setCreateError(''));
-    document.getElementById('nvImportInput').addEventListener('input', () => setCreateError(''));
+    document.getElementById('nvImportInput').addEventListener('input', () => {
+      setCreateError('');
+      state.createMode = 'import';
+      updateCreateModeUI();
+      const value = text(document.getElementById('nvImportInput').value);
+      if (value) setImportStatus('已粘贴导入内容', `当前已有 ${value.length} 个字符。下一步点击“解析上传内容”。`, 'ready', '清空内容');
+    });
 
     document.body.addEventListener('click', e => {
+      if (e.target.closest('[data-clear-import]')) {
+        resetImportContent();
+        return;
+      }
       const open = e.target.closest('[data-open-novel]');
       if (open) return run(() => loadNovel(open.dataset.openNovel));
+      const deleteNovel = e.target.closest('[data-delete-novel]');
+      if (deleteNovel) return run(() => deleteNovelTask(deleteNovel.dataset.deleteNovel));
+      if (e.target.closest('[data-refresh-tasks]')) return run(refreshTasks);
       const panel = e.target.closest('[data-panel]');
       if (panel) {
         state.panel = panel.dataset.panel;
@@ -1825,10 +2771,17 @@
         renderWork();
         return;
       }
+      const adaptLength = e.target.closest('[data-adapt-length]');
+      if (adaptLength) return run(() => adaptNovelLength(adaptLength.dataset.adaptLength, adaptLength));
       if (e.target.closest('[data-save-world]')) return run(saveWorld);
       if (e.target.closest('[data-expand-characters]')) return run(() => generateOutline(e.target.closest('button'), { nextPanel: 'graph' }));
       if (e.target.closest('[data-generate-outline]')) return run(() => generateOutline(e.target.closest('button')));
       if (e.target.closest('[data-save-outline]')) return run(saveOutline);
+      const fillChapter = e.target.closest('[data-fill-outline-chapter]');
+      if (fillChapter) return run(() => fillOutlineGaps(fillChapter, fillChapter.dataset.fillOutlineChapter));
+      if (e.target.closest('[data-fill-outline-gaps]')) return run(() => fillOutlineGaps(e.target.closest('button')));
+      const splitOutline = e.target.closest('[data-split-outline-chapter]');
+      if (splitOutline) return run(() => splitOutlineChapter(splitOutline.dataset.splitOutlineChapter));
       if (e.target.closest('[data-next-graph]')) {
         state.panel = 'graph';
         renderWork();
@@ -1838,6 +2791,7 @@
       if (e.target.closest('[data-generate-chapter]')) return run(() => generateChapter(e.target.closest('button')));
       const refine = e.target.closest('[data-refine]');
       if (refine) return run(() => refineChapter(refine.dataset.refine, refine));
+      if (e.target.closest('[data-split-chapter]')) return run(splitCurrentChapter);
       if (e.target.closest('[data-submit-chapter]')) return run(() => submitChapter(e.target.closest('button')));
       if (e.target.closest('[data-complete-novel]')) return run(() => completeNovel(e.target.closest('button')));
       if (e.target.closest('[data-add-chapter]')) return run(addChapter);
@@ -1904,8 +2858,13 @@
       }
       if (!state.graphDrag) return;
       const moved = state.graphDrag.moved;
+      const clickedName = state.graphDrag.name;
       state.graphDrag = null;
       if (moved) renderWork();
+      else if (clickedName) {
+        state.selectedRelationName = clickedName;
+        renderWork();
+      }
     };
     document.body.addEventListener('pointerup', finishGraphDrag);
     document.body.addEventListener('pointercancel', finishGraphDrag);
@@ -1939,6 +2898,7 @@
     bindEvents();
     await loadNovelTaxonomy();
     renderCreateChoices();
+    updateCreateModeUI();
     await loadNovels();
     updateShell();
   }
