@@ -148,7 +148,7 @@ const PROVIDER_PRESETS = {
   ] },
   // ——— 漫路（DeyunAI）聚合平台：双通道
   //   - 国内通道：https://api.deyunai.com/v1（DeepSeek/Qwen/Gemini-Flash-Lite-Preview 等）
-  //   - 海外通道：https://api.deyunai.com/c35/v1 + vendor header（OpenAI/Claude/Gemini-2.x/2.5）
+  //   - 海外通道：https://api.deyunai.com/c35/v1（vendor header 为文档示例字段，非必填；如供应商给真实值可配置）
   //   storyService.callLLM 会按模型 channel 字段自动路由
   deyunai: { name: '漫路（DeyunAI）聚合平台', api_url: 'https://api.deyunai.com/v1', defaultModels: [
     // ✅ 已验证可用（默认启用）

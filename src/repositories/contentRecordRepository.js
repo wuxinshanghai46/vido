@@ -3,6 +3,36 @@ const crypto = require('crypto');
 const { jsonParse, jsonStringify, nowIso, requireDatabase } = require('./baseRepository');
 
 const DOMAIN_TABLES = new Set(['novels', 'comic_tasks', 'drama_projects', 'drama_episodes']);
+const LIST_FILTER_COLUMNS = new Set(['user_id', 'project_id', 'account_id', 'type', 'status']);
+const QUERY_CACHE_TTL_MS = Math.max(0, Number(process.env.CONTENT_RECORD_CACHE_TTL_MS) || 2500);
+const queryCache = new Map();
+
+function cacheKey(kind, parts) {
+  return `${kind}:${parts.map(part => String(part ?? '')).join('|')}`;
+}
+
+function cacheGet(key) {
+  if (!QUERY_CACHE_TTL_MS) return null;
+  const hit = queryCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.ts > QUERY_CACHE_TTL_MS) {
+    queryCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+function cacheSet(key, value) {
+  if (!QUERY_CACHE_TTL_MS) return value;
+  queryCache.set(key, { ts: Date.now(), value });
+  return value;
+}
+
+function invalidateCollection(collection) {
+  for (const key of queryCache.keys()) {
+    if (key.includes(`|${collection}|`) || key.endsWith(`|${collection}`)) queryCache.delete(key);
+  }
+}
 
 function stableId(collection, row = {}) {
   if (row.id) return String(row.id);
@@ -25,19 +55,11 @@ function upsertDomainTable(db, rec) {
   const payload = jsonParse(rec.payload_json, {});
   try {
     db.prepare(`
-      INSERT INTO ${rec.collection} (
+      INSERT OR REPLACE INTO ${rec.collection} (
         id, user_id, project_id, type, status, title, payload_json, created_at, updated_at
       ) VALUES (
         @id, @user_id, @project_id, @type, @status, @title, @payload_json, @created_at, @updated_at
       )
-      ON CONFLICT(id) DO UPDATE SET
-        user_id=excluded.user_id,
-        project_id=excluded.project_id,
-        type=excluded.type,
-        status=excluded.status,
-        title=excluded.title,
-        payload_json=excluded.payload_json,
-        updated_at=excluded.updated_at
     `).run({
       id: rec.id,
       user_id: rec.user_id,
@@ -85,6 +107,7 @@ function normalize(collection, row = {}) {
 function upsert(collection, row) {
   const db = requireDatabase();
   const rec = normalize(collection, row);
+  invalidateCollection(collection);
   if (typeof db.upsertMany === 'function') {
     db.upsertMany(
       'content_records',
@@ -126,19 +149,39 @@ function upsert(collection, row) {
 }
 
 function get(collection, id) {
+  const key = cacheKey('get', [collection, id]);
+  const cached = cacheGet(key);
+  if (cached) return cached;
   const db = requireDatabase();
   const row = db.prepare('SELECT payload_json FROM content_records WHERE collection = ? AND id = ?').get(collection, String(id));
-  return row ? jsonParse(row.payload_json) : null;
+  return cacheSet(key, row ? jsonParse(row.payload_json) : null);
 }
 
-function list(collection) {
+function normaliseFilters(filters = {}) {
+  return Object.entries(filters || {})
+    .filter(([key, value]) => LIST_FILTER_COLUMNS.has(key) && value !== undefined && value !== null && value !== '' && value !== 'all')
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function list(collection, filters = {}) {
+  const entries = normaliseFilters(filters);
+  const key = cacheKey('list', [collection, ...entries.flat()]);
+  const cached = cacheGet(key);
+  if (cached) return cached;
   const db = requireDatabase();
-  return db.prepare(`
+  const where = ['collection = ?'];
+  const params = [collection];
+  for (const [field, value] of entries) {
+    where.push(`${field} = ?`);
+    params.push(String(value));
+  }
+  const rows = db.prepare(`
     SELECT payload_json
     FROM content_records
-    WHERE collection = ?
+    WHERE ${where.join(' AND ')}
     ORDER BY COALESCE(updated_at, created_at) DESC
-  `).all(collection).map(row => jsonParse(row.payload_json));
+  `).all(params).map(row => jsonParse(row.payload_json));
+  return cacheSet(key, rows);
 }
 
 function update(collection, id, fields) {
@@ -149,12 +192,14 @@ function update(collection, id, fields) {
 
 function remove(collection, id) {
   const db = requireDatabase();
+  invalidateCollection(collection);
   db.prepare('DELETE FROM content_records WHERE collection = ? AND id = ?').run(collection, String(id));
   removeDomainTable(db, collection, id);
 }
 
 function replaceCollection(collection, rows) {
   const db = requireDatabase();
+  invalidateCollection(collection);
   const apply = db.transaction(() => {
     db.prepare('DELETE FROM content_records WHERE collection = ?').run(collection);
     for (const row of rows) upsert(collection, row);

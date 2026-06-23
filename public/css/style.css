@@ -114,6 +114,21 @@
 }
 
 /* 浅绿 */
+/* Light mist blue */
+[data-theme="light-mist"] {
+  --bg: #edf4fb; --bg2: #f8fbff; --bg3: #e5eef7; --bg4: #d4e3f2; --bg5: #bfd2e6;
+  --bg-card: rgba(255,255,255,.82);
+  --border: rgba(84,107,130,.16); --border2: rgba(84,107,130,.24);
+  --text: #08111d; --text2: rgba(8,17,29,.66); --text3: rgba(8,17,29,.42);
+  --accent: #0b72ff; --accent2: #2f8eff; --cyan: #0b72ff; --cyan2: #6bb7ff;
+  --accent-rgb: 11,114,255; --cyan-rgb: 11,114,255;
+  --yellow: #b7791f; --error: #dc2626; --success: #0f9f6e;
+  --grad: linear-gradient(135deg, #0b72ff 0%, #34a6ff 52%, #7bd8c7 100%);
+  --grad-btn: linear-gradient(135deg, #0b72ff 0%, #34a6ff 58%, #7bd8c7 100%);
+  --glow: 0 24px 60px rgba(43,91,135,.14); --glow-sm: 0 10px 24px rgba(43,91,135,.10);
+  --shadow: 0 24px 70px rgba(65,92,119,.18);
+}
+
 [data-theme="light-green"] {
   --bg: #ecfdf5; --bg2: #d1fae5; --bg3: #a7f3d0; --bg4: #6ee7b7; --bg5: #34d399;
   --border: rgba(0,0,0,.07); --border2: rgba(0,0,0,.11);
@@ -314,15 +329,15 @@ html { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.1) transparent;
 .theme-panel {
   position: absolute; top: 40px; right: 0; z-index: 999;
   background: var(--bg2); border: 1px solid var(--border2); border-radius: 12px;
-  padding: 12px 14px; min-width: 210px;
+  padding: 12px 14px; min-width: 136px;
   box-shadow: 0 12px 36px rgba(0,0,0,.3);
 }
 .theme-panel-section { margin-bottom: 10px; }
 .theme-panel-section:last-child { margin-bottom: 0; }
 .theme-panel-label { font-size: 10px; color: var(--text3); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-.theme-dots { display: flex; gap: 5px; flex-wrap: wrap; }
+.theme-dots { display: flex; gap: 8px; flex-wrap: wrap; }
 .theme-dot {
-  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent;
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
   background: var(--dot-c); cursor: pointer; transition: all .2s; padding: 0;
 }
 .theme-dot:hover { transform: scale(1.18); }

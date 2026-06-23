@@ -76,19 +76,18 @@ app.use(express.static(path.join(__dirname, '../public'), {
   index: false,
   setHeaders(res, filePath) {
     const normalized = filePath.replace(/\\/g, '/');
-    if (
-      normalized.endsWith('/admin.html')
-      || normalized.endsWith('/js/admin.js')
-      || normalized.endsWith('/ai-novel.html')
-      || normalized.endsWith('/js/ai-novel.js')
-      || normalized.endsWith('/css/ai-novel.css')
-      || normalized.endsWith('/digital-human.html')
-      || normalized.endsWith('/js/digital-human.js')
-      || normalized.endsWith('/css/digital-human-wizard.css')
-    ) {
+    if (normalized.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      return;
+    }
+    if (/\.(?:js|css|svg|ico|woff2?|ttf|otf)$/i.test(normalized)) {
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      return;
+    }
+    if (/\.(?:png|jpe?g|webp|gif|mp4|mp3|wav)$/i.test(normalized)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
     }
   },
 }));
@@ -396,7 +395,7 @@ app.get('/public/dh-assets/:filename', (req, res) => {
 
 app.put('/api/user/theme', authenticate, (req, res) => {
   const { theme } = req.body;
-  const valid = ['purple', 'cyan', 'green', 'amber', 'rose', 'blue', 'light', 'light-purple', 'light-blue', 'light-green', 'light-rose', 'light-amber'];
+  const valid = ['purple', 'light-mist'];
   if (!valid.includes(theme)) return res.status(400).json({ success: false, error: '无效主题' });
   const authStore = require('./models/authStore');
   authStore.updateUser(req.user.id, { theme });
@@ -405,7 +404,8 @@ app.put('/api/user/theme', authenticate, (req, res) => {
 app.get('/api/user/theme', authenticate, (req, res) => {
   const authStore = require('./models/authStore');
   const user = authStore.getUserById(req.user.id);
-  res.json({ success: true, theme: user?.theme || 'purple' });
+  const normalizeTheme = theme => theme === 'light-mist' ? 'light-mist' : 'purple';
+  res.json({ success: true, theme: normalizeTheme(user?.theme) });
 });
 
 // === 需认证的路由 ===

@@ -111,11 +111,17 @@ let loadingCharIds = new Set();
 
 // ═══ 主题切换 ═══
 function switchTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('vido-theme', theme);
-  document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === theme));
+  const nextTheme = window.vidoTheme?.normalize ? window.vidoTheme.normalize(theme) : theme;
+  if (window.vidoTheme && !window.vidoTheme.isValid(nextTheme)) return;
+  if (window.vidoTheme) {
+    window.vidoTheme.apply(nextTheme);
+  } else {
+    document.documentElement.setAttribute('data-theme', nextTheme);
+  }
+  localStorage.setItem('vido-theme', nextTheme);
+  document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === nextTheme));
   // 保存到后端（用户偏好）
-  authFetch('/api/user/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme }) }).catch(() => {});
+  authFetch('/api/user/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: nextTheme }) }).catch(() => {});
   // 关闭面板
   const panel = document.getElementById('theme-panel');
   if (panel) panel.style.display = 'none';
@@ -139,13 +145,21 @@ document.addEventListener('click', e => {
 function loadTheme() {
   const saved = localStorage.getItem('vido-theme');
   if (saved) {
-    document.documentElement.setAttribute('data-theme', saved);
-    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === saved));
+    if (window.vidoTheme) {
+      window.vidoTheme.apply(saved);
+    } else {
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+    const currentTheme = window.vidoTheme?.current ? window.vidoTheme.current() : saved;
+    localStorage.setItem('vido-theme', currentTheme);
+    document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === currentTheme));
   }
   // 从后端同步（登录后）
   authFetch('/api/user/theme').then(r => r.json()).then(data => {
-    if (data.success && data.theme && data.theme !== saved) {
-      switchTheme(data.theme);
+    const currentTheme = window.vidoTheme?.current ? window.vidoTheme.current() : saved;
+    const nextTheme = window.vidoTheme?.normalize ? window.vidoTheme.normalize(data.theme) : data.theme;
+    if (data.success && nextTheme && nextTheme !== currentTheme) {
+      switchTheme(nextTheme);
     }
   }).catch(() => {});
 }
@@ -362,10 +376,9 @@ function switchPage(page, opts) {
 
 // ═══ 仪表板 ═══
 async function loadDashboard() {
-  const [statsRes, tasksRes] = await Promise.all([
-    authFetch('/api/dashboard/stats').then(r => r.json()).catch(() => null),
-    authFetch('/api/dashboard/recent-tasks').then(r => r.json()).catch(() => null)
-  ]);
+  const summaryRes = await authFetch('/api/dashboard/summary').then(r => r.json()).catch(() => null);
+  const statsRes = summaryRes?.success ? summaryRes : await authFetch('/api/dashboard/stats').then(r => r.json()).catch(() => null);
+  const tasksRes = summaryRes?.success ? summaryRes : await authFetch('/api/dashboard/recent-tasks').then(r => r.json()).catch(() => null);
 
   // 统计数据
   if (statsRes?.success) {

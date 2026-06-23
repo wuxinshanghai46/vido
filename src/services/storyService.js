@@ -57,6 +57,13 @@ const PREFERRED_TEXT_PROVIDERS = [
   /^anthropic\b|claude/i,
   /^zhipu\b|智谱/i,
 ];
+const DEYUNAI_C35_VENDOR = String(process.env.DEYUNAI_C35_VENDOR || '').trim();
+
+function _deyunaiVendorHeader(config = {}) {
+  const vendor = String(config.vendor || DEYUNAI_C35_VENDOR || '').trim();
+  if (!vendor || vendor === 'API_VENDOR') return '';
+  return vendor;
+}
 
 // 为一个 provider 挑最好的 story 模型
 //   漫路 deyunai 当前文本通道实测：gemini-2.5-flash / claude-sonnet-4-6 可用；
@@ -142,6 +149,7 @@ function _configFromPreferredStoryModel(preferred = {}) {
         model: model.id,
         providerId: provider.id,
         channel: model.channel,
+        vendor: model.vendor || provider.vendor || DEYUNAI_C35_VENDOR,
         stageId: preferred._stageId || preferred.stage_id || '',
       };
     }
@@ -203,7 +211,7 @@ function getStoryConfig(preferred = null) {
     });
     for (const provider of candidates) {
       const model = _pickPreferredStoryModel(provider);
-      if (model) return { apiKey: provider.api_key, appId: provider.app_id || provider.aiapi_app_id || provider.key_id || '', baseURL: provider.api_url, model: model.id, providerId: provider.id, channel: model.channel };
+      if (model) return { apiKey: provider.api_key, appId: provider.app_id || provider.aiapi_app_id || provider.key_id || '', baseURL: provider.api_url, model: model.id, providerId: provider.id, channel: model.channel, vendor: model.vendor || provider.vendor || DEYUNAI_C35_VENDOR };
     }
   } catch {}
   // Fallback to env vars
@@ -401,7 +409,8 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         if (isOverseas && config.baseURL && !config.baseURL.includes('/c35/')) {
           // 把 https://api.deyunai.com/v1 → https://api.deyunai.com/c35/v1
           sdkOpts.baseURL = config.baseURL.replace(/\/v1\/?$/, '/c35/v1');
-          _defaultHeaders = { vendor: 'API_VENDOR' };
+          const vendor = _deyunaiVendorHeader(config);
+          if (vendor) _defaultHeaders = { vendor };
           console.log(`[deyunai] 海外模型 ${config.model} 切到 ${sdkOpts.baseURL}`);
         }
       }

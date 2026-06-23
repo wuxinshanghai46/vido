@@ -31,43 +31,17 @@ function timeAgo(dateStr) {
   return `${Math.floor(mon / 12)}年前`;
 }
 
-// ---------- GET /api/dashboard/stats ----------
-
-router.get('/stats', (req, res) => {
-  try {
+function getDashboardData(req) {
     const uid = scopeUserId(req);
-    const projects    = db.listProjects(uid);
-    const avatars     = db.listAvatarTasks(uid);
-    const comics      = db.listComicTasks(uid);
-    const portraits   = db.listPortraits(uid);
-    const novels      = db.listNovels(uid);
-
-    res.json({
-      success: true,
-      data: {
-        today_videos:   projects.filter(p => isToday(p.created_at)).length,
-        today_avatars:  avatars.filter(a => isToday(a.created_at)).length,
-        today_novels:   novels.filter(n => isToday(n.created_at)).length,
-        total_projects: projects.length,
-        total_avatars:  avatars.length,
-        total_novels:   novels.length,
-        total_comics:   comics.length,
-        total_portraits: portraits.length
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------- GET /api/dashboard/recent-tasks ----------
-
-router.get('/recent-tasks', (req, res) => {
-  try {
-    const uid = scopeUserId(req);
+    const projects = db.listProjects(uid);
+    const avatars = db.listAvatarTasks(uid);
+    const comics = db.listComicTasks(uid);
+    const portraits = db.listPortraits(uid);
+    const novels = db.listNovels(uid);
+    const i2vTasks = db.listI2VTasks(uid);
     const merged = [];
 
-    for (const p of db.listProjects(uid)) {
+    for (const p of projects) {
       merged.push({
         id: p.id,
         title: p.title || p.theme || 'AI 视频',
@@ -78,7 +52,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const t of db.listAvatarTasks(uid)) {
+    for (const t of avatars) {
       merged.push({
         id: t.id,
         title: (t.text || '').slice(0, 30) || '数字人视频',
@@ -89,7 +63,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const c of db.listComicTasks(uid)) {
+    for (const c of comics) {
       merged.push({
         id: c.id,
         title: c.title || 'AI 漫画',
@@ -100,7 +74,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const p of db.listPortraits(uid)) {
+    for (const p of portraits) {
       merged.push({
         id: p.id,
         title: (p.prompt || '').slice(0, 30) || 'AI 图片',
@@ -111,7 +85,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const n of db.listNovels(uid)) {
+    for (const n of novels) {
       merged.push({
         id: n.id,
         title: n.title || 'AI 小说',
@@ -122,7 +96,7 @@ router.get('/recent-tasks', (req, res) => {
       });
     }
 
-    for (const t of db.listI2VTasks(uid)) {
+    for (const t of i2vTasks) {
       merged.push({
         id: t.id,
         title: (t.prompt || '').slice(0, 30) || '图生视频',
@@ -139,7 +113,47 @@ router.get('/recent-tasks', (req, res) => {
       time_ago: timeAgo(t.created_at)
     }));
 
-    res.json({ success: true, tasks: top10 });
+    return {
+      stats: {
+        today_videos: projects.filter(p => isToday(p.created_at)).length,
+        today_avatars: avatars.filter(a => isToday(a.created_at)).length,
+        today_novels: novels.filter(n => isToday(n.created_at)).length,
+        total_projects: projects.length,
+        total_avatars: avatars.length,
+        total_novels: novels.length,
+        total_comics: comics.length,
+        total_portraits: portraits.length
+      },
+      tasks: top10
+    };
+}
+
+// ---------- GET /api/dashboard/summary ----------
+
+router.get('/summary', (req, res) => {
+  try {
+    const data = getDashboardData(req);
+    res.json({ success: true, data: data.stats, tasks: data.tasks });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------- GET /api/dashboard/stats ----------
+
+router.get('/stats', (req, res) => {
+  try {
+    res.json({ success: true, data: getDashboardData(req).stats });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---------- GET /api/dashboard/recent-tasks ----------
+
+router.get('/recent-tasks', (req, res) => {
+  try {
+    res.json({ success: true, tasks: getDashboardData(req).tasks });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
