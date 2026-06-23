@@ -1203,9 +1203,14 @@ textarea, input { outline: none; }
   padding: 16px;
 }
 .nv-chapter-list {
+  align-self: start;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 240px);
+  height: clamp(420px, calc(100vh - 240px), 620px);
+  min-height: 0;
+  max-height: calc(100vh - 160px);
+  position: sticky;
+  top: 86px;
 }
 .nv-editor {
   min-height: calc(100vh - 240px);
@@ -1685,6 +1690,11 @@ textarea, input { outline: none; }
   .nv-web-stage { min-height: 420px; }
   .nv-web-stage .nv-graph-svg { height: 360px; }
   .nv-editor { min-height: auto; }
+  .nv-chapter-list {
+    position: static;
+    height: 520px;
+    max-height: 70vh;
+  }
   .nv-chapter-content { min-height: 360px; }
   .nv-chapter-content.is-empty { min-height: 180px; }
   .nv-task-row.status { margin-left: 0; }
