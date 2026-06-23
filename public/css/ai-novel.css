@@ -1202,13 +1202,37 @@ textarea, input { outline: none; }
   background: rgba(255,255,255,.04);
   padding: 16px;
 }
+.nv-chapter-list {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 240px);
+}
 .nv-editor {
   min-height: calc(100vh - 240px);
   display: flex;
   flex-direction: column;
 }
 .nv-chapter-list h3, .nv-side-stack h3 { margin: 0 0 10px; font-size: 14px; }
-.nv-chapter-scroll { display: grid; gap: 8px; max-height: 610px; overflow: auto; padding-right: 2px; }
+.nv-chapter-list-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.nv-chapter-list-actions .nv-btn {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 10px;
+}
+.nv-chapter-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
 .nv-chapter-item {
   border: 1px solid var(--nv-line);
   border-radius: 12px;

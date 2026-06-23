@@ -1820,15 +1820,15 @@
     return `<div class="nv-chapter-layout">
       <section class="nv-chapter-list">
         <h3>章节目录</h3>
+        <div class="nv-chapter-list-actions">
+          <button class="nv-btn nv-btn-muted" type="button" data-add-chapter>新增章节</button>
+          <button class="nv-btn nv-btn-muted" type="button" data-save-outline-from-list>保存目录</button>
+        </div>
         <div class="nv-chapter-scroll">${list.map(item => `<button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${isChapterDone(item) ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
           <b>第 ${item.index} 章</b>
           <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
           <span class="nv-status-mini" data-chapter-word-count="${item.index}">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
         </button>`).join('')}</div>
-        <div class="nv-action-buttons" style="margin-top:12px">
-          <button class="nv-btn nv-btn-muted" type="button" data-add-chapter>新增章节</button>
-          <button class="nv-btn nv-btn-muted" type="button" data-save-outline-from-list>保存目录</button>
-        </div>
       </section>
       <section class="nv-editor">
         <input class="nv-input nv-chapter-title" id="nvChapterTitle" value="${esc(currentTitle)}" placeholder="章节标题" />
