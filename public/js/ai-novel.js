@@ -3126,17 +3126,20 @@
     await loadNovelTaxonomy();
     renderCreateChoices();
     updateCreateModeUI();
-    await loadNovels();
     const route = getRouteState();
     if (route.novel) {
       await loadNovel(route.novel, {
         chapter: route.chapter,
         panel: route.panel || 'write'
       });
+      run(loadNovels);
     } else if (route.view === 'tasks') {
       switchView('tasks', { keepRoute: true });
     } else if (route.view === 'create') {
+      await loadNovels();
       switchView('create', { keepRoute: true });
+    } else {
+      await loadNovels();
     }
     updateShell();
   }

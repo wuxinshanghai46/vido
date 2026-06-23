@@ -242,6 +242,18 @@ async function init() {
   const authed = await initAuth();
   if (!authed) return;
   loadTheme();
+  document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+    el.addEventListener('click', () => switchPage(el.dataset.page));
+  });
+
+  const hashTarget = getRoutePage();
+  const ssTarget = sessionStorage.getItem('vido-target-page');
+  const routeTarget = (location.pathname === '/ai-novel' || location.pathname === '/ai-novel.html') ? 'novel' : '';
+  const target = ssTarget || hashTarget || routeTarget;
+  if (target) {
+    sessionStorage.removeItem('vido-target-page');
+    switchPage(target);
+  }
   renderStyleGrid();
   loadPlatformStyles(); // v15: 异步从 /api/ai-cap/styles 加载平台真实风格库
   renderCharacters();
@@ -256,19 +268,7 @@ async function init() {
   initScrollSync();
   initRulerScrub();
   loadVideoModels();
-  document.querySelectorAll('.nav-item[data-page]').forEach(el => {
-    el.addEventListener('click', () => switchPage(el.dataset.page));
-  });
-
-  // v15 fix: 处理 URL hash / sessionStorage 跳转 (供 drama-studio 返回工作台用)
-  const hashTarget = getRoutePage();
-  const ssTarget = sessionStorage.getItem('vido-target-page');
-  const routeTarget = (location.pathname === '/ai-novel' || location.pathname === '/ai-novel.html') ? 'novel' : '';
-  const target = ssTarget || hashTarget || routeTarget;
-  if (target) {
-    sessionStorage.removeItem('vido-target-page');
-    setTimeout(() => switchPage(target), 100);
-  }
+  // Route click handlers are bound before heavy initialization so refresh restore is immediate.
 
   // 事件委托：点击角色/场景图片打开大图
   document.addEventListener('click', e => {

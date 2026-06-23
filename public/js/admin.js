@@ -32,6 +32,14 @@ let currentUserType = 'enterprise'; // 用户管理当前 Tab
 
 // ══════════════════════ TABS ══════════════════════
 function initTabs() {
+  const routeInitialTab = getInitialAdminTab();
+  const routeInitialEl = document.querySelector(`.nav-item[data-tab="${routeInitialTab}"]`);
+  if (routeInitialEl && !routeInitialEl.classList.contains('active')) {
+    document.querySelectorAll('.nav-item[data-tab]').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+    routeInitialEl.classList.add('active');
+    document.getElementById('panel-' + routeInitialEl.dataset.tab)?.classList.add('active');
+  }
   document.querySelectorAll('.nav-item[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
       rememberAdminTab(tab.dataset.tab);
@@ -55,12 +63,12 @@ function initTabs() {
   });
   // 初始化时如果默认是 dashboard，立即加载
   if (document.querySelector('.nav-item.active')?.dataset.tab === 'dashboard') {
-    setTimeout(loadDashboard, 100);
+    loadDashboard();
   }
   const initialTab = getInitialAdminTab();
   const initialEl = document.querySelector(`.nav-item[data-tab="${initialTab}"]`);
-  if (initialEl && !initialEl.classList.contains('active')) {
-    setTimeout(() => initialEl.click(), 0);
+  if (initialEl && initialTab !== 'dashboard') {
+    initialEl.click();
   }
 }
 
