@@ -662,6 +662,7 @@
   const DH_LAST_TAB_KEY = 'vido_dh_active_tab';
   const DH_LAST_TASK_TYPE_KEY = 'vido_dh_active_task_type';
   const DH_LAST_TASK_STATUS_KEY = 'vido_dh_active_task_status';
+  const DH_LAST_AVATAR_TAB_KEY = 'vido_dh_avatar_tab';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
 
   try {
@@ -669,6 +670,13 @@
     const savedTaskStatus = localStorage.getItem(DH_LAST_TASK_STATUS_KEY);
     if (savedTaskType) state.activeTaskType = savedTaskType;
     if (savedTaskStatus) state.activeTaskStatus = savedTaskStatus;
+  } catch {}
+  try {
+    const params = new URLSearchParams(location.search || '');
+    const taskType = params.get('task_type');
+    const taskStatus = params.get('task_status');
+    if (taskType) state.activeTaskType = taskType;
+    if (taskStatus) state.activeTaskStatus = taskStatus;
   } catch {}
 
   function spacePaneForTab(tab) {
@@ -724,6 +732,20 @@
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', tab);
+      if (tab === 'tasks') {
+        url.searchParams.set('task_type', state.activeTaskType || 'digital_human');
+        url.searchParams.set('task_status', state.activeTaskStatus || 'pending');
+      } else {
+        url.searchParams.delete('task_type');
+        url.searchParams.delete('task_status');
+      }
+      if (tab === 'step2' && state._myAvTab) url.searchParams.set('av_tab', state._myAvTab);
+      else if (tab !== 'step2') url.searchParams.delete('av_tab');
+      if (tab === 'luxury-ad' || tab === 'material-film') {
+        url.searchParams.set('lux_step', String(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1)))));
+      } else {
+        url.searchParams.delete('lux_step');
+      }
       // 中文注释：除继续制作的首屏恢复外，任何普通切换栏目都要清理项目详情参数。
       if (opts.preserveLuxuryProject !== true) url.searchParams.delete('luxury_project');
       history.replaceState(null, '', url.pathname + url.search + url.hash);
@@ -735,6 +757,8 @@
       const urlTab = new URLSearchParams(location.search).get('tab');
       if (DH_VALID_TABS.includes(urlTab)) return urlTab;
     } catch {}
+    const hashTab = String(location.hash || '').replace(/^#/, '').trim();
+    if (DH_VALID_TABS.includes(hashTab)) return hashTab;
     try {
       const savedTab = localStorage.getItem(DH_LAST_TAB_KEY);
       if (DH_VALID_TABS.includes(savedTab)) return savedTab;
@@ -742,11 +766,32 @@
     return 'step1';
   }
 
+  function getInitialLuxuryStep() {
+    try {
+      const step = Number(new URLSearchParams(location.search || '').get('lux_step'));
+      if (Number.isFinite(step)) return Math.max(1, Math.min(5, step));
+    } catch {}
+    return 0;
+  }
+
+  function getInitialAvatarTab() {
+    try {
+      const urlTab = String(new URLSearchParams(location.search || '').get('av_tab') || '').trim();
+      if (['image', 'video', 'product'].includes(urlTab)) return urlTab;
+    } catch {}
+    try {
+      const saved = localStorage.getItem(DH_LAST_AVATAR_TAB_KEY);
+      if (['image', 'video', 'product'].includes(saved)) return saved;
+    } catch {}
+    return '';
+  }
+
   function rememberTaskCenterState() {
     try {
       localStorage.setItem(DH_LAST_TASK_TYPE_KEY, state.activeTaskType || 'digital_human');
       localStorage.setItem(DH_LAST_TASK_STATUS_KEY, state.activeTaskStatus || 'pending');
     } catch {}
+    if (state.activeTab === 'tasks') rememberActiveTab('tasks');
   }
 
   function switchTab(tab, opts = {}) {
@@ -2097,6 +2142,8 @@
   // Tab 切换 — 我的形象
   window._dhSwitchAvTab = function(key) {
     state._myAvTab = key;
+    try { localStorage.setItem(DH_LAST_AVATAR_TAB_KEY, key); } catch {}
+    if (state.activeTab === 'step2') rememberActiveTab('step2');
     renderMyAvatars();
   };
 
@@ -8111,6 +8158,9 @@
     }
     state.luxuryAd.currentStep = target;
     syncLuxuryAdStepPanels(gate);
+    if (!silent && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film')) {
+      rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
+    }
     const view = document.querySelector('.dh-view');
     if (view) view.scrollTo({ top: 0, behavior: 'smooth' });
     return true;
@@ -17361,9 +17411,19 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxExpandBrief) luxExpandBrief.addEventListener('change', e => { state.luxuryAd.expandBrief = !!e.target.checked; state.luxuryAd.segments = []; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
     updateOutputHints();
     const initialLuxuryProjectRouteId = getLuxuryAdProjectRouteId();
+    const initialTab = getInitialTab();
+    const initialLuxuryStep = getInitialLuxuryStep();
+    if ((initialTab === 'luxury-ad' || initialTab === 'material-film') && initialLuxuryStep) {
+      state.luxuryAd.currentStep = initialLuxuryStep;
+    }
+    const initialAvatarTab = getInitialAvatarTab();
+    if (initialAvatarTab) state._myAvTab = initialAvatarTab;
     // 中文注释：首屏如果来自“继续制作”深链，先保留一次项目参数，等恢复项目后再主动清理。
-    switchTab(getInitialTab(), { preserveLuxuryProject: !!initialLuxuryProjectRouteId });
+    switchTab(initialTab, { preserveLuxuryProject: !!initialLuxuryProjectRouteId });
     await restoreLuxuryAdProjectFromUrl();
+    if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryStep) {
+      showLuxuryAdStep(initialLuxuryStep, { silent: true });
+    }
     renderLuxuryAdStoryboard();
     updateLuxuryAdStepLocks();
     await loadMyAvatars();

@@ -22,11 +22,34 @@ let projectId = null;          // URL ?pid 解析
 let allEpisodes = [];          // 项目下所有剧集
 let progressSSE = null;        // SSE 连接
 
+function getStudioRoute() {
+  const url = new URL(location.href);
+  return {
+    pid: url.searchParams.get('pid') || '',
+    eid: url.searchParams.get('eid') || '',
+    scene: Math.max(0, Number(url.searchParams.get('scene') || 0) || 0),
+  };
+}
+
+function rememberStudioRoute(patch = {}) {
+  try {
+    const url = new URL(location.href);
+    const pid = patch.pid ?? projectId;
+    const eid = patch.eid ?? currentEpisode?.id;
+    const scene = patch.scene ?? currentSceneIdx;
+    if (pid) url.searchParams.set('pid', pid);
+    if (eid) url.searchParams.set('eid', eid);
+    if (Number.isFinite(Number(scene)) && Number(scene) > 0) url.searchParams.set('scene', String(Number(scene)));
+    else url.searchParams.delete('scene');
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
+  } catch {}
+}
+
 // ═════════ INIT ═════════
 async function initStudio() {
   // 1. 解析 URL ?pid=xxx
-  const url = new URL(location.href);
-  projectId = url.searchParams.get('pid');
+  const route = getStudioRoute();
+  projectId = route.pid;
 
   if (!projectId) {
     // 没有 pid → 加载用户的第一个项目，或显示空状态
@@ -35,7 +58,7 @@ async function initStudio() {
       const j = await r.json();
       if (j.success && j.data?.length) {
         projectId = j.data[0].id;
-        history.replaceState(null, '', `?pid=${projectId}`);
+        rememberStudioRoute({ pid: projectId, eid: '', scene: 0 });
       } else {
         showEmptyState('暂无网剧项目，去 Studio 创建一个');
         return;
@@ -57,10 +80,11 @@ async function initStudio() {
     renderEpisodes();
 
     // 3. 自动选第一个已完成 episode（或第一个）
+    const routeEpisode = route.eid ? allEpisodes.find(e => String(e.id) === String(route.eid)) : null;
     const firstDone = allEpisodes.find(e => e.status === 'done');
-    const target = firstDone || allEpisodes[0];
+    const target = routeEpisode || firstDone || allEpisodes[0];
     if (target) {
-      await loadEpisode(target.id);
+      await loadEpisode(target.id, { scene: route.scene });
     } else {
       showEmptyEpisode();
     }
@@ -397,13 +421,16 @@ async function importSingleChapter(novelId, chapterIdx) {
 }
 window.importSingleChapter = importSingleChapter;
 
-async function loadEpisode(eid) {
+async function loadEpisode(eid, opts = {}) {
   try {
     const r = await authFetch(`/api/drama/projects/${projectId}/episodes/${eid}`);
     const j = await r.json();
     if (!j.success) throw new Error(j.error);
     currentEpisode = j.data;
-    currentSceneIdx = 0;
+    const scenes = currentEpisode?.result?.scenes || [];
+    const targetScene = Number.isFinite(Number(opts.scene)) ? Number(opts.scene) : 0;
+    currentSceneIdx = Math.max(0, Math.min(Math.max(0, scenes.length - 1), targetScene));
+    rememberStudioRoute({ eid: currentEpisode.id, scene: currentSceneIdx });
     renderEpisodes();      // 更新顶栏 active
     renderShots();         // 渲染分镜列表
     renderCurrentScene();  // 渲染中央编辑区
@@ -978,6 +1005,7 @@ function renderRightPanel() {
 
 function selectScene(idx) {
   currentSceneIdx = idx;
+  rememberStudioRoute({ scene: currentSceneIdx });
   renderShots();
   renderCurrentScene();
 }

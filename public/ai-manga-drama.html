@@ -2572,6 +2572,7 @@ function goToShot(no){
   document.querySelectorAll('.frame').forEach(x=>x.classList.toggle('cur',parseInt(x.dataset.no)===no));
   renderShotPanel();
   document.querySelector('.tab[data-tab="shot"]').click();
+  window.__rememberMangaRoute?.({ stage: 4, shot: no });
 }
 
 // === v14: 批量替换 ===
@@ -2843,6 +2844,7 @@ function goStage(n){
     };
   }
   window.scrollTo({top:0,behavior:'smooth'});
+  window.__rememberMangaRoute?.({ stage: n });
 }
 
 // AI 处理动画后切到下一阶段
@@ -2981,6 +2983,54 @@ goStage(0);
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
   const esc = s => String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const MANGA_ROUTE_KEY = 'vido_manga_route_state';
+
+  function readMangaRoute() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(MANGA_ROUTE_KEY) || '{}') || {}; } catch {}
+    try {
+      const params = new URLSearchParams(location.search || '');
+      return {
+        ...saved,
+        stage: Number(params.get('stage') ?? saved.stage ?? 0) || 0,
+        project: params.get('project') || params.get('pid') || saved.project || '',
+        episode: params.get('episode') || params.get('eid') || saved.episode || '',
+        shot: Number(params.get('shot') ?? saved.shot ?? 1) || 1,
+        side: params.get('side') || saved.side || '',
+        filter: params.get('filter') || saved.filter || '',
+        q: params.get('q') || saved.q || '',
+      };
+    } catch {
+      return saved;
+    }
+  }
+
+  function rememberMangaRoute(patch = {}) {
+    const route = {
+      stage: Number(CUR_STAGE || 0) || 0,
+      project: real.currentProject?.id || '',
+      episode: real.currentEpisode?.id || '',
+      shot: CURRENT_SHOT || 1,
+      side: real.sideView || '',
+      filter: real.filter || '',
+      q: real.search || '',
+      ...patch,
+    };
+    try {
+      localStorage.setItem(MANGA_ROUTE_KEY, JSON.stringify(route));
+      const url = new URL(location.href);
+      url.searchParams.set('stage', String(Math.max(0, Math.min(5, Number(route.stage || 0)))));
+      if (route.project) url.searchParams.set('project', route.project); else url.searchParams.delete('project');
+      if (route.episode) url.searchParams.set('episode', route.episode); else url.searchParams.delete('episode');
+      if (Number(route.shot) > 1) url.searchParams.set('shot', String(Number(route.shot))); else url.searchParams.delete('shot');
+      if (route.side) url.searchParams.set('side', route.side); else url.searchParams.delete('side');
+      if (route.filter) url.searchParams.set('filter', route.filter); else url.searchParams.delete('filter');
+      if (route.q) url.searchParams.set('q', route.q); else url.searchParams.delete('q');
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch {}
+  }
+
+  window.__rememberMangaRoute = rememberMangaRoute;
 
   function ensureProductionShell() {
     let shell = $('#manga-prod-shell');
@@ -3317,6 +3367,7 @@ goStage(0);
   function setSideView(view) {
     real.sideView = view;
     $$('.home-side .nav-i').forEach(item => item.classList.toggle('cur', (item.textContent || '').includes(view)));
+    rememberMangaRoute({ side: view });
   }
   async function ensureDetails() {
     const missing = (real.projects || []).filter(p => !real.details.has(String(p.id)));
@@ -3509,7 +3560,7 @@ goStage(0);
     try { renderShotPanel(); renderAIPanel(); } catch {}
     return true;
   }
-  async function openRealProject(id) {
+  async function openRealProject(id, opts = {}) {
     const r = await api('/api/drama/projects/' + encodeURIComponent(id));
     real.currentProject = r.data;
     real.details.set(String(id), r.data);
@@ -3518,15 +3569,25 @@ goStage(0);
     syncPipelineState(r.data);
     updateProductionShell();
     renderEpisodes(r.data);
-    const doneEp = (r.data.episodes || []).find(e => e.result?.scenes?.length) || (r.data.episodes || [])[0];
+    const routeEpisode = opts.episode ? (r.data.episodes || []).find(e => String(e.id) === String(opts.episode)) : null;
+    const doneEp = routeEpisode || (r.data.episodes || []).find(e => e.result?.scenes?.length) || (r.data.episodes || [])[0];
+    const targetStage = Number.isFinite(Number(opts.stage)) ? Math.max(0, Math.min(5, Number(opts.stage))) : null;
+    const targetShot = Math.max(1, Number(opts.shot || 1) || 1);
     if (doneEp?.result?.scenes?.length) {
       real.currentEpisode = doneEp;
       hydrateShotData(doneEp);
-      goStage(4);
+      if (SHOTS[targetShot]) goToShot(targetShot);
+      goStage(targetStage ?? 4);
     } else {
       real.currentEpisode = doneEp || null;
-      goStage(3);
+      goStage(targetStage ?? 3);
     }
+    rememberMangaRoute({
+      project: real.currentProject?.id || '',
+      episode: real.currentEpisode?.id || '',
+      stage: targetStage ?? CUR_STAGE,
+      shot: CURRENT_SHOT || 1,
+    });
   }
   function renderRealStage(n) {
     const p = real.currentProject;
@@ -3624,6 +3685,7 @@ goStage(0);
     await generateEpisode(ep.id);
   }
   async function loadRealData() {
+    const route = readMangaRoute();
     const strict = async (label, path) => {
       try {
         return await api(path);
@@ -3641,11 +3703,26 @@ goStage(0);
     real.comics = comics.data || [];
     real.novels = novels.novels || [];
     real.works = works.works || [];
+    if (route.q) {
+      real.search = route.q;
+      const search = $('.home-h input.search');
+      if (search) search.value = route.q;
+    }
+    if (route.filter) real.filter = route.filter;
     await ensureDetails();
-    setSideView('我的漫剧');
+    setSideView(route.side || '我的漫剧');
     syncPipelineState(real.currentProject);
     updateProductionShell();
     renderHome();
+    if (route.side && route.side !== '我的漫剧') {
+      if (['角色库', '场景库', '道具库', '音色库'].includes(route.side)) await renderAssetView(route.side);
+      else renderSpecialView(route.side);
+    }
+    if (route.project) {
+      await openRealProject(route.project, route);
+    } else if (route.stage) {
+      goStage(Math.max(0, Math.min(5, Number(route.stage) || 0)));
+    }
   }
   function pickModalValue(labelText) {
     const labels = $$('#new-modal label');
@@ -3759,6 +3836,21 @@ goStage(0);
       openSequelForProject(sequel.dataset.realSequel);
       return;
     }
+    const episodeCard = e.target.closest('[data-real-episode]');
+    if (episodeCard && !e.target.closest('button')) {
+      e.stopPropagation();
+      const ep = (real.currentProject?.episodes || []).find(x => String(x.id) === String(episodeCard.dataset.realEpisode));
+      if (!ep) return note('当前项目没有找到这集');
+      real.currentEpisode = ep;
+      if (ep.result?.scenes?.length) {
+        hydrateShotData(ep);
+        goStage(4);
+      } else {
+        goStage(3);
+      }
+      rememberMangaRoute({ episode: ep.id, stage: CUR_STAGE, shot: CURRENT_SHOT || 1 });
+      return;
+    }
     const gen = e.target.closest('[data-real-generate-episode]');
     if (gen) {
       e.stopPropagation();
@@ -3824,12 +3916,14 @@ goStage(0);
     if (search) {
       search.addEventListener('input', () => {
         real.search = search.value || '';
+        rememberMangaRoute({ q: real.search });
         if (['我的漫剧','最近编辑'].includes(real.sideView)) renderSpecialView(real.sideView === '最近编辑' ? '最近编辑' : '我的漫剧');
       });
     }
     $$('.filter button').forEach(btn => {
       btn.addEventListener('click', () => {
         real.filter = btn.textContent.trim() || '全部';
+        rememberMangaRoute({ filter: real.filter });
         setSideView(real.sideView === '最近编辑' ? '最近编辑' : '我的漫剧');
         real.sideView === '最近编辑' ? renderSpecialView('最近编辑') : renderHome();
       });
