@@ -29,8 +29,16 @@ function cacheSet(key, value) {
 }
 
 function invalidateCollection(collection) {
+  const getPrefix = `get:${collection}|`;
+  const listPrefix = `list:${collection}`;
   for (const key of queryCache.keys()) {
-    if (key.includes(`|${collection}|`) || key.endsWith(`|${collection}`)) queryCache.delete(key);
+    if (
+      key.startsWith(getPrefix) ||
+      key === listPrefix ||
+      key.startsWith(`${listPrefix}|`) ||
+      key.includes(`|${collection}|`) ||
+      key.endsWith(`|${collection}`)
+    ) queryCache.delete(key);
   }
 }
 
