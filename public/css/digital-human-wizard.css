@@ -996,6 +996,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-control-meta i::after { content: "▾"; display: inline-block; margin-left: 6px; color: var(--dh-primary); transition: transform .15s ease; }
 .dh-luxgen-control-box[open] .dh-luxgen-control-meta i::after { transform: rotate(180deg); }
 .dh-luxgen-control-box[open] .dh-luxgen-control-meta i { color: var(--dh-primary); }
+.dh-luxgen-control-note { margin: 0 12px 12px; padding: 10px 12px; border: 1px solid rgba(33,255,243,.14); border-radius: 8px; background: rgba(33,255,243,.045); color: var(--dh-text-muted); font-size: 12px; line-height: 1.65; }
 .dh-luxgen-control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 12px 12px; }
 .dh-luxgen-control-card { min-width: 0; display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; background: rgba(255,255,255,.025); }
 .dh-luxgen-control-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }

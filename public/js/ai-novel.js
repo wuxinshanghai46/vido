@@ -2085,7 +2085,7 @@
     const chapter_count = Math.max(maxChapterIndex({ ...state.current, chapters: list, outline }), outlineChapters.length, list.length);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
-      body: JSON.stringify({ chapters: list, outline, chapter_count })
+      body: JSON.stringify({ chapters: list, outline, chapter_count, allow_shorter_chapter_content: true })
     });
     state.current = data.novel || { ...state.current, chapters: list, outline, chapter_count };
     if (!options.silent) showToast('章节任务已保存');
@@ -2106,7 +2106,7 @@
     const list = currentChapterPayload(status);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
-      body: JSON.stringify({ chapters: list, status: state.current.status === 'completed' ? 'completed' : 'draft' })
+      body: JSON.stringify({ chapters: list, status: state.current.status === 'completed' ? 'completed' : 'draft', allow_shorter_chapter_content: true })
     });
     state.current = data.novel || { ...state.current, chapters: list };
     showToast(status === 'done' ? '本章已保存为已提交' : '本章已保存');
@@ -2926,7 +2926,8 @@
       const payload = currentChapterPayload();
       const body = JSON.stringify({
         chapters: payload,
-        status: state.current.status === 'completed' ? 'completed' : 'draft'
+        status: state.current.status === 'completed' ? 'completed' : 'draft',
+        allow_shorter_chapter_content: true
       });
       const url = '/api/novel/' + encodeURIComponent(state.current.id);
       try {

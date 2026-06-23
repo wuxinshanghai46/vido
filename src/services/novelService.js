@@ -1678,7 +1678,14 @@ Drafting method:
 - Let the POV character notice only what their fear, desire, wound, knowledge, and immediate danger make them notice.
 - Use dialogue only when it changes power, emotion, information, or trust.
 - If a passage reads like a report, rewrite it into a moment: who acts, who resists, what object/space changes, what choice costs, what cannot be undone.
-- Keep transitions invisible. Do not announce "the next step", "after investigation", "they began", or "this made him realize" unless the action is shown on page.`;
+- Keep transitions invisible. Do not announce "the next step", "after investigation", "they began", or "this made him realize" unless the action is shown on page.
+Story priority:
+- The chapter goal, conflict, choice, cost, reversal/clue, and emotional turn are more important than decorative micro-details.
+- Every paragraph must advance at least one of: plot event, character decision, relationship tension, clue/payoff, or irreversible consequence.
+- Use concrete detail only when it changes pressure, reveals character, anchors a clue, or pays off an earlier setup.
+- Do not list objects, colors, weather, clothing, gestures, or tiny actions unless they affect the story beat.
+- Do not split one beat into scattered observations. Build a continuous cause-and-effect scene: action -> resistance -> choice -> consequence.
+- If the outline has several beats, group them into coherent scene movements instead of many small disconnected fragments.`;
 
   const userPrompt = `【故事简介】
 ${outline.synopsis}
@@ -1747,7 +1754,12 @@ Revision method:
 - Remove assistant-like explanation, lesson-like summary, slogan sentences, and generic emotional labels.
 - Replace abstract feeling with body reaction, gesture, silence, misdirection, concrete memory trigger, or conflict action.
 - Make dialogue less polite and less direct when tension requires concealment, bargaining, fear, suspicion, attraction, or status pressure.
-- Preserve the original event facts, but make the prose feel written by a human novelist rather than generated from a synopsis.`;
+- Preserve the original event facts, but make the prose feel written by a human novelist rather than generated from a synopsis.
+Story-first revision:
+- Strengthen the main event chain, chapter goal, conflict, choice, cost, reversal/clue, and emotional turn before polishing style.
+- Cut decorative micro-details that do not move plot, reveal character, raise pressure, or pay off a setup.
+- Merge fragmented sensory observations into fewer, stronger scene movements with clear cause and effect.
+- Do not add unrelated small actions just to make the prose look vivid.`;
 
   const systemPrompt = `你是一位专业的小说编辑和润色专家${genreLabel ? `，擅长${genreLabel}题材` : ''}。
 请根据用户的指令优化以下文本，保持${styleLabel || '原有'}文风。

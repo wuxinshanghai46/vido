@@ -129,7 +129,8 @@ function displayWordCount(value) {
   return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
 }
 
-function mergeChapterUpdates(existingChapters = [], incomingChapters = []) {
+function mergeChapterUpdates(existingChapters = [], incomingChapters = [], options = {}) {
+  const allowShorterContent = options.allowShorterContent === true;
   const existingByIndex = new Map(arr(existingChapters).map((chapter, idx) => [Number(chapter.index) || idx + 1, chapter]));
   return arr(incomingChapters).map((incoming, idx) => {
     const index = Number(incoming.index) || idx + 1;
@@ -137,7 +138,7 @@ function mergeChapterUpdates(existingChapters = [], incomingChapters = []) {
     if (!existing) return incoming;
     const existingText = chapterTextValue(existing);
     const incomingText = chapterTextValue(incoming);
-    if (existingText && incomingText && existingText.length > incomingText.length) {
+    if (!allowShorterContent && existingText && incomingText && existingText.length > incomingText.length) {
       return {
         ...incoming,
         content: existingText,
@@ -1404,7 +1405,7 @@ router.put('/:id', (req, res) => {
       title, genre, style, novel_type, chapter_count, chapter_words, chapters, outline,
       description, logline, tags, story_bible, status, provider, contract, entities,
       cultural_region, relationships, plot_threads, foreshadows, chapter_briefs, chapter_commits,
-      review_reports, memory_items, runtime_status
+      review_reports, memory_items, runtime_status, allow_shorter_chapter_content
     } = req.body;
     const fields = {};
     if (title !== undefined) fields.title = title;
@@ -1431,7 +1432,9 @@ router.put('/:id', (req, res) => {
     if (chapter_count !== undefined) fields.chapter_count = parseInt(chapter_count);
     if (chapter_words !== undefined) fields.chapter_words = parseInt(chapter_words);
     if (chapters !== undefined) {
-      fields.chapters = normalizeChapterWordCounts(mergeChapterUpdates(novel.chapters, chapters));
+      fields.chapters = normalizeChapterWordCounts(mergeChapterUpdates(novel.chapters, chapters, {
+        allowShorterContent: allow_shorter_chapter_content === true
+      }));
       fields.total_words = fields.chapters.reduce((sum, c) => sum + (c.word_count || chapterTextValue(c).length || 0), 0);
     }
     if (outline !== undefined) {

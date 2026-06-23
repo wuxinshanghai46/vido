@@ -6413,16 +6413,19 @@
             <i>展开设置</i>
           </span>
         </summary>
+        <div class="dh-luxgen-control-note">
+          这块是剧情广告的“生成约束开关”，不是单独的新流程。默认 classic 不参与生成；一旦选择场景、启用商品、填写风格或禁止项，就会进入 controlled 链路，把这些要求写进剧本、分镜、关键帧和质检规则，防止广告画面跑到错误场地、错商品或错风格。
+        </div>
         <div class="dh-luxgen-control-grid">
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><span><b>场景方向</b><span>控制室内、室外或科技感，不写死行业场景。</span></span></div>
+            <div class="dh-luxgen-control-title"><span><b>场景方向</b><span>只限定镜头发生的空间方向，具体行业场景仍从用户需求和素材里推导。</span></span></div>
             <div class="dh-luxgen-segmented" role="group" aria-label="场景方向">
               ${LUXURY_CONTROL_ENVIRONMENT_OPTIONS.map(([value, label]) => `<button type="button" data-lux-control-env="${value}" class="${ctrl.environment.mode === value ? 'active' : ''}">${label}</button>`).join('')}
             </div>
             <input class="dh-input" data-lux-control-custom-env placeholder="自定义场景要求，例如：城市街区外景 + 门店入口 + 夜间霓虹" value="${escapeHtml(ctrl.environment.custom)}">
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><span><b>商品融入</b><span>${productReady ? '已上传主体图，可设置入镜强度和展示方式。' : '启用商品融入前建议先上传主体主图。'}</span></span></div>
+            <div class="dh-luxgen-control-title"><span><b>商品融入</b><span>${productReady ? '用于要求商品/服务成为镜头证据，可设置出现频率、锁定程度和展示方式。' : '启用后会要求商品/服务入镜；有主体主图时可按图锁定外观。'}</span></span></div>
             <label class="dh-luxgen-inline-check"><input type="checkbox" data-lux-control-product-enabled ${ctrl.product.enabled ? 'checked' : ''}> <span>按镜头规则要求商品入镜</span></label>
             <div class="dh-luxgen-control-fields">
               <label><span>入镜强度</span><select class="dh-input" data-lux-control-product-presence>
@@ -6441,7 +6444,7 @@
             </div>
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><span><b>风格方向</b><span>科技感商业只作为新规则进入，不污染普通写实模式。</span></span><button type="button" data-lux-control-ai="style">AI 帮写</button></div>
+            <div class="dh-luxgen-control-title"><span><b>风格方向</b><span>控制画面质感、光线、空间和 UI 浮层等表达；不改用户原始广告需求。</span></span><button type="button" data-lux-control-ai="style">AI 帮写</button></div>
             <select class="dh-input" data-lux-control-style-mode>
               <option value="classic" ${ctrl.style.mode === 'classic' ? 'selected' : ''}>保持普通真实商业广告</option>
               <option value="tech_commercial" ${ctrl.style.mode === 'tech_commercial' ? 'selected' : ''}>科技感商业 / 轻科幻 UI</option>
@@ -6449,7 +6452,7 @@
             <textarea class="dh-input" rows="3" data-lux-control-style-notes placeholder="参考视频风格要点，例如：浅色零售空间、透明 UI 浮层、经理看手机确认订单，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
           </section>
           <section class="dh-luxgen-control-card">
-            <div class="dh-luxgen-control-title"><span><b>禁止项</b><span>错了就报错，不把禁止内容偷偷换成兜底画面。</span></span><button type="button" data-lux-control-ai="negative">AI 帮写</button></div>
+            <div class="dh-luxgen-control-title"><span><b>禁止项</b><span>明确不能出现的画面、人物、商品或风格错误；命中后质检会判失败。</span></span><button type="button" data-lux-control-ai="negative">AI 帮写</button></div>
             <textarea class="dh-input" rows="4" data-lux-control-negative placeholder="例如：不要室内办公室；不要塑料 AI 脸；不要无关化妆品瓶；不要纯 UI 海报。">${escapeHtml(ctrl.negative.text)}</textarea>
           </section>
         </div>
