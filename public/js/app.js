@@ -410,7 +410,8 @@ async function loadDashboard() {
       const pg = TYPE_PAGE[t.type] || 'works';
       const icon = TYPE_ICON[t.type] || '📄';
       const statusColor = (st === 'done' || st === 'completed') ? 'var(--accent)' : st === 'error' ? '#ef4444' : 'var(--text3)';
-      return `<div class="hub-recent-item" onclick="switchPage('${pg}')">
+      const clickAction = t.url ? `window.location.href='${esc(t.url)}'` : `switchPage('${pg}')`;
+      return `<div class="hub-recent-item" onclick="${clickAction}">
         <div class="hub-recent-thumb" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(var(--accent-rgb),.04);">${icon}</div>
         <div class="hub-recent-info">
           <div class="hub-recent-title">${esc(t.title || '未命名')}</div>

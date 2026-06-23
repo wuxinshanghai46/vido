@@ -126,7 +126,7 @@ function chapterTextValue(chapter = {}) {
 }
 
 function displayWordCount(value) {
-  return String(value || '').length;
+  return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
 }
 
 function mergeChapterUpdates(existingChapters = [], incomingChapters = []) {
@@ -1452,14 +1452,8 @@ router.delete('/:id', (req, res) => {
   try {
     const novel = getOwnedNovel(req, res, req.params.id);
     if (!novel) return;
-    const now = new Date().toISOString();
-    db.updateNovel(req.params.id, {
-      deleted_at: now,
-      deleted_by: req.user?.id || '',
-      status: 'deleted',
-      updated_at: now
-    });
-    res.json({ success: true, novel: db.getNovel(req.params.id) });
+    db.deleteNovel(req.params.id);
+    res.json({ success: true, deleted: true, id: req.params.id });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

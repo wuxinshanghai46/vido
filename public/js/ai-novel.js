@@ -124,6 +124,10 @@
     return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
   }
 
+  function novelContentWordCount(novel = state.current) {
+    return chapters(novel).reduce((sum, chapter) => sum + displayWordCount(chapterContent(chapter)), 0);
+  }
+
   function currentChapterPlanText(chapter = outlineChapterAt(state.currentChapter)) {
     return firstText(
       chapter.summary,
@@ -709,7 +713,7 @@
     const requestedChapter = Number(options.chapter || 0);
     const chapterExists = chapters(state.current).some(ch => Number(ch.index) === requestedChapter);
     state.currentChapter = chapterExists ? requestedChapter : (firstDraft?.index || 1);
-    state.panel = options.panel || (firstDraft ? 'world' : 'write');
+    state.panel = options.panel || 'write';
     switchView('work', { keepRoute: true });
     updateRouteState();
   }
@@ -724,7 +728,7 @@
     box.innerHTML = state.novels.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))).map(novel => {
       const life = lifecycle(novel);
       const type = lengthOf(novel).label;
-      const words = Number(novel.total_words || 0);
+      const words = novelContentWordCount(novel);
       return `<button class="nv-project-card" type="button" data-open-novel="${esc(novel.id)}">
         <b>${esc(novel.title || '未命名小说')}</b>
         <p>${esc(type)} · ${words} 字 · ${esc(chapterPhase(novel))}</p>
@@ -1172,7 +1176,7 @@
       <div class="nv-project-head">
         <div>
           <h2>${esc(novel.title || '未命名小说')}</h2>
-          <div class="nv-project-meta">${esc(type)} / ${esc(culture)} / ${esc(genre)} / ${Number(novel.total_words || 0)} 字</div>
+          <div class="nv-project-meta">${esc(type)} / ${esc(culture)} / ${esc(genre)} / ${novelContentWordCount(novel)} 字</div>
         </div>
         <div class="nv-action-buttons">
           <button class="nv-btn nv-btn-muted" type="button" data-export>导出</button>
@@ -1818,26 +1822,9 @@
             <button class="nv-btn nv-btn-muted" type="button" data-refine="continue">续写</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="polish">改写优化</button>
             <button class="nv-btn nv-btn-muted" type="button" data-split-chapter>拆分本章</button>
-            <button class="nv-btn nv-btn-muted" type="button" data-save-chapter>保存本章</button>
             <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter>提交本章</button>
           </div>
         </div>
-        <section class="nv-chapter-plan-editor">
-          <label>
-            <b>本章写作任务（给作家）</b>
-            <textarea class="nv-textarea" id="nvChapterPlanInput" placeholder="写清这一章具体要怎么写：开场场景、人物行动、冲突、转折、结尾钩子。">${esc(currentChapterPlanText(outlineItem))}</textarea>
-          </label>
-          <div class="nv-chapter-plan-grid">
-            <label><b>阻力</b><input class="nv-input" id="nvChapterObstacleInput" value="${esc(firstText(outlineItem.obstacle, outlineItem.conflict))}" placeholder="本章阻力或关系张力" /></label>
-            <label><b>选择</b><input class="nv-input" id="nvChapterChoiceInput" value="${esc(firstText(outlineItem.choice))}" placeholder="人物必须做的选择" /></label>
-            <label><b>代价</b><input class="nv-input" id="nvChapterCostInput" value="${esc(firstText(outlineItem.cost))}" placeholder="选择造成的后果" /></label>
-            <label><b>钩子</b><input class="nv-input" id="nvChapterHookInput" value="${esc(firstText(outlineItem.hook))}" placeholder="章末悬念或情绪落点" /></label>
-          </div>
-          <label>
-            <b>本次给作家的具体要求</b>
-            <textarea class="nv-textarea nv-writer-note" id="nvChapterWriterNote" placeholder="例如：这一段改成先压抑后爆发；多写动作和对话；不要增加新人名；保留原剧情但让情绪更疼。"></textarea>
-          </label>
-        </section>
         <div class="nv-chapter-stream-status ${state.chapterWriting ? 'is-active' : ''} ${state.chapterWriting?.isError ? 'is-error' : ''}" id="nvChapterStreamStatus">
           <span class="nv-thinking-dot"></span>
           <div>
@@ -1860,11 +1847,22 @@
       <aside class="nv-side-stack">
         <section>
           <h3>当前章节故事点</h3>
-          <div class="nv-mini-list">
-            <div>${esc(outlineItem.goal || outlineItem.summary || '等待 AI 根据大纲生成章节目标。')}</div>
-            <div>${esc(outlineItem.conflict || outlineItem.hook || '等待 AI 提取本章关键冲突、钩子和伏笔。')}</div>
-            <div>用户可在生成前修改章节标题和正文。</div>
-          </div>
+          <section class="nv-chapter-plan-editor">
+            <label>
+              <b>本章写作任务（给作家）</b>
+              <textarea class="nv-textarea" id="nvChapterPlanInput" placeholder="写清这一章具体要怎么写：开场场景、人物行动、冲突、转折、结尾钩子。">${esc(currentChapterPlanText(outlineItem))}</textarea>
+            </label>
+            <div class="nv-chapter-plan-grid">
+              <label><b>阻力</b><input class="nv-input" id="nvChapterObstacleInput" value="${esc(firstText(outlineItem.obstacle, outlineItem.conflict))}" placeholder="本章阻力或关系张力" /></label>
+              <label><b>选择</b><input class="nv-input" id="nvChapterChoiceInput" value="${esc(firstText(outlineItem.choice))}" placeholder="人物必须做的选择" /></label>
+              <label><b>代价</b><input class="nv-input" id="nvChapterCostInput" value="${esc(firstText(outlineItem.cost))}" placeholder="选择造成的后果" /></label>
+              <label><b>钩子</b><input class="nv-input" id="nvChapterHookInput" value="${esc(firstText(outlineItem.hook))}" placeholder="章末悬念或情绪落点" /></label>
+            </div>
+            <label>
+              <b>本次给作家的具体要求</b>
+              <textarea class="nv-textarea nv-writer-note" id="nvChapterWriterNote" placeholder="例如：这一段改成先压抑后爆发；多写动作和对话；不要增加新人名；保留原剧情但让情绪更疼。"></textarea>
+            </label>
+          </section>
         </section>
         <section>
           <h3>本章人物关系</h3>
@@ -2207,7 +2205,7 @@
       })
       .catch(error => {
         state.autoSaveError = error.message || '自动保存失败';
-        if (!options.quiet) showToast('自动保存失败，请点保存本章', true);
+        if (!options.quiet) showToast('自动保存失败，请检查网络后继续编辑，系统会再次尝试自动保存', true);
         throw error;
       })
       .finally(() => {
@@ -2894,7 +2892,6 @@
         renderWork();
         return;
       }
-      if (e.target.closest('[data-save-chapter]')) return run(() => saveChapter());
       if (e.target.closest('[data-generate-chapter]')) return run(() => generateChapter(e.target.closest('button')));
       const refine = e.target.closest('[data-refine]');
       if (refine) return run(() => refineChapter(refine.dataset.refine, refine));

@@ -37,7 +37,7 @@ function getDashboardData(req) {
     const avatars = db.listAvatarTasks(uid);
     const comics = db.listComicTasks(uid);
     const portraits = db.listPortraits(uid);
-    const novels = db.listNovels(uid);
+    const novels = db.listNovels(uid).filter(n => !n.deleted_at && n.status !== 'deleted');
     const i2vTasks = db.listI2VTasks(uid);
     const merged = [];
 
@@ -90,6 +90,8 @@ function getDashboardData(req) {
         id: n.id,
         title: n.title || 'AI 小说',
         type: 'AI小说',
+        module: 'novel',
+        url: `/ai-novel?novel=${encodeURIComponent(n.id)}&panel=write`,
         status: n.status,
         error: n.error || '',
         created_at: n.created_at

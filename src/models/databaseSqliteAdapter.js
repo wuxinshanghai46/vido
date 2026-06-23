@@ -55,7 +55,7 @@ function chapterTextValue(chapter = {}) {
 }
 
 function displayWordCount(value) {
-  return String(value || '').length;
+  return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
 }
 
 function normalizeNovelFields(fields = {}) {
