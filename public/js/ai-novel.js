@@ -128,6 +128,10 @@
     return chapters(novel).reduce((sum, chapter) => sum + displayWordCount(chapterContent(chapter)), 0);
   }
 
+  function chapterWordSum(list = []) {
+    return arr(list).reduce((sum, chapter) => sum + displayWordCount(chapterContent(chapter)), 0);
+  }
+
   function currentChapterPlanText(chapter = outlineChapterAt(state.currentChapter)) {
     return firstText(
       chapter.summary,
@@ -1176,7 +1180,7 @@
       <div class="nv-project-head">
         <div>
           <h2>${esc(novel.title || '未命名小说')}</h2>
-          <div class="nv-project-meta">${esc(type)} / ${esc(culture)} / ${esc(genre)} / ${novelContentWordCount(novel)} 字</div>
+          <div class="nv-project-meta">${esc(type)} / ${esc(culture)} / ${esc(genre)} / <span id="nvNovelLiveWordCount">${novelContentWordCount(novel)}</span> 字</div>
         </div>
         <div class="nv-action-buttons">
           <button class="nv-btn nv-btn-muted" type="button" data-export>导出</button>
@@ -1806,7 +1810,7 @@
         <div class="nv-chapter-scroll">${list.map(item => `<button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${isChapterDone(item) ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
           <b>第 ${item.index} 章</b>
           <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
-          <span class="nv-status-mini">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
+          <span class="nv-status-mini" data-chapter-word-count="${item.index}">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
         </button>`).join('')}</div>
         <div class="nv-action-buttons" style="margin-top:12px">
           <button class="nv-btn nv-btn-muted" type="button" data-add-chapter>新增章节</button>
@@ -1816,7 +1820,7 @@
       <section class="nv-editor">
         <input class="nv-input nv-chapter-title" id="nvChapterTitle" value="${esc(currentTitle)}" placeholder="章节标题" />
         <div class="nv-editor-toolbar">
-          <div class="nv-project-meta">当前正文 ${currentWords} 字。章节正文可手动修改，也可以让 AI 续写、扩写或优化。</div>
+          <div class="nv-project-meta">当前正文 <span id="nvChapterLiveWordCount">${currentWords}</span> 字。章节正文可手动修改，也可以让 AI 续写、扩写或优化。</div>
           <div class="nv-editor-actions">
             <button class="nv-btn nv-btn-muted" type="button" data-generate-chapter>生成本章</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="continue">续写</button>
@@ -2047,6 +2051,82 @@
     };
   }
 
+  function currentChapterDraftFromDom(status) {
+    if (!state.current) return null;
+    const index = Number(state.currentChapter || 1);
+    const title = text(document.getElementById('nvChapterTitle')?.value) || `第 ${index} 章`;
+    const content = document.getElementById('nvChapterContent')?.value || '';
+    return {
+      index,
+      title,
+      content,
+      status,
+      word_count: displayWordCount(content),
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  function applyCurrentChapterDraftToNovel(novel = state.current, status) {
+    const draft = currentChapterDraftFromDom(status);
+    if (!novel || !draft) return novel;
+    const list = chapters(novel);
+    let found = false;
+    const nextChapters = list.map(chapter => {
+      if (Number(chapter.index) !== Number(draft.index)) return chapter;
+      found = true;
+      return {
+        ...chapter,
+        title: draft.title,
+        content: draft.content,
+        status: draft.status || chapter.status || 'draft',
+        word_count: draft.word_count,
+        updated_at: draft.updated_at
+      };
+    });
+    if (!found) nextChapters.push({
+      index: draft.index,
+      title: draft.title,
+      content: draft.content,
+      status: draft.status || 'draft',
+      word_count: draft.word_count,
+      updated_at: draft.updated_at
+    });
+    nextChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    return {
+      ...novel,
+      chapters: nextChapters,
+      total_words: chapterWordSum(nextChapters),
+      updated_at: draft.updated_at
+    };
+  }
+
+  function updateCurrentChapterDraftDisplay() {
+    if (!state.current) return;
+    const index = Number(state.currentChapter || 1);
+    const chapter = chapters().find(item => Number(item.index) === index);
+    if (!chapter) return;
+    const wordCount = displayWordCount(chapterContent(chapter));
+    const currentCount = document.getElementById('nvChapterLiveWordCount');
+    if (currentCount) currentCount.textContent = String(wordCount);
+    const novelCount = document.getElementById('nvNovelLiveWordCount');
+    if (novelCount) novelCount.textContent = String(novelContentWordCount(state.current));
+    const item = document.querySelector(`[data-chapter="${index}"]`);
+    if (!item) return;
+    const titleNode = item.querySelector('small');
+    if (titleNode) titleNode.textContent = chapterTitle(chapter, `第 ${index} 章`);
+    const statusNode = item.querySelector(`[data-chapter-word-count="${index}"]`);
+    if (statusNode) {
+      const label = isChapterDone(chapter) ? '已提交' : '编辑中';
+      statusNode.textContent = `${label} · ${wordCount} 字`;
+    }
+  }
+
+  function syncCurrentChapterDraftFromDom(status) {
+    if (!hasActiveChapterEditor()) return;
+    state.current = applyCurrentChapterDraftToNovel(state.current, status);
+    updateCurrentChapterDraftDisplay();
+  }
+
   async function saveChapterPlan(options = {}) {
     if (!state.current) return state.current;
     const index = Number(state.currentChapter || 1);
@@ -2087,7 +2167,10 @@
       method: 'PUT',
       body: JSON.stringify({ chapters: list, outline, chapter_count, allow_shorter_chapter_content: true })
     });
-    state.current = data.novel || { ...state.current, chapters: list, outline, chapter_count };
+    state.current = hasActiveChapterEditor()
+      ? applyCurrentChapterDraftToNovel(data.novel || { ...state.current, chapters: list, outline, chapter_count })
+      : (data.novel || { ...state.current, chapters: list, outline, chapter_count });
+    updateCurrentChapterDraftDisplay();
     if (!options.silent) showToast('章节任务已保存');
     return state.current;
   }
@@ -2108,7 +2191,10 @@
       method: 'PUT',
       body: JSON.stringify({ chapters: list, status: state.current.status === 'completed' ? 'completed' : 'draft', allow_shorter_chapter_content: true })
     });
-    state.current = data.novel || { ...state.current, chapters: list };
+    state.current = hasActiveChapterEditor()
+      ? applyCurrentChapterDraftToNovel(data.novel || { ...state.current, chapters: list }, status)
+      : (data.novel || { ...state.current, chapters: list });
+    updateCurrentChapterDraftDisplay();
     showToast(status === 'done' ? '本章已保存为已提交' : '本章已保存');
   }
 
@@ -2177,7 +2263,7 @@
     return !!(state.current && state.panel === 'write' && document.getElementById('nvChapterContent'));
   }
 
-  function scheduleChapterAutoSave(delay = 900) {
+  function scheduleChapterAutoSave(delay = 350) {
     if (!hasActiveChapterEditor()) return;
     clearTimeout(state.autoSaveTimer);
     state.autoSaveTimer = setTimeout(() => {
@@ -2918,6 +3004,7 @@
     });
     document.addEventListener('input', e => {
       if (!e.target.closest('#nvChapterContent,#nvChapterTitle,#nvChapterPlanInput,#nvChapterObstacleInput,#nvChapterChoiceInput,#nvChapterCostInput,#nvChapterHookInput')) return;
+      if (e.target.closest('#nvChapterContent,#nvChapterTitle')) syncCurrentChapterDraftFromDom();
       scheduleChapterAutoSave();
     });
     window.addEventListener('beforeunload', () => {
