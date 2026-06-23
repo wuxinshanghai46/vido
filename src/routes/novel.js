@@ -487,8 +487,12 @@ function chapterSubmitted(chapter = {}) {
   return chapterFinalized(chapter);
 }
 
+function hasSubmittedChapterStatus(chapter = {}) {
+  return ['done', 'submitted', 'completed', 'finalized'].includes(str(chapter.status).toLowerCase());
+}
+
 function chapterFinalized(chapter = {}) {
-  return str(chapter.content) && !!(chapter.submitted_at || chapter.committed_at);
+  return str(chapter.content) && !!(chapter.submitted_at || chapter.committed_at || hasSubmittedChapterStatus(chapter));
 }
 
 function completionBlockers(novel = {}) {

@@ -35,6 +35,7 @@
     autoSaveQueued: false,
     autoSaveLastAt: 0,
     autoSaveError: '',
+    submittingChapters: new Set(),
     config: {
       genre: 'auto',
       subtype: 'auto',
@@ -694,8 +695,21 @@
     return isChapterSubmitted(chapter);
   }
 
+  function hasSubmittedChapterStatus(chapter) {
+    const status = String(chapter?.status || '').toLowerCase();
+    return ['done', 'submitted', 'completed', 'finalized'].includes(status);
+  }
+
   function isChapterSubmitted(chapter) {
-    return text(chapterContent(chapter)) && !!(chapter.submitted_at || chapter.committed_at);
+    return text(chapterContent(chapter)) && !!(chapter.submitted_at || chapter.committed_at || hasSubmittedChapterStatus(chapter));
+  }
+
+  function isChapterSubmitting(index) {
+    return state.submittingChapters.has(Number(index));
+  }
+
+  function isChapterDeleteLocked(chapter) {
+    return isChapterSubmitted(chapter) || isChapterSubmitting(chapter?.index);
   }
 
   function allChaptersDone(novel) {
@@ -1886,14 +1900,15 @@
         </div>
         <div class="nv-chapter-scroll">${list.map(item => {
           const itemDone = isChapterDone(item);
-          const itemSubmitted = isChapterSubmitted(item);
+          const itemSubmitting = isChapterSubmitting(item.index);
+          const itemDeleteLocked = isChapterDeleteLocked(item);
           return `<div class="nv-chapter-card">
             <button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${itemDone ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
               <b>第 ${item.index} 章</b>
               <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
-              <span class="nv-status-mini" data-chapter-word-count="${item.index}">${itemDone ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
+              <span class="nv-status-mini" data-chapter-word-count="${item.index}">${itemSubmitting ? '提交中' : itemDone ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
             </button>
-            ${itemSubmitted ? '' : `<button class="nv-chapter-delete" type="button" data-delete-chapter="${item.index}" title="删除未提交章节">删除</button>`}
+            ${itemDeleteLocked ? '' : `<button class="nv-chapter-delete" type="button" data-delete-chapter="${item.index}" title="删除未提交章节">删除</button>`}
           </div>`;
         }).join('')}</div>
       </section>
@@ -1906,7 +1921,7 @@
             <button class="nv-btn nv-btn-muted" type="button" data-refine="continue">续写</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="polish">改写优化</button>
             <button class="nv-btn nv-btn-muted" type="button" data-split-chapter>拆分本章</button>
-            <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter>提交本章</button>
+            <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter ${isChapterSubmitting(chapter.index) ? 'disabled aria-busy="true"' : ''}>${isChapterSubmitting(chapter.index) ? '提交中...' : '提交本章'}</button>
           </div>
         </div>
         <div class="nv-chapter-stream-status ${state.chapterWriting ? 'is-active' : ''} ${state.chapterWriting?.isError ? 'is-error' : ''}" id="nvChapterStreamStatus">
@@ -2196,7 +2211,7 @@
     if (titleNode) titleNode.textContent = chapterTitle(chapter, `第 ${index} 章`);
     const statusNode = item.querySelector(`[data-chapter-word-count="${index}"]`);
     if (statusNode) {
-      const label = isChapterDone(chapter) ? '已提交' : '编辑中';
+      const label = isChapterSubmitting(index) ? '提交中' : isChapterDone(chapter) ? '已提交' : '编辑中';
       statusNode.textContent = `${label} · ${wordCount} 字`;
     }
   }
@@ -2560,6 +2575,10 @@
   async function submitChapter(button) {
     const content = text(document.getElementById('nvChapterContent')?.value);
     if (!content) throw new Error('章节内容为空，不能提交本章');
+    const submittingIndex = Number(state.currentChapter || 1);
+    syncCurrentChapterDraftFromDom();
+    state.submittingChapters.add(submittingIndex);
+    renderWork();
     setBusy(button, true, '提交中...');
     try {
       await saveChapter('done');
@@ -2569,9 +2588,12 @@
       state.current = facts.novel || state.current;
       const next = chapters().find(ch => !isChapterDone(ch));
       if (next) state.currentChapter = next.index;
+      state.submittingChapters.delete(submittingIndex);
       renderWork();
-      showToast(next ? `第 ${state.currentChapter - 1} 章已提交，进入第 ${next.index} 章。` : '所有章节已提交，可以确认完结小说。');
+      showToast(next ? `第 ${submittingIndex} 章已提交，进入第 ${next.index} 章。` : '所有章节已提交，可以确认完结小说。');
     } finally {
+      state.submittingChapters.delete(submittingIndex);
+      renderWork();
       setBusy(button, false);
     }
   }
@@ -2848,7 +2870,7 @@
     if (!Number.isFinite(chapterIndex) || chapterIndex < 1) throw new Error('请选择要删除的章节');
     const chapter = chapters().find(item => Number(item.index) === chapterIndex);
     if (!chapter) throw new Error('章节不存在');
-    if (isChapterSubmitted(chapter)) throw new Error('已提交章节不能删除');
+    if (isChapterDeleteLocked(chapter)) throw new Error(isChapterSubmitting(chapterIndex) ? '章节正在提交，不能删除' : '已提交章节不能删除');
     const ok = await confirmAction({
       title: '删除章节',
       message: `确定删除第 ${chapterIndex} 章吗？`,
@@ -3075,6 +3097,7 @@
       const chapter = e.target.closest('[data-chapter]');
       if (chapter) {
         return run(async () => {
+          if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再切换');
           const nextChapter = Number(chapter.dataset.chapter);
           if (!nextChapter || Number(state.currentChapter) === nextChapter) return;
           await autoSaveCurrentChapter({ reason: 'chapter-switch' });
