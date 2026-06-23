@@ -691,7 +691,11 @@
   }
 
   function isChapterDone(chapter) {
-    return text(chapterContent(chapter)) && (chapter.status === 'done' || chapter.submitted_at || chapter.committed_at);
+    return isChapterSubmitted(chapter);
+  }
+
+  function isChapterSubmitted(chapter) {
+    return text(chapterContent(chapter)) && !!(chapter.submitted_at || chapter.committed_at);
   }
 
   function allChaptersDone(novel) {
@@ -1880,11 +1884,18 @@
           <button class="nv-btn nv-btn-muted" type="button" data-add-chapter>新增章节</button>
           <button class="nv-btn nv-btn-muted" type="button" data-save-outline-from-list>保存目录</button>
         </div>
-        <div class="nv-chapter-scroll">${list.map(item => `<button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${isChapterDone(item) ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
-          <b>第 ${item.index} 章</b>
-          <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
-          <span class="nv-status-mini" data-chapter-word-count="${item.index}">${isChapterDone(item) ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
-        </button>`).join('')}</div>
+        <div class="nv-chapter-scroll">${list.map(item => {
+          const itemDone = isChapterDone(item);
+          const itemSubmitted = isChapterSubmitted(item);
+          return `<div class="nv-chapter-card">
+            <button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${itemDone ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
+              <b>第 ${item.index} 章</b>
+              <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
+              <span class="nv-status-mini" data-chapter-word-count="${item.index}">${itemDone ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
+            </button>
+            ${itemSubmitted ? '' : `<button class="nv-chapter-delete" type="button" data-delete-chapter="${item.index}" title="删除未提交章节">删除</button>`}
+          </div>`;
+        }).join('')}</div>
       </section>
       <section class="nv-editor">
         <input class="nv-input nv-chapter-title" id="nvChapterTitle" value="${esc(currentTitle)}" placeholder="章节标题" />
@@ -2248,7 +2259,15 @@
     const title = text(document.getElementById('nvChapterTitle')?.value);
     const content = document.getElementById('nvChapterContent')?.value || '';
     const list = chapters().map(ch => Number(ch.index) === Number(state.currentChapter)
-      ? { ...ch, title, content, status: status || ch.status || 'draft', word_count: displayWordCount(content), updated_at: new Date().toISOString() }
+      ? {
+          ...ch,
+          title,
+          content,
+          status: status || ch.status || 'draft',
+          submitted_at: status === 'done' ? (ch.submitted_at || new Date().toISOString()) : ch.submitted_at,
+          word_count: displayWordCount(content),
+          updated_at: new Date().toISOString()
+        }
       : ch);
     return list;
   }
@@ -2823,6 +2842,36 @@
     }
   }
 
+  async function deleteChapter(index) {
+    if (!state.current) return;
+    const chapterIndex = Number(index || state.currentChapter || 0);
+    if (!Number.isFinite(chapterIndex) || chapterIndex < 1) throw new Error('请选择要删除的章节');
+    const chapter = chapters().find(item => Number(item.index) === chapterIndex);
+    if (!chapter) throw new Error('章节不存在');
+    if (isChapterSubmitted(chapter)) throw new Error('已提交章节不能删除');
+    const ok = await confirmAction({
+      title: '删除章节',
+      message: `确定删除第 ${chapterIndex} 章吗？`,
+      detail: '只允许删除未提交章节。删除后，后续章节会自动顺延上来，剧情大纲也会同步调整。',
+      confirmText: '确定删除',
+      cancelText: '取消',
+      danger: true
+    });
+    if (!ok) return;
+    const previous = state.current;
+    const data = await api(`/api/novel/${encodeURIComponent(previous.id)}/chapters/${encodeURIComponent(chapterIndex)}`, {
+      method: 'DELETE'
+    });
+    state.current = data.novel || previous;
+    const nextList = chapters(state.current);
+    const fallback = nextList.find(item => Number(item.index) >= chapterIndex) || nextList[nextList.length - 1] || { index: 1 };
+    state.currentChapter = Number(fallback.index) || 1;
+    updateRouteState();
+    renderWork();
+    focusChapterListItem(state.currentChapter);
+    showToast(`第 ${chapterIndex} 章已删除，后续章节已自动顺延。`);
+  }
+
   async function deleteNovelTask(id) {
     const novel = state.novels.find(item => item.id === id);
     const title = novel?.title || '未命名小说';
@@ -3056,6 +3105,8 @@
       if (e.target.closest('[data-split-chapter]')) return run(splitCurrentChapter);
       if (e.target.closest('[data-submit-chapter]')) return run(() => submitChapter(e.target.closest('button')));
       if (e.target.closest('[data-complete-novel]')) return run(() => completeNovel(e.target.closest('button')));
+      const deleteChapterButton = e.target.closest('[data-delete-chapter]');
+      if (deleteChapterButton) return run(() => deleteChapter(deleteChapterButton.dataset.deleteChapter));
       if (e.target.closest('[data-add-chapter]')) return run(addChapter);
       if (e.target.closest('[data-save-outline-from-list]')) return run(() => saveChapter());
       const type = e.target.closest('[data-task-type]');

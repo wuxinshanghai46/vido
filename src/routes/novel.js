@@ -484,7 +484,11 @@ function normalizedChapters(novel = {}) {
 }
 
 function chapterSubmitted(chapter = {}) {
-  return str(chapter.content) && (chapter.status === 'done' || chapter.submitted_at || chapter.committed_at);
+  return chapterFinalized(chapter);
+}
+
+function chapterFinalized(chapter = {}) {
+  return str(chapter.content) && !!(chapter.submitted_at || chapter.committed_at);
 }
 
 function completionBlockers(novel = {}) {
@@ -819,6 +823,89 @@ function mergeChapterFactsIntoNovel(novel = {}, facts = {}) {
     runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'facts_committed', last_error: '' }),
     updated_at: new Date().toISOString()
   };
+}
+
+function shiftChapterNumber(value, removedIndex) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 1) return value;
+  if (number === removedIndex) return null;
+  return number > removedIndex ? number - 1 : number;
+}
+
+function shiftChapterRecord(record = {}, removedIndex) {
+  const current = Number(record.index || record.chapter_index);
+  const sourceChapter = Number(record.source_chapter || record.setup_chapter);
+  if ((!Number.isFinite(current) || current < 1) && sourceChapter === removedIndex) return null;
+  const shifted = { ...record };
+  if (Number.isFinite(current) && current > 0) {
+    const next = shiftChapterNumber(current, removedIndex);
+    if (!next) return null;
+    if (record.index !== undefined) shifted.index = next;
+    if (record.chapter_index !== undefined) shifted.chapter_index = next;
+  }
+  if (record.source_chapter !== undefined) shifted.source_chapter = shiftChapterNumber(record.source_chapter, removedIndex);
+  if (record.setup_chapter !== undefined) shifted.setup_chapter = shiftChapterNumber(record.setup_chapter, removedIndex);
+  if (record.payoff_chapter !== undefined) shifted.payoff_chapter = shiftChapterNumber(record.payoff_chapter, removedIndex);
+  if (record.first_seen_chapter !== undefined) shifted.first_seen_chapter = shiftChapterNumber(record.first_seen_chapter, removedIndex);
+  if (record.last_seen_chapter !== undefined) shifted.last_seen_chapter = shiftChapterNumber(record.last_seen_chapter, removedIndex);
+  if (Array.isArray(record.chapters)) {
+    shifted.chapters = record.chapters
+      .map(chapter => shiftChapterNumber(chapter, removedIndex))
+      .filter(Boolean);
+  }
+  if (Array.isArray(record.history)) {
+    shifted.history = record.history
+      .map(item => shiftChapterRecord(item, removedIndex))
+      .filter(Boolean);
+  }
+  return shifted;
+}
+
+function removeChapterFromNovel(novel = {}, chapterIndex) {
+  const removedIndex = Number(chapterIndex);
+  const normalized = normalizedChapters(novel);
+  const target = normalized.find(chapter => Number(chapter.index) === removedIndex);
+  if (!target) {
+    const error = new Error('章节不存在');
+    error.status = 404;
+    throw error;
+  }
+  const hasCommittedFacts = arr(novel.chapter_commits).some(item => Number(item.chapter_index) === removedIndex && item.status !== 'draft');
+  if (chapterFinalized(target) || hasCommittedFacts) {
+    const error = new Error('已提交章节不能删除');
+    error.status = 400;
+    throw error;
+  }
+  const chapters = normalized
+    .filter(chapter => Number(chapter.index) !== removedIndex)
+    .map(chapter => shiftChapterRecord(chapter, removedIndex))
+    .filter(Boolean);
+  const outlineChapters = arr(novel.outline?.chapters)
+    .map((chapter, idx) => shiftChapterRecord({ ...chapter, index: Number(chapter.index) || idx + 1 }, removedIndex))
+    .filter(Boolean);
+  const outline = {
+    ...(novel.outline || {}),
+    chapters: outlineChapters
+  };
+  const fields = {
+    chapters: normalizeChapterWordCounts(chapters),
+    outline: novelService.normalizeNovelOutline(outline, { ...novel, chapters, outline }),
+    chapter_count: Math.max(chapters.length, outlineChapters.length, 0),
+    chapter_briefs: arr(novel.chapter_briefs).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    chapter_commits: arr(novel.chapter_commits).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    review_reports: arr(novel.review_reports).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    entities: arr(novel.entities).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    relationships: arr(novel.relationships).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    plot_threads: arr(novel.plot_threads).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    foreshadows: arr(novel.foreshadows).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    memory_items: arr(novel.memory_items).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
+    status: novel.status === 'completed' ? 'draft' : novel.status,
+    updated_at: new Date().toISOString()
+  };
+  fields.total_words = fields.chapters.reduce((sum, chapter) => sum + (Number(chapter.word_count) || 0), 0);
+  fields.story_bible = buildStoryBible(fields.outline);
+  Object.assign(fields, buildLongformState({ ...novel, ...fields }));
+  return fields;
 }
 
 // 获取可用模型
@@ -1450,6 +1537,20 @@ router.put('/:id', (req, res) => {
   }
 });
 
+router.delete('/:id/chapters/:chapter', (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const chapterIndex = parseInt(req.params.chapter);
+    if (!chapterIndex) return res.status(400).json({ success: false, error: '缺少章节编号' });
+    const fields = removeChapterFromNovel(novel, chapterIndex);
+    db.updateNovel(req.params.id, fields);
+    res.json({ success: true, deleted: true, chapter_index: chapterIndex, novel: db.getNovel(req.params.id) });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
 // 删除小说
 router.delete('/:id', (req, res) => {
   try {
@@ -1646,8 +1747,8 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
       index: chapterIndex,
       title: chapterInfo?.title || `第${chapterIndex}章`,
       content: fullText,
-      word_count: fullText.length,
-      status: 'done'
+      word_count: displayWordCount(fullText),
+      status: 'draft'
     };
     if (existing >= 0) chapters[existing] = chapterData;
     else chapters.push(chapterData);

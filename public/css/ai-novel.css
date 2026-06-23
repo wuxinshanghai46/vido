@@ -1236,6 +1236,9 @@ textarea, input { outline: none; }
   overflow: auto;
   padding-right: 2px;
 }
+.nv-chapter-card {
+  position: relative;
+}
 .nv-chapter-item {
   border: 1px solid var(--nv-line);
   border-radius: 12px;
@@ -1243,6 +1246,7 @@ textarea, input { outline: none; }
   color: var(--nv-muted);
   padding: 10px;
   text-align: left;
+  width: 100%;
 }
 .nv-chapter-item b { display: block; color: var(--nv-text); margin-bottom: 4px; }
 .nv-chapter-item small { display: block; color: var(--nv-faint); }
@@ -1253,6 +1257,22 @@ textarea, input { outline: none; }
   box-shadow: 0 0 0 3px rgba(46, 243, 234, 0.12);
 }
 .nv-chapter-item.is-done { border-color: rgba(116,238,157,.44); }
+.nv-chapter-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border: 1px solid rgba(255, 92, 122, .35);
+  border-radius: 999px;
+  background: rgba(255, 92, 122, .08);
+  color: var(--nv-danger);
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.nv-chapter-delete:hover {
+  background: rgba(255, 92, 122, .16);
+}
 .nv-status-mini {
   display: inline-flex;
   align-items: center;
