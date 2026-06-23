@@ -126,7 +126,7 @@ function chapterTextValue(chapter = {}) {
 }
 
 function displayWordCount(value) {
-  return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
+  return String(value || '').replace(/\s+/g, '').length;
 }
 
 function mergeChapterUpdates(existingChapters = [], incomingChapters = [], options = {}) {
@@ -233,7 +233,7 @@ function decodeImportedTextBuffer(buffer) {
 }
 
 function importedWordCount(value = '') {
-  return sourceLength(value);
+  return displayWordCount(value);
 }
 
 function splitImportedChapters(content = '') {

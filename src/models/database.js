@@ -187,7 +187,7 @@ function novelChapterText(chapter = {}) {
 }
 
 function novelDisplayWordCount(value) {
-  return String(value || '').length;
+  return String(value || '').replace(/\s+/g, '').length;
 }
 
 function normalizeNovelUpdateFields(fields = {}) {

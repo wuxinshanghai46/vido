@@ -123,7 +123,7 @@
   }
 
   function displayWordCount(value) {
-    return String(value || '').replace(/[\s，。！？、；：,.!?;:()[\]{}"'“”‘’《》<>【】\-_/\\|]+/g, '').length;
+    return String(value || '').replace(/\s+/g, '').length;
   }
 
   function novelContentWordCount(novel = state.current) {
