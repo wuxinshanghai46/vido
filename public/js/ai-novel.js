@@ -44,6 +44,8 @@
     }
   };
 
+  let chapterListResizeObserver = null;
+
   let GENRES = [
     { key: 'auto', label: 'AI 推荐', api: 'auto', subtypes: [] },
     { key: 'fantasy', label: '玄幻', api: 'fantasy', subtypes: ['系统流', '升级流', '废柴逆袭', '宗门争霸', '家族崛起', '无敌流', '幕后流', '群像', '爽文'] },
@@ -229,6 +231,42 @@
   function focusAddedChapter(index, panel) {
     if (panel === 'outline') focusOutlineChapter(index);
     else focusChapterListItem(index);
+  }
+
+  function disconnectChapterListHeightSync() {
+    if (!chapterListResizeObserver) return;
+    chapterListResizeObserver.disconnect();
+    chapterListResizeObserver = null;
+  }
+
+  function syncChapterListHeightToContent() {
+    window.requestAnimationFrame(() => {
+      const list = document.querySelector('.nv-chapter-list');
+      const content = document.getElementById('nvChapterContent');
+      if (!list || !content || state.panel !== 'write') {
+        if (list) list.style.height = '';
+        return;
+      }
+      if (window.matchMedia('(max-width: 920px)').matches) {
+        list.style.height = '';
+        return;
+      }
+      const listBox = list.getBoundingClientRect();
+      const contentBox = content.getBoundingClientRect();
+      const nextHeight = Math.max(360, Math.round(contentBox.bottom - listBox.top));
+      if (Number.isFinite(nextHeight) && nextHeight > 0) {
+        list.style.height = `${nextHeight}px`;
+      }
+    });
+  }
+
+  function bindChapterListHeightSync() {
+    disconnectChapterListHeightSync();
+    syncChapterListHeightToContent();
+    const content = document.getElementById('nvChapterContent');
+    if (!content || typeof ResizeObserver === 'undefined') return;
+    chapterListResizeObserver = new ResizeObserver(syncChapterListHeightToContent);
+    chapterListResizeObserver.observe(content);
   }
 
   function collectOutlineFromInputs() {
@@ -1191,12 +1229,14 @@
 
   function renderWork() {
     if (state.generation?.type === 'create') {
+      disconnectChapterListHeightSync();
       workView.innerHTML = `<div class="nv-work-page nv-generating-page">
         ${renderGenerationStatus('create')}
       </div>`;
       return;
     }
     if (!state.current) {
+      disconnectChapterListHeightSync();
       workView.innerHTML = '<div class="nv-empty">请先创建或选择一部小说。</div>';
       return;
     }
@@ -1218,6 +1258,7 @@
       ${renderFlow()}
       <div id="nvPanelMount">${renderPanel()}</div>
     </div>`;
+    bindChapterListHeightSync();
   }
 
   function renderPanel() {
@@ -3113,6 +3154,7 @@
     };
     document.body.addEventListener('pointerup', finishGraphDrag);
     document.body.addEventListener('pointercancel', finishGraphDrag);
+    window.addEventListener('resize', syncChapterListHeightToContent);
     document.body.addEventListener('wheel', e => {
       if (state.panel !== 'graph' || !e.target.closest('.nv-graph-svg')) return;
       e.preventDefault();

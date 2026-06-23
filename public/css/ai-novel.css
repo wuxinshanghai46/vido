@@ -1203,7 +1203,7 @@ textarea, input { outline: none; }
   padding: 16px;
 }
 .nv-chapter-list {
-  align-self: stretch;
+  align-self: start;
   display: flex;
   flex-direction: column;
   height: auto;
