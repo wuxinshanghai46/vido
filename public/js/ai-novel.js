@@ -22,6 +22,7 @@
     graphPan: null,
     graphSuppressClick: false,
     chapterWriting: null,
+    chapterCheck: null,
     generation: null,
     taskLoading: false,
     taskError: '',
@@ -36,6 +37,7 @@
     autoSaveLastAt: 0,
     autoSaveError: '',
     submittingChapters: new Set(),
+    draggingChapter: null,
     config: {
       genre: 'auto',
       subtype: 'auto',
@@ -125,6 +127,52 @@
 
   function displayWordCount(value) {
     return String(value || '').replace(/\s+/g, '').length;
+  }
+
+  function normalizeCheckMatches(matches = []) {
+    return arr(matches)
+      .map(match => ({
+        ...match,
+        start: Number(match.start),
+        end: Number(match.end)
+      }))
+      .filter(match => Number.isFinite(match.start) && Number.isFinite(match.end) && match.end > match.start)
+      .sort((a, b) => a.start - b.start || b.end - a.end);
+  }
+
+  function highlightedContentHtml(content, matches = []) {
+    const source = String(content || '');
+    const normalized = normalizeCheckMatches(matches);
+    if (!source || !normalized.length) return esc(source);
+    const parts = [];
+    let cursor = 0;
+    for (const match of normalized) {
+      const start = Math.max(0, Math.min(source.length, match.start));
+      const end = Math.max(start, Math.min(source.length, match.end));
+      if (start < cursor) continue;
+      if (start > cursor) parts.push(esc(source.slice(cursor, start)));
+      const title = [match.category, match.suggestion ? `建议：${match.suggestion}` : ''].filter(Boolean).join(' · ');
+      parts.push(`<mark class="nv-check-mark is-${esc(match.type || 'hit')}" title="${esc(title)}">${esc(source.slice(start, end))}</mark>`);
+      cursor = end;
+    }
+    if (cursor < source.length) parts.push(esc(source.slice(cursor)));
+    return parts.join('');
+  }
+
+  function renderChapterCheckResult(content) {
+    const result = state.chapterCheck;
+    if (!result || Number(result.chapter_index) !== Number(state.currentChapter)) return '';
+    const matches = normalizeCheckMatches(result.matches);
+    const label = result.type === 'sensitive' ? '敏感词检测' : '错别字检测';
+    const empty = matches.length === 0;
+    return `<section class="nv-chapter-check-result ${empty ? 'is-empty' : ''}">
+      <div class="nv-check-head">
+        <b>${label}</b>
+        <span>${empty ? '未发现问题' : `发现 ${matches.length} 处`}</span>
+      </div>
+      ${empty ? '<p>当前章节没有命中检测规则。</p>' : `<div class="nv-check-preview">${highlightedContentHtml(content, matches)}</div>
+        <div class="nv-check-list">${matches.slice(0, 20).map(match => `<span>${esc(match.word)}${match.category ? ` · ${esc(match.category)}` : ''}${match.suggestion ? ` · 建议：${esc(match.suggestion)}` : ''}</span>`).join('')}</div>`}
+    </section>`;
   }
 
   function novelContentWordCount(novel = state.current) {
@@ -710,6 +758,17 @@
 
   function isChapterDeleteLocked(chapter) {
     return isChapterSubmitted(chapter) || isChapterSubmitting(chapter?.index);
+  }
+
+  function reorderedChapterIndex(index, fromIndex, toIndex) {
+    const number = Number(index);
+    const from = Number(fromIndex);
+    const to = Number(toIndex);
+    if (!Number.isFinite(number) || !Number.isFinite(from) || !Number.isFinite(to)) return number;
+    if (number === from) return to;
+    if (from < to && number > from && number <= to) return number - 1;
+    if (from > to && number >= to && number < from) return number + 1;
+    return number;
   }
 
   function allChaptersDone(novel) {
@@ -1902,9 +1961,9 @@
           const itemDone = isChapterDone(item);
           const itemSubmitting = isChapterSubmitting(item.index);
           const itemDeleteLocked = isChapterDeleteLocked(item);
-          return `<div class="nv-chapter-card">
+          return `<div class="nv-chapter-card" draggable="true" data-reorder-chapter="${item.index}">
             <button class="nv-chapter-item ${Number(item.index) === Number(chapter.index) ? 'is-active' : ''} ${itemDone ? 'is-done' : ''}" type="button" data-chapter="${item.index}">
-              <b>第 ${item.index} 章</b>
+              <b><span class="nv-chapter-drag-handle" title="拖动调整顺序" aria-hidden="true">↕</span>第 ${item.index} 章</b>
               <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
               <span class="nv-status-mini" data-chapter-word-count="${item.index}">${itemSubmitting ? '提交中' : itemDone ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
             </button>
@@ -1921,6 +1980,8 @@
             <button class="nv-btn nv-btn-muted" type="button" data-refine="continue">续写</button>
             <button class="nv-btn nv-btn-muted" type="button" data-refine="polish">改写优化</button>
             <button class="nv-btn nv-btn-muted" type="button" data-split-chapter>拆分本章</button>
+            <button class="nv-btn nv-btn-muted" type="button" data-check-typos>错别字检测</button>
+            <button class="nv-btn nv-btn-muted" type="button" data-check-sensitive>敏感词检测</button>
             <button class="nv-btn nv-btn-primary" type="button" data-submit-chapter ${isChapterSubmitting(chapter.index) ? 'disabled aria-busy="true"' : ''}>${isChapterSubmitting(chapter.index) ? '提交中...' : '提交本章'}</button>
           </div>
         </div>
@@ -1938,6 +1999,7 @@
           </div>
         </section>`}
         <textarea class="nv-textarea nv-chapter-content ${hasCurrentContent ? '' : 'is-empty'}" id="nvChapterContent" placeholder="正文会显示在这里，也可以手动编辑。">${esc(currentContent)}</textarea>
+        ${renderChapterCheckResult(currentContent)}
         <section class="nv-finalize ${finalVisible ? 'is-visible' : ''}">
           <div><h3>所有章节已提交</h3><p>确认后小说状态会变为“已完成”，任务中心会进入已完成列表。</p></div>
           <button class="nv-btn nv-btn-primary" type="button" data-complete-novel>确认完结小说</button>
@@ -2894,6 +2956,63 @@
     showToast(`第 ${chapterIndex} 章已删除，后续章节已自动顺延。`);
   }
 
+  function clearChapterDragState() {
+    document.querySelectorAll('.nv-chapter-card.is-dragging,.nv-chapter-card.is-drag-over').forEach(card => {
+      card.classList.remove('is-dragging', 'is-drag-over');
+    });
+    state.draggingChapter = null;
+  }
+
+  async function reorderChapter(fromIndex, toIndex) {
+    if (!state.current?.id) return;
+    const from = Number(fromIndex);
+    const to = Number(toIndex);
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < 1) throw new Error('章节移动位置无效');
+    if (from === to) return;
+    if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再调整顺序');
+    const oldCurrent = Number(state.currentChapter || 1);
+    await autoSaveCurrentChapter({ reason: 'chapter-reorder' });
+    const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/chapters/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ from_index: from, to_index: to })
+    });
+    state.current = data.novel || state.current;
+    state.currentChapter = reorderedChapterIndex(oldCurrent, from, to);
+    updateRouteState();
+    renderWork();
+    focusChapterListItem(state.currentChapter);
+    showToast(`第 ${from} 章已移动到第 ${to} 章，剧情大纲已同步调整。`);
+  }
+
+  async function checkChapterContent(type, button) {
+    if (!state.current?.id) return;
+    const chapterIndex = Number(state.currentChapter || 1);
+    const content = document.getElementById('nvChapterContent')?.value || '';
+    if (!text(content)) throw new Error('章节正文为空，不能检测');
+    const isSensitive = type === 'sensitive';
+    setBusy(button, true, isSensitive ? '检测中...' : '检测中...');
+    try {
+      syncCurrentChapterDraftFromDom();
+      const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/chapters/${encodeURIComponent(chapterIndex)}/${isSensitive ? 'check-sensitive' : 'check-typos'}`, {
+        method: 'POST',
+        body: JSON.stringify({ content })
+      });
+      state.chapterCheck = {
+        type: isSensitive ? 'sensitive' : 'typo',
+        chapter_index: chapterIndex,
+        matches: arr(data.matches),
+        count: Number(data.count || 0)
+      };
+      renderWork();
+      const count = state.chapterCheck.count;
+      showToast(isSensitive
+        ? (count ? `发现 ${count} 处敏感词，已在下方标红。` : '敏感词检测通过，未发现命中。')
+        : (count ? `发现 ${count} 处疑似错别字，已在下方标红。` : '错别字检测通过，未发现命中。'));
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   async function deleteNovelTask(id) {
     const novel = state.novels.find(item => item.id === id);
     const title = novel?.title || '未命名小说';
@@ -3013,6 +3132,41 @@
       if (value) setImportStatus('已粘贴导入内容', `当前已有 ${value.length} 个字符。下一步点击“解析上传内容”。`, 'ready', '清空内容');
     });
 
+    document.body.addEventListener('dragstart', e => {
+      const card = e.target.closest('[data-reorder-chapter]');
+      if (!card || e.target.closest('[data-delete-chapter]')) return;
+      state.draggingChapter = Number(card.dataset.reorderChapter);
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(state.draggingChapter));
+      card.classList.add('is-dragging');
+    });
+    document.body.addEventListener('dragover', e => {
+      const card = e.target.closest('[data-reorder-chapter]');
+      if (!card || !state.draggingChapter) return;
+      const targetIndex = Number(card.dataset.reorderChapter);
+      if (!targetIndex || targetIndex === Number(state.draggingChapter)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.nv-chapter-card.is-drag-over').forEach(item => {
+        if (item !== card) item.classList.remove('is-drag-over');
+      });
+      card.classList.add('is-drag-over');
+    });
+    document.body.addEventListener('dragleave', e => {
+      const card = e.target.closest('[data-reorder-chapter]');
+      if (card && !card.contains(e.relatedTarget)) card.classList.remove('is-drag-over');
+    });
+    document.body.addEventListener('drop', e => {
+      const card = e.target.closest('[data-reorder-chapter]');
+      if (!card) return clearChapterDragState();
+      const from = state.draggingChapter || Number(e.dataTransfer.getData('text/plain'));
+      const to = Number(card.dataset.reorderChapter);
+      e.preventDefault();
+      clearChapterDragState();
+      return run(() => reorderChapter(from, to));
+    });
+    document.body.addEventListener('dragend', clearChapterDragState);
+
     document.body.addEventListener('click', e => {
       if (e.target.closest('[data-clear-import]')) {
         resetImportContent();
@@ -3126,6 +3280,8 @@
       const refine = e.target.closest('[data-refine]');
       if (refine) return run(() => refineChapter(refine.dataset.refine, refine));
       if (e.target.closest('[data-split-chapter]')) return run(splitCurrentChapter);
+      if (e.target.closest('[data-check-typos]')) return run(() => checkChapterContent('typo', e.target.closest('button')));
+      if (e.target.closest('[data-check-sensitive]')) return run(() => checkChapterContent('sensitive', e.target.closest('button')));
       if (e.target.closest('[data-submit-chapter]')) return run(() => submitChapter(e.target.closest('button')));
       if (e.target.closest('[data-complete-novel]')) return run(() => completeNovel(e.target.closest('button')));
       const deleteChapterButton = e.target.closest('[data-delete-chapter]');
@@ -3150,7 +3306,11 @@
     });
     document.addEventListener('input', e => {
       if (!e.target.closest('#nvChapterContent,#nvChapterTitle,#nvChapterPlanInput,#nvChapterObstacleInput,#nvChapterChoiceInput,#nvChapterCostInput,#nvChapterHookInput')) return;
-      if (e.target.closest('#nvChapterContent,#nvChapterTitle')) syncCurrentChapterDraftFromDom();
+      if (e.target.closest('#nvChapterContent,#nvChapterTitle')) {
+        state.chapterCheck = null;
+        document.querySelector('.nv-chapter-check-result')?.remove();
+        syncCurrentChapterDraftFromDom();
+      }
       scheduleChapterAutoSave();
     });
     window.addEventListener('beforeunload', () => {

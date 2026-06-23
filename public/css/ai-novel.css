@@ -1239,6 +1239,16 @@ textarea, input { outline: none; }
 .nv-chapter-card {
   position: relative;
 }
+.nv-chapter-card[draggable="true"] {
+  cursor: grab;
+}
+.nv-chapter-card.is-dragging {
+  opacity: .56;
+}
+.nv-chapter-card.is-drag-over .nv-chapter-item {
+  border-color: rgba(46,243,234,.86);
+  box-shadow: 0 0 0 3px rgba(46,243,234,.12);
+}
 .nv-chapter-item {
   border: 1px solid var(--nv-line);
   border-radius: 12px;
@@ -1247,6 +1257,18 @@ textarea, input { outline: none; }
   padding: 10px;
   text-align: left;
   width: 100%;
+}
+.nv-chapter-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  border-radius: 6px;
+  color: var(--nv-faint);
+  font-size: 12px;
+  vertical-align: 1px;
 }
 .nv-chapter-item b { display: block; color: var(--nv-text); margin-bottom: 4px; }
 .nv-chapter-item small { display: block; color: var(--nv-faint); }
@@ -1284,6 +1306,64 @@ textarea, input { outline: none; }
   color: var(--nv-faint);
   font-size: 11px;
   font-weight: 900;
+}
+.nv-chapter-check-result {
+  border: 1px solid rgba(255, 92, 122, .32);
+  border-radius: 14px;
+  background: rgba(255, 92, 122, .05);
+  padding: 12px;
+  margin-top: 12px;
+}
+.nv-chapter-check-result.is-empty {
+  border-color: rgba(116, 238, 157, .32);
+  background: rgba(116, 238, 157, .06);
+}
+.nv-check-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.nv-check-head b { color: var(--nv-text); }
+.nv-check-head span {
+  color: var(--nv-danger);
+  font-size: 12px;
+  font-weight: 900;
+}
+.nv-chapter-check-result.is-empty .nv-check-head span { color: var(--nv-good); }
+.nv-check-preview {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.9;
+  color: var(--nv-text);
+  border: 1px solid var(--nv-line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.035);
+  padding: 12px;
+}
+.nv-check-mark {
+  color: #ff315f;
+  background: rgba(255, 49, 95, .16);
+  border-bottom: 2px solid rgba(255, 49, 95, .75);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.nv-check-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.nv-check-list span {
+  border: 1px solid rgba(255, 92, 122, .24);
+  border-radius: 999px;
+  color: var(--nv-danger);
+  background: rgba(255, 92, 122, .07);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
 }
 .nv-chapter-item.is-done .nv-status-mini { background: rgba(116,238,157,.14); color: var(--nv-good); }
 .nv-editor-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }

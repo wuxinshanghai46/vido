@@ -12,6 +12,7 @@ const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const db = require('../models/database');
 const novelService = require('../services/novelService');
+const novelContentCheck = require('../services/novelContentCheckService');
 const { deductCredits } = require('../middleware/credits');
 const { ownedBy, scopeUserId } = require('../middleware/auth');
 const orchestrator = require('../services/agentOrchestrator');
@@ -865,6 +866,42 @@ function shiftChapterRecord(record = {}, removedIndex) {
   return shifted;
 }
 
+function reorderChapterNumber(value, fromIndex, toIndex) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 1) return value;
+  if (number === fromIndex) return toIndex;
+  if (fromIndex < toIndex && number > fromIndex && number <= toIndex) return number - 1;
+  if (fromIndex > toIndex && number >= toIndex && number < fromIndex) return number + 1;
+  return number;
+}
+
+function reorderChapterRecord(record = {}, fromIndex, toIndex) {
+  const reordered = { ...record };
+  if (record.index !== undefined) reordered.index = reorderChapterNumber(record.index, fromIndex, toIndex);
+  if (record.chapter_index !== undefined) reordered.chapter_index = reorderChapterNumber(record.chapter_index, fromIndex, toIndex);
+  if (record.source_chapter !== undefined) reordered.source_chapter = reorderChapterNumber(record.source_chapter, fromIndex, toIndex);
+  if (record.setup_chapter !== undefined) reordered.setup_chapter = reorderChapterNumber(record.setup_chapter, fromIndex, toIndex);
+  if (record.payoff_chapter !== undefined) reordered.payoff_chapter = reorderChapterNumber(record.payoff_chapter, fromIndex, toIndex);
+  if (record.first_seen_chapter !== undefined) reordered.first_seen_chapter = reorderChapterNumber(record.first_seen_chapter, fromIndex, toIndex);
+  if (record.last_seen_chapter !== undefined) reordered.last_seen_chapter = reorderChapterNumber(record.last_seen_chapter, fromIndex, toIndex);
+  if (Array.isArray(record.chapters)) {
+    reordered.chapters = record.chapters.map(chapter => reorderChapterNumber(chapter, fromIndex, toIndex));
+  }
+  if (Array.isArray(record.history)) {
+    reordered.history = record.history.map(item => reorderChapterRecord(item, fromIndex, toIndex));
+  }
+  return reordered;
+}
+
+function chapterRecordOrder(record = {}) {
+  const number = Number(record.index || record.chapter_index || record.source_chapter || record.setup_chapter);
+  return Number.isFinite(number) && number > 0 ? number : Number.MAX_SAFE_INTEGER;
+}
+
+function sortChapterRecords(list = []) {
+  return arr(list).slice().sort((a, b) => chapterRecordOrder(a) - chapterRecordOrder(b));
+}
+
 function removeChapterFromNovel(novel = {}, chapterIndex) {
   const removedIndex = Number(chapterIndex);
   const normalized = normalizedChapters(novel);
@@ -904,6 +941,50 @@ function removeChapterFromNovel(novel = {}, chapterIndex) {
     foreshadows: arr(novel.foreshadows).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
     memory_items: arr(novel.memory_items).map(item => shiftChapterRecord(item, removedIndex)).filter(Boolean),
     status: novel.status === 'completed' ? 'draft' : novel.status,
+    updated_at: new Date().toISOString()
+  };
+  fields.total_words = fields.chapters.reduce((sum, chapter) => sum + (Number(chapter.word_count) || 0), 0);
+  fields.story_bible = buildStoryBible(fields.outline);
+  Object.assign(fields, buildLongformState({ ...novel, ...fields }));
+  return fields;
+}
+
+function reorderChapterInNovel(novel = {}, fromIndex, toIndex) {
+  const from = Number(fromIndex);
+  const to = Number(toIndex);
+  const normalized = normalizedChapters(novel);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < 1 || from > normalized.length || to > normalized.length) {
+    const error = new Error('章节移动位置无效');
+    error.status = 400;
+    throw error;
+  }
+  if (from === to) {
+    return {
+      chapters: normalizeChapterWordCounts(normalized),
+      outline: novel.outline,
+      updated_at: new Date().toISOString()
+    };
+  }
+  const chapters = sortChapterRecords(normalized.map(chapter => reorderChapterRecord(chapter, from, to)));
+  const outlineChapters = sortChapterRecords(arr(novel.outline?.chapters).map((chapter, idx) => (
+    reorderChapterRecord({ ...chapter, index: Number(chapter.index) || idx + 1 }, from, to)
+  )));
+  const outline = {
+    ...(novel.outline || {}),
+    chapters: outlineChapters
+  };
+  const fields = {
+    chapters: normalizeChapterWordCounts(chapters),
+    outline: novelService.normalizeNovelOutline(outline, { ...novel, chapters, outline }),
+    chapter_count: Math.max(chapters.length, outlineChapters.length, Number(novel.chapter_count) || 0),
+    chapter_briefs: sortChapterRecords(arr(novel.chapter_briefs).map(item => reorderChapterRecord(item, from, to))),
+    chapter_commits: sortChapterRecords(arr(novel.chapter_commits).map(item => reorderChapterRecord(item, from, to))),
+    review_reports: sortChapterRecords(arr(novel.review_reports).map(item => reorderChapterRecord(item, from, to))),
+    entities: arr(novel.entities).map(item => reorderChapterRecord(item, from, to)),
+    relationships: arr(novel.relationships).map(item => reorderChapterRecord(item, from, to)),
+    plot_threads: arr(novel.plot_threads).map(item => reorderChapterRecord(item, from, to)),
+    foreshadows: arr(novel.foreshadows).map(item => reorderChapterRecord(item, from, to)),
+    memory_items: arr(novel.memory_items).map(item => reorderChapterRecord(item, from, to)),
     updated_at: new Date().toISOString()
   };
   fields.total_words = fields.chapters.reduce((sum, chapter) => sum + (Number(chapter.word_count) || 0), 0);
@@ -1550,6 +1631,58 @@ router.delete('/:id/chapters/:chapter', (req, res) => {
     const fields = removeChapterFromNovel(novel, chapterIndex);
     db.updateNovel(req.params.id, fields);
     res.json({ success: true, deleted: true, chapter_index: chapterIndex, novel: db.getNovel(req.params.id) });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+function chapterContentForCheck(novel = {}, chapterIndex, body = {}) {
+  const index = Number(chapterIndex);
+  const chapter = normalizedChapters(novel).find(item => Number(item.index) === index);
+  if (!chapter) {
+    const error = new Error('章节不存在');
+    error.status = 404;
+    throw error;
+  }
+  const content = typeof body.content === 'string' ? body.content : chapterTextValue(chapter);
+  return String(content || '');
+}
+
+router.post('/:id/chapters/:chapter/check-typos', (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const chapterIndex = parseInt(req.params.chapter, 10);
+    const content = chapterContentForCheck(novel, chapterIndex, req.body || {});
+    const result = novelContentCheck.checkTypos(content);
+    res.json({ success: true, chapter_index: chapterIndex, ...result });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/:id/chapters/:chapter/check-sensitive', (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const chapterIndex = parseInt(req.params.chapter, 10);
+    const content = chapterContentForCheck(novel, chapterIndex, req.body || {});
+    const result = novelContentCheck.checkSensitive(content);
+    res.json({ success: true, chapter_index: chapterIndex, ...result });
+  } catch (e) {
+    res.status(e.status || 500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/:id/chapters/reorder', (req, res) => {
+  try {
+    const novel = getOwnedNovel(req, res, req.params.id);
+    if (!novel) return;
+    const fromIndex = parseInt(req.body.from_index || req.body.fromIndex, 10);
+    const toIndex = parseInt(req.body.to_index || req.body.toIndex, 10);
+    const fields = reorderChapterInNovel(novel, fromIndex, toIndex);
+    db.updateNovel(req.params.id, fields);
+    res.json({ success: true, from_index: fromIndex, to_index: toIndex, novel: db.getNovel(req.params.id) });
   } catch (e) {
     res.status(e.status || 500).json({ success: false, error: e.message });
   }
