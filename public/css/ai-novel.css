@@ -456,6 +456,40 @@ textarea, input { outline: none; }
   background: linear-gradient(135deg, #ff7c96, #ff5376);
   color: #fff;
 }
+.nv-info-mask {
+  z-index: 82;
+}
+.nv-info-modal {
+  width: min(760px, calc(100vw - 32px));
+  border-radius: 16px;
+}
+.nv-check-modal-summary {
+  border: 1px solid rgba(126, 154, 188, 0.2);
+  border-radius: 12px;
+  background: rgba(246, 250, 255, 0.82);
+  color: var(--nv-muted);
+  font-size: 14px;
+  line-height: 1.75;
+  padding: 14px 16px;
+}
+.nv-check-modal-summary.is-ok {
+  border-color: rgba(116, 238, 157, .3);
+  background: rgba(116, 238, 157, .08);
+  color: var(--nv-good);
+}
+.nv-check-modal-summary p {
+  margin: 0 0 8px;
+}
+.nv-check-modal-summary p:last-child {
+  margin-bottom: 0;
+}
+.nv-check-modal-summary ul {
+  margin: 8px 0 0 18px;
+  padding: 0;
+}
+.nv-check-modal-summary li {
+  margin: 4px 0;
+}
 .nv-choice-section {
   border: 1px solid var(--nv-line);
   border-radius: 14px;
@@ -1343,6 +1377,10 @@ textarea, input { outline: none; }
   background: rgba(255,255,255,.035);
   padding: 12px;
 }
+.nv-check-preview.is-modal {
+  max-height: 360px;
+  margin-top: 12px;
+}
 .nv-check-mark {
   color: #ff315f;
   background: rgba(255, 49, 95, .16);
@@ -1355,6 +1393,10 @@ textarea, input { outline: none; }
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+.nv-check-list.is-modal {
+  max-height: 150px;
+  overflow: auto;
 }
 .nv-check-list span {
   border: 1px solid rgba(255, 92, 122, .24);

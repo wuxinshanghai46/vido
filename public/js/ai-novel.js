@@ -175,6 +175,42 @@
     </section>`;
   }
 
+  function checkIntroHtml(type) {
+    if (type === 'sensitive') {
+      return `<div class="nv-check-modal-summary">
+        <p>本次会检测当前章节正文编辑框里的内容，不会自动修改正文，也不会替你提交章节。</p>
+        <ul>
+          <li>知识库中启用的小说敏感词条：<b>novel_sensitive_terms</b></li>
+          <li>基础审核分类：政治敏感、违法犯罪、成人与暴力、未成年人风险、自伤风险、危险行为</li>
+          <li>检测完成后，会弹窗展示命中数量、命中词、分类，并在预览中标红位置</li>
+        </ul>
+      </div>`;
+    }
+    return `<div class="nv-check-modal-summary">
+      <p>本次会检测当前章节正文编辑框里的内容，不会自动修改正文，也不会替你提交章节。</p>
+      <ul>
+        <li>常见错别字和易混词，例如“必竟/毕竟”“在也/再也”等</li>
+        <li>重复标点、疑似重复短语等可疑文本</li>
+        <li>检测完成后，会弹窗展示命中数量、建议写法，并在预览中标红位置</li>
+      </ul>
+    </div>`;
+  }
+
+  function checkResultModalHtml(content, result = {}) {
+    const matches = normalizeCheckMatches(result.matches);
+    const empty = matches.length === 0;
+    if (empty) {
+      return `<div class="nv-check-modal-summary is-ok">
+        <p>当前章节没有命中本次检测规则。</p>
+      </div>`;
+    }
+    return `<div class="nv-check-modal-summary">
+      <p>共发现 <b>${matches.length}</b> 处命中。下方预览已标红，列表最多展示前 30 条。</p>
+    </div>
+    <div class="nv-check-preview is-modal">${highlightedContentHtml(content, matches)}</div>
+    <div class="nv-check-list is-modal">${matches.slice(0, 30).map(match => `<span>${esc(match.word)}${match.category ? ` · ${esc(match.category)}` : ''}${match.suggestion ? ` · 建议：${esc(match.suggestion)}` : ''}</span>`).join('')}</div>`;
+  }
+
   function novelContentWordCount(novel = state.current) {
     return chapters(novel).reduce((sum, chapter) => sum + displayWordCount(chapterContent(chapter)), 0);
   }
@@ -611,6 +647,64 @@
     });
   }
 
+  function showInfoModal({
+    title = '提示',
+    message = '',
+    contentHtml = '',
+    confirmText = '知道了'
+  } = {}) {
+    return new Promise(resolve => {
+      let mask = document.getElementById('nvInfoModal');
+      if (!mask) {
+        mask = document.createElement('div');
+        mask.id = 'nvInfoModal';
+        mask.className = 'nv-modal-mask nv-info-mask';
+        mask.innerHTML = `
+          <div class="nv-modal nv-info-modal" role="dialog" aria-modal="true" aria-labelledby="nvInfoTitle">
+            <header class="nv-modal-head">
+              <div>
+                <h2 id="nvInfoTitle"></h2>
+                <p id="nvInfoMessage"></p>
+              </div>
+            </header>
+            <div class="nv-modal-body" id="nvInfoContent"></div>
+            <footer class="nv-modal-foot">
+              <div></div>
+              <button class="nv-btn nv-btn-primary" type="button" data-info-ok></button>
+            </footer>
+          </div>`;
+        document.body.appendChild(mask);
+      }
+      const titleEl = mask.querySelector('#nvInfoTitle');
+      const messageEl = mask.querySelector('#nvInfoMessage');
+      const contentEl = mask.querySelector('#nvInfoContent');
+      const okBtn = mask.querySelector('[data-info-ok]');
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      contentEl.innerHTML = contentHtml || '';
+      okBtn.textContent = confirmText;
+      const close = () => {
+        mask.classList.remove('is-open');
+        mask.setAttribute('aria-hidden', 'true');
+        okBtn.onclick = null;
+        mask.onclick = null;
+        document.removeEventListener('keydown', onKeydown);
+        resolve(true);
+      };
+      const onKeydown = event => {
+        if (event.key === 'Escape' || event.key === 'Enter') close();
+      };
+      okBtn.onclick = close;
+      mask.onclick = event => {
+        if (event.target === mask) close();
+      };
+      document.addEventListener('keydown', onKeydown);
+      mask.setAttribute('aria-hidden', 'false');
+      mask.classList.add('is-open');
+      okBtn.focus();
+    });
+  }
+
   function setCreateError(message = '') {
     state.createError = message || '';
     const box = document.getElementById('nvCreateError');
@@ -757,7 +851,7 @@
   }
 
   function isChapterDeleteLocked(chapter) {
-    return isChapterSubmitted(chapter) || isChapterSubmitting(chapter?.index);
+    return isChapterSubmitting(chapter?.index);
   }
 
   function reorderedChapterIndex(index, fromIndex, toIndex) {
@@ -1967,7 +2061,7 @@
               <small>${esc(chapterTitle(item, chapterTitle(outlineByIndex.get(Number(item.index)) || {}, '待生成章节标题')))}</small>
               <span class="nv-status-mini" data-chapter-word-count="${item.index}">${itemSubmitting ? '提交中' : itemDone ? '已提交' : Number(item.index) === Number(chapter.index) ? '编辑中' : '待制作'} · ${displayWordCount(chapterContent(item))} 字</span>
             </button>
-            ${itemDeleteLocked ? '' : `<button class="nv-chapter-delete" type="button" data-delete-chapter="${item.index}" title="删除未提交章节">删除</button>`}
+            ${itemDeleteLocked ? '' : `<button class="nv-chapter-delete" type="button" data-delete-chapter="${item.index}" title="删除章节">删除</button>`}
           </div>`;
         }).join('')}</div>
       </section>
@@ -2932,11 +3026,11 @@
     if (!Number.isFinite(chapterIndex) || chapterIndex < 1) throw new Error('请选择要删除的章节');
     const chapter = chapters().find(item => Number(item.index) === chapterIndex);
     if (!chapter) throw new Error('章节不存在');
-    if (isChapterDeleteLocked(chapter)) throw new Error(isChapterSubmitting(chapterIndex) ? '章节正在提交，不能删除' : '已提交章节不能删除');
+    if (isChapterDeleteLocked(chapter)) throw new Error('章节正在提交，不能删除');
     const ok = await confirmAction({
       title: '删除章节',
       message: `确定删除第 ${chapterIndex} 章吗？`,
-      detail: '只允许删除未提交章节。删除后，后续章节会自动顺延上来，剧情大纲也会同步调整。',
+      detail: '删除后，后续章节会自动顺延上来，剧情大纲、章节任务和人物关系等关联数据也会同步调整。已提交章节也允许删除，请确认这次操作。',
       confirmText: '确定删除',
       cancelText: '取消',
       danger: true
@@ -2990,6 +3084,14 @@
     const content = document.getElementById('nvChapterContent')?.value || '';
     if (!text(content)) throw new Error('章节正文为空，不能检测');
     const isSensitive = type === 'sensitive';
+    if (isSensitive) {
+      await showInfoModal({
+        title: '敏感词检测范围',
+        message: '检测前请先确认本次会检查哪些内容。',
+        contentHtml: checkIntroHtml('sensitive'),
+        confirmText: '开始检测'
+      });
+    }
     setBusy(button, true, isSensitive ? '检测中...' : '检测中...');
     try {
       syncCurrentChapterDraftFromDom();
@@ -3005,6 +3107,12 @@
       };
       renderWork();
       const count = state.chapterCheck.count;
+      await showInfoModal({
+        title: isSensitive ? '敏感词检测结果' : '错别字检测结果',
+        message: count ? `发现 ${count} 处命中，已在预览中标红。` : '未发现命中。',
+        contentHtml: checkResultModalHtml(content, state.chapterCheck),
+        confirmText: '知道了'
+      });
       showToast(isSensitive
         ? (count ? `发现 ${count} 处敏感词，已在下方标红。` : '敏感词检测通过，未发现命中。')
         : (count ? `发现 ${count} 处疑似错别字，已在下方标红。` : '错别字检测通过，未发现命中。'));

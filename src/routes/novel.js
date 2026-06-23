@@ -911,12 +911,6 @@ function removeChapterFromNovel(novel = {}, chapterIndex) {
     error.status = 404;
     throw error;
   }
-  const hasCommittedFacts = arr(novel.chapter_commits).some(item => Number(item.chapter_index) === removedIndex && item.status !== 'draft');
-  if (chapterFinalized(target) || hasCommittedFacts) {
-    const error = new Error('已提交章节不能删除');
-    error.status = 400;
-    throw error;
-  }
   const chapters = normalized
     .filter(chapter => Number(chapter.index) !== removedIndex)
     .map(chapter => shiftChapterRecord(chapter, removedIndex))
