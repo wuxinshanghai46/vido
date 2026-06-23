@@ -34,6 +34,7 @@ let currentUserType = 'enterprise'; // 用户管理当前 Tab
 function initTabs() {
   document.querySelectorAll('.nav-item[data-tab]').forEach(tab => {
     tab.addEventListener('click', () => {
+      rememberAdminTab(tab.dataset.tab);
       document.querySelectorAll('.nav-item[data-tab]').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
@@ -56,6 +57,38 @@ function initTabs() {
   if (document.querySelector('.nav-item.active')?.dataset.tab === 'dashboard') {
     setTimeout(loadDashboard, 100);
   }
+  const initialTab = getInitialAdminTab();
+  const initialEl = document.querySelector(`.nav-item[data-tab="${initialTab}"]`);
+  if (initialEl && !initialEl.classList.contains('active')) {
+    setTimeout(() => initialEl.click(), 0);
+  }
+}
+
+function getInitialAdminTab() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const queryTab = params.get('tab');
+    if (queryTab && document.querySelector(`.nav-item[data-tab="${queryTab}"]`)) return queryTab;
+  } catch {}
+  const hashTab = String(window.location.hash || '').replace(/^#/, '').trim();
+  if (hashTab && document.querySelector(`.nav-item[data-tab="${hashTab}"]`)) return hashTab;
+  try {
+    const savedTab = localStorage.getItem('vido_admin_active_tab');
+    if (savedTab && document.querySelector(`.nav-item[data-tab="${savedTab}"]`)) return savedTab;
+  } catch {}
+  return 'dashboard';
+}
+
+function rememberAdminTab(tab) {
+  if (!document.querySelector(`.nav-item[data-tab="${tab}"]`)) return;
+  try { localStorage.setItem('vido_admin_active_tab', tab); } catch {}
+  try {
+    const url = new URL(window.location.href);
+    if (tab === 'dashboard') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    url.hash = '';
+    window.history.replaceState({}, '', url.pathname + url.search);
+  } catch {}
 }
 
 // ══════════════════════ EVENTS ══════════════════════

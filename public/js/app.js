@@ -261,7 +261,7 @@ async function init() {
   });
 
   // v15 fix: 处理 URL hash / sessionStorage 跳转 (供 drama-studio 返回工作台用)
-  const hashTarget = (location.hash || '').replace('#', '').trim();
+  const hashTarget = getRoutePage();
   const ssTarget = sessionStorage.getItem('vido-target-page');
   const routeTarget = (location.pathname === '/ai-novel' || location.pathname === '/ai-novel.html') ? 'novel' : '';
   const target = ssTarget || hashTarget || routeTarget;
@@ -329,7 +329,34 @@ function toggleAvatarAdvanced() {
   toggle.classList.toggle('open');
 }
 
-function switchPage(page, opts) {
+function normalizeRoutePage(page) {
+  const value = String(page || '').replace(/^#/, '').trim();
+  if (!value || value === 'settings') return '';
+  return document.getElementById('page-' + value) ? value : '';
+}
+
+function getRoutePage() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const queryPage = normalizeRoutePage(params.get('page'));
+    if (queryPage) return queryPage;
+  } catch {}
+  return normalizeRoutePage(window.location.hash);
+}
+
+function rememberRoutePage(page, opts = {}) {
+  if (opts.remember === false) return;
+  const routePage = normalizeRoutePage(page);
+  if (!routePage) return;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('page');
+    url.hash = routePage === 'dashboard' ? '' : routePage;
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  } catch {}
+}
+
+function switchPage(page, opts = {}) {
   if (page === 'novel') {
     window.location.href = '/ai-novel';
     return;
@@ -342,6 +369,7 @@ function switchPage(page, opts) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const pageEl = document.getElementById('page-' + page);
   if (!pageEl) return;
+  rememberRoutePage(page, opts);
   pageEl.classList.add('active');
   const navEl = document.querySelector('[data-page="' + page + '"]');
   if (navEl) navEl.classList.add('active');

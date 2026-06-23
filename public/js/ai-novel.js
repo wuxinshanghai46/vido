@@ -379,14 +379,16 @@
   function getRouteState() {
     const params = new URLSearchParams(window.location.search || '');
     const route = {
+      view: params.get('view') || '',
       novel: params.get('novel') || params.get('id') || '',
       chapter: Number(params.get('chapter') || 0) || 0,
       panel: params.get('panel') || ''
     };
-    if (route.novel) return route;
+    if (route.novel || ['create', 'tasks', 'work'].includes(route.view)) return route;
     try {
       const saved = JSON.parse(localStorage.getItem('vido_novel_last_route') || '{}');
       return {
+        view: saved.view || '',
         novel: saved.novel || '',
         chapter: Number(saved.chapter || 0) || 0,
         panel: saved.panel || ''
@@ -396,24 +398,35 @@
     }
   }
 
-  function updateRouteState({ novelId = state.current?.id || '', chapter = state.currentChapter, panel = state.panel } = {}) {
+  function updateRouteState({ novelId = state.current?.id || '', chapter = state.currentChapter, panel = state.panel, view = state.view } = {}) {
     const url = new URL(window.location.href);
     if (novelId) {
+      url.searchParams.set('view', 'work');
       url.searchParams.set('novel', novelId);
       url.searchParams.set('chapter', String(Number(chapter) || 1));
       url.searchParams.set('panel', panel || 'write');
       try {
         localStorage.setItem('vido_novel_last_route', JSON.stringify({
+          view: 'work',
           novel: novelId,
           chapter: Number(chapter) || 1,
           panel: panel || 'write'
         }));
       } catch {}
     } else {
+      const routeView = ['create', 'tasks'].includes(view) ? view : 'create';
+      url.searchParams.set('view', routeView);
       url.searchParams.delete('novel');
       url.searchParams.delete('chapter');
       url.searchParams.delete('panel');
-      try { localStorage.removeItem('vido_novel_last_route'); } catch {}
+      try {
+        localStorage.setItem('vido_novel_last_route', JSON.stringify({
+          view: routeView,
+          novel: '',
+          chapter: 0,
+          panel: ''
+        }));
+      } catch {}
     }
     window.history.replaceState({}, '', url.pathname + url.search);
   }
@@ -3120,6 +3133,10 @@
         chapter: route.chapter,
         panel: route.panel || 'write'
       });
+    } else if (route.view === 'tasks') {
+      switchView('tasks', { keepRoute: true });
+    } else if (route.view === 'create') {
+      switchView('create', { keepRoute: true });
     }
     updateShell();
   }
