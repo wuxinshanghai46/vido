@@ -902,6 +902,110 @@ function sortChapterRecords(list = []) {
   return arr(list).slice().sort((a, b) => chapterRecordOrder(a) - chapterRecordOrder(b));
 }
 
+function applyChapterDraftToNovel(novel = {}, draft = {}) {
+  const index = Number(draft.index || draft.chapter_index);
+  if (!Number.isInteger(index) || index < 1) return novel;
+  const now = new Date().toISOString();
+  const normalized = normalizedChapters(novel);
+  const chapters = normalized.map(chapter => {
+    if (Number(chapter.index) !== index) return chapter;
+    const content = typeof draft.content === 'string' ? draft.content : chapterTextValue(chapter);
+    const title = str(draft.title) || str(chapter.title) || `第 ${index} 章`;
+    return {
+      ...chapter,
+      index,
+      title,
+      content,
+      status: str(draft.status) || chapter.status || 'draft',
+      word_count: displayWordCount(content),
+      updated_at: draft.updated_at || now
+    };
+  });
+  if (!chapters.some(chapter => Number(chapter.index) === index)) {
+    const content = typeof draft.content === 'string' ? draft.content : '';
+    chapters.push({
+      index,
+      title: str(draft.title) || `第 ${index} 章`,
+      content,
+      status: str(draft.status) || 'draft',
+      word_count: displayWordCount(content),
+      updated_at: draft.updated_at || now
+    });
+  }
+  const plan = draft.plan && typeof draft.plan === 'object' ? draft.plan : {};
+  const outlineChapters = arr(novel.outline?.chapters).map((chapter, idx) => ({ ...chapter, index: Number(chapter.index) || idx + 1 }));
+  let outlineFound = false;
+  const nextOutlineChapters = outlineChapters.map(chapter => {
+    if (Number(chapter.index) !== index) return chapter;
+    outlineFound = true;
+    const title = str(draft.title) || str(chapter.title) || `第 ${index} 章`;
+    return {
+      ...chapter,
+      index,
+      title,
+      summary: str(plan.summary) || chapter.summary || '',
+      scene_goal: str(plan.summary) || chapter.scene_goal || chapter.goal || '',
+      obstacle: str(plan.obstacle) || chapter.obstacle || chapter.conflict || '',
+      choice: str(plan.choice) || chapter.choice || '',
+      cost: str(plan.cost) || chapter.cost || '',
+      hook: str(plan.hook) || chapter.hook || ''
+    };
+  });
+  if (!outlineFound) {
+    nextOutlineChapters.push({
+      index,
+      title: str(draft.title) || `第 ${index} 章`,
+      summary: str(plan.summary),
+      scene_goal: str(plan.summary),
+      obstacle: str(plan.obstacle),
+      choice: str(plan.choice),
+      cost: str(plan.cost),
+      hook: str(plan.hook)
+    });
+  }
+  return {
+    ...novel,
+    chapters: sortChapterRecords(chapters),
+    outline: {
+      ...(novel.outline || {}),
+      chapters: sortChapterRecords(nextOutlineChapters)
+    }
+  };
+}
+
+function applyChapterSnapshotToNovel(novel = {}, snapshot = {}) {
+  const index = Number(snapshot.index || snapshot.chapter?.index || snapshot.outline_chapter?.index);
+  if (!Number.isInteger(index) || index < 1) return novel;
+  const chapterSnapshot = snapshot.chapter && typeof snapshot.chapter === 'object' ? snapshot.chapter : null;
+  const outlineSnapshot = snapshot.outline_chapter && typeof snapshot.outline_chapter === 'object' ? snapshot.outline_chapter : null;
+  const chapters = sortChapterRecords(normalizedChapters(novel).map(chapter => {
+    if (Number(chapter.index) !== index || !chapterSnapshot) return chapter;
+    const content = typeof chapterSnapshot.content === 'string'
+      ? chapterSnapshot.content
+      : chapterTextValue(chapterSnapshot);
+    return {
+      ...chapter,
+      ...chapterSnapshot,
+      index,
+      content,
+      word_count: displayWordCount(content)
+    };
+  }));
+  const outlineChapters = sortChapterRecords(arr(novel.outline?.chapters).map((chapter, idx) => {
+    const current = Number(chapter.index) || idx + 1;
+    if (current !== index || !outlineSnapshot) return { ...chapter, index: current };
+    return { ...chapter, ...outlineSnapshot, index };
+  }));
+  return {
+    ...novel,
+    chapters,
+    outline: {
+      ...(novel.outline || {}),
+      chapters: outlineChapters
+    }
+  };
+}
+
 function removeChapterFromNovel(novel = {}, chapterIndex) {
   const removedIndex = Number(chapterIndex);
   const normalized = normalizedChapters(novel);
@@ -1670,10 +1774,16 @@ router.post('/:id/chapters/:chapter/check-sensitive', (req, res) => {
 
 router.post('/:id/chapters/reorder', (req, res) => {
   try {
-    const novel = getOwnedNovel(req, res, req.params.id);
+    let novel = getOwnedNovel(req, res, req.params.id);
     if (!novel) return;
     const fromIndex = parseInt(req.body.from_index || req.body.fromIndex, 10);
     const toIndex = parseInt(req.body.to_index || req.body.toIndex, 10);
+    if (req.body.current_chapter_draft && typeof req.body.current_chapter_draft === 'object') {
+      novel = applyChapterDraftToNovel(novel, req.body.current_chapter_draft);
+    }
+    if (req.body.moving_chapter_snapshot && typeof req.body.moving_chapter_snapshot === 'object') {
+      novel = applyChapterSnapshotToNovel(novel, req.body.moving_chapter_snapshot);
+    }
     const fields = reorderChapterInNovel(novel, fromIndex, toIndex);
     db.updateNovel(req.params.id, fields);
     res.json({ success: true, from_index: fromIndex, to_index: toIndex, novel: db.getNovel(req.params.id) });

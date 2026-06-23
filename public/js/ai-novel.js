@@ -2335,6 +2335,54 @@
     };
   }
 
+  function currentChapterReorderDraftFromDom() {
+    const draft = currentChapterDraftFromDom();
+    if (!draft) return null;
+    return {
+      ...draft,
+      plan: readCurrentChapterPlanFromDom()
+    };
+  }
+
+  function chapterReorderSnapshot(index) {
+    const target = Number(index);
+    if (!state.current || !Number.isInteger(target) || target < 1) return null;
+    const chapter = chapters(state.current).find(item => Number(item.index) === target);
+    const outlineChapter = normalizedOutlineChapters(state.current).find(item => Number(item.index) === target);
+    if (!chapter && !outlineChapter) return null;
+    return {
+      index: target,
+      chapter: chapter ? { ...chapter, index: target } : null,
+      outline_chapter: outlineChapter ? { ...outlineChapter, index: target } : null
+    };
+  }
+
+  function sameReorderValue(a, b) {
+    return text(a) === text(b);
+  }
+
+  function assertMovedChapterSnapshot(snapshot, targetIndex) {
+    if (!snapshot || !state.current) return;
+    const target = Number(targetIndex);
+    const sourceChapter = snapshot.chapter || {};
+    const sourceOutline = snapshot.outline_chapter || {};
+    const movedChapter = chapters(state.current).find(chapter => Number(chapter.index) === target) || {};
+    const movedOutline = normalizedOutlineChapters(state.current).find(chapter => Number(chapter.index) === target) || {};
+    const checks = [
+      [chapterTitle(movedChapter, ''), chapterTitle(sourceChapter, ''), '标题'],
+      [chapterContent(movedChapter), chapterContent(sourceChapter), '正文'],
+      [currentChapterPlanText(movedOutline), currentChapterPlanText(sourceOutline), '章节故事点'],
+      [firstText(movedOutline.obstacle, movedOutline.conflict), firstText(sourceOutline.obstacle, sourceOutline.conflict), '阻力'],
+      [firstText(movedOutline.choice), firstText(sourceOutline.choice), '选择'],
+      [firstText(movedOutline.cost), firstText(sourceOutline.cost), '代价'],
+      [firstText(movedOutline.hook), firstText(sourceOutline.hook), '钩子']
+    ];
+    const failed = checks.find(([actual, expected]) => text(expected) && !sameReorderValue(actual, expected));
+    if (failed) {
+      throw new Error(`章节移动后内容校验失败：${failed[2]}没有跟随章节整体移动，请刷新后重试。`);
+    }
+  }
+
   function applyCurrentChapterDraftToNovel(novel = state.current, status) {
     const draft = currentChapterDraftFromDom(status);
     if (!novel || !draft) return novel;
@@ -3085,14 +3133,23 @@
     if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < 1) throw new Error('章节移动位置无效');
     if (from === to) return;
     if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再调整顺序');
-    const oldCurrent = Number(state.currentChapter || 1);
+    clearTimeout(state.autoSaveTimer);
+    syncCurrentChapterDraftFromDom();
+    const reorderDraft = currentChapterReorderDraftFromDom();
+    const movingSnapshot = chapterReorderSnapshot(from);
     await autoSaveCurrentChapter({ reason: 'chapter-reorder' });
     const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/chapters/reorder`, {
       method: 'POST',
-      body: JSON.stringify({ from_index: from, to_index: to })
+      body: JSON.stringify({
+        from_index: from,
+        to_index: to,
+        current_chapter_draft: reorderDraft,
+        moving_chapter_snapshot: movingSnapshot
+      })
     });
     state.current = data.novel || state.current;
-    state.currentChapter = reorderedChapterIndex(oldCurrent, from, to);
+    state.currentChapter = to;
+    assertMovedChapterSnapshot(movingSnapshot, to);
     updateRouteState();
     renderWork();
     focusChapterListItem(state.currentChapter);
