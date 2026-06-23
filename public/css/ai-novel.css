@@ -1206,9 +1206,8 @@ textarea, input { outline: none; }
   align-self: start;
   display: flex;
   flex-direction: column;
-  height: clamp(420px, calc(100vh - 240px), 620px);
+  height: clamp(560px, calc(100vh - 116px), 780px);
   min-height: 0;
-  max-height: calc(100vh - 160px);
   position: sticky;
   top: 86px;
 }
