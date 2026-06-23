@@ -1625,14 +1625,11 @@ textarea, input { outline: none; }
   top: 42%;
   z-index: 96;
   width: min(520px, calc(100vw - 40px));
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid rgba(46,243,234,.46);
-  border-radius: 16px;
-  background: rgba(17,23,34,.96);
-  box-shadow: 0 28px 90px rgba(0,0,0,.42), 0 0 0 3px rgba(46,243,234,.1);
+  padding: 15px 18px;
+  border: 1px solid rgba(46,243,234,.32);
+  border-radius: 14px;
+  background: rgba(17,23,34,.95);
+  box-shadow: 0 24px 70px rgba(0,0,0,.38), 0 0 0 3px rgba(46,243,234,.08);
   color: var(--nv-text);
   opacity: 0;
   pointer-events: none;
@@ -1643,21 +1640,18 @@ textarea, input { outline: none; }
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
-.nv-center-notice b {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: linear-gradient(135deg, var(--nv-cyan), var(--nv-mint));
-  color: #07131b;
-  padding: 6px 10px;
-  font-size: 13px;
-  font-weight: 900;
-}
 .nv-center-notice span {
-  min-width: 0;
+  display: block;
   color: var(--nv-text);
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.5;
+}
+
+[data-theme="light-mist"] .nv-center-notice {
+  border-color: rgba(22,136,255,.18);
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 18px 48px rgba(78,113,150,.18), 0 0 0 1px rgba(255,255,255,.72);
 }
 
 @keyframes nvChapterDragPulse {

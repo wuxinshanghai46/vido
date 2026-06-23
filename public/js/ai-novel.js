@@ -585,10 +585,9 @@
       notice.className = 'nv-center-notice';
       notice.setAttribute('role', 'status');
       notice.setAttribute('aria-live', 'polite');
-      notice.innerHTML = '<b></b><span></span>';
+      notice.innerHTML = '<span></span>';
       document.body.appendChild(notice);
     }
-    notice.querySelector('b').textContent = '已完成';
     notice.querySelector('span').textContent = message;
     notice.classList.remove('is-visible');
     clearTimeout(showCenterNotice.timer);
