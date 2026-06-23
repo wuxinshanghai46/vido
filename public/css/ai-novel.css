@@ -1203,13 +1203,12 @@ textarea, input { outline: none; }
   padding: 16px;
 }
 .nv-chapter-list {
-  align-self: start;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
-  height: clamp(560px, calc(100vh - 116px), 780px);
+  height: auto;
   min-height: 0;
-  position: sticky;
-  top: 86px;
+  overflow: hidden;
 }
 .nv-editor {
   min-height: calc(100vh - 240px);
