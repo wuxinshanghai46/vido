@@ -1245,6 +1245,10 @@ textarea, input { outline: none; }
 .nv-chapter-item small { display: block; color: var(--nv-faint); }
 .nv-chapter-item.is-active { border-color: rgba(46,243,234,.58); background: rgba(46,243,234,.1); }
 .nv-chapter-item.is-active b { color: var(--nv-cyan); }
+.nv-chapter-item.is-new {
+  border-color: rgba(46, 243, 234, 0.8);
+  box-shadow: 0 0 0 3px rgba(46, 243, 234, 0.12);
+}
 .nv-chapter-item.is-done { border-color: rgba(116,238,157,.44); }
 .nv-status-mini {
   display: inline-flex;

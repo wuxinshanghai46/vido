@@ -216,6 +216,21 @@
     }, 80);
   }
 
+  function focusChapterListItem(index) {
+    window.setTimeout(() => {
+      const item = document.querySelector(`[data-chapter="${Number(index)}"]`);
+      if (!item) return;
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      item.classList.add('is-new');
+      window.setTimeout(() => item.classList.remove('is-new'), 1800);
+    }, 80);
+  }
+
+  function focusAddedChapter(index, panel) {
+    if (panel === 'outline') focusOutlineChapter(index);
+    else focusChapterListItem(index);
+  }
+
   function collectOutlineFromInputs() {
     const outline = { ...(state.current?.outline || {}) };
     const synopsisInput = document.getElementById('nvSynopsisInput');
@@ -2529,6 +2544,7 @@
   }
 
   async function addChapter() {
+    const targetPanel = state.panel === 'outline' ? 'outline' : 'write';
     const baseOutline = state.panel === 'outline' ? collectOutlineFromInputs() : state.current.outline;
     const baseNovel = { ...state.current, outline: baseOutline };
     const list = chapters(baseNovel);
@@ -2558,19 +2574,21 @@
     const optimistic = { ...state.current, chapters: nextList, outline, chapter_count };
     state.current = optimistic;
     state.currentChapter = next;
-    state.panel = 'outline';
+    state.panel = targetPanel;
+    updateRouteState();
     renderWork();
-    focusOutlineChapter(next);
+    focusAddedChapter(next, targetPanel);
     const data = await api('/api/novel/' + encodeURIComponent(state.current.id), {
       method: 'PUT',
       body: JSON.stringify({ chapters: nextList, outline, chapter_count })
     });
     state.current = data.novel || optimistic;
     state.currentChapter = next;
-    state.panel = 'outline';
+    state.panel = targetPanel;
+    updateRouteState();
     renderWork();
-    focusOutlineChapter(next);
-    showToast(`已新增第 ${next} 章，请先填写本章写作任务，再让作家生成或改写。`);
+    focusAddedChapter(next, targetPanel);
+    showToast(`已新增第 ${next} 章，已同步到剧情大纲。`);
   }
 
   async function splitOutlineChapter(index) {
