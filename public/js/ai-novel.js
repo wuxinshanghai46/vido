@@ -577,6 +577,25 @@
     showToast.timer = setTimeout(() => toast.classList.remove('is-visible'), 3600);
   }
 
+  function showCenterNotice(message) {
+    let notice = document.getElementById('nvCenterNotice');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'nvCenterNotice';
+      notice.className = 'nv-center-notice';
+      notice.setAttribute('role', 'status');
+      notice.setAttribute('aria-live', 'polite');
+      notice.innerHTML = '<b></b><span></span>';
+      document.body.appendChild(notice);
+    }
+    notice.querySelector('b').textContent = '已完成';
+    notice.querySelector('span').textContent = message;
+    notice.classList.remove('is-visible');
+    clearTimeout(showCenterNotice.timer);
+    requestAnimationFrame(() => notice.classList.add('is-visible'));
+    showCenterNotice.timer = setTimeout(() => notice.classList.remove('is-visible'), 2600);
+  }
+
   function confirmAction({
     title = '确认操作',
     message = '',
@@ -3054,6 +3073,9 @@
     document.querySelectorAll('.nv-chapter-card.is-dragging,.nv-chapter-card.is-drag-over').forEach(card => {
       card.classList.remove('is-dragging', 'is-drag-over');
     });
+    document.querySelectorAll('.nv-chapter-scroll.is-reordering').forEach(list => {
+      list.classList.remove('is-reordering');
+    });
     state.draggingChapter = null;
   }
 
@@ -3075,7 +3097,7 @@
     updateRouteState();
     renderWork();
     focusChapterListItem(state.currentChapter);
-    showToast(`第 ${from} 章已移动到第 ${to} 章，剧情大纲已同步调整。`);
+    showCenterNotice(`第 ${from} 章已移动到第 ${to} 章，剧情大纲已同步调整。`);
   }
 
   async function checkChapterContent(type, button) {
@@ -3246,6 +3268,7 @@
       state.draggingChapter = Number(card.dataset.reorderChapter);
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', String(state.draggingChapter));
+      card.closest('.nv-chapter-scroll')?.classList.add('is-reordering');
       card.classList.add('is-dragging');
     });
     document.body.addEventListener('dragover', e => {

@@ -1272,16 +1272,49 @@ textarea, input { outline: none; }
 }
 .nv-chapter-card {
   position: relative;
+  transition: transform .18s ease, opacity .18s ease;
 }
 .nv-chapter-card[draggable="true"] {
   cursor: grab;
 }
+.nv-chapter-scroll.is-reordering {
+  cursor: grabbing;
+}
+.nv-chapter-scroll.is-reordering .nv-chapter-card:not(.is-dragging) .nv-chapter-item {
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.nv-chapter-card[draggable="true"]:hover .nv-chapter-item {
+  border-color: rgba(46,243,234,.46);
+  transform: translateX(2px);
+}
 .nv-chapter-card.is-dragging {
-  opacity: .56;
+  opacity: .86;
+  transform: scale(.98) rotate(-.6deg);
+  z-index: 4;
+}
+.nv-chapter-card.is-dragging .nv-chapter-item {
+  border-color: rgba(46,243,234,.92);
+  background: linear-gradient(135deg, rgba(46,243,234,.16), rgba(116,238,157,.1));
+  box-shadow: 0 12px 30px rgba(46,243,234,.18), 0 0 0 3px rgba(46,243,234,.14);
+  animation: nvChapterDragPulse .85s ease-in-out infinite alternate;
 }
 .nv-chapter-card.is-drag-over .nv-chapter-item {
-  border-color: rgba(46,243,234,.86);
-  box-shadow: 0 0 0 3px rgba(46,243,234,.12);
+  border-color: rgba(255, 194, 87, .95);
+  background: rgba(255, 194, 87, .12);
+  box-shadow: 0 0 0 3px rgba(255, 194, 87, .18), 0 10px 28px rgba(255, 194, 87, .18);
+  transform: translateX(9px) scale(1.02);
+}
+.nv-chapter-card.is-drag-over::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--nv-cyan), var(--nv-mint));
+  box-shadow: 0 0 14px rgba(46,243,234,.55);
+  animation: nvDropLinePulse .7s ease-in-out infinite alternate;
 }
 .nv-chapter-item {
   border: 1px solid var(--nv-line);
@@ -1291,6 +1324,7 @@ textarea, input { outline: none; }
   padding: 10px;
   text-align: left;
   width: 100%;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 .nv-chapter-drag-handle {
   display: inline-flex;
@@ -1301,8 +1335,17 @@ textarea, input { outline: none; }
   margin-right: 4px;
   border-radius: 6px;
   color: var(--nv-faint);
+  background: rgba(255,255,255,.06);
   font-size: 12px;
   vertical-align: 1px;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+.nv-chapter-card:hover .nv-chapter-drag-handle,
+.nv-chapter-card.is-dragging .nv-chapter-drag-handle,
+.nv-chapter-card.is-drag-over .nv-chapter-drag-handle {
+  color: var(--nv-cyan);
+  background: rgba(46,243,234,.14);
+  transform: scale(1.08);
 }
 .nv-chapter-item b { display: block; color: var(--nv-text); margin-bottom: 4px; }
 .nv-chapter-item small { display: block; color: var(--nv-faint); }
@@ -1575,6 +1618,57 @@ textarea, input { outline: none; }
 }
 .nv-toast.is-visible { display: block; }
 .nv-toast.is-error { border-color: rgba(255,107,134,.5); color: #ffd4dc; }
+
+.nv-center-notice {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  z-index: 96;
+  width: min(520px, calc(100vw - 40px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(46,243,234,.46);
+  border-radius: 16px;
+  background: rgba(17,23,34,.96);
+  box-shadow: 0 28px 90px rgba(0,0,0,.42), 0 0 0 3px rgba(46,243,234,.1);
+  color: var(--nv-text);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(.94);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.nv-center-notice.is-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.nv-center-notice b {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--nv-cyan), var(--nv-mint));
+  color: #07131b;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 900;
+}
+.nv-center-notice span {
+  min-width: 0;
+  color: var(--nv-text);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+@keyframes nvChapterDragPulse {
+  from { box-shadow: 0 10px 24px rgba(46,243,234,.14), 0 0 0 3px rgba(46,243,234,.12); }
+  to { box-shadow: 0 16px 34px rgba(46,243,234,.28), 0 0 0 5px rgba(46,243,234,.2); }
+}
+
+@keyframes nvDropLinePulse {
+  from { opacity: .65; transform: scaleY(.82); }
+  to { opacity: 1; transform: scaleY(1); }
+}
 
 [data-theme="light-mist"] body {
   background: var(--nv-bg);
