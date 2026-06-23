@@ -50,6 +50,27 @@ function descCreated(rows) {
   return rows.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 }
 
+function chapterTextValue(chapter = {}) {
+  return String(chapter.content || chapter.text || chapter.body || chapter.draft || chapter.markdown || chapter.raw_content || '');
+}
+
+function displayWordCount(value) {
+  return String(value || '').length;
+}
+
+function normalizeNovelFields(fields = {}) {
+  if (!Array.isArray(fields.chapters)) return fields;
+  const chapters = fields.chapters.map(chapter => {
+    const text = chapterTextValue(chapter);
+    return text ? { ...chapter, word_count: displayWordCount(text) } : chapter;
+  });
+  return {
+    ...fields,
+    chapters,
+    total_words: chapters.reduce((sum, chapter) => sum + (Number(chapter.word_count) || 0), 0)
+  };
+}
+
 function knowledgeFilter(filter = {}) {
   return d => {
     if (filter.collection && d.collection !== filter.collection) return false;
@@ -117,7 +138,10 @@ function adapt(legacy) {
     insertNovel(row) { insert('novels', () => legacy.insertNovel(row), row); },
     getNovel(id) { return byId('novels', () => legacy.getNovel(id), id); },
     listNovels(userId) { return withRead('novels', () => legacy.listNovels(userId), rows => descCreated(rows.filter(n => !userId || n.user_id === userId)), userId ? { user_id: userId } : {}); },
-    updateNovel(id, fields) { update('novels', () => legacy.updateNovel(id, fields), id, fields); },
+    updateNovel(id, fields) {
+      const normalized = normalizeNovelFields(fields);
+      update('novels', () => legacy.updateNovel(id, normalized), id, normalized);
+    },
     deleteNovel(id) { remove('novels', () => legacy.deleteNovel(id), id); },
 
     insertAsset(row) { insert('assets', () => legacy.insertAsset(row), row); },

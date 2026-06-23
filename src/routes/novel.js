@@ -121,6 +121,42 @@ function getOwnedNovel(req, res, id) {
   return novel;
 }
 
+function chapterTextValue(chapter = {}) {
+  return String(chapter.content || chapter.text || chapter.body || chapter.draft || chapter.markdown || chapter.raw_content || '');
+}
+
+function displayWordCount(value) {
+  return String(value || '').length;
+}
+
+function mergeChapterUpdates(existingChapters = [], incomingChapters = []) {
+  const existingByIndex = new Map(arr(existingChapters).map((chapter, idx) => [Number(chapter.index) || idx + 1, chapter]));
+  return arr(incomingChapters).map((incoming, idx) => {
+    const index = Number(incoming.index) || idx + 1;
+    const existing = existingByIndex.get(index);
+    if (!existing) return incoming;
+    const existingText = chapterTextValue(existing);
+    const incomingText = chapterTextValue(incoming);
+    if (existingText && incomingText && existingText.length > incomingText.length) {
+      return {
+        ...incoming,
+        content: existingText,
+        word_count: displayWordCount(existingText),
+        protected_from_stale_overwrite: true,
+        protected_at: new Date().toISOString()
+      };
+    }
+    return incomingText ? { ...incoming, word_count: displayWordCount(incomingText) } : incoming;
+  });
+}
+
+function normalizeChapterWordCounts(chapters = []) {
+  return arr(chapters).map(chapter => {
+    const text = chapterTextValue(chapter);
+    return text ? { ...chapter, word_count: displayWordCount(text) } : chapter;
+  });
+}
+
 function buildStoryBible(outline = {}) {
   return {
     logline: outline.logline || '',
@@ -1395,8 +1431,8 @@ router.put('/:id', (req, res) => {
     if (chapter_count !== undefined) fields.chapter_count = parseInt(chapter_count);
     if (chapter_words !== undefined) fields.chapter_words = parseInt(chapter_words);
     if (chapters !== undefined) {
-      fields.chapters = chapters;
-      fields.total_words = chapters.reduce((sum, c) => sum + (c.word_count || 0), 0);
+      fields.chapters = normalizeChapterWordCounts(mergeChapterUpdates(novel.chapters, chapters));
+      fields.total_words = fields.chapters.reduce((sum, c) => sum + (c.word_count || chapterTextValue(c).length || 0), 0);
     }
     if (outline !== undefined) {
       fields.outline = novelService.normalizeNovelOutline(outline, { ...novel, ...fields });

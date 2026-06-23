@@ -182,6 +182,27 @@ function migrateFromLegacy() {
 // 启动时执行迁移
 migrateFromLegacy();
 
+function novelChapterText(chapter = {}) {
+  return String(chapter.content || chapter.text || chapter.body || chapter.draft || chapter.markdown || chapter.raw_content || '');
+}
+
+function novelDisplayWordCount(value) {
+  return String(value || '').length;
+}
+
+function normalizeNovelUpdateFields(fields = {}) {
+  if (!Array.isArray(fields.chapters)) return fields;
+  const chapters = fields.chapters.map(chapter => {
+    const content = novelChapterText(chapter);
+    return content ? { ...chapter, word_count: novelDisplayWordCount(content) } : chapter;
+  });
+  return {
+    ...fields,
+    chapters,
+    total_words: chapters.reduce((sum, chapter) => sum + (Number(chapter.word_count) || 0), 0)
+  };
+}
+
 // ——— 导出统一接口（保持向后兼容）———
 
 const db = {
@@ -274,7 +295,7 @@ const db = {
   insertNovel(row)            { novelStore.insert(row); },
   getNovel(id)                { return novelStore.get(id); },
   listNovels(userId)          { return novelStore.list(n => !userId || n.user_id === userId); },
-  updateNovel(id, fields)     { novelStore.update(id, fields); },
+  updateNovel(id, fields)     { novelStore.update(id, normalizeNovelUpdateFields(fields)); },
   deleteNovel(id)             { novelStore.delete(id); },
 
   // ——— Assets（素材库）———

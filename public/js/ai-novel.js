@@ -30,6 +30,11 @@
     importAnalysis: null,
     importUploadRequest: null,
     createError: '',
+    autoSaveTimer: null,
+    autoSaveInFlight: null,
+    autoSaveQueued: false,
+    autoSaveLastAt: 0,
+    autoSaveError: '',
     config: {
       genre: 'auto',
       subtype: 'auto',
@@ -333,7 +338,14 @@
   }
 
   async function api(path, options = {}) {
-    const res = await authFetch(path, {
+    const method = String(options.method || 'GET').toUpperCase();
+    let requestPath = path;
+    if (method === 'GET') {
+      const url = new URL(path, window.location.origin);
+      url.searchParams.set('_ts', String(Date.now()));
+      requestPath = url.pathname + url.search;
+    }
+    const res = await authFetch(requestPath, {
       ...options,
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
     });
@@ -354,6 +366,48 @@
       throw err;
     }
     return data;
+  }
+
+  function getRouteState() {
+    const params = new URLSearchParams(window.location.search || '');
+    const route = {
+      novel: params.get('novel') || params.get('id') || '',
+      chapter: Number(params.get('chapter') || 0) || 0,
+      panel: params.get('panel') || ''
+    };
+    if (route.novel) return route;
+    try {
+      const saved = JSON.parse(localStorage.getItem('vido_novel_last_route') || '{}');
+      return {
+        novel: saved.novel || '',
+        chapter: Number(saved.chapter || 0) || 0,
+        panel: saved.panel || ''
+      };
+    } catch {
+      return route;
+    }
+  }
+
+  function updateRouteState({ novelId = state.current?.id || '', chapter = state.currentChapter, panel = state.panel } = {}) {
+    const url = new URL(window.location.href);
+    if (novelId) {
+      url.searchParams.set('novel', novelId);
+      url.searchParams.set('chapter', String(Number(chapter) || 1));
+      url.searchParams.set('panel', panel || 'write');
+      try {
+        localStorage.setItem('vido_novel_last_route', JSON.stringify({
+          novel: novelId,
+          chapter: Number(chapter) || 1,
+          panel: panel || 'write'
+        }));
+      } catch {}
+    } else {
+      url.searchParams.delete('novel');
+      url.searchParams.delete('chapter');
+      url.searchParams.delete('panel');
+      try { localStorage.removeItem('vido_novel_last_route'); } catch {}
+    }
+    window.history.replaceState({}, '', url.pathname + url.search);
   }
 
   function showToast(message, isError = false) {
@@ -605,11 +659,12 @@
         : 'AI 小说 / 小说创作';
   }
 
-  function switchView(view) {
+  function switchView(view, options = {}) {
     state.view = view;
     createView.classList.toggle('is-active', view === 'create');
     workView.classList.toggle('is-active', view === 'work');
     taskView.classList.toggle('is-active', view === 'tasks');
+    if (!options.keepRoute && view !== 'work') updateRouteState({ novelId: '' });
     updateShell();
     if (view === 'tasks') {
       renderTasks();
@@ -646,14 +701,17 @@
     }
   }
 
-  async function loadNovel(id) {
+  async function loadNovel(id, options = {}) {
     const data = await api('/api/novel/' + encodeURIComponent(id));
     state.current = data.novel || data.data;
     if (!state.current) throw new Error('接口没有返回小说数据');
     const firstDraft = chapters(state.current).find(ch => !isChapterDone(ch));
-    state.currentChapter = firstDraft?.index || 1;
-    state.panel = firstDraft ? 'world' : 'write';
-    switchView('work');
+    const requestedChapter = Number(options.chapter || 0);
+    const chapterExists = chapters(state.current).some(ch => Number(ch.index) === requestedChapter);
+    state.currentChapter = chapterExists ? requestedChapter : (firstDraft?.index || 1);
+    state.panel = options.panel || (firstDraft ? 'world' : 'write');
+    switchView('work', { keepRoute: true });
+    updateRouteState();
   }
 
   function renderHomeList() {
@@ -1072,7 +1130,8 @@
       state.currentChapter = 1;
       state.generation = null;
       await loadNovels();
-      switchView('work');
+      switchView('work', { keepRoute: true });
+      updateRouteState();
       showToast(mode === 'import' ? '导入内容已分析，请先确认世界观和人物。' : '小说方案已生成，请先确认世界观。');
     } catch (error) {
       state.generation = null;
@@ -2116,6 +2175,47 @@
     }
   }
 
+  function hasActiveChapterEditor() {
+    return !!(state.current && state.panel === 'write' && document.getElementById('nvChapterContent'));
+  }
+
+  function scheduleChapterAutoSave(delay = 900) {
+    if (!hasActiveChapterEditor()) return;
+    clearTimeout(state.autoSaveTimer);
+    state.autoSaveTimer = setTimeout(() => {
+      run(() => autoSaveCurrentChapter({ reason: 'input' }));
+    }, delay);
+  }
+
+  async function autoSaveCurrentChapter(options = {}) {
+    if (!hasActiveChapterEditor()) return state.current;
+    clearTimeout(state.autoSaveTimer);
+    if (state.autoSaveInFlight) {
+      state.autoSaveQueued = true;
+      await state.autoSaveInFlight;
+      if (state.autoSaveQueued) {
+        state.autoSaveQueued = false;
+        return autoSaveCurrentChapter(options);
+      }
+      return state.current;
+    }
+    state.autoSaveInFlight = saveChapterPlan({ silent: true })
+      .then(novel => {
+        state.autoSaveLastAt = Date.now();
+        state.autoSaveError = '';
+        return novel;
+      })
+      .catch(error => {
+        state.autoSaveError = error.message || '自动保存失败';
+        if (!options.quiet) showToast('自动保存失败，请点保存本章', true);
+        throw error;
+      })
+      .finally(() => {
+        state.autoSaveInFlight = null;
+      });
+    return state.autoSaveInFlight;
+  }
+
   async function showChapterThinking(steps) {
     for (const step of steps) {
       updateChapterWriteStatus(step.title, step.detail);
@@ -2699,12 +2799,14 @@
       const panel = e.target.closest('[data-panel]');
       if (panel) {
         state.panel = panel.dataset.panel;
+        updateRouteState();
         renderWork();
         return;
       }
       const go = e.target.closest('[data-panel-go]');
       if (go) {
         state.panel = go.dataset.panelGo;
+        updateRouteState();
         renderWork();
         return;
       }
@@ -2767,9 +2869,14 @@
       }
       const chapter = e.target.closest('[data-chapter]');
       if (chapter) {
-        state.currentChapter = Number(chapter.dataset.chapter);
-        renderWork();
-        return;
+        return run(async () => {
+          const nextChapter = Number(chapter.dataset.chapter);
+          if (!nextChapter || Number(state.currentChapter) === nextChapter) return;
+          await autoSaveCurrentChapter({ reason: 'chapter-switch' });
+          state.currentChapter = nextChapter;
+          updateRouteState();
+          renderWork();
+        });
       }
       const adaptLength = e.target.closest('[data-adapt-length]');
       if (adaptLength) return run(() => adaptNovelLength(adaptLength.dataset.adaptLength, adaptLength));
@@ -2811,6 +2918,28 @@
       if (e.target.closest('[data-export]')) {
         window.open('/api/novel/' + encodeURIComponent(state.current.id) + '/export?token=' + encodeURIComponent(token()));
       }
+    });
+    document.addEventListener('input', e => {
+      if (!e.target.closest('#nvChapterContent,#nvChapterTitle,#nvChapterPlanInput,#nvChapterObstacleInput,#nvChapterChoiceInput,#nvChapterCostInput,#nvChapterHookInput')) return;
+      scheduleChapterAutoSave();
+    });
+    window.addEventListener('beforeunload', () => {
+      if (!hasActiveChapterEditor()) return;
+      clearTimeout(state.autoSaveTimer);
+      const payload = currentChapterPayload();
+      const body = JSON.stringify({
+        chapters: payload,
+        status: state.current.status === 'completed' ? 'completed' : 'draft'
+      });
+      const url = '/api/novel/' + encodeURIComponent(state.current.id);
+      try {
+        fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+          body,
+          keepalive: true
+        });
+      } catch {}
     });
 
     document.body.addEventListener('pointerdown', e => {
@@ -2900,6 +3029,13 @@
     renderCreateChoices();
     updateCreateModeUI();
     await loadNovels();
+    const route = getRouteState();
+    if (route.novel) {
+      await loadNovel(route.novel, {
+        chapter: route.chapter,
+        panel: route.panel || 'write'
+      });
+    }
     updateShell();
   }
 
