@@ -2478,16 +2478,19 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     JSON.stringify(contract),
     'Required matching rules:',
     '- Only enforce fields that are non-empty in the contract.',
-    '- Hard fail if explicit origin/ethnicity/region conflicts with the visible person impression.',
+    '- For roleName, appearanceText and origin, mark match=true unless the image visibly contradicts an explicit visual requirement. Do not fail merely because occupation, temperament, nationality, or identity cannot be proven from a neutral studio casting photo.',
+    '- Hard fail if explicit origin/ethnicity/region visibly conflicts with the person impression. If it is not visually decidable, set origin_match=true and mention uncertainty in observed.',
     '- Hard fail if explicit wardrobeText conflicts with the actual visible outfit, especially top/bottom garment type, skirt/pants/dress, shoes, color family or style.',
-    '- Hard fail if explicit roleName, age or gender conflicts with the visible person impression.',
-    '- Hard fail if explicit hairMakeupText or appearanceText is visibly contradicted by the image.',
+    '- Hard fail if explicit age or gender conflicts with the visible person impression.',
+    '- Hard fail if explicit roleName, hairMakeupText or appearanceText is visibly contradicted by the image.',
     '- Hard fail if a negativeText item is visibly present.',
     '- For back/side/action views, allow face details to be less visible, but still enforce outfit, hair length/style, age/gender impression, origin impression where visible, and negative constraints.',
   ].join(' ');
   const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
     stageId: 'luxury_ad.keyframe_qa',
     maxTokens: 1800,
+    retrySchema: '{"pass":boolean,"score":0-100,"gender_match":boolean,"origin_match":boolean,"age_match":boolean,"role_match":boolean,"appearance_match":boolean,"wardrobe_match":boolean,"hair_makeup_match":boolean,"negative_constraints_ok":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    retrySchemaNote: 'For every active contract field, return the matching boolean field. Empty arrays must be []. If a field cannot be visually proven but is not visibly contradicted, mark its match boolean true and explain the uncertainty in observed.',
   });
   const mismatches = _cleanQaList(parsed.major_mismatches, 160, 8);
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
@@ -4225,13 +4228,15 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
       } catch (parseErr) {
         const repairedParsed = _qaJsonFromMalformedVisionJson(raw);
         if (repairedParsed) {
-          if (/malformed JSON with positive fields/i.test(String(repairedParsed.reason || ''))) {
+          if (/positive malformed|malformed JSON with positive fields|repaired from positive/i.test(String(repairedParsed.reason || ''))) {
             try {
               const retryPrompt = [
                 'STRICT JSON OUTPUT RETRY. The previous QA answer contained positive fields but was not parseable JSON.',
                 'Return exactly one valid JSON object. Do not wrap it in quotes. Do not escape JSON quotes. No markdown. No prose.',
-                'Required schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
-                'All six quality_dimensions fields are mandatory numbers. Empty arrays must be [].',
+                options.retrySchema
+                  ? `Required schema: ${options.retrySchema}`
+                  : 'Required schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
+                options.retrySchemaNote || 'All six quality_dimensions fields are mandatory numbers. Empty arrays must be [].',
                 'Re-evaluate the attached image(s) using this original QA contract:',
                 _compactQaText(prompt, 5200),
               ].join(' ');
@@ -14146,14 +14151,18 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     const inferredMale = /男性|男主|男士|男人|man|male/i.test([descriptionText, text].join(' '));
     const genderLock = selectedGender?.lock
       || (inferredFemale ? genderMap.adult_woman_25_35.lock : (inferredMale ? genderMap.adult_man_30_45.lock : ''));
-    const userRole = String(spec.role || spec.character_role || spec.role_hint || '').trim();
-    const userOutfit = String(spec.outfit || spec.wardrobe || spec.outfit_hint || '').trim();
+    const userRole = String(spec.roleName || spec.role_name || spec.role || spec.character_role || spec.role_hint || '').trim();
+    const userOutfit = String(spec.wardrobeText || spec.wardrobe_text || spec.outfit || spec.wardrobe || spec.outfit_hint || '').trim();
+    const userAppearance = String(spec.appearanceText || spec.appearance_text || spec.appearance || '').trim();
+    const userHairMakeup = String(spec.hairMakeupText || spec.hair_makeup_text || spec.hairMakeup || spec.hair_makeup || '').trim();
     // 中文说明：这里不再使用角色/服装枚举兜底，避免把任何行业误导成主持人、顾问或商务场景。
     const roleHint = [
       selectedSpecGenderHint || selectedGender?.en || '',
       _luxuryRequestedGenderInstruction(selectedSpecGender),
       userRole ? `User provided role hint, must still be validated against brief/script: ${userRole}` : '',
       userOutfit ? `User provided wardrobe hint, must still be validated against brief/script: ${userOutfit}` : '',
+      userAppearance ? `User provided appearance hint: ${userAppearance}` : '',
+      userHairMakeup ? `User provided hair and grooming hint: ${userHairMakeup}` : '',
       descriptionText,
     ].filter(Boolean).join('; ') || [
       /女性|女主|女士|女人|女孩|woman|female|girl|amy/i.test(text) ? 'female advertising person selected from the brief' : '',
