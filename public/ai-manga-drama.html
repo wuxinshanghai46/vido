@@ -35,10 +35,6 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .proj b{color:var(--t-1);font-weight:500}
 .proj .meta{color:var(--t-4);font-size:12px}
 .spacer{flex:1}
-.t-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 13px;border-radius:99px;background:var(--bg-1);font-size:12.5px;color:var(--t-2);border:1px solid var(--line)}
-.t-pill .b{font-variant-numeric:tabular-nums;color:var(--t-1);font-weight:600}
-.t-pill .d{width:6px;height:6px;border-radius:50%;background:var(--done);animation:p 1.6s infinite}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.4}}
 .t-btn{padding:7px 14px;border-radius:7px;font-size:13px;color:var(--t-2)}
 .t-btn:hover{background:var(--bg-1);color:var(--t-1)}
 .t-btn.acc{background:var(--accent);color:#0D0E12;font-weight:600}
@@ -80,12 +76,6 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .top-back-btn{padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;color:var(--t-2)}
 .top-back-btn:hover{background:var(--accent-soft);border-color:rgba(33,255,243,.5);color:var(--accent)}
 .manga-prod-shell{display:grid;gap:14px;margin:0 0 18px}
-.manga-mode-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.manga-mode-card{min-height:118px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(255,255,255,.015));padding:14px;display:grid;align-content:space-between;gap:12px;cursor:pointer;transition:.18s ease}
-.manga-mode-card:hover{border-color:rgba(33,255,243,.55);background:linear-gradient(135deg,rgba(33,255,243,.12),rgba(255,246,0,.05));transform:translateY(-1px)}
-.manga-mode-card b{display:block;font-size:14px;color:var(--t-1);line-height:1.3}
-.manga-mode-card span{display:block;margin-top:5px;font-size:12px;color:var(--t-3);line-height:1.45}
-.manga-mode-card em{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(33,255,243,.13);color:var(--accent);font-style:normal;font-size:18px}
 .manga-prod-flow{border:1px solid rgba(33,255,243,.22);border-radius:13px;background:rgba(20,21,25,.68);padding:13px 14px;display:grid;gap:11px}
 .manga-prod-flow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
 .manga-prod-flow-head b{font-size:14px;color:var(--t-1)}
@@ -106,7 +96,7 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .real-action-row button{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--t-2);font-size:12px;font-weight:700}
 .real-action-row button.primary{background:var(--accent);color:#0D0E12;border-color:transparent}
 .real-action-row button.danger{border-color:rgba(248,113,113,.38);color:#fecaca;background:rgba(248,113,113,.08)}
-@media(max-width:1280px){.manga-mode-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manga-prod-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1280px){.manga-prod-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 /* 主区 */
 .storyboard-stage{height:100%;display:grid;grid-template-rows:46px 1fr;overflow:hidden}
@@ -974,14 +964,6 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .proj-card.add .em{font-size:36px;font-weight:200;margin-bottom:6px}
 .proj-card.add .lbl{font-size:13px;font-weight:600}
 
-/* 顶部 CTA 按钮 (在 home-h 里) */
-.home-h .home-new-cta{
-  padding:8px 18px;border-radius:9px;font-size:13px;font-weight:700;
-  background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);color:#0D0E12;
-  display:inline-flex;align-items:center;gap:5px;box-shadow:0 4px 12px rgba(33,255,243,.22);
-}
-.home-h .home-new-cta:hover{filter:brightness(1.08);transform:translateY(-1px)}
-
 /* 顶部 hero 三卡 */
 .home-hero{
   display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;
@@ -1453,11 +1435,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <div class="proj"><b>AI漫剧</b><span class="meta">正式接口</span></div>
     <div class="spacer"></div>
     <button class="t-btn" onclick="goStage(0)">项目首页</button>
-    <button class="t-btn acc" onclick="openNewModal()">+ 创建漫剧</button>
-    <span class="t-pill"><span class="d"></span>项目制生产</span>
-    <span class="t-pill">正式接口<span class="b">待命</span></span>
     <button class="t-btn play" onclick="openPlayer()">▶ 连播预览</button>
-    <button class="t-btn">📤 分享</button>
     <button class="t-btn acc">导出 ▾</button>
     <button class="top-back-btn" onclick="location.href='/dashboard'">← 返回工作台</button>
     <div class="av">游</div>
@@ -1482,10 +1460,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
   <section class="stage-view stage-home cur" data-stage="0">
     <aside class="home-side">
       <button class="new-btn" onclick="location.href='/dashboard'">← 返回工作台</button>
-      <div class="nav-i cur"><span class="ic">📁</span>我的漫剧<span class="ct">0</span></div>
-      <div class="nav-i"><span class="ic">⏰</span>最近编辑<span class="ct">0</span></div>
-      <div class="nav-i"><span class="ic">⭐</span>已收藏<span class="ct">0</span></div>
-      <div class="nav-i"><span class="ic">🤝</span>共享给我<span class="ct">0</span></div>
+      <div class="nav-i cur"><span class="ic">📋</span>任务中心<span class="ct">0</span></div>
       <h4>资产库</h4>
       <div class="nav-i"><span class="ic">👥</span>角色库<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🖼️</span>场景库<span class="ct">0</span></div>
@@ -1494,8 +1469,6 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       <h4>系统</h4>
       <div class="nav-i"><span class="ic">📜</span>剧本模板<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🎨</span>画风模板<span class="ct">0</span></div>
-      <div class="nav-i"><span class="ic">⚙</span>设置</div>
-      <div class="nav-i"><span class="ic">🗑</span>回收站<span class="ct">0</span></div>
     </aside>
     <main class="home-main">
       <div class="studio-home-band">
@@ -1507,28 +1480,24 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
           </div>
           <div class="studio-create-actions">
             <button class="primary" onclick="openNewModal()">+ 创建新漫剧</button>
-            <button class="ghost" data-manga-prod-action="continue">继续最近项目</button>
             <button class="ghost" onclick="goStage(1)">导入小说/大纲</button>
           </div>
         </div>
         <div class="studio-capability-grid">
-          <button class="studio-cap-card" type="button" onclick="openNewModal()"><em>✨</em><b>新建项目</b><span>标题、简介、画风、集数、比例一次写入正式项目。</span></button>
           <button class="studio-cap-card" type="button" data-manga-prod-action="continue"><em>▶</em><b>继续生产</b><span>打开已有真实项目，进入分集、分镜或成片阶段。</span></button>
           <button class="studio-cap-card" type="button" onclick="goStage(4)"><em>🎬</em><b>分镜工作台</b><span>读取真实镜头，支持提示词、单镜画面、视频生成。</span></button>
           <button class="studio-cap-card" type="button" onclick="goStage(5)"><em>📦</em><b>成片导出</b><span>读取 final video，未合成时可触发图片版或正式合成。</span></button>
         </div>
       </div>
       <div class="home-h">
-        <h2>AI 漫剧生产工作台 <span class="ct">正在读取真实项目</span></h2>
+        <h2>任务中心 <span class="ct">正在读取真实项目</span></h2>
         <span class="spacer"></span>
         <input class="search" placeholder="🔎 搜索项目…" />
         <div class="filter">
           <button class="on">全部</button>
           <button>进行中</button>
           <button>已完成</button>
-          <button>草稿</button>
         </div>
-        <button class="home-new-cta" onclick="openNewModal()">+ 新建漫剧</button>
       </div>
 
       <!-- 顶部 hero 区:新建 + 续写最近项目 -->
@@ -1559,15 +1528,8 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         </div>
       </div>
 
-      <div class="home-section" data-real-section="primary">
+      <div class="home-section" data-real-section="tasks">
         <h3>📌 进行中 <span class="ct">0</span></h3>
-        <div class="proj-grid">
-          <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取真实项目...</div>
-        </div>
-      </div>
-
-      <div class="home-section" data-real-section="recent">
-        <h3>✓ 最近 <span class="ct">0</span></h3>
         <div class="proj-grid">
           <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取真实项目...</div>
         </div>
@@ -2086,7 +2048,6 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <div class="ttl">AI漫剧 <span class="meta">真实项目预览</span></div>
     <span class="pill live">直播预览模式</span>
     <div class="spacer"></div>
-    <button>📤 分享</button>
     <button>📥 下载 mp4</button>
     <button class="x" onclick="closePlayer()">✕ 关闭</button>
   </div>
@@ -2863,7 +2824,7 @@ if(novelInput){
 function loadSampleNovel(){
   if (!novelInput) return;
   if (!novelInput.value.trim()) {
-    novelInput.placeholder = '请先从“我的漫剧”打开一个真实项目。';
+    novelInput.placeholder = '请先从“任务中心”打开一个真实项目。';
   }
   document.getElementById('word-ct').textContent = novelInput.value.length + ' 字';
 }
@@ -2978,7 +2939,7 @@ goStage(0);
     currentEpisode: null,
     search: '',
     filter: '全部',
-    sideView: '我的漫剧',
+    sideView: '任务中心',
   };
   const $ = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
@@ -3042,20 +3003,6 @@ goStage(0);
     shell.id = 'manga-prod-shell';
     shell.className = 'manga-prod-shell';
     shell.innerHTML = `
-      <div class="manga-mode-grid">
-        <button class="manga-mode-card" type="button" data-manga-prod-action="new">
-          <em>✦</em><div><b>一键新建漫剧</b><span>标题 / 大纲 / 小说进入正式项目，先生成分集占位，再逐集生成。</span></div>
-        </button>
-        <button class="manga-mode-card" type="button" data-manga-prod-action="import">
-          <em>📖</em><div><b>小说导入成片</b><span>从长文、章节或简介开始，保留角色、世界观和章节节奏。</span></div>
-        </button>
-        <button class="manga-mode-card" type="button" data-manga-prod-action="director">
-          <em>🎬</em><div><b>分镜导演工作台</b><span>按剧集查看每镜画面、台词、镜头、角色和生成状态。</span></div>
-        </button>
-        <button class="manga-mode-card" type="button" data-manga-prod-action="continue">
-          <em>▶</em><div><b>继续最近项目</b><span>直接回到最近未完成的真实项目。</span></div>
-        </button>
-      </div>
       <div class="manga-prod-flow">
         <div class="manga-prod-flow-head">
           <div><b>AI 漫剧正式生产链路</b><span>参考竞品的项目制流程：先建项目和风格，再逐集生成剧本、分镜、配音、视频和成片任务。</span></div>
@@ -3121,9 +3068,6 @@ goStage(0);
       chip.classList.remove('done', 'busy', 'todo');
       chip.classList.add(states[i] || 'todo');
     });
-    const topPills = $$('.top .t-pill');
-    if (topPills[0]) topPills[0].innerHTML = hasProject ? '<span class="d"></span>真实项目已打开' : '<span class="d"></span>等待创建项目';
-    if (topPills[1]) topPills[1].innerHTML = hasProject ? `项目 <span class="b">${esc(project.title || '未命名')}</span>` : '正式接口待命';
   }
 
   function clearPrototypeHome() {
@@ -3151,7 +3095,7 @@ goStage(0);
       heroCards[1].onclick = () => note('请先选择一个真实项目');
     }
     const title = $('.home-h h2');
-    if (title) title.innerHTML = 'AI 漫剧生产工作台 <span class="ct">真实项目 / 分集 / 分镜 / 成片</span>';
+    if (title) title.innerHTML = '任务中心 <span class="ct">真实项目 / 分集 / 分镜 / 成片</span>';
     ensureProductionShell();
     syncPipelineState(null);
   }
@@ -3164,10 +3108,10 @@ goStage(0);
     const projectIntroBtn = $$('.stage-novel button').find(b => /填入当前项目简介|当前项目简介/.test(b.textContent || ''));
     if (projectIntroBtn) {
       projectIntroBtn.textContent = '📋 填入当前项目简介';
-      projectIntroBtn.onclick = () => note('请先从“我的漫剧”打开一个真实项目');
+      projectIntroBtn.onclick = () => note('请先从“任务中心”打开一个真实项目');
     }
     const epGrid = $('.stage-episodes .ep-grid');
-    if (epGrid) epGrid.innerHTML = emptyCard('请先从“我的漫剧”打开一个真实项目');
+    if (epGrid) epGrid.innerHTML = emptyCard('请先从“任务中心”打开一个真实项目');
     const epSummary = $('.stage-episodes .ep-summary');
     if (epSummary) epSummary.innerHTML = '<h3>📊 总览</h3><div style="padding:18px;color:var(--t-3);font-size:13px">暂无真实分集数据</div>';
     const epFoot = $('.stage-episodes .stage-foot .est');
@@ -3177,7 +3121,7 @@ goStage(0);
     const scriptLeft = $('.stage-script .panel.left');
     if (scriptLeft) scriptLeft.innerHTML = '<h3><span class="ic">👥</span>角色 <span class="ct">0</span></h3><div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实角色数据</div><h3 style="margin-top:18px"><span class="ic">🏞️</span>场景 <span class="ct">0</span></h3><div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实场景数据</div>';
     const scriptMain = $('.stage-script .script-content');
-    if (scriptMain) scriptMain.innerHTML = '<h2>📝 剧本草稿 <span class="meta">正式接口数据</span></h2><div class="script-scene"><div style="color:var(--t-3);font-size:13px">请先从“我的漫剧”打开真实项目，或粘贴小说原文生成正式剧本。</div></div>';
+    if (scriptMain) scriptMain.innerHTML = '<h2>📝 剧本草稿 <span class="meta">正式接口数据</span></h2><div class="script-scene"><div style="color:var(--t-3);font-size:13px">请先从“任务中心”打开真实项目，或粘贴小说原文生成正式剧本。</div></div>';
     const scriptRight = $('.stage-script .panel.right');
     if (scriptRight) scriptRight.innerHTML = '<h3><span class="ic">🎨</span>画风预览</h3><div style="color:var(--t-3);font-size:13px;padding:12px 0">暂无真实画风/音色数据</div>';
     const scriptFoot = $('.stage-script .stage-foot .est');
@@ -3274,8 +3218,6 @@ goStage(0);
         </div>
         <div class="acts">
           <button class="primary" data-real-open="${esc(p.id)}">▶ ${busy ? '继续' : '打开'}</button>
-          <button data-real-sequel="${esc(p.id)}">+ 续集</button>
-          <button data-real-share="${esc(p.id)}">📤</button>
         </div>
       </div>
     </div>`;
@@ -3291,8 +3233,7 @@ goStage(0);
     return (real.projects || []).filter(p => {
       const statusOk = real.filter === '全部'
         || (real.filter === '进行中' && !isDone(p) && !isDraft(p))
-        || (real.filter === '已完成' && isDone(p))
-        || (real.filter === '草稿' && isDraft(p));
+        || (real.filter === '已完成' && isDone(p));
       if (!statusOk) return false;
       if (!q) return true;
       return [p.title, p.synopsis, p.style, p.status].some(v => String(v || '').toLowerCase().includes(q));
@@ -3326,10 +3267,6 @@ goStage(0);
       sections[0].querySelector('h3').innerHTML = `✓ ${esc(real.sideView)} <span class="ct">${items.length}</span>`;
       sections[0].querySelector('.proj-grid').innerHTML = items.length ? items.map(mapper).join('') : emptyCard(emptyText);
     }
-    if (sections[1]) {
-      sections[1].querySelector('h3').innerHTML = `✓ 最近 <span class="ct">${Math.min(items.length, 8)}</span>`;
-      sections[1].querySelector('.proj-grid').innerHTML = items.length ? items.slice(0, 8).map(mapper).join('') : emptyCard(emptyText);
-    }
   }
   function renderHome() {
     updateProductionShell();
@@ -3340,18 +3277,14 @@ goStage(0);
     const draft = projects.filter(isDraft);
     const h2ct = $('.home-h h2 .ct');
     if (h2ct) h2ct.textContent = `共 ${all.length} 个项目 · 当前 ${projects.length} 个 · ${active.length} 进行中 · ${done.length} 已完成`;
-    const mineCt = $$('.home-side .nav-i').find(x => (x.textContent || '').includes('我的漫剧'))?.querySelector('.ct');
+    const mineCt = $$('.home-side .nav-i').find(x => (x.textContent || '').includes('任务中心'))?.querySelector('.ct');
     if (mineCt) mineCt.textContent = all.length;
     $$('.filter button').forEach(btn => btn.classList.toggle('on', btn.textContent.trim() === real.filter));
     const sections = $$('.home-section');
-    const primaryList = real.filter === '已完成' ? done : real.filter === '草稿' ? draft : real.filter === '进行中' ? active : active;
+    const primaryList = real.filter === '已完成' ? done : real.filter === '进行中' ? active : projects;
     if (sections[0]) {
-      sections[0].querySelector('h3').innerHTML = `📌 ${esc(real.filter === '全部' ? '进行中' : real.filter)} <span class="ct">${primaryList.length}</span>`;
+      sections[0].querySelector('h3').innerHTML = `📋 ${esc(real.filter)} <span class="ct">${primaryList.length}</span>`;
       sections[0].querySelector('.proj-grid').innerHTML = primaryList.length ? primaryList.map(projectCard).join('') : emptyCard(real.search ? '没有匹配的真实漫剧项目' : '暂无对应状态的真实漫剧项目');
-    }
-    if (sections[1]) {
-      sections[1].querySelector('h3').innerHTML = `✓ 最近 <span class="ct">${projects.length}</span>`;
-      sections[1].querySelector('.proj-grid').innerHTML = projects.length ? projects.map(projectCard).join('') : emptyCard('暂无真实项目，点击右上角“新建漫剧”创建');
     }
     const heroCards = $$('.home-hero .hero-card');
     if (heroCards[0]) {
@@ -3397,25 +3330,13 @@ goStage(0);
   }
   function renderSpecialView(view) {
     setSideView(view);
-    if (view === '最近编辑') {
-      const items = searchedProjects().sort((a,b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
-      return renderListView(`最近编辑 · ${items.length} 个真实项目`, items, '暂无最近编辑项目', projectCard);
-    }
-    if (view === '已收藏' || view === '共享给我' || view === '回收站') {
-      return renderListView(`${view} · 0 项`, [], `当前账号暂无${view}真实数据`, projectCard);
-    }
     if (view === '剧本模板' || view === '画风模板') {
       const list = view === '剧本模板'
         ? [{ title:'正式项目续写', sub:'基于当前真实项目创建新剧集', icon:'📚' }, { title:'小说导入', sub:'进入正式创建流程后上传或粘贴小说', icon:'📄' }]
         : [{ title:'日常治愈', sub:'创建时写入正式项目风格', icon:'🎨' }, { title:'悬疑反转', sub:'创建时写入正式项目风格', icon:'🌓' }];
       return renderListView(`${view} · 平台预设入口`, list, '暂无模板', item => `<div class="proj-card p4" onclick="openNewModal()"><div class="cover"><span class="em">${item.icon}</span></div><div class="body"><div class="ttl">${esc(item.title)}</div><div class="sub">${esc(item.sub)}</div><div class="acts"><button class="primary" onclick="event.stopPropagation();openNewModal()">使用</button></div></div></div>`);
     }
-    if (view === '设置') {
-      const p = real.currentProject;
-      const list = p ? [{ title:p.title, sub:`${p.style || '默认风格'} · ${p.aspect_ratio || '9:16'} · ${p.episode_count || p.episodes_total || 0} 集`, icon:'⚙️' }] : [];
-      return renderListView('项目设置 · 真实项目配置', list, '请先打开一个真实漫剧项目', item => renderAssetCard(item.title, item.sub, item.icon));
-    }
-    setSideView('我的漫剧');
+    setSideView('任务中心');
     renderHome();
   }
   function renderEpisodes(project) {
@@ -3708,15 +3629,16 @@ goStage(0);
       const search = $('.home-h input.search');
       if (search) search.value = route.q;
     }
-    if (route.filter) real.filter = route.filter;
+    if (route.filter && ['全部', '进行中', '已完成'].includes(route.filter)) real.filter = route.filter;
     await ensureDetails();
-    setSideView(route.side || '我的漫剧');
+    const routeSide = ['角色库', '场景库', '道具库', '音色库', '剧本模板', '画风模板'].includes(route.side || '') ? route.side : '任务中心';
+    setSideView(routeSide);
     syncPipelineState(real.currentProject);
     updateProductionShell();
     renderHome();
-    if (route.side && route.side !== '我的漫剧') {
-      if (['角色库', '场景库', '道具库', '音色库'].includes(route.side)) await renderAssetView(route.side);
-      else renderSpecialView(route.side);
+    if (routeSide !== '任务中心') {
+      if (['角色库', '场景库', '道具库', '音色库'].includes(routeSide)) await renderAssetView(routeSide);
+      else renderSpecialView(routeSide);
     }
     if (route.project) {
       await openRealProject(route.project, route);
@@ -3917,33 +3839,28 @@ goStage(0);
       search.addEventListener('input', () => {
         real.search = search.value || '';
         rememberMangaRoute({ q: real.search });
-        if (['我的漫剧','最近编辑'].includes(real.sideView)) renderSpecialView(real.sideView === '最近编辑' ? '最近编辑' : '我的漫剧');
+        if (real.sideView === '任务中心') renderHome();
       });
     }
     $$('.filter button').forEach(btn => {
       btn.addEventListener('click', () => {
         real.filter = btn.textContent.trim() || '全部';
         rememberMangaRoute({ filter: real.filter });
-        setSideView(real.sideView === '最近编辑' ? '最近编辑' : '我的漫剧');
-        real.sideView === '最近编辑' ? renderSpecialView('最近编辑') : renderHome();
+        setSideView('任务中心');
+        renderHome();
       });
     });
     $$('.home-side .nav-i').forEach(item => {
       item.addEventListener('click', async () => {
         const text = (item.textContent || '').replace(/\d+/g, '').trim();
         try {
-          if (text.includes('我的漫剧')) { setSideView('我的漫剧'); return renderHome(); }
-          if (text.includes('最近编辑')) return renderSpecialView('最近编辑');
-          if (text.includes('已收藏')) return renderSpecialView('已收藏');
-          if (text.includes('共享给我')) return renderSpecialView('共享给我');
+          if (text.includes('任务中心')) { setSideView('任务中心'); return renderHome(); }
           if (text.includes('角色库')) return renderAssetView('角色库');
           if (text.includes('场景库')) return renderAssetView('场景库');
           if (text.includes('道具库')) return renderAssetView('道具库');
           if (text.includes('音色库')) return renderAssetView('音色库');
           if (text.includes('剧本模板')) return renderSpecialView('剧本模板');
           if (text.includes('画风模板')) return renderSpecialView('画风模板');
-          if (text.includes('设置')) return renderSpecialView('设置');
-          if (text.includes('回收站')) return renderSpecialView('回收站');
         } catch (err) { note(err.message); }
       });
     });
