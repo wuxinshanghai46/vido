@@ -232,6 +232,9 @@
     activeTab: 'step1',
     activeTaskType: 'digital_human',
     activeTaskStatus: 'pending',
+    serverVideoTasks: [],
+    serverVideoTasksLoading: false,
+    serverVideoTasksLoadedAt: 0,
     luxuryAdProjects: [],
     luxuryAdProjectsLoading: false,
     luxuryAdProjectsLoadedAt: 0,
@@ -921,7 +924,12 @@
         updateLuxuryAdStepLocks();
       });
     }
-    if (tab === 'tasks') renderTaskCenter();
+    if (tab === 'tasks') {
+      renderTaskCenter();
+      if (!state.serverVideoTasksLoadedAt || Date.now() - state.serverVideoTasksLoadedAt > 30000) {
+        restoreVideoTasks({ silent: true });
+      }
+    }
     if (tab === 'dual')  { renderDualAvatars(); }
     if (tab === 'plaza') loadPlaza();
     if (tab === 'product-dh') pdhOnTabOpen();
@@ -3868,6 +3876,7 @@
     return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${posterUrl ? '' : ' is-missing'}${ratioClass}" ${attrs}>
       ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(withThumbAuth(posterUrl, 480))}" loading="lazy" decoding="async" alt="${escapeHtml(taskCoverText(task))}" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)">` : ''}
       ${renderTaskCoverFallback(task)}
+      ${attrs ? '<span class="dh-task-thumb-play">&#9654;</span>' : ''}
     </div>`;
   }
 
@@ -4421,13 +4430,14 @@
   }
 
   function getTaskType(task) {
+    const rawType = String(task?.taskType || task?.type || task?.mode || task?.kind || '').toLowerCase();
     const adMode = String(task?.ad_mode || task?.adMode || task?.retryPayload?.ad_mode || task?.createDetail?.adMode || '').toLowerCase();
     const generationMode = String(task?.generation_mode || task?.generationMode || task?.retryPayload?.generation_mode || '').toLowerCase();
     const title = String(task?.title || task?.avatarName || task?.createDetail?.title || '').toLowerCase();
-    if (task?.taskType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('剧情广告')) return 'luxury_ad';
-    if (task?.taskType === 'material_film' || adMode === 'material_film' || generationMode.includes('material_film') || title.includes('素材成片') || title.includes('素材审片')) return 'material_film';
-    if (task?.taskType === 'product_ad') return 'product_ad';
-    if (task?.taskType === 'digital_ad' || task?.taskType === 'space_guide') return 'digital_ad';
+    if (rawType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('剧情广告')) return 'luxury_ad';
+    if (rawType === 'material_film' || adMode === 'material_film' || generationMode.includes('material_film') || title.includes('素材成片') || title.includes('素材审片')) return 'material_film';
+    if (rawType === 'product_ad' || rawType === 'product_avatar' || adMode === 'product_ad' || adMode.includes('product')) return 'product_ad';
+    if (rawType === 'digital_ad' || rawType === 'space_guide' || rawType === 'showroom_guide' || adMode === 'digital_ad' || adMode.includes('showroom') || generationMode.includes('showroom')) return 'digital_ad';
     return 'digital_human';
   }
 
@@ -4820,14 +4830,47 @@
     modal.dataset.taskId = taskId;
     modal.classList.add('open');
     refreshTaskProgressModal();
+    loadTaskDetailIfNeeded(taskId);
   }
   function findTaskCenterTask(taskId) {
     const id = String(taskId || '');
     const projectTasks = (state.luxuryAdProjects || []).map(luxuryAdProjectToTask);
     return state.s3.runningTasks.get(id)
+      || (state.serverVideoTasks || []).find(x => String(x.taskId) === id)
       || readVideoTasks().find(x => String(x.taskId) === id)
       || projectTasks.find(x => String(x.taskId) === id || String(x.projectId) === id)
       || null;
+  }
+  function mergeRemoteTaskDetail(raw = {}) {
+    const normalized = normalizeRemoteVideoTask(raw);
+    if (!normalized) return null;
+    return {
+      ...raw,
+      ...normalized,
+      retryPayload: raw.retryPayload || raw.retry_payload || normalized.retryPayload || null,
+      createDetail: raw.createDetail || raw.create_detail || normalized.createDetail || null,
+      snapshot: raw.snapshot || null,
+      scenes: raw.scenes || normalized.scenes || [],
+      keyframes: raw.keyframes || normalized.keyframes || [],
+      clips: raw.clips || raw.clip_urls || normalized.clips || [],
+    };
+  }
+  async function loadTaskDetailIfNeeded(taskId) {
+    const id = String(taskId || '');
+    if (!id || id.startsWith('lux-project-')) return;
+    try {
+      const r = await api('/api/dh/videos/tasks/' + encodeURIComponent(id));
+      const detailed = mergeRemoteTaskDetail(r?.data || {});
+      if (!detailed) return;
+      const list = state.serverVideoTasks || [];
+      const idx = list.findIndex(x => String(x.taskId) === id);
+      if (idx >= 0) list[idx] = { ...list[idx], ...detailed };
+      else list.unshift(detailed);
+      state.serverVideoTasks = list;
+      refreshTaskProgressModal();
+    } catch (err) {
+      console.warn('[DH/tasks] detail load failed:', err?.message || err);
+    }
   }
   function closeTaskProgressModal() {
     const modal = document.getElementById('dhTaskProgressModal');
@@ -4904,7 +4947,7 @@
     const projectTasks = state.activeTaskType === 'luxury_ad'
       ? (state.luxuryAdProjects || []).map(luxuryAdProjectToTask)
       : [];
-    const tasks = taskCenterVisibleTasks([...readVideoTasks(), ...projectTasks]);
+    const tasks = taskCenterVisibleTasks([...(state.serverVideoTasks || []), ...readVideoTasks(), ...projectTasks]);
     $$('#dhTaskTypeTabs [data-task-type]').forEach(btn => {
       const type = btn.dataset.taskType;
       const count = tasks.filter(t => getTaskType(t) === type).length;
@@ -4954,13 +4997,12 @@
       const ratioClass = taskRatio.includes('16:9') || taskRatio.includes('1280x720') || taskRatio.includes('1920x1080')
         ? ' dh-task-thumb-landscape'
         : (taskRatio.includes('1:1') || taskRatio.includes('960x960') ? ' dh-task-thumb-square' : '');
+      const previewAttrs = playableVideoUrl ? `data-task-preview="${escapeHtml(t.taskId)}" title="&#28857;&#20987;&#25918;&#22823;&#39044;&#35272;"` : '';
       const preview = t.isLuxuryProjectDraft
         ? renderTaskImageCover(t, posterUrl, ratioClass)
         : (active || failed)
         ? `<div class="dh-task-thumb dh-task-thumb-running">${renderTaskPercentBlock(t)}</div>`
-        : (playableVideoUrl
-          ? renderTaskVideoCover(t, playableVideoUrl, posterUrl, ratioClass)
-          : renderTaskImageCover(t, posterUrl, ratioClass));
+        : renderTaskImageCover(t, posterUrl, ratioClass, previewAttrs);
       const video = '';
       const errorText = t.error || t.error_message || t.errorMessage || '';
       const error = errorText ? `<div class="dh-task-error">${escapeHtml(errorText)}</div>` : '';
@@ -5295,9 +5337,11 @@
   function normalizeRemoteVideoTask(t = {}) {
     const taskId = t.id || t.taskId;
     if (!taskId) return null;
-    const mode = String(t.mode || t.source || t.generation_mode || '').toLowerCase();
+    const mode = String(t.mode || t.type || t.source || t.generation_mode || '').toLowerCase();
     const adMode = String(t.ad_mode || '').toLowerCase();
-    const taskType = mode.includes('product_ad') || mode.includes('product_avatar') || adMode.includes('product')
+    const taskType = mode.includes('material_film') || adMode.includes('material_film')
+      ? 'material_film'
+      : mode.includes('product_ad') || mode.includes('product_avatar') || adMode.includes('product')
       ? 'product_ad'
       : (mode.includes('luxury_ad') || adMode.includes('luxury')
         ? 'luxury_ad'
@@ -5325,6 +5369,10 @@
       ratio: t.ratio || t.aspectRatio || t.aspect_ratio || '',
       resolution: t.resolution || '',
       outputSize: t.output_size || t.outputSize || '',
+      mode: t.mode || '',
+      generation_mode: t.generation_mode || '',
+      ad_mode: t.ad_mode || '',
+      kind: t.kind || '',
       subtitleBurned: !!(t.subtitle_burned || t.subtitleBurned),
       subtitleWarning: t.subtitle_warning || t.subtitleWarning || '',
       production_project_id: t.production_project_id || t.productionProjectId || t.project_id || '',
@@ -5337,11 +5385,15 @@
     };
   }
 
-  async function restoreVideoTasks() {
+  async function restoreVideoTasks(opts = {}) {
+    if (state.serverVideoTasksLoading) return;
+    state.serverVideoTasksLoading = true;
     const local = readVideoTasks();
     try {
       const r = await api('/api/dh/videos/tasks');
       const remoteTasks = (r?.data || []).map(normalizeRemoteVideoTask).filter(Boolean);
+      state.serverVideoTasks = remoteTasks;
+      state.serverVideoTasksLoadedAt = Date.now();
       if (remoteTasks.length) {
         const remoteIds = new Set(remoteTasks.map(t => String(t.taskId)));
         const localKept = local.filter(t => {
@@ -5391,8 +5443,10 @@
         renderTaskCenter();
       }
     } catch (err) {
-      console.warn('[DH/tasks] restore from server failed:', err);
+      if (!opts.silent) console.warn('[DH/tasks] restore from server failed:', err);
       renderTaskCenter();
+    } finally {
+      state.serverVideoTasksLoading = false;
     }
     readVideoTasks()
       .filter(t => ACTIVE_TASK_STATUSES.has(t.status) || isRecoverableServerTimeoutTask(t))
@@ -15698,7 +15752,9 @@
     const taskPreview = closest('[data-task-preview]');
     if (taskPreview) {
       const id = taskPreview.dataset.taskPreview;
-      const meta = state.s3.runningTasks.get(id) || readVideoTasks().find(x => x.taskId === id);
+      const meta = state.s3.runningTasks.get(id)
+        || (state.serverVideoTasks || []).find(x => String(x.taskId) === String(id))
+        || readVideoTasks().find(x => String(x.taskId) === String(id));
       const url = meta?.videoUrl || meta?.video_url || '';
       if (url) openVideoPreviewModal(url, meta.avatarName || '数字人作品');
       return;

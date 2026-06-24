@@ -26566,7 +26566,36 @@ router.get('/videos/tasks', (req, res) => {
       const thumbnail_url = onDemandThumbnail || fallbackThumbnail;
       const video_url = _localJimengAssetUrl(t.video_url || t.videoUrl, req);
       const videoUrl = _localJimengAssetUrl(t.videoUrl || t.video_url, req);
-      return { ...t, kind, image_url: imageUrl || t.image_url, thumbnail_url, video_url, videoUrl };
+      return {
+        id: t.id,
+        taskId: t.id,
+        title: t.title || t.avatarName || '',
+        kind,
+        mode: t.mode || t.ad_mode || t.generation_mode || '',
+        ad_mode: t.ad_mode || '',
+        generation_mode: t.generation_mode || '',
+        status: t.status || '',
+        stage: t.stage || '',
+        progress: t.progress,
+        message: t.message || '',
+        error: t.error || t.error_message || '',
+        text: String(t.text || t.topic || t.brief_text || '').slice(0, 360),
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        startedAt: t.startedAt || t.created_at,
+        ratio: t.ratio || t.aspect_ratio || t.outputRatio || '',
+        aspect_ratio: t.aspect_ratio || t.ratio || '',
+        output_size: t.output_size || t.outputSize || '',
+        resolution: t.resolution || '',
+        subtitle_burned: !!t.subtitle_burned,
+        subtitle_warning: t.subtitle_warning || '',
+        production_project_id: t.production_project_id || t.project_id || '',
+        project_id: t.project_id || '',
+        image_url: imageUrl || t.image_url || '',
+        thumbnail_url,
+        video_url,
+        videoUrl,
+      };
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -26578,7 +26607,27 @@ router.get('/videos/tasks', (req, res) => {
 router.get('/videos/tasks/:id', (req, res) => {
   const t = db.getAvatarTask(req.params.id);
   if (!t || !ownedBy(req, t)) return res.status(404).json({ success: false, error: 'task not found' });
-  res.json({ success: true, data: t });
+  const base = _publicBaseUrl(req);
+  const rawVideoUrl = t.video_url || t.videoUrl || '';
+  const localVideoPath = (t.videoPath && fs.existsSync(t.videoPath))
+    ? t.videoPath
+    : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : _localJimengPathFromUrl(rawVideoUrl));
+  const onDemandThumbnail = localVideoPath ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
+  const imageUrl = _localJimengAssetUrl(t.image_url || t.imageUrl, req);
+  const thumbnailCandidate = _localJimengAssetUrl(t.thumbnail_url, req);
+  const fallbackThumbnail = (!_isStaleJimengAssetUrl(thumbnailCandidate) && thumbnailCandidate)
+    || (!_isStaleJimengAssetUrl(imageUrl) && imageUrl)
+    || null;
+  res.json({
+    success: true,
+    data: {
+      ...t,
+      image_url: imageUrl || t.image_url || '',
+      thumbnail_url: onDemandThumbnail || fallbackThumbnail,
+      video_url: _localJimengAssetUrl(t.video_url || t.videoUrl, req),
+      videoUrl: _localJimengAssetUrl(t.videoUrl || t.video_url, req),
+    },
+  });
 });
 
 // GET /api/dh/videos/tasks/:id/download — authenticated MP4 download for works cards.
