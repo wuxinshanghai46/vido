@@ -2125,7 +2125,7 @@
     const video = forceImageView ? null : (a.sample_video_url || a.video_url || null);
     const sourceTag = forceImageView && hasVideo ? '📸 图片素材 · 已有视频' : (a.source === 'upload' ? '📤 上传' : a.source === 'dual_generate' ? '👥 双人生成' : '🎨 AI 生成');
     const genderTag = a.gender === 'female' ? '女' : a.gender === 'male' ? '男' : '';
-    const thumb = a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : img;
+    const thumb = a.id ? `/api/dh/my-avatars/${a.id}/thumbnail${video ? '?prefer_video=1' : ''}` : img;
     const fallbackImg = img || thumb;
     const safeFallback = escapeHtml(withAuthQuery(fallbackImg));
     const safeThumb = escapeHtml(withAuthQuery(thumb));
@@ -4458,24 +4458,11 @@
     ).trim();
   }
 
-  function luxuryTaskTextKey(task = {}) {
-    return normalizeTaskTextKey(
-      task.project?.text ||
-      task.retryPayload?.text ||
-      task.createDetail?.text ||
-      task.text ||
-      task.textPreview ||
-      '',
-    );
-  }
-
   function taskCenterDedupeKey(task = {}) {
     const type = getTaskType(task);
     if (type !== 'luxury_ad') return `${type}:${task.taskId || ''}`;
     const projectId = luxuryTaskProjectId(task);
-    if (projectId) return `luxury-project:${projectId}`;
-    const textKey = luxuryTaskTextKey(task);
-    if (textKey) return `luxury-text:${textKey}`;
+    if (task.isLuxuryProjectDraft && projectId) return `luxury-project:${projectId}`;
     return `luxury-task:${task.taskId || ''}`;
   }
 

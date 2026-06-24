@@ -452,7 +452,19 @@ app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
     const ffmpegService = require('./services/ffmpegService');
     const t = db.getAvatarTask(req.params.id);
     if (!t) return res.status(404).end();
-    const localPath = t.videoPath || t.local_path;
+    const resolveJimengVideoPath = (url = '') => {
+      const raw = String(url || '').split('?')[0].split('#')[0];
+      const marker = '/public/jimeng-assets/';
+      const idx = raw.indexOf(marker);
+      if (idx < 0) return '';
+      const name = path.basename(raw.slice(idx + marker.length));
+      if (!name || name.includes('..')) return '';
+      const candidate = path.resolve(__dirname, '../outputs/jimeng-assets', name);
+      return fs.existsSync(candidate) ? candidate : '';
+    };
+    const localPath = (t.videoPath && fs.existsSync(t.videoPath) ? t.videoPath : '')
+      || (t.local_path && fs.existsSync(t.local_path) ? t.local_path : '')
+      || resolveJimengVideoPath(t.video_url || t.videoUrl);
     if (!localPath || !fs.existsSync(localPath)) return res.status(204).end();
     const thumbPath = localPath.replace(/\.(mp4|mov|webm|mkv|avi)$/i, '') + '.thumb.jpg';
     const send = () => {
@@ -506,6 +518,30 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
       return candidates.find(x => x && fs.existsSync(x)) || null;
     };
     const imageUrl = p.image_url || p.photo_url || '';
+    const preferVideo = req.query.prefer_video === '1' || req.query.prefer === 'video';
+    const sample = p.sample_video_url || '';
+    let localVideo = null;
+    if (sample.includes('/public/jimeng-assets/')) {
+      const name = path.basename(sample.split('?')[0]);
+      const candidate = path.resolve(__dirname, '../outputs/jimeng-assets', name);
+      if (fs.existsSync(candidate)) localVideo = candidate;
+    }
+    const sendVideoThumb = () => {
+      if (!localVideo) return false;
+      const thumbPath = localVideo.replace(/\.(mp4|mov|webm|mkv)$/i, '') + '.thumb.jpg';
+      const send = () => {
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        fs.createReadStream(thumbPath).pipe(res);
+      };
+      if (fs.existsSync(thumbPath)) { send(); return true; }
+      ffmpegService.extractFirstFrame(localVideo, thumbPath, { atSec: 0.5, width: 480 })
+        .then(send)
+        .catch(err => { console.warn('[DH/avatar-thumb] 抽帧失败:', err.message); res.status(204).end(); });
+      return true;
+    };
+    if (preferVideo && sendVideoThumb()) return;
+
     const localImage = findLocalImage(imageUrl);
     if (localImage) {
       const ext = path.extname(localImage).toLowerCase();
@@ -535,24 +571,8 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
       }
     }
 
-    const sample = p.sample_video_url || '';
-    let localVideo = null;
-    if (sample.includes('/public/jimeng-assets/')) {
-      const name = path.basename(sample.split('?')[0]);
-      const candidate = path.resolve(__dirname, '../outputs/jimeng-assets', name);
-      if (fs.existsSync(candidate)) localVideo = candidate;
-    }
-    if (!localVideo) return sendPlaceholder();
-    const thumbPath = localVideo.replace(/\.(mp4|mov|webm|mkv)$/i, '') + '.thumb.jpg';
-    const send = () => {
-      res.setHeader('Content-Type', 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      fs.createReadStream(thumbPath).pipe(res);
-    };
-    if (fs.existsSync(thumbPath)) return send();
-    ffmpegService.extractFirstFrame(localVideo, thumbPath, { atSec: 0.5, width: 480 })
-      .then(send)
-      .catch(err => { console.warn('[DH/avatar-thumb] 抽帧失败:', err.message); res.status(204).end(); });
+    if (sendVideoThumb()) return;
+    return sendPlaceholder();
   } catch (err) {
     console.warn('[DH/avatar-thumb] err:', err.message);
     res.status(500).end();
