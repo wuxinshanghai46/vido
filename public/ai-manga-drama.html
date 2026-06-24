@@ -43,8 +43,8 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6c5ce7,#7a68ff);display:grid;place-items:center;font-size:11px;font-weight:700}
 
 /* 流水线 */
-.pipeline{background:var(--bg-1);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 22px;gap:6px;overflow-x:auto;flex-shrink:0}
-.stage-chip{flex-shrink:0;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:9px;font-size:12.5px;color:var(--t-3);cursor:pointer;border:1px solid transparent}
+.pipeline{background:var(--bg-1);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 28px;gap:12px;overflow-x:auto;flex-shrink:0}
+.stage-chip{flex:0 0 auto;min-width:104px;justify-content:center;display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:9px;font-size:12.5px;color:var(--t-3);cursor:pointer;border:1px solid transparent}
 .stage-chip:hover{background:var(--bg-2);color:var(--t-1)}
 .stage-chip .num{width:22px;height:22px;border-radius:6px;background:var(--bg-3);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--t-3)}
 .stage-chip.done{color:var(--t-2)}
@@ -54,8 +54,6 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .stage-chip.todo{opacity:.5}
 .stage-arrow{color:var(--t-4);padding:0 2px}
 .stage-chip.done + .stage-arrow{color:var(--done)}
-.pipeline .gobtn{margin-left:auto;padding:9px 18px;border-radius:9px;background:var(--accent);color:#0D0E12;font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-shrink:0}
-.pipeline .gobtn:hover{background:var(--accent-2)}
 
 .studio-home-band{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(460px,1.4fr);gap:18px;margin-bottom:18px}
 .studio-create-panel{border:1px solid rgba(33,255,243,.28);border-radius:16px;background:linear-gradient(145deg,rgba(33,255,243,.12),rgba(255,246,0,.055) 55%,rgba(20,21,25,.75));padding:18px;display:grid;align-content:space-between;min-height:236px;position:relative;overflow:hidden}
@@ -75,28 +73,12 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .studio-cap-card span{font-size:12px;color:var(--t-3);line-height:1.5}
 .top-back-btn{padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;color:var(--t-2)}
 .top-back-btn:hover{background:var(--accent-soft);border-color:rgba(33,255,243,.5);color:var(--accent)}
-.manga-prod-shell{display:grid;gap:14px;margin:0 0 18px}
-.manga-prod-flow{border:1px solid rgba(33,255,243,.22);border-radius:13px;background:rgba(20,21,25,.68);padding:13px 14px;display:grid;gap:11px}
-.manga-prod-flow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
-.manga-prod-flow-head b{font-size:14px;color:var(--t-1)}
-.manga-prod-flow-head span{display:block;margin-top:3px;color:var(--t-3);font-size:12px;line-height:1.45}
-.manga-prod-flow-head .state{flex:0 0 auto;padding:4px 9px;border-radius:999px;border:1px solid rgba(33,255,243,.35);background:rgba(33,255,243,.10);color:var(--accent);font-size:11px;font-weight:800}
-.manga-prod-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
-.manga-prod-step{min-width:0;border:1px solid var(--line);border-radius:9px;background:rgba(255,255,255,.025);padding:10px;display:grid;gap:5px}
-.manga-prod-step small{color:var(--accent);font-size:11px;font-weight:900}
-.manga-prod-step b{font-size:12px;color:var(--t-2);line-height:1.35}
-.manga-prod-step span{font-size:11px;color:var(--t-4);line-height:1.4}
-.manga-prod-step.ready{border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.045)}
-.manga-prod-step.busy{border-color:rgba(33,255,243,.30);background:rgba(33,255,243,.065)}
-.manga-prod-note{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid rgba(96,165,250,.16);border-radius:9px;background:rgba(96,165,250,.055);color:var(--t-2);font-size:12px;line-height:1.55}
-.manga-prod-note button{flex:0 0 auto;padding:7px 11px;border-radius:8px;background:var(--accent);color:#0D0E12;font-size:12px;font-weight:800}
 .real-cover-img,.real-shot-img,.real-player-img,.real-export-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .real-media-empty{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#22222e,#34343f);color:rgba(255,255,255,.42);font-size:13px;text-align:center;padding:16px}
 .real-action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .real-action-row button{padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--t-2);font-size:12px;font-weight:700}
 .real-action-row button.primary{background:var(--accent);color:#0D0E12;border-color:transparent}
 .real-action-row button.danger{border-color:rgba(248,113,113,.38);color:#fecaca;background:rgba(248,113,113,.08)}
-@media(max-width:1280px){.manga-prod-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
 /* 主区 */
 .storyboard-stage{height:100%;display:grid;grid-template-rows:46px 1fr;overflow:hidden}
@@ -1453,20 +1435,16 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <button class="stage-chip busy" data-go="4" onclick="goStage(4)"><span class="num">4</span>🎬 分镜</button>
     <span class="stage-arrow">→</span>
     <button class="stage-chip todo" data-go="5" onclick="goStage(5)"><span class="num">5</span>▶️ 成片</button>
-    <button class="gobtn">▶ 一键继续生成</button>
   </nav>
 
   <!-- ============ 阶段 0: 创作记录 ============ -->
   <section class="stage-view stage-home cur" data-stage="0">
     <aside class="home-side">
-      <button class="new-btn" onclick="location.href='/dashboard'">← 返回工作台</button>
       <div class="nav-i cur"><span class="ic">📋</span>任务中心<span class="ct">0</span></div>
-      <h4>资产库</h4>
       <div class="nav-i"><span class="ic">👥</span>角色库<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🖼️</span>场景库<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🎒</span>道具库<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🎙️</span>音色库<span class="ct">0</span></div>
-      <h4>系统</h4>
       <div class="nav-i"><span class="ic">📜</span>剧本模板<span class="ct">0</span></div>
       <div class="nav-i"><span class="ic">🎨</span>画风模板<span class="ct">0</span></div>
     </aside>
@@ -1490,7 +1468,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
         </div>
       </div>
       <div class="home-h">
-        <h2>任务中心 <span class="ct">正在读取真实项目</span></h2>
+        <h2>创建漫剧 <span class="ct">正在读取真实项目</span></h2>
         <span class="spacer"></span>
         <input class="search" placeholder="🔎 搜索项目…" />
         <div class="filter">
@@ -1529,7 +1507,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       </div>
 
       <div class="home-section" data-real-section="tasks">
-        <h3>📌 进行中 <span class="ct">0</span></h3>
+        <h3>📋 任务中心 <span class="ct">0</span></h3>
         <div class="proj-grid">
           <div class="proj-card real-empty-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取真实项目...</div>
         </div>
@@ -2780,30 +2758,6 @@ function goStage(n){
     else if(cn===n)c.classList.add('busy');
     else c.classList.add('todo');
   });
-  // 顶栏「一键继续生成」按钮文案
-  const goBtn=document.querySelector('.pipeline .gobtn');
-  if(goBtn){
-    const map={0:'▶ 继续最近项目',1:'→ 生成剧本',2:'→ 拆分集',3:'→ 进入分镜',4:'→ 合成成片',5:'📤 一键发布'};
-    goBtn.innerHTML=map[n]||'▶ 继续';
-    goBtn.onclick=()=>{
-      if(n===0){
-        const first = document.querySelector('[data-real-project]');
-        if(first) first.click();
-        else openNewModal();
-      }
-      else if(n===1 || n===2) {
-        const btn = document.querySelector('[data-real-generate-current-episode]');
-        if (btn) btn.click();
-        else alert('Open a real project first.');
-      }
-      else if(n===3)goStage(4);
-      else if(n===4 || n===5) {
-        const btn = document.querySelector('[data-real-compose]');
-        if (btn) btn.click();
-        else alert('Generate real storyboard data first.');
-      }
-    };
-  }
   window.scrollTo({top:0,behavior:'smooth'});
   window.__rememberMangaRoute?.({ stage: n });
 }
@@ -2993,62 +2947,6 @@ goStage(0);
 
   window.__rememberMangaRoute = rememberMangaRoute;
 
-  function ensureProductionShell() {
-    let shell = $('#manga-prod-shell');
-    if (shell) return shell;
-    const homeMain = $('.home-main');
-    const homeHead = $('.home-h');
-    if (!homeMain || !homeHead) return null;
-    shell = document.createElement('div');
-    shell.id = 'manga-prod-shell';
-    shell.className = 'manga-prod-shell';
-    shell.innerHTML = `
-      <div class="manga-prod-flow">
-        <div class="manga-prod-flow-head">
-          <div><b>AI 漫剧正式生产链路</b><span>参考竞品的项目制流程：先建项目和风格，再逐集生成剧本、分镜、配音、视频和成片任务。</span></div>
-          <div class="state" id="manga-prod-state">读取中</div>
-        </div>
-        <div class="manga-prod-steps" id="manga-prod-steps"></div>
-        <div class="manga-prod-note">
-          <span id="manga-prod-note">正在读取真实项目数据。</span>
-          <button type="button" data-manga-prod-action="new">新建正式项目</button>
-        </div>
-      </div>`;
-    homeMain.insertBefore(shell, homeHead.nextSibling);
-    return shell;
-  }
-
-  function updateProductionShell() {
-    const shell = ensureProductionShell();
-    if (!shell) return;
-    const projects = real.projects || [];
-    const episodes = projects.flatMap(p => real.details.get(String(p.id))?.episodes || []);
-    const listedEpisodeTotal = projects.reduce((sum, p) => sum + Number(p.episodes_total || p.episode_count || 0), 0);
-    const listedEpisodeDone = projects.reduce((sum, p) => sum + Number(p.episodes_done || 0), 0);
-    const episodeTotal = episodes.length || listedEpisodeTotal;
-    const doneEpisodes = episodes.length ? episodes.filter(e => e.status === 'done').length : listedEpisodeDone;
-    const activeEpisodes = episodes.filter(e => e.status === 'processing').length;
-    const generatedScenes = episodes.length
-      ? episodes.reduce((sum, e) => sum + (e.result?.scenes?.length || 0), 0)
-      : projects.reduce((sum, p) => sum + (Number(p.episodes_done || 0) * Number(p.scene_count || 0)), 0);
-    const finalVideos = episodes.filter(e => e.result?.final_video_url).length;
-    const steps = [
-      { no:'01', title:'项目与风格', desc:`${projects.length} 个真实项目`, cls:projects.length ? 'ready' : '' },
-      { no:'02', title:'角色 / 场景资产', desc:'从项目人物表和分镜素材沉淀', cls:projects.length ? 'busy' : '' },
-      { no:'03', title:'剧本与分集', desc:`${episodeTotal || 0} 集占位 · ${doneEpisodes} 集完成`, cls:episodeTotal ? 'ready' : '' },
-      { no:'04', title:'分镜执行', desc:`${generatedScenes} 个真实镜头`, cls:generatedScenes ? 'ready' : '' },
-      { no:'05', title:'配音 / 视频 / 成片', desc:`${finalVideos} 个成片`, cls:finalVideos ? 'ready' : '' },
-    ];
-    const stepBox = $('#manga-prod-steps');
-    if (stepBox) stepBox.innerHTML = steps.map(s => `<div class="manga-prod-step ${s.cls}"><small>${s.no}</small><b>${esc(s.title)}</b><span>${esc(s.desc)}</span></div>`).join('');
-    const state = $('#manga-prod-state');
-    if (state) state.textContent = activeEpisodes ? `${activeEpisodes} 集生成中` : projects.length ? '真实项目就绪' : '暂无项目';
-    const note = $('#manga-prod-note');
-    if (note) note.textContent = projects.length
-      ? '请选择项目继续生产；如果要做新漫剧，先新建项目再逐集生成。'
-      : '当前账号暂无真实漫剧项目。先新建项目，系统会创建分集占位并进入正式生产流程。';
-  }
-
   function syncPipelineState(project = null) {
     const chips = $$('.pipeline .stage-chip');
     const episodes = project?.episodes || [];
@@ -3075,11 +2973,6 @@ goStage(0);
     const projMeta = document.querySelector('.proj .meta');
     if (projName) projName.textContent = 'AI漫剧';
     if (projMeta) projMeta.textContent = '正式接口';
-    const backBtn = $('.home-side .new-btn');
-    if (backBtn) {
-      backBtn.textContent = '← 返回工作台';
-      backBtn.onclick = () => { location.href = '/dashboard'; };
-    }
     const heroPrimary = $('.home-hero .hero-card.primary');
     if (heroPrimary) heroPrimary.remove();
     $$('.home-section .proj-grid').forEach(grid => {
@@ -3095,8 +2988,7 @@ goStage(0);
       heroCards[1].onclick = () => note('请先选择一个真实项目');
     }
     const title = $('.home-h h2');
-    if (title) title.innerHTML = '任务中心 <span class="ct">真实项目 / 分集 / 分镜 / 成片</span>';
-    ensureProductionShell();
+    if (title) title.innerHTML = '创建漫剧 <span class="ct">真实项目 / 分集 / 分镜 / 成片</span>';
     syncPipelineState(null);
   }
   function clearPrototypeStages() {
@@ -3269,22 +3161,21 @@ goStage(0);
     }
   }
   function renderHome() {
-    updateProductionShell();
     const projects = searchedProjects();
     const all = real.projects || [];
     const active = projects.filter(p => !isDone(p) && !isDraft(p));
     const done = projects.filter(isDone);
     const draft = projects.filter(isDraft);
     const h2ct = $('.home-h h2 .ct');
-    if (h2ct) h2ct.textContent = `共 ${all.length} 个项目 · 当前 ${projects.length} 个 · ${active.length} 进行中 · ${done.length} 已完成`;
+    if (h2ct) h2ct.textContent = `真实入库 ${all.length} 个 · 当前 ${projects.length} 个 · ${active.length} 正在创建/进行中 · ${done.length} 已完成`;
     const mineCt = $$('.home-side .nav-i').find(x => (x.textContent || '').includes('任务中心'))?.querySelector('.ct');
     if (mineCt) mineCt.textContent = all.length;
     $$('.filter button').forEach(btn => btn.classList.toggle('on', btn.textContent.trim() === real.filter));
     const sections = $$('.home-section');
     const primaryList = real.filter === '已完成' ? done : real.filter === '进行中' ? active : projects;
     if (sections[0]) {
-      sections[0].querySelector('h3').innerHTML = `📋 ${esc(real.filter)} <span class="ct">${primaryList.length}</span>`;
-      sections[0].querySelector('.proj-grid').innerHTML = primaryList.length ? primaryList.map(projectCard).join('') : emptyCard(real.search ? '没有匹配的真实漫剧项目' : '暂无对应状态的真实漫剧项目');
+      sections[0].querySelector('h3').innerHTML = `📋 任务中心 · ${esc(real.filter)} <span class="ct">${primaryList.length}</span>`;
+      sections[0].querySelector('.proj-grid').innerHTML = primaryList.length ? primaryList.map(projectCard).join('') : emptyCard(real.search ? '没有匹配的真实漫剧项目' : '暂无已创建或正在创建的漫剧项目');
     }
     const heroCards = $$('.home-hero .hero-card');
     if (heroCards[0]) {
@@ -3488,7 +3379,6 @@ goStage(0);
     document.querySelector('.proj b').textContent = r.data.title || 'AI漫剧';
     document.querySelector('.proj .meta').textContent = `${r.data.style || '漫剧'} · ${r.data.aspect_ratio || '9:16'}`;
     syncPipelineState(r.data);
-    updateProductionShell();
     renderEpisodes(r.data);
     const routeEpisode = opts.episode ? (r.data.episodes || []).find(e => String(e.id) === String(opts.episode)) : null;
     const doneEp = routeEpisode || (r.data.episodes || []).find(e => e.result?.scenes?.length) || (r.data.episodes || [])[0];
@@ -3634,7 +3524,6 @@ goStage(0);
     const routeSide = ['角色库', '场景库', '道具库', '音色库', '剧本模板', '画风模板'].includes(route.side || '') ? route.side : '任务中心';
     setSideView(routeSide);
     syncPipelineState(real.currentProject);
-    updateProductionShell();
     renderHome();
     if (routeSide !== '任务中心') {
       if (['角色库', '场景库', '道具库', '音色库'].includes(routeSide)) await renderAssetView(routeSide);
@@ -3723,7 +3612,6 @@ goStage(0);
     }
     renderEpisodes(fresh.data);
     if (real.currentEpisode?.result?.scenes?.length) hydrateShotData(real.currentEpisode);
-    updateProductionShell();
     return fresh.data;
   }
   function currentEpisodeOrNote() {

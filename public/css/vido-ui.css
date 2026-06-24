@@ -1241,8 +1241,6 @@ th {
 [data-theme="light-mist"] .studio-create-panel h1,
 [data-theme="light-mist"] .studio-cap-card b,
 [data-theme="light-mist"] .manga-mode-card b,
-[data-theme="light-mist"] .manga-prod-flow-head b,
-[data-theme="light-mist"] .manga-prod-step b,
 [data-theme="light-mist"] .wf-node-name,
 [data-theme="light-mist"] .wf-tb-title,
 [data-theme="light-mist"] .wf-sidebar-title {
@@ -1262,8 +1260,6 @@ th {
 [data-theme="light-mist"] .studio-create-panel p,
 [data-theme="light-mist"] .studio-cap-card span,
 [data-theme="light-mist"] .manga-mode-card span,
-[data-theme="light-mist"] .manga-prod-flow-head span,
-[data-theme="light-mist"] .manga-prod-step span,
 [data-theme="light-mist"] .wf-node-desc,
 [data-theme="light-mist"] .wf-tb-status,
 [data-theme="light-mist"] .wf-bb-hint {
@@ -1296,9 +1292,6 @@ th {
 [data-theme="light-mist"] .studio-create-panel,
 [data-theme="light-mist"] .studio-cap-card,
 [data-theme="light-mist"] .manga-mode-card,
-[data-theme="light-mist"] .manga-prod-flow,
-[data-theme="light-mist"] .manga-prod-step,
-[data-theme="light-mist"] .manga-prod-note,
 [data-theme="light-mist"] .framerow,
 [data-theme="light-mist"] .asset-band,
 [data-theme="light-mist"] .batch-bar,
@@ -1460,9 +1453,7 @@ th {
 [data-theme="light-mist"] .wf-tb-primary,
 [data-theme="light-mist"] .t-btn.acc,
 [data-theme="light-mist"] .t-btn.play,
-[data-theme="light-mist"] .pipeline .gobtn,
 [data-theme="light-mist"] .studio-create-actions .primary,
-[data-theme="light-mist"] .manga-prod-note button,
 [data-theme="light-mist"] .real-action-row button.primary {
   background: var(--vido-grad, linear-gradient(135deg, #5cc8ff 0%, #69ddc8 56%, #98f082 100%)) !important;
   border-color: transparent !important;
