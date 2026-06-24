@@ -24,6 +24,7 @@ const vidoPremium  = require('./seeds/vido_premium_prompts'); // 2026-04-25 é£žä
 const promptIntel  = require('./seeds/prompt_intelligence');
 const novelWriting = require('./seeds/novel_writing');
 const novelReview  = require('./seeds/novel_review');
+const deAiExpression = require('./seeds/de_ai_expression');
 
 const seedDocs = [
   ...digitalHuman,
@@ -37,6 +38,7 @@ const seedDocs = [
   ...promptIntel,
   ...novelWriting,
   ...novelReview,
+  ...deAiExpression,
 ];
 
 module.exports = seedDocs;

@@ -2444,6 +2444,102 @@
     updateCurrentChapterDraftDisplay();
   }
 
+  function applyCurrentChapterPlanDraftToNovel(novel = state.current, index = state.currentChapter) {
+    if (!novel || !hasActiveChapterEditor()) return novel;
+    const targetIndex = Number(index || 1);
+    const title = text(document.getElementById('nvChapterTitle')?.value) || `第 ${targetIndex} 章`;
+    const plan = readCurrentChapterPlanFromDom();
+    const outlineChapters = normalizedOutlineChapters(novel);
+    const outlinePosition = outlineChapters.findIndex(chapter => Number(chapter.index) === targetIndex);
+    if (outlinePosition < 0) {
+      outlineChapters.push({ index: targetIndex, title, summary: '' });
+      outlineChapters.sort((a, b) => Number(a.index) - Number(b.index));
+    }
+    const targetPosition = outlineChapters.findIndex(chapter => Number(chapter.index) === targetIndex);
+    const previousOutlineChapter = outlineChapters[targetPosition] || {};
+    outlineChapters[targetPosition] = {
+      ...previousOutlineChapter,
+      index: targetIndex,
+      title,
+      summary: plan.summary || previousOutlineChapter.summary || '',
+      scene_goal: plan.summary || previousOutlineChapter.scene_goal || previousOutlineChapter.goal || '',
+      obstacle: plan.obstacle || previousOutlineChapter.obstacle || previousOutlineChapter.conflict || '',
+      choice: plan.choice || previousOutlineChapter.choice || '',
+      cost: plan.cost || previousOutlineChapter.cost || '',
+      hook: plan.hook || previousOutlineChapter.hook || ''
+    };
+    const outline = { ...(novel.outline || {}), chapters: outlineChapters };
+    const list = chapters(novel);
+    const chapter_count = Math.max(maxChapterIndex({ ...novel, chapters: list, outline }), outlineChapters.length, list.length);
+    return { ...novel, outline, chapter_count };
+  }
+
+  function currentNovelSavePayload(novel = state.current) {
+    if (!novel) return null;
+    const list = chapters(novel);
+    const outline = novel.outline || {};
+    const chapter_count = Math.max(maxChapterIndex({ ...novel, chapters: list, outline }), list.length, arr(outline.chapters).length);
+    return {
+      chapters: list,
+      outline,
+      chapter_count,
+      status: novel.status === 'completed' ? 'completed' : 'draft',
+      allow_shorter_chapter_content: true
+    };
+  }
+
+  async function saveNovelPayloadInBackground(payload, options = {}) {
+    if (!state.current?.id || !payload) return state.current;
+    clearTimeout(state.autoSaveTimer);
+    if (state.autoSaveInFlight) {
+      await state.autoSaveInFlight;
+      return saveNovelPayloadInBackground(payload, options);
+    }
+    state.autoSaveInFlight = api('/api/novel/' + encodeURIComponent(state.current.id), {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    })
+      .then(data => {
+        state.autoSaveLastAt = Date.now();
+        state.autoSaveError = '';
+        state.current = hasActiveChapterEditor()
+          ? applyCurrentChapterDraftToNovel(data.novel || { ...state.current, ...payload })
+          : (data.novel || { ...state.current, ...payload });
+        updateCurrentChapterDraftDisplay();
+        return state.current;
+      })
+      .catch(error => {
+        state.autoSaveError = error.message || '自动保存失败';
+        if (!options.quiet) showToast('自动保存失败，请检查网络后继续编辑，系统会再次尝试自动保存', true);
+        throw error;
+      })
+      .finally(() => {
+        state.autoSaveInFlight = null;
+      });
+    return state.autoSaveInFlight;
+  }
+
+  function switchChapterFast(nextChapter) {
+    if (!state.current?.id) return;
+    const target = Number(nextChapter);
+    if (!target || Number(state.currentChapter) === target) return;
+    if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再切换');
+    clearTimeout(state.autoSaveTimer);
+    const previousChapter = Number(state.currentChapter || 1);
+    syncCurrentChapterDraftFromDom();
+    state.current = applyCurrentChapterPlanDraftToNovel(state.current, previousChapter);
+    const payload = currentNovelSavePayload(state.current);
+    state.currentChapter = target;
+    state.chapterCheck = null;
+    updateRouteState();
+    renderWork();
+    focusChapterListItem(target);
+    saveNovelPayloadInBackground(payload, { quiet: true }).catch(error => {
+      console.error(error);
+      showToast('上一章已先切换显示，但后台保存失败，请稍后点“保存目录”或继续编辑触发自动保存。', true);
+    });
+  }
+
   async function saveChapterPlan(options = {}) {
     if (!state.current) return state.current;
     const index = Number(state.currentChapter || 1);
@@ -3126,6 +3222,33 @@
     state.draggingChapter = null;
   }
 
+  function reorderChapterRecordsForDisplay(list = [], fromIndex, toIndex) {
+    const from = Number(fromIndex);
+    const to = Number(toIndex);
+    return arr(list)
+      .map((record, idx) => {
+        const index = Number(record.index || record.chapter_index || idx + 1);
+        return renumberChapterRecord({ ...record, index }, reorderedChapterIndex(index, from, to));
+      })
+      .sort((a, b) => Number(a.index) - Number(b.index));
+  }
+
+  function applyOptimisticChapterReorder(novel = state.current, fromIndex, toIndex) {
+    if (!novel) return novel;
+    const chaptersList = reorderChapterRecordsForDisplay(chapters(novel), fromIndex, toIndex);
+    const outlineChapters = reorderChapterRecordsForDisplay(normalizedOutlineChapters(novel), fromIndex, toIndex);
+    const outline = { ...(novel.outline || {}), chapters: outlineChapters };
+    const chapter_count = Math.max(maxChapterIndex({ ...novel, chapters: chaptersList, outline }), chaptersList.length, outlineChapters.length);
+    return {
+      ...novel,
+      chapters: chaptersList,
+      outline,
+      chapter_count,
+      total_words: chapterWordSum(chaptersList),
+      updated_at: new Date().toISOString()
+    };
+  }
+
   async function reorderChapter(fromIndex, toIndex) {
     if (!state.current?.id) return;
     const from = Number(fromIndex);
@@ -3134,26 +3257,42 @@
     if (from === to) return;
     if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再调整顺序');
     clearTimeout(state.autoSaveTimer);
+    const previous = state.current;
+    const previousChapter = Number(state.currentChapter || 1);
     syncCurrentChapterDraftFromDom();
     const reorderDraft = currentChapterReorderDraftFromDom();
     const movingSnapshot = chapterReorderSnapshot(from);
-    await autoSaveCurrentChapter({ reason: 'chapter-reorder' });
-    const data = await api(`/api/novel/${encodeURIComponent(state.current.id)}/chapters/reorder`, {
-      method: 'POST',
-      body: JSON.stringify({
-        from_index: from,
-        to_index: to,
-        current_chapter_draft: reorderDraft,
-        moving_chapter_snapshot: movingSnapshot
-      })
-    });
-    state.current = data.novel || state.current;
+    const optimistic = applyOptimisticChapterReorder(state.current, from, to);
+    state.current = optimistic;
     state.currentChapter = to;
-    assertMovedChapterSnapshot(movingSnapshot, to);
     updateRouteState();
     renderWork();
     focusChapterListItem(state.currentChapter);
-    showCenterNotice(`第 ${from} 章已移动到第 ${to} 章，剧情大纲已同步调整。`);
+    showCenterNotice(`第 ${from} 章已移动到第 ${to} 章，正在后台同步剧情大纲。`);
+    try {
+      const data = await api(`/api/novel/${encodeURIComponent(previous.id)}/chapters/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({
+          from_index: from,
+          to_index: to,
+          current_chapter_draft: reorderDraft,
+          moving_chapter_snapshot: movingSnapshot
+        })
+      });
+      state.current = hasActiveChapterEditor()
+        ? applyCurrentChapterDraftToNovel(data.novel || optimistic)
+        : (data.novel || optimistic);
+      state.currentChapter = to;
+      assertMovedChapterSnapshot(movingSnapshot, to);
+      updateRouteState();
+      updateCurrentChapterDraftDisplay();
+    } catch (error) {
+      state.current = previous;
+      state.currentChapter = previousChapter;
+      updateRouteState();
+      renderWork();
+      throw error;
+    }
   }
 
   async function checkChapterContent(type, button) {
@@ -3437,15 +3576,7 @@
       }
       const chapter = e.target.closest('[data-chapter]');
       if (chapter) {
-        return run(async () => {
-          if (state.submittingChapters.size) throw new Error('章节正在提交，请等待提交完成后再切换');
-          const nextChapter = Number(chapter.dataset.chapter);
-          if (!nextChapter || Number(state.currentChapter) === nextChapter) return;
-          await autoSaveCurrentChapter({ reason: 'chapter-switch' });
-          state.currentChapter = nextChapter;
-          updateRouteState();
-          renderWork();
-        });
+        return run(() => switchChapterFast(chapter.dataset.chapter));
       }
       const adaptLength = e.target.closest('[data-adapt-length]');
       if (adaptLength) return run(() => adaptNovelLength(adaptLength.dataset.adaptLength, adaptLength));

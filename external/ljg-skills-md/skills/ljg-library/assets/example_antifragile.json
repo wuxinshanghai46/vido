@@ -1,0 +1,36 @@
+{
+  "COVER": "file:///tmp/oneliner_cover.jpg",
+  "COVER_LOCAL": "/tmp/oneliner_cover.jpg",
+  "AVATAR": "file:///tmp/avatar_orig.jpg",
+  "TITLE": "反脆弱",
+  "EN": "Antifragile",
+  "SUBTITLE": "从不确定性中获益",
+  "TAGS": [
+    "<span class=\"tag\">不确定性</span>",
+    "<span class=\"tag\">凸性</span>",
+    "<span class=\"tag\">黑天鹅</span>",
+    "<span class=\"tag\">风险</span>"
+  ],
+  "AUTHOR_CN": "纳西姆·尼古拉斯·塔勒布",
+  "AUTHOR_META": "Nassim Nicholas Taleb · 中信出版社 2014",
+  "FRAME": "脆弱的反义词不是坚固，而是<span class=\"hl\">反脆弱</span>。",
+  "ECHO": "它从波动和混乱里长力气——风吹灭蜡烛，却把火越烧越旺。",
+  "CHART_TITLE": "Convexity 凸性",
+  "CHART": [
+    "<span class=\"lbl\">收益</span>",
+    "<span class=\"ax\">│</span>                   <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>                 <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>               <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>            <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>         <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>      <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span>   <span class=\"cv\">●</span>",
+    "<span class=\"ax\">│</span><span class=\"cv\">●━━</span>",
+    "<span class=\"ax\">└───────────→</span> <span class=\"lbl\">波动</span>"
+  ],
+  "NOTE": [
+    "<div class=\"cn-item\"><div class=\"k\">下行<b>封死</b></div><div class=\"v\">损失有底，亏得起的小注</div></div>",
+    "<div class=\"cn-item\"><div class=\"k\">上行<b>敞开</b></div><div class=\"v\">收益无顶，赌罕见的巨大命中</div></div>",
+    "<div class=\"cn-item\"><div class=\"k\">偏离越大，越<b>获益</b></div><div class=\"v\">波动和混乱，成了它的养料</div></div>"
+  ]
+}

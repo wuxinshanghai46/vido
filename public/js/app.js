@@ -114,14 +114,13 @@ function switchTheme(theme) {
   const nextTheme = window.vidoTheme?.normalize ? window.vidoTheme.normalize(theme) : theme;
   if (window.vidoTheme && !window.vidoTheme.isValid(nextTheme)) return;
   if (window.vidoTheme) {
-    window.vidoTheme.apply(nextTheme);
+    window.vidoTheme.set ? window.vidoTheme.set(nextTheme) : window.vidoTheme.store(nextTheme);
   } else {
     document.documentElement.setAttribute('data-theme', nextTheme);
+    localStorage.setItem('vido-theme', nextTheme);
+    authFetch('/api/user/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: nextTheme }) }).catch(() => {});
   }
-  localStorage.setItem('vido-theme', nextTheme);
   document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.theme === nextTheme));
-  // 保存到后端（用户偏好）
-  authFetch('/api/user/theme', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: nextTheme }) }).catch(() => {});
   // 关闭面板
   const panel = document.getElementById('theme-panel');
   if (panel) panel.style.display = 'none';

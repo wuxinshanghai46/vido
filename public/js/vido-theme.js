@@ -30,6 +30,27 @@
     } catch (_) {}
   }
 
+  function persistServerTheme(theme) {
+    const token = getAccessToken();
+    if (!token) return Promise.resolve(false);
+    return fetch('/api/user/theme', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ theme }),
+    }).then(res => res.ok).catch(() => false);
+  }
+
+  function setTheme(theme) {
+    const nextTheme = normalizeTheme(theme);
+    applyTheme(nextTheme);
+    setStoredTheme(nextTheme);
+    persistServerTheme(nextTheme);
+    return nextTheme;
+  }
+
   function getAccessToken() {
     try {
       return (
@@ -66,7 +87,9 @@
     isValid: theme => VALID_THEMES.has(theme),
     normalize: normalizeTheme,
     apply: applyTheme,
-    store: setStoredTheme,
+    store: setTheme,
+    set: setTheme,
+    saveServer: persistServerTheme,
     current: () => document.documentElement.getAttribute('data-theme') || 'purple',
   };
 })();

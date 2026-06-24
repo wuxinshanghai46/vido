@@ -865,6 +865,40 @@ function resolveOwnedAvatar(req) {
   return task;
 }
 
+// GET /api/avatar/tasks/:id - 兼容旧任务详情/旧视频地址
+router.get('/tasks/:id', (req, res) => {
+  const task = resolveOwnedAvatar(req);
+  const accept = String(req.headers.accept || '');
+  const wantsJson = req.query.format === 'json' || accept.includes('application/json');
+  if (!task) {
+    if (wantsJson) return res.status(404).json({ success: false, error: '任务不存在' });
+    return res.status(204).end();
+  }
+  const videoUrl = task.videoUrl || task.video_url || (task.status === 'done' ? `/api/avatar/tasks/${req.params.id}/stream` : null);
+  if (!wantsJson && task.status === 'done' && videoUrl) {
+    return res.redirect(302, videoUrl);
+  }
+  res.json({
+    success: true,
+    task: {
+      id: task.id,
+      taskId: task.id,
+      status: task.status,
+      stage: task.stage || '',
+      progress: task.progress || (task.status === 'done' ? 100 : 0),
+      title: task.title || '',
+      text: task.text || '',
+      videoUrl,
+      video_url: videoUrl,
+      error: task.error || null,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      ratio: task.ratio || '',
+      model: task.model || '',
+    },
+  });
+});
+
 // GET /api/avatar/tasks/:id/progress - SSE 进度
 router.get('/tasks/:id/progress', (req, res) => {
   const task = resolveOwnedAvatar(req);

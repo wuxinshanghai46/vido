@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -10,14 +10,23 @@
       const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','luxury-ad'];
       let tab = 'step1';
       try {
-        const urlTab = new URLSearchParams(location.search).get('tab');
+        const params = new URLSearchParams(location.search);
+        const urlTab = params.get('tab');
         tab = tabs.includes(urlTab) ? urlTab : 'step1';
+        const luxStep = Number(params.get('lux_step') || 0) || 0;
+        const luxFocus = params.get('lux_focus') || '';
+        if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
+          document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
+        }
+        if ((tab === 'luxury-ad' || tab === 'material-film') && luxFocus) {
+          document.documentElement.dataset.dhInitialLuxFocus = luxFocus;
+        }
       } catch {}
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260622-story-contract-v94">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260624-control-tone">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -53,9 +62,23 @@
       color: var(--dh-primary) !important;
       font-weight: 500 !important;
     }
+    html[data-dh-initial-lux-step="2"] .dh-tab-pane[data-pane="luxury-ad"] #dhLuxAdSteps > [data-lux-step] {
+      background: transparent !important;
+      color: var(--dh-text-soft) !important;
+    }
+    html[data-dh-initial-lux-step="2"] .dh-tab-pane[data-pane="luxury-ad"] #dhLuxAdSteps > [data-lux-step="2"] {
+      background: var(--dh-primary-bg) !important;
+      color: var(--dh-primary) !important;
+    }
+    html[data-dh-initial-lux-step="2"] .dh-tab-pane[data-pane="luxury-ad"] .dh-luxgen-stage[data-panel="1"] {
+      display: none !important;
+    }
+    html[data-dh-initial-lux-step="2"] .dh-tab-pane[data-pane="luxury-ad"] .dh-luxgen-stage[data-panel="2"] {
+      display: block !important;
+    }
   </style>
-  <script src="/js/vido-theme.js?v=20260622-light-mist-interactions"></script>
-  <link rel="stylesheet" href="/css/vido-ui.css?v=20260622-light-mist-interactions" />
+  <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
+  <link rel="stylesheet" href="/css/vido-ui.css?v=20260624-control-tone" />
 </head>
 <body>
   <div class="dh-app" id="dhApp">
@@ -1228,22 +1251,29 @@
                 <div class="dh-demo-section-title">人物配置</div>
                 <div class="dh-demo-guide">
                   <b>先定人物约束</b>
-                  <span>剧本前先确认人数、性别、年龄、地域/种族或人物一致性参考；真人演员请上传真人照片或从演员库选择授权演员，AI 拟真演员包只作为一致性参考。</span>
+                  <span>剧本前先确认人数、性别、年龄、地域/种族或人物一致性参考；真人演员请上传真人照片或从演员库选择授权演员，拟真演员包只作为一致性参考。</span>
                 </div>
                 <div class="dh-demo-person-source">
                   <input type="file" id="dhLuxAdPersonFile" accept="image/*" hidden>
                   <div class="dh-luxgen-person-current" id="dhLuxAdPersonCurrent">
-                    <span>未选</span>
-                    <div class="dh-luxgen-person-copy"><b>可不选人物参考图</b><small>但必须先确认人物数量和基础设定。</small></div>
+                    <span class="dh-luxgen-person-badge">未选择</span>
+                    <div class="dh-luxgen-person-copy"><b>可不选人物参考图</b><small>先确认人物设定；需要真人一致性时再上传或选择演员。</small></div>
                   </div>
-                  <div>
-                    <b>人物来源</b>
-                    <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；真人演员入口是“上传真人参考”和“选择真人演员/演员库”。</p>
+                  <div class="dh-luxgen-person-main">
+                    <div class="dh-luxgen-person-head">
+                      <div>
+                        <b>人物来源</b>
+                        <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；可让 AI 先按广告需求补齐人物设定，再手动微调。</p>
+                      </div>
+                    </div>
+                    <div class="dh-luxgen-mini-actions">
+                      <span>系统会优先补齐留空字段；真人入口仍是“上传真人参考”和“选择真人演员/演员库”。“穿着/服装”会进入演员包生成约束，用来控制衣服、颜色、鞋和配饰。</span>
+                    </div>
                     <div class="dh-luxgen-person-spec">
                       <label>
                         <span>人物数量</span>
                         <select class="dh-input" data-lux-person-spec="castMode">
-                          <option value="auto">AI 按内容判断</option>
+                          <option value="auto">按内容判断</option>
                           <option value="single">单人</option>
                           <option value="dual">双人对话</option>
                           <option value="group">多人 / 群体</option>
@@ -1252,7 +1282,7 @@
                       <label>
                         <span>人物性别</span>
                         <select class="dh-input" data-lux-person-spec="gender">
-                          <option value="auto">AI 按故事判断</option>
+                          <option value="auto">按故事判断</option>
                           <option value="male">男性</option>
                           <option value="female">女性</option>
                           <option value="mixed">双人/多人混合</option>
@@ -1298,21 +1328,21 @@
                         <span>人物姓名</span>
                         <input class="dh-input" data-lux-person-spec="displayName" maxlength="40" placeholder="可手动指定；留空时由编剧生成正式人名">
                       </label>
-                      <label>
+                      <label class="dh-luxgen-person-text-field">
                         <span>外貌 / 气质</span>
-                        <input class="dh-input" data-lux-person-spec="appearanceText" maxlength="180" placeholder="脸型、体型、年龄感、真实感、气质等">
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-lux-person-spec="appearanceText" maxlength="260" placeholder="脸型、体型、年龄感、真实感、气质等"></textarea>
                       </label>
-                      <label>
+                      <label class="dh-luxgen-person-text-field">
                         <span>穿着 / 服装</span>
-                        <input class="dh-input" data-lux-person-spec="wardrobeText" maxlength="220" placeholder="上衣、裤装、鞋、配饰、颜色、职业装等">
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-lux-person-spec="wardrobeText" maxlength="320" placeholder="写清上衣、裤装/裙装、鞋、配饰、颜色、材质；生成演员包会尽量按这里的服装约束执行"></textarea>
                       </label>
-                      <label>
+                      <label class="dh-luxgen-person-text-field">
                         <span>发型 / 妆造</span>
-                        <input class="dh-input" data-lux-person-spec="hairMakeupText" maxlength="160" placeholder="发型、妆容、眼镜、胡须等">
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-lux-person-spec="hairMakeupText" maxlength="220" placeholder="发型、妆容、眼镜、胡须等"></textarea>
                       </label>
-                      <label>
+                      <label class="dh-luxgen-person-text-field">
                         <span>人物禁止项</span>
-                        <input class="dh-input" data-lux-person-spec="negativeText" maxlength="220" placeholder="如：不要西装、不要白衬衫、不要夸张表情">
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-lux-person-spec="negativeText" maxlength="320" placeholder="如：不要西装、不要白衬衫、不要夸张表情"></textarea>
                       </label>
                     </div>
                   </div>
@@ -1320,7 +1350,8 @@
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdUploadPersonRef" type="button">上传真人参考</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickActorAsset" type="button">选择真人演员/演员库</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdPickPerson" type="button">参考数字人形象</button>
-                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhLuxAdGeneratePersonSheet" type="button">生成 AI 拟真演员包</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhLuxAdAiPersonSpec" type="button" aria-pressed="false">辅助补齐</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-person-generate-btn" id="dhLuxAdGeneratePersonSheet" type="button" aria-pressed="false">生成拟真演员</button>
                   </div>
                 </div>
               </div>
@@ -1980,6 +2011,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260623-route-all"></script>
+  <script src="/js/digital-human.js?v=20260624-control-tone"></script>
 </body>
 </html>

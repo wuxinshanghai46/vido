@@ -23,6 +23,7 @@ const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackServi
 const modelCapabilityService = require('../services/modelCapabilityService');
 const sqliteConfig = require('../db/sqlite');
 const contentRecords = require('../repositories/contentRecordRepository');
+const appKv = require('../repositories/appKvRepository');
 
 const JIMENG_ASSETS_DIR = path.join(__dirname, '../../outputs/jimeng-assets');
 const DH_IMAGES_DIR = path.join(__dirname, '../../outputs/dh-images');
@@ -38,6 +39,7 @@ const luxuryStoryboardResults = new Map();
 const luxuryKeyframeResults = new Map();
 const luxuryPersonSheetResults = new Map();
 const SERVER_STARTED_AT = Date.now();
+const LUXURY_PERSON_SHEET_RESULT_TTL_MS = 90 * 60 * 1000;
 
 function _jsonClone(value, fallback = null) {
   try {
@@ -1561,7 +1563,7 @@ function _extractPublicError(err, fallback = '接口请求失败') {
   ) {
     status = 429;
     publicCode = 'PROVIDER_LIMIT_EXCEEDED';
-    message = '当前图片或视觉质检模型通道返回额度/频率限制，不等同于账户总余额不足。请切换可用模型、检查对应模型通道额度/分组授权，或稍后再试。';
+    message = '当前图片或视觉质检模型通道返回额度/频率限制。请按完整错误回执检查对应供应商账号余额、模型通道额度、频率限制、分组授权，或切换可用模型后重试。';
   }
   message = _compactDhPublicMessage(message || fallback);
   const body = { success: false, error: message, message, code: publicCode };
@@ -2413,6 +2415,122 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
   return qa;
 }
 
+function _luxuryActorSpecQaContract(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
+  const raw = spec && typeof spec === 'object' ? spec : {};
+  const read = (...keys) => {
+    for (const key of keys) {
+      const value = raw[key];
+      if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    }
+    return '';
+  };
+  const clean = (value = '', max = 320) => _luxuryStrictText(value, max);
+  const gender = _normalizeLuxuryRequestedGender(read('gender', 'person_gender') || expectedGender);
+  const originRaw = read('origin', 'region', 'ethnicity', 'race', 'person_origin');
+  const ageRaw = read('age', 'age_range', 'ageRange', 'person_age');
+  const origin = /^(auto|match_brief)$/i.test(originRaw) ? '' : originRaw;
+  const age = /^(auto|match_brief)$/i.test(ageRaw) ? '' : ageRaw;
+  const roleName = read('roleName', 'role_name', 'job', 'occupation', 'identity', 'cast_member_role') || roleHint;
+  const contract = {
+    gender,
+    origin: clean(origin, 120),
+    age: clean(age, 120),
+    roleName: clean(roleName, 180),
+    displayName: clean(read('displayName', 'display_name', 'name', 'cast_member_name'), 120),
+    appearanceText: clean(read('appearanceText', 'appearance', 'appearance_text'), 360),
+    wardrobeText: clean(read('wardrobeText', 'wardrobe', 'clothing', 'outfit', 'wardrobe_text'), 360),
+    hairMakeupText: clean(read('hairMakeupText', 'hair_makeup', 'hairMakeup', 'hair', 'makeup', 'hair_makeup_text'), 320),
+    negativeText: clean(read('negativeText', 'negative', 'forbidden', 'negative_text'), 320),
+    promptContext: clean(promptText, 420),
+  };
+  const activeKeys = Object.entries(contract)
+    .filter(([key, value]) => value && key !== 'promptContext' && key !== 'displayName')
+    .map(([key]) => key);
+  return { contract, activeKeys };
+}
+
+async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
+  spec = {},
+  viewKey = '',
+  model = '',
+  expectedPeople = 1,
+  castMode = 'single',
+  expectedGender = '',
+  roleHint = '',
+  promptText = '',
+} = {}) {
+  if (!localPath || !fs.existsSync(localPath)) {
+    const err = new Error('演员包设定匹配 QA 无法执行：候选图片文件不存在');
+    err.status = 500;
+    err.code = 'LUXURY_ACTOR_SPEC_FILE_MISSING';
+    throw err;
+  }
+  const { contract, activeKeys } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
+  if (!activeKeys.length) return null;
+  const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const prompt = [
+    'You are a strict commercial actor SPEC-MATCH QA gate.',
+    'The attached image is one candidate actor reference view. Judge whether the visible actor matches the dynamic user-provided person settings. Do not use any fixed template; only use the contract below.',
+    'Return ONLY compact JSON, no markdown.',
+    'Schema: {"pass":boolean,"score":0-100,"gender_match":boolean,"origin_match":boolean,"age_match":boolean,"role_match":boolean,"appearance_match":boolean,"wardrobe_match":boolean,"hair_makeup_match":boolean,"negative_constraints_ok":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    `Expected visible people: ${peopleCount}. Cast mode: ${castMode || 'single'}. View: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
+    'Dynamic person settings contract:',
+    JSON.stringify(contract),
+    'Required matching rules:',
+    '- Only enforce fields that are non-empty in the contract.',
+    '- Hard fail if explicit origin/ethnicity/region conflicts with the visible person impression.',
+    '- Hard fail if explicit wardrobeText conflicts with the actual visible outfit, especially top/bottom garment type, skirt/pants/dress, shoes, color family or style.',
+    '- Hard fail if explicit roleName, age or gender conflicts with the visible person impression.',
+    '- Hard fail if explicit hairMakeupText or appearanceText is visibly contradicted by the image.',
+    '- Hard fail if a negativeText item is visibly present.',
+    '- For back/side/action views, allow face details to be less visible, but still enforce outfit, hair length/style, age/gender impression, origin impression where visible, and negative constraints.',
+  ].join(' ');
+  const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
+    stageId: 'luxury_ad.keyframe_qa',
+    maxTokens: 1800,
+  });
+  const mismatches = _cleanQaList(parsed.major_mismatches, 160, 8);
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const requireBool = (key, field) => !contract[key] || parsed[field] === true;
+  const qa = {
+    pass: parsed.pass === true
+      && score >= 86
+      && requireBool('gender', 'gender_match')
+      && requireBool('origin', 'origin_match')
+      && requireBool('age', 'age_match')
+      && requireBool('roleName', 'role_match')
+      && requireBool('appearanceText', 'appearance_match')
+      && requireBool('wardrobeText', 'wardrobe_match')
+      && requireBool('hairMakeupText', 'hair_makeup_match')
+      && requireBool('negativeText', 'negative_constraints_ok')
+      && mismatches.length === 0,
+    score,
+    active_keys: activeKeys,
+    contract,
+    gender_match: parsed.gender_match === true,
+    origin_match: parsed.origin_match === true,
+    age_match: parsed.age_match === true,
+    role_match: parsed.role_match === true,
+    appearance_match: parsed.appearance_match === true,
+    wardrobe_match: parsed.wardrobe_match === true,
+    hair_makeup_match: parsed.hair_makeup_match === true,
+    negative_constraints_ok: parsed.negative_constraints_ok === true,
+    major_mismatches: mismatches,
+    observed: String(parsed.observed || '').slice(0, 260),
+    reason: String(parsed.reason || '').slice(0, 260),
+    provider,
+  };
+  if (!qa.pass) {
+    const err = new Error(`演员包人物设定 QA 未通过：${qa.reason || qa.observed || '候选图与当前人物设定不一致'}；score=${qa.score}`);
+    err.status = 422;
+    err.code = 'LUXURY_ACTOR_SPEC_MATCH_QA_FAILED';
+    err.details = qa;
+    err._luxuryCandidatePath = localPath;
+    throw err;
+  }
+  return qa;
+}
+
 function _imageFileToDataUrl(localPath) {
   const ext = path.extname(localPath || '').toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
@@ -2826,6 +2944,22 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   const lowerBodyVisible = boolField('lower_body_visible');
   const lowerGarmentVisible = boolField('trousers_or_skirt_visible');
   const kneesOrShoesVisible = boolField('knees_or_shoes_visible');
+  const specGenderMatch = boolField('gender_match');
+  const specOriginMatch = boolField('origin_match');
+  const specAgeMatch = boolField('age_match');
+  const specRoleMatch = boolField('role_match');
+  const specAppearanceMatch = boolField('appearance_match');
+  const specWardrobeMatch = boolField('wardrobe_match');
+  const specHairMakeupMatch = boolField('hair_makeup_match');
+  const specNegativeOk = boolField('negative_constraints_ok');
+  const identityMatch = boolField('identity_match');
+  const faceMatch = boolField('face_match');
+  const hairstyleMatch = boolField('hairstyle_match');
+  const ageGenderMatch = boolField('age_gender_match');
+  const bodyProportionMatch = boolField('body_proportion_match');
+  const outfitMatch = boolField('outfit_match');
+  const lowerBodyOutfitMatch = boolField('lower_body_outfit_match');
+  const personCountMatch = boolField('person_count_match');
   const scoreMatch = text.match(/["']?score["']?\s*:\s*(\d{1,3})/i);
   const score = Math.max(0, Math.min(100, Number(scoreMatch?.[1]) || (pass ? 86 : 35)));
   const numberField = name => {
@@ -2835,9 +2969,30 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   };
   if (pass === null && subjectMatch === null && storyboardMatch === null && !scoreMatch) return null;
   const actorQaShape = /realistic_photo|lower_body_visible|trousers_or_skirt_visible|gender_presentation|person_count|framing/i.test(text);
+  const specQaShape = /gender_match|origin_match|age_match|role_match|appearance_match|wardrobe_match|hair_makeup_match|negative_constraints_ok/i.test(text);
+  const consistencyQaShape = /identity_match|face_match|hairstyle_match|age_gender_match|body_proportion_match|outfit_match|lower_body_outfit_match|person_count_match/i.test(text);
+  const explicitFalse = [
+    specGenderMatch,
+    specOriginMatch,
+    specAgeMatch,
+    specRoleMatch,
+    specAppearanceMatch,
+    specWardrobeMatch,
+    specHairMakeupMatch,
+    specNegativeOk,
+    identityMatch,
+    faceMatch,
+    hairstyleMatch,
+    ageGenderMatch,
+    bodyProportionMatch,
+    outfitMatch,
+    lowerBodyOutfitMatch,
+    personCountMatch,
+  ].some(v => v === false);
   const ok = pass === true
     && subjectMatch !== false
     && storyboardMatch !== false
+    && !explicitFalse
     && score >= 70
     && !/hard fail|explicit reject|unrelated|wrong subject|wrong scene|does not meet|not meet|不符合|不匹配|无关|错误品类|错误场景/i.test(text);
   const dimOrDefault = (name) => {
@@ -2874,6 +3029,26 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
       lower_body_visible: lowerBodyVisible === null ? ok : lowerBodyVisible,
       trousers_or_skirt_visible: lowerGarmentVisible === null ? ok : lowerGarmentVisible,
       knees_or_shoes_visible: kneesOrShoesVisible === null ? ok : kneesOrShoesVisible,
+    } : {}),
+    ...(specQaShape ? {
+      gender_match: specGenderMatch === null ? ok : specGenderMatch,
+      origin_match: specOriginMatch === null ? ok : specOriginMatch,
+      age_match: specAgeMatch === null ? ok : specAgeMatch,
+      role_match: specRoleMatch === null ? ok : specRoleMatch,
+      appearance_match: specAppearanceMatch === null ? ok : specAppearanceMatch,
+      wardrobe_match: specWardrobeMatch === null ? ok : specWardrobeMatch,
+      hair_makeup_match: specHairMakeupMatch === null ? ok : specHairMakeupMatch,
+      negative_constraints_ok: specNegativeOk === null ? ok : specNegativeOk,
+    } : {}),
+    ...(consistencyQaShape ? {
+      identity_match: identityMatch === null ? ok : identityMatch,
+      face_match: faceMatch === null ? ok : faceMatch,
+      hairstyle_match: hairstyleMatch === null ? ok : hairstyleMatch,
+      age_gender_match: ageGenderMatch === null ? ok : ageGenderMatch,
+      body_proportion_match: bodyProportionMatch === null ? ok : bodyProportionMatch,
+      outfit_match: outfitMatch === null ? ok : outfitMatch,
+      lower_body_outfit_match: lowerBodyOutfitMatch === null ? ok : lowerBodyOutfitMatch,
+      person_count_match: personCountMatch === null ? ok : personCountMatch,
     } : {}),
   };
 }
@@ -6991,7 +7166,7 @@ function _ffmpegBin() {
 function _replicateAuthMessage(msg) {
   const text = String(msg || '');
   if (/valid authentication token|authentication token|unauthorized|401|invalid api key|invalid token/i.test(text)) {
-    return 'Replicate API Key 无效或已失效：这不是余额不足，请到后台 AI 供应商配置里更新 Replicate Token（通常以 r8_ 开头）。';
+    return 'Replicate API Key 无效或已失效：请到后台 AI 供应商配置里更新 Replicate Token（通常以 r8_ 开头），并同时确认该供应商账号状态可用。';
   }
   if (/payment|billing|credit|balance|insufficient/i.test(text)) {
     return 'Replicate 余额或账单状态异常：请检查 Replicate 账户余额/账单后重试。';
@@ -7481,6 +7656,70 @@ function _cleanJsonObject(text) {
   }
   const obj = raw.match(/\{[\s\S]*\}/);
   return obj ? JSON.parse(obj[0]) : {};
+}
+
+function _extractBalancedJsonBlock(text, openChar, closeChar) {
+  const raw = String(text || '');
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (start < 0) {
+      if (ch === openChar) {
+        start = i;
+        depth = 1;
+      }
+      continue;
+    }
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === openChar) depth++;
+    if (ch === closeChar) depth--;
+    if (depth === 0) return raw.slice(start, i + 1);
+  }
+  return '';
+}
+
+function _cleanPersonSpecJsonObject(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return {};
+  const candidates = [];
+  const addCandidate = (value) => {
+    const v = String(value || '').trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    if (v && !candidates.includes(v)) candidates.push(v);
+  };
+  addCandidate(raw);
+  const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let fenceMatch;
+  while ((fenceMatch = fenceRe.exec(raw))) addCandidate(fenceMatch[1]);
+  for (const seed of [...candidates]) {
+    addCandidate(_extractBalancedJsonBlock(seed, '{', '}'));
+    addCandidate(_extractBalancedJsonBlock(seed, '[', ']'));
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (Array.isArray(parsed)) return parsed.find(item => item && typeof item === 'object') || {};
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {}
+  }
+  return {};
 }
 
 function _fallbackProductAdScenes(product, topic, durationSec) {
@@ -12562,6 +12801,109 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
   ].filter(Boolean).join(' ');
 }
 
+function _luxuryPersonSheetModelPolicy(model = {}) {
+  const providerId = String(model.provider_id || model.provider || '').toLowerCase();
+  const modelId = String(model.model_id || model.model || '').toLowerCase();
+  if (providerId === 'deyunai' && modelId === 'gpt-image-2') {
+    return {
+      id: 'deyunai_gpt_image2_person_sheet_strict_v1',
+      auditMode: 'strict_submit_audit',
+      promptStyle: 'neutral_commercial_casting_sheet',
+      referenceMode: 'single_clean_reference_edit',
+      maxPromptChars: 1350,
+      maxRefsPerCall: 1,
+      inputFidelity: ['high', 'low'],
+    };
+  }
+  return {
+    id: 'generic_person_sheet_v1',
+    auditMode: 'model_default',
+    promptStyle: 'original_person_sheet',
+    referenceMode: 'model_default',
+    maxPromptChars: 2400,
+    maxRefsPerCall: 4,
+    inputFidelity: ['high'],
+  };
+}
+
+function _luxuryPersonSheetAuditNeutralText(value = '', max = 900) {
+  return _luxuryStrictText(value, max)
+    .replace(/\bfull[-\s]?body\b/gi, 'full-length')
+    .replace(/\blower[-\s]?body\b/gi, 'lower outfit')
+    .replace(/\bbody\s+proportions\b/gi, 'overall build')
+    .replace(/\bhips?\b/gi, 'lower outfit')
+    .replace(/\blegs?\b/gi, 'lower outfit')
+    .replace(/\bskin\s+pores?\b/gi, 'natural skin texture')
+    .replace(/\bbeauty\s+portrait\b/gi, 'portrait crop')
+    .replace(/\bfashion\s+editorial\b/gi, 'stylized editorial')
+    .replace(/性感|暴露|诱惑|擦边|紧身|大尺度|裸露|内衣|泳装|低胸|透视|情色|挑逗/g, '端庄日常')
+    .replace(/身体比例|臀|腿部|胸|腰|身材/g, '整体体态')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
+  aspectRatio = '9:16',
+  expectedPeople = 1,
+  castMode = 'single',
+  expectedGender = '',
+  hasReference = false,
+  viewKey = '',
+} = {}) {
+  if (policy.id !== 'deyunai_gpt_image2_person_sheet_strict_v1') {
+    return _luxuryCapImageModelPrompt(prompt, policy.maxPromptChars || 2400);
+  }
+  const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
+  const castLabel = castMode === 'dual'
+    ? 'two separate campaign actors'
+    : (castMode === 'group' ? `${people} separate campaign actors` : 'one campaign actor');
+  const view = /side/i.test(viewKey)
+    ? 'side or three-quarter casting reference'
+    : (/back/i.test(viewKey) ? 'back-view casting reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
+  const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, 760);
+  return _luxuryCapImageModelPrompt([
+    `Photorealistic commercial casting reference, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
+    `Create ${castLabel} for a neutral studio casting sheet; ${view}.`,
+    genderInstruction,
+    hasReference
+      ? 'Use the provided clean reference only for identity, age impression, hairstyle and wardrobe evidence; do not copy the source crop, background, lighting, pose or any unrelated scene.'
+      : 'Derive the actor only from the confirmed campaign role, audience and person settings.',
+    'Use modest age-appropriate everyday clothing, natural grooming, calm expression, practical standing or gentle pose, neutral gray or white studio background, soft daylight and real-camera texture.',
+    people === 1
+      ? 'Keep exactly one actor total, complete outfit visible, clean margin around the person, no extra people.'
+      : `Keep exactly ${people} actors total, separated clearly, complete outfits visible, no extra people, no merged bodies.`,
+    'Avoid glamour, revealing clothing, intimate posing, medical or identity-document styling, readable text, logos, watermarks, posters, weapons, uniforms unless explicitly required by the user brief.',
+    neutralSource ? `Campaign/person constraints: ${neutralSource}` : '',
+  ].filter(Boolean).join(' '), policy.maxPromptChars || 1350);
+}
+
+function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
+  const {
+    aspectRatio = '9:16',
+    expectedPeople = 1,
+    castMode = 'single',
+    expectedGender = '',
+    hasReference = false,
+    viewKey = '',
+  } = opts;
+  const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
+  const view = /side/i.test(viewKey)
+    ? 'side or three-quarter reference'
+    : (/back/i.test(viewKey) ? 'back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
+  return _luxuryCapImageModelPrompt([
+    `Photorealistic neutral commercial casting sheet, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
+    castMode === 'dual'
+      ? 'Create two separate age-appropriate campaign actors.'
+      : (castMode === 'group' ? `Create exactly ${people} separate age-appropriate campaign actors.` : 'Create one age-appropriate campaign actor.'),
+    `${view}, modest everyday clothing, natural grooming, calm expression, neutral studio background, soft daylight.`,
+    genderInstruction,
+    hasReference ? 'Use the reference only for identity, age impression, hairstyle and wardrobe evidence.' : '',
+    'Complete outfit visible, no extra people, no readable text, no logos, no glamour styling, no revealing clothing, no intimate pose, no sensitive document or medical scene.',
+  ].filter(Boolean).join(' '), Math.min(Number(policy.maxPromptChars || 1100), 1100));
+}
+
 function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
   const s = _stripLuxuryBriefNoise(value)
     .replace(/[。；;，,]\s*$/g, '')
@@ -12656,6 +12998,8 @@ async function _generateLuxuryPersonSheetWithPipeline({
   expectedPeople = 1,
   castMode = 'single',
   expectedGender = '',
+  personSpec = {},
+  roleHint = '',
   consistencyReferencePaths = [],
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
@@ -12672,7 +13016,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       ok: !!ok,
       code: err?.code || '',
       error: err ? shortError(err) : '',
-      qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING|GENDER)/.test(String(err.code || '')) ? err.details : null,
+      qa: err?.details && /LUXURY_ACTOR_(FRAME|FRAMING|GENDER|CONSISTENCY|SPEC_MATCH)/.test(String(err.code || '')) ? err.details : null,
       provider_request: err?.providerRequest || null,
       ...extra,
     });
@@ -12725,10 +13069,20 @@ async function _generateLuxuryPersonSheetWithPipeline({
   const runCandidate = async (model, idx, promptText = prompt, suffix = '') => {
     const provider = String(model?.provider_id || '').toLowerCase();
     const modelId = String(model?.model_id || '').toLowerCase();
+    const modelPolicy = _luxuryPersonSheetModelPolicy(model);
+    const viewKey = String(filename || '').split('_').pop() || '';
+    const promptForModel = _applyLuxuryPersonSheetModelPolicyPrompt(promptText, modelPolicy, {
+      aspectRatio: safeAspectRatio,
+      expectedPeople,
+      castMode,
+      expectedGender,
+      hasReference: refs.length > 0,
+      viewKey,
+    });
     if (provider === 'deyunai') {
       if (/nano-banana/.test(modelId)) {
         return _generateViaDeyunaiNanoBanana({
-          prompt: promptText,
+          prompt: promptForModel,
           aspectRatio: safeAspectRatio,
           filename: `${filename}_person_${idx}${suffix}`,
           destDir,
@@ -12750,24 +13104,27 @@ async function _generateLuxuryPersonSheetWithPipeline({
         console.log(`[DH/luxury-ad/person-sheet] prepared ${providerReferenceImages.length}/${refs.length} refs for deyunai gpt-image-2 clean public JPEG`);
       }
       if (modelId === 'gpt-image-2' && providerReferenceImages.length) {
-        const baseRefs = providerReferenceImages.slice(0, 2);
+        const baseRefs = providerReferenceImages.slice(0, modelPolicy.maxRefsPerCall || 1);
         const refPlans = [
-          { name: 'full', refs: baseRefs },
-          { name: 'core', refs: baseRefs.slice(0, 1) },
+          { name: modelPolicy.referenceMode === 'single_clean_reference_edit' ? 'strict_primary' : 'full', refs: baseRefs },
+          ...(modelPolicy.referenceMode === 'single_clean_reference_edit' ? [] : [{ name: 'core', refs: baseRefs.slice(0, 1) }]),
         ].filter((plan, planIdx, arr) =>
           plan.refs.length
           && arr.findIndex(x => x.refs.join('|') === plan.refs.join('|')) === planIdx);
         let lastGptImage2Err = null;
         for (const plan of refPlans) {
-          for (const inputFidelity of ['high', 'low']) {
+          const fidelityModes = Array.isArray(modelPolicy.inputFidelity) && modelPolicy.inputFidelity.length
+            ? modelPolicy.inputFidelity
+            : ['high', 'low'];
+          for (const inputFidelity of fidelityModes) {
             const suffixParts = [
-              plan.name === 'full' && inputFidelity === 'high' ? '' : plan.name,
+              (plan.name === 'full' || plan.name === 'strict_primary') && inputFidelity === 'high' ? '' : plan.name,
               inputFidelity === 'low' ? 'lowfid' : '',
             ].filter(Boolean);
             try {
               return await _generateViaDeyunaiSpecificImageModel({
                 model: model.model_id,
-                prompt: promptText,
+                prompt: promptForModel,
                 aspectRatio: safeAspectRatio,
                 filename: `${filename}_person_${idx}${suffix}${suffixParts.length ? `_${suffixParts.join('_')}` : ''}`,
                 destDir,
@@ -12778,8 +13135,48 @@ async function _generateLuxuryPersonSheetWithPipeline({
             } catch (err) {
               lastGptImage2Err = err;
               const auditSubmitRejected = /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(err.message || err?.response?.data || ''));
+              if (auditSubmitRejected) {
+                const minimalAuditPrompt = _buildLuxuryPersonSheetAuditMinimalPrompt(modelPolicy, {
+                  aspectRatio: safeAspectRatio,
+                  expectedPeople,
+                  castMode,
+                  expectedGender,
+                  hasReference: plan.refs.length > 0,
+                  viewKey,
+                });
+                try {
+                  return await _generateViaDeyunaiSpecificImageModel({
+                    model: model.model_id,
+                    prompt: minimalAuditPrompt,
+                    aspectRatio: safeAspectRatio,
+                    filename: `${filename}_person_${idx}${suffix}_auditminimal`,
+                    destDir,
+                    referenceImages: plan.refs,
+                    outputSize,
+                    inputFidelity,
+                  });
+                } catch (minimalErr) {
+                  lastGptImage2Err = minimalErr;
+                  addAttempt(model, false, minimalErr, {
+                    retry: 'gpt_image2_person_sheet_audit_minimal',
+                    policy_id: modelPolicy.id,
+                    audit_mode: modelPolicy.auditMode,
+                    prompt_style: modelPolicy.promptStyle,
+                    reference_retry_mode: `person-sheet-${plan.name}-auditminimal`,
+                    input_fidelity: inputFidelity,
+                    reference_count: plan.refs.length,
+                    all_reference_count: providerReferenceImages.length,
+                    reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
+                    audit_rejection: /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(minimalErr.message || minimalErr?.response?.data || ''))
+                      ? 'provider_submit_audit_rejected_minimal_person_sheet_prompt_or_reference'
+                      : undefined,
+                  });
+                  console.warn(`[DH/luxury-ad/person-sheet] deyunai gpt-image-2 audit minimal failed (${plan.name}, input_fidelity=${inputFidelity}):`, shortError(minimalErr));
+                }
+              }
               const retryableProviderFailure = _isLuxuryPersonSheetPreImageProviderFailure(err) && !auditSubmitRejected && !err._luxuryCandidatePath;
-              const isLastPlan = plan === refPlans[refPlans.length - 1] && inputFidelity === 'low';
+              const isLastPlan = plan === refPlans[refPlans.length - 1]
+                && inputFidelity === fidelityModes[fidelityModes.length - 1];
               const nextRetry = retryableProviderFailure && !isLastPlan
                 ? (inputFidelity === 'high' ? 'same-model-low-input-fidelity' : 'same-model-fewer-references')
                 : '';
@@ -12792,6 +13189,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
                 next_retry: nextRetry,
                 reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
                 audit_rejection: auditSubmitRejected ? 'provider_submit_audit_rejected_prompt_or_reference' : undefined,
+                policy_id: modelPolicy.id,
+                audit_mode: modelPolicy.auditMode,
+                prompt_style: modelPolicy.promptStyle,
               });
               console.warn(`[DH/luxury-ad/person-sheet] deyunai gpt-image-2 edits failed (${plan.name}, input_fidelity=${inputFidelity}); ${nextRetry || 'stop same-model retry'}:`, shortError(err));
               if (!retryableProviderFailure) {
@@ -12808,11 +13208,13 @@ async function _generateLuxuryPersonSheetWithPipeline({
       }
       return _generateViaDeyunaiSpecificImageModel({
         model: model.model_id,
-        prompt: promptText,
+        prompt: promptForModel,
         aspectRatio: safeAspectRatio,
         filename: `${filename}_person_${idx}${suffix}`,
         destDir,
-        referenceImages: providerReferenceImages,
+        referenceImages: modelId === 'gpt-image-2'
+          ? providerReferenceImages.slice(0, modelPolicy.maxRefsPerCall || 1)
+          : providerReferenceImages,
         outputSize,
       });
     }
@@ -12826,7 +13228,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
       };
       const result = refs.length
         ? await tv.generateImageEdit({
-          prompt: promptText,
+          prompt: promptForModel,
           referenceImages: refs,
           model: model.model_id,
           aspectRatio: safeAspectRatio,
@@ -12834,7 +13236,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
           ...usageMeta,
         })
         : await tv.generateTextToImage({
-          prompt: promptText,
+          prompt: promptForModel,
           model: model.model_id,
           aspectRatio: safeAspectRatio,
           resolution: _topviewImageResolutionFromOutputSize(outputSize),
@@ -12870,8 +13272,21 @@ async function _generateLuxuryPersonSheetWithPipeline({
         expectedPeople,
         castMode,
       });
-      addAttempt(model, true);
-      return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa };
+      const specQa = await _checkLuxuryActorAssetSpecMatchQa(req, outPath, {
+        spec: personSpec,
+        viewKey: filename,
+        model: `${model.provider_id}/${model.model_id}`,
+        expectedPeople,
+        castMode,
+        expectedGender,
+        roleHint,
+        promptText: prompt,
+      });
+      addAttempt(model, true, null, {
+        policy_id: _luxuryPersonSheetModelPolicy(model).id,
+        audit_mode: _luxuryPersonSheetModelPolicy(model).auditMode,
+      });
+      return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa, specQa };
     } catch (err) {
       lastErr = err;
       const candidatePath = outPath || err._luxuryCandidatePath || '';
@@ -12903,8 +13318,18 @@ async function _generateLuxuryPersonSheetWithPipeline({
             expectedPeople,
             castMode,
           });
+          const specQa = await _checkLuxuryActorAssetSpecMatchQa(req, retryPath, {
+            spec: personSpec,
+            viewKey: `${filename}_fullbody_retry`,
+            model: `${model.provider_id}/${model.model_id}`,
+            expectedPeople,
+            castMode,
+            expectedGender,
+            roleHint,
+            promptText: retryPrompt,
+          });
           addAttempt(model, true, null, { retry: 'full_body_reframe' });
-          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa };
+          return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa, specQa };
         } catch (retryErr) {
           lastErr = retryErr;
           const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
@@ -13148,6 +13573,27 @@ function _luxuryActorWardrobeStyleContract({ text = '', descriptionText = '', pe
   ].join(' ');
 }
 
+function _luxuryActorExplicitPersonSettingsPrompt(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
+  const { contract, activeKeys } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
+  const lines = [];
+  if (contract.gender) lines.push(`Visible gender presentation: ${contract.gender}.`);
+  if (contract.origin) lines.push(`Region/ethnicity impression: ${contract.origin}.`);
+  if (contract.age) lines.push(`Age range/impression: ${contract.age}.`);
+  if (contract.roleName) lines.push(`Role/identity/job: ${contract.roleName}.`);
+  if (contract.appearanceText) lines.push(`Appearance and temperament: ${contract.appearanceText}.`);
+  if (contract.wardrobeText) lines.push(`Wardrobe/clothing hard constraint: ${contract.wardrobeText}.`);
+  if (contract.hairMakeupText) lines.push(`Hair, makeup and grooming hard constraint: ${contract.hairMakeupText}.`);
+  if (contract.negativeText) lines.push(`Visible negative constraints: ${contract.negativeText}.`);
+  if (!lines.length) return '';
+  return [
+    'STRICT CURRENT PERSON SETTINGS LOCK: follow the user-provided person settings below for this actor package. These settings are dynamic for the current brief; do not replace them with a generic beauty model, business presenter, student, influencer, or any fixed template.',
+    ...lines,
+    'If a field is explicit, keep it stable across front, side, back and action views. Outfit, hair length/style, age impression, region impression and role must not drift between views.',
+    'When a field is empty, infer only from the current brief, script and reference assets; do not invent a default occupation, outfit, demographic or scene.',
+    `Active locked fields: ${activeKeys.join(', ') || 'none'}.`,
+  ].join(' ');
+}
+
 async function _generateLuxuryRealisticActorPackage({
   req,
   text,
@@ -13167,6 +13613,11 @@ async function _generateLuxuryRealisticActorPackage({
   const age = _luxuryActorAgePrompt(spec, [text, descriptionText, roleHint].join(' '));
   const ageSafety = _luxuryActorAgeSafetyPrompt(age);
   const wardrobeStyle = _luxuryActorWardrobeStyleContract({ text, descriptionText, personContextNotes, sceneNotes, roleHint });
+  const explicitPersonSettings = _luxuryActorExplicitPersonSettingsPrompt(spec, {
+    expectedGender: gender.value,
+    roleHint,
+    promptText: [text, descriptionText, personContextNotes, sceneNotes].filter(Boolean).join('\n').slice(0, 900),
+  });
   const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
     ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
     : 'single';
@@ -13272,8 +13723,8 @@ async function _generateLuxuryRealisticActorPackage({
     ? 'Show exactly one person total.'
     : `Show exactly ${expectedPeople} distinct people total in the same frame, with clear separation between bodies and faces; no extra people, no missing people, no merged bodies.`;
   const castConsistencyLock = expectedPeople === 1
-    ? 'CRITICAL CONSISTENCY LOCK: all three photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.'
-    : `CRITICAL CAST CONSISTENCY LOCK: all three photos must show the exact same ${expectedPeople} people as a fixed cast, each with stable face identity, age impression, hairstyle, body proportions, outfit family and lower-body clothing. Do not add, remove, merge, duplicate or swap any cast member.`;
+    ? 'CRITICAL CONSISTENCY LOCK: all four photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.'
+    : `CRITICAL CAST CONSISTENCY LOCK: all four photos must show the exact same ${expectedPeople} people as a fixed cast, each with stable face identity, age impression, hairstyle, body proportions, outfit family and lower-body clothing. Do not add, remove, merge, duplicate or swap any cast member.`;
   const castIdentityStable = expectedPeople === 1
     ? 'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.'
     : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
@@ -13306,6 +13757,7 @@ async function _generateLuxuryRealisticActorPackage({
     gender.lock,
     genderHardLock,
     ageSafety,
+    explicitPersonSettings,
     wardrobeStyle,
     `Wardrobe lock: ${wardrobe}.`,
     framingContract,
@@ -13330,6 +13782,10 @@ async function _generateLuxuryRealisticActorPackage({
       prompt: `${castingSheetCore} SIDE / THREE-QUARTER VIEW: ${expectedPeople === 1 ? 'same selected person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, side or three-quarter profile, complete body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions.`,
     },
     {
+      key: 'back',
+      prompt: `${castingSheetCore} BACK VIEW: ${expectedPeople === 1 ? 'same selected person seen from the back, exact same haircut length/color and exact same outfit' : `same ${expectedPeople} cast members seen from the back in the same left-to-right order, same hairstyles and outfit families`}, complete body visible from head to shoes when possible, back of top/bottom garment or one-piece clothing clearly visible, same shoes/accessories, neutral standing posture.`,
+    },
+    {
       key: 'action',
       prompt: `${castingSheetCore} ACTION VIEW: ${expectedPeople === 1 ? 'same selected person performing one small natural gesture' : `same ${expectedPeople} cast members performing one small natural relationship/dialogue gesture together`}, complete body visible from head to knees or shoes when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families.`,
     },
@@ -13348,12 +13804,14 @@ async function _generateLuxuryRealisticActorPackage({
       aspectRatio,
       filename: `${actorId}_${view.key}`,
       destDir: JIMENG_ASSETS_DIR,
-      // 中文说明：侧面/动作参考必须继承前序已通过图的人物和服装，避免第三张动作图换衣服或换人。
+      // 中文说明：后续视图必须继承前序已通过图的人物和服装，避免背面/动作图换衣服或换人。
       referenceImages: viewReferenceImages,
       outputSize: 'hd',
       expectedPeople,
       castMode,
       expectedGender: gender.value,
+      personSpec: spec,
+      roleHint,
       consistencyReferencePaths: outputs.length ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
@@ -13364,6 +13822,7 @@ async function _generateLuxuryRealisticActorPackage({
       url: `${baseUrl}/public/jimeng-assets/${path.basename(generated.outPath)}`,
       frame_qa: generated.frameQa || null,
       consistency_qa: generated.consistencyQa || null,
+      spec_qa: generated.specQa || null,
     });
   }
   const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
@@ -13376,7 +13835,7 @@ async function _generateLuxuryRealisticActorPackage({
     reference_kind: 'synthetic_realistic_actor',
     production_usable_actor: true,
     is_ai_generated: false,
-    name: expectedPeople === 1 ? 'AI 真人感一致性演员' : (castMode === 'dual' ? 'AI 真人感双人演员组' : 'AI 真人感多人演员组'),
+    name: expectedPeople === 1 ? '拟真一致性演员' : (castMode === 'dual' ? '拟真双人演员组' : '拟真多人演员组'),
     cast_mode: castMode,
     expected_people: expectedPeople,
     person_count: expectedPeople,
@@ -13407,6 +13866,220 @@ async function _generateLuxuryRealisticActorPackage({
   return { actorAsset, outputs, attempts };
 }
 
+router.post('/luxury-ad/person-spec/assist', async (req, res) => {
+  try {
+    const {
+      brief = '',
+      brief_info = null,
+      scene_config = [],
+      story_segments = [],
+      person_spec = {},
+      controlled_production = null,
+      product_asset = null,
+      reference_assets = [],
+      flow_mode = 'story',
+    } = req.body || {};
+    const text = _luxuryStrictText(brief, 3600);
+    const compactScenes = (Array.isArray(story_segments) && story_segments.length ? story_segments : scene_config)
+      .slice(0, 12)
+      .map((scene, i) => ({
+        index: i + 1,
+        title: _luxuryStrictText(scene?.title || scene?.story_stage || '', 60),
+        role: _luxuryStrictText(scene?.role || scene?.purpose || scene?.script_purpose || '', 60),
+        visual: _luxuryStrictText(scene?.visual || scene?.scene_content || scene?.content_prompt || '', 220),
+        action: _luxuryStrictText(scene?.action || scene?.visual_action || '', 160),
+        voiceover: _luxuryStrictText(scene?.voiceover || scene?.narration || scene?.ad_copy || '', 160),
+        characters: Array.isArray(scene?.characters) ? scene.characters.slice(0, 4) : [],
+      }));
+    const materialNotes = [
+      product_asset && (product_asset.name || product_asset.url) ? `主商品/主体：${product_asset.name || product_asset.url}` : '',
+      ...(Array.isArray(reference_assets) ? reference_assets.slice(0, 8).map((asset, i) => asset && (asset.name || asset.url) ? `参考${i + 1}：${asset.name || asset.url}` : '') : []),
+    ].filter(Boolean).join('；') || '暂无素材';
+    const currentSpec = person_spec && typeof person_spec === 'object' ? person_spec : {};
+    const { callLLM } = require('../services/storyService');
+    const sys = [
+      '你是剧情广告的人物设定导演和选角顾问。',
+      '任务：补齐“现代商业广告拟真演员”的人物设定表单，只能依据当前广告需求、已有场景/剧本、素材和用户已选择的人物约束。',
+      '这是表单补齐任务，不是小说角色创作；不要输出思考过程、标题、分析说明或 Markdown。',
+      '必须一条广告一个方案，不能套固定模板，不能总是输出同一套外貌、服装、发型或禁止项。',
+      '不得引用或编造历史人物、小说/影视/IP 角色、古装/武侠/玄幻/民族服饰等与当前广告无关的元素。',
+      '只输出 JSON object，不要 markdown，不要解释。',
+    ].join('\n');
+    const user = [
+      `广告需求：\n${text || '用户未填写完整广告需求，请根据现有字段和场景信息尽量补齐，但不要编造品牌承诺。'}`,
+      '',
+      `基础信息：${brief_info ? _luxuryStrictText(JSON.stringify(brief_info), 1200) : '暂无'}`,
+      `流程模式：${flow_mode}`,
+      `制作控制：${controlled_production ? _luxuryStrictText(JSON.stringify(controlled_production), 1200) : '未启用或暂无'}`,
+      `素材：${materialNotes}`,
+      `当前已有人物字段：${_luxuryStrictText(JSON.stringify(currentSpec), 1600)}`,
+      `硬性锁定字段：${_luxuryStrictText(JSON.stringify(Object.fromEntries(Object.entries(currentSpec).filter(([, value]) => value !== undefined && value !== null && String(value).trim() && !['auto', 'match_brief'].includes(String(value).trim())))), 1600)}`,
+      `已有场景/剧本摘要：${compactScenes.length ? _luxuryStrictText(JSON.stringify(compactScenes), 4200) : '暂无'}`,
+      '',
+      '输出 JSON 字段只能包含：',
+      '{"castMode":"","gender":"","age":"","origin":"","roleName":"","displayName":"","appearanceText":"","wardrobeText":"","hairMakeupText":"","negativeText":""}',
+      '',
+      '枚举要求：',
+      '- castMode 只能是 auto|single|dual|group。',
+      '- gender 只能是 auto|male|female|mixed|all_male|all_female。',
+      '- age 只能是 match_brief|infant_0_1|toddler_1_3|child_4_7|child_8_12|teen_13_17|young_adult_17_25|young_adult|adult_30_40|middle_40_55|senior_55_plus。',
+      '- origin 只能是 east_asian_cn|southeast_asian|white_european|black_african|middle_eastern|south_asian|latino|mixed_global|match_brief。',
+      '',
+      '内容要求：',
+      '- 当前字段里已有明确值就是硬约束，必须逐字保留或保持同一枚举值；不得把身份/职业改成别的职业，不得把性别、年龄段、地域改成别的设定。',
+      '- 所有外貌、服装、发型妆造和禁止项必须与硬性锁定字段一致；不要写与身份/职业冲突的服装或禁忌项，例如学生不能被改成白领，服装不能写成职场西装，也不能把符合学生身份的服装当成禁止项。',
+      '- 如果广告需求和场景为空，也必须依据当前人物数量、性别、年龄、地域/种族、身份/职业生成现代真实广告演员设定；不要返回空 schema。',
+      '- roleName 优先保持当前人物身份/职业；displayName 默认留空，除非用户已明确提供人物姓名或剧情中已有固定姓名。',
+      '- appearanceText 必须根据这条广告的目标人群、情绪、剧情场景和人物身份来写，不要固定写“自然面孔、五官清爽”这种空泛模板。',
+      '- wardrobeText 必须根据广告场景、行业、动作、季节/空间感和用户已填要求来写，服装会用于演员包生成约束。',
+      '- hairMakeupText 必须匹配人物年龄、职业、剧情气质和场景真实感。',
+      '- negativeText 必须针对当前广告可能出错的内容写，例如错误职业服、错误年龄、错误场景、抢产品主体、过度美颜等；不要固定只写“不要塑料感 AI 脸”。',
+      '- 人物设定必须是现实生活里的广告演员形象；服装必须是当代真实服装，除非广告需求明确要求古装或特定时代。',
+      '- 双人/多人时 roleName 可以写关系结构，例如“年轻家庭用户与家人”“门店主理人与顾客”，displayName 可留空让剧本生成正式姓名。',
+      '- 不要生成价格、疗效、资质、金融承诺或未经用户提供的品牌事实。',
+    ].join('\n');
+    const raw = await callLLM(sys, user, {
+      requestId: String(req.body?.request_key || '').trim(),
+      skipKB: true,
+      maxTokens: 1800,
+    });
+    let parsed = _cleanPersonSpecJsonObject(raw);
+    if (!parsed || !Object.keys(parsed).length) {
+      const repairSys = [
+        '你是严格 JSON 结构化器。',
+        '把输入中的人物设定分析转换为指定 JSON object。',
+        '不能新增输入中没有依据的品牌事实、价格、疗效或承诺；可以把分析里的选角判断整理成字段。',
+        '如果输入出现历史人物、小说/影视/IP 角色、古装/武侠/玄幻/民族服饰等与当前广告无关内容，必须丢弃这些无关内容，并回到当前人物约束生成现代广告演员字段。',
+        '必须尽量输出非空字段，至少补齐 roleName、appearanceText、wardrobeText、hairMakeupText、negativeText 中的 3 项；不能返回只有空字符串的 schema。',
+        '只能输出 JSON object，不能输出 markdown、解释、标题或分析过程。',
+      ].join('\n');
+      const repairUser = [
+        '目标 JSON schema：',
+        '{"castMode":"","gender":"","age":"","origin":"","roleName":"","displayName":"","appearanceText":"","wardrobeText":"","hairMakeupText":"","negativeText":""}',
+        '',
+        '枚举值必须使用：',
+        'castMode: auto|single|dual|group',
+        'gender: auto|male|female|mixed|all_male|all_female',
+        'age: match_brief|infant_0_1|toddler_1_3|child_4_7|child_8_12|teen_13_17|young_adult_17_25|young_adult|adult_30_40|middle_40_55|senior_55_plus',
+        'origin: east_asian_cn|southeast_asian|white_european|black_african|middle_eastern|south_asian|latino|mixed_global|match_brief',
+        '',
+        '如果模型第一轮返回的是英文分析或自然语言，请把其中对人物数量、性别、年龄、地域、身份、外貌、服装、发型妆造和禁止项的判断整理成字段值。',
+        '字段值必须是中文描述；没有依据的字段可以留空，但不能全部留空。',
+        'displayName 默认留空，除非原始输入明确提供姓名；不要编造具体人名。',
+        '',
+        `原始广告需求：\n${text || '暂无'}`,
+        `当前已有人物字段：${_luxuryStrictText(JSON.stringify(currentSpec), 1200)}`,
+        `硬性锁定字段：${_luxuryStrictText(JSON.stringify(Object.fromEntries(Object.entries(currentSpec).filter(([, value]) => value !== undefined && value !== null && String(value).trim() && !['auto', 'match_brief'].includes(String(value).trim())))), 1200)}`,
+        `模型第一轮返回：\n${_luxuryStrictText(raw, 5000)}`,
+      ].join('\n');
+      const repairedRaw = await callLLM(repairSys, repairUser, {
+        requestId: String(req.body?.request_key || '').trim() ? `${String(req.body.request_key).trim()}.json_repair` : '',
+        skipKB: true,
+        maxTokens: 1400,
+      });
+      parsed = _cleanPersonSpecJsonObject(repairedRaw);
+      if (!parsed || !Object.keys(parsed).length) {
+        console.warn('[DH/luxury-ad/person-spec] json repair returned unrecognized shape:', {
+          first_raw_preview: String(raw || '').replace(/\s+/g, ' ').slice(0, 500),
+          repaired_raw_preview: String(repairedRaw || '').replace(/\s+/g, ' ').slice(0, 500),
+        });
+      }
+    }
+    const source = parsed.person_spec || parsed.personSpec || parsed.person || parsed.character || parsed.data || parsed.result || parsed['人物设定'] || parsed;
+    const read = (...keys) => {
+      for (const key of keys) {
+        const value = source?.[key] ?? parsed?.[key];
+        if (value !== undefined && value !== null && String(value).trim()) return value;
+      }
+      return '';
+    };
+    const normalizeEnum = (value, allowed, aliases = {}, fallback = '') => {
+      const v = String(value || '').trim();
+      if (aliases[v]) return aliases[v];
+      const compact = v.replace(/\s+/g, '').toLowerCase();
+      if (aliases[compact]) return aliases[compact];
+      return allowed.includes(v) ? v : fallback;
+    };
+    const castAliases = {
+      自动: 'auto', 按内容判断: 'auto', 按剧情判断: 'auto', auto: 'auto',
+      单人: 'single', 一人: 'single', 一个人: 'single', single: 'single',
+      双人: 'dual', 两人: 'dual', 二人: 'dual', 双人对话: 'dual', dual: 'dual',
+      多人: 'group', 群体: 'group', 多人群体: 'group', group: 'group',
+    };
+    const genderAliases = {
+      自动: 'auto', 按故事判断: 'auto', 按剧情判断: 'auto', auto: 'auto',
+      男: 'male', 男性: 'male', 男士: 'male', 男生: 'male', male: 'male',
+      女: 'female', 女性: 'female', 女士: 'female', 女生: 'female', female: 'female',
+      混合: 'mixed', 男女混合: 'mixed', 双人多人混合: 'mixed', mixed: 'mixed',
+      全男性: 'all_male', 多人全男性: 'all_male', all_male: 'all_male',
+      全女性: 'all_female', 多人全女性: 'all_female', all_female: 'all_female',
+    };
+    const ageAliases = {
+      按广告需求判断: 'match_brief', 按需求判断: 'match_brief', 自动: 'match_brief', match_brief: 'match_brief',
+      婴儿: 'infant_0_1', '0-1': 'infant_0_1', infant_0_1: 'infant_0_1',
+      幼儿: 'toddler_1_3', '1-3': 'toddler_1_3', toddler_1_3: 'toddler_1_3',
+      儿童: 'child_4_7', '4-7': 'child_4_7', child_4_7: 'child_4_7',
+      少儿: 'child_8_12', '8-12': 'child_8_12', child_8_12: 'child_8_12',
+      青少年: 'teen_13_17', '13-17': 'teen_13_17', teen_13_17: 'teen_13_17',
+      年轻成人: 'young_adult_17_25', '年轻成人17-25': 'young_adult_17_25', '17-25': 'young_adult_17_25', young_adult_17_25: 'young_adult_17_25',
+      青年: 'young_adult', '青年25-32': 'young_adult', '25-32': 'young_adult', young_adult: 'young_adult',
+      成熟青年: 'adult_30_40', '30-40': 'adult_30_40', adult_30_40: 'adult_30_40',
+      中年: 'middle_40_55', '40-55': 'middle_40_55', middle_40_55: 'middle_40_55',
+      年长: 'senior_55_plus', 老年: 'senior_55_plus', '55+': 'senior_55_plus', senior_55_plus: 'senior_55_plus',
+    };
+    const originAliases = {
+      中国: 'east_asian_cn', 中国东亚面孔: 'east_asian_cn', 东亚: 'east_asian_cn', 东亚面孔: 'east_asian_cn', east_asian_cn: 'east_asian_cn',
+      东南亚: 'southeast_asian', southeast_asian: 'southeast_asian',
+      欧美白人: 'white_european', 白人: 'white_european', white_european: 'white_european',
+      非洲裔: 'black_african', 黑人: 'black_african', black_african: 'black_african',
+      中东: 'middle_eastern', middle_eastern: 'middle_eastern',
+      南亚: 'south_asian', south_asian: 'south_asian',
+      拉美: 'latino', 拉美裔: 'latino', latino: 'latino',
+      多种族: 'mixed_global', 国际化: 'mixed_global', 多种族国际化: 'mixed_global', mixed_global: 'mixed_global',
+      按广告需求判断: 'match_brief', 按需求判断: 'match_brief', match_brief: 'match_brief',
+    };
+    const trim = (value, max = 260) => _luxuryStrictText(value, max);
+    const next = {
+      castMode: normalizeEnum(read('castMode', 'cast_mode', 'personCount', 'person_count', '人物数量', '人数'), ['auto', 'single', 'dual', 'group'], castAliases, ''),
+      gender: normalizeEnum(read('gender', 'personGender', 'person_gender', '人物性别', '性别'), ['auto', 'male', 'female', 'mixed', 'all_male', 'all_female'], genderAliases, ''),
+      age: normalizeEnum(read('age', 'personAge', 'person_age', 'ageRange', 'age_range', '人物年龄', '年龄'), ['match_brief', 'infant_0_1', 'toddler_1_3', 'child_4_7', 'child_8_12', 'teen_13_17', 'young_adult_17_25', 'young_adult', 'adult_30_40', 'middle_40_55', 'senior_55_plus'], ageAliases, ''),
+      origin: normalizeEnum(read('origin', 'ethnicity', 'region', 'race', 'personOrigin', 'person_origin', '地域种族', '地域 / 种族', '地域', '种族'), ['east_asian_cn', 'southeast_asian', 'white_european', 'black_african', 'middle_eastern', 'south_asian', 'latino', 'mixed_global', 'match_brief'], originAliases, ''),
+      roleName: trim(read('roleName', 'role_name', 'role', 'occupation', 'job', 'identity', '人物身份', '人物身份 / 职业', '职业', '身份'), 80),
+      displayName: trim(read('displayName', 'display_name', 'name', 'personName', 'person_name', '人物姓名', '姓名'), 40),
+      appearanceText: trim(read('appearanceText', 'appearance_text', 'appearance', 'temperament', 'look', '外貌气质', '外貌 / 气质', '外貌', '气质'), 260),
+      wardrobeText: trim(read('wardrobeText', 'wardrobe_text', 'wardrobe', 'outfit', 'clothing', 'dress', '穿着服装', '穿着 / 服装', '穿着', '服装'), 320),
+      hairMakeupText: trim(read('hairMakeupText', 'hair_makeup_text', 'hairMakeup', 'hair_makeup', 'hair', 'makeup', 'hairstyle', '发型妆造', '发型 / 妆造', '发型', '妆造'), 220),
+      negativeText: trim(read('negativeText', 'negative_text', 'negative', 'avoid', 'forbidden', '人物禁止项', '禁止项'), 320),
+    };
+    const explicitCurrent = (key, ignore = []) => {
+      const value = currentSpec?.[key];
+      const textValue = String(value || '').trim();
+      return textValue && !ignore.includes(textValue) ? textValue : '';
+    };
+    const lockedGender = normalizeEnum(explicitCurrent('gender', ['auto']), ['auto', 'male', 'female', 'mixed', 'all_male', 'all_female'], genderAliases, '');
+    const lockedAge = normalizeEnum(explicitCurrent('age', ['match_brief']), ['match_brief', 'infant_0_1', 'toddler_1_3', 'child_4_7', 'child_8_12', 'teen_13_17', 'young_adult_17_25', 'young_adult', 'adult_30_40', 'middle_40_55', 'senior_55_plus'], ageAliases, '');
+    const lockedOrigin = normalizeEnum(explicitCurrent('origin', ['match_brief']), ['east_asian_cn', 'southeast_asian', 'white_european', 'black_african', 'middle_eastern', 'south_asian', 'latino', 'mixed_global', 'match_brief'], originAliases, '');
+    if (lockedGender) next.gender = lockedGender;
+    if (lockedAge) next.age = lockedAge;
+    if (lockedOrigin) next.origin = lockedOrigin;
+    if (explicitCurrent('roleName')) next.roleName = trim(currentSpec.roleName, 80);
+    if (!Object.values(next).some(Boolean)) {
+      console.warn('[DH/luxury-ad/person-spec] model returned unrecognized shape:', {
+        top_keys: Object.keys(parsed || {}).slice(0, 12),
+        nested_keys: source && typeof source === 'object' ? Object.keys(source).slice(0, 12) : [],
+        raw_preview: String(raw || '').replace(/\s+/g, ' ').slice(0, 500),
+      });
+      const err = new Error('人物设定补齐模型没有返回可用字段');
+      err.status = 502;
+      err.code = 'PERSON_SPEC_ASSIST_EMPTY';
+      throw err;
+    }
+    res.json({ success: true, person_spec: next });
+  } catch (err) {
+    _sendApiError(res, err, '剧情广告人物设定补齐失败');
+  }
+});
+
 router.post('/luxury-ad/person-sheet', async (req, res) => {
   try {
     const {
@@ -13422,8 +14095,8 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       request_async = false,
     } = req.body || {};
     const text = String(brief || '').trim();
-    _storeLuxuryPersonSheetResult(req, request_key, { status: 'running', started_at: Date.now() });
     if (text.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求，再生成 AI 真人感演员包' });
+    _storeLuxuryPersonSheetResult(req, request_key, { status: 'running', started_at: Date.now() });
     if (request_async && request_key) {
       _startLuxuryPersonSheetBackgroundJob(req, req.body || {});
       return res.json({ success: true, status: 'accepted', request_key });
@@ -14332,15 +15005,72 @@ function _luxuryPersonSheetResultKey(req, requestKey = '') {
   return `${req.user?.id || 'anon'}:${key}`;
 }
 
+function _luxuryPersonSheetPersistKey(key = '') {
+  if (!key) return '';
+  return `dh.luxury_person_sheet.result.${crypto.createHash('sha1').update(String(key)).digest('hex')}`;
+}
+
+function _luxuryPersonSheetPersistenceEnabled() {
+  try {
+    return !!sqliteConfig.getDbConfig().enabled;
+  } catch {
+    return false;
+  }
+}
+
+function _persistLuxuryPersonSheetResult(key, item) {
+  if (!key || !_luxuryPersonSheetPersistenceEnabled()) return;
+  try {
+    appKv.set(_luxuryPersonSheetPersistKey(key), item);
+  } catch (err) {
+    console.warn('[DH/luxury-ad/person-sheet/result] persist failed:', shortError(err));
+  }
+}
+
 function _storeLuxuryPersonSheetResult(req, requestKey = '', patch = {}) {
   const key = _luxuryPersonSheetResultKey(req, requestKey);
   if (!key) return;
-  luxuryPersonSheetResults.set(key, {
+  const item = {
     ...(luxuryPersonSheetResults.get(key) || {}),
     ...patch,
     updated_at: Date.now(),
-  });
-  setTimeout(() => luxuryPersonSheetResults.delete(key), 90 * 60 * 1000).unref?.();
+  };
+  luxuryPersonSheetResults.set(key, item);
+  _persistLuxuryPersonSheetResult(key, item);
+  setTimeout(() => luxuryPersonSheetResults.delete(key), LUXURY_PERSON_SHEET_RESULT_TTL_MS).unref?.();
+}
+
+function _getLuxuryPersonSheetResult(req, requestKey = '') {
+  const key = _luxuryPersonSheetResultKey(req, requestKey);
+  if (!key) return null;
+  const memoryItem = luxuryPersonSheetResults.get(key);
+  if (memoryItem) return memoryItem;
+  if (!_luxuryPersonSheetPersistenceEnabled()) return null;
+  let item = null;
+  try {
+    item = appKv.get(_luxuryPersonSheetPersistKey(key), null);
+  } catch (err) {
+    console.warn('[DH/luxury-ad/person-sheet/result] read persisted failed:', shortError(err));
+    return null;
+  }
+  if (!item || typeof item !== 'object') return null;
+  const updatedAt = Number(item.updated_at || item.started_at || 0);
+  if (updatedAt && Date.now() - updatedAt > LUXURY_PERSON_SHEET_RESULT_TTL_MS) return null;
+  if (item.status === 'running' && Number(item.started_at || 0) > 0 && Number(item.started_at) < SERVER_STARTED_AT) {
+    return {
+      ...item,
+      status: 'error',
+      error: '人物演员包后台任务在服务器重启后中断，请重新点击生成拟真演员。',
+      details: {
+        status: 503,
+        code: 'PERSON_ACTOR_PACKAGE_INTERRUPTED',
+        message: '后台长任务状态存在，但当前服务进程已重启，原生成进程无法继续写回结果。',
+      },
+      updated_at: Date.now(),
+    };
+  }
+  luxuryPersonSheetResults.set(key, item);
+  return item;
 }
 
 function _publicLuxuryPersonSheetResult(item) {
@@ -14349,6 +15079,7 @@ function _publicLuxuryPersonSheetResult(item) {
   if (item.status === 'error') {
     const details = item.details && typeof item.details === 'object'
       ? {
+        status: item.details.status || item.details.error?.status || undefined,
         code: item.details.code || item.details.error?.code || undefined,
         attempts: Array.isArray(item.details.details?.attempts)
           ? item.details.details.attempts.slice(-10)
@@ -14393,8 +15124,7 @@ function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
 }
 
 router.get('/luxury-ad/person-sheet/result/:requestKey', (req, res) => {
-  const key = _luxuryPersonSheetResultKey(req, req.params.requestKey);
-  const item = key ? luxuryPersonSheetResults.get(key) : null;
+  const item = _getLuxuryPersonSheetResult(req, req.params.requestKey);
   const body = _publicLuxuryPersonSheetResult(item);
   if (!body) return res.status(404).json({ success: false, status: 'missing', error: '人物演员包结果还未产生或已过期' });
   res.json(body);
