@@ -55,22 +55,22 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .stage-arrow{color:var(--t-4);padding:0 2px}
 .stage-chip.done + .stage-arrow{color:var(--done)}
 
-.studio-home-band{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(460px,1.4fr);gap:18px;margin-bottom:18px}
-.studio-create-panel{border:1px solid rgba(33,255,243,.28);border-radius:16px;background:linear-gradient(145deg,rgba(33,255,243,.12),rgba(255,246,0,.055) 55%,rgba(20,21,25,.75));padding:18px;display:grid;align-content:space-between;min-height:236px;position:relative;overflow:hidden}
-.studio-create-panel:after{content:"";position:absolute;right:-80px;top:-80px;width:220px;height:220px;background:radial-gradient(circle,rgba(33,255,243,.18),transparent 65%);pointer-events:none}
-.studio-create-panel .eyebrow{color:var(--accent);font-size:12px;font-weight:900;letter-spacing:.8px;text-transform:uppercase}
-.studio-create-panel h1{font-size:28px;line-height:1.16;margin:10px 0 8px;letter-spacing:0}
-.studio-create-panel p{margin:0;color:var(--t-3);font-size:13px;line-height:1.65;max-width:440px}
+.studio-home-band{display:grid;grid-template-columns:minmax(360px,.9fr) minmax(520px,1.1fr);gap:16px;margin-bottom:18px}
+.studio-create-panel{border:1px solid var(--line);border-radius:12px;background:var(--bg-1);padding:20px;display:grid;align-content:space-between;min-height:250px;position:relative;overflow:hidden}
+.studio-create-panel .eyebrow{color:var(--t-3);font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase}
+.studio-create-panel h1{font-size:26px;line-height:1.2;margin:10px 0 8px;letter-spacing:0}
+.studio-create-panel p{margin:0;color:var(--t-3);font-size:13px;line-height:1.7;max-width:520px}
 .studio-create-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 .studio-create-actions button{padding:10px 14px;border-radius:10px;font-size:13px;font-weight:800;border:1px solid var(--line)}
-.studio-create-actions .primary{background:var(--accent);color:#0D0E12;border-color:transparent}
+.studio-create-actions .primary{background:var(--t-1);color:var(--bg);border-color:transparent}
 .studio-create-actions .ghost{background:rgba(255,255,255,.05);color:var(--t-2)}
-.studio-capability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.studio-cap-card{border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.035);padding:14px;min-height:112px;display:grid;gap:7px;cursor:pointer}
-.studio-cap-card:hover{border-color:rgba(33,255,243,.45);background:rgba(33,255,243,.075)}
-.studio-cap-card em{font-style:normal;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(33,255,243,.13)}
-.studio-cap-card b{font-size:14px}
-.studio-cap-card span{font-size:12px;color:var(--t-3);line-height:1.5}
+.manga-prep-board{border:1px solid var(--line);border-radius:12px;background:var(--bg-1);padding:16px;display:grid;gap:12px}
+.manga-prep-board h3{margin:0;font-size:15px}
+.manga-prep-board p{margin:0;color:var(--t-3);font-size:12.5px;line-height:1.6}
+.manga-prep-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.manga-prep-item{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:12px;display:grid;gap:5px;min-height:84px}
+.manga-prep-item b{font-size:13px;color:var(--t-1)}
+.manga-prep-item span{font-size:12px;color:var(--t-3);line-height:1.45}
 .top-back-btn{padding:7px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:12px;color:var(--t-2)}
 .top-back-btn:hover{background:var(--accent-soft);border-color:rgba(33,255,243,.5);color:var(--accent)}
 .real-cover-img,.real-shot-img,.real-player-img,.real-export-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
@@ -432,6 +432,22 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .modal-foot button:hover{background:var(--bg-4);color:var(--t-1)}
 .modal-foot button.primary{background:var(--accent);color:#0D0E12;font-weight:700}
 .modal-foot button.primary:hover{background:var(--accent-2)}
+.modal-card.manga-create-modal{background:#f8fafc;color:#111827;border-color:#d8e0ea;box-shadow:0 24px 70px rgba(15,23,42,.30)}
+.manga-create-modal .modal-h{background:#fff;border-color:#d8e0ea}
+.manga-create-modal .modal-h h2{color:#111827;font-weight:800}
+.manga-create-modal .modal-h .x{background:#eef2f7;color:#475569}
+.manga-create-modal .field-group{background:#fff;border:1px solid #d8e0ea}
+.manga-create-modal .field-group label{color:#475569}
+.manga-create-modal input,.manga-create-modal textarea,.manga-create-modal select{background:#fff;border-color:#cbd5e1;color:#111827}
+.manga-create-modal input::placeholder,.manga-create-modal textarea::placeholder{color:#94a3b8}
+.manga-create-modal .field-group .seg{background:#eef2f7;border:1px solid #d8e0ea}
+.manga-create-modal .field-group .seg button{color:#334155}
+.manga-create-modal .field-group .seg button.on{background:#111827;color:#fff}
+.manga-create-modal .modal-foot{background:#fff;border-color:#d8e0ea}
+.manga-create-modal .modal-foot .stat{color:#64748b}
+.manga-create-modal .modal-foot button{background:#eef2f7;color:#334155}
+.manga-create-modal .modal-foot button.primary{background:#111827;color:#fff}
+.manga-create-modal .modal-foot button.primary:hover{background:#0f172a}
 
 /* 影响预览模态 (从 v13 沿用) */
 .impact-body{padding:18px 20px;overflow-y:auto;display:grid;grid-template-columns:280px 1fr;gap:18px}
@@ -946,40 +962,6 @@ input:focus,textarea:focus{border-color:var(--accent)}
 .proj-card.add .em{font-size:36px;font-weight:200;margin-bottom:6px}
 .proj-card.add .lbl{font-size:13px;font-weight:600}
 
-/* 顶部 hero 三卡 */
-.home-hero{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:26px;
-}
-.hero-card{
-  display:flex;align-items:center;gap:12px;padding:14px 18px;
-  background:var(--bg-1);border:1px solid var(--line);border-radius:12px;
-  cursor:pointer;transition:.18s;position:relative;overflow:hidden;
-}
-.hero-card:hover{transform:translateY(-2px);border-color:var(--accent)}
-.hero-card.primary{
-  background:linear-gradient(135deg,rgba(33,255,243,.16),rgba(255,246,0,.07),rgba(124,255,240,.08));
-  border-color:rgba(33,255,243,.35);
-}
-.hero-card.primary::before{
-  content:"";position:absolute;inset:-1px;border-radius:12px;
-  background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);opacity:0;transition:.2s;z-index:0;
-}
-.hero-card.primary:hover::before{opacity:.18}
-.hero-card .hero-em{
-  width:42px;height:42px;border-radius:10px;background:var(--bg-3);
-  display:grid;place-items:center;font-size:20px;flex-shrink:0;position:relative;z-index:1;
-}
-.hero-card.primary .hero-em{background:linear-gradient(135deg,#CBFFF8,#21FFF3);color:#0D0E12}
-.hero-card .hero-body{flex:1;min-width:0;position:relative;z-index:1}
-.hero-card .hero-ttl{font-size:14px;font-weight:700;color:var(--t-1);margin-bottom:3px}
-.hero-card .hero-sub{font-size:11.5px;color:var(--t-3);line-height:1.4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hero-card .hero-arr{
-  font-size:18px;color:var(--t-4);transition:.2s;flex-shrink:0;position:relative;z-index:1;
-}
-.hero-card:hover .hero-arr{color:var(--accent);transform:translateX(3px)}
-.hero-card.primary .hero-arr{color:var(--accent-2)}
-
 /* 区块标题 */
 .home-section{margin-bottom:30px}
 .home-section h3{margin:0 0 12px;font-size:14px;font-weight:600;color:var(--t-2);display:flex;align-items:center;gap:8px}
@@ -1452,19 +1434,26 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
       <div class="studio-home-band">
         <div class="studio-create-panel">
           <div>
-            <div class="eyebrow">AI Manga Drama Studio</div>
-            <h1>从小说到分镜、配音、成片的一体化生产台</h1>
-            <p>创建项目后会写入正式 `/api/drama` 项目，生成本集、单镜画面、视频和成片都走真实接口。</p>
+            <div class="eyebrow">创建漫剧</div>
+            <h1>先把故事、版权、角色和画风准备好</h1>
+            <p>漫剧不是先点生成按钮，而是先确定素材来源、故事结构、人物设定、画面风格和分集节奏。创建后会写入正式 `/api/drama` 项目和剧集占位。</p>
           </div>
           <div class="studio-create-actions">
-            <button class="primary" onclick="openNewModal()">+ 创建新漫剧</button>
-            <button class="ghost" onclick="goStage(1)">导入小说/大纲</button>
+            <button class="primary" onclick="openNewModal()">创建漫剧</button>
+            <button class="ghost" onclick="goStage(1)">整理小说 / 大纲</button>
           </div>
         </div>
-        <div class="studio-capability-grid">
-          <button class="studio-cap-card" type="button" data-manga-prod-action="continue"><em>▶</em><b>继续生产</b><span>打开已有真实项目，进入分集、分镜或成片阶段。</span></button>
-          <button class="studio-cap-card" type="button" onclick="goStage(4)"><em>🎬</em><b>分镜工作台</b><span>读取真实镜头，支持提示词、单镜画面、视频生成。</span></button>
-          <button class="studio-cap-card" type="button" onclick="goStage(5)"><em>📦</em><b>成片导出</b><span>读取 final video，未合成时可触发图片版或正式合成。</span></button>
+        <div class="manga-prep-board">
+          <div>
+            <h3>创建前准备</h3>
+            <p>这些内容决定后面能否稳定生成分集、分镜、图片、视频和成片。</p>
+          </div>
+          <div class="manga-prep-grid">
+            <div class="manga-prep-item"><b>小说 / 大纲来源</b><span>原文、简介、爽点、核心冲突，确认是否有版权或授权。</span></div>
+            <div class="manga-prep-item"><b>人物设定</b><span>主角、反派、关系、外貌、服装、性格和禁忌。</span></div>
+            <div class="manga-prep-item"><b>画风与参考</b><span>2D/3D/拟真、子风格、角色一致性和场景基调。</span></div>
+            <div class="manga-prep-item"><b>分集节奏</b><span>集数、每集时长、每集场景数、开头钩子和结尾悬念。</span></div>
+          </div>
         </div>
       </div>
       <div class="home-h">
@@ -1475,34 +1464,6 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
           <button class="on">全部</button>
           <button>进行中</button>
           <button>已完成</button>
-        </div>
-      </div>
-
-      <!-- 顶部 hero 区:新建 + 续写最近项目 -->
-      <div class="home-hero">
-        <div class="hero-card primary" style="display:none" aria-hidden="true">
-          <div class="hero-em">✨</div>
-          <div class="hero-body">
-            <div class="hero-ttl">新建漫剧</div>
-            <div class="hero-sub">从小说 / 大纲 / 设定开始一个新项目</div>
-          </div>
-          <div class="hero-arr">→</div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-em">▶</div>
-          <div class="hero-body">
-            <div class="hero-ttl">读取最近项目中</div>
-            <div class="hero-sub">来自 /api/drama/projects</div>
-          </div>
-          <div class="hero-arr">→</div>
-        </div>
-        <div class="hero-card" onclick="openSequelModal('选择项目')">
-          <div class="hero-em">📚</div>
-          <div class="hero-body">
-            <div class="hero-ttl">续写已有项目</div>
-            <div class="hero-sub">导入新章节,沿用已有人物 · 场景 · 画风</div>
-          </div>
-          <div class="hero-arr">→</div>
         </div>
       </div>
 
@@ -1761,7 +1722,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
 
 <!-- ============ 新建漫剧模态 ============ -->
 <div class="modal-mask" id="new-modal">
-  <div class="modal-card" style="width:680px;max-height:92vh">
+  <div class="modal-card manga-create-modal" style="width:680px;max-height:92vh">
     <div class="modal-h">
       <h2>✨ 新建漫剧</h2>
       <button class="x" onclick="closeNewModal()">✕ 取消</button>
@@ -1892,7 +1853,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
     <div class="modal-foot">
       <div class="stat" style="font-size:11.5px;color:var(--t-4)">所有字段稍后都可以在创作过程中修改</div>
       <button onclick="closeNewModal()">取消</button>
-      <button class="primary" onclick="createProject()" style="background:linear-gradient(135deg,#CBFFF8 0%,#21FFF3 55%,#FFF600 100%);color:#0D0E12">✨ 创建漫剧</button>
+      <button class="primary" onclick="createProject()">创建漫剧</button>
     </div>
   </div>
 </div>
@@ -2274,7 +2235,9 @@ document.querySelectorAll('#imp-swatch .sw').forEach(s=>{
 
 // === v14: 本镜面板渲染 ===
 function renderShotPanel(){
-  const s=SHOTS[CURRENT_SHOT];if(!s){document.getElementById('panel-shot').innerHTML='';return}
+  const panel=document.getElementById('panel-shot');
+  if(!panel)return;
+  const s=SHOTS[CURRENT_SHOT];if(!s){panel.innerHTML='';return}
   s.chars=s.chars||[];s.props=s.props||[];s.lines=s.lines||[];
   const statTxt={done:'已成片',busy:`生成中 ${s.progress||0}%`,fail:'失败',todo:'待生成'}[s.status];
   const sceneData=ASSETS.scene[s.scene];
@@ -2400,7 +2363,7 @@ function renderShotPanel(){
   </div>`;
 
   html+=`</div>`;
-  document.getElementById('panel-shot').innerHTML=html;
+  panel.innerHTML=html;
 }
 
 function toggleStar(no){
@@ -2434,6 +2397,8 @@ function shotStepStates(s){
 }
 
 function renderAIPanel(){
+  const panel=document.getElementById('panel-ai');
+  if(!panel)return;
   const all=Object.values(SHOTS);
   const cnt={done:0,busy:0,fail:0,todo:0};
   all.forEach(s=>cnt[s.status]++);
@@ -2503,7 +2468,7 @@ function renderAIPanel(){
   });
 
   html+=`</div>`;
-  document.getElementById('panel-ai').innerHTML=html;
+  panel.innerHTML=html;
 }
 
 function goToShot(no){
@@ -2742,10 +2707,12 @@ document.addEventListener('keydown',e=>{
 });
 
 // ============ 正式页面 · 阶段切换 ============
-let CUR_STAGE=0;
+window.__MANGA_STAGE = Number(window.__MANGA_STAGE || 0) || 0;
+var CUR_STAGE = window.__MANGA_STAGE;
 
 function goStage(n){
   CUR_STAGE=n;
+  window.__MANGA_STAGE=n;
   document.body.dataset.stage=n;
   document.querySelectorAll('.stage-view').forEach(v=>{
     v.classList.toggle('cur',+v.dataset.stage===n);
@@ -2922,7 +2889,7 @@ goStage(0);
 
   function rememberMangaRoute(patch = {}) {
     const route = {
-      stage: Number(CUR_STAGE || 0) || 0,
+      stage: Number(window.__MANGA_STAGE || 0) || 0,
       project: real.currentProject?.id || '',
       episode: real.currentEpisode?.id || '',
       shot: CURRENT_SHOT || 1,
@@ -2973,20 +2940,9 @@ goStage(0);
     const projMeta = document.querySelector('.proj .meta');
     if (projName) projName.textContent = 'AI漫剧';
     if (projMeta) projMeta.textContent = '正式接口';
-    const heroPrimary = $('.home-hero .hero-card.primary');
-    if (heroPrimary) heroPrimary.remove();
     $$('.home-section .proj-grid').forEach(grid => {
       grid.innerHTML = `<div class="proj-card" style="border-style:dashed;display:grid;place-items:center;min-height:220px;color:var(--t-3);background:transparent">正在读取平台真实项目...</div>`;
     });
-    const heroCards = $$('.home-hero .hero-card');
-    if (heroCards[0]) {
-      heroCards[0].onclick = null;
-      heroCards[0].querySelector('.hero-ttl').textContent = '读取最近项目中';
-      heroCards[0].querySelector('.hero-sub').textContent = '来自 /api/drama/projects';
-    }
-    if (heroCards[1]) {
-      heroCards[1].onclick = () => note('请先选择一个真实项目');
-    }
     const title = $('.home-h h2');
     if (title) title.innerHTML = '创建漫剧 <span class="ct">真实项目 / 分集 / 分镜 / 成片</span>';
     syncPipelineState(null);
@@ -3176,16 +3132,6 @@ goStage(0);
     if (sections[0]) {
       sections[0].querySelector('h3').innerHTML = `📋 任务中心 · ${esc(real.filter)} <span class="ct">${primaryList.length}</span>`;
       sections[0].querySelector('.proj-grid').innerHTML = primaryList.length ? primaryList.map(projectCard).join('') : emptyCard(real.search ? '没有匹配的真实漫剧项目' : '暂无已创建或正在创建的漫剧项目');
-    }
-    const heroCards = $$('.home-hero .hero-card');
-    if (heroCards[0]) {
-      const last = active[0] || projects[0];
-      heroCards[0].onclick = () => last ? openRealProject(last.id) : note('暂无可继续的真实项目');
-      heroCards[0].querySelector('.hero-ttl').textContent = last ? `继续上次:${last.title}` : '暂无可继续项目';
-      heroCards[0].querySelector('.hero-sub').textContent = last ? `真实项目 · ${last.episodes_done || 0}/${last.episodes_total || last.episode_count || 0} 集 · ${fmtDate(last.updated_at || last.created_at)}` : '先创建一个正式漫剧项目';
-    }
-    if (heroCards[1]) {
-      heroCards[1].onclick = () => projects[0] ? openSequelForProject(projects[0].id) : note('暂无可续写的真实项目');
     }
   }
   function setSideView(view) {
@@ -3396,7 +3342,7 @@ goStage(0);
     rememberMangaRoute({
       project: real.currentProject?.id || '',
       episode: real.currentEpisode?.id || '',
-      stage: targetStage ?? CUR_STAGE,
+      stage: targetStage ?? window.__MANGA_STAGE,
       shot: CURRENT_SHOT || 1,
     });
   }
@@ -3658,7 +3604,7 @@ goStage(0);
       } else {
         goStage(3);
       }
-      rememberMangaRoute({ episode: ep.id, stage: CUR_STAGE, shot: CURRENT_SHOT || 1 });
+      rememberMangaRoute({ episode: ep.id, stage: window.__MANGA_STAGE, shot: CURRENT_SHOT || 1 });
       return;
     }
     const gen = e.target.closest('[data-real-generate-episode]');
@@ -3705,20 +3651,6 @@ goStage(0);
       await runCurrentEpisodeAction('/compose-from-images', 'POST', null, '图片版成片合成已提交');
       renderFinalStage();
       return;
-    }
-    const prodAction = e.target.closest('[data-manga-prod-action]');
-    if (prodAction) {
-      e.stopPropagation();
-      const action = prodAction.dataset.mangaProdAction;
-      if (action === 'new' || action === 'import') return openNewModal();
-      if (action === 'continue') {
-        const target = (real.projects || []).find(p => !isDone(p) && !isDraft(p)) || (real.projects || [])[0];
-        return target ? openRealProject(target.id) : note('暂无可继续的真实漫剧项目');
-      }
-      if (action === 'director') {
-        const target = real.currentProject || (real.projects || [])[0];
-        return target ? openRealProject(target.id) : note('请先创建或打开一个真实项目');
-      }
     }
   }, true);
   function bindRealControls() {
