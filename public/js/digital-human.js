@@ -7349,7 +7349,7 @@
     const raw = JSON.stringify(error.raw || error.details || error || {});
     const text = `${code} ${msg} ${raw}`;
     const canSeeDebug = canViewLuxuryInternalPipeline();
-    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /insufficient quota|quota|rate limit|额度|频率|余额|上限|limit exceeded|too many requests/i.test(text)) {
+    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /CreditInsufficient|insufficient credits?|credits? insufficient|insufficient quota|quota|rate limit|额度|频率|余额|点数|上限|limit exceeded|too many requests/i.test(text)) {
       return msg || (canSeeDebug
         ? '模型通道返回额度/频率/余额或授权限制。请展开完整错误回执查看具体供应商、模型、状态码和返回内容。'
         : '模型通道返回额度、频率、余额或授权限制。本次没有生成可用演员图，请稍后重试或联系管理员检查模型通道。');
@@ -7407,7 +7407,7 @@
     if (/MODEL_NOT_CONFIGURED|未在模型调用管理|候选/i.test(text)) {
       return '人物包模型链路没有可运行图片模型，请先到模型调用管理启用 luxury_ad.person_sheet 的图片模型。';
     }
-    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /insufficient quota|quota|rate limit|额度|频率|余额|上限|limit exceeded|too many requests/i.test(text)) {
+    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /CreditInsufficient|insufficient credits?|credits? insufficient|insufficient quota|quota|rate limit|额度|频率|余额|点数|上限|limit exceeded|too many requests/i.test(text)) {
       return canSeeDebug
         ? '请根据完整错误回执中的 provider_id、model_id、status 和供应商原文，检查对应模型通道余额、额度、频率限制或分组授权；如果确认该通道不可用，请切换可用模型后重试。'
         : '请稍后重试；如果连续失败，请联系管理员检查对应模型通道余额、额度、频率限制或授权。';
@@ -7447,7 +7447,7 @@
     const raw = JSON.stringify(error.raw || error.details || error || {});
     const text = `${code} ${msg} ${raw}`;
     const canSeeDebug = canViewLuxuryInternalPipeline();
-    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /insufficient quota|quota|rate limit|额度|频率|余额|上限|limit exceeded|too many requests/i.test(text)) {
+    if (code === 'PROVIDER_LIMIT_EXCEEDED' || /CreditInsufficient|insufficient credits?|credits? insufficient|insufficient quota|quota|rate limit|额度|频率|余额|点数|上限|limit exceeded|too many requests/i.test(text)) {
       return canSeeDebug
         ? '模型通道返回额度/频率/余额或授权限制，本次没有产生可预览候选图。请展开完整错误回执，按 provider_id、model_id、status 和供应商原文检查对应通道。'
         : '模型通道返回额度/频率/余额或授权限制，本次没有产生可预览候选图。请稍后重试或联系管理员检查模型通道。';

@@ -1542,6 +1542,32 @@ function _sendStrictError(res, err) {
   return res.status(status).json(_strictErrorBody(err));
 }
 
+function _isProviderLimitOrCreditErrorText(value = '') {
+  return /CreditInsufficient|insufficient\s+credits?|credits?\s+insufficient|insufficient\s+quota|quota|rate\s*limit|limit\s+exceeded|too\s+many\s+requests|余额|额度|点数|频率|上限/i.test(String(value || ''));
+}
+
+function _isProviderLimitOrCreditError(err) {
+  const parts = [
+    err?.code,
+    err?.type,
+    err?.reason,
+    err?.message,
+    err?.error,
+    err?.response?.status,
+    err?.response?.data?.code,
+    err?.response?.data?.reason,
+    err?.response?.data?.message,
+    err?.response?.data?.error,
+  ];
+  const attempts = err?.luxuryKeyframeAttempts || err?.details?.luxuryKeyframeAttempts || err?.details?.attempts || [];
+  if (Array.isArray(attempts)) {
+    attempts.forEach(a => {
+      parts.push(a?.code, a?.error, a?.reason, a?.message, a?.provider_id, a?.model_id);
+    });
+  }
+  return _isProviderLimitOrCreditErrorText(parts.filter(Boolean).join(' '));
+}
+
 function _extractPublicError(err, fallback = '接口请求失败') {
   const raw = err?.response?.data?.error || err?.response?.data || err?.error || err;
   const source = raw && typeof raw === 'object' ? raw : err;
@@ -1559,7 +1585,7 @@ function _extractPublicError(err, fallback = '接口请求失败') {
     message = '剧情广告分镜生成已停止：当前视觉质检模型不可用，系统无法确认分镜图是否严格符合剧本。请在模型调用管理中为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路对应的视觉/海外通道额度、模型分组授权或切换可用视觉模型。';
   } else if (
     publicCode !== 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
-    && (String(code).toLowerCase() === 'setlimitexceeded' || /inference limit|safe experience mode|quota|rate limit/i.test(message))
+    && (String(code).toLowerCase() === 'setlimitexceeded' || _isProviderLimitOrCreditErrorText(message) || _isProviderLimitOrCreditError(err))
   ) {
     status = 429;
     publicCode = 'PROVIDER_LIMIT_EXCEEDED';
@@ -13399,8 +13425,6 @@ async function _generateLuxuryPersonSheetWithPipeline({
     .map(model => `${model.provider_id}/${model.model_id}`)
     .filter(key => !attemptedKeys.has(key));
   const err = new Error(`${stageId} 未生成人物演员包：${attempts.map(a => `${a.provider_id}/${a.model_id}=${a.error || 'ok'}`).join('；')}${stoppedAfterGeneratedCandidate ? '；所有已尝试候选图均未通过 QA，未写入演员库' : ''}${skippedModels.length ? `；未继续尝试：${skippedModels.join('、')}` : ''}`);
-  err.status = 502;
-  err.code = stoppedAfterGeneratedCandidate ? 'LUXURY_PERSON_SHEET_CANDIDATE_FAILED_STOPPED' : 'LUXURY_PERSON_SHEET_NO_MODEL_OUTPUT';
   err.luxuryKeyframeAttempts = attempts;
   err.details = {
     attempts,
@@ -13408,6 +13432,11 @@ async function _generateLuxuryPersonSheetWithPipeline({
     pre_image_failover_enabled: true,
     skipped_models: skippedModels,
   };
+  const providerLimitHit = !stoppedAfterGeneratedCandidate && _isProviderLimitOrCreditError(err);
+  err.status = providerLimitHit ? 429 : 502;
+  err.code = providerLimitHit
+    ? 'PROVIDER_LIMIT_EXCEEDED'
+    : (stoppedAfterGeneratedCandidate ? 'LUXURY_PERSON_SHEET_CANDIDATE_FAILED_STOPPED' : 'LUXURY_PERSON_SHEET_NO_MODEL_OUTPUT');
   err.cause = lastErr;
   throw err;
 }
