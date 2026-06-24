@@ -25,6 +25,7 @@ const promptIntel  = require('./seeds/prompt_intelligence');
 const novelWriting = require('./seeds/novel_writing');
 const novelReview  = require('./seeds/novel_review');
 const deAiExpression = require('./seeds/de_ai_expression');
+const ljgWorkflows = require('./seeds/ljg_workflows');
 
 const seedDocs = [
   ...digitalHuman,
@@ -39,6 +40,7 @@ const seedDocs = [
   ...novelWriting,
   ...novelReview,
   ...deAiExpression,
+  ...ljgWorkflows,
 ];
 
 module.exports = seedDocs;

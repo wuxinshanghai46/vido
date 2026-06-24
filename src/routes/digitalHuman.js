@@ -12847,6 +12847,35 @@ function _luxuryPersonSheetAuditNeutralText(value = '', max = 900) {
     .trim();
 }
 
+function _extractLuxuryPersonSheetPriorityConstraints(prompt = '') {
+  const source = String(prompt || '').replace(/\s+/g, ' ').trim();
+  if (!source) return '';
+  const picks = [];
+  const add = (label, value, max = 160) => {
+    const clean = _luxuryPersonSheetAuditNeutralText(value, max);
+    if (clean && !picks.some(item => item.toLowerCase() === `${label}: ${clean}`.toLowerCase())) {
+      picks.push(`${label}: ${clean}`);
+    }
+  };
+  const capture = (label, re, max) => {
+    const m = source.match(re);
+    if (m && m[1]) add(label, m[1], max);
+  };
+  if (/Chinese\s*\/\s*East Asian facial features/i.test(source)) {
+    picks.push('Region/ethnicity: Chinese / East Asian facial features');
+  }
+  capture('Gender', /Visible gender presentation:\s*([^.;。；]+)/i, 80);
+  capture('Region/ethnicity', /Region\/ethnicity impression:\s*([^.;。；]+)/i, 120);
+  capture('Age', /Age range\/impression:\s*([^.;。；]+)/i, 120);
+  capture('Role', /Role\/identity\/job:\s*([^.;。；]+)/i, 140);
+  capture('Appearance', /Appearance and temperament:\s*([^.;。；]+)/i, 180);
+  capture('Wardrobe', /Wardrobe\/clothing hard constraint:\s*([^.;。；]+)/i, 220);
+  capture('Hair/grooming', /Hair, makeup and grooming hard constraint:\s*([^.;。；]+)/i, 180);
+  capture('Negative', /Visible negative constraints:\s*([^.;。；]+)/i, 180);
+  capture('Wardrobe lock', /Wardrobe lock:\s*([^.;。；]+)/i, 220);
+  return picks.slice(0, 9).join('; ');
+}
+
 function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
   aspectRatio = '9:16',
   expectedPeople = 1,
@@ -12866,11 +12895,13 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
   const view = /side/i.test(viewKey)
     ? 'side or three-quarter casting reference'
     : (/back/i.test(viewKey) ? 'back-view casting reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
-  const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, 760);
+  const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(prompt);
+  const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, priorityConstraints ? 520 : 760);
   return _luxuryCapImageModelPrompt([
     `Photorealistic commercial casting reference, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
     `Create ${castLabel} for a neutral studio casting sheet; ${view}.`,
     genderInstruction,
+    priorityConstraints ? `Priority locked person settings: ${priorityConstraints}. These constraints override generic casting defaults.` : '',
     hasReference
       ? 'Use the provided clean reference only for identity, age impression, hairstyle and wardrobe evidence; do not copy the source crop, background, lighting, pose or any unrelated scene.'
       : 'Derive the actor only from the confirmed campaign role, audience and person settings.',
