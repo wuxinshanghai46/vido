@@ -1614,7 +1614,7 @@ ${description ? `- 故事描述：${description}` : ''}
 }
 
 // 流式生成章节
-async function generateChapterStream({ outline, chapterIndex, chapters = [], genre, style, chapterWords = 2000, provider, novelType = 'short', userNote = '', authorProfile = null }, onChunk) {
+async function generateChapterStream({ outline, chapterIndex, chapters = [], genre, style, chapterWords = 2000, provider, novelType = 'short', userNote = '', authorProfile = null, longformContext = {} }, onChunk) {
   const chapter = outline.chapters.find(c => c.index === chapterIndex);
   const draftKbContext = buildNovelKbContext('chapter drafting scene dialogue prose', { genre, novelType });
   const authorProfilePrompt = authorProfileService.profilePrompt(authorProfile);
@@ -1644,6 +1644,21 @@ async function generateChapterStream({ outline, chapterIndex, chapters = [], gen
   const charInfo = outline.characters?.length
     ? '【角色设定】\n' + outline.characters.map(c => `- ${c.name}（${c.role || '角色'}）：${c.personality || ''}${c.arc ? '，变化弧线：' + c.arc : ''}`).join('\n') + '\n\n'
     : '';
+  const learnedStoryContext = [
+    asArray(longformContext.entities).length ? `【已学习人物状态】\n${JSON.stringify(asArray(longformContext.entities).slice(0, 20))}` : '',
+    asArray(longformContext.relationships).length ? `【已学习人物关系】\n${JSON.stringify(asArray(longformContext.relationships).slice(0, 20))}` : '',
+    asArray(longformContext.plot_threads).length ? `【已学习剧情线】\n${JSON.stringify(asArray(longformContext.plot_threads).slice(0, 12))}` : '',
+    asArray(longformContext.foreshadows).length ? `【伏笔与回收】\n${JSON.stringify(asArray(longformContext.foreshadows).slice(-16))}` : '',
+    asArray(longformContext.memory_items).length ? `【必须延续的事实记忆】\n${JSON.stringify(asArray(longformContext.memory_items).slice(-24))}` : '',
+    asArray(longformContext.chapter_commits).length ? `【已提交章节事实】\n${JSON.stringify(asArray(longformContext.chapter_commits).slice(-10).map(item => ({
+      chapter_index: item.chapter_index,
+      summary: item.summary,
+      events: asArray(item.events).slice(0, 6),
+      character_changes: asArray(item.character_changes).slice(0, 6),
+      relationship_changes: asArray(item.relationship_changes).slice(0, 6)
+    })))}`
+      : ''
+  ].filter(Boolean).join('\n\n');
 
   // 当前章节在全局中的位置
   const totalChapters = outline.chapters?.length || 1;
@@ -1692,7 +1707,7 @@ Story priority:
   const userPrompt = `【故事简介】
 ${outline.synopsis}
 
-${charInfo}【完整大纲】
+${charInfo}${learnedStoryContext ? `${learnedStoryContext}\n\n` : ''}【完整大纲】
 ${allChapterSummaries}
 
 ${previousContext}【当前任务】

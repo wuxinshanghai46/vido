@@ -1418,11 +1418,25 @@
 
   function renderAuthorProfile(novel = state.current) {
     const profile = novel?.author_profile || {};
+    const learningStatus = novel?.runtime_status?.agent_workflow || '';
+    const learningLabel = ({
+      chapter_learning_queued: '剧情学习排队中',
+      chapter_learning: '剧情学习中',
+      chapter_learning_completed: '剧情学习完成',
+      chapter_learning_failed: '剧情学习失败',
+      facts_committed: '剧情事实已同步'
+    })[learningStatus] || '';
+    const storyStats = [
+      arr(novel?.entities).length ? `人物${arr(novel.entities).length}` : '',
+      arr(novel?.relationships).length ? `关系${arr(novel.relationships).length}` : '',
+      arr(novel?.memory_items).length ? `记忆${arr(novel.memory_items).length}` : '',
+      arr(novel?.chapter_commits).filter(item => item.learning_status === 'completed' || item.status === 'committed').length ? `已学章节${arr(novel.chapter_commits).filter(item => item.learning_status === 'completed' || item.status === 'committed').length}` : ''
+    ].filter(Boolean).join(' · ');
     if (!profile.sample_word_count) {
       return `<section class="nv-card" style="margin:12px 0;padding:12px 14px">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-          <div><b>作者画像</b><p style="margin:4px 0 0;color:var(--muted);font-size:12px">保存章节后会确定性学习句长、段落、对白、常用词、开句和标点节奏。</p></div>
-          <span class="nv-pill">待学习</span>
+          <div><b>作者画像</b><p style="margin:4px 0 0;color:var(--muted);font-size:12px">保存章节后会确定性学习句长、段落、对白、常用词、开句和标点节奏；提交章节后会后台同步剧情事实、人物、关系和记忆。</p>${storyStats || learningLabel ? `<p style="margin:5px 0 0;color:var(--muted);font-size:12px">${esc([learningLabel, storyStats].filter(Boolean).join(' · '))}</p>` : ''}</div>
+          <span class="nv-pill">${learningLabel || '待学习'}</span>
         </div>
       </section>`;
     }
@@ -1443,6 +1457,7 @@
           <b>作者画像</b>
           <p style="margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6">${metrics.map(esc).join(' · ')}</p>
           <p style="margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6">常用词：${esc(words)}；开句习惯：${esc(openings)}</p>
+          ${storyStats || learningLabel ? `<p style="margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6">剧情学习：${esc([learningLabel, storyStats].filter(Boolean).join(' · '))}</p>` : ''}
         </div>
         <span class="nv-pill done">已学习</span>
       </div>

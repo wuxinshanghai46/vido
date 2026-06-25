@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const multer = require('multer');
 const mammoth = require('mammoth');
@@ -37,6 +38,7 @@ const novelImportUpload = multer({
 });
 const aiCreateTasks = new Map();
 const AI_CREATE_TASK_TTL_MS = 2 * 60 * 60 * 1000;
+const chapterLearningTasks = new Map();
 
 const NOVEL_GENRE_PRESETS = [
   { key: 'auto', label: 'AI 推荐', api: 'auto', subtypes: [] },
@@ -681,6 +683,7 @@ function buildLongformState(input = {}) {
 
 function buildChapterCommitDraft(novel, chapterIndex, chapterData, chapterInfo) {
   const existing = arr(novel.chapter_commits).filter(c => Number(c.chapter_index) !== Number(chapterIndex));
+  const contentHash = chapterContentHash(chapterData.content || '');
   const draft = {
     chapter_index: Number(chapterIndex),
     status: 'draft',
@@ -690,6 +693,7 @@ function buildChapterCommitDraft(novel, chapterIndex, chapterData, chapterInfo) 
     location_changes: [],
     foreshadow_updates: chapterInfo?.hook ? [{ type: 'hook', description: chapterInfo.hook }] : [],
     word_count: chapterData.word_count || 0,
+    content_hash: contentHash,
     source: 'generated_chapter',
     created_at: new Date().toISOString()
   };
@@ -705,6 +709,113 @@ function updateRuntimeStatus(novel = {}, patch = {}) {
   };
 }
 
+function chapterContentHash(content = '') {
+  return crypto.createHash('sha1').update(String(content || ''), 'utf8').digest('hex');
+}
+
+function isSubmittedChapter(chapter = {}) {
+  const status = str(chapter.status).toLowerCase();
+  return ['done', 'submitted', 'completed', 'finalized'].includes(status) || !!(chapter.submitted_at || chapter.committed_at);
+}
+
+function learnedChapterCommit(novel = {}, chapterIndex, content = '') {
+  const hash = chapterContentHash(content);
+  return arr(novel.chapter_commits).find(item =>
+    Number(item.chapter_index) === Number(chapterIndex)
+    && item.content_hash === hash
+    && item.learning_status === 'completed'
+  );
+}
+
+function submittedChaptersNeedingLearning(previousNovel = {}, nextNovel = {}) {
+  return arr(nextNovel.chapters)
+    .filter(chapter => isSubmittedChapter(chapter) && chapterTextValue(chapter).length >= 80)
+    .filter(chapter => !learnedChapterCommit(nextNovel, Number(chapter.index), chapterTextValue(chapter)))
+    .map(chapter => Number(chapter.index))
+    .filter(Boolean);
+}
+
+function markChapterLearningQueued(novelId, chapterIndex, contentHash) {
+  const novel = db.getNovel(novelId);
+  if (!novel) return;
+  const existing = arr(novel.chapter_commits).find(item => Number(item.chapter_index) === Number(chapterIndex)) || {};
+  const chapterCommits = arr(novel.chapter_commits)
+    .filter(item => Number(item.chapter_index) !== Number(chapterIndex))
+    .concat([{
+      ...existing,
+      chapter_index: Number(chapterIndex),
+      status: existing.status || 'submitted',
+      source: 'auto_learning',
+      learning_status: 'queued',
+      content_hash: contentHash,
+      queued_at: new Date().toISOString()
+    }])
+    .sort((a, b) => Number(a.chapter_index) - Number(b.chapter_index));
+  db.updateNovel(novelId, {
+    chapter_commits: chapterCommits,
+    runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'chapter_learning_queued', last_error: '' }),
+    updated_at: new Date().toISOString()
+  });
+}
+
+async function runChapterDeepLearning(novelId, chapterIndex) {
+  const taskKey = `${novelId}:${chapterIndex}`;
+  try {
+    const novel = db.getNovel(novelId);
+    const chapter = arr(novel?.chapters).find(item => Number(item.index) === Number(chapterIndex));
+    const content = chapterTextValue(chapter);
+    if (!novel || !chapter || !isSubmittedChapter(chapter) || content.length < 80) return;
+    const contentHash = chapterContentHash(content);
+    if (learnedChapterCommit(novel, chapterIndex, content)) return;
+    db.updateNovel(novelId, {
+      runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'chapter_learning', last_error: '' }),
+      updated_at: new Date().toISOString()
+    });
+    const facts = await novelService.extractChapterFacts({ novel, chapterIndex, provider: novel.provider });
+    facts.content_hash = contentHash;
+    facts.learning_status = 'completed';
+    const latest = db.getNovel(novelId) || novel;
+    const fields = mergeChapterFactsIntoNovel(latest, facts);
+    fields.runtime_status = updateRuntimeStatus({ ...latest, runtime_status: fields.runtime_status }, {
+      agent_workflow: 'chapter_learning_completed',
+      last_error: '',
+      model_provider: facts.provider_id || latest.runtime_status?.model_provider,
+      model_id: facts.model_id || latest.runtime_status?.model_id,
+      attempts: facts.attempts || []
+    });
+    db.updateNovel(novelId, fields);
+  } catch (error) {
+    const novel = db.getNovel(novelId);
+    if (novel) {
+      db.updateNovel(novelId, {
+        runtime_status: updateRuntimeStatus(novel, {
+          agent_workflow: 'chapter_learning_failed',
+          last_error: error.message,
+          attempts: error.attempts || []
+        }),
+        updated_at: new Date().toISOString()
+      });
+    }
+    console.error('[NovelLearning] failed:', novelId, chapterIndex, error.message);
+  } finally {
+    chapterLearningTasks.delete(taskKey);
+  }
+}
+
+function scheduleChapterDeepLearning(novelId, chapterIndexes = []) {
+  for (const chapterIndex of arr(chapterIndexes).map(Number).filter(Boolean)) {
+    const novel = db.getNovel(novelId);
+    const chapter = arr(novel?.chapters).find(item => Number(item.index) === Number(chapterIndex));
+    const content = chapterTextValue(chapter);
+    if (!novel || !chapter || learnedChapterCommit(novel, chapterIndex, content)) continue;
+    const taskKey = `${novelId}:${chapterIndex}`;
+    if (chapterLearningTasks.has(taskKey)) continue;
+    markChapterLearningQueued(novelId, chapterIndex, chapterContentHash(content));
+    const timer = setTimeout(() => runChapterDeepLearning(novelId, chapterIndex), 1200);
+    chapterLearningTasks.set(taskKey, timer);
+  }
+}
+
 function upsertByName(items = [], item = {}) {
   const name = str(item.name);
   if (!name) return items;
@@ -717,6 +828,122 @@ function upsertByName(items = [], item = {}) {
   if (index >= 0) next[index] = merged;
   else next.push(merged);
   return next;
+}
+
+function mergeByEvidenceKey(items = [], incoming = [], keyFn) {
+  const next = [...arr(items)];
+  for (const item of arr(incoming)) {
+    const key = keyFn(item);
+    if (!key) continue;
+    const index = next.findIndex(existing => keyFn(existing) === key);
+    if (index >= 0) next[index] = { ...next[index], ...item };
+    else next.push(item);
+  }
+  return next;
+}
+
+function syncStoryBibleFromFacts(novel = {}, facts = {}, merged = {}) {
+  const storyBible = { ...(novel.story_bible || {}) };
+  const entities = arr(merged.entities || novel.entities);
+  storyBible.characters = mergeByEvidenceKey(
+    arr(storyBible.characters),
+    entities.map(entity => ({
+      id: entity.id,
+      name: entity.name,
+      role: entity.role,
+      identity: entity.identity,
+      goal: entity.goal,
+      motivation: entity.motivation,
+      personality: entity.personality,
+      current_state: entity.current_state,
+      evidence: entity.evidence || entity.last_change,
+      source: entity.source
+    })).filter(item => item.name),
+    item => str(item.name)
+  );
+  storyBible.relationships = mergeByEvidenceKey(
+    arr(storyBible.relationships),
+    arr(merged.relationships || novel.relationships).map(rel => ({
+      from: rel.from,
+      to: rel.to,
+      type: rel.type,
+      description: rel.description,
+      tension: rel.tension,
+      status: rel.status,
+      evidence: arr(rel.history).slice(-1)[0]?.evidence || rel.evidence,
+      source_chapter: rel.source_chapter
+    })).filter(item => item.from && item.to),
+    item => `${str(item.from)}>${str(item.to)}>${str(item.type)}`
+  );
+  storyBible.locations = mergeByEvidenceKey(
+    arr(storyBible.locations),
+    arr(facts.location_changes).map((item, index) => ({
+      id: item.id || `loc_${facts.chapter_index}_${index + 1}`,
+      name: item.name,
+      type: item.type,
+      description: item.description,
+      evidence: item.evidence,
+      source_chapter: facts.chapter_index
+    })).filter(item => item.name || item.description),
+    item => str(item.name || item.description)
+  );
+  storyBible.timeline = mergeByEvidenceKey(
+    arr(storyBible.timeline),
+    [{
+      chapter_index: facts.chapter_index,
+      event: facts.summary || arr(facts.events).map(item => item.description).filter(Boolean).join('；'),
+      evidence: arr(facts.events)[0]?.evidence || '',
+      source: 'chapter_learning'
+    }].filter(item => item.event),
+    item => String(item.chapter_index || item.event)
+  );
+  storyBible.conflicts = mergeByEvidenceKey(
+    arr(storyBible.conflicts),
+    arr(merged.plot_threads || novel.plot_threads).map(item => ({
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      status: item.status,
+      description: item.description,
+      stakes: item.stakes,
+      chapters: item.chapters
+    })).filter(item => item.title || item.description),
+    item => str(item.title || item.description)
+  );
+  return storyBible;
+}
+
+function syncOutlineFromFacts(novel = {}, facts = {}) {
+  const outline = { ...(novel.outline || {}) };
+  const chapters = arr(outline.chapters);
+  if (!chapters.length) return outline;
+  const targetIndex = Number(facts.chapter_index);
+  outline.chapters = chapters.map((chapter, idx) => {
+    const index = Number(chapter.index) || idx + 1;
+    if (index !== targetIndex) return chapter;
+    const learnedEvents = arr(facts.events).map(item => item.description).filter(Boolean);
+    const learnedCharacters = Array.from(new Set([
+      ...arr(chapter.learned_characters),
+      ...arr(facts.character_changes).map(item => item.name).filter(Boolean),
+      ...learnedEvents.flatMap(() => [])
+    ]));
+    const learnedLocations = Array.from(new Set([
+      ...arr(chapter.learned_locations),
+      ...arr(facts.location_changes).map(item => item.name).filter(Boolean),
+      ...arr(facts.events).map(item => item.location).filter(Boolean)
+    ]));
+    return {
+      ...chapter,
+      index,
+      summary: str(chapter.summary) || str(facts.summary),
+      learned_summary: str(facts.summary) || chapter.learned_summary || '',
+      learned_events: learnedEvents,
+      learned_characters: learnedCharacters,
+      learned_locations: learnedLocations,
+      learned_at: new Date().toISOString()
+    };
+  });
+  return outline;
 }
 
 function mergeChapterFactsIntoNovel(novel = {}, facts = {}) {
@@ -816,8 +1043,20 @@ function mergeChapterFactsIntoNovel(novel = {}, facts = {}) {
 
   const chapterCommits = arr(novel.chapter_commits)
     .filter(item => Number(item.chapter_index) !== Number(facts.chapter_index))
-    .concat([{ ...facts, ignored_relationships: ignored }])
+    .concat([{
+      ...facts,
+      ignored_relationships: ignored,
+      learning_status: facts.learning_status || 'completed',
+      content_hash: facts.content_hash || '',
+      committed_at: facts.committed_at || new Date().toISOString()
+    }])
     .sort((a, b) => Number(a.chapter_index) - Number(b.chapter_index));
+
+  const merged = {
+    entities,
+    relationships,
+    plot_threads: plotThreads
+  };
 
   return {
     entities,
@@ -826,6 +1065,8 @@ function mergeChapterFactsIntoNovel(novel = {}, facts = {}) {
     foreshadows,
     memory_items: memoryItems,
     chapter_commits: chapterCommits,
+    story_bible: syncStoryBibleFromFacts(novel, facts, merged),
+    outline: syncOutlineFromFacts(novel, facts),
     runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'facts_committed', last_error: '' }),
     updated_at: new Date().toISOString()
   };
@@ -1717,6 +1958,11 @@ router.put('/:id', (req, res) => {
     }
     fields.updated_at = new Date().toISOString();
     db.updateNovel(req.params.id, fields);
+    const savedNovel = db.getNovel(req.params.id);
+    if (chapters !== undefined && req.body.auto_deep_learning !== false) {
+      const learningIndexes = submittedChaptersNeedingLearning(novel, savedNovel);
+      if (learningIndexes.length) scheduleChapterDeepLearning(req.params.id, learningIndexes);
+    }
     res.json({ success: true, novel: db.getNovel(req.params.id) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
@@ -1979,7 +2225,16 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
       provider: novel.provider,
       novelType: novel.novel_type || 'short',
       userNote: str(req.query.user_note),
-      authorProfile: novel.author_profile || null
+      authorProfile: novel.author_profile || null,
+      longformContext: {
+        entities: arr(novel.entities).slice(0, 30),
+        relationships: arr(novel.relationships).slice(0, 30),
+        plot_threads: arr(novel.plot_threads).slice(0, 20),
+        foreshadows: arr(novel.foreshadows).slice(-30),
+        memory_items: arr(novel.memory_items).slice(-40),
+        chapter_commits: arr(novel.chapter_commits).slice(-20),
+        story_bible: novel.story_bible || {}
+      }
     }, (chunk) => {
       res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
     });
@@ -2073,10 +2328,23 @@ router.post('/:id/chapters/:chapter/extract-facts', async (req, res) => {
   const chapterIndex = parseInt(req.params.chapter);
   if (!chapterIndex) return res.status(400).json({ success: false, error: '缺少章节编号' });
   try {
+    const chapter = arr(novel.chapters).find(ch => Number(ch.index) === Number(chapterIndex));
+    const content = chapterTextValue(chapter);
+    const existingCommit = learnedChapterCommit(novel, chapterIndex, content);
+    if (existingCommit && req.query.force !== 'true') {
+      return res.json({ success: true, facts: existingCommit, novel, skipped: true });
+    }
+    const taskKey = `${req.params.id}:${chapterIndex}`;
+    if (chapterLearningTasks.has(taskKey)) {
+      clearTimeout(chapterLearningTasks.get(taskKey));
+      chapterLearningTasks.delete(taskKey);
+    }
     db.updateNovel(req.params.id, {
       runtime_status: updateRuntimeStatus(novel, { agent_workflow: 'extracting_facts', last_error: '' })
     });
     const facts = await novelService.extractChapterFacts({ novel, chapterIndex, provider: novel.provider });
+    facts.content_hash = chapterContentHash(content);
+    facts.learning_status = 'completed';
     const fields = mergeChapterFactsIntoNovel(novel, facts);
     fields.runtime_status = updateRuntimeStatus({ ...novel, runtime_status: fields.runtime_status }, {
       agent_workflow: 'facts_committed',
