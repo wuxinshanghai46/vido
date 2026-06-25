@@ -38,6 +38,8 @@ recovery-backups/
 *.bak-timeout-*
 *.bak-sqlite-upsert-*
 outputs.bak*/
+public/dashboard-clean-demo.htm
+public/dashboard-clean-demo.html
 
 # Large binary assets
 动作资源包/
