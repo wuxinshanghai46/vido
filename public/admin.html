@@ -134,8 +134,8 @@
         <div class="form-row">
           <div class="form-group"><label>用户名</label><input id="nu-username" placeholder="username" /></div>
           <div class="form-group"><label>邮箱</label><input id="nu-email" type="email" placeholder="email@example.com" /></div>
-          <div class="form-group"><label>密码</label><input id="nu-password" type="password" placeholder="password" /></div>
-          <div class="form-group"><label>角色</label><select id="nu-role"></select></div>
+          <div class="form-group"><label>密码</label><div style="display:flex;gap:6px"><input id="nu-password" type="password" placeholder="至少 6 位密码" /><button class="btn-sm" type="button" id="btn-toggle-new-pwd">显示</button></div></div>
+          <div class="form-group"><label>角色 / 功能模块</label><div style="display:flex;gap:6px"><select id="nu-role"></select><button class="btn-sm" type="button" id="btn-config-new-role">配置权限</button></div></div>
         </div>
         <div class="form-actions">
           <button class="btn-primary" id="btn-save-user">创建</button>

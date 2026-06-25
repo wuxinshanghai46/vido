@@ -12,6 +12,7 @@ const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const db = require('../models/database');
 const novelService = require('../services/novelService');
+const authorProfileService = require('../services/novelAuthorProfileService');
 const novelContentCheck = require('../services/novelContentCheckService');
 const { deductCredits } = require('../middleware/credits');
 const { ownedBy, scopeUserId } = require('../middleware/auth');
@@ -1675,7 +1676,7 @@ router.put('/:id', (req, res) => {
       title, genre, style, novel_type, chapter_count, chapter_words, chapters, outline,
       description, logline, tags, story_bible, status, provider, contract, entities,
       cultural_region, relationships, plot_threads, foreshadows, chapter_briefs, chapter_commits,
-      review_reports, memory_items, runtime_status, allow_shorter_chapter_content
+      review_reports, memory_items, runtime_status, author_profile, allow_shorter_chapter_content
     } = req.body;
     const fields = {};
     if (title !== undefined) fields.title = title;
@@ -1697,6 +1698,7 @@ router.put('/:id', (req, res) => {
     if (review_reports !== undefined) fields.review_reports = Array.isArray(review_reports) ? review_reports : [];
     if (memory_items !== undefined) fields.memory_items = Array.isArray(memory_items) ? memory_items : [];
     if (runtime_status !== undefined) fields.runtime_status = runtime_status;
+    if (author_profile !== undefined) fields.author_profile = author_profile;
     if (status !== undefined) fields.status = status;
     if (provider !== undefined) fields.provider = provider;
     if (chapter_count !== undefined) fields.chapter_count = parseInt(chapter_count);
@@ -1706,6 +1708,7 @@ router.put('/:id', (req, res) => {
         allowShorterContent: allow_shorter_chapter_content === true
       }));
       fields.total_words = fields.chapters.reduce((sum, c) => sum + (c.word_count || chapterTextValue(c).length || 0), 0);
+      fields.author_profile = authorProfileService.buildAuthorProfile({ ...novel, ...fields }, 'user_saved_chapters');
     }
     if (outline !== undefined) {
       fields.outline = novelService.normalizeNovelOutline(outline, { ...novel, ...fields });
@@ -1975,7 +1978,8 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
       chapterWords: novel.chapter_words,
       provider: novel.provider,
       novelType: novel.novel_type || 'short',
-      userNote: str(req.query.user_note)
+      userNote: str(req.query.user_note),
+      authorProfile: novel.author_profile || null
     }, (chunk) => {
       res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
     });
@@ -2001,6 +2005,7 @@ router.get('/:id/generate-chapter-stream', async (req, res) => {
       chapters,
       chapter_commits,
       total_words: totalWords,
+      author_profile: novel.author_profile || null,
       status: 'draft',
       runtime_status: updateRuntimeStatus(novel, {
         agent_workflow: 'chapter_completed',
@@ -2114,11 +2119,21 @@ router.get('/:id/refine-stream', async (req, res) => {
       instruction: decodeURIComponent(instruction),
       genre: novel.genre,
       style: novel.style,
-      provider: novel.provider
+      provider: novel.provider,
+      context: {
+        author_profile: novel.author_profile || null
+      }
     }, (chunk) => {
       res.write(`data: ${JSON.stringify({ type: 'chunk', text: chunk })}\n\n`);
     });
+    const nextProfile = authorProfileService.addRevisionLearning(novel.author_profile || {}, {
+      source: 'refine_stream',
+      instruction: decodeURIComponent(instruction),
+      before: decodeURIComponent(text),
+      after: refined.text
+    });
     db.updateNovel(req.params.id, {
+      author_profile: nextProfile,
       runtime_status: updateRuntimeStatus(novel, {
         agent_workflow: 'refine_completed',
         last_error: '',
@@ -2175,10 +2190,18 @@ router.post('/:id/refine', async (req, res) => {
         chapter_content: chapter.content || '',
         outline_chapter: outlineChapter,
         relationships: arr(novel.relationships).slice(0, 12),
-        memory_items: arr(novel.memory_items).slice(-20)
+        memory_items: arr(novel.memory_items).slice(-20),
+        author_profile: novel.author_profile || null
       }
     });
+    const nextProfile = authorProfileService.addRevisionLearning(novel.author_profile || {}, {
+      source: 'refine',
+      instruction,
+      before: sourceText,
+      after: refined.text
+    });
     db.updateNovel(req.params.id, {
+      author_profile: nextProfile,
       runtime_status: updateRuntimeStatus(novel, {
         agent_workflow: 'refine_completed',
         last_error: '',

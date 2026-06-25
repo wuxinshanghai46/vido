@@ -105,6 +105,8 @@ function bindEvents() {
   $('#btn-new-user').onclick = () => toggleForm('form-new-user', true);
   $('#btn-cancel-user').onclick = () => toggleForm('form-new-user', false);
   $('#btn-save-user').onclick = createUser;
+  $('#btn-toggle-new-pwd').onclick = toggleNewUserPassword;
+  $('#btn-config-new-role').onclick = configureNewUserRole;
 
   // Credits filter
   $('#btn-filter-credits').onclick = loadCreditsLog;
@@ -217,6 +219,8 @@ async function createUser() {
     role: $('#nu-role').value
   };
   if (!body.username || !body.password) return toast('用户名和密码必填', 'error');
+  if (body.password.length < 6) return toast('密码至少 6 位', 'error');
+  if (!body.role) return toast('请先选择角色', 'error');
   try {
     const res = await authFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
     const data = await res.json();
@@ -229,6 +233,26 @@ async function createUser() {
       toast(data.error || '创建失败', 'error');
     }
   } catch (e) { toast('请求失败: ' + e.message, 'error'); }
+}
+
+function toggleNewUserPassword() {
+  const input = $('#nu-password');
+  const btn = $('#btn-toggle-new-pwd');
+  if (!input || !btn) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.textContent = show ? '隐藏' : '显示';
+}
+
+function configureNewUserRole() {
+  const roleId = $('#nu-role')?.value;
+  if (!roleId) return toast('请先选择角色', 'error');
+  const role = rolesCache.find(r => r.id === roleId);
+  if (!role) return toast('角色不存在，请刷新后重试', 'error');
+  const rolesTab = document.querySelector('.nav-item[data-tab="roles"]');
+  if (rolesTab) rolesTab.click();
+  switchRoleType(role.type || 'enterprise');
+  openRoleModal(role.id);
 }
 
 async function changeUserRole(uid, role) {
@@ -259,7 +283,7 @@ async function adjustCredits(uid) {
 
 async function resetPassword(uid) {
   const password = $(`#pwd-val-${uid}`).value;
-  if (!password || password.length < 4) return toast('密码至少4位', 'error');
+  if (!password || password.length < 6) return toast('密码至少6位', 'error');
   try {
     const res = await authFetch(`/api/admin/users/${uid}/reset-password`, {
       method: 'POST', body: JSON.stringify({ password })
@@ -426,7 +450,7 @@ async function loadRoles() {
 function switchRoleType(type) {
   currentRoleType = type;
   selectedRoleId = null;
-  document.querySelectorAll('.role-type-tab').forEach(el => {
+  document.querySelectorAll('#panel-roles .role-type-tab').forEach(el => {
     el.classList.toggle('active', el.dataset.type === type);
   });
   renderRoles();
@@ -789,11 +813,11 @@ function toggleForm(id, show) {
 function populateRoleDropdowns() {
   // New user role select — 只展示当前 Tab 对应 type 的角色
   const nuRole = $('#nu-role');
-  if (nuRole && rolesCache.length) {
+  if (nuRole) {
     const typeRoles = rolesCache.filter(r => (r.type || 'enterprise') === currentUserType);
-    nuRole.innerHTML = typeRoles.map(r =>
-      `<option value="${esc(r.id)}">${esc(r.label || r.id)}</option>`
-    ).join('');
+    nuRole.innerHTML = typeRoles.length
+      ? typeRoles.map(r => `<option value="${esc(r.id)}">${esc(r.label || r.id)}</option>`).join('')
+      : '<option value="">暂无该类型角色</option>';
   }
   // Credits filter user select
   const cfUser = $('#cf-user');

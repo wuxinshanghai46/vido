@@ -1416,6 +1416,39 @@
       </button>`).join('')}</div>`;
   }
 
+  function renderAuthorProfile(novel = state.current) {
+    const profile = novel?.author_profile || {};
+    if (!profile.sample_word_count) {
+      return `<section class="nv-card" style="margin:12px 0;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+          <div><b>作者画像</b><p style="margin:4px 0 0;color:var(--muted);font-size:12px">保存章节后会确定性学习句长、段落、对白、常用词、开句和标点节奏。</p></div>
+          <span class="nv-pill">待学习</span>
+        </div>
+      </section>`;
+    }
+    const words = arr(profile.frequent_words).slice(0, 8).map(item => item.word).join('、') || '暂无';
+    const openings = arr(profile.opening_patterns).slice(0, 4).map(item => item.pattern).join('、') || '暂无';
+    const metrics = [
+      `${profile.sample_chapter_count || 0}章样本`,
+      `${profile.sample_word_count || 0}字`,
+      `均句${profile.avg_sentence_length || 0}字`,
+      `短句${Math.round((profile.short_sentence_ratio || 0) * 100)}%`,
+      `长句${Math.round((profile.long_sentence_ratio || 0) * 100)}%`,
+      `段落${profile.avg_paragraph_length || 0}字`,
+      `对白${Math.round((profile.dialogue_ratio || 0) * 100)}%`
+    ];
+    return `<section class="nv-card" style="margin:12px 0;padding:12px 14px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <b>作者画像</b>
+          <p style="margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6">${metrics.map(esc).join(' · ')}</p>
+          <p style="margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.6">常用词：${esc(words)}；开句习惯：${esc(openings)}</p>
+        </div>
+        <span class="nv-pill done">已学习</span>
+      </div>
+    </section>`;
+  }
+
   function renderWork() {
     if (state.generation?.type === 'create') {
       disconnectChapterListHeightSync();
@@ -1444,6 +1477,7 @@
           ${novel.status === 'completed' ? '<span class="nv-pill done">已完结</span>' : ''}
         </div>
       </div>
+      ${renderAuthorProfile(novel)}
       ${renderFlow()}
       <div id="nvPanelMount">${renderPanel()}</div>
     </div>`;

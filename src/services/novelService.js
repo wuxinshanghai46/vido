@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const kb = require('./knowledgeBaseService');
+const authorProfileService = require('./novelAuthorProfileService');
 
 const GENRE_LABELS = {
   fantasy: '奇幻', wuxia: '武侠', xianxia: '仙侠', scifi: '科幻',
@@ -1613,9 +1614,10 @@ ${description ? `- 故事描述：${description}` : ''}
 }
 
 // 流式生成章节
-async function generateChapterStream({ outline, chapterIndex, chapters = [], genre, style, chapterWords = 2000, provider, novelType = 'short', userNote = '' }, onChunk) {
+async function generateChapterStream({ outline, chapterIndex, chapters = [], genre, style, chapterWords = 2000, provider, novelType = 'short', userNote = '', authorProfile = null }, onChunk) {
   const chapter = outline.chapters.find(c => c.index === chapterIndex);
   const draftKbContext = buildNovelKbContext('chapter drafting scene dialogue prose', { genre, novelType });
+  const authorProfilePrompt = authorProfileService.profilePrompt(authorProfile);
   const draftTaskbook = chapterTaskbookText(chapter || {});
   if (!chapter) throw new Error(`大纲中不存在第 ${chapterIndex} 章`);
 
@@ -1709,6 +1711,7 @@ ${cleanString(userNote) ? `\n用户给作家的具体要求：\n${cleanString(us
     messages: [
       { role: 'system', content: systemPrompt },
       draftKbContext ? { role: 'system', content: draftKbContext } : null,
+      authorProfilePrompt ? { role: 'system', content: authorProfilePrompt } : null,
       { role: 'user', content: chapterQualityPrompt },
       { role: 'user', content: userPrompt }
     ].filter(Boolean),
@@ -1727,6 +1730,7 @@ async function refineTextStream({ text, instruction, genre, style, provider, con
   const genreLabel = GENRE_LABELS[genre] || genre || '';
   const styleLabel = STYLE_LABELS[style] || style || '';
   const kbContext = buildNovelKbContext('novel refinement prose editing dialogue scene tension', { genre });
+  const authorProfilePrompt = authorProfileService.profilePrompt(context.author_profile);
   const outlineChapter = context.outline_chapter || {};
   const contextBlock = [
     context.novel_title ? `小说：${cleanString(context.novel_title)}` : '',
@@ -1740,7 +1744,8 @@ async function refineTextStream({ text, instruction, genre, style, provider, con
     cleanString(outlineChapter.hook) ? `章末钩子：${cleanString(outlineChapter.hook)}` : '',
     cleanString(context.user_note) ? `用户给作家的具体要求：${cleanString(context.user_note)}` : '',
     asArray(context.relationships).length ? `已有人物关系：${JSON.stringify(asArray(context.relationships).slice(0, 8))}` : '',
-    asArray(context.memory_items).length ? `已有事实记忆：${JSON.stringify(asArray(context.memory_items).slice(-10))}` : ''
+    asArray(context.memory_items).length ? `已有事实记忆：${JSON.stringify(asArray(context.memory_items).slice(-10))}` : '',
+    authorProfilePrompt
   ].filter(Boolean).join('\n');
   const refineQualityPrompt = `Refinement quality gate:
 ${NOVEL_SOURCE_FIDELITY_RULES}
