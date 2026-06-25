@@ -19,6 +19,26 @@ seedance2.0/
 logs/
 .runtime/
 
+# Local/server backup snapshots
+.backup/
+.backups/
+.codex-backup*/
+.codex-backups/
+.deploy-backup/
+backups/
+recovery-backups/
+*.bak
+*.bak-*
+*.bak.*
+*.bak_*
+*.bak-ui-speed-*
+*.bak-user-writing-*
+*.bak-writing-ui-*
+*.bak-buffered-stream-*
+*.bak-timeout-*
+*.bak-sqlite-upsert-*
+outputs.bak*/
+
 # Large binary assets
 动作资源包/
 
