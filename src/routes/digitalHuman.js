@@ -18,6 +18,7 @@ const axios = require('axios');
 const { execFileSync } = require('child_process');
 const db = require('../models/database');
 const { scopeUserId, ownedBy, requirePermission } = require('../middleware/auth');
+const authStore = require('../models/authStore');
 const avatarService = require('../services/avatarService');
 const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackService');
 const modelCapabilityService = require('../services/modelCapabilityService');
@@ -33,6 +34,16 @@ const LUXURY_AD_PROJECTS_FILE = path.join(OUTPUT_ROOT_DIR, 'luxury_ad_projects.j
 fs.mkdirSync(JIMENG_ASSETS_DIR, { recursive: true });
 fs.mkdirSync(DH_IMAGES_DIR, { recursive: true });
 fs.mkdirSync(DH_PUBLIC_ASSETS_DIR, { recursive: true });
+
+function _hasExplicitPermission(req, ...permissions) {
+  if (req.user?.role === 'admin') return true;
+  const user = req.user?.id ? authStore.getUserById(req.user.id) : null;
+  const role = user?.role ? authStore.getRoleById(user.role) : null;
+  const rolePerms = Array.isArray(role?.permissions) ? role.permissions : [];
+  const userPerms = Array.isArray(user?.permissions) ? user.permissions : [];
+  const all = new Set([...rolePerms, ...userPerms].filter(p => typeof p === 'string'));
+  return permissions.some(permission => all.has(permission));
+}
 
 const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
@@ -14977,7 +14988,10 @@ router.post('/luxury-ad/projects/save', (req, res) => {
   }
 });
 
-router.get('/usage/recent', requirePermission('model_usage'), (req, res) => {
+router.get('/usage/recent', (req, res) => {
+  if (!_hasExplicitPermission(req, 'model_usage', 'enterprise:model_usage:view', 'enterprise:model_usage:export')) {
+    return res.status(403).json({ success: false, error: '权限不足，需要模型消耗权限' });
+  }
   try {
     const requestKey = String(req.query.request_key || req.query.requestId || '').trim();
     const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 80));

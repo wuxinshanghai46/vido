@@ -281,8 +281,8 @@ async function init() {
 
 // ═══ 导航 ═══
 const PAGE_TITLES = {
-  dashboard:'创作中心', create:'AI 视频', imggen:'AI 图片生成', avatar:'AI 数字人',
-  comic:'AI 漫画', novel:'AI 小说', i2v:'图生视频', portrait:'我的角色',
+  dashboard:'创作中心', create:'视频动漫', imggen:'图片生成', avatar:'广告/数字人',
+  comic:'漫画', novel:'小说', i2v:'图生视频', portrait:'我的角色',
   projects:'我的项目', works:'我的作品', assets:'素材库', workbench:'声音克隆',
   radar:'素材获取', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
   profile:'个人信息', workflow:'工作流画布'
@@ -522,7 +522,8 @@ async function changePassword() {
   const msgEl = document.getElementById('pwd-msg');
   if (!oldPwd || !newPwd) { msgEl.innerHTML = '<span style="color:#ef4444">请填写所有字段</span>'; return; }
   if (newPwd !== confirmPwd) { msgEl.innerHTML = '<span style="color:#ef4444">两次密码不一致</span>'; return; }
-  if (newPwd.length < 6) { msgEl.innerHTML = '<span style="color:#ef4444">密码至少6位</span>'; return; }
+  if (newPwd.length < 8) { msgEl.innerHTML = '<span style="color:#ef4444">密码至少8位</span>'; return; }
+  if (!/^[\x21-\x7E]+$/.test(newPwd)) { msgEl.innerHTML = '<span style="color:#ef4444">密码只支持数字、英文和特殊字符</span>'; return; }
   try {
     const resp = await authFetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }) });
     const data = await resp.json();
@@ -4774,7 +4775,7 @@ async function saveProjectToWorks(btn) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: document.getElementById('input-theme')?.value || 'AI 视频',
+        title: document.getElementById('input-theme')?.value || '视频动漫',
         videoUrl: '/api/projects/' + currentProjectId + '/stream',
         projectId: currentProjectId
       })
@@ -10979,13 +10980,13 @@ function renderWorksStats(stats) {
   // 将作品类型映射到对应的权限模块 key（与侧边栏 data-perm 保持一致）
   const items = [
     { key: 'all',      label: '全部作品', perm: null,        count: Object.values(stats).reduce((s, n) => s + n, 0) },
-    { key: 'avatar',   label: '数字人',   perm: 'avatar',    count: stats.avatar || 0 },
-    { key: 'video',    label: 'AI 视频',  perm: 'create',    count: stats.video || 0 },
+    { key: 'avatar',   label: '广告/数字人', perm: 'avatar',    count: stats.avatar || 0 },
+    { key: 'video',    label: '视频动漫',  perm: 'create',    count: stats.video || 0 },
     { key: 'i2v',      label: '图生视频', perm: 'i2v',       count: stats.i2v || 0 },
     { key: 'portrait', label: 'AI 形象',  perm: 'portrait',  count: stats.portrait || 0 },
-    { key: 'comic',    label: 'AI 漫画',  perm: 'comic',     count: stats.comic || 0 },
+    { key: 'comic',    label: '漫画',      perm: 'comic',     count: stats.comic || 0 },
     { key: 'drama',    label: 'AI 网剧',  perm: 'drama',     count: stats.drama || 0 },
-    { key: 'novel',    label: 'AI 小说',  perm: 'novel',     count: stats.novel || 0 },
+    { key: 'novel',    label: '小说',      perm: 'novel',     count: stats.novel || 0 },
   ];
   // 根据当前用户权限过滤
   const user = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;

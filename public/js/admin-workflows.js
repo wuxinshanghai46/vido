@@ -47,9 +47,10 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function _toast(msg, ok = true) {
+    if (typeof showToast === 'function') return showToast(msg, ok ? 'success' : 'error');
     const t = document.createElement('div');
     t.textContent = msg;
-    t.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;padding:10px 16px;border-radius:8px;font-size:13px;color:#fff;background:${ok ? '#22c55e' : '#ef4444'};box-shadow:0 6px 20px rgba(0,0,0,.3);`;
+    t.style.cssText = `position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;min-width:160px;max-width:min(520px,calc(100vw - 32px));padding:10px 16px;border-radius:8px;font-size:13px;color:#fff;text-align:center;background:${ok ? '#22c55e' : '#ef4444'};box-shadow:0 6px 20px rgba(0,0,0,.3);`;
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 2800);
   }

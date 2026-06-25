@@ -688,15 +688,16 @@ body {
 
 /* ══ TOAST ══ */
 .admin-toast {
-  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 9999;
+  min-width: 160px; max-width: min(520px, calc(100vw - 32px));
   padding: 10px 20px; border-radius: var(--radius);
-  font-size: 13px; font-weight: 500; color: #fff;
+  font-size: 13px; font-weight: 500; color: #fff; text-align: center;
   animation: toastIn .3s ease;
   pointer-events: none;
 }
 .admin-toast.success { background: var(--success); color: #0c0c12; }
 .admin-toast.error { background: var(--error); }
-@keyframes toastIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -12px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ══ MODAL OVERLAY ══ */
 .modal-overlay {
@@ -3011,7 +3012,7 @@ body {
   display: flex;
   align-items: center;
   gap: 18px;
-  margin: 0 0 14px;
+  margin: 0 0 4px;
   min-height: 38px;
 }
 
@@ -3058,6 +3059,13 @@ body {
   padding: 14px 20px;
 }
 
+#admin-roles-vue .vue-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) minmax(150px, 220px) max-content max-content minmax(24px, 1fr) max-content max-content max-content;
+  gap: 12px;
+  padding: 14px 20px;
+}
+
 #admin-roles-vue .vue-role-filters {
   display: grid;
   grid-template-columns: minmax(220px, 340px) minmax(150px, 220px) max-content max-content minmax(24px, 1fr);
@@ -3087,6 +3095,8 @@ body {
 
 #admin-users-vue .vue-toolbar input,
 #admin-users-vue .vue-toolbar select,
+#admin-roles-vue .vue-toolbar input,
+#admin-roles-vue .vue-toolbar select,
 #admin-roles-vue .vue-role-filters input,
 #admin-roles-vue .vue-role-filters select,
 .vue-modal .vue-form-grid input,
@@ -3109,6 +3119,8 @@ body {
 
 #admin-users-vue .vue-toolbar input,
 #admin-users-vue .vue-toolbar select,
+#admin-roles-vue .vue-toolbar input,
+#admin-roles-vue .vue-toolbar select,
 #admin-roles-vue .vue-role-filters input,
 #admin-roles-vue .vue-role-filters select {
   height: 40px;
@@ -3119,6 +3131,8 @@ body {
 
 #admin-users-vue .vue-toolbar input:focus,
 #admin-users-vue .vue-toolbar select:focus,
+#admin-roles-vue .vue-toolbar input:focus,
+#admin-roles-vue .vue-toolbar select:focus,
 #admin-roles-vue .vue-role-filters input:focus,
 #admin-roles-vue .vue-role-filters select:focus,
 .vue-modal input:focus,
@@ -3154,8 +3168,10 @@ body {
 }
 
 #admin-users-vue .vue-toolbar .vue-btn,
+#admin-roles-vue .vue-toolbar .vue-btn,
 #admin-roles-vue .vue-role-filters .vue-btn,
 #admin-users-vue .vue-toolbar button,
+#admin-roles-vue .vue-toolbar button,
 #admin-roles-vue .vue-role-filters button {
   height: 40px;
   min-width: 72px;
@@ -4022,6 +4038,7 @@ body {
 }
 
 #admin-users-vue .vue-toolbar .vue-spacer,
+#admin-roles-vue .vue-toolbar .vue-spacer,
 #admin-roles-vue .vue-role-filters .vue-spacer {
   display: block;
 }
@@ -4035,6 +4052,7 @@ body {
 #admin-model-pipeline-vue .vue-toolbar button,
 .vue-admin-page .vue-toolbar button,
 #admin-users-vue .vue-toolbar button,
+#admin-roles-vue .vue-toolbar button,
 #admin-roles-vue .vue-role-filters button {
   max-width: max-content;
   min-width: 72px;
@@ -4047,11 +4065,13 @@ body {
 
 @media (max-width: 1100px) {
   #admin-users-vue .vue-toolbar,
+  #admin-roles-vue .vue-toolbar,
   #admin-roles-vue .vue-role-filters {
-    grid-template-columns: minmax(220px, 1fr) minmax(140px, 220px) repeat(2, auto);
+    grid-template-columns: minmax(220px, 1fr) minmax(140px, 220px) repeat(3, auto);
   }
 
   #admin-users-vue .vue-toolbar .vue-spacer,
+  #admin-roles-vue .vue-toolbar .vue-spacer,
   #admin-roles-vue .vue-role-filters .vue-spacer {
     display: none;
   }
@@ -4115,11 +4135,45 @@ body {
 }
 
 /* Admin Vue polish: compact dialogs, readable selects, stable media cards */
-#admin-users-vue .vue-tab-summary {
-  margin-left: auto;
-  color: var(--text3);
+#admin-users-vue .vue-tab-summary,
+#admin-roles-vue .vue-tab-summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin: -2px 0 10px 0;
+  padding: 4px 12px;
+  border: 1px solid rgba(var(--accent-rgb), .18);
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .12), rgba(var(--accent-rgb), .05));
+  color: var(--text2);
   font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
   align-self: center;
+  box-shadow: 0 8px 22px rgba(var(--accent-rgb), .06);
+}
+
+@media (max-width: 768px) {
+  #admin-users-vue .vue-tab-summary,
+  #admin-roles-vue .vue-tab-summary {
+    margin-left: 0;
+  }
+}
+
+#admin-users-vue .vue-tab-summary::before,
+#admin-roles-vue .vue-tab-summary::before {
+  content: '提示：';
+  color: var(--accent);
+  font-weight: 800;
+  margin-right: 4px;
+}
+
+[data-theme="light-mist"] #admin-users-vue .vue-tab-summary,
+[data-theme="light-mist"] #admin-roles-vue .vue-tab-summary {
+  border-color: rgba(var(--accent-rgb), .20);
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .10), rgba(105, 221, 200, .12));
+  color: var(--text2);
+  box-shadow: 0 8px 20px rgba(65, 92, 119, .10);
 }
 
 #admin-users-vue .user-create-modal {
@@ -4159,17 +4213,31 @@ body {
 }
 
 #admin-users-vue .vue-password input {
-  padding-right: 70px !important;
+  padding-right: 46px !important;
 }
 
 #admin-users-vue .vue-password-toggle,
 .vue-password button {
-  width: 58px;
+  width: 34px;
   height: 30px;
   right: 6px;
   border-radius: 6px;
   color: var(--accent);
   background: rgba(var(--accent-rgb), .08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#admin-users-vue .vue-password-toggle svg,
+.vue-password button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #admin-users-vue select option,

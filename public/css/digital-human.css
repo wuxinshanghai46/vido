@@ -104,12 +104,12 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "P
 .dh-empty-sub { font-size: 12px; color: var(--dh-text-muted); }
 
 /* ═══════════════════════════════════════════════ Buttons ═══ */
-.dh-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: 999px; border: none; font-size: 14px; line-height: 1.2; text-align: center; cursor: pointer; transition: all .15s; font-weight: 500; font-family: inherit; }
-.dh-btn-primary { background: var(--dh-gradient); color: #0D0E12; font-weight: 700; }
-.dh-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(33,255,243,.3); }
-.dh-btn-ghost { background: var(--dh-bg-gray); color: var(--dh-text); border: 1px solid var(--dh-border); }
-.dh-btn-ghost:hover { border-color: var(--dh-primary); color: var(--dh-primary); background: var(--dh-bg-elevate); }
-.dh-btn-lg { padding: 14px 40px; font-size: 16px; font-weight: 600; }
+.dh-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 9px 18px; border-radius: 12px; border: 1px solid rgba(143,178,255,.22); font-size: 14px; line-height: 1.2; text-align: center; cursor: pointer; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; font-weight: 700; font-family: inherit; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+.dh-btn-primary { background: linear-gradient(135deg, var(--dh-primary) 0%, #7fffe8 58%, #c8ff66 100%); border-color: rgba(33,255,243,.38); color: #071012; font-weight: 800; box-shadow: 0 10px 24px rgba(33,255,243,.18); }
+.dh-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(33,255,243,.24); }
+.dh-btn-ghost { background: rgba(255,255,255,.035); color: var(--dh-text); border-color: var(--dh-border); }
+.dh-btn-ghost:hover { border-color: rgba(33,255,243,.5); color: var(--dh-primary); background: rgba(33,255,243,.08); transform: translateY(-1px); }
+.dh-btn-lg { min-height: 44px; padding: 12px 28px; font-size: 15px; font-weight: 800; }
 
 /* ═══════════════════════════════════════════════ Modal ═══ */
 .dh-modal { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; }

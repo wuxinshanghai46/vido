@@ -158,15 +158,15 @@
     <form class="auth-form" id="auth-form-register" style="display:none" onsubmit="return doRegister(event);">
       <div class="auth-field">
         <input type="text" id="reg-username" required autocomplete="username" placeholder=" " minlength="3" maxlength="20" />
-        <label>用户名 (3-20 位字母数字)</label>
+        <label>用户名 (3-20 位英文字母)</label>
       </div>
       <div class="auth-field">
         <input type="email" id="reg-email" autocomplete="email" placeholder=" " />
         <label>邮箱（选填）</label>
       </div>
       <div class="auth-field">
-        <input type="password" id="reg-password" required autocomplete="new-password" placeholder=" " minlength="6" />
-        <label>密码 (至少 6 位)</label>
+        <input type="password" id="reg-password" required autocomplete="new-password" placeholder=" " minlength="8" />
+        <label>密码 (至少 8 位，支持数字/英文/特殊字符)</label>
       </div>
       <button type="submit" class="auth-submit">注册并开始创作</button>
     </form>
@@ -175,6 +175,6 @@
   </div>
 </div>
 
-<script src="/js/home.js?v=20260505"></script>
+<script src="/js/home.js?v=20260625-user-rules"></script>
 </body>
 </html>

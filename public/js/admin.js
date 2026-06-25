@@ -223,7 +223,9 @@ async function createUser() {
     role: $('#nu-role').value
   };
   if (!body.username || !body.password) return toast('用户名和密码必填', 'error');
-  if (body.password.length < 6) return toast('密码至少 6 位', 'error');
+  if (!/^[A-Za-z]{3,20}$/.test(body.username)) return toast('用户名只能输入英文字母，长度 3-20 位', 'error');
+  if (body.password.length < 8) return toast('密码至少 8 位', 'error');
+  if (!/^[\x21-\x7E]+$/.test(body.password)) return toast('密码只支持数字、英文和特殊字符', 'error');
   if (!body.role) return toast('请先选择角色', 'error');
   try {
     const res = await authFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
@@ -287,7 +289,8 @@ async function adjustCredits(uid) {
 
 async function resetPassword(uid) {
   const password = $(`#pwd-val-${uid}`).value;
-  if (!password || password.length < 6) return toast('密码至少6位', 'error');
+  if (!password || password.length < 8) return toast('密码至少8位', 'error');
+  if (!/^[\x21-\x7E]+$/.test(password)) return toast('密码只支持数字、英文和特殊字符', 'error');
   try {
     const res = await authFetch(`/api/admin/users/${uid}/reset-password`, {
       method: 'POST', body: JSON.stringify({ password })
@@ -407,7 +410,8 @@ async function saveUserDetail() {
   // 3. 重置密码
   const newPwd = document.getElementById('ud-password').value;
   if (newPwd) {
-    if (newPwd.length < 6) { toast('密码至少 6 位', 'error'); return; }
+    if (newPwd.length < 8) { toast('密码至少 8 位', 'error'); return; }
+    if (!/^[\x21-\x7E]+$/.test(newPwd)) { toast('密码只支持数字、英文和特殊字符', 'error'); return; }
     try {
       const res = await authFetch(`/api/admin/users/${uid}/reset-password`, {
         method: 'POST', body: JSON.stringify({ password: newPwd })
@@ -575,9 +579,9 @@ function updateMatrixPreview(role) {
   tbody.innerHTML = rows.join('');
 }
 
-// 为指定 type 自动生成下一个角色 ID — 形如 platform_role_001 / enterprise_role_001
+// 为指定 type 自动生成下一个角色 ID — 后台 HT_001 / 前台 QT_001
 function generateNextRoleId(type) {
-  const prefix = (type === 'platform' ? 'platform' : 'enterprise') + '_role_';
+  const prefix = type === 'platform' ? 'HT_' : 'QT_';
   const re = new RegExp('^' + prefix + '(\\d+)$');
   const nums = rolesCache
     .map(r => {
@@ -1013,9 +1017,15 @@ function toast(msg, type = 'success') {
   const el = document.createElement('div');
   el.className = `admin-toast ${type}`;
   el.textContent = msg;
+  el.style.top = '24px';
+  el.style.left = '50%';
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+  el.style.transform = 'translateX(-50%)';
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2800);
 }
+window.showToast = toast;
 
 // ══════════════════════════════════════════════════
 //  AI 配置（供应商 / MCP / Skill — 与前端 app.js 同结构）
@@ -1540,8 +1550,8 @@ function showContentDetail(item) {
   let body = '';
   const token = getToken() || '';
   const TYPE_NAMES = {
-    project: 'AI 视频项目', i2v: '图生视频', novel: 'AI 小说',
-    drama: '网剧', comic: '漫画', avatar: '数字人', portrait: '角色形象'
+    project: '视频动漫项目', i2v: '图生视频', novel: '小说',
+    drama: '网剧', comic: '漫画', avatar: '广告/数字人', portrait: '角色形象'
   };
 
   if (item.type === 'project') {
@@ -3656,7 +3666,7 @@ function aiteamOpenRunWorkflow(presetWorkflow = 'auto') {
         <select id="wf-name">
           <option value="auto">🤖 自动识别（按关键词匹配）</option>
           <optgroup label="—— 业务工作流 ——">
-            <option value="video">🎬 AI 视频生成</option>
+            <option value="video">🎬 视频动漫生成</option>
             <option value="drama">📺 漫剧 / 短剧</option>
             <option value="comic">📖 漫画生成</option>
             <option value="novel">📚 小说创作</option>

@@ -12,13 +12,17 @@ router.get('/users', (req, res) => {
 router.post('/users', (req, res) => {
   const { username, email, phone, nickname, gender, remark, password, role, permissions, allowed_models } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, error: '鐢ㄦ埛鍚嶅拰瀵嗙爜蹇呭～' });
-  if (auth.getUserByUsername(username)) return res.status(409).json({ success: false, error: '鐢ㄦ埛鍚嶅凡瀛樺湪' });
+  const cleanUsername = String(username).trim();
+  const passwordError = validatePassword(password);
+  if (!isEnglishUsername(cleanUsername)) return res.status(400).json({ success: false, error: '用户名只能输入英文字母，长度 3-20 位' });
+  if (passwordError) return res.status(400).json({ success: false, error: passwordError });
+  if (auth.getUserByUsername(cleanUsername)) return res.status(409).json({ success: false, error: '鐢ㄦ埛鍚嶅凡瀛樺湪' });
   // role 蹇呴』鏄幇瀛樿鑹?
   const roleObj = role ? auth.getRoleById(role) : auth.getRoleById('user');
   if (!roleObj) return res.status(400).json({ success: false, error: '瑙掕壊涓嶅瓨鍦? ' + role });
   const { hash, salt } = hashPassword(password);
   const user = auth.createUser({
-    username, email: email || '', phone: phone || '', nickname: nickname || '', gender: gender || '', remark: remark || '',
+    username: cleanUsername, email: email || '', phone: phone || '', nickname: nickname || '', gender: gender || '', remark: remark || '',
     password_hash: hash, password_salt: salt, password_plain: password,
     role: roleObj.id,
     permissions: Array.isArray(permissions) ? permissions : [],
@@ -70,7 +74,8 @@ router.delete('/users/:id', (req, res) => {
 // 閲嶇疆瀵嗙爜
 router.post('/users/:id/reset-password', (req, res) => {
   const { password } = req.body;
-  if (!password || password.length < 6) return res.status(400).json({ success: false, error: '瀵嗙爜鑷冲皯 6 浣? '});
+  const passwordError = validatePassword(password);
+  if (passwordError) return res.status(400).json({ success: false, error: passwordError });
   const { hash, salt } = hashPassword(password);
   const user = auth.updateUser(req.params.id, { password_hash: hash, password_salt: salt, password_plain: password });
   if (!user) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
@@ -141,16 +146,16 @@ const PERMISSION_MATRIX = {
     label: '前台角色',
     modules: [
       { id: 'dashboard',  label: '创作中心',     group: '创作中心', actions: ['view'] },
-      { id: 'aicanvas',   label: 'AI 画布',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'export'] },
-      { id: 'create',     label: 'AI 视频',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
-      { id: 'avatar',     label: 'AI 数字人',    group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export', 'view_errors'] },
-      { id: 'comic',      label: 'AI 漫画',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
+      { id: 'aicanvas',   label: '视频画布',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'export'] },
+      { id: 'create',     label: '视频动漫',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
+      { id: 'avatar',     label: '广告/数字人',   group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export', 'view_errors'] },
+      { id: 'comic',      label: '漫画',          group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
       { id: 'drama',      label: 'AI 网剧',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
-      { id: 'manga_drama', label: 'AI 漫剧',     group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
-      { id: 'novel',      label: 'AI 小说',      group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'import', 'export'] },
+      { id: 'manga_drama', label: '漫剧',        group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'publish', 'export'] },
+      { id: 'novel',      label: '小说',          group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'generate', 'import', 'export'] },
       { id: 'workflow',   label: '工作流画布',   group: '内容创作', actions: ['view', 'create', 'edit', 'delete', 'run', 'debug'] },
       { id: 'i2v',        label: '图生视频',     group: '工具', actions: ['view', 'create', 'generate', 'delete', 'export', 'view_errors'] },
-      { id: 'imggen',     label: 'AI 图片生成',  group: '工具', actions: ['view', 'create', 'generate', 'delete', 'export', 'view_errors'] },
+      { id: 'imggen',     label: '图片生成',      group: '工具', actions: ['view', 'create', 'generate', 'delete', 'export', 'view_errors'] },
       { id: 'radar',      label: '素材获取',     group: '爆款复刻', actions: ['view', 'create', 'import', 'delete', 'export'] },
       { id: 'monitor',    label: '素材库',       group: '爆款复刻', actions: ['view', 'create', 'edit', 'delete', 'import', 'export'] },
       { id: 'contentlib', label: '内容库',       group: '爆款复刻', actions: ['view', 'create', 'edit', 'delete', 'import', 'export'] },
@@ -203,6 +208,30 @@ function normalizeRolePermissions(type, permissions) {
   return permissions.filter(p => typeof p === 'string' && allowed.has(p));
 }
 
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function isEnglishUsername(username) {
+  return /^[A-Za-z]{3,20}$/.test(username);
+}
+
+function validatePassword(password) {
+  if (typeof password !== 'string' || !password) return '密码必填';
+  if (password.length < 8) return '密码至少 8 位';
+  if (!/^[\x21-\x7E]+$/.test(password)) return '密码只支持数字、英文和特殊字符';
+  return '';
+}
+
+function roleIdPrefix(type) {
+  return type === 'platform' ? 'HT_' : 'QT_';
+}
+
+function isValidRoleIdForType(id, type) {
+  return new RegExp(`^${roleIdPrefix(type)}\\d{3}$`).test(String(id || ''));
+}
+
 router.get('/permissions-matrix', (req, res) => {
   const type = req.query.type === 'platform' ? 'platform' : req.query.type === 'enterprise' ? 'enterprise' : null;
   if (type) return res.json({ success: true, data: PERMISSION_MATRIX[type] });
@@ -228,20 +257,21 @@ router.get('/roles', (req, res) => {
 router.post('/roles', (req, res) => {
   const { id, label, type, description, remark, display_order, status, permissions, default_credits, allowed_models, max_projects } = req.body;
   if (!id || !label) return res.status(400).json({ success: false, error: 'id 鍜?label 蹇呭～' });
-  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(id)) return res.status(400).json({ success: false, error: 'id 鍙厑璁稿瓧姣嶃€佹暟瀛椼€佷笅鍒掔嚎' });
-  if (auth.getRoleById(id)) return res.status(409).json({ success: false, error: '瑙掕壊 ID 宸插瓨鍦? '});
-  if (type && type !== 'platform' && type !== 'enterprise') {
+  const roleType = type || 'enterprise';
+  if (roleType !== 'platform' && roleType !== 'enterprise') {
     return res.status(400).json({ success: false, error: '闈炴硶 type' });
   }
+  if (!isValidRoleIdForType(id, roleType)) return res.status(400).json({ success: false, error: `${roleType === 'platform' ? '后台' : '前台'}角色编号必须按 ${roleIdPrefix(roleType)}001 格式递增` });
+  if (auth.getRoleById(id)) return res.status(409).json({ success: false, error: '瑙掕壊 ID 宸插瓨鍦? '});
   const role = auth.createRole({
-    id, label, type: type || 'enterprise', description: description || '',
+    id, label, type: roleType, description: description || '',
     remark: remark || '',
-    display_order: Number.isFinite(Number(display_order)) ? Number(display_order) : 0,
+    display_order: finiteNumber(display_order, 0),
     status: status || 'active',
-    permissions: normalizeRolePermissions(type || 'enterprise', permissions),
-    default_credits: default_credits || 100,
+    permissions: normalizeRolePermissions(roleType, permissions),
+    default_credits: finiteNumber(default_credits, 100),
     allowed_models: allowed_models || [],
-    max_projects: max_projects || 10
+    max_projects: finiteNumber(max_projects, 10)
   });
   res.json({ success: true, data: role });
 });
@@ -254,17 +284,18 @@ router.put('/roles/:id', (req, res) => {
   if (label !== undefined) updates.label = label;
   if (description !== undefined) updates.description = description;
   if (remark !== undefined) updates.remark = remark;
-  if (display_order !== undefined) updates.display_order = Number(display_order) || 0;
+  if (display_order !== undefined) updates.display_order = finiteNumber(display_order, 0);
   if (status !== undefined) updates.status = status;
   if (permissions !== undefined) {
     // 杩囨护锛氬悗鍙拌鑹蹭笉鑳芥寔鏈?enterprise: 鍓嶇紑鏉冮檺锛屽弽涔嬩害鐒?    const type = role.type || 'enterprise';
+    const type = role.type || 'enterprise';
     updates.permissions = normalizeRolePermissions(type, permissions);
     // admin 鍐呯疆瑙掕壊姘歌繙淇濇寔 *
     if (role.id === 'admin') updates.permissions = ['*'];
   }
-  if (default_credits !== undefined) updates.default_credits = default_credits;
+  if (default_credits !== undefined) updates.default_credits = finiteNumber(default_credits, 100);
   if (allowed_models !== undefined) updates.allowed_models = allowed_models;
-  if (max_projects !== undefined) updates.max_projects = max_projects;
+  if (max_projects !== undefined) updates.max_projects = finiteNumber(max_projects, 10);
   const updated = auth.updateRole(req.params.id, updates);
   if (!updated) return res.status(404).json({ success: false, error: '瑙掕壊涓嶅瓨鍦? '});
   res.json({ success: true, data: updated });

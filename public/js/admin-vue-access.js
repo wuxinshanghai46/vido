@@ -5,6 +5,30 @@
 
   const roleTypeName = type => type === 'platform' ? '后台角色' : '前台角色';
   const userTypeName = type => type === 'platform' ? '后台用户' : '前台用户';
+  const accessTabKeys = {
+    users: 'vido_admin_access_users_tab',
+    roles: 'vido_admin_access_roles_tab'
+  };
+  const normalizeAccessTab = value => value === 'platform' || value === 'enterprise' ? value : '';
+  const readAccessTab = (scope, fallback) => {
+    try {
+      return normalizeAccessTab(localStorage.getItem(accessTabKeys[scope])) || fallback;
+    } catch {
+      return fallback;
+    }
+  };
+  const writeAccessTab = (scope, value) => {
+    const tab = normalizeAccessTab(value);
+    if (!tab) return;
+    try { localStorage.setItem(accessTabKeys[scope], tab); } catch {}
+  };
+  const isEnglishUsername = value => /^[A-Za-z]{3,20}$/.test(String(value || '').trim());
+  const passwordError = value => {
+    if (!value) return '密码必填';
+    if (String(value).length < 8) return '密码至少 8 位';
+    if (!/^[\x21-\x7E]+$/.test(String(value))) return '密码只支持数字、英文和特殊字符';
+    return '';
+  };
 
   async function apiJson(url, opts = {}) {
     return api.request(url, opts);
@@ -79,7 +103,7 @@
         users: [],
         roles: [],
         loading: false,
-        tab: 'enterprise',
+        tab: readAccessTab('users', 'enterprise'),
         query: '',
         status: '',
         showModal: false,
@@ -146,8 +170,23 @@
           this.loading = false;
         }
       },
+      async refreshRoles() {
+        try {
+          const roles = await apiJson('/api/admin/roles');
+          this.roles = roles || [];
+          if (!this.form.role || !this.typeRoles.some(role => role.id === this.form.role)) {
+            this.form.role = this.typeRoles[0]?.id || '';
+          }
+        } catch (error) {
+          toast(error.message, 'error');
+        }
+      },
       switchTab(type) {
+        if (!normalizeAccessTab(type)) return;
         this.tab = type;
+        writeAccessTab('users', type);
+        this.resetFilters();
+        this.$nextTick(() => setTimeout(() => this.resetFilters(), 100));
         this.form.role = this.typeRoles[0]?.id || '';
       },
       resetFilters() {
@@ -162,18 +201,26 @@
         const role = this.roles.find(item => item.id === user.role);
         return role ? (role.type || 'enterprise') : 'enterprise';
       },
-      openAdd() {
+      async openAdd() {
         this.form = this.emptyForm();
+        await this.refreshRoles();
         this.form.role = this.typeRoles[0]?.id || '';
         this.showPassword = false;
         this.showModal = true;
       },
       async createUser() {
         if (!this.form.username || !this.form.password) return toast('用户名和密码必填', 'error');
-        if (this.form.password.length < 6) return toast('密码至少 6 位', 'error');
+        if (!isEnglishUsername(this.form.username)) return toast('用户名只能输入英文字母，长度 3-20 位', 'error');
+        const pwdError = passwordError(this.form.password);
+        if (pwdError) return toast(pwdError, 'error');
         if (!this.form.role) return toast('请选择角色', 'error');
         try {
-          await apiJson('/api/admin/users', { method: 'POST', body: JSON.stringify(this.form) });
+          const createdUser = await apiJson('/api/admin/users', { method: 'POST', body: JSON.stringify(this.form) });
+          const selectedRole = this.roles.find(role => role.id === createdUser?.role || role.id === this.form.role);
+          this.tab = createdUser?.role_type || selectedRole?.type || this.tab;
+          writeAccessTab('users', this.tab);
+          this.query = '';
+          this.status = '';
           toast('用户已创建');
           this.showModal = false;
           await this.refresh();
@@ -192,9 +239,10 @@
         }
       },
       async resetPassword(user) {
-        const password = prompt(`为 ${user.username} 设置新密码（至少 6 位）`);
+        const password = prompt(`为 ${user.username} 设置新密码（至少 8 位，支持数字、英文、特殊字符）`);
         if (!password) return;
-        if (password.length < 6) return toast('密码至少 6 位', 'error');
+        const pwdError = passwordError(password);
+        if (pwdError) return toast(pwdError, 'error');
         try {
           await apiJson(`/api/admin/users/${user.id}/reset-password`, { method: 'POST', body: JSON.stringify({ password }) });
           toast('密码已重置');
@@ -215,17 +263,22 @@
       userTypeName,
       dateText
     },
-    mounted() { this.refresh(); },
+    mounted() {
+      this.resetFilters();
+      this.refresh();
+      this.$nextTick(() => setTimeout(() => this.resetFilters(), 300));
+      window.addEventListener('vido:roles-updated', this.refreshRoles);
+    },
     template: `
       <section class="vue-admin-page">
         <div class="vue-tabs">
           <button :class="{active:tab==='enterprise'}" @click="switchTab('enterprise')">前台用户</button>
           <button :class="{active:tab==='platform'}" @click="switchTab('platform')">后台用户</button>
-          <span class="vue-tab-summary">{{ userScopeText }}</span>
         </div>
+        <div class="vue-tab-summary">{{ userScopeText }}</div>
         <div class="vue-access-card">
           <div class="vue-toolbar">
-            <input v-model="query" placeholder="请输入用户名/手机号" />
+            <input v-model="query" name="vido-user-search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" placeholder="请输入用户名/手机号" />
             <select v-model="status">
               <option value="">全部状态</option>
               <option value="active">正常</option>
@@ -272,8 +325,8 @@
           <div class="vue-modal user-create-modal">
             <div class="vue-modal-head"><b>添加用户</b><button @click="showModal=false">×</button></div>
             <div class="vue-form-grid">
-              <label class="required"><span>用户名</span><input v-model.trim="form.username" autocomplete="off" placeholder="用户名将只输入字母" /></label>
-              <label class="required"><span>用户密码</span><span class="vue-password"><input v-model="form.password" :type="showPassword?'text':'password'" autocomplete="new-password" placeholder="请输入用户密码" /><button class="vue-password-toggle" type="button" @click.prevent="showPassword=!showPassword">{{ showPassword ? '隐藏' : '查看' }}</button></span></label>
+              <label class="required"><span>用户名</span><input v-model.trim="form.username" autocomplete="off" placeholder="仅支持 3-20 位英文字母" /></label>
+              <label class="required"><span>用户密码</span><span class="vue-password"><input v-model="form.password" :type="showPassword?'text':'password'" autocomplete="new-password" placeholder="至少 8 位，支持数字/英文/特殊字符" /><button class="vue-password-toggle" type="button" :title="showPassword ? '隐藏密码' : '查看密码'" :aria-label="showPassword ? '隐藏密码' : '查看密码'" @click.prevent="showPassword=!showPassword"><svg v-if="!showPassword" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg><svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"/><path d="M9.9 5.3A10.7 10.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17.7 17.7 0 0 1-3.1 4.1"/><path d="M6.6 6.8A17.6 17.6 0 0 0 2.5 12s3.5 7 9.5 7a10.8 10.8 0 0 0 4.1-.8"/></svg></button></span></label>
               <label class="required"><span>用户昵称</span><input v-model.trim="form.nickname" placeholder="请输入用户昵称" /></label>
               <label class="required"><span>角色</span><select v-model="form.role"><option value="">请选择角色</option><option v-for="role in typeRoles" :key="role.id" :value="role.id">{{ role.label || role.id }}</option></select></label>
               <label><span>手机号码</span><input v-model.trim="form.phone" placeholder="请输入手机号码" /></label>
@@ -292,7 +345,7 @@
       return {
         roles: [],
         matrix: null,
-        tab: 'platform',
+        tab: readAccessTab('roles', 'platform'),
         query: '',
         status: '',
         showRole: false,
@@ -335,6 +388,18 @@
       allMenuSelected() {
         const keys = flattenPermissionKeys(this.activeMatrix, this.form.type, 'menu');
         return keys.length > 0 && keys.every(key => this.selected.has(key));
+      },
+      tabRoleCount() {
+        return this.roles.filter(role => (role.type || 'enterprise') === this.tab).length;
+      },
+      platformRoleCount() {
+        return this.roles.filter(role => (role.type || 'enterprise') === 'platform').length;
+      },
+      enterpriseRoleCount() {
+        return this.roles.filter(role => (role.type || 'enterprise') === 'enterprise').length;
+      },
+      roleScopeText() {
+        return `当前 ${this.filteredRoles.length} / 本类 ${this.tabRoleCount} / 全部 ${this.roles.length}，前台 ${this.enterpriseRoleCount}，后台 ${this.platformRoleCount}`;
       }
     },
     methods: {
@@ -365,14 +430,18 @@
         }
       },
       switchTab(type) {
+        if (!normalizeAccessTab(type)) return;
         this.tab = type;
+        writeAccessTab('roles', type);
+        this.resetFilters();
+        this.$nextTick(() => setTimeout(() => this.resetFilters(), 100));
       },
       resetFilters() {
         this.query = '';
         this.status = '';
       },
       nextRoleId(type) {
-        const prefix = (type === 'platform' ? 'platform' : 'enterprise') + '_role_';
+        const prefix = type === 'platform' ? 'HT_' : 'QT_';
         const nums = this.roles.map(role => String(role.id || '').startsWith(prefix) ? Number(String(role.id).slice(prefix.length)) : 0);
         return prefix + String(Math.max(0, ...nums) + 1).padStart(3, '0');
       },
@@ -465,13 +534,21 @@
         const permissions = [...this.selected, ...this.listSelected];
         const body = { ...this.form, description: this.form.remark || this.form.description || '', permissions };
         try {
+          const isNew = !this.editingId;
           const url = this.editingId ? `/api/admin/roles/${this.editingId}` : '/api/admin/roles';
           const method = this.editingId ? 'PUT' : 'POST';
-          await apiJson(url, { method, body: JSON.stringify(body) });
-          toast(this.editingId ? '角色已更新' : '角色已创建');
+          const savedRole = await apiJson(url, { method, body: JSON.stringify(body) });
+          if (isNew) {
+            this.tab = savedRole?.type || body.type || this.tab;
+            writeAccessTab('roles', this.tab);
+            this.query = '';
+            this.status = '';
+          }
+          toast(isNew ? '角色已创建' : '角色已更新');
           this.showRole = false;
           this.showList = false;
           await this.refresh();
+          window.dispatchEvent(new CustomEvent('vido:roles-updated'));
         } catch (error) {
           toast(error.message, 'error');
         }
@@ -490,21 +567,24 @@
       roleTypeName,
       dateText
     },
-    mounted() { this.refresh(); },
+    mounted() {
+      this.resetFilters();
+      this.refresh();
+      this.$nextTick(() => setTimeout(() => this.resetFilters(), 300));
+    },
     template: `
       <section class="vue-admin-page">
+        <div class="vue-tabs">
+          <button :class="{active:tab==='enterprise'}" @click="switchTab('enterprise')">前台角色</button>
+          <button :class="{active:tab==='platform'}" @click="switchTab('platform')">后台角色</button>
+        </div>
+        <div class="vue-tab-summary">{{ roleScopeText }}</div>
         <div class="vue-access-card">
-          <div class="vue-role-filters">
-            <label><span>角色名称</span><input v-model="query" placeholder="请输入角色名称" /></label>
-            <label><span>状态</span><select v-model="status"><option value="">角色状态</option><option value="active">正常</option><option value="disabled">停用</option></select></label>
-            <button class="vue-btn primary" @click="refresh">搜索</button>
-            <button class="vue-btn" @click="resetFilters">重置</button>
-          </div>
           <div class="vue-toolbar">
-            <div class="vue-tabs inline">
-              <button :class="{active:tab==='platform'}" @click="switchTab('platform')">后台角色</button>
-              <button :class="{active:tab==='enterprise'}" @click="switchTab('enterprise')">前台角色</button>
-            </div>
+            <input v-model="query" name="vido-role-search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" placeholder="请输入角色名称" />
+            <select v-model="status"><option value="">全部状态</option><option value="active">正常</option><option value="disabled">停用</option></select>
+            <button class="vue-btn primary" @click="refresh">查询</button>
+            <button class="vue-btn" @click="resetFilters">重置</button>
             <span class="vue-spacer"></span>
             <button class="vue-btn primary" @click="openRole(null)">添加</button>
             <button class="vue-btn danger">删除</button>

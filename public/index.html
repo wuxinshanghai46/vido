@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
-  <link rel="stylesheet" href="/css/style.css?v=20260623-hero-restore" />
-  <link rel="stylesheet" href="/css/vido-ui.css?v=20260624-control-tone" />
+  <link rel="stylesheet" href="/css/style.css?v=20260625-compact-sidebar" />
+  <link rel="stylesheet" href="/css/vido-ui.css?v=20260625-compact-sidebar" />
   <script src="/js/auth.js?v=20260412g"></script>
 </head>
 <body>
@@ -29,13 +29,13 @@
 
   <div class="sidebar-section" data-group="内容创作">
     <div class="sidebar-section-title">内容创作</div>
-    <div class="nav-item" data-page="aicanvas" data-perm="aicanvas" onclick="window.location.href='/aicanvas.html'"><div class="nav-icon">🎨</div>AI 画布</div>
-    <div class="nav-item" data-page="create"   data-perm="create"  ><div class="nav-icon">🎬</div>AI 视频</div>
-    <div class="nav-item" data-perm="avatar" onclick="window.location.href='/digital-human'"><div class="nav-icon">🧑‍💼</div>AI 数字人</div>
-    <div class="nav-item" data-page="comic"    data-perm="comic"   ><div class="nav-icon">📚</div>AI 漫画</div>
+    <div class="nav-item" data-page="aicanvas" data-perm="aicanvas" onclick="window.location.href='/aicanvas.html'"><div class="nav-icon">🎨</div>视频画布</div>
+    <div class="nav-item" data-page="create"   data-perm="create"  ><div class="nav-icon">🎬</div>视频动漫</div>
+    <div class="nav-item" data-perm="avatar" onclick="window.location.href='/digital-human'"><div class="nav-icon">🧑‍💼</div>广告/数字人</div>
+    <div class="nav-item" data-page="comic"    data-perm="comic"   ><div class="nav-icon">📚</div>漫画</div>
     <div class="nav-item" data-page="drama"    data-perm="drama"   ><div class="nav-icon">🎭</div>AI 网剧</div>
-    <div class="nav-item" data-perm="manga_drama" onclick="window.location.href='/ai-manga-drama'"><div class="nav-icon">🎞️</div>AI 漫剧</div>
-    <div class="nav-item" data-perm="novel" onclick="window.location.href='/ai-novel'"><div class="nav-icon">✍️</div>AI 小说</div>
+    <div class="nav-item" data-perm="manga_drama" onclick="window.location.href='/ai-manga-drama'"><div class="nav-icon">🎞️</div>漫剧</div>
+    <div class="nav-item" data-perm="novel" onclick="window.location.href='/ai-novel'"><div class="nav-icon">✍️</div>小说</div>
     <div class="nav-item" data-page="workflow" data-perm="workflow"><div class="nav-icon">🔗</div>工作流画布</div>
   </div>
 
@@ -44,7 +44,7 @@
   <div class="sidebar-section" data-group="工具">
     <div class="sidebar-section-title">工具</div>
     <div class="nav-item" data-page="i2v"    data-perm="i2v"   ><div class="nav-icon">🎞️</div>图生视频</div>
-    <div class="nav-item" data-page="imggen" data-perm="imggen"><div class="nav-icon">🖼️</div>AI 图片生成</div>
+    <div class="nav-item" data-page="imggen" data-perm="imggen"><div class="nav-icon">🖼️</div>图片生成</div>
   </div>
 
   <div class="sidebar-divider" data-group="爆款复刻"></div>
@@ -147,7 +147,7 @@
             <div class="hub-type-head">
               <div class="hub-type-icon">🎬</div>
               <div class="hub-type-info">
-                <div class="hub-type-name">AI 视频</div>
+                <div class="hub-type-name">视频动漫</div>
                 <div class="hub-type-desc">文字一键生成动画短片 · 支持13种画风</div>
               </div>
               <div class="hub-type-count" id="hub-cnt-video">0 作品</div>
@@ -161,7 +161,7 @@
             <div class="hub-type-head">
               <div class="hub-type-icon">🧑‍💼</div>
               <div class="hub-type-info">
-                <div class="hub-type-name">AI 数字人</div>
+                <div class="hub-type-name">广告/数字人</div>
                 <div class="hub-type-desc">上传照片 · 文字/音频驱动口播视频</div>
               </div>
               <div class="hub-type-count" id="hub-cnt-avatar">0 作品</div>
@@ -175,7 +175,7 @@
             <div class="hub-type-head">
               <div class="hub-type-icon">📚</div>
               <div class="hub-type-info">
-                <div class="hub-type-name">AI 漫画</div>
+                <div class="hub-type-name">漫画</div>
                 <div class="hub-type-desc">输入故事 · AI 自动生成分镜漫画</div>
               </div>
               <div class="hub-type-count" id="hub-cnt-comic">0 作品</div>
@@ -189,7 +189,7 @@
             <div class="hub-type-head">
               <div class="hub-type-icon">🎞️</div>
               <div class="hub-type-info">
-                <div class="hub-type-name">AI 漫剧</div>
+                <div class="hub-type-name">漫剧</div>
                 <div class="hub-type-desc">小说拆集 · 角色资产 · 分镜动效 · 成片流水线</div>
               </div>
               <div class="hub-type-count">新模块</div>
@@ -203,7 +203,7 @@
             <div class="hub-type-head">
               <div class="hub-type-icon">✍️</div>
               <div class="hub-type-info">
-                <div class="hub-type-name">AI 小说</div>
+                <div class="hub-type-name">小说</div>
                 <div class="hub-type-desc">AI 辅助长文创作 · 大纲规划到逐章生成</div>
               </div>
               <div class="hub-type-count" id="hub-cnt-novel">0 作品</div>
@@ -1995,13 +1995,13 @@
           <!-- Tab 筛选（按权限动态过滤） -->
           <div class="assets-tabs" id="works-tabs">
             <button class="assets-tab active" onclick="filterWorks('all',this)">全部</button>
-            <button class="assets-tab" data-perm="avatar"   onclick="filterWorks('avatar',this)">数字人</button>
-            <button class="assets-tab" data-perm="create"   onclick="filterWorks('video',this)">AI 视频</button>
+            <button class="assets-tab" data-perm="avatar"   onclick="filterWorks('avatar',this)">广告/数字人</button>
+            <button class="assets-tab" data-perm="create"   onclick="filterWorks('video',this)">视频动漫</button>
             <button class="assets-tab" data-perm="i2v"      onclick="filterWorks('i2v',this)">图生视频</button>
             <button class="assets-tab" data-perm="portrait" onclick="filterWorks('portrait',this)">AI 形象</button>
-            <button class="assets-tab" data-perm="comic"    onclick="filterWorks('comic',this)">AI 漫画</button>
+            <button class="assets-tab" data-perm="comic"    onclick="filterWorks('comic',this)">漫画</button>
             <button class="assets-tab" data-perm="drama"    onclick="filterWorks('drama',this)">AI 网剧</button>
-            <button class="assets-tab" data-perm="novel"    onclick="filterWorks('novel',this)">AI 小说</button>
+            <button class="assets-tab" data-perm="novel"    onclick="filterWorks('novel',this)">小说</button>
           </div>
           <!-- 作品网格 -->
           <div class="works-grid" id="works-grid">
@@ -2168,10 +2168,10 @@
       <!-- ══ 设置页面 ══ -->
       <!-- settings page removed — AI 配置已移至后台管理 /admin.html -->
 
-      <!-- ══ AI 数字人页面 ══ -->
+      <!-- ══ 广告/数字人页面 ══ -->
       <div id="page-avatar" class="page">
         <div class="page-top-bar">
-          <div class="page-top-title">AI 数字人</div>
+          <div class="page-top-title">广告/数字人</div>
           <div class="page-top-sub">上传人像照片，AI 驱动生成口播 / 讲解数字人视频</div>
         </div>
         <div class="av-page">
@@ -2182,7 +2182,7 @@
               <div class="av-panel-hd">
                 <div class="av-panel-title">
                   <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.46-6 5.5-6s5.5 2.69 5.5 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M11 3.5l2-2.5M4 3.5L2 1" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".5"/></svg>
-                  AI 数字人
+                  广告/数字人
                 </div>
                 <div style="display:flex;gap:4px">
                   <button class="av-preset-gen-btn" id="av-gen-presets-btn" onclick="generateAvatarPresets('avatar')" title="批量生成所有预设头像（如果已有图将不覆盖）">
@@ -3223,13 +3223,13 @@
         </div>
       </div>
 
-      <!-- ══ AI 漫画生成页面 ══ -->
+      <!-- ══ 漫画生成页面 ══ -->
       <div id="page-comic" class="page">
         <div class="comic-page">
           <!-- 顶栏 -->
           <div class="comic-header">
             <div class="comic-header-left">
-              <div class="comic-header-title">AI 漫画工坊</div>
+              <div class="comic-header-title">漫画工坊</div>
               <span class="comic-header-badge">BETA</span>
             </div>
             <div class="comic-header-sub">输入故事主题，AI 自动创作分镜脚本并生成高质量漫画</div>
@@ -3353,11 +3353,11 @@
         </div>
       </div>
 
-      <!-- ══ AI 图片生成页面 ══ -->
+      <!-- ══ 图片生成页面 ══ -->
       <div id="page-imggen" class="page">
         <div class="ig-page">
           <div class="page-top-bar">
-            <div class="page-top-title">AI 图片生成</div>
+            <div class="page-top-title">图片生成</div>
             <div class="page-top-sub">输入文字描述，AI 为你生成高质量图片</div>
           </div>
           <div class="ig-main">
@@ -3803,6 +3803,6 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=20260624-account-theme"></script>
+<script src="/js/app.js?v=20260625-module-button-tone"></script>
 </body>
 </html>

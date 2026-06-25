@@ -861,8 +861,14 @@ function resolveOwnedAvatar(req) {
   if (!task) task = db.getAvatarTask(id);
   if (!task) return null;
   const isAdmin = req.user && req.user.role === 'admin';
-  if (!isAdmin && task.user_id && req.user && task.user_id !== req.user.id) return null;
+  if (!isAdmin && (!task.user_id || !req.user || task.user_id !== req.user.id)) return null;
   return task;
+}
+
+function avatarTaskVisibleToCurrentUser(req, task) {
+  if (!task) return false;
+  if (req.user?.role === 'admin') return true;
+  return !!(task.user_id && req.user?.id && task.user_id === req.user.id);
 }
 
 // GET /api/avatar/tasks/:id - 兼容旧任务详情/旧视频地址
@@ -982,7 +988,7 @@ router.get('/tasks', (req, res) => {
   }
   // 用内存中的最新状态覆盖
   avatarTasks.forEach(t => {
-    if (!req.user || t.user_id === req.user.id || req.user.role === 'admin') {
+    if (avatarTaskVisibleToCurrentUser(req, t)) {
       taskMap.set(t.id, { id: t.id, status: t.status, text: t.text, created_at: t.created_at, videoUrl: t.videoUrl, ratio: t.ratio, model: t.model });
     }
   });
@@ -2708,13 +2714,14 @@ router.post('/jimeng-omni/generate', async (req, res) => {
 // 查询任务
 router.get('/jimeng-omni/tasks/:id', (req, res) => {
   const task = jimengTasks.get(req.params.id);
-  if (!task) return res.status(404).json({ success: false, error: 'task not found' });
+  if (!avatarTaskVisibleToCurrentUser(req, task)) return res.status(404).json({ success: false, error: 'task not found' });
   res.json({ success: true, task });
 });
 
 // 列表
 router.get('/jimeng-omni/tasks', (req, res) => {
   const tasks = Array.from(jimengTasks.values())
+    .filter(task => avatarTaskVisibleToCurrentUser(req, task))
     .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
     .slice(0, 50);
   res.json({ success: true, tasks });

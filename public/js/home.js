@@ -179,12 +179,16 @@ async function doRegister(e) {
     showAuthErr('用户名长度需 3-20 位');
     return false;
   }
-  if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-    showAuthErr('用户名只允许字母、数字、下划线');
+  if (!/^[A-Za-z]{3,20}$/.test(username)) {
+    showAuthErr('用户名只能输入英文字母，长度 3-20 位');
     return false;
   }
-  if (password.length < 6) {
-    showAuthErr('密码至少 6 位');
+  if (password.length < 8) {
+    showAuthErr('密码至少 8 位');
+    return false;
+  }
+  if (!/^[\x21-\x7E]+$/.test(password)) {
+    showAuthErr('密码只支持数字、英文和特殊字符');
     return false;
   }
   const btn = e?.submitter || document.querySelector('#auth-form-register .auth-submit');
@@ -317,4 +321,3 @@ document.addEventListener('keydown', (e) => {
     }
   } catch {}
 })();
-

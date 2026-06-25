@@ -18,6 +18,17 @@ function _setPageSession(res, userId) {
 
 const REFRESH_TOKEN_DAYS = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
 
+function isEnglishUsername(username) {
+  return /^[A-Za-z]{3,20}$/.test(username);
+}
+
+function validatePassword(password, label = '密码') {
+  if (typeof password !== 'string' || !password) return `${label}必填`;
+  if (password.length < 8) return `${label}至少 8 位`;
+  if (!/^[\x21-\x7E]+$/.test(password)) return `${label}只支持数字、英文和特殊字符`;
+  return '';
+}
+
 // last_login 降频：进程内每用户 5 分钟最多回写一次，避免每次登录都跑 47KB 全文写盘
 const _lastLoginCache = new Map();
 const LAST_LOGIN_THROTTLE_MS = 5 * 60 * 1000;
@@ -34,15 +45,16 @@ function _touchLastLogin(userId) {
 router.post('/register', (req, res) => {
   const { username, email, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, error: '用户名和密码必填' });
-  if (username.length < 3 || username.length > 20) return res.status(400).json({ success: false, error: '用户名长度 3-20 位' });
-  if (!/^[a-zA-Z0-9_]+$/.test(username)) return res.status(400).json({ success: false, error: '用户名只允许字母、数字、下划线' });
-  if (password.length < 6) return res.status(400).json({ success: false, error: '密码至少 6 位' });
+  const cleanUsername = String(username).trim();
+  const passwordError = validatePassword(password);
+  if (!isEnglishUsername(cleanUsername)) return res.status(400).json({ success: false, error: '用户名只能输入英文字母，长度 3-20 位' });
+  if (passwordError) return res.status(400).json({ success: false, error: passwordError });
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, error: '邮箱格式不正确' });
-  if (getUserByUsername(username)) return res.status(409).json({ success: false, error: '用户名已存在' });
+  if (getUserByUsername(cleanUsername)) return res.status(409).json({ success: false, error: '用户名已存在' });
   if (email && getUserByEmail(email)) return res.status(409).json({ success: false, error: '邮箱已被注册' });
 
   const { hash, salt } = hashPassword(password);
-  const user = createUser({ username, email: email || '', password_hash: hash, password_salt: salt, password_plain: password, role: 'user' });
+  const user = createUser({ username: cleanUsername, email: email || '', password_hash: hash, password_salt: salt, password_plain: password, role: 'user' });
   const accessToken = signToken(user.id, user.role);
   const { refreshToken, refreshExpires } = issueRefresh(user.id);
 
@@ -132,7 +144,8 @@ router.put('/me', authenticate, (req, res) => {
     if (!verifyPassword(old_password, user.password_hash, user.password_salt)) {
       return res.status(400).json({ success: false, error: '旧密码不正确' });
     }
-    if (password.length < 6) return res.status(400).json({ success: false, error: '新密码至少 6 位' });
+    const passwordError = validatePassword(password, '新密码');
+    if (passwordError) return res.status(400).json({ success: false, error: passwordError });
     const { hash, salt } = hashPassword(password);
     updates.password_hash = hash;
     updates.password_salt = salt;
@@ -176,17 +189,18 @@ router.post('/change-password', authenticate, (req, res) => {
   try {
     const { old_password, new_password } = req.body;
     if (!old_password || !new_password) return res.status(400).json({ success: false, error: '请填写所有字段' });
-    if (new_password.length < 6) return res.status(400).json({ success: false, error: '新密码至少6位' });
+    const passwordError = validatePassword(new_password, '新密码');
+    if (passwordError) return res.status(400).json({ success: false, error: passwordError });
 
     const user = getUserById(req.user.id);
     if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
 
-    if (!verifyPassword(old_password, user.password_hash, user.salt)) {
+    if (!verifyPassword(old_password, user.password_hash, user.password_salt)) {
       return res.status(400).json({ success: false, error: '当前密码不正确' });
     }
 
     const { hash, salt } = hashPassword(new_password);
-    updateUser(user.id, { password_hash: hash, salt });
+    updateUser(user.id, { password_hash: hash, password_salt: salt, password_plain: new_password });
     res.json({ success: true, message: '密码修改成功' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

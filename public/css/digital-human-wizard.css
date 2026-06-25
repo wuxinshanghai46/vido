@@ -59,9 +59,10 @@
 .dh-wizard-sub { color: var(--dh-text-soft); font-size: 13px; }
 
 /* ——— Step 1 模式切换 ——— */
-.dh-mode-switch { display: inline-flex; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: 999px; padding: 4px; margin-bottom: 24px; gap: 4px; }
-.dh-mode-btn { background: transparent; border: 0; color: var(--dh-text-soft); padding: 8px 18px; border-radius: 999px; font-size: 13px; cursor: pointer; transition: all .15s; font-weight: 500; }
-.dh-mode-btn.active { background: var(--dh-gradient); color: #0D0E12; font-weight: 600; }
+.dh-mode-switch { display: inline-flex; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: 14px; padding: 4px; margin-bottom: 24px; gap: 4px; }
+.dh-mode-btn { background: rgba(255,255,255,.025); border: 1px solid transparent; color: var(--dh-text-soft); min-height: 36px; padding: 8px 18px; border-radius: 10px; font-size: 13px; cursor: pointer; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; font-weight: 700; }
+.dh-mode-btn:hover { border-color: rgba(33,255,243,.35); color: var(--dh-text); background: rgba(33,255,243,.055); }
+.dh-mode-btn.active { background: var(--dh-gradient); color: #0D0E12; border-color: transparent; font-weight: 800; box-shadow: 0 10px 24px rgba(33,255,243,.18); }
 .dh-mode-pane { display: none; }
 .dh-mode-pane.active { display: block; }
 
@@ -98,9 +99,9 @@
 
 /* ——— Chip 行 ——— */
 .dh-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.dh-chip { background: var(--dh-bg-soft); border: 1px solid var(--dh-border); color: var(--dh-text-soft); padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 13px; transition: all .15s; }
-.dh-chip:hover { border-color: var(--dh-primary-light); color: var(--dh-text); }
-.dh-chip.active { background: var(--dh-primary-bg); border-color: var(--dh-primary); color: var(--dh-primary); font-weight: 500; }
+.dh-chip { background: rgba(255,255,255,.025); border: 1px solid var(--dh-border); color: var(--dh-text-soft); min-height: 36px; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: 13px; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; font-weight: 700; }
+.dh-chip:hover { border-color: rgba(33,255,243,.4); color: var(--dh-text); background: rgba(33,255,243,.055); transform: translateY(-1px); }
+.dh-chip.active { background: var(--dh-primary-bg); border-color: var(--dh-primary); color: var(--dh-primary); font-weight: 800; box-shadow: 0 8px 18px rgba(33,255,243,.10); transform: none; }
 
 /* ——— 风格卡网格 ——— */
 .dh-style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -154,14 +155,14 @@
 @keyframes dhPulse { 0%, 100% { opacity: .45; transform: scale(.86); } 50% { opacity: 1; transform: scale(1); } }
 
 /* ——— 通用按钮 ——— */
-.dh-btn { padding: 10px 18px; border-radius: 999px; border: 1px solid transparent; cursor: pointer; font-family: inherit; font-weight: 500; font-size: 14px; line-height: 1.2; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all .15s; }
-.dh-btn-primary { background: var(--dh-gradient); color: #0D0E12; font-weight: 600; }
-.dh-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(33,255,243,.3); }
+.dh-btn { min-height: 38px; padding: 9px 18px; border-radius: 12px; border: 1px solid rgba(143,178,255,.22); cursor: pointer; font-family: inherit; font-weight: 700; font-size: 14px; line-height: 1.2; text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: 7px; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+.dh-btn-primary { background: linear-gradient(135deg, var(--dh-primary) 0%, #7fffe8 58%, #c8ff66 100%); border-color: rgba(33,255,243,.38); color: #071012; font-weight: 800; box-shadow: 0 10px 24px rgba(33,255,243,.18); }
+.dh-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(33,255,243,.24); }
 .dh-btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
-.dh-btn-ghost { background: transparent; border-color: var(--dh-border); color: var(--dh-text); }
-.dh-btn-ghost:hover { background: var(--dh-bg-gray); border-color: var(--dh-primary-light); }
-.dh-btn-lg { padding: 14px 28px; font-size: 15px; }
-.dh-btn-sm { padding: 6px 12px; font-size: 12px; }
+.dh-btn-ghost { background: rgba(255,255,255,.035); border-color: var(--dh-border); color: var(--dh-text); }
+.dh-btn-ghost:hover { background: rgba(33,255,243,.08); border-color: rgba(33,255,243,.5); color: var(--dh-primary); transform: translateY(-1px); }
+.dh-btn-lg { min-height: 44px; padding: 12px 28px; font-size: 15px; }
+.dh-btn-sm { min-height: 32px; padding: 6px 12px; font-size: 12px; border-radius: 10px; }
 .dh-link-btn { background: transparent; border: 0; color: var(--dh-primary); cursor: pointer; font-size: 13px; padding: 4px 0; text-decoration: underline; margin-top: 8px; }
 
 /* ——— Step 2 形象网格 ——— */
@@ -617,7 +618,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-actions { display: grid; gap: 10px; margin-top: 16px; }
 .dh-luxgen-helper-actions, .dh-luxgen-stage-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .dh-luxgen-stage-actions { padding: 10px; border: 1px solid rgba(33,255,243,.14); border-radius: 12px; background: rgba(255,255,255,.018); }
-.dh-luxgen-step-action { min-width: 164px; justify-content: center; border-color: rgba(33,255,243,.28); color: var(--dh-text-soft); background: rgba(255,255,255,.02); }
+.dh-luxgen-step-action { min-width: 164px; justify-content: center; border-color: rgba(143,178,255,.22); color: var(--dh-text-soft); background: rgba(255,255,255,.035); }
 .dh-luxgen-step-action.is-next:not(:disabled) {
   border-color: transparent;
   color: #061012;
@@ -731,13 +732,13 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-binding { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(33,255,243,.34); background: rgba(33,255,243,.07); color: var(--dh-primary); font-size: 11px; font-weight: 900; }
 .dh-luxgen-shot-no { color: var(--dh-primary); font-weight: 800; white-space: nowrap; }
 .dh-luxgen-shot-cell { display: grid; gap: 8px; align-content: start; justify-items: start; }
-.dh-luxgen-edit { border: 1px solid rgba(33,255,243,.32); border-radius: 999px; background: rgba(33,255,243,.06); color: var(--dh-primary); cursor: pointer; padding: 3px 9px; font-size: 11px; font-weight: 800; }
-.dh-luxgen-edit:hover { border-color: var(--dh-primary); background: rgba(33,255,243,.12); }
+.dh-luxgen-edit { border: 1px solid rgba(33,255,243,.32); border-radius: 10px; background: rgba(255,255,255,.035); color: var(--dh-primary); cursor: pointer; min-height: 28px; padding: 4px 10px; font-size: 11px; font-weight: 800; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; }
+.dh-luxgen-edit:hover { border-color: var(--dh-primary); background: rgba(33,255,243,.10); transform: translateY(-1px); }
 .dh-luxgen-edit.danger { border-color: rgba(255,101,125,.35); color: var(--vido-danger, #ff657d); background: rgba(255,101,125,.07); }
 .dh-luxgen-edit.danger:hover { border-color: var(--vido-danger, #ff657d); background: rgba(255,101,125,.12); }
 .dh-lux-shot-type-select { min-height: 34px; margin-top: 6px; font-size: 12px; }
-.dh-luxgen-shot-upload { margin-top: 7px; border: 1px solid rgba(143,178,255,.26); border-radius: 999px; background: rgba(127,180,255,.08); color: #9fc2ff; cursor: pointer; padding: 4px 9px; font-size: 11px; font-weight: 800; }
-.dh-luxgen-shot-upload:hover { border-color: rgba(33,255,243,.55); color: var(--dh-primary); background: rgba(33,255,243,.08); }
+.dh-luxgen-shot-upload { margin-top: 7px; border: 1px solid rgba(143,178,255,.26); border-radius: 10px; background: rgba(255,255,255,.035); color: #9fc2ff; cursor: pointer; min-height: 28px; padding: 4px 10px; font-size: 11px; font-weight: 800; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; }
+.dh-luxgen-shot-upload:hover { border-color: rgba(33,255,243,.55); color: var(--dh-primary); background: rgba(33,255,243,.08); transform: translateY(-1px); }
 .dh-luxgen-shot-plan { display: grid; gap: 5px; min-width: 0; }
 .dh-luxgen-shot-plan b { color: var(--dh-text); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 .dh-luxgen-shot-plan span { color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }

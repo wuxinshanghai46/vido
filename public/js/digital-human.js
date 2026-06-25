@@ -4181,6 +4181,60 @@
   const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
   const TERMINAL_ERROR_TASK_STATUSES = new Set(['error', 'invalid', 'timeout', 'failed']);
 
+  function readJwtPayload() {
+    if (!state.token) return null;
+    try {
+      const part = String(state.token).split('.')[1];
+      if (!part) return null;
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+      const json = atob(base64);
+      return JSON.parse(decodeURIComponent(Array.from(json).map(ch => `%${(`00${ch.charCodeAt(0).toString(16)}`).slice(-2)}`).join('')));
+    } catch {
+      try {
+        const part = String(state.token).split('.')[1];
+        const base64 = part ? part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=') : '';
+        return base64 ? JSON.parse(atob(base64)) : null;
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  function currentDhUserId() {
+    const user = state.currentUser || null;
+    if (user?.id) return String(user.id);
+    const payload = readJwtPayload();
+    return payload?.userId ? String(payload.userId) : (payload?.id ? String(payload.id) : '');
+  }
+
+  function currentDhUserIsAdmin() {
+    const user = state.currentUser || null;
+    if (user?.role) return user.role === 'admin';
+    return readJwtPayload()?.role === 'admin';
+  }
+
+  function currentVideoTaskStoreKey() {
+    const uid = currentDhUserId();
+    return uid ? `${DH_TASK_STORE_KEY}:${uid}` : DH_TASK_STORE_KEY;
+  }
+
+  function taskOwnerId(task = {}) {
+    return String(task.user_id || task.userId || task.ownerUserId || task.createdByUserId || '');
+  }
+
+  function taskBelongsToCurrentUser(task = {}) {
+    if (currentDhUserIsAdmin()) return true;
+    const uid = currentDhUserId();
+    return !!(uid && taskOwnerId(task) === uid);
+  }
+
+  function stampCurrentTaskOwner(task = {}) {
+    if (currentDhUserIsAdmin()) return task;
+    const uid = currentDhUserId();
+    if (!uid) return task;
+    return { ...task, user_id: task.user_id || uid, userId: task.userId || uid };
+  }
+
   function isTaskTerminalError(task = {}) {
     const status = String(task.status || '').toLowerCase();
     if (TERMINAL_ERROR_TASK_STATUSES.has(status)) return true;
@@ -4190,8 +4244,18 @@
 
   function readVideoTasks() {
     try {
-      const list = JSON.parse(localStorage.getItem(DH_TASK_STORE_KEY) || '[]');
-      return Array.isArray(list) ? list.filter(t => t && t.taskId) : [];
+      const keys = currentDhUserIsAdmin()
+        ? [currentVideoTaskStoreKey(), DH_TASK_STORE_KEY]
+        : [currentVideoTaskStoreKey()];
+      const merged = new Map();
+      keys.forEach(key => {
+        const list = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!Array.isArray(list)) return;
+        list.filter(t => t && t.taskId && taskBelongsToCurrentUser(t)).forEach(t => {
+          merged.set(String(t.taskId), t);
+        });
+      });
+      return Array.from(merged.values());
     } catch {
       return [];
     }
@@ -4221,6 +4285,8 @@
       status: task.status,
       stage: task.stage,
       progress: task.progress,
+      user_id: task.user_id || task.userId || '',
+      userId: task.userId || task.user_id || '',
       startedAt: task.startedAt,
       updatedAt: task.updatedAt,
       elapsed: task.elapsed,
@@ -4270,11 +4336,13 @@
   function writeVideoTasks(list) {
     const trimmed = (Array.isArray(list) ? list : [])
       .filter(t => t && t.taskId)
+      .map(stampCurrentTaskOwner)
+      .filter(taskBelongsToCurrentUser)
       .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
       .slice(0, 50)
       .map(compactStoredVideoTask);
     try {
-      localStorage.setItem(DH_TASK_STORE_KEY, JSON.stringify(trimmed));
+      localStorage.setItem(currentVideoTaskStoreKey(), JSON.stringify(trimmed));
     } catch (err) {
       try {
         const smaller = trimmed.slice(0, 12).map(t => ({
@@ -4283,6 +4351,8 @@
           status: t.status,
           stage: t.stage,
           progress: t.progress,
+          user_id: t.user_id || t.userId || '',
+          userId: t.userId || t.user_id || '',
           startedAt: t.startedAt,
           updatedAt: t.updatedAt,
           elapsed: t.elapsed,
@@ -4294,7 +4364,7 @@
           message: t.message || '',
           projectId: t.projectId || t.production_project_id || '',
         }));
-        localStorage.setItem(DH_TASK_STORE_KEY, JSON.stringify(smaller));
+        localStorage.setItem(currentVideoTaskStoreKey(), JSON.stringify(smaller));
       } catch {
         console.warn('[DH] local task cache skipped:', err?.message || err);
       }
@@ -4307,7 +4377,7 @@
     const idx = list.findIndex(t => String(t.taskId) === String(task.taskId));
     const next = {
       ...(idx >= 0 ? list[idx] : {}),
-      ...task,
+      ...stampCurrentTaskOwner(task),
       updatedAt: Date.now(),
     };
     if (idx >= 0) list[idx] = next;
@@ -5362,6 +5432,8 @@
       kind: t.kind || '',
       subtitleBurned: !!(t.subtitle_burned || t.subtitleBurned),
       subtitleWarning: t.subtitle_warning || t.subtitleWarning || '',
+      user_id: t.user_id || t.userId || (!currentDhUserIsAdmin() ? currentDhUserId() : ''),
+      userId: t.userId || t.user_id || (!currentDhUserIsAdmin() ? currentDhUserId() : ''),
       production_project_id: t.production_project_id || t.productionProjectId || t.project_id || '',
       projectId: t.production_project_id || t.productionProjectId || t.project_id || '',
       scenes: t.scenes || [],
@@ -6325,49 +6397,7 @@
   }
 
   function renderLuxuryAdBriefRefs() {
-    const host = $('#dhLuxAdBriefRefs');
-    const drop = $('#dhLuxAdBriefRefDrop');
-    const refs = luxuryAdBriefReferenceAssets();
     syncLuxuryAdUploadFlags();
-    const hasRefs = refs.some(x => x && (x.url || x.previewUrl || x.name || x.uploading));
-    if (drop) {
-      const uploading = !!state.luxuryAd.briefUploading;
-      drop.classList.toggle('locked', false);
-      drop.setAttribute('aria-disabled', 'false');
-      const copy = drop.querySelector('span');
-      if (copy) {
-        copy.textContent = uploading
-          ? '继续添加'
-          : (hasRefs ? '继续添加' : '产品 / 人物 / 场景 / 竞品');
-      }
-    }
-    if (!host) return;
-    if (!hasRefs) {
-      host.innerHTML = '';
-      return;
-    }
-    host.innerHTML = refs.map((asset, i) => {
-      if (!asset || !(asset.url || asset.previewUrl || asset.name || asset.uploading)) return '';
-      const url = luxuryAssetPreviewUrl(asset);
-      const role = String(asset.role || asset.type || 'auto');
-      return `<div class="dh-luxgen-brief-ref-card ${asset.uploading ? 'uploading' : ''}">
-        ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(asset.name || `需求参考图 ${i + 1}`)}">` : ''}
-        <b>#${i + 1}</b>
-        <span>${escapeHtml(asset.failed ? `${asset.name || `需求参考图 ${i + 1}`} · 上传失败` : (asset.uploading ? `${asset.name || `需求参考图 ${i + 1}`} · 上传中` : (asset.name || `需求参考图 ${i + 1}`)))}</span>
-        <select class="dh-lux-ref-role" data-lux-brief-ref-role="${i}" ${asset.uploading ? 'disabled' : ''} title="标注这张参考图的用途">
-          ${[
-            ['auto', '自动识别'],
-            ['product', '产品'],
-            ['person', '人物'],
-            ['scene', '场景'],
-            ['prop', '道具/细节'],
-            ['ui', 'UI/界面'],
-            ['style', '风格/竞品'],
-          ].map(([value, label]) => `<option value="${value}" ${role === value ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-        <button type="button" data-lux-brief-ref-remove="${i}" title="删除参考图">×</button>
-      </div>`;
-    }).join('');
   }
 
   function renderLuxuryAdAssets() {
@@ -6602,7 +6632,7 @@
       <details class="dh-luxgen-control-box" ${enabled ? 'open' : ''}>
         <summary>
           <span>
-            <b>制作控制</b>
+            <b>高级设置</b>
             <small>${enabled ? '已启用增强控制，后续会按下方约束生成' : '默认不启用，不影响当前剧情广告流程'}</small>
           </span>
           <span class="dh-luxgen-control-meta ${enabled ? 'is-controlled' : 'is-classic'}">
@@ -7898,25 +7928,24 @@
   function canViewLuxuryModelUsage() {
     const user = state.currentUser || null;
     const perms = Array.isArray(user?.effective_permissions) ? user.effective_permissions : [];
-    if (user?.role === 'admin' || perms.includes('*')) return true;
+    if (currentDhUserIsAdmin()) return true;
     return perms.some(p => p === 'model_usage' || p === 'enterprise:model_usage:view' || p === 'enterprise:model_usage:export');
   }
 
   function canViewLuxuryInternalPipeline() {
     const user = state.currentUser || null;
     const perms = Array.isArray(user?.effective_permissions) ? user.effective_permissions : [];
-    if (user?.role === 'admin' || perms.includes('*')) return true;
+    if (currentDhUserIsAdmin()) return true;
     return perms.some(p => [
-      'model_usage',
-      'luxury_ad_debug',
       'luxury_ad_pipeline_debug',
+      'luxury_ad_debug',
     ].includes(p) || (typeof p === 'string' && (
-      p === 'enterprise:model_usage:view'
-      || p === 'enterprise:model_usage:export'
-      || p === 'enterprise:luxury_ad_debug:debug'
-      || p === 'enterprise:luxury_ad_debug:view_errors'
+      p === 'enterprise:luxury_ad_pipeline_debug:view'
       || p === 'enterprise:luxury_ad_pipeline_debug:debug'
       || p === 'enterprise:luxury_ad_pipeline_debug:view_errors'
+      || p === 'enterprise:luxury_ad_pipeline_debug:export'
+      || p === 'enterprise:luxury_ad_debug:debug'
+      || p === 'enterprise:luxury_ad_debug:view_errors'
     )));
   }
 
@@ -8557,7 +8586,7 @@
         else el.removeAttribute('title');
       });
     };
-    lockControl('#dhLuxAdText, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, #dhLuxAdBriefRefDrop, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
+    lockControl('#dhLuxAdText, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
     lockControl(
       '#dhLuxAdProductDrop, #dhLuxAdProductClear, #dhLuxAdUploadPersonRef, #dhLuxAdPickActorAsset, #dhLuxAdPickPerson, #dhLuxAdAiPersonSpec, [data-lux-person-spec], [data-lux-brief-field]',
       step2Locked || personGenerating,
@@ -15425,38 +15454,6 @@
       }
       return;
     }
-    const briefRefRemove = closest('[data-lux-brief-ref-remove]');
-    if (briefRefRemove) {
-      if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
-      const idx = Number(briefRefRemove.dataset.luxBriefRefRemove);
-      const refs = luxuryAdBriefReferenceAssets();
-      if (Number.isFinite(idx) && refs[idx]) {
-        if (refs[idx].previewUrl?.startsWith('blob:')) URL.revokeObjectURL(refs[idx].previewUrl);
-        state.luxuryAd.briefRefAssets = refs.filter((_, i) => i !== idx);
-        state.luxuryAd.visualReferenceBrief = null;
-        state.luxuryAd.assetManifest = null;
-        state.luxuryAd.visualLocks = null;
-        state.luxuryAd.globalVisualBible = null;
-        state.luxuryAd.briefInfo = null;
-        state.luxuryAd.segments = [];
-        state.luxuryAd.storyboardDetailed = false;
-        state.luxuryAd.keyframes = [];
-        renderLuxuryAdBriefRefs();
-        renderLuxuryAdStoryboard();
-        updateLuxuryAdStepLocks();
-        toast('已删除需求参考图，后续会重新分析剩余图片', 'success');
-      }
-      return;
-    }
-    if (closest('#dhLuxAdBriefRefDrop')) {
-      if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
-      if (state.luxuryAd.sceneGenerating || state.luxuryAd.scriptGenerating || state.luxuryAd.keyframeGenerating) {
-        toast('当前正在处理，请稍后再上传参考图', 'error');
-        return;
-      }
-      $('#dhLuxAdBriefRefFile')?.click();
-      return;
-    }
     if (closest('#dhLuxAdAiPersonSpec')) {
       setLuxuryAdRouteFocus('person');
       aiFillLuxuryAdPersonSpec();
@@ -17580,12 +17577,6 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       delete e.target.dataset.luxShotUpload;
       e.target.value = '';
     });
-    const luxBriefRefFile = $('#dhLuxAdBriefRefFile');
-    if (luxBriefRefFile) luxBriefRefFile.addEventListener('change', e => {
-      const files = e.target.files;
-      if (files && files.length) uploadLuxuryAdBriefReferences(files);
-      e.target.value = '';
-    });
     const luxProductFile = $('#dhLuxAdProductFile');
     if (luxProductFile) luxProductFile.addEventListener('change', e => {
       const files = e.target.files;
@@ -17650,34 +17641,6 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         if (e.dataTransfer?.files?.length) uploadLuxuryAdProduct(e.dataTransfer.files);
       });
     }
-    const luxBriefRefDrop = $('#dhLuxAdBriefRefDrop');
-    if (luxBriefRefDrop) {
-      luxBriefRefDrop.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (state.luxuryAd.sceneGenerating || state.luxuryAd.scriptGenerating || state.luxuryAd.keyframeGenerating) {
-            toast('当前正在处理，请稍后再上传参考图', 'error');
-            return;
-          }
-          $('#dhLuxAdBriefRefFile')?.click();
-        }
-      });
-      luxBriefRefDrop.addEventListener('dragover', e => {
-        e.preventDefault();
-        if (state.luxuryAd.sceneGenerating || state.luxuryAd.scriptGenerating || state.luxuryAd.keyframeGenerating) return;
-        luxBriefRefDrop.classList.add('dragover');
-      });
-      luxBriefRefDrop.addEventListener('dragleave', () => luxBriefRefDrop.classList.remove('dragover'));
-      luxBriefRefDrop.addEventListener('drop', e => {
-        e.preventDefault();
-        luxBriefRefDrop.classList.remove('dragover');
-        if (state.luxuryAd.sceneGenerating || state.luxuryAd.scriptGenerating || state.luxuryAd.keyframeGenerating) {
-          toast('当前正在处理，请稍后再上传参考图', 'error');
-          return;
-        }
-        if (e.dataTransfer?.files?.length) uploadLuxuryAdBriefReferences(e.dataTransfer.files);
-      });
-    }
     const luxAssetDrop = $('#dhLuxAdAssetDrop');
     if (luxAssetDrop) {
       luxAssetDrop.addEventListener('keydown', e => {
@@ -17725,27 +17688,6 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       renderLuxuryAdStoryboard();
       setLuxuryProgress('content');
       updateLuxuryAdStepLocks();
-    });
-    document.addEventListener('change', e => {
-      const roleSelect = e.target.closest?.('[data-lux-brief-ref-role]');
-      if (!roleSelect) return;
-      const idx = Number(roleSelect.dataset.luxBriefRefRole);
-      const refs = luxuryAdBriefReferenceAssets();
-      if (!Number.isFinite(idx) || !refs[idx]) return;
-      refs[idx] = { ...refs[idx], role: roleSelect.value || 'auto', type: roleSelect.value || 'auto' };
-      state.luxuryAd.briefRefAssets = refs;
-      state.luxuryAd.visualReferenceBrief = null;
-      state.luxuryAd.assetManifest = null;
-      state.luxuryAd.visualLocks = null;
-      state.luxuryAd.globalVisualBible = null;
-      state.luxuryAd.briefInfo = null;
-      state.luxuryAd.segments = [];
-      state.luxuryAd.storyboardDetailed = false;
-      state.luxuryAd.keyframes = [];
-      renderLuxuryAdBriefRefs();
-      renderLuxuryAdStoryboard();
-      updateLuxuryAdStepLocks();
-      toast('已更新参考图用途，后续会按新角色重新分析素材', 'success');
     });
     const luxDuration = $('#dhLuxAdDuration');
     if (luxDuration) luxDuration.addEventListener('change', e => handleLuxuryAdDurationChange(e.target.value));

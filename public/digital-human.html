@@ -25,8 +25,8 @@
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260624-task-first-frame">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260625-module-button-tone">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260625-module-button-tone">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -78,7 +78,7 @@
     }
   </style>
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
-  <link rel="stylesheet" href="/css/vido-ui.css?v=20260624-control-tone" />
+  <link rel="stylesheet" href="/css/vido-ui.css?v=20260625-module-button-tone" />
 </head>
 <body>
   <div class="dh-app" id="dhApp">
@@ -1185,14 +1185,6 @@
                 <span class="dh-luxgen-badge" id="dhLuxAdRequirementState">待填写</span>
               </div>
               <textarea class="dh-input" id="dhLuxAdText" maxlength="1800" placeholder="例如：我想做一条 AI 机器人智能生活广告。画面要有真实家庭场景，从生活混乱到 AI 机器人帮助用户整理日程、家务和设备，最后引导体验未来科技。"></textarea>
-              <input type="file" id="dhLuxAdBriefRefFile" accept="image/*" multiple hidden>
-              <div class="dh-luxgen-brief-ref">
-                <div class="dh-luxgen-brief-ref-list" id="dhLuxAdBriefRefs"></div>
-                <button class="dh-luxgen-brief-ref-drop" id="dhLuxAdBriefRefDrop" type="button">
-                  <b>可选参考图</b>
-                  <span>产品 / 人物 / 场景 / 竞品</span>
-                </button>
-              </div>
               <div id="dhLuxAdControlledProduction"></div>
               <div class="dh-demo-entry-tools">
                 <div class="dh-demo-chip-row">
@@ -2011,6 +2003,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260624-task-first-frame"></script>
+  <script src="/js/digital-human.js?v=20260625-brief-ref-removed"></script>
 </body>
 </html>

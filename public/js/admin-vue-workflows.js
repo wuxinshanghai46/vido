@@ -41,7 +41,7 @@
     if (typeof showToast === 'function') return showToast(message, ok ? 'success' : 'error');
     const el = document.createElement('div');
     el.textContent = message;
-    el.style.cssText = `position:fixed;top:20px;right:20px;z-index:99999;padding:10px 16px;border-radius:8px;font-size:13px;color:#fff;background:${ok ? '#16a34a' : '#dc2626'};box-shadow:0 6px 20px rgba(0,0,0,.24);`;
+    el.style.cssText = `position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:99999;min-width:160px;max-width:min(520px,calc(100vw - 32px));padding:10px 16px;border-radius:8px;font-size:13px;color:#fff;text-align:center;background:${ok ? '#16a34a' : '#dc2626'};box-shadow:0 6px 20px rgba(0,0,0,.24);`;
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2600);
   }
