@@ -1896,3 +1896,120 @@ th {
     transition-duration: .01ms !important;
   }
 }
+
+/* Admin role modals inherit the active VIDO theme instead of browser-light controls. */
+body .modal-overlay.show {
+  background: rgba(0, 0, 0, .68) !important;
+  backdrop-filter: blur(12px);
+}
+
+body .modal-box,
+body .modal-content,
+body .vido-modal {
+  background: var(--bg2, var(--vido-surface)) !important;
+  color: var(--text, var(--vido-text)) !important;
+  border: 1px solid var(--border2, var(--vido-line-strong)) !important;
+  box-shadow: var(--vido-shadow-md) !important;
+}
+
+body .modal-box .form-title,
+body .modal-box label,
+body .modal-header,
+body .vido-modal-head,
+body .vido-modal-foot {
+  color: var(--text, var(--vido-text)) !important;
+}
+
+body .modal-box input,
+body .modal-box select,
+body .modal-box textarea {
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  color: var(--text, var(--vido-text)) !important;
+  border-color: var(--border2, var(--vido-line-strong)) !important;
+}
+
+body .modal-box input::placeholder,
+body .modal-box textarea::placeholder {
+  color: var(--text3, var(--vido-text-3)) !important;
+}
+
+body .role-modal-box .transfer-col,
+body .role-modal-box .permission-matrix,
+body .role-modal-box .data-table {
+  background: var(--bg2, var(--vido-surface)) !important;
+  color: var(--text, var(--vido-text)) !important;
+  border-color: var(--border, var(--vido-line)) !important;
+}
+
+body .role-modal-box .transfer-header,
+body .role-modal-box .permission-matrix thead th,
+body .role-modal-box .permission-matrix tbody tr.pm-group-row td {
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  color: var(--text2, var(--vido-text-2)) !important;
+  border-color: var(--border, var(--vido-line)) !important;
+}
+
+body .role-modal-box .permission-matrix thead th:first-child,
+body .role-modal-box .permission-matrix tbody td:first-child {
+  background: var(--bg2, var(--vido-surface)) !important;
+}
+
+body .role-modal-box .permission-matrix tbody td {
+  background: var(--bg2, var(--vido-surface)) !important;
+  color: var(--text2, var(--vido-text-2)) !important;
+  border-color: var(--border, var(--vido-line)) !important;
+}
+
+body .role-modal-box .permission-matrix tbody tr:hover td,
+body .role-modal-box .permission-matrix tbody tr:hover td:first-child {
+  background: var(--bg4, var(--vido-surface-3)) !important;
+}
+
+body .role-modal-box .permission-matrix .pm-unavailable {
+  color: var(--text3, var(--vido-text-3)) !important;
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  opacity: .58;
+}
+
+body .role-modal-box .permission-matrix input[type="checkbox"] {
+  accent-color: var(--accent, var(--vido-accent));
+}
+
+body .role-modal-box .transfer-search {
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  color: var(--text, var(--vido-text)) !important;
+  border-color: var(--border, var(--vido-line)) !important;
+}
+
+body .role-modal-box .transfer-item {
+  color: var(--text2, var(--vido-text-2)) !important;
+}
+
+body .role-modal-box .transfer-item:hover {
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  color: var(--text, var(--vido-text)) !important;
+}
+
+body .role-modal-box .transfer-item.selected {
+  background: rgba(var(--accent-rgb, var(--vido-accent-rgb)), .14) !important;
+  color: var(--accent, var(--vido-accent)) !important;
+}
+
+body .role-modal-box .transfer-item .tl-tag {
+  background: var(--bg4, var(--vido-surface-3)) !important;
+  color: var(--text3, var(--vido-text-3)) !important;
+}
+
+body .role-modal-box .transfer-actions button,
+body .role-modal-box .btn-sm {
+  background: var(--bg3, var(--vido-surface-2)) !important;
+  color: var(--text2, var(--vido-text-2)) !important;
+  border-color: var(--border2, var(--vido-line-strong)) !important;
+}
+
+body .role-modal-box .transfer-actions button:hover:not(:disabled),
+body .role-modal-box .btn-sm:hover {
+  background: rgba(var(--accent-rgb, var(--vido-accent-rgb)), .16) !important;
+  color: var(--accent, var(--vido-accent)) !important;
+  border-color: rgba(var(--accent-rgb, var(--vido-accent-rgb)), .42) !important;
+}

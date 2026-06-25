@@ -7899,7 +7899,7 @@
     const user = state.currentUser || null;
     const perms = Array.isArray(user?.effective_permissions) ? user.effective_permissions : [];
     if (user?.role === 'admin' || perms.includes('*')) return true;
-    return perms.some(p => p === 'model_usage' || (typeof p === 'string' && p.startsWith('enterprise:model_usage:')));
+    return perms.some(p => p === 'model_usage' || p === 'enterprise:model_usage:view' || p === 'enterprise:model_usage:export');
   }
 
   function canViewLuxuryInternalPipeline() {
@@ -7911,9 +7911,12 @@
       'luxury_ad_debug',
       'luxury_ad_pipeline_debug',
     ].includes(p) || (typeof p === 'string' && (
-      p.startsWith('enterprise:model_usage:')
-      || p.startsWith('enterprise:luxury_ad_debug:')
-      || p.startsWith('enterprise:luxury_ad_pipeline_debug:')
+      p === 'enterprise:model_usage:view'
+      || p === 'enterprise:model_usage:export'
+      || p === 'enterprise:luxury_ad_debug:debug'
+      || p === 'enterprise:luxury_ad_debug:view_errors'
+      || p === 'enterprise:luxury_ad_pipeline_debug:debug'
+      || p === 'enterprise:luxury_ad_pipeline_debug:view_errors'
     )));
   }
 

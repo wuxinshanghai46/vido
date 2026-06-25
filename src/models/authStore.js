@@ -187,11 +187,15 @@ function getUserByUsername(username) { return init().users.find(u => u.username 
 
 function getUserByEmail(email) { return init().users.find(u => u.email === email) || null; }
 
-function createUser({ username, email, password_hash, password_salt, password_plain, role = 'user', permissions, allowed_models }) {
+function createUser({ username, email, phone, nickname, gender, remark, password_hash, password_salt, password_plain, role = 'user', permissions, allowed_models }) {
   const db = init();
   const roleObj = db.roles.find(r => r.id === role);
   const user = {
     id: uuidv4(), username, email, password_hash, password_salt,
+    phone: phone || '',
+    nickname: nickname || '',
+    gender: gender || '',
+    remark: remark || '',
     password_plain: password_plain || null,
     role, credits: roleObj ? roleObj.default_credits : 100,
     status: 'active',
@@ -237,11 +241,15 @@ function createRole(role) {
     label: role.label || role.id,
     type: role.type === 'platform' ? 'platform' : 'enterprise',
     description: role.description || '',
+    remark: role.remark || role.description || '',
+    display_order: Number.isFinite(role.display_order) ? role.display_order : 0,
+    status: role.status || 'active',
     permissions: Array.isArray(role.permissions) ? role.permissions : [],
     default_credits: Number.isFinite(role.default_credits) ? role.default_credits : 100,
     allowed_models: Array.isArray(role.allowed_models) ? role.allowed_models : [],
     max_projects: Number.isFinite(role.max_projects) ? role.max_projects : 10,
-    builtin: false
+    builtin: false,
+    created_at: new Date().toISOString()
   };
   db.roles.push(normalized);
   save(db);

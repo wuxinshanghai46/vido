@@ -17,6 +17,7 @@ seedance2.0/
 
 # Logs
 logs/
+.runtime/
 
 # Large binary assets
 动作资源包/

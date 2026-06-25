@@ -32,6 +32,10 @@ let currentUserType = 'enterprise'; // 用户管理当前 Tab
 
 // ══════════════════════ TABS ══════════════════════
 function initTabs() {
+  if (window.adminVueShell?.isVueNav) {
+    window.adminVueShell.activateInitialTab?.();
+    return;
+  }
   const routeInitialTab = getInitialAdminTab();
   const routeInitialEl = document.querySelector(`.nav-item[data-tab="${routeInitialTab}"]`);
   if (routeInitialEl && !routeInitialEl.classList.contains('active')) {
@@ -102,21 +106,21 @@ function rememberAdminTab(tab) {
 // ══════════════════════ EVENTS ══════════════════════
 function bindEvents() {
   // New user form toggle
-  $('#btn-new-user').onclick = () => toggleForm('form-new-user', true);
-  $('#btn-cancel-user').onclick = () => toggleForm('form-new-user', false);
-  $('#btn-save-user').onclick = createUser;
-  $('#btn-toggle-new-pwd').onclick = toggleNewUserPassword;
-  $('#btn-config-new-role').onclick = configureNewUserRole;
+  if ($('#btn-new-user')) $('#btn-new-user').onclick = () => toggleForm('form-new-user', true);
+  if ($('#btn-cancel-user')) $('#btn-cancel-user').onclick = () => toggleForm('form-new-user', false);
+  if ($('#btn-save-user')) $('#btn-save-user').onclick = createUser;
+  if ($('#btn-toggle-new-pwd')) $('#btn-toggle-new-pwd').onclick = toggleNewUserPassword;
+  if ($('#btn-config-new-role')) $('#btn-config-new-role').onclick = configureNewUserRole;
 
   // Credits filter
-  $('#btn-filter-credits').onclick = loadCreditsLog;
+  if ($('#btn-filter-credits')) $('#btn-filter-credits').onclick = loadCreditsLog;
 
   // Role modal
-  $('#btn-new-role').onclick = () => openRoleModal(null);
-  $('#btn-cancel-role').onclick = closeRoleModal;
-  $('#btn-save-role').onclick = saveRole;
-  $('#btn-delete-role').onclick = deleteRole;
-  $('#role-modal').onclick = e => { if (e.target === $('#role-modal')) closeRoleModal(); };
+  if ($('#btn-new-role')) $('#btn-new-role').onclick = () => openRoleModal(null);
+  if ($('#btn-cancel-role')) $('#btn-cancel-role').onclick = closeRoleModal;
+  if ($('#btn-save-role')) $('#btn-save-role').onclick = saveRole;
+  if ($('#btn-delete-role')) $('#btn-delete-role').onclick = deleteRole;
+  if ($('#role-modal')) $('#role-modal').onclick = e => { if (e.target === $('#role-modal')) closeRoleModal(); };
 }
 
 // ══════════════════════ USERS ══════════════════════
@@ -431,6 +435,30 @@ let currentRoleType = 'platform'; // platform | enterprise
 let selectedRoleId = null;
 let matrixCache = null; // { platform: {...}, enterprise: {...} }
 
+function roleTypeName(type, short = false) {
+  return (type === 'platform')
+    ? (short ? '后台' : '后台角色')
+    : (short ? '前台' : '前台角色');
+}
+
+function matrixModuleActionIds(matrix, module) {
+  if (Array.isArray(module.actions) && module.actions.length) return new Set(module.actions);
+  return new Set((matrix.actions || []).map(a => a.id));
+}
+
+function matrixPermissionKeys(type) {
+  const matrix = matrixCache && matrixCache[type];
+  if (!matrix) return [];
+  const keys = [];
+  (matrix.modules || []).forEach(m => {
+    const actionIds = matrixModuleActionIds(matrix, m);
+    (matrix.actions || []).forEach(a => {
+      if (actionIds.has(a.id)) keys.push(`${type}:${m.id}:${a.id}`);
+    });
+  });
+  return keys;
+}
+
 async function loadRoles() {
   try {
     const [rRes, mRes] = await Promise.all([
@@ -466,7 +494,7 @@ function renderRoles() {
     return;
   }
   tbody.innerHTML = filtered.map(r => {
-    const typeLabel = (r.type === 'platform') ? '平台' : '用户';
+    const typeLabel = roleTypeName(r.type, true);
     const typeClass = (r.type === 'platform') ? 'role-type-badge' : 'role-type-badge enterprise';
     const isSelected = r.id === selectedRoleId;
     const builtinTag = r.builtin ? '<span style="font-size:10px;color:var(--text3);margin-left:6px">内置</span>' : '';
@@ -520,7 +548,7 @@ function updateMatrixPreview(role) {
   const matrix = matrixCache[type];
   if (!matrix) { thead.innerHTML=''; tbody.innerHTML=''; return; }
   if (title) title.textContent = `权限矩阵概览 — ${role.label || role.id}`;
-  if (hint) hint.textContent = `${type === 'platform' ? '平台角色' : '用户角色'} · 此为只读预览，点击"权限配置"进行编辑`;
+  if (hint) hint.textContent = `${roleTypeName(type)} · 此为只读预览，点击"权限配置"进行编辑`;
 
   // 表头
   const colspan = matrix.actions.length + 1;
@@ -535,7 +563,9 @@ function updateMatrixPreview(role) {
       rows.push(`<tr class="pm-group-row"><td colspan="${colspan}">${esc(m.group)}</td></tr>`);
       lastGroup = m.group;
     }
+    const actionIds = matrixModuleActionIds(matrix, m);
     const cells = matrix.actions.map(a => {
+      if (!actionIds.has(a.id)) return '<td class="pm-unavailable">—</td>';
       const key = `${type}:${m.id}:${a.id}`;
       const enabled = wild || perms.has(key);
       return `<td>${enabled ? '<span style="color:var(--accent);font-size:16px">✓</span>' : '<span style="color:var(--border2)">-</span>'}</td>`;
@@ -603,15 +633,15 @@ function openRoleModal(roleId) {
   modal.classList.add('show');
 }
 
-// 类型切换：平台角色不涉及"允许模型"；新建时重新生成 ID
+// 类型切换：后台角色不涉及"允许模型"；新建时重新生成 ID
 function onRoleTypeChange() {
   const type = $('#rm-type').value;
   const modelsRow = document.getElementById('rm-models-row');
   if (modelsRow) modelsRow.style.display = (type === 'platform') ? 'none' : '';
   const hint = document.getElementById('rm-matrix-type-hint');
   if (hint) hint.textContent = (type === 'platform')
-    ? '（平台权限 — 管理后台功能）'
-    : '（用户权限 — 前端平台所有模块的增删改查）';
+    ? '（后台权限 — 管理端功能与按钮）'
+    : '（前台权限 — 应用端模块、按钮、错误可见性）';
   // 新建模式下，类型变更时重新生成 ID
   if (!editingRoleId) {
     $('#rm-id').value = generateNextRoleId(type);
@@ -620,7 +650,7 @@ function onRoleTypeChange() {
   const role = editingRoleId ? rolesCache.find(x => x.id === editingRoleId) : null;
   const mockRole = role
     ? { ...role, type }
-    : { type, permissions: [] };
+    : { type, permissions: matrixPermissionKeys(type), _newRole: true };
   renderRoleMatrixEditor(mockRole);
 }
 
@@ -634,7 +664,8 @@ function renderRoleMatrixEditor(role) {
 
   const colspan = matrix.actions.length + 1;
   thead.innerHTML = `<tr><th>功能模块</th>${matrix.actions.map(a => `<th>${esc(a.label)}</th>`).join('')}</tr>`;
-  const perms = new Set((role && role.permissions) || []);
+  const isNewRole = role && role._newRole;
+  const perms = new Set(isNewRole ? matrixPermissionKeys(type) : ((role && role.permissions) || []));
   const wild = perms.has('*');
   const isAdmin = role && role.id === 'admin';
   let lastGroup = null;
@@ -652,7 +683,9 @@ function renderRoleMatrixEditor(role) {
       </tr>`);
       lastGroup = m.group;
     }
+    const actionIds = matrixModuleActionIds(matrix, m);
     const cells = matrix.actions.map(a => {
+      if (!actionIds.has(a.id)) return '<td class="pm-unavailable">—</td>';
       const key = `${type}:${m.id}:${a.id}`;
       const checked = wild || perms.has(key);
       return `<td><input type="checkbox" data-key="${esc(key)}" data-group="${esc(m.group || '')}" ${checked ? 'checked' : ''} ${isAdmin ? 'disabled' : ''} /></td>`;
@@ -688,7 +721,7 @@ async function saveRole() {
   const max_projects = parseInt($('#rm-max-projects').value) || 10;
   const wildcard = $('#rm-models-wildcard')?.checked;
   const allowed_models = type === 'platform'
-    ? [] // 平台角色不涉及模型分配
+    ? [] // 后台角色不涉及模型分配
     : (wildcard ? ['*'] : getTransferSelected('rm-transfer'));
   // 从矩阵收集权限字符串（{type}:{module}:{action}）
   const permissions = [...document.querySelectorAll('#rm-matrix-tbody input[type="checkbox"]:checked')].map(cb => cb.dataset.key);
@@ -757,6 +790,7 @@ async function loadCreditsLog() {
   params.set('limit', '100');
 
   const tbody = $('#credits-tbody');
+  if (!tbody) return;
   try {
     const res = await authFetch(`/api/admin/credits-log?${params}`);
     const data = await res.json();
@@ -807,7 +841,7 @@ function esc(str) {
 }
 
 function toggleForm(id, show) {
-  document.getElementById(id).classList.toggle('show', show);
+  document.getElementById(id)?.classList.toggle('show', show);
 }
 
 function populateRoleDropdowns() {
