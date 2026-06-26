@@ -9661,6 +9661,34 @@
       || /\.(png|jpe?g|webp|gif)/i.test(s);
   }
 
+  function luxuryLooksLikeBriefNoise(value = '') {
+    const s = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!s) return true;
+    return /(请做|帮我|我想|我要|需求|广告需求|卖点[\/／]?资料|目标客户|画面风格|产品\/品牌|不要像|最后引导|按广告需求|按广告内容|参考素材摘要|第一眼看|我要一个|我需要)/.test(s)
+      || /(主产品|镜头参考)\s*\d+\s*[:：]/.test(s)
+      || /\.(png|jpe?g|webp|gif)/i.test(s);
+  }
+
+  function luxuryCompactReviewText(value = '', max = 180) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const parts = text
+      .split(/[；;]+/)
+      .map(part => part.trim())
+      .filter(Boolean);
+    const seen = new Set();
+    const compact = [];
+    for (const part of parts.length ? parts : [text]) {
+      const key = part.replace(/\s+/g, '');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      compact.push(part);
+      if (compact.join('；').length >= max) break;
+    }
+    const out = compact.join('；') || text;
+    return out.length > max ? `${out.slice(0, Math.max(1, max - 1))}…` : out;
+  }
+
   function luxuryCleanAudienceLine(value = '') {
     return String(value || '')
       .replace(/\s+/g, ' ')
@@ -9694,19 +9722,19 @@
 
   function luxuryShotVisualText(seg = {}) {
     const raw = String(seg.scene_content || seg.display_visual || seg.visual || seg.scene || '').replace(/\s+/g, ' ').trim();
-    if (luxuryLooksLikeBriefCopy(raw)
+    if (luxuryLooksLikeBriefNoise(raw)
       || /^(按|根据).*(生成|推进)/.test(raw)
       || /主商品作为视觉中心|主商品占据画面中心|建立高端广告氛围|突出高级感|突出空间搭配效果|按广告需求|按广告内容/.test(raw)) {
       return '';
     }
-    return raw.slice(0, 96);
+    return luxuryCompactReviewText(raw, 180);
   }
 
   function luxuryShotContentPrompt(seg = {}) {
     const raw = String(seg.content_prompt || seg.scene_prompt || seg.scene_content || seg.display_visual || seg.visual || seg.scene || '').replace(/\s+/g, ' ').trim();
     const visual = luxuryShotVisualText(seg);
-    if (!raw || luxuryLooksLikeBriefCopy(raw) || /^(按|根据).*(生成|推进)/.test(raw)) return visual;
-    return raw.slice(0, 180);
+    if (!raw || luxuryLooksLikeBriefNoise(raw) || /^(按|根据).*(生成|推进)/.test(raw)) return visual;
+    return luxuryCompactReviewText(raw, 220);
   }
 
   function luxuryShotNarrationText(seg = {}) {
@@ -9753,17 +9781,16 @@
   function luxuryShotActionText(seg = {}) {
     const raw = String(seg.action || seg.visual_action || seg.characters_action || seg.action_prompt || '').replace(/\s+/g, ' ').trim();
     const productOnly = luxuryIsMaterialProductShot(seg) && !luxuryCoreShotRequiresPerson(seg);
-    if (raw && !luxuryLooksLikeBriefCopy(raw)) {
+    if (raw && !luxuryLooksLikeBriefNoise(raw)) {
       if (productOnly && luxuryTextLooksLikeHumanInstruction(raw)) {
-        return raw
+        return luxuryCompactReviewText(raw
           .replace(/人物或镜头/g, '镜头')
           .replace(/人物与场景/g, '产品与场景')
           .replace(/人物/g, '主体')
           .replace(/真人讲解者|讲解者|讲解员|导购|顾问|主持人|演员/g, '镜头')
-          .replace(/手势|指向|触摸|走入|走进|入场|带观众/g, '镜头引导')
-          .slice(0, 120);
+          .replace(/手势|指向|触摸|走入|走进|入场|带观众/g, '镜头引导'), 160);
       }
-      return raw.slice(0, 120);
+      return luxuryCompactReviewText(raw, 180);
     }
     return '';
   }
@@ -10671,6 +10698,7 @@
   }
 
   function renderLuxuryGlobalVisualBible() {
+    if (!canViewLuxuryInternalPipeline()) return '';
     const bible = state.luxuryAd.globalVisualBible || {};
     const rows = [
       ['风格', bible.style],
@@ -10871,6 +10899,7 @@
     const info = state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(state.luxuryAd.content, segments, {});
     const characters = Array.isArray(info.characters) ? info.characters : [];
     const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
+    const avgSeconds = Math.round((totalSeconds / Math.max(1, segments.length)) * 10) / 10;
     const scriptLocked = luxuryAdStepIsLocked(3);
     const scriptLockAttr = scriptLocked ? `disabled title="${escapeHtml(luxuryAdLockedStepMessage(3))}"` : '';
     host.innerHTML = `<div class="dh-demo-script-review">
@@ -10884,6 +10913,12 @@
       </div>
     </div>
     <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdScriptProgress" hidden></div>
+    <div class="dh-lux-script-stats">
+      <span><small>最终时长</small><b>${escapeHtml(String(totalSeconds))} 秒</b></span>
+      <span><small>镜头数量</small><b>${segments.length} 镜</b></span>
+      <span><small>平均镜长</small><b>${escapeHtml(String(avgSeconds))} 秒/镜</b></span>
+      <em>删除、编辑或 +2 秒后这里会按当前镜头表重新统计。</em>
+    </div>
     <div class="dh-demo-script-mainline">
       <b>脚本主线</b>
       <span>${escapeHtml([info.style || '高端商业广告', info.theme || '品牌广告', `${segments.length} 个镜头`, characters.length >= 2 ? '双人互动对白' : '旁白/单人讲解'].filter(Boolean).join(' · '))}</span>
@@ -11062,6 +11097,7 @@
   }
 
   function renderLuxuryAssetLocksPanel(segments = [], keyframes = []) {
+    if (!canViewLuxuryInternalPipeline()) return '';
     const manifest = state.luxuryAd.assetManifest
       || segments.find(x => x?.asset_manifest)?.asset_manifest
       || keyframes.find(x => x?.asset_manifest)?.asset_manifest
