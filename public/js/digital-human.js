@@ -960,7 +960,7 @@
       loadVoicesIfNeeded().then(renderSpaceVoiceOptions);
     }
     if (tab === 'material-film') {
-      setLuxuryAdFlowMode('material');
+      setLuxuryAdFlowMode('material', { preserveState: opts.preserveLuxuryState === true });
       renderLuxuryAd();
       loadVoicesIfNeeded().then(() => {
         renderLuxuryAdVoice();
@@ -968,7 +968,7 @@
       });
     }
     if (tab === 'luxury-ad') {
-      setLuxuryAdFlowMode('story');
+      setLuxuryAdFlowMode('story', { preserveState: opts.preserveLuxuryState === true });
       renderLuxuryAd();
       loadVoicesIfNeeded().then(() => {
         renderLuxuryAdVoice();
@@ -5893,11 +5893,11 @@
     return (state.luxuryAd.flowMode || 'material') === 'material';
   }
 
-  function setLuxuryAdFlowMode(mode = 'material') {
+  function setLuxuryAdFlowMode(mode = 'material', opts = {}) {
     const next = mode === 'story' ? 'story' : 'material';
     const changed = state.luxuryAd.flowMode !== next;
     state.luxuryAd.flowMode = next;
-    if (!changed) return;
+    if (!changed || opts.preserveState === true) return;
     state.luxuryAd.currentStep = 1;
     state.luxuryAd.storyboardDetailed = false;
     state.luxuryAd.segments = [];
@@ -11562,10 +11562,11 @@
     if (input) input.value = state.luxuryAd.content || '';
     syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
     syncLuxuryPersonSpecControls();
+    const restoredStep = Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1)));
     const inModal = opts.modal === true && openLuxuryResumeModal();
-    if (!inModal) switchTab('luxury-ad', { preserveLuxuryProject: true });
-    showLuxuryAdStep(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))), { silent: true });
+    if (!inModal) switchTab('luxury-ad', { preserveLuxuryProject: true, preserveLuxuryState: true });
     renderLuxuryAd();
+    showLuxuryAdStep(restoredStep, { silent: true });
     if (!inModal) rememberActiveTab('luxury-ad', { preserveLuxuryProject: true });
     if (!inModal) {
       requestAnimationFrame(() => {

@@ -724,6 +724,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
     subtitle: _compactLuxuryAdSubtitle(body.subtitle) || (body.subtitle !== false ? { show: true } : false),
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
+    route_focus: String(body.route_focus || body.routeFocus || '').slice(0, 40),
     ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,
