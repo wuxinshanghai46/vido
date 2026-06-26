@@ -6792,9 +6792,9 @@
 
   const LUXURY_SHOT_SUBJECT_TYPES = {
     auto: '按剧本判断',
-    human_scene: '真人/人物 + 主体',
-    character_scene: '主体角色 + 场景',
-    product_only: '商品/主体介绍',
+    human_scene: '真人同框介绍',
+    character_scene: '机器人/虚拟主体',
+    product_only: '商品/服务主体',
     product_detail: '商品细节特写',
     hand_operation: '手部操作演示',
     ui_screen: '界面/数据演示',
@@ -6804,10 +6804,10 @@
   };
 
   const LUXURY_SHOT_SUBJECT_TYPE_HELP = {
-    auto: '系统按本镜画面、动作和台词判断，不主动改变剧本。',
-    human_scene: '真人/剧情人物与商品、服务或品牌主体同框，不代表只拍人物。',
-    character_scene: '机器人、吉祥物、动物、虚拟人等非真人主体与场景证据同框。',
-    product_only: '让商品、品牌主体或服务证据独立承担介绍，不需要真人处理。',
+    auto: '系统按本镜实际画面主体判断；不确定时请手动选清楚。',
+    human_scene: '真人、演员、用户或顾客与商品/服务同框推进剧情。',
+    character_scene: '机器人、吉祥物、虚拟人、动物等非真人主体自己承担画面重点。',
+    product_only: '商品、服务、品牌主体或使用结果独立承担介绍，不需要真人同框。',
     product_detail: '放大材质、包装、结构、界面细节或关键卖点证据。',
     hand_operation: '只拍手部触摸、操作、拿取或演示商品/主体。',
     ui_screen: '展示软件界面、数据变化、屏幕或交互流程。',
@@ -6856,10 +6856,14 @@
 
   function normalizeLuxuryShotSubjectType(seg = {}) {
     const raw = String(seg.subject_type || seg.subjectType || seg.scene_subject_type || '').trim();
-    if (raw && LUXURY_SHOT_SUBJECT_TYPES[raw]) return raw;
     const text = [seg.role, seg.title, seg.visual, seg.content_prompt, seg.scene_content, seg.display_visual, seg.action].filter(Boolean).join(' ');
-    if (/(机器人|机械臂|仿生|智能体|AI\s*机器人|虚拟人|数字人|吉祥物|IP形象|卡通角色|动物|宠物|robot|android|mascot|animal)/i.test(text)
-      && !/(真人|人物|剧情角色|演员|主人公|主角|顾客|客户|用户|店长|经理|导购|顾问|讲解员|主持人|手部|手持|看向|表情|口播|对白)/.test(text)) {
+    const mentionsNonHumanSubject = /(机器人|机械臂|仿生|智能体|AI\s*机器人|虚拟人|吉祥物|IP形象|卡通角色|动物|宠物|robot|android|mascot|animal)/i.test(text);
+    const mentionsRealHuman = /(真人|演员|主人公|主角|顾客|客户|用户|店长|经理|导购|顾问|讲解员|主持人|同框|看向|表情|口播|对白|人物站在|人物坐在)/.test(text);
+    if (raw && LUXURY_SHOT_SUBJECT_TYPES[raw]) {
+      if (raw === 'human_scene' && mentionsNonHumanSubject && !mentionsRealHuman) return 'character_scene';
+      return raw;
+    }
+    if (mentionsNonHumanSubject && !mentionsRealHuman) {
       return 'character_scene';
     }
     if (seg.requires_person === true || seg.person_required === true || seg.character_required === true) return 'human_scene';
@@ -8088,10 +8092,23 @@
 
   function renderLuxuryWorkflowProgress() {
     const progress = state.luxuryAd.workflowProgress;
-    renderLuxuryWorkflowProgressBox($('#dhLuxAdLiveProgress'), progress);
-    renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptTopProgress'), progress);
-    renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptProgress'), progress);
-    renderLuxuryWorkflowProgressBox($('#dhLuxAdFrameProgress'), progress);
+    const liveBox = $('#dhLuxAdLiveProgress');
+    const scriptTopBox = $('#dhLuxAdScriptTopProgress');
+    const scriptTableBox = $('#dhLuxAdScriptProgress');
+    const frameBox = $('#dhLuxAdFrameProgress');
+    const empty = null;
+    renderLuxuryWorkflowProgressBox(liveBox, empty);
+    renderLuxuryWorkflowProgressBox(scriptTopBox, empty);
+    renderLuxuryWorkflowProgressBox(scriptTableBox, empty);
+    renderLuxuryWorkflowProgressBox(frameBox, empty);
+    if (!progress || !progress.active) return;
+    if (progress.keyframes) {
+      renderLuxuryWorkflowProgressBox(frameBox, progress);
+    } else if (progress.detail) {
+      renderLuxuryWorkflowProgressBox(scriptTopBox || scriptTableBox, progress);
+    } else {
+      renderLuxuryWorkflowProgressBox(liveBox, progress);
+    }
   }
 
   function formatLuxuryUsageCost(value, currency = 'usd') {

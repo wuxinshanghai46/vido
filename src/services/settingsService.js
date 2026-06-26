@@ -53,10 +53,6 @@ const PROVIDER_PRESETS = {
   ] },
   'webang-seedance': { name: '微众 · Seedance 2.0', api_url: 'https://test-tk.iserviceapi.com/api', defaultModels: [
     { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（视频编辑·图生视频·文生视频）', type: 'video', use: 'video' },
-    { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（加速版）', type: 'video', use: 'video' },
-    { id: 'doubao-seedance-2-0-t2v-250428', name: 'Seedance 2.0 T2V（文生视频）', type: 'video', use: 'video' },
-    { id: 'doubao-seedance-2-0-i2v-250428', name: 'Seedance 2.0 I2V（图生视频）', type: 'video', use: 'video' },
-    { id: 'doubao-seedance-1-5-pro-251215', name: 'Seedance 1.5 Pro（图+音频→视频）', type: 'video', use: 'video' },
   ] },
   veo:         { name: 'Google Veo',  api_url: 'https://generativelanguage.googleapis.com/v1beta', defaultModels: [
     { id: 'veo-3.1', name: 'Veo 3.1（广播级画质·原生音频·最强照片写实·$0.40/s）', type: 'video', use: 'video' },
@@ -283,7 +279,7 @@ function loadSettings() {
   if (dbConfig.enabled && dbConfig.readPrimary) {
     try {
       const fromDb = appKv.get('settings.full', null);
-      if (fromDb) return mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb));
+      if (fromDb) return normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb)));
       if (!dbConfig.jsonFallback) return seedFromEnv();
     } catch (error) {
       if (!dbConfig.jsonFallback) throw error;
@@ -291,7 +287,7 @@ function loadSettings() {
   }
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      return mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))));
+      return normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')))));
     } catch {}
   }
   // 首次启动：从 .env 自动初始化
@@ -377,6 +373,26 @@ function mergePresetModelsForExistingProviders(settings = {}) {
   return out;
 }
 
+function normalizeWebangSeedanceModels(settings = {}) {
+  const out = { ...settings };
+  const primaryId = 'doubao-seedance-2-0-260128';
+  out.providers = Array.isArray(settings.providers) ? [...settings.providers] : [];
+  for (const provider of out.providers) {
+    const text = [
+      provider?.id,
+      provider?.preset,
+      provider?.api_url,
+      ...(Array.isArray(provider?.models) ? provider.models.map(m => m?.id) : []),
+    ].filter(Boolean).join(' ');
+    if (!/webang|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text)) continue;
+    const current = Array.isArray(provider.models) ? provider.models : [];
+    const primary = current.find(m => m?.id === primaryId)
+      || { ...(PROVIDER_PRESETS['webang-seedance'].defaultModels[0] || {}), enabled: true };
+    provider.models = [{ ...primary, id: primaryId }];
+  }
+  return out;
+}
+
 function seedFromEnv() {
   const providers = [];
   for (const { envKey, presetId } of ENV_SEED_MAP) {
@@ -390,7 +406,7 @@ function seedFromEnv() {
 
 function saveSettings(data) {
   const dbConfig = sqliteConfig.getDbConfig();
-  const normalized = mergePresetModelsForExistingProviders(data);
+  const normalized = normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(data));
   if (dbConfig.enabled) appKv.set('settings.full', normalized);
   if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
