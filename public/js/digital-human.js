@@ -11296,6 +11296,7 @@
       production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
       project_state: projectState || (state.luxuryAd.keyframeError ? 'frame_failed' : (state.luxuryAd.keyframes?.length ? 'frame_ready' : (state.luxuryAd.storyboardDetailed ? 'frame_reviewing' : 'script_reviewing'))),
       flow_mode: state.luxuryAd.flowMode || 'story',
+      route_focus: state.luxuryAd.routeFocus || '',
       text,
       title: state.luxuryAd.briefInfo?.title || '剧情广告项目',
       brief_info: state.luxuryAd.briefInfo || null,
@@ -11409,9 +11410,32 @@
     return true;
   }
 
-  function luxuryAdProjectResumeUrl(projectId = '') {
-    const url = new URL(window.location.href);
+  function luxuryAdProjectSavedStep(project = {}) {
+    const draft = project?.draft_state || {};
+    const current = Number(project.current_step || draft.current_step || project.currentStep || draft.currentStep || 0);
+    if (Number.isFinite(current) && current > 0) return Math.max(1, Math.min(5, current));
+    const keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
+    const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+    if (keyframes.length) return 5;
+    if (['frame_reviewing', 'frame_ready', 'frame_failed'].includes(String(project.project_state || '')) || (Array.isArray(project.storyboard_sheets) && project.storyboard_sheets.length)) return 4;
+    if (scenes.length) return 3;
+    return 1;
+  }
+
+  function luxuryAdProjectSavedFocus(project = {}) {
+    const draft = project?.draft_state || {};
+    const focus = String(project.route_focus || draft.route_focus || project.routeFocus || draft.routeFocus || '').trim();
+    return ['person', 'product', 'scene', 'script', 'frames', 'compose'].includes(focus) ? focus : '';
+  }
+
+  function luxuryAdProjectResumeUrl(projectId = '', project = null) {
+    const url = new URL('/digital-human', window.location.origin);
     url.searchParams.set('tab', 'luxury-ad');
+    if (project && typeof project === 'object') {
+      url.searchParams.set('lux_step', String(luxuryAdProjectSavedStep(project)));
+      const focus = luxuryAdProjectSavedFocus(project);
+      if (focus) url.searchParams.set('lux_focus', focus);
+    }
     const cleanProjectId = String(projectId || '').trim();
     // 中文注释：只有明确传入项目 ID 时才写入继续制作参数，避免空参数污染普通剧情广告入口。
     if (cleanProjectId) url.searchParams.set('luxury_project', cleanProjectId);
@@ -11458,7 +11482,8 @@
         : (project.scenes?.length ? 3 : 1));
     state.luxuryAd.content = project.text || state.luxuryAd.content || '';
     // 中文注释：旧页面补存可能把 current_step 写成 1；恢复时以已保存产物和项目阶段为准。
-    state.luxuryAd.currentStep = Math.max(Number(draft.current_step || 1), inferredStep);
+    state.luxuryAd.currentStep = Math.max(luxuryAdProjectSavedStep(project), inferredStep);
+    state.luxuryAd.routeFocus = luxuryAdProjectSavedFocus(project);
     state.luxuryAd.flowMode = draft.flow_mode || project.flow_mode || 'story';
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
@@ -11538,12 +11563,16 @@
     syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
     syncLuxuryPersonSpecControls();
     const inModal = opts.modal === true && openLuxuryResumeModal();
-    if (!inModal) switchTab('luxury-ad');
+    if (!inModal) switchTab('luxury-ad', { preserveLuxuryProject: true });
     showLuxuryAdStep(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))), { silent: true });
     renderLuxuryAd();
+    if (!inModal) rememberActiveTab('luxury-ad', { preserveLuxuryProject: true });
     if (!inModal) {
       requestAnimationFrame(() => {
-        const target = document.querySelector('#dhLuxAdPanel') || document.querySelector('[data-pane="luxury-ad"]');
+        const step = Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1)));
+        const target = document.querySelector(`.dh-luxgen-stage[data-panel="${step}"], .dh-demo-stage[data-panel="${step}"]`)
+          || document.querySelector('#dhLuxAdPanel')
+          || document.querySelector('[data-pane="luxury-ad"]');
         target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
       });
     }
@@ -15900,8 +15929,10 @@
     const luxProjectContinue = closest('[data-lux-project-continue]');
     if (luxProjectContinue) {
       const id = luxProjectContinue.dataset.luxProjectContinue;
-      const opened = window.open(luxuryAdProjectResumeUrl(id), '_blank', 'noopener');
-      if (!opened) window.location.href = luxuryAdProjectResumeUrl(id);
+      const project = (state.luxuryAdProjects || []).find(x => String(x.id || '') === String(id)) || null;
+      const resumeUrl = luxuryAdProjectResumeUrl(id, project);
+      const opened = window.open(resumeUrl, '_blank', 'noopener');
+      if (!opened) window.location.href = resumeUrl;
       return;
     }
     const luxProjectDelete = closest('[data-lux-project-delete]');
@@ -17919,15 +17950,15 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (initialAvatarTab) state._myAvTab = initialAvatarTab;
     // 中文注释：首屏如果来自“继续制作”深链，先保留一次项目参数，等恢复项目后再主动清理。
     switchTab(initialTab, { preserveLuxuryProject: !!initialLuxuryProjectRouteId });
-    await restoreLuxuryAdProjectFromUrl();
-    if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus) {
+    const restoredLuxuryProject = await restoreLuxuryAdProjectFromUrl();
+    if (!restoredLuxuryProject && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus) {
       state.luxuryAd.routeFocus = initialLuxuryFocus;
       if (initialLuxuryFocus === 'person') state.luxuryAd.currentStep = Math.max(2, Number(state.luxuryAd.currentStep || 1));
     }
-    if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryStep) {
+    if (!restoredLuxuryProject && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryStep) {
       showLuxuryAdStep(initialLuxuryStep, { silent: true });
     }
-    if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus === 'person') {
+    if (!restoredLuxuryProject && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus === 'person') {
       showLuxuryAdStep(2, { silent: true });
       restoreLuxuryAdRouteFocus('person');
     }
