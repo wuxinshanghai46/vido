@@ -3924,7 +3924,8 @@
   }
 
   function renderTaskImageCover(task = {}, posterUrl = '', ratioClass = '', attrs = '') {
-    return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${posterUrl ? '' : ' is-missing'}${ratioClass}" ${attrs}>
+    const draftClass = task.isLuxuryProjectDraft ? ' dh-task-thumb-draft' : '';
+    return `<div class="dh-task-thumb dh-task-thumb-done dh-task-thumb-cover${draftClass}${posterUrl ? '' : ' is-missing'}${ratioClass}" ${attrs}>
       ${posterUrl ? `<img class="dh-task-thumb-video" src="${escapeHtml(withThumbAuth(posterUrl, 480))}" loading="lazy" decoding="async" alt="${escapeHtml(taskCoverText(task))}" onerror="window.__dhTaskCoverFallback&&window.__dhTaskCoverFallback(this)">` : ''}
       ${renderTaskCoverFallback(task)}
       ${attrs ? '<span class="dh-task-thumb-play">&#9654;</span>' : ''}

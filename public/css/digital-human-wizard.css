@@ -1410,6 +1410,19 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-task-thumb-cover video { position: absolute; inset: 0; z-index: 2; }
 .dh-task-thumb-cover:not(.is-missing) .dh-task-cover-fallback { opacity: 0; }
 .dh-task-thumb-cover.is-missing .dh-task-thumb-play { display: none; }
+.dh-task-thumb-draft {
+  width: 120px;
+  max-width: 120px;
+  aspect-ratio: 3 / 4;
+  align-self: start;
+  background: rgba(33,255,243,.06);
+  border-color: rgba(33,255,243,.28);
+}
+.dh-task-thumb-draft .dh-task-cover-fallback {
+  inset: 0;
+  margin: 0;
+  border-radius: inherit;
+}
 .dh-task-cover-fallback { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; align-content: center; gap: 6px; padding: 10px; text-align: center; transition: opacity .15s ease; }
 .dh-task-cover-fallback b { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; border: 1px solid rgba(33,255,243,.38); color: var(--dh-primary); background: rgba(33,255,243,.08); font-size: 20px; line-height: 1; }
 .dh-task-cover-fallback span { color: var(--dh-text); font-size: 12px; font-weight: 900; line-height: 1.25; }
