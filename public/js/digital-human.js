@@ -12006,7 +12006,7 @@
       const subjectType = normalizeLuxuryShotSubjectType(seg);
       const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
       const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
-      return `<article class="dh-demo-frame-card">
+      return `<article class="dh-demo-frame-card"${luxurySubjectAccentStyle()}>
         <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" style="${ratioStyle}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(jimengThumbUrl(previewUrl, 520))}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}" loading="lazy" decoding="async">` : ''}
           <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || storyStage)}</b>
