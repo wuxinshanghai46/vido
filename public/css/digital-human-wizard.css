@@ -893,6 +893,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-live-progress[hidden] { display: none !important; }
 .dh-luxgen-script-progress { margin: 12px; }
 .dh-luxgen-top-progress.dh-luxgen-script-progress { margin: 8px 0 14px; }
+.dh-luxgen-step4-progress.dh-luxgen-script-progress { margin: 8px 0 14px; }
 .dh-luxgen-live-head, .dh-luxgen-live-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .dh-luxgen-live-head span { color: var(--dh-text); font-size: 13px; font-weight: 900; }
 .dh-luxgen-live-head b { color: var(--dh-primary); font-size: 13px; font-variant-numeric: tabular-nums; }

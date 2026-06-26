@@ -15369,6 +15369,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       ad_style = 'luxury_soft',
       request_key = '',
       request_async = false,
+      revision_mode = '',
     } = req.body || {};
     // 中文注释：外部接口字段使用 snake_case，内部生成链路沿用 adStyle；统一映射，避免分镜阶段变量名漏定义。
     const adStyle = ad_style || 'luxury_soft';
@@ -15382,6 +15383,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const requestedDuration = Math.max(12, Math.min(90, Math.round(Number(duration_sec) || 30)));
     const targetDuration = _inferLuxuryBriefDuration(brief, requestedDuration);
     const isDetailedMode = String(planning_mode || '').toLowerCase() === 'detailed';
+    const rewriteScriptMode = isDetailedMode && String(revision_mode || '').toLowerCase() === 'rewrite_script';
     const briefReferenceAssets = Array.isArray(brief_reference_assets)
       ? brief_reference_assets.filter(x => x && (x.url || x.image_url || x.previewUrl || x.name)).slice(0, 6)
       : [];
@@ -15603,7 +15605,9 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         }))
       : [];
     const modeInstruction = isDetailedMode
-      ? `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${exactShotCountNote || `${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；`}不要为了凑数重复镜头，每镜约 2-4 秒。${referenceShotLockNote}`
+      ? (rewriteScriptMode
+        ? `当前是第 4 步退回重写分镜脚本：用户不满意上一版剧本。只能保留广告主体、素材/人物/镜头数量/时长这些制作约束；必须重新规划 story arc、每镜画面、动作和台词。不要沿用旧台词、旧动作、旧 CAMERA/UI/VFX/QA 文案或旧镜头表达。${exactShotCountNote || `${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；`}每镜约 2-4 秒。${referenceShotLockNote}`
+        : `当前是第 3 步：用户已经确认基础信息和主体来源，人物来源会在剧本审核后再确认。请生成可审核的广告剧本表，而不是分镜摘要。写法参考专业广告脚本：每一镜必须有“秒数、画面、动作、台词、目的、状态”的信息密度；画面像编剧写场景，动作像导演给演员/产品的执行指令，台词像成片字幕或旁白，目的用短标签。${exactShotCountNote || `${targetDuration} 秒广告建议约 ${wantedShots} 镜，可根据剧情在 ${minAllowedShots}-${maxAllowedShots} 镜内调整；`}不要为了凑数重复镜头，每镜约 2-4 秒。${referenceShotLockNote}`)
       : `当前是第 2 步：用户只填写了广告设想。你只能先把广告设想拆成按时间推进的场景顺序和素材清单：开场分镜 → 第二场景 → 后续场景 → 收尾分镜。自己判断大概需要几个分镜；建议约 ${wantedShots} 个，但可按内容在 3-8 个之间调整。不要只输出 1 个镜头，不要假装已经看过素材，不要给具体景别/镜头运动/Topview 提示词；shot_size/shot_angle 固定写“素材进入后生成”，content_prompt 只写该场景需要什么画面，voiceover 只写旁白/介绍方向。`;
     const { callLLM } = require('../services/storyService');
     const sys = [
@@ -15619,6 +15623,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '故事弧规则：生成第 3 步前必须先确定一条不可见的 story arc：起因、阻碍、发现、验证、转变、行动。每个镜头只承担其中一个节点，但相邻镜头必须能用“因此/接着/于是/最后”连起来。台词或旁白连读后必须像一段完整短片文案。',
       '反割裂规则：禁止把每镜写成互不相干的标题口号；禁止连续使用“全新体验、科技感、未来感、智能生活、效率提升”这类没有场景动作支撑的词；禁止台词与画面主体不一致。',
       '分工规则：编剧 agent 负责连续故事和台词动机；场景 agent 负责每镜发生在哪里、发生什么变化；动作 agent 负责演员/产品的可执行动作；镜头 agent 负责景别、运动、光线、转场。四者必须一致，不能各写各的。',
+      rewriteScriptMode ? '重写模式规则：这是用户主动点击“重写分镜脚本”。已有场景顺序只作为镜头数量、素材绑定和主体约束，不是旧稿续写。必须输出新的故事推进、新的画面动作和新的可上屏台词；禁止复制旧版镜头内容、旧动作、旧 UI/VFX、旧 CAMERA 或旧 QA 文案。' : '',
       '主体/角色规则：只有当用户需求或已确认剧本明确需要“人”时，才生成真人人物表；如果需求是动物、机器人、外星人、吉祥物、产品、空间或服务场景，就围绕对应主体写角色/动作，不要把它改写成真人导购或主持人。',
       castInstruction,
       genderInstruction,
@@ -15710,6 +15715,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
 - 分镜是生成前的广告脚本，不是直接成片，不要写“按广告内容生成画面”这种空话。
 - 第 2 步场景顺序规划时，内容必须像制作清单：只写开场到收尾的顺序、这一段讲什么、需要准备什么画面、旁白/介绍方向；不要提前写具体景别和镜头运动。
 - 第 3 步剧本生成时，必须沿用“已有场景顺序”的标题、广告任务、素材需求和用户修改内容，只补齐时间段、画面、动作、台词、目的、情绪、镜头和声音。不要只写“主商品居中”“突出高级感”。
+- 第 4 步重写分镜脚本时，已有场景顺序只代表镜头数量、素材绑定和主体约束；必须重新写 story arc、画面、动作和台词，不得沿用旧稿。
 - 镜头写法必须从当前业务内容、素材和主体类型推导；不要套用固定材质片、固定空间片或固定人物导购写法。
 - content_prompt 是镜头内容提示词：描述“画面如何拍”，不是广告语，也不能是文件名或技术参数。
 - voiceover/narration 是成片旁白/字幕广告词：描述“观众听到/看到什么话”，不是镜头和场景说明，也不是用户 brief；禁止出现“请做、帮我、我想、广告需求、目标客户、卖点/资料、画面风格、不要像、最后引导”等需求描述。
@@ -16554,6 +16560,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 26000)}`;
         '必须按通用故事脊柱推进：问题/期待 -> 场景代入 -> 主体登场 -> 解决或体验 -> 可视化证明 -> 对比或承诺 -> 行动收束。每个 beat 只承担一个推进职责，不能重复上一段画面或台词。',
         '每个 beat 的 spoken_line 必须像成片里能听到的一句人话：先承接上一段情境，再推进下一段。禁止只写抽象卖点、广告口号或形容词堆叠。',
         `如果目标时长约 30 秒，故事蓝图优先写 10 个短 beat；每个 beat 只写当前业务内容识别出来的具体事件、商品/服务画面和自然台词，不套任何固定行业模板。`,
+        rewriteScriptMode ? '重写任务：不要把已有场景顺序当作旧剧本延续，只把它当作镜头数量和制作约束。必须重新设计 opening_problem、turning_point、proof、resolution 和每个 beat 的 spoken_line。' : '',
         '只有当主商品明确属于钢材/建材/墙面/外立面/空间设计服务时，才可使用展厅、设计会客区、建筑样板间、真实应用空间或客户洽谈区；其它行业必须使用对应行业的真实场景。',
         '台词必须像真实人物在具体场景里说话：先说困扰，再说看见了什么改变，最后自然邀请行动；禁止“钢材，如何重塑建筑空间？”这类空泛设问。',
       ].join('\n');
@@ -16630,6 +16637,8 @@ ${JSON.stringify(storyPlan, null, 2)}
 
 已有场景顺序：
 ${outlineNotes.length ? JSON.stringify(outlineNotes, null, 2) : '暂无'}
+
+${rewriteScriptMode ? '注意：这是重写脚本，不是沿用旧稿。上面的已有场景顺序只允许作为镜头数量、主体约束、素材绑定参考；不得复制旧版台词、旧动作、旧画面句式。' : ''}
 
 请按剧情拆成 ${explicitShotTarget ? `正好 ${wantedShots} 个镜头` : `${minAllowedShots}-${maxAllowedShots} 个镜头，建议约 ${wantedShots} 个`}，输出 JSON 数组；不要为了凑数重复镜头。每个对象必须包含：
 index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_content,visual,dialogue_lines,voiceover,narration,characters,material_usage,source_beat。

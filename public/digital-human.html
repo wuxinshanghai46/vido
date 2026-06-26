@@ -32,7 +32,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260626-theme-native-controls">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260626-lux-shot-details">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260627-lux-rewrite-progress">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1395,6 +1395,7 @@
                   <button class="dh-btn dh-btn-primary" id="dhLuxAdGoCompose" type="button">确认分镜，进入广告合成</button>
                 </div>
               </div>
+              <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-step4-progress" id="dhLuxAdStep4ScriptProgress" hidden></div>
               <input type="file" id="dhLuxAdAssetFile" accept="image/*" hidden>
               <div class="dh-demo-guide" id="dhLuxAdFrameGuide">
                 <b id="dhLuxAdFrameGuideTitle">按剧本生成</b>
@@ -2013,6 +2014,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260626-lux-storyboard-session"></script>
+  <script src="/js/digital-human.js?v=20260627-lux-rewrite-progress"></script>
 </body>
 </html>

@@ -8132,18 +8132,22 @@
     const progress = state.luxuryAd.workflowProgress;
     const liveBox = $('#dhLuxAdLiveProgress');
     const scriptTopBox = $('#dhLuxAdScriptTopProgress');
+    const step4ScriptBox = $('#dhLuxAdStep4ScriptProgress');
     const scriptTableBox = $('#dhLuxAdScriptProgress');
     const frameBox = $('#dhLuxAdFrameProgress');
     const empty = null;
     renderLuxuryWorkflowProgressBox(liveBox, empty);
     renderLuxuryWorkflowProgressBox(scriptTopBox, empty);
+    renderLuxuryWorkflowProgressBox(step4ScriptBox, empty);
     renderLuxuryWorkflowProgressBox(scriptTableBox, empty);
     renderLuxuryWorkflowProgressBox(frameBox, empty);
     if (!progress || !progress.active) return;
     if (progress.keyframes) {
       renderLuxuryWorkflowProgressBox(frameBox, progress);
     } else if (progress.detail) {
-      renderLuxuryWorkflowProgressBox(scriptTopBox || scriptTableBox, progress);
+      renderLuxuryWorkflowProgressBox(scriptTopBox, progress);
+      renderLuxuryWorkflowProgressBox(scriptTableBox, progress);
+      renderLuxuryWorkflowProgressBox(step4ScriptBox, progress);
     } else {
       renderLuxuryWorkflowProgressBox(liveBox, progress);
     }
@@ -10334,6 +10338,43 @@
         strict_storyboard_contract: seg.strict_storyboard_contract || null,
         prompt_preflight: seg.prompt_preflight || null,
         compiled_image_prompt: seg.compiled_image_prompt || '',
+      };
+    });
+  }
+
+  function compactLuxurySegmentsForScriptRewrite(segments = []) {
+    return applyLuxuryShotBindings(normalizeLuxuryAdSegmentsForHandoff(segments)).map((seg, i) => {
+      const shotIndex = luxuryFrameIndex(seg, i);
+      const duration = luxuryShotDurationValue(seg, state.luxuryAd.durationSec, segments.length || 1);
+      const subjectType = normalizeLuxuryShotSubjectType(seg);
+      const sceneBasis = [
+        luxuryShotObjectiveText(seg),
+        luxuryShotContentPrompt(seg),
+        luxuryShotVisualText(seg),
+      ].filter(Boolean).join('；').slice(0, 260);
+      return {
+        index: shotIndex,
+        title: seg.title || `镜头 ${shotIndex + 1}`,
+        role: seg.role || seg.shot_role || 'display',
+        story_stage: luxuryNormalizeSceneStage(seg.story_stage, seg.shot_role || seg.role || seg.type, shotIndex, segments.length || 5),
+        subject_type: subjectType,
+        subjectType,
+        requires_person: luxuryShotRequiresPersonFromType(subjectType, seg),
+        person_required: luxuryShotRequiresPersonFromType(subjectType, seg),
+        cast_ids: Array.isArray(seg.cast_ids) ? seg.cast_ids : (Array.isArray(seg.castIds) ? seg.castIds : []),
+        product_ids: Array.isArray(seg.product_ids) ? seg.product_ids : (Array.isArray(seg.productIds) ? seg.productIds : []),
+        locks: seg.locks || null,
+        reference_index: luxuryAdShotRefIndex(seg, shotIndex),
+        material_need: sceneBasis,
+        required_material: sceneBasis,
+        objective: luxuryShotObjectiveText(seg) || seg.purpose || seg.script_purpose || '',
+        duration,
+        duration_sec: duration,
+        seconds: duration,
+        product_subject: seg.product_subject || '',
+        scene_type_lock: seg.scene_type_lock || '',
+        environment_lock: seg.environment_lock || '',
+        visual_contract: seg.visual_contract || null,
       };
     });
   }
@@ -12681,7 +12722,7 @@
     return msg || '分镜生成失败';
   }
 
-  async function buildLuxuryAdStoryboard({ autoNext = false, detail = false, triggerButton = null } = {}) {
+  async function buildLuxuryAdStoryboard({ autoNext = false, detail = false, triggerButton = null, rewriteScript = false } = {}) {
     if (luxuryAdIsMaterialMode()) {
       buildMaterialFilmCopyPlan();
       return true;
@@ -12712,7 +12753,11 @@
       detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'))
     );
     const old = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = detail ? '生成剧本中…' : '生成场景配置中…'; }
+    const isRewriteScript = !!(detail && (rewriteScript || btn?.id === 'dhLuxAdRegenerateScriptFromStep4'));
+    const busyText = isRewriteScript
+      ? '重写脚本中…'
+      : (detail ? '生成剧本中…' : '生成场景配置中…');
+    if (btn) { btn.disabled = true; btn.innerHTML = busyText; }
     const requestKey = luxuryStoryboardRequestKey(detail);
     state.luxuryAd.storyboardRequest = { key: requestKey, detail: !!detail, startedAt: Date.now() };
     state.luxuryAd.sceneGenerating = !detail;
@@ -12782,11 +12827,14 @@
           name: asset.name || `分镜画面 ${i + 1}`,
           url: compactLuxuryUrl(asset.url || ''),
         }) : null).filter(Boolean),
-        outline_segments: detail ? compactLuxurySegments(sourceSegments) : [],
+        outline_segments: detail
+          ? (isRewriteScript ? compactLuxurySegmentsForScriptRewrite(sourceSegments) : compactLuxurySegments(sourceSegments))
+          : [],
+        revision_mode: isRewriteScript ? 'rewrite_script' : '',
         person_spec: luxuryAdPersonSpec(),
         cast_profiles: luxuryAdCastProfiles(),
         product_profile: state.luxuryAd.productProfile || null,
-        revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
+        revision_history: isRewriteScript ? [] : (Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : []),
         person_asset: luxuryAdPersonAssetPayload(),
         request_key: requestKey,
         request_async: true,
@@ -16262,7 +16310,12 @@
         state.luxuryAd.keyframes = [];
         state.luxuryAd.storyboardSheets = [];
         state.luxuryAd.keyframePlanningOnly = false;
-        await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxScriptRegenerateBtn });
+        await buildLuxuryAdStoryboard({
+          autoNext: false,
+          detail: true,
+          rewriteScript: luxScriptRegenerateBtn.id === 'dhLuxAdRegenerateScriptFromStep4',
+          triggerButton: luxScriptRegenerateBtn,
+        });
       }
       return;
     }
