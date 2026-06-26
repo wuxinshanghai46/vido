@@ -10097,7 +10097,7 @@
       seg.visual,
       seg.content_prompt,
     ].filter(Boolean).join(' ');
-    if (!raw && !/(UI|app|screen|phone|mobile|popup|card|notification|dashboard|chart|waveform|check|tick|order|chat|message|interface|floating|hologram|overlay|弹窗|卡片|界面|手机|订单|通知|勾|对勾|确认|数据|波形|图表|悬浮|全息|智能体|助手)/i.test(source)) return null;
+    if (!raw && !/(UI|app|screen|phone|mobile|popup|card|notification|dashboard|chart|waveform|check|tick|order|chat|message|interface|floating|hologram|overlay|弹窗|卡片|界面|手机|订单|通知|勾|对勾|确认|数据|波形|图表|悬浮|全息)/i.test(source)) return null;
     const type = String(raw?.type || '').trim()
       || (/(check|tick|确认|对勾|勾)/i.test(source) ? 'confirmation_badge'
         : (/(waveform|音频|波形)/i.test(source) ? 'audio_waveform'
@@ -11192,21 +11192,19 @@
           const preview = img ? luxuryAssetPreviewUrl({ url: img }) : '';
           const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
           const pendingLabel = `镜头 ${String(i + 1).padStart(2, '0')} · 待生成分镜图`;
-          const camera = luxuryShotMotionLabel(seg);
-          const action = luxuryShotActionText(seg);
-          const ui = luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg);
+          const action = luxuryShotActionText(seg) || luxuryShotContentPrompt(seg);
+          const voice = luxuryShotNarrationText(seg);
           return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
             <header><strong>${String(i + 1).padStart(2, '0')}</strong><span>${escapeHtml(timeRange)}</span></header>
             ${preview ? `<button type="button" class="dh-lux-sheet-frame has-linked-preview" style="${ratioStyle}" data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图">
               <img src="${escapeHtml(jimengThumbUrl(preview, 420))}" alt="镜头 ${i + 1} 已生成分镜图" loading="lazy" decoding="async">
               <span>已生成 · 点击查看</span>
             </button>` : `<div class="dh-lux-sheet-frame pending" style="${ratioStyle}"><span>${escapeHtml(pendingLabel)}</span></div>`}
-            <dl>
-              <div><dt>CAMERA</dt><dd>${escapeHtml(camera || seg.shot_angle || '待定')}</dd></div>
-              <div><dt>ACTION</dt><dd>${escapeHtml(action || luxuryShotContentPrompt(seg))}</dd></div>
-              <div><dt>UI/VFX</dt><dd>${escapeHtml(ui || 'none')}</dd></div>
-              <div><dt>QA</dt><dd>${renderLuxuryFrameQaDimensions(kf) || '<span class="dh-lux-sheet-qa-pending">等待质检</span>'}</dd></div>
-            </dl>
+            <div class="dh-lux-sheet-shot-summary">
+              <b>${escapeHtml(seg.title || luxuryNormalizeSceneStage(seg.story_stage, seg.shot_role || seg.role || seg.type, i, segments.length) || `镜头 ${i + 1}`)}</b>
+              <span>${escapeHtml(action || voice || '按当前剧情镜头执行')}</span>
+              <button type="button" class="dh-luxgen-edit" data-lux-shot-details="${i}">详情</button>
+            </div>
           </article>`;
         }).join('')}
       </div>
@@ -11295,6 +11293,77 @@
     }).filter(Boolean);
     if (!rows.length) return '';
     return `<div class="dh-lux-qa-dims">${rows.join('')}</div>`;
+  }
+
+  function renderLuxuryShotTechnicalDetails(seg = {}, kf = {}, index = 0) {
+    const strictContract = seg.strict_storyboard_contract || kf.strict_storyboard_contract || kf.shot_plan?.strict_storyboard_contract || null;
+    const promptPreflight = seg.prompt_preflight || kf.prompt_preflight || kf.shot_plan?.prompt_preflight || null;
+    const compiledPrompt = seg.compiled_image_prompt || kf.compiled_image_prompt || kf.shot_plan?.compiled_image_prompt || '';
+    const mustShow = Array.isArray(strictContract?.must_show) ? strictContract.must_show.join('；') : '';
+    const mustNotShow = Array.isArray(strictContract?.must_not_show) ? strictContract.must_not_show.join('；') : '';
+    const preflightText = promptPreflight?.pass ? '预检通过' : (promptPreflight ? '预检未通过' : '等待预检');
+    const frameLocks = kf.visual_locks || seg.visual_locks || null;
+    const lockPrompt = [
+      frameLocks?.reality_lock?.scene_basis ? `真实场景：${frameLocks.reality_lock.scene_basis}` : '',
+      frameLocks?.product_lock?.subject ? `产品：${frameLocks.product_lock.subject}` : '',
+      frameLocks?.scene_lock?.scene_basis ? `场景：${frameLocks.scene_lock.scene_basis}` : '',
+      frameLocks?.ui_lock?.prompt ? `UI：${frameLocks.ui_lock.prompt}` : '',
+    ].filter(Boolean).join('；');
+    const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
+    const binding = luxuryAdShotBoundAssets(seg, index);
+    const materialName = binding.items.map(x => `${x.label} ${x.name}`).join(' / ');
+    const rows = [
+      ['CAMERA', luxuryShotAngleText(seg) || seg.shot_size || luxuryShotMotionLabel(seg) || '待定'],
+      ['ACTION', luxuryShotActionText(seg) || luxuryShotContentPrompt(seg) || '待定'],
+      ['UI/VFX', luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg) || '无 UI 浮层'],
+      ['QA', renderLuxuryFrameQaDimensions(kf) || '<span class="dh-lux-sheet-qa-pending">等待质检</span>', true],
+      ['后期 UI', uiPost?.applied ? '已后期合成 UI 浮层' : '未触发后期 UI 合成'],
+      ['本镜视觉锁', lockPrompt || '等待资产锁'],
+      ['素材绑定', [luxuryShotMaterialUsage(seg, index), materialName].filter(Boolean).join(' · ') || '按当前镜头合同执行'],
+      ['AI 生成指令', luxuryAdTopviewPrompt(seg, index) || '等待后端编译'],
+      ['严格合约 / 预检', `状态：${preflightText}；必须出现：${mustShow || '待生成'}；禁止：${mustNotShow || '待生成'}`],
+      ['图片提示词编译结果', compiledPrompt || '等待后端编译'],
+    ];
+    return `<div class="dh-lux-shot-detail-grid">
+      ${rows.map(([label, value, html]) => `<div class="dh-lux-shot-detail-row">
+        <small>${escapeHtml(label)}</small>
+        <span>${html ? value : escapeHtml(value)}</span>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  function openLuxuryShotDetailsModal(index) {
+    const idx = Number(index);
+    const seg = (state.luxuryAd.segments || [])[idx] || null;
+    if (!seg) return toast('镜头不存在，请重新进入第 4 步查看', 'error');
+    const kf = (state.luxuryAd.keyframes || [])[idx] || {};
+    let modal = $('#dhLuxuryShotDetailsModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'dhLuxuryShotDetailsModal';
+      modal.className = 'dh-video-modal dh-lux-shot-details-modal';
+      modal.innerHTML = `<div class="dh-video-modal-backdrop" data-lux-shot-details-close></div>
+        <div class="dh-video-modal-card dh-lux-shot-details-card">
+          <div class="dh-video-modal-head">
+            <span class="dh-video-modal-title"></span>
+            <button class="dh-video-modal-close" data-lux-shot-details-close type="button" title="关闭">×</button>
+          </div>
+          <div class="dh-lux-shot-details-body"></div>
+        </div>`;
+      modal.addEventListener('click', e => {
+        if (e.target.closest('[data-lux-shot-details-close]')) closeLuxuryShotDetailsModal();
+      });
+      document.body.appendChild(modal);
+    }
+    const title = modal.querySelector('.dh-video-modal-title');
+    if (title) title.textContent = `镜头 ${idx + 1} 详情`;
+    const body = modal.querySelector('.dh-lux-shot-details-body');
+    if (body) body.innerHTML = renderLuxuryShotTechnicalDetails(seg, kf, idx);
+    modal.classList.add('open');
+  }
+
+  function closeLuxuryShotDetailsModal() {
+    $('#dhLuxuryShotDetailsModal')?.classList.remove('open');
   }
 
   function luxuryAdIsSoftwareWorkflow() {
@@ -12015,26 +12084,7 @@
       const actionText = luxuryShotActionText(seg);
       const emotionText = luxuryShotEmotionText(seg);
       const audioText = luxuryShotAudioText(seg);
-      const uiOverlayText = luxuryUiOverlaySummary(seg.ui_overlay || kf.ui_overlay || null, seg);
-      const materialUsage = luxuryShotMaterialUsage(seg, i);
-      const materialName = binding.items.map(x => `${x.label} ${x.name}`).join(' / ');
       const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
-      // Strict contract preview: expose the exact fields that decide whether
-      // the backend is allowed to spend image-generation cost for this shot.
-      const strictContract = seg.strict_storyboard_contract || kf.strict_storyboard_contract || kf.shot_plan?.strict_storyboard_contract || null;
-      const promptPreflight = seg.prompt_preflight || kf.prompt_preflight || kf.shot_plan?.prompt_preflight || null;
-      const compiledPrompt = seg.compiled_image_prompt || kf.compiled_image_prompt || kf.shot_plan?.compiled_image_prompt || '';
-      const mustShow = Array.isArray(strictContract?.must_show) ? strictContract.must_show.join('；') : '';
-      const mustNotShow = Array.isArray(strictContract?.must_not_show) ? strictContract.must_not_show.join('；') : '';
-      const preflightText = promptPreflight?.pass ? '预检通过' : (promptPreflight ? '预检未通过' : '等待预检');
-      const frameLocks = kf.visual_locks || seg.visual_locks || null;
-      const lockPrompt = [
-        frameLocks?.reality_lock?.scene_basis ? `真实场景：${frameLocks.reality_lock.scene_basis}` : '',
-        frameLocks?.product_lock?.subject ? `产品：${frameLocks.product_lock.subject}` : '',
-        frameLocks?.scene_lock?.scene_basis ? `场景：${frameLocks.scene_lock.scene_basis}` : '',
-        frameLocks?.ui_lock?.prompt ? 'UI：后期浮层锁' : '',
-      ].filter(Boolean).join('；');
-      const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
       const subjectType = normalizeLuxuryShotSubjectType(seg);
       const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
       const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
@@ -12051,14 +12101,9 @@
           <div class="dh-demo-card"><small>动作 / 表情</small><b>${escapeHtml(actionText)}</b><span>${escapeHtml(emotionText)}</span></div>
           <div class="dh-demo-card"><small>镜头 / 构图</small><b>${escapeHtml(shotAngle)}</b><span>镜头运动：${escapeHtml(luxuryShotMotionLabel(seg))}</span></div>
           <div class="dh-demo-card"><small>声音 / 字幕</small><b>${escapeHtml(audioText)}</b><span>字幕：${escapeHtml(voiceText || '待生成')}</span></div>
-          <div class="dh-demo-card"><small>UI / VFX</small><b>${escapeHtml(uiOverlayText || '无 UI 浮层')}</b><span>${escapeHtml(uiOverlayText ? '作为画面内的产品交互层参与分镜提示词。' : '当前镜头不强制生成弹窗、卡片或界面特效。')}</span></div>
-          <div class="dh-demo-card"><small>后期 UI / QA</small><b>${escapeHtml(uiPost?.applied ? '已后期合成 UI 浮层' : '未触发后期 UI 合成')}</b><span>${escapeHtml(uiPost?.applied ? 'UI 已进入最终关键帧并再次质检。' : '无 UI 需求或等待关键帧生成。')}</span>${renderLuxuryFrameQaDimensions(kf) || '<span>等待 QA 维度评分</span>'}</div>
-          <div class="dh-demo-card"><small>本镜视觉锁</small><b>${escapeHtml(lockPrompt || '等待资产锁')}</b><span>${escapeHtml(frameLocks ? '人物/产品/场景/道具/UI 会进入后端严格合约。' : '当前镜头尚未收到 visual_locks。')}</span></div>
-          <div class="dh-demo-card"><small>AI 生成指令</small><b>${escapeHtml(luxuryAdTopviewPrompt(seg, i))}</b><span>${escapeHtml(materialUsage)}${materialName ? ` · ${escapeHtml(materialName)}` : ''}</span></div>
-          <div class="dh-demo-card"><small>严格合约 / 预检</small><b>${escapeHtml(preflightText)}</b><span>必须出现：${escapeHtml(mustShow || '待生成')}；禁止：${escapeHtml(mustNotShow || '待生成')}</span></div>
-          <div class="dh-demo-card wide"><small>图片提示词编译结果</small><b>${escapeHtml(compiledPrompt || '等待后端编译')}</b><span>该提示词是图片模型唯一执行指令；缺失时后端会停止。</span></div>
           <div class="dh-demo-card wide"><small>操作</small><b>${escapeHtml(status)}</b><span>
             ${img ? `<button type="button" class="dh-luxgen-edit" disabled>已选用此图</button> <button type="button" class="dh-luxgen-edit" data-lux-shot-preview="${i}">查看全图</button>` : ''}
+            <button type="button" class="dh-luxgen-edit" data-lux-shot-details="${i}">详情</button>
             <button type="button" class="dh-luxgen-edit" data-lux-shot-regenerate="${i}" ${disabledAttr}>重新生成本镜</button>
             <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}" ${editDisabledAttr}>编辑分镜</button>
             <button type="button" class="dh-luxgen-edit" data-lux-shot-extend="${i}" ${disabledAttr}>延长 2 秒</button>
@@ -16052,6 +16097,11 @@
     if (luxShotEdit) {
       if (luxuryAdStepIsLocked(3)) return toast(luxuryAdLockedStepMessage(3), 'error');
       openLuxuryShotEditor(Number(luxShotEdit.dataset.luxShotEdit));
+      return;
+    }
+    const luxShotDetails = closest('[data-lux-shot-details]');
+    if (luxShotDetails) {
+      openLuxuryShotDetailsModal(Number(luxShotDetails.dataset.luxShotDetails));
       return;
     }
     const luxShotPreview = closest('[data-lux-shot-preview]');
