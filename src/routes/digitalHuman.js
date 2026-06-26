@@ -3193,13 +3193,14 @@ function _luxuryIsSoftwareWorkflowSubject(productSubject = '', scene = {}) {
     manifestText,
   ].filter(Boolean).join(' ');
   if (/钢|金属|板材|建材|材料|材质|外立面|墙面|steel|metal|panel|facade|material/i.test(text)) return false;
-  const embodiedAiOrHomeLife = /(AI\s*机器人|机器人|智能体|智能生活|智能家居|家庭|客厅|卧室|厨房|家务|日程|设备联动|整理|清洁|扫地机器人|robot|smart\s*home|home\s*assistant|household|living\s*room|vacuum)/i.test(text);
-  const explicitSoftwareOps = /API|接口|开放平台|开发者|开发接入|编程|代码|SDK|IDE|控制台|SaaS|后台|CRM|ERP|工单|审批|报表|管理系统|开发|api|endpoint|developer|integration|code|console|dashboard/i.test(text);
+  const embodiedAiOrHomeLife = _luxuryIsEmbodiedAiOrHomeLifeText(text);
+  const explicitSoftwareOps = _luxuryHasExplicitSoftwareOpsText(text);
   if (embodiedAiOrHomeLife && !explicitSoftwareOps) return false;
   const creativeVideo = /视频创作|漫剧|短剧|剧情广告|视频生成|文生视频|图生视频|分镜|剧本|剪辑|成片|数字人|创作工具|AI视频|video\s*(creation|generation|editing)|storyboard|script|drama|comic|manga/i.test(text);
   const creativePlatformEvidence = /VIDO|平台|软件|工具|系统|SaaS|应用|App\b|APP\b|工作台|界面|API|接口|多模型|聚合|platform|software|tool|workspace|interface|api|multi[-\s]?model/i.test(text);
   const orderWorkflow = /AI\s*Order\s*Assistant|Order\s*Assistant|订单助手|智能订单|智能点餐|订单管理|采购订单|采购单|库存管理|补货|库存预警|排单|收银|点餐|OMS|WMS|ordering|order\s*management|purchase\s*order|procurement|inventory|restock|retail\s*ops|store\s*ops/i.test(text);
   if (orderWorkflow) return true;
+  if (_luxuryHasExplicitDeveloperWorkflowText(text)) return true;
   if (creativeVideo && creativePlatformEvidence) return true;
   if (creativeVideo) return false;
 
@@ -3263,6 +3264,23 @@ function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = '
   return `Script-derived workflow evidence for this shot: ${evidence.join('; ')}. Do not require all platform capabilities in every frame; visualize only the evidence named or clearly implied by this shot.`;
 }
 
+function _luxuryIsEmbodiedAiOrHomeLifeText(value = '') {
+  return /(AI\s*机器人|机器人|智能体|智能生活|智能家居|家庭|客厅|卧室|厨房|家务|日程|设备联动|整理|清洁|扫地机器人|robot|smart\s*home|home\s*assistant|household|living\s*room|vacuum)/i.test(String(value || ''));
+}
+
+function _luxuryHasExplicitSoftwareOpsText(value = '') {
+  const text = String(value || '');
+  const serviceSubject = /软件|系统|SaaS|小程序|应用|App\b|APP\b|后台|管理系统|CRM|ERP|工单|审批|报表|表单|工作台|看板|仪表盘|workflow|software|platform|dashboard|interface|screen|app|service|console|workspace/i.test(text);
+  const developerOps = _luxuryHasExplicitDeveloperWorkflowText(text);
+  const concreteOps = /流程|工单|审批|报表|表单|同步|协同|自动化|管理后台|业务操作|订单|库存|采购|客服|排期|调度|workflow|ticket|approval|report|form|sync|automation|operation|ordering|inventory|procurement/i.test(text);
+  return developerOps || (serviceSubject && concreteOps);
+}
+
+function _luxuryHasExplicitDeveloperWorkflowText(value = '') {
+  const text = String(value || '');
+  return /API|开放平台|开发者|开发接入|编程|代码|SDK|IDE|接口(?:接入|调用|对接|调试|文档|返回|请求|响应)|(?:调用|请求|响应|回调|状态码).{0,12}(?:API|接口|endpoint|webhook|SDK)|api|endpoint|request|response|webhook|callback|developer|integration|code\s*editor|console|json/i.test(text);
+}
+
 function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software workflow') {
   const text = [
     productSubject,
@@ -3285,7 +3303,7 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
     scene.director_prompt,
     scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
   ].filter(Boolean).join(' ');
-  if (/API|接口|开放平台|开发者|开发接入|编程|代码|SDK|IDE|控制台|api|endpoint|developer|integration|code\s*editor|console|json/i.test(text)) {
+  if (_luxuryHasExplicitDeveloperWorkflowText(text)) {
     return 'developer workstation with IDE/code-like abstract blocks and integration status evidence, plus secondary result proof only if the shot asks for it';
   }
   if (/手机|移动端|App\b|APP\b|小程序|phone|mobile|app/i.test(text)) {
@@ -3304,7 +3322,7 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
 }
 
 function _luxuryIsApiIntegrationWorkflowShot(scene = {}, productSubject = '') {
-  const text = [
+  const scriptText = [
     productSubject,
     scene.product_subject,
     scene.title,
@@ -3322,6 +3340,13 @@ function _luxuryIsApiIntegrationWorkflowShot(scene = {}, productSubject = '') {
     scene.narration,
     scene.material_usage,
     scene.material_hint,
+  ].filter(Boolean).join(' ');
+  if (!_luxuryHasExplicitDeveloperWorkflowText(scriptText)) return false;
+  if (_luxuryIsEmbodiedAiOrHomeLifeText(scriptText) && !/(API|开放平台|开发者|开发接入|编程|代码|SDK|IDE|接口(?:接入|调用|对接|调试|文档|返回|请求|响应)|api|endpoint|request|response|webhook|callback|developer|code\s*editor|json)/i.test(scriptText)) {
+    return false;
+  }
+  const text = [
+    scriptText,
     scene.qa_contract,
     scene.director_prompt,
     scene.visual_contract?.image_prompt,
@@ -3330,7 +3355,7 @@ function _luxuryIsApiIntegrationWorkflowShot(scene = {}, productSubject = '') {
     scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
     Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.join(' ') : '',
   ].filter(Boolean).join(' ');
-  return /API|接口|开放平台|开发者|开发接入|编程|代码|集成|调用|请求|响应|回调|状态码|SDK|IDE|控制台|api|endpoint|request|response|webhook|callback|developer|integration|code\s*editor|console|json/i.test(text);
+  return _luxuryHasExplicitDeveloperWorkflowText(text);
 }
 
 function _luxuryLooksLikeGenericProductReveal(value = '') {
@@ -3354,8 +3379,8 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
   let visual = `${person}, using the script-confirmed workflow evidence for ${subject}: ${carrier}; the frame is a lived work moment, not a product poster.`;
   let action = 'the actor actively works through the current task with a natural expression derived from the narration';
   if (apiIntegrationBeat) {
-    visual = `${person}, standing or leaning beside a laptop or desktop developer workstation for ${subject}; the main computer screen shows a realistic IDE/code editor beside an integration console with abstract pseudo-code line blocks, request-response panels and status dots, while a nearby phone in hand or on a desk stand shows the platform result/status screen as secondary evidence.`;
-    action = 'the actor points, presents or checks between the computer code screen and the phone platform result, verifying an integration request and response; the frame should feel like practical software development plus platform proof, not a phone-only app demo';
+    visual = `${person}, using the confirmed developer/API workflow evidence for ${subject}: ${carrier}; the environment must follow this shot instead of a generic home-office setup, and every screen mark stays abstract and unreadable.`;
+    action = 'the actor verifies or presents the explicit API/developer evidence named by this shot, with practical request-response or integration-status proof only where the script requires it';
   } else if (problemBeat) {
     visual = `${person}, facing the messy evidence named by this shot for ${subject}: ${carrier}; the scene must prove workflow fragmentation without forcing a generic computer dashboard.`;
     action = 'the actor looks genuinely confused, helpless or frustrated while comparing the script-confirmed workflow evidence, matching the problem beat';
@@ -3375,7 +3400,7 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
       emotion ? `actor expression must visibly match: ${_luxuryStrictText(emotion, 120)}` : 'actor expression must match the shot beat, not a generic calm smile',
       _luxurySoftwareWorkflowEvidenceFromScene(scene, subject),
       `Workflow carrier must follow this shot: ${carrier}`,
-      apiIntegrationBeat ? 'API/integration shots must combine developer computer workflow and platform proof: a laptop/desktop IDE or code editor, request-response console, status indicators, and a nearby phone showing the platform result/status as secondary evidence' : '',
+      apiIntegrationBeat ? 'API/integration shots must use only the developer/API proof named by this shot: abstract code-like blocks, request-response panels, status indicators or secondary result proof when explicitly required' : '',
     ],
     mustNotShow: [
       'product feature poster, marketing infographic, floating storyboard panels, UI flow diagram, dashboard presentation board',
@@ -3386,7 +3411,7 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
       apiIntegrationBeat ? 'phone-only app mockup as the main subject, comic/storyboard editor, video editing timeline, bright generic home-office app promo, or storyboard-planning workflow when the shot is about API/integration' : '',
     ].filter(Boolean),
     qaRule: apiIntegrationBeat
-      ? 'For API/integration shots, QA should accept a standing or presenting developer/operator with a computer showing IDE/code-like blocks plus request-response console, and a nearby phone showing platform result/status as secondary proof. Reject phone-only app mockups, comic/storyboard editing workflows, video-editing references, generic UI explainers, or unrelated office demos.'
+      ? 'For API/integration shots, QA should accept only developer/API evidence explicitly named by the shot, such as abstract code-like blocks, request-response console, status indicators or secondary result proof. Reject phone-only app mockups, comic/storyboard editing workflows, video-editing references, generic UI explainers, unrelated office demos, or API screens invented for non-API scenes.'
       : 'For software/service subjects, QA should accept a real user workflow moment that matches the narration and reject poster-like UI explainers, floating flow charts, product packshots, or generic feature dashboards.',
   };
 }
@@ -4489,7 +4514,7 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
       evidence: `the advertised item, wearable detail, packaging, texture, finish, fitting or usage proof for ${subject}`,
     },
     {
-      test: /软件|系统|平台|SaaS|app|应用|手机|电脑|AI|智能|数据|software|platform|dashboard|technology|tech/i,
+      test: /软件|系统|平台|SaaS|app|应用|手机|电脑|数据|software|platform|dashboard|technology|tech/i,
       industry: 'technology / software service',
       scene: `real workplace, creation, service-use, operations or collaboration environment appropriate for ${subject} according to the confirmed brief`,
       evidence: `device, interface moment, workflow proof, creator/user action, result state or service-use evidence for ${subject}, without readable fake UI text or a fixed industry template`,
@@ -21543,10 +21568,10 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
     action ? `Actor action: ${action}.` : `Actor works naturally with the shot-confirmed evidence: ${carrier}.`,
     emotion ? `Expression direction: ${emotion}.` : '',
     apiIntegrationShot
-      ? 'Scene: practical developer workstation, standing or leaning presenter, desk, laptop or desktop monitor, keyboard, nearby phone on stand or in hand, notes and abstract interface shapes.'
+      ? `Scene: real environment named or implied by this developer/API shot, using the confirmed carrier: ${carrier}.`
       : `Scene: real environment required by the story beat, using this evidence carrier: ${carrier}.`,
     apiIntegrationShot
-      ? 'Screen content: computer shows abstract pseudo-code line blocks plus request and response panels; phone shows platform result or success status; all marks are unreadable.'
+      ? 'Developer/API evidence may use abstract pseudo-code line blocks, request-response panels and status indicators only as required by this shot; all marks are unreadable.'
       : 'Any interface or device evidence must be abstract and non-readable, and only appear when the shot asks for it.',
     apiIntegrationShot ? 'Use the phone only as secondary platform proof; avoid phone-only app mockups, comic/storyboard editing boards, video editing timelines and generic UI poster layouts.' : '',
     'Keep the frame clean: no captions, slogans, watermarks, posters, floating diagrams, product packaging, extra people or readable documents.',
@@ -21622,7 +21647,7 @@ function _luxuryGptImage2EditPrompt({
     subject ? `Advertised subject: ${subject}.` : '',
     softwareWorkflowSubject ? `SOFTWARE/SERVICE WORKFLOW LOCK: the advertised subject is the lived workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
     softwareWorkflowSubject ? `SCENE-SPECIFIC CARRIER: ${workflowCarrierRule}. Use this carrier only if it is supported by the confirmed shot; do not default to laptop, dashboard, order form, inventory screen, phone app or physical package.` : '',
-    apiIntegrationShot ? 'API/INTEGRATION VISUAL LOCK: combine the two proofs in one real scene. Show the presenter standing or leaning beside a laptop/desktop developer workstation. The main computer screen contains an IDE/code editor with abstract pseudo-code line blocks, a request-response console and connection/status indicators. A nearby phone in hand or on a desk stand shows the platform result/success screen as secondary proof.' : '',
+    apiIntegrationShot ? `API/INTEGRATION VISUAL LOCK: this shot explicitly requires developer/API evidence. Use the confirmed scene-specific carrier instead of a generic office setup: ${workflowCarrierRule}. Keep any code, request-response panels and status indicators abstract and unreadable; use secondary result proof only if the shot asks for it.` : '',
     workflowShotContract ? `MUST SHOW: ${workflowShotContract.mustShow.join('; ')}.` : '',
     workflowShotContract ? `MUST NOT SHOW: ${workflowShotContract.mustNotShow.join('; ')}.` : '',
     workflowShotContract ? 'FAIL IF the frame looks like a product feature poster, UI explainer, floating flowchart, storyboard planning board, calm presenter demo, or physical product packshot instead of a real user work moment.' : '',

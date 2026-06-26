@@ -1982,10 +1982,43 @@ th {
   color: #475569 !important;
 }
 
-[data-theme="light-mist"] .dh-lux-error-summary span {
-  background: rgba(255, 255, 255, .82) !important;
-  border-color: rgba(225, 29, 72, .22) !important;
+[data-theme="light-mist"] .dh-lux-keyframe-error {
+  background: #fff7ed !important;
+  border-color: rgba(234, 88, 12, .38) !important;
+  color: #1f2937 !important;
+  box-shadow: 0 14px 32px rgba(154, 52, 18, .08) !important;
+}
+
+[data-theme="light-mist"] .dh-lux-keyframe-error b {
+  color: #9a3412 !important;
+}
+
+[data-theme="light-mist"] .dh-lux-keyframe-error span,
+[data-theme="light-mist"] .dh-lux-keyframe-error small {
+  color: #334155 !important;
+}
+
+[data-theme="light-mist"] .dh-lux-error-attempt,
+[data-theme="light-mist"] .dh-lux-error-actions {
+  background: rgba(255, 255, 255, .84) !important;
+  border-color: rgba(234, 88, 12, .24) !important;
+  color: #334155 !important;
+}
+
+[data-theme="light-mist"] .dh-lux-error-attempt b {
+  color: #111827 !important;
+}
+
+[data-theme="light-mist"] .dh-lux-error-attempt span,
+[data-theme="light-mist"] .dh-lux-error-attempt small,
+[data-theme="light-mist"] .dh-lux-error-actions span {
   color: #475569 !important;
+}
+
+[data-theme="light-mist"] .dh-lux-error-summary span {
+  background: rgba(255, 255, 255, .90) !important;
+  border-color: rgba(234, 88, 12, .26) !important;
+  color: #334155 !important;
 }
 
 [data-theme="light-mist"] .dh-lux-error-receipt {
