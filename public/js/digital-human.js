@@ -11514,8 +11514,6 @@
     try {
       const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(projectId)}`);
       restoreLuxuryAdProject(r.project, { modal: false, fromUrl: true });
-      // 中文注释：人物配置页需要保留项目 ID，刷新才能继续看到已生成/已选择的人物包。
-      if (state.luxuryAd.routeFocus !== 'person') clearLuxuryAdProjectRouteParam('luxury-ad');
       return true;
     } catch (err) {
       clearLuxuryAdProjectRouteParam('luxury-ad');
@@ -12461,6 +12459,8 @@
     updateLuxuryAdStepLocks();
     setLuxuryProgress(detail ? 'frames' : 'storyboard');
     const progressTimer = startLuxuryWorkflowProgress({ detail });
+    renderLuxuryAdStoryboard();
+    renderLuxuryWorkflowProgress();
     let ok = false;
     let activeRequestKey = '';
     try {

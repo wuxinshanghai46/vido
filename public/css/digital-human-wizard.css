@@ -1412,7 +1412,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-task-type-tabs button.active { background: var(--dh-gradient); color: #0D0E12; }
 .dh-task-list { display: flex; flex-direction: column; gap: 12px; }
 .dh-task-card { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 14px; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: var(--dh-radius); overflow: hidden; }
-.dh-task-card-luxury-draft { grid-template-columns: 148px minmax(0, 1fr); align-items: start; background: linear-gradient(180deg, color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 5%, #fff), var(--dh-bg-soft)); border-color: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 18%, var(--dh-border)); }
+.dh-task-card-luxury-draft { grid-template-columns: 172px minmax(0, 1fr); align-items: stretch; background: linear-gradient(180deg, color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 5%, #fff), var(--dh-bg-soft)); border-color: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 18%, var(--dh-border)); }
 .dh-task-card.active { border-color: var(--dh-primary); background: rgba(33,255,243,0.04); }
 .dh-task-thumb { width: 120px; max-width: 120px; aspect-ratio: 3/4; border-radius: var(--dh-radius-sm); overflow: hidden; background: #050507; display: flex; align-items: center; justify-content: center; color: var(--dh-text-muted); font-size: 12px; }
 .dh-task-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; background: #050507; }
@@ -1422,11 +1422,13 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-task-thumb-cover:not(.is-missing) .dh-task-cover-fallback { opacity: 0; }
 .dh-task-thumb-cover.is-missing .dh-task-thumb-play { display: none; }
 .dh-task-thumb-draft {
-  width: 136px;
-  max-width: 136px;
-  aspect-ratio: 3 / 4;
-  align-self: start;
-  justify-self: center;
+  width: 100%;
+  max-width: none;
+  min-height: 168px;
+  height: 100%;
+  aspect-ratio: auto;
+  align-self: stretch;
+  justify-self: stretch;
   background: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 9%, #fff);
   border-color: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 35%, var(--dh-border));
   box-shadow: 0 10px 26px rgba(15, 23, 42, .08);

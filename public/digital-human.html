@@ -17,6 +17,8 @@
         const savedTab = saved && tabs.includes(saved.tab) ? saved.tab : '';
         const legacyTab = localStorage.getItem('vido_dh_active_tab') || '';
         tab = tabs.includes(urlTab) ? urlTab : (savedTab || (tabs.includes(legacyTab) ? legacyTab : 'step1'));
+        const luxProject = params.get('luxury_project') || saved.luxury_project || saved.luxury_project_id || '';
+        if (!urlTab && luxProject && (saved.tab === 'luxury-ad' || saved.tab === 'material-film')) tab = saved.tab;
         const luxStep = Number(params.get('lux_step') || saved.lux_step || 0) || 0;
         const luxFocus = params.get('lux_focus') || saved.lux_focus || '';
         if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
@@ -30,7 +32,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260625-module-button-tone">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260626-lux-task-story-route">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260626-lux-refresh-story-progress">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -2007,6 +2009,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260626-lux-task-story-route"></script>
+  <script src="/js/digital-human.js?v=20260626-lux-refresh-story-progress"></script>
 </body>
 </html>

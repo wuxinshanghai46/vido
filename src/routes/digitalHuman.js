@@ -15478,11 +15478,13 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '剧本必须是在叙述一件事：从问题或场景进入，主体出现，细节推进，可信证明，最后行动引导；台词要一句一句推动故事，不要堆“高级感、空间主角、质感被看见”这种口号。',
       '竞品剧情文案标准：像一条真人广告短片，不像卖点表。每一镜必须回答“人物现在在哪、遇到什么具体问题、为什么进入下一镜、看见了什么证据、情绪如何变化”。',
       '参考结构：人物在真实生活/工作场景中遇到困扰；镜头推进到产品/服务登场；通过一个可见动作或 UI/材料细节证明价值；人物从犹豫变成确认；最后给出一句自然行动号召。不要写“外观一定要有贵气”“清洁一擦就好”这种无人物、无事件、无因果的散句。',
+      '故事弧规则：生成第 3 步前必须先确定一条不可见的 story arc：起因、阻碍、发现、验证、转变、行动。每个镜头只承担其中一个节点，但相邻镜头必须能用“因此/接着/于是/最后”连起来。台词或旁白连读后必须像一段完整短片文案。',
+      '反割裂规则：禁止把每镜写成互不相干的标题口号；禁止连续使用“全新体验、科技感、未来感、智能生活、效率提升”这类没有场景动作支撑的词；禁止台词与画面主体不一致。',
       '分工规则：编剧 agent 负责连续故事和台词动机；场景 agent 负责每镜发生在哪里、发生什么变化；动作 agent 负责演员/产品的可执行动作；镜头 agent 负责景别、运动、光线、转场。四者必须一致，不能各写各的。',
       '主体/角色规则：只有当用户需求或已确认剧本明确需要“人”时，才生成真人人物表；如果需求是动物、机器人、外星人、吉祥物、产品、空间或服务场景，就围绕对应主体写角色/动作，不要把它改写成真人导购或主持人。',
       castInstruction,
       genderInstruction,
-      '对白规则：如果剧本里出现 2 个或以上人物，整条剧本必须输出带人物名字的 dialogue 或 dialogue_lines，体现提问、回应、质疑、确认或交付承诺；允许开场或过渡镜头只由其中一人先说，不能整条片都只有一个人从头说到尾。',
+      '对白/旁白规则：剧情广告默认允许以旁白、内心独白或屏幕字幕推进故事；不要强制每个有人物的镜头都开口说话。只有当某一镜确实需要人物当场说话、对话或口播时，才输出 dialogue_lines，并把 lip_sync_required 设为 true。',
       '台词禁词：对白、旁白、字幕和广告词里绝对不能出现“广告需求”“广告需求识别”“由广告需求识别”“用户需求”“系统识别”“自动识别”“参考素材摘要”“主商品”等后台流程词。',
       '单人规则：单人模式允许旁白、内心独白或对镜台词，但不能出现第二个说话人；每一句旁白/台词都必须推动“问题 -> 发现 -> 证明 -> 决定”的故事进程。',
       continuousHuman ? '本条广告有人物贯穿要求：每一镜都必须有同一位真人参与画面和动作，人物要带看、引导、讲解或完成咨询收束，不能写成纯产品空镜。' : '',
@@ -15525,6 +15527,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
   "material_usage": "分镜使用素材（画面）：@主商品、@参考1、@参考2、人物参考或 AI 生成场景，并说明该镜头画面来源",
   "ad_copy": "成片屏幕广告词/字幕，8-18 个中文字符，必须能直接给观众看",
   "dialogue": "如果有两个人物，本镜头必须是带人物名字的对白，例如：角色A：...\\n角色B：...；角色身份必须来自人物表，不套用固定职业",
+  "lip_sync_required": false,
   "characters": [{"name":"人物名","gender":"性别","origin":"地域/族裔/来自哪里","role":"身份/关系","appearance":"年龄、种族/面孔、五官、发型、身形","outfit":"服装","hand_prop":"手里拿什么或触摸什么","behavior":"动作习惯"}],
   "voiceover": "成片旁白/字幕广告词，8-24 个中文字符，像广告成片上的短文案或介绍，不是镜头说明，不能照抄广告需求",
   "narration": "同 voiceover，明确这一镜最终读出来或显示出来的话",
@@ -15548,8 +15551,10 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 硬性规则：
 - 必须围绕主商品或用户描述的服务讲完整广告故事：开场分镜、第二场景、后续推进场景、收尾分镜都要有清晰顺序；不要只写一个场景，也不要只套“钩子/产品亮相/卖点”模板。
 - 第 3 步必须先在内部确定一条连续故事线，再拆镜：主角/主体初始状态是什么、遇到什么问题、怎样发现产品/服务证据、如何体验或验证、最后为什么行动。每个镜头的画面、动作、台词都必须回答这条故事线中的一个节点，不能互相独立。
+- 第 3 步输出前自检：把所有 voiceover/narration/dialogue_lines 顺序连读，必须像一条连续广告故事；如果连读后只是卖点清单或不知所云，必须重写再输出 JSON。
 - 每一镜必须与前后镜头存在承接关系：画面列写“谁/什么在什么场景做什么并发生什么变化”，动作列写这个变化如何被执行，台词列写角色或旁白此刻自然会说的话。禁止出现“嗯？这是什么？”“真的，感觉要被这些事淹没了”这类脱离具体业务证据、前后无法承接的空泛台词。
 - 如果上一镜已经提出问题，下一镜必须推进发现、确认、使用、证明或收束之一；不能连续多镜重复同一个情绪或同一个卖点。
+- 口型规则：lip_sync_required 默认 false。旁白型镜头只需要人物表情、视线、手势和身体动作跟随故事情绪，不要求嘴型对字幕。只有“人物直接说出本镜台词/双人对话/口播镜头”才设为 true，并让 dialogue_lines 与该人物口型对应。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
 - subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：有人物和场景同框才用 human_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
@@ -15746,7 +15751,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const idx = Number(item?.index || item?.shot_index || item?.beat_index || i + 1);
         const prev = prevList.find(x => Number(x?.index || x?.shot_index || x?.beat_index || 0) === idx) || prevList[i] || {};
         const merged = { ...prev, ...(item || {}), index: idx || i + 1 };
-        for (const key of ['title', 'role', 'story_stage', 'objective', 'story_link', 'purpose', 'script_purpose', 'duration', 'characters', 'dialogue_lines', 'voiceover', 'narration', 'content_prompt', 'scene_content', 'visual', 'action', 'visual_action', 'emotion', 'mood', 'material_usage', 'material_need', 'required_material', 'shot_size', 'shot_angle', 'camera', 'lighting_style', 'transition', 'sfx_audio']) {
+        for (const key of ['title', 'role', 'story_stage', 'objective', 'story_link', 'purpose', 'script_purpose', 'duration', 'characters', 'dialogue_lines', 'lip_sync_required', 'voiceover', 'narration', 'content_prompt', 'scene_content', 'visual', 'action', 'visual_action', 'emotion', 'mood', 'material_usage', 'material_need', 'required_material', 'shot_size', 'shot_angle', 'camera', 'lighting_style', 'transition', 'sfx_audio']) {
           const current = merged[key];
           const old = prev[key];
           const missing = current === undefined || current === null || (typeof current === 'string' && !current.trim()) || (Array.isArray(current) && !current.length);
@@ -16100,15 +16105,6 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         let dialogueLines = Array.isArray(scene?.dialogue_lines)
           ? scene.dialogue_lines.map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean)
           : String(scene?.dialogue || scene?.dialogue_text || scene?.conversation || '').split(/\n+/).map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean);
-        if (expectedPeople >= 2 && !dialogueLines.length) {
-          const chars = collectLuxuryCharacters(scene?.characters || scene?.character_profiles || storyCharacters);
-          const speakerA = luxuryCharacterName(chars[0]) || '角色A';
-          const speakerB = luxuryCharacterName(chars[1]) || '角色B';
-          dialogueLines = [
-            `${speakerA}：${voiceover}`,
-            `${speakerB}：我看到了这个变化。`,
-          ];
-        }
         // 中文说明：这里做的是通用剧本结构补齐，只复用用户需求、蓝图和已生成镜头，不写固定行业场景或固定业务模板。
         return {
           ...scene,
@@ -16120,6 +16116,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           script_purpose: purpose,
           subject_type: subjectType,
           subjectType,
+          lip_sync_required: scene?.lip_sync_required === true || scene?.lipSyncRequired === true,
           requires_person: subjectRequiresPerson,
           person_required: subjectRequiresPerson,
           content_prompt: visual,
