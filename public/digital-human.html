@@ -32,7 +32,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260626-theme-native-controls">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260626-lux-review-structure">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260626-lux-product-story">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1232,14 +1232,14 @@
               </div>
               <div class="dh-demo-grid two dh-luxgen-source-grid single">
                 <div class="dh-demo-person-source">
-                  <div class="dh-luxgen-product-asset" id="dhLuxAdProductAsset"><div class="dh-luxgen-product-empty">未上传主体主图</div></div>
+                  <div class="dh-luxgen-product-asset" id="dhLuxAdProductAsset"><div class="dh-luxgen-product-empty">未上传商品/主体图</div></div>
                   <div>
-                    <b>主体来源</b>
-                    <p class="dh-demo-copy">决定广告围绕谁讲、分镜画面优先参考谁。可上传主商品、空间主图或品牌主体；不上传则按广告需求生成主体画面。</p>
+                    <b>商品/主体来源</b>
+                    <p class="dh-demo-copy">这里上传要介绍的商品、品牌主体或空间主图。生成剧本时会把它作为画面证据；不上传时，系统只按广告需求推断主体。</p>
                     <span class="dh-luxgen-badge" id="dhLuxAdProductState">可选上传</span>
                   </div>
                   <div class="dh-demo-person-actions">
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdProductDrop" type="button">上传主体主图</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdProductDrop" type="button">上传商品/主体图</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdProductClear" type="button" hidden disabled>删除主体图</button>
                     <input type="file" id="dhLuxAdProductFile" accept="image/*" hidden>
                   </div>
@@ -2010,6 +2010,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260626-lux-review-structure"></script>
+  <script src="/js/digital-human.js?v=20260626-lux-product-story"></script>
 </body>
 </html>

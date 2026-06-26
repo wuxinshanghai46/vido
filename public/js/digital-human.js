@@ -6469,12 +6469,12 @@
       const url = product ? luxuryAssetPreviewUrl(product) : '';
       productHost.innerHTML = url
         ? `<button type="button" class="dh-luxgen-product-card ${product.uploading ? 'uploading' : ''}" data-lux-product-preview title="点击预览主体主图">
-            <img src="${escapeHtml(url)}" alt="${escapeHtml(product.name || '主体主图')}">
-            <b>主体主图</b><span>${escapeHtml(product.failed ? `${product.name || '主体主图'} · 上传失败` : (product.uploading ? `${product.name || '主体主图'} · 上传中` : (product.name || '已上传主体图')))}</span>
+            <img src="${escapeHtml(url)}" alt="${escapeHtml(product.name || '商品/主体图')}">
+            <b>商品/主体图</b><span>${escapeHtml(product.failed ? `${product.name || '商品/主体图'} · 上传失败` : (product.uploading ? `${product.name || '商品/主体图'} · 上传中` : (product.name || '已上传商品/主体图')))}</span>
           </button>`
         : product?.uploading
-          ? `<div class="dh-luxgen-product-empty uploading"><b>主体主图上传中</b><span>${escapeHtml(product.name || '正在上传')}</span></div>`
-        : `<div class="dh-luxgen-product-empty">未上传主体主图</div>`;
+          ? `<div class="dh-luxgen-product-empty uploading"><b>商品/主体图上传中</b><span>${escapeHtml(product.name || '正在上传')}</span></div>`
+        : `<div class="dh-luxgen-product-empty">未上传商品/主体图</div>`;
     }
     if (productClear) {
       const hasProduct = !!(product && (product.url || product.previewUrl || product.name || product.uploading));
@@ -6793,10 +6793,10 @@
     auto: '按剧本判断',
     human_scene: '真人/人物 + 主体',
     character_scene: '主体角色 + 场景',
-    product_only: '只拍商品',
-    product_detail: '商品细节',
-    hand_operation: '手部操作',
-    ui_screen: '界面 / 数据',
+    product_only: '商品/主体介绍',
+    product_detail: '商品细节特写',
+    hand_operation: '手部操作演示',
+    ui_screen: '界面/数据演示',
     environment: '空镜环境',
     brand_endcard: '品牌收尾',
     proof_scene: '效果证明',
@@ -6804,12 +6804,12 @@
 
   const LUXURY_SHOT_SUBJECT_TYPE_HELP = {
     auto: '系统按本镜画面、动作和台词判断，不主动改变剧本。',
-    human_scene: '真人/剧情人物与产品、服务或主体证据同框，不代表只拍人物。',
+    human_scene: '真人/剧情人物与商品、服务或品牌主体同框，不代表只拍人物。',
     character_scene: '机器人、吉祥物、动物、虚拟人等非真人主体与场景证据同框。',
-    product_only: '画面主角是产品或服务证据，不需要真人出镜。',
-    product_detail: '只放大材质、包装、界面细节或关键证据。',
-    hand_operation: '只拍手部触摸、操作、拿取或演示过程。',
-    ui_screen: '重点拍软件界面、数据变化、屏幕或交互流程。',
+    product_only: '让商品、品牌主体或服务证据独立承担介绍，不需要真人处理。',
+    product_detail: '放大材质、包装、结构、界面细节或关键卖点证据。',
+    hand_operation: '只拍手部触摸、操作、拿取或演示商品/主体。',
+    ui_screen: '展示软件界面、数据变化、屏幕或交互流程。',
     environment: '只拍真实场景、空间氛围或使用环境，不出现人物。',
     brand_endcard: '最后收束到品牌、行动按钮或片尾记忆点。',
     proof_scene: '用结果、对比、凭证或现场反馈证明价值。',
@@ -12148,7 +12148,7 @@
           <div class="dh-luxgen-ai-edit">
             <label class="dh-field">
               <span>AI 修改要求</span>
-              <textarea class="dh-input" id="dhLuxShotAiInstruction" rows="3" placeholder="把你想要的效果写给 AI，例如：这一镜从真实问题推进到主体证据，画面更可信，广告词像品牌片，不要写成说明文。"></textarea>
+              <textarea class="dh-input" id="dhLuxShotAiInstruction" rows="3" placeholder="把你想要的效果写给 AI，例如：这一镜从真实问题推进到商品/服务画面，广告词像品牌片，不要写成说明文。"></textarea>
             </label>
             <div class="dh-luxgen-ai-edit-actions">
               <small>AI 会根据广告需求、当前分镜、素材绑定和你的要求，回填场景目标、动作表情、镜头内容、成片广告词、声音和转场。</small>
@@ -12218,7 +12218,7 @@
           <div class="dh-luxgen-writer-grid">
             <label class="dh-field">
               <span>动作 / 表情</span>
-              <textarea class="dh-input" id="dhLuxShotAction" rows="3" placeholder="例如：人物眉头放松，手势展开，主体证据从问题状态变成清晰结果。">${escapeHtml(luxuryShotActionText(seg))}</textarea>
+              <textarea class="dh-input" id="dhLuxShotAction" rows="3" placeholder="例如：人物眉头放松，手势展开，商品/服务画面从问题状态变成清晰结果。">${escapeHtml(luxuryShotActionText(seg))}</textarea>
             </label>
             <label class="dh-field">
               <span>情绪 / 氛围</span>
@@ -12227,7 +12227,7 @@
           </div>
           <label class="dh-field">
             <span>UI 浮层 / 视觉特效</span>
-            <textarea class="dh-input" id="dhLuxShotUiOverlay" rows="3" placeholder="例如：主体旁出现克制的半透明结果提示，不遮挡人物、手部和主体证据。">${escapeHtml(luxuryUiOverlaySummary(seg.ui_overlay || seg.uiOverlay || seg.overlay_prompt || seg.vfx_prompt || null, seg))}</textarea>
+            <textarea class="dh-input" id="dhLuxShotUiOverlay" rows="3" placeholder="例如：主体旁出现克制的半透明结果提示，不遮挡人物、手部和商品/服务主体。">${escapeHtml(luxuryUiOverlaySummary(seg.ui_overlay || seg.uiOverlay || seg.overlay_prompt || seg.vfx_prompt || null, seg))}</textarea>
           </label>
           <label class="dh-field">
             <span>镜头运动</span>

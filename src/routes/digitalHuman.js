@@ -3854,11 +3854,11 @@ function _luxuryMaterialStoryHumanVisual({ visual = '', productSubject = '主商
   if (!_luxuryRoleNeedsStoryHuman(role, index, total)) return base;
   const subject = String(productSubject || '主商品').trim() || '主商品';
   const scenes = [
-    `一位剧情角色出现在已确认的真实场景里，身旁能看到${subject}的可见证据，画面同时包含人物、环境和主体关系`,
-    `剧情角色靠近${subject}的使用或展示证据，人物在画面一侧，主体证据和场景关系清楚`,
+    `一位剧情角色出现在${subject}的使用场景里，画面同时看见人物、环境和商品/服务位置`,
+    `剧情角色靠近${subject}的使用或展示位置，人物在画面一侧，主体和场景关系清楚`,
     `真实用户角色停下观察或体验${subject}，人物反应和主体价值在同一画面成立`,
     `剧情角色在${subject}旁边说明或体验关键变化，手势靠近证据但不遮挡主体`,
-    `人物从已确认场景动线中经过，镜头把视线从人物引向${subject}的真实业务证据`,
+    `人物从场景动线中经过，镜头把视线从人物引向${subject}的使用位置`,
   ];
   const lead = scenes[Math.max(0, index) % scenes.length];
   return [lead, base].filter(Boolean).join('；').slice(0, 220);
@@ -3869,11 +3869,11 @@ function _luxuryMaterialStoryHumanAction({ action = '', productSubject = '主商
   if (/真人|人物|角色|演员|主体|用户|手势|指向|触摸|person|human|actor|character|user|gesture|point|touch/i.test(base)) return base;
   if (!_luxuryRoleNeedsStoryHuman(role, index, total)) return base;
   const actions = [
-    '人物从已确认场景中走入画面，先看向问题或需求，再把视线带到主体证据。',
-    '人物停在主体证据旁边，用克制手势示意关键使用或展示位置。',
+    '人物从场景中走入画面，先看向问题或需求，再把视线带到商品/服务位置。',
+    '人物停在商品或服务展示位置旁边，用克制手势示意关键使用点。',
     '用户角色靠近观察或体验主体，表情从疑惑转为理解，镜头保留完整场景关系。',
-    '人物侧身让出主体证据，用手势引导观众看当前业务真正需要看见的细节。',
-    '人物与场景自然互动，镜头从人物反应过渡到主体使用或结果证据。',
+    '人物侧身让出画面重点，用手势引导观众看商品、界面或空间细节。',
+    '人物与场景自然互动，镜头从人物反应过渡到主体使用结果。',
   ];
   return [actions[Math.max(0, index) % actions.length], base].filter(Boolean).join(' ').slice(0, 220);
 }
@@ -3896,12 +3896,12 @@ function _luxuryStoryFirstHumanVisual({ visual = '', productSubject = '主商品
   const c = _luxuryPrimaryStoryCharacter(characters);
   const beat = _luxuryRoleAt(index, total, role);
   const templates = {
-    hook: `${c.name}作为${c.role}出现在已确认的真实场景里，先面对当前需求或问题，身旁能看见${subject}的业务证据`,
-    display: `${c.name}在已确认场景中推进剧情，人物、环境动线和${subject}证据同框，背景细节来自 brief 或素材`,
-    product_reveal: `${c.name}靠近${subject}相关证据停下，用动作把视线引向主体价值，人物与证据清楚同框`,
-    benefit: `${c.name}在真实场景里体验、操作或回应${subject}带来的变化，画面同时包含人物表情、环境和主体证据`,
-    proof: `${c.name}靠近${subject}展示当前业务需要证明的细节，镜头保留人物手部、证据和真实环境，而不是单独图库特写`,
-    cta: `${c.name}回到稳定构图，和${subject}的使用或结果证据一起完成收束，人物表情自然可信`,
+    hook: `${c.name}作为${c.role}出现在真实使用场景里，先面对当前需求或问题，身旁能看见${subject}`,
+    display: `${c.name}在场景中推进剧情，人物、环境动线和${subject}同框，背景细节来自 brief 或素材`,
+    product_reveal: `${c.name}靠近${subject}停下，用动作把视线引向商品/服务价值，人物与主体清楚同框`,
+    benefit: `${c.name}在真实场景里体验、操作或回应${subject}带来的变化，画面同时包含人物表情、环境和主体`,
+    proof: `${c.name}靠近${subject}展示需要被证明的细节，镜头保留人物手部、商品/服务和真实环境，而不是单独图库特写`,
+    cta: `${c.name}回到稳定构图，和${subject}的使用结果一起完成收束，人物表情自然可信`,
   };
   const lead = templates[beat] || templates.benefit;
   if (/真人|人物|角色|演员|主体|用户|person|human|actor|character|user/i.test(base)) {
@@ -11515,11 +11515,11 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
   const shotSizes = ['微观全景 / 固定镜头', '中远景 / 缓慢前进', '极近景 / 微距平移', '中景 / 场景切换', '特写 / 轻微环绕', '中景 / 使用演示', '近景 / 证明细节', '中远景 / 对比切换', '特写 / 优惠呈现', '品牌收尾 / 固定镜头', '中景 / 补充说明', '片尾 / 稳定停留'];
   const continuousHuman = _luxuryNeedsContinuousHuman(source, assetSummary, productName);
   const visualByRole = {
-    hook: `已确认的真实场景中，${productName}相关的问题或期待被清楚建立，画面不替换行业和主体。`,
-    display: `${productName}以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。`,
-    macro: `靠近${productName}的关键证据或使用细节，只放大当前业务真正需要看见的内容。`,
-    benefit: `真实使用或互动场景中，${productName}带来的变化被人物动作、结果或对比自然说明。`,
-    proof: `通过一个已确认的证据点证明${productName}的价值，不新增无关道具、场地或 UI。`,
+    hook: `${productName}出现在真实使用场景中，开场先建立用户面对的具体问题。`,
+    display: `${productName}进入画面中心，环境、使用位置和介绍重点保持清楚。`,
+    macro: `镜头靠近${productName}的外观、结构、界面或使用位置，放大一个可见卖点。`,
+    benefit: `${productName}在使用场景里带来明确变化，画面用前后状态形成对比。`,
+    proof: `镜头展示${productName}带来的结果、反馈或对比画面，让价值被看见。`,
     cta: `${productName}与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。`,
   };
   return Array.from({ length: total }, (_, i) => {
@@ -11533,7 +11533,7 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
     const sfxAudio = _fallbackLuxuryAdAudio({ role });
     const camera = i === 0 ? 'slow_push_in' : i === 2 ? 'macro_push' : i === total - 1 ? 'hold' : 'smooth_slide';
     const transition = i === 0 ? '溶化转场进入下一镜' : (i === total - 1 ? '固定停留收束品牌记忆' : '顺接下一镜');
-    const lightingStyle = '真实商业光线，匹配已确认行业场景和主体证据';
+    const lightingStyle = '真实商业光线，匹配已确认行业场景和主体位置';
     const materialUsage = i === 0 ? '@主商品' : `@主商品 + @参考${i + 1}`;
     const styleNote = `风格：真实商业剧情广告，按用户需求和素材确认行业；光线：${lightingStyle}；转场：${transition}。`;
     return {
@@ -11546,7 +11546,7 @@ function _fallbackLuxuryAdStoryboard({ text = '', durationSec = 30, shotCount = 
       objective: [
       `建立${productName}的第一场景和第一印象`,
       `切到第二场景，让主商品或服务关系更清楚`,
-      '展示当前业务真正需要看见的关键证据或细节',
+      `介绍${productName}的一个可见卖点或使用细节`,
       '进入真实场景或转折，说明使用关系',
       '强化一个可记忆卖点或可信理由',
       '收束品牌记忆点和行动引导',
@@ -11978,7 +11978,7 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
       'The first readable subject must be the confirmed person/role performing the confirmed workflow, service use, transformation or result in the confirmed environment.',
       `The advertised service evidence must remain visible as "${subject}" through the carriers explicitly required by the brief/assets/script; do not require a physical package for the service itself.`,
       'The frame must look like a live-action commercial storyboard panel: confirmed role + confirmed environment + confirmed evidence + requested emotion/action.',
-      '中文硬约束：画面必须像真人实拍广告，主体证据、人物动作和场景都来自已确认需求；不能自动套用手机、订单、货架、仓库、后台等模板。',
+      '中文硬约束：画面必须像真人实拍广告，商品/服务主体、人物动作和场景都来自已确认需求；不能自动套用手机、订单、货架、仓库、后台等模板。',
     ].join(' ');
   }
   if (personRequired) {
@@ -11988,7 +11988,7 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
       `The advertised product evidence must remain visible and recognizable as "${subject}", but it is proof inside the story scene, not a product-only catalogue hero.`,
       'The frame must look like a live-action commercial storyboard panel: person + environment + product/material evidence in one coherent shot.',
       'Do not output an isolated product packshot, empty background, catalogue still, or default scene template.',
-      '中文硬约束：画面第一眼必须有人物在已确认场景中行动，同时看见主体证据；不能自动改成固定行业场景或纯产品图。',
+      '中文硬约束：画面第一眼必须有人物在已确认场景中行动，同时看见商品/服务主体；不能自动改成固定行业场景或纯产品图。',
     ].filter(Boolean).join(' ');
   }
   return [
@@ -12406,52 +12406,52 @@ function _luxuryHumanGuideBeat(index = 0, total = 10, productSubject = '主商�
   const name = String(productSubject || '主商品').trim() || '主商品';
   if (i <= 0) {
     return {
-      visual: `同一位剧情角色出现在已确认的真实场景里，带观众进入${name}相关的需求情境`,
-      action: '角色从画面边缘或场景关键位置进入，先看向镜头或问题点，再引导观众看向主体证据',
-      copy: '先跟着角色，看见真实需求',
+      visual: `角色出现在${name}的使用场景中，开场先呈现用户正在面对的问题`,
+      action: `角色先观察问题发生的位置，再把视线转向${name}`,
+      copy: '先看见问题，再看解决方式',
     };
   }
   if (i === 1) {
     return {
-      visual: `同一位剧情角色在已确认场景中继续推进，${name}开始以真实证据进入视线`,
-      action: '角色边移动或转身边示意关键位置，把观众视线带到主体证据',
-      copy: '进入场景，变化才看得清',
+      visual: `${name}进入画面重点位置，场景展示它准备被使用或介绍`,
+      action: `角色让出画面重点，镜头转到${name}的外观、界面或使用位置`,
+      copy: '先把它放到真实生活里看',
     };
   }
   if (i >= last) {
     return {
-      visual: `同一位剧情角色在已确认的收束场景中完成选择或行动，画面保留${name}的结果证据`,
+      visual: `收束画面回到${name}和使用后的结果，行动入口保持清楚`,
       action: '角色停在稳定构图中，面向镜头或目标对象完成确认、推荐或行动收束',
-      copy: '最后，把选择理由讲清楚',
+      copy: '现在，就把它用到你的日常里',
     };
   }
   if (i >= last - 1) {
     return {
-      visual: `同一位剧情角色回到完整场景关系中，把${name}的价值和结果承接起来`,
-      action: '角色回头确认观众视线，手势从关键证据带回整体结果',
-      copy: '从体验到结果，都要看得明白',
+      visual: `画面展示${name}使用前后的状态对比，角色表情从迟疑转为确认`,
+      action: '角色对比前后状态，再把手势收回到最终结果',
+      copy: '变化是不是清楚多了',
     };
   }
   const beats = [
     {
-      visual: `同一位剧情角色停在${name}相关证据旁边，近距离说明当前业务真正需要看见的细节`,
-      action: '角色用手指向关键证据，镜头跟随手部移动到主体细节或结果位置',
-      copy: '关键细节，要经得起近看',
+      visual: `近景展示${name}的外观、结构、界面或核心卖点，背景保留真实使用环境`,
+      action: `镜头从整体推到${name}的一个可见细节，停留让观众看清`,
+      copy: '先看这个细节',
     },
     {
-      visual: `同一位剧情角色带观众切换到已确认使用场景，展示${name}带来的整体变化`,
-      action: '角色侧身让出主体画面，再引导镜头看完整业务关系',
-      copy: '放进真实场景，价值才完整',
+      visual: `${name}在完整使用场景中运转或被展示，周围环境显示它服务的对象`,
+      action: '角色侧身让出画面，镜头跟随使用流程向前推进',
+      copy: '放进场景里，才知道好不好用',
     },
     {
-      visual: `同一位剧情角色拿起、靠近或操作已确认的${name}证据，说明选择理由和差异`,
-      action: '角色轻触、展示或操作主体证据，镜头从人物手势推到关键结果',
-      copy: '选择之前，先看清差异',
+      visual: `手部或主体直接操作${name}，画面展示一次明确的使用动作`,
+      action: `角色轻触、打开、拿起或启动${name}，镜头跟到结果变化`,
+      copy: '用起来，差别会更明显',
     },
     {
-      visual: `同一位剧情角色在已确认场景中继续推进，串联${name}、使用过程和结果证据`,
-      action: '角色沿场景动线前行，边指引边把镜头带到下一处证据点',
-      copy: '看完主体，还要看真实结果',
+      visual: `${name}的使用过程和结果同屏出现，画面从操作过渡到完成状态`,
+      action: '角色沿场景动线前行，把镜头带到完成后的结果位置',
+      copy: '它解决的是这一整段麻烦',
     },
   ];
   return beats[(i - 2) % beats.length];
@@ -12686,6 +12686,12 @@ function _isWeakLuxuryAdLine(value = '', productSubject = '') {
   return /(广告需求识别|由广告需求|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|主商品|产品名称|一句话需求|brief|一眼看见材质的高级感|让材料成为空间主角|纹理在光影里更清晰|高级空间，需要高级材质|主角登场|价值一眼看清|细节被放大|质感被看见|真实场景里，更懂需求|每一处细节，都是选择理由|现在咨询，了解更多方案|核心亮点|一次解决|让日常使用更轻松|加入你的必备清单|便捷|高效|效率倍增|智能集成|只需片刻|告别繁琐|创作更轻松)/.test(s);
 }
 
+function _hasLuxuryAbstractStoryboardLeak(value = '') {
+  const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  return /(相关证据|主体证据|当前业务真正需要|人物或主体|同一位剧情角色|已确认的真实场景|已确认场景|作用被看见|核心问题|结果证据|选择理由|当前业务|具体问题|关键证据|使用细节|发生了变化|变得更清楚|答案开始具体)/.test(s);
+}
+
 function _fallbackLuxuryAdCopy(opts = {}) {
   return _fallbackLuxuryNarrativeLine(opts);
 }
@@ -12693,11 +12699,11 @@ function _fallbackLuxuryAdCopy(opts = {}) {
 function _fallbackLuxuryAdVisual({ role = '', productSubject = '主商品' } = {}) {
   const name = String(productSubject || '主商品').trim() || '主商品';
   const visual = {
-    hook: `已确认的真实场景中，${name}相关的问题或期待被清楚建立，画面不替换行业和主体。`,
-    display: `${name}以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。`,
-    macro: `靠近${name}的关键证据或使用细节，只放大当前业务真正需要看见的内容。`,
-    benefit: `真实使用或互动场景中，${name}带来的变化被人物动作、结果或对比自然说明。`,
-    proof: `通过一个已确认的证据点证明${name}的价值，不新增无关道具、场地或 UI。`,
+    hook: `${name}出现在真实使用场景中，开场先建立用户面对的具体问题。`,
+    display: `${name}进入画面中心，环境、使用位置和介绍重点保持清楚。`,
+    macro: `镜头靠近${name}的外观、结构、界面或使用位置，放大一个可见卖点。`,
+    benefit: `${name}在使用场景里带来明确变化，画面用前后状态形成对比。`,
+    proof: `镜头展示${name}带来的结果、反馈或对比画面，让价值被看见。`,
     cta: `${name}与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。`,
   };
   return visual[_luxuryRoleAt(0, 1, role)] || visual.display;
@@ -12706,12 +12712,12 @@ function _fallbackLuxuryAdVisual({ role = '', productSubject = '主商品' } = {
 function _fallbackLuxuryAdAction({ role = '', productSubject = '主商品' } = {}) {
   const name = String(productSubject || '主商品').trim() || '主商品';
   const action = {
-    hook: `人物或主体用一个明确动作引出${name}的核心问题。`,
-    display: `人物或主体进行展示、操作或体验，让${name}的作用被看见。`,
-    macro: '人物手部或主体关键部位完成一次细节展示动作。',
+    hook: `镜头先落到问题发生的位置，再转向${name}。`,
+    display: `${name}被展示、拿起、打开、运转或进入使用流程。`,
+    macro: '手部、镜头或画面主体完成一次细节展示动作。',
     benefit: '人物从观察转为使用、比较或确认，表现变化已经发生。',
     proof: '人物指向、展示或确认一个可信证据点，让卖点通过动作成立。',
-    cta: '人物或主体完成收束动作，表达选择、确认或行动意图。',
+    cta: '画面完成选择、确认或行动收束。',
   };
   return action[_luxuryRoleAt(0, 1, role)] || action.display;
 }
@@ -15634,7 +15640,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 - 如果上一镜已经提出问题，下一镜必须推进发现、确认、使用、证明或收束之一；不能连续多镜重复同一个情绪或同一个卖点。
 - 口型规则：lip_sync_required 默认 false。旁白型镜头只需要人物表情、视线、手势和身体动作跟随故事情绪，不要求嘴型对字幕。只有“人物直接说出本镜台词/双人对话/口播镜头”才设为 true，并让 dialogue_lines 与该人物口型对应。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
-- subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：真人/人物与主体证据同框才用 human_scene；机器人、吉祥物、动物、虚拟人等非真人角色与场景证据同框用 character_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
+- subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：真人/人物与商品、服务或品牌主体同框才用 human_scene；机器人、吉祥物、动物、虚拟人等非真人角色与场景同框用 character_scene；商品或服务独立介绍用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
 - 第 3 步画面必须像竞品 storyboard：除微距细节镜外，脚本主体、场景、产品/服务证据要在同一画面逻辑里推进故事。只有当剧本明确需要人物时，才要求人物同框；不要把非人物广告强行改成真人导购。
 - 如果主商品明确是钢材/建材/墙面/外立面/空间设计服务，且用户需求或人物配置明确要求真人讲解/带看，才安排多数镜头出现真实人物与产品证据发生关系；否则按确认主体和剧本生成，不套用钢材展厅范式。
@@ -15951,7 +15957,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         appearance: '年龄、五官、发型和身形按用户需求、行业素材和剧情关系生成，不套固定职业形象。',
         outfit: '服装按广告需求、年龄和场景生成，保持真实自然，不默认商务服或销售服。',
         hand_prop: '只使用需求、素材或剧本明确需要的道具；没有明确道具时保持自然手部动作。',
-        behavior: pos === 0 ? '围绕当前镜头目标做自然动作，推动剧情和主体证据成立。' : '通过回应、观察、体验或协作推动剧情关系。',
+        behavior: pos === 0 ? '围绕当前镜头目标做自然动作，推动剧情和商品/服务画面成立。' : '通过回应、观察、体验或协作推动剧情关系。',
       };
     };
     const ensureLuxuryScriptFieldsForReview = (sceneList = [], canonicalList = []) => {
@@ -16307,9 +16313,14 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       list.forEach((scene, i) => {
         const n = i + 1;
         const fallbackOpts = { role: scene.role || _luxuryStoryRoleAt(i, list.length, ''), productSubject, index: i, total: list.length, brief, continuousHuman };
-        if (!_cleanLuxuryAdVisual(scene.content_prompt || scene.scene_content || scene.visual || '', fallbackOpts)) issues.push(`第 ${n} 镜缺少画面`);
-        if (!_cleanLuxuryAdAction(scene.action || scene.visual_action || '', fallbackOpts)) issues.push(`第 ${n} 镜缺少动作`);
-        if (!_cleanLuxuryAdCopy(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', fallbackOpts)) issues.push(`第 ${n} 镜缺少台词/旁白`);
+        const visualText = scene.content_prompt || scene.scene_content || scene.visual || '';
+        const actionText = scene.action || scene.visual_action || '';
+        const copyText = scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '';
+        if (!_cleanLuxuryAdVisual(visualText, fallbackOpts)) issues.push(`第 ${n} 镜缺少画面`);
+        if (!_cleanLuxuryAdAction(actionText, fallbackOpts)) issues.push(`第 ${n} 镜缺少动作`);
+        if (!_cleanLuxuryAdCopy(copyText, fallbackOpts)) issues.push(`第 ${n} 镜缺少台词/旁白`);
+        if (_hasLuxuryAbstractStoryboardLeak(visualText)) issues.push(`第 ${n} 镜画面仍是抽象模板句，需要写成具体可见画面`);
+        if (_hasLuxuryAbstractStoryboardLeak(actionText)) issues.push(`第 ${n} 镜动作仍是抽象模板句，需要写清主体如何运动或操作`);
       });
       return issues;
     };
@@ -16414,6 +16425,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       if (/^(审稿未通过|审核未通过|review failed|not approved)$/i.test(text)) return false;
       if (expectedPeople < 2 && /(全部|所有|每个|全片|整条).*(voiceover|narration|旁白|字幕)|(?:voiceover|narration|旁白|字幕).*(全部|所有|每个|全片|整条)|缺少.*(dialogue|dialogue_lines|对白)|没有.*(dialogue|dialogue_lines|对白)/i.test(text)) return false;
       if (/后台流程词|@主商品|@参考|主产品|主商品|只出现.*一个核心人物|每个相关镜头|未包含.*违反.*真实对话/.test(text)) return false;
+      if (/(相关证据|主体证据|当前业务真正需要|人物或主体|同一位剧情角色|已确认场景|抽象模板|具体可见|商品介绍|主体介绍)/.test(text)) return true;
       if (/缺少.*(痛点|解决方案|产品介绍|可视化证明|行动收束)|没有.*(痛点|解决方案|产品介绍|可视化证明|行动收束)|未包含.*(痛点|解决方案|产品介绍|可视化证明|行动收束)/.test(text)) return true;
       if (/(purpose|context|problem|opening_problem|feature_1|product_reveal|proof|offer|cta|第一镜头|第二镜头|前两镜|重复|相似|同一空间|视觉疲劳|建议|应尽快|展厅|开头|节奏|结构|段落|叙事)/i.test(text)) return false;
       return true;
@@ -16444,6 +16456,35 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
         maxTokens: json === 'object' ? 8000 : 12000,
       });
     };
+    const repairLuxuryScriptQualityPayload = async ({ label, payload, issue, storyPlan = null }) => {
+      const repairSys = [
+        '你是剧情广告脚本质量修复 agent。你的任务是把抽象、模板化、看不懂的镜头表修成可审核的商业广告故事脚本。',
+        '只输出修复后的 JSON 数组，不要 markdown，不要解释。',
+        subjectLockInstruction,
+        castInstruction,
+        genderInstruction,
+        '必须保留原镜头数量、index、duration、人物数量规则和故事顺序；只重写 content_prompt/scene_content/visual/action/visual_action/voiceover/narration/objective/purpose/subject_type 等脚本表达字段。',
+        `广告主体是「${productSubject}」。如果有上传商品/主体图，把它当成需要被介绍和证明的画面证据；没有上传时，也必须按广告需求推断清楚主体，不要写“相关证据”“主体证据”“当前业务真正需要看见”等抽象词。`,
+        '画面列必须像竞品脚本：写观众看见的具体场景、主体、商品/服务证据和前后变化；可以有人物，也可以是商品/界面/机器人/空间独立承担介绍，不要强行让每一镜都有人。',
+        '动作列必须写主体如何运动、操作、出现、切换或被展示；不要写“人物或主体”“作用被看见”“核心问题”这种后台概括。',
+        '台词列必须是一条连续故事：先困扰或期待，再发现主体，再展示商品/服务作用，再证明，再行动；禁止空泛口号和脱离业务的“嗯？这是什么？”式台词。',
+        'subject_type 必须按画面主体选择：真人同框用 human_scene，机器人/虚拟人/吉祥物用 character_scene，商品或服务证据独立介绍用 product_only，细节特写用 product_detail，界面流程用 ui_screen，证明结果用 proof_scene。',
+      ].join('\n');
+      const repairUser = `需要修复的问题：${issue}
+广告需求：${brief}
+主商品/主体：${productSubject}
+人物配置解析：${JSON.stringify(resolvedPersonSpec)}
+${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 14000)}\n` : ''}
+待修复镜头：
+${JSON.stringify(payload, null, 2).slice(0, 26000)}`;
+      return callLuxuryAgent({
+        name: `${label}.script.quality.repair`,
+        systemPrompt: repairSys,
+        userPrompt: repairUser,
+        json: 'array',
+        maxTokens: 12000,
+      });
+    };
     if (isDetailedMode) {
       const storySys = [
         '你是剧情广告的资深广告编剧 agent。你的职责是先写“商业广告故事”，不写产品图库脚本，也不写镜头参数。',
@@ -16454,7 +16495,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
         '故事必须有清晰人物目标、具体冲突/疑问、场景推进、证据出现、情绪变化和最后行动收束。不要写卖点堆叠，不要写口号集合。',
         '必须按通用故事脊柱推进：问题/期待 -> 场景代入 -> 主体登场 -> 解决或体验 -> 可视化证明 -> 对比或承诺 -> 行动收束。每个 beat 只承担一个推进职责，不能重复上一段画面或台词。',
         '每个 beat 的 spoken_line 必须像成片里能听到的一句人话：先承接上一段情境，再推进下一段。禁止只写抽象卖点、广告口号或形容词堆叠。',
-        `如果目标时长约 30 秒，故事蓝图优先写 10 个短 beat；每个 beat 只写当前业务内容识别出来的具体事件、主体证据和自然台词，不套任何固定行业模板。`,
+        `如果目标时长约 30 秒，故事蓝图优先写 10 个短 beat；每个 beat 只写当前业务内容识别出来的具体事件、商品/服务画面和自然台词，不套任何固定行业模板。`,
         '只有当主商品明确属于钢材/建材/墙面/外立面/空间设计服务时，才可使用展厅、设计会客区、建筑样板间、真实应用空间或客户洽谈区；其它行业必须使用对应行业的真实场景。',
         '台词必须像真实人物在具体场景里说话：先说困扰，再说看见了什么改变，最后自然邀请行动；禁止“钢材，如何重塑建筑空间？”这类空泛设问。',
       ].join('\n');
@@ -16464,7 +16505,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
 {
   "story_title": "剧本标题",
   "logline": "一句话故事梗概",
-  "scene_bible": {"main_location":"固定主场景，必须来自用户行业和剧本","background_details":"与行业匹配的真实环境细节、道具、灯光、动线、可见证据","product_evidence_zone":"产品/服务/主体证据在场景中的固定位置"},
+  "scene_bible": {"main_location":"固定主场景，必须来自用户行业和剧本","background_details":"与行业匹配的真实环境细节、道具、灯光、动线、可见商品/服务","product_evidence_zone":"产品/服务/品牌主体在场景中的固定位置"},
   "story_arc": {
     "opening_problem": "开场人物遇到的具体问题",
     "turning_point": "主体如何进入并改变局面",
@@ -16542,7 +16583,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
 
       if (!fastDetailedStoryboard) {
         const sceneSys = [
-          '你是真人广告场景美术 agent。你的职责是补足每个镜头的地点、空间、道具、主体证据和环境细节。',
+          '你是真人广告场景美术 agent。你的职责是补足每个镜头的地点、空间、道具、商品/服务主体和环境细节。',
           '只输出 JSON 数组，数量和 index 必须与输入一致，不要新增/删除镜头。',
           `必须让 ${productSubject} 成为场景中的可见证据，但不能让它变成无人产品图。`,
           '只能增强 scene/content_prompt/visual/material_usage/required_material，不得改变故事顺序和人物关系。',
@@ -16629,6 +16670,22 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           if (sceneCastIssue) throw new Error(`镜头人物一致性修复失败：${sceneCastIssue}`);
         }
 
+        let localScriptIssues = luxuryScriptStructureIssues(scenes);
+        if (localScriptIssues.length) {
+          scenes = mergeLuxuryAgentScenes(scenes, await repairLuxuryScriptQualityPayload({
+            label: 'luxury_ad.local_review',
+            payload: scenes,
+            issue: localScriptIssues.slice(0, 8).join('；'),
+            storyPlan,
+          }));
+          if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
+          scenes = ensureLuxuryScriptFieldsForReview(scenes, storyCharacters);
+          scenes = completeLuxuryScriptStructure(scenes, storyPlan, 'local_script_quality_repair');
+          assertAgentTextOk('脚本质量修复 agent', scenes);
+          localScriptIssues = luxuryScriptStructureIssues(scenes);
+          if (localScriptIssues.length) throw new Error(`脚本质量修复失败：${localScriptIssues.slice(0, 6).join('；')}`);
+        }
+
         const reviewSys = [
           '你是剧情广告审稿 agent。只输出 JSON 对象。',
           '检查剧本是否像一个连续故事，是否围绕主体，人物数量是否正确，镜头是否来自剧本，台词是否推进剧情，是否存在乱码或兜底空话。',
@@ -16637,6 +16694,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
             : '本片是双人/多人广告：必须检查 dialogue_lines 是否体现至少两个人物的真实问答、回应或确认；如果全片只有 voiceover 而没有人物对白，必须 rejected。',
           '如果缺少痛点、解决方案、产品介绍、可视化证明、行动收束中的任一关键段，必须 rejected。',
           '如果两个镜头的主要画面/动作/台词重复，或 purpose 只是 context、feature_1、product_reveal、proof、offer、cta 等内部标签，必须 rejected。',
+          '如果画面或动作出现“相关证据、主体证据、当前业务真正需要看见、人物或主体、同一位剧情角色、已确认场景、作用被看见、核心问题”等抽象模板词，必须 rejected，并要求改成具体可见商品/服务/主体介绍镜头。',
           '如果台词不像人在讲一个具体故事，而只是概念、口号、卖点列表，必须 rejected。',
           '检查台词里是否出现后台流程词：广告需求、广告需求识别、由广告需求识别、用户需求、系统识别、自动识别、参考素材摘要、主商品。出现任何一个都必须 rejected。',
           '如果不合格，approved 必须为 false，并在 errors 里写具体问题。'
@@ -16653,11 +16711,10 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           const rawErrors = Array.isArray(review?.errors) ? review.errors.filter(Boolean).map(String) : [review?.notes || '审稿未通过'];
           const blockingErrors = rawErrors.filter(isBlockingLuxuryReviewError);
           if (blockingErrors.length) {
-            scenes = mergeLuxuryAgentScenes(scenes, await repairLuxuryCastPayload({
+            scenes = mergeLuxuryAgentScenes(scenes, await repairLuxuryScriptQualityPayload({
               label: 'luxury_ad.review',
               payload: scenes,
               issue: `审稿 agent 未通过：${blockingErrors.join('；')}`,
-              json: 'array',
               storyPlan,
             }));
             if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
@@ -17064,7 +17121,7 @@ ${JSON.stringify(scenes, null, 2)}
       }, productSubject);
       const productOnlyMaterialShot = !corePersonRequired && _luxuryIsMaterialProductShot({ title: s.title || '', content_prompt: visual, visual }, productSubject);
       if (productOnlyMaterialShot) {
-        action = _luxurySanitizeProductOnlyAction(action) || '主体证据在已确认场景中被清楚呈现，镜头克制推进，建立第一眼识别和业务关系。';
+        action = _luxurySanitizeProductOnlyAction(action) || '商品或服务主体在使用场景中被清楚展示，镜头克制推进，建立第一眼识别。';
       }
       const emotion = String(s.emotion || s.mood || '').replace(/\s+/g, ' ').trim()
         || _fallbackLuxuryAdEmotion({ role });
@@ -17075,7 +17132,7 @@ ${JSON.stringify(scenes, null, 2)}
         .replace(/@主商品/g, productSubject)
         .replace(/@参考(\d*)/g, '参考画面$1')
         .replace(/主产品|主商品/g, productSubject);
-      const styleNote = cleanCrossIndustryLeak(s.style_note || s.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`);
+      const styleNote = cleanCrossIndustryLeak(s.style_note || s.other || `风格：真实商业剧情广告，镜头克制，商品/主体位置清晰；转场：顺接下一镜。`);
       const rawReferenceIndex = Math.max(1, Math.round(Number(s.reference_index ?? s.referenceImageIndex ?? (i + 1)) || (i + 1)));
       const referenceIndex = uploadedReferenceAssets.length ? Math.min(rawReferenceIndex, uploadedReferenceAssets.length) : rawReferenceIndex;
       const referenceLabel = s.reference_label || `@参考${referenceIndex}`;
@@ -17565,7 +17622,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       continuousHuman: corePersonRequired,
     });
     if (!corePersonRequired && _luxuryIsMaterialProductShot({ title: raw.title || '', content_prompt: visual, visual }, subject)) {
-      action = _luxurySanitizeProductOnlyAction(action) || '主体证据在已确认场景中被清楚呈现，镜头克制推进，建立第一眼识别和业务关系。';
+      action = _luxurySanitizeProductOnlyAction(action) || '商品或服务主体在使用场景中被清楚展示，镜头克制推进，建立第一眼识别。';
     }
     const emotion = String(raw.emotion || raw.mood || '').replace(/\s+/g, ' ').trim()
       || _fallbackLuxuryAdEmotion({ role });
@@ -17585,7 +17642,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     }, text);
     const shotAngle = String(raw.shot_angle || raw.angle || raw.shot_size || raw.framing || '').trim();
     const materialUsage = String(raw.material_usage || raw.material_hint || '').trim() || `@主商品 + ${referenceLabel}`;
-    const styleNote = String(raw.style_note || raw.other || `风格：真实商业剧情广告，镜头克制，主体证据清晰；转场：顺接下一镜。`).replace(/成片广告词/g, '成片广告词');
+    const styleNote = String(raw.style_note || raw.other || `风格：真实商业剧情广告，镜头克制，商品/主体位置清晰；转场：顺接下一镜。`).replace(/成片广告词/g, '成片广告词');
     const lockedVisualPrompt = [
       corePersonRequired ? 'STORYBOARD-FIRST IMAGE PROMPT: create a live-action commercial storyboard frame. The visible human actor, real environment, and advertised product evidence must all appear in the same image.' : productLockPrompt,
       corePersonRequired ? `The product/material evidence is ${subject}, visible in the scene, but do not make a product-only catalogue image.` : '',
