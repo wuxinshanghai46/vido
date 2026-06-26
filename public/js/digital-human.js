@@ -5958,6 +5958,18 @@
     state.luxuryAd.productionProject = null;
   }
 
+  function resetLuxuryAdFrameGenerationState() {
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.keyframeGenerating = false;
+    state.luxuryAd.keyframeProgress = null;
+    state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.productionContract = null;
+    if (state.luxuryAd.workflowProgress?.keyframes) state.luxuryAd.workflowProgress = null;
+  }
+
   function luxuryMaterialAssetUrls() {
     const urls = [];
     const add = value => {
@@ -8836,7 +8848,7 @@
       storyboardBtn.textContent = '已生成剧本，查看剧本';
     }
     setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', step3Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady))), step3Locked ? luxuryAdLockedStepMessage(3) : (busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : ''))));
-    setLuxuryButtonLock('#dhLuxAdRegenerateScriptFromStep4', step3Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady))), step3Locked ? luxuryAdLockedStepMessage(3) : (busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : ''))));
+    setLuxuryButtonLock('#dhLuxAdRegenerateScriptFromStep4', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : '')));
     setLuxuryButtonLock('#dhLuxAdPreviewFrames', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.detailedReady && !gate.materialMode ? '请先生成剧本' : '')));
     const previewBtn = $('#dhLuxAdPreviewFrames');
     if (previewBtn && !gate.materialMode && state.luxuryAd.keyframePlanningOnly && !busyGenerating) {
@@ -12738,10 +12750,14 @@
     } catch (err) {
       return toast(err.message, 'error');
     }
+    const btn = triggerButton || (
+      detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'))
+    );
+    const isRewriteScript = !!(detail && (rewriteScript || btn?.id === 'dhLuxAdRegenerateScriptFromStep4'));
     if (detail && !state.luxuryAd.segments?.length) return toast('请先生成场景配置，再生成剧本', 'error');
     if (detail) ensureLuxuryAdBriefTitle();
     if (!detail && luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
-    if (detail && luxuryAdStepIsLocked(3)) return toast(luxuryAdLockedStepMessage(3), 'error');
+    if (detail && luxuryAdStepIsLocked(3) && !isRewriteScript) return toast(luxuryAdLockedStepMessage(3), 'error');
     state.luxuryAd.content = text;
     state.luxuryAd.durationSec = Number($('#dhLuxAdDuration')?.value || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
@@ -12749,11 +12765,7 @@
     state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload($('#dhLuxAdSubtitleToggle')
       ? !!$('#dhLuxAdSubtitleToggle')?.checked
       : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off'));
-    const btn = triggerButton || (
-      detail ? $('#dhLuxAdStoryboard') : (autoNext ? $('#dhLuxAdGenerate') : $('#dhLuxAdStoryboard'))
-    );
     const old = btn?.innerHTML;
-    const isRewriteScript = !!(detail && (rewriteScript || btn?.id === 'dhLuxAdRegenerateScriptFromStep4'));
     const busyText = isRewriteScript
       ? '重写脚本中…'
       : (detail ? '生成剧本中…' : '生成场景配置中…');
@@ -16307,9 +16319,9 @@
     if (luxScriptRegenerateBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
       else {
-        state.luxuryAd.keyframes = [];
-        state.luxuryAd.storyboardSheets = [];
-        state.luxuryAd.keyframePlanningOnly = false;
+        resetLuxuryAdFrameGenerationState();
+        renderLuxuryAdStoryboard();
+        updateLuxuryAdStepLocks();
         await buildLuxuryAdStoryboard({
           autoNext: false,
           detail: true,
