@@ -120,6 +120,7 @@ const FILES = [
   ['src/services/tutorialProducer.js', true],
   ['src/services/baiduMattingService.js', true],
   ['src/services/videoMattingPipeline.js', true],
+  ['scripts/deploy-kb.js', true],
   ['scripts/demo-auto-produce.js', true],
   ['scripts/demo-matting.js', true],
   ['scripts/tts-health-check.js', true],
