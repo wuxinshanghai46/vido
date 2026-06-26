@@ -9654,12 +9654,48 @@
     }
   }
 
+  function luxuryShotDurationValue(seg = {}, fallbackTotal = 30, count = 1, { allowFallback = true } = {}) {
+    const direct = [seg.duration, seg.duration_sec, seg.seconds]
+      .map(v => Number(v))
+      .find(v => Number.isFinite(v) && v > 0);
+    if (direct) return Math.round(direct * 10) / 10;
+    const start = Number(seg.start);
+    const end = Number(seg.end);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      return Math.round((end - start) * 10) / 10;
+    }
+    if (!allowFallback) return 0;
+    return Math.max(2, Math.round((Number(fallbackTotal) || 30) / Math.max(1, count || 1) * 10) / 10);
+  }
+
+  function luxuryAdSegmentsTotalSeconds(segments = [], fallbackTotal = 30) {
+    const list = Array.isArray(segments) ? segments : [];
+    const explicitValues = list.map(seg => luxuryShotDurationValue(seg, fallbackTotal, list.length, { allowFallback: false }));
+    const total = explicitValues.length && explicitValues.every(v => v > 0)
+      ? explicitValues.reduce((sum, v) => sum + v, 0)
+      : list.reduce((sum, seg) => sum + luxuryShotDurationValue(seg, fallbackTotal, list.length), 0);
+    return Math.round(total * 10) / 10;
+  }
+
+  function syncLuxuryAdDurationFromSegments(segments = state.luxuryAd.segments || [], fallbackTotal = state.luxuryAd.durationSec || 30) {
+    const total = luxuryAdSegmentsTotalSeconds(segments, fallbackTotal);
+    if (total > 0) state.luxuryAd.durationSec = total;
+    const durationSelect = $('#dhLuxAdDuration');
+    if (durationSelect && total > 0) {
+      const value = String(total);
+      if (![...durationSelect.options].some(o => o.value === value)) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = `${value} 秒`;
+        durationSelect.appendChild(opt);
+      }
+      durationSelect.value = value;
+    }
+    return total;
+  }
+
   function luxuryShotDurationLabel(seg = {}, fallbackTotal = 30, count = 1) {
-    const raw = Number(seg.duration || seg.duration_sec || seg.seconds || seg.end - seg.start);
-    const seconds = Number.isFinite(raw) && raw > 0
-      ? raw
-      : Math.max(3, Math.round((Number(fallbackTotal) || 30) / Math.max(1, count || 1)));
-    return `${Math.round(seconds)}s`;
+    return `${Math.round(luxuryShotDurationValue(seg, fallbackTotal, count))}s`;
   }
 
   function luxuryShotMotionLabel(seg = {}) {
@@ -10058,8 +10094,10 @@
       const label = luxuryAdReferenceLabel(refIndex);
       const subjectType = normalizeLuxuryShotSubjectType(seg);
       const requiresPerson = luxuryShotRequiresPersonFromType(subjectType, seg);
+      const duration = luxuryShotDurationValue(seg, state.luxuryAd.durationSec, segments.length || 1, { allowFallback: false });
       return {
         ...seg,
+        ...(duration > 0 ? { duration, duration_sec: duration, seconds: duration } : {}),
         subject_type: subjectType,
         subjectType,
         requires_person: requiresPerson,
@@ -10155,6 +10193,7 @@
   function compactLuxurySegments(segments = []) {
     return applyLuxuryShotBindings(normalizeLuxuryAdSegmentsForHandoff(segments)).map((seg, i) => {
       const shotIndex = luxuryFrameIndex(seg, i);
+      const duration = luxuryShotDurationValue(seg, state.luxuryAd.durationSec, segments.length || 1);
       return {
         index: shotIndex,
         title: seg.title || `镜头 ${shotIndex + 1}`,
@@ -10173,7 +10212,11 @@
         objective: luxuryShotObjectiveText(seg),
         purpose: seg.purpose || seg.script_purpose || seg.purpose_label || '',
         script_purpose: seg.script_purpose || seg.purpose_label || seg.purpose || '',
-        duration: seg.duration || seg.duration_sec || 6,
+        start: Number.isFinite(Number(seg.start)) ? Number(seg.start) : undefined,
+        end: Number.isFinite(Number(seg.end)) ? Number(seg.end) : undefined,
+        duration,
+        duration_sec: duration,
+        seconds: duration,
         content_prompt: luxuryShotContentPrompt(seg),
         narration: luxuryShotNarrationText(seg),
         ad_copy: luxuryShotNarrationText(seg),
@@ -10482,7 +10525,7 @@
     const invalidated = new Set((Array.isArray(r.invalidated_shot_ids) ? r.invalidated_shot_ids : [])
       .map(x => String(x)));
     state.luxuryAd.segments = applyLuxuryShotBindings(nextSegments);
-    if (Number(r.duration_sec) > 0) state.luxuryAd.durationSec = Number(r.duration_sec);
+    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, Number(r.duration_sec || r.total_duration || state.luxuryAd.durationSec || 30));
     state.luxuryAd.productionContract = r.production_contract || state.luxuryAd.productionContract || null;
     state.luxuryAd.revisionHistory = Array.isArray(r.revision_history)
       ? r.revision_history
@@ -10714,19 +10757,14 @@
     if (Number.isFinite(Number(seg.start)) && Number.isFinite(Number(seg.end))) {
       return `${Math.round(Number(seg.start) * 10) / 10}-${Math.round(Number(seg.end) * 10) / 10}s`;
     }
-    const dur = Number(seg.duration || seg.duration_sec || seg.seconds || 0)
-      || Math.max(3, Math.round((Number(state.luxuryAd.durationSec) || 30) / Math.max(1, count || 1)));
+    const dur = luxuryShotDurationValue(seg, state.luxuryAd.durationSec, count);
     const start = Math.round(i * dur * 10) / 10;
     const end = Math.round((start + dur) * 10) / 10;
     return `${start}-${end}s`;
   }
 
   function luxuryAdShotSeconds(seg = {}, fallbackTotal = 30, count = 1) {
-    const raw = Number(seg.duration || seg.duration_sec || seg.seconds || 0);
-    const seconds = Number.isFinite(raw) && raw > 0
-      ? raw
-      : Math.max(2, Math.round((Number(fallbackTotal) || 30) / Math.max(1, count || 1)));
-    return Math.round(seconds * 10) / 10;
+    return luxuryShotDurationValue(seg, fallbackTotal, count);
   }
 
   function luxuryScriptPurposeLabel(seg = {}, i = 0, total = 1) {
@@ -10960,7 +10998,7 @@
     }
     const info = state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(state.luxuryAd.content, segments, {});
     const characters = Array.isArray(info.characters) ? info.characters : [];
-    const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
+    const totalSeconds = luxuryAdSegmentsTotalSeconds(segments, state.luxuryAd.durationSec);
     const avgSeconds = Math.round((totalSeconds / Math.max(1, segments.length)) * 10) / 10;
     const scriptLocked = luxuryAdStepIsLocked(3);
     const scriptBusy = !!state.luxuryAd.scriptGenerating
@@ -11051,7 +11089,7 @@
 
   function renderLuxuryStoryboardSheet(segments = [], keyframes = []) {
     if (!segments.length) return '';
-    const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
+    const totalSeconds = luxuryAdSegmentsTotalSeconds(segments, state.luxuryAd.durationSec);
     const ratio = String(state.luxuryAd.outputRatio || '9:16');
     const ratioStyle = luxuryAspectRatioStyle(ratio);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
@@ -11716,7 +11754,8 @@
     state.luxuryAd.productionProjectId = project.id || '';
     state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
     state.luxuryAd.keyframePlanningOnly = !!draft.keyframe_planning_only;
-    state.luxuryAd.segments = Array.isArray(project.scenes) ? project.scenes : [];
+    state.luxuryAd.segments = applyLuxuryShotBindings(Array.isArray(project.scenes) ? project.scenes : []);
+    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec);
     state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
     state.luxuryAd.keyframeError = project.last_error || '';
