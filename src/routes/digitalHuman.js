@@ -26557,7 +26557,10 @@ router.post('/videos/generate', async (req, res) => {
 router.get('/videos/tasks', (req, res) => {
   try {
     const uid = scopeUserId(req);
-    const tasks = db.listAvatarTasks(uid).filter(t => !t.hidden && !t.superseded_by && t.status !== 'superseded');
+    const lite = String(req.query.lite || '') === '1' || String(req.query.lite || '').toLowerCase() === 'true';
+    const limit = Math.max(0, Math.min(500, Number(req.query.limit || 0) || 0));
+    let tasks = db.listAvatarTasks(uid).filter(t => !t.hidden && !t.superseded_by && t.status !== 'superseded');
+    if (limit) tasks = tasks.slice(0, limit);
     const base = _publicBaseUrl(req);
     // 兼容：旧数据 kind 字段空 → 按 title 猜（含"预览样片"当 sample，其他按 production）
     const data = tasks.map(t => {
@@ -26568,9 +26571,11 @@ router.get('/videos/tasks', (req, res) => {
       // 统一 thumbnail_url：只有本地视频文件可抽帧时才走 on-demand 首帧端点。
       // 历史任务可能只有远端 video_url 或缺少 local_path，盲目返回首帧端点会得到 204，前端只能显示占位。
       const rawVideoUrl = t.video_url || t.videoUrl || '';
-      const localVideoPath = (t.videoPath && fs.existsSync(t.videoPath))
-        ? t.videoPath
-        : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : _localJimengPathFromUrl(rawVideoUrl));
+      const localVideoPath = lite
+        ? ''
+        : ((t.videoPath && fs.existsSync(t.videoPath))
+          ? t.videoPath
+          : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : _localJimengPathFromUrl(rawVideoUrl)));
       const onDemandThumbnail = localVideoPath ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
       const imageUrl = _localJimengAssetUrl(t.image_url || t.imageUrl, req);
       const thumbnailCandidate = _localJimengAssetUrl(t.thumbnail_url, req);

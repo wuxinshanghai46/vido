@@ -11,10 +11,14 @@
       let tab = 'step1';
       try {
         const params = new URLSearchParams(location.search);
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('vido_page_state:/digital-human') || '{}') || {}; } catch {}
         const urlTab = params.get('tab');
-        tab = tabs.includes(urlTab) ? urlTab : 'step1';
-        const luxStep = Number(params.get('lux_step') || 0) || 0;
-        const luxFocus = params.get('lux_focus') || '';
+        const savedTab = saved && tabs.includes(saved.tab) ? saved.tab : '';
+        const legacyTab = localStorage.getItem('vido_dh_active_tab') || '';
+        tab = tabs.includes(urlTab) ? urlTab : (savedTab || (tabs.includes(legacyTab) ? legacyTab : 'step1'));
+        const luxStep = Number(params.get('lux_step') || saved.lux_step || 0) || 0;
+        const luxFocus = params.get('lux_focus') || saved.lux_focus || '';
         if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
           document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
         }
@@ -2003,6 +2007,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260626-lux-script-review"></script>
+  <script src="/js/digital-human.js?v=20260626-route-state-lite-load"></script>
 </body>
 </html>

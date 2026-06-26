@@ -663,17 +663,41 @@
   // ══════════════ Tabs ══════════════
   const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'material-film', 'luxury-ad'];
   const DH_LAST_TAB_KEY = 'vido_dh_active_tab';
+  const DH_PAGE_STATE_KEY = 'vido_page_state:/digital-human';
   const DH_LAST_TASK_TYPE_KEY = 'vido_dh_active_task_type';
   const DH_LAST_TASK_STATUS_KEY = 'vido_dh_active_task_status';
   const DH_LAST_AVATAR_TAB_KEY = 'vido_dh_avatar_tab';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
 
   try {
+    const savedRoute = readDigitalHumanPageState();
     const savedTaskType = localStorage.getItem(DH_LAST_TASK_TYPE_KEY);
     const savedTaskStatus = localStorage.getItem(DH_LAST_TASK_STATUS_KEY);
-    if (savedTaskType) state.activeTaskType = savedTaskType;
-    if (savedTaskStatus) state.activeTaskStatus = savedTaskStatus;
+    if (savedRoute.task_type || savedTaskType) state.activeTaskType = savedRoute.task_type || savedTaskType;
+    if (savedRoute.task_status || savedTaskStatus) state.activeTaskStatus = savedRoute.task_status || savedTaskStatus;
   } catch {}
+
+  function readDigitalHumanPageState() {
+    try {
+      const raw = localStorage.getItem(DH_PAGE_STATE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeDigitalHumanPageState(patch = {}) {
+    try {
+      const prev = readDigitalHumanPageState();
+      localStorage.setItem(DH_PAGE_STATE_KEY, JSON.stringify({
+        ...prev,
+        ...patch,
+        path: '/digital-human',
+        updated_at: Date.now(),
+      }));
+    } catch {}
+  }
   try {
     const params = new URLSearchParams(location.search || '');
     const taskType = params.get('task_type');
@@ -735,26 +759,40 @@
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', tab);
+      const routeState = { tab };
       if (tab === 'tasks') {
         url.searchParams.set('task_type', state.activeTaskType || 'digital_human');
         url.searchParams.set('task_status', state.activeTaskStatus || 'pending');
+        routeState.task_type = state.activeTaskType || 'digital_human';
+        routeState.task_status = state.activeTaskStatus || 'pending';
       } else {
         url.searchParams.delete('task_type');
         url.searchParams.delete('task_status');
       }
-      if (tab === 'step2' && state._myAvTab) url.searchParams.set('av_tab', state._myAvTab);
-      else if (tab !== 'step2') url.searchParams.delete('av_tab');
+      if (tab === 'step2' && state._myAvTab) {
+        url.searchParams.set('av_tab', state._myAvTab);
+        routeState.av_tab = state._myAvTab;
+      } else if (tab !== 'step2') {
+        url.searchParams.delete('av_tab');
+        routeState.av_tab = '';
+      }
       if (tab === 'luxury-ad' || tab === 'material-film') {
-        url.searchParams.set('lux_step', String(Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1)))));
+        const luxStep = Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1)));
+        url.searchParams.set('lux_step', String(luxStep));
+        routeState.lux_step = luxStep;
         const focus = String(state.luxuryAd.routeFocus || '').trim();
         if (focus) url.searchParams.set('lux_focus', focus);
         else url.searchParams.delete('lux_focus');
+        routeState.lux_focus = focus;
       } else {
         url.searchParams.delete('lux_step');
         url.searchParams.delete('lux_focus');
+        routeState.lux_step = 0;
+        routeState.lux_focus = '';
       }
       // 中文注释：除继续制作的首屏恢复外，任何普通切换栏目都要清理项目详情参数。
       if (opts.preserveLuxuryProject !== true) url.searchParams.delete('luxury_project');
+      writeDigitalHumanPageState(routeState);
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
   }
@@ -764,6 +802,8 @@
       const urlTab = new URLSearchParams(location.search).get('tab');
       if (DH_VALID_TABS.includes(urlTab)) return urlTab;
     } catch {}
+    const savedRoute = readDigitalHumanPageState();
+    if (DH_VALID_TABS.includes(savedRoute.tab)) return savedRoute.tab;
     const hashTab = String(location.hash || '').replace(/^#/, '').trim();
     if (DH_VALID_TABS.includes(hashTab)) return hashTab;
     try {
@@ -778,6 +818,8 @@
       const step = Number(new URLSearchParams(location.search || '').get('lux_step'));
       if (Number.isFinite(step)) return Math.max(1, Math.min(5, step));
     } catch {}
+    const savedStep = Number(readDigitalHumanPageState().lux_step || 0);
+    if (Number.isFinite(savedStep) && savedStep > 0) return Math.max(1, Math.min(5, savedStep));
     return 0;
   }
 
@@ -786,6 +828,8 @@
       const focus = String(new URLSearchParams(location.search || '').get('lux_focus') || '').trim();
       if (['person', 'product', 'scene', 'script', 'frames', 'compose'].includes(focus)) return focus;
     } catch {}
+    const savedFocus = String(readDigitalHumanPageState().lux_focus || '').trim();
+    if (['person', 'product', 'scene', 'script', 'frames', 'compose'].includes(savedFocus)) return savedFocus;
     return '';
   }
 
@@ -863,6 +907,8 @@
       const urlTab = String(new URLSearchParams(location.search || '').get('av_tab') || '').trim();
       if (['image', 'video', 'product'].includes(urlTab)) return urlTab;
     } catch {}
+    const savedRouteTab = String(readDigitalHumanPageState().av_tab || '').trim();
+    if (['image', 'video', 'product'].includes(savedRouteTab)) return savedRouteTab;
     try {
       const saved = localStorage.getItem(DH_LAST_AVATAR_TAB_KEY);
       if (['image', 'video', 'product'].includes(saved)) return saved;
@@ -875,6 +921,11 @@
       localStorage.setItem(DH_LAST_TASK_TYPE_KEY, state.activeTaskType || 'digital_human');
       localStorage.setItem(DH_LAST_TASK_STATUS_KEY, state.activeTaskStatus || 'pending');
     } catch {}
+    writeDigitalHumanPageState({
+      tab: 'tasks',
+      task_type: state.activeTaskType || 'digital_human',
+      task_status: state.activeTaskStatus || 'pending',
+    });
     if (state.activeTab === 'tasks') rememberActiveTab('tasks');
   }
 
@@ -5449,7 +5500,7 @@
     state.serverVideoTasksLoading = true;
     const local = readVideoTasks();
     try {
-      const r = await api('/api/dh/videos/tasks');
+      const r = await api('/api/dh/videos/tasks?lite=1');
       const remoteTasks = (r?.data || []).map(normalizeRemoteVideoTask).filter(Boolean);
       state.serverVideoTasks = remoteTasks;
       state.serverVideoTasksLoadedAt = Date.now();
@@ -14749,7 +14800,7 @@
   // ══════════════ 作品库 ══════════════
   async function loadWorks() {
     try {
-      const r = await api('/api/dh/videos/tasks');
+      const r = await api('/api/dh/videos/tasks?lite=1');
       // 只保留 Step 3 生成的数字人正片（production / digital_human）；
       // Step 1 的"动态预览样片"、上传形象的 promote 样片 (kind=sample) 不计入作品库。
       const allWithVideo = (r?.data || []).filter(t => t.videoUrl || t.video_url || t.local_path);
