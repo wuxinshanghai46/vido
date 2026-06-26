@@ -15518,6 +15518,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
   "shot_size": "微观全景 / 固定镜头、中远景 / 缓慢前进、极近景 / 微距平移等",
   "shot_angle": "拍摄角度及镜头（景别），例如：俯视全景 / 固定镜头、中远景 / 缓慢前推、极近景 / 跟随手部动作平移",
   "objective": "这一镜的编剧意图，说明为什么需要这一镜，中文短句",
+  "story_link": "这一镜承接上一镜并引出下一镜的剧情关系，12-28 个中文字符",
   "purpose": "短标签，参考：痛点、context、product_reveal、feature_1、feature_2、demo、proof、comparison、offer、收束",
   "script_purpose": "同 purpose，必须是短标签",
   "duration": ${isDetailedMode ? '2-4' : '2-8'},
@@ -15546,6 +15547,9 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 
 硬性规则：
 - 必须围绕主商品或用户描述的服务讲完整广告故事：开场分镜、第二场景、后续推进场景、收尾分镜都要有清晰顺序；不要只写一个场景，也不要只套“钩子/产品亮相/卖点”模板。
+- 第 3 步必须先在内部确定一条连续故事线，再拆镜：主角/主体初始状态是什么、遇到什么问题、怎样发现产品/服务证据、如何体验或验证、最后为什么行动。每个镜头的画面、动作、台词都必须回答这条故事线中的一个节点，不能互相独立。
+- 每一镜必须与前后镜头存在承接关系：画面列写“谁/什么在什么场景做什么并发生什么变化”，动作列写这个变化如何被执行，台词列写角色或旁白此刻自然会说的话。禁止出现“嗯？这是什么？”“真的，感觉要被这些事淹没了”这类脱离具体业务证据、前后无法承接的空泛台词。
+- 如果上一镜已经提出问题，下一镜必须推进发现、确认、使用、证明或收束之一；不能连续多镜重复同一个情绪或同一个卖点。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
 - subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：有人物和场景同框才用 human_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
@@ -15742,7 +15746,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const idx = Number(item?.index || item?.shot_index || item?.beat_index || i + 1);
         const prev = prevList.find(x => Number(x?.index || x?.shot_index || x?.beat_index || 0) === idx) || prevList[i] || {};
         const merged = { ...prev, ...(item || {}), index: idx || i + 1 };
-        for (const key of ['title', 'role', 'story_stage', 'objective', 'purpose', 'script_purpose', 'duration', 'characters', 'dialogue_lines', 'voiceover', 'narration', 'content_prompt', 'scene_content', 'visual', 'action', 'visual_action', 'emotion', 'mood', 'material_usage', 'material_need', 'required_material', 'shot_size', 'shot_angle', 'camera', 'lighting_style', 'transition', 'sfx_audio']) {
+        for (const key of ['title', 'role', 'story_stage', 'objective', 'story_link', 'purpose', 'script_purpose', 'duration', 'characters', 'dialogue_lines', 'voiceover', 'narration', 'content_prompt', 'scene_content', 'visual', 'action', 'visual_action', 'emotion', 'mood', 'material_usage', 'material_need', 'required_material', 'shot_size', 'shot_angle', 'camera', 'lighting_style', 'transition', 'sfx_audio']) {
           const current = merged[key];
           const old = prev[key];
           const missing = current === undefined || current === null || (typeof current === 'string' && !current.trim()) || (Array.isArray(current) && !current.length);
@@ -15909,19 +15913,11 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         let dialogueLines = rawDialogueLines
           .map(line => _sanitizeLuxuryVisibleText(line, productSubject))
           .filter(Boolean);
-        if (expectedPeople >= 2 && !dialogueLines.length) {
-          const names = chars.map(luxuryCharacterName).filter(Boolean);
-          const speakerA = names[0] || '角色A';
-          const speakerB = names[1] || '角色B';
-          dialogueLines = [
-            `${speakerA}：${voiceover}`,
-            `${speakerB}：这个方案我明白了。`,
-          ];
-        }
         return {
           ...scene,
           role,
           objective,
+          story_link: _sanitizeLuxuryVisibleText(scene.story_link || scene.storyLink || '', productSubject),
           purpose: scene.purpose || objective,
           script_purpose: scene.script_purpose || scene.purpose_label || _luxuryScriptPurposeLabel(role, i, total, scene.purpose || ''),
           content_prompt: visual,

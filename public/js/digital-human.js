@@ -743,6 +743,11 @@
     }
   }
 
+  function getSavedLuxuryAdProjectId() {
+    const saved = readDigitalHumanPageState();
+    return String(saved.luxury_project || saved.luxury_project_id || '').trim();
+  }
+
   function clearLuxuryAdProjectRouteParam(tab = '') {
     try {
       const url = new URL(location.href);
@@ -784,6 +789,7 @@
         if (focus) url.searchParams.set('lux_focus', focus);
         else url.searchParams.delete('lux_focus');
         routeState.lux_focus = focus;
+        routeState.luxury_project = String(state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '').trim();
       } else {
         url.searchParams.delete('lux_step');
         url.searchParams.delete('lux_focus');
@@ -5125,7 +5131,8 @@
       const idLabel = t.isLuxuryProjectDraft
         ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
         : `ID ${String(t.taskId).slice(0, 8)}`;
-      return `<div class="dh-task-card ${active ? 'active' : ''}" data-task-id="${escapeHtml(t.taskId)}">
+      const cardStyle = t.isLuxuryProjectDraft ? luxuryProjectAccentStyle(t.project || {}) : '';
+      return `<div class="dh-task-card ${active ? 'active' : ''} ${t.isLuxuryProjectDraft ? 'dh-task-card-luxury-draft' : ''}" data-task-id="${escapeHtml(t.taskId)}"${cardStyle}>
         ${preview}
         <div class="dh-task-main">
           <div class="dh-task-head">
@@ -6880,6 +6887,28 @@
       state.luxuryAd?.assetManifest,
       state.luxuryAd?.briefInfo,
       state.luxuryAd?.globalVisualBible,
+    ].filter(Boolean);
+    const readColor = obj => {
+      if (!obj || typeof obj !== 'object') return '';
+      const raw = obj.dominant_color || obj.dominantColor || obj.accent_color || obj.accentColor || obj.color
+        || obj.metadata?.dominant_color || obj.metadata?.accent_color
+        || (Array.isArray(obj.palette) ? obj.palette[0] : '');
+      const color = String(raw || '').trim();
+      return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\))$/i.test(color) ? color : '';
+    };
+    const accent = candidates.map(readColor).find(Boolean);
+    return accent ? ` style="--lux-subject-accent:${escapeHtml(accent)}"` : '';
+  }
+
+  function luxuryProjectAccentStyle(project = {}) {
+    const candidates = [
+      project?.draft_state?.product_asset,
+      project?.draft_state?.person_asset,
+      project?.product_profile,
+      project?.visual_asset,
+      project?.asset_manifest,
+      project?.brief_info,
+      project?.global_visual_bible,
     ].filter(Boolean);
     const readColor = obj => {
       if (!obj || typeof obj !== 'object') return '';
@@ -9652,35 +9681,13 @@
     return 'confirmed_subject';
   }
 
-  function luxuryFallbackCopyByRole(role = '') {
-    const r = String(role || '').toLowerCase();
-    const map = {
-      hook: '问题出现，需求变清楚',
-      display: '主体出现，答案更具体',
-      macro: '关键细节，被清楚看见',
-      benefit: '真实体验，变化更自然',
-      proof: '证据成立，选择更放心',
-      cta: '现在行动，获取适合方案',
-    };
-    return map[r] || map.display;
-  }
-
-  function luxuryFallbackVisualByRole(role = '') {
-    const r = String(role || '').toLowerCase();
-    const map = {
-      hook: '已确认的真实场景中，主体相关的问题或期待被清楚建立，画面不替换行业和主体。',
-      display: '主体以用户需求、素材或剧本确认的方式出现，主体、人物和环境关系清楚。',
-      macro: '靠近主体的关键证据或使用细节，只放大当前业务真正需要看见的内容。',
-      benefit: '真实使用或互动场景中，主体带来的变化被人物动作、结果或对比自然说明。',
-      proof: '通过一个已确认的证据点证明主体价值，不新增无关道具、场地或 UI。',
-      cta: '主体与行动意图在同一画面内收束，留出后期字幕空间但不生成画面文字。',
-    };
-    return map[r] || map.display;
+  function luxuryFieldPlaceholder(label = '内容') {
+    return `${label}待补充`;
   }
 
   function luxuryShotVoiceText(seg = {}) {
     const raw = luxuryCleanAudienceLine(seg.ad_copy || seg.subtitle || seg.voiceover || seg.text || '');
-    if (luxuryLooksLikeNonAudienceLine(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
+    if (luxuryLooksLikeNonAudienceLine(raw)) return '';
     return raw.slice(0, 34);
   }
 
@@ -9689,9 +9696,9 @@
     if (luxuryLooksLikeBriefCopy(raw)
       || /^(按|根据).*(生成|推进)/.test(raw)
       || /主商品作为视觉中心|主商品占据画面中心|建立高端广告氛围|突出高级感|突出空间搭配效果|按广告需求|按广告内容/.test(raw)) {
-      return luxuryFallbackVisualByRole(seg.shot_role || seg.role || seg.type);
+      return '';
     }
-    return (raw || luxuryFallbackVisualByRole(seg.shot_role || seg.role || seg.type)).slice(0, 96);
+    return raw.slice(0, 96);
   }
 
   function luxuryShotContentPrompt(seg = {}) {
@@ -9703,7 +9710,7 @@
 
   function luxuryShotNarrationText(seg = {}) {
     const raw = luxuryCleanAudienceLine(seg.narration || seg.voiceover || seg.ad_copy || seg.subtitle || seg.text || '');
-    if (luxuryLooksLikeNonAudienceLine(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
+    if (luxuryLooksLikeNonAudienceLine(raw)) return '';
     return raw.slice(0, 60);
   }
 
@@ -9757,12 +9764,7 @@
       }
       return raw.slice(0, 120);
     }
-    const role = String(seg.shot_role || seg.role || seg.type || '').toLowerCase();
-    if (role === 'hook') return '人物或主体用一个明确动作引出当前问题或期待。';
-    if (role === 'macro') return '人物手部或主体关键部位完成一次细节展示动作。';
-    if (role === 'benefit' || role === 'proof') return '人物或主体完成体验、展示、确认或对比动作，让价值通过证据成立。';
-    if (role === 'cta') return '人物或主体完成收束动作，表达选择、确认或行动意图。';
-    return '人物或主体按剧本完成当前动作，动作与广告词同步。';
+    return '';
   }
 
   function luxuryShotEmotionText(seg = {}) {
@@ -10709,9 +10711,9 @@
       : luxuryCleanAudienceLine(rawDialogue);
     if (dialogue && !luxuryLooksLikeNonAudienceLine(dialogue)) return dialogue.slice(0, 260);
     const voice = luxuryShotNarrationText(seg);
-    if (!characters || characters.length < 2) return voice || '待生成广告词';
+    if (!characters || characters.length < 2) return voice || '';
     if (voice && /[：:]/.test(voice)) return voice;
-    return voice || '待生成广告词';
+    return voice || '';
   }
 
   function validateLuxuryAdScriptSegments(segments = [], info = {}, { detail = true } = {}) {
@@ -10918,16 +10920,16 @@
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
             <td>${String(i + 1).padStart(2, '0')}</td>
             <td>${escapeHtml(String(seconds))} 秒</td>
-            <td><b>${escapeHtml(visual)}</b><span>${escapeHtml(mood || '情绪/节奏待随分镜细化')}</span></td>
+            <td><b class="${visual ? '' : 'dh-lux-field-missing'}">${escapeHtml(visual || luxuryFieldPlaceholder('画面'))}</b><span>${escapeHtml(mood || '情绪/节奏待随分镜细化')}</span></td>
             <td>
               <b>${escapeHtml(subjectLabel)}</b>
               <span class="dh-lux-script-subject-help">${escapeHtml(subjectHelp)}</span>
-              <span>${escapeHtml(action || '动作待随分镜细化')}</span>
+              <span class="${action ? '' : 'dh-lux-field-missing'}">${escapeHtml(action || luxuryFieldPlaceholder('动作'))}</span>
               <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
                 ${renderLuxuryShotSubjectTypeOptions(subjectType)}
               </select>
             </td>
-            <td class="dh-demo-dialogue">${escapeHtml(voice || '待生成广告词')}</td>
+            <td class="dh-demo-dialogue ${voice ? '' : 'dh-lux-field-missing'}">${escapeHtml(voice || luxuryFieldPlaceholder('台词'))}</td>
             <td>${escapeHtml(purpose)}</td>
             <td>
               <span class="dh-luxgen-status ready">${scriptLocked ? '已锁定' : '可调整'}</span>
@@ -11340,6 +11342,14 @@
     state.luxuryAd.productionProject = project;
     state.luxuryAd.productionProjectId = project.id || state.luxuryAd.productionProjectId || '';
     if (project.production_contract) state.luxuryAd.productionContract = project.production_contract;
+    if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && state.luxuryAd.productionProjectId) {
+      writeDigitalHumanPageState({
+        tab: state.activeTab,
+        luxury_project: state.luxuryAd.productionProjectId,
+        lux_step: Math.max(1, Math.min(5, Number(state.luxuryAd.currentStep || 1))),
+        lux_focus: String(state.luxuryAd.routeFocus || '').trim(),
+      });
+    }
   }
 
   function luxuryAdCurrentDraftPayload(projectState = '') {
@@ -11498,8 +11508,8 @@
     return url.toString();
   }
 
-  async function restoreLuxuryAdProjectFromUrl() {
-    const projectId = getLuxuryAdProjectRouteId();
+  async function restoreLuxuryAdProjectFromUrl(projectIdOverride = '') {
+    const projectId = String(projectIdOverride || getLuxuryAdProjectRouteId() || '').trim();
     if (!projectId) return false;
     try {
       const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(projectId)}`);
@@ -16003,6 +16013,7 @@
           state.luxuryAd.productionProjectId = '';
           state.luxuryAd.productionProject = null;
         }
+        if (getSavedLuxuryAdProjectId() === id) writeDigitalHumanPageState({ luxury_project: '' });
         await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
         renderTaskCenter();
         toast('待继续任务已删除', 'success');
@@ -17718,8 +17729,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
 
   async function init() {
     if (!state.token) { location.href = '/?login=1'; return; }
-    const initialLuxuryProjectRouteId = getLuxuryAdProjectRouteId();
     const initialTab = getInitialTab();
+    const initialLuxuryProjectRouteId = getLuxuryAdProjectRouteId();
+    const initialLuxuryProjectStateId = (initialTab === 'luxury-ad' || initialTab === 'material-film') ? getSavedLuxuryAdProjectId() : '';
+    const initialLuxuryProjectId = initialLuxuryProjectRouteId || initialLuxuryProjectStateId;
     const initialLuxuryStep = getInitialLuxuryStep();
     const initialLuxuryFocus = getInitialLuxuryFocus();
     primeInitialDigitalHumanRoute(initialTab, initialLuxuryStep, initialLuxuryFocus);
@@ -18006,8 +18019,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     const initialAvatarTab = getInitialAvatarTab();
     if (initialAvatarTab) state._myAvTab = initialAvatarTab;
     // 中文注释：首屏如果来自“继续制作”深链，先保留一次项目参数，等恢复项目后再主动清理。
-    switchTab(initialTab, { preserveLuxuryProject: !!initialLuxuryProjectRouteId });
-    const restoredLuxuryProject = await restoreLuxuryAdProjectFromUrl();
+    switchTab(initialTab, { preserveLuxuryProject: !!initialLuxuryProjectId });
+    const restoredLuxuryProject = await restoreLuxuryAdProjectFromUrl(initialLuxuryProjectId);
     if (!restoredLuxuryProject && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus) {
       state.luxuryAd.routeFocus = initialLuxuryFocus;
       if (initialLuxuryFocus === 'person') state.luxuryAd.currentStep = Math.max(2, Number(state.luxuryAd.currentStep || 1));
