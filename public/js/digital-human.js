@@ -10896,13 +10896,14 @@
     <table class="dh-demo-table">
       <thead>
         <tr>
-          <th style="width:72px">镜头</th>
-          <th style="width:72px">时长</th>
-          <th>这一镜要拍什么</th>
-          <th>画面主体</th>
-          <th>成片台词</th>
-          <th style="width:150px">为什么保留</th>
-          <th style="width:190px">调整</th>
+          <th style="width:58px">镜</th>
+          <th style="width:62px">秒</th>
+          <th style="width:32%">画面</th>
+          <th style="width:24%">动作</th>
+          <th style="width:19%">台词</th>
+          <th style="width:92px">目的</th>
+          <th style="width:132px">状态</th>
+          <th style="width:72px">编辑</th>
         </tr>
       </thead>
       <tbody>
@@ -10918,21 +10919,21 @@
           const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
           const deleteAttr = scriptLocked || segments.length <= 1 ? `disabled title="${escapeHtml(scriptLocked ? luxuryAdLockedStepMessage(3) : '至少保留 1 个镜头')}"` : '';
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
-            <td>${String(i + 1).padStart(2, '0')}</td>
-            <td>${escapeHtml(String(seconds))} 秒</td>
-            <td><b class="${visual ? '' : 'dh-lux-field-missing'}">${escapeHtml(visual || luxuryFieldPlaceholder('画面'))}</b><span>${escapeHtml(mood || '情绪/节奏待随分镜细化')}</span></td>
-            <td>
-              <b>${escapeHtml(subjectLabel)}</b>
-              <span class="dh-lux-script-subject-help">${escapeHtml(subjectHelp)}</span>
-              <span class="${action ? '' : 'dh-lux-field-missing'}">${escapeHtml(action || luxuryFieldPlaceholder('动作'))}</span>
-              <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
-                ${renderLuxuryShotSubjectTypeOptions(subjectType)}
-              </select>
-            </td>
+            <td>${i + 1}</td>
+            <td>${escapeHtml(String(seconds))}</td>
+            <td><b class="${visual ? '' : 'dh-lux-field-missing'}">${escapeHtml(visual || luxuryFieldPlaceholder('画面'))}</b>${mood ? `<span>${escapeHtml(mood)}</span>` : ''}</td>
+            <td><b class="${action ? '' : 'dh-lux-field-missing'}">${escapeHtml(action || luxuryFieldPlaceholder('动作'))}</b></td>
             <td class="dh-demo-dialogue ${voice ? '' : 'dh-lux-field-missing'}">${escapeHtml(voice || luxuryFieldPlaceholder('台词'))}</td>
             <td>${escapeHtml(purpose)}</td>
             <td>
               <span class="dh-luxgen-status ready">${scriptLocked ? '已锁定' : '可调整'}</span>
+              <small class="dh-lux-script-subject-pill">${escapeHtml(subjectLabel)}</small>
+              <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
+                ${renderLuxuryShotSubjectTypeOptions(subjectType)}
+              </select>
+              <span class="dh-lux-script-subject-help">${escapeHtml(subjectHelp)}</span>
+            </td>
+            <td>
               <div class="dh-lux-script-row-actions">
                 <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}" ${scriptLockAttr}>编辑</button>
                 <button type="button" class="dh-luxgen-edit" data-lux-shot-extend="${i}" ${scriptLockAttr}>+2秒</button>

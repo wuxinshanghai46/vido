@@ -1183,19 +1183,22 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-character-card strong { display: block; color: var(--dh-text); font-size: 14px; line-height: 1.35; }
 .dh-luxgen-character-card small { display: block; margin-top: 4px; color: var(--dh-primary); font-size: 12px; font-weight: 800; }
 .dh-luxgen-character-card p { margin: 8px 0 0; color: var(--dh-text-soft); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.dh-demo-table { width: 100%; min-width: 1180px; border-collapse: collapse; table-layout: fixed; }
-.dh-demo-table th, .dh-demo-table td { padding: 13px 14px; border-bottom: 1px solid var(--dh-border); text-align: left; vertical-align: top; font-size: 13px; line-height: 1.55; }
-.dh-demo-table th { color: var(--dh-text-soft); background: var(--dh-bg); font-size: 12px; }
+.dh-demo-table { width: 100%; min-width: 1080px; border-collapse: collapse; table-layout: fixed; }
+.dh-demo-table th, .dh-demo-table td { padding: 11px 12px; border-bottom: 1px solid var(--dh-border); text-align: left; vertical-align: top; font-size: 13px; line-height: 1.55; }
+.dh-demo-table th { color: var(--dh-text-soft); background: var(--dh-bg); font-size: 12px; font-weight: 900; }
 .dh-demo-table tr:last-child td { border-bottom: 0; }
 .dh-demo-table tr.is-active td { background: rgba(33,255,243,.045); box-shadow: inset 3px 0 0 var(--dh-primary); }
-.dh-demo-table b { color: var(--dh-text); }
+.dh-demo-table b { display: block; color: var(--dh-text); font-weight: 800; }
 .dh-demo-table span { color: var(--dh-text-muted); display: block; margin-top: 5px; font-size: 12px; }
 .dh-demo-table .dh-demo-dialogue { white-space: pre-line; }
+.dh-lux-script-subject-pill { display: inline-flex; align-items: center; max-width: 100%; min-height: 24px; margin: 7px 0 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 30%, var(--dh-border)); background: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 8%, transparent); color: var(--dh-primary); font-size: 11px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-demo-table .dh-lux-shot-type-select { min-height: 32px; height: 32px; padding: 4px 8px; font-size: 12px; }
+.dh-demo-table .dh-lux-script-subject-help { margin-top: 5px; font-size: 11px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .dh-lux-script-shot-type { width: 100%; max-width: 170px; }
 .dh-lux-script-subject-help { color: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 68%, var(--dh-text-muted)); }
 .dh-lux-field-help { display: block; margin-top: 6px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; }
-.dh-lux-script-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.dh-lux-script-row-actions .dh-luxgen-edit { min-height: 30px; padding-inline: 9px; }
+.dh-lux-script-row-actions { display: grid; gap: 6px; margin-top: 0; }
+.dh-lux-script-row-actions .dh-luxgen-edit { min-height: 28px; padding-inline: 8px; }
 .dh-luxgen-edit:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .dh-demo-frame-list { display: grid; gap: 14px; }
 .dh-demo-frame-card {
