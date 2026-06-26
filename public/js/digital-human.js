@@ -4214,6 +4214,7 @@
     state.luxuryAd.keyframeGenerating = false;
     state.luxuryAd.keyframeProgress = null;
     state.luxuryAd.workflowProgress = null;
+    state.luxuryAd.storyboardRequest = null;
     state.luxuryAd.usageRows = [];
     state.luxuryAd.usageSummary = null;
     state.luxuryAd.usageByStep = {};
@@ -8302,20 +8303,28 @@
   function reconcileLuxuryAdGenerationState() {
     const hasOutline = Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length > 0;
     const hasScript = hasOutline && !!state.luxuryAd.storyboardDetailed;
+    const progress = state.luxuryAd.workflowProgress;
+    const pendingStoryboardRequest = state.luxuryAd.storyboardRequest?.key
+      && progress?.active
+      && !progress.keyframes;
     let changed = false;
-    if (hasOutline && state.luxuryAd.sceneGenerating) {
+    if (hasOutline && state.luxuryAd.sceneGenerating && !pendingStoryboardRequest) {
       state.luxuryAd.sceneGenerating = false;
       changed = true;
     }
-    if (hasScript && state.luxuryAd.scriptGenerating) {
+    if (hasScript && state.luxuryAd.scriptGenerating && !pendingStoryboardRequest) {
       state.luxuryAd.scriptGenerating = false;
       changed = true;
     }
-    const progress = state.luxuryAd.workflowProgress;
     if (progress?.active && !progress.keyframes) {
+      if (pendingStoryboardRequest) {
+        if (changed) renderLuxuryWorkflowProgress();
+        return changed;
+      }
       const progressIsDone = (progress.detail && hasScript) || (!progress.detail && hasOutline);
       if (progressIsDone || (!state.luxuryAd.sceneGenerating && !state.luxuryAd.scriptGenerating)) {
         state.luxuryAd.workflowProgress = null;
+        state.luxuryAd.storyboardRequest = null;
         changed = true;
       }
     }
@@ -8747,7 +8756,8 @@
     renderLuxuryAdModeUi();
     const gate = luxuryAdGateState();
     updateLuxuryStoryStageHeading();
-    const busyGenerating = gate.sceneGenerating || gate.scriptGenerating || state.luxuryAd.keyframeGenerating || state.luxuryAd.briefUploading;
+    const workflowGenerating = !!state.luxuryAd.workflowProgress?.active && !state.luxuryAd.workflowProgress?.keyframes;
+    const busyGenerating = gate.sceneGenerating || gate.scriptGenerating || workflowGenerating || state.luxuryAd.keyframeGenerating || state.luxuryAd.briefUploading;
     const step1Locked = luxuryAdStepIsLocked(1);
     const step2Locked = luxuryAdStepIsLocked(2);
     const step3Locked = luxuryAdStepIsLocked(3);
@@ -10936,14 +10946,18 @@
     const totalSeconds = Math.round(segments.reduce((sum, seg) => sum + luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length), 0) * 10) / 10;
     const avgSeconds = Math.round((totalSeconds / Math.max(1, segments.length)) * 10) / 10;
     const scriptLocked = luxuryAdStepIsLocked(3);
-    const scriptLockAttr = scriptLocked ? `disabled title="${escapeHtml(luxuryAdLockedStepMessage(3))}"` : '';
+    const scriptBusy = !!state.luxuryAd.scriptGenerating
+      || (!!state.luxuryAd.workflowProgress?.active && !!state.luxuryAd.workflowProgress?.detail && !state.luxuryAd.workflowProgress?.keyframes);
+    const scriptLockAttr = (scriptLocked || scriptBusy)
+      ? `disabled title="${escapeHtml(scriptBusy ? '剧本正在重新生成，请等待完成' : luxuryAdLockedStepMessage(3))}"`
+      : '';
     host.innerHTML = `<div class="dh-demo-script-review">
       <div>
         <h4>剧本审核</h4>
         <p>第 1 版 · 待确认 · ${escapeHtml(info.title || '剧情广告')} · 共 ${segments.length} 镜 · 总时长 ${totalSeconds} 秒</p>
       </div>
       <div class="dh-demo-script-actions">
-        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerate" ${scriptLockAttr}>重新生成整版</button>
+        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerate" ${scriptLockAttr}>${scriptBusy ? '生成剧本中…' : '重新生成整版'}</button>
         <span class="dh-luxgen-status ready">待确认</span>
       </div>
     </div>
@@ -11693,6 +11707,7 @@
     state.luxuryAd.sceneGenerating = false;
     state.luxuryAd.scriptGenerating = false;
     state.luxuryAd.workflowProgress = null;
+    state.luxuryAd.storyboardRequest = null;
     const input = $('#dhLuxAdText');
     if (input) input.value = state.luxuryAd.content || '';
     syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
@@ -12526,6 +12541,8 @@
     );
     const old = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = detail ? '生成剧本中…' : '生成场景配置中…'; }
+    const requestKey = luxuryStoryboardRequestKey(detail);
+    state.luxuryAd.storyboardRequest = { key: requestKey, detail: !!detail, startedAt: Date.now() };
     state.luxuryAd.sceneGenerating = !detail;
     state.luxuryAd.scriptGenerating = !!detail;
     syncLuxuryAdStepPanels();
@@ -12551,7 +12568,6 @@
           ? Math.max(1, Math.min(12, lockedShotLimit))
           : Math.max(1, Math.min(12, defaultScriptShots)))
         : undefined;
-      const requestKey = luxuryStoryboardRequestKey(detail);
       activeRequestKey = requestKey;
       const personAssetForGender = state.luxuryAd.personAsset || null;
       const personAssetGender = luxuryPersonConfirmedGender(personAssetForGender?.detected_gender, personAssetForGender?.gender);
@@ -12665,6 +12681,7 @@
         : `AI 已生成视频基础信息和广告结构，下一步确认主体后生成剧本`, 'success');
       state.luxuryAd.sceneGenerating = false;
       state.luxuryAd.scriptGenerating = false;
+      if (state.luxuryAd.storyboardRequest?.key === requestKey) state.luxuryAd.storyboardRequest = null;
       showLuxuryAdStep(detail ? 3 : 2, { silent: true });
       ok = true;
     } catch (err) {
@@ -12672,6 +12689,7 @@
     } finally {
       state.luxuryAd.sceneGenerating = false;
       state.luxuryAd.scriptGenerating = false;
+      if (state.luxuryAd.storyboardRequest?.key === requestKey) state.luxuryAd.storyboardRequest = null;
       if (activeRequestKey) await refreshLuxuryAdUsage(activeRequestKey);
       stopLuxuryWorkflowProgress(progressTimer);
       if (btn) { btn.disabled = false; btn.innerHTML = old || (detail ? '重新生成剧本' : (autoNext ? '2 生成场景配置' : '重新生成场景配置')); }
