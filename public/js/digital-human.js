@@ -8082,6 +8082,7 @@
   function renderLuxuryWorkflowProgress() {
     const progress = state.luxuryAd.workflowProgress;
     renderLuxuryWorkflowProgressBox($('#dhLuxAdLiveProgress'), progress);
+    renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptTopProgress'), progress);
     renderLuxuryWorkflowProgressBox($('#dhLuxAdScriptProgress'), progress);
     renderLuxuryWorkflowProgressBox($('#dhLuxAdFrameProgress'), progress);
   }

@@ -886,6 +886,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-live-progress { display: grid; gap: 10px; margin: -2px 0 16px; padding: 13px 14px; border: 1px solid rgba(33,255,243,.28); border-radius: var(--dh-radius-sm); background: linear-gradient(135deg, rgba(33,255,243,.075), rgba(172,255,47,.045)); box-shadow: 0 14px 34px rgba(0,0,0,.16); overflow: hidden; }
 .dh-luxgen-live-progress[hidden] { display: none !important; }
 .dh-luxgen-script-progress { margin: 12px; }
+.dh-luxgen-top-progress.dh-luxgen-script-progress { margin: 8px 0 14px; }
 .dh-luxgen-live-head, .dh-luxgen-live-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .dh-luxgen-live-head span { color: var(--dh-text); font-size: 13px; font-weight: 900; }
 .dh-luxgen-live-head b { color: var(--dh-primary); font-size: 13px; font-variant-numeric: tabular-nums; }
