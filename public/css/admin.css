@@ -4427,3 +4427,62 @@ body {
   display: none !important;
   content: none !important;
 }
+
+/* Dashboard-specific layout guard: keep summary tables readable without changing
+   monitor pages that also use .monitor-table. */
+#admin-dashboard-vue .monitor-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  background: var(--bg2);
+}
+
+#admin-dashboard-vue .monitor-table th,
+#admin-dashboard-vue .monitor-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+#admin-dashboard-vue .monitor-table th:not(:first-child),
+#admin-dashboard-vue .monitor-table td:not(:first-child) {
+  text-align: right;
+}
+
+#admin-dashboard-vue .monitor-table th:first-child,
+#admin-dashboard-vue .monitor-table td:first-child {
+  width: 30%;
+}
+
+.sidebar-bottom {
+  flex-shrink: 0;
+  background: var(--bg2);
+}
+
+.sidebar-bottom .sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-bottom .sidebar-btn {
+  width: 100%;
+  flex: none;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 8px;
+  white-space: nowrap;
+}
+
+.sidebar-bottom .sidebar-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1180px) {
+  .sidebar-bottom .sidebar-btn {
+    justify-content: center;
+  }
+}

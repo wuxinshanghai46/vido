@@ -11,15 +11,15 @@ router.get('/users', (req, res) => {
 
 router.post('/users', (req, res) => {
   const { username, email, phone, nickname, gender, remark, password, role, permissions, allowed_models } = req.body;
-  if (!username || !password) return res.status(400).json({ success: false, error: '鐢ㄦ埛鍚嶅拰瀵嗙爜蹇呭～' });
+  if (!username || !password) return res.status(400).json({ success: false, error: '用户名和密码必填' });
   const cleanUsername = String(username).trim();
   const passwordError = validatePassword(password);
   if (!isEnglishUsername(cleanUsername)) return res.status(400).json({ success: false, error: '用户名只能输入英文字母，长度 3-20 位' });
   if (passwordError) return res.status(400).json({ success: false, error: passwordError });
-  if (auth.getUserByUsername(cleanUsername)) return res.status(409).json({ success: false, error: '鐢ㄦ埛鍚嶅凡瀛樺湪' });
+  if (auth.getUserByUsername(cleanUsername)) return res.status(409).json({ success: false, error: '用户名已存在' });
   // role 蹇呴』鏄幇瀛樿鑹?
   const roleObj = role ? auth.getRoleById(role) : auth.getRoleById('user');
-  if (!roleObj) return res.status(400).json({ success: false, error: '瑙掕壊涓嶅瓨鍦? ' + role });
+  if (!roleObj) return res.status(400).json({ success: false, error: '角色不存在 ' + role });
   const { hash, salt } = hashPassword(password);
   const user = auth.createUser({
     username: cleanUsername, email: email || '', phone: phone || '', nickname: nickname || '', gender: gender || '', remark: remark || '',
@@ -33,7 +33,7 @@ router.post('/users', (req, res) => {
 
 router.get('/users/:id', (req, res) => {
   const user = auth.getUserById(req.params.id);
-  if (!user) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
+  if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
   res.json({ success: true, data: safeUser(user) });
 });
 
@@ -43,7 +43,7 @@ router.put('/users/:id', (req, res) => {
   if (role !== undefined) {
     // role 蹇呴』鏄瓨鍦ㄧ殑瑙掕壊
     const roleObj = auth.getRoleById(role);
-    if (!roleObj) return res.status(400).json({ success: false, error: '瑙掕壊涓嶅瓨鍦? ' + role });
+    if (!roleObj) return res.status(400).json({ success: false, error: '角色不存在 ' + role });
     updates.role = role;
   }
   if (status !== undefined) updates.status = status;
@@ -55,16 +55,16 @@ router.put('/users/:id', (req, res) => {
   if (gender !== undefined) updates.gender = gender;
   if (remark !== undefined) updates.remark = remark;
   const user = auth.updateUser(req.params.id, updates);
-  if (!user) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
+  if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
   res.json({ success: true, data: safeUser(user) });
 });
 
 router.delete('/users/:id', (req, res) => {
   const user = auth.getUserById(req.params.id);
-  if (!user) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
+  if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
   if (user.role === 'admin') {
     const admins = auth.getUsers().filter(u => u.role === 'admin');
-    if (admins.length <= 1) return res.status(400).json({ success: false, error: '涓嶈兘鍒犻櫎鏈€鍚庝竴涓鐞嗗憳' });
+    if (admins.length <= 1) return res.status(400).json({ success: false, error: '不能删除最后一个管理员' });
   }
   auth.deleteUser(req.params.id);
   auth.deleteUserRefreshTokens(req.params.id);
@@ -78,7 +78,7 @@ router.post('/users/:id/reset-password', (req, res) => {
   if (passwordError) return res.status(400).json({ success: false, error: passwordError });
   const { hash, salt } = hashPassword(password);
   const user = auth.updateUser(req.params.id, { password_hash: hash, password_salt: salt, password_plain: password });
-  if (!user) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
+  if (!user) return res.status(404).json({ success: false, error: '用户不存在' });
   auth.deleteUserRefreshTokens(req.params.id);
   res.json({ success: true });
 });
@@ -86,10 +86,10 @@ router.post('/users/:id/reset-password', (req, res) => {
 // === 绉垎绠＄悊 ===
 router.post('/users/:id/credits', (req, res) => {
   const { amount, reason } = req.body;
-  if (typeof amount !== 'number' || amount === 0) return res.status(400).json({ success: false, error: '閲戦蹇呴』涓洪潪闆舵暟瀛? '});
+  if (typeof amount !== 'number' || amount === 0) return res.status(400).json({ success: false, error: '金额必须为非零数字' });
   const type = amount > 0 ? 'add' : 'deduct';
-  const entry = auth.modifyCredits(req.params.id, amount, type, 'admin_adjust', reason || '绠＄悊鍛樿皟鏁?');
-  if (!entry) return res.status(404).json({ success: false, error: '鐢ㄦ埛涓嶅瓨鍦? '});
+  const entry = auth.modifyCredits(req.params.id, amount, type, 'admin_adjust', reason || '管理员调整');
+  if (!entry) return res.status(404).json({ success: false, error: '用户不存在' });
   res.json({ success: true, data: entry });
 });
 
@@ -686,7 +686,7 @@ router.get('/thumbnail/:type/:id', async (req, res) => {
       }
     } else if (type === 'drama') {
       const drama = db.getDramaProject(id);
-      if (!drama) return res.status(404).json({ success: false, error: '缃戝墽涓嶅瓨鍦? '});
+      if (!drama) return res.status(404).json({ success: false, error: '网剧不存在' });
       // 1. cover_url 鍙兘鏄?api 璺緞
       if (drama.cover_url) {
         // 妫€鏌ユ槸鍚︽槸 API 璺緞杩樻槸鏂囦欢璺緞
@@ -717,7 +717,7 @@ router.get('/thumbnail/:type/:id', async (req, res) => {
       }
     } else if (type === 'comic') {
       const comic = db.getComicTask(id);
-      if (!comic) return res.status(404).json({ success: false, error: '婕敾涓嶅瓨鍦? '});
+      if (!comic) return res.status(404).json({ success: false, error: '漫画不存在' });
       const firstPanel = (comic.panels || []).find(p => p.image_url);
       if (firstPanel) {
         if (firstPanel.image_url.startsWith('/') || firstPanel.image_url.startsWith('http')) {
@@ -729,7 +729,7 @@ router.get('/thumbnail/:type/:id', async (req, res) => {
       }
     } else if (type === 'avatar') {
       const avatar = db.getAvatarTask(id);
-      if (!avatar) return res.status(404).json({ success: false, error: '鏁板瓧浜轰笉瀛樺湪' });
+      if (!avatar) return res.status(404).json({ success: false, error: '数字人不存在' });
       if (avatar.avatar_url) {
         sourceUrl = avatar.avatar_url;
       } else if (avatar.video_url || avatar.output_url) {
@@ -804,7 +804,7 @@ router.get('/thumbnail/:type/:id', async (req, res) => {
     });
 
     if (!fs.existsSync(cacheFile)) {
-      return res.status(500).json({ success: false, error: '缂╃暐鍥剧敓鎴愬け璐? '});
+      return res.status(500).json({ success: false, error: '缩略图生成失败' });
     }
 
     res.setHeader('Content-Type', 'image/jpeg');
@@ -1264,15 +1264,18 @@ router.get('/dashboard', (req, res) => {
 
     // 鈥斺€斺€?鍐呭缁熻锛堝叏 7 绉嶆ā鍧楋級鈥斺€斺€?
     const contentStats = {};
-    const contentModules = [
-      { id: 'project',  name: '瑙嗛椤圭洰',  lister: 'listProjects' },
-      { id: 'drama',    name: '缃戝墽',      lister: 'listDramaProjects' },
-      { id: 'i2v',      name: '鍥剧敓瑙嗛',  lister: 'listI2VTasks' },
-      { id: 'novel',    name: '灏忚',      lister: 'listNovels' },
-      { id: 'comic',    name: '婕敾',      lister: 'listComicTasks' },
-      { id: 'avatar',   name: '鏁板瓧浜?',    lister: 'listAvatarTasks' },
-      { id: 'portrait', name: '瑙掕壊褰㈣薄',  lister: 'listPortraits' },
-    ];
+    const contentListerMap = {
+      project: 'listProjects',
+      drama: 'listDramaProjects',
+      i2v: 'listI2VTasks',
+      novel: 'listNovels',
+      comic: 'listComicTasks',
+      avatar: 'listAvatarTasks',
+      portrait: 'listPortraits',
+    };
+    const contentModules = CONTENT_MODULES
+      .filter(m => m.id !== 'all' && contentListerMap[m.id])
+      .map(m => ({ id: m.id, name: m.name, lister: contentListerMap[m.id] }));
     let totalContent = 0, todayContent = 0, weekContent = 0;
     for (const m of contentModules) {
       try {
@@ -1543,15 +1546,15 @@ function _modelLabelIndex() {
 function _fallbackProviderName(id) {
   return ({
     topview: 'Topview AI',
-    'aliyun-tts': '闃块噷浜?CosyVoice',
-    'aliyun-nls': '闃块噷浜?NLS',
-    deyunai: '婕矾鑱氬悎',
-    volcengine: '鐏北寮曟搸',
+    'aliyun-tts': '阿里云 CosyVoice',
+    'aliyun-nls': '阿里云 NLS',
+    deyunai: '漫路聚合',
+    volcengine: '火山引擎',
     replicate: 'Replicate',
     deepseek: 'DeepSeek',
-    dashscope: '闃块噷鐧剧偧',
-    hifly: '椋炲奖 Hifly',
-    jimeng: '鍗虫ⅵ',
+    dashscope: '阿里百炼',
+    hifly: '飞影 Hifly',
+    jimeng: '即梦',
   })[id] || id || '-';
 }
 
@@ -1966,7 +1969,7 @@ router.get('/api-accounts/model-catalog', (req, res) => {
   try {
     const { loadSettings } = require('../services/settingsService');
     const s = loadSettings();
-    const USE_LABELS = { story: '鍓ф儏', image: '鍥剧墖', video: '瑙嗛', tts: '璇煶', vlm: '瑙嗚鐞嗚В' };
+    const USE_LABELS = { story: '剧情', image: '图片', video: '视频', tts: '语音', vlm: '视觉理解' };
     const groups = [];
     for (const p of (s.providers || [])) {
       if (p.enabled === false) continue;
@@ -2055,7 +2058,7 @@ router.get('/datasources', (req, res) => {
 router.put('/datasources/:id', (req, res) => {
   try {
     const id = req.params.id;
-    if (!searchProviders.getProvider(id)) return res.status(404).json({ success: false, error: 'provider 涓嶅瓨鍦? '});
+    if (!searchProviders.getProvider(id)) return res.status(404).json({ success: false, error: 'provider 不存在' });
     const config = searchProviders.loadConfig();
     config.providers = config.providers || {};
     config.providers[id] = { ...(config.providers[id] || {}), ...req.body };
@@ -2066,7 +2069,7 @@ router.put('/datasources/:id', (req, res) => {
 router.post('/datasources/:id/health', async (req, res) => {
   try {
     const provider = searchProviders.getProvider(req.params.id);
-    if (!provider) return res.status(404).json({ success: false, error: 'provider 涓嶅瓨鍦? '});
+    if (!provider) return res.status(404).json({ success: false, error: 'provider 不存在' });
     const config = searchProviders.loadConfig();
     const r = await provider.health(config.providers?.[req.params.id] || {});
     res.json({ success: true, health: r });
