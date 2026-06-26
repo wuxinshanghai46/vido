@@ -1162,11 +1162,24 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-demo-script-mainline, .dh-demo-script-overview { margin: 12px; padding: 13px 16px; border-radius: var(--dh-radius-sm); background: rgba(33,255,243,.055); color: var(--dh-text); border: 1px solid rgba(33,255,243,.20); }
 .dh-demo-script-mainline b, .dh-demo-script-overview b { display: block; color: var(--dh-primary); font-size: 13px; margin-bottom: 5px; }
 .dh-demo-script-mainline span, .dh-demo-script-overview span { color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
-.dh-luxgen-character-panel { display: grid; gap: 10px; margin: 0 12px 12px; padding: 13px; border: 1px solid rgba(143,178,255,.16); border-radius: var(--dh-radius-sm); background: rgba(255,255,255,.018); }
+.dh-lux-script-checklist { border-color: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 38%, transparent); background: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 8%, transparent); }
+.dh-luxgen-character-panel,
+.dh-luxgen-global-bible {
+  --lux-subject-panel: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 7%, transparent);
+  --lux-subject-line: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 30%, transparent);
+  --lux-subject-card: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 10%, var(--dh-bg-soft));
+  display: grid;
+  gap: 10px;
+  margin: 0 12px 12px;
+  padding: 13px;
+  border: 1px solid var(--lux-subject-line);
+  border-radius: var(--dh-radius-sm);
+  background: var(--lux-subject-panel);
+}
 .dh-luxgen-character-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dh-text-soft); font-size: 12px; }
 .dh-luxgen-character-head b { color: var(--dh-primary); font-size: 13px; }
 .dh-luxgen-character-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.dh-luxgen-character-card { min-width: 0; padding: 12px; border: 1px solid rgba(33,255,243,.20); border-radius: var(--dh-radius-sm); background: rgba(8,14,24,.26); }
+.dh-luxgen-character-card { min-width: 0; padding: 12px; border: 1px solid var(--lux-subject-line, rgba(33,255,243,.20)); border-radius: var(--dh-radius-sm); background: var(--lux-subject-card, rgba(8,14,24,.12)); }
 .dh-luxgen-character-card strong { display: block; color: var(--dh-text); font-size: 14px; line-height: 1.35; }
 .dh-luxgen-character-card small { display: block; margin-top: 4px; color: var(--dh-primary); font-size: 12px; font-weight: 800; }
 .dh-luxgen-character-card p { margin: 8px 0 0; color: var(--dh-text-soft); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
@@ -1178,6 +1191,10 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-demo-table b { color: var(--dh-text); }
 .dh-demo-table span { color: var(--dh-text-muted); display: block; margin-top: 5px; font-size: 12px; }
 .dh-demo-table .dh-demo-dialogue { white-space: pre-line; }
+.dh-lux-script-shot-type { width: 100%; max-width: 170px; }
+.dh-lux-script-row-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dh-lux-script-row-actions .dh-luxgen-edit { min-height: 30px; padding-inline: 9px; }
+.dh-luxgen-edit:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .dh-demo-frame-list { display: grid; gap: 14px; }
 .dh-demo-frame-card {
   display: grid;

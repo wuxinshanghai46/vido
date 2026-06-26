@@ -6733,13 +6733,34 @@
   const LUXURY_SHOT_SUBJECT_TYPES = {
     auto: 'AI 判断',
     human_scene: '人物场景',
-    product_only: '商品-only',
+    product_only: '只拍商品',
     product_detail: '商品特写',
     hand_operation: '手部操作',
     ui_screen: '界面 / 数据',
     environment: '空镜 / 场景',
     brand_endcard: '品牌收尾',
     proof_scene: '效果证明',
+  };
+
+  const LUXURY_SCRIPT_PURPOSE_LABELS = {
+    problem: '痛点开场',
+    pain: '痛点开场',
+    hook: '开场钩子',
+    context: '场景铺垫',
+    scene: '场景铺垫',
+    product_reveal: '主体亮相',
+    product: '主体亮相',
+    feature: '卖点展开',
+    feature_1: '卖点一',
+    feature_2: '卖点二',
+    demo: '使用演示',
+    proof: '证据建立',
+    proof_scene: '证据建立',
+    comparison: '前后对比',
+    offer: '权益行动',
+    cta: '收束行动',
+    end: '收束行动',
+    beat: '剧情推进',
   };
 
   function normalizeLuxuryShotSubjectType(seg = {}) {
@@ -6754,6 +6775,41 @@
       return 'product_only';
     }
     return 'auto';
+  }
+
+  function luxuryReadablePurposeLabel(raw = '', seg = {}, i = 0, total = 1) {
+    const value = String(raw || '').trim();
+    const key = value.toLowerCase().replace(/[\s-]+/g, '_');
+    if (LUXURY_SCRIPT_PURPOSE_LABELS[key]) return LUXURY_SCRIPT_PURPOSE_LABELS[key];
+    if (/feature[_-]?\d+/i.test(value)) return `卖点 ${value.match(/\d+/)?.[0] || ''}`.trim();
+    if (/痛点|开场|铺垫|亮相|卖点|演示|证明|对比|权益|收束/.test(value)) return value.slice(0, 24);
+    const role = String(seg.role || seg.shot_role || '').toLowerCase();
+    if (role.includes('hook')) return '开场钩子';
+    if (role.includes('macro') || role.includes('reveal')) return '主体亮相';
+    if (role.includes('benefit') || role.includes('feature')) return '卖点展开';
+    if (role.includes('proof')) return '证据建立';
+    if (role.includes('cta') || role.includes('end')) return '收束行动';
+    return i === 0 ? '开场钩子' : (i >= total - 1 ? '收束行动' : '剧情推进');
+  }
+
+  function luxurySubjectAccentStyle() {
+    const candidates = [
+      state.luxuryAd?.productAsset,
+      state.luxuryAd?.personAsset,
+      state.luxuryAd?.assetManifest,
+      state.luxuryAd?.briefInfo,
+      state.luxuryAd?.globalVisualBible,
+    ].filter(Boolean);
+    const readColor = obj => {
+      if (!obj || typeof obj !== 'object') return '';
+      const raw = obj.dominant_color || obj.dominantColor || obj.accent_color || obj.accentColor || obj.color
+        || obj.metadata?.dominant_color || obj.metadata?.accent_color
+        || (Array.isArray(obj.palette) ? obj.palette[0] : '');
+      const color = String(raw || '').trim();
+      return /^(#[0-9a-f]{3,8}|rgba?\([^)]+\))$/i.test(color) ? color : '';
+    };
+    const accent = candidates.map(readColor).find(Boolean);
+    return accent ? ` style="--lux-subject-accent:${escapeHtml(accent)}"` : '';
   }
 
   function luxuryShotRequiresPersonFromType(type = 'auto', seg = {}) {
@@ -10485,22 +10541,16 @@
 
   function luxuryScriptPurposeLabel(seg = {}, i = 0, total = 1) {
     const raw = String(seg.script_purpose || seg.purpose_label || '').trim();
-    if (raw) return raw.slice(0, 24);
-    const defaults = ['痛点', 'context', 'product_reveal', 'feature_1', 'feature_2', 'demo', 'proof', 'comparison', 'offer', '收束'];
-    if (total >= 8) return defaults[Math.min(i, defaults.length - 1)] || 'beat';
-    const role = String(seg.role || seg.shot_role || '').toLowerCase();
-    if (role.includes('hook')) return '痛点';
-    if (role.includes('macro')) return 'product_reveal';
-    if (role.includes('benefit')) return 'feature';
-    if (role.includes('proof')) return 'proof';
-    if (role.includes('cta') || role.includes('end')) return '收束';
-    return i === 0 ? '开场' : (i >= total - 1 ? '收束' : 'context');
+    if (raw) return luxuryReadablePurposeLabel(raw, seg, i, total);
+    const defaults = ['痛点开场', '场景铺垫', '主体亮相', '卖点一', '卖点二', '使用演示', '证据建立', '前后对比', '权益行动', '收束行动'];
+    if (total >= 8) return defaults[Math.min(i, defaults.length - 1)] || '剧情推进';
+    return luxuryReadablePurposeLabel('', seg, i, total);
   }
 
   function renderLuxuryCharacterCards(info = {}) {
     const characters = Array.isArray(info.characters) ? info.characters : [];
     if (!characters.length) return '';
-    return `<section class="dh-luxgen-character-panel">
+    return `<section class="dh-luxgen-character-panel"${luxurySubjectAccentStyle()}>
       <div class="dh-luxgen-character-head">
         <b>人物表</b>
         <span>用于后续分镜、人物一致性和对白关系。</span>
@@ -10534,7 +10584,7 @@
       ? Object.entries(bible.locks_summary).filter(([, value]) => String(value || '').trim()).slice(0, 6)
       : [];
     if (!rows.length && !characters.length && !locks.length) return '';
-    return `<section class="dh-luxgen-global-bible">
+    return `<section class="dh-luxgen-global-bible"${luxurySubjectAccentStyle()}>
       <div class="dh-luxgen-character-head">
         <b>高级 · 全局视觉</b>
         <span>风格、色调、光照、人物、主场景会进入每个镜头执行包。</span>
@@ -10728,21 +10778,25 @@
     </div>
     <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdScriptProgress" hidden></div>
     <div class="dh-demo-script-mainline">
-      <b>剧本主线</b>
+      <b>脚本主线</b>
       <span>${escapeHtml([info.style || '高端商业广告', info.theme || '品牌广告', `${segments.length} 个镜头`, characters.length >= 2 ? '双人互动对白' : '旁白/单人讲解'].filter(Boolean).join(' · '))}</span>
+    </div>
+    <div class="dh-demo-script-overview dh-lux-script-checklist">
+      <b>生成分镜图前先确认</b>
+      <span>这里调整的是镜头内容和主体类型。删掉多余镜头、把只拍商品的镜头改成“只拍商品”后，再进入图片分镜生成。</span>
     </div>
     ${renderLuxuryGlobalVisualBible()}
     ${renderLuxuryCharacterCards(info)}
     <table class="dh-demo-table">
       <thead>
         <tr>
-          <th style="width:84px">镜</th>
-          <th style="width:74px">秒</th>
-          <th>画面</th>
-          <th>动作</th>
-          <th>台词</th>
-          <th style="width:160px">目的</th>
-          <th style="width:128px">状态</th>
+          <th style="width:72px">镜头</th>
+          <th style="width:72px">时长</th>
+          <th>这一镜要拍什么</th>
+          <th>人物/主体</th>
+          <th>台词/字幕</th>
+          <th style="width:150px">为什么保留</th>
+          <th style="width:190px">调整</th>
         </tr>
       </thead>
       <tbody>
@@ -10753,14 +10807,30 @@
           const purpose = luxuryScriptPurposeLabel(seg, i, segments.length);
           const mood = luxuryShotEmotionText(seg);
           const seconds = luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length);
+          const subjectType = normalizeLuxuryShotSubjectType(seg);
+          const subjectLabel = LUXURY_SHOT_SUBJECT_TYPES[subjectType] || LUXURY_SHOT_SUBJECT_TYPES.auto;
+          const deleteAttr = scriptLocked || segments.length <= 1 ? `disabled title="${escapeHtml(scriptLocked ? luxuryAdLockedStepMessage(3) : '至少保留 1 个镜头')}"` : '';
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
             <td>${String(i + 1).padStart(2, '0')}</td>
-            <td>${escapeHtml(String(seconds))}</td>
-            <td><b>${escapeHtml(visual)}</b><span>${escapeHtml(mood)}</span></td>
-            <td>${escapeHtml(action)}</td>
+            <td>${escapeHtml(String(seconds))} 秒</td>
+            <td><b>${escapeHtml(visual)}</b><span>${escapeHtml(mood || '情绪/节奏待随分镜细化')}</span></td>
+            <td>
+              <b>${escapeHtml(subjectLabel)}</b>
+              <span>${escapeHtml(action || '动作待随分镜细化')}</span>
+              <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
+                ${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${subjectType === value ? 'selected' : ''}>${label}</option>`).join('')}
+              </select>
+            </td>
             <td class="dh-demo-dialogue">${escapeHtml(voice || '待生成广告词')}</td>
             <td>${escapeHtml(purpose)}</td>
-            <td><span class="dh-luxgen-status ready">${scriptLocked ? '已锁定' : '待确认'}</span><button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}" ${scriptLockAttr}>编辑</button></td>
+            <td>
+              <span class="dh-luxgen-status ready">${scriptLocked ? '已锁定' : '可调整'}</span>
+              <div class="dh-lux-script-row-actions">
+                <button type="button" class="dh-luxgen-edit" data-lux-shot-edit="${i}" ${scriptLockAttr}>编辑</button>
+                <button type="button" class="dh-luxgen-edit" data-lux-shot-extend="${i}" ${scriptLockAttr}>+2秒</button>
+                <button type="button" class="dh-luxgen-edit danger" data-lux-outline-delete="${i}" ${deleteAttr}>删除</button>
+              </div>
+            </td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -15531,12 +15601,14 @@
     const outlineDelete = closest('[data-lux-outline-delete]');
     if (outlineDelete) {
       if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再删除分镜', 'error');
+      if (luxuryAdStepIsLocked(3)) return toast(luxuryAdLockedStepMessage(3), 'error');
       await deleteLuxuryAdSegment(Number(outlineDelete.dataset.luxOutlineDelete));
       return;
     }
     const shotExtend = closest('[data-lux-shot-extend]');
     if (shotExtend) {
       if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再延长分镜', 'error');
+      if (luxuryAdStepIsLocked(3)) return toast(luxuryAdLockedStepMessage(3), 'error');
       await extendLuxuryAdSegment(Number(shotExtend.dataset.luxShotExtend));
       return;
     }
@@ -16534,6 +16606,11 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       if (state.luxuryAd.keyframeGenerating) {
         renderLuxuryAdStoryboard();
         toast('正在生成画面预览，完成后再修改镜头类型', 'error');
+        return;
+      }
+      if (luxuryAdStepIsLocked(3)) {
+        renderLuxuryAdStoryboard();
+        toast(luxuryAdLockedStepMessage(3), 'error');
         return;
       }
       await setLuxuryAdSegmentSubjectType(Number(e.target.dataset.luxShotSubjectType), e.target.value || 'auto');
