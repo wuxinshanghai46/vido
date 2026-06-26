@@ -7729,6 +7729,7 @@
         state.luxuryAd.personSpecLock?.gender,
       ));
       const age = LUXURY_PERSON_SPEC_LABELS.age[state.luxuryAd.personSpecLock?.age || state.luxuryAd.personAsset.age || ''] || '';
+      persistLuxuryAdPersonDraft().catch(() => {});
       toast(`已选择角色素材「${asset.name || '演员'}」${[gender ? `人物性别已同步为${gender}` : '', age ? `年龄已同步为${age}` : ''].filter(Boolean).join('，')}`, 'success');
     });
   }
@@ -8381,7 +8382,7 @@
     const contentReady = text.length >= 6;
     const storyboardReady = segments.length > 0;
     const detailedReady = materialMode ? contentReady : !!state.luxuryAd.storyboardDetailed;
-    const titleReady = !storyboardReady || !!String(state.luxuryAd.briefInfo?.title || '').trim();
+    const titleReady = !storyboardReady || !!String(state.luxuryAd.briefInfo?.title || '').trim() || !!luxuryAdFallbackTitleText();
     const sceneGenerating = !!state.luxuryAd.sceneGenerating;
     const scriptGenerating = !!state.luxuryAd.scriptGenerating;
     const landingAssetsReady = luxuryAdHasLandingAssets();
@@ -8448,6 +8449,39 @@
     if (reason) el.title = reason;
     else el.removeAttribute('title');
     el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  }
+
+  function luxuryAdFallbackTitleText() {
+    const info = state.luxuryAd.briefInfo || {};
+    const source = [
+      info.title,
+      info.theme,
+      info.product_subject,
+      info.product,
+      state.luxuryAd.content,
+      $('#dhLuxAdText')?.value,
+    ].find(v => String(v || '').trim());
+    const cleaned = String(source || '剧情广告')
+      .replace(/[，。！？、；：,.!?;:"“”'（）()\[\]【】]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const compact = cleaned.replace(/\s+/g, '');
+    if (/[\u4e00-\u9fff]/.test(compact)) return compact.slice(0, 8) || '剧情广告';
+    return cleaned.split(' ').filter(Boolean).slice(0, 4).join(' ') || '剧情广告';
+  }
+
+  function ensureLuxuryAdBriefTitle() {
+    const current = String(state.luxuryAd.briefInfo?.title || '').trim();
+    if (current) return current;
+    const nextInfo = deriveLuxuryBriefInfo(
+      ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim(),
+      state.luxuryAd.segments || [],
+      state.luxuryAd.briefInfo || {}
+    );
+    const title = String(nextInfo.title || luxuryAdFallbackTitleText()).trim() || '剧情广告';
+    state.luxuryAd.briefInfo = { ...nextInfo, title, title_auto_filled: true };
+    syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
+    return title;
   }
 
   function setLuxuryPersonActionState(selector, active) {
@@ -8552,6 +8586,13 @@
         ? (step2Locked ? luxuryAdLockedStepMessage(2) : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : '')))
         : (step2Locked ? luxuryAdLockedStepMessage(2) : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')))))
     );
+    const storyboardBtn = $('#dhLuxAdStoryboard');
+    if (storyboardBtn && !gate.materialMode && gate.detailedReady && gate.storyboardReady && !busyGenerating) {
+      storyboardBtn.disabled = false;
+      storyboardBtn.removeAttribute('title');
+      storyboardBtn.setAttribute('aria-disabled', 'false');
+      storyboardBtn.textContent = '已生成剧本，查看剧本';
+    }
     setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', step3Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady))), step3Locked ? luxuryAdLockedStepMessage(3) : (busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : ''))));
     setLuxuryButtonLock('#dhLuxAdPreviewFrames', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.detailedReady && !gate.materialMode ? '请先生成剧本' : '')));
     const previewBtn = $('#dhLuxAdPreviewFrames');
@@ -8950,6 +8991,7 @@
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'uploaded_person_reference');
+      persistLuxuryAdPersonDraft().catch(() => {});
       toast('真人照片参考已上传，会用于后续剧本和分镜保持人物一致', 'success');
     } catch (err) {
       state.luxuryAd.personAsset = state.luxuryAd.personAsset ? { ...state.luxuryAd.personAsset, uploading: false, failed: true } : null;
@@ -9158,6 +9200,7 @@
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
       persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'local_actor_library_generated');
+      persistLuxuryAdPersonDraft().catch(() => {});
       toast('拟真一致性演员已生成，并会写入角色素材库用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.luxuryAd.personGenerationError = {
@@ -11183,6 +11226,25 @@
     return r?.production_project || r?.project || null;
   }
 
+  async function persistLuxuryAdPersonDraft({ keepFocus = true } = {}) {
+    if (!state.luxuryAd.personAsset || state.luxuryAd.personAsset.uploading || state.luxuryAd.personAsset.failed) return null;
+    const project = await saveLuxuryAdDraft({ silent: true, projectState: 'script_reviewing' }).catch(err => {
+      console.warn('[luxuryAd] save person draft failed:', err.message || err);
+      return null;
+    });
+    const projectId = project?.id || state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '';
+    if (projectId && keepFocus && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film')) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', 'luxury-ad');
+      url.searchParams.set('lux_step', String(Math.max(2, Number(state.luxuryAd.currentStep || 2) || 2)));
+      url.searchParams.set('lux_focus', 'person');
+      url.searchParams.set('luxury_project', projectId);
+      url.hash = '';
+      history.replaceState({}, '', url.toString());
+    }
+    return project;
+  }
+
   function ensureLuxuryResumeModal() {
     let modal = document.getElementById('dhLuxuryResumeModal');
     if (modal) return modal;
@@ -11242,8 +11304,8 @@
     try {
       const r = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(projectId)}`);
       restoreLuxuryAdProject(r.project, { modal: false, fromUrl: true });
-      // 中文注释：项目恢复成功后立即清掉 URL 参数，后续刷新回到剧情广告入口而不是重复打开旧项目。
-      clearLuxuryAdProjectRouteParam('luxury-ad');
+      // 中文注释：人物配置页需要保留项目 ID，刷新才能继续看到已生成/已选择的人物包。
+      if (state.luxuryAd.routeFocus !== 'person') clearLuxuryAdProjectRouteParam('luxury-ad');
       return true;
     } catch (err) {
       clearLuxuryAdProjectRouteParam('luxury-ad');
@@ -12160,7 +12222,7 @@
       return toast(err.message, 'error');
     }
     if (detail && !state.luxuryAd.segments?.length) return toast('请先生成场景配置，再生成剧本', 'error');
-    if (detail && !String(state.luxuryAd.briefInfo?.title || '').trim()) return toast('请先填写标题，再生成剧本', 'error');
+    if (detail) ensureLuxuryAdBriefTitle();
     if (!detail && luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
     if (detail && luxuryAdStepIsLocked(3)) return toast(luxuryAdLockedStepMessage(3), 'error');
     state.luxuryAd.content = text;
@@ -15655,6 +15717,7 @@
     const luxStoryboardBtn = closest('#dhLuxAdStoryboard');
     if (luxStoryboardBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      else if (state.luxuryAd.storyboardDetailed && Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length) showLuxuryAdStep(3);
       else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxStoryboardBtn });
       return;
     }
