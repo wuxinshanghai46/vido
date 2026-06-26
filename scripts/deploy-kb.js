@@ -157,6 +157,7 @@ const FILES = [
   ['public/js/digital-human.js', true],
   ['public/css/digital-human.css', true],
   ['public/css/digital-human-wizard.css', true],
+  ['public/css/vido-ui.css', true],
   // === 文档 ===
   ['docs/KB_VERIFICATION.md', true],
   // === KB 数据：不覆盖 ===
