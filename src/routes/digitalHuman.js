@@ -3298,7 +3298,7 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
     return 'retail or operations evidence named by the shot, such as counter device, shelf/stock context, order status panel or staff workflow';
   }
   if (/家居|家庭|客厅|卧室|厨房|日程|家务|设备|机器人|智能生活|smart\s*home|home|household|robot/i.test(text)) {
-    return 'real home-life evidence named by the shot, such as household devices, schedule cues, smart-home controls or the confirmed embodied assistant';
+    return 'real home-life evidence explicitly named by this shot, such as the confirmed household scene, schedule cue, smart-home control, or confirmed embodied assistant; do not invent a vacuum cleaner, sweeper robot, laptop, dashboard or developer workstation unless the shot says so';
   }
   return 'the concrete device, environment, action or result evidence explicitly named by this shot; do not invent a default laptop, dashboard, order form or product package';
 }
@@ -3382,7 +3382,7 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
       'generic physical product reveal, packshot, catalogue hero shot, product box, retail shelf or luxury object display',
       'calm presenter posing beside a screen when the script requires confusion, comparison, discovery or workflow action',
       'fake readable UI text, subtitles, logo text, watermark or decorative brand slogan',
-      !apiIntegrationBeat ? 'default laptop/desktop/code editor/dashboard if this shot did not explicitly ask for it' : '',
+      !apiIntegrationBeat ? 'default laptop/desktop/code editor/dashboard, sweeper robot or unrelated smart-home device if this shot did not explicitly ask for it' : '',
       apiIntegrationBeat ? 'phone-only app mockup as the main subject, comic/storyboard editor, video editing timeline, bright generic home-office app promo, or storyboard-planning workflow when the shot is about API/integration' : '',
     ].filter(Boolean),
     qaRule: apiIntegrationBeat
@@ -15497,7 +15497,9 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     );
     const nonBuildingSubject = !_luxuryHasExplicitSteelSubject(`${brief}\n${productSubject}\n${enrichedAssetSummary}`)
       && !/建筑|建材|空间设计|室内设计|外立面|墙面|展厅|样板间|材料|钢材|金属板|building|architecture|showroom|facade|material/i.test(`${brief}\n${productSubject}\n${enrichedAssetSummary}`);
-    const lockedActorRole = /视频|网站|平台|AI|软件|SaaS|创作|剪辑|小说|漫画|数字人|video|platform|software|website|creator|content/i.test(`${brief}\n${productSubject}`)
+    const platformOrCreativeBrief = /视频|网站|平台|软件|SaaS|创作|剪辑|小说|漫画|数字人|video|platform|software|website|creator|content/i.test(`${brief}\n${productSubject}`)
+      && !/智能生活|智能家居|家居|家庭|客厅|卧室|厨房|家务|设备联动|扫地机器人|AI\s*机器人|机器人|smart\s*home|home\s*assistant|household|living\s*room|vacuum|robot/i.test(`${brief}\n${productSubject}`);
+    const lockedActorRole = platformOrCreativeBrief
       ? 'VIDO平台体验者 / 内容创作者'
       : '广告核心体验人物';
     const cleanCrossIndustryLeak = value => {
@@ -15506,10 +15508,10 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       return text
         .replace(/建筑设计师\s*\/\s*空间叙事设计师|建筑设计师|空间叙事设计师|空间设计师|室内设计师|设计会客区|建筑空间|建材展厅|材料展厅|材料墙|外立面|样板间|钢材|金属板材|金属板/g, match => {
           if (/设计师|叙事/.test(match)) return lockedActorRole;
-          if (/建筑空间|展厅|材料墙|外立面|样板间/.test(match)) return /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '平台创作流程' : '已确认业务场景';
+          if (/建筑空间|展厅|材料墙|外立面|样板间/.test(match)) return platformOrCreativeBrief ? '平台创作流程' : '已确认业务场景';
           return productSubject || '已确认主体';
         })
-        .replace(/建筑|建材|展厅|外立面|样板间/g, /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '平台' : '业务');
+        .replace(/建筑|建材|展厅|外立面|样板间/g, platformOrCreativeBrief ? '平台' : '业务');
     };
     const stableIndex = (seed, size) => {
       const raw = String(seed || `${brief}\n${productSubject}\n${person_asset?.actor_asset_id || person_asset?.actor_id || ''}`);
@@ -15548,7 +15550,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         lockedActorGender === 'female' ? '女性青年，保持演员包里的脸型、发型、身形和真实照片质感' : '',
       ].filter(Boolean).join('；')).slice(0, 220),
       outfit: '保持演员包中的同一套服装、发型和整体气质',
-      hand_prop: /视频|网站|平台|AI|软件|创作|数字人/.test(`${brief}\n${productSubject}`) ? '可自然操作电脑、平板或创作界面，按镜头需要出现' : '按剧本动作自然使用相关道具',
+      hand_prop: platformOrCreativeBrief ? '可自然操作电脑、平板或创作界面，按镜头需要出现' : '按剧本动作自然使用相关道具；不得默认电脑、平板、扫地机器人或控制面板',
       behavior: '围绕已确认广告主体完成体验、讲解、演示和行动引导',
     });
     const castSourceInstruction = rawCastMode === 'auto'
@@ -15571,7 +15573,11 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
               ? '人物性别要求：双人/多人必须包含不同性别或明确的混合性别配置。'
               : '人物性别要求：AI 可按故事判断，但必须在人物表里明确写出每个人 gender。'))));
     const subjectKeywords = _buildLuxurySubjectKeywords(productSubject, `${brief}\n${enrichedAssetSummary}`);
-    const subjectLockInstruction = `广告主体锁定：本片必须围绕「${productSubject}」展开，关键词至少包括 ${subjectKeywords.join(' / ') || productSubject}。所有场景、动作、台词、证明和收束都要服务这个主体；禁止改写成 App、化妆品、机器人、通用办公焦虑、泛生活方式或其他行业。`;
+    const robotSubjectAllowed = /AI\s*机器人|机器人|智能体|机械臂|仿生|robot|android/i.test(`${productSubject}\n${brief}`);
+    const subjectForbiddenDrift = robotSubjectAllowed
+      ? 'App、化妆品、通用办公焦虑、扫地机器人、清洁电器、泛生活方式或其他行业'
+      : 'App、化妆品、机器人、扫地机器人、清洁电器、通用办公焦虑、泛生活方式或其他行业';
+    const subjectLockInstruction = `广告主体锁定：本片必须围绕「${productSubject}」展开，关键词至少包括 ${subjectKeywords.join(' / ') || productSubject}。所有场景、动作、台词、证明和收束都要服务这个主体；禁止改写成 ${subjectForbiddenDrift}。`;
     const uploadedAssetNotes = [
       ...(briefReferenceAssets.length ? briefReferenceAssets.map(x => x && (x.name || x.url || x.image_url) ? `需求参考图${x.index || ''}：${x.name || x.url || x.image_url}` : '') : []),
       visualReferenceSummary ? `AI视觉简报：${visualReferenceSummary}` : '',
@@ -15623,6 +15629,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '竞品级故事板规则：第 3 步不是随意产品静物摄影。除 macro/detail 这类极近景细节镜外，每一镜都必须像广告 storyboard panel：脚本指定的主体/角色 + 真实场景 + 主商品/服务证据在同一画面逻辑里推动故事；主体可以是人，也可以是动物、机器人、外星人、吉祥物、产品、空间或服务场景。',
       '行业规则：只有当用户需求或已确认剧本明确需要真人讲解/带看时，才安排真人角色；否则按用户确认的行业主体生成产品、空间、服务、动物、机器人、外星人、吉祥物或其它主体叙事。画面必须服务已确认剧本，不能套用历史行业场景或抽象高级背景。',
       '跨行业防污染规则：严禁从历史案例、知识库或默认样例迁移“建筑空间、建材展厅、材料墙、外立面、样板间、钢材、金属板、设计师带看”等词；只有用户原文、上传素材分析或已确认剧本明确出现这些内容时才能使用。视频网站、软件平台、AI工具、SaaS、内容创作类广告必须围绕界面、创作工作流、内容形态、用户使用场景和平台价值展开，不得变成建筑空间或建材场景。',
+      'AI/智能生活防跑偏规则：“AI、智能、智能生活、智能助手”不是电脑、代码、dashboard、手机 App 或扫地机器人的同义词。只有用户原文、素材或本镜剧情明确出现 API、开发接入、代码、IDE、后台、扫地机器人、清洁设备时，才允许对应画面；否则必须按本镜剧情里的真实生活/服务/主体证据生成。',
       controlledGuide.enabled ? controlledGuide.storyboard_rules : '',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
@@ -15690,6 +15697,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
 - subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：真人/人物与商品、服务或品牌主体同框才用 human_scene；机器人、吉祥物、动物、虚拟人等非真人角色与场景同框用 character_scene；商品或服务独立介绍用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 如果主商品/主体名称里包含“机器人、AI机器人、智能体、机械臂、虚拟人、吉祥物、IP形象”，它首先是被介绍的非真人主体或商品主体，不等同于真人/人物；只有画面明确出现真人演员、用户、顾客或讲解者同框时，subject_type 才能用 human_scene。
+- “AI、智能、智能生活、智能助手”不能自动转成电脑、代码、dashboard、手机 App 或扫地机器人；这些载体只有在用户原文、素材或本镜剧情明确要求时才允许出现。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
 - 第 3 步画面必须像竞品 storyboard：除微距细节镜外，脚本主体、场景、产品/服务证据要在同一画面逻辑里推进故事。只有当剧本明确需要人物时，才要求人物同框；不要把非人物广告强行改成真人导购。
 - 如果主商品明确是钢材/建材/墙面/外立面/空间设计服务，且用户需求或人物配置明确要求真人讲解/带看，才安排多数镜头出现真实人物与产品证据发生关系；否则按确认主体和剧本生成，不套用钢材展厅范式。

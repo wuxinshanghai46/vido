@@ -801,6 +801,13 @@ th {
   color: var(--vido-text-2) !important;
 }
 
+[data-theme="light-mist"] .dh-nav-badge {
+  background: rgba(223, 238, 253, .88) !important;
+  border: 1px solid rgba(52, 102, 148, .18) !important;
+  color: #24577f !important;
+  box-shadow: none !important;
+}
+
 [data-theme="light-mist"] .loading,
 [data-theme="light-mist"] .sp-loading,
 [data-theme="light-mist"] .wf-list-empty,
@@ -937,7 +944,7 @@ th {
 [data-theme="light-mist"] .dh-luxgen-status.working {
   background: rgba(223, 238, 253, .86) !important;
   border-color: rgba(11, 114, 255, .22) !important;
-  color: #0474e8 !important;
+  color: #1f5f93 !important;
 }
 
 [data-theme="light-mist"] .dh-hero,
@@ -1228,11 +1235,31 @@ th {
   background: rgba(240, 247, 253, .9) !important;
 }
 
+[data-theme="light-mist"] .dh-luxgen-step-pill,
+[data-theme="light-mist"] .dh-luxgen-steps b {
+  background: rgba(224, 239, 252, .96) !important;
+  border: 1px solid rgba(52, 102, 148, .16) !important;
+  color: #255a82 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light-mist"] .dh-luxgen-steps > div.active b {
+  background: rgba(207, 230, 251, .96) !important;
+  border-color: rgba(35, 104, 170, .24) !important;
+  color: #064b83 !important;
+}
+
+[data-theme="light-mist"] .dh-luxgen-steps > div.done b {
+  background: rgba(217, 246, 233, .96) !important;
+  border-color: rgba(31, 132, 92, .22) !important;
+  color: #116344 !important;
+}
+
 [data-theme="light-mist"] .dh-lux-sheet-frame.has-linked-preview > span,
 [data-theme="light-mist"] .dh-lux-sheet-frame:not(.pending) > span {
-  background: rgba(255, 255, 255, .92) !important;
-  border-color: rgba(4, 116, 232, .22) !important;
-  color: #075bb8 !important;
+  background: rgba(250, 253, 255, .96) !important;
+  border-color: rgba(52, 102, 148, .24) !important;
+  color: #234a63 !important;
   box-shadow: 0 6px 16px rgba(15, 70, 130, .10) !important;
 }
 
