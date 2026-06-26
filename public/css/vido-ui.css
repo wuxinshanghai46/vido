@@ -1228,6 +1228,14 @@ th {
   background: rgba(240, 247, 253, .9) !important;
 }
 
+[data-theme="light-mist"] .dh-lux-sheet-frame.has-linked-preview > span,
+[data-theme="light-mist"] .dh-lux-sheet-frame:not(.pending) > span {
+  background: rgba(255, 255, 255, .92) !important;
+  border-color: rgba(4, 116, 232, .22) !important;
+  color: #075bb8 !important;
+  box-shadow: 0 6px 16px rgba(15, 70, 130, .10) !important;
+}
+
 [data-theme="light-mist"] .dh-task-cover-fallback b,
 [data-theme="light-mist"] .dh-task-cover-fallback span,
 [data-theme="light-mist"] .dh-luxgen-thumb span {
