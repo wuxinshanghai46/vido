@@ -6783,16 +6783,45 @@
   };
 
   const LUXURY_SHOT_SUBJECT_TYPES = {
-    auto: 'AI 判断',
-    human_scene: '人物场景',
+    auto: '按剧本判断',
+    human_scene: '人物 + 场景',
     product_only: '只拍商品',
-    product_detail: '商品特写',
+    product_detail: '商品细节',
     hand_operation: '手部操作',
     ui_screen: '界面 / 数据',
-    environment: '空镜 / 场景',
+    environment: '空镜环境',
     brand_endcard: '品牌收尾',
     proof_scene: '效果证明',
   };
+
+  const LUXURY_SHOT_SUBJECT_TYPE_HELP = {
+    auto: '系统按本镜画面、动作和台词判断，不主动改变剧本。',
+    human_scene: '真人/角色必须和真实场景、产品或服务证据同框。',
+    product_only: '画面主角是产品或服务证据，不需要真人出镜。',
+    product_detail: '只放大材质、包装、界面细节或关键证据。',
+    hand_operation: '只拍手部触摸、操作、拿取或演示过程。',
+    ui_screen: '重点拍软件界面、数据变化、屏幕或交互流程。',
+    environment: '只拍真实场景、空间氛围或使用环境，不出现人物。',
+    brand_endcard: '最后收束到品牌、行动按钮或片尾记忆点。',
+    proof_scene: '用结果、对比、凭证或现场反馈证明价值。',
+  };
+
+  function luxuryShotSubjectTypeLabel(type = 'auto') {
+    const value = LUXURY_SHOT_SUBJECT_TYPES[type] ? type : 'auto';
+    return LUXURY_SHOT_SUBJECT_TYPES[value];
+  }
+
+  function luxuryShotSubjectTypeHelp(type = 'auto') {
+    const value = LUXURY_SHOT_SUBJECT_TYPES[type] ? type : 'auto';
+    return LUXURY_SHOT_SUBJECT_TYPE_HELP[value] || LUXURY_SHOT_SUBJECT_TYPE_HELP.auto;
+  }
+
+  function renderLuxuryShotSubjectTypeOptions(selected = 'auto') {
+    const current = LUXURY_SHOT_SUBJECT_TYPES[selected] ? selected : 'auto';
+    return Object.entries(LUXURY_SHOT_SUBJECT_TYPES)
+      .map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`)
+      .join('');
+  }
 
   const LUXURY_SCRIPT_PURPOSE_LABELS = {
     problem: '痛点开场',
@@ -9602,6 +9631,23 @@
       || /\.(png|jpe?g|webp|gif)/i.test(s);
   }
 
+  function luxuryCleanAudienceLine(value = '') {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/^(旁白|字幕|台词|广告词|文案|voiceover|narration|subtitle)[:：]\s*/i, '')
+      .replace(/^(?:广告需求|用户需求|广告需求识别|由广告需求识别|系统识别|自动识别|参考素材摘要|目标客户|画面风格|卖点[\/／]?资料|产品\/品牌|主商品|主产品)[:：]\s*/i, '')
+      .replace(/@(?:主商品|参考|分镜画面)\d*/g, '')
+      .replace(/\b(exact uploaded|prompt|reference image|topview|image2|seedance|visual lock|asset lock)\b/ig, '')
+      .trim();
+  }
+
+  function luxuryLooksLikeNonAudienceLine(value = '') {
+    const s = luxuryCleanAudienceLine(value);
+    if (!s) return true;
+    return luxuryLooksLikeBriefCopy(s)
+      || /(按广告需求|按广告内容|镜头提示词|模型提示词|画面生成|分镜生成|图片模型|视觉锁|执行包|QA|UI浮层|素材锁|工作流|参考图|镜头参考|主产品\s*\d+)/i.test(s);
+  }
+
   function luxuryProductSubjectForCopy() {
     return 'confirmed_subject';
   }
@@ -9633,8 +9679,8 @@
   }
 
   function luxuryShotVoiceText(seg = {}) {
-    const raw = String(seg.ad_copy || seg.subtitle || seg.voiceover || seg.text || '').replace(/\s+/g, ' ').trim();
-    if (luxuryLooksLikeBriefCopy(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
+    const raw = luxuryCleanAudienceLine(seg.ad_copy || seg.subtitle || seg.voiceover || seg.text || '');
+    if (luxuryLooksLikeNonAudienceLine(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
     return raw.slice(0, 34);
   }
 
@@ -9656,8 +9702,8 @@
   }
 
   function luxuryShotNarrationText(seg = {}) {
-    const raw = String(seg.narration || seg.voiceover || seg.ad_copy || seg.subtitle || seg.text || '').replace(/\s+/g, ' ').trim();
-    if (luxuryLooksLikeBriefCopy(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
+    const raw = luxuryCleanAudienceLine(seg.narration || seg.voiceover || seg.ad_copy || seg.subtitle || seg.text || '');
+    if (luxuryLooksLikeNonAudienceLine(raw)) return luxuryFallbackCopyByRole(seg.shot_role || seg.role || seg.type);
     return raw.slice(0, 60);
   }
 
@@ -10653,9 +10699,15 @@
 
   function luxuryShotDialogueText(seg = {}, characters = [], i = 0) {
     const rawDialogue = Array.isArray(seg.dialogue_lines)
-      ? seg.dialogue_lines.join('\n')
+      ? seg.dialogue_lines
+          .map(line => luxuryCleanAudienceLine(line))
+          .filter(line => !luxuryLooksLikeNonAudienceLine(line))
+          .join('\n')
       : String(seg.dialogue || seg.dialogue_text || seg.conversation || '').trim();
-    if (rawDialogue) return rawDialogue.slice(0, 260);
+    const dialogue = Array.isArray(seg.dialogue_lines)
+      ? rawDialogue
+      : luxuryCleanAudienceLine(rawDialogue);
+    if (dialogue && !luxuryLooksLikeNonAudienceLine(dialogue)) return dialogue.slice(0, 260);
     const voice = luxuryShotNarrationText(seg);
     if (!characters || characters.length < 2) return voice || '待生成广告词';
     if (voice && /[：:]/.test(voice)) return voice;
@@ -10845,8 +10897,8 @@
           <th style="width:72px">镜头</th>
           <th style="width:72px">时长</th>
           <th>这一镜要拍什么</th>
-          <th>人物/主体</th>
-          <th>台词/字幕</th>
+          <th>画面主体</th>
+          <th>成片台词</th>
           <th style="width:150px">为什么保留</th>
           <th style="width:190px">调整</th>
         </tr>
@@ -10860,7 +10912,8 @@
           const mood = luxuryShotEmotionText(seg);
           const seconds = luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length);
           const subjectType = normalizeLuxuryShotSubjectType(seg);
-          const subjectLabel = LUXURY_SHOT_SUBJECT_TYPES[subjectType] || LUXURY_SHOT_SUBJECT_TYPES.auto;
+          const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
+          const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
           const deleteAttr = scriptLocked || segments.length <= 1 ? `disabled title="${escapeHtml(scriptLocked ? luxuryAdLockedStepMessage(3) : '至少保留 1 个镜头')}"` : '';
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
             <td>${String(i + 1).padStart(2, '0')}</td>
@@ -10868,9 +10921,10 @@
             <td><b>${escapeHtml(visual)}</b><span>${escapeHtml(mood || '情绪/节奏待随分镜细化')}</span></td>
             <td>
               <b>${escapeHtml(subjectLabel)}</b>
+              <span class="dh-lux-script-subject-help">${escapeHtml(subjectHelp)}</span>
               <span>${escapeHtml(action || '动作待随分镜细化')}</span>
               <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
-                ${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${subjectType === value ? 'selected' : ''}>${label}</option>`).join('')}
+                ${renderLuxuryShotSubjectTypeOptions(subjectType)}
               </select>
             </td>
             <td class="dh-demo-dialogue">${escapeHtml(voice || '待生成广告词')}</td>
@@ -10917,7 +10971,7 @@
     const generatedSheets = !planningOnly && generatedFrameCount >= segments.length && Array.isArray(state.luxuryAd.storyboardSheets)
       ? state.luxuryAd.storyboardSheets.filter(x => x && (x.image_url || x.imageUrl || x.url) && !luxuryStoryboardSheetIsPlanningOnly(x))
       : [];
-    return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板">
+    return `<section class="dh-lux-storyboard-sheet" aria-label="专业分镜板"${luxurySubjectAccentStyle()}>
       <div class="dh-lux-sheet-head">
         <div>
           <b>${escapeHtml(state.luxuryAd.briefInfo?.title || '剧情广告分镜板')}</b>
@@ -11798,7 +11852,8 @@
       ].filter(Boolean).join('；');
       const uiPost = kf.shot_plan?.ui_overlay_post || kf.ui_overlay_post || null;
       const subjectType = normalizeLuxuryShotSubjectType(seg);
-      const subjectLabel = LUXURY_SHOT_SUBJECT_TYPES[subjectType] || LUXURY_SHOT_SUBJECT_TYPES.auto;
+      const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
+      const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
       return `<article class="dh-demo-frame-card">
         <button type="button" class="dh-demo-frame-visual ${preview ? '' : 'pending'}" style="${ratioStyle}" ${preview ? `data-lux-shot-preview="${i}" title="查看第 ${i + 1} 镜全图"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(jimengThumbUrl(previewUrl, 520))}" alt="${escapeHtml(seg.title || `镜头 ${i + 1}`)}" loading="lazy" decoding="async">` : ''}
@@ -11807,7 +11862,7 @@
         </button>
         <div class="dh-demo-frame-info">
           <div class="dh-demo-card"><small>时间 / 目的</small><b>${escapeHtml(timeRange)} · ${escapeHtml(seg.objective || seg.intent || seg.purpose || storyStage)}</b><span>${escapeHtml(emotionText || '按广告节奏推进。')}</span></div>
-          <div class="dh-demo-card"><small>镜头主体类型</small><b>${escapeHtml(subjectLabel)}</b><span><select class="dh-input dh-lux-shot-type-select" data-lux-shot-subject-type="${i}" ${disabledAttr}>${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${subjectType === value ? 'selected' : ''}>${label}</option>`).join('')}</select></span></div>
+          <div class="dh-demo-card"><small>画面主体</small><b>${escapeHtml(subjectLabel)}</b><span class="dh-lux-script-subject-help">${escapeHtml(subjectHelp)}</span><span><select class="dh-input dh-lux-shot-type-select" data-lux-shot-subject-type="${i}" ${disabledAttr}>${renderLuxuryShotSubjectTypeOptions(subjectType)}</select></span></div>
           <div class="dh-demo-card"><small>内容 / 台词</small><b>${escapeHtml(promptText)}</b><span>台词：${escapeHtml(voiceText || '待生成')}</span></div>
           <div class="dh-demo-card"><small>动作 / 表情</small><b>${escapeHtml(actionText)}</b><span>${escapeHtml(emotionText)}</span></div>
           <div class="dh-demo-card"><small>镜头 / 构图</small><b>${escapeHtml(shotAngle)}</b><span>镜头运动：${escapeHtml(luxuryShotMotionLabel(seg))}</span></div>
@@ -12038,10 +12093,11 @@
               </select>
             </label>
             <label class="dh-field">
-              <span>镜头主体类型</span>
+              <span>画面主体</span>
               <select class="dh-input" id="dhLuxShotSubjectType">
-                ${Object.entries(LUXURY_SHOT_SUBJECT_TYPES).map(([value, label]) => `<option value="${value}" ${normalizeLuxuryShotSubjectType(seg) === value ? 'selected' : ''}>${label}</option>`).join('')}
+                ${renderLuxuryShotSubjectTypeOptions(normalizeLuxuryShotSubjectType(seg))}
               </select>
+              <small class="dh-lux-field-help">控制这一镜主要拍谁/拍什么；例如“只拍商品”不会强制真人出镜。</small>
             </label>
           </div>
           <div class="dh-luxgen-writer-grid">

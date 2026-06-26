@@ -15514,6 +15514,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
   "title": "镜头名，6字以内",
   "role": "hook|display|macro|benefit|proof|cta",
   "story_stage": "开场分镜|第二场景|细节分镜|场景转折|卖点分镜|收尾分镜",
+  "subject_type": "auto|human_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene，表示这一镜画面主要拍谁/拍什么，不是台词内容",
   "shot_size": "微观全景 / 固定镜头、中远景 / 缓慢前进、极近景 / 微距平移等",
   "shot_angle": "拍摄角度及镜头（景别），例如：俯视全景 / 固定镜头、中远景 / 缓慢前推、极近景 / 跟随手部动作平移",
   "objective": "这一镜的编剧意图，说明为什么需要这一镜，中文短句",
@@ -15546,6 +15547,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 硬性规则：
 - 必须围绕主商品或用户描述的服务讲完整广告故事：开场分镜、第二场景、后续推进场景、收尾分镜都要有清晰顺序；不要只写一个场景，也不要只套“钩子/产品亮相/卖点”模板。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
+- subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：有人物和场景同框才用 human_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
 - 第 3 步画面必须像竞品 storyboard：除微距细节镜外，脚本主体、场景、产品/服务证据要在同一画面逻辑里推进故事。只有当剧本明确需要人物时，才要求人物同框；不要把非人物广告强行改成真人导购。
 - 如果主商品明确是钢材/建材/墙面/外立面/空间设计服务，且用户需求或人物配置明确要求真人讲解/带看，才安排多数镜头出现真实人物与产品证据发生关系；否则按确认主体和剧本生成，不套用钢材展厅范式。
@@ -16092,6 +16094,13 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const purpose = _luxuryScriptPurposeLabel(role, i, total, scene?.script_purpose || scene?.purpose || beat.spoken_intent || '');
         const objective = _cleanLuxuryAdVisual(scene?.objective || scene?.intent || beat.character_goal || beat.solution_step || '', fallbackOpts)
           .replace(/[。；;，,]\s*$/g, '') || purpose;
+        const rawSubjectType = _normalizeLuxuryRevisionSubjectType(
+          scene?.subject_type || scene?.subjectType || scene?.scene_subject_type
+          || beat.subject_type || beat.subjectType || beat.required_subject_type
+          || outline.subject_type || outline.subjectType || 'auto',
+        );
+        const subjectType = rawSubjectType !== 'auto' ? rawSubjectType : (continuousHuman ? 'human_scene' : 'auto');
+        const subjectRequiresPerson = _luxuryRevisionRequiresPerson(subjectType, scene || {});
         let dialogueLines = Array.isArray(scene?.dialogue_lines)
           ? scene.dialogue_lines.map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean)
           : String(scene?.dialogue || scene?.dialogue_text || scene?.conversation || '').split(/\n+/).map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean);
@@ -16113,6 +16122,10 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           objective,
           purpose,
           script_purpose: purpose,
+          subject_type: subjectType,
+          subjectType,
+          requires_person: subjectRequiresPerson,
+          person_required: subjectRequiresPerson,
           content_prompt: visual,
           scene_content: scene?.scene_content || visual,
           visual: scene?.visual || visual,
@@ -16151,6 +16164,12 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const action = _cleanLuxuryAdAction(beat.solution_step || beat.character_goal || outline.action || '', fallbackOpts);
         const voiceover = _cleanLuxuryAdCopy(beat.spoken_line || outline.copy_direction || '', fallbackOpts);
         const purpose = _luxuryScriptPurposeLabel(role, i, target, beat.spoken_intent || outline.purpose || '');
+        const rawSubjectType = _normalizeLuxuryRevisionSubjectType(
+          beat.subject_type || beat.subjectType || beat.required_subject_type
+          || outline.subject_type || outline.subjectType || 'auto',
+        );
+        const subjectType = rawSubjectType !== 'auto' ? rawSubjectType : (continuousHuman ? 'human_scene' : 'auto');
+        const subjectRequiresPerson = _luxuryRevisionRequiresPerson(subjectType, {});
         list.push({
           index: i,
           title: String(outline.title || beat.scene || `镜头 ${i + 1}`).slice(0, 16),
@@ -16160,6 +16179,10 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           objective: _cleanLuxuryAdVisual(beat.character_goal || beat.solution_step || outline.objective || '', fallbackOpts).replace(/[。；;，,]\s*$/g, '') || purpose,
           purpose,
           script_purpose: purpose,
+          subject_type: subjectType,
+          subjectType,
+          requires_person: subjectRequiresPerson,
+          person_required: subjectRequiresPerson,
           content_prompt: visual,
           scene_content: visual,
           visual,
@@ -16364,7 +16387,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
     "resolution": "最后如何收束到行动"
   },
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
-  "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现：真实场景 + ${productSubject}证据；有人物时写清人物与证据关系","why_next":"为什么自然进入下一段"}]
+  "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","subject_type":"auto|human_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现的可见主体和证据；有人物时写清人物与证据关系","why_next":"为什么自然进入下一段"}]
 }
 beats 数量：${explicitShotTarget ? `正好 ${Math.max(3, wantedShots)} 个剧情 beat，服务后续正好 ${wantedShots} 个镜头` : `建议 ${Math.max(3, Math.min(wantedShots, maxAllowedShots))} 个，可在 ${Math.max(3, minAllowedShots)}-${Math.max(3, maxAllowedShots)} 个内按剧情调整`}，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
@@ -16426,7 +16449,7 @@ ${outlineNotes.length ? JSON.stringify(outlineNotes, null, 2) : '暂无'}
 
 请按剧情拆成 ${explicitShotTarget ? `正好 ${wantedShots} 个镜头` : `${minAllowedShots}-${maxAllowedShots} 个镜头，建议约 ${wantedShots} 个`}，输出 JSON 数组；不要为了凑数重复镜头。每个对象必须包含：
 index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_content,visual,dialogue_lines,voiceover,narration,characters,material_usage,source_beat。
-注意：不要输出 dialogue 字符串里的真实换行；如有对白，只能用 dialogue_lines 数组。`;
+注意：每镜必须输出 subject_type；不要输出 dialogue 字符串里的真实换行；如有对白，只能用 dialogue_lines 数组。`;
       scenes = await callLuxuryAgent({ name: 'luxury_ad.shot.splitter', systemPrompt: splitSys, userPrompt: splitUser, json: 'array', maxTokens: 9000 });
       if (explicitShotTarget) scenes = padLuxuryScenesToWanted(scenes);
       scenes = completeLuxuryScriptStructure(scenes, storyPlan, 'shot_splitter');
