@@ -1195,7 +1195,8 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-demo-table th { color: var(--dh-text-soft); background: var(--dh-bg); font-size: 12px; font-weight: 900; }
 .dh-demo-table tr:last-child td { border-bottom: 0; }
 .dh-demo-table tr.is-active td { background: rgba(33,255,243,.045); box-shadow: inset 3px 0 0 var(--dh-primary); }
-.dh-demo-table b { display: block; color: var(--dh-text); font-weight: 800; }
+.dh-demo-table b { display: block; color: var(--dh-text-soft); font-weight: 650; }
+.dh-demo-table b.dh-lux-field-missing { color: var(--dh-text-muted); font-weight: 600; }
 .dh-demo-table span { color: var(--dh-text-muted); display: block; margin-top: 5px; font-size: 12px; }
 .dh-demo-table .dh-demo-dialogue { white-space: pre-line; }
 .dh-lux-script-subject-pill { display: inline-flex; align-items: center; max-width: 100%; min-height: 24px; margin: 7px 0 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 30%, var(--dh-border)); background: color-mix(in srgb, var(--lux-subject-accent, var(--dh-primary)) 8%, transparent); color: var(--dh-primary); font-size: 11px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

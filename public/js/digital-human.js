@@ -6791,7 +6791,8 @@
 
   const LUXURY_SHOT_SUBJECT_TYPES = {
     auto: '按剧本判断',
-    human_scene: '人物 + 场景',
+    human_scene: '真人/人物 + 主体',
+    character_scene: '主体角色 + 场景',
     product_only: '只拍商品',
     product_detail: '商品细节',
     hand_operation: '手部操作',
@@ -6803,7 +6804,8 @@
 
   const LUXURY_SHOT_SUBJECT_TYPE_HELP = {
     auto: '系统按本镜画面、动作和台词判断，不主动改变剧本。',
-    human_scene: '真人/角色必须和真实场景、产品或服务证据同框。',
+    human_scene: '真人/剧情人物与产品、服务或主体证据同框，不代表只拍人物。',
+    character_scene: '机器人、吉祥物、动物、虚拟人等非真人主体与场景证据同框。',
     product_only: '画面主角是产品或服务证据，不需要真人出镜。',
     product_detail: '只放大材质、包装、界面细节或关键证据。',
     hand_operation: '只拍手部触摸、操作、拿取或演示过程。',
@@ -6854,9 +6856,13 @@
   function normalizeLuxuryShotSubjectType(seg = {}) {
     const raw = String(seg.subject_type || seg.subjectType || seg.scene_subject_type || '').trim();
     if (raw && LUXURY_SHOT_SUBJECT_TYPES[raw]) return raw;
+    const text = [seg.role, seg.title, seg.visual, seg.content_prompt, seg.scene_content, seg.display_visual, seg.action].filter(Boolean).join(' ');
+    if (/(机器人|机械臂|仿生|智能体|AI\s*机器人|虚拟人|数字人|吉祥物|IP形象|卡通角色|动物|宠物|robot|android|mascot|animal)/i.test(text)
+      && !/(真人|人物|剧情角色|演员|主人公|主角|顾客|客户|用户|店长|经理|导购|顾问|讲解员|主持人|手部|手持|看向|表情|口播|对白)/.test(text)) {
+      return 'character_scene';
+    }
     if (seg.requires_person === true || seg.person_required === true || seg.character_required === true) return 'human_scene';
     if (seg.requires_person === false || seg.person_required === false || seg.character_required === false) {
-      const text = [seg.role, seg.title, seg.visual, seg.content_prompt, seg.scene_content, seg.action].filter(Boolean).join(' ');
       if (/ui|界面|数据|系统|dashboard|screen/i.test(text)) return 'ui_screen';
       if (/手部|手持|操作|hand/i.test(text)) return 'hand_operation';
       if (/特写|细节|macro|detail/i.test(text)) return 'product_detail';
@@ -6925,7 +6931,7 @@
   function luxuryShotRequiresPersonFromType(type = 'auto', seg = {}) {
     const value = normalizeLuxuryShotSubjectType({ ...seg, subject_type: type });
     if (value === 'human_scene') return true;
-    if (['product_only', 'product_detail', 'ui_screen', 'environment', 'brand_endcard'].includes(value)) return false;
+    if (['character_scene', 'product_only', 'product_detail', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(value)) return false;
     if (value === 'hand_operation') return false;
     return seg.requires_person === true || seg.person_required === true || seg.character_required === true;
   }
@@ -9689,6 +9695,33 @@
     return out.length > max ? `${out.slice(0, Math.max(1, max - 1))}…` : out;
   }
 
+  function luxurySplitMixedVisualAction(value = '') {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!text || luxuryLooksLikeBriefNoise(text)) return { visual: '', action: '' };
+    const parts = text
+      .split(/[。；;]+/)
+      .map(part => part.trim())
+      .filter(Boolean);
+    if (!parts.length) return { visual: '', action: '' };
+    const visualPattern = /(画面|镜头|场景|背景|环境|同框|出现在|停在|进入|走入|靠近|旁边|位置|主体|证据|产品|服务|机器人|机械臂|虚拟人|界面|屏幕|空间|特写|近距离|中景|远景|观众视线|视线)/;
+    const actionPattern = /(动作|操作|触摸|拿起|点击|滑动|转身|移动|展示|确认|打开|整理|阅读|微笑|皱眉|点头|说|递|引导|看向|指向|完成)/;
+    const visualIndex = parts.findIndex(part => visualPattern.test(part));
+    const visual = visualIndex >= 0
+      ? parts[visualIndex]
+      : (parts.length > 1 && /主体|人物|角色|机器人|产品|服务|证据|场景|画面|镜头/.test(parts[0]) ? parts[0] : '');
+    const actionParts = parts.filter((part, index) => index !== visualIndex && actionPattern.test(part));
+    const action = actionParts.length
+      ? actionParts.join('。')
+      : (visualIndex === 0 && parts.length > 1 ? parts.slice(1).join('。') : '');
+    return { visual, action };
+  }
+
+  function luxuryRecoveredVisualFromAction(seg = {}) {
+    const raw = String(seg.action || seg.visual_action || seg.characters_action || seg.action_prompt || '').replace(/\s+/g, ' ').trim();
+    const split = luxurySplitMixedVisualAction(raw);
+    return split.visual ? luxuryCompactReviewText(split.visual, 220) : '';
+  }
+
   function luxuryCleanAudienceLine(value = '') {
     return String(value || '')
       .replace(/\s+/g, ' ')
@@ -9725,7 +9758,7 @@
     if (luxuryLooksLikeBriefNoise(raw)
       || /^(按|根据).*(生成|推进)/.test(raw)
       || /主商品作为视觉中心|主商品占据画面中心|建立高端广告氛围|突出高级感|突出空间搭配效果|按广告需求|按广告内容/.test(raw)) {
-      return '';
+      return luxuryRecoveredVisualFromAction(seg);
     }
     return luxuryCompactReviewText(raw, 180);
   }
@@ -9782,15 +9815,17 @@
     const raw = String(seg.action || seg.visual_action || seg.characters_action || seg.action_prompt || '').replace(/\s+/g, ' ').trim();
     const productOnly = luxuryIsMaterialProductShot(seg) && !luxuryCoreShotRequiresPerson(seg);
     if (raw && !luxuryLooksLikeBriefNoise(raw)) {
+      const split = luxurySplitMixedVisualAction(raw);
+      const actionRaw = split.action || raw;
       if (productOnly && luxuryTextLooksLikeHumanInstruction(raw)) {
-        return luxuryCompactReviewText(raw
+        return luxuryCompactReviewText(actionRaw
           .replace(/人物或镜头/g, '镜头')
           .replace(/人物与场景/g, '产品与场景')
           .replace(/人物/g, '主体')
           .replace(/真人讲解者|讲解者|讲解员|导购|顾问|主持人|演员/g, '镜头')
           .replace(/手势|指向|触摸|走入|走进|入场|带观众/g, '镜头引导'), 160);
       }
-      return luxuryCompactReviewText(raw, 180);
+      return luxuryCompactReviewText(actionRaw, 180);
     }
     return '';
   }

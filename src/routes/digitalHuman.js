@@ -3435,6 +3435,11 @@ function _luxuryShotSubjectType(scene = {}) {
     human: 'human_scene',
     person: 'human_scene',
     people: 'human_scene',
+    character: 'character_scene',
+    robot: 'character_scene',
+    android: 'character_scene',
+    mascot: 'character_scene',
+    animal: 'character_scene',
     product: 'product_only',
     product_closeup: 'product_detail',
     detail: 'product_detail',
@@ -3449,7 +3454,7 @@ function _luxuryShotSubjectType(scene = {}) {
 
 function _luxurySubjectTypeRequiresPerson(subjectType = '') {
   if (subjectType === 'human_scene') return true;
-  if (['product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard'].includes(subjectType)) return false;
+  if (['character_scene', 'product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(subjectType)) return false;
   return null;
 }
 
@@ -13051,6 +13056,43 @@ function _cleanLuxuryAdVisual(value = '', fallbackOpts = {}) {
   return s.length > 90 ? `${s.slice(0, 88)}…` : s;
 }
 
+function _splitLuxuryMixedVisualAction(value = '') {
+  const text = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
+  if (!text || _looksLikeLuxuryBrief(text)) return { visual: '', action: '' };
+  const parts = text
+    .split(/[。；;]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  if (!parts.length) return { visual: '', action: '' };
+  const visualPattern = /(画面|镜头|场景|背景|环境|同框|出现在|停在|进入|走入|靠近|旁边|位置|主体|证据|产品|服务|机器人|机械臂|虚拟人|界面|屏幕|空间|特写|近距离|中景|远景|观众视线|视线)/;
+  const actionPattern = /(动作|操作|触摸|拿起|点击|滑动|转身|移动|展示|确认|打开|整理|阅读|微笑|皱眉|点头|说|递|引导|看向|指向|完成)/;
+  const visualIndex = parts.findIndex(part => visualPattern.test(part));
+  const pickedVisual = visualIndex >= 0
+    ? parts[visualIndex]
+    : (parts.length > 1 && /主体|人物|角色|机器人|产品|服务|证据|场景|画面|镜头/.test(parts[0]) ? parts[0] : '');
+  const actionParts = parts.filter((part, index) => index !== visualIndex && actionPattern.test(part));
+  const action = actionParts.length
+    ? actionParts.join('。')
+    : (visualIndex === 0 && parts.length > 1 ? parts.slice(1).join('。') : '');
+  return { visual: pickedVisual, action };
+}
+
+function _coerceLuxuryReviewVisualAction(rawVisual = '', rawAction = '', fallbackOpts = {}) {
+  const visualText = _stripLuxuryBriefNoise(rawVisual).trim();
+  const actionText = _stripLuxuryBriefNoise(rawAction).trim();
+  let visualSource = rawVisual;
+  let actionSource = rawAction;
+  if ((!visualText || _looksLikeLuxuryBrief(visualText)) && actionText) {
+    const split = _splitLuxuryMixedVisualAction(actionText);
+    if (split.visual) visualSource = split.visual;
+    if (split.action) actionSource = split.action;
+  }
+  return {
+    visual: _cleanLuxuryAdVisual(visualSource || '', fallbackOpts),
+    action: _cleanLuxuryAdAction(actionSource || '', fallbackOpts),
+  };
+}
+
 function _luxuryCameraLabel(value = '') {
   const s = String(value || '').toLowerCase().replace(/\s+/g, '_');
   if (s.includes('macro')) return '微距推进';
@@ -14531,6 +14573,11 @@ function _normalizeLuxuryRevisionSubjectType(value = '') {
     human: 'human_scene',
     person: 'human_scene',
     people: 'human_scene',
+    character: 'character_scene',
+    robot: 'character_scene',
+    android: 'character_scene',
+    mascot: 'character_scene',
+    animal: 'character_scene',
     product: 'product_only',
     detail: 'product_detail',
     ui: 'ui_screen',
@@ -14540,7 +14587,7 @@ function _normalizeLuxuryRevisionSubjectType(value = '') {
     proof: 'proof_scene',
   };
   const next = aliases[raw] || raw;
-  return ['auto', 'human_scene', 'product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(next)
+  return ['auto', 'human_scene', 'character_scene', 'product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(next)
     ? next
     : 'auto';
 }
@@ -14548,8 +14595,39 @@ function _normalizeLuxuryRevisionSubjectType(value = '') {
 function _luxuryRevisionRequiresPerson(subjectType = 'auto', existing = {}) {
   const value = _normalizeLuxuryRevisionSubjectType(subjectType);
   if (value === 'human_scene') return true;
-  if (['product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard'].includes(value)) return false;
+  if (['character_scene', 'product_only', 'product_detail', 'hand_operation', 'ui_screen', 'environment', 'brand_endcard', 'proof_scene'].includes(value)) return false;
   return existing.requires_person === true || existing.person_required === true || existing.character_required === true;
+}
+
+function _luxuryLooksLikeNonHumanCharacterSubject(value = '') {
+  return /(机器人|机械臂|仿生|智能体|AI\s*机器人|虚拟人|数字人|吉祥物|IP形象|卡通角色|动物|宠物|robot|android|mascot|non[-\s]?human|animal)/i.test(String(value || ''));
+}
+
+function _luxuryLooksLikeExplicitHumanShot(value = '') {
+  return /(真人|人物|剧情角色|演员|主人公|主角|顾客|客户|用户|店长|经理|导购|顾问|讲解员|主持人|手部|手持|看向|表情|口播|对白)/.test(String(value || ''));
+}
+
+function _inferLuxuryRevisionSubjectType(rawType = 'auto', context = {}) {
+  const normalized = _normalizeLuxuryRevisionSubjectType(rawType);
+  if (normalized !== 'auto') return normalized;
+  const text = [
+    context.productSubject,
+    context.scene?.required_visual_subject,
+    context.scene?.content_prompt,
+    context.scene?.scene_content,
+    context.scene?.visual,
+    context.scene?.display_visual,
+    context.scene?.objective,
+    context.scene?.action,
+    context.beat?.required_visual_subject,
+    context.beat?.plot,
+    context.beat?.visual_proof,
+    context.beat?.solution_step,
+    context.outline?.content_prompt,
+    context.outline?.objective,
+  ].filter(Boolean).join(' ');
+  if (_luxuryLooksLikeNonHumanCharacterSubject(text) && !_luxuryLooksLikeExplicitHumanShot(text)) return 'character_scene';
+  return context.continuousHuman ? 'human_scene' : 'auto';
 }
 
 function _luxuryRevisionShotId(scene = {}, index = 0) {
@@ -15516,7 +15594,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
   "title": "镜头名，6字以内",
   "role": "hook|display|macro|benefit|proof|cta",
   "story_stage": "开场分镜|第二场景|细节分镜|场景转折|卖点分镜|收尾分镜",
-  "subject_type": "auto|human_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene，表示这一镜画面主要拍谁/拍什么，不是台词内容",
+  "subject_type": "auto|human_scene|character_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene，表示这一镜画面主要拍谁/拍什么，不是台词内容",
   "shot_size": "微观全景 / 固定镜头、中远景 / 缓慢前进、极近景 / 微距平移等",
   "shot_angle": "拍摄角度及镜头（景别），例如：俯视全景 / 固定镜头、中远景 / 缓慢前推、极近景 / 跟随手部动作平移",
   "objective": "这一镜的编剧意图，说明为什么需要这一镜，中文短句",
@@ -15556,7 +15634,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 - 如果上一镜已经提出问题，下一镜必须推进发现、确认、使用、证明或收束之一；不能连续多镜重复同一个情绪或同一个卖点。
 - 口型规则：lip_sync_required 默认 false。旁白型镜头只需要人物表情、视线、手势和身体动作跟随故事情绪，不要求嘴型对字幕。只有“人物直接说出本镜台词/双人对话/口播镜头”才设为 true，并让 dialogue_lines 与该人物口型对应。
 - 第 3 步剧本要像“剧本审核表”：画面列写观众看到的完整画面句子；动作列写人物/主体如何运动；台词列只写观众听到或看到的话；目的列写短标签，不要把长句塞进目的。
-- subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：有人物和场景同框才用 human_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
+- subject_type 是给用户确认“这一镜主要拍谁/拍什么”的控制项：真人/人物与主体证据同框才用 human_scene；机器人、吉祥物、动物、虚拟人等非真人角色与场景证据同框用 character_scene；纯产品证据用 product_only；局部质感用 product_detail；手部触控/拿取用 hand_operation；软件界面/数据流程用 ui_screen；空场景用 environment；片尾用 brand_endcard；证明结果用 proof_scene。不要把 subject_type 当作台词或画面标题。
 - 第 3 步台词必须像竞品脚本一样讲一个连续故事：第 1 镜提出状态或问题，第 2-3 镜让主体进入，第 4-7 镜推进体验和证据，第 8-10 镜收束承诺和行动。禁止把每一镜写成孤立卖点口号。
 - 第 3 步画面必须像竞品 storyboard：除微距细节镜外，脚本主体、场景、产品/服务证据要在同一画面逻辑里推进故事。只有当剧本明确需要人物时，才要求人物同框；不要把非人物广告强行改成真人导购。
 - 如果主商品明确是钢材/建材/墙面/外立面/空间设计服务，且用户需求或人物配置明确要求真人讲解/带看，才安排多数镜头出现真实人物与产品证据发生关系；否则按确认主体和剧本生成，不套用钢材展厅范式。
@@ -15891,14 +15969,13 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const fallbackOpts = { role, productSubject, index: i, total, brief, continuousHuman };
         const rawVoice = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || scene.copy_direction || '').trim();
         const voiceover = _cleanLuxuryAdCopy(rawVoice, fallbackOpts);
-        const visual = _cleanLuxuryAdVisual(
+        const visualAction = _coerceLuxuryReviewVisualAction(
           scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || scene.visual_prompt || scene.material_need || scene.required_material || '',
-          fallbackOpts,
-        );
-        const action = _cleanLuxuryAdAction(
           scene.action || scene.visual_action || scene.character_action || scene.body_action || '',
           fallbackOpts,
         );
+        const visual = visualAction.visual;
+        const action = visualAction.action;
         const objective = _cleanLuxuryAdVisual(scene.objective || scene.intent || scene.purpose || '', fallbackOpts)
           .replace(/[。；;，,]\s*$/g, '')
           || _luxuryScriptPurposeLabel(role, i, total, '');
@@ -16089,8 +16166,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           beat.spoken_line,
           outline.copy_direction,
         ].find(v => String(v || '').trim());
-        const visual = _cleanLuxuryAdVisual(rawVisual || '', fallbackOpts);
-        const action = _cleanLuxuryAdAction(rawAction || '', fallbackOpts);
+        const visualAction = _coerceLuxuryReviewVisualAction(rawVisual || '', rawAction || '', fallbackOpts);
+        const visual = visualAction.visual;
+        const action = visualAction.action;
         const voiceover = _cleanLuxuryAdCopy(rawCopy || '', fallbackOpts);
         const purpose = _luxuryScriptPurposeLabel(role, i, total, scene?.script_purpose || scene?.purpose || beat.spoken_intent || '');
         const objective = _cleanLuxuryAdVisual(scene?.objective || scene?.intent || beat.character_goal || beat.solution_step || '', fallbackOpts)
@@ -16100,7 +16178,13 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           || beat.subject_type || beat.subjectType || beat.required_subject_type
           || outline.subject_type || outline.subjectType || 'auto',
         );
-        const subjectType = rawSubjectType !== 'auto' ? rawSubjectType : (continuousHuman ? 'human_scene' : 'auto');
+        const subjectType = _inferLuxuryRevisionSubjectType(rawSubjectType, {
+          scene,
+          beat,
+          outline,
+          productSubject,
+          continuousHuman,
+        });
         const subjectRequiresPerson = _luxuryRevisionRequiresPerson(subjectType, scene || {});
         let dialogueLines = Array.isArray(scene?.dialogue_lines)
           ? scene.dialogue_lines.map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean)
@@ -16150,18 +16234,26 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const outline = outlineNotes[i] || outline_segments[i] || {};
         const role = _luxuryStoryRoleAt(i, target, beat.role || outline.role || '');
         const fallbackOpts = { role, productSubject, index: i, total: target, brief, continuousHuman };
-        const visual = _cleanLuxuryAdVisual(
+        const visualAction = _coerceLuxuryReviewVisualAction(
           beat.plot || beat.visual_proof || beat.scene || outline.content_prompt || outline.material_need || outline.objective || '',
+          beat.solution_step || beat.character_goal || outline.action || '',
           fallbackOpts,
         );
-        const action = _cleanLuxuryAdAction(beat.solution_step || beat.character_goal || outline.action || '', fallbackOpts);
+        const visual = visualAction.visual;
+        const action = visualAction.action;
         const voiceover = _cleanLuxuryAdCopy(beat.spoken_line || outline.copy_direction || '', fallbackOpts);
         const purpose = _luxuryScriptPurposeLabel(role, i, target, beat.spoken_intent || outline.purpose || '');
         const rawSubjectType = _normalizeLuxuryRevisionSubjectType(
           beat.subject_type || beat.subjectType || beat.required_subject_type
           || outline.subject_type || outline.subjectType || 'auto',
         );
-        const subjectType = rawSubjectType !== 'auto' ? rawSubjectType : (continuousHuman ? 'human_scene' : 'auto');
+        const subjectType = _inferLuxuryRevisionSubjectType(rawSubjectType, {
+          scene: {},
+          beat,
+          outline,
+          productSubject,
+          continuousHuman,
+        });
         const subjectRequiresPerson = _luxuryRevisionRequiresPerson(subjectType, {});
         list.push({
           index: i,
@@ -16380,7 +16472,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
     "resolution": "最后如何收束到行动"
   },
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
-  "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","subject_type":"auto|human_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现的可见主体和证据；有人物时写清人物与证据关系","why_next":"为什么自然进入下一段"}]
+  "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","subject_type":"auto|human_scene|character_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标；机器人/吉祥物/动物/虚拟人等非真人主体用 character_scene","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现的可见主体和证据；有人物时写清人物与证据关系；非真人主体写清主体与场景证据关系","why_next":"为什么自然进入下一段"}]
 }
 beats 数量：${explicitShotTarget ? `正好 ${Math.max(3, wantedShots)} 个剧情 beat，服务后续正好 ${wantedShots} 个镜头` : `建议 ${Math.max(3, Math.min(wantedShots, maxAllowedShots))} 个，可在 ${Math.max(3, minAllowedShots)}-${Math.max(3, maxAllowedShots)} 个内按剧情调整`}，不要拆成镜头。必须包含 pain/context、product_reveal、至少一个 feature 或 demo、proof/ comparison、offer/cta；每个 beat 都要有不同的剧情动作和一句自然台词。`;
       let storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
@@ -17434,9 +17526,13 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     const role = _luxuryRoleAt(shotIndex, storyTotal, raw.role);
     const fallbackOpts = { role, productSubject: subject, index: shotIndex, total: storyTotal, brief: text };
     const voiceover = _cleanLuxuryAdCopy(raw.narration || raw.voiceover || raw.ad_copy || raw.text || '', fallbackOpts);
-    let visual = _cleanLuxuryAdVisual(raw.content_prompt || raw.scene_content || raw.visual || raw.scene || '', fallbackOpts);
-    let action = String(raw.action || raw.visual_action || '').replace(/\s+/g, ' ').trim()
-      || _fallbackLuxuryAdAction({ role, productSubject: subject });
+    const normalizedVisualAction = _coerceLuxuryReviewVisualAction(
+      raw.content_prompt || raw.scene_content || raw.visual || raw.scene || '',
+      raw.action || raw.visual_action || '',
+      fallbackOpts,
+    );
+    let visual = normalizedVisualAction.visual;
+    let action = normalizedVisualAction.action || _fallbackLuxuryAdAction({ role, productSubject: subject });
     const storyCharactersForShot = Array.isArray(raw.characters)
       ? raw.characters
       : (Array.isArray(raw.character_profiles) ? raw.character_profiles : []);
@@ -17463,6 +17559,11 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       action,
       visual_action: action,
     }, subject);
+    const normalizedSubjectType = _inferLuxuryRevisionSubjectType(rawSubjectType || 'auto', {
+      scene: { ...raw, content_prompt: visual, scene_content: visual, visual, action, visual_action: action },
+      productSubject: subject,
+      continuousHuman: corePersonRequired,
+    });
     if (!corePersonRequired && _luxuryIsMaterialProductShot({ title: raw.title || '', content_prompt: visual, visual }, subject)) {
       action = _luxurySanitizeProductOnlyAction(action) || '主体证据在已确认场景中被清楚呈现，镜头克制推进，建立第一眼识别和业务关系。';
     }
@@ -17506,8 +17607,8 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
       shot_index: shotIndex,
       id: raw.id || raw.shot_id || `shot_${shotIndex + 1}`,
       shot_id: raw.shot_id || raw.id || `shot_${shotIndex + 1}`,
-      subject_type: rawSubjectType || (corePersonRequired ? 'human_scene' : 'auto'),
-      subjectType: rawSubjectType || (corePersonRequired ? 'human_scene' : 'auto'),
+      subject_type: normalizedSubjectType,
+      subjectType: normalizedSubjectType,
       requires_person: corePersonRequired,
       person_required: corePersonRequired,
       cast_ids: Array.isArray(raw.cast_ids) ? raw.cast_ids : (Array.isArray(raw.castIds) ? raw.castIds : []),
