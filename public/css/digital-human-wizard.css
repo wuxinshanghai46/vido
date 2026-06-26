@@ -1166,6 +1166,8 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-lux-error-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: rgba(0,0,0,.18); }
 .dh-lux-error-actions span { color: rgba(255,255,255,.72); font-size: 12px; }
 .dh-demo-script-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.dh-demo-script-actions .dh-btn { flex: 0 1 auto; max-width: 100%; white-space: nowrap; }
+#dhLuxAdGenerateFinalFrames, #dhLuxAdGoCompose { min-width: 148px; justify-content: center; }
 .dh-demo-script-mainline, .dh-demo-script-overview { margin: 12px; padding: 13px 16px; border-radius: var(--dh-radius-sm); background: rgba(33,255,243,.055); color: var(--dh-text); border: 1px solid rgba(33,255,243,.20); }
 .dh-demo-script-mainline b, .dh-demo-script-overview b { display: block; color: var(--dh-primary); font-size: 13px; margin-bottom: 5px; }
 .dh-demo-script-mainline span, .dh-demo-script-overview span { color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
@@ -1434,6 +1436,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 @media (max-width: 900px) {
   .dh-demo-grid, .dh-demo-grid.two, .dh-demo-detail-grid { grid-template-columns: 1fr; }
   .dh-demo-headline, .dh-demo-guide, .dh-demo-person-source { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .dh-demo-script-actions { justify-content: flex-start; width: 100%; }
   .dh-demo-person-actions { justify-content: flex-start; }
   .dh-luxgen-person-spec { grid-template-columns: 1fr; }
   .dh-luxgen-person-spec label,

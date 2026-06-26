@@ -8912,6 +8912,44 @@
         frameState.classList.toggle('ready', refCount > 0);
       }
     }
+    const frameReadiness = luxuryAdFrameReadiness();
+    const canRequestFinalFrames = !gate.materialMode
+      && gate.contentReady
+      && gate.storyboardReady
+      && gate.detailedReady
+      && !busyGenerating
+      && frameReadiness.total > 0;
+    const finalFrameBtn = $('#dhLuxAdGenerateFinalFrames');
+    if (finalFrameBtn) {
+      finalFrameBtn.hidden = !!gate.materialMode;
+      finalFrameBtn.textContent = frameReadiness.planningOnly
+        ? '生成真实关键帧'
+        : (frameReadiness.generated ? '重新生成真实关键帧' : '生成真实关键帧');
+      finalFrameBtn.disabled = !canRequestFinalFrames;
+      finalFrameBtn.title = canRequestFinalFrames ? '' : (busyGenerating ? gate.hint : '请先完成剧本审核');
+      finalFrameBtn.classList.toggle('dh-btn-primary', frameReadiness.planningOnly || !frameReadiness.ready);
+      finalFrameBtn.classList.toggle('dh-btn-ghost', !frameReadiness.planningOnly && frameReadiness.ready);
+    }
+    const fillTopBtn = $('#dhLuxAdFillMissingFramesTop');
+    if (fillTopBtn) {
+      const missingCount = frameReadiness.missing.length;
+      fillTopBtn.hidden = gate.materialMode || !missingCount || frameReadiness.planningOnly;
+      fillTopBtn.textContent = `补齐未生成镜头（${missingCount}）`;
+      fillTopBtn.disabled = !canRequestFinalFrames || !missingCount;
+      fillTopBtn.title = fillTopBtn.disabled ? (busyGenerating ? gate.hint : '当前没有可补齐的缺失镜头') : '';
+    }
+    const goComposeBtn = $('#dhLuxAdGoCompose');
+    if (goComposeBtn) {
+      const composeReady = gate.materialMode
+        ? (gate.contentReady && gate.materialAssetCount > 0)
+        : frameReadiness.ready && !busyGenerating;
+      goComposeBtn.disabled = !composeReady;
+      goComposeBtn.title = composeReady
+        ? ''
+        : (gate.materialMode ? '请先上传素材' : (frameReadiness.planningOnly ? '请先生成真实关键帧' : '真实关键帧齐全后才能进入广告合成'));
+      goComposeBtn.classList.toggle('dh-btn-primary', composeReady);
+      goComposeBtn.classList.toggle('dh-btn-ghost', !composeReady);
+    }
 
     syncLuxuryAdStepPanels(gate);
     updateLuxuryAdComposeCards(gate);
@@ -11937,11 +11975,9 @@
       : 0;
     const ratioStyle = luxuryAspectRatioStyle(state.luxuryAd.outputRatio || '9:16');
     const generatedFrameCount = Array.isArray(keyframes) ? keyframes.filter(luxuryFrameHasImage).length : 0;
-    const missingFrameCount = Math.max(0, segments.length - generatedFrameCount);
     const reviewLabel = sheetCount
       ? `审核板 ${segments.length} 个镜头 · ${sheetCount} 页`
       : `镜头表 ${segments.length} 个镜头 · ${generatedFrameCount ? `已保留 ${generatedFrameCount} 张真实关键帧` : '真实关键帧未生成'}`;
-    const regenerateLabel = planningOnly ? '生成真实关键帧' : '重新生成真实关键帧';
     const planningNotice = planningOnly && !errorText
       ? `<div class="dh-lux-keyframe-notice">
           <b>${sheetCount ? '当前只完成了审核分镜板' : '当前只完成了镜头表'}</b>
@@ -11953,10 +11989,6 @@
         <div>
           <b>分镜结果</b>
           <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? reviewLabel : `共 ${segments.length} 个镜头`)}</span>
-        </div>
-        <div class="dh-lux-frame-actions">
-          ${missingFrameCount ? `<button type="button" class="dh-luxgen-edit" id="dhLuxAdFillMissingFrames" ${disabledAttr}>补齐未生成镜头（${missingFrameCount}）</button>` : ''}
-          <button type="button" class="dh-luxgen-edit" id="dhLuxAdRegenerateFrames" ${disabledAttr}>${regenerateLabel}</button>
         </div>
       </div>
       <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdFrameProgress" hidden></div>
@@ -13013,8 +13045,8 @@
         startedAt,
         message: planningSheetMode
           ? (deferredPlanning
-            ? `镜头表已生成：${totalShots}/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
-            : `镜头表已生成：${totalShots}/${totalShots}。关键帧生成未通过 QA，可先审核镜头表并重新生成关键帧。`)
+            ? `镜头表阶段已完成：${totalShots}/${totalShots}，真实关键帧 0/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
+            : `镜头表阶段已完成：${totalShots}/${totalShots}，真实关键帧未通过 QA。请先审核镜头表并重新生成真实关键帧。`)
           : singleIndex === null
           ? `分镜已完成：${state.luxuryAd.keyframes.length}/${previewSegments.length || state.luxuryAd.keyframes.length}（静态分镜；合成广告时才逐镜生成动态视频）。`
           : `第 ${singleIndex + 1} 镜已重新生成。`,
@@ -13027,7 +13059,7 @@
         startedAt,
         elapsedSec: Math.max(1, Math.round((Date.now() - startedAt) / 1000)),
         percent: 100,
-        label: planningSheetMode ? '镜头表已生成' : '分镜生成完成',
+        label: planningSheetMode ? '镜头表阶段完成' : '分镜生成完成',
         phase: planningSheetMode ? (deferredPlanning ? '待生成真实关键帧' : '关键帧待重新生成') : '已完成剧本一致性检查',
         message: state.luxuryAd.keyframeProgress.message,
       };
@@ -13096,6 +13128,52 @@
     return segments
       .map((_, i) => i)
       .filter(i => !luxuryFrameHasImage(keyframes[i]));
+  }
+
+  function luxuryAdFrameReadiness() {
+    const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
+    const keyframes = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
+    const missing = luxuryMissingKeyframeIndexes();
+    const generated = Math.max(0, segments.length - missing.length);
+    const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
+    return {
+      segments,
+      keyframes,
+      total: segments.length,
+      generated,
+      missing,
+      planningOnly,
+      ready: !!segments.length && !planningOnly && missing.length === 0 && keyframes.some(luxuryFrameHasImage),
+    };
+  }
+
+  function ensureLuxuryAdFrameReadyForCompose() {
+    if (luxuryAdIsMaterialMode()) return true;
+    if (state.luxuryAd.keyframeGenerating) {
+      toast('真实关键帧正在生成，请等待完成后再进入广告合成', 'error');
+      return false;
+    }
+    if (!state.luxuryAd.storyboardDetailed || !state.luxuryAd.segments?.length) {
+      toast('请先完成剧本，再生成分镜', 'error');
+      return false;
+    }
+    const readiness = luxuryAdFrameReadiness();
+    if (readiness.planningOnly) {
+      toast('当前只完成镜头表审核，还没有真实关键帧。请先点击“生成真实关键帧”', 'error');
+      return false;
+    }
+    if (!readiness.ready) {
+      const missingCount = readiness.missing.length || Math.max(0, readiness.total - readiness.generated);
+      toast(missingCount ? `还有 ${missingCount} 个镜头未生成真实关键帧，请先补齐` : '请先生成真实关键帧，再进入广告合成', 'error');
+      return false;
+    }
+    try {
+      validateLuxuryAdKeyframes(readiness.keyframes, readiness.segments);
+    } catch (err) {
+      toast('成片前检查未通过：' + err.message, 'error');
+      return false;
+    }
+    return true;
   }
 
   async function fillMissingLuxuryAdKeyframes() {
@@ -16100,8 +16178,8 @@
       else await buildLuxuryAdStoryboard({ autoNext: true, detail: false, triggerButton: luxGenerateBtn });
       return;
     }
-    if (closest('#dhLuxAdFillMissingFrames')) { fillMissingLuxuryAdKeyframes(); return; }
-    if (closest('#dhLuxAdRegenerateFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
+    if (closest('#dhLuxAdFillMissingFrames') || closest('#dhLuxAdFillMissingFramesTop')) { fillMissingLuxuryAdKeyframes(); return; }
+    if (closest('#dhLuxAdRegenerateFrames') || closest('#dhLuxAdGenerateFinalFrames')) { generateLuxuryAdKeyframes({ autoSubmit: false, force: true }); return; }
     const luxuryShotRegenerate = closest('[data-lux-shot-regenerate]');
     if (luxuryShotRegenerate) {
       const idx = Number(luxuryShotRegenerate.dataset.luxShotRegenerate);
@@ -16113,7 +16191,11 @@
       else generateLuxuryAdKeyframes({ autoSubmit: false, force: state.luxuryAd.keyframePlanningOnly === true });
       return;
     }
-    if (closest('#dhLuxAdGoCompose') || closest('[data-lux-material-compose]')) { showLuxuryAdStep(5); return; }
+    if (closest('#dhLuxAdGoCompose')) {
+      if (ensureLuxuryAdFrameReadyForCompose()) showLuxuryAdStep(5);
+      return;
+    }
+    if (closest('[data-lux-material-compose]')) { showLuxuryAdStep(5); return; }
     if (closest('#dhLuxAdConfirmGenerate')) {
       if (luxuryAdIsMaterialMode()) submitMaterialFilmAd();
       else submitLuxuryAd();
