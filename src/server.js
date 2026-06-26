@@ -24,7 +24,7 @@ function _parseCookies(req) {
   return out;
 }
 
-// 受保护页面中间件：验证 vido_session Cookie（7天 JWT）
+// 受保护页面中间件：验证 vido_session Cookie（长期会话 JWT）
 function requirePageAuth(req, res, next) {
   const cookies = _parseCookies(req);
   const token = cookies.vido_session;

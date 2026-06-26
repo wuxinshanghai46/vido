@@ -2,39 +2,80 @@ const jwt = require('jsonwebtoken');
 const { getUserById, getRoleById } = require('../models/authStore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vido_default_secret_change_me';
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '365d';
 
 function signToken(userId, role) {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
-function authenticate(req, res, next) {
+function parseCookies(req) {
+  if (req.cookies && typeof req.cookies === 'object') return req.cookies;
+  const out = {};
+  (req.headers.cookie || '').split(';').forEach(c => {
+    const [k, ...v] = c.trim().split('=');
+    if (k) out[k.trim()] = decodeURIComponent(v.join('=').trim());
+  });
+  return out;
+}
+
+function getRequestTokens(req) {
   const authHeader = req.headers.authorization;
-  const token = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.slice(7) : req.query?.token;
-  if (!token) {
+  const tokens = [];
+  if (authHeader && authHeader.startsWith('Bearer ')) tokens.push(authHeader.slice(7));
+  if (req.query?.token) tokens.push(req.query.token);
+  const cookieToken = parseCookies(req).vido_session;
+  if (cookieToken) tokens.push(cookieToken);
+  return Array.from(new Set(tokens.filter(Boolean)));
+}
+
+function verifyUserToken(token) {
+  const decoded = jwt.verify(token, JWT_SECRET);
+  const user = getUserById(decoded.userId);
+  if (!user) {
+    const err = new Error('用户不存在');
+    err.statusCode = 401;
+    throw err;
+  }
+  if (user.status !== 'active') {
+    const err = new Error('账户已被禁用');
+    err.statusCode = 403;
+    throw err;
+  }
+  return user;
+}
+
+function authenticate(req, res, next) {
+  const tokens = getRequestTokens(req);
+  if (!tokens.length) {
     return res.status(401).json({ success: false, error: '未登录' });
   }
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = getUserById(decoded.userId);
-    if (!user) return res.status(401).json({ success: false, error: '用户不存在' });
-    if (user.status !== 'active') return res.status(403).json({ success: false, error: '账户已被禁用' });
-    req.user = { id: user.id, username: user.username, role: user.role, credits: user.credits };
-    next();
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') return res.status(401).json({ success: false, error: 'Token 已过期' });
-    return res.status(401).json({ success: false, error: 'Token 无效' });
+  let lastErr = null;
+  for (const token of tokens) {
+    try {
+      const user = verifyUserToken(token);
+      req.user = { id: user.id, username: user.username, role: user.role, credits: user.credits };
+      return next();
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  if (lastErr?.statusCode === 403) return res.status(403).json({ success: false, error: lastErr.message });
+  if (lastErr?.statusCode === 401) return res.status(401).json({ success: false, error: lastErr.message });
+  if (lastErr?.name === 'TokenExpiredError') return res.status(401).json({ success: false, error: 'Token 已过期' });
+  return res.status(401).json({ success: false, error: 'Token 无效' });
 }
 
 function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) { req.user = null; return next(); }
-  try {
-    const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
-    const user = getUserById(decoded.userId);
-    req.user = user ? { id: user.id, username: user.username, role: user.role, credits: user.credits } : null;
-  } catch { req.user = null; }
+  const tokens = getRequestTokens(req);
+  if (!tokens.length) { req.user = null; return next(); }
+  for (const token of tokens) {
+    try {
+      const user = verifyUserToken(token);
+      req.user = { id: user.id, username: user.username, role: user.role, credits: user.credits };
+      return next();
+    } catch {}
+  }
+  req.user = null;
   next();
 }
 

@@ -135,6 +135,8 @@ const FILES = [
   // === 前端 ===
   ['public/index.html', true],
   ['public/admin.html', true],
+  ['public/ai-manga-drama.html', true],
+  ['public/ai-novel.html', true],
   ['public/home.html', true],
   ['public/drama-studio.html', true],
   ['public/drama-demo.html', true],
@@ -145,6 +147,7 @@ const FILES = [
   ['public/css/home.css', true],
   ['public/css/aicanvas.css', true],
   ['public/js/app.js', true],
+  ['public/js/auth.js', true],
   ['public/js/admin.js', true],
   ['public/js/home.js', true],
   ['public/js/drama-studio.js', true],

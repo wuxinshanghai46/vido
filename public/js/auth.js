@@ -1,9 +1,13 @@
 // === Token 管理 ===
-let _accessToken = sessionStorage.getItem('vido_token');
+let _accessToken = sessionStorage.getItem('vido_token') || localStorage.getItem('vido_token') || localStorage.getItem('vido-token') || null;
 let _currentUser = null;
 
 function getToken() { return _accessToken; }
-function setToken(token) { _accessToken = token; sessionStorage.setItem('vido_token', token); }
+function setToken(token) {
+  _accessToken = token;
+  sessionStorage.setItem('vido_token', token);
+  localStorage.setItem('vido_token', token);
+}
 function clearToken() {
   _accessToken = null;
   _currentUser = null;
@@ -23,6 +27,7 @@ async function authFetch(url, opts = {}) {
   const isFormData = opts.body instanceof FormData;
   const base = isFormData ? { 'Authorization': getToken() ? `Bearer ${getToken()}` : undefined } : getAuthHeaders();
   opts.headers = { ...base, ...opts.headers };
+  opts.credentials = opts.credentials || 'include';
   let res = await fetch(url, opts);
   if (res.status === 401) {
     // 尝试刷新 token（去重并发刷新，避免 refresh_token 旋转 race 把人踢出去）
@@ -52,6 +57,11 @@ async function tryRefresh() {
       if (data.success && data.data?.access_token) {
         setToken(data.data.access_token);
         _currentUser = data.data.user;
+        if (_currentUser) {
+          const userJson = JSON.stringify(_currentUser);
+          sessionStorage.setItem('vido_user', userJson);
+          localStorage.setItem('vido_user', userJson);
+        }
         return true;
       }
       return false;
@@ -86,7 +96,6 @@ async function logout() {
 // === 页面保护 ===
 // 超管和普通用户都可访问工作台；后台 /admin.html 由 requireAdmin 单独保护
 async function requireAuth() {
-  if (!getToken()) { window.location.href = '/?login=1'; return false; }
   const user = await fetchCurrentUser();
   if (!user) { clearToken(); window.location.href = '/?login=1'; return false; }
   return true;
@@ -102,7 +111,6 @@ function authUrl(url) {
 
 async function requireAdmin() {
   // admin 独立登录入口：未登录直接跳 /login.html?redirect=/admin.html（不走前台首页弹窗）
-  if (!getToken()) { window.location.href = '/login.html?redirect=' + encodeURIComponent(location.pathname); return false; }
   const user = await fetchCurrentUser();
   if (!user) { clearToken(); window.location.href = '/login.html?redirect=' + encodeURIComponent(location.pathname); return false; }
   if (user.role !== 'admin') { window.location.href = '/'; return false; }

@@ -421,12 +421,50 @@
     return String(value);
   }
 
+  let dhAuthRefreshPromise = null;
+  async function refreshDhAuth() {
+    if (dhAuthRefreshPromise) return dhAuthRefreshPromise;
+    dhAuthRefreshPromise = (async () => {
+      try {
+        const resp = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!resp.ok) return false;
+        const data = await resp.json();
+        const token = data?.success && data?.data?.access_token;
+        if (!token) return false;
+        state.token = token;
+        sessionStorage.setItem('vido_token', token);
+        localStorage.setItem('vido_token', token);
+        if (data.data.user) {
+          const userJson = JSON.stringify(data.data.user);
+          sessionStorage.setItem('vido_user', userJson);
+          localStorage.setItem('vido_user', userJson);
+          state.currentUser = data.data.user;
+        }
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setTimeout(() => { dhAuthRefreshPromise = null; }, 1500);
+      }
+    })();
+    return dhAuthRefreshPromise;
+  }
+
   async function api(path, opts = {}) {
     const headers = { ...(opts.headers || {}) };
     if (!headers['Content-Type'] && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
     if (state.token) headers.Authorization = 'Bearer ' + state.token;
     const body = opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined);
-    const resp = await fetch(path, { ...opts, headers, body });
+    let resp = await fetch(path, { ...opts, credentials: opts.credentials || 'include', headers, body });
+    if (resp.status === 401 && await refreshDhAuth()) {
+      const retryHeaders = { ...headers };
+      if (state.token) retryHeaders.Authorization = 'Bearer ' + state.token;
+      resp = await fetch(path, { ...opts, credentials: opts.credentials || 'include', headers: retryHeaders, body });
+    }
     if (resp.status === 401) { location.href = '/?login=1'; throw new Error('unauth'); }
     const contentType = resp.headers.get('content-type') || '';
     const raw = await resp.text();

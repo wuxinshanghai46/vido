@@ -5,7 +5,9 @@ const { getUserByUsername, getUserByEmail, createUser, updateUser, getUserById, 
         saveRefreshToken, getRefreshToken, deleteRefreshToken, deleteUserRefreshTokens } = require('../models/authStore');
 const { signToken, authenticate, JWT_SECRET } = require('../middleware/auth');
 
-const PAGE_SESSION_DAYS = 7;
+const AUTH_SESSION_DAYS = parseInt(process.env.AUTH_SESSION_DAYS || '365', 10);
+const PAGE_SESSION_DAYS = parseInt(process.env.PAGE_SESSION_DAYS || String(AUTH_SESSION_DAYS), 10);
+const REFRESH_TOKEN_DAYS = parseInt(process.env.REFRESH_TOKEN_DAYS || String(AUTH_SESSION_DAYS), 10);
 function _setPageSession(res, userId) {
   const token = jwt.sign({ userId, scope: 'page' }, JWT_SECRET, { expiresIn: `${PAGE_SESSION_DAYS}d` });
   res.cookie('vido_session', token, {
@@ -15,8 +17,6 @@ function _setPageSession(res, userId) {
     path: '/',
   });
 }
-
-const REFRESH_TOKEN_DAYS = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
 
 function isEnglishUsername(username) {
   return /^[A-Za-z]{3,20}$/.test(username);
