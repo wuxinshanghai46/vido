@@ -4244,8 +4244,8 @@ body {
 #admin-roles-vue select option,
 .vue-modal select option,
 .modal-box select option {
-  color: #e8eaed;
-  background: #171b25;
+  color: var(--text, var(--vido-text));
+  background: var(--bg2, var(--vido-surface-2));
 }
 
 #admin-roles-vue .role-tree-modal {

@@ -159,6 +159,34 @@ input,
 textarea,
 select {
   font-family: inherit;
+  color-scheme: inherit;
+}
+
+:root:not([data-theme^="light"]) select,
+:root:not([data-theme^="light"]) select option,
+:root:not([data-theme^="light"]) select optgroup {
+  color-scheme: dark;
+}
+
+:root[data-theme^="light"] select,
+:root[data-theme^="light"] select option,
+:root[data-theme^="light"] select optgroup {
+  color-scheme: light;
+}
+
+select option,
+select optgroup {
+  background-color: var(--bg2, var(--dh-bg-gray, var(--vido-surface-2)));
+  color: var(--text, var(--dh-text, var(--vido-text)));
+}
+
+select option:disabled {
+  color: var(--text3, var(--dh-text-muted, var(--vido-text-3)));
+}
+
+select option:checked {
+  background-color: rgba(var(--accent-rgb, var(--vido-accent-rgb)), .24);
+  color: var(--text, var(--dh-text, var(--vido-text)));
 }
 
 button,
@@ -746,6 +774,16 @@ th {
   box-shadow: 0 1px 0 rgba(255, 255, 255, .72) inset !important;
 }
 
+[data-theme="light-mist"] select option,
+[data-theme="light-mist"] select optgroup {
+  background-color: var(--bg2, var(--dh-bg-elevate, var(--vido-surface))) !important;
+  color: var(--vido-text) !important;
+}
+
+[data-theme="light-mist"] select option:disabled {
+  color: var(--vido-text-3) !important;
+}
+
 [data-theme="light-mist"] input::placeholder,
 [data-theme="light-mist"] textarea::placeholder {
   color: var(--vido-text-3) !important;
@@ -1091,6 +1129,7 @@ th {
 [data-theme="light-mist"] .dh-textarea,
 [data-theme="light-mist"] .dh-quick-textarea,
 [data-theme="light-mist"] .dh-luxgen-textarea,
+[data-theme="light-mist"] .pdh2-select,
 [data-theme="light-mist"] .dh-luxgen-bgm-select,
 [data-theme="light-mist"] .dh-popover input,
 [data-theme="light-mist"] .dh-voice-opt,
@@ -1099,6 +1138,14 @@ th {
 [data-theme="light-mist"] .dh-open-music-search {
   background: rgba(255, 255, 255, .76) !important;
   border: 1px solid var(--dh-border) !important;
+  color: var(--dh-text) !important;
+}
+
+[data-theme="light-mist"] .dh-input option,
+[data-theme="light-mist"] .dh-input optgroup,
+[data-theme="light-mist"] .pdh2-select option,
+[data-theme="light-mist"] .pdh2-select optgroup {
+  background-color: var(--dh-bg-elevate, var(--vido-surface)) !important;
   color: var(--dh-text) !important;
 }
 

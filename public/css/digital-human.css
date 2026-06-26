@@ -31,7 +31,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; color: var(--dh-text); background: var(--dh-bg); font-size: 14px; line-height: 1.5; }
+html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; color: var(--dh-text); background: var(--dh-bg); font-size: 14px; line-height: 1.5; color-scheme: dark; }
+html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light; }
 
 /* ═══════════════════════════════════════════════ Layout ═══ */
 .dh-app { display: flex; height: 100vh; overflow: hidden; }
@@ -142,9 +143,19 @@ html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "P
 .dh-field { margin-bottom: 20px; }
 .dh-field label { display: block; margin-bottom: 8px; font-weight: 500; color: var(--dh-text); font-size: 14px; }
 .dh-field-hint { font-weight: 400; color: var(--dh-text-muted); font-size: 12px; margin-left: 8px; }
-.dh-input { width: 100%; padding: 10px 14px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); font-size: 14px; font-family: inherit; transition: border-color .15s; background: var(--dh-bg-gray); color: var(--dh-text); }
+.dh-input { width: 100%; padding: 10px 14px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); font-size: 14px; font-family: inherit; transition: border-color .15s; background: var(--dh-bg-gray); color: var(--dh-text); color-scheme: inherit; }
 .dh-input:focus { outline: none; border-color: var(--dh-primary); box-shadow: 0 0 0 3px var(--dh-primary-bg); }
 .dh-input::placeholder, .dh-textarea::placeholder, .dh-quick-textarea::placeholder { color: var(--dh-text-muted); }
+.dh-input option,
+.dh-input optgroup {
+  background: var(--dh-bg-elevate);
+  color: var(--dh-text);
+}
+.dh-input option:disabled { color: var(--dh-text-muted); }
+.dh-input option:checked {
+  background: var(--dh-primary-bg);
+  color: var(--dh-text);
+}
 
 .dh-upload { border: 2px dashed var(--dh-border); border-radius: var(--dh-radius); padding: 32px; text-align: center; cursor: pointer; transition: all .15s; background: var(--dh-bg-soft); position: relative; }
 .dh-upload:hover { border-color: var(--dh-primary); background: var(--dh-primary-bg); }

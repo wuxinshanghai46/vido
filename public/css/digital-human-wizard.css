@@ -93,8 +93,14 @@
 .dh-form-grid { display: flex; flex-direction: column; gap: 20px; max-width: 880px; }
 .dh-field { display: flex; flex-direction: column; gap: 10px; }
 .dh-field > label { font-size: 13px; font-weight: 600; color: var(--dh-text); }
-.dh-input { width: 100%; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); padding: 10px 12px; color: var(--dh-text); font-size: 14px; font-family: inherit; resize: vertical; transition: border-color .15s; }
+.dh-input { width: 100%; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); padding: 10px 12px; color: var(--dh-text); font-size: 14px; font-family: inherit; resize: vertical; transition: border-color .15s; color-scheme: inherit; }
 .dh-input:focus { outline: none; border-color: var(--dh-primary); }
+.dh-input option,
+.dh-input optgroup {
+  background: var(--dh-bg-elevate);
+  color: var(--dh-text);
+}
+.dh-input option:disabled { color: var(--dh-text-muted); }
 .dh-input-sm { padding: 8px 10px; font-size: 13px; }
 
 /* ——— Chip 行 ——— */
@@ -2092,16 +2098,22 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 }
 .pdh2-select {
   width: 100%;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.1);
+  background: var(--dh-bg-gray);
+  border: 1px solid var(--dh-border);
   border-radius: 8px;
-  color: #fff;
+  color: var(--dh-text);
   font-size: 13px;
   padding: 7px 10px;
   outline: none;
   cursor: pointer;
+  color-scheme: inherit;
 }
-.pdh2-select option { background: #1a1d23; }
+.pdh2-select option,
+.pdh2-select optgroup {
+  background: var(--dh-bg-elevate);
+  color: var(--dh-text);
+}
+.pdh2-select option:disabled { color: var(--dh-text-muted); }
 
 /* 一键生成按钮 */
 .pdh2-generate-btn {
