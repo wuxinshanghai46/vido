@@ -9449,7 +9449,7 @@
           debugMessage: '人物包已提交到后台，正在等待模型、构图 QA、设定 QA 和一致性 QA 返回。',
         };
         renderLuxuryAdPerson();
-        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 12 * 60 * 1000, missingRetryMs: 90000 });
+        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 90000 });
       } else if (!r && requestKey) {
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 45000 });
       }
@@ -12689,7 +12689,7 @@
         state.luxuryAd.personGenerationProgress = {
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
-        label: '拟真演员',
+          label: '拟真演员',
           phase: '后台生成中',
           message: '服务器正在继续生成演员包，页面会自动刷新结果。',
           percent: Math.max(86, Number(state.luxuryAd.personGenerationProgress?.percent || 86)),
