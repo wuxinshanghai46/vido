@@ -2524,7 +2524,7 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     '- Hard fail if explicit age or gender conflicts with the visible person impression.',
     '- Hard fail if explicit roleName, hairMakeupText or appearanceText is visibly contradicted by the image.',
     '- Hard fail if a negativeText item is visibly present.',
-    '- For back/side/action views, allow face details to be less visible, but still enforce outfit, hair length/style, age/gender impression, origin impression where visible, and negative constraints.',
+    '- For side/action views, allow face details to be slightly less frontal, but at least one eye and enough facial structure must remain visible; still enforce outfit, hair length/style, age/gender impression, origin impression where visible, and negative constraints.',
   ].join(' ');
   const { parsed, provider } = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
     stageId: 'luxury_ad.keyframe_qa',
@@ -13015,8 +13015,8 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     ? 'two separate campaign actors'
     : (castMode === 'group' ? `${people} separate campaign actors` : 'one campaign actor');
   const view = /side/i.test(viewKey)
-    ? 'side or three-quarter casting reference'
-    : (/back/i.test(viewKey) ? 'back-view casting reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
+    ? 'three-quarter front casting reference with face still visible to camera'
+    : (/back/i.test(viewKey) ? 'three-quarter front casting reference with face visible; never a back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
   const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(prompt);
   const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, priorityConstraints ? 520 : 760);
   return _luxuryCapImageModelPrompt([
@@ -13048,8 +13048,8 @@ function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
   const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
   const view = /side/i.test(viewKey)
-    ? 'side or three-quarter reference'
-    : (/back/i.test(viewKey) ? 'back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
+    ? 'three-quarter front reference with face still visible to camera'
+    : (/back/i.test(viewKey) ? 'three-quarter front reference with face visible; never a back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
   return _luxuryCapImageModelPrompt([
     `Photorealistic neutral commercial casting sheet, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
     castMode === 'dual'
@@ -13921,8 +13921,8 @@ async function _generateLuxuryRealisticActorPackage({
     ? 'Show exactly one person total.'
     : `Show exactly ${expectedPeople} distinct people total in the same frame, with clear separation between bodies and faces; no extra people, no missing people, no merged bodies.`;
   const castConsistencyLock = expectedPeople === 1
-    ? 'CRITICAL CONSISTENCY LOCK: all four photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.'
-    : `CRITICAL CAST CONSISTENCY LOCK: all four photos must show the exact same ${expectedPeople} people as a fixed cast, each with stable face identity, age impression, hairstyle, body proportions, outfit family and lower-body clothing. Do not add, remove, merge, duplicate or swap any cast member.`;
+    ? 'CRITICAL CONSISTENCY LOCK: all actor reference photos must show the exact same person, exact same haircut and hair length, exact same hair color, exact same outfit family and lower-body clothing. No outfit change, no hairstyle change, no age drift.'
+    : `CRITICAL CAST CONSISTENCY LOCK: all actor reference photos must show the exact same ${expectedPeople} people as a fixed cast, each with stable face identity, age impression, hairstyle, body proportions, outfit family and lower-body clothing. Do not add, remove, merge, duplicate or swap any cast member.`;
   const castIdentityStable = expectedPeople === 1
     ? 'Identity must be stable across all generated views: same face identity, same age impression, same hairstyle, same body proportions, same exact outfit.'
     : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
@@ -13977,15 +13977,11 @@ async function _generateLuxuryRealisticActorPackage({
     },
     {
       key: 'side',
-      prompt: `${castingSheetCore} SIDE / THREE-QUARTER VIEW: ${expectedPeople === 1 ? 'same selected person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, side or three-quarter profile, complete body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions.`,
-    },
-    {
-      key: 'back',
-      prompt: `${castingSheetCore} BACK VIEW: ${expectedPeople === 1 ? 'same selected person seen from the back, exact same haircut length/color and exact same outfit' : `same ${expectedPeople} cast members seen from the back in the same left-to-right order, same hairstyles and outfit families`}, complete body visible from head to shoes when possible, back of top/bottom garment or one-piece clothing clearly visible, same shoes/accessories, neutral standing posture.`,
+      prompt: `${castingSheetCore} THREE-QUARTER FRONT VIEW: ${expectedPeople === 1 ? 'same selected person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, body turned about 30 degrees while the face still turns toward camera, both eyes or at least one full eye clearly visible, complete body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions. Do not show the back of the person.`,
     },
     {
       key: 'action',
-      prompt: `${castingSheetCore} ACTION VIEW: ${expectedPeople === 1 ? 'same selected person performing one small natural gesture' : `same ${expectedPeople} cast members performing one small natural relationship/dialogue gesture together`}, complete body visible from head to knees or shoes when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families.`,
+      prompt: `${castingSheetCore} ACTION VIEW: ${expectedPeople === 1 ? 'same selected person performing one small natural gesture' : `same ${expectedPeople} cast members performing one small natural relationship/dialogue gesture together`}, face still visible to camera, calm natural expression, complete body visible from head to knees or shoes when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families. Do not turn away from camera.`,
     },
   ];
   const outputs = [];
@@ -14002,7 +13998,7 @@ async function _generateLuxuryRealisticActorPackage({
       aspectRatio,
       filename: `${actorId}_${view.key}`,
       destDir: JIMENG_ASSETS_DIR,
-      // 中文说明：后续视图必须继承前序已通过图的人物和服装，避免背面/动作图换衣服或换人。
+      // 中文说明：后续视图必须继承前序已通过图的人物和服装，避免半侧/动作图换衣服或换人。
       referenceImages: viewReferenceImages,
       outputSize: 'hd',
       expectedPeople,
