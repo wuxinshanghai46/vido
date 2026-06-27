@@ -9449,9 +9449,9 @@
           debugMessage: '人物包已提交到后台，正在等待模型、构图 QA、设定 QA 和一致性 QA 返回。',
         };
         renderLuxuryAdPerson();
-        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 90000 });
+        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 20 * 60 * 1000, missingRetryMs: 90000 });
       } else if (!r && requestKey) {
-        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 0, missingRetryMs: 45000 });
+        r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 20 * 60 * 1000, missingRetryMs: 45000 });
       }
       if (!r.success) throw new Error(r.error || '人物演员包生成失败');
       const imageUrl = r.imageUrl || r.image_url || r.url || r.character?.image_url || '';
@@ -12671,7 +12671,7 @@
     throw new Error('服务器仍在生成分镜，请稍后刷新页面或重新进入本步骤查看');
   }
 
-  async function pollLuxuryPersonSheetResult(requestKey, { timeoutMs = 0, missingRetryMs = 45000 } = {}) {
+  async function pollLuxuryPersonSheetResult(requestKey, { timeoutMs = 20 * 60 * 1000, missingRetryMs = 45000 } = {}) {
     const started = Date.now();
     let seenServerJob = false;
     const missingUntil = Date.now() + Math.max(0, Number(missingRetryMs) || 0);
@@ -12702,7 +12702,9 @@
         throw err;
       }
     }
-    throw new Error('服务器仍在生成演员包，请稍后重新进入本步骤查看');
+    const err = new Error('人物演员包生成等待超时，请重新点击生成拟真演员。');
+    err.code = 'PERSON_ACTOR_PACKAGE_TIMEOUT';
+    throw err;
   }
 
   function isLuxuryStoryboardLongRunningError(err) {

@@ -51,6 +51,7 @@ const luxuryKeyframeResults = new Map();
 const luxuryPersonSheetResults = new Map();
 const SERVER_STARTED_AT = Date.now();
 const LUXURY_PERSON_SHEET_RESULT_TTL_MS = 90 * 60 * 1000;
+const LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS = 18 * 60 * 1000;
 
 function _jsonClone(value, fallback = null) {
   try {
@@ -15615,6 +15616,21 @@ function _getLuxuryPersonSheetResult(req, requestKey = '') {
         status: 503,
         code: 'PERSON_ACTOR_PACKAGE_INTERRUPTED',
         message: '后台长任务状态存在，但当前服务进程已重启，原生成进程无法继续写回结果。',
+      },
+      updated_at: Date.now(),
+    };
+  }
+  if (item.status === 'running' && Number(item.started_at || 0) > 0 && Date.now() - Number(item.started_at) > LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS) {
+    return {
+      ...item,
+      status: 'error',
+      error: '人物演员包后台生成超时，请重新点击生成拟真演员。',
+      details: {
+        status: 504,
+        code: 'PERSON_ACTOR_PACKAGE_TIMEOUT',
+        message: '后台人物演员包任务超过等待上限仍未写回完成或失败结果，可能是供应商模型调用长时间无返回。',
+        started_at: item.started_at,
+        updated_at: item.updated_at || null,
       },
       updated_at: Date.now(),
     };
