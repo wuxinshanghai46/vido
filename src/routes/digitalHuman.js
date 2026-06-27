@@ -2283,7 +2283,7 @@ function _luxuryRequestedGenderInstruction(value = '') {
   return `REQUESTED ACTOR ATTRIBUTE LOCK: selected visible gender presentation is "${gender}". Keep every generated casting-sheet candidate aligned to this selected attribute.`;
 }
 
-async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '', allowBackView = false } = {}) {
+async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '', allowBackView = false, allowBarefoot = false } = {}) {
   if (!localPath || !fs.existsSync(localPath)) {
     const err = new Error('演员包图片文件不存在，无法做构图质检');
     err.status = 500;
@@ -2321,6 +2321,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
     requiredGender ? `Hard fail if the visible actor gender presentation does not match the selected required value "${requiredGender}".` : '',
     allowBackView ? 'This is the requested BACK VIEW of the same actor package. A visible face is not required for this view; judge full-body framing, body count, realistic photo quality, hairstyle/back silhouette, lower-body clothing and wardrobe continuity evidence.' : '',
+    allowBarefoot ? 'Bare feet are allowed only because the confirmed user brief/person setting explicitly supports barefoot styling.' : 'Hard fail if a teen/adult standing actor appears barefoot, bare-footed, or without visible footwear. The actor package must establish a stable visible footwear lock such as simple shoes, flats, sneakers, socks, or brief-appropriate footwear.',
     isMultiCast
       ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
       : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
@@ -12929,6 +12930,7 @@ function _isLuxuryActorCropQaFailure(err) {
   return /LUXURY_ACTOR_(FRAME|FRAMING).*FAILED/i.test(String(err?.code || ''))
     && (
       /headshot|bust|shoulders|chest|waist|hip|hips|upper thigh|half-body|cropp|lower[-_\s]?body|garment|trousers|skirt|legs|shoes|头像|胸像|半身|肩|胸|腰|髋|裁切|下半身|腿|鞋/i.test(text)
+      || /barefoot|bare[-\s]?footed|bare feet|no visible footwear|without visible footwear|赤脚|光脚|没穿鞋|未穿鞋/i.test(text)
       || /^(headshot|bust|waist_up|chest_up|shoulders_only|half_body|other|unknown)$/.test(framing)
       || qa.lower_body_visible !== true
       || qa.trousers_or_skirt_visible !== true
@@ -12939,7 +12941,7 @@ function _isLuxuryActorGenderQaFailure(err) {
   return /LUXURY_ACTOR_GENDER_QA_FAILED/i.test(String(err?.code || ''));
 }
 
-function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
+function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single', expectedGender = '', allowBarefoot = false } = {}) {
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
   const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
   const castLabel = castMode === 'dual'
@@ -12955,6 +12957,7 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
       ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
     'Leave clean margin above the head and below the feet, with visible floor line or ground shadow. Use a neutral plain studio background and real-camera perspective.',
+    allowBarefoot ? 'Bare feet are allowed only if explicitly required by the actor styling brief.' : 'FOOTWEAR LOCK: do not generate a barefoot teen/adult actor. Show stable simple footwear, flats, sneakers, socks, or brief-appropriate shoes clearly visible at the bottom of the frame.',
     'Use a longer distance portrait/photo lens feel; the subject should occupy about 55-70% of frame height, never fill the frame as a portrait.',
     'Do not crop at head, shoulders, chest, waist, hips, knees or shoes. Do not create a headshot, bust portrait, waist-up portrait, beauty portrait or poster crop.',
     'If reference images are provided, use them only for identity, age, haircut and outfit evidence; do not copy their crop, composition or close-up framing.',
@@ -13231,6 +13234,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   roleHint = '',
   consistencyReferencePaths = [],
   allowBackView = false,
+  allowBarefoot = false,
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
@@ -13496,6 +13500,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
         castMode,
         expectedGender,
         allowBackView,
+        allowBarefoot,
       });
       const consistencyQa = allowBackView ? null : await _checkLuxuryActorAssetConsistencyQa(req, outPath, consistencyReferencePaths, {
         viewKey: filename,
@@ -13532,6 +13537,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
           expectedPeople,
           castMode,
           expectedGender,
+          allowBarefoot,
         });
         let retryPath = '';
         try {
@@ -13543,6 +13549,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
             castMode,
             expectedGender,
             allowBackView,
+            allowBarefoot,
           });
           const consistencyQa = allowBackView ? null : await _checkLuxuryActorAssetConsistencyQa(req, retryPath, consistencyReferencePaths, {
             viewKey: `${filename}_fullbody_retry`,
@@ -13808,6 +13815,22 @@ function _luxuryActorWardrobeStyleContract({ text = '', descriptionText = '', pe
   ].join(' ');
 }
 
+function _luxuryActorAllowsBarefoot({ text = '', descriptionText = '', personContextNotes = '', sceneNotes = '', roleHint = '', spec = {} } = {}) {
+  const source = [
+    text,
+    descriptionText,
+    personContextNotes,
+    sceneNotes,
+    roleHint,
+    spec?.wardrobeText,
+    spec?.wardrobe_text,
+    spec?.outfit,
+    spec?.appearanceText,
+    spec?.appearance_text,
+  ].filter(Boolean).join('\n');
+  return /赤脚|光脚|裸足|不穿鞋|barefoot|bare[-\s]?footed|bare feet|yoga barefoot|beach barefoot|swimwear barefoot/i.test(source);
+}
+
 function _luxuryActorExplicitPersonSettingsPrompt(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
   const { contract, activeKeys } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
   const lines = [];
@@ -13965,6 +13988,10 @@ async function _generateLuxuryRealisticActorPackage({
     : `Cast identity must be stable across all generated views: the same ${expectedPeople} distinct people, same relative relationship, same face identities, same age impressions, same hairstyles, same body proportions and consistent outfit families.`;
   const personIdentityPrompt = `${origin.prompt} ${gender.value === 'auto' ? 'campaign character/person derived from the confirmed brief and script' : `${gender.value} campaign character/person derived from the confirmed brief and script`}`;
   const genderHardLock = _luxuryRequestedGenderInstruction(gender.value);
+  const allowBarefoot = _luxuryActorAllowsBarefoot({ text, descriptionText, personContextNotes, sceneNotes, roleHint, spec });
+  const footwearLock = allowBarefoot
+    ? 'Footwear lock: barefoot styling is allowed only because the confirmed person/wardrobe brief explicitly asks for it; keep the same barefoot/footwear state across all views.'
+    : 'Footwear lock: do not generate a barefoot teen/adult actor. Use stable simple footwear, flats, sneakers, socks, or brief-appropriate shoes, and keep the same footwear across all views.';
   const wardrobe = expectedPeople === 1
     ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context; it may be casual, dress/skirt, smart-casual, activewear or formal only when context supports it, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
     : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
@@ -13995,6 +14022,7 @@ async function _generateLuxuryRealisticActorPackage({
     explicitPersonSettings,
     wardrobeStyle,
     `Wardrobe lock: ${wardrobe}.`,
+    footwearLock,
     framingContract,
     castConsistencyLock,
     'Real-camera full-length fitting photo: centered standing body, complete outfit, shoes or age-appropriate lower body visible, visible floor contact, neutral seamless studio, soft daylight, natural skin texture, normal hands, real fabric folds.',
@@ -14050,6 +14078,7 @@ async function _generateLuxuryRealisticActorPackage({
       roleHint,
       consistencyReferencePaths: outputs.length && view.backView !== true ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
       allowBackView: view.backView === true,
+      allowBarefoot,
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
     outputs.push({
