@@ -3343,9 +3343,9 @@ function _luxuryHasExplicitComputerUiText(...parts) {
   return /(电脑|笔记本|显示器|工作站|工作台|后台|看板|仪表盘|代码|编程|IDE|API|接口|开发接入|SDK|console|dashboard|developer|code\s*editor|laptop|desktop|monitor|workstation)/i.test(text);
 }
 
-function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scene = null } = {}) {
+function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
   const subjectSource = [productSubject, brief, scene ? JSON.stringify(scene).slice(0, 1600) : ''].filter(Boolean).join(' ');
-  const explicitSource = [productSubject, brief].filter(Boolean).join(' ');
+  const explicitSource = [productSubject, brief, allowSceneExplicit && scene ? JSON.stringify(scene).slice(0, 1600) : ''].filter(Boolean).join(' ');
   if (!_luxuryIsRobotAssistantSubject(subjectSource)) return '';
   const allowSweeper = _luxuryHasExplicitSweeperRobotText(explicitSource);
   const allowComputer = _luxuryHasExplicitComputerUiText(explicitSource);
@@ -3358,10 +3358,10 @@ function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scen
   ].filter(Boolean).join(' ');
 }
 
-function _luxuryCleanRobotAssistantDriftText(value = '', { productSubject = '', brief = '', scene = null } = {}) {
+function _luxuryCleanRobotAssistantDriftText(value = '', { productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
   let text = String(value || '');
   const subjectSource = [productSubject, brief, scene ? JSON.stringify(scene).slice(0, 1200) : ''].filter(Boolean).join(' ');
-  const explicitSource = [productSubject, brief].filter(Boolean).join(' ');
+  const explicitSource = [productSubject, brief, allowSceneExplicit && scene ? JSON.stringify(scene).slice(0, 1200) : ''].filter(Boolean).join(' ');
   if (!_luxuryIsRobotAssistantSubject(subjectSource)) return text;
   if (!_luxuryHasExplicitSweeperRobotText(explicitSource)) {
     text = text
@@ -3389,7 +3389,7 @@ function _luxuryHasExplicitDeveloperWorkflowText(value = '') {
   return /API|开放平台|开发者|开发接入|编程|代码|SDK|IDE|接口(?:接入|调用|对接|调试|文档|返回|请求|响应)|(?:调用|请求|响应|回调|状态码).{0,12}(?:API|接口|endpoint|webhook|SDK)|api|endpoint|request|response|webhook|callback|developer|integration|code\s*editor|console|json/i.test(text);
 }
 
-function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software workflow') {
+function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software workflow', { allowSceneExplicit = false } = {}) {
   const text = [
     productSubject,
     scene.product_subject,
@@ -3412,8 +3412,8 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
     scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
   ].filter(Boolean).join(' ');
   if (_luxuryIsRobotAssistantSubject(productSubject, text)
-    && !_luxuryHasExplicitComputerUiText(productSubject)
-    && !_luxuryHasExplicitSweeperRobotText(productSubject)) {
+    && !_luxuryHasExplicitComputerUiText(allowSceneExplicit ? [productSubject, text].join(' ') : productSubject)
+    && !_luxuryHasExplicitSweeperRobotText(allowSceneExplicit ? [productSubject, text].join(' ') : productSubject)) {
     return 'the confirmed robot/assistant, its own product interaction surface or result feedback, and the real task environment named by this shot; do not invent a sweeper robot, laptop, dashboard or developer workstation';
   }
   if (_luxuryHasExplicitDeveloperWorkflowText(text)) {
@@ -3434,12 +3434,12 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
   return 'the concrete device, environment, action or result evidence explicitly named by this shot; do not invent a default laptop, dashboard, order form or product package';
 }
 
-function _luxuryRobotAssistantShotContract(scene = {}, productSubject = '') {
+function _luxuryRobotAssistantShotContract(scene = {}, productSubject = '', { allowSceneExplicit = false } = {}) {
   const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || 'robot assistant') || 'robot assistant';
-  const guard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene });
+  const guard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit });
   const narration = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '').replace(/\s+/g, ' ').trim();
   const action = String(scene.action || scene.visual_action || scene.character_action || scene.objective || '').replace(/\s+/g, ' ').trim();
-  const carrier = _luxuryWorkflowCarrierFromScene(scene, subject);
+  const carrier = _luxuryWorkflowCarrierFromScene(scene, subject, { allowSceneExplicit });
   return {
     visual: `the confirmed ${subject} robot/assistant in a real task scene, helping a person or environment through the current story action; show its own product interface/status surface or result feedback when the shot needs product proof; carrier: ${carrier}.`,
     action: action || 'the robot/assistant performs the current story task and the person or environment visibly responds to the result',
@@ -3451,11 +3451,11 @@ function _luxuryRobotAssistantShotContract(scene = {}, productSubject = '') {
       guard,
     ].filter(Boolean),
     mustNotShow: [
-      'sweeper robot, vacuum robot, floor-cleaning appliance or generic cleaning device unless explicitly requested by the original brief',
-      'laptop, desktop monitor, code editor, backend dashboard, data dashboard, developer workstation or generic office software demo unless explicitly requested by the original brief',
+      'sweeper robot, vacuum robot, floor-cleaning appliance or generic cleaning device unless explicitly requested by the original brief or confirmed storyboard',
+      'laptop, desktop monitor, code editor, backend dashboard, data dashboard, developer workstation or generic office software demo unless explicitly requested by the original brief or confirmed storyboard',
       'generic app promo, floating UI explainer, sci-fi dashboard, unrelated smart-home gadget, unrelated office scene, or feature poster',
     ],
-    qaRule: 'For robot/assistant subjects, QA must judge whether the frame shows the confirmed robot/assistant helping in the story scene. Reject sweeper/vacuum robots, generic dashboards, computer-code screens, backend consoles or laptop-led demos unless the original brief explicitly requested them. Product interface is valid only when it belongs to the robot/service and supports this shot.',
+    qaRule: 'For robot/assistant subjects, QA must judge whether the frame shows the confirmed robot/assistant helping in the story scene. Reject sweeper/vacuum robots, generic dashboards, computer-code screens, backend consoles or laptop-led demos unless the original brief or confirmed storyboard explicitly requested them. Product interface is valid only when it belongs to the robot/service and supports this shot.',
   };
 }
 
@@ -3554,13 +3554,13 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
   };
 }
 
-function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = '') {
+function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = '', { allowSceneExplicit = false } = {}) {
   if (_luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '', scene)) {
-    const contract = _luxuryRobotAssistantShotContract(scene, productSubject || scene.product_subject || '');
+    const contract = _luxuryRobotAssistantShotContract(scene, productSubject || scene.product_subject || '', { allowSceneExplicit });
     const visualRaw = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
     const actionRaw = scene.action || scene.visual_action || scene.character_action || '';
-    const visual = _luxuryCleanRobotAssistantDriftText(visualRaw || contract.visual, { productSubject, brief: '', scene });
-    const action = _luxuryCleanRobotAssistantDriftText(actionRaw || contract.action, { productSubject, brief: '', scene });
+    const visual = _luxuryCleanRobotAssistantDriftText(visualRaw || contract.visual, { productSubject, brief: '', scene, allowSceneExplicit });
+    const action = _luxuryCleanRobotAssistantDriftText(actionRaw || contract.action, { productSubject, brief: '', scene, allowSceneExplicit });
     const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
     return {
       ...scene,
@@ -5499,7 +5499,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, subject);
   const personRequired = visibleSubject.humanRequired;
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject, scene);
-  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene });
+  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
@@ -5587,7 +5587,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       ? 'Hard fail if the generated scene ignores the confirmed service workflow, user role, environment or result evidence and jumps into an unrelated retail, warehouse, cosmetics boutique, material showroom, sci-fi lab, luxury office, generic exterior, or inconsistent lighting/color palette. Fixed order/inventory props are acceptable only when the confirmed storyboard explicitly asks for them.'
       : 'Hard fail if the generated scene ignores the reference environment/style family and jumps into an unrelated factory, warehouse, office, retail shelf, generic exterior, or inconsistent lighting/color palette.',
     robotAssistantSubject
-      ? 'For robot/assistant subjects, hard fail if the generated image turns the subject into a sweeper/vacuum/floor-cleaning robot, laptop-led demo, desktop monitor scene, code editor, backend console, generic dashboard, developer workstation or unrelated smart-home gadget unless the original confirmed brief explicitly requires that carrier.'
+      ? 'For robot/assistant subjects, hard fail if the generated image turns the subject into a sweeper/vacuum/floor-cleaning robot, laptop-led demo, desktop monitor scene, code editor, backend console, generic dashboard, developer workstation or unrelated smart-home gadget unless the original brief or confirmed storyboard explicitly requires that carrier.'
       : '',
     robotAssistantSubject
       ? 'For robot/assistant subjects, subject_match requires the confirmed robot/assistant to be visible as the advertised subject and helping through the story action. A product interface may pass only when it is the robot/service own interaction surface, status panel or result feedback; generic computer dashboards do not pass.'
@@ -12194,17 +12194,17 @@ function _luxuryImageSubjectAlias(productSubject = '', scene = {}) {
   return subject || 'uploaded main product';
 }
 
-function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
+function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject, scene);
-  const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene });
+  const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
     return [
       `ROBOT/ASSISTANT PRODUCT LOCK: the advertised subject is "${rawSubject || subject}".`,
       robotGuard,
       'Show the confirmed robot/assistant as the product subject in the story scene. It may show its own interaction surface, status panel, app-like product screen or result feedback when needed for proof.',
-      'Do not replace it with a sweeper/vacuum robot, generic cleaning appliance, laptop, desktop monitor, backend dashboard, code editor, developer workstation, cosmetics, phone packshot or unrelated smart-home device unless the original brief explicitly names that carrier.',
+      'Do not replace it with a sweeper/vacuum robot, generic cleaning appliance, laptop, desktop monitor, backend dashboard, code editor, developer workstation, cosmetics, phone packshot or unrelated smart-home device unless the original brief or confirmed storyboard explicitly names that carrier.',
     ].filter(Boolean).join(' ');
   }
   const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(rawSubject || subject, scene);
@@ -12227,17 +12227,17 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}) {
   ].filter(Boolean).join(' ');
 }
 
-function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}) {
+function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject, scene);
-  const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene });
+  const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
     return [
       `ABSOLUTE FIRST PRIORITY: the visible advertised subject is the "${rawSubject || subject}" robot/assistant.`,
       '正向主体锚点：必须看见确认的机器人/智能助手在真实剧情场景中帮助人物、空间或任务发生变化。',
       robotGuard,
-      'Never output a sweeper/vacuum robot, generic dashboard, laptop-led demo, code screen, backend console, unrelated office scene or unrelated smart-home gadget unless explicitly confirmed by the original brief.',
+      'Never output a sweeper/vacuum robot, generic dashboard, laptop-led demo, code screen, backend console, unrelated office scene or unrelated smart-home gadget unless explicitly confirmed by the original brief or confirmed storyboard.',
     ].join(' ');
   }
   const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(rawSubject || subject, scene);
@@ -21383,8 +21383,8 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene, { allowSceneExplicit: true });
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene, { allowSceneExplicit: true });
   const hasAnyReference = refs.length > 0;
   const hasOnlyAvatarReference = hasAvatar && refs.length === 1 && refs[0]?.source === avatarUrl;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
@@ -21899,9 +21899,9 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
   const action = _luxuryDeyunaiAuditNeutralText(scene.action || scene.visual_action || scene.character_action || '', 150);
   const emotion = _luxuryDeyunaiAuditNeutralText(scene.emotion || scene.mood || scene.emotional_change || scene.objective || '', 140);
   const apiIntegrationShot = _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
-  const carrier = _luxuryDeyunaiAuditNeutralText(_luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject), 180);
+  const carrier = _luxuryDeyunaiAuditNeutralText(_luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject, { allowSceneExplicit: true }), 180);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject, scene);
-  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: '', scene });
+  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: '', scene, allowSceneExplicit: true });
   const actor = personRequired
     ? 'Use the same actor appearance from the reference image; keep face impression, age range, hairstyle and outfit family consistent.'
     : 'Include a person only if the shot requires it.';
@@ -21938,14 +21938,14 @@ function _luxuryGptImage2EditPrompt({
   characterLock = null,
   aspectRatio = '16:9',
 } = {}) {
-  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '');
+  scene = _luxuryApplySoftwareWorkflowSceneContract(scene, productSubject || scene.product_subject || '', { allowSceneExplicit: true });
   const shotNo = Number(scene.index || scene.shot_index || 0) + 1;
   const total = Number(scene.totalShots || scene.total_shots || scene.shotCount || 0);
   const subject = _compactLuxuryKeyframeText(
     _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || ''),
     120,
   );
-  const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: prompt, scene };
+  const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: prompt, scene, allowSceneExplicit: true };
   const visual = _compactLuxuryKeyframeText(
     _luxuryCleanRobotAssistantDriftText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || prompt, driftContext),
     260,
@@ -21957,7 +21957,7 @@ function _luxuryGptImage2EditPrompt({
     150,
   );
   const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
-  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: prompt, scene });
+  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: prompt, scene, allowSceneExplicit: true });
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject, scene);
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || subject, scene);
   const apiIntegrationShot = softwareWorkflowSubject && _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
@@ -21965,7 +21965,7 @@ function _luxuryGptImage2EditPrompt({
     ? _luxurySoftwareWorkflowEvidenceFromScene(scene, productSubject || scene.product_subject || subject)
     : '';
   const workflowCarrierRule = softwareWorkflowSubject
-    ? _luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject)
+    ? _luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject, { allowSceneExplicit: true })
     : '';
   const workflowShotContract = softwareWorkflowSubject
     ? _luxurySoftwareWorkflowShotContract(scene, productSubject || scene.product_subject || subject)
@@ -22264,8 +22264,8 @@ function _buildLuxuryImageModelStrictPrompt({
     : '';
   const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 760);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '', scene);
-  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || '', brief: '', scene });
-  const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: '', scene };
+  const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true });
+  const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true };
   const visual = _compactLuxuryKeyframeText(
     _luxuryCleanRobotAssistantDriftText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt, driftContext),
     260,
@@ -22522,8 +22522,8 @@ async function _createLuxuryAdReferenceKeyframe({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene, { allowSceneExplicit: true });
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene, { allowSceneExplicit: true });
   const hasAnyReference = refs.length > 0;
   const hasOnlyAvatarReference = hasAvatar && refs.length === 1 && refs[0]?.source === avatarUrl;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
@@ -23610,8 +23610,8 @@ async function _createLuxuryAdReferenceKeyframeFallback({
       return generated?.outPath || '';
     }
     : null;
-  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene);
-  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene);
+  const productLockPrompt = scene.product_lock_prompt || _luxuryProductLockPrompt(productSubject, scene, { allowSceneExplicit: true });
+  const subjectGuard = _luxuryKeyframeSubjectGuard(productSubject, scene, { allowSceneExplicit: true });
   const hasAnyReference = refs.length > 0;
   const hasStoryLayoutReference = refs[0]?.kind === 'human_story_layout' || refs[0]?.kind === 'human_environment_layout';
   const shotContractPrompt = _buildLuxuryKeyframePrompt({
@@ -23973,7 +23973,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
                 ...sc,
                 asset_manifest: luxuryAsyncAssetManifest || undefined,
                 visual_locks: luxuryAsyncVisualLocks || undefined,
-              }),
+              }, { allowSceneExplicit: true }),
               active_reference_image: sc.suppress_story_reference_images === true ? '' : backgroundUrl,
               asset_manifest: luxuryAsyncAssetManifest || undefined,
               visual_locks: luxuryAsyncVisualLocks || undefined,
@@ -25944,7 +25944,7 @@ router.post('/spaces/keyframes', async (req, res) => {
                 ...sc,
                 asset_manifest: luxuryAssetManifest || undefined,
                 visual_locks: luxuryVisualLocks || undefined,
-              }),
+              }, { allowSceneExplicit: true }),
               active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
               asset_manifest: luxuryAssetManifest || undefined,
               visual_locks: luxuryVisualLocks || undefined,
@@ -25997,7 +25997,7 @@ router.post('/spaces/keyframes', async (req, res) => {
               ...sc,
               asset_manifest: luxuryAssetManifest || undefined,
               visual_locks: luxuryVisualLocks || undefined,
-            }),
+            }, { allowSceneExplicit: true }),
             active_reference_image: sc.suppress_story_reference_images === true ? '' : (luxuryShotRefs[0] || background_url),
             asset_manifest: luxuryAssetManifest || undefined,
             visual_locks: luxuryVisualLocks || undefined,
