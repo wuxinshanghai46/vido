@@ -1909,6 +1909,7 @@ function _buildLuxuryProductionContract({
   identityReferenceUrl = '',
   identityActorAssetId = '',
   identityExtraImageUrls = [],
+  identityViewImages = [],
   identitySource = '',
   identityName = '',
   identityGender = '',
@@ -1937,6 +1938,7 @@ function _buildLuxuryProductionContract({
     imageUrl: identityReferenceUrl,
     actorAssetId: identityActorAssetId,
     extraImageUrls: identityExtraImageUrls,
+    viewImages: identityViewImages,
     source: identitySource,
     name: identityName,
     gender: identityGender,
@@ -1966,6 +1968,7 @@ function _buildLuxuryProductionContract({
       actor_id: actorAsset?.actor_id || '',
       actor_asset_id: identityActorAssetId || actorAsset?.actor_asset_id || '',
       extra_image_urls: Array.isArray(identityExtraImageUrls) ? identityExtraImageUrls.slice(0, 8) : [],
+      view_images: Array.isArray(identityViewImages) ? identityViewImages.slice(0, 8) : [],
       cast_assets: Array.isArray(identityCastAssets) ? identityCastAssets : [],
       availability: identityAvailability || null,
     },
@@ -2280,7 +2283,7 @@ function _luxuryRequestedGenderInstruction(value = '') {
   return `REQUESTED ACTOR ATTRIBUTE LOCK: selected visible gender presentation is "${gender}". Keep every generated casting-sheet candidate aligned to this selected attribute.`;
 }
 
-async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '' } = {}) {
+async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', model = '', expectedPeople = 1, castMode = 'single', expectedGender = '', allowBackView = false } = {}) {
   if (!localPath || !fs.existsSync(localPath)) {
     const err = new Error('演员包图片文件不存在，无法做构图质检');
     err.status = 500;
@@ -2317,6 +2320,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"gender_presentation":"male|female|ambiguous|unknown","realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
     `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
     requiredGender ? `Hard fail if the visible actor gender presentation does not match the selected required value "${requiredGender}".` : '',
+    allowBackView ? 'This is the requested BACK VIEW of the same actor package. A visible face is not required for this view; judge full-body framing, body count, realistic photo quality, hairstyle/back silhouette, lower-body clothing and wardrobe continuity evidence.' : '',
     isMultiCast
       ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
       : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
@@ -3262,6 +3266,36 @@ function _luxurySoftwareWorkflowEvidenceFromScene(scene = {}, productSubject = '
     return 'Script-derived workflow evidence: use only the concrete workflow/use/result evidence stated by this shot and the confirmed brief; do not invent a fixed device, retail scene, dashboard, order form or physical package.';
   }
   return `Script-derived workflow evidence for this shot: ${evidence.join('; ')}. Do not require all platform capabilities in every frame; visualize only the evidence named or clearly implied by this shot.`;
+}
+
+function _luxuryActorAssetVisibleIdentityViews(actor = {}) {
+  const viewImages = Array.isArray(actor?.view_images)
+    ? actor.view_images
+    : (Array.isArray(actor?.views)
+      ? actor.views
+      : []);
+  if (!viewImages.length) return [];
+  const allowed = new Set(['front', 'side', 'three_quarter', 'three-quarter', 'action']);
+  return viewImages
+    .filter(view => {
+      if (!view || typeof view !== 'object') return false;
+      const key = String(view.key || view.view || view.view_key || '').trim().toLowerCase();
+      return !key || allowed.has(key);
+    })
+    .map(view => String(view.url || view.image_url || view.imageUrl || view.file_url || '').trim())
+    .filter(Boolean);
+}
+
+function _luxuryActorAssetBackViews(actor = {}) {
+  const viewImages = Array.isArray(actor?.view_images)
+    ? actor.view_images
+    : (Array.isArray(actor?.views)
+      ? actor.views
+      : []);
+  return viewImages
+    .filter(view => view && typeof view === 'object' && /^back$/i.test(String(view.key || view.view || view.view_key || '').trim()))
+    .map(view => String(view.url || view.image_url || view.imageUrl || view.file_url || '').trim())
+    .filter(Boolean);
 }
 
 function _luxuryIsEmbodiedAiOrHomeLifeText(value = '') {
@@ -13196,6 +13230,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
   personSpec = {},
   roleHint = '',
   consistencyReferencePaths = [],
+  allowBackView = false,
 } = {}) {
   const stageId = 'luxury_ad.person_sheet';
   const attempts = [];
@@ -13460,14 +13495,15 @@ async function _generateLuxuryPersonSheetWithPipeline({
         expectedPeople,
         castMode,
         expectedGender,
+        allowBackView,
       });
-      const consistencyQa = await _checkLuxuryActorAssetConsistencyQa(req, outPath, consistencyReferencePaths, {
+      const consistencyQa = allowBackView ? null : await _checkLuxuryActorAssetConsistencyQa(req, outPath, consistencyReferencePaths, {
         viewKey: filename,
         model: `${model.provider_id}/${model.model_id}`,
         expectedPeople,
         castMode,
       });
-      const specQa = await _checkLuxuryActorAssetSpecMatchQa(req, outPath, {
+      const specQa = allowBackView ? null : await _checkLuxuryActorAssetSpecMatchQa(req, outPath, {
         spec: personSpec,
         viewKey: filename,
         model: `${model.provider_id}/${model.model_id}`,
@@ -13506,14 +13542,15 @@ async function _generateLuxuryPersonSheetWithPipeline({
             expectedPeople,
             castMode,
             expectedGender,
+            allowBackView,
           });
-          const consistencyQa = await _checkLuxuryActorAssetConsistencyQa(req, retryPath, consistencyReferencePaths, {
+          const consistencyQa = allowBackView ? null : await _checkLuxuryActorAssetConsistencyQa(req, retryPath, consistencyReferencePaths, {
             viewKey: `${filename}_fullbody_retry`,
             model: `${model.provider_id}/${model.model_id}`,
             expectedPeople,
             castMode,
           });
-          const specQa = await _checkLuxuryActorAssetSpecMatchQa(req, retryPath, {
+          const specQa = allowBackView ? null : await _checkLuxuryActorAssetSpecMatchQa(req, retryPath, {
             spec: personSpec,
             viewKey: `${filename}_fullbody_retry`,
             model: `${model.provider_id}/${model.model_id}`,
@@ -13980,6 +14017,11 @@ async function _generateLuxuryRealisticActorPackage({
       prompt: `${castingSheetCore} THREE-QUARTER FRONT VIEW: ${expectedPeople === 1 ? 'same selected person, same haircut and exact same outfit' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same face identity, hairstyle and outfit family`}, body turned about 30 degrees while the face still turns toward camera, both eyes or at least one full eye clearly visible, complete body visible from head to shoes when possible, lower-body clothing clearly visible, natural age-appropriate posture, same body proportions. Do not show the back of the person.`,
     },
     {
+      key: 'back',
+      prompt: `${castingSheetCore} BACK VIEW: ${expectedPeople === 1 ? 'same selected person, exact same haircut, hair length, outfit, accessories and shoes' : `same ${expectedPeople} cast members in the same left-to-right order, each with the same hairstyle, body proportions and outfit family`}, body facing away from camera, full back silhouette visible from head to shoes when possible, lower-body clothing and shoes clearly visible, neutral standing posture, no face required for this requested back-view asset. Keep the same wardrobe and body proportions as front and side views.`,
+      backView: true,
+    },
+    {
       key: 'action',
       prompt: `${castingSheetCore} ACTION VIEW: ${expectedPeople === 1 ? 'same selected person performing one small natural gesture' : `same ${expectedPeople} cast members performing one small natural relationship/dialogue gesture together`}, face still visible to camera, calm natural expression, complete body visible from head to knees or shoes when possible, lower-body clothing clearly visible, same face identities, exact same hairstyles and outfit families. Do not turn away from camera.`,
     },
@@ -14006,7 +14048,8 @@ async function _generateLuxuryRealisticActorPackage({
       expectedGender: gender.value,
       personSpec: spec,
       roleHint,
-      consistencyReferencePaths: outputs.length ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
+      consistencyReferencePaths: outputs.length && view.backView !== true ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
+      allowBackView: view.backView === true,
     });
     attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
     outputs.push({
@@ -14017,6 +14060,7 @@ async function _generateLuxuryRealisticActorPackage({
       frame_qa: generated.frameQa || null,
       consistency_qa: generated.consistencyQa || null,
       spec_qa: generated.specQa || null,
+      back_view_asset: view.backView === true,
     });
   }
   const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
@@ -14040,6 +14084,12 @@ async function _generateLuxuryRealisticActorPackage({
     role: 'brief_derived_campaign_character',
     image_url: outputs[0]?.url || '',
     extra_image_urls: outputs.slice(1).map(x => x.url).filter(Boolean),
+    view_images: outputs.map(x => ({
+      key: x.key || '',
+      url: x.url || '',
+      image_url: x.url || '',
+      back_view_asset: x.back_view_asset === true,
+    })).filter(x => x.url),
     stable_attributes: [
       expectedPeople === 1 ? 'same realistic face identity' : `same ${expectedPeople} realistic face identities`,
       `same age impression: ${age.prompt}`,
@@ -14392,6 +14442,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       imageUrl,
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
+      view_images: actorAsset.view_images || [],
       cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
@@ -14416,8 +14467,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
+        view_images: actorAsset.view_images || [],
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
+        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、背面、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     });
     _storeLuxuryPersonSheetResult(req, request_key, { status: 'done', result: {
@@ -14425,6 +14477,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       imageUrl,
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
+      view_images: actorAsset.view_images || [],
       cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
@@ -14449,8 +14502,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
+        view_images: actorAsset.view_images || [],
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
+        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、背面、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     } });
   } catch (err) {
@@ -18559,6 +18613,7 @@ function _buildLuxuryActorAssetPackage({
   imageUrl = '',
   actorAssetId = '',
   extraImageUrls = [],
+  viewImages = [],
   source = '',
   name = '',
   gender = '',
@@ -18646,6 +18701,16 @@ function _buildLuxuryActorAssetPackage({
     role: role || '',
     image_url: url,
     extra_image_urls: extraRefs,
+    view_images: Array.isArray(viewImages) ? viewImages
+      .filter(view => view && typeof view === 'object')
+      .map(view => ({
+        key: String(view.key || view.view || view.view_key || '').trim(),
+        url: String(view.url || view.image_url || view.imageUrl || view.file_url || '').trim(),
+        image_url: String(view.image_url || view.url || view.imageUrl || view.file_url || '').trim(),
+        back_view_asset: view.back_view_asset === true || /^back$/i.test(String(view.key || view.view || view.view_key || '').trim()),
+      }))
+      .filter(view => view.url || view.image_url)
+      .slice(0, 8) : [],
     cast_assets: castMembers,
     stable_attributes: stable,
     forbidden_drift: forbidden,
@@ -18654,6 +18719,18 @@ function _buildLuxuryActorAssetPackage({
 }
 
 function _luxuryActorReferenceGroup(actor = {}, primaryUrl = '') {
+  const keyedIdentityViews = _luxuryActorAssetVisibleIdentityViews(actor);
+  if (keyedIdentityViews.length) {
+    const urls = [
+      primaryUrl,
+      ...keyedIdentityViews,
+    ];
+    return urls
+      .map(x => String(x || '').trim())
+      .filter(Boolean)
+      .filter((x, i, arr) => arr.indexOf(x) === i)
+      .slice(0, 6);
+  }
   const castUrls = Array.isArray(actor?.cast_assets)
     ? actor.cast_assets.flatMap(member => [
       member?.image_url,
@@ -25146,6 +25223,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         identityReferenceUrl: confirmedIdentityUrl,
         identityActorAssetId: person_asset?.actor_asset_id || person_asset?.asset_library_id || person_asset?.material_id || '',
         identityExtraImageUrls: Array.isArray(person_asset?.extra_image_urls) ? person_asset.extra_image_urls : [],
+        identityViewImages: Array.isArray(person_asset?.view_images) ? person_asset.view_images : (Array.isArray(person_asset?.views) ? person_asset.views : []),
         identitySource: confirmedIdentitySource,
         identityName: avatar?.name || person_asset?.name || '',
         identityGender: _luxuryFirstConfirmedGender(avatar?.detected_gender, avatar?.gender, person_asset?.detected_gender, person_asset?.gender),
@@ -25190,12 +25268,11 @@ router.post('/spaces/keyframes', async (req, res) => {
       }
       luxuryActorAssetPackage = luxuryProductionContract.actor_asset || null;
       if (!luxuryStoryboardReviewOnly && luxuryProductionContract.human_required) {
-        const actorIdentityRefs = [
-          luxuryProductionContract.actor_reference?.image_url,
-          ...(Array.isArray(luxuryProductionContract.actor_reference?.extra_image_urls)
-            ? luxuryProductionContract.actor_reference.extra_image_urls
-            : []),
-        ]
+        const actorIdentityReferenceUrls = _luxuryActorReferenceGroup(
+          luxuryProductionContract.actor_asset || luxuryProductionContract.actor_reference || {},
+          luxuryProductionContract.actor_reference?.image_url || '',
+        );
+        const actorIdentityRefs = actorIdentityReferenceUrls
           .map((url, idx) => String(url || '').trim()
             ? {
               source: String(url || '').trim(),
@@ -25341,6 +25418,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         title: person_asset.name || 'AI 真人感演员包',
         image_url: luxuryPersonAssetImageUrl,
         extra_image_urls: Array.isArray(person_asset.extra_image_urls) ? person_asset.extra_image_urls : [],
+        view_images: Array.isArray(person_asset.view_images) ? person_asset.view_images : (Array.isArray(person_asset.views) ? person_asset.views : []),
         cast_assets: Array.isArray(person_asset.cast_assets) ? person_asset.cast_assets : [],
         cast_mode: person_asset.cast_mode || person_asset.castMode || 'single',
         expected_people: person_asset.expected_people || person_asset.person_count || 1,

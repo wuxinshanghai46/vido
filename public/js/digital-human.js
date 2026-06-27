@@ -7481,7 +7481,7 @@
           image_url: compactLuxuryUrl(member.image_url || member.url || member.previewUrl || ''),
           extra_image_urls: Array.isArray(member.extra_image_urls) ? member.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
         })).filter(member => member.image_url) : [],
-        name: generated.name || (isSyntheticActor ? '拟真一致性演员' : (isAiGenerated ? '拟真演员参考图' : '真人照片参考')),
+        name: generated.name || (isSyntheticActor ? '拟真一致性演员' : (isAiGenerated ? '拟真演员四视图' : '真人照片参考')),
         type: generated.type || 'luxury_ad_character_sheet',
         source: generated.source || 'person_asset',
         reference_kind: referenceKind,
@@ -7494,7 +7494,12 @@
         origin: generated.origin || generated.metadata?.origin || '',
         image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
         extra_image_urls: Array.isArray(generated.extra_image_urls) ? generated.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
-        view_count: generated.view_count || 3,
+        view_images: Array.isArray(generated.view_images) ? generated.view_images.map(view => ({
+          ...view,
+          url: compactLuxuryUrl(view.url || view.image_url || view.imageUrl || ''),
+          image_url: compactLuxuryUrl(view.image_url || view.url || view.imageUrl || ''),
+        })).filter(view => view.url || view.image_url) : [],
+        view_count: generated.view_count || 4,
         description: generated.spec_description || generated.description || luxuryAdPersonDescription(),
       };
     }
@@ -7576,17 +7581,26 @@
   }
 
   function luxuryActorAssetUrls(asset = {}) {
+    const viewUrls = source => Array.isArray(source)
+      ? source.map(view => typeof view === 'string'
+        ? view
+        : (view?.url || view?.image_url || view?.imageUrl || view?.file_url || ''))
+      : [];
     const castUrls = Array.isArray(asset.cast_assets)
       ? asset.cast_assets.flatMap(member => [
         member?.image_url || member?.url || member?.previewUrl || '',
         ...(Array.isArray(member?.extra_image_urls) ? member.extra_image_urls : []),
         ...(Array.isArray(member?.extra_images) ? member.extra_images : []),
+        ...viewUrls(member?.view_images),
+        ...viewUrls(member?.views),
       ])
       : [];
     return [
       asset.image_url || asset.file_url || asset.url || '',
       ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
       ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
+      ...viewUrls(asset.view_images),
+      ...viewUrls(asset.views),
       ...castUrls,
     ].map(compactLuxuryUrl).filter(Boolean).filter((url, index, arr) => arr.indexOf(url) === index);
   }
@@ -7626,6 +7640,7 @@
         source.extra_images,
         source.image_urls,
         source.images,
+        source.view_images,
         source.views,
         source.cast_assets,
       ].forEach(walk);
@@ -7638,7 +7653,7 @@
   }
 
   function luxuryActorAssetViewLabel(index = 0) {
-    return ['正面', '侧面/半侧', '动作'][Number(index) || 0] || `参考 ${Number(index) + 1}`;
+    return ['正面', '侧面/半侧', '背面', '动作'][Number(index) || 0] || `参考 ${Number(index) + 1}`;
   }
 
   function luxuryPersonGenerationErrorExplanation(error = {}) {
@@ -7795,7 +7810,7 @@
     const pct = Math.max(6, Math.min(96, softPct));
     const canSeeDebug = canViewLuxuryInternalPipeline();
     const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
-    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧和动作参考图。');
+    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、背面和动作参考图。');
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
@@ -7992,7 +8007,7 @@
       ].filter(Boolean).join(' · ');
       const defaultName = castMembers.length > 1
         ? (generated.cast_mode === 'group' ? '拟真多人演员组' : '拟真双人演员组')
-        : (isSyntheticActor ? '拟真一致性演员' : (isAiActor ? '拟真演员参考图' : '真人照片参考'));
+        : (isSyntheticActor ? '拟真一致性演员' : (isAiActor ? '拟真演员四视图' : '真人照片参考'));
       const defaultDesc = isSyntheticActor
         ? (castMembers.length > 1
           ? '这是按广告需求、剧本人物表和分镜上下文生成的独立演员组；每个人都有自己的参考图和身份锁。'
@@ -8006,7 +8021,7 @@
       const errorHtml = generated.failed && state.luxuryAd.personGenerationError
         ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${canViewLuxuryInternalPipeline() ? `${renderLuxuryPersonFailedCandidates(state.luxuryAd.personGenerationError)}${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}` : ''}</div>`
         : '';
-      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧和动作演员照。' : (isAiActor ? '正在生成正面、侧面/半侧和动作参考图。' : '真人照片上传中。');
+      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧、背面和动作演员照。' : (isAiActor ? '正在生成正面、侧面/半侧、背面和动作四视图。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
       const castGrid = castMembers.length > 1
         ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => {
@@ -9341,8 +9356,9 @@
       { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
       { at: 2500, percent: 24, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
       { at: 8500, percent: 48, phase: generationPeople > 1 ? '逐个生成侧面/半侧参考' : '生成侧面/半侧参考', message: generationPeople > 1 ? '每个人单独复用自己的脸型、发型、服装和身形比例。' : '复用同一脸型、发型、服装和身形比例。' },
-      { at: 15000, percent: 72, phase: generationPeople > 1 ? '逐个生成动作参考照' : '生成动作参考照', message: generationPeople > 1 ? '每个人单独生成动作参考，不把多人混成一张图。' : '同一演员进入剧本需要的动作姿态，保持衣服和发型一致。' },
-      { at: 25000, percent: 88, phase: '整理演员参考', message: '正在确认人物设定、三视图一致性和参考图可用性。', debugPhase: '人物设定 QA 与素材入库', debugMessage: '检查构图、设定匹配、三视图一致性和入库条件，通过后才绑定 actor_id。' },
+      { at: 15000, percent: 68, phase: generationPeople > 1 ? '逐个生成背面参考' : '生成背面参考', message: generationPeople > 1 ? '补齐每个人的背面服装和发型参考。' : '补齐同一演员的背面服装、发型和轮廓参考。' },
+      { at: 21500, percent: 82, phase: generationPeople > 1 ? '逐个生成动作参考照' : '生成动作参考照', message: generationPeople > 1 ? '每个人单独生成动作参考，不把多人混成一张图。' : '同一演员进入剧本需要的动作姿态，保持衣服和发型一致。' },
+      { at: 29000, percent: 88, phase: '整理演员参考', message: '正在确认人物设定、四视图一致性和参考图可用性。', debugPhase: '人物设定 QA 与素材入库', debugMessage: '检查构图、设定匹配、四视图一致性和入库条件，通过后才绑定 actor_id。' },
     ];
     const updatePersonProgress = () => {
       const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
@@ -9381,7 +9397,7 @@
       url: '',
       previewUrl: '',
       uploading: true,
-      view_count: generationPeople > 1 ? generationPeople : 3,
+      view_count: generationPeople > 1 ? generationPeople : 4,
       cast_mode: generationCastMode,
       expected_people: generationPeople,
       person_count: generationPeople,
@@ -9457,7 +9473,7 @@
         label: '拟真演员',
         percent: 96,
         phase: '演员包生成完成',
-        message: '已返回正面、侧面/半侧和动作参考图，正在更新页面。',
+        message: '已返回正面、侧面/半侧、背面和动作参考图，正在更新页面。',
       };
       state.luxuryAd.personAsset = {
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
@@ -9477,13 +9493,16 @@
         expected_people: character.expected_people || r.actor_asset?.expected_people || castAssets.length || '',
         person_count: character.person_count || r.actor_asset?.person_count || castAssets.length || '',
         cast_assets: castAssets,
+        view_images: Array.isArray(character.view_images)
+          ? character.view_images
+          : (Array.isArray(r.actor_asset?.view_images) ? r.actor_asset.view_images : (Array.isArray(r.view_images) ? r.view_images : [])),
         url: primaryActorUrl,
         image_url: primaryActorUrl,
         previewUrl: primaryActorUrl,
         extra_image_urls: extraActorUrls,
         view_count: Math.max(1, actorUrls.length || (1 + extraActorUrls.length)),
         uploading: false,
-        description: character.description || '拟真一致性演员：正面定妆、侧面/半侧、动作参考。',
+        description: character.description || '拟真一致性演员：正面定妆、侧面/半侧、背面、动作参考。',
         spec_description: personDescription,
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -9516,7 +9535,7 @@
         previewUrl: '',
         uploading: false,
         failed: true,
-        view_count: generationPeople > 1 ? generationPeople : 3,
+        view_count: generationPeople > 1 ? generationPeople : 4,
         cast_mode: generationCastMode,
         expected_people: generationPeople,
         person_count: generationPeople,
