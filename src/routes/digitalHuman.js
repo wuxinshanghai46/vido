@@ -17,7 +17,7 @@ const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { execFileSync } = require('child_process');
 const db = require('../models/database');
-const { scopeUserId, ownedBy, requirePermission } = require('../middleware/auth');
+const { scopeUserId, ownedBy, requirePermission, createInternalJobAuthHeaders } = require('../middleware/auth');
 const authStore = require('../models/authStore');
 const avatarService = require('../services/avatarService');
 const adDigitalHumanTrackService = require('../services/adDigitalHumanTrackService');
@@ -14921,8 +14921,21 @@ function _storeLuxuryStoryboardResult(req, requestKey = '', patch = {}) {
   setTimeout(() => luxuryStoryboardResults.delete(key), 90 * 60 * 1000).unref?.();
 }
 
+function _isLuxuryInternalAuthExpiredResult(item = null) {
+  if (!item || item.status !== 'error') return false;
+  const text = [
+    item.error,
+    item.message,
+    item.details?.error,
+    item.details?.message,
+    item.details?.code,
+  ].filter(Boolean).join(' ');
+  return /Token\s*已过期|Token\s*宸茶繃|jwt\s*expired|TokenExpiredError/i.test(text);
+}
+
 function _publicLuxuryStoryboardResult(item) {
   if (!item) return null;
+  if (_isLuxuryInternalAuthExpiredResult(item)) return null;
   if (item.status === 'done') return { success: true, status: 'done', result: item.result };
   if (item.status === 'error') return { success: false, status: 'error', error: item.error || '生成失败' };
   return { success: true, status: item.status || 'running', started_at: item.started_at || null, updated_at: item.updated_at || null };
@@ -14993,6 +15006,7 @@ function _storeLuxuryKeyframeResult(req, requestKey = '', patch = {}) {
 
 function _publicLuxuryKeyframeResult(item) {
   if (!item) return null;
+  if (_isLuxuryInternalAuthExpiredResult(item)) return null;
   if (item.status === 'done') return { success: true, status: 'done', result: item.result };
   if (item.status === 'error') {
     const nestedAttempts = Array.isArray(item.details?.attempts)
@@ -15183,7 +15197,7 @@ router.get('/usage/recent', (req, res) => {
 function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
   const requestKey = String(body.request_key || '').trim();
   const port = process.env.PORT || 3000;
-  const authHeader = req.headers.authorization || '';
+  const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'luxury-ad/storyboard');
   setImmediate(async () => {
     try {
       await axios.post(`http://127.0.0.1:${port}/api/dh/luxury-ad/storyboard`, {
@@ -15192,7 +15206,7 @@ function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
       }, {
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...internalAuthHeaders,
         },
         timeout: 0,
         maxBodyLength: Infinity,
@@ -15213,7 +15227,7 @@ function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
 function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
   const requestKey = String(body.request_key || '').trim();
   const port = process.env.PORT || 3000;
-  const authHeader = req.headers.authorization || '';
+  const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'dh/spaces/keyframes');
   setImmediate(async () => {
     try {
       await axios.post(`http://127.0.0.1:${port}/api/dh/spaces/keyframes`, {
@@ -15222,7 +15236,7 @@ function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
       }, {
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...internalAuthHeaders,
         },
         timeout: 0,
         maxBodyLength: Infinity,
@@ -15316,6 +15330,7 @@ function _getLuxuryPersonSheetResult(req, requestKey = '') {
 
 function _publicLuxuryPersonSheetResult(item) {
   if (!item) return null;
+  if (_isLuxuryInternalAuthExpiredResult(item)) return null;
   if (item.status === 'done') return { success: true, status: 'done', result: item.result };
   if (item.status === 'error') {
     const details = item.details && typeof item.details === 'object'
@@ -15335,7 +15350,7 @@ function _publicLuxuryPersonSheetResult(item) {
 function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
   const requestKey = String(body.request_key || '').trim();
   const port = process.env.PORT || 3000;
-  const authHeader = req.headers.authorization || '';
+  const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'luxury-ad/person-sheet');
   // 中文说明：人物演员包要连续生成多张图并做 QA，同步 fetch 容易被浏览器/代理断开，所以改为后台任务+轮询结果。
   setImmediate(async () => {
     try {
@@ -15345,7 +15360,7 @@ function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
       }, {
         headers: {
           'Content-Type': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...internalAuthHeaders,
         },
         timeout: 0,
         maxBodyLength: Infinity,

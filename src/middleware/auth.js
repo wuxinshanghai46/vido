@@ -1,8 +1,11 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { getUserById, getRoleById } = require('../models/authStore');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'vido_default_secret_change_me';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '365d';
+const INTERNAL_JOB_HEADER = 'x-vido-internal-job';
+const INTERNAL_JOB_TTL_MS = 24 * 60 * 60 * 1000;
 
 function signToken(userId, role) {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -44,7 +47,99 @@ function verifyUserToken(token) {
   return user;
 }
 
+function base64UrlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function parseBase64UrlJson(value) {
+  return JSON.parse(Buffer.from(String(value || ''), 'base64url').toString('utf8'));
+}
+
+function internalJobSecret() {
+  return process.env.VIDO_INTERNAL_JOB_SECRET || JWT_SECRET;
+}
+
+function signInternalJobPayload(payload) {
+  return crypto.createHmac('sha256', internalJobSecret()).update(payload).digest('base64url');
+}
+
+function isLoopbackRequest(req) {
+  const values = [
+    req.ip,
+    req.socket?.remoteAddress,
+    req.connection?.remoteAddress,
+  ].filter(Boolean).map(x => String(x));
+  return values.some(addr =>
+    addr === '127.0.0.1'
+    || addr === '::1'
+    || addr === '::ffff:127.0.0.1'
+    || addr.endsWith(':127.0.0.1'));
+}
+
+function createInternalJobAuthHeaders(userOrId, scope = '') {
+  const userId = typeof userOrId === 'object' ? userOrId?.id : userOrId;
+  if (!userId) return {};
+  const payload = base64UrlJson({
+    userId: String(userId),
+    scope: String(scope || '').slice(0, 160),
+    iat: Date.now(),
+  });
+  return { 'X-VIDO-Internal-Job': `${payload}.${signInternalJobPayload(payload)}` };
+}
+
+function verifyInternalJobRequest(req) {
+  const raw = req.headers[INTERNAL_JOB_HEADER];
+  if (!raw) return null;
+  if (!isLoopbackRequest(req)) {
+    const err = new Error('Internal job auth is only allowed from loopback');
+    err.statusCode = 403;
+    throw err;
+  }
+  const [payload, signature] = String(raw).split('.');
+  if (!payload || !signature) {
+    const err = new Error('Invalid internal job auth');
+    err.statusCode = 401;
+    throw err;
+  }
+  const expected = signInternalJobPayload(payload);
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    const err = new Error('Invalid internal job auth');
+    err.statusCode = 401;
+    throw err;
+  }
+  const decoded = parseBase64UrlJson(payload);
+  const age = Date.now() - Number(decoded.iat || 0);
+  if (!Number.isFinite(age) || age < 0 || age > INTERNAL_JOB_TTL_MS) {
+    const err = new Error('Internal job auth expired');
+    err.statusCode = 401;
+    throw err;
+  }
+  const user = getUserById(decoded.userId);
+  if (!user) {
+    const err = new Error('用户不存在');
+    err.statusCode = 401;
+    throw err;
+  }
+  if (user.status !== 'active') {
+    const err = new Error('账户已被禁用');
+    err.statusCode = 403;
+    throw err;
+  }
+  return user;
+}
+
 function authenticate(req, res, next) {
+  try {
+    const internalUser = verifyInternalJobRequest(req);
+    if (internalUser) {
+      req.user = { id: internalUser.id, username: internalUser.username, role: internalUser.role, credits: internalUser.credits };
+      return next();
+    }
+  } catch (err) {
+    return res.status(err.statusCode || 401).json({ success: false, error: err.message || 'Internal job auth failed' });
+  }
   const tokens = getRequestTokens(req);
   if (!tokens.length) {
     return res.status(401).json({ success: false, error: '未登录' });
@@ -131,4 +226,4 @@ function ownedBy(req, row) {
 }
 function scopeUserId(req) { return isAdmin(req) ? undefined : req && req.user && req.user.id; }
 
-module.exports = { signToken, authenticate, optionalAuth, requireRole, requirePermission, JWT_SECRET, isAdmin, ownedBy, scopeUserId };
+module.exports = { signToken, authenticate, optionalAuth, requireRole, requirePermission, JWT_SECRET, createInternalJobAuthHeaders, isAdmin, ownedBy, scopeUserId };
