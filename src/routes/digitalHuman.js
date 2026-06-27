@@ -2409,8 +2409,10 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     isMultiCast
       ? `Expected: the same fixed ${peopleCount}-person cast across all images. Match each person by face impression, hairstyle, age/gender, body proportions, outfit family, lower-body clothing and shoes.`
       : 'Expected: exactly the same single actor across all images. The candidate may change pose or camera angle, but must keep the same face identity, facial structure, hairstyle/hair length/hair color, age/gender impression, body proportions, top, bottom garment, accessories and shoes.',
-    'Hard fail if the candidate looks like a different person, different facial identity, different ethnicity/age/gender, different hairstyle, different hair length/color, different outfit, changed pants/skirt/dress/shoes, or a different fashion style.',
-    'Do not excuse differences as lighting, pose or angle when face, hair or clothing identity has visibly changed. Pose, small expression changes and view angle changes are allowed only if the same actor and same wardrobe are still clear.',
+    'Strict locked fields: face identity, facial structure, age/gender impression, hairstyle, hair length/color, body proportions, top garment, lower-body garment, dress/skirt/pants category, footwear state/category, accessories and person count.',
+    'Allowed variation fields: small expression changes, hand gesture, body angle, standing posture, camera distance, lighting, and neutral casting-sheet pose differences, only when the strict locked fields remain visibly consistent.',
+    'Hard fail if the candidate looks like a different person, different facial identity, different ethnicity/age/gender, different hairstyle, different hair length/color, different outfit, changed pants/skirt/dress/shoes, barefoot-vs-shoes change, or a different fashion style.',
+    'Do not excuse strict-field changes as lighting, pose or angle. Do not hard fail only because the actor has a different small expression, hand pose, slight body turn, or lighting/camera-distance difference.',
     `Expected person count: ${peopleCount}. Cast mode: ${castMode || 'single'}. View being checked: ${viewKey || 'actor candidate'}. Model: ${model || 'unknown'}.`,
   ].join(' ');
   const imageDataUrls = [
@@ -2458,6 +2460,29 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     throw err;
   }
   return qa;
+}
+
+function _luxuryActorQaScore(qa, fallback = 0) {
+  if (!qa || typeof qa !== 'object') return fallback;
+  const score = Number(qa.score);
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : fallback;
+}
+
+function _luxuryGeneratedActorViewScore(candidate = {}) {
+  const weighted = [
+    [candidate.frameQa, 0.45],
+    [candidate.consistencyQa, 0.35],
+    [candidate.specQa, 0.20],
+  ].filter(([qa]) => qa && typeof qa === 'object');
+  if (!weighted.length) return 0;
+  const weightSum = weighted.reduce((sum, [, weight]) => sum + weight, 0);
+  return weighted.reduce((sum, [qa, weight]) => sum + (_luxuryActorQaScore(qa, 0) * weight), 0) / weightSum;
+}
+
+function _luxuryBetterActorViewCandidate(candidate, current) {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  return _luxuryGeneratedActorViewScore(candidate) > _luxuryGeneratedActorViewScore(current) ? candidate : current;
 }
 
 function _luxuryActorSpecQaContract(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
@@ -14062,25 +14087,48 @@ async function _generateLuxuryRealisticActorPackage({
       ...(referencePersonUrl ? [referencePersonUrl] : []),
       ...generatedViewRefs,
     ].filter(Boolean).slice(0, 4);
-    const generated = await _generateLuxuryPersonSheetWithPipeline({
-      req,
-      prompt: view.prompt,
-      aspectRatio,
-      filename: `${actorId}_${view.key}`,
-      destDir: JIMENG_ASSETS_DIR,
-      // 中文说明：后续视图必须继承前序已通过图的人物和服装，避免半侧/动作图换衣服或换人。
-      referenceImages: viewReferenceImages,
-      outputSize: 'hd',
-      expectedPeople,
-      castMode,
-      expectedGender: gender.value,
-      personSpec: spec,
-      roleHint,
-      consistencyReferencePaths: outputs.length && view.backView !== true ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
-      allowBackView: view.backView === true,
-      allowBarefoot,
-    });
-    attempts.push(...(generated.attempts || []).map(a => ({ ...a, view: view.key })));
+    let generated = null;
+    let lastViewErr = null;
+    const candidatePasses = view.backView === true ? 1 : 2;
+    for (let passIndex = 0; passIndex < candidatePasses; passIndex += 1) {
+      try {
+        const candidate = await _generateLuxuryPersonSheetWithPipeline({
+          req,
+          prompt: view.prompt,
+          aspectRatio,
+          filename: `${actorId}_${view.key}${passIndex ? `_candidate_${passIndex + 1}` : ''}`,
+          destDir: JIMENG_ASSETS_DIR,
+          // 中文说明：后续视图必须继承前序已通过图的人物和服装，避免半侧/动作图换衣服或换人。
+          referenceImages: viewReferenceImages,
+          outputSize: 'hd',
+          expectedPeople,
+          castMode,
+          expectedGender: gender.value,
+          personSpec: spec,
+          roleHint,
+          consistencyReferencePaths: outputs.length && view.backView !== true ? outputs.map(x => x.path).filter(Boolean).slice(0, 2) : [],
+          allowBackView: view.backView === true,
+          allowBarefoot,
+        });
+        attempts.push(...(candidate.attempts || []).map(a => ({ ...a, view: view.key, candidate_pass: passIndex + 1 })));
+        generated = _luxuryBetterActorViewCandidate(candidate, generated);
+      } catch (err) {
+        lastViewErr = err;
+        const failedAttempts = Array.isArray(err?.luxuryKeyframeAttempts)
+          ? err.luxuryKeyframeAttempts
+          : (Array.isArray(err?.details?.attempts) ? err.details.attempts : []);
+        attempts.push(...failedAttempts.map(a => ({ ...a, view: view.key, candidate_pass: passIndex + 1 })));
+        console.warn(`[DH/luxury-ad/person-sheet] view ${view.key} candidate pass ${passIndex + 1}/${candidatePasses} failed:`, String(err?.message || err).slice(0, 240));
+      }
+    }
+    if (!generated) {
+      if (lastViewErr) throw lastViewErr;
+      const err = new Error(`人物演员包视图 ${view.key} 没有生成可用候选图`);
+      err.status = 502;
+      err.code = 'LUXURY_PERSON_SHEET_VIEW_NO_CANDIDATE';
+      err.luxuryKeyframeAttempts = attempts;
+      throw err;
+    }
     outputs.push({
       key: view.key,
       model: generated.model,
@@ -14089,6 +14137,7 @@ async function _generateLuxuryRealisticActorPackage({
       frame_qa: generated.frameQa || null,
       consistency_qa: generated.consistencyQa || null,
       spec_qa: generated.specQa || null,
+      selected_score: Math.round(_luxuryGeneratedActorViewScore(generated) * 10) / 10,
       back_view_asset: view.backView === true,
     });
   }
