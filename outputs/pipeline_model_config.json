@@ -134,97 +134,97 @@
     ],
     "luxury_ad.scene_config": [
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "model_id": "claude-sonnet-4-6",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gpt-4o",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
-        "priority": 20,
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 5,
         "enabled": true
       }
     ],
     "luxury_ad.script": [
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "model_id": "claude-sonnet-4-6",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gpt-4o",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
-        "priority": 20,
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 5,
         "enabled": true
       }
     ],
     "luxury_ad.storyboard_director": [
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "model_id": "claude-sonnet-4-6",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gpt-4o",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
-        "priority": 20,
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 5,
         "enabled": true
       }
     ],
@@ -590,33 +590,33 @@
     ],
     "luxury_ad.keyframe_repair": [
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 1,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "model_id": "claude-sonnet-4-6",
         "priority": 3,
         "enabled": true
       },
       {
         "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gpt-4o",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
-        "priority": 20,
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 5,
         "enabled": true
       }
     ]

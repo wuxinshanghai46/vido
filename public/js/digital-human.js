@@ -189,6 +189,8 @@
       pendingShotUploadIndex: null,
       sceneGenerating: false,
       scriptGenerating: false,
+      scriptError: '',
+      scriptErrorDetails: null,
       keyframeGenerating: false,
       keyframeProgress: null,
       keyframeError: '',
@@ -8155,6 +8157,14 @@
     box.innerHTML = luxuryWorkflowProgressMarkup(progress);
   }
 
+  function visibleLuxuryProgressBox(...boxes) {
+    return boxes.find(box => {
+      if (!box || !box.isConnected) return false;
+      const panel = box.closest('.dh-luxgen-stage[data-panel], .dh-demo-stage[data-panel]');
+      return !panel || panel.classList.contains('active');
+    }) || boxes.find(Boolean) || null;
+  }
+
   function renderLuxuryWorkflowProgress() {
     const progress = state.luxuryAd.workflowProgress;
     const liveBox = $('#dhLuxAdLiveProgress');
@@ -8172,9 +8182,8 @@
     if (progress.keyframes) {
       renderLuxuryWorkflowProgressBox(frameBox, progress);
     } else if (progress.detail) {
-      renderLuxuryWorkflowProgressBox(scriptTopBox, progress);
-      renderLuxuryWorkflowProgressBox(scriptTableBox, progress);
-      renderLuxuryWorkflowProgressBox(step4ScriptBox, progress);
+      const targetBox = visibleLuxuryProgressBox(scriptTopBox, step4ScriptBox, scriptTableBox);
+      renderLuxuryWorkflowProgressBox(targetBox, progress);
     } else {
       renderLuxuryWorkflowProgressBox(liveBox, progress);
     }
@@ -8357,6 +8366,27 @@
       ...state.luxuryAd.workflowProgress,
       percent: percent === undefined ? state.luxuryAd.workflowProgress.percent : percent,
       message,
+    };
+    renderLuxuryWorkflowProgress();
+  }
+
+  function ensureLuxuryStoryboardProgressVisible({ detail = false } = {}) {
+    if (state.luxuryAd.workflowProgress?.active && !state.luxuryAd.workflowProgress?.keyframes) return;
+    const startedAt = Number(state.luxuryAd.storyboardRequest?.startedAt || 0) || Date.now();
+    const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const estimateSec = detail ? 210 : 38;
+    const curved = 100 * (1 - Math.exp(-elapsedSec / (estimateSec * 0.58)));
+    state.luxuryAd.workflowProgress = {
+      active: true,
+      detail,
+      startedAt,
+      elapsedSec,
+      percent: Math.min(92, Math.max(8, curved)),
+      label: detail ? '剧本生成中' : '场景配置生成中',
+      phase: luxuryWorkflowProgressPhase(detail, elapsedSec),
+      message: detail
+        ? '后台正在等待剧本生成结果；如果模型链路长时间无返回，页面会显示明确失败原因。'
+        : '后台正在等待场景配置结果；如果模型链路长时间无返回，页面会显示明确失败原因。',
     };
     renderLuxuryWorkflowProgress();
   }
@@ -8862,7 +8892,7 @@
       storyboardBtn.setAttribute('aria-disabled', 'false');
       storyboardBtn.textContent = '已生成剧本，查看剧本';
     }
-    setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', step3Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady))), step3Locked ? luxuryAdLockedStepMessage(3) : (busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : ''))));
+    setLuxuryButtonLock('#dhLuxAdScriptRegenerateTop', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : '')));
     setLuxuryButtonLock('#dhLuxAdRegenerateScriptFromStep4', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.titleReady && !gate.materialMode ? '请先填写标题' : '')));
     setLuxuryButtonLock('#dhLuxAdPreviewFrames', gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.detailedReady)), busyGenerating ? gate.hint : (!gate.storyboardReady && !gate.materialMode ? '请先生成场景配置' : (!gate.detailedReady && !gate.materialMode ? '请先生成剧本' : '')));
     const previewBtn = $('#dhLuxAdPreviewFrames');
@@ -10591,7 +10621,7 @@
   function markLuxuryAdStructureChanged({ keepDetailed = false } = {}) {
     normalizeLuxuryAdSegmentOrder();
     if (!keepDetailed) state.luxuryAd.storyboardDetailed = false;
-    if (Array.isArray(state.luxuryAd.keyframes) && state.luxuryAd.keyframes.length) state.luxuryAd.keyframes = [];
+    resetLuxuryAdFrameGenerationState();
     renderLuxuryAdStoryboard();
     updateLuxuryAdStepLocks();
   }
@@ -10687,9 +10717,8 @@
     } else if (Array.isArray(state.luxuryAd.keyframes) && ['delete_shot', 'extend_shot', 'set_subject_type'].includes(command.type)) {
       state.luxuryAd.keyframes = state.luxuryAd.keyframes.map(() => ({}));
     }
+    resetLuxuryAdFrameGenerationState();
     if (Array.isArray(r.keyframes)) state.luxuryAd.keyframes = r.keyframes;
-    state.luxuryAd.storyboardSheets = [];
-    state.luxuryAd.keyframePlanningOnly = false;
     if (r.production_project) applyLuxuryProductionProject(r.production_project);
     renderLuxuryAdStoryboard();
     saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => {});
@@ -11136,12 +11165,18 @@
 
   function renderLuxuryAdScriptTable(host, segments) {
     if (!host) return;
+    const scriptError = String(state.luxuryAd.scriptError || '').trim();
+    const scriptErrorHtml = scriptError
+      ? `<div class="dh-demo-script-overview dh-lux-keyframe-error">
+          <b>剧本生成失败</b>
+        </div>`
+      : '';
     if (!segments.length) {
-      host.innerHTML = luxuryAdEmptyBlock('还没有剧本', '请先完成基础信息配置，再点击“确认基础信息，生成剧本”。');
+      host.innerHTML = scriptErrorHtml || luxuryAdEmptyBlock('还没有剧本', '请先完成基础信息配置，再点击“确认基础信息，生成剧本”。');
       return;
     }
     if (!state.luxuryAd.storyboardDetailed) {
-      host.innerHTML = luxuryAdEmptyBlock('等待生成剧本', '基础信息已生成。确认人物、主体和素材来源后，点击“确认基础信息，生成剧本”。');
+      host.innerHTML = scriptErrorHtml || luxuryAdEmptyBlock('等待生成剧本', '基础信息已生成。确认人物、主体和素材来源后，点击“确认基础信息，生成剧本”。');
       return;
     }
     const info = state.luxuryAd.briefInfo || deriveLuxuryBriefInfo(state.luxuryAd.content, segments, {});
@@ -11151,10 +11186,10 @@
     const scriptLocked = luxuryAdStepIsLocked(3);
     const scriptBusy = !!state.luxuryAd.scriptGenerating
       || (!!state.luxuryAd.workflowProgress?.active && !!state.luxuryAd.workflowProgress?.detail && !state.luxuryAd.workflowProgress?.keyframes);
-    const scriptLockAttr = (scriptLocked || scriptBusy)
-      ? `disabled title="${escapeHtml(scriptBusy ? '剧本正在重新生成，请等待完成' : luxuryAdLockedStepMessage(3))}"`
+    const scriptLockAttr = scriptBusy
+      ? `disabled title="${escapeHtml('剧本正在重新生成，请等待完成')}"`
       : '';
-    host.innerHTML = `<div class="dh-demo-script-review">
+    host.innerHTML = `${scriptErrorHtml}<div class="dh-demo-script-review">
       <div>
         <h4>剧本审核</h4>
         <p>第 1 版 · 待确认 · ${escapeHtml(info.title || '剧情广告')} · 共 ${segments.length} 镜 · 总时长 ${totalSeconds} 秒</p>
@@ -11977,6 +12012,8 @@
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
     state.luxuryAd.keyframeError = project.last_error || '';
     state.luxuryAd.keyframeErrorDetails = project.last_error ? { production_project: project } : null;
+    state.luxuryAd.scriptError = '';
+    state.luxuryAd.scriptErrorDetails = null;
     state.luxuryAd.sceneGenerating = false;
     state.luxuryAd.scriptGenerating = false;
     state.luxuryAd.workflowProgress = null;
@@ -12239,6 +12276,7 @@
       return;
     }
     if (state.luxuryAd.sceneGenerating) {
+      ensureLuxuryStoryboardProgressVisible({ detail: false });
       if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('基础信息生成中', '正在分析广告需求、主体来源、真实场景和全局视觉。生成完成前不展示草稿镜头。');
       if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('等待剧本', '基础信息完成后再生成剧本审核表。');
       if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本确认后才会生成图片分镜。');
@@ -12247,6 +12285,7 @@
       return;
     }
     if (state.luxuryAd.scriptGenerating) {
+      ensureLuxuryStoryboardProgressVisible({ detail: true });
       if (sceneHost) renderLuxuryAdOutline(sceneHost, segments);
       if (scriptHost) {
         if (segments.length) renderLuxuryAdScriptTable(scriptHost, segments);
@@ -12593,6 +12632,17 @@
     return `${detail ? 'detail' : 'outline'}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  const LUXURY_STORYBOARD_OUTLINE_POLL_TIMEOUT_MS = 8 * 60 * 1000;
+  const LUXURY_STORYBOARD_DETAIL_POLL_TIMEOUT_MS = 24 * 60 * 1000;
+
+  function luxuryStoryboardPollTimeoutMs(detail = false) {
+    return detail ? LUXURY_STORYBOARD_DETAIL_POLL_TIMEOUT_MS : LUXURY_STORYBOARD_OUTLINE_POLL_TIMEOUT_MS;
+  }
+
+  function luxuryStoryboardPollTimeoutMessage(detail = false) {
+    return detail ? '剧本生成失败' : '场景配置生成失败';
+  }
+
   function luxuryKeyframeRequestKey(onlyIndex = null) {
     const shot = Number.isInteger(onlyIndex) ? `shot${onlyIndex + 1}` : 'all';
     return `keyframes_${shot}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -12606,6 +12656,7 @@
     const started = Date.now();
     let lastStatus = '';
     let seenServerJob = false;
+    const missingUntil = Date.now() + Math.max(0, Number(missingRetryMs) || 0);
     const runningMessage = detail
       ? '剧本生成中，后台会持续生成到完成，完成后自动进入下一步。'
       : '场景配置生成中，后台会持续生成到完成，完成后自动进入下一步。';
@@ -12615,7 +12666,12 @@
         const r = await api(`/api/dh/luxury-ad/storyboard/result/${encodeURIComponent(requestKey)}`);
         seenServerJob = true;
         if (r.status === 'done' && r.result) return r.result;
-        if (r.status === 'error') throw new Error(r.error || '生成失败');
+        if (r.status === 'error') {
+          const resultErr = new Error(r.error || '生成失败');
+          resultErr.data = r.details || null;
+          resultErr.status = r.details?.status || 422;
+          throw resultErr;
+        }
         if (r.status && r.status !== lastStatus) {
           lastStatus = r.status;
           updateLuxuryWorkflowProgress(runningMessage, Math.max(88, state.luxuryAd.workflowProgress?.percent || 88));
@@ -12623,7 +12679,7 @@
       } catch (err) {
         const missingResult = /还未产生|已过期|missing|404/i.test(String(err.message || ''));
         if (!missingResult) throw err;
-        if (!seenServerJob && missingRetryMs && Date.now() - started >= missingRetryMs) {
+        if (missingRetryMs && (Date.now() >= missingUntil || seenServerJob)) {
           const retryErr = new Error('RESULT_MISSING_AFTER_DISCONNECT');
           retryErr.code = 'RESULT_MISSING_AFTER_DISCONNECT';
           throw retryErr;
@@ -12631,7 +12687,7 @@
         updateLuxuryWorkflowProgress(runningMessage, Math.max(88, state.luxuryAd.workflowProgress?.percent || 88));
       }
     }
-    throw new Error('服务器仍在生成，请稍后刷新页面或重新进入本步骤查看');
+    throw new Error(luxuryStoryboardPollTimeoutMessage(detail));
   }
 
   async function pollLuxuryKeyframeResult(requestKey, { timeoutMs = 0, totalShots = 1, missingRetryMs = 45000 } = {}) {
@@ -12794,6 +12850,8 @@
     state.luxuryAd.storyboardRequest = { key: requestKey, detail: !!detail, startedAt: Date.now() };
     state.luxuryAd.sceneGenerating = !detail;
     state.luxuryAd.scriptGenerating = !!detail;
+    state.luxuryAd.scriptError = '';
+    state.luxuryAd.scriptErrorDetails = null;
     syncLuxuryAdStepPanels();
     updateLuxuryAdStepLocks();
     setLuxuryProgress(detail ? 'frames' : 'storyboard');
@@ -12872,6 +12930,7 @@
         request_async: true,
       };
       let r;
+      const pollTimeoutMs = luxuryStoryboardPollTimeoutMs(detail);
       try {
         r = await api('/api/dh/luxury-ad/storyboard', {
           method: 'POST',
@@ -12879,28 +12938,40 @@
         });
         if (r.status === 'accepted') {
           updateLuxuryWorkflowProgress(detail ? '剧本生成中，正在等待后台任务返回结果。' : '场景配置生成中，正在等待后台任务返回结果。', 94);
-          r = await pollLuxuryStoryboardResult(requestKey, { detail, timeoutMs: 0, missingRetryMs: 0 });
+          r = await pollLuxuryStoryboardResult(requestKey, { detail, timeoutMs: pollTimeoutMs, missingRetryMs: 45000 });
         }
       } catch (err) {
         if (!isLuxuryStoryboardLongRunningError(err)) throw err;
         updateLuxuryWorkflowProgress(detail ? '剧本生成时间较长，正在等待同一任务返回结果。' : '场景配置生成时间较长，正在等待同一任务返回结果。', 94);
-        while (!r) {
+        const waitUntil = Date.now() + pollTimeoutMs;
+        while (!r && Date.now() < waitUntil) {
           try {
-            r = await pollLuxuryStoryboardResult(requestKey, { detail, timeoutMs: 0, missingRetryMs: 0 });
+            r = await pollLuxuryStoryboardResult(requestKey, { detail, timeoutMs: Math.max(5000, waitUntil - Date.now()), missingRetryMs: 45000 });
           } catch (pollErr) {
             if (pollErr?.code !== 'RESULT_MISSING_AFTER_DISCONNECT') throw pollErr;
             try {
-              r = await api('/api/dh/luxury-ad/storyboard', {
+              const retryResult = await api('/api/dh/luxury-ad/storyboard', {
                 method: 'POST',
                 body: requestBody,
               });
+              if (retryResult.status === 'accepted') {
+                updateLuxuryWorkflowProgress(detail ? '剧本生成中，后台任务已重新接收，继续等待结果。' : '场景配置生成中，后台任务已重新接收，继续等待结果。', 94);
+                continue;
+              }
+              r = retryResult;
             } catch (retryErr) {
               if (!isLuxuryStoryboardLongRunningError(retryErr)) throw retryErr;
             }
           }
         }
+        if (!r) throw new Error(luxuryStoryboardPollTimeoutMessage(detail));
       }
-      if (!r.success) throw new Error(r.error || '详细分镜生成失败');
+      if (!r.success) {
+        const resultErr = new Error(r.error || '详细分镜生成失败');
+        resultErr.data = r.details || null;
+        resultErr.status = r.details?.status || 422;
+        throw resultErr;
+      }
       const nextSegments = applyLuxuryShotBindings((r.segments || []).slice(0, detail && shotCount ? shotCount : 8));
       const titleOverride = state.luxuryAd.briefInfo?.title_user_edited
         ? { title: state.luxuryAd.briefInfo.title || '', title_user_edited: true }
@@ -12923,21 +12994,30 @@
       syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
       state.luxuryAd.segments = detail && lockedShotLimit > 0 ? nextSegments.slice(0, lockedShotLimit) : nextSegments;
       state.luxuryAd.storyboardDetailed = !!detail || String(r.planning_mode || '').toLowerCase() === 'detailed';
-      state.luxuryAd.keyframes = [];
-      state.luxuryAd.storyboardSheets = [];
-      state.luxuryAd.productionContract = null;
+      state.luxuryAd.sceneGenerating = false;
+      state.luxuryAd.scriptGenerating = false;
+      state.luxuryAd.workflowProgress = null;
+      state.luxuryAd.scriptError = '';
+      state.luxuryAd.scriptErrorDetails = null;
+      if (state.luxuryAd.storyboardRequest?.key === requestKey) state.luxuryAd.storyboardRequest = null;
+      resetLuxuryAdFrameGenerationState();
       renderLuxuryAdStoryboard();
       saveLuxuryAdDraft({ silent: true }).catch(() => {});
       toast(detail
         ? `剧本已生成：${state.luxuryAd.segments.length} 个镜头，现在确认人物来源后再生成分镜`
         : `AI 已生成视频基础信息和广告结构，下一步确认主体后生成剧本`, 'success');
-      state.luxuryAd.sceneGenerating = false;
-      state.luxuryAd.scriptGenerating = false;
-      if (state.luxuryAd.storyboardRequest?.key === requestKey) state.luxuryAd.storyboardRequest = null;
       showLuxuryAdStep(detail ? 3 : 2, { silent: true });
       ok = true;
     } catch (err) {
-      toast((detail ? '剧情广告剧本生成失败：' : '剧情广告场景配置生成失败：') + err.message, 'error');
+      if (detail) {
+        state.luxuryAd.sceneGenerating = false;
+        state.luxuryAd.scriptGenerating = false;
+        state.luxuryAd.workflowProgress = null;
+        state.luxuryAd.scriptError = '剧本生成失败';
+        state.luxuryAd.scriptErrorDetails = err.data || err.details || null;
+        renderLuxuryAdStoryboard();
+      }
+      toast(detail ? '剧情广告剧本生成失败' : '剧情广告场景配置生成失败', 'error');
     } finally {
       state.luxuryAd.sceneGenerating = false;
       state.luxuryAd.scriptGenerating = false;
@@ -16345,7 +16425,7 @@
         await buildLuxuryAdStoryboard({
           autoNext: false,
           detail: true,
-          rewriteScript: luxScriptRegenerateBtn.id === 'dhLuxAdRegenerateScriptFromStep4',
+          rewriteScript: true,
           triggerButton: luxScriptRegenerateBtn,
         });
       }
