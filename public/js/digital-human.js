@@ -6055,8 +6055,14 @@
     return luxuryAdReferenceAssets().filter(luxuryAdAssetFilled);
   }
 
+  function luxuryAdReferenceAssetHasServerUrl(asset = {}) {
+    const url = compactLuxuryUrl(asset.url || asset.image_url || asset.previewUrl || '');
+    return !!url;
+  }
+
   function luxuryAdLockedShotLimit() {
-    const refCount = luxuryAdFilledReferenceAssets().length;
+    // 中文说明：只有已经上传成功、后端可读取的顺序参考画面才允许锁镜头数；名称占位或本地预览不能锁定剧本。
+    const refCount = luxuryAdReferenceAssets().filter(luxuryAdReferenceAssetHasServerUrl).length;
     if (refCount > 0) return Math.min(8, refCount);
     return 0;
   }
@@ -12982,10 +12988,10 @@
         })).filter(x => x.url || x.name),
         visual_reference_brief: state.luxuryAd.visualReferenceBrief || null,
         segment_plan: isRewriteScript ? null : (state.luxuryAd.segmentPlan || null),
-        reference_assets: luxuryAdReferenceAssets().map((asset, i) => asset && (asset.url || asset.previewUrl || asset.name) ? ({
+        reference_assets: luxuryAdReferenceAssets().map((asset, i) => asset && luxuryAdReferenceAssetHasServerUrl(asset) ? ({
           index: i + 1,
           name: asset.name || `分镜画面 ${i + 1}`,
-          url: compactLuxuryUrl(asset.url || ''),
+          url: compactLuxuryUrl(asset.url || asset.image_url || asset.previewUrl || ''),
         }) : null).filter(Boolean),
         outline_segments: detail
           ? (isRewriteScript ? [] : compactLuxurySegments(sourceSegments))

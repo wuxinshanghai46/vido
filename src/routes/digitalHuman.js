@@ -16049,7 +16049,8 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const shotRange = _suggestLuxuryAdShotRange({ durationSec: targetDuration });
     const suggestedShots = _suggestLuxuryAdShotCount({ text: brief, durationSec: targetDuration, assetSummary: enrichedAssetSummary });
     const uploadedReferenceAssets = Array.isArray(reference_assets)
-      ? reference_assets.filter(x => x && (x.url || x.previewUrl || x.name))
+      // 中文说明：镜头数锁定必须来自真实可读图片 URL，不能被前端空占位名称或旧草稿名称误触发。
+      ? reference_assets.filter(x => x && String(x.url || x.image_url || x.previewUrl || '').trim())
       : [];
     const shotCountMode = String(shot_count_mode || '').toLowerCase();
     const requestedShotCount = Math.max(0, Math.min(18, Math.round(Number(shot_count) || 0)));
@@ -16059,9 +16060,11 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const outlineShotTarget = outlineShotCount >= shotRange.min && outlineShotCount <= shotRange.max
       ? outlineShotCount
       : 0;
-    const fixedShotTarget = ['fixed', 'manual', 'custom', 'reference_locked'].includes(shotCountMode) && requestedShotCount > 0;
-    const referenceLockedShotTarget = uploadedReferenceAssets.length > 0 && shotCountMode === 'reference_locked';
-    const explicitShotTarget = fixedShotTarget ? requestedShotCount : 0;
+    // 中文说明：只有用户明确输入镜头数，或上传了顺序参考画面时，才把镜头数当硬约束。
+    // 普通重新生成/剧本生成不能被上一版镜头表或场景配置反向锁死。
+    const fixedShotTarget = ['fixed', 'manual', 'custom'].includes(shotCountMode) && requestedShotCount > 0;
+    const referenceLockedShotTarget = uploadedReferenceAssets.length > 0 && shotCountMode === 'reference_locked' && requestedShotCount > 0;
+    const explicitShotTarget = (fixedShotTarget || referenceLockedShotTarget) ? requestedShotCount : 0;
     const wantedShots = isDetailedMode
       ? (uploadedReferenceAssets.length
         ? (referenceLockedShotTarget
@@ -16603,7 +16606,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       throw new Error(`${name} 执行失败：${attempts.join('；') || String(lastErr?.message || 'unknown error')}`);
     };
     const isJsonIncompleteAgentError = (err) => /没有返回完整 JSON|Unexpected end of JSON|LLM .*JSON|JSON/.test(String(err?.message || ''));
-    const callLuxuryAgentArrayInChunks = async ({ name, systemPrompt, baseUserPrompt, sceneList = [], chunkSize = 2, maxTokens = 7000 }) => {
+    const callLuxuryAgentArrayInChunks = async ({ name, systemPrompt, baseUserPrompt, sceneList = [], chunkSize = 2, maxTokens = 7000, pipelineStageId = llmStageId }) => {
       const source = Array.isArray(sceneList) ? sceneList : [];
       const chunks = [];
       for (let start = 0; start < source.length; start += chunkSize) {
@@ -16619,6 +16622,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           userPrompt,
           json: 'array',
           maxTokens,
+          pipelineStageId,
         });
         if (!Array.isArray(partResult) || partResult.length !== part.length) {
           throw new Error(`${name} 分批执行失败：第 ${Math.floor(start / chunkSize) + 1} 批需要 ${part.length} 镜，实际返回 ${Array.isArray(partResult) ? partResult.length : 0} 镜。`);
@@ -17396,7 +17400,13 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         else if (isEndcard ? !isUsableScriptEndcardAction(actionText) : !isUsableScriptAction(actionText)) issues.push(`剧本镜头表第 ${n} 镜缺少动作`);
         if (copyInternalIssue) issues.push(copyInternalIssue);
         else if (!isUsableScriptCopy(copyText)) issues.push(`第 ${n} 镜缺少台词/旁白`);
+        const subjectRoleText = [scene.role, scene.story_stage, scene.subject_type, scene.subjectType, purposeText].filter(Boolean).join(' ');
+        const subjectMustBeVisible = /(solution|display|demo|feature|benefit|proof|result|cta|endcard|产品|主体|展示|功能|演示|证明|结果|收束|片尾|行动)/i.test(subjectRoleText)
+          || i >= Math.max(1, Math.floor(list.length * 0.4));
+        const subjectCanStayOffscreen = /(hook|context|pain|problem|setup|transition|痛点|铺垫|背景|转场|问题|焦虑|困扰)/i.test(subjectRoleText)
+          && !/(solution|display|demo|feature|benefit|proof|result|cta|endcard|产品|主体|展示|功能|演示|证明|结果|收束|片尾|行动)/i.test(subjectRoleText);
         if (i > 0 && _luxuryIsRobotAssistantSubject(productSubject, brief)
+          && subjectMustBeVisible && !subjectCanStayOffscreen
           && !_luxurySubjectHit([visualText, actionText, copyText, purposeText].filter(Boolean).join('；'), subjectKeywords, productSubject)) {
           issues.push(`第 ${n} 镜缺少广告主体「${productSubject}」的可见证据`);
         }
@@ -17476,6 +17486,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 1000
         sceneList: targets,
         chunkSize: 2,
         maxTokens: 6000,
+        pipelineStageId: 'luxury_ad.script',
       });
       const byShot = new Map();
       rewritten.forEach((item, i) => {
@@ -17968,6 +17979,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
           sceneList: payload,
           chunkSize: payload.length > 8 ? 2 : 3,
           maxTokens: 5000,
+          pipelineStageId: 'luxury_ad.script',
         });
       }
       return callLuxuryAgent({
@@ -18192,6 +18204,7 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
             sceneList: scenes,
             chunkSize: 2,
             maxTokens: 7000,
+            pipelineStageId: 'luxury_ad.storyboard_director',
           });
         }
         scenes = mergeLuxuryAgentScenes(scenes, cameraScenes);
