@@ -17340,6 +17340,14 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         .flatMap(issue => Array.from(String(issue || '').matchAll(/第\s*(\d+)\s*镜/g)).map(m => Number(m[1])))
         .filter(n => Number.isFinite(n) && n > 0)
     ));
+    const isLuxuryScriptBlockingIssue = (issue = '') => {
+      const text = String(issue || '');
+      if (!text.trim()) return false;
+      // 中文说明：硬阻断只保留会破坏现有流程的数据结构问题；文案可读性问题只用于推动模型重写，不能把完整剧本直接判失败。
+      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致)/.test(text);
+    };
+    const luxuryScriptBlockingIssues = (issues = []) => (Array.isArray(issues) ? issues : [issues])
+      .filter(issue => isLuxuryScriptBlockingIssue(issue));
     const rewriteLuxuryScriptIssueScenes = async ({ label, sceneList = [], issues = [], storyPlan = null }) => {
       const list = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
       const shotNumbers = luxuryIssueShotNumbers(issues);
@@ -17550,6 +17558,12 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
     };
     const repairLuxuryScriptIssues = async ({ label, sceneList = [], issues = [], storyPlan = null, failurePrefix = '剧本质量修复失败' }) => {
       recordLuxuryScriptDiagnostic(`${label}:before_quality_repair`, sceneList, { issues });
+      const initialBlockingIssues = luxuryScriptBlockingIssues(issues);
+      if (!initialBlockingIssues.length) {
+        const normalizedSoftScenes = completeLuxuryScriptStructure(sceneList, storyPlan, `${label}_soft_quality_only`);
+        recordLuxuryScriptDiagnostic(`${label}:soft_quality_only_return`, normalizedSoftScenes, { issues });
+        return normalizedSoftScenes;
+      }
       let nextScenes = mergeLuxuryAgentScenes(sceneList, await repairLuxuryScriptQualityPayload({
         label,
         payload: sceneList,
@@ -17587,7 +17601,8 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         remainingIssues = luxuryScriptStructureIssues(nextScenes);
         recordLuxuryScriptDiagnostic(`${label}:after_context_field_fill_${fillAttempt}`, nextScenes, { issues: remainingIssues });
       }
-      if (remainingIssues.length) throw new Error(`${failurePrefix}：${remainingIssues.slice(0, 6).join('；')}`);
+      const blockingRemainingIssues = luxuryScriptBlockingIssues(remainingIssues);
+      if (blockingRemainingIssues.length) throw new Error(`${failurePrefix}：${blockingRemainingIssues.slice(0, 6).join('；')}`);
       return nextScenes;
     };
     const writeLuxuryDetailedScriptTable = async ({ storyPlan = null, previousScenes = null, issues = [], attempt = 0 } = {}) => {
@@ -17954,24 +17969,40 @@ beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个�
         if (initialCastIssue) structureIssues.push(initialCastIssue);
         recordLuxuryScriptDiagnostic('luxury_ad.script.table.writer:normalized', scenes, { issues: structureIssues });
         for (let rewriteAttempt = 1; rewriteAttempt <= 2 && structureIssues.length; rewriteAttempt += 1) {
-          scenes = await writeLuxuryDetailedScriptTable({
+          const previousScenes = scenes;
+          const previousIssues = structureIssues;
+          const previousBlockingIssues = luxuryScriptBlockingIssues(previousIssues);
+          let rewrittenScenes = await writeLuxuryDetailedScriptTable({
             storyPlan,
             previousScenes: scenes,
             issues: structureIssues,
             attempt: rewriteAttempt,
           });
-          recordLuxuryScriptDiagnostic(`luxury_ad.script.table.writer.rewrite${rewriteAttempt}:raw`, scenes, { issues: structureIssues });
-          scenes = normalizeLuxuryScriptReviewTable(scenes, storyCharacters, storyPlan, `script_table_writer_rewrite${rewriteAttempt}`);
-          structureIssues = luxuryScriptStructureIssues(scenes);
-          const rewriteCastIssue = describeLuxurySceneCastIssue(scenes, storyCharacters);
-          if (rewriteCastIssue) structureIssues.push(rewriteCastIssue);
-          recordLuxuryScriptDiagnostic(`luxury_ad.script.table.writer.rewrite${rewriteAttempt}:normalized`, scenes, { issues: structureIssues });
+          recordLuxuryScriptDiagnostic(`luxury_ad.script.table.writer.rewrite${rewriteAttempt}:raw`, rewrittenScenes, { issues: structureIssues });
+          rewrittenScenes = normalizeLuxuryScriptReviewTable(rewrittenScenes, storyCharacters, storyPlan, `script_table_writer_rewrite${rewriteAttempt}`);
+          let rewrittenIssues = luxuryScriptStructureIssues(rewrittenScenes);
+          const rewriteCastIssue = describeLuxurySceneCastIssue(rewrittenScenes, storyCharacters);
+          if (rewriteCastIssue) rewrittenIssues.push(rewriteCastIssue);
+          const rewrittenBlockingIssues = luxuryScriptBlockingIssues(rewrittenIssues);
+          recordLuxuryScriptDiagnostic(`luxury_ad.script.table.writer.rewrite${rewriteAttempt}:normalized`, rewrittenScenes, { issues: rewrittenIssues });
+          // 中文说明：质量重写只能在不破坏结构的前提下替换原稿；不能为了修文案把完整剧本换成缺画面/缺台词的坏结果。
+          if (!previousBlockingIssues.length && rewrittenBlockingIssues.length) {
+            recordLuxuryScriptDiagnostic(`luxury_ad.script.table.writer.rewrite${rewriteAttempt}:discarded_worse_result`, previousScenes, {
+              issues: rewrittenIssues,
+            });
+            scenes = previousScenes;
+            structureIssues = previousIssues;
+            break;
+          }
+          scenes = rewrittenScenes;
+          structureIssues = rewrittenIssues;
         }
-        if (structureIssues.length) {
+        const blockingStructureIssues = luxuryScriptBlockingIssues(structureIssues);
+        if (blockingStructureIssues.length) {
           scenes = await repairLuxuryScriptIssues({
             label: 'luxury_ad.script.table.writer.final',
             sceneList: scenes,
-            issues: structureIssues,
+            issues: blockingStructureIssues,
             storyPlan,
             failurePrefix: '剧本质量重写后仍不达标',
           });
@@ -18685,8 +18716,9 @@ ${JSON.stringify(scenes, null, 2)}
       scenes = normalizeLuxuryScriptReviewTable(scenes, storyCharacters, storyPlan || {}, 'final_script_review_return');
       const finalScriptIssues = luxuryScriptStructureIssues(scenes);
       recordLuxuryScriptDiagnostic('luxury_ad.script.final:return_normalized', scenes, { issues: finalScriptIssues });
-      if (finalScriptIssues.length) {
-        throw new Error(`剧本最终整理后不达标：${finalScriptIssues.slice(0, 6).join('；')}`);
+      const finalBlockingIssues = luxuryScriptBlockingIssues(finalScriptIssues);
+      if (finalBlockingIssues.length) {
+        throw new Error(`剧本最终整理后不达标：${finalBlockingIssues.slice(0, 6).join('；')}`);
       }
     }
     scenes = scenes.map(scene => _attachLuxuryVisualLocks(scene, luxuryVisualLocks));
