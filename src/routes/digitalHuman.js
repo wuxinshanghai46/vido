@@ -16412,6 +16412,47 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       });
       if (scriptDiagnostics.length > 12) scriptDiagnostics = scriptDiagnostics.slice(-12);
     };
+    const luxuryScriptPlainLength = value => String(value || '').replace(/\s+/g, '').length;
+    const luxuryScriptDurationCapacityIssues = (sceneList = []) => {
+      const list = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
+      if (!isDetailedMode || !list.length) return [];
+      const issues = [];
+      const durations = list.map((scene, i) => _luxuryNormalizeShotDuration(
+        scene.duration ?? scene.duration_sec ?? scene.seconds,
+        targetDuration / Math.max(1, list.length),
+      ));
+      const totalDuration = durations.reduce((sum, seconds) => sum + seconds, 0);
+      const roundedTotal = Math.round(totalDuration * 10) / 10;
+      const lowerBound = Math.max(1, targetDuration * 0.86);
+      const upperBound = Math.max(lowerBound, targetDuration * 1.18);
+      if (roundedTotal < lowerBound || roundedTotal > upperBound) {
+        issues.push(`剧本总时长承载不匹配：用户目标约 ${targetDuration} 秒，当前剧本表合计 ${roundedTotal} 秒；必须按目标时长重写剧情、台词、动作和每镜时长，不能只拉伸或压缩数字。`);
+      }
+      const totalCopyChars = list.reduce((sum, scene) => sum + luxuryScriptPlainLength(luxurySceneSpokenText(scene)), 0);
+      const totalActionChars = list.reduce((sum, scene) => sum + luxuryScriptPlainLength(_luxuryRawSceneActionText(scene)), 0);
+      const totalVisualChars = list.reduce((sum, scene) => sum + luxuryScriptPlainLength(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || ''), 0);
+      // 中文说明：这里评估“内容是否足以承载目标时长”，不是生成兜底文案；不足时交回模型整版重写。
+      const estimatedContentSeconds = (totalCopyChars / 4.2) + (totalActionChars / 18) + (totalVisualChars / 45);
+      if (targetDuration >= 25 && estimatedContentSeconds < targetDuration * 0.72) {
+        issues.push(`剧本内容承载不足：目标约 ${targetDuration} 秒，但当前台词/动作/画面信息量估算只能支撑约 ${Math.round(estimatedContentSeconds)} 秒；必须扩展剧情过程、自然台词、可见操作和结果证明，而不是把短剧本拉长。`);
+      }
+      list.forEach((scene, i) => {
+        const n = i + 1;
+        const duration = durations[i] || 0;
+        const copyLen = luxuryScriptPlainLength(luxurySceneSpokenText(scene));
+        const actionLen = luxuryScriptPlainLength(_luxuryRawSceneActionText(scene));
+        const visualLen = luxuryScriptPlainLength(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || '');
+        const roleText = [scene.role, scene.story_stage, scene.purpose, scene.script_purpose, scene.objective, scene.subject_type, scene.subjectType].filter(Boolean).join(' ');
+        const canBeQuietProof = /(product_detail|proof_scene|brand_endcard|细节|特写|结果证明|片尾|endcard)/i.test(roleText);
+        if (duration >= 7 && !canBeQuietProof && copyLen < Math.max(10, duration * 1.5)) {
+          issues.push(`第 ${n} 镜时长 ${duration} 秒但台词承载不足：需要补充更自然完整的口播/对白，不能让画面空停。`);
+        }
+        if (duration >= 7 && (actionLen < 12 || visualLen < 24)) {
+          issues.push(`第 ${n} 镜时长 ${duration} 秒但画面/动作承载不足：需要写清事件过程、主体操作和结果变化，不能只写静态展示。`);
+        }
+      });
+      return issues;
+    };
     const assertAgentTextOk = (label, value) => {
       const raw = typeof value === 'string' ? value : JSON.stringify(value || {});
       if (/�/.test(raw)) throw new Error(`${label} 返回内容包含乱码或无法识别的占位符。`);
@@ -17333,7 +17374,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const n = i + 1;
         const fallbackOpts = { role: scene.role || _luxuryStoryRoleAt(i, list.length, ''), productSubject, index: i, total: list.length, brief, continuousHuman, disableGeneratedScriptFallbacks: true };
         const visualText = scene.content_prompt || scene.scene_content || scene.visual || '';
-        const actionText = scene.action || scene.visual_action || '';
+        const actionText = _luxuryRawSceneActionText(scene);
         const copyText = luxurySceneSpokenText(scene);
         const purposeText = scene.purpose || scene.script_purpose || scene.objective || '';
         const isEndcard = isScriptEndcardShot(scene, i, list.length);
@@ -17361,6 +17402,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const driftIssue = luxuryScriptDriftIssue([visualText, actionText, copyText, purposeText].filter(Boolean).join('；'), n);
         if (driftIssue) issues.push(driftIssue);
       });
+      issues.push(...luxuryScriptDurationCapacityIssues(list));
       return issues;
     };
     const luxuryIssueShotNumbers = (issues = []) => Array.from(new Set(
@@ -17372,7 +17414,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       const text = String(issue || '');
       if (!text.trim()) return false;
       // 中文说明：硬阻断只保留会破坏现有流程的数据结构问题；文案可读性问题只用于推动模型重写，不能把完整剧本直接判失败。
-      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致)/.test(text);
+      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致|总时长承载|内容承载不足|承载不足)/.test(text);
     };
     const luxuryScriptBlockingIssues = (issues = []) => (Array.isArray(issues) ? issues : [issues])
       .filter(issue => isLuxuryScriptBlockingIssue(issue));
@@ -17653,6 +17695,8 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
           : '请根据广告表达自行决定数组长度；不要为了凑数量拆碎剧情，也不要合并掉必要的表达段落。',
         '每个对象必须包含：index、title、role、story_stage、duration、objective、purpose、script_purpose、segment_id、segment_name、subject_type、content_prompt、scene_content、visual、action、visual_action、voiceover、narration、ad_copy、subtitle、text、dialogue_lines、characters、material_usage。',
         'segment_id/segment_name 必须来自编剧蓝图 segment_plan；如果全片只有一个连续空间，就所有镜头使用同一个 segment_id。它只是连续性归属，不是固定镜头数或固定时长。',
+        `目标总时长约 ${targetDuration} 秒，这是剧本内容承载要求，不是后期把短稿数字拉长。每镜 duration 必须由该镜台词长度、动作过程、画面证明和节奏停顿共同支撑；如果写 ${targetDuration} 秒，就要写出能支撑 ${targetDuration} 秒的剧情、动作和台词信息量。`,
+        '不同目标时长必须是不同剧本：30 秒可以短促，60 秒必须增加更完整的铺垫、操作过程、结果反馈、证明或自然转化；不得把 30 秒剧本改成 60 秒数字。每一镜不能只有一句短台词配长停顿。',
         '竞品级写法：画面列必须是具体事件，包含场所、主体状态和可见证据；动作列必须是可拍动作，包含主体如何出现、移动、操作、切换或展示结果；台词列必须是一句口语化成片文案。',
         '痛点写法：必须拍出“为什么痛”，不能只写人物焦虑、头疼、无力。画面里要有具体冲突来源，如手机提醒堆叠、日程冲突、待办过多、账单/预约/家务/工作互相挤压，动作里要写人物如何被这些事打断。',
         'UI写法：禁止只写“悬浮UI显示、按钮脉冲、淡蓝光晕、日程和待办列表”。如果需要 UI，必须写清 UI 在什么载体上、显示哪几条具体信息、哪些信息冲突、广告主体/当前主体如何整理、整理后列表或状态如何变化。',
@@ -17687,7 +17731,7 @@ ${issueList.slice(0, 10).join('；')}
 ${JSON.stringify(previousScenes, null, 2).slice(0, 16000)}
 ` : ''}
 
-请直接输出第 3 步剧本审核表 JSON 数组。${explicitShotTarget ? `镜头数量：正好 ${wantedShots} 镜。` : `镜头数量：由广告内容和表达节奏决定，允许 1-${maxAllowedShots} 镜。`}目标总时长约 ${targetDuration} 秒，但不要按秒数机械拆镜；每镜时长按台词、动作和节奏自行安排。`;
+请直接输出第 3 步剧本审核表 JSON 数组。${explicitShotTarget ? `镜头数量：正好 ${wantedShots} 镜。` : `镜头数量：由广告内容和表达节奏决定，允许 1-${maxAllowedShots} 镜。`}目标总时长约 ${targetDuration} 秒；请先写够这个时长需要承载的剧情、动作、台词和证明，再分配每镜时长。不要按秒数机械拆镜，也不要把短剧本拉长成空停镜头。`;
       const table = await callLuxuryAgent({
         name: rewritingInvalidTable ? `luxury_ad.script.table.writer.rewrite${attempt}` : 'luxury_ad.script.table.writer',
         systemPrompt: tableSys,
@@ -17882,6 +17926,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
         genderInstruction,
         ...craftLearningRules,
         '必须保留原镜头数量、index、duration、人物数量规则和故事顺序；只重写 content_prompt/scene_content/visual/action/visual_action/voiceover/narration/objective/purpose/subject_type 等脚本表达字段。',
+        `目标总时长约 ${targetDuration} 秒。遇到“总时长承载/内容承载不足”问题时，不能只改 duration 数字；必须把台词说完整、动作过程写具体、画面证明写清楚，让每个长镜头都有真实内容可演。`,
         `广告主体是「${productSubject}」。如果有上传商品/主体图，把它当成需要被介绍和证明的画面证据；没有上传时，也必须按广告需求推断清楚主体，不要写“相关证据”“主体证据”“当前业务真正需要看见”等抽象词。`,
         '如果原稿出现广告需求、主体、素材或编剧蓝图没有提供的行业、场景、角色或业务对象，必须改回当前资料能够支撑的内容；不要为了显得具体而编造新行业。',
         '画面列必须像竞品脚本：写观众看见的具体场景、主体、商品/服务证据和前后变化；可以有人物，也可以是商品/界面/机器人/空间独立承担介绍，不要强行让每一镜都有人。',
@@ -17932,6 +17977,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         `广告主体必须作为故事中的可见证据出现：${productSubject}。故事主语必须来自用户确认的主体：可以是人物、产品、动物、机器人、外星人、吉祥物、空间、服务流程或其它行业对象，不能强行套真人导购或历史行业场景。`,
         forbiddenBriefInstruction,
         castInstruction,
+        `目标总时长约 ${targetDuration} 秒。蓝图必须先规划足够支撑该时长的剧情信息量：较短视频可以集中表达，较长视频必须增加更完整的场景铺垫、主体操作过程、结果反馈、对比证明或行动收束。不得先写短剧本再靠 duration 拉长。`,
         '学习竞品脚本写法：先把每个 beat 想成最终表格里的一行，必须有具体场所/主体状态/可见证据、可拍动作、可直接配音的一句话、短目的标签；不要输出后台分析句。',
         '竞品级标准：每一行都要形成“具体场景里的明确阻碍或期待 -> 主体以可见动作介入 -> 结果或界面变化出现 -> 台词说一句人话”的推进。不要用“进入画面重点位置、近景展示外观结构、准备被使用或介绍”这类通用句。',
         '严禁剧情漂移：不得自行发明 brief、素材、主体信息中没有的行业场景、角色关系或业务对象；宽泛概念只能落到当前资料已经支持的具体画面。',
@@ -17965,7 +18011,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
   "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","subject_type":"auto|human_scene|character_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标；机器人/吉祥物/动物/虚拟人等非真人主体用 character_scene","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现的可见主体和证据；有人物时写清人物与证据关系；非真人主体写清主体与场景证据关系","why_next":"为什么自然进入下一段"}]
 }
-beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个镜头规划足够的剧情 beat` : `完全根据广告内容自行决定，允许 1-${maxAllowedShots} 个；简单内容可以一个连续段落讲完，复杂内容再拆更多 beat`}，不要把 beat 当成固定镜头公式。必须覆盖与本广告真实相关的节点；如果一个长镜头能讲清，也可以把 pain、主体登场、证明和行动收束合在同一个 beat 的连续动作里。每个 beat 都要有不同的剧情动作和一句自然台词。`;
+beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个镜头规划足够的剧情 beat` : `完全根据广告内容、目标 ${targetDuration} 秒和表达节奏决定，允许 1-${maxAllowedShots} 个；简单内容可以一个连续段落讲完，复杂或较长时长要拆出足够剧情过程`}，不要把 beat 当成固定镜头公式。必须覆盖与本广告真实相关的节点；如果一个长镜头能讲清，也可以把 pain、主体登场、证明和行动收束合在同一个 beat 的连续动作里，但这个长镜头本身必须有足够台词、动作和结果变化支撑时长。每个 beat 都要有不同的剧情动作和一句自然台词。`;
       storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
