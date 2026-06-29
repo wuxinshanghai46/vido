@@ -2470,6 +2470,62 @@ body {
   box-shadow: 0 24px 70px rgba(65, 92, 119, .22) !important;
 }
 
+[data-theme="light-mist"] .modal-header,
+[data-theme="light-mist"] .modal-body,
+[data-theme="light-mist"] .modal-footer,
+[data-theme="light-mist"] .vido-modal-head,
+[data-theme="light-mist"] .vido-modal-body,
+[data-theme="light-mist"] .vido-modal-foot {
+  background: rgba(248, 251, 255, .96) !important;
+  color: #08111d !important;
+  border-color: rgba(84, 107, 130, .16) !important;
+}
+
+[data-theme="light-mist"] .vido-modal-title,
+[data-theme="light-mist"] .vido-modal-close,
+[data-theme="light-mist"] .modal-header,
+[data-theme="light-mist"] .modal-header * {
+  color: #08111d !important;
+}
+
+[data-theme="light-mist"] .vido-modal-close:hover {
+  color: #0b72ff !important;
+}
+
+[data-theme="light-mist"] .vido-mf input,
+[data-theme="light-mist"] .vido-mf select,
+[data-theme="light-mist"] .vido-mf textarea {
+  background: rgba(255, 255, 255, .94) !important;
+  color: #08111d !important;
+  border-color: rgba(84, 107, 130, .22) !important;
+}
+
+[data-theme="light-mist"] .vido-mf-hint,
+[data-theme="light-mist"] .vido-model-item-meta {
+  color: rgba(8, 17, 29, .52) !important;
+}
+
+[data-theme="light-mist"] .vido-model-item {
+  background: rgba(255, 255, 255, .90) !important;
+  color: #08111d !important;
+  border-color: rgba(84, 107, 130, .18) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light-mist"] .vido-model-item:hover {
+  background: rgba(231, 241, 250, .92) !important;
+  border-color: rgba(11, 114, 255, .42) !important;
+}
+
+[data-theme="light-mist"] .vido-model-item.selected {
+  background: rgba(11, 114, 255, .10) !important;
+  border-color: rgba(11, 114, 255, .55) !important;
+}
+
+[data-theme="light-mist"] .vido-model-item-id {
+  color: #08111d !important;
+}
+
 [data-theme="light-mist"] .modal-box .form-title,
 [data-theme="light-mist"] .role-modal-box .form-title {
   color: #08111d !important;
@@ -3876,15 +3932,18 @@ body {
   align-items: center;
 }
 .pms-flow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
-  gap: 14px 32px;
-  overflow: visible;
-  padding: 10px 2px 4px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 10px 4px 16px;
+  scrollbar-width: thin;
 }
 .pms-flow-stage {
-  width: auto;
-  min-width: 0;
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 220px;
   min-height: 218px;
   border-radius: 8px;
   background: var(--bg);
@@ -4029,7 +4088,13 @@ body {
   color: var(--accent);
 }
 .pms-flow-arrow {
-  display: none;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 22px;
+  color: var(--accent);
+  opacity: .58;
 }
 
 @media (max-width: 960px) {
