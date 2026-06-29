@@ -16239,6 +16239,8 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       'SCRIPT SUBJECT RULE: never assume every commercial must contain a human. The confirmed subject may be a person, animal, robot, alien, mascot, creature, product, object, vehicle, place or service scene. Write the script around the user-submitted brief and confirmed references. Human/person/cast rules apply only when the brief or confirmed script explicitly requires human characters; otherwise do not invent a presenter, customer or designer.',
       '剧本必须是在叙述一件事：从问题或场景进入，主体出现，细节推进，可信证明，最后行动引导；台词要一句一句推动故事，不要堆“高级感、空间主角、质感被看见”这种口号。',
       '竞品剧情文案标准：像一条真人广告短片，不像卖点表。每一镜必须回答“人物现在在哪、遇到什么具体问题、为什么进入下一镜、看见了什么证据、情绪如何变化”。',
+      '痛点可读规则：开场痛点不能只写“焦虑、头疼、无力、事情不清、被淹没”。必须让观众看见造成痛点的具体事件：例如手机连续弹出三条提醒、日历同一时间有会议和接送、账单/预约/家务清单互相冲突、人物手忙脚乱找不到优先级。',
+      'UI可读规则：UI 不是装饰词。禁止只写“悬浮UI显示、按钮脉冲、淡蓝光晕、待办列表”。如果出现屏幕/界面/UI，必须写清具体载体、具体条目、用户为什么被困住、主体执行了什么整理动作，以及整理后的可见结果；不能让观众猜 UI 是什么。',
       '参考结构：人物在真实生活/工作场景中遇到困扰；镜头推进到产品/服务登场；通过一个可见动作或 UI/材料细节证明价值；人物从犹豫变成确认；最后给出一句自然行动号召。不要写“外观一定要有贵气”“清洁一擦就好”这种无人物、无事件、无因果的散句。',
       '故事弧规则：生成第 3 步前必须先确定一条不可见的 story arc：起因、阻碍、发现、验证、转变、行动。每个镜头只承担其中一个节点，但相邻镜头必须能用“因此/接着/于是/最后”连起来。台词或旁白连读后必须像一段完整短片文案。',
       '反割裂规则：禁止把每镜写成互不相干的标题口号；禁止连续使用“全新体验、科技感、未来感、智能生活、效率提升”这类没有场景动作支撑的词；禁止台词与画面主体不一致。',
@@ -17215,6 +17217,38 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!s || !scriptInternalNoise.test(s)) return '';
         return `第 ${shotNo} 镜${label}包含后台流程词或主商品占位词，需要改成「${productSubject}」相关的真实可见内容`;
       };
+      const vagueUiIssue = (scene = {}, shotNo = 0) => {
+        const visual = _stripLuxuryBriefNoise(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || '').replace(/\s+/g, ' ').trim();
+        const action = _stripLuxuryBriefNoise(scene.action || scene.visual_action || '').replace(/\s+/g, ' ').trim();
+        const copy = _stripLuxuryBriefNoise(luxurySceneSpokenText(scene)).replace(/\s+/g, ' ').trim();
+        const all = [visual, action, copy].filter(Boolean).join('；');
+        if (!/(UI|界面|屏幕|面板|弹窗|卡片|按钮|列表|日程|待办|提醒|通知|光晕|脉冲|悬浮|全息)/i.test(all)) return '';
+        // UI 不能只作为视觉装饰词出现，必须让观众读懂屏幕上到底发生了什么。
+        if (/(悬浮\s*UI|UI\s*显示|界面\s*显示|屏幕\s*显示|按钮脉冲|脉冲闪烁|环形光晕|淡蓝.*光晕|日程和待办列表|待办和日程列表|一键整理按钮)/i.test(all)) {
+          return `第 ${shotNo} 镜 UI/界面写法不清楚：不能只写“悬浮UI显示、按钮脉冲、光晕、日程/待办列表”，必须写清具体载体、具体条目、用户为什么被困住、主体执行了什么整理动作以及画面结果。`;
+        }
+        const hasConcreteItem = /(明天|今天|今晚|上午|下午|会议|接送|账单|缴费|药|复诊|作业|采购|预约|快递|保修|清单|重复|逾期|冲突|三条|两条|一条|\d+[:：]\d+|\d+\s*项)/.test(all);
+        const hasResult = /(自动归类|合并|排序|提醒|标红|勾选|完成|减少|清空|同步|生成|确认|推送|变成|整理成|优先级|冲突被|待办被)/.test(all);
+        if (!hasConcreteItem || !hasResult) {
+          return `第 ${shotNo} 镜 UI/界面缺少可读业务含义：要写观众能看懂的具体内容和变化，例如哪几件事冲突、被如何整理、最后状态是什么。`;
+        }
+        return '';
+      };
+      const vaguePainIssue = (scene = {}, shotNo = 0, index = 0) => {
+        const roleText = [scene.role, scene.story_stage, scene.purpose, scene.script_purpose, scene.objective].filter(Boolean).join(' ');
+        const visual = _stripLuxuryBriefNoise(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || '').replace(/\s+/g, ' ').trim();
+        const action = _stripLuxuryBriefNoise(scene.action || scene.visual_action || '').replace(/\s+/g, ' ').trim();
+        const copy = _stripLuxuryBriefNoise(luxurySceneSpokenText(scene)).replace(/\s+/g, ' ').trim();
+        const all = [roleText, visual, action, copy].filter(Boolean).join('；');
+        const isPainShot = index === 0 || /(痛点|焦虑|困扰|问题|开场|pain|problem|hook|context)/i.test(all);
+        if (!isPainShot) return '';
+        // 痛点镜头必须拍出造成困扰的具体事件，不能只给情绪标签。
+        if (/(焦虑|头疼|头痛|无力|烦|崩溃|混乱|不清|又要迟到|这些事情)/.test(all)
+          && !/(因为|原因|源头|手机.*响|消息.*弹|清单.*堆|日程.*冲突|孩子|会议|工作|家务|缴费|预约|复诊|快递|账单|忘记|漏掉|重复|逾期|找不到|来不及)/.test(all)) {
+          return `第 ${shotNo} 镜痛点不成立：不能只写“焦虑、头疼、无力、事情不清”，必须让观众看见造成痛点的具体事件或冲突。`;
+        }
+        return '';
+      };
       const scriptInternalNoise = /(广告需求识别|由广告需求识别|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|主商品|产品名称|一句话需求|brief|prompt|exact uploaded)/i;
       const isUsableScriptVisual = (value = '') => {
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
@@ -17292,6 +17326,10 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!isEndcard && _hasLuxuryAbstractStoryboardLeak(actionText)) issues.push(`第 ${n} 镜动作仍是抽象模板句，需要写清主体如何运动或操作`);
         if (_hasLuxuryAbstractStoryboardLeak(copyText)) issues.push(`第 ${n} 镜台词仍是抽象模板句，需要写成成片里能听到的自然话`);
         if (_hasLuxuryAbstractStoryboardLeak(purposeText)) issues.push(`第 ${n} 镜目的仍是抽象模板句，需要写成短的剧情职责标签`);
+        const uiIssue = vagueUiIssue(scene, n);
+        if (uiIssue) issues.push(uiIssue);
+        const painIssue = vaguePainIssue(scene, n, i);
+        if (painIssue) issues.push(painIssue);
         const driftIssue = luxuryScriptDriftIssue([visualText, actionText, copyText, purposeText].filter(Boolean).join('；'), n);
         if (driftIssue) issues.push(driftIssue);
       });
@@ -17572,6 +17610,8 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
           : '请根据广告表达自行决定数组长度；不要为了凑数量拆碎剧情，也不要合并掉必要的表达段落。',
         '每个对象必须包含：index、title、role、story_stage、duration、objective、purpose、script_purpose、subject_type、content_prompt、scene_content、visual、action、visual_action、voiceover、narration、ad_copy、subtitle、text、dialogue_lines、characters、material_usage。',
         '竞品级写法：画面列必须是具体事件，包含场所、主体状态和可见证据；动作列必须是可拍动作，包含主体如何出现、移动、操作、切换或展示结果；台词列必须是一句口语化成片文案。',
+        '痛点写法：必须拍出“为什么痛”，不能只写人物焦虑、头疼、无力。画面里要有具体冲突来源，如手机提醒堆叠、日程冲突、待办过多、账单/预约/家务/工作互相挤压，动作里要写人物如何被这些事打断。',
+        'UI写法：禁止只写“悬浮UI显示、按钮脉冲、淡蓝光晕、日程和待办列表”。如果需要 UI，必须写清 UI 在什么载体上、显示哪几条具体信息、哪些信息冲突、广告主体/当前主体如何整理、整理后列表或状态如何变化。',
         '严禁剧情漂移：只能使用广告需求、主体、素材解析、已有场景顺序或编剧蓝图里已经出现的对象和环境；不得自行加入无来源行业、无来源角色或无来源业务。',
         'content_prompt/scene_content/visual：写观众真正看见的画面事件，必须包含场景、主体状态、商品/服务证据或结果变化；不能写后台分析、抽象价值、模型提示词。',
         'action/visual_action：写主体正在执行的可拍动作；机器人/虚拟主体广告要写机器人/虚拟主体如何移动、亮起、交互、执行或展示结果，不能强行写真人导购动作。',
