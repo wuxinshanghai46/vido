@@ -733,6 +733,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     subtitle: _compactLuxuryAdSubtitle(body.subtitle) || (body.subtitle !== false ? { show: true } : false),
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
     route_focus: String(body.route_focus || body.routeFocus || '').slice(0, 40),
+    segment_plan: _jsonClone(body.segment_plan || body.segmentPlan || null),
     ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,
@@ -767,6 +768,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const mergedKeyframes = clearKeyframes ? [] : _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
   const mergedStoryboardSheets = clearKeyframes ? [] : _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
+  const segmentPlan = result.segment_plan || result.details?.segment_plan || body.segment_plan || body.segmentPlan || existing?.segment_plan || null;
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
     || result.keyframe_generation_status === 'deferred_for_review';
@@ -835,6 +837,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     asset_manifest: _jsonClone(result.asset_manifest || existing?.asset_manifest || null),
     visual_locks: _jsonClone(result.visual_locks || existing?.visual_locks || null),
     global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
+    segment_plan: _jsonClone(segmentPlan || null),
     bgm_asset: compactBgmAsset,
     avatar_task_id: result.avatar_task_id || result.task_id || body.avatar_task_id || existing?.avatar_task_id || '',
     video_url: result.video_url || result.videoUrl || body.video_url || body.videoUrl || existing?.video_url || '',
@@ -5609,6 +5612,9 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     material_usage: _compactQaText(scene.material_usage || scene.material_hint || '', 180),
     generation_instruction: _compactQaText(scene.topview_prompt || scene.reference_prompt || scene.visual_prompt || '', 640),
     continuity_bible: _compactQaText(scene.continuity_bible || scene.brief_reference_summary || '', 760),
+    segment_contract: scene.segment_contract || null,
+    master_scene_reference: _compactQaText(scene.master_scene_reference || '', 420),
+    adjacent_shot_context: scene.adjacent_shot_context || null,
     asset_manifest: scene.asset_manifest || scene.visual_locks?.asset_manifest || null,
     reality_lock: scene.reality_lock || scene.visual_locks?.reality_lock || null,
     character_lock: scene.character_lock || scene.visual_locks?.character_lock || null,
@@ -5661,6 +5667,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       ? 'For robot/assistant subjects, subject_match requires the confirmed robot/assistant to be visible as the advertised subject and helping through the story action. A product interface may pass only when it is the robot/service own interaction surface, status panel or result feedback; generic computer dashboards do not pass.'
       : '',
     'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
+    'If segment_contract is present, judge scene_continuity against that segment contract: the same segment should keep its space anchor, subject relationship, props/evidence chain and lighting logic. Do not require the same exact composition; require believable continuity.',
     'Hard fail if uploaded product/person/scene/UI references are treated as generic inspiration instead of role-specific locks.',
     softwareWorkflowSubject
       ? 'For software/service/workflow products, subject_match must be true when the generated keyframe shows the advertised service through confirmed workflow evidence: same actor/user role, required tool/device/document/interface/place/result or other carrier named by the brief/assets/storyboard. Do not require a physical product package or readable brand UI.'
@@ -15492,6 +15499,7 @@ function _storyboardResultFromLuxuryProject(row = null) {
       asset_manifest: row.asset_manifest || null,
       visual_locks: row.visual_locks || null,
       global_visual_bible: row.global_visual_bible || null,
+      segment_plan: row.segment_plan || null,
       person_spec: row.draft_state?.person_spec || row.brief_info?.person_spec || null,
       total_duration: row.duration_sec || null,
       planning_mode: row.draft_state?.storyboard_detailed ? 'detailed' : 'outline',
@@ -16025,10 +16033,10 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         : Math.max(1, Math.min(18, explicitShotTarget || outlineShotTarget || suggestedShots)))
       : Math.max(1, Math.min(8, explicitShotTarget || suggestedShots));
     const minAllowedShots = isDetailedMode
-      ? (explicitShotTarget ? wantedShots : shotRange.min)
+      ? (explicitShotTarget ? wantedShots : 1)
       : 1;
     const maxAllowedShots = isDetailedMode
-      ? (explicitShotTarget ? wantedShots : shotRange.max)
+      ? (explicitShotTarget ? wantedShots : 18)
       : 8;
     const exactShotCountNote = isDetailedMode && explicitShotTarget
       ? `本次用户明确要求 ${wantedShots} 个镜头，必须正好输出 ${wantedShots} 个镜头；不得多拆也不得少拆。`
@@ -16892,32 +16900,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     const padLuxuryStoryPlanBeats = (plan = {}) => {
       if (!plan || typeof plan !== 'object') return plan;
       const beats = Array.isArray(plan.beats) ? plan.beats.filter(x => x && typeof x === 'object') : [];
-      const targetBeats = Math.max(3, Math.min(maxAllowedShots, outlineNotes.length || wantedShots));
-      while (beats.length < targetBeats) {
-        const i = beats.length;
-        const outline = outlineNotes[i] || outline_segments[i] || {};
-        const role = _luxuryStoryRoleAt(i, targetBeats, outline.role || outline.story_stage || '');
-        const fallbackOpts = { role, productSubject, index: i, total: targetBeats, brief, continuousHuman, disableGeneratedScriptFallbacks: true };
-        const voiceover = _cleanLuxuryAdCopy(outline.copy_direction || outline.voiceover || outline.narration || '', fallbackOpts);
-        const visual = _cleanLuxuryAdVisual(outline.objective || outline.content_prompt || outline.material_need || '', fallbackOpts);
-        beats.push({
-          beat_index: i + 1,
-          role,
-          time_range: `${Math.round((targetDuration / targetBeats) * i)}-${Math.round((targetDuration / targetBeats) * (i + 1))}s`,
-          scene: outline.title || `故事段落 ${i + 1}`,
-          plot: visual,
-          character_goal: _luxuryScriptPurposeLabel(role, i, targetBeats, ''),
-          conflict_or_question: role === 'hook' ? '当前业务痛点或用户疑问出现' : '',
-          solution_step: `${productSubject}继续推进当前剧情中的解决步骤`,
-          visual_proof: visual,
-          emotional_change: outline.emotion || _fallbackLuxuryAdEmotion({ role }),
-          spoken_line: voiceover,
-          spoken_intent: voiceover,
-          required_visual_subject: `人物 + 已确认真实场景 + ${productSubject}证据`,
-          why_next: '按广告结构自然进入下一段',
-          padded_from_outline: true,
-        });
-      }
+      // 中文说明：不再按时长或推荐镜头数本地补 beat；缺失时让模型重写，避免把剧本写成固定模板。
       return { ...plan, beats };
     };
     const beatForLuxuryShot = (plan = {}, index = 0, total = 1) => {
@@ -16995,6 +16978,8 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         return {
           ...scene,
           index: i,
+          segment_id: scene?.segment_id || scene?.segmentId || beat.segment_id || beat.segmentId || '',
+          segment_name: scene?.segment_name || scene?.segmentName || beat.segment_name || beat.segmentName || '',
           role,
           story_stage: _normalizeLuxurySceneStage(scene?.story_stage, role, i, total),
           objective,
@@ -17024,7 +17009,11 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           structure_repair_reason: reason || scene?.structure_repair_reason || '',
         };
       });
-      return ensureLuxuryScriptFieldsForReview(normalized, storyCharacters);
+      normalized = ensureLuxuryScriptFieldsForReview(normalized, storyCharacters);
+      return _attachLuxurySegmentContracts(normalized, plan?.segment_plan || plan?.segments || null, {
+        productSubject,
+        sceneBible: plan?.scene_bible || null,
+      });
     };
     const normalizeLuxuryScriptReviewTable = (sceneList = [], canonicalList = [], plan = {}, reason = '') => {
       const sourceScenes = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
@@ -17042,7 +17031,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         }
         return '';
       };
-      return sourceScenes.map((scene, i) => {
+      const normalized = sourceScenes.map((scene, i) => {
         const beat = beatForLuxuryShot(plan || {}, i, total);
         const outline = outlineNotes[i] || outline_segments[i] || {};
         const role = _luxuryStoryRoleAt(i, total, scene.role || scene.story_stage || beat.role || outline.role || '');
@@ -17095,6 +17084,8 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           ...scene,
           index: i,
           shot_index: i,
+          segment_id: scene.segment_id || scene.segmentId || beat.segment_id || beat.segmentId || '',
+          segment_name: scene.segment_name || scene.segmentName || beat.segment_name || beat.segmentName || '',
           role,
           story_stage: _normalizeLuxurySceneStage(scene.story_stage, role, i, total),
           title: String(scene.title || `镜头 ${i + 1}`).trim().slice(0, 24),
@@ -17125,11 +17116,17 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           structure_repair_reason: reason || scene.structure_repair_reason || '',
         };
       });
+      return _attachLuxurySegmentContracts(normalized, plan?.segment_plan || plan?.segments || null, {
+        productSubject,
+        sceneBible: plan?.scene_bible || null,
+      });
     };
     const buildLuxuryScenesFromStoryPlan = (plan = {}) => {
       const beats = Array.isArray(plan?.beats) ? plan.beats.filter(x => x && typeof x === 'object') : [];
       const source = beats.length ? beats : outlineNotes;
-      const target = Math.max(1, explicitShotTarget || wantedShots || source.length || 1);
+      const target = explicitShotTarget
+        ? Math.max(1, wantedShots)
+        : Math.max(1, Math.min(maxAllowedShots, source.length || 1));
       const list = [];
       for (let i = 0; i < target; i += 1) {
         const beat = beatForLuxuryShot(plan, i, target);
@@ -17163,7 +17160,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           title: String(outline.title || beat.scene || `镜头 ${i + 1}`).slice(0, 16),
           role,
           story_stage: _normalizeLuxurySceneStage(outline.story_stage, role, i, target),
-          duration: Math.max(2, Math.min(4, Math.round((Number(outline.duration) || targetDuration / target) * 10) / 10)),
+          duration: Math.max(1, Math.min(120, Math.round((Number(outline.duration) || targetDuration / target) * 10) / 10)),
           objective: _cleanLuxuryAdVisual(beat.character_goal || beat.solution_step || outline.objective || '', fallbackOpts).replace(/[。；;，,]\s*$/g, '') || purpose,
           purpose,
           script_purpose: purpose,
@@ -17620,7 +17617,8 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         explicitShotTarget
           ? '必须严格输出同一个数组，镜头数量必须符合用户明确指定；不得少镜头、不得多镜头、不得合并镜头。'
           : '请根据广告表达自行决定数组长度；不要为了凑数量拆碎剧情，也不要合并掉必要的表达段落。',
-        '每个对象必须包含：index、title、role、story_stage、duration、objective、purpose、script_purpose、subject_type、content_prompt、scene_content、visual、action、visual_action、voiceover、narration、ad_copy、subtitle、text、dialogue_lines、characters、material_usage。',
+        '每个对象必须包含：index、title、role、story_stage、duration、objective、purpose、script_purpose、segment_id、segment_name、subject_type、content_prompt、scene_content、visual、action、visual_action、voiceover、narration、ad_copy、subtitle、text、dialogue_lines、characters、material_usage。',
+        'segment_id/segment_name 必须来自编剧蓝图 segment_plan；如果全片只有一个连续空间，就所有镜头使用同一个 segment_id。它只是连续性归属，不是固定镜头数或固定时长。',
         '竞品级写法：画面列必须是具体事件，包含场所、主体状态和可见证据；动作列必须是可拍动作，包含主体如何出现、移动、操作、切换或展示结果；台词列必须是一句口语化成片文案。',
         '痛点写法：必须拍出“为什么痛”，不能只写人物焦虑、头疼、无力。画面里要有具体冲突来源，如手机提醒堆叠、日程冲突、待办过多、账单/预约/家务/工作互相挤压，动作里要写人物如何被这些事打断。',
         'UI写法：禁止只写“悬浮UI显示、按钮脉冲、淡蓝光晕、日程和待办列表”。如果需要 UI，必须写清 UI 在什么载体上、显示哪几条具体信息、哪些信息冲突、广告主体/当前主体如何整理、整理后列表或状态如何变化。',
@@ -17910,6 +17908,8 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         '每个 beat 的 spoken_line 必须像成片里能听到的一句人话：先承接上一段情境，再推进下一段。禁止只写抽象卖点、广告口号或形容词堆叠。',
         '禁止使用抽象占位句或近似句：角色带你看见问题和需要、答案开始具体、细节被看见、价值站得住、优势更清楚、变化说明白、判断变得简单、把选择理由讲清楚。遇到这类意图必须改成具体场景事件、主体动作和观众能听懂的自然话。',
         `目标时长约 ${targetDuration} 秒，但故事蓝图不能按秒数套固定 beat 数；请根据用户内容复杂度、台词承载量和广告目标决定需要几个剧情 beat。`,
+        '段落连续性规则：必须输出 segment_plan。segment 是连续空间/连续主体/连续证据链的合同，不是固定秒数模板，也不是镜头数公式。能在一个空间讲清就只输出 1 个 segment；只有空间、任务、证明点、主体关系确实变化时才新增 segment。',
+        'segment_plan 只描述段落级固定项：固定空间、固定主体/人物/产品、固定道具或 UI 证据、光线锚点、进入/退出状态、为什么自然进入下一段；不得规定固定 8-15 秒，不得为了凑数量拆段。',
         rewriteScriptMode ? '重新生成任务：不要把已有场景顺序当作旧剧本延续；必须重新设计 opening_problem、turning_point、proof、resolution、beat 数量和每个 beat 的 spoken_line。' : '',
         '只有当主商品明确属于钢材/建材/墙面/外立面/空间设计服务时，才可使用展厅、设计会客区、建筑样板间、真实应用空间或客户洽谈区；其它行业必须使用对应行业的真实场景。',
         '台词必须像真实人物在具体场景里说话：先说困扰，再说看见了什么改变，最后自然邀请行动；禁止“钢材，如何重塑建筑空间？”这类空泛设问。',
@@ -17927,10 +17927,11 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
     "proof": "用什么可视化证据建立可信度",
     "resolution": "最后如何收束到行动"
   },
+  "segment_plan": [{"segment_id":"seg_1","name":"段落名","story_purpose":"这一段解决什么剧情问题","space_anchor":"这一段固定空间/载体/场景锚点","fixed_subjects":"同段保持的人物/主体/产品关系","fixed_props":"同段保持的道具/UI/证据链","lighting_anchor":"同段保持的光线/色彩来源","camera_language":"同段主要镜头语言","entry_state":"段落开始状态","exit_state":"段落结束状态","continuity_rules":["同段镜头必须保持的连续性规则"],"beat_indexes":[1]}],
   "characters": [{"name":"姓名","gender":"性别","origin":"地域/族裔","role":"身份/关系","appearance":"年龄、五官、发型、身形","outfit":"服装","hand_prop":"手持物或触摸物","behavior":"动作习惯"}],
   "beats": [{"beat_index":1,"role":"pain/context/product_reveal/feature_1/feature_2/demo/proof/comparison/offer/cta 之一","time_range":"0-3s","subject_type":"auto|human_scene|character_scene|product_only|product_detail|hand_operation|ui_screen|environment|brand_endcard|proof_scene","scene":"发生地点","plot":"这一段发生的具体剧情","character_goal":"主体目标；只有剧本需要人物时才写人物目标；机器人/吉祥物/动物/虚拟人等非真人主体用 character_scene","conflict_or_question":"疑问/冲突","solution_step":"主体如何解决或推进问题","visual_proof":"这一段能看见的证据/产品细节/对比","emotional_change":"情绪变化","spoken_line":"可直接上屏或配音的一句自然台词","spoken_intent":"台词/旁白意图","required_visual_subject":"必须同框出现的可见主体和证据；有人物时写清人物与证据关系；非真人主体写清主体与场景证据关系","why_next":"为什么自然进入下一段"}]
 }
-beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个镜头规划足够的剧情 beat` : `根据广告内容自行决定，通常 2-${Math.max(3, Math.min(maxAllowedShots, 10))} 个；简单内容可以少 beat 长表达，复杂内容可以多 beat 快节奏`}，不要把 beat 当成固定镜头公式。必须覆盖 pain/context、product_reveal、至少一个 feature 或 demo、proof/comparison、offer/cta 中与本广告真实相关的节点；每个 beat 都要有不同的剧情动作和一句自然台词。`;
+beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个镜头规划足够的剧情 beat` : `完全根据广告内容自行决定，允许 1-${maxAllowedShots} 个；简单内容可以一个连续段落讲完，复杂内容再拆更多 beat`}，不要把 beat 当成固定镜头公式。必须覆盖与本广告真实相关的节点；如果一个长镜头能讲清，也可以把 pain、主体登场、证明和行动收束合在同一个 beat 的连续动作里。每个 beat 都要有不同的剧情动作和一句自然台词。`;
       storyPlan = await callLuxuryAgent({ name: 'luxury_ad.script.writer', systemPrompt: storySys, userPrompt: storyUser, json: 'object', maxTokens: 7000 });
       assertAgentTextOk('编剧 agent', storyPlan);
       storyCharacters = collectLuxuryCharacters(Array.isArray(storyPlan.characters) ? storyPlan.characters : []);
@@ -17955,7 +17956,11 @@ beats 数量：${explicitShotTarget ? `围绕用户指定的 ${wantedShots} 个�
         storyCharacterIssue = describeLuxuryCharacterIssue(storyCharacters, { label: '编剧人物修复后的人物表' });
       }
       if (storyCharacterIssue) throw new Error(`编剧人物一致性修复失败：${storyCharacterIssue}`);
-      if (!Array.isArray(storyPlan.beats) || storyPlan.beats.length < 3) throw new Error('编剧 agent 没有写出足够的故事段落 beats。');
+      if (!Array.isArray(storyPlan.beats) || storyPlan.beats.length < 1) throw new Error('编剧 agent 没有写出有效的故事段落 beats。');
+      storyPlan.segment_plan = _normalizeLuxurySegmentPlan(storyPlan.segment_plan || [], storyPlan.beats || [], {
+        productSubject,
+        sceneBible: storyPlan.scene_bible || null,
+      });
 
       if (fastDetailedStoryboard) {
         scenes = await writeLuxuryDetailedScriptTable({ storyPlan });
@@ -18700,6 +18705,10 @@ ${JSON.stringify(scenes, null, 2)}
         visualReferenceSummary,
         luxuryLocks: luxuryVisualLocks,
       });
+      scenes = _attachLuxurySegmentContracts(scenes, storyPlan?.segment_plan || null, {
+        productSubject,
+        sceneBible: storyPlan?.scene_bible || null,
+      });
       // Script generation must return the reviewed script even when the later
       // image-generation contract still needs completion. The keyframe stage
       // rebuilds and enforces the hard preflight before spending image cost.
@@ -18711,12 +18720,21 @@ ${JSON.stringify(scenes, null, 2)}
     }
     if (isDetailedMode) {
       scenes = normalizeLuxuryScriptReviewTable(scenes, storyCharacters, storyPlan || {}, 'final_script_review_return');
+      scenes = _attachLuxurySegmentContracts(scenes, storyPlan?.segment_plan || null, {
+        productSubject,
+        sceneBible: storyPlan?.scene_bible || null,
+      });
       const finalScriptIssues = luxuryScriptStructureIssues(scenes);
       recordLuxuryScriptDiagnostic('luxury_ad.script.final:return_normalized', scenes, { issues: finalScriptIssues });
       const finalBlockingIssues = luxuryScriptBlockingIssues(finalScriptIssues);
       if (finalBlockingIssues.length) {
         throw new Error(`剧本最终整理后不达标：${finalBlockingIssues.slice(0, 6).join('；')}`);
       }
+      scenes = scenes.map((scene, i) => _prepareLuxuryStrictShotForScriptReview(scene, i, scenes.length, {
+        productSubject,
+        aspectRatio: output_ratio || '9:16',
+        globalVisualBible: luxuryGlobalVisualBible,
+      }));
     }
     scenes = scenes.map(scene => _attachLuxuryVisualLocks(scene, luxuryVisualLocks));
     const briefInfo = _fallbackLuxuryBriefInfo({
@@ -18763,7 +18781,7 @@ ${JSON.stringify(scenes, null, 2)}
         }));
       }
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, controlled_production: controlledGuide.control, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, segment_plan: isDetailedMode ? (storyPlan?.segment_plan || []) : [], controlled_production: controlledGuide.control, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     const productionProject = _upsertLuxuryAdProductionProject(req, { ...req.body, request_stage: 'storyboard', storyboard_request_key: request_key, storyboard_detailed: isDetailedMode }, responseBody, { project_state: isDetailedMode ? 'frame_reviewing' : 'script_reviewing' });
     responseBody.production_project = productionProject;
     responseBody.production_project_id = productionProject.id;
@@ -19600,6 +19618,18 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     ? _buildLuxuryControlledProductionGuide(scene.controlled_production || null, { productSubject: subject })
     : null;
   const controlledRuleText = _luxuryStrictText(scene.controlled_rules || controlledGuide?.summary || '', 900);
+  const segmentContract = scene.segment_contract && typeof scene.segment_contract === 'object' ? scene.segment_contract : null;
+  const segmentRuleText = segmentContract
+    ? _luxuryStrictText([
+      segmentContract.name ? `segment=${segmentContract.name}` : '',
+      segmentContract.story_purpose ? `purpose=${segmentContract.story_purpose}` : '',
+      segmentContract.space_anchor ? `same space=${segmentContract.space_anchor}` : '',
+      segmentContract.fixed_subjects ? `same subjects=${segmentContract.fixed_subjects}` : '',
+      segmentContract.fixed_props ? `same props/evidence=${segmentContract.fixed_props}` : '',
+      segmentContract.lighting_anchor ? `same lighting=${segmentContract.lighting_anchor}` : '',
+      Array.isArray(segmentContract.continuity_rules) ? segmentContract.continuity_rules.join('; ') : '',
+    ].filter(Boolean).join('; '), 900)
+    : '';
   const mustShow = _luxuryStrictList(visualContract.must_show || scene.must_show, 10);
   [
     locks?.reality_lock?.scene_basis ? `real-world scene basis: ${locks.reality_lock.scene_basis}` : '',
@@ -19609,6 +19639,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     locks?.scene_lock?.prompt ? 'same uploaded/inferred scene family and practical lighting' : '',
     locks?.prop_lock?.prompt ? 'story-appropriate real props/evidence from asset manifest' : '',
     controlledRuleText ? `controlled production requirements: ${controlledRuleText}` : '',
+    segmentRuleText ? `segment continuity requirements: ${segmentRuleText}` : '',
   ].filter(Boolean).forEach(item => {
     if (!mustShow.includes(item) && mustShow.length < 10) mustShow.push(item);
   });
@@ -19625,6 +19656,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     scene.qa_contract || visualContract.qa_contract || '',
     multiCharacterContract.required ? multiCharacterContract.qa_rule : '',
     controlledRuleText ? `Controlled production QA: ${controlledRuleText}` : '',
+    segmentRuleText ? `Segment continuity QA: ${segmentRuleText}` : '',
     ...(Array.isArray(scene.controlled_qa_rules) ? scene.controlled_qa_rules : (controlledGuide?.qa_rules || [])),
   ].filter(Boolean).join(' '), 1100);
   return {
@@ -19647,6 +19679,9 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     controlled_production: controlledGuide?.control || scene.controlled_production || null,
     controlled_rules: controlledRuleText,
     controlled_qa_rules: Array.isArray(scene.controlled_qa_rules) ? scene.controlled_qa_rules : (controlledGuide?.qa_rules || []),
+    segment_contract: segmentContract,
+    segment_rules: segmentRuleText,
+    adjacent_shot_context: scene.adjacent_shot_context || null,
     asset_manifest: locks?.asset_manifest || scene.asset_manifest || null,
     reality_lock: locks?.reality_lock || scene.reality_lock || null,
     character_lock: locks?.character_lock || scene.character_lock || null,
@@ -19732,6 +19767,9 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     `Composition: ${contract.composition}.`,
     _luxuryMultiCharacterPrompt(contract.multi_character_contract || scene.multi_character_contract, 'image'),
     `Lighting: ${contract.lighting}.`,
+    contract.segment_rules ? `Segment continuity rules: ${contract.segment_rules}.` : '',
+    scene.master_scene_reference ? `Master scene reference for this segment: ${_luxuryStrictText(scene.master_scene_reference, 520)}.` : '',
+    scene.adjacent_shot_context ? `Adjacent shots in the same segment, preserve spatial logic without copying content: ${_luxuryStrictText(JSON.stringify(scene.adjacent_shot_context), 700)}.` : '',
     contract.visual_locks_prompt ? `Mandatory asset/reality locks: ${contract.visual_locks_prompt}.` : '',
     contract.controlled_rules ? `Controlled production rules: ${contract.controlled_rules}.` : '',
     `Must show: ${contract.must_show.join('; ')}.`,
@@ -19760,6 +19798,8 @@ function _buildLuxuryImageContract(scene = {}, contract = {}) {
     negative_constraints: Array.isArray(contract.must_not_show) ? contract.must_not_show : [],
     controlled_production: contract.controlled_production || scene.controlled_production || null,
     controlled_rules: contract.controlled_rules || scene.controlled_rules || '',
+    segment_contract: contract.segment_contract || scene.segment_contract || null,
+    segment_rules: contract.segment_rules || scene.segment_rules || '',
     ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
     multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
   };
@@ -19778,6 +19818,7 @@ function _buildLuxuryVideoContract(scene = {}, contract = {}) {
     continuity_constraints: [
       'preserve the approved keyframe subject, identity, scene, props, composition and lighting',
       contract.controlled_rules ? `preserve controlled production rules: ${contract.controlled_rules}` : '',
+      contract.segment_rules ? `preserve segment continuity: ${contract.segment_rules}` : '',
       (scene.multi_character_contract || contract.multi_character_contract)?.required ? 'preserve the approved keyframe character count, separate identities and dialogue relationship blocking' : '',
       'animate only the confirmed motion/action/camera intent',
       'do not redraw into a new scene or introduce unconfirmed subjects',
@@ -19855,6 +19896,179 @@ function _buildLuxuryGlobalVisualBible({
   };
 }
 
+function _luxurySegmentShotNumbers(value = null) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(/[,\s，、;；]+/);
+  return raw
+    .map(x => Math.round(Number(String(x || '').replace(/[^\d.-]/g, ''))))
+    .filter(n => Number.isFinite(n) && n > 0);
+}
+
+function _luxurySegmentId(value = '', index = 0) {
+  const clean = String(value || '').replace(/[^\w\u4e00-\u9fa5-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
+  return clean || `segment_${Number(index || 0) + 1}`;
+}
+
+function _normalizeLuxurySegmentContract(raw = {}, index = 0, { scenes = [], productSubject = '', sceneBible = null } = {}) {
+  const item = raw && typeof raw === 'object' ? raw : {};
+  const bible = sceneBible && typeof sceneBible === 'object' ? sceneBible : {};
+  const safeText = (value = '', max = 260) => _luxuryStrictText(value, max);
+  const shotIndexes = _luxurySegmentShotNumbers(
+    item.shot_indexes || item.shotIndexes || item.shots || item.scene_indexes || item.sceneIndexes,
+  );
+  const beatIndexes = _luxurySegmentShotNumbers(item.beat_indexes || item.beatIndexes || item.beats);
+  const relatedScenes = shotIndexes.length
+    ? shotIndexes
+      .map(n => scenes[n - 1])
+      .filter(scene => scene && typeof scene === 'object')
+    : [];
+  const sceneTexts = relatedScenes.length ? relatedScenes : scenes;
+  const pickFromScenes = keys => sceneTexts
+    .map(scene => keys.map(key => scene?.[key]).find(v => String(v || '').trim()))
+    .filter(Boolean)
+    .map(v => safeText(v, 160))
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('；');
+  const name = safeText(item.name || item.segment_name || item.title || `连续段落 ${Number(index || 0) + 1}`, 80);
+  const spaceAnchor = safeText(
+    item.space_anchor || item.fixed_space || item.location || item.main_location || item.scene_anchor
+      || bible.main_location || bible.background_details || pickFromScenes(['environment_lock', 'scene_prompt', 'scene_content', 'visual']),
+    320,
+  );
+  const fixedSubjects = safeText(
+    item.fixed_subjects || item.subject_anchor || item.subjects || item.character_anchor
+      || pickFromScenes(['visible_subject', 'character_prompt', 'product_subject', 'material_usage'])
+      || productSubject,
+    320,
+  );
+  const fixedProps = safeText(
+    item.fixed_props || item.props || item.product_evidence || item.evidence_anchor
+      || bible.product_evidence_zone || pickFromScenes(['material_usage', 'material_hint', 'required_material']),
+    320,
+  );
+  const lightingAnchor = safeText(
+    item.lighting_anchor || item.lighting || item.color_light || pickFromScenes(['lighting_style', 'lighting']),
+    220,
+  );
+  const cameraLanguage = safeText(
+    item.camera_language || item.camera || item.camera_rules || pickFromScenes(['camera', 'shot_angle', 'camera_label']),
+    260,
+  );
+  const storyPurpose = safeText(
+    item.story_purpose || item.purpose || item.objective || item.segment_goal || pickFromScenes(['script_purpose', 'purpose', 'objective']),
+    220,
+  );
+  const entryState = safeText(item.entry_state || item.start_state || item.from_state || '', 220);
+  const exitState = safeText(item.exit_state || item.end_state || item.to_state || '', 220);
+  const rules = Array.isArray(item.continuity_rules || item.rules)
+    ? (item.continuity_rules || item.rules).map(x => safeText(x, 140)).filter(Boolean).slice(0, 8)
+    : [];
+  [
+    spaceAnchor ? `同段镜头保持同一个空间锚点：${spaceAnchor}` : '',
+    fixedSubjects ? `同段镜头保持主体/人物/产品关系：${fixedSubjects}` : '',
+    fixedProps ? `同段镜头保持道具或证据链：${fixedProps}` : '',
+    lightingAnchor ? `同段镜头保持光线和色彩来源：${lightingAnchor}` : '',
+  ].filter(Boolean).forEach(rule => {
+    if (!rules.includes(rule) && rules.length < 8) rules.push(rule);
+  });
+  return {
+    segment_id: _luxurySegmentId(item.segment_id || item.id || item.key || name, index),
+    segment_index: Number(index || 0),
+    name,
+    story_purpose: storyPurpose,
+    space_anchor: spaceAnchor,
+    fixed_subjects: fixedSubjects,
+    fixed_props: fixedProps,
+    lighting_anchor: lightingAnchor,
+    camera_language: cameraLanguage,
+    entry_state: entryState,
+    exit_state: exitState,
+    continuity_rules: rules,
+    shot_indexes: shotIndexes,
+    beat_indexes: beatIndexes,
+  };
+}
+
+function _normalizeLuxurySegmentPlan(segmentPlan = null, scenes = [], { productSubject = '', sceneBible = null } = {}) {
+  const list = (() => {
+    if (Array.isArray(segmentPlan)) return segmentPlan;
+    if (segmentPlan && typeof segmentPlan === 'object') {
+      if (Array.isArray(segmentPlan.segments)) return segmentPlan.segments;
+      if (Array.isArray(segmentPlan.segment_plan)) return segmentPlan.segment_plan;
+    }
+    return [];
+  })().filter(x => x && typeof x === 'object');
+  const source = list.length
+    ? list
+    : [{
+      // 中文注释：没有模型段落计划时，只把已确认镜头表编译成一个连续性合同；不新增剧情、不新增镜头、不写固定秒数。
+      segment_id: 'confirmed_script_segment',
+      name: '已确认剧本连续段落',
+      shot_indexes: (Array.isArray(scenes) ? scenes : []).map((_, i) => i + 1),
+      space_anchor: sceneBible?.main_location || sceneBible?.background_details || '',
+      fixed_subjects: productSubject,
+      fixed_props: sceneBible?.product_evidence_zone || '',
+    }];
+  return source.map((item, i) => _normalizeLuxurySegmentContract(item, i, { scenes, productSubject, sceneBible }));
+}
+
+function _attachLuxurySegmentContracts(scenes = [], segmentPlan = null, { productSubject = '', sceneBible = null } = {}) {
+  const list = Array.isArray(scenes) ? scenes.filter(x => x && typeof x === 'object') : [];
+  if (!list.length) return list;
+  const plan = _normalizeLuxurySegmentPlan(segmentPlan, list, { productSubject, sceneBible });
+  const byId = new Map(plan.map(segment => [String(segment.segment_id), segment]));
+  const byShot = new Map();
+  const byBeat = new Map();
+  plan.forEach(segment => {
+    (segment.shot_indexes || []).forEach(n => byShot.set(Number(n) - 1, segment));
+    (segment.beat_indexes || []).forEach(n => byBeat.set(Number(n), segment));
+  });
+  const attached = list.map((scene, index) => {
+    const explicitId = String(scene.segment_id || scene.segmentId || scene.segment_key || '').trim();
+    const beatIndex = Math.round(Number(scene.source_beat?.beat_index || scene.sourceBeat?.beat_index || scene.beat_index || scene.beatIndex || 0));
+    const segment = (explicitId && byId.get(explicitId)) || byShot.get(index) || byBeat.get(beatIndex) || plan[Math.min(index, plan.length - 1)] || plan[0];
+    const continuityBible = [
+      scene.continuity_bible || '',
+      segment ? `Segment continuity contract: ${JSON.stringify(segment)}` : '',
+    ].filter(Boolean).join(' ');
+    return {
+      ...scene,
+      segment_id: segment?.segment_id || explicitId || '',
+      segment_name: segment?.name || scene.segment_name || '',
+      segment_index: segment?.segment_index ?? scene.segment_index ?? 0,
+      segment_count: plan.length,
+      segment_contract: segment || null,
+      master_scene_reference: segment ? [
+        segment.space_anchor ? `空间锚点：${segment.space_anchor}` : '',
+        segment.fixed_subjects ? `固定主体：${segment.fixed_subjects}` : '',
+        segment.fixed_props ? `固定道具/证据：${segment.fixed_props}` : '',
+        segment.lighting_anchor ? `光线锚点：${segment.lighting_anchor}` : '',
+      ].filter(Boolean).join('；') : '',
+      continuity_bible: _luxuryStrictText(continuityBible, 1800),
+    };
+  });
+  return attached.map((scene, index) => {
+    const sameSegment = attached
+      .map((item, i) => ({ item, i }))
+      .filter(({ item, i }) => i !== index && item.segment_id && item.segment_id === scene.segment_id);
+    const previous = sameSegment.filter(({ i }) => i < index).pop()?.item || null;
+    const next = sameSegment.find(({ i }) => i > index)?.item || null;
+    const compact = item => item ? {
+      index: Number(item.index ?? item.shot_index ?? 0) + 1,
+      title: _luxuryStrictText(item.title || item.story_stage || '', 80),
+      visual: _luxuryStrictText(item.visual || item.content_prompt || item.scene_content || '', 180),
+      action: _luxuryStrictText(item.action || item.visual_action || '', 160),
+    } : null;
+    return {
+      ...scene,
+      adjacent_shot_context: {
+        same_segment_previous: compact(previous),
+        same_segment_next: compact(next),
+      },
+    };
+  });
+}
+
 function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
   globalVisualBible = null,
   aspectRatio = '9:16',
@@ -19878,6 +20092,9 @@ function _buildLuxuryShotExecutionPacket(scene = {}, contract = {}, {
     camera: contract.camera,
     composition: contract.composition,
     lighting: contract.lighting,
+    segment_contract: scene.segment_contract || null,
+    master_scene_reference: _luxuryStrictText(scene.master_scene_reference || '', 420),
+    adjacent_shot_context: scene.adjacent_shot_context || null,
     multi_character_contract: contract.multi_character_contract || scene.multi_character_contract || null,
     ui_policy: scene.visual_contract?.ui_policy || scene.ui_policy || null,
     ui_or_vfx: _luxuryStrictText(_luxuryUiOverlayPrompt(scene.ui_overlay), 260),
@@ -20167,6 +20384,8 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
     voiceover: _luxuryStrictText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 220),
     visual: _luxuryStrictText(scene.visual || scene.visual_prompt || scene.content_prompt || scene.scene_content || '', 260),
     action: _luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene),
+    segment_id: _luxuryStrictText(scene.segment_id || '', 80),
+    segment_name: _luxuryStrictText(scene.segment_name || '', 80),
   }));
   const systemPrompt = [
     '你是剧情广告分镜图生成前的逐镜头剧情抽取器。',
@@ -20183,6 +20402,8 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
       `画幅：${aspectRatio}`,
       briefInfo ? `全局基础信息：${_luxuryStrictText(JSON.stringify(briefInfo), 1400)}` : '',
       `全部已确认镜头摘要：\n${_luxuryStrictText(JSON.stringify(compactShots), 3600)}`,
+      list[i]?.segment_contract ? `当前段落连续性合同：${_luxuryStrictText(JSON.stringify(list[i].segment_contract), 1200)}` : '',
+      list[i]?.adjacent_shot_context ? `同段相邻镜头上下文：${_luxuryStrictText(JSON.stringify(list[i].adjacent_shot_context), 900)}` : '',
       `上一镜：${i > 0 ? _luxuryStrictText(JSON.stringify(compactShots[i - 1]), 900) : '无'}`,
       `当前要生成图片的镜头：${_luxuryStrictText(JSON.stringify(current), 1200)}`,
       `下一镜：${i + 1 < compactShots.length ? _luxuryStrictText(JSON.stringify(compactShots[i + 1]), 900) : '无'}`,
@@ -20757,6 +20978,11 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     kf.action || kf.visual_action || meta.action ? `required visible action: ${kf.action || kf.visual_action || meta.action}` : '',
     emotion ? `required emotion: ${emotion}` : '',
   ].filter(Boolean).join('; '), 620);
+  const segmentContinuity = _compactProviderPromptText([
+    kf.segment_contract ? JSON.stringify(kf.segment_contract) : '',
+    kf.master_scene_reference || '',
+    kf.adjacent_shot_context ? `adjacent shots in same segment: ${JSON.stringify(kf.adjacent_shot_context)}` : '',
+  ].filter(Boolean).join(' '), 760);
   const photo = _compactProviderPromptText([
     meta.photography?.framing,
     meta.photography?.lens,
@@ -20769,6 +20995,7 @@ function _buildLuxuryI2VPrompt(kf = {}, {
     `Advertised subject: ${subject}. Preserve the exact product/material category, shape, texture, color and scene visible in the keyframe.`,
     shotVisual ? `Shot visual: ${shotVisual}.` : '',
     scriptContinuity ? `Script continuity: ${scriptContinuity}. The animation must follow this shot's script beat and must not invent a different action, emotion, product moment, or story meaning.` : '',
+    segmentContinuity ? `Segment continuity: ${segmentContinuity}. Preserve the same segment space, subject relationship, props/evidence and lighting logic while animating this keyframe.` : '',
     photo ? `Photography: ${photo}.` : '',
     motion ? `Camera motion: ${motion}.` : 'Camera motion: slow premium push-in with subtle parallax and stable composition.',
     emotion ? `Emotion and atmosphere: ${emotion}.` : '',
@@ -24450,6 +24677,11 @@ function _buildLuxuryKeyframePrompt({
     scene.qa_contract ? `QA contract: ${scene.qa_contract}` : '',
     visualContract ? `Scene type: ${visualContract.scene_type || ''}; allowed environment: ${visualContract.allowed_environment || ''}; must show: ${Array.isArray(visualContract.must_show) ? visualContract.must_show.join('; ') : ''}; must avoid: ${Array.isArray(visualContract.must_not_show) ? visualContract.must_not_show.join('; ') : ''}; image prompt: ${visualContract.image_prompt || ''}` : '',
   ].filter(Boolean).join(' '), 1200);
+  const segmentContinuity = _compactLuxuryKeyframeText([
+    scene.segment_contract ? JSON.stringify(scene.segment_contract) : '',
+    scene.master_scene_reference || '',
+    scene.adjacent_shot_context ? `Adjacent context: ${JSON.stringify(scene.adjacent_shot_context)}` : '',
+  ].filter(Boolean).join(' '), 1000);
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, productSubject || scene.product_subject);
   const personRequired = visibleSubject.humanRequired;
   const visibleSubjectRequired = visibleSubject.required;
@@ -24504,6 +24736,7 @@ function _buildLuxuryKeyframePrompt({
     camera ? `Camera/framing/lighting: ${camera}.` : '',
     narration ? `Narration meaning to visualize: ${narration}.` : '',
     material ? `Visible proof/material: ${material}.` : '',
+    segmentContinuity ? `Segment continuity contract, mandatory: ${segmentContinuity}.` : '',
     directorContract ? `Storyboard director visual contract, mandatory: ${directorContract}.` : '',
     scene.brief_reference_summary ? `User demand visual references: ${_compactLuxuryKeyframeText(scene.brief_reference_summary, 520)}.` : '',
     scene.continuity_bible ? `Campaign continuity bible: ${_compactLuxuryKeyframeText(scene.continuity_bible, 900)}.` : '',
@@ -26335,6 +26568,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       brief_reference_assets = [],
       visual_reference_brief = null,
       global_visual_bible = null,
+      segment_plan = null,
       production_contract = null,
       controlled_production = null,
       production_project_id = '',
@@ -26518,6 +26752,10 @@ router.post('/spaces/keyframes', async (req, res) => {
         aspectRatio,
       });
       scenes = _lockLuxuryScenesToProvidedSegments(scenes, guideSegments);
+      scenes = _attachLuxurySegmentContracts(scenes, segment_plan, {
+        productSubject,
+        sceneBible: brief_info?.scene_bible || global_visual_bible || null,
+      });
     }
     if (isLuxury) {
       luxuryPlanningScenes = scenes;
@@ -26957,7 +27195,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             brief_reference_summary: visualReferenceSummary,
             seed_reference_images: luxurySeedReferenceImages,
             luxury_seed_assets: luxurySeedAssets,
-            continuity_bible: luxuryReferenceContinuityBible,
+            continuity_bible: [sc.continuity_bible, luxuryReferenceContinuityBible].filter(Boolean).join(' '),
             identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
             qa_reference_images: [
               ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
@@ -26995,7 +27233,7 @@ router.post('/spaces/keyframes', async (req, res) => {
               brief_reference_summary: visualReferenceSummary,
               seed_reference_images: luxurySeedReferenceImages,
               luxury_seed_assets: luxurySeedAssets,
-              continuity_bible: luxuryReferenceContinuityBible,
+              continuity_bible: [sc.continuity_bible, luxuryReferenceContinuityBible].filter(Boolean).join(' '),
               identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
               qa_reference_images: [
                 ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
@@ -27048,7 +27286,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             brief_reference_summary: visualReferenceSummary,
             seed_reference_images: luxurySeedReferenceImages,
             luxury_seed_assets: luxurySeedAssets,
-            continuity_bible: luxuryReferenceContinuityBible,
+            continuity_bible: [sc.continuity_bible, luxuryReferenceContinuityBible].filter(Boolean).join(' '),
             identity_reference_image: luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '',
             qa_reference_images: [
               ...(luxuryIdentityReferenceGroup.length ? luxuryIdentityReferenceGroup : [luxuryEffectiveIdentityAvatar?.image_url || luxuryBriefPersonReferenceImage || '']),
@@ -27105,7 +27343,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined,
         seed_reference_images: isLuxury ? luxurySeedReferenceImages : undefined,
         luxury_seed_assets: isLuxury ? luxurySeedAssets : undefined,
-        continuity_bible: isLuxury ? luxuryReferenceContinuityBible || undefined : undefined,
+        continuity_bible: isLuxury ? [sc.continuity_bible, luxuryReferenceContinuityBible].filter(Boolean).join(' ') || undefined : undefined,
         character_lock: isLuxury ? luxuryCharacterLock || undefined : undefined,
         qa: isLuxury ? keyframeQa : undefined,
       });
@@ -27141,7 +27379,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       };
       throw err;
     }
-    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, segment_plan: isLuxury ? _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }) : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     if (isLuxury) {
       const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, responseBody);
       responseBody.production_project = productionProject;
@@ -27395,7 +27633,7 @@ router.post('/luxury-ad/auto-bgm', async (req, res) => {
     const profile = _inferLuxuryBgmProfile({
       text,
       title,
-      segments,
+      segments: effectiveSegments,
       ad_type,
       ad_style,
       profile_id,
@@ -27824,6 +28062,7 @@ router.post('/spaces/generate', async (req, res) => {
       voice_direction = '',
       production_project_id = '',
       project_id = '',
+      segment_plan = null,
       shot_count = null,
       keyframes = [],
       guide_gender = 'female',
@@ -27843,8 +28082,15 @@ router.post('/spaces/generate', async (req, res) => {
     if (!String(voice_id || '').trim()) return res.status(400).json({ success: false, error: 'voice_id 必填，请先选择配音音色' });
     const requestBgmAsset = _luxuryBgmAssetFromPayload({ bgm_asset, background_music, bgm_url, background_music_url });
     let effectiveKeyframes = keyframes;
+    let effectiveSegments = Array.isArray(segments) ? segments : [];
     if (ad_mode === 'luxury_ad') {
-      const projectKeyframes = _getLuxuryAdProject(req, production_project_id || project_id)?.keyframes || [];
+      const luxuryProject = _getLuxuryAdProject(req, production_project_id || project_id) || {};
+      const projectKeyframes = luxuryProject.keyframes || [];
+      const projectSegmentPlan = segment_plan || luxuryProject.segment_plan || luxuryProject.draft_state?.segment_plan || null;
+      effectiveSegments = _attachLuxurySegmentContracts(effectiveSegments, projectSegmentPlan, {
+        productSubject: _deriveLuxuryProductSubject({ text, productName: title || '' }),
+        sceneBible: null,
+      });
       if (Array.isArray(projectKeyframes) && projectKeyframes.length) {
         const submitted = Array.isArray(keyframes) ? keyframes : [];
         effectiveKeyframes = (submitted.length ? submitted : projectKeyframes).map((kf, i) => {
@@ -27902,7 +28148,8 @@ router.post('/spaces/generate', async (req, res) => {
       title,
       text,
       duration_sec,
-      segments,
+      segments: effectiveSegments,
+      segment_plan,
       speech_segments,
       subtitle,
       keyframes: effectiveKeyframes,
@@ -27937,7 +28184,7 @@ router.post('/spaces/generate', async (req, res) => {
       scenePrompt: scene_prompt,
       cameraPrompt: camera_prompt,
       durationSec: duration_sec,
-      segments,
+      segments: effectiveSegments,
       speechSegments: speech_segments,
       subtitle,
       generationMode: generation_mode,
