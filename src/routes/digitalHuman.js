@@ -3440,9 +3440,14 @@ function _luxuryIsEmbodiedAiOrHomeLifeText(value = '') {
   return /(AI\s*机器人|机器人|智能体|智能生活|智能家居|家庭|客厅|卧室|厨房|家务|日程|设备联动|整理|清洁|扫地机器人|robot|smart\s*home|home\s*assistant|household|living\s*room|vacuum)/i.test(String(value || ''));
 }
 
+function _luxuryHasExplicitRobotAssistantSubjectText(value = '') {
+  // 中文说明：只有用户/主体明确是实体机器人或机械主体时才进入机器人保护链路；“智能生活/智能家居/智能体”不能自动等同机器人。
+  return /(AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android)/i.test(String(value || ''));
+}
+
 function _luxuryIsRobotAssistantSubject(...parts) {
   const text = parts.map(x => typeof x === 'object' ? JSON.stringify(x || {}) : String(x || '')).join(' ');
-  return /(AI\s*机器人|机器人|智能体|智能助手|智能生活|home\s*assistant|robot|android)/i.test(text);
+  return _luxuryHasExplicitRobotAssistantSubjectText(text);
 }
 
 function _luxuryHasExplicitSweeperRobotText(...parts) {
@@ -3456,7 +3461,7 @@ function _luxuryHasExplicitComputerUiText(...parts) {
 }
 
 function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
-  const subjectSource = [productSubject, brief, scene ? JSON.stringify(scene).slice(0, 1600) : ''].filter(Boolean).join(' ');
+  const subjectSource = [productSubject, brief].filter(Boolean).join(' ');
   const explicitSource = [productSubject, brief, allowSceneExplicit && scene ? JSON.stringify(scene).slice(0, 1600) : ''].filter(Boolean).join(' ');
   if (!_luxuryIsRobotAssistantSubject(subjectSource)) return '';
   const allowSweeper = _luxuryHasExplicitSweeperRobotText(explicitSource);
@@ -3472,7 +3477,7 @@ function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scen
 
 function _luxuryCleanRobotAssistantDriftText(value = '', { productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
   let text = String(value || '');
-  const subjectSource = [productSubject, brief, scene ? JSON.stringify(scene).slice(0, 1200) : ''].filter(Boolean).join(' ');
+  const subjectSource = [productSubject, brief].filter(Boolean).join(' ');
   const explicitSource = [productSubject, brief, allowSceneExplicit && scene ? JSON.stringify(scene).slice(0, 1200) : ''].filter(Boolean).join(' ');
   if (!_luxuryIsRobotAssistantSubject(subjectSource)) return text;
   if (!_luxuryHasExplicitSweeperRobotText(explicitSource)) {
@@ -3523,7 +3528,7 @@ function _luxuryWorkflowCarrierFromScene(scene = {}, productSubject = 'software 
     scene.director_prompt,
     scene.ui_overlay ? JSON.stringify(scene.ui_overlay).slice(0, 1200) : '',
   ].filter(Boolean).join(' ');
-  if (_luxuryIsRobotAssistantSubject(productSubject, text)
+  if (_luxuryIsRobotAssistantSubject(productSubject)
     && !_luxuryHasExplicitComputerUiText(allowSceneExplicit ? [productSubject, text].join(' ') : productSubject)
     && !_luxuryHasExplicitSweeperRobotText(allowSceneExplicit ? [productSubject, text].join(' ') : productSubject)) {
     return 'the confirmed robot/assistant, its own product interaction surface or result feedback, and the real task environment named by this shot; do not invent a sweeper robot, laptop, dashboard or developer workstation';
@@ -3667,7 +3672,7 @@ function _luxurySoftwareWorkflowShotContract(scene = {}, productSubject = '') {
 }
 
 function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = '', { allowSceneExplicit = false } = {}) {
-  if (_luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '', scene)) {
+  if (_luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '')) {
     const contract = _luxuryRobotAssistantShotContract(scene, productSubject || scene.product_subject || '', { allowSceneExplicit });
     const visualRaw = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
     const actionRaw = _luxuryRawSceneActionText(scene);
@@ -3833,7 +3838,7 @@ function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   ]);
   const strongPerson = /真人|人物出镜|同一人物|真实空间设计师|空间设计师|设计师|品牌顾问|空间顾问|客户|业主|店长|经理|真人讲解者|讲解员|讲解者|导购|顾问|主持人|模特|入场|走入|走进|带观众|手势|指向|触摸|person|human|presenter|host|model|woman|man|girl|boy|designer|consultant|customer|client|store manager|architect|walks? in|walking into|enters? the frame|standing beside|pointing at|gesture/i.test(coreVisualText);
   if (strongPerson) return true;
-  if (_luxuryIsRobotAssistantSubject(subject, coreVisualText, scene)
+  if (_luxuryIsRobotAssistantSubject(subject)
     && !/真人|人物|演员|用户|客户|顾客|家庭成员|人和|同框|出镜|person|human|actor|user|customer|family/i.test(coreVisualText)) {
     return false;
   }
@@ -5413,7 +5418,7 @@ function _buildLuxuryVisualLocks({
   const uiItems = itemText(['ui']);
   const styleItems = itemText(['style']);
   const subject = _luxuryLockCleanText(productSubject || manifest.product_subject || briefInfo?.product_subject || 'advertised subject', 120);
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject, brief, manifest);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject, brief);
   const realScene = manifest.scene || briefInfo?.scene || (robotAssistantSubject
     ? 'real task environment from the robot assistant brief'
     : 'industry-appropriate real working location from the user brief');
@@ -5600,7 +5605,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   });
   const visibleSubject = _luxuryStoryboardVisibleSubjectRequirement(scene, subject);
   const personRequired = visibleSubject.humanRequired;
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject, scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
@@ -12034,7 +12039,8 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     if (normalized && !_isWeakLuxuryProductName(normalized)) return normalized.slice(0, 40);
   }
   const keywordMap = [
-    { re: /AI\s*机器人|智能机器人|机器人助手|智能助手|智能体|智能生活|智能家居|家庭助手|home\s*assistant|robot\s*assistant|android/i, value: 'AI机器人智能生活助手' },
+    { re: /AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android/i, value: 'AI机器人智能生活助手' },
+    { re: /智能生活|智能家居|家庭助手|home\s*assistant|smart\s*home/i, value: '智能生活/智能家居服务' },
     { re: /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|steel finished products?|finished steel|steel products?|steel sheets?|architectural steel|facade cladding/i, value: '钢材/金属板材' },
     { re: /木饰面|木墙|木材|木纹|护墙板/i, value: '木饰面/木作材料' },
     { re: /石材|岩板|大理石|瓷砖/i, value: '石材/岩板材料' },
@@ -12356,7 +12362,7 @@ function _luxuryImageSubjectAlias(productSubject = '', scene = {}) {
 function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject, scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject);
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
     return [
@@ -12389,7 +12395,7 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneE
 function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject, scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject);
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
     return [
@@ -13498,7 +13504,7 @@ function _buildLuxurySubjectKeywords(productSubject = '', context = '') {
   if (_luxuryHasExplicitSteelSubject(source)) {
     extra.push('钢材', '钢结构', '钢板', '不锈钢', '金属板材', '金属板');
   }
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject, context);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject);
   if (!robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(subject, { visual: context, content_prompt: context })) {
     extra.push(
       'AI', '智能', '软件', '系统', '平台', '服务', '流程', '操作', '协作', '确认', '结果', '界面', '看板',
@@ -13538,7 +13544,7 @@ function _luxurySubjectHit(value = '', subjectKeywords = [], productSubject = ''
   if (_luxuryIsSoftwareWorkflowSubject(subject, { visual: raw, content_prompt: raw })) {
     return /AI|智能|软件|系统|平台|服务|流程|操作|协作|确认|结果|界面|看板|workflow|software|service|platform|process|operation|result|dashboard|interface|screen/i.test(raw);
   }
-  if (_luxuryIsRobotAssistantSubject(subject, raw)) {
+  if (_luxuryIsRobotAssistantSubject(subject)) {
     return /AI\s*机器人|机器人|智能体|智能助手|人机协作|产品界面|交互反馈|任务执行|状态反馈|home\s*assistant|robot/i.test(raw)
       || (/智能生活|生活助手|家庭助理|家庭场景|生活场景|smart\s*home|household/i.test(raw) && /智能生活|生活|家庭|家居|smart\s*home|household/i.test(subject))
       || (/设备联动|场景联动|语音控制|自动巡航/i.test(raw) && /设备|联动|控制|语音|巡航|自动/i.test(subject));
@@ -16844,7 +16850,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         );
         let visual = visualAction.visual;
         let action = visualAction.action;
-        if (_luxuryIsRobotAssistantSubject(productSubject, brief, scene)
+        if (_luxuryIsRobotAssistantSubject(productSubject, brief)
           && !_luxurySubjectHit([visual, action, rawVoice, scene.objective, scene.purpose, scene.script_purpose].filter(Boolean).join('；'), subjectKeywords, productSubject)) {
           const storyTask = _sanitizeLuxuryVisibleText(
             scene.objective || scene.purpose || scene.script_purpose || scene.source_beat?.solution_step || scene.source_beat?.visual_proof || '',
@@ -17279,6 +17285,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!compact) return '';
         const forbiddenHit = briefForbiddenChecks.find(item => item?.test?.(compact));
         if (forbiddenHit) return `第 ${shotNo} 镜出现用户明确禁止项「${forbiddenHit.source || forbiddenHit.label}」的同义近似表达，属于剧情漂移`;
+        if (!robotSubjectAllowed && _luxuryHasExplicitRobotAssistantSubjectText(compact)) {
+          return `第 ${shotNo} 镜出现未由用户主体或素材确认的机器人/机械主体，属于剧情漂移；必须改回「${productSubject}」相关的真实内容`;
+        }
         return '';
       };
       const internalFieldIssue = (value = '', label = '内容', shotNo = 0) => {
@@ -17387,7 +17396,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         else if (isEndcard ? !isUsableScriptEndcardAction(actionText) : !isUsableScriptAction(actionText)) issues.push(`剧本镜头表第 ${n} 镜缺少动作`);
         if (copyInternalIssue) issues.push(copyInternalIssue);
         else if (!isUsableScriptCopy(copyText)) issues.push(`第 ${n} 镜缺少台词/旁白`);
-        if (i > 0 && _luxuryIsRobotAssistantSubject(productSubject, brief, scene)
+        if (i > 0 && _luxuryIsRobotAssistantSubject(productSubject, brief)
           && !_luxurySubjectHit([visualText, actionText, copyText, purposeText].filter(Boolean).join('；'), subjectKeywords, productSubject)) {
           issues.push(`第 ${n} 镜缺少广告主体「${productSubject}」的可见证据`);
         }
@@ -18500,7 +18509,7 @@ ${JSON.stringify(scenes, null, 2)}
           && !fastDetailedStoryboard
           && !_luxuryIsMacroDetailShot({ role, title: x.title || '', content_prompt: visual, visual })
           && _luxuryRoleNeedsStoryHuman(role, i, roleCount)
-          && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief, x));
+          && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief));
         if (storyPanelNeeded) {
           visual = _luxuryStoryFirstHumanVisual({ visual, productSubject, role, index: i, total: roleCount, characters: rawCharacters });
           action = _luxuryStoryFirstHumanAction({ action, productSubject, role, index: i, total: roleCount, characters: rawCharacters });
@@ -18645,7 +18654,7 @@ ${JSON.stringify(scenes, null, 2)}
         && !fastDetailedStoryboard
         && !_luxuryIsMacroDetailShot({ role, title: s.title || '', content_prompt: visual, visual })
         && _luxuryRoleNeedsStoryHuman(role, i, scenes.length)
-        && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief, s));
+        && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief));
       if (storyPanelNeeded) {
         visual = _luxuryStoryFirstHumanVisual({ visual, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
         action = _luxuryStoryFirstHumanAction({ action, productSubject, role, index: i, total: scenes.length, characters: sceneCharactersForStory });
@@ -23258,7 +23267,7 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
   const emotion = _luxuryDeyunaiAuditNeutralText(scene.emotion || scene.mood || scene.emotional_change || scene.objective || '', 140);
   const apiIntegrationShot = _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
   const carrier = _luxuryDeyunaiAuditNeutralText(_luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject, { allowSceneExplicit: true }), 180);
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject, scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: '', scene, allowSceneExplicit: true });
   const actor = personRequired
     ? 'Use the same actor appearance from the reference image; keep face impression, age range, hairstyle and outfit family consistent.'
@@ -23316,7 +23325,7 @@ function _luxuryGptImage2EditPrompt({
   );
   const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 150);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: prompt, scene, allowSceneExplicit: true });
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject, scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject);
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || subject, scene);
   const apiIntegrationShot = softwareWorkflowSubject && _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
   const workflowEvidenceRule = softwareWorkflowSubject
@@ -23621,7 +23630,7 @@ function _buildLuxuryImageModelStrictPrompt({
     ? _luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 1150)
     : '';
   const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 760);
-  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '', scene);
+  const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '');
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true });
   const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true };
   const visual = _compactLuxuryKeyframeText(
