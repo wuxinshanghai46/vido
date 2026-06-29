@@ -16399,11 +16399,8 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
             seen.add(key);
             return true;
           });
-        const ranked = _rankLuxuryStoryModelsByHealth(runnable);
-        if (ranked.length && runnable.length && _luxuryStoryModelHealthKey(ranked[0]) !== _luxuryStoryModelHealthKey(runnable[0])) {
-          console.info(`[DH/luxury-ad/storyboard] ${stageId} story model health reordered: ${ranked.map(_luxuryStoryModelLabel).join(' -> ')}`);
-        }
-        return ranked;
+        // 中文说明：模型调用管理的优先级必须是用户可预期的最终顺序；健康记录只用于本次失败后的 fallback，不能跨请求把新厂商静默降级。
+        return runnable;
       } catch {
         return [];
       }
