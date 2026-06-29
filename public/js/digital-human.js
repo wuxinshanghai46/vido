@@ -11095,9 +11095,9 @@
       const n = i + 1;
       const scenePayload = JSON.stringify(seg || {});
       if (/[?？]{3,}|�/.test(scenePayload)) errors.push(`第 ${n} 镜包含乱码或无法识别的占位符。`);
-      if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`第 ${n} 镜缺少画面内容。`);
-      if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`第 ${n} 镜缺少动作/表情。`);
-      if (!luxuryShotObjectiveText(seg)) errors.push(`第 ${n} 镜缺少编剧目的。`);
+      if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`剧本镜头表第 ${n} 镜缺少“画面内容”。`);
+      if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`剧本镜头表第 ${n} 镜缺少“动作/表情”，还没有调用分镜画面模型。`);
+      if (!luxuryShotObjectiveText(seg)) errors.push(`剧本镜头表第 ${n} 镜缺少“编剧目的”。`);
       const dialogue = Array.isArray(seg.dialogue_lines)
         ? seg.dialogue_lines.join('\n')
         : String(seg.dialogue || seg.dialogue_text || seg.conversation || '').trim();
@@ -11106,14 +11106,14 @@
         const namedLines = dialogue.split(/\n+/).filter(x => /[：:]/.test(x));
         const speakerNames = new Set(namedLines.map(x => x.split(/[：:]/)[0].trim()).filter(Boolean));
         speakerNames.forEach(name => scriptSpeakers.add(name));
-        if (!dialogue && !voice) errors.push(`第 ${n} 镜缺少台词/旁白。`);
+        if (!dialogue && !voice) errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
       } else if (castMode === 'single') {
         const namedLines = dialogue.split(/\n+/).filter(x => /[：:]/.test(x));
         const speakerNames = new Set(namedLines.map(x => x.split(/[：:]/)[0].trim()).filter(Boolean));
-        if (speakerNames.size > 1) errors.push(`第 ${n} 镜是单人模式，但对白出现了 ${speakerNames.size} 个说话人。`);
-        if (!voice && !dialogue) errors.push(`第 ${n} 镜缺少单人旁白/台词。`);
+        if (speakerNames.size > 1) errors.push(`剧本镜头表第 ${n} 镜是单人模式，但对白出现了 ${speakerNames.size} 个说话人。`);
+        if (!voice && !dialogue) errors.push(`剧本镜头表第 ${n} 镜缺少“单人旁白/台词”。`);
       } else if (!voice && !dialogue) {
-        errors.push(`第 ${n} 镜缺少台词/旁白。`);
+        errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
       }
     });
     if (expectedPeople >= 2 && scriptSpeakers.size < 2) {
@@ -11126,21 +11126,21 @@
   function validateLuxuryAdKeyframes(keyframes = [], segments = []) {
     const errors = [];
     const frames = Array.isArray(keyframes) ? keyframes : [];
-    if (frames.length !== segments.length) errors.push(`分镜数量不一致：剧本 ${segments.length} 镜，返回 ${frames.length} 张。`);
+    if (frames.length !== segments.length) errors.push(`分镜画面数量不一致：剧本镜头表 ${segments.length} 镜，返回 ${frames.length} 张关键帧图。`);
     segments.forEach((seg, i) => {
       const kf = frames[i] || {};
       const expectedIndex = luxuryFrameIndex(seg, i);
       const labelIndex = luxuryFrameIndex(kf, expectedIndex);
       const shotLabel = `第 ${labelIndex + 1} 镜`;
       if (luxuryFrameHasExplicitIndex(kf) && labelIndex !== expectedIndex) {
-        errors.push(`第 ${expectedIndex + 1} 镜返回了第 ${labelIndex + 1} 镜的内容。`);
+        errors.push(`分镜画面第 ${expectedIndex + 1} 镜返回了第 ${labelIndex + 1} 镜的内容。`);
       }
-      if (!(kf.image_url || kf.imageUrl)) errors.push(`${shotLabel}没有生成图片。`);
+      if (!(kf.image_url || kf.imageUrl)) errors.push(`分镜画面${shotLabel}没有生成图片。`);
       const referenceLocked = String(kf.reference_mode || '').includes('reference_locked');
       const qa = kf.qa || kf.shot_plan?.qa || null;
       if (!referenceLocked) {
-        if (!qa) errors.push(`${shotLabel}缺少视觉 QA 结果，不能进入成片。`);
-        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`${shotLabel}视觉 QA 未通过：${qa.reason || '未说明原因'}`);
+        if (!qa) errors.push(`分镜画面${shotLabel}缺少视觉 QA 结果，不能进入成片。`);
+        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`分镜画面${shotLabel}视觉 QA 未通过：${qa.reason || '未说明原因'}`);
       }
       const dims = qa?.quality_dimensions || {};
       const lowDims = [
@@ -11150,7 +11150,7 @@
         ['product_fidelity', '产品保真', 74],
       ].filter(([key, , min]) => Number(dims[key]) > 0 && Number(dims[key]) < min);
       if (!referenceLocked && lowDims.length) {
-        errors.push(`${shotLabel} QA 维度不足：${lowDims.map(([key, label]) => `${label}${Math.round(Number(dims[key]))}`).join('、')}`);
+        errors.push(`分镜画面${shotLabel} QA 维度不足：${lowDims.map(([key, label]) => `${label}${Math.round(Number(dims[key]))}`).join('、')}`);
       }
     });
     if (errors.length) throw new Error(errors.slice(0, 8).join('；'));
@@ -11161,15 +11161,15 @@
     const list = Array.isArray(scenes) ? scenes : [];
     const expected = Array.isArray(expectedSegments) ? expectedSegments : [];
     const errors = [];
-    if (!list.length) errors.push('规划分镜没有返回镜头表。');
+    if (!list.length) errors.push('分镜画面规划没有返回可审核的镜头表。');
     if (expected.length && list.length !== expected.length) {
-      errors.push(`规划分镜数量不一致：剧本 ${expected.length} 镜，返回 ${list.length} 镜。`);
+      errors.push(`分镜画面规划数量不一致：剧本镜头表 ${expected.length} 镜，返回 ${list.length} 镜。`);
     }
     list.forEach((seg, i) => {
       const n = i + 1;
-      if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`第 ${n} 镜缺少画面内容。`);
-      if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`第 ${n} 镜缺少动作/表情。`);
-      if (!String(luxuryShotNarrationText(seg) || seg.dialogue || seg.dialogue_text || '').trim()) errors.push(`第 ${n} 镜缺少台词/旁白。`);
+      if (!String(luxuryShotContentPrompt(seg) || '').trim()) errors.push(`剧本镜头表第 ${n} 镜缺少“画面内容”。`);
+      if (!String(luxuryShotActionText(seg) || '').trim()) errors.push(`剧本镜头表第 ${n} 镜缺少“动作/表情”，还没有调用分镜画面模型。`);
+      if (!String(luxuryShotNarrationText(seg) || seg.dialogue || seg.dialogue_text || '').trim()) errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
     });
     if (errors.length) throw new Error(errors.slice(0, 8).join('；'));
     return true;
@@ -12233,6 +12233,7 @@
     const disabledAttr = state.luxuryAd.keyframeGenerating ? 'disabled' : '';
     const editDisabledAttr = scriptLocked ? `disabled title="${escapeHtml(luxuryAdLockedStepMessage(3))}"` : '';
     const errorText = String(state.luxuryAd.keyframeError || '').trim();
+    const scriptPreflightError = /剧本镜头表|还没有调用分镜画面模型|缺少.*动作|缺少.*画面内容|缺少.*台词|缺少.*编剧目的/.test(errorText);
     const errorDetailsHtml = renderLuxuryKeyframeErrorDetails(state.luxuryAd.keyframeErrorDetails);
     const planningOnly = state.luxuryAd.keyframePlanningOnly === true;
     const sheetCount = Array.isArray(state.luxuryAd.storyboardSheets)
@@ -12252,13 +12253,13 @@
     host.innerHTML = `
       <div class="dh-demo-script-review">
         <div>
-          <b>分镜结果</b>
-          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本生成分镜' : (planningOnly ? reviewLabel : `共 ${segments.length} 个镜头`)}</span>
+          <b>分镜画面结果</b>
+          <span>${state.luxuryAd.keyframeGenerating ? '正在按剧本镜头表生成分镜画面' : (planningOnly ? reviewLabel : `剧本镜头表共 ${segments.length} 镜`)}</span>
         </div>
       </div>
       <div class="dh-luxgen-live-progress dh-luxgen-script-progress" id="dhLuxAdFrameProgress" hidden></div>
       ${planningNotice}
-      ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '关键帧待重新生成' : '分镜生成已停止'}</b><span>${escapeHtml(errorText)}</span>${errorDetailsHtml}</div>` : ''}
+      ${errorText ? `<div class="dh-demo-script-review dh-lux-keyframe-error"><b>${planningOnly ? '分镜画面待重新生成' : '分镜画面生成已停止'}</b><span>${escapeHtml(errorText)}</span>${scriptPreflightError ? '<small>这是“剧本镜头表”预检问题，还没有进入 image2 分镜画面生成；请编辑对应镜头的动作/画面/台词后再生成。</small>' : ''}${errorDetailsHtml}</div>` : ''}
       ${renderLuxuryStoryboardBriefingEntry(segments, keyframes)}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {

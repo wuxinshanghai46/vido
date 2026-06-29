@@ -17309,7 +17309,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (visualInternalIssue) issues.push(visualInternalIssue);
         else if (isEndcard ? !isUsableScriptEndcardVisual(visualText) : !isUsableScriptVisual(visualText)) issues.push(`第 ${n} 镜缺少画面`);
         if (actionInternalIssue) issues.push(actionInternalIssue);
-        else if (isEndcard ? !isUsableScriptEndcardAction(actionText) : !isUsableScriptAction(actionText)) issues.push(`第 ${n} 镜缺少动作`);
+        else if (isEndcard ? !isUsableScriptEndcardAction(actionText) : !isUsableScriptAction(actionText)) issues.push(`剧本镜头表第 ${n} 镜缺少动作`);
         if (copyInternalIssue) issues.push(copyInternalIssue);
         else if (!isUsableScriptCopy(copyText)) issues.push(`第 ${n} 镜缺少台词/旁白`);
         if (i > 0 && _luxuryIsRobotAssistantSubject(productSubject, brief, scene)
@@ -18358,7 +18358,7 @@ ${JSON.stringify(scenes, null, 2)}
           console.warn(`[DH/luxury-ad/storyboard] shot ${n} visible text still has internal words after sanitize`);
         }
         if (!visualRaw) throw new Error(`第 ${n} 镜缺少画面内容 content_prompt/scene_content。`);
-        if (!actionRaw) throw new Error(`第 ${n} 镜缺少动作/表情 action/visual_action。`);
+        if (!actionRaw) throw new Error(`剧本镜头表第 ${n} 镜缺少动作/表情 action/visual_action，还没有调用分镜画面模型。`);
         if (!objectiveRaw) throw new Error(`第 ${n} 镜缺少编剧目的 objective/purpose。`);
         if (expectedPeople >= 2) {
           const namedSpeakers = luxuryDialogueSpeakers(x, rawCharacters);
@@ -19705,7 +19705,7 @@ function _luxuryStrictStoryboardContractIssues(contract = {}) {
   if (!_luxuryStrictText(contract.visible_subject)) issues.push('缺少可见主体 visible_subject');
   if (!_luxuryStrictText(contract.scene)) issues.push('缺少可见场景 scene');
   if (!_luxuryStrictText(contract.visual)) issues.push('缺少画面内容 visual');
-  if (!_luxuryStrictText(contract.action)) issues.push('缺少动作/表情 action');
+  if (!_luxuryStrictText(contract.action)) issues.push('剧本镜头表缺少动作/表情 action');
   if (!_luxuryStrictText(contract.camera)) issues.push('缺少镜头语言 camera');
   if (!_luxuryStrictText(contract.composition)) issues.push('缺少构图 composition');
   if (!_luxuryStrictText(contract.lighting)) issues.push('缺少光线 lighting');
@@ -19723,7 +19723,7 @@ function _assertLuxuryStrictStoryboardContract(contract = {}, { shotIndex = 0 } 
   const issues = _luxuryStrictStoryboardContractIssues(contract);
   const shotNo = Number(shotIndex || 0) + 1;
   if (issues.length) {
-    const err = new Error(`第 ${shotNo} 镜分镜合约不完整，已停止分镜画面生成：${issues.join('；')}`);
+    const err = new Error(`第 ${shotNo} 镜剧本镜头合同不完整，已停止分镜画面生成：${issues.join('；')}`);
     err.status = 422;
     err.code = 'LUXURY_STORYBOARD_CONTRACT_PRECHECK_FAILED';
     err.details = { shot_index: shotIndex, issues, contract };
