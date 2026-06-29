@@ -997,13 +997,20 @@ async function generateCustomProviderImage({ provider, prompt, filename, aspectR
       n: 1,
       size: aspectRatio === '16:9' ? '1024x576' : '1024x1024',
     });
-    const url = resp.data?.[0]?.url;
-    if (!url) throw new Error('未返回图片 URL');
-
     const destDir = imgDir(filename);
     ensureDir();
     const destPath = path.join(destDir, `${filename}.png`);
-    await downloadFile(url, destPath);
+    const item = resp.data?.[0] || {};
+    const url = item.url || '';
+    const b64 = item.b64_json || '';
+    // 中文说明：微众 MaaS / OpenAI 兼容图像接口可能直接返回 b64_json，不一定返回 URL。
+    if (url) {
+      await downloadFile(url, destPath);
+    } else if (b64) {
+      fs.writeFileSync(destPath, Buffer.from(b64, 'base64'));
+    } else {
+      throw new Error('未返回图片 URL 或 b64_json');
+    }
     return destPath;
   } catch (err) {
     console.error(`[ImageService] 自定义供应商 ${provider} 生图失败:`, err.message);

@@ -53,6 +53,7 @@ const PREFERRED_TEXT_PROVIDERS = [
   /^deepseek\b/i,
   /^aiapi\b/i,
   /^apismile\b/i,
+  /^webang-maas\b|微众.*maas|一站式.*模型/i,
   /^deyunai\b|漫路/i,
   /^openai\b/i,
   /^anthropic\b|claude/i,
@@ -79,6 +80,7 @@ function _pickPreferredStoryModel(p) {
     /^gemini-2\.5-flash\b/i,                 // 当前漫路可用，速度和结构化输出更均衡
     /^claude.*sonnet.*4-5/i,                 // 漫路海外 Claude Messages 文档示例模型
     /^claude.*sonnet.*4-6\b/i,               // 当前漫路可用，复杂文案兜底
+    /^gpt-5\.4\b/i,
     /^gpt-4\.1\b/i,
     /^gpt-5(?:[.\-\s]|$)/i,
     /^gpt-4o\b/i,                            // OpenAI 旗舰
@@ -104,6 +106,10 @@ function _pickPreferredStoryModel(p) {
 
 function _storyUseMatches(use) {
   return ['story', 'chat', 'llm'].includes(String(use || '').toLowerCase());
+}
+
+function _isGpt5FamilyModel(modelId = '') {
+  return /^gpt-5(?:[.\-\s]|$)/i.test(String(modelId || '').trim());
 }
 
 function _providerMatchesPreferred(provider = {}, preferred = {}) {
@@ -428,14 +434,21 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       if (_defaultHeaders) sdkOpts.defaultHeaders = _defaultHeaders;
 
       const client = new OpenAI(sdkOpts);
-      let completion = await client.chat.completions.create({
+      const maxTokenValue = Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096));
+      const completionPayload = {
         model: config.model,
-        max_tokens: Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096)),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ]
-      });
+      };
+      // 中文说明：微众 MaaS 文档要求 GPT-5 系列使用 max_completion_tokens，不能继续发送 max_tokens。
+      if (_isGpt5FamilyModel(config.model)) {
+        completionPayload.max_completion_tokens = maxTokenValue;
+      } else {
+        completionPayload.max_tokens = maxTokenValue;
+      }
+      let completion = await client.chat.completions.create(completionPayload);
       // 漫路 (deyunai) 等聚合平台有时把 chat.completions 返回成"字符串化的 JSON"而不是对象
       //   ↓ 检测到字符串先 JSON.parse 一下，恢复成标准结构
       if (typeof completion === 'string') {

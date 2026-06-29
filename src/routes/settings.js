@@ -293,7 +293,13 @@ async function testProviderConnection(p) {
 
   const authType = p.id === 'huggingface' ? 'hf' : 'bearer';
   const proto = urlObj.protocol === 'https:' ? 'https' : 'http';
-  const body = await httpGet(`${proto}://${urlObj.hostname}${testPath}`, authKey, authType);
+  let testUrl = `${proto}://${urlObj.hostname}${testPath}`;
+  if (!testUrls[urlObj.hostname]) {
+    // 中文说明：OpenAI 兼容网关可能把 /v1 挂在自定义路径下，测试时必须保留用户填写的 base URL。
+    const baseUrl = String(p.api_url || '').replace(/\/+$/, '');
+    testUrl = /\/v\d+(?:\/)?$/i.test(baseUrl) ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
+  }
+  const body = await httpGet(testUrl, authKey, authType);
   return checkResponseBody(body, p);
 }
 
