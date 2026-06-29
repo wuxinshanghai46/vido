@@ -4867,9 +4867,10 @@ function _luxurySubjectEvidenceSeedPrompt({ productSubject = '', scenes = [], br
   return [
     'SUBJECT EVIDENCE SEED IMAGE for a premium commercial storyboard.',
     `Industry context: ${contract.industry}.`,
-    `Use the uploaded reference only as evidence for the advertised subject. Convert it into story-usable evidence: ${contract.evidence}.`,
+    `Advertised subject: ${_luxurySceneFriendlyProductSubject(productSubject || contract.industry || 'confirmed commercial subject')}.`,
+    `If uploaded references are provided, use them only as evidence for the advertised subject. If no reference is provided, create a clean subject evidence seed from the confirmed brief and storyboard, not from a fixed template. Story-usable evidence: ${contract.evidence}.`,
     `Place or prepare that evidence so it can live inside this story world: ${contract.scene}.`,
-    'Do not let the uploaded reference override the confirmed story location. Do not create an unrelated category, catalogue-only packshot, empty background, fake text, watermark or random luxury props.',
+    'Do not let any reference override the confirmed story location. Do not create an unrelated category, catalogue-only packshot, empty background, fake text, watermark or random luxury props.',
   ].join(' ');
 }
 
@@ -5073,7 +5074,7 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
     assets.used.push('luxury_ad.scene_seed');
   }
 
-  if (productRefs.length && needsScene) {
+  if (needsScene && !assets.subject_evidence?.url) {
     try {
       const seed = await _generateLuxurySeedAsset(req, {
         stageId: 'luxury_ad.subject_evidence_seed',
@@ -5088,18 +5089,29 @@ async function _prepareLuxuryStoryboardSeedAssets(req, {
       assets.subject_evidence = { ...seed, source: 'generated_subject_evidence_seed' };
       assets.used.push('luxury_ad.subject_evidence_seed');
     } catch (err) {
-      assets.subject_evidence = {
-        url: productRefs[0],
-        source: 'user_reference_passthrough',
-        warning: {
+      if (productRefs.length) {
+        assets.subject_evidence = {
+          url: productRefs[0],
+          source: 'user_reference_passthrough',
+          warning: {
+            stage_id: 'luxury_ad.subject_evidence_seed',
+            skipped: true,
+            reason: err.message,
+            attempts: err.details?.attempts || err.attempts || [],
+          },
+        };
+        assets.used.push('luxury_ad.subject_evidence_seed_passthrough');
+        console.warn('[DH/luxury-ad] subject evidence seed failed; continuing with user reference:', err.message);
+      } else {
+        const seedErr = new Error(`剧情广告主体证据种子图生成失败：未上传主商品/参考图，且 subject_evidence_seed 未能生成可用图片。${err.message || ''}`);
+        seedErr.status = 422;
+        seedErr.code = 'LUXURY_SUBJECT_EVIDENCE_SEED_FAILED';
+        seedErr.details = {
           stage_id: 'luxury_ad.subject_evidence_seed',
-          skipped: true,
-          reason: err.message,
-          attempts: err.details?.attempts || err.attempts || [],
-        },
-      };
-      assets.used.push('luxury_ad.subject_evidence_seed_passthrough');
-      console.warn('[DH/luxury-ad] subject evidence seed failed; continuing with user reference:', err.message);
+          attempts: err.details?.attempts || err.luxuryKeyframeAttempts || err.attempts || [],
+        };
+        throw seedErr;
+      }
     }
   }
 
@@ -5861,6 +5873,131 @@ async function _fetchImageBuffer(url) {
   // 远端：axios 拉
   const r = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000, maxContentLength: 50 * 1024 * 1024 });
   return Buffer.from(r.data);
+}
+
+function _openAiCompatibleImageSize(aspectRatio = '16:9') {
+  const ratio = _normalizeAspectRatio(aspectRatio, '16:9');
+  if (ratio === '9:16') return '1024x1792';
+  if (ratio === '4:3') return '1024x768';
+  if (ratio === '3:4') return '768x1024';
+  if (ratio === '1:1') return '1024x1024';
+  return '1792x1024';
+}
+
+async function _generateViaOpenAICompatibleImageModel({
+  req,
+  providerId = '',
+  modelId = '',
+  prompt = '',
+  aspectRatio = '16:9',
+  filename = `openai_compatible_${Date.now()}`,
+  destDir = JIMENG_ASSETS_DIR,
+  referenceImages = [],
+  outputSize = 'standard',
+} = {}) {
+  const { loadSettings, getApiKey } = require('../services/settingsService');
+  const settings = loadSettings();
+  const pid = String(providerId || '').trim();
+  const model = String(modelId || '').trim();
+  const provider = (settings.providers || []).find(p => {
+    if (!p || p.enabled === false) return false;
+    return [p.id, p.preset, p.name].filter(Boolean).some(v => String(v).trim().toLowerCase() === pid.toLowerCase());
+  });
+  if (!provider) throw new Error(`供应商未启用或不存在：${pid}`);
+  const apiKey = getApiKey(provider.id) || getApiKey(pid) || provider.api_key || '';
+  if (!apiKey) throw new Error(`供应商缺少 API Key：${pid}`);
+  if (!model) throw new Error(`OpenAI 兼容图片模型缺少 model_id：${pid}`);
+
+  const baseUrl = String(provider.base_url || provider.api_url || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const size = _openAiCompatibleImageSize(aspectRatio);
+  const safePrompt = _luxuryCapImageModelPrompt(String(prompt || ''), model === 'gpt-image-2' ? 3000 : 1800);
+  const refs = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).slice(0, 4);
+  const started = Date.now();
+  const outPath = path.join(destDir, `${filename}_${pid}_${model}`.replace(/[^\w.-]+/g, '_').slice(0, 180) + '.png');
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+
+  const parseImagePayload = data => {
+    const item = Array.isArray(data?.data) ? (data.data[0] || {}) : (data?.data || data || {});
+    const url = item.url || item.image_url || item.output_url || data?.url || data?.image_url || '';
+    const b64 = item.b64_json || item.base64 || item.content || data?.b64_json || data?.base64 || '';
+    return { url, b64 };
+  };
+
+  try {
+    let response;
+    if (refs.length) {
+      const FormData = require('form-data');
+      const form = new FormData();
+      form.append('model', model);
+      form.append('prompt', safePrompt);
+      form.append('n', '1');
+      form.append('size', size);
+      for (let i = 0; i < refs.length; i++) {
+        const resolved = await _resolveImageForExternalApi(req, refs[i], { preferPublicUrl: true });
+        const buf = await _fetchImageBuffer(_absolutePublicUrl(req, resolved || refs[i]));
+        form.append('image', buf, { filename: `reference_${i + 1}.png`, contentType: 'image/png' });
+      }
+      response = await axios.post(`${baseUrl}/images/edits`, form, {
+        headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
+        timeout: 180000,
+        maxContentLength: 80 * 1024 * 1024,
+        maxBodyLength: 80 * 1024 * 1024,
+      });
+    } else {
+      response = await axios.post(`${baseUrl}/images/generations`, {
+        model,
+        prompt: safePrompt,
+        n: 1,
+        size,
+        response_format: 'url',
+      }, {
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 180000,
+      });
+    }
+    const { url, b64 } = parseImagePayload(response.data);
+    if (url) {
+      const buf = await _fetchImageBuffer(url);
+      fs.writeFileSync(outPath, buf);
+    } else if (b64) {
+      fs.writeFileSync(outPath, Buffer.from(String(b64).replace(/^data:image\/\w+;base64,/, ''), 'base64'));
+    } else {
+      throw new Error(`${pid}/${model} 未返回图片 URL 或 b64_json`);
+    }
+    try {
+      require('../services/tokenTracker').record({
+        provider: provider.id || pid,
+        model,
+        category: 'image',
+        usage: response.data?.usage || {},
+        durationMs: Date.now() - started,
+        status: 'success',
+        userId: req.user?.id || req.userId || '',
+        agentId: 'luxury_ad.keyframe',
+        requestId: String(req.body?.request_key || req.query?.request_key || '').trim(),
+        source: 'digital_human_luxury_ad',
+        operation: refs.length ? 'openai_compatible_image_edit' : 'openai_compatible_image_generation',
+      });
+    } catch {}
+    return outPath;
+  } catch (err) {
+    try {
+      require('../services/tokenTracker').record({
+        provider: provider.id || pid,
+        model,
+        category: 'image',
+        durationMs: Date.now() - started,
+        status: 'fail',
+        errorMsg: _extractProviderErrorMessage(err),
+        userId: req.user?.id || req.userId || '',
+        agentId: 'luxury_ad.keyframe',
+        requestId: String(req.body?.request_key || req.query?.request_key || '').trim(),
+        source: 'digital_human_luxury_ad',
+        operation: refs.length ? 'openai_compatible_image_edit' : 'openai_compatible_image_generation',
+      });
+    } catch {}
+    throw err;
+  }
 }
 
 async function _prepareDeyunaiGptImage2ReferenceUrl(req, imageUrl, { kind = '', index = 0 } = {}) {
@@ -13478,10 +13615,18 @@ function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
     .replace(/[。；;，,]\s*$/g, '')
     .trim();
   const subjectContext = [fallbackOpts.productSubject, fallbackOpts.brief].filter(Boolean).join(' ');
-  if (_looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, subjectContext) || _hasLuxuryAbstractStoryboardLeak(s)) {
+  if (_looksLikeLuxuryScriptPlaceholder(s) || _looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, subjectContext) || _hasLuxuryAbstractStoryboardLeak(s)) {
     return fallbackOpts.disableGeneratedScriptFallbacks === true ? '' : _fallbackLuxuryAdCopy(fallbackOpts);
   }
   return s.slice(0, 34);
+}
+
+function _looksLikeLuxuryScriptPlaceholder(value = '') {
+  const s = String(value || '').replace(/\s+/g, '').trim();
+  if (!s) return true;
+  return /^(?:待补充|暂无|无|未填写|未生成|TBD|N\/A|NA)$/i.test(s)
+    || /^(?:台词|旁白|字幕|广告词|文案|对白|画面|动作|目的)?待补充$/i.test(s)
+    || /(?:台词|旁白|字幕|广告词|文案|对白)(?:仍)?(?:待|需|需要)?补充/i.test(s);
 }
 
 function _sanitizeLuxuryVisibleText(value = '', productSubject = '') {
@@ -15524,6 +15669,8 @@ function _findLuxuryAdProjectByRequestKey(req, requestKey = '', type = 'keyframe
 
 function _storyboardResultFromLuxuryProject(row = null) {
   if (!row || !Array.isArray(row.scenes) || !row.scenes.length) return null;
+  const detailed = !!row.draft_state?.storyboard_detailed
+    || ['frame_reviewing', 'frame_ready', 'frame_generating', 'video_generating', 'video_ready'].includes(String(row.project_state || ''));
   return {
     success: true,
     status: 'done',
@@ -15539,7 +15686,10 @@ function _storyboardResultFromLuxuryProject(row = null) {
       segment_plan: row.segment_plan || null,
       person_spec: row.draft_state?.person_spec || row.brief_info?.person_spec || null,
       total_duration: row.duration_sec || null,
-      planning_mode: row.draft_state?.storyboard_detailed ? 'detailed' : 'outline',
+      planning_mode: detailed ? 'detailed' : 'outline',
+      storyboard_detailed: detailed,
+      production_project: _publicLuxuryAdProject(row),
+      production_project_id: row.id || '',
     },
     recovered_from_project: true,
   };
@@ -16462,6 +16612,35 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       });
       return issues;
     };
+    const normalizeLuxuryScriptDurationsToTarget = (sceneList = []) => {
+      const list = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
+      if (!isDetailedMode || !list.length) return sceneList;
+      const target = Math.max(1, Math.round((Number(targetDuration) || 30) * 10) / 10);
+      const rawDurations = list.map(scene => _luxuryNormalizeShotDuration(
+        scene.duration ?? scene.duration_sec ?? scene.seconds,
+        target / Math.max(1, list.length),
+      ));
+      const rawTotal = rawDurations.reduce((sum, seconds) => sum + seconds, 0);
+      const scale = rawTotal > 0 ? target / rawTotal : 1;
+      let used = 0;
+      return list.map((scene, i) => {
+        const isLast = i === list.length - 1;
+        const duration = isLast
+          ? Math.max(0.5, Math.round((target - used) * 10) / 10)
+          : Math.max(0.5, Math.round(rawDurations[i] * scale * 10) / 10);
+        used = Math.round((used + duration) * 10) / 10;
+        const start = Math.round((used - duration) * 10) / 10;
+        const end = Math.round(used * 10) / 10;
+        return {
+          ...scene,
+          duration,
+          duration_sec: duration,
+          seconds: duration,
+          start,
+          end,
+        };
+      });
+    };
     const assertAgentTextOk = (label, value) => {
       const raw = typeof value === 'string' ? value : JSON.stringify(value || {});
       if (/�/.test(raw)) throw new Error(`${label} 返回内容包含乱码或无法识别的占位符。`);
@@ -16788,17 +16967,20 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       };
     };
     const luxuryCompactSpokenLine = (line = '') => {
+      let text = '';
       if (line && typeof line === 'object') {
-        return String(line.text || line.line || line.dialogue || line.content || line.voiceover || line.narration || '')
+        text = String(line.text || line.line || line.dialogue || line.content || line.voiceover || line.narration || '')
           .replace(/\s+/g, ' ')
           .replace(/^[^：:\n]{1,12}[：:]\s*/, '')
           .trim();
+      } else {
+        text = String(line || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/^[^：:\n]{1,12}[：:]\s*/, '')
+          .trim();
       }
-      return String(line || '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[^：:\n]{1,12}[：:]\s*/, '')
-        .trim();
+      return _looksLikeLuxuryScriptPlaceholder(text) ? '' : text;
     };
     const luxurySceneSpokenCandidates = (scene = {}) => {
       if (!scene || typeof scene !== 'object') return [];
@@ -17440,7 +17622,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     const rewriteLuxuryScriptIssueScenes = async ({ label, sceneList = [], issues = [], storyPlan = null }) => {
       const list = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
       const shotNumbers = luxuryIssueShotNumbers(issues);
-      if (!list.length || !shotNumbers.length) return list;
+      const globalRewriteNeeded = (Array.isArray(issues) ? issues : [issues])
+        .some(issue => /(总时长承载|内容承载不足|承载不足)/.test(String(issue || '')));
+      if (!list.length || (!shotNumbers.length && !globalRewriteNeeded)) return list;
       const issueText = (Array.isArray(issues) ? issues : [issues]).filter(Boolean).map(String);
       const issueByShot = new Map();
       issueText.forEach(issue => {
@@ -17450,7 +17634,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       });
       const targets = list
         .map((scene, i) => ({ ...scene, __shot_no: i + 1, __quality_issues: issueByShot.get(i + 1) || [] }))
-        .filter(scene => shotNumbers.includes(scene.__shot_no));
+        .filter(scene => globalRewriteNeeded || shotNumbers.includes(scene.__shot_no));
       if (!targets.length) return list;
       const rewriteSys = [
         '你是剧情广告逐镜重写 agent。只重写被点名不合格的镜头，不能重写其它镜头；用户已确认的镜头数量、顺序、时长和人物数量规则必须尊重。',
@@ -17462,6 +17646,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         '重写目标：把抽象模板句改成可直接进入审核表的成片脚本。画面=具体场所+主体状态+可见证据；动作=主体正在做的可拍动作；台词=成片里能听到的一句自然话；目的=2-6 个字短标签。',
         `广告主体是「${productSubject}」。必须让主体或主体证据在问题镜头里具体可见，不要写“相关证据、主体证据、人物或主体、当前业务、已确认场景、答案开始具体、角色带你、细节被看见、选择理由”等抽象词。`,
         '每个问题镜头必须承接前后镜头：不要孤立喊口号，不要解释后台流程，不要写产品图库描述，不要把画面写成导演提示词。',
+        '如果问题是时长或内容承载不足，必须补充该镜头能真实表演的台词、动作过程、结果反馈和可见证明；不能只改 duration 数字。',
         '允许根据广告需求和编剧蓝图重新设计该镜头的一句自然台词，但必须服务当前镜头职责，不写空泛设问或模板口号。',
         '返回的每一项必须保留原 __shot_no 和 index，并提供 content_prompt、scene_content、visual、action、visual_action、voiceover、narration、ad_copy、subtitle、objective、purpose、script_purpose、subject_type。',
       ].join('\n');
@@ -17654,17 +17839,24 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         recordLuxuryScriptDiagnostic(`${label}:soft_quality_only_return`, normalizedSoftScenes, { issues });
         return normalizedSoftScenes;
       }
-      let nextScenes = mergeLuxuryAgentScenes(sceneList, await repairLuxuryScriptQualityPayload({
-        label,
-        payload: sceneList,
-        issue: (Array.isArray(issues) ? issues : [issues]).slice(0, 8).join('；'),
-        storyPlan,
-      }));
-      requireLuxuryScriptShotCount(nextScenes, '脚本质量修复结果');
-      nextScenes = ensureLuxuryScriptFieldsForReview(nextScenes, storyCharacters);
-      nextScenes = completeLuxuryScriptStructure(nextScenes, storyPlan, `${label}_quality_repair`);
-      let remainingIssues = luxuryScriptStructureIssues(nextScenes);
-      recordLuxuryScriptDiagnostic(`${label}:after_quality_repair`, nextScenes, { issues: remainingIssues });
+      let nextScenes = sceneList;
+      let remainingIssues = initialBlockingIssues;
+      try {
+        nextScenes = mergeLuxuryAgentScenes(sceneList, await repairLuxuryScriptQualityPayload({
+          label,
+          payload: sceneList,
+          issue: (Array.isArray(issues) ? issues : [issues]).slice(0, 8).join('；'),
+          storyPlan,
+        }));
+        requireLuxuryScriptShotCount(nextScenes, '脚本质量修复结果');
+        nextScenes = ensureLuxuryScriptFieldsForReview(nextScenes, storyCharacters);
+        nextScenes = completeLuxuryScriptStructure(nextScenes, storyPlan, `${label}_quality_repair`);
+        remainingIssues = luxuryScriptStructureIssues(nextScenes);
+        recordLuxuryScriptDiagnostic(`${label}:after_quality_repair`, nextScenes, { issues: remainingIssues });
+      } catch (qualityRepairErr) {
+        console.warn(`[DH/luxury-ad/storyboard] ${label} full quality repair failed, switching to issue-scoped rewrite:`, qualityRepairErr.message || qualityRepairErr);
+        recordLuxuryScriptDiagnostic(`${label}:quality_repair_failed_issue_rewrite`, nextScenes, { issues: initialBlockingIssues });
+      }
       if (remainingIssues.length) {
         nextScenes = await rewriteLuxuryScriptIssueScenes({
           label,
@@ -18453,8 +18645,8 @@ ${JSON.stringify(scenes, null, 2)}
           || ''
         ).trim();
         const dialogueRaw = Array.isArray(x.dialogue_lines)
-          ? x.dialogue_lines.join('\n')
-          : String(x.dialogue || x.dialogue_text || x.conversation || '').trim();
+          ? x.dialogue_lines.map(luxuryCompactSpokenLine).filter(Boolean).join('\n')
+          : luxuryCompactSpokenLine(x.dialogue || x.dialogue_text || x.conversation || '');
         const spokenRaw = [dialogueRaw, x.voiceover, x.narration, x.ad_copy, x.subtitle, x.text].filter(Boolean).join('\n');
         if (/(广告需求识别|由广告需求识别|广告需求|用户需求|系统识别|自动识别|参考素材摘要|主商品|brief)/i.test(spokenRaw)) {
           console.warn(`[DH/luxury-ad/storyboard] shot ${n} visible text still has internal words after sanitize`);
@@ -18727,8 +18919,8 @@ ${JSON.stringify(scenes, null, 2)}
         product_subject: productSubject,
       });
       const finalDialogue = Array.isArray(s.dialogue_lines)
-        ? s.dialogue_lines.join('\n')
-        : String(s.dialogue || s.dialogue_text || s.conversation || '').trim();
+        ? s.dialogue_lines.map(luxuryCompactSpokenLine).filter(Boolean).join('\n')
+        : luxuryCompactSpokenLine(s.dialogue || s.dialogue_text || s.conversation || '');
       const finalCharacters = hasConfirmedPersonAsset ? [lockedActorCharacter()] : (Array.isArray(s.characters)
         ? s.characters
         : (Array.isArray(s.character_profiles) ? s.character_profiles : []));
@@ -18838,11 +19030,30 @@ ${JSON.stringify(scenes, null, 2)}
         productSubject,
         sceneBible: storyPlan?.scene_bible || null,
       });
-      const finalScriptIssues = luxuryScriptStructureIssues(scenes);
+      scenes = normalizeLuxuryScriptDurationsToTarget(scenes);
+      let finalScriptIssues = luxuryScriptStructureIssues(scenes);
       recordLuxuryScriptDiagnostic('luxury_ad.script.final:return_normalized', scenes, { issues: finalScriptIssues });
-      const finalBlockingIssues = luxuryScriptBlockingIssues(finalScriptIssues);
+      let finalBlockingIssues = luxuryScriptBlockingIssues(finalScriptIssues);
       if (finalBlockingIssues.length) {
-        throw new Error(`剧本最终整理后不达标：${finalBlockingIssues.slice(0, 6).join('；')}`);
+        scenes = await repairLuxuryScriptIssues({
+          label: 'luxury_ad.script.final_return',
+          sceneList: scenes,
+          issues: finalBlockingIssues,
+          storyPlan,
+          failurePrefix: '剧本最终整理后不达标',
+        });
+        scenes = normalizeLuxuryScriptReviewTable(scenes, storyCharacters, storyPlan || {}, 'final_script_review_return_after_repair');
+        scenes = _attachLuxurySegmentContracts(scenes, storyPlan?.segment_plan || null, {
+          productSubject,
+          sceneBible: storyPlan?.scene_bible || null,
+        });
+        scenes = normalizeLuxuryScriptDurationsToTarget(scenes);
+        finalScriptIssues = luxuryScriptStructureIssues(scenes);
+        recordLuxuryScriptDiagnostic('luxury_ad.script.final:return_after_repair', scenes, { issues: finalScriptIssues });
+        finalBlockingIssues = luxuryScriptBlockingIssues(finalScriptIssues);
+        if (finalBlockingIssues.length) {
+          throw new Error(`剧本最终整理后不达标：${finalBlockingIssues.slice(0, 6).join('；')}`);
+        }
       }
       scenes = scenes.map((scene, i) => _prepareLuxuryStrictShotForScriptReview(scene, i, scenes.length, {
         productSubject,
@@ -22667,33 +22878,11 @@ async function _createLuxuryAdReferenceKeyframeLegacyUnused({
     if (refs.length >= (avatarUrl ? 4 : 5)) break;
     await addRef(url, 'demand_reference');
   }
-  if (personRequired && !hasAvatar) {
-    const compositionAnchor = await _createLuxuryHumanEnvironmentLayoutAnchor({
-      filename: `${filename}_human_environment_layout`,
-      destDir,
-      aspectRatio,
-      productSubject,
-      scene,
-    });
-    if (compositionAnchor) {
-      await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
-    }
-  }
   if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
   const useProductReference = scene.suppress_story_reference_images === true ? false : true;
-  if (personRequired && !hasAvatar && demandReferenceImages.length === 0 && !refs.some(x => x.kind === 'human_environment_layout')) {
-    const layoutAnchor = await _createLuxuryHumanStoryLayoutAnchor({
-      filename: `${filename}_human_story_layout`,
-      destDir,
-      aspectRatio,
-    });
-    if (layoutAnchor) {
-      await addRef(layoutAnchor, 'human_story_layout');
-    }
-  }
   if (useProductReference) {
     const hasGeneratedSubjectEvidence = !!scene.luxury_seed_assets?.subject_evidence?.url
       && refs.some(x => sameRef(x.source, scene.luxury_seed_assets.subject_evidence.url));
@@ -23806,33 +23995,11 @@ async function _createLuxuryAdReferenceKeyframe({
     if (refs.length >= (avatarUrl ? 4 : 5)) break;
     await addRef(url, 'demand_reference');
   }
-  if (personRequired && !hasAvatar) {
-    const compositionAnchor = await _createLuxuryHumanEnvironmentLayoutAnchor({
-      filename: `${filename}_human_environment_layout`,
-      destDir,
-      aspectRatio,
-      productSubject,
-      scene,
-    });
-    if (compositionAnchor) {
-      await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
-    }
-  }
   if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
   const useProductReference = scene.suppress_story_reference_images === true ? false : true;
-  if (personRequired && !hasAvatar && demandReferenceImages.length === 0 && !refs.some(x => x.kind === 'human_environment_layout')) {
-    const layoutAnchor = await _createLuxuryHumanStoryLayoutAnchor({
-      filename: `${filename}_human_story_layout`,
-      destDir,
-      aspectRatio,
-    });
-    if (layoutAnchor) {
-      await addRef(layoutAnchor, 'human_story_layout');
-    }
-  }
   if (useProductReference) {
     const hasGeneratedSubjectEvidence = !!scene.luxury_seed_assets?.subject_evidence?.url
       && refs.some(x => sameRef(x.source, scene.luxury_seed_assets.subject_evidence.url));
@@ -24347,6 +24514,19 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
       fs.writeFileSync(outPath, imageBuffer);
       return outPath;
+    }
+    if (['apismile', 'webang-maas', 'openai'].includes(provider)) {
+      return _generateViaOpenAICompatibleImageModel({
+        req,
+        providerId: provider,
+        modelId: rawModelId,
+        prompt: promptForAttempt,
+        aspectRatio: safeAspectRatio,
+        filename: `${filename}_${provider}_${idx}`,
+        destDir,
+        referenceImages,
+        outputSize,
+      });
     }
     if (provider === 'volcengine' || provider === 'api-key-20260404180437' || /seedream|jimeng-t2i|t2i|image/.test(modelId)) {
       return runSeedream(model, `seedream_${idx}`, promptForAttempt);
@@ -24927,31 +25107,11 @@ async function _createLuxuryAdReferenceKeyframeFallback({
     if (refs.length >= (avatarUrl ? 4 : 5)) break;
     await addRef(url, 'demand_reference');
   }
-  if (personRequired && !hasAvatar) {
-    const compositionAnchor = await _createLuxuryHumanEnvironmentLayoutAnchor({
-      filename: `${filename}_human_environment_layout`,
-      destDir,
-      aspectRatio,
-      productSubject,
-      scene,
-    });
-    if (compositionAnchor) {
-      await addRef(compositionAnchor, 'human_environment_layout', { prepend: true });
-    }
-  }
   if (isSteelMaterialSubject && !_luxuryExpectedEnvironmentFromContract(scene).wantsInterior) {
     steelSceneAnchorUrl = await _createLuxurySteelReferenceAnchor(req, { filename: `${filename}_premium_steel_scene_anchor`, destDir });
     if (steelSceneAnchorUrl) await addRef(steelSceneAnchorUrl, 'steel_scene_lock_anchor', { prepend: !personRequired });
   }
   const useProductReference = scene.suppress_story_reference_images === true ? false : true;
-  if (personRequired && !hasAvatar && demandReferenceImages.length === 0 && !refs.some(x => x.kind === 'human_environment_layout')) {
-    const layoutAnchor = await _createLuxuryHumanStoryLayoutAnchor({
-      filename: `${filename}_human_story_layout`,
-      destDir,
-      aspectRatio,
-    });
-    if (layoutAnchor) await addRef(layoutAnchor, 'human_story_layout');
-  }
   if (useProductReference) {
     await addRef(backgroundUrl, 'main_reference');
     for (const url of (Array.isArray(referenceImages) ? referenceImages : [])) {
@@ -26871,14 +27031,48 @@ router.post('/spaces/keyframes', async (req, res) => {
         sceneBible: brief_info?.scene_bible || global_visual_bible || null,
       });
     }
+    let luxuryPreSeedAssets = null;
     if (isLuxury) {
       luxuryPlanningScenes = scenes;
-      const confirmedIdentityUrl = avatar?.image_url || luxuryPersonAssetImageUrl || luxuryBriefPersonReferenceImage || '';
+      const needsTaskActorSeed = !avatar?.image_url
+        && !luxuryPersonAssetImageUrl
+        && !luxuryBriefPersonReferenceImage
+        && _luxuryStoryboardNeedsSeedPresenter(scenes, productSubject);
+      if (needsTaskActorSeed) {
+        luxuryPreSeedAssets = await _prepareLuxuryStoryboardSeedAssets(req, {
+          scenes,
+          productSubject,
+          aspectRatio,
+          outputSize: normalizedOutputSize,
+          filenamePrefix: `digital_ad_preview_${taskId}_identity`,
+          destDir: JIMENG_ASSETS_DIR,
+          existingPresenterUrl: '',
+          existingSceneUrl: luxuryBriefSceneReferenceImage || '',
+          productReferenceImages: [
+            background_url,
+            ...(Array.isArray(reference_images) ? reference_images : []),
+            ...nonPersonBriefReferenceImages,
+          ],
+          guideGender: guide_gender,
+        });
+        if (!luxuryPreSeedAssets?.presenter?.url) {
+          const err = new Error('真实关键帧已停止：当前分镜包含人物角色，但未能生成通过 QA 的当前任务人物参考。请调整人物设定或上传/选择演员参考后再生成。');
+          err.status = 422;
+          err.code = 'LUXURY_TASK_ACTOR_SEED_REQUIRED';
+          err.details = {
+            reason: 'task_actor_seed_required',
+            attempts: luxuryPreSeedAssets?.presenter?.attempts || luxuryPreSeedAssets?.presenter_seed_warning?.qa || [],
+          };
+          throw err;
+        }
+      }
+      const luxuryPreGeneratedPresenterImage = luxuryPreSeedAssets?.presenter?.url || '';
+      const confirmedIdentityUrl = avatar?.image_url || luxuryPersonAssetImageUrl || luxuryBriefPersonReferenceImage || luxuryPreGeneratedPresenterImage || '';
       const confirmedIdentitySource = avatar?.image_url
         ? 'selected_avatar'
         : (luxuryPersonAssetImageUrl
           ? (person_asset?.type || 'person_asset')
-          : (luxuryBriefPersonReferenceImage ? 'brief_person_reference' : ''));
+          : (luxuryBriefPersonReferenceImage ? 'brief_person_reference' : (luxuryPreGeneratedPresenterImage ? 'generated_task_actor_seed' : '')));
       const confirmedIdentityAvailability = confirmedIdentityUrl
         ? await _probeLuxuryImageReferenceAvailability(req, confirmedIdentityUrl)
         : { reachable: false, reason: 'missing_actor_reference' };
@@ -26908,13 +27102,13 @@ router.post('/spaces/keyframes', async (req, res) => {
       });
       const identityReferenceKind = person_asset
         ? _luxuryActorReferenceKind(person_asset)
-        : (luxuryBriefPersonReferenceImage ? 'real_photo' : '');
+        : (luxuryBriefPersonReferenceImage ? 'real_photo' : (luxuryPreGeneratedPresenterImage ? 'task_actor_seed' : ''));
       const identityIsAiGenerated = person_asset
         ? _luxuryIsAiGeneratedActorReference(person_asset)
         : false;
       const identityIsRealPerson = person_asset
         ? _luxuryIsRealActorReference(person_asset)
-        : (!!luxuryBriefPersonReferenceImage || !!avatar?.image_url);
+        : (!!luxuryBriefPersonReferenceImage || !!avatar?.image_url || !!luxuryPreGeneratedPresenterImage);
       const identityIsProductionUsableActor = person_asset
         ? _luxuryIsProductionUsableActorReference(person_asset)
         : identityIsRealPerson;
@@ -27052,7 +27246,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       scenes = scenes.map((scene, i) => _repairLuxuryHumanStoryKeyframeScene(scene, i, scenes.length, productSubject));
     }
     const luxurySeedAssets = isLuxury
-      ? await _prepareLuxuryStoryboardSeedAssets(req, {
+      ? (luxuryPreSeedAssets || await _prepareLuxuryStoryboardSeedAssets(req, {
         scenes,
         productSubject,
         aspectRatio,
@@ -27067,7 +27261,7 @@ router.post('/spaces/keyframes', async (req, res) => {
           ...nonPersonBriefReferenceImages,
         ],
         guideGender: guide_gender,
-      })
+      }))
       : { used: [] };
     const luxuryGeneratedPresenterImage = luxurySeedAssets?.presenter?.url || '';
     const luxurySceneSeedImage = luxurySeedAssets?.scene?.url || '';

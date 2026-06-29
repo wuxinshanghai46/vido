@@ -136,48 +136,48 @@
       {
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
-        "enabled": true,
-        "priority": 1
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
+        "model_id": "gpt-5.4",
+        "priority": 2,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 3
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 3,
+        "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-8",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-7",
         "priority": 5,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
         "priority": 6,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
         "priority": 7,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 8,
         "enabled": true
       }
@@ -186,48 +186,48 @@
       {
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
-        "enabled": true,
-        "priority": 1
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
+        "model_id": "gpt-5.4",
+        "priority": 2,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 3
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 3,
+        "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-8",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-7",
         "priority": 5,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
         "priority": 6,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
         "priority": 7,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 8,
         "enabled": true
       }
@@ -236,48 +236,48 @@
       {
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
-        "enabled": true,
-        "priority": 1
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
+        "model_id": "gpt-5.4",
+        "priority": 2,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 3
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 3,
+        "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-8",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-7",
         "priority": 5,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
         "priority": 6,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
         "priority": 7,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 8,
         "enabled": true
       }
@@ -312,190 +312,178 @@
       {
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
-        "enabled": true,
-        "priority": 1
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
+        "model_id": "gpt-5.4",
+        "priority": 2,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 3
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 3,
+        "enabled": true
       },
       {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-8",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
+        "provider_id": "apismile",
+        "model_id": "claude-opus-4-7",
         "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 7,
+        "enabled": true
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 8,
         "enabled": true
       }
     ],
     "luxury_ad.presenter_seed": [
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gemini-3.0-pro-image-preview",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash-image",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 5,
         "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
-        "priority": 6,
-        "enabled": false
       }
     ],
     "luxury_ad.person_sheet": [
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gemini-3.0-pro-image-preview",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash-image",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 5,
         "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 6,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
-        "priority": 7,
-        "enabled": false
       }
     ],
     "luxury_ad.scene_seed": [
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gemini-3.0-pro-image-preview",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash-image",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 5,
         "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-seedream-5",
-        "priority": 6,
-        "enabled": false
       }
     ],
     "luxury_ad.subject_evidence_seed": [
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gemini-3.0-pro-image-preview",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image-edit",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash-image",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 5,
         "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 6,
-        "enabled": false
       }
     ],
     "luxury_ad.video": [
@@ -512,205 +500,97 @@
         "enabled": true
       },
       {
+        "provider_id": "api-key-20260404180437",
+        "model_id": "doubao-seedance-1-0-pro-250528",
+        "priority": 3,
+        "enabled": true
+      },
+      {
         "provider_id": "topview",
         "model_id": "topview-image2video-pro",
-        "priority": 20,
-        "enabled": false
+        "priority": 4,
+        "enabled": true
       },
       {
         "provider_id": "topview",
         "model_id": "topview-image2video-best",
-        "priority": 21,
-        "enabled": false
-      },
-      {
-        "provider_id": "api-key-20260404180437",
-        "model_id": "doubao-seedance-1-0-pro-250528",
-        "priority": 30,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "kling-v2.5-turbo-pro",
-        "priority": 31,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "kling-v2-master",
-        "priority": 32,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "hailuo-02-fast",
-        "priority": 33,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "hailuo-02",
-        "priority": 34,
+        "priority": 5,
         "enabled": true
       }
     ],
     "luxury_ad.keyframe": [
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gemini-3.0-pro-image-preview",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash-image",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image-edit",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 5,
         "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "qwen-image",
-        "priority": 6,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "doubao-seedream-4-0-250828",
-        "priority": 7,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "imagen-4",
-        "priority": 8,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "flux-pro",
-        "priority": 9,
-        "enabled": true
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 10,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-pro",
-        "priority": 11,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-seedream-5",
-        "priority": 12,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-nano-banana-2",
-        "priority": 13,
-        "enabled": false
       }
     ],
     "luxury_ad.keyframe_qa": [
       {
         "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 1
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 1,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
         "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
+        "priority": 2,
+        "enabled": true
       },
       {
-        "provider_id": "deyunai",
+        "provider_id": "apismile",
         "model_id": "gemini-2.5-flash",
         "priority": 3,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "zhipu",
+        "model_id": "glm-4.6v",
         "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.0-flash",
-        "priority": 5,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
-        "priority": 6,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o",
-        "priority": 7,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o-mini",
-        "priority": 8,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gemini-3.1-flash-lite-preview",
-        "priority": 9,
-        "enabled": true
-      },
-      {
-        "provider_id": "zhipu",
-        "model_id": "glm-4v-flash",
-        "priority": 10,
-        "enabled": true
-      },
-      {
-        "provider_id": "zhipu",
-        "model_id": "glm-4v",
-        "priority": 11,
         "enabled": true
       },
       {
         "provider_id": "zhipu",
         "model_id": "glm-4.5v",
-        "priority": 12,
+        "priority": 5,
         "enabled": true
       },
       {
         "provider_id": "zhipu",
-        "model_id": "glm-4.6v",
-        "priority": 13,
+        "model_id": "glm-4v",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "zhipu",
+        "model_id": "glm-4v-flash",
+        "priority": 7,
         "enabled": true
       }
     ],
@@ -718,49 +598,37 @@
       {
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
-        "enabled": true,
-        "priority": 1
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.4",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-pro-preview",
+        "priority": 3,
+        "enabled": true
       },
       {
         "provider_id": "apismile",
         "model_id": "gemini-2.5-pro",
-        "enabled": true,
-        "priority": 2
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
-        "enabled": true,
-        "priority": 3
-      },
-      {
-        "provider_id": "deepseek",
-        "model_id": "deepseek-chat",
         "priority": 4,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-pro",
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
         "priority": 5,
         "enabled": true
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "claude-sonnet-4-6",
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
         "priority": 6,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gpt-4o",
-        "priority": 7,
-        "enabled": true
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gemini-2.5-flash",
-        "priority": 8,
         "enabled": true
       }
     ]

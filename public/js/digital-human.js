@@ -866,8 +866,6 @@
       const step = Number(new URLSearchParams(location.search || '').get('lux_step'));
       if (Number.isFinite(step)) return Math.max(1, Math.min(5, step));
     } catch {}
-    const savedStep = Number(readDigitalHumanPageState().lux_step || 0);
-    if (Number.isFinite(savedStep) && savedStep > 0) return Math.max(1, Math.min(5, savedStep));
     return 0;
   }
 
@@ -876,8 +874,6 @@
       const focus = String(new URLSearchParams(location.search || '').get('lux_focus') || '').trim();
       if (['person', 'product', 'scene', 'script', 'frames', 'compose'].includes(focus)) return focus;
     } catch {}
-    const savedFocus = String(readDigitalHumanPageState().lux_focus || '').trim();
-    if (['person', 'product', 'scene', 'script', 'frames', 'compose'].includes(savedFocus)) return savedFocus;
     return '';
   }
 
@@ -977,11 +973,46 @@
     if (state.activeTab === 'tasks') rememberActiveTab('tasks');
   }
 
+  function resetModuleDefaultView(tab) {
+    if (!DH_VALID_TABS.includes(tab)) return;
+    if (tab === 'step2') {
+      state._myAvTab = 'image';
+      try { localStorage.setItem(DH_LAST_AVATAR_TAB_KEY, 'image'); } catch {}
+    }
+    if (tab === 'tasks') {
+      state.activeTaskType = 'digital_human';
+      state.activeTaskStatus = 'pending';
+      try {
+        localStorage.setItem(DH_LAST_TASK_TYPE_KEY, state.activeTaskType);
+        localStorage.setItem(DH_LAST_TASK_STATUS_KEY, state.activeTaskStatus);
+      } catch {}
+    }
+    if (tab === 'voice-clone') {
+      window._dhSwitchVcTab?.('clone');
+    }
+    if (tab === 'product-dh') {
+      if ($('#pdhPhotoTabs')) {
+        pdh.photoTab = 'my-av';
+        if (typeof pdhSetPhotoTab === 'function') pdhSetPhotoTab('my-av');
+      }
+    }
+    if (tab === 'space-guide') {
+      state.space.copyMode = 'manual';
+      renderSpaceCopyMode();
+    }
+    if (tab === 'luxury-ad' || tab === 'material-film') {
+      state.luxuryAd.currentStep = 1;
+      state.luxuryAd.routeFocus = '';
+      syncLuxuryAdStepPanels(luxuryAdGateState());
+    }
+  }
+
   function switchTab(tab, opts = {}) {
     if (!tab) return;
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     if (tab !== state.activeTab) stopAudibleMedia({ reset: true });
     state.activeTab = tab;
+    if (opts.defaultView === true) resetModuleDefaultView(tab);
     if (opts.remember !== false) rememberActiveTab(tab, opts);
     $$('.dh-nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
     const paneTab = spacePaneForTab(tab);
@@ -9829,8 +9860,9 @@
     return Math.round(total * 10) / 10;
   }
 
-  function syncLuxuryAdDurationFromSegments(segments = state.luxuryAd.segments || [], fallbackTotal = state.luxuryAd.durationSec || 30) {
+  function syncLuxuryAdDurationFromSegments(segments = state.luxuryAd.segments || [], fallbackTotal = state.luxuryAd.durationSec || 30, { preserveTarget = false } = {}) {
     const total = luxuryAdSegmentsTotalSeconds(segments, fallbackTotal);
+    if (preserveTarget) return total;
     if (total > 0) state.luxuryAd.durationSec = total;
     const durationSelect = $('#dhLuxAdDuration');
     if (durationSelect && total > 0) {
@@ -9968,9 +10000,18 @@
       .trim();
   }
 
+  function luxuryLooksLikeScriptPlaceholder(value = '') {
+    const s = String(value || '').replace(/\s+/g, '').trim();
+    if (!s) return true;
+    return /^(?:待补充|暂无|无|未填写|未生成|TBD|N\/A|NA)$/i.test(s)
+      || /^(?:台词|旁白|字幕|广告词|文案|对白|画面|动作|目的)?待补充$/i.test(s)
+      || /(?:台词|旁白|字幕|广告词|文案|对白)(?:仍)?(?:待|需|需要)?补充/i.test(s);
+  }
+
   function luxuryLooksLikeNonAudienceLine(value = '') {
     const s = luxuryCleanAudienceLine(value);
     if (!s) return true;
+    if (luxuryLooksLikeScriptPlaceholder(s)) return true;
     return luxuryLooksLikeBriefCopy(s)
       || /(按广告需求|按广告内容|镜头提示词|模型提示词|画面生成|分镜生成|图片模型|视觉锁|执行包|QA|UI浮层|素材锁|工作流|参考图|镜头参考|主产品\s*\d+)/i.test(s);
   }
@@ -10776,7 +10817,7 @@
     const invalidated = new Set((Array.isArray(r.invalidated_shot_ids) ? r.invalidated_shot_ids : [])
       .map(x => String(x)));
     state.luxuryAd.segments = applyLuxuryShotBindings(nextSegments);
-    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, Number(r.duration_sec || r.total_duration || state.luxuryAd.durationSec || 30));
+    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, Number(r.duration_sec || r.total_duration || state.luxuryAd.durationSec || 30), { preserveTarget: true });
     state.luxuryAd.productionContract = r.production_contract || state.luxuryAd.productionContract || null;
     state.luxuryAd.revisionHistory = Array.isArray(r.revision_history)
       ? r.revision_history
@@ -11128,18 +11169,25 @@
       const dialogue = Array.isArray(seg.dialogue_lines)
         ? seg.dialogue_lines.join('\n')
         : String(seg.dialogue || seg.dialogue_text || seg.conversation || '').trim();
+      const cleanDialogue = Array.isArray(seg.dialogue_lines)
+        ? seg.dialogue_lines
+            .map(line => luxuryCleanAudienceLine(line))
+            .filter(line => !luxuryLooksLikeNonAudienceLine(line))
+            .join('\n')
+        : luxuryCleanAudienceLine(dialogue);
+      const validDialogue = luxuryLooksLikeNonAudienceLine(cleanDialogue) ? '' : cleanDialogue;
       const voice = luxuryShotNarrationText(seg);
       if (expectedPeople >= 2) {
-        const namedLines = dialogue.split(/\n+/).filter(x => /[：:]/.test(x));
+        const namedLines = validDialogue.split(/\n+/).filter(x => /[：:]/.test(x));
         const speakerNames = new Set(namedLines.map(x => x.split(/[：:]/)[0].trim()).filter(Boolean));
         speakerNames.forEach(name => scriptSpeakers.add(name));
-        if (!dialogue && !voice) errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
+        if (!validDialogue && !voice) errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
       } else if (castMode === 'single') {
-        const namedLines = dialogue.split(/\n+/).filter(x => /[：:]/.test(x));
+        const namedLines = validDialogue.split(/\n+/).filter(x => /[：:]/.test(x));
         const speakerNames = new Set(namedLines.map(x => x.split(/[：:]/)[0].trim()).filter(Boolean));
         if (speakerNames.size > 1) errors.push(`剧本镜头表第 ${n} 镜是单人模式，但对白出现了 ${speakerNames.size} 个说话人。`);
-        if (!voice && !dialogue) errors.push(`剧本镜头表第 ${n} 镜缺少“单人旁白/台词”。`);
-      } else if (!voice && !dialogue) {
+        if (!voice && !validDialogue) errors.push(`剧本镜头表第 ${n} 镜缺少“单人旁白/台词”。`);
+      } else if (!voice && !validDialogue) {
         errors.push(`剧本镜头表第 ${n} 镜缺少“台词/旁白”。`);
       }
     });
@@ -11239,6 +11287,10 @@
 
   function renderLuxuryAdScriptTable(host, segments) {
     if (!host) return;
+    if (state.luxuryAd.storyboardDetailed && Array.isArray(segments) && segments.length && !state.luxuryAd.scriptGenerating) {
+      state.luxuryAd.scriptError = '';
+      state.luxuryAd.scriptErrorDetails = null;
+    }
     const scriptError = String(state.luxuryAd.scriptError || '').trim();
     const scriptErrorHtml = scriptError
       ? `<div class="dh-demo-script-overview dh-lux-keyframe-error">
@@ -11313,6 +11365,12 @@
           const subjectType = normalizeLuxuryShotSubjectType(seg);
           const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
           const subjectHelp = luxuryShotSubjectTypeHelp(subjectType);
+          const missingLabels = [
+            !visual ? '缺画面' : '',
+            !action ? '缺动作' : '',
+            !voice ? '缺台词' : '',
+          ].filter(Boolean);
+          const rowStatus = missingLabels.length ? missingLabels.join(' / ') : (scriptLocked ? '已锁定' : '可调整');
           const deleteAttr = scriptLocked || segments.length <= 1 ? `disabled title="${escapeHtml(scriptLocked ? luxuryAdLockedStepMessage(3) : '至少保留 1 个镜头')}"` : '';
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
             <td>${i + 1}</td>
@@ -11322,7 +11380,7 @@
             <td class="dh-demo-dialogue ${voice ? '' : 'dh-lux-field-missing'}">${escapeHtml(voice || luxuryFieldPlaceholder('台词'))}</td>
             <td>${escapeHtml(purpose)}</td>
             <td>
-              <span class="dh-luxgen-status ready">${scriptLocked ? '已锁定' : '可调整'}</span>
+              <span class="dh-luxgen-status ${missingLabels.length ? 'error' : 'ready'}">${escapeHtml(rowStatus)}</span>
               <small class="dh-lux-script-subject-pill">${escapeHtml(subjectLabel)}</small>
               <select class="dh-input dh-lux-shot-type-select dh-lux-script-shot-type" data-lux-shot-subject-type="${i}" ${scriptLockAttr}>
                 ${renderLuxuryShotSubjectTypeOptions(subjectType)}
@@ -11810,6 +11868,14 @@
     state.luxuryAd.productionProjectId = project.id || state.luxuryAd.productionProjectId || '';
     if (project.production_contract) state.luxuryAd.productionContract = project.production_contract;
     if (project.segment_plan) state.luxuryAd.segmentPlan = project.segment_plan;
+    const projectHasDetailedScript = Array.isArray(project.scenes)
+      && project.scenes.length > 0
+      && !project.last_error
+      && (!!project.draft_state?.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'video_generating', 'video_ready'].includes(String(project.project_state || '')));
+    if (projectHasDetailedScript) {
+      state.luxuryAd.scriptError = '';
+      state.luxuryAd.scriptErrorDetails = null;
+    }
     if ((state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && state.luxuryAd.productionProjectId) {
       writeDigitalHumanPageState({
         tab: state.activeTab,
@@ -12083,7 +12149,7 @@
     state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
     state.luxuryAd.keyframePlanningOnly = !!draft.keyframe_planning_only;
     state.luxuryAd.segments = applyLuxuryShotBindings(Array.isArray(project.scenes) ? project.scenes : []);
-    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec);
+    syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec, { preserveTarget: true });
     state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
     state.luxuryAd.keyframeError = project.last_error || '';
@@ -12458,19 +12524,29 @@
   }
 
   async function aiRewriteLuxuryShot(index, seg = {}) {
-    const instruction = ($('#dhLuxShotAiInstruction')?.value || '').trim();
-    if (instruction.length < 4) return toast('请先写清楚希望 AI 怎么修改这一镜头', 'error');
+    const instructionInput = $('#dhLuxShotAiInstruction');
+    let instruction = (instructionInput?.value || '').trim();
+    const currentBeforeRewrite = readLuxuryShotEditorSegment(seg);
+    const currentVoice = luxuryShotDialogueText(currentBeforeRewrite, state.luxuryAd.briefInfo?.characters || [], index);
+    if (instruction.length < 4) {
+      if (!currentVoice) {
+        instruction = '补齐这一镜缺失的成片台词/旁白，保持当前画面、动作、人物和故事顺序，只让台词自然承接前后镜头。';
+        if (instructionInput) instructionInput.value = instruction;
+      } else {
+        instructionInput?.focus();
+        return toast('请先写清楚希望 AI 怎么修改这一镜头', 'error');
+      }
+    }
     const btn = $('#dhLuxShotAiRewrite');
     const old = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = 'AI 修改中…'; }
     try {
-      const current = readLuxuryShotEditorSegment(seg);
       const r = await api('/api/dh/luxury-ad/shot-rewrite', {
         method: 'POST',
         body: {
           instruction,
           brief: state.luxuryAd.content || $('#dhLuxAdText')?.value || '',
-          segment: current,
+          segment: currentBeforeRewrite,
           index,
           total: state.luxuryAd.segments?.length || 1,
           duration_sec: state.luxuryAd.durationSec || 30,
@@ -13092,11 +13168,14 @@
       ok = true;
     } catch (err) {
       if (detail) {
+        const hasUsableDetailedScript = !!state.luxuryAd.storyboardDetailed
+          && Array.isArray(state.luxuryAd.segments)
+          && state.luxuryAd.segments.length > 0;
         state.luxuryAd.sceneGenerating = false;
         state.luxuryAd.scriptGenerating = false;
         state.luxuryAd.workflowProgress = null;
-        state.luxuryAd.scriptError = '剧本生成失败';
-        state.luxuryAd.scriptErrorDetails = err.data || err.details || null;
+        state.luxuryAd.scriptError = hasUsableDetailedScript ? '' : '剧本生成失败';
+        state.luxuryAd.scriptErrorDetails = hasUsableDetailedScript ? null : (err.data || err.details || null);
         renderLuxuryAdStoryboard();
       }
       toast(detail ? '剧情广告剧本生成失败' : '剧情广告场景配置生成失败', 'error');
@@ -16179,7 +16258,7 @@
     if (navItem?.dataset.tab) {
       if (SPACE_WORKFLOW_TABS.has(navItem.dataset.tab)) startNewSpaceGuideSession(navItem.dataset.tab);
       if (navItem.dataset.tab === 'step2') state.avatarPickReturn = '';
-      switchTab(navItem.dataset.tab);
+      switchTab(navItem.dataset.tab, { defaultView: true });
       if (navItem.dataset.s1Shortcut === 'product') {
         setS1AvatarType('product');
         toast('已切到「生成形象」里的商品数字人形象模块', 'success');

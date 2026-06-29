@@ -19,8 +19,8 @@
         tab = tabs.includes(urlTab) ? urlTab : (savedTab || (tabs.includes(legacyTab) ? legacyTab : 'step1'));
         const luxProject = params.get('luxury_project') || saved.luxury_project || saved.luxury_project_id || '';
         if (!urlTab && luxProject && (saved.tab === 'luxury-ad' || saved.tab === 'material-film')) tab = saved.tab;
-        const luxStep = Number(params.get('lux_step') || saved.lux_step || 0) || 0;
-        const luxFocus = params.get('lux_focus') || saved.lux_focus || '';
+        const luxStep = Number(params.get('lux_step') || 0) || 0;
+        const luxFocus = params.get('lux_focus') || '';
         if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
           document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
         }
@@ -2014,6 +2014,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260629-script-auto-regenerate"></script>
+  <script src="/js/digital-human.js?v=20260629-shot-ai-missing-copy"></script>
 </body>
 </html>
