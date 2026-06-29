@@ -9925,8 +9925,29 @@
     return { visual, action };
   }
 
+  function luxuryShotRawActionText(seg = {}) {
+    // 中文注释：动作字段在不同 agent / 保存版本里可能有别名；这里只读取已有字段，不补写新剧情。
+    const candidates = [
+      seg.action,
+      seg.visual_action,
+      seg.character_action,
+      seg.characters_action,
+      seg.body_action,
+      seg.performance,
+      seg.operation,
+      seg.gesture,
+      seg.motion_action,
+      seg.action_prompt,
+      seg.full_story_extract?.action,
+      seg.story_extract?.action,
+      seg.source_beat?.solution_step,
+      seg.source_beat?.character_goal,
+    ];
+    return String(candidates.find(value => String(value || '').trim()) || '').replace(/\s+/g, ' ').trim();
+  }
+
   function luxuryRecoveredVisualFromAction(seg = {}) {
-    const raw = String(seg.action || seg.visual_action || seg.characters_action || seg.action_prompt || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryShotRawActionText(seg);
     const split = luxurySplitMixedVisualAction(raw);
     return split.visual ? luxuryCompactReviewText(split.visual, 220) : '';
   }
@@ -10021,7 +10042,7 @@
   }
 
   function luxuryShotActionText(seg = {}) {
-    const raw = String(seg.action || seg.visual_action || seg.characters_action || seg.action_prompt || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryShotRawActionText(seg);
     const productOnly = luxuryIsMaterialProductShot(seg) && !luxuryCoreShotRequiresPerson(seg);
     if (raw && !luxuryLooksLikeBriefNoise(raw)) {
       const split = luxurySplitMixedVisualAction(raw);
@@ -10124,7 +10145,7 @@
     ].filter(Boolean).join(' ');
     if (/真人|人物出镜|同一人物|真人讲解者|讲解员|讲解者|导购|顾问|主持人|模特|入场|走入|走进|带观众|手势|指向|触摸|person|human|presenter|host|model|woman|man|girl|boy|walks? in|walking into|enters? the frame|standing beside|pointing at|gesture/i.test(text)) return true;
     if (luxuryIsMaterialProductShot(seg)) return false;
-    return /人物|手部|手势|指向|触摸|走入|走进|入场|表情|person|human|hand|gesture|point|touch|walk/i.test(String(seg.action || seg.visual_action || ''));
+    return /人物|手部|手势|指向|触摸|走入|走进|入场|表情|person|human|hand|gesture|point|touch|walk/i.test(luxuryShotRawActionText(seg));
   }
 
   function luxuryAdProductionGate(segments = [], { finalKeyframes = false } = {}) {
@@ -12387,8 +12408,8 @@
       ad_copy: ($('#dhLuxShotVoice')?.value || seg.ad_copy || '').trim(),
       subtitle: ($('#dhLuxShotVoice')?.value || seg.subtitle || '').trim(),
       text: ($('#dhLuxShotVoice')?.value || seg.text || '').trim(),
-      action: ($('#dhLuxShotAction')?.value || seg.action || seg.visual_action || '').trim(),
-      visual_action: ($('#dhLuxShotAction')?.value || seg.visual_action || seg.action || '').trim(),
+      action: ($('#dhLuxShotAction')?.value || luxuryShotRawActionText(seg)).trim(),
+      visual_action: ($('#dhLuxShotAction')?.value || luxuryShotRawActionText(seg)).trim(),
       emotion: ($('#dhLuxShotEmotion')?.value || seg.emotion || seg.mood || '').trim(),
       mood: ($('#dhLuxShotEmotion')?.value || seg.mood || seg.emotion || '').trim(),
       sfx_audio: ($('#dhLuxShotAudio')?.value || seg.sfx_audio || seg.sfx || seg.audio || '').trim(),
@@ -12416,7 +12437,7 @@
     set('#dhLuxShotObjective', seg.objective || seg.intent || seg.purpose);
     set('#dhLuxShotVisual', seg.content_prompt || seg.scene_content || seg.visual || seg.display_visual);
     set('#dhLuxShotVoice', seg.voiceover || seg.narration || seg.ad_copy || seg.subtitle || seg.text);
-    set('#dhLuxShotAction', seg.action || seg.visual_action || seg.characters_action);
+    set('#dhLuxShotAction', luxuryShotRawActionText(seg));
     set('#dhLuxShotEmotion', seg.emotion || seg.mood || seg.atmosphere || seg.expression);
     set('#dhLuxShotAudio', seg.sfx_audio || seg.sfx || seg.audio || seg.sound);
     set('#dhLuxShotMotion', seg.motion || seg.camera_label || seg.camera);

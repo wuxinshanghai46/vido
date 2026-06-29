@@ -67,6 +67,27 @@ function _jsonClone(value, fallback = null) {
   }
 }
 
+function _luxuryRawSceneActionText(scene = {}) {
+  // 中文注释：动作字段可能来自不同 agent、旧保存数据或用户编辑；这里只读取已有动作语义字段，不生成兜底剧情。
+  const candidates = [
+    scene.action,
+    scene.visual_action,
+    scene.character_action,
+    scene.characters_action,
+    scene.body_action,
+    scene.performance,
+    scene.operation,
+    scene.gesture,
+    scene.motion_action,
+    scene.action_prompt,
+    scene.full_story_extract?.action,
+    scene.story_extract?.action,
+    scene.source_beat?.solution_step,
+    scene.source_beat?.character_goal,
+  ];
+  return String(candidates.find(value => String(value || '').trim()) || '').replace(/\s+/g, ' ').trim();
+}
+
 function _readLuxuryAdProjectStore() {
   const dbConfig = sqliteConfig.getDbConfig();
   if (dbConfig.enabled && dbConfig.readPrimary) {
@@ -411,7 +432,7 @@ function _compactLuxuryAdProjectScene(scene = {}, index = 0) {
     shot_type: _projectText(scene.shot_type || scene.shot_size || '', 120),
     camera: _projectText(scene.camera || scene.shot_angle || '', 700),
     visual: _projectText(scene.visual || scene.scene_content || scene.content_prompt || '', 900),
-    action: _projectText(scene.action || scene.visual_action || scene.character_action || '', 800),
+    action: _projectText(_luxuryRawSceneActionText(scene), 800),
     voiceover: _projectText(scene.voiceover || scene.narration || scene.dialogue || scene.text || '', 500),
     emotion: _projectText(scene.emotion || scene.mood || '', 260),
     sfx_audio: _projectText(scene.sfx_audio || scene.audio || '', 260),
@@ -3519,7 +3540,7 @@ function _luxuryRobotAssistantShotContract(scene = {}, productSubject = '', { al
   const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || 'robot assistant') || 'robot assistant';
   const guard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit });
   const narration = String(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '').replace(/\s+/g, ' ').trim();
-  const action = String(scene.action || scene.visual_action || scene.character_action || scene.objective || '').replace(/\s+/g, ' ').trim();
+  const action = String(_luxuryRawSceneActionText(scene) || scene.objective || '').replace(/\s+/g, ' ').trim();
   const carrier = _luxuryWorkflowCarrierFromScene(scene, subject, { allowSceneExplicit });
   return {
     visual: `the confirmed ${subject} robot/assistant in a real task scene, helping a person or environment through the current story action; show its own product interface/status surface or result feedback when the shot needs product proof; carrier: ${carrier}.`,
@@ -3639,7 +3660,7 @@ function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = 
   if (_luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '', scene)) {
     const contract = _luxuryRobotAssistantShotContract(scene, productSubject || scene.product_subject || '', { allowSceneExplicit });
     const visualRaw = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
-    const actionRaw = scene.action || scene.visual_action || scene.character_action || '';
+    const actionRaw = _luxuryRawSceneActionText(scene);
     const visual = _luxuryCleanRobotAssistantDriftText(visualRaw || contract.visual, { productSubject, brief: '', scene, allowSceneExplicit });
     const action = _luxuryCleanRobotAssistantDriftText(actionRaw || contract.action, { productSubject, brief: '', scene, allowSceneExplicit });
     const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
@@ -3667,7 +3688,7 @@ function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = 
   if (!_luxuryIsSoftwareWorkflowSubject(productSubject || scene.product_subject || '', scene)) return scene;
   const contract = _luxurySoftwareWorkflowShotContract(scene, productSubject || scene.product_subject || '');
   const visualRaw = scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || '';
-  const actionRaw = scene.action || scene.visual_action || scene.character_action || '';
+  const actionRaw = _luxuryRawSceneActionText(scene);
   const shouldReplaceVisual = !String(visualRaw || '').trim() || _luxuryLooksLikeGenericProductReveal(visualRaw);
   const shouldReplaceAction = !String(actionRaw || '').trim() || _luxuryLooksLikeGenericProductReveal(actionRaw);
   const visual = shouldReplaceVisual ? contract.visual : visualRaw;
@@ -4338,7 +4359,7 @@ function _repairLuxuryHumanStoryKeyframeScene(scene = {}, index = 0, total = 6, 
       'Reject missing presenter, wrong industry scene, subject-only catalogue output, generic stock background, CGI/3D render/AI illustration looks, and unrelated products or props.',
     ].join(' ');
   const confirmedVisual = _luxuryStrictText(scene.visual_prompt || scene.content_prompt || scene.scene_content || scene.visual || '', 620);
-  const confirmedAction = _luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene);
+  const confirmedAction = _luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene);
   const confirmedCamera = _luxuryStrictText(scene.camera || scene.shot_angle || scene.camera_label || '', 280);
   const legacyMaterialPollution = softwareWorkflow
     && /architectural materials|building finishing|premium material showroom|sample[- ]?wall|wall panels|facade|cladding|finish texture|material display|材料展厅|建材|墙板|外立面/i.test(confirmedVisual);
@@ -16767,7 +16788,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const voiceover = _cleanLuxuryAdCopy(rawVoice, fallbackOpts);
         const visualAction = _coerceLuxuryReviewVisualAction(
           scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || scene.visual_prompt || scene.material_need || scene.required_material || '',
-          scene.action || scene.visual_action || scene.character_action || scene.body_action || '',
+          _luxuryRawSceneActionText(scene),
           fallbackOpts,
         );
         let visual = visualAction.visual;
@@ -18336,7 +18357,7 @@ ${JSON.stringify(scenes, null, 2)}
           x.dialogue_lines = x.dialogue_lines.map(line => _sanitizeLuxuryVisibleText(line, productSubject)).filter(Boolean);
         }
         const visualRaw = String(x.content_prompt || x.scene_content || x.visual || x.display_visual || x.visual_prompt || '').trim();
-        const actionRaw = String(x.action || x.visual_action || x.character_action || x.body_action || '').trim();
+        const actionRaw = String(_luxuryRawSceneActionText(x)).trim();
         const objectiveRaw = String(
           x.objective
           || x.intent
@@ -18386,7 +18407,7 @@ ${JSON.stringify(scenes, null, 2)}
         const fallbackOpts = { role, productSubject, index: i, total: roleCount, brief, continuousHuman, disableGeneratedScriptFallbacks: isDetailedMode };
         const rawCopyDirection = luxurySceneSpokenText(x).replace(/\s+/g, ' ').trim();
         const rawMaterialNeed = String(x.material_need || x.required_material || x.material_requirement || x.content_prompt || x.scene_content || x.visual || x.scene || x.display_visual || '').replace(/\s+/g, ' ').trim();
-        let action = String(x.action || x.visual_action || x.character_action || x.body_action || '').replace(/\s+/g, ' ').trim()
+        let action = String(_luxuryRawSceneActionText(x)).replace(/\s+/g, ' ').trim()
           || (isDetailedMode ? '' : _fallbackLuxuryAdAction({ role, productSubject }));
         const emotion = String(x.emotion || x.mood || x.atmosphere || x.feeling || '').replace(/\s+/g, ' ').trim()
           || _fallbackLuxuryAdEmotion({ role });
@@ -19054,7 +19075,7 @@ function _normalizeProvidedLuxuryStoryboardSegments(segments = [], {
     const voiceover = _cleanLuxuryAdCopy(raw.narration || raw.voiceover || raw.ad_copy || raw.text || '', fallbackOpts);
     const normalizedVisualAction = _coerceLuxuryReviewVisualAction(
       raw.content_prompt || raw.scene_content || raw.visual || raw.scene || '',
-      raw.action || raw.visual_action || '',
+      _luxuryRawSceneActionText(raw),
       fallbackOpts,
     );
     let visual = normalizedVisualAction.visual;
@@ -20383,7 +20404,7 @@ async function _enrichLuxuryScenesWithFullStoryExtract(req, scenes = [], {
     duration: Number(scene.duration || scene.duration_sec || 0) || 0,
     voiceover: _luxuryStrictText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 220),
     visual: _luxuryStrictText(scene.visual || scene.visual_prompt || scene.content_prompt || scene.scene_content || '', 260),
-    action: _luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene),
+    action: _luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene),
     segment_id: _luxuryStrictText(scene.segment_id || '', 80),
     segment_name: _luxuryStrictText(scene.segment_name || '', 80),
   }));
@@ -23162,7 +23183,7 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
     80,
   ) || 'creative workflow';
   const narration = _luxuryDeyunaiAuditNeutralText(scene.voiceover || scene.narration || scene.text || '', 140);
-  const action = _luxuryDeyunaiAuditNeutralText(scene.action || scene.visual_action || scene.character_action || '', 150);
+  const action = _luxuryDeyunaiAuditNeutralText(_luxuryRawSceneActionText(scene), 150);
   const emotion = _luxuryDeyunaiAuditNeutralText(scene.emotion || scene.mood || scene.emotional_change || scene.objective || '', 140);
   const apiIntegrationShot = _luxuryIsApiIntegrationWorkflowShot(scene, productSubject || scene.product_subject || subject);
   const carrier = _luxuryDeyunaiAuditNeutralText(_luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject, { allowSceneExplicit: true }), 180);
@@ -23216,7 +23237,7 @@ function _luxuryGptImage2EditPrompt({
     _luxuryCleanRobotAssistantDriftText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt || prompt, driftContext),
     260,
   );
-  const action = _compactLuxuryKeyframeText(_luxuryCleanRobotAssistantDriftText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), driftContext), 180);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanRobotAssistantDriftText(_luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene), driftContext), 180);
   const expressionDirection = _luxuryShotExpressionDirection(scene, null, 320);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
@@ -23536,7 +23557,7 @@ function _buildLuxuryImageModelStrictPrompt({
     _luxuryCleanRobotAssistantDriftText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt, driftContext),
     260,
   );
-  const action = _compactLuxuryKeyframeText(_luxuryCleanRobotAssistantDriftText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), driftContext), 220);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanRobotAssistantDriftText(_luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene), driftContext), 220);
   const expressionDirection = _luxuryShotExpressionDirection(scene, null, 360);
   const displayProductSubject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject);
   const camera = _compactLuxuryKeyframeText(
@@ -24661,7 +24682,7 @@ function _buildLuxuryKeyframePrompt({
     scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt,
     520,
   );
-  const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(scene.action || scene.visual_action || scene.character_action || '', scene), 260);
+  const action = _compactLuxuryKeyframeText(_luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene), 260);
   const expressionDirection = _luxuryShotExpressionDirection(scene, null, 360);
   const camera = _compactLuxuryKeyframeText(
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
