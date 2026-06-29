@@ -88,6 +88,16 @@ function _luxuryRawSceneActionText(scene = {}) {
   return String(candidates.find(value => String(value || '').trim()) || '').replace(/\s+/g, ' ').trim();
 }
 
+function _luxuryNormalizeShotDuration(value, fallback = 0) {
+  // 中文注释：时长只根据模型/用户目标计算，不按固定镜头公式硬限制每镜秒数。
+  const seconds = Number(value);
+  const fallbackSeconds = Number(fallback);
+  const picked = Number.isFinite(seconds) && seconds > 0
+    ? seconds
+    : (Number.isFinite(fallbackSeconds) && fallbackSeconds > 0 ? fallbackSeconds : 1);
+  return Math.max(0.5, Math.min(120, Math.round(picked * 10) / 10));
+}
+
 function _readLuxuryAdProjectStore() {
   const dbConfig = sqliteConfig.getDbConfig();
   if (dbConfig.enabled && dbConfig.readPrimary) {
@@ -16881,13 +16891,16 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           fallbackOpts,
         );
         const voiceover = _cleanLuxuryAdCopy(outline.copy_direction || outline.voiceover || outline.narration || '', fallbackOpts);
-        const action = _cleanLuxuryAdAction(outline.action || outline.visual_action || '', fallbackOpts);
+        const action = _cleanLuxuryAdAction(_luxuryRawSceneActionText(outline), fallbackOpts);
         list.push({
           index: i,
           title: String(outline.title || `镜头 ${i + 1}`).slice(0, 16),
           role,
           story_stage: _normalizeLuxurySceneStage(outline.story_stage, role, i, total),
-          duration: Math.max(2, Math.min(4, Math.round((Number(outline.duration) || targetDuration / wantedShots) * 10) / 10)),
+          duration: _luxuryNormalizeShotDuration(
+            outline.duration ?? outline.duration_sec ?? outline.seconds,
+            targetDuration / Math.max(1, targetShotCount),
+          ),
           objective: _cleanLuxuryAdVisual(outline.objective || outline.purpose || '', fallbackOpts).replace(/[。；;，,]\s*$/g, ''),
           purpose: _luxuryScriptPurposeLabel(role, i, total, outline.purpose || ''),
           script_purpose: _luxuryScriptPurposeLabel(role, i, total, outline.purpose || ''),
@@ -18397,10 +18410,17 @@ ${JSON.stringify(scenes, null, 2)}
         throw new Error(`双人剧本没有体现至少两个人名的对话，当前说话人 ${scriptSpeakers.size} 个。`);
       }
     }
-    scenes = (Array.isArray(scenes) ? scenes : [])
-      .filter(x => x && (x.voiceover || x.visual || x.visual_prompt || x.objective || x.material_usage || x.material_need || x.title || x.content_prompt || x.scene_content))
+    const finalSceneList = (Array.isArray(scenes) ? scenes : [])
+      .filter(x => x && (x.voiceover || x.visual || x.visual_prompt || x.objective || x.material_usage || x.material_need || x.title || x.content_prompt || x.scene_content));
+    const finalSceneCount = Math.max(1, finalSceneList.length || 1);
+    const finalRawDurationTotal = finalSceneList.reduce((sum, scene) => {
+      const seconds = Number(scene.duration ?? scene.duration_sec ?? scene.seconds ?? 0);
+      return sum + (Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+    }, 0);
+    const finalDurationScale = finalRawDurationTotal > 0 && targetDuration > 0 ? targetDuration / finalRawDurationTotal : 1;
+    scenes = finalSceneList
       .map((x, i) => {
-        const roleCount = Math.max(1, Array.isArray(scenes) ? scenes.length : 1);
+        const roleCount = finalSceneCount;
         const role = isDetailedMode
           ? _luxuryStoryRoleAt(i, roleCount, x.role || _inferSpaceAdRole([x.title, x.voiceover, x.visual].filter(Boolean).join(' '), i, roleCount))
           : _luxuryRoleAt(i, roleCount, x.role || _inferSpaceAdRole([x.title, x.voiceover, x.visual].filter(Boolean).join(' '), i, roleCount));
@@ -18473,6 +18493,11 @@ ${JSON.stringify(scenes, null, 2)}
         const rawDialogue = Array.isArray(x.dialogue_lines)
           ? x.dialogue_lines.join('\n')
           : String(x.dialogue || x.dialogue_text || x.conversation || '').trim();
+        const rawDuration = Number(x.duration ?? x.duration_sec ?? x.seconds ?? 0);
+        const normalizedDuration = _luxuryNormalizeShotDuration(
+          Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration * finalDurationScale : 0,
+          targetDuration / finalSceneCount,
+        );
         return {
           index: i,
           title: String(x.title || `镜头 ${i + 1}`).slice(0, 16),
@@ -18487,7 +18512,7 @@ ${JSON.stringify(scenes, null, 2)}
           required_material: isDetailedMode ? String(x.required_material || x.material_need || x.material_requirement || '').trim() : visual,
           material_requirement: isDetailedMode ? String(x.material_requirement || x.material_need || x.required_material || '').trim() : visual,
           copy_direction: voiceover,
-          duration: Math.max(2, Math.min(isDetailedMode ? 4 : 8, Math.round((Number(x.duration) || targetDuration / wantedShots) * 10) / 10)),
+          duration: normalizedDuration,
           material_usage: materialUsage,
           content_prompt: visual,
           action,
