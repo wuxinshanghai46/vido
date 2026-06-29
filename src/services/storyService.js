@@ -52,6 +52,7 @@ function _guessKBScene(sp) {
 const PREFERRED_TEXT_PROVIDERS = [
   /^deepseek\b/i,
   /^aiapi\b/i,
+  /^apismile\b/i,
   /^deyunai\b|漫路/i,
   /^openai\b/i,
   /^anthropic\b|claude/i,
@@ -78,6 +79,8 @@ function _pickPreferredStoryModel(p) {
     /^gemini-2\.5-flash\b/i,                 // 当前漫路可用，速度和结构化输出更均衡
     /^claude.*sonnet.*4-5/i,                 // 漫路海外 Claude Messages 文档示例模型
     /^claude.*sonnet.*4-6\b/i,               // 当前漫路可用，复杂文案兜底
+    /^gpt-4\.1\b/i,
+    /^gpt-5(?:[.\-\s]|$)/i,
     /^gpt-4o\b/i,                            // OpenAI 旗舰
     /^gpt-4o-mini\b/i,                       // 漫路当前可能禁用，降级候选
     /^gemini-2\.5-pro\b/i,                   // Gemini Pro

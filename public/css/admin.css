@@ -3823,6 +3823,224 @@ body {
   margin-left: 8px;
 }
 
+/* Model pipeline clarity: readable priority cards and visible vendor routing */
+.vue-pipeline-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) minmax(220px, 1.6fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.pms-summary-card {
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pms-summary-card span {
+  width: 100%;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pms-summary-card b {
+  color: var(--text);
+  font-size: 24px;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.pms-summary-card em {
+  color: var(--text3);
+  font-size: 12px;
+  font-style: normal;
+}
+.pms-summary-card.highlight {
+  border-color: rgba(0, 113, 227, 0.35);
+  background: linear-gradient(135deg, rgba(0,113,227,0.10), var(--bg));
+}
+.pms-summary-card.highlight b,
+.pms-summary-card.highlight span {
+  color: var(--accent);
+}
+.pms-summary-hint {
+  min-height: 64px;
+  padding: 12px 14px;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+}
+.pms-flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
+  gap: 14px 32px;
+  overflow: visible;
+  padding: 10px 2px 4px;
+}
+.pms-flow-stage {
+  width: auto;
+  min-width: 0;
+  min-height: 218px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  padding: 16px;
+}
+.pms-flow-stage:hover {
+  border-color: rgba(0,113,227,0.42);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+}
+.pms-flow-stage.configured {
+  border-color: var(--border);
+  background: var(--bg);
+}
+.pms-flow-stage.pms-stage-apismile {
+  border-color: rgba(0,113,227,0.45);
+  background: linear-gradient(180deg, rgba(0,113,227,0.08), var(--bg) 45%);
+}
+.pms-flow-stage.pms-stage-apismile::before {
+  content: "ApiSmile 首选";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0,113,227,0.12);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+.pms-stage-num {
+  top: 12px;
+  left: 14px;
+  background: var(--accent);
+  color: #fff;
+}
+.pms-stage-head {
+  padding-top: 20px;
+  min-height: 68px;
+}
+.pms-stage-title {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.pms-stage-type {
+  margin: 0;
+  padding: 3px 7px;
+  background: var(--bg2);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.pms-stage-models {
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pms-priority-main {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.pms-priority-label {
+  color: var(--text3);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .4px;
+  margin-bottom: 8px;
+}
+.pms-provider-line {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.pms-provider-badge,
+.pms-default-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+}
+.pms-provider-badge.primary {
+  border-color: rgba(0,113,227,0.35);
+  background: rgba(0,113,227,0.12);
+  color: var(--accent);
+}
+.pms-default-badge {
+  color: var(--text3);
+  font-weight: 700;
+}
+.pms-model-name {
+  color: var(--text);
+  font-weight: 800;
+  word-break: break-word;
+}
+.pms-backup-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pms-backup-row {
+  display: grid;
+  grid-template-columns: 28px minmax(70px, .7fr) minmax(80px, 1fr);
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--text3);
+  font-size: 11px;
+}
+.pms-backup-row b {
+  color: var(--text2);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pms-backup-row em {
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pms-stage-foot {
+  color: var(--text3);
+  border-top: 1px dashed var(--border);
+}
+.pms-stage-edit {
+  color: var(--accent);
+}
+.pms-flow-arrow {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .vue-pipeline-summary {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+  .pms-summary-hint {
+    grid-column: 1 / -1;
+  }
+}
+
 .api-account-modal {
   width: min(820px, 92vw);
 }

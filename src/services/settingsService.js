@@ -221,6 +221,21 @@ const PROVIDER_PRESETS = {
     // ——— 音乐生成 ———
     { id: 'mxapi-suno',         name: 'Suno AI（音乐生成·续写·翻唱）',     type: 'music', use: 'music' },
   ] },
+  apismile: { name: 'ApiSmile 聚合平台', api_url: 'https://api.apismile.ai/v1', defaultModels: [
+    { id: 'gpt-5.5', name: 'GPT-5.5', type: 'chat', use: 'story' },
+    { id: 'gpt-4.1', name: 'GPT-4.1', type: 'chat', use: 'story' },
+    { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', type: 'chat', use: 'story' },
+    { id: 'gpt-5', name: 'GPT-5', type: 'chat', use: 'story' },
+    { id: 'gpt-5.2', name: 'GPT-5.2', type: 'chat', use: 'story' },
+    { id: 'gpt-5-chat-latest', name: 'GPT-5 Chat Latest', type: 'chat', use: 'story' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'story' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: 'chat', use: 'story' },
+    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: 'chat', use: 'story' },
+    { id: 'deepseek-V3.2-standard', name: 'DeepSeek V3.2 Standard', type: 'chat', use: 'story' },
+    { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image' },
+    { id: 'gpt-image-1', name: 'GPT Image 1', type: 'image', use: 'image' },
+  ] },
   custom:      { name: '',             api_url: '',                                              defaultModels: [] },
 };
 
@@ -258,6 +273,7 @@ const ENV_SEED_MAP = [
   { envKey: 'SYNTHESIA_API_KEY',  presetId: 'synthesia'   },
   { envKey: 'NANOBANANA_API_KEY', presetId: 'nanobanana' },
   { envKey: 'MXAPI_API_KEY',     presetId: 'mxapi'      },
+  { envKey: 'APISMILE_API_KEY',  presetId: 'apismile'   },
   { envKey: 'DEYUNAI_API_KEY',   presetId: 'deyunai'    },
 ];
 

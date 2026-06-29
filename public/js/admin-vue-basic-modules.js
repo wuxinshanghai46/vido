@@ -367,6 +367,18 @@
           const config = this.data?.config || {};
           const defaults = this.data?.defaults || {};
           return this.groups.flatMap(group => group.stages).filter(stage => (config[stage.id] || []).length || (defaults[stage.id] || []).length).length;
+        },
+        flatStages() {
+          return this.groups.flatMap(group => group.stages);
+        },
+        apismileFirstCount() {
+          return this.flatStages.filter(stage => this.firstModel(stage)?.provider_id === 'apismile').length;
+        },
+        gpt55FirstCount() {
+          return this.flatStages.filter(stage => this.firstModel(stage)?.model_id === 'gpt-5.5').length;
+        },
+        image2FirstCount() {
+          return this.flatStages.filter(stage => this.firstModel(stage)?.model_id === 'gpt-image-2').length;
         }
       },
       methods: {
@@ -389,6 +401,34 @@
         firstModel(stage) {
           return this.stageModels(stage).find(model => model.enabled) || null;
         },
+        enabledModels(stage) {
+          return this.stageModels(stage).filter(model => model.enabled);
+        },
+        backupModels(stage) {
+          return this.enabledModels(stage).slice(1, 4);
+        },
+        typeLabel(type) {
+          return {
+            story: '文本',
+            image: '图像',
+            video: '视频',
+            tts: '配音',
+            avatar: '数字人',
+            vlm: '视觉'
+          }[type] || type;
+        },
+        stageCardClass(stage) {
+          const first = this.firstModel(stage);
+          return {
+            configured: !!first,
+            'pms-stage-apismile': first?.provider_id === 'apismile',
+            'pms-stage-default': !!first?._isDefault
+          };
+        },
+        shortText(value, max = 28) {
+          const text = String(value || '');
+          return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+        },
         modelMeta(stage, model) {
           if (!model) return null;
           return (this.data?.available?.[stage.type] || []).find(item => item.provider_id === model.provider_id && item.model_id === model.model_id);
@@ -400,6 +440,10 @@
         providerName(stage, model) {
           const meta = this.modelMeta(stage, model);
           return (model?._isDefault ? '系统默认 · ' : '') + (meta?.provider_name || model?.provider_id || '-');
+        },
+        providerLabel(stage, model) {
+          const meta = this.modelMeta(stage, model);
+          return meta?.provider_name || model?.provider_id || '-';
         },
         async openStage(stage) {
           if (typeof legacyLoadModelPipeline === 'function') await legacyLoadModelPipeline();
@@ -414,36 +458,68 @@
             <button class="btn-sm" @click="refresh(true)" :disabled="loading">{{ loading ? '刷新中...' : '刷新' }}</button>
           </div>
           <div class="vue-pipeline-summary">
-            可路由模型环节：已配置 <b>{{ configuredStages }}</b> / {{ totalStages }}
-            <span>点击任一环节卡片，继续使用现有弹窗配置模型和优先级</span>
+            <div class="pms-summary-card">
+              <span>已配置环节</span>
+              <b>{{ configuredStages }}</b>
+              <em>/ {{ totalStages }}</em>
+            </div>
+            <div class="pms-summary-card highlight">
+              <span>ApiSmile 首选</span>
+              <b>{{ apismileFirstCount }}</b>
+              <em>个环节</em>
+            </div>
+            <div class="pms-summary-card">
+              <span>GPT-5.5 首选</span>
+              <b>{{ gpt55FirstCount }}</b>
+              <em>个环节</em>
+            </div>
+            <div class="pms-summary-card">
+              <span>Image2 首选</span>
+              <b>{{ image2FirstCount }}</b>
+              <em>个环节</em>
+            </div>
+            <div class="pms-summary-hint">点击任一环节卡片编辑模型和优先级</div>
           </div>
           <div v-if="!data" class="kb-empty">{{ loading ? '加载中...' : '暂无配置' }}</div>
           <div v-for="group in groups" :key="group.name" class="vue-pipeline-group">
             <div class="vue-pipeline-group-title">{{ group.name }} <span>{{ group.stages.length }} 个环节</span></div>
             <div class="pms-flow">
               <template v-for="(stage, index) in group.stages" :key="stage.id">
-                <div class="pms-flow-stage configured" @click="openStage(stage)">
+                <div class="pms-flow-stage" :class="stageCardClass(stage)" @click="openStage(stage)">
                   <div class="pms-stage-num">#{{ index + 1 }}</div>
-                  <div class="pms-stage-title">{{ stage.name }}</div>
-                  <div class="pms-stage-type">{{ stage.type }}</div>
+                  <div class="pms-stage-head">
+                    <div class="pms-stage-title">{{ stage.name }}</div>
+                    <div class="pms-stage-type">{{ typeLabel(stage.type) }}</div>
+                  </div>
                   <div class="pms-stage-models">
                     <template v-if="firstModel(stage)">
-                      <div class="first">{{ modelName(stage, firstModel(stage)) }}</div>
-                      <div style="font-size:10px;color:var(--text3);margin-top:2px">{{ providerName(stage, firstModel(stage)) }}</div>
-                      <div v-if="stageModels(stage).filter(m=>m.enabled).length > 1" style="font-size:10px;color:var(--text3);margin-top:2px">+{{ stageModels(stage).filter(m=>m.enabled).length - 1 }} 备用</div>
+                      <div class="pms-priority-main">
+                        <div class="pms-priority-label">首选</div>
+                        <div class="pms-provider-line">
+                          <span class="pms-provider-badge" :class="{primary:firstModel(stage).provider_id === 'apismile'}">{{ providerLabel(stage, firstModel(stage)) }}</span>
+                          <span v-if="firstModel(stage)._isDefault" class="pms-default-badge">默认</span>
+                        </div>
+                        <div class="pms-model-name" :title="modelName(stage, firstModel(stage))">{{ shortText(modelName(stage, firstModel(stage)), 34) }}</div>
+                      </div>
+                      <div v-if="backupModels(stage).length" class="pms-backup-list">
+                        <div v-for="(model, backupIndex) in backupModels(stage)" :key="model.provider_id + '/' + model.model_id" class="pms-backup-row">
+                          <span>#{{ backupIndex + 2 }}</span>
+                          <b>{{ providerLabel(stage, model) }}</b>
+                          <em :title="modelName(stage, model)">{{ shortText(modelName(stage, model), 24) }}</em>
+                        </div>
+                      </div>
                     </template>
                     <div v-else class="empty">未配置</div>
                   </div>
-                  <div class="pms-stage-foot"><span>{{ stageModels(stage).length }} 个模型</span><span class="pms-stage-edit">编辑 →</span></div>
+                  <div class="pms-stage-foot"><span>启用 {{ enabledModels(stage).length }} / 共 {{ stageModels(stage).length }}</span><span class="pms-stage-edit">编辑 -></span></div>
                 </div>
-                <div v-if="index < group.stages.length - 1" class="pms-flow-arrow">→</div>
+                <div v-if="index < group.stages.length - 1" class="pms-flow-arrow">-></div>
               </template>
             </div>
           </div>
         </section>`
     }).mount(el);
   }
-
   function mountAll() {
     mountDashboard();
     mountCredits();

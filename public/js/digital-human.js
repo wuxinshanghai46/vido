@@ -208,6 +208,7 @@
       productionProjectId: '',
       productionProject: null,
       storyboardDetailed: false,
+      scriptEditState: null,
       segments: [],
       keyframes: [],
       storyboardSheets: [],
@@ -9706,6 +9707,7 @@
         reference_mentions: ['@主商品', luxuryAdReferenceLabel(refIndex)],
         user_edited: true,
       };
+      markLuxuryAdScriptEdited('shot_reference_upload', { affectedIndex: targetShot, clearFrames: false });
     }
     syncLuxuryAdUploadFlags();
     if (targetShot !== null && Array.isArray(state.luxuryAd.keyframes)) state.luxuryAd.keyframes[targetShot] = {};
@@ -10541,6 +10543,38 @@
     return '主商品图、产品应用图、品牌图或这一镜需要出现的场景参考';
   }
 
+  function markLuxuryAdScriptEdited(reason = 'manual_edit', { affectedIndex = null, clearFrames = true } = {}) {
+    const now = new Date().toISOString();
+    const affected = Number.isFinite(Number(affectedIndex)) && Number(affectedIndex) >= 0 ? Number(affectedIndex) : null;
+    state.luxuryAd.scriptEditState = {
+      edited: true,
+      reason,
+      affected_index: affected,
+      updated_at: now,
+      // 中文说明：用户修改后的剧本表是后续提示词、分镜图、视频和配音的唯一来源，旧下游结果必须失效。
+      prompts_stale: true,
+      keyframes_stale: true,
+      video_stale: true,
+    };
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.globalVisualBible = null;
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.keyframePlanningOnly = false;
+    if (clearFrames) {
+      if (affected !== null && Array.isArray(state.luxuryAd.keyframes) && state.luxuryAd.keyframes.length) {
+        state.luxuryAd.keyframes[affected] = {
+          stale: true,
+          stale_reason: reason,
+          stale_at: now,
+        };
+      } else {
+        state.luxuryAd.keyframes = [];
+      }
+    }
+  }
+
   function saveLuxuryAdOutlineField(index, field, value) {
     const idx = Number(index);
     if (!Number.isFinite(idx) || idx < 0 || !state.luxuryAd.segments?.[idx]) return;
@@ -10568,7 +10602,7 @@
     }
     state.luxuryAd.segments[idx] = next;
     state.luxuryAd.storyboardDetailed = false;
-    if (Array.isArray(state.luxuryAd.keyframes) && state.luxuryAd.keyframes.length) state.luxuryAd.keyframes = [];
+    markLuxuryAdScriptEdited(`outline_${field}`, { affectedIndex: idx });
     updateLuxuryAdStepLocks();
   }
 
@@ -10592,7 +10626,7 @@
       required_material: '上传这一镜需要的画面；没有画面时，AI 会按这里的说明补图。',
       material_requirement: '上传这一镜需要的画面；没有画面时，AI 会按这里的说明补图。',
       copy_direction: '这一镜最终给观众听到或看到的话，会在剧本生成阶段生成。',
-      duration: Math.max(3, Math.round((Number(state.luxuryAd.durationSec) || 30) / Math.max(1, total))),
+      duration: Math.max(1, Math.round((Number(state.luxuryAd.durationSec) || 30) / Math.max(1, total))),
       material_usage: '@主商品 / 待绑定分镜画面',
       user_edited: true,
     };
@@ -10621,13 +10655,14 @@
   function markLuxuryAdStructureChanged({ keepDetailed = false } = {}) {
     normalizeLuxuryAdSegmentOrder();
     if (!keepDetailed) state.luxuryAd.storyboardDetailed = false;
+    markLuxuryAdScriptEdited('structure_changed');
     resetLuxuryAdFrameGenerationState();
     renderLuxuryAdStoryboard();
     updateLuxuryAdStepLocks();
   }
 
   function rebalanceLuxuryAdSegmentDurations(totalDurationSec) {
-    const duration = Math.max(5, Number(totalDurationSec) || Number(state.luxuryAd.durationSec) || 30);
+    const duration = Math.max(1, Number(totalDurationSec) || Number(state.luxuryAd.durationSec) || 30);
     const segments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments : [];
     if (!segments.length) return false;
     const base = Math.floor((duration / segments.length) * 10) / 10;
@@ -10658,7 +10693,7 @@
   }
 
   function handleLuxuryAdDurationChange(value) {
-    const nextDuration = Math.max(5, Number(value) || 30);
+    const nextDuration = Math.max(1, Number(value) || 30);
     const previousDuration = Number(state.luxuryAd.durationSec) || 30;
     state.luxuryAd.durationSec = nextDuration;
     const hadSegments = rebalanceLuxuryAdSegmentDurations(nextDuration);
@@ -10708,6 +10743,7 @@
     state.luxuryAd.revisionHistory = Array.isArray(r.revision_history)
       ? r.revision_history
       : [...(state.luxuryAd.revisionHistory || []), r.revision].filter(Boolean);
+    markLuxuryAdScriptEdited(command.type || 'storyboard_revision');
     if (Array.isArray(state.luxuryAd.keyframes) && invalidated.size) {
       state.luxuryAd.keyframes = state.luxuryAd.keyframes.map((kf, i) => {
         const seg = state.luxuryAd.segments[i] || {};
@@ -10728,7 +10764,7 @@
 
   function addLuxuryAdSegment(afterIndex = null) {
     const segments = Array.isArray(state.luxuryAd.segments) ? [...state.luxuryAd.segments] : [];
-    if (segments.length >= 8) return toast('最多 8 个分镜，建议先删除不需要的分镜', 'error');
+    if (segments.length >= 18) return toast('最多 18 个分镜，建议先删除不需要的分镜', 'error');
     const insertAt = Number.isFinite(Number(afterIndex))
       ? Math.min(segments.length, Math.max(0, Number(afterIndex) + 1))
       : segments.length;
@@ -10780,8 +10816,8 @@
     const seg = segments[idx];
     if (!seg) return toast('镜头不存在，请重新生成详细分镜', 'error');
     if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再修改分镜', 'error');
-    const current = Math.max(2, Number(seg.duration || seg.duration_sec || seg.seconds || 0) || luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length) || 3);
-    const nextDuration = Math.min(18, Math.round((current + Number(deltaSec || 2)) * 10) / 10);
+    const current = Math.max(0.5, Number(seg.duration || seg.duration_sec || seg.seconds || 0) || luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length) || 3);
+    const nextDuration = Math.min(120, Math.round((current + Number(deltaSec || 2)) * 10) / 10);
     try {
       await reviseLuxuryAdStoryboard({
         type: 'extend_shot',
@@ -11195,7 +11231,6 @@
         <p>第 1 版 · 待确认 · ${escapeHtml(info.title || '剧情广告')} · 共 ${segments.length} 镜 · 总时长 ${totalSeconds} 秒</p>
       </div>
       <div class="dh-demo-script-actions">
-        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" id="dhLuxAdScriptRegenerate" ${scriptLockAttr}>${scriptBusy ? '生成剧本中…' : '重新生成整版'}</button>
         <span class="dh-luxgen-status ready">待确认</span>
       </div>
     </div>
@@ -12327,7 +12362,7 @@
       shot_size: ($('#dhLuxShotSize')?.value || seg.shot_size || '').trim(),
       shot_angle: ($('#dhLuxShotSize')?.value || seg.shot_angle || '').trim(),
       objective: ($('#dhLuxShotObjective')?.value || seg.objective || '').trim(),
-      duration: Math.max(2, Math.min(12, Number($('#dhLuxShotDuration')?.value || seg.duration || 6))),
+      duration: Math.max(0.5, Math.min(120, Number($('#dhLuxShotDuration')?.value || seg.duration || 6))),
       content_prompt: ($('#dhLuxShotVisual')?.value || seg.content_prompt || '').trim(),
       scene_content: ($('#dhLuxShotVisual')?.value || seg.scene_content || '').trim(),
       visual: ($('#dhLuxShotVisual')?.value || seg.visual || '').trim(),
@@ -12485,7 +12520,7 @@
             </label>
             <label class="dh-field">
               <span>预计时长（秒）</span>
-              <input class="dh-input" id="dhLuxShotDuration" type="number" min="2" max="12" step="0.1" value="${escapeHtml(String(duration || 6))}">
+              <input class="dh-input" id="dhLuxShotDuration" type="number" min="0.5" max="120" step="0.1" value="${escapeHtml(String(duration || 6))}">
             </label>
           </div>
           <div class="dh-luxgen-writer-grid">
@@ -12588,7 +12623,7 @@
         shot_size: ($('#dhLuxShotSize')?.value || '').trim(),
         shot_angle: ($('#dhLuxShotSize')?.value || '').trim(),
         objective: ($('#dhLuxShotObjective')?.value || '').trim(),
-        duration: Math.max(2, Math.min(12, Number($('#dhLuxShotDuration')?.value || seg.duration || 6))),
+        duration: Math.max(0.5, Math.min(120, Number($('#dhLuxShotDuration')?.value || seg.duration || 6))),
         content_prompt: ($('#dhLuxShotVisual')?.value || '').trim(),
         narration: ($('#dhLuxShotVoice')?.value || '').trim(),
         ad_copy: ($('#dhLuxShotVoice')?.value || '').trim(),
@@ -12616,8 +12651,9 @@
         user_edited: true,
       };
       state.luxuryAd.segments = (state.luxuryAd.segments || []).map((item, i) => i === idx ? next : item);
-      if (Array.isArray(state.luxuryAd.keyframes) && state.luxuryAd.keyframes[idx]?.image_url) {
-        state.luxuryAd.keyframes[idx] = {};
+      const hadFrame = Array.isArray(state.luxuryAd.keyframes) && !!state.luxuryAd.keyframes[idx]?.image_url;
+      markLuxuryAdScriptEdited('shot_editor_save', { affectedIndex: idx });
+      if (hadFrame) {
         toast('已保存修改，这个镜头需要重新生成预览', 'success');
       } else {
         toast('已保存分镜修改', 'success');
@@ -12869,12 +12905,8 @@
         renderLuxuryAdStoryboard();
         toast(`已按上传的 ${lockedShotLimit} 张分镜画面锁定镜头数，不再补生成额外镜头`, 'info');
       }
-      const defaultScriptShots = Math.max(4, Math.min(12, Math.round((state.luxuryAd.durationSec || 30) / 3)));
-      const shotCount = detail
-        ? (lockedShotLimit > 0
-          ? Math.max(1, Math.min(12, lockedShotLimit))
-          : Math.max(1, Math.min(12, defaultScriptShots)))
-        : undefined;
+      const shotCount = detail && lockedShotLimit > 0 ? Math.max(1, Math.min(18, lockedShotLimit)) : undefined;
+      const shotCountMode = detail && lockedShotLimit > 0 ? 'reference_locked' : 'auto';
       activeRequestKey = requestKey;
       const personAssetForGender = state.luxuryAd.personAsset || null;
       const personAssetGender = luxuryPersonConfirmedGender(personAssetForGender?.detected_gender, personAssetForGender?.gender);
@@ -12896,7 +12928,8 @@
         project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         text,
         duration_sec: state.luxuryAd.durationSec,
-        shot_count: shotCount,
+        ...(shotCount ? { shot_count: shotCount } : {}),
+        shot_count_mode: shotCountMode,
         product_name: state.luxuryAd.productAsset?.name || '',
         asset_summary: luxuryAdAssetSummary() || (detail ? '用户未上传参考素材，本次按广告需求直接生成商品/场景/人物视觉，不要要求用户补传图片。' : '暂未上传图片，本次只生成场景配置和素材清单'),
         ad_type: state.luxuryAd.adType || 'auto',
@@ -12918,9 +12951,12 @@
           url: compactLuxuryUrl(asset.url || ''),
         }) : null).filter(Boolean),
         outline_segments: detail
-          ? (isRewriteScript ? compactLuxurySegmentsForScriptRewrite(sourceSegments) : compactLuxurySegments(sourceSegments))
+          ? (isRewriteScript ? [] : compactLuxurySegments(sourceSegments))
           : [],
-        revision_mode: isRewriteScript ? 'rewrite_script' : '',
+        revision_mode: isRewriteScript ? 'regenerate_script' : '',
+        // 中文说明：用户主动重新生成剧本时只保留原始需求、素材、人物和规格约束，不把上一版镜头框架继续交给模型。
+        regenerate_from_scratch: !!isRewriteScript,
+        script_edit_state: state.luxuryAd.scriptEditState || null,
         person_spec: luxuryAdPersonSpec(),
         cast_profiles: luxuryAdCastProfiles(),
         product_profile: state.luxuryAd.productProfile || null,
@@ -12972,7 +13008,8 @@
         resultErr.status = r.details?.status || 422;
         throw resultErr;
       }
-      const nextSegments = applyLuxuryShotBindings((r.segments || []).slice(0, detail && shotCount ? shotCount : 8));
+      const returnedSegments = Array.isArray(r.segments) ? r.segments : [];
+      const nextSegments = applyLuxuryShotBindings(detail && shotCount ? returnedSegments.slice(0, shotCount) : returnedSegments);
       const titleOverride = state.luxuryAd.briefInfo?.title_user_edited
         ? { title: state.luxuryAd.briefInfo.title || '', title_user_edited: true }
         : {};
@@ -12999,6 +13036,7 @@
       state.luxuryAd.workflowProgress = null;
       state.luxuryAd.scriptError = '';
       state.luxuryAd.scriptErrorDetails = null;
+      state.luxuryAd.scriptEditState = null;
       if (state.luxuryAd.storyboardRequest?.key === requestKey) state.luxuryAd.storyboardRequest = null;
       resetLuxuryAdFrameGenerationState();
       renderLuxuryAdStoryboard();
@@ -16415,7 +16453,7 @@
       else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxStoryboardBtn });
       return;
     }
-    const luxScriptRegenerateBtn = closest('#dhLuxAdScriptRegenerate') || closest('#dhLuxAdScriptRegenerateTop') || closest('#dhLuxAdRegenerateScriptFromStep4');
+    const luxScriptRegenerateBtn = closest('#dhLuxAdScriptRegenerateTop') || closest('#dhLuxAdRegenerateScriptFromStep4');
     if (luxScriptRegenerateBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
       else {
