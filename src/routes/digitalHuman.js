@@ -2546,6 +2546,16 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     reason: String(parsed.reason || '').slice(0, 240),
     provider,
   };
+  if (pass && (
+    parsed.lower_body_visible !== true
+    || parsed.trousers_or_skirt_visible !== true
+    || parsed.single_person !== true
+    || (requiredGender && observedGender !== requiredGender)
+    || !acceptableFraming
+  )) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Vision QA text and score confirmed the actor framing while some boolean fields were incomplete.';
+  }
   if (!pass) {
     const genderMsg = requiredGender && !genderOk ? `；gender=${qa.gender_presentation}，expected=${requiredGender}` : '';
     const err = new Error(`演员包构图 QA 未通过：${qa.reason || qa.observed || '未达到全身/膝上参考照要求'}；framing=${qa.framing}，lower_body=${qa.lower_body_visible}，garment=${qa.trousers_or_skirt_visible}${genderMsg}`);
@@ -2652,16 +2662,6 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     reason: String(parsed.reason || '').slice(0, 260),
     provider,
   };
-  if (pass && (
-    parsed.lower_body_visible !== true
-    || parsed.trousers_or_skirt_visible !== true
-    || parsed.single_person !== true
-    || (requiredGender && observedGender !== requiredGender)
-    || !acceptableFraming
-  )) {
-    qa.soft_pass = true;
-    qa.reason = qa.reason || 'Vision QA text and score confirmed the actor framing while some boolean fields were incomplete.';
-  }
   if (!qa.pass && parsed.pass === true && positiveText && score >= 78 && !hardReject && mismatches.length === 0) {
     qa.pass = true;
     qa.soft_pass = true;
