@@ -1958,11 +1958,13 @@ function _findRunnableSeedanceProvider(preferred = null) {
   }
 }
 
-function _pipelineModelRunnable(model) {
+function _pipelineModelRunnable(model, options = {}) {
   if (!model?.provider_id || !model?.model_id) return false;
   const providerId = String(model.provider_id).toLowerCase();
   const modelId = String(model.model_id).toLowerCase();
+  const ignoreProviderModelEnabled = options.ignoreProviderModelEnabled === true;
   const providerModelEnabled = provider => {
+    if (ignoreProviderModelEnabled) return true;
     const models = Array.isArray(provider?.models) ? provider.models : [];
     if (!models.length) return true;
     const explicit = models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
@@ -2003,6 +2005,7 @@ function _luxuryCommercialKeyframeModelSummary() {
   const referencePreserving = models.filter(_luxuryCanPreserveLockedReferences);
   const required = ['image_edit', 'reference_preserving', 'character_consistency', 'realistic_photo'];
   const configuredModels = _pickConfiguredPipelineModels('luxury_ad.keyframe');
+  const routingOptions = { ignoreProviderModelEnabled: true };
   return {
     capability_required: 'reference_preserving_image_edit',
     runnable_models: models.map(_pipelineModelLabel),
@@ -2011,8 +2014,8 @@ function _luxuryCommercialKeyframeModelSummary() {
     capability_candidates: models.map(model => modelCapabilityService.modelCapabilityReport(model, required)),
     configured_candidates: configuredModels.map(model => ({
       ...modelCapabilityService.modelCapabilityReport(model, required),
-      runnable: _pipelineModelRunnable(model),
-      routing_reason: _pipelineModelRunnable(model) ? 'runnable' : _pipelineModelNotRunnableReason(model),
+      runnable: _pipelineModelRunnable(model, routingOptions),
+      routing_reason: _pipelineModelRunnable(model, routingOptions) ? 'runnable' : _pipelineModelNotRunnableReason(model, routingOptions),
     })),
   };
 }
@@ -2177,6 +2180,13 @@ function _pickRunnablePipelineModels(stageId, options = {}) {
     const useDefault = options.withDefault !== undefined
       ? options.withDefault !== false
       : !_luxuryStageRequiresAdminConfig(stageId);
+    // For explicit luxury pipeline stages, the stage model config is the source
+    // of truth. Provider settings still decide auth/provider availability, but
+    // a same-name model disabled in the provider's generic model list must not
+    // remove another vendor's explicitly enabled stage candidate.
+    const ignoreProviderModelEnabled = options.ignoreProviderModelEnabled !== undefined
+      ? options.ignoreProviderModelEnabled === true
+      : _luxuryStageRequiresAdminConfig(stageId);
     const list = useDefault && typeof pms.pickAllEnabledWithDefault === 'function'
       ? pms.pickAllEnabledWithDefault(stageId)
       : (typeof pms.pickAllEnabled === 'function'
@@ -2185,7 +2195,7 @@ function _pickRunnablePipelineModels(stageId, options = {}) {
     return (list || [])
       .filter(m => m && m.enabled !== false)
       .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999))
-      .filter(_pipelineModelRunnable);
+      .filter(m => _pipelineModelRunnable(m, { ignoreProviderModelEnabled }));
   } catch {
     return [];
   }
@@ -2205,16 +2215,17 @@ function _pickConfiguredPipelineModels(stageId) {
   }
 }
 
-function _pipelineModelNotRunnableReason(model) {
+function _pipelineModelNotRunnableReason(model, options = {}) {
   if (!model?.provider_id || !model?.model_id) return 'missing_provider_or_model';
   const providerId = String(model.provider_id).toLowerCase();
   const modelId = String(model.model_id).toLowerCase();
+  const ignoreProviderModelEnabled = options.ignoreProviderModelEnabled === true;
   if (providerId === 'topview' || modelId.startsWith('topview-')) {
     const p = _findEnabledProvider('topview');
     if (!p) return 'provider_auth_missing';
     if (!(p.api_key || process.env.TOPVIEW_API_KEY)) return 'api_key_missing';
     if (!(p.topview_uid || p.api_uid || p.uid || process.env.TOPVIEW_UID)) return 'topview_uid_missing';
-    if (Array.isArray(p.models) && p.models.length) {
+    if (!ignoreProviderModelEnabled && Array.isArray(p.models) && p.models.length) {
       const explicit = p.models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
       if (explicit?.enabled === false) return 'model_disabled';
       if (!explicit && !_providerPresetHasModel(p, modelId)) return 'model_not_in_provider_list';
@@ -2226,7 +2237,7 @@ function _pipelineModelNotRunnableReason(model) {
   }
   const provider = _findEnabledProvider(model.provider_id);
   if (!provider) return 'provider_auth_missing';
-  if (Array.isArray(provider.models) && provider.models.length) {
+  if (!ignoreProviderModelEnabled && Array.isArray(provider.models) && provider.models.length) {
     const explicit = provider.models.find(m => String(m?.id || '').trim().toLowerCase() === modelId);
     if (explicit?.enabled === false) return 'model_disabled';
     if (!explicit && !_providerPresetHasModel(provider, modelId)) return 'model_not_in_provider_list';
@@ -14112,7 +14123,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
   const configuredModelsRaw = _uniquePipelineModels(_pickRunnablePipelineModels(stageId));
   const rawModels = _pickConfiguredPipelineModels(stageId);
   if (!configuredModelsRaw.length) {
-    const rawLabels = rawModels.map(model => `${model.provider_id}/${model.model_id}:${_pipelineModelNotRunnableReason(model)}`).join('；') || '未配置';
+    const rawLabels = rawModels
+      .map(model => `${model.provider_id}/${model.model_id}:${_pipelineModelNotRunnableReason(model, { ignoreProviderModelEnabled: _luxuryStageRequiresAdminConfig(stageId) })}`)
+      .join('；') || '未配置';
     const err = new Error(`${stageId} 未在模型调用管理中配置可运行图片模型，已停止生成人物演员包；请先启用具备演员包全身竖构图能力的图片模型。当前候选：${rawLabels}`);
     err.status = 422;
     err.code = 'LUXURY_PERSON_SHEET_MODEL_NOT_CONFIGURED';
