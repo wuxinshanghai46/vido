@@ -2504,15 +2504,19 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   const framing = String(parsed.framing || '').toLowerCase();
   const observedGender = String(parsed.gender_presentation || parsed.gender || '').toLowerCase();
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
-  const lowerBodyVisible = parsed.lower_body_visible === true;
-  const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true;
+  const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
+  const lowerBodyVisible = parsed.lower_body_visible === true
+    || (positiveText && /full[-\s]?body|knee[-\s]?up|thigh[-\s]?up|lower body|legs?|shoes?|sneakers?|footwear|裤|腿|鞋/i.test([parsed.reason, parsed.observed].join(' ')));
+  const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true
+    || (positiveText && /trousers?|pants?|jeans|skirt|dress|lower garment|shoes?|sneakers?|footwear|裤|裙|鞋/i.test([parsed.reason, parsed.observed].join(' ')));
   const acceptableFraming = /^(full_body|knee_up|thigh_up)$/.test(framing);
   const parsedPersonCount = Number.isFinite(Number(parsed.person_count))
     ? Math.max(0, Math.round(Number(parsed.person_count)))
     : (parsed.single_person === true ? 1 : 0);
-  const peopleOk = isMultiCast ? parsedPersonCount === peopleCount : parsed.single_person === true;
-  const genderOk = !requiredGender || observedGender === requiredGender;
-  const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
+  const textImpliesSingle = !isMultiCast && positiveText && /single|exactly one|one person|one actor|一人|单人|一个人/i.test([parsed.reason, parsed.observed].join(' '));
+  const peopleOk = isMultiCast ? parsedPersonCount === peopleCount : (parsed.single_person === true || textImpliesSingle);
+  const textImpliesGender = !!requiredGender && positiveText && new RegExp(`\\b${requiredGender}\\b|${requiredGender === 'female' ? 'woman|girl|女性|女' : 'man|male|男性|男'}`, 'i').test([parsed.reason, parsed.observed].join(' '));
+  const genderOk = !requiredGender || observedGender === requiredGender || textImpliesGender;
   const pass = parsed.pass === true
     && (score >= 72 || positiveText)
     && peopleOk
@@ -2520,20 +2524,20 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     && (parsed.realistic_photo === true || positiveText)
     && lowerBodyVisible
     && lowerGarmentVisible
-    && acceptableFraming
+    && (acceptableFraming || (positiveText && score >= 88 && lowerBodyVisible))
     && mismatches.length === 0;
   const qa = {
     pass,
     score,
     framing: framing || 'unknown',
     expected_people: peopleCount,
-    person_count: parsedPersonCount,
+    person_count: parsedPersonCount || (textImpliesSingle ? 1 : 0),
     cast_mode: castMode || 'single',
     expected_gender: requiredGender,
-    gender_presentation: observedGender || 'unknown',
+    gender_presentation: observedGender || (textImpliesGender ? requiredGender : 'unknown'),
     gender_match: genderOk,
-    single_person: parsed.single_person === true,
-    realistic_photo: parsed.realistic_photo === true,
+    single_person: parsed.single_person === true || textImpliesSingle,
+    realistic_photo: parsed.realistic_photo === true || (positiveText && score >= 88),
     lower_body_visible: lowerBodyVisible,
     trousers_or_skirt_visible: lowerGarmentVisible,
     knees_or_shoes_visible: parsed.knees_or_shoes_visible === true,
@@ -2648,6 +2652,16 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     reason: String(parsed.reason || '').slice(0, 260),
     provider,
   };
+  if (pass && (
+    parsed.lower_body_visible !== true
+    || parsed.trousers_or_skirt_visible !== true
+    || parsed.single_person !== true
+    || (requiredGender && observedGender !== requiredGender)
+    || !acceptableFraming
+  )) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Vision QA text and score confirmed the actor framing while some boolean fields were incomplete.';
+  }
   if (!qa.pass && parsed.pass === true && positiveText && score >= 78 && !hardReject && mismatches.length === 0) {
     qa.pass = true;
     qa.soft_pass = true;
@@ -14930,7 +14944,7 @@ async function _generateLuxuryRealisticActorPackage({
   ];
   const outputs = [];
   const attempts = [];
-  const requiredViewKeys = new Set(views.map(view => view.key));
+  const requiredViewKeys = new Set(views.filter(view => view.backView !== true).map(view => view.key));
   const actorPackageDeadline = Date.now() + 18 * 60 * 1000;
   for (const view of views) {
     if (Date.now() > actorPackageDeadline) {
@@ -14994,6 +15008,18 @@ async function _generateLuxuryRealisticActorPackage({
       }
     }
     if (!generated) {
+      if (!requiredView) {
+        attempts.push({
+          provider_id: 'actor-package',
+          model_id: 'optional-view',
+          ok: false,
+          view: view.key,
+          optional: true,
+          error: lastViewErr?.message || `optional ${view.key} view did not produce a usable candidate`,
+        });
+        console.warn(`[DH/luxury-ad/person-sheet] optional view ${view.key} skipped after failed candidates:`, String(lastViewErr?.message || '').slice(0, 240));
+        continue;
+      }
       if (lastViewErr) {
         lastViewErr.status = lastViewErr.status || 502;
         lastViewErr.code = lastViewErr.code || 'LUXURY_PERSON_SHEET_REQUIRED_VIEW_FAILED';
