@@ -57,6 +57,9 @@ const LUXURY_STORYBOARD_DETAIL_RUNNING_TIMEOUT_MS = Math.max(8 * 60 * 1000, Numb
 const LUXURY_STORY_MODEL_FAILURE_COOLDOWN_MS = Math.max(60 * 1000, Number(process.env.LUXURY_STORY_MODEL_FAILURE_COOLDOWN_MS) || 10 * 60 * 1000);
 const LUXURY_PERSON_SHEET_RESULT_TTL_MS = 90 * 60 * 1000;
 const LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS = 18 * 60 * 1000;
+const LUXURY_PERSON_SHEET_PERSIST_PREFIX = 'dh.luxury_person_sheet.result.';
+const LUXURY_PERSON_SHEET_RECOVERY_DELAY_MS = Math.max(1000, Number(process.env.LUXURY_PERSON_SHEET_RECOVERY_DELAY_MS) || 8000);
+const luxuryPersonSheetActiveJobs = new Set();
 
 function _jsonClone(value, fallback = null) {
   try {
@@ -15348,7 +15351,12 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
     } = req.body || {};
     const text = String(brief || '').trim();
     if (text.length < 6) return res.status(400).json({ success: false, error: '请先填写广告需求，再生成 AI 真人感演员包' });
-    _storeLuxuryPersonSheetResult(req, request_key, { status: 'running', started_at: Date.now() });
+    _storeLuxuryPersonSheetResult(req, request_key, {
+      status: 'running',
+      started_at: Date.now(),
+      worker_status: request_async ? 'queued' : 'started',
+      ..._recoverableLuxuryPersonSheetPatch(req, request_key, req.body || {}),
+    });
     if (request_async && request_key) {
       _startLuxuryPersonSheetBackgroundJob(req, req.body || {});
       return res.json({ success: true, status: 'accepted', request_key });
@@ -16411,7 +16419,7 @@ function _luxuryPersonSheetResultKey(req, requestKey = '') {
 
 function _luxuryPersonSheetPersistKey(key = '') {
   if (!key) return '';
-  return `dh.luxury_person_sheet.result.${crypto.createHash('sha1').update(String(key)).digest('hex')}`;
+  return `${LUXURY_PERSON_SHEET_PERSIST_PREFIX}${crypto.createHash('sha1').update(String(key)).digest('hex')}`;
 }
 
 function _luxuryPersonSheetPersistenceEnabled() {
@@ -16431,11 +16439,31 @@ function _persistLuxuryPersonSheetResult(key, item) {
   }
 }
 
+function _persistableLuxuryPersonSheetBody(body = {}) {
+  const safe = _jsonClone(body, {});
+  if (!safe || typeof safe !== 'object') return {};
+  safe.request_async = false;
+  return safe;
+}
+
+function _recoverableLuxuryPersonSheetPatch(req, requestKey = '', body = {}) {
+  const requestBody = _persistableLuxuryPersonSheetBody(body);
+  return {
+    request_key: String(requestKey || requestBody.request_key || '').trim(),
+    request_body: requestBody,
+    user_id: req.user?.id || '',
+    user_role: req.user?.role || '',
+    user_name: req.user?.username || '',
+    recoverable: true,
+  };
+}
+
 function _storeLuxuryPersonSheetResult(req, requestKey = '', patch = {}) {
   const key = _luxuryPersonSheetResultKey(req, requestKey);
   if (!key) return;
   const item = {
     ...(luxuryPersonSheetResults.get(key) || {}),
+    result_key: key,
     ...patch,
     updated_at: Date.now(),
   };
@@ -16461,6 +16489,15 @@ function _getLuxuryPersonSheetResult(req, requestKey = '') {
   const updatedAt = Number(item.updated_at || item.started_at || 0);
   if (updatedAt && Date.now() - updatedAt > LUXURY_PERSON_SHEET_RESULT_TTL_MS) return null;
   if (item.status === 'running' && Number(item.started_at || 0) > 0 && Number(item.started_at) < SERVER_STARTED_AT) {
+    if (item.recoverable === true && item.request_body && item.user_id) {
+      return {
+        ...item,
+        status: 'running',
+        worker_status: item.worker_status || 'recovering',
+        recovery_status: item.recovery_status || 'waiting_for_recovery',
+        message: '服务更新后正在恢复人物演员包任务，页面会继续等待同一个 request_key 的结果。',
+      };
+    }
     return {
       ...item,
       status: 'error',
@@ -16508,16 +16545,55 @@ function _publicLuxuryPersonSheetResult(item) {
       : null;
     return { success: false, status: 'error', error: _compactDhPublicMessage(item.error || '人物演员包生成失败'), details };
   }
-  return { success: true, status: item.status || 'running', started_at: item.started_at || null, updated_at: item.updated_at || null };
+  return {
+    success: true,
+    status: item.status || 'running',
+    started_at: item.started_at || null,
+    updated_at: item.updated_at || null,
+    worker_status: item.worker_status || '',
+    recovery_status: item.recovery_status || '',
+    message: item.message || '',
+  };
 }
 
-function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
+function _startLuxuryPersonSheetBackgroundJob(req, body = {}, opts = {}) {
   const requestKey = String(body.request_key || '').trim();
+  const resultKey = _luxuryPersonSheetResultKey(req, requestKey);
+  if (!requestKey || !resultKey) return false;
+  if (luxuryPersonSheetActiveJobs.has(resultKey)) {
+    _storeLuxuryPersonSheetResult(req, requestKey, {
+      worker_status: 'already_running',
+      message: '人物演员包任务已在后台运行，继续等待当前 request_key 的结果。',
+    });
+    return false;
+  }
+  luxuryPersonSheetActiveJobs.add(resultKey);
+  _storeLuxuryPersonSheetResult(req, requestKey, {
+    status: 'running',
+    worker_status: opts.recovered ? 'recovered_queued' : 'queued',
+    recovery_status: opts.recovered ? 'recovered_after_restart' : '',
+    worker_pid: process.pid,
+    worker_started_at: Date.now(),
+    message: opts.recovered
+      ? '服务更新后已恢复人物演员包任务，正在继续生成。'
+      : '人物演员包任务已进入后台队列。',
+    ..._recoverableLuxuryPersonSheetPatch(req, requestKey, body),
+  });
   const port = process.env.PORT || 3000;
   const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'luxury-ad/person-sheet');
   // 中文说明：人物演员包要连续生成多张图并做 QA，同步 fetch 容易被浏览器/代理断开，所以改为后台任务+轮询结果。
   setImmediate(async () => {
     try {
+      _storeLuxuryPersonSheetResult(req, requestKey, {
+        status: 'running',
+        worker_status: 'started',
+        recovery_status: opts.recovered ? 'running_after_restart' : '',
+        worker_pid: process.pid,
+        worker_started_at: Date.now(),
+        message: opts.recovered
+          ? '服务更新后已恢复人物演员包任务，正在继续生成。'
+          : '人物演员包后台任务正在生成。',
+      });
       const resp = await axios.post(`http://127.0.0.1:${port}/api/dh/luxury-ad/person-sheet`, {
         ...body,
         request_async: false,
@@ -16530,18 +16606,79 @@ function _startLuxuryPersonSheetBackgroundJob(req, body = {}) {
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
-      _storeLuxuryPersonSheetResult(req, requestKey, { status: 'done', result: resp.data });
+      _storeLuxuryPersonSheetResult(req, requestKey, {
+        status: 'done',
+        worker_status: 'done',
+        recovery_status: opts.recovered ? 'completed_after_restart' : '',
+        result: resp.data,
+      });
     } catch (err) {
       const message = err.response?.data?.error || err.message || '人物演员包生成失败';
       _storeLuxuryPersonSheetResult(req, requestKey, {
         status: 'error',
+        worker_status: 'error',
+        recovery_status: opts.recovered ? 'failed_after_restart' : '',
         error: message,
         details: err.response?.data || null,
       });
       console.error('[DH/luxury-ad/person-sheet/async] failed:', message);
+    } finally {
+      luxuryPersonSheetActiveJobs.delete(resultKey);
     }
   });
+  return true;
 }
+
+function _recoverLuxuryPersonSheetRunningJobs() {
+  if (!_luxuryPersonSheetPersistenceEnabled() || typeof appKv.listByPrefix !== 'function') return;
+  let rows = [];
+  try {
+    rows = appKv.listByPrefix(LUXURY_PERSON_SHEET_PERSIST_PREFIX, 300);
+  } catch (err) {
+    console.warn('[DH/luxury-ad/person-sheet/recovery] scan failed:', shortError(err));
+    return;
+  }
+  let recovered = 0;
+  for (const row of rows) {
+    const item = row.value || {};
+    if (!item || item.status !== 'running') continue;
+    const requestKey = String(item.request_key || item.request_body?.request_key || '').trim();
+    const userId = String(item.user_id || '').trim();
+    const body = item.request_body && typeof item.request_body === 'object' ? item.request_body : null;
+    if (!requestKey || !userId || !body) continue;
+    const fakeReq = {
+      user: {
+        id: userId,
+        role: item.user_role || '',
+        username: item.user_name || '',
+      },
+    };
+    const startedAt = Number(item.started_at || 0);
+    if (startedAt && Date.now() - startedAt > LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS) {
+      _storeLuxuryPersonSheetResult(fakeReq, requestKey, {
+        status: 'error',
+        worker_status: 'expired_before_recovery',
+        recovery_status: 'expired_before_recovery',
+        error: '人物演员包后台生成超时，请重新点击生成拟真演员。',
+        details: {
+          status: 504,
+          code: 'PERSON_ACTOR_PACKAGE_TIMEOUT',
+          message: '服务启动恢复时发现该人物包任务已超过等待上限，系统已停止继续恢复，避免用户继续空等。',
+          started_at: item.started_at || null,
+          updated_at: item.updated_at || null,
+        },
+      });
+      continue;
+    }
+    const ok = _startLuxuryPersonSheetBackgroundJob(fakeReq, body, { recovered: true });
+    if (ok) recovered += 1;
+  }
+  if (recovered) {
+    console.log(`[DH/luxury-ad/person-sheet/recovery] recovered ${recovered} running person-sheet job(s) after server start`);
+  }
+}
+
+setTimeout(_recoverLuxuryPersonSheetRunningJobs, LUXURY_PERSON_SHEET_RECOVERY_DELAY_MS).unref?.();
 
 router.get('/luxury-ad/person-sheet/result/:requestKey', (req, res) => {
   const item = _getLuxuryPersonSheetResult(req, req.params.requestKey);

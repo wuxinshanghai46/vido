@@ -12956,8 +12956,8 @@
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
           label: '拟真演员',
-          phase: '后台生成中',
-          message: '服务器正在继续生成演员包，页面会自动刷新结果。',
+          phase: r.recovery_status ? '后台任务恢复中' : '后台生成中',
+          message: r.message || '服务器正在继续生成演员包，页面会自动刷新结果。',
           percent: Math.max(86, Number(state.luxuryAd.personGenerationProgress?.percent || 86)),
         };
         renderLuxuryAdPerson();
