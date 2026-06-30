@@ -1900,6 +1900,7 @@ th {
 [data-theme="light-mist"] .dh-luxgen-usage-head small,
 [data-theme="light-mist"] .dh-luxgen-usage-card span,
 [data-theme="light-mist"] .dh-lux-person-progress small,
+[data-theme="light-mist"] .dh-lux-person-progress-stat em,
 [data-theme="light-mist"] .dh-lux-person-candidates small,
 [data-theme="light-mist"] .dh-lux-failed-candidate span,
 [data-theme="light-mist"] .dh-lux-failed-candidate small {
@@ -1922,6 +1923,7 @@ th {
 [data-theme="light-mist"] .dh-luxgen-live-meta span,
 [data-theme="light-mist"] .dh-luxgen-usage-row code,
 [data-theme="light-mist"] .dh-lux-person-progress-head span,
+[data-theme="light-mist"] .dh-lux-person-progress-stat i,
 [data-theme="light-mist"] .dh-lux-failed-candidate em {
   color: #0474e8 !important;
 }

@@ -7918,13 +7918,16 @@
     const softPct = isLongTail ? Math.min(94, basePct + Math.floor(Math.max(0, elapsed - 22000) / 9000)) : basePct;
     const pct = Math.max(6, Math.min(96, softPct));
     const elapsedSec = Math.max(0, Math.round(elapsed / 1000));
+    const elapsedText = elapsedSec >= 60
+      ? `${Math.floor(elapsedSec / 60)}分${String(elapsedSec % 60).padStart(2, '0')}秒`
+      : `${elapsedSec}秒`;
     const canSeeDebug = canViewLuxuryInternalPipeline();
     const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
     const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、动作参考图，并尝试补充背面。');
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
-        <span>${pct}% · 已用 ${elapsedSec} 秒</span>
+        <span class="dh-lux-person-progress-stat"><i>${pct}%</i><em>耗时 ${escapeHtml(elapsedText)}</em></span>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <small>${escapeHtml(phase || '准备生成')} · ${escapeHtml(message || '正在整理演员参考图。')}</small>
