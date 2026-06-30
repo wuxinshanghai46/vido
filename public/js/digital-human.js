@@ -7927,7 +7927,7 @@
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
-        <span class="dh-lux-person-progress-stat"><i>${pct}%</i><em>耗时 ${escapeHtml(elapsedText)}</em></span>
+        <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(elapsedText)}</em><i>${pct}%</i></span>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <small>${escapeHtml(phase || '准备生成')} · ${escapeHtml(message || '正在整理演员参考图。')}</small>

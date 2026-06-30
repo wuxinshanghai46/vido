@@ -2694,6 +2694,157 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
   return qa;
 }
 
+function _luxuryActorBibleField(value = '', max = 140) {
+  const clean = _luxuryStrictText(value, max);
+  if (!clean || /^(unknown|unclear|not visible|n\/a|none|null|未识别|不可见|未知|无)$/i.test(clean)) return '';
+  return clean;
+}
+
+function _luxuryActorBibleList(value = [], maxItems = 8, maxItem = 120) {
+  const list = Array.isArray(value) ? value : String(value || '').split(/[;；、,\n]+/);
+  return list
+    .map(item => _luxuryActorBibleField(item, maxItem))
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.findIndex(x => x.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, maxItems);
+}
+
+function _luxuryActorBiblePromptText(bible = {}, { viewKey = '' } = {}) {
+  if (!bible || typeof bible !== 'object') return '';
+  const fields = [
+    ['Face identity', bible.face_identity],
+    ['Age impression', bible.age_impression],
+    ['Gender presentation', bible.gender_presentation],
+    ['Origin/ethnicity impression', bible.ethnicity_origin_impression],
+    ['Hair', [bible.hairstyle, bible.hair_length, bible.hair_color, bible.hairline_or_bangs].filter(Boolean).join(', ')],
+    ['Top garment', bible.outfit_top],
+    ['Bottom garment', bible.outfit_bottom],
+    ['One-piece garment', bible.outfit_one_piece],
+    ['Outerwear', bible.outerwear],
+    ['Footwear', bible.footwear],
+    ['Accessories', bible.accessories],
+    ['Overall build', bible.body_build],
+  ]
+    .map(([label, value]) => {
+      const clean = _luxuryActorBibleField(value, 180);
+      return clean ? `${label}: ${clean}` : '';
+    })
+    .filter(Boolean);
+  const mustKeep = _luxuryActorBibleList(bible.must_keep, 8, 130)
+    .map(item => `Keep ${item}`);
+  const mutable = _luxuryActorBibleList(bible.mutable_fields, 6, 90)
+    .map(item => `Allowed to change ${item}`);
+  if (!fields.length && !mustKeep.length) return '';
+  const viewInstruction = /back/i.test(viewKey)
+    ? 'For this back view, keep the same hairstyle/back silhouette, outfit, accessories, footwear and overall build; the face may be hidden because the body faces away.'
+    : (/action/i.test(viewKey)
+      ? 'For this action view, change only the small gesture and expression while preserving all locked identity, hair and wardrobe fields.'
+      : 'For this view, change only camera angle and pose while preserving all locked identity, hair and wardrobe fields.');
+  return [
+    'APPROVED FRONT ACTOR BIBLE: the front view has already passed QA and is now the source of truth for every later view.',
+    fields.join('; '),
+    mustKeep.length ? mustKeep.join('; ') : '',
+    mutable.length ? mutable.join('; ') : 'Allowed to change pose, expression, camera angle and neutral studio lighting only.',
+    viewInstruction,
+    'Do not redesign the actor, do not change outfit category, shoes, hair length/color, age impression, gender presentation or person count.',
+  ].filter(Boolean).join(' ');
+}
+
+async function _extractLuxuryActorBibleFromFront(req, frontPath, {
+  expectedPeople = 1,
+  castMode = 'single',
+  expectedGender = '',
+  roleHint = '',
+  spec = {},
+} = {}) {
+  if (!frontPath || !fs.existsSync(frontPath)) {
+    const err = new Error('演员包人物锁抽取失败：正面定稿图文件不存在');
+    err.status = 500;
+    err.code = 'LUXURY_ACTOR_BIBLE_FILE_MISSING';
+    throw err;
+  }
+  const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const { contract } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint });
+  const prompt = [
+    'You extract a stable actor bible from one APPROVED front-view commercial actor reference photo.',
+    'Return ONLY compact JSON, no markdown and no prose.',
+    'Do not invent hidden details. Use "unknown" for fields that are not visible. Keep descriptions visual and concrete enough to reuse in image prompts.',
+    'Schema: {"pass":boolean,"score":0-100,"person_count":number,"gender_presentation":"male|female|ambiguous|unknown","age_impression":"string","ethnicity_origin_impression":"string","face_identity":"string","hairstyle":"string","hair_length":"string","hair_color":"string","hairline_or_bangs":"string","outfit_top":"string","outfit_bottom":"string","outfit_one_piece":"string","outerwear":"string","footwear":"string","accessories":"string","body_build":"string","skin_texture":"string","must_keep":[],"mutable_fields":[],"observed":"brief observation","reason":"brief reason"}',
+    `Expected person count: ${peopleCount}. Cast mode: ${castMode || 'single'}. Expected gender if explicit: ${expectedGender || 'auto'}.`,
+    'Dynamic user person settings contract for cross-check only:',
+    JSON.stringify(contract),
+    'Extraction rules:',
+    '- pass=true only if the image provides enough visible identity, hair and wardrobe evidence to drive side/action/back views.',
+    '- must_keep must include only observed visual locks: face impression, hairstyle/hair length/color, top/bottom or one-piece outfit, footwear, accessories, age/gender impression and person count.',
+    '- mutable_fields should include only pose, expression, camera angle, hand gesture and lighting unless the image clearly supports another mutable field.',
+    '- Do not describe private identity or real-person recognition; describe visual casting features only.',
+  ].join(' ');
+  let parsed;
+  let provider;
+  try {
+    const qaResp = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(frontPath)], {
+      stageId: 'luxury_ad.keyframe_qa',
+      maxTokens: 1800,
+      retrySchema: '{"pass":boolean,"score":0-100,"person_count":number,"gender_presentation":"male|female|ambiguous|unknown","age_impression":"string","ethnicity_origin_impression":"string","face_identity":"string","hairstyle":"string","hair_length":"string","hair_color":"string","outfit_top":"string","outfit_bottom":"string","outfit_one_piece":"string","footwear":"string","accessories":"string","body_build":"string","must_keep":[],"mutable_fields":[],"observed":"brief observation","reason":"brief reason"}',
+      retrySchemaNote: 'Return exactly the requested JSON object. Unknown visual fields must be the string "unknown".',
+    });
+    parsed = qaResp.parsed || {};
+    provider = qaResp.provider;
+  } catch (err) {
+    err.status = err.status || 503;
+    err.code = err.code || 'LUXURY_ACTOR_BIBLE_QA_UNAVAILABLE';
+    err.message = `演员包人物锁抽取失败：${err.message || '视觉模型不可用'}`;
+    throw err;
+  }
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const mustKeep = _luxuryActorBibleList(parsed.must_keep, 10, 140);
+  const bible = {
+    pass: parsed.pass === true,
+    score,
+    provider,
+    person_count: Number.isFinite(Number(parsed.person_count)) ? Math.max(0, Math.round(Number(parsed.person_count))) : 0,
+    gender_presentation: _luxuryActorBibleField(parsed.gender_presentation, 40),
+    age_impression: _luxuryActorBibleField(parsed.age_impression, 120),
+    ethnicity_origin_impression: _luxuryActorBibleField(parsed.ethnicity_origin_impression, 140),
+    face_identity: _luxuryActorBibleField(parsed.face_identity, 180),
+    hairstyle: _luxuryActorBibleField(parsed.hairstyle, 140),
+    hair_length: _luxuryActorBibleField(parsed.hair_length, 90),
+    hair_color: _luxuryActorBibleField(parsed.hair_color, 90),
+    hairline_or_bangs: _luxuryActorBibleField(parsed.hairline_or_bangs, 120),
+    outfit_top: _luxuryActorBibleField(parsed.outfit_top, 160),
+    outfit_bottom: _luxuryActorBibleField(parsed.outfit_bottom, 160),
+    outfit_one_piece: _luxuryActorBibleField(parsed.outfit_one_piece, 160),
+    outerwear: _luxuryActorBibleField(parsed.outerwear, 140),
+    footwear: _luxuryActorBibleField(parsed.footwear, 140),
+    accessories: _luxuryActorBibleField(parsed.accessories, 160),
+    body_build: _luxuryActorBibleField(parsed.body_build, 140),
+    skin_texture: _luxuryActorBibleField(parsed.skin_texture, 120),
+    must_keep: mustKeep,
+    mutable_fields: _luxuryActorBibleList(parsed.mutable_fields, 8, 90),
+    observed: _luxuryActorBibleField(parsed.observed, 260),
+    reason: _luxuryActorBibleField(parsed.reason, 260),
+  };
+  const hasIdentityLock = !!(bible.face_identity || bible.age_impression || bible.gender_presentation);
+  const hasHairLock = !!(bible.hairstyle || bible.hair_length || bible.hair_color || mustKeep.some(x => /hair|发/i.test(x)));
+  const hasWardrobeLock = !!(bible.outfit_top || bible.outfit_bottom || bible.outfit_one_piece || bible.footwear || mustKeep.some(x => /outfit|clothing|wardrobe|shoe|dress|skirt|pants|服|衣|鞋|裙|裤/i.test(x)));
+  const peopleOk = peopleCount > 1 ? bible.person_count === peopleCount : (bible.person_count === 1 || bible.person_count === 0);
+  if (parsed.pass !== true || score < 70 || !peopleOk || !hasIdentityLock || !hasHairLock || !hasWardrobeLock) {
+    const err = new Error(`演员包人物锁抽取未通过：正面图缺少可复用的人物/发型/服装锁；score=${score}`);
+    err.status = 422;
+    err.code = 'LUXURY_ACTOR_BIBLE_EXTRACTION_FAILED';
+    err.details = {
+      ...bible,
+      has_identity_lock: hasIdentityLock,
+      has_hair_lock: hasHairLock,
+      has_wardrobe_lock: hasWardrobeLock,
+      people_ok: peopleOk,
+    };
+    err._luxuryCandidatePath = frontPath;
+    throw err;
+  }
+  return bible;
+}
+
 function _luxuryActorQaScore(qa, fallback = 0) {
   if (!qa || typeof qa !== 'object') return fallback;
   const score = Number(qa.score);
@@ -13855,6 +14006,7 @@ function _extractLuxuryPersonSheetPriorityConstraints(prompt = '') {
     const m = source.match(re);
     if (m && m[1]) add(label, m[1], max);
   };
+  capture('Approved front actor bible', /APPROVED FRONT ACTOR BIBLE:\s*(.+)$/i, 700);
   if (/Chinese\s*\/\s*East Asian facial features/i.test(source)) {
     picks.push('Region/ethnicity: Chinese / East Asian facial features');
   }
@@ -13888,7 +14040,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     : (castMode === 'group' ? `${people} separate campaign actors` : 'one campaign actor');
   const view = /side/i.test(viewKey)
     ? 'three-quarter front casting reference with face still visible to camera'
-    : (/back/i.test(viewKey) ? 'three-quarter front casting reference with face visible; never a back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
+    : (/back/i.test(viewKey) ? 'back-view casting reference, body facing away from camera, face not required' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
   const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(prompt);
   const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, priorityConstraints ? 520 : 760);
   const providerHint = policy.providerFamily === 'webang-maas'
@@ -13927,7 +14079,7 @@ function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
   const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
   const view = /side/i.test(viewKey)
     ? 'three-quarter front reference with face still visible to camera'
-    : (/back/i.test(viewKey) ? 'three-quarter front reference with face visible; never a back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
+    : (/back/i.test(viewKey) ? 'back-view reference, body facing away from camera, face not required' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
   return _luxuryCapImageModelPrompt([
     `Photorealistic neutral commercial casting sheet, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
     castMode === 'dual'
@@ -14960,6 +15112,7 @@ async function _generateLuxuryRealisticActorPackage({
   ];
   const outputs = [];
   const attempts = [];
+  let actorBible = null;
   const requiredViewKeys = new Set(views.filter(view => view.backView !== true).map(view => view.key));
   const actorPackageDeadline = Date.now() + 18 * 60 * 1000;
   for (const view of views) {
@@ -14992,11 +15145,14 @@ async function _generateLuxuryRealisticActorPackage({
     let lastViewErr = null;
     const requiredView = requiredViewKeys.has(view.key);
     const candidatePasses = requiredView ? 2 : 1;
+    const viewPrompt = actorBible && view.key !== 'front'
+      ? `${view.prompt} ${_luxuryActorBiblePromptText(actorBible, { viewKey: view.key })}`
+      : view.prompt;
     for (let passIndex = 0; passIndex < candidatePasses; passIndex += 1) {
       try {
         const candidate = await _generateLuxuryPersonSheetWithPipeline({
           req,
-          prompt: view.prompt,
+          prompt: viewPrompt,
           aspectRatio,
           filename: `${actorId}_${view.key}${passIndex ? `_candidate_${passIndex + 1}` : ''}`,
           destDir: JIMENG_ASSETS_DIR,
@@ -15070,9 +15226,50 @@ async function _generateLuxuryRealisticActorPackage({
       frame_qa: generated.frameQa || null,
       consistency_qa: generated.consistencyQa || null,
       spec_qa: generated.specQa || null,
+      actor_bible_source: actorBible && view.key !== 'front' ? 'front_view_actor_bible' : '',
       selected_score: Math.round(_luxuryGeneratedActorViewScore(generated) * 10) / 10,
       back_view_asset: view.backView === true,
     });
+    if (view.key === 'front' && !actorBible) {
+      try {
+        actorBible = await _extractLuxuryActorBibleFromFront(req, generated.outPath, {
+          expectedPeople,
+          castMode,
+          expectedGender: gender.value,
+          roleHint,
+          spec,
+        });
+        attempts.push({
+          provider_id: 'actor-bible',
+          model_id: actorBible.provider || 'front-extractor',
+          ok: true,
+          view: view.key,
+          score: actorBible.score,
+        });
+      } catch (bibleErr) {
+        attempts.push({
+          provider_id: 'actor-bible',
+          model_id: 'front-extractor',
+          ok: false,
+          view: view.key,
+          code: bibleErr.code || '',
+          error: String(bibleErr.message || bibleErr).slice(0, 240),
+          qa: bibleErr.details || null,
+        });
+        bibleErr.status = bibleErr.status || 422;
+        bibleErr.code = bibleErr.code || 'LUXURY_ACTOR_BIBLE_EXTRACTION_FAILED';
+        bibleErr.message = `人物演员包正面定稿后的人物锁抽取失败；${bibleErr.message || '无法继续生成一致性侧面/动作参考'}`;
+        bibleErr.luxuryKeyframeAttempts = attempts;
+        bibleErr.details = {
+          ...(bibleErr.details && typeof bibleErr.details === 'object' ? bibleErr.details : {}),
+          required_views: Array.from(requiredViewKeys),
+          completed_views: outputs.map(x => x.key),
+          failed_view: 'front_actor_bible',
+          attempts,
+        };
+        throw bibleErr;
+      }
+    }
   }
   const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
   fs.mkdirSync(actorDir, { recursive: true });
@@ -15101,6 +15298,7 @@ async function _generateLuxuryRealisticActorPackage({
       image_url: x.url || '',
       back_view_asset: x.back_view_asset === true,
     })).filter(x => x.url),
+    actor_bible: actorBible || null,
     stable_attributes: [
       expectedPeople === 1 ? 'same realistic face identity' : `same ${expectedPeople} realistic face identities`,
       `same age impression: ${age.prompt}`,
