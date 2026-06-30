@@ -2611,25 +2611,24 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
   const mismatches = _cleanQaList(parsed.major_mismatches, 140, 8);
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
-  const explicitReject = [
+  const hardReject = [
     parsed.identity_match,
     parsed.face_match,
     parsed.hairstyle_match,
     parsed.age_gender_match,
-    parsed.body_proportion_match,
     parsed.outfit_match,
     parsed.lower_body_outfit_match,
     parsed.person_count_match,
   ].some(value => value === false);
+  const bodyProportionSoftMismatch = parsed.body_proportion_match === false;
   const qa = {
     pass: parsed.pass === true
       && (score >= 80 || positiveText)
-      && !explicitReject
+      && !hardReject
       && parsed.identity_match === true
       && parsed.face_match === true
       && parsed.hairstyle_match === true
       && parsed.age_gender_match === true
-      && parsed.body_proportion_match === true
       && parsed.outfit_match === true
       && parsed.lower_body_outfit_match === true
       && parsed.person_count_match === true
@@ -2643,15 +2642,18 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     outfit_match: parsed.outfit_match === true,
     lower_body_outfit_match: parsed.lower_body_outfit_match === true,
     person_count_match: parsed.person_count_match === true,
+    body_proportion_soft_mismatch: bodyProportionSoftMismatch,
     major_mismatches: mismatches,
     observed: String(parsed.observed || '').slice(0, 260),
     reason: String(parsed.reason || '').slice(0, 260),
     provider,
   };
-  if (!qa.pass && parsed.pass === true && positiveText && score >= 78 && !explicitReject && mismatches.length === 0) {
+  if (!qa.pass && parsed.pass === true && positiveText && score >= 78 && !hardReject && mismatches.length === 0) {
     qa.pass = true;
     qa.soft_pass = true;
-    qa.reason = qa.reason || 'Vision QA returned positive consistency text with incomplete boolean fields.';
+    qa.reason = qa.reason || (bodyProportionSoftMismatch
+      ? 'Only minor body-proportion variation was reported; locked identity, face, hair, outfit and person count remained consistent.'
+      : 'Vision QA returned positive consistency text with incomplete boolean fields.');
   }
   if (!qa.pass) {
     const err = new Error(`演员包一致性 QA 未通过：${qa.reason || qa.observed || '候选图与正面演员参考不是同一人物/同一服装'}；score=${qa.score}`);
@@ -2789,30 +2791,37 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
   const mismatches = _cleanQaList(parsed.major_mismatches, 160, 8);
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const requireBool = (key, field) => !contract[key] || parsed[field] === true;
-  const requiredSpecFieldsOk = requireBool('gender', 'gender_match')
-    && requireBool('origin', 'origin_match')
+  const hardSpecFieldsOk = requireBool('gender', 'gender_match')
     && requireBool('age', 'age_match')
-    && requireBool('roleName', 'role_match')
-    && requireBool('appearanceText', 'appearance_match')
     && requireBool('wardrobeText', 'wardrobe_match')
     && requireBool('hairMakeupText', 'hair_makeup_match')
-    && requireBool('negativeText', 'negative_constraints_ok')
-    && mismatches.length === 0;
+    && requireBool('negativeText', 'negative_constraints_ok');
+  const softSpecFieldsOk = requireBool('origin', 'origin_match')
+    && requireBool('roleName', 'role_match')
+    && requireBool('appearanceText', 'appearance_match');
+  const hardMismatchText = mismatches.filter(item =>
+    /gender|sex|age|wardrobe|outfit|clothing|dress|skirt|pants|trousers|shoe|footwear|hair|makeup|negative|forbidden|性别|年龄|服装|穿着|裙|裤|鞋|发型|妆|禁止|负面/i.test(String(item || '')));
+  const softMismatchText = mismatches.filter(item => !hardMismatchText.includes(item));
   const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
-  const explicitReject = [
+  const hardExplicitReject = [
     parsed.gender_match,
-    parsed.origin_match,
     parsed.age_match,
-    parsed.role_match,
-    parsed.appearance_match,
     parsed.wardrobe_match,
     parsed.hair_makeup_match,
     parsed.negative_constraints_ok,
   ].some(value => value === false);
+  const softExplicitReject = [
+    parsed.origin_match,
+    parsed.role_match,
+    parsed.appearance_match,
+  ].some(value => value === false);
   const qa = {
     pass: parsed.pass === true
       && score >= 65
-      && (requiredSpecFieldsOk || (positiveText && !explicitReject && mismatches.length === 0)),
+      && hardSpecFieldsOk
+      && !hardExplicitReject
+      && hardMismatchText.length === 0
+      && (softSpecFieldsOk || positiveText || softMismatchText.length <= 2),
     score,
     active_keys: activeKeys,
     contract,
@@ -2825,10 +2834,17 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     hair_makeup_match: parsed.hair_makeup_match === true,
     negative_constraints_ok: parsed.negative_constraints_ok === true,
     major_mismatches: mismatches,
+    hard_mismatches: hardMismatchText,
+    soft_mismatches: softMismatchText,
+    soft_field_warning: softExplicitReject || softMismatchText.length > 0,
     observed: String(parsed.observed || '').slice(0, 260),
     reason: String(parsed.reason || '').slice(0, 260),
     provider,
   };
+  if (qa.pass && (softExplicitReject || softMismatchText.length > 0)) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Only non-hard person-setting fields were uncertain in a neutral casting photo.';
+  }
   if (!qa.pass) {
     const err = new Error(`演员包人物设定 QA 未通过：${qa.reason || qa.observed || '候选图与当前人物设定不一致'}；score=${qa.score}`);
     err.status = 422;
@@ -13737,6 +13753,11 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
 function _luxuryPersonSheetModelPolicy(model = {}) {
   const providerId = String(model.provider_id || model.provider || '').toLowerCase();
   const modelId = String(model.model_id || model.model || '').toLowerCase();
+  const isGptImage2 = modelId === 'gpt-image-2' || /gpt-image-2/.test(modelId);
+  const isGeminiImage = /^gemini-[\w.-]+-image(?:-|$)/.test(modelId);
+  const isNanoBanana = /nano-banana/.test(modelId);
+  const isTopview = providerId === 'topview' || /^topview-/.test(modelId);
+  const isActorSheetCapable = modelCapabilityService.canGenerateActorPersonSheet(model);
   if (providerId === 'deyunai' && modelId === 'gpt-image-2') {
     return {
       id: 'deyunai_gpt_image2_person_sheet_strict_v1',
@@ -13745,7 +13766,24 @@ function _luxuryPersonSheetModelPolicy(model = {}) {
       referenceMode: 'single_clean_reference_edit',
       maxPromptChars: 1350,
       maxRefsPerCall: 1,
-      inputFidelity: ['high', 'low'],
+      adapterHints: {
+        deyunai: {
+          inputFidelity: ['high', 'low'],
+          cleanReferenceBeforeEdit: true,
+        },
+      },
+    };
+  }
+  if (isActorSheetCapable || isGptImage2 || isGeminiImage || isNanoBanana || isTopview) {
+    return {
+      id: `${providerId || 'generic'}_${modelId || 'image'}_person_sheet_neutral_v2`.replace(/[^\w.-]+/g, '_').slice(0, 96),
+      auditMode: isGptImage2 ? 'strict_submit_audit' : 'strict_visual_qa',
+      promptStyle: 'neutral_commercial_casting_sheet',
+      referenceMode: isGptImage2 ? 'single_clean_reference_edit' : 'role_limited_references',
+      maxPromptChars: isGptImage2 ? 1450 : (isGeminiImage || isNanoBanana ? 1700 : 1850),
+      maxRefsPerCall: isGptImage2 ? 1 : 2,
+      providerFamily: providerId || 'generic',
+      adapterHints: {},
     };
   }
   return {
@@ -13755,7 +13793,7 @@ function _luxuryPersonSheetModelPolicy(model = {}) {
     referenceMode: 'model_default',
     maxPromptChars: 2400,
     maxRefsPerCall: 4,
-    inputFidelity: ['high'],
+    adapterHints: {},
   };
 }
 
@@ -13812,7 +13850,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
   hasReference = false,
   viewKey = '',
 } = {}) {
-  if (policy.id !== 'deyunai_gpt_image2_person_sheet_strict_v1') {
+  if (policy.promptStyle !== 'neutral_commercial_casting_sheet') {
     return _luxuryCapImageModelPrompt(prompt, policy.maxPromptChars || 2400);
   }
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
@@ -13825,6 +13863,11 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     : (/back/i.test(viewKey) ? 'three-quarter front casting reference with face visible; never a back-view reference' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
   const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(prompt);
   const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, priorityConstraints ? 520 : 760);
+  const providerHint = policy.providerFamily === 'webang-maas'
+    ? 'Use a concise commercial portrait instruction; keep the result as one clean standalone photo, not a collage or UI design.'
+    : (policy.providerFamily === 'apismile'
+      ? 'Prefer real-camera texture, natural skin variation and visible fabric detail; avoid over-smoothed generic AI faces.'
+      : '');
   return _luxuryCapImageModelPrompt([
     `Photorealistic commercial casting reference, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
     `Create ${castLabel} for a neutral studio casting sheet; ${view}.`,
@@ -13837,6 +13880,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     people === 1
       ? 'Keep exactly one actor total in one standalone photo, complete outfit and visible footwear, clean margin around the person, no extra people, no collage, no multi-panel contact sheet.'
       : `Keep exactly ${people} actors total in one standalone photo, separated clearly, complete outfits and visible footwear, no extra people, no merged bodies, no collage, no multi-panel contact sheet.`,
+    providerHint,
     'Avoid glamour, revealing clothing, intimate posing, medical or identity-document styling, readable text, logos, watermarks, posters, weapons, uniforms unless explicitly required by the user brief.',
     neutralSource ? `Campaign/person constraints: ${neutralSource}` : '',
   ].filter(Boolean).join(' '), policy.maxPromptChars || 1350);
@@ -14143,8 +14187,9 @@ async function _generateLuxuryPersonSheetWithPipeline({
           && arr.findIndex(x => x.refs.join('|') === plan.refs.join('|')) === planIdx);
         let lastGptImage2Err = null;
         for (const plan of refPlans) {
-          const fidelityModes = Array.isArray(modelPolicy.inputFidelity) && modelPolicy.inputFidelity.length
-            ? modelPolicy.inputFidelity
+          const deyunaiHints = modelPolicy.adapterHints?.deyunai || {};
+          const fidelityModes = Array.isArray(deyunaiHints.inputFidelity) && deyunaiHints.inputFidelity.length
+            ? deyunaiHints.inputFidelity
             : ['high', 'low'];
           for (const inputFidelity of fidelityModes) {
             const suffixParts = [
@@ -14327,9 +14372,12 @@ async function _generateLuxuryPersonSheetWithPipeline({
         roleHint,
         promptText: prompt,
       });
+      const successPolicy = _luxuryPersonSheetModelPolicy(model);
       addAttempt(model, true, null, {
-        policy_id: _luxuryPersonSheetModelPolicy(model).id,
-        audit_mode: _luxuryPersonSheetModelPolicy(model).auditMode,
+        policy_id: successPolicy.id,
+        audit_mode: successPolicy.auditMode,
+        prompt_style: successPolicy.promptStyle,
+        reference_mode: successPolicy.referenceMode,
       });
       return { outPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa, specQa };
     } catch (err) {
@@ -14337,7 +14385,14 @@ async function _generateLuxuryPersonSheetWithPipeline({
       const candidatePath = outPath || err._luxuryCandidatePath || '';
       if (candidatePath) rejectedCandidateCount += 1;
       if (!err._luxuryAttemptRecorded) {
-        addAttempt(model, false, err, candidatePayload(candidatePath, '失败候选图'));
+        const modelPolicy = _luxuryPersonSheetModelPolicy(model);
+        addAttempt(model, false, err, {
+          ...candidatePayload(candidatePath, '失败候选图'),
+          policy_id: modelPolicy.id,
+          audit_mode: modelPolicy.auditMode,
+          prompt_style: modelPolicy.promptStyle,
+          reference_mode: modelPolicy.referenceMode,
+        });
       }
       if (candidatePath && (_isLuxuryActorCropQaFailure(err) || _isLuxuryActorGenderQaFailure(err))) {
         const retryPrompt = _buildLuxuryActorFullBodyRetryPrompt(prompt, {
@@ -14376,15 +14431,27 @@ async function _generateLuxuryPersonSheetWithPipeline({
             roleHint,
             promptText: retryPrompt,
           });
-          addAttempt(model, true, null, { retry: 'full_body_reframe' });
+          const retrySuccessPolicy = _luxuryPersonSheetModelPolicy(model);
+          addAttempt(model, true, null, {
+            retry: 'full_body_reframe',
+            policy_id: retrySuccessPolicy.id,
+            audit_mode: retrySuccessPolicy.auditMode,
+            prompt_style: retrySuccessPolicy.promptStyle,
+            reference_mode: retrySuccessPolicy.referenceMode,
+          });
           return { outPath: retryPath, model: `${model.provider_id}/${model.model_id}`, attempts, frameQa, consistencyQa, specQa };
         } catch (retryErr) {
           lastErr = retryErr;
           const retryCandidatePath = retryPath || retryErr._luxuryCandidatePath || '';
           if (retryCandidatePath) rejectedCandidateCount += 1;
+          const retryFailurePolicy = _luxuryPersonSheetModelPolicy(model);
           addAttempt(model, false, retryErr, {
             ...candidatePayload(retryCandidatePath, '全身重试候选图'),
             retry: 'full_body_reframe',
+            policy_id: retryFailurePolicy.id,
+            audit_mode: retryFailurePolicy.auditMode,
+            prompt_style: retryFailurePolicy.promptStyle,
+            reference_mode: retryFailurePolicy.referenceMode,
           });
           console.warn(`[DH/luxury-ad/person-sheet] ${model.provider_id}/${model.model_id} full-body reframe retry failed:`, shortError(retryErr));
         }
