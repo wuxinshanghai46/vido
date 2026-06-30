@@ -7760,7 +7760,7 @@
     if (/LUXURY_PERSON_SHEET_CAPABILITY_REQUIRED|actor-person-sheet-capability-gate|演员包全身参考|竖构图锁定|普通图片模型盲试/i.test(text)) {
       return '人物包模型链路缺少“真人全身演员包/竖构图锁定”能力，系统已在生成前停止，不会继续用普通图片模型盲试。请在模型调用管理启用或标记具备该能力的 luxury_ad.person_sheet 模型。';
     }
-    if (/MODEL_NOT_CONFIGURED|未在模型调用管理|候选/i.test(text)) {
+    if (/MODEL_NOT_CONFIGURED|未在模型调用管理中配置可运行图片模型|没有可运行图片模型|no runnable image model|no runnable.*person.*sheet/i.test(text)) {
       return '人物包模型链路没有可运行图片模型，请先到模型调用管理启用 luxury_ad.person_sheet 的图片模型。';
     }
     if (code === 'PROVIDER_LIMIT_EXCEEDED' || /CreditInsufficient|insufficient credits?|credits? insufficient|insufficient quota|quota|rate limit|额度|频率|余额|点数|上限|limit exceeded|too many requests/i.test(text)) {
@@ -9129,38 +9129,19 @@
     const mask = document.createElement('div');
     mask.className = 'dh-luxgen-writer-mask';
     mask.innerHTML = `
-      <div class="dh-luxgen-writer-modal" role="dialog" aria-modal="true" aria-label="AI 帮我写剧情广告内容">
+      <div class="dh-luxgen-writer-modal is-brief-writer" role="dialog" aria-modal="true" aria-label="AI 帮我写剧情广告内容">
         <div class="dh-luxgen-writer-head">
           <div>
             <h3>AI 帮我写剧情广告内容</h3>
-            <p>给一点产品、卖点或目标客户，AI 会先写成广告词/需求，再用于生成详细分镜。</p>
+            <p>写一句话也可以，AI 会整理成可继续生成分镜的广告需求。</p>
           </div>
           <button class="dh-icon-btn" type="button" data-lux-writer-close>×</button>
         </div>
         <div class="dh-luxgen-writer-body">
           <label class="dh-field">
-            <span>产品/品牌</span>
-            <input class="dh-input" id="dhLuxWriterName" placeholder="例如：钢材成品站、艺术墙、高端定制家具">
+            <span>广告想法</span>
+            <textarea class="dh-input" id="dhLuxWriterPrompt" rows="6" placeholder="写产品、卖点、目标用户、风格或想拍的画面；信息不完整也可以。">${escapeHtml(current)}</textarea>
           </label>
-          <label class="dh-field">
-            <span>核心卖点</span>
-            <textarea class="dh-input" id="dhLuxWriterPoints" rows="4" placeholder="例如：金属肌理、灯光纹理、定制工艺、适合高端会所和设计师客户">${escapeHtml(current)}</textarea>
-          </label>
-          <div class="dh-luxgen-writer-grid">
-            <label class="dh-field">
-              <span>目标客户</span>
-              <input class="dh-input" id="dhLuxWriterAudience" placeholder="例如：设计师、高端业主、品牌方">
-            </label>
-            <label class="dh-field">
-              <span>画面风格</span>
-              <select class="dh-input" id="dhLuxWriterTone">
-                <option value="高端品牌广告，克制、有质感">高端品牌广告</option>
-                <option value="产品宣传，清晰突出卖点">产品宣传</option>
-                <option value="品牌故事，强调调性和记忆点">品牌故事</option>
-                <option value="空间展示，突出场景和氛围">空间展示</option>
-              </select>
-            </label>
-          </div>
         </div>
         <div class="dh-luxgen-writer-foot">
           <button class="dh-btn dh-btn-ghost" type="button" data-lux-writer-close>取消</button>
@@ -9172,19 +9153,10 @@
     mask.addEventListener('click', e => {
       if (e.target === mask || e.target.closest('[data-lux-writer-close]')) close();
     });
-    $('#dhLuxWriterName')?.focus();
+    $('#dhLuxWriterPrompt')?.focus();
     $('#dhLuxWriterGenerate')?.addEventListener('click', async () => {
-      const name = ($('#dhLuxWriterName')?.value || '').trim();
-      const points = ($('#dhLuxWriterPoints')?.value || '').trim();
-      const audience = ($('#dhLuxWriterAudience')?.value || '').trim();
-      const tone = ($('#dhLuxWriterTone')?.value || '').trim();
-      const topic = [
-        name ? `产品/品牌：${name}` : '',
-        points ? `卖点/资料：${points}` : '',
-        audience ? `目标客户：${audience}` : '',
-        tone ? `画面风格：${tone}` : '',
-      ].filter(Boolean).join('\n');
-      if (!topic) return toast('请至少填写产品、卖点或目标客户', 'error');
+      const topic = ($('#dhLuxWriterPrompt')?.value || '').trim();
+      if (!topic) return toast('请先写一点广告想法', 'error');
       const btn = $('#dhLuxWriterGenerate');
       const old = btn?.innerHTML;
       if (btn) { btn.disabled = true; btn.innerHTML = 'AI 写作中…'; }
@@ -9195,7 +9167,7 @@
             topic,
             duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
             style: state.luxuryAd.adType || 'auto',
-            tone,
+            tone: '',
             mode: 'luxury_ad',
           },
         });
@@ -9210,7 +9182,7 @@
         renderLuxuryAdStoryboard();
         setLuxuryProgress('content');
         updateLuxuryAdStepLocks();
-        toast('AI 已写好广告词/需求，可继续生成详细分镜', 'success');
+        toast('AI 已写好广告词/需求，可继续生成场景配置', 'success');
         close();
       } catch (err) {
         toast('AI 帮写失败：' + err.message, 'error');
@@ -9236,7 +9208,7 @@
           topic: text,
           duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
           style: state.luxuryAd.adType || 'auto',
-          tone: '高端品牌广告，克制、有质感',
+          tone: '',
           mode: 'luxury_ad',
         },
       });
@@ -18545,6 +18517,13 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxBgmUpload) luxBgmUpload.addEventListener('click', () => $('#dhLuxAdBgmFile')?.click());
     const luxMusicLibrary = $('#dhLuxAdMusicLibrary');
     if (luxMusicLibrary) luxMusicLibrary.addEventListener('click', () => searchOpenMusic());
+    const luxAdWrite = $('#dhLuxAdWrite');
+    if (luxAdWrite) luxAdWrite.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
+      openLuxuryAdWriterModal();
+    });
     const bindAudioVolumeSlider = (selector, key, min, max, scale = 100) => {
       const el = $(selector);
       if (!el) return;

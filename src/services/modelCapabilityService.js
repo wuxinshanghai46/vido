@@ -81,7 +81,7 @@ function inferModelCapabilities(model = {}) {
     caps.image_edit = true;
   }
 
-  if (/gpt-image-2/.test(modelId) || /topview-(gpt-image-2|nano-banana-pro|nano-banana-2|seedream-5)/.test(modelId)) {
+  if (/gpt-image-2/.test(modelId) || /^gemini-[\w.-]+-image(?:-|$)/.test(modelId) || /(^|-)nano-banana-2$/.test(modelId) || /topview-(gpt-image-2|nano-banana-pro|nano-banana-2|seedream-5)/.test(modelId)) {
     caps.reference_preserving = true;
     caps.multi_reference = true;
     caps.character_consistency = true;

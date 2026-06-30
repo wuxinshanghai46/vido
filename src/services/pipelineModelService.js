@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const sqliteConfig = require('../db/sqlite');
 const appKv = require('../repositories/appKvRepository');
 
@@ -92,9 +93,9 @@ const PIPELINE_SCHEMA = {
 //   注意：这只是"建议默认值"，实际业务还是按各 service 内部的 fallback 逻辑跑
 const STAGE_DEFAULTS = {
   // 数字人
-  'avatar.describe':     [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'avatar.describe':     [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'avatar.image_gen':    [
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
   ],
   'avatar.sample_video': [
@@ -114,9 +115,9 @@ const STAGE_DEFAULTS = {
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
   // 商品数字人
-  'product_avatar.describe': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'product_avatar.describe': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'product_avatar.person_image': [
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
   ],
   'product_avatar.fuse_image': [
@@ -133,9 +134,9 @@ const STAGE_DEFAULTS = {
     { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
   // 广告数字人
-  'ad_avatar.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: true }],
+  'ad_avatar.copy': [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
   'ad_avatar.keyframe': [
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: true },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 1, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedream-5-0-260128', priority: 2, enabled: true },
   ],
   'ad_avatar.marketing_video': [
@@ -158,104 +159,137 @@ const STAGE_DEFAULTS = {
     { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 8, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
   ],
   'luxury_ad.script': [
     { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 8, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
   ],
   'luxury_ad.storyboard_director': [
     { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 8, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
   ],
   'luxury_ad.reference_analyze': [
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 4, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 4, enabled: false },
     { provider_id: 'zhipu', model_id: 'glm-4v-flash', priority: 5, enabled: true },
   ],
   'luxury_ad.presenter_seed': [
     { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 5, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 6, enabled: false },
+    { provider_id: 'bridgellm', model_id: 'gpt-image-2', priority: 2, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', priority: 4, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.0-pro-image-preview', priority: 5, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 10, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 11, enabled: false },
   ],
   'luxury_ad.person_sheet': [
     { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 5, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 6, enabled: false },
-    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 7, enabled: false },
+    { provider_id: 'bridgellm', model_id: 'gpt-image-2', priority: 2, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', priority: 4, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.0-pro-image-preview', priority: 5, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 10, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 11, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 12, enabled: false },
   ],
   'luxury_ad.scene_seed': [
     { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 5, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-seedream-5', priority: 6, enabled: false },
+    { provider_id: 'bridgellm', model_id: 'gpt-image-2', priority: 2, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', priority: 4, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.0-pro-image-preview', priority: 5, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 10, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-seedream-5', priority: 11, enabled: false },
   ],
   'luxury_ad.subject_evidence_seed': [
     { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image-edit', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 5, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 6, enabled: false },
+    { provider_id: 'bridgellm', model_id: 'gpt-image-2', priority: 2, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', priority: 4, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.0-pro-image-preview', priority: 5, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image-edit', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 10, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 11, enabled: false },
   ],
   'luxury_ad.copy': [
     { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 5, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 7, enabled: false },
   ],
   'luxury_ad.keyframe': [
     { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image-edit', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedream-4-0-250828', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'imagen-4', priority: 8, enabled: true },
-    { provider_id: 'deyunai', model_id: 'flux-pro', priority: 9, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 10, enabled: false },
-    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 11, enabled: false },
-    { provider_id: 'topview', model_id: 'topview-seedream-5', priority: 12, enabled: false },
-    { provider_id: 'topview', model_id: 'topview-nano-banana-2', priority: 13, enabled: false },
+    { provider_id: 'bridgellm', model_id: 'gpt-image-2', priority: 2, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', priority: 4, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-3.0-pro-image-preview', priority: 5, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'nano-banana', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image-edit', priority: 10, enabled: false },
+    { provider_id: 'deyunai', model_id: 'qwen-image', priority: 11, enabled: false },
+    { provider_id: 'deyunai', model_id: 'doubao-seedream-4-0-250828', priority: 12, enabled: false },
+    { provider_id: 'deyunai', model_id: 'imagen-4', priority: 13, enabled: false },
+    { provider_id: 'deyunai', model_id: 'flux-pro', priority: 14, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 15, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-pro', priority: 16, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-seedream-5', priority: 17, enabled: false },
+    { provider_id: 'topview', model_id: 'topview-nano-banana-2', priority: 18, enabled: false },
   ],
   'luxury_ad.keyframe_qa': [
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.0-flash', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 8, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-3.1-flash-lite-preview', priority: 9, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 4, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.0-flash', priority: 5, enabled: false },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-3.1-flash-lite-preview', priority: 9, enabled: false },
     { provider_id: 'zhipu', model_id: 'glm-4v-flash', priority: 10, enabled: true },
     { provider_id: 'zhipu', model_id: 'glm-4v', priority: 11, enabled: true },
     { provider_id: 'zhipu', model_id: 'glm-4.5v', priority: 12, enabled: true },
@@ -265,11 +299,13 @@ const STAGE_DEFAULTS = {
     { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
     { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
-    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 4, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 5, enabled: true },
-    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 6, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 7, enabled: true },
-    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 8, enabled: true },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+    { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+    { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: false },
+    { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 8, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
   ],
   'luxury_ad.video': [
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
@@ -347,12 +383,157 @@ function getStageConfig(stageId) {
   return loadConfig().stages[stageId] || [];
 }
 
+function getStageMeta(stageId) {
+  for (const group of Object.values(PIPELINE_SCHEMA)) {
+    const found = (group || []).find(item => item.id === stageId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function _providerPresetHasModel(provider = {}, modelId = '') {
+  const id = String(modelId || '').trim().toLowerCase();
+  if (!id) return false;
+  try {
+    const { PROVIDER_PRESETS } = require('./settingsService');
+    const presetId = String(provider.preset || provider.id || '').trim();
+    const preset = PROVIDER_PRESETS?.[presetId];
+    return Array.isArray(preset?.defaultModels)
+      && preset.defaultModels.some(m => String(m?.id || '').trim().toLowerCase() === id);
+  } catch {
+    return false;
+  }
+}
+
+function _findProviderForRouting(providerId = '') {
+  try {
+    const { loadSettings } = require('./settingsService');
+    const target = String(providerId || '').trim().toLowerCase();
+    return (loadSettings().providers || []).find(p =>
+      p && p.enabled !== false
+      && [p.id, p.preset].filter(Boolean).some(v => String(v).trim().toLowerCase() === target)
+    ) || null;
+  } catch {
+    return null;
+  }
+}
+
+function _modelUseMatchesStage(stageType = '', provider = {}, model = {}) {
+  const type = String(stageType || '').toLowerCase();
+  const use = String(model.use || model.type || '').toLowerCase();
+  const modelText = `${model.id || model.model_id || ''} ${model.name || ''}`.toLowerCase();
+  if (!type || type === 'all') return true;
+  if (type === 'story') return ['story', 'chat', 'llm'].includes(use);
+  if (type === 'vlm') {
+    return isVlmCapableModel(provider, model)
+      || ['story', 'chat', 'llm', 'vlm', 'vision', 'visual'].includes(use)
+      || /gemini|gpt-4o|claude|glm-4v|glm-4\.5v|glm-4\.6v|qwen.*vl|vision|multimodal|多模态/.test(modelText);
+  }
+  if (type === 'avatar') return ['avatar', 'video', 'image'].includes(use);
+  return use === type;
+}
+
+function _providerAuthReady(providerId = '', provider = null) {
+  const id = String(providerId || '').trim().toLowerCase();
+  if (!provider) return false;
+  if (id === 'topview' || String(provider.id || '').toLowerCase() === 'topview') {
+    return !!(_providerApiKey(providerId, provider) || process.env.TOPVIEW_API_KEY)
+      && !!(provider.topview_uid || provider.api_uid || provider.uid || process.env.TOPVIEW_UID);
+  }
+  return !!_providerApiKey(providerId, provider);
+}
+
+function _providerApiKey(providerId = '', provider = null) {
+  try {
+    const { getApiKey } = require('./settingsService');
+    return getApiKey(provider?.id) || getApiKey(providerId) || provider?.api_key || '';
+  } catch {
+    return provider?.api_key || '';
+  }
+}
+
+function _providerBaseUrl(provider = {}) {
+  return String(provider.base_url || provider.api_url || '').trim().replace(/\/$/, '');
+}
+
+function _stageNeedsModelCatalogValidation(stageId = '') {
+  const meta = getStageMeta(stageId);
+  return ['story', 'vlm', 'image'].includes(String(meta?.type || '').toLowerCase());
+}
+
+function validateStageModel(stageId, model = {}) {
+  const providerId = String(model.provider_id || '').trim();
+  const modelId = String(model.model_id || '').trim();
+  if (!providerId || !modelId) return { ok: false, reason: 'missing_provider_or_model' };
+  const provider = _findProviderForRouting(providerId);
+  if (!provider) return { ok: false, reason: 'provider_not_enabled_or_missing' };
+  if (!_providerAuthReady(providerId, provider)) return { ok: false, reason: 'provider_auth_missing' };
+
+  const models = Array.isArray(provider.models) ? provider.models : [];
+  const explicit = models.find(m => String(m?.id || '').trim().toLowerCase() === modelId.toLowerCase());
+  if (explicit?.enabled === false) return { ok: false, reason: 'model_disabled_in_provider' };
+  if (!explicit && !_providerPresetHasModel(provider, modelId)) return { ok: false, reason: 'model_not_in_provider_list' };
+
+  const stageMeta = getStageMeta(stageId);
+  const providerModel = explicit || { id: modelId, use: stageMeta?.type || model.use || '' };
+  if (!_modelUseMatchesStage(stageMeta?.type, provider, providerModel)) {
+    return { ok: false, reason: `model_use_mismatch_for_${stageMeta?.type || 'stage'}` };
+  }
+  return { ok: true, reason: 'runnable' };
+}
+
+async function validateStageModelLive(stageId, model = {}, options = {}) {
+  const staticReport = validateStageModel(stageId, model);
+  if (!staticReport.ok) return staticReport;
+  if (options.live === false || !_stageNeedsModelCatalogValidation(stageId)) return staticReport;
+
+  const providerId = String(model.provider_id || '').trim();
+  const modelId = String(model.model_id || '').trim();
+  const provider = _findProviderForRouting(providerId);
+  const baseUrl = _providerBaseUrl(provider);
+  const key = _providerApiKey(providerId, provider);
+  if (!baseUrl) return staticReport;
+  if (!key) return { ok: false, reason: 'provider_auth_missing' };
+
+  try {
+    const response = await axios.get(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${key}` },
+      timeout: Math.max(1500, Math.min(12000, Number(options.timeoutMs) || 8000)),
+      validateStatus: status => status >= 200 && status < 500,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      return { ok: true, reason: `runnable_static_catalog_unverified_http_${response.status}` };
+    }
+    const data = Array.isArray(response.data?.data) ? response.data.data : null;
+    if (!data) return { ok: true, reason: 'runnable_static_catalog_unverified_response' };
+    if (!data.length) return { ok: false, reason: 'provider_models_empty' };
+    const found = data.some(item => String(item?.id || item?.model || '').trim().toLowerCase() === modelId.toLowerCase());
+    if (!found) return { ok: false, reason: 'model_not_available_from_provider_models' };
+    return { ok: true, reason: 'runnable_live_catalog' };
+  } catch (error) {
+    const code = error?.code || error?.response?.status || 'request_failed';
+    return { ok: true, reason: `runnable_static_catalog_unverified_${code}` };
+  }
+}
+
 function setStageConfig(stageId, models) {
   const config = loadConfig();
   config.stages = config.stages || {};
-  // 校验：每条必须有 provider_id + model_id，priority 不能重复
+  const rejected = [];
+  const seen = new Set();
   const validated = (models || [])
     .filter(m => m && m.provider_id && m.model_id)
+    .filter(m => {
+      const key = `${String(m.provider_id).trim().toLowerCase()}/${String(m.model_id).trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        rejected.push({ ...m, reason: 'duplicate_model' });
+        return false;
+      }
+      seen.add(key);
+      const report = validateStageModel(stageId, m);
+      if (!report.ok) rejected.push({ ...m, reason: report.reason });
+      return report.ok;
+    })
     .map((m, i) => {
       const item = {
         provider_id: String(m.provider_id),
@@ -375,7 +556,51 @@ function setStageConfig(stageId, models) {
     .sort((a, b) => a.priority - b.priority);
   config.stages[stageId] = validated;
   saveConfig(config);
-  return validated;
+  return { models: validated, rejected };
+}
+
+async function setStageConfigAsync(stageId, models, options = {}) {
+  const config = loadConfig();
+  config.stages = config.stages || {};
+  const rejected = [];
+  const seen = new Set();
+  const validated = [];
+  const input = Array.isArray(models) ? models : [];
+  for (let i = 0; i < input.length; i += 1) {
+    const m = input[i];
+    if (!m || !m.provider_id || !m.model_id) continue;
+    const key = `${String(m.provider_id).trim().toLowerCase()}/${String(m.model_id).trim().toLowerCase()}`;
+    if (seen.has(key)) {
+      rejected.push({ ...m, reason: 'duplicate_model' });
+      continue;
+    }
+    seen.add(key);
+    const report = await validateStageModelLive(stageId, m, options);
+    if (!report.ok) {
+      rejected.push({ ...m, reason: report.reason });
+      continue;
+    }
+    const item = {
+      provider_id: String(m.provider_id),
+      model_id: String(m.model_id),
+      priority: Number.isFinite(+m.priority) ? +m.priority : i + 1,
+      enabled: m.enabled !== false,
+    };
+    if (Array.isArray(m.capabilities)) {
+      item.capabilities = m.capabilities.map(String).filter(Boolean);
+    } else if (m.capabilities && typeof m.capabilities === 'object') {
+      item.capabilities = Object.fromEntries(
+        Object.entries(m.capabilities).map(([capKey, value]) => [String(capKey), value === true])
+      );
+    }
+    ['actor_sheet_full_body', 'portrait_aspect_lock'].forEach(flagKey => {
+      if (m[flagKey] === true || m[flagKey] === false) item[flagKey] = m[flagKey] === true;
+    });
+    validated.push(item);
+  }
+  config.stages[stageId] = validated.sort((a, b) => a.priority - b.priority);
+  saveConfig(config);
+  return { models: config.stages[stageId], rejected };
 }
 
 /**
@@ -462,13 +687,18 @@ module.exports = {
   listSchema,
   listDefaults,
   getStageDefaults,
+  getStageMeta,
   loadConfig,
   saveConfig,
   getStageConfig,
   setStageConfig,
+  setStageConfigAsync,
+  validateStageModel,
+  validateStageModelLive,
   pickModel,
   pickModelWithDefault,
   pickAllEnabled,
   pickAllEnabledWithDefault,
   listAvailableModels,
 };
+

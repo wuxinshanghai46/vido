@@ -928,6 +928,14 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-writer-body .dh-field { min-width: 0; }
 .dh-luxgen-writer-body .dh-input { width: 100%; max-width: 100%; }
 .dh-luxgen-writer-body .dh-field > span { color: var(--dh-text); font-size: 13px; font-weight: 700; }
+.dh-luxgen-writer-modal.is-brief-writer { grid-template-rows: auto auto auto; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-luxgen-writer-head { padding: 22px 24px 18px; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-luxgen-writer-head h3 { font-size: 18px; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-luxgen-writer-head p { max-width: 560px; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-luxgen-writer-body { display: block; padding: 22px 24px 18px; overflow: visible; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-field { display: grid; gap: 10px; }
+.dh-luxgen-writer-modal.is-brief-writer textarea.dh-input { width: 100%; min-height: 190px; resize: vertical; line-height: 1.7; font-size: 15px; }
+.dh-luxgen-writer-modal.is-brief-writer .dh-luxgen-writer-foot { padding: 16px 24px 22px; }
 .dh-luxgen-ai-edit { grid-column: 1 / -1; display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(33,255,243,.22); border-radius: var(--dh-radius-sm); background: rgba(33,255,243,.045); }
 .dh-luxgen-ai-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dh-luxgen-ai-edit-actions small { color: var(--dh-text-muted); line-height: 1.5; }

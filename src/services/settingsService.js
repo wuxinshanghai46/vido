@@ -53,6 +53,7 @@ const PROVIDER_PRESETS = {
   ] },
   'webang-seedance': { name: '微众 · Seedance 2.0', api_url: 'https://test-tk.iserviceapi.com/api', defaultModels: [
     { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（视频编辑·图生视频·文生视频）', type: 'video', use: 'video' },
+    { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（图生视频·文生视频）', type: 'video', use: 'video' },
   ] },
   veo:         { name: 'Google Veo',  api_url: 'https://generativelanguage.googleapis.com/v1beta', defaultModels: [
     { id: 'veo-3.1', name: 'Veo 3.1（广播级画质·原生音频·最强照片写实·$0.40/s）', type: 'video', use: 'video' },
@@ -239,20 +240,23 @@ const PROVIDER_PRESETS = {
     { id: 'deepseek-V3.2-standard', name: 'DeepSeek V3.2 Standard', type: 'chat', use: 'story' },
     { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image' },
     { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', type: 'image', use: 'image' },
-    { id: 'gemini-3.0-pro-image-preview', name: 'Gemini 3.0 Pro Image Preview', type: 'image', use: 'image' },
+    { id: 'gemini-3.0-pro-image-preview', name: 'Gemini 3.0 Pro Image Preview', type: 'image', use: 'image', enabled: false },
     { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image Preview', type: 'image', use: 'image' },
     { id: 'gpt-image-1', name: 'GPT Image 1', type: 'image', use: 'image' },
   ] },
-  'webang-maas': { name: '微众 MaaS（OpenAI 兼容）', api_url: 'https://your-domain/v1', defaultModels: [
+  bridgellm: { name: 'BridgeLLM（ApiSmile 兼容）', api_url: 'http://43.98.167.151:3000/v1', defaultModels: [
+    { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image', enabled: false },
+  ] },
+  'webang-maas': { name: '微众 MaaS（OpenAI 兼容）', api_url: 'https://test-tk.iserviceapi.com/api/v1', defaultModels: [
     // 中文说明：按《一站式AI模型服务平台-接入文档（海外maas）》维护，接口路径统一走 /v1。
-    { id: 'gpt-5.4', name: 'GPT-5.4', type: 'chat', use: 'story' },
-    { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', type: 'chat', use: 'story' },
-    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: 'chat', use: 'story' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: 'chat', use: 'story' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', type: 'chat', use: 'story' },
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', type: 'chat', use: 'story' },
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'story' },
-    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story' },
+    { id: 'gpt-5.4', name: 'GPT-5.4', type: 'chat', use: 'story', enabled: false },
+    { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', type: 'chat', use: 'story', enabled: false },
+    { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', type: 'chat', use: 'story', enabled: false },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', type: 'chat', use: 'story', enabled: false },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', type: 'chat', use: 'story', enabled: false },
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', type: 'chat', use: 'story', enabled: false },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', type: 'chat', use: 'story', enabled: false },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: false },
     { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image' },
     { id: 'gemini-2.5-flash-image', name: 'Gemini 2.5 Flash Image', type: 'image', use: 'image' },
     { id: 'gemini-3.0-pro-image-preview', name: 'Gemini 3.0 Pro Image Preview', type: 'image', use: 'image' },
@@ -280,6 +284,7 @@ const ENV_SEED_MAP = [
   { envKey: 'JIMENG_API_KEY',      presetId: 'jimeng'      },
   { envKey: 'PIKA_API_KEY',        presetId: 'pika'          },
   { envKey: 'SEEDANCE_API_KEY',    presetId: 'seedance'      },
+  { envKey: 'WEBANG_API_KEY',      presetId: 'webang-seedance' },
   { envKey: 'WEBANG_SEEDANCE_API_KEY', presetId: 'webang-seedance' },
   { envKey: 'VEO_API_KEY',         presetId: 'veo'           },
   { envKey: 'TOPVIEW_API_KEY',     presetId: 'topview'       },
@@ -296,9 +301,161 @@ const ENV_SEED_MAP = [
   { envKey: 'NANOBANANA_API_KEY', presetId: 'nanobanana' },
   { envKey: 'MXAPI_API_KEY',     presetId: 'mxapi'      },
   { envKey: 'APISMILE_API_KEY',  presetId: 'apismile'   },
+  { envKey: 'BRIDGELLM_API_KEY', presetId: 'bridgellm'  },
+  { envKey: 'WEBANG_API_KEY',    presetId: 'webang-maas' },
   { envKey: 'WEBANG_MAAS_API_KEY', presetId: 'webang-maas' },
   { envKey: 'DEYUNAI_API_KEY',   presetId: 'deyunai'    },
 ];
+
+const PROVIDER_ADAPTER_DEFAULTS = {
+  openai: {
+    adapter: 'openai',
+    adapter_config: {
+      family: 'openai',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        edit_image_field: 'image',
+        response_format: 'url',
+        sizes: { portrait: '1024x1792', landscape: '1792x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+  apismile: {
+    adapter: 'apismile',
+    adapter_config: {
+      family: 'openai-compatible',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        edit_image_field: 'image',
+        response_format: false,
+        sizes: { portrait: '1024x1792', landscape: '1792x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+  bridgellm: {
+    adapter: 'bridgellm',
+    adapter_config: {
+      family: 'openai-compatible',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        edit_image_field: 'image',
+        response_format: 'url',
+        sizes: { portrait: '1024x1792', landscape: '1792x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+  'webang-maas': {
+    adapter: 'webang-maas',
+    adapter_config: {
+      family: 'webang-maas',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        gemini_chat_endpoint: '/chat/completions',
+        edit_image_field: 'image[]',
+        response_format: false,
+        sizes: { portrait: '1024x1536', landscape: '1536x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+  'webang-seedance': {
+    adapter: 'webang-seedance',
+    adapter_config: {
+      family: 'webang-seedance',
+      video: {
+        task_endpoint: '/api/v1/videos/generations',
+        models_endpoint: '/api/v1/models',
+      },
+    },
+  },
+  topview: {
+    adapter: 'topview',
+    adapter_config: {
+      family: 'topview',
+      image: { native_service: 'topviewService' },
+      video: { native_service: 'topviewService' },
+      avatar: { native_service: 'topviewService' },
+    },
+  },
+  deyunai: {
+    adapter: 'deyunai',
+    adapter_config: {
+      family: 'deyunai',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        edit_image_field: 'image',
+        sizes: { portrait: '1024x1792', landscape: '1792x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+};
+
+function mergeDeepPlain(base = {}, override = {}) {
+  const out = { ...(base && typeof base === 'object' && !Array.isArray(base) ? base : {}) };
+  if (!override || typeof override !== 'object' || Array.isArray(override)) return out;
+  for (const [key, value] of Object.entries(override)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      out[key] = mergeDeepPlain(out[key], value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function providerPresetKey(provider = {}) {
+  return String(provider?.preset || provider?.id || '').trim().toLowerCase();
+}
+
+function inferProviderAdapter(provider = {}) {
+  const presetKey = providerPresetKey(provider);
+  if (PROVIDER_ADAPTER_DEFAULTS[presetKey]) return PROVIDER_ADAPTER_DEFAULTS[presetKey];
+  const text = [provider.id, provider.preset, provider.name, provider.api_url, provider.base_url]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (/test-tk\.iserviceapi\.com\/api\/v1|webang.*maas|微众.*maas/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-maas'];
+  if (/test-tk\.iserviceapi\.com\/api|doubao-seedance|webang.*seedance|微众.*seedance/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-seedance'];
+  if (/api\.apismile\.ai/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.apismile;
+  if (/43\.98\.167\.151:3000\/v1|bridgellm/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.bridgellm;
+  if (/api\.openai\.com\/v1/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.openai;
+  return null;
+}
+
+function normalizeProviderAdapters(settings = {}) {
+  const out = { ...settings };
+  out.providers = Array.isArray(settings.providers) ? settings.providers.map(provider => {
+    if (!provider || typeof provider !== 'object') return provider;
+    const defaults = inferProviderAdapter(provider);
+    if (!defaults) return provider;
+    const normalized = {
+      ...provider,
+      adapter: provider.adapter || defaults.adapter,
+      adapter_config: mergeDeepPlain(defaults.adapter_config, provider.adapter_config || {}),
+    };
+    if (normalized.adapter === 'apismile') {
+      normalized.adapter_config = normalized.adapter_config || {};
+      normalized.adapter_config.image = normalized.adapter_config.image || {};
+      normalized.adapter_config.image.response_format = false;
+    }
+    if (normalized.adapter === 'webang-maas') {
+      normalized.adapter_config = normalized.adapter_config || {};
+      normalized.adapter_config.image = normalized.adapter_config.image || {};
+      normalized.adapter_config.image.response_format = false;
+    }
+    return normalized;
+  }) : [];
+  return out;
+}
 
 const ENV_PROVIDER_EXTRA_MAP = {
   aiapi: {
@@ -318,15 +475,15 @@ function loadSettings() {
   if (dbConfig.enabled && dbConfig.readPrimary) {
     try {
       const fromDb = appKv.get('settings.full', null);
-      if (fromDb) return normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb)));
-      if (!dbConfig.jsonFallback) return seedFromEnv();
+      if (fromDb) return normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(fromDb))));
+      if (!dbConfig.jsonFallback) return normalizeProviderAdapters(seedFromEnv());
     } catch (error) {
       if (!dbConfig.jsonFallback) throw error;
     }
   }
   if (fs.existsSync(SETTINGS_PATH)) {
     try {
-      return normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')))));
+      return normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(mergeEnvSeededProviders(JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))))));
     } catch {}
   }
   // 首次启动：从 .env 自动初始化
@@ -343,12 +500,17 @@ function buildEnvSeededProvider(envKey, presetId) {
     api_url: preset.api_url,
     api_key: key,
     enabled: true,
-    models: preset.defaultModels.map(m => ({ ...m, enabled: true })),
+    models: preset.defaultModels.map(m => ({ ...m, enabled: m.enabled !== false })),
     last_tested: null,
     test_status: null,
     created_at: new Date().toISOString(),
     source: 'env',
   };
+  const adapterDefaults = inferProviderAdapter({ ...provider, preset: presetId });
+  if (adapterDefaults) {
+    provider.adapter = adapterDefaults.adapter;
+    provider.adapter_config = adapterDefaults.adapter_config;
+  }
   const extraEnv = ENV_PROVIDER_EXTRA_MAP[presetId] || {};
   for (const [field, extraEnvKey] of Object.entries(extraEnv)) {
     if (process.env[extraEnvKey]) provider[field] = process.env[extraEnvKey];
@@ -378,7 +540,7 @@ function mergeEnvSeededProviders(settings = {}) {
       for (const model of seeded.models || []) {
         const modelId = String(model?.id || '').trim();
         if (modelId && !existingModelIds.has(modelId)) {
-          existing.models.push({ ...model, enabled: true });
+          existing.models.push({ ...model, enabled: model.enabled !== false });
           existingModelIds.add(modelId);
         }
       }
@@ -405,7 +567,7 @@ function mergePresetModelsForExistingProviders(settings = {}) {
     for (const model of preset.defaultModels) {
       const modelId = String(model?.id || '').trim();
       if (!modelId || existingModelIds.has(modelId)) continue;
-      provider.models.push({ ...model, enabled: true });
+      provider.models.push({ ...model, enabled: model.enabled !== false });
       existingModelIds.add(modelId);
     }
   }
@@ -415,8 +577,11 @@ function mergePresetModelsForExistingProviders(settings = {}) {
 function normalizeWebangSeedanceModels(settings = {}) {
   const out = { ...settings };
   const primaryId = 'doubao-seedance-2-0-260128';
+  const allowedIds = new Set([primaryId, 'doubao-seedance-2-0-fast-260128']);
   out.providers = Array.isArray(settings.providers) ? [...settings.providers] : [];
   for (const provider of out.providers) {
+    const providerKey = String(provider?.preset || provider?.id || '').trim().toLowerCase();
+    if (providerKey && providerKey !== 'webang-seedance') continue;
     const text = [
       provider?.id,
       provider?.preset,
@@ -425,9 +590,13 @@ function normalizeWebangSeedanceModels(settings = {}) {
     ].filter(Boolean).join(' ');
     if (!/webang|test-tk\.iserviceapi\.com|doubao-seedance/i.test(text)) continue;
     const current = Array.isArray(provider.models) ? provider.models : [];
-    const primary = current.find(m => m?.id === primaryId)
-      || { ...(PROVIDER_PRESETS['webang-seedance'].defaultModels[0] || {}), enabled: true };
-    provider.models = [{ ...primary, id: primaryId }];
+    const next = [];
+    for (const model of PROVIDER_PRESETS['webang-seedance'].defaultModels) {
+      if (!allowedIds.has(model.id)) continue;
+      const existing = current.find(m => m?.id === model.id);
+      next.push({ ...model, ...(existing || {}), id: model.id, enabled: (existing?.enabled ?? model.enabled) !== false });
+    }
+    provider.models = next.length ? next : [{ ...(PROVIDER_PRESETS['webang-seedance'].defaultModels[0] || {}), id: primaryId, enabled: true }];
   }
   return out;
 }
@@ -440,12 +609,12 @@ function seedFromEnv() {
   }
   const data = { providers, mcps: [], skills: [] };
   saveSettings(data);
-  return data;
+  return normalizeProviderAdapters(data);
 }
 
 function saveSettings(data) {
   const dbConfig = sqliteConfig.getDbConfig();
-  const normalized = normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(data));
+  const normalized = normalizeProviderAdapters(normalizeWebangSeedanceModels(mergePresetModelsForExistingProviders(data)));
   if (dbConfig.enabled) appKv.set('settings.full', normalized);
   if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(SETTINGS_PATH), { recursive: true });
@@ -477,4 +646,12 @@ function getApiKey(providerId) {
   } catch { return ''; }
 }
 
-module.exports = { loadSettings, saveSettings, getApiKey, PROVIDER_PRESETS };
+module.exports = {
+  loadSettings,
+  saveSettings,
+  getApiKey,
+  PROVIDER_PRESETS,
+  PROVIDER_ADAPTER_DEFAULTS,
+  inferProviderAdapter,
+  normalizeProviderAdapters,
+};

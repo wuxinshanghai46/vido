@@ -2098,10 +2098,12 @@ router.get('/pipeline-models', (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-router.put('/pipeline-models/:stageId', (req, res) => {
+router.put('/pipeline-models/:stageId', async (req, res) => {
   try {
-    const updated = pms.setStageConfig(req.params.stageId, req.body.models || []);
-    res.json({ success: true, models: updated });
+    const result = typeof pms.setStageConfigAsync === 'function'
+      ? await pms.setStageConfigAsync(req.params.stageId, req.body.models || [], { live: true })
+      : pms.setStageConfig(req.params.stageId, req.body.models || []);
+    res.json({ success: true, models: result.models || result, rejected: result.rejected || [] });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

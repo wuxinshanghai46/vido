@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const https = require('https');
-const { loadSettings, saveSettings, PROVIDER_PRESETS } = require('../services/settingsService');
+const { loadSettings, saveSettings, PROVIDER_PRESETS, inferProviderAdapter } = require('../services/settingsService');
 
 // ——— 工具 ———
 function maskKey(key) {
@@ -24,7 +24,12 @@ function withMaskedKeys(settings) {
 router.get('/presets', (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   const presets = Object.entries(PROVIDER_PRESETS).map(([id, p]) => ({
-    id, name: p.name, api_url: p.api_url, defaultModels: p.defaultModels,
+    id,
+    name: p.name,
+    api_url: p.api_url,
+    defaultModels: p.defaultModels,
+    adapter: inferProviderAdapter({ id, preset: id, api_url: p.api_url, name: p.name })?.adapter || '',
+    adapter_config: inferProviderAdapter({ id, preset: id, api_url: p.api_url, name: p.name })?.adapter_config || null,
   }));
   res.json({ success: true, data: presets });
 });
@@ -65,7 +70,7 @@ router.post('/providers/refresh-all', async (req, res) => {
 
 // 新增供应商
 router.post('/providers', (req, res) => {
-  const { id, name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, models = [] } = req.body;
+  const { id, name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config, models = [] } = req.body;
   if (!name || !api_url) return res.status(400).json({ success: false, error: '请填写供应商名称和 API 地址' });
   const settings = loadSettings();
   const newId = (id || name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || Date.now().toString());
@@ -77,6 +82,8 @@ router.post('/providers', (req, res) => {
     models: models.map(m => ({ ...m, enabled: true })),
     last_tested: null, test_status: null, created_at: new Date().toISOString(),
   };
+  if (adapter !== undefined) provider.adapter = String(adapter || '').trim();
+  if (adapter_config && typeof adapter_config === 'object') provider.adapter_config = adapter_config;
   if (topview_uid !== undefined) provider.topview_uid = String(topview_uid || '').trim();
   if (api_uid !== undefined) provider.api_uid = String(api_uid || '').trim();
   if (uid !== undefined) provider.uid = String(uid || '').trim();
@@ -89,7 +96,7 @@ router.post('/providers', (req, res) => {
 
 // 更新供应商基本信息（名称/URL/Key）
 router.put('/providers/:id', (req, res) => {
-  const { name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url } = req.body;
+  const { name, api_url, api_key, topview_uid, api_uid, uid, webang_asset_group_id, webang_asset_api_url, adapter, adapter_config } = req.body;
   const settings = loadSettings();
   const p = settings.providers.find(p => p.id === req.params.id);
   if (!p) return res.status(404).json({ success: false, error: '供应商不存在' });
@@ -101,6 +108,8 @@ router.put('/providers/:id', (req, res) => {
   if (uid !== undefined) p.uid = String(uid || '').trim();
   if (webang_asset_group_id !== undefined) p.webang_asset_group_id = String(webang_asset_group_id || '').trim();
   if (webang_asset_api_url !== undefined) p.webang_asset_api_url = String(webang_asset_api_url || '').trim();
+  if (adapter !== undefined) p.adapter = String(adapter || '').trim();
+  if (adapter_config !== undefined) p.adapter_config = (adapter_config && typeof adapter_config === 'object') ? adapter_config : {};
   saveSettings(settings);
   res.json({ success: true });
 });
