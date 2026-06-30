@@ -42,6 +42,26 @@ function normalizeAssetImageList(value) {
     .slice(0, 12);
 }
 
+function normalizeAssetViewImages(value) {
+  const list = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return list.map(item => {
+    if (typeof item === 'string') return { url: item };
+    if (!item || typeof item !== 'object') return null;
+    const url = String(item.url || item.image_url || item.imageUrl || item.file_url || '').trim();
+    if (!url) return null;
+    return {
+      ...item,
+      url,
+      image_url: String(item.image_url || item.url || item.imageUrl || item.file_url || '').trim() || url,
+    };
+  }).filter(Boolean).filter(item => {
+    if (seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  }).slice(0, 12);
+}
+
 function publicAssetUrl(asset) {
   return asset.file_url || asset.image_url || asset.url || '';
 }
@@ -51,6 +71,7 @@ function serializeAsset(asset) {
   const imageUrl = publicAssetUrl(asset);
   const extraImages = normalizeAssetImageList(asset.extra_image_urls || asset.extra_images || []);
   const metadata = asset.metadata || {};
+  const viewImages = normalizeAssetViewImages(asset.view_images || metadata.view_images || metadata.views || []);
   const source = asset.source || metadata.source || '';
   const actorText = [asset.name, asset.description, metadata.name, metadata.prompt, metadata.reference_kind]
     .filter(Boolean)
@@ -69,7 +90,8 @@ function serializeAsset(asset) {
     image_url: asset.image_url || imageUrl,
     file_url: asset.file_url || imageUrl,
     extra_image_urls: extraImages,
-    view_count: asset.view_count || (imageUrl ? 1 + extraImages.length : extraImages.length),
+    view_images: viewImages,
+    view_count: asset.view_count || viewImages.length || (imageUrl ? 1 + extraImages.length : extraImages.length),
     source,
     reference_kind: referenceKind,
     gender: asset.gender || metadata.gender || '',
@@ -192,7 +214,9 @@ router.post('/', (req, res) => {
   }
   const imageUrl = String(body.image_url || body.file_url || body.url || '').trim();
   const extraImageUrls = normalizeAssetImageList(body.extra_image_urls || body.extra_images || body.views);
-  if (type !== 'music' && !imageUrl && !extraImageUrls.length) {
+  const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+  const viewImages = normalizeAssetViewImages(body.view_images || metadata.view_images || []);
+  if (type !== 'music' && !imageUrl && !extraImageUrls.length && !viewImages.length) {
     return res.status(400).json({ success: false, error: '请提供素材图片 URL' });
   }
 
@@ -207,12 +231,13 @@ router.post('/', (req, res) => {
     file_url: imageUrl,
     image_url: imageUrl,
     extra_image_urls: extraImageUrls,
-    view_count: Number(body.view_count || (imageUrl ? 1 + extraImageUrls.length : extraImageUrls.length)) || 1,
+    view_images: viewImages,
+    view_count: Number(body.view_count || viewImages.length || (imageUrl ? 1 + extraImageUrls.length : extraImageUrls.length)) || 1,
     status: body.status || 'active',
     source: body.source || 'linked',
     description: String(body.description || '').trim(),
     tags: Array.isArray(body.tags) ? body.tags.slice(0, 20) : [],
-    metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
+    metadata,
     created_at: new Date().toISOString()
   };
 

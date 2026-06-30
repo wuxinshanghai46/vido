@@ -7643,6 +7643,7 @@
       ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
       ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
       ...viewUrls(asset.view_images),
+      ...viewUrls(asset.metadata?.view_images),
       ...viewUrls(asset.views),
       ...castUrls,
     ].map(compactLuxuryUrl).filter(Boolean).filter((url, index, arr) => arr.indexOf(url) === index);
@@ -7695,8 +7696,73 @@
     return urls;
   }
 
-  function luxuryActorAssetViewLabel(index = 0) {
-    return ['正面', '侧面/半侧', '背面', '动作'][Number(index) || 0] || `参考 ${Number(index) + 1}`;
+  function luxuryActorAssetViewKey(view = {}, index = 0) {
+    if (typeof view === 'number') {
+      return ['front', 'side', 'back', 'action'][Number(view) || 0] || '';
+    }
+    const raw = String(
+      view?.key
+      || view?.view_key
+      || view?.view
+      || view?.pose_key
+      || view?.type
+      || '',
+    ).trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (/^(front|frontal|main|primary|正面)$/.test(raw)) return 'front';
+    if (/^(side|profile|semi_side|half_side|three_quarter|3_4|侧面|半侧|侧面_半侧)$/.test(raw)) return 'side';
+    if (/^(back|rear|back_view|背面)$/.test(raw)) return 'back';
+    if (/^(action|pose|gesture|motion|动作)$/.test(raw)) return 'action';
+    return raw || ['front', 'side', 'back', 'action'][Number(index) || 0] || '';
+  }
+
+  function luxuryActorAssetViewLabel(view = 0, index = 0) {
+    if (typeof view === 'object' && view) {
+      const explicit = String(view.label || view.name || view.title || '').trim();
+      if (explicit && !/^(front|side|back|rear|action|pose|view)$/i.test(explicit)) return explicit;
+    }
+    const key = luxuryActorAssetViewKey(view, index);
+    const labels = {
+      front: '正面',
+      side: '侧面/半侧',
+      back: '背面',
+      action: '动作',
+    };
+    if (labels[key]) return labels[key];
+    const fallbackIndex = typeof view === 'number' ? Number(view) : Number(index);
+    return `参考 ${Number.isFinite(fallbackIndex) ? fallbackIndex + 1 : 1}`;
+  }
+
+  function luxuryActorAssetViewEntries(asset = {}) {
+    const entries = [];
+    const seen = new Set();
+    const push = (url, view = {}, index = entries.length) => {
+      const compactUrl = compactLuxuryUrl(url || '');
+      if (!compactUrl || seen.has(compactUrl)) return;
+      seen.add(compactUrl);
+      entries.push({
+        url: compactUrl,
+        key: luxuryActorAssetViewKey(view, index),
+        label: luxuryActorAssetViewLabel(view, index),
+      });
+    };
+    const viewImages = Array.isArray(asset.view_images) && asset.view_images.length
+      ? asset.view_images
+      : (Array.isArray(asset.metadata?.view_images) ? asset.metadata.view_images : []);
+    if (viewImages.length) {
+      viewImages.forEach((view, index) => {
+        push(view?.url || view?.image_url || view?.imageUrl || view?.file_url || view?.previewUrl || '', view, index);
+      });
+    }
+    push(asset.url || asset.image_url || asset.imageUrl || asset.previewUrl || '', { key: 'front' }, 0);
+    if (Array.isArray(asset.extra_image_urls)) {
+      asset.extra_image_urls.forEach((url, index) => {
+        push(url, {}, entries.length || index + 1);
+      });
+    }
+    if (!entries.length) {
+      luxuryActorAssetUrls(asset).forEach((url, index) => push(url, index, index));
+    }
+    return entries;
   }
 
   function luxuryPersonGenerationErrorExplanation(error = {}) {
@@ -7851,13 +7917,14 @@
     const isLongTail = basePct >= 82;
     const softPct = isLongTail ? Math.min(94, basePct + Math.floor(Math.max(0, elapsed - 22000) / 9000)) : basePct;
     const pct = Math.max(6, Math.min(96, softPct));
+    const elapsedSec = Math.max(0, Math.round(elapsed / 1000));
     const canSeeDebug = canViewLuxuryInternalPipeline();
     const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
-    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、背面和动作参考图。');
+    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、动作参考图，并尝试补充背面。');
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
-        <span>${pct}%</span>
+        <span>${pct}% · 已用 ${elapsedSec} 秒</span>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <small>${escapeHtml(phase || '准备生成')} · ${escapeHtml(message || '正在整理演员参考图。')}</small>
@@ -7867,6 +7934,9 @@
   function luxuryActorMaterialToPersonAsset(asset = {}) {
     const urls = luxuryActorAssetUrls(asset);
     const metadata = asset.metadata || {};
+    const viewImages = Array.isArray(asset.view_images) && asset.view_images.length
+      ? asset.view_images
+      : (Array.isArray(metadata.view_images) ? metadata.view_images : []);
     const source = asset.source || metadata.source || '';
     const explicitKind = String(asset.reference_kind || metadata.reference_kind || '').toLowerCase();
     let referenceKind = explicitKind || 'unknown';
@@ -7895,6 +7965,7 @@
       image_url: urls[0] || '',
       previewUrl: urls[0] || '',
       extra_image_urls: urls.slice(1),
+      view_images: viewImages,
       cast_assets: Array.isArray(asset.cast_assets)
         ? asset.cast_assets
         : (Array.isArray(metadata.cast_assets) ? metadata.cast_assets : []),
@@ -7910,11 +7981,19 @@
     const url = compactLuxuryUrl(asset.image_url || asset.url || asset.previewUrl || '');
     if (!url || /^blob:/i.test(url) || asset.actor_asset_id || asset.asset_library_id) return null;
     try {
+      const viewImages = Array.isArray(asset.view_images)
+        ? asset.view_images.map(view => ({
+          ...view,
+          url: compactLuxuryUrl(view?.url || view?.image_url || view?.imageUrl || view?.file_url || ''),
+          image_url: compactLuxuryUrl(view?.image_url || view?.url || view?.imageUrl || view?.file_url || ''),
+        })).filter(view => view.url || view.image_url)
+        : [];
       const body = {
         type: 'character',
         name: asset.name || '剧情广告演员',
         image_url: url,
         extra_image_urls: Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
+        view_images: viewImages,
         cast_assets: Array.isArray(asset.cast_assets) ? asset.cast_assets : [],
         view_count: Number(asset.view_count || 1) || 1,
         source,
@@ -7930,6 +8009,7 @@
           cast_mode: asset.cast_mode || asset.castMode || '',
           expected_people: asset.expected_people || asset.person_count || '',
           cast_assets: Array.isArray(asset.cast_assets) ? asset.cast_assets : [],
+          view_images: viewImages,
           is_ai_generated: !!asset.is_ai_generated,
           person_spec: luxuryAdPersonSpec(),
         },
@@ -8028,8 +8108,9 @@
     const generated = state.luxuryAd.personAsset;
     if (generated && (generated.url || generated.image_url || generated.previewUrl || generated.uploading || generated.failed)) {
       const src = generated.url || generated.image_url || generated.previewUrl || '';
-      const actorUrls = luxuryActorAssetUrls(generated);
       const castMembers = luxuryCastMemberAssets(generated);
+      const actorViewEntries = luxuryActorAssetViewEntries(generated);
+      const actorUrls = castMembers.length > 1 ? luxuryActorAssetUrls(generated) : actorViewEntries.map(item => item.url);
       const actorId = generated.actor_asset_id || generated.asset_library_id || generated.material_id || '';
       const isAiActor = luxuryAdActorIsAiGenerated(generated);
       const isSyntheticActor = luxuryAdActorIsSyntheticRealistic(generated);
@@ -8044,7 +8125,7 @@
         generated.source ? luxuryAdActorReferenceLabel(generated) : '',
         actorId ? (canViewLuxuryInternalPipeline() ? '已绑定 actor_id' : '已绑定人物参考') : '',
         castMembers.length > 1 ? `${castMembers.length} 个独立人物` : '',
-        actorUrls.length ? `${actorUrls.length} 张演员参考` : '',
+        actorUrls.length ? `${actorUrls.length} 张演员参考${!castMembers.length && actorViewEntries.length ? `：${actorViewEntries.map(item => item.label).join('、')}` : ''}` : '',
         genderText,
         ageText,
       ].filter(Boolean).join(' · ');
@@ -8064,7 +8145,7 @@
       const errorHtml = generated.failed && state.luxuryAd.personGenerationError
         ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${canViewLuxuryInternalPipeline() ? `${renderLuxuryPersonFailedCandidates(state.luxuryAd.personGenerationError)}${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}` : ''}</div>`
         : '';
-      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧、背面和动作演员照。' : (isAiActor ? '正在生成正面、侧面/半侧、背面和动作四视图。' : '真人照片上传中。');
+      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧、动作参考，并尝试补充背面。' : (isAiActor ? '正在生成正面、侧面/半侧、动作参考，并尝试补充背面。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
       const castGrid = castMembers.length > 1
         ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => {
@@ -8078,10 +8159,10 @@
           </button>`;
         }).join('')}</div>`
         : '';
-      const previewButtons = !castGrid && actorUrls.length
-        ? `<div class="dh-lux-actor-views">${actorUrls.slice(0, 6).map((url, i) => `<button type="button" data-lux-person-preview="${i}" title="预览${escapeHtml(luxuryActorAssetViewLabel(i))}">
-            <img src="${escapeHtml(withThumbAuth(url, 360))}" alt="${escapeHtml(luxuryActorAssetViewLabel(i))}" loading="lazy" decoding="async">
-            <span>${escapeHtml(luxuryActorAssetViewLabel(i))}</span>
+      const previewButtons = !castGrid && actorViewEntries.length
+        ? `<div class="dh-lux-actor-views">${actorViewEntries.slice(0, 6).map((entry, i) => `<button type="button" data-lux-person-preview="${i}" title="预览${escapeHtml(entry.label)}">
+            <img src="${escapeHtml(withThumbAuth(entry.url, 360))}" alt="${escapeHtml(entry.label)}" loading="lazy" decoding="async">
+            <span>${escapeHtml(entry.label)}</span>
           </button>`).join('')}</div>`
         : '';
       host.innerHTML = `<div class="dh-luxgen-character-sheet ${generated.failed ? 'is-failed' : ''}">
@@ -9399,9 +9480,9 @@
       { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
       { at: 2500, percent: 24, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
       { at: 8500, percent: 48, phase: generationPeople > 1 ? '逐个生成侧面/半侧参考' : '生成侧面/半侧参考', message: generationPeople > 1 ? '每个人单独复用自己的脸型、发型、服装和身形比例。' : '复用同一脸型、发型、服装和身形比例。' },
-      { at: 15000, percent: 68, phase: generationPeople > 1 ? '逐个生成背面参考' : '生成背面参考', message: generationPeople > 1 ? '补齐每个人的背面服装和发型参考。' : '补齐同一演员的背面服装、发型和轮廓参考。' },
+      { at: 15000, percent: 68, phase: generationPeople > 1 ? '逐个尝试补充背面' : '尝试补充背面', message: generationPeople > 1 ? '背面作为补充参考生成，通过后才会展示。' : '背面作为补充参考生成，通过后才会展示。' },
       { at: 21500, percent: 82, phase: generationPeople > 1 ? '逐个生成动作参考照' : '生成动作参考照', message: generationPeople > 1 ? '每个人单独生成动作参考，不把多人混成一张图。' : '同一演员进入剧本需要的动作姿态，保持衣服和发型一致。' },
-      { at: 29000, percent: 88, phase: '整理演员参考', message: '正在确认人物设定、四视图一致性和参考图可用性。', debugPhase: '人物设定 QA 与素材入库', debugMessage: '检查构图、设定匹配、四视图一致性和入库条件，通过后才绑定 actor_id。' },
+      { at: 29000, percent: 88, phase: '整理演员参考', message: '正在确认人物设定、参考图一致性和可用性。', debugPhase: '人物设定 QA 与素材入库', debugMessage: '检查构图、设定匹配、参考图一致性和入库条件，通过后才绑定 actor_id。' },
     ];
     const updatePersonProgress = () => {
       const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
@@ -9516,7 +9597,7 @@
         label: '拟真演员',
         percent: 96,
         phase: '演员包生成完成',
-        message: '已返回正面、侧面/半侧、背面和动作参考图，正在更新页面。',
+        message: '已返回可用演员参考图，正在更新页面。',
       };
       state.luxuryAd.personAsset = {
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
@@ -9545,7 +9626,7 @@
         extra_image_urls: extraActorUrls,
         view_count: Math.max(1, actorUrls.length || (1 + extraActorUrls.length)),
         uploading: false,
-        description: character.description || '拟真一致性演员：正面定妆、侧面/半侧、背面、动作参考。',
+        description: character.description || '拟真一致性演员：正面、侧面/半侧、动作参考；如背面通过校验会一并展示。',
         spec_description: personDescription,
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -16404,9 +16485,9 @@
     if (luxPersonPreview) {
       const idx = Number(luxPersonPreview.dataset.luxPersonPreview || 0);
       const asset = state.luxuryAd.personAsset || {};
-      const urls = luxuryActorAssetUrls(asset);
-      const url = urls[idx] || urls[0] || '';
-      if (url) openImagePreviewModal(url, `${asset.name || '演员参考'} · ${luxuryActorAssetViewLabel(idx)}`);
+      const entries = luxuryActorAssetViewEntries(asset);
+      const item = entries[idx] || entries[0] || null;
+      if (item?.url) openImagePreviewModal(item.url, `${asset.name || '演员参考'} · ${item.label || luxuryActorAssetViewLabel(idx)}`);
       return;
     }
     const luxPersonFailedPreview = closest('[data-lux-person-failed-preview]');
