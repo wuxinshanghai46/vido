@@ -337,6 +337,36 @@ const STAGE_DEFAULTS = {
 function listDefaults() { return STAGE_DEFAULTS; }
 function getStageDefaults(stageId) { return STAGE_DEFAULTS[stageId] || []; }
 
+function preferDeyunaiForNonVideoStages(stages = {}) {
+  const next = {};
+  for (const [stageId, models] of Object.entries(stages || {})) {
+    const list = Array.isArray(models) ? models.filter(Boolean) : [];
+    const meta = getStageMeta(stageId);
+    if (!list.length || String(meta?.type || '').toLowerCase() === 'video') {
+      next[stageId] = list;
+      continue;
+    }
+    const preferred = [];
+    const others = [];
+    for (const model of list) {
+      const item = { ...model };
+      if (String(item.provider_id || '').trim().toLowerCase() === 'deyunai') {
+        item.enabled = true;
+        preferred.push(item);
+      } else {
+        others.push(item);
+      }
+    }
+    next[stageId] = [...preferred, ...others].map((model, index) => ({
+      ...model,
+      priority: index + 1,
+    }));
+  }
+  return next;
+}
+
+Object.assign(STAGE_DEFAULTS, preferDeyunaiForNonVideoStages(STAGE_DEFAULTS));
+
 function loadConfig() {
   const dbConfig = sqliteConfig.getDbConfig();
   if (dbConfig.enabled && dbConfig.readPrimary) {
@@ -752,6 +782,7 @@ module.exports = {
   listDefaults,
   getStageDefaults,
   getStageMeta,
+  preferDeyunaiForNonVideoStages,
   loadConfig,
   saveConfig,
   getStageConfig,
