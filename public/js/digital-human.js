@@ -11280,8 +11280,8 @@
       const referenceLocked = String(kf.reference_mode || '').includes('reference_locked');
       const qa = kf.qa || kf.shot_plan?.qa || null;
       if (!referenceLocked) {
-        if (!qa) errors.push(`分镜画面${shotLabel}缺少视觉 QA 结果，不能进入成片。`);
-        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`分镜画面${shotLabel}视觉 QA 未通过：${qa.reason || '未说明原因'}`);
+        if (!qa) errors.push(`分镜画面${shotLabel}缺少画面一致性检查结果，不能进入成片。`);
+        else if (qa.pass !== true && qa.accepted_with_warning !== true) errors.push(`分镜画面${shotLabel}和剧本不一致：${qa.reason || '未说明原因'}`);
       }
       const dims = qa?.quality_dimensions || {};
       const lowDims = [
@@ -11336,7 +11336,7 @@
       topviewAllFailed ? 'Topview 图片通道全部失败：请优先检查 Topview 余额、额度或账号授权。' : '',
       preflightFail ? String(preflightFail.error || '当前缺少可执行的真人一致性商业片链路。').slice(0, 180) : '',
       firstProviderFail ? `首个生成通道 ${label(firstProviderFail) || '图片模型'} 未返回可用图片：${String(firstProviderFail.error || '未知错误').slice(0, 140)}` : '',
-      firstQaFail ? `后续候选图已出图但被视觉 QA 拒绝：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
+      firstQaFail ? `后续候选图已出图但和剧本/资产锁不一致：${String(firstQaFail.qa?.reason || firstQaFail.error || '画面与剧本/资产锁不一致').slice(0, 140)}` : '',
     ].filter(Boolean);
     const failedLabels = attempts
       .filter(a => !a.ok)
@@ -11896,7 +11896,7 @@
       ['演员库 / 人物锁', actorLabel, actorSub, hasActorAsset ? 'ready' : 'warn'],
       ['产品类型识别', workflow ? '软件/服务工作流' : '按需求识别主体', workflow ? '只使用 brief、素材或剧本明确要求的载体证据，不套订单/货架模板。' : '按确认主体、场景和业务证据生成。', workflow ? 'ready' : ''],
       ['模型调用链', attempts.length ? '已记录最近一次尝试' : '按模型调用管理执行', '人物演员包走 luxury_ad.person_sheet；分镜图走 luxury_ad.keyframe；成片视频走 luxury_ad.video。', topviewAllFailed ? 'fail' : (attempts.length ? 'warn' : '')],
-      ['严格 QA 门禁', qaAttempt ? `最近评分 ${qaAttempt.qa?.score ?? '-'}` : '等待生成后评分', 'Vision QA 会检查人物一致、剧情动作、写实度、产品/场景和 UI 遮挡。', qaAttempt?.qa?.pass ? 'ready' : (qaAttempt ? 'warn' : '')],
+      ['画面一致性门禁', qaAttempt ? `最近评分 ${qaAttempt.qa?.score ?? '-'}` : '等待生成后评分', '系统会检查人物一致、剧情动作、写实度、产品/场景和 UI 遮挡。', qaAttempt?.qa?.pass ? 'ready' : (qaAttempt ? 'warn' : '')],
     ].map(([title, value, sub, cls]) => `<div class="dh-lux-commercial-guard-card ${cls || ''}"><small>${escapeHtml(title)}</small><b>${escapeHtml(value)}</b><span>${escapeHtml(sub)}</span></div>`).join('');
     const note = topviewAllFailed
       ? '最近一次失败是 Topview 图片通道全部返回 All tasks failed。优先检查 Topview 余额/额度/账号授权；这不是剧情 QA 放行问题。'
@@ -11905,7 +11905,7 @@
         : (finishedFrames ? `当前已生成 ${finishedFrames}/${totalFrames || finishedFrames} 个真实分镜。` : '确认剧本后会先按演员和工作流合同生成关键帧，失败时这里会显示模型链路和原因。'));
     const html = `<section>
       <div class="dh-lux-commercial-guard-head">
-        <div><b>商用分镜生成链路</b><span>人物一致性参考、软件工作流、模型调用管理和严格 QA 会在这里显性展示。</span></div>
+        <div><b>商用分镜生成链路</b><span>人物一致性参考、软件工作流、模型调用管理和画面一致性检查会在这里显性展示。</span></div>
         <em>${escapeHtml(state.luxuryAd.keyframeGenerating ? '生成中' : (finishedFrames ? '已有结果' : '待生成'))}</em>
       </div>
       <div class="dh-lux-commercial-guard-grid">${cards}</div>
@@ -13100,29 +13100,29 @@
       const topviewAllFailed = topviewAttempts.length > 0
         && topviewAttempts.every(a => !a.ok && /All tasks failed|5000|quota|balance|余额|insufficient/i.test(String(a.error || '')));
       if (topviewAllFailed) {
-        return '分镜生成已停止：Topview 图片通道全部返回 All tasks failed。请优先检查 Topview 余额、额度或账号授权；系统没有跳过严格 QA，也没有生成可商用关键帧。';
+        return '分镜生成已停止：Topview 图片通道全部返回 All tasks failed。请优先检查 Topview 余额、额度或账号授权；系统没有跳过画面一致性检查，也没有生成可商用关键帧。';
       }
       if (gptImage2 && !gptImage2.ok && /500|Internal Server Error|provider error|未返回图片|no image|未返回图片数据/i.test(String(gptImage2.error || ''))) {
         return [
           '分镜生成已停止：DeyunAI GPT Image 2 通道返回 500，未返回可用图片数据。',
-          qaRejectedAttempt ? '后续图片候选已生成，但视觉 QA 判定画面与剧本/资产锁不一致。' : '',
-          '请按完整错误回执检查 GPT Image 2 企业接口参数、通道状态、额度/余额和候选图 QA 原因，再调整镜头合同或参考图。',
+          qaRejectedAttempt ? '后续图片候选已生成，但画面与剧本/资产锁不一致，系统已自动修正提示词重试后仍未通过。' : '',
+          '请按完整错误回执检查 GPT Image 2 企业接口参数、通道状态、额度/余额和候选图原因，再调整镜头合同或参考图。',
         ].filter(Boolean).join('');
       }
       if (allQaRejected) {
-        return '分镜生成已停止：图片候选已生成，但全部未通过视觉 QA，主要是画面主体、场景、人物一致性或资产锁与剧本不一致。请展开候选明细查看具体模型和被拒绝图片。';
+        return '分镜生成已停止：图片候选已生成，系统也已根据失败原因自动修正提示词重试，但最终画面仍和剧本、人物、场景或资产锁不一致。请展开候选明细查看具体模型和被拒绝图片。';
       }
     }
     const qaFailed = code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
       || /QA未通过|剧本一致性|storyboard[_\s-]*match|Wrong product|Wrong scene|Missing required|视觉质检.*拒绝|分镜图.*不一致/i.test(msg);
     if (code === 'LUXURY_KEYFRAME_QA_UNAVAILABLE') {
-      return '分镜生成已停止：当前视觉质检模型不可用，系统无法确认生成画面是否严格符合剧本。请到模型调用管理为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路视觉/海外通道额度、模型分组授权，或切换可用视觉模型。';
+      return '分镜生成已停止：当前画面一致性检查模型不可用，系统无法确认生成画面是否严格符合剧本。请到模型调用管理为 luxury_ad.keyframe_qa 配置可用多模态检查模型；如果已配置但仍返回 Insufficient quota，请检查对应通道额度、模型分组授权，或切换可用视觉模型。';
     }
     if (qaFailed) {
-      return `分镜图未通过剧本一致性检查：${msg || '画面主体、场景、动作或镜头意图与已确认剧本不一致，请调整该镜头后重试。'}`;
+      return `分镜图和剧本不一致，系统已自动修正提示词并重试：${msg || '画面主体、场景、动作或镜头意图与已确认剧本不一致，请调整该镜头后重试。'}`;
     }
     if (code === 'PROVIDER_LIMIT_EXCEEDED' || err?.status === 429 || /quota|rate limit|额度|上限|Too Many Requests/i.test(msg)) {
-      return '分镜生成已停止：当前图片或视觉质检模型通道返回额度/频率限制。请按完整错误回执检查对应供应商账号余额、模型通道额度、频率限制、分组授权，或切换可用模型后重试。系统不会跳过剧本一致性检查。';
+      return '分镜生成已停止：当前图片或画面一致性检查通道返回额度/频率限制。请按完整错误回执检查对应供应商账号余额、模型通道额度、频率限制、分组授权，或切换可用模型后重试。系统不会跳过剧本一致性检查。';
     }
     return msg || '分镜生成失败';
   }
@@ -13617,7 +13617,7 @@
         message: planningSheetMode
           ? (deferredPlanning
             ? `镜头表阶段已完成：${totalShots}/${totalShots}，真实关键帧 0/${totalShots}。请先审核剧情、演员和写实风格，再生成真实关键帧。`
-            : `镜头表阶段已完成：${totalShots}/${totalShots}，真实关键帧未通过 QA。请先审核镜头表并重新生成真实关键帧。`)
+            : `镜头表阶段已完成：${totalShots}/${totalShots}，真实关键帧和剧本不一致。系统已自动修正提示词重试，仍需人工审核后重新生成。`)
           : singleIndex === null
           ? `分镜已完成：${state.luxuryAd.keyframes.length}/${previewSegments.length || state.luxuryAd.keyframes.length}（静态分镜；合成广告时才逐镜生成动态视频）。`
           : `第 ${singleIndex + 1} 镜已重新生成。`,
@@ -13636,7 +13636,7 @@
       };
       keepWorkflowProgress = planningSheetMode;
       state.luxuryAd.keyframeGenerating = false;
-      state.luxuryAd.keyframeError = planningSheetMode ? (deferredPlanning ? '' : (r.keyframe_error || '关键帧生成未通过 QA，已先生成可审核分镜板')) : '';
+      state.luxuryAd.keyframeError = planningSheetMode ? (deferredPlanning ? '' : (r.keyframe_error || '关键帧画面和剧本不一致，系统已先生成可审核分镜板')) : '';
       state.luxuryAd.keyframeErrorDetails = planningSheetMode ? (deferredPlanning ? null : (r.details || null)) : null;
       renderLuxuryAdStoryboard();
       saveLuxuryAdDraft({ silent: true, projectState: planningSheetMode ? 'frame_reviewing' : 'frame_ready' }).catch(() => {});
@@ -13767,7 +13767,7 @@
       state.luxuryAd.segments = clampLuxuryAdSegmentsToLockedAssets(state.luxuryAd.segments || []);
       state.luxuryAd.keyframes = (state.luxuryAd.keyframes || []).slice(0, state.luxuryAd.segments.length);
     }
-    if (state.luxuryAd.keyframePlanningOnly) return toast('当前只有可审核分镜板，关键帧还未通过 QA。请先重新生成关键帧，再合成广告', 'error');
+    if (state.luxuryAd.keyframePlanningOnly) return toast('当前只有可审核分镜板，真实关键帧还没有和剧本对齐。请先重新生成关键帧，再合成广告', 'error');
     if (!state.luxuryAd.keyframes?.some(k => k?.image_url)) return toast('请先点击“4 生成分镜”，确认每段画面后再合成广告', 'error');
     try {
       validateLuxuryAdKeyframes(state.luxuryAd.keyframes || [], state.luxuryAd.segments || []);

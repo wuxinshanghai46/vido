@@ -25455,7 +25455,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
   const repairCounts = new Map();
   const maxQaRepairRetries = allowQaRepair
-    ? Math.max(0, Math.min(2, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 1)) || 1))
+    ? Math.max(0, Math.min(4, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 3)) || 3))
     : 0;
 
   for (let i = 0; i < configuredModels.length; i++) {
