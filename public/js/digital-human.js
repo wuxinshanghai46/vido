@@ -11351,6 +11351,30 @@
     </div>`;
   }
 
+  function luxuryScriptErrorMessage(error = '', details = null) {
+    const parts = [
+      error,
+      details?.error,
+      details?.message,
+      details?.details?.error,
+      details?.details?.message,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return parts[0] || '剧本生成失败，请查看完整错误回执后调整模型通道或重试。';
+  }
+
+  function renderLuxuryScriptError(error = '', details = null) {
+    const message = luxuryScriptErrorMessage(error, details);
+    const code = String(details?.code || details?.details?.code || '').trim();
+    const status = String(details?.status || details?.details?.status || '').trim();
+    const meta = [code ? `错误码：${code}` : '', status ? `状态：${status}` : ''].filter(Boolean).join(' · ');
+    return `<div class="dh-demo-script-overview dh-lux-keyframe-error">
+      <b>剧本生成失败</b>
+      <span>${escapeHtml(message)}</span>
+      ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
+      ${renderLuxuryFullErrorReceipt(details || { error: message }, '剧本接口完整错误回执')}
+    </div>`;
+  }
+
   function renderLuxuryAdScriptTable(host, segments) {
     if (!host) return;
     if (state.luxuryAd.storyboardDetailed && Array.isArray(segments) && segments.length && !state.luxuryAd.scriptGenerating) {
@@ -11359,9 +11383,7 @@
     }
     const scriptError = String(state.luxuryAd.scriptError || '').trim();
     const scriptErrorHtml = scriptError
-      ? `<div class="dh-demo-script-overview dh-lux-keyframe-error">
-          <b>剧本生成失败</b>
-        </div>`
+      ? renderLuxuryScriptError(scriptError, state.luxuryAd.scriptErrorDetails)
       : '';
     if (!segments.length) {
       host.innerHTML = scriptErrorHtml || luxuryAdEmptyBlock('还没有剧本', '请先完成基础信息配置，再点击“确认基础信息，生成剧本”。');
@@ -13308,6 +13330,7 @@
       showLuxuryAdStep(detail ? 3 : 2, { silent: true });
       ok = true;
     } catch (err) {
+      const publicMessage = luxuryScriptErrorMessage(err?.message || '', err?.data || err?.details || null);
       if (detail) {
         const hasUsableDetailedScript = !!state.luxuryAd.storyboardDetailed
           && Array.isArray(state.luxuryAd.segments)
@@ -13315,11 +13338,11 @@
         state.luxuryAd.sceneGenerating = false;
         state.luxuryAd.scriptGenerating = false;
         state.luxuryAd.workflowProgress = null;
-        state.luxuryAd.scriptError = hasUsableDetailedScript ? '' : '剧本生成失败';
+        state.luxuryAd.scriptError = hasUsableDetailedScript ? '' : publicMessage;
         state.luxuryAd.scriptErrorDetails = hasUsableDetailedScript ? null : (err.data || err.details || null);
         renderLuxuryAdStoryboard();
       }
-      toast(detail ? '剧情广告剧本生成失败' : '剧情广告场景配置生成失败', 'error');
+      toast(detail ? `剧情广告剧本生成失败：${publicMessage}` : `剧情广告场景配置生成失败：${publicMessage}`, 'error');
     } finally {
       state.luxuryAd.sceneGenerating = false;
       state.luxuryAd.scriptGenerating = false;
