@@ -410,40 +410,22 @@
         "enabled": true
       },
       {
-        "provider_id": "apismile",
+        "provider_id": "deyunai",
         "model_id": "gpt-image-2",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 3,
-        "enabled": false
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 4,
-        "enabled": false
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "gpt-image-2",
-        "priority": 5,
-        "enabled": false
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 6,
-        "enabled": false
+        "priority": 3,
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
-        "priority": 7,
-        "enabled": false
+        "priority": 4,
+        "enabled": true
       }
     ],
     "luxury_ad.scene_seed": [
@@ -607,37 +589,19 @@
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
         "priority": 4,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
         "priority": 5,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
         "priority": 6,
-        "enabled": false
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 7,
-        "enabled": false
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 8,
-        "enabled": false
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 9,
-        "enabled": false
+        "enabled": true
       }
     ],
     "luxury_ad.keyframe_qa": [
@@ -657,25 +621,25 @@
         "provider_id": "deyunai",
         "model_id": "gemini-2.5-flash",
         "priority": 3,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "gemini-2.5-pro",
         "priority": 4,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "gpt-4o",
         "priority": 5,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "deyunai",
         "model_id": "gemini-3.1-flash-lite-preview",
         "priority": 6,
-        "enabled": false
+        "enabled": true
       }
     ],
     "luxury_ad.keyframe_repair": [
