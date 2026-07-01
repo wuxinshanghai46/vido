@@ -366,38 +366,38 @@
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 6,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 7,
+        "priority": 4,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 8,
+        "priority": 5,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
+        "priority": 6,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 9,
         "enabled": false
       }
@@ -466,38 +466,38 @@
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 6,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 7,
+        "priority": 4,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 8,
+        "priority": 5,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
+        "priority": 6,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 9,
         "enabled": false
       }
@@ -522,38 +522,38 @@
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 6,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 7,
+        "priority": 4,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 8,
+        "priority": 5,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
+        "priority": 6,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 9,
         "enabled": false
       }
@@ -604,38 +604,38 @@
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 6,
-        "enabled": true
-      },
-      {
         "provider_id": "deyunai",
         "model_id": "gpt-image-2",
-        "priority": 7,
+        "priority": 4,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana-pro",
-        "priority": 8,
+        "priority": 5,
         "enabled": false
       },
       {
         "provider_id": "deyunai",
         "model_id": "nano-banana",
+        "priority": 6,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 9,
         "enabled": false
       }
