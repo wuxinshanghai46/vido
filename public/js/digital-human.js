@@ -713,14 +713,6 @@
   const DH_LAST_AVATAR_TAB_KEY = 'vido_dh_avatar_tab';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
 
-  try {
-    const savedRoute = readDigitalHumanPageState();
-    const savedTaskType = localStorage.getItem(DH_LAST_TASK_TYPE_KEY);
-    const savedTaskStatus = localStorage.getItem(DH_LAST_TASK_STATUS_KEY);
-    if (savedRoute.task_type || savedTaskType) state.activeTaskType = savedRoute.task_type || savedTaskType;
-    if (savedRoute.task_status || savedTaskStatus) state.activeTaskStatus = savedRoute.task_status || savedTaskStatus;
-  } catch {}
-
   function readDigitalHumanPageState() {
     try {
       const raw = localStorage.getItem(DH_PAGE_STATE_KEY);
@@ -852,14 +844,8 @@
       const urlTab = new URLSearchParams(location.search).get('tab');
       if (DH_VALID_TABS.includes(urlTab)) return urlTab;
     } catch {}
-    const savedRoute = readDigitalHumanPageState();
-    if (DH_VALID_TABS.includes(savedRoute.tab)) return savedRoute.tab;
     const hashTab = String(location.hash || '').replace(/^#/, '').trim();
     if (DH_VALID_TABS.includes(hashTab)) return hashTab;
-    try {
-      const savedTab = localStorage.getItem(DH_LAST_TAB_KEY);
-      if (DH_VALID_TABS.includes(savedTab)) return savedTab;
-    } catch {}
     return 'step1';
   }
 
@@ -952,12 +938,6 @@
     try {
       const urlTab = String(new URLSearchParams(location.search || '').get('av_tab') || '').trim();
       if (['image', 'video', 'product'].includes(urlTab)) return urlTab;
-    } catch {}
-    const savedRouteTab = String(readDigitalHumanPageState().av_tab || '').trim();
-    if (['image', 'video', 'product'].includes(savedRouteTab)) return savedRouteTab;
-    try {
-      const saved = localStorage.getItem(DH_LAST_AVATAR_TAB_KEY);
-      if (['image', 'video', 'product'].includes(saved)) return saved;
     } catch {}
     return '';
   }
