@@ -137,7 +137,7 @@
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
         "priority": 1,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "apismile",
@@ -181,7 +181,7 @@
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
         "priority": 1,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "apismile",
@@ -225,7 +225,7 @@
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
         "priority": 1,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "apismile",
@@ -283,7 +283,7 @@
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
         "priority": 1,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "apismile",
@@ -665,7 +665,7 @@
         "provider_id": "apismile",
         "model_id": "gpt-5.5",
         "priority": 1,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "apismile",
