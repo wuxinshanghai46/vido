@@ -337,15 +337,28 @@ const STAGE_DEFAULTS = {
 function listDefaults() { return STAGE_DEFAULTS; }
 function getStageDefaults(stageId) { return STAGE_DEFAULTS[stageId] || []; }
 
-function preferDeyunaiForNonVideoStages(stages = {}) {
+function preferDeyunaiForNonVideoStages(stages = {}, defaults = {}) {
   const next = {};
-  for (const [stageId, models] of Object.entries(stages || {})) {
-    const list = Array.isArray(models) ? models.filter(Boolean) : [];
+  const stageIds = new Set([...Object.keys(defaults || {}), ...Object.keys(stages || {})]);
+  for (const stageId of stageIds) {
+    const models = stages?.[stageId] || [];
+    const list = Array.isArray(models) ? models.filter(Boolean).map(model => ({ ...model })) : [];
     const meta = getStageMeta(stageId);
     if (!list.length || String(meta?.type || '').toLowerCase() === 'video') {
       next[stageId] = list;
       continue;
     }
+    const existingKeys = new Set(list.map(model =>
+      `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`
+    ));
+    const defaultDeyunai = (defaults?.[stageId] || [])
+      .filter(model => String(model?.provider_id || '').trim().toLowerCase() === 'deyunai')
+      .filter(model => {
+        const key = `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`;
+        return key && !existingKeys.has(key);
+      })
+      .map(model => ({ ...model, enabled: true }));
+    if (defaultDeyunai.length) list.push(...defaultDeyunai);
     const preferred = [];
     const others = [];
     for (const model of list) {
