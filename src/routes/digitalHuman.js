@@ -6398,12 +6398,26 @@ function _isReadableStream(value) {
   return !!value && typeof value.on === 'function' && typeof value.pipe === 'function';
 }
 
-function _readStreamText(stream) {
+function _readStreamText(stream, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      try { stream.destroy?.(); } catch {}
+      const err = new Error(`OpenAI-compatible image stream did not finish within ${timeoutMs}ms`);
+      err.code = 'OPENAI_COMPATIBLE_IMAGE_STREAM_TIMEOUT';
+      finish(reject, err);
+    }, Math.max(1000, Number(timeoutMs) || MODEL_PROVIDER_TIMEOUT_MS));
+    timer.unref?.();
     stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    stream.on('error', err => finish(reject, err));
+    stream.on('end', () => finish(resolve, Buffer.concat(chunks).toString('utf8')));
   });
 }
 
@@ -6435,9 +6449,9 @@ function _parseOpenAICompatibleStreamResponse(text = '') {
   return { data: [] };
 }
 
-async function _normalizeOpenAICompatibleImageResponseData(response) {
+async function _normalizeOpenAICompatibleImageResponseData(response, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS) {
   if (!_isReadableStream(response?.data)) return { data: response?.data, streamText: '' };
-  const streamText = await _readStreamText(response.data);
+  const streamText = await _readStreamText(response.data, timeoutMs);
   return { data: _parseOpenAICompatibleStreamResponse(streamText), streamText };
 }
 
@@ -6582,7 +6596,7 @@ async function _generateViaOpenAICompatibleImageModel({
         responseType: useGptImage2Stream ? 'stream' : 'json',
       });
     }
-    const normalizedResponse = await _normalizeOpenAICompatibleImageResponseData(response);
+    const normalizedResponse = await _normalizeOpenAICompatibleImageResponseData(response, MODEL_PROVIDER_TIMEOUT_MS);
     const responseData = normalizedResponse.data;
     const { url, b64 } = parseImagePayload(responseData);
     if (url) {

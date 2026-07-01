@@ -105,12 +105,26 @@ function isReadableStream(value) {
   return !!value && typeof value.on === 'function' && typeof value.pipe === 'function';
 }
 
-function readStreamText(stream) {
+function readStreamText(stream, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      try { stream.destroy?.(); } catch {}
+      const err = new Error(`DeyunAI gpt-image-2 stream did not finish within ${timeoutMs}ms`);
+      err.code = 'DEYUNAI_GPT_IMAGE2_STREAM_TIMEOUT';
+      finish(reject, err);
+    }, Math.max(1000, Number(timeoutMs) || MODEL_PROVIDER_TIMEOUT_MS));
+    timer.unref?.();
     stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    stream.on('error', err => finish(reject, err));
+    stream.on('end', () => finish(resolve, Buffer.concat(chunks).toString('utf8')));
   });
 }
 
@@ -351,7 +365,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         body,
         { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true }
       );
-      const streamText = isReadableStream(submitRes.data) ? await readStreamText(submitRes.data) : '';
+      const streamText = isReadableStream(submitRes.data) ? await readStreamText(submitRes.data, timeoutMs) : '';
       if (streamText) submitRes.data = parseStreamResponsePayload(streamText);
       if (submitRes.status >= 400) {
         const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
