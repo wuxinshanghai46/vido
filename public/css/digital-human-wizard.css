@@ -902,6 +902,7 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-live-track i { display: block; height: 100%; min-width: 18px; border-radius: inherit; background: var(--dh-gradient); transition: width .45s ease; }
 .dh-luxgen-live-meta span { color: var(--dh-primary); font-size: 12px; font-weight: 800; }
 .dh-luxgen-live-meta small { color: var(--dh-text-soft); font-size: 12px; line-height: 1.45; text-align: right; }
+.dh-luxgen-action-progress { margin: -4px 0 14px; }
 .dh-luxgen-usage { display: grid; gap: 10px; margin: -4px 0 16px; padding: 12px 14px; border: 1px solid rgba(148,163,184,.24); border-radius: var(--dh-radius-sm); background: rgba(10,18,27,.62); }
 .dh-luxgen-usage[hidden] { display: none !important; }
 .dh-luxgen-usage-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--dh-text); font-size: 13px; font-weight: 900; }

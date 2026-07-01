@@ -199,6 +199,8 @@
       personGenerationError: null,
       personGenerationProgress: null,
       workflowProgress: null,
+      pipelineModels: null,
+      pipelineModelsLoadedAt: 0,
       usageRows: [],
       usageSummary: null,
       usageByStep: {},
@@ -8293,12 +8295,14 @@
   function renderLuxuryWorkflowProgress() {
     const progress = state.luxuryAd.workflowProgress;
     const liveBox = $('#dhLuxAdLiveProgress');
+    const actionBox = $('#dhLuxAdActionProgress');
     const scriptTopBox = $('#dhLuxAdScriptTopProgress');
     const step4ScriptBox = $('#dhLuxAdStep4ScriptProgress');
     const scriptTableBox = $('#dhLuxAdScriptProgress');
     const frameBox = $('#dhLuxAdFrameProgress');
     const empty = null;
     renderLuxuryWorkflowProgressBox(liveBox, empty);
+    renderLuxuryWorkflowProgressBox(actionBox, empty);
     renderLuxuryWorkflowProgressBox(scriptTopBox, empty);
     renderLuxuryWorkflowProgressBox(step4ScriptBox, empty);
     renderLuxuryWorkflowProgressBox(scriptTableBox, empty);
@@ -8307,6 +8311,7 @@
     if (progress.keyframes) {
       renderLuxuryWorkflowProgressBox(frameBox, progress);
     } else if (progress.detail) {
+      renderLuxuryWorkflowProgressBox(actionBox, progress);
       const targetBox = visibleLuxuryProgressBox(scriptTopBox, step4ScriptBox, scriptTableBox);
       renderLuxuryWorkflowProgressBox(targetBox, progress);
     } else {
@@ -11726,6 +11731,93 @@
     return hit.ok || hit.qa?.pass === true || hit.qa?.accepted_with_warning === true ? 'ready' : 'fail';
   }
 
+  const LUXURY_PIPELINE_PROVIDER_LABELS = {
+    apismile: 'ApiSmile',
+    'webang-maas': '微众',
+    'webang-seedance': '微众',
+    deyunai: '漫路',
+    topview: 'Topview',
+    bridgellm: 'BridgeLLM',
+    volcengine: '火山',
+    deepseek: 'DeepSeek',
+    zhipu: '智谱',
+    'aliyun-tts': '阿里云',
+  };
+
+  function luxuryPipelineModelLabel(model = {}) {
+    const providerId = String(model.provider_id || model.provider || '').trim();
+    const modelId = String(model.model_id || model.model || '').trim();
+    const providerName = LUXURY_PIPELINE_PROVIDER_LABELS[providerId] || model.provider_name || providerId || '模型';
+    const compactModel = modelId
+      .replace(/^topview-/i, '')
+      .replace(/^doubao-/i, '')
+      .replace(/-/g, ' ')
+      .replace(/\bgpt image 2\b/i, 'GPT Image 2')
+      .replace(/\bnano banana\b/i, 'Nano Banana')
+      .replace(/\bseedance\b/i, 'Seedance')
+      .replace(/\bseedream\b/i, 'Seedream')
+      .trim();
+    return [providerName, compactModel || modelId].filter(Boolean).join(' ');
+  }
+
+  function luxuryPipelineFallbackChain(stageId = '') {
+    if (stageId === 'luxury_ad.person_sheet') {
+      return [
+        { provider_id: 'webang-maas', model_id: 'gpt-image-2', enabled: true },
+        { provider_id: 'apismile', model_id: 'gpt-image-2', enabled: true },
+      ];
+    }
+    if (stageId === 'luxury_ad.keyframe') {
+      return [
+        { provider_id: 'webang-maas', model_id: 'gpt-image-2', enabled: true },
+        { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', enabled: true },
+        { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', enabled: true },
+        { provider_id: 'apismile', model_id: 'gpt-image-2', enabled: true },
+      ];
+    }
+    if (stageId === 'luxury_ad.video') {
+      return [
+        { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', enabled: true },
+        { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', enabled: true },
+        { provider_id: 'deyunai', model_id: 'kling-v2.5-turbo-pro', enabled: false },
+        { provider_id: 'deyunai', model_id: 'hailuo-02-fast', enabled: false },
+      ];
+    }
+    return [];
+  }
+
+  function luxuryPipelineStageChain(stageId = '') {
+    const config = state.luxuryAd.pipelineModels?.config || {};
+    const defaults = state.luxuryAd.pipelineModels?.defaults || {};
+    const list = Array.isArray(config[stageId]) && config[stageId].length
+      ? config[stageId]
+      : (Array.isArray(defaults[stageId]) && defaults[stageId].length
+        ? defaults[stageId]
+        : luxuryPipelineFallbackChain(stageId));
+    return list
+      .filter(m => m && m.provider_id && m.model_id)
+      .slice()
+      .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
+  }
+
+  async function refreshLuxuryPipelineModels({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && state.luxuryAd.pipelineModels && now - Number(state.luxuryAd.pipelineModelsLoadedAt || 0) < 60000) return state.luxuryAd.pipelineModels;
+    try {
+      const r = await api('/api/admin/pipeline-models');
+      if (r?.success) {
+        state.luxuryAd.pipelineModels = r;
+        state.luxuryAd.pipelineModelsLoadedAt = now;
+        renderLuxuryCommercialGuard();
+      }
+      return state.luxuryAd.pipelineModels;
+    } catch (err) {
+      console.warn('[luxuryAd] pipeline model config load failed:', err.message || err);
+      state.luxuryAd.pipelineModelsLoadedAt = now;
+      return state.luxuryAd.pipelineModels;
+    }
+  }
+
   function renderLuxuryCommercialGuard() {
     const hosts = ['#dhLuxAdCapabilityStrip', '#dhLuxAdCommercialGuard']
       .map(selector => $(selector))
@@ -11741,6 +11833,9 @@
     hosts.forEach(host => {
       host.hidden = false;
     });
+    if (!state.luxuryAd.pipelineModels && Date.now() - Number(state.luxuryAd.pipelineModelsLoadedAt || 0) > 60000) {
+      refreshLuxuryPipelineModels().catch(() => {});
+    }
     const segments = state.luxuryAd.segments || [];
     const keyframes = state.luxuryAd.keyframes || [];
     const details = state.luxuryAd.keyframeErrorDetails || null;
@@ -11759,29 +11854,14 @@
     const topviewAllFailed = topviewAttempts.length > 0
       && topviewAttempts.every(a => !a.ok && /All tasks failed|5000|quota|balance|余额|insufficient/i.test(String(a.error || '')));
     const qaAttempt = attempts.find(a => a.qa) || null;
-    const personSheetChain = [
-      ['deyunai', 'gpt-image-2', '漫路 GPT Image 2', false],
-      ['deyunai', 'nano-banana-pro', '漫路 Nano Banana Pro', false],
-      ['deyunai', 'nano-banana', '漫路 Nano Banana', false],
-      ['deyunai', 'qwen-image', '漫路 Qwen Image', false],
-      ['topview', 'topview-gpt-image-2', 'Topview GPT Image 2', true],
-    ];
-    const keyframeChain = [
-      ['deyunai', 'gpt-image-2', '漫路 GPT Image 2', false],
-      ['deyunai', 'nano-banana-pro', '漫路 Nano Banana Pro', false],
-      ['deyunai', 'nano-banana', '漫路 Nano Banana', false],
-      ['deyunai', 'qwen-image-edit', '漫路 Qwen Image Edit', false],
-      ['deyunai', 'doubao-seedream-4-0-250828', '漫路 Seedream 4.0', false],
-      ['topview', 'topview-gpt-image-2', 'Topview GPT Image 2', true],
-    ];
-    const videoChain = [
-      ['webang-seedance', 'doubao-seedance-2-0-260128', '微众 Seedance 2.0', false],
-      ['webang-seedance', 'doubao-seedance-2-0-fast-260128', '微众 Seedance 2.0 Fast', false],
-      ['topview', 'topview-image2video-pro', 'Topview I2V Pro', true],
-      ['deyunai', 'kling-v2.5-turbo-pro', '漫路 Kling 2.5', false],
-      ['deyunai', 'hailuo-02-fast', '漫路 Hailuo 02 Fast', false],
-    ];
-    const chainChipHtml = chain => chain.map(([provider, model, label, disabled]) => {
+    const personSheetChain = luxuryPipelineStageChain('luxury_ad.person_sheet');
+    const keyframeChain = luxuryPipelineStageChain('luxury_ad.keyframe');
+    const videoChain = luxuryPipelineStageChain('luxury_ad.video');
+    const chainChipHtml = chain => chain.map(item => {
+      const provider = item.provider_id || item.provider || '';
+      const model = item.model_id || item.model || '';
+      const disabled = item.enabled === false;
+      const label = luxuryPipelineModelLabel(item);
       const status = luxuryAttemptStatus(attempts, provider, model);
       return `<span class="${disabled ? 'disabled' : status}">${escapeHtml(label)}${disabled ? ' · 已停用' : ''}</span>`;
     }).join('');
