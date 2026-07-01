@@ -642,54 +642,78 @@
     ],
     "luxury_ad.keyframe_qa": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-pro-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
         "priority": 1,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
+        "provider_id": "webang-maas",
         "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
+        "provider_id": "deyunai",
         "model_id": "gemini-2.5-flash",
         "priority": 3,
-        "enabled": true
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-3.1-flash-lite-preview",
+        "priority": 6,
+        "enabled": false
       }
     ],
     "luxury_ad.keyframe_repair": [
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-5.5",
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
         "priority": 1,
-        "enabled": false
+        "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-5.4",
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
         "priority": 2,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-pro-preview",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
+        "provider_id": "deyunai",
         "model_id": "gemini-2.5-pro",
-        "priority": 4,
-        "enabled": true
+        "priority": 3,
+        "enabled": false
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-2.5-flash",
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
         "priority": 5,
-        "enabled": true
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 6,
+        "enabled": false
       }
     ]
   }
