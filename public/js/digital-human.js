@@ -7910,6 +7910,12 @@
     </div>`;
   }
 
+  function formatLuxuryElapsedText(elapsedSec) {
+    const sec = Math.max(0, Math.round(Number(elapsedSec) || 0));
+    if (sec >= 60) return `${Math.floor(sec / 60)}分${String(sec % 60).padStart(2, '0')}秒`;
+    return `${sec}秒`;
+  }
+
   function luxuryPersonGenerationProgressHtml() {
     const progress = state.luxuryAd.personGenerationProgress;
     if (!progress || !progress.active) return '';
@@ -7920,9 +7926,7 @@
     const softPct = isLongTail ? Math.min(94, basePct + Math.floor(Math.max(0, elapsed - 22000) / 9000)) : basePct;
     const pct = Math.max(6, Math.min(96, softPct));
     const elapsedSec = Math.max(0, Math.round(elapsed / 1000));
-    const elapsedText = elapsedSec >= 60
-      ? `${Math.floor(elapsedSec / 60)}分${String(elapsedSec % 60).padStart(2, '0')}秒`
-      : `${elapsedSec}秒`;
+    const elapsedText = formatLuxuryElapsedText(elapsedSec);
     const canSeeDebug = canViewLuxuryInternalPipeline();
     const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
     const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、动作参考图，并尝试补充背面。');
@@ -8261,10 +8265,11 @@
     if (!progress || !progress.active) return '';
     const rawPct = Math.round(Number(progress.percent) || 6);
     const pct = progress.done || rawPct >= 100 ? 100 : Math.max(6, Math.min(96, rawPct));
+    const elapsedText = formatLuxuryElapsedText(progress.elapsedSec);
     return `
       <div class="dh-luxgen-live-head">
         <span>${escapeHtml(progress.label || '生成中')}</span>
-        <b>${pct}%</b>
+        <b class="dh-luxgen-progress-stat"><em>耗时 ${escapeHtml(elapsedText)}</em><i>${pct}%</i></b>
       </div>
       <div class="dh-luxgen-live-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <div class="dh-luxgen-live-meta">
