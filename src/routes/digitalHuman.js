@@ -835,6 +835,10 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     ? _jsonClone(body.revision_history || body.revisionHistory).slice(-80)
     : (Array.isArray(existing?.revision_history) ? existing.revision_history : (Array.isArray(existing?.draft_state?.revision_history) ? existing.draft_state.revision_history : []));
   const completeKeyframeCount = mergedKeyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
+  const keyframeErrorDetails = _luxuryKeyframeFailureDiagnosis(
+    result.details || result.keyframe_error_details || patch.details || {},
+    patch.error || result.keyframe_error || '',
+  );
   const finalStoryboardSheets = (!reviewOnly && mergedScenes.length > 0 && completeKeyframeCount >= mergedScenes.length)
     ? mergedStoryboardSheets.filter(_isFinalLuxuryStoryboardSheet)
     : [];
@@ -880,6 +884,9 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     clip_urls: Array.isArray(result.clip_urls) ? result.clip_urls : (Array.isArray(existing?.clip_urls) ? existing.clip_urls : []),
     keyframe_generation_status: result.keyframe_generation_status || existing?.keyframe_generation_status || '',
     reference_mode: result.reference_mode || existing?.reference_mode || '',
+    keyframe_error_details: keyframeErrorDetails.summary || keyframeErrorDetails.provider_errors.length || keyframeErrorDetails.qa_failures.length
+      ? keyframeErrorDetails
+      : (existing?.keyframe_error_details || null),
     // 中文注释：保存前端制作中的真实快照，刷新/清缓存后任务中心可以继续恢复，不做行业或场景写死。
     draft_state: { ...(existing?.draft_state || {}), ..._compactLuxuryAdDraftBody(body) },
     request_keys: {
@@ -1709,9 +1716,19 @@ function _extractPublicError(err, fallback = '接口请求失败', opts = {}) {
   message = message || err?.message || fallback;
   let status = Number(err?.status || err?.response?.status || 500) || 500;
   let publicCode = code || 'INTERNAL_ERROR';
+  const attempts = err?.luxuryKeyframeAttempts || err?.details?.luxuryKeyframeAttempts || err?.details?.attempts;
   if (publicCode === 'LUXURY_KEYFRAME_QA_UNAVAILABLE') {
     status = 503;
-    message = '剧情广告分镜生成已停止：当前视觉质检模型不可用，系统无法确认分镜图是否严格符合剧本。请在模型调用管理中为 luxury_ad.keyframe_qa 配置可用多模态质检模型；如果已配置但仍返回 Insufficient quota，请检查漫路对应的视觉/海外通道额度、模型分组授权或切换可用视觉模型。';
+    const lastAttempt = Array.isArray(attempts)
+      ? attempts.slice().reverse().find(item => item && item.ok === false && item.error)
+      : null;
+    const providerLabel = lastAttempt
+      ? `${lastAttempt.provider || [lastAttempt.provider_id, lastAttempt.model_id].filter(Boolean).join('/')}`.replace(/^\/|\/$/g, '')
+      : '';
+    const providerError = _compactLuxuryFailureText(lastAttempt?.error || message, 320);
+    message = providerError
+      ? `剧情广告分镜生成已停止：当前画面一致性检查模型不可用；${providerLabel ? `${providerLabel} 返回：` : '最后错误：'}${providerError}。系统无法确认分镜图是否严格符合剧本，请切换可用视觉质检模型或检查对应通道额度/授权后重试。`
+      : '剧情广告分镜生成已停止：当前视觉质检模型不可用，系统无法确认分镜图是否严格符合剧本。请在模型调用管理中为 luxury_ad.keyframe_qa 配置可用多模态质检模型，或检查对应通道额度、模型分组授权后重试。';
   } else if (
     publicCode !== 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
     && (String(code).toLowerCase() === 'setlimitexceeded' || _isProviderLimitOrCreditErrorText(message) || _isProviderLimitOrCreditError(err))
@@ -1722,7 +1739,6 @@ function _extractPublicError(err, fallback = '接口请求失败', opts = {}) {
   }
   message = _compactDhPublicMessage(message || fallback);
   const body = { success: false, error: message, message, code: publicCode };
-  const attempts = err?.luxuryKeyframeAttempts || err?.details?.luxuryKeyframeAttempts || err?.details?.attempts;
   const publicDetails = {};
   if (err?.details?.reason) publicDetails.reason = err.details.reason;
   if (Array.isArray(attempts) && attempts.length) {
@@ -12645,6 +12661,78 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     : String(productName || '用户广告需求中的真实商品或服务').trim().slice(0, 40);
 }
 
+function _compactLuxuryFailureText(value = '', max = 220) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
+  const shotFailures = Array.isArray(details?.shot_failures) ? details.shot_failures : [];
+  const attempts = Array.isArray(details?.attempts)
+    ? details.attempts
+    : shotFailures.flatMap(item => Array.isArray(item?.attempts) ? item.attempts : []);
+  const failedShotIndexes = Array.isArray(details?.failed_shot_indexes)
+    ? details.failed_shot_indexes
+    : shotFailures.map(item => Number(item?.shot_index)).filter(Number.isFinite);
+  const generatedCount = Number(details?.generated_count || 0);
+  const totalShots = Number(details?.total_shots || 0);
+  const missingCount = Number(details?.missing_count || Math.max(0, totalShots - generatedCount) || 0);
+  const providerErrors = attempts
+    .filter(item => item && item.ok === false)
+    .map(item => ({
+      provider_id: item.provider_id || item.provider || '',
+      model_id: item.model_id || item.model || '',
+      shot_index: Number.isFinite(Number(item.shot_index)) ? Number(item.shot_index) : undefined,
+      error: _compactLuxuryFailureText(item.error || item.message || '', 320),
+      image_url: item.image_url || '',
+      prompt_chars: item.prompt_chars || undefined,
+      reference_retry_mode: item.reference_retry_mode || undefined,
+      next_retry: item.next_retry || undefined,
+    }))
+    .filter(item => item.error || item.provider_id || item.model_id)
+    .slice(-24);
+  const qaFailures = shotFailures
+    .filter(item => item?.qa)
+    .map(item => ({
+      shot_index: Number(item.shot_index),
+      reason: _compactLuxuryFailureText(item.qa?.reason || item.error || '', 320),
+      score: item.qa?.score,
+      provider: item.qa?.provider || '',
+      major_mismatches: Array.isArray(item.qa?.major_mismatches) ? item.qa.major_mismatches.slice(0, 5) : undefined,
+      unrelated_subjects: Array.isArray(item.qa?.unrelated_subjects) ? item.qa.unrelated_subjects.slice(0, 5) : undefined,
+    }))
+    .slice(0, 12);
+  const candidateImages = [
+    ...(Array.isArray(details?.candidate_images) ? details.candidate_images : []),
+    ...providerErrors.map(item => item.image_url).filter(Boolean),
+  ].filter((url, i, arr) => url && arr.indexOf(url) === i).slice(-16);
+  const firstProviderError = providerErrors.find(item => item.error)?.error || '';
+  const firstQaReason = qaFailures.find(item => item.reason)?.reason || '';
+  const summaryParts = [];
+  if (failedShotIndexes.length) {
+    summaryParts.push(`失败镜头：第 ${failedShotIndexes.map(i => Number(i) + 1).join('、')} 镜`);
+  }
+  if (generatedCount || totalShots) {
+    summaryParts.push(`已生成 ${generatedCount || 0}/${totalShots || '?'} 镜`);
+  }
+  if (firstProviderError) summaryParts.push(`模型返回：${firstProviderError}`);
+  else if (firstQaReason) summaryParts.push(`QA 原因：${firstQaReason}`);
+  else if (fallbackError) summaryParts.push(_compactLuxuryFailureText(fallbackError, 360));
+  return {
+    code: details?.code || '',
+    summary: _compactLuxuryFailureText(summaryParts.join('；'), 700),
+    failed_shot_indexes: failedShotIndexes,
+    generated_count: generatedCount || undefined,
+    missing_count: missingCount || undefined,
+    total_shots: totalShots || undefined,
+    provider_errors: providerErrors,
+    qa_failures: qaFailures,
+    candidate_images: candidateImages,
+  };
+}
+
 function _extractLuxuryBriefForbiddenTerms(text = '') {
   const source = String(text || '').replace(/\s+/g, ' ').trim();
   if (!source) return [];
@@ -16413,7 +16501,15 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
           success: false,
           status: 'error',
           error: project.last_error,
-          details: { code: project.last_error_code || '', production_project: publicProject, production_project_id: project.id },
+          details: {
+            code: project.last_error_code || publicProject.keyframe_error_details?.code || '',
+            keyframe_error_details: publicProject.keyframe_error_details || null,
+            attempts: Array.isArray(publicProject.keyframe_error_details?.provider_errors)
+              ? publicProject.keyframe_error_details.provider_errors
+              : undefined,
+            production_project: publicProject,
+            production_project_id: project.id,
+          },
           recovered_from_project: true,
         });
       }
@@ -28532,20 +28628,26 @@ router.post('/spaces/keyframes', async (req, res) => {
     }
     if (req.body?.ad_mode === 'luxury_ad' && Array.isArray(luxuryPlanningScenes) && luxuryPlanningScenes.length) {
       const finalKeyframesRequested = req.body?.storyboard_final_keyframes === true;
+      const failureDiagnosis = _luxuryKeyframeFailureDiagnosis(errorDetails, e);
+      const visibleKeyframeError = failureDiagnosis.summary || e;
       const partialBody = {
         success: !finalKeyframesRequested,
         storyboard_mode: 'planning_sheet',
         keyframe_generation_status: 'failed',
-        keyframe_error: e,
+        keyframe_error: visibleKeyframeError,
         scenes: luxuryPlanningScenes,
         keyframes: luxuryGeneratedKeyframes,
         storyboard_sheets: luxuryPlanningStoryboardSheets,
-        details: errorDetails,
+        details: {
+          ...errorDetails,
+          keyframe_error_details: failureDiagnosis,
+        },
+        keyframe_error_details: failureDiagnosis,
         ...(luxuryPlanningMeta || {}),
         reference_mode: 'storyboard_planning_sheet',
       };
       const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, partialBody, {
-        error: e,
+        error: visibleKeyframeError,
         error_code: err.code || '',
       });
       partialBody.production_project = productionProject;
