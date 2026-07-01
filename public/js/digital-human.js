@@ -13036,7 +13036,7 @@
           current: Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots),
           total: totalShots,
           startedAt: state.luxuryAd.keyframeProgress?.startedAt || started,
-          message: `分镜生成时间较长，正在等待同一任务返回结果，已用 ${elapsed} 秒。`,
+          message: '分镜生成时间较长，正在等待同一任务返回结果。',
         };
         updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
       }
@@ -13469,9 +13469,9 @@
       startedAt,
       message: singleIndex === null
         ? (reviewOnlyRequest
-          ? `正在生成审核分镜板：0/${totalShots}，已用 0 秒。`
-          : `正在生成真实关键帧：0/${totalShots}，已用 0 秒。`)
-        : `正在重新生成第 ${singleIndex + 1} 镜，已用 0 秒。`,
+          ? `正在生成审核分镜板：0/${totalShots}。`
+          : `正在生成真实关键帧：0/${totalShots}。`)
+        : `正在重新生成第 ${singleIndex + 1} 镜。`,
     };
     updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
     setLuxuryProgress('keyframes');
@@ -13489,9 +13489,9 @@
         startedAt,
         message: singleIndex === null
           ? (reviewOnlyRequest
-            ? `正在生成审核分镜板：约 ${estimated}/${total}，已用 ${elapsed} 秒。系统只整理镜头表、画面、动作和分镜板，不调用最终关键帧模型。`
-            : `正在生成真实关键帧：约 ${estimated}/${total}，已用 ${elapsed} 秒。系统会按同一真人演员、剧情动作和写实摄影要求逐镜生成，通常需要 1-3 分钟。`)
-          : `正在重新生成第 ${singleIndex + 1} 镜，已用 ${elapsed} 秒。`,
+            ? `正在生成审核分镜板：约 ${estimated}/${total}。系统只整理镜头表、画面、动作和分镜板，不调用最终关键帧模型。`
+            : `正在生成真实关键帧：约 ${estimated}/${total}。系统会按同一真人演员、剧情动作和写实摄影要求逐镜生成，通常需要 1-3 分钟。`)
+          : `正在重新生成第 ${singleIndex + 1} 镜。`,
       };
       updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
       renderLuxuryAdStoryboard();
