@@ -28461,14 +28461,17 @@ router.post('/spaces/keyframes', async (req, res) => {
     if (isLuxury) luxuryPlanningStoryboardSheets = storyboardSheets;
     if (isLuxury && luxuryKeyframeShotFailures.length) {
       const failedShots = luxuryKeyframeShotFailures.map(x => Number(x.shot_index) + 1).filter(Number.isFinite);
+      const generatedCount = keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
       const err = new Error(`分镜生成部分失败：第 ${failedShots.join('、')} 镜未生成可用关键帧；已保留其它已生成镜头，可先审片并单独重试失败镜头。`);
       err.status = 422;
       err.code = 'LUXURY_KEYFRAME_PARTIAL_FAILED';
       err.details = {
         code: err.code,
         shot_failures: luxuryKeyframeShotFailures,
+        failed_shot_indexes: luxuryKeyframeShotFailures.map(x => Number(x.shot_index)).filter(Number.isFinite),
         attempts: luxuryKeyframeShotFailures.flatMap(x => Array.isArray(x.attempts) ? x.attempts : []).slice(0, 40),
-        generated_count: keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length,
+        generated_count: generatedCount,
+        missing_count: Math.max(0, scenes.length - generatedCount),
         total_shots: scenes.length,
       };
       throw err;

@@ -12316,12 +12316,13 @@
     state.luxuryAd.productionContract = project.production_contract || null;
     state.luxuryAd.productionProject = project;
     state.luxuryAd.productionProjectId = project.id || '';
-    state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
-    state.luxuryAd.keyframePlanningOnly = !!draft.keyframe_planning_only;
     state.luxuryAd.segments = applyLuxuryShotBindings(Array.isArray(project.scenes) ? project.scenes : []);
     syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec, { preserveTarget: true });
     state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
+    const restoredHasKeyframeImages = state.luxuryAd.keyframes.some(luxuryFrameHasImage);
+    state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
+    state.luxuryAd.keyframePlanningOnly = !restoredHasKeyframeImages && (!!draft.keyframe_planning_only || project.reference_mode === 'storyboard_planning_sheet');
     state.luxuryAd.keyframeError = project.last_error || '';
     state.luxuryAd.keyframeErrorDetails = project.last_error ? { production_project: project } : null;
     state.luxuryAd.scriptError = '';
@@ -13097,6 +13098,19 @@
   function luxuryKeyframeErrorMessage(err) {
     const code = String(err?.data?.code || err?.code || '').trim();
     const msg = String(err?.message || '').trim();
+    const shotFailures = Array.isArray(err?.data?.details?.shot_failures)
+      ? err.data.details.shot_failures
+      : (Array.isArray(err?.data?.shot_failures) ? err.data.shot_failures : []);
+    if (shotFailures.length) {
+      const lines = shotFailures.slice(0, 4).map(item => {
+        const n = Number(item?.shot_index);
+        const label = Number.isFinite(n) ? `第 ${n + 1} 镜` : '某一镜';
+        const reason = String(item?.error || item?.message || item?.code || '').replace(/\s+/g, ' ').trim();
+        return `${label}：${reason.slice(0, 120) || '未生成可用关键帧'}`;
+      });
+      const more = shotFailures.length > lines.length ? `；另有 ${shotFailures.length - lines.length} 镜失败` : '';
+      return `分镜生成部分失败，已保留其它已生成镜头。${lines.join('；')}${more}`;
+    }
     const attempts = Array.isArray(err?.data?.details?.attempts) ? err.data.details.attempts : [];
     if (attempts.length) {
       const label = a => [a?.provider_id || a?.provider, a?.model_id || a?.model].filter(Boolean).join('/');
@@ -13615,6 +13629,9 @@
           mergedSegments[singleIndex] = returnedScenes[0];
           state.luxuryAd.segments = applyLuxuryShotBindings(mergedSegments);
         }
+        if (!planningSheetMode && !luxuryFrameHasImage(state.luxuryAd.keyframes[singleIndex])) {
+          throw new Error(`第 ${singleIndex + 1} 镜没有返回可用关键帧图片，不能标记为已生成。`);
+        }
       }
       if (!planningSheetMode) state.luxuryAd.keyframePlanningOnly = false;
       state.luxuryAd.keyframeProgress = {
@@ -13755,12 +13772,24 @@
   }
 
   async function fillMissingLuxuryAdKeyframes() {
-    const missing = luxuryMissingKeyframeIndexes();
-    if (!missing.length) return toast('当前没有缺失的分镜图', 'info');
-    for (const idx of missing) {
+    const initialMissing = luxuryMissingKeyframeIndexes();
+    if (!initialMissing.length) return toast('当前没有缺失的分镜图', 'info');
+    const success = [];
+    const failed = [];
+    for (const idx of initialMissing) {
       if (luxuryFrameHasImage((state.luxuryAd.keyframes || [])[idx])) continue;
-      await generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
-      if (!luxuryFrameHasImage((state.luxuryAd.keyframes || [])[idx])) break;
+      try {
+        await generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
+      } catch (err) {
+        console.warn('[luxuryAd] fill missing frame failed:', idx + 1, err?.message || err);
+      }
+      if (luxuryFrameHasImage((state.luxuryAd.keyframes || [])[idx])) success.push(idx);
+      else failed.push(idx);
+    }
+    if (success.length || failed.length) {
+      const successText = success.length ? `已补齐第 ${success.map(i => i + 1).join('、')} 镜` : '';
+      const failedText = failed.length ? `第 ${failed.map(i => i + 1).join('、')} 镜仍未生成` : '';
+      toast([successText, failedText].filter(Boolean).join('；'), failed.length ? 'error' : 'success');
     }
   }
 
