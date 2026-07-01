@@ -348,38 +348,38 @@
     ],
     "luxury_ad.presenter_seed": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
         "priority": 1,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 2,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "webang-maas",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
         "provider_id": "webang-maas",
         "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
+        "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gemini-2.5-flash-image",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 6,
         "enabled": true
       },
@@ -404,10 +404,10 @@
     ],
     "luxury_ad.person_sheet": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
         "priority": 1,
-        "enabled": false
+        "enabled": true
       },
       {
         "provider_id": "apismile",
@@ -417,15 +417,15 @@
       },
       {
         "provider_id": "apismile",
-        "model_id": "gpt-image-1",
+        "model_id": "gemini-3.1-flash-image-preview",
         "priority": 3,
         "enabled": false
       },
       {
-        "provider_id": "webang-maas",
-        "model_id": "gpt-image-2",
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 4,
-        "enabled": true
+        "enabled": false
       },
       {
         "provider_id": "deyunai",
@@ -448,38 +448,38 @@
     ],
     "luxury_ad.scene_seed": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
         "priority": 1,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 2,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "webang-maas",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
         "provider_id": "webang-maas",
         "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
+        "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gemini-2.5-flash-image",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 6,
         "enabled": true
       },
@@ -504,38 +504,38 @@
     ],
     "luxury_ad.subject_evidence_seed": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
         "priority": 1,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 2,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "webang-maas",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
         "provider_id": "webang-maas",
         "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
+        "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gemini-2.5-flash-image",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 6,
         "enabled": true
       },
@@ -586,38 +586,38 @@
     ],
     "luxury_ad.keyframe": [
       {
-        "provider_id": "apismile",
-        "model_id": "gemini-3.1-flash-image-preview",
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
         "priority": 1,
         "enabled": true
       },
       {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-2",
-        "priority": 2,
-        "enabled": true
-      },
-      {
-        "provider_id": "apismile",
-        "model_id": "gpt-image-1",
-        "priority": 3,
-        "enabled": true
-      },
-      {
-        "provider_id": "webang-maas",
-        "model_id": "gpt-image-2",
-        "priority": 4,
-        "enabled": true
-      },
-      {
         "provider_id": "webang-maas",
         "model_id": "gemini-3.1-flash-image-preview",
-        "priority": 5,
+        "priority": 2,
         "enabled": true
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gemini-2.5-flash-image",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 4,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-3.1-flash-image-preview",
+        "priority": 5,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-1",
         "priority": 6,
         "enabled": true
       },
