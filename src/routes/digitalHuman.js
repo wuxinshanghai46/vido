@@ -1538,6 +1538,7 @@ function imageUploadSingle(req, res, next) {
 
 const _sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
+const GPT_IMAGE2_STREAM_PARTIAL_IMAGES = Math.max(1, Math.min(3, Math.round(Number(process.env.GPT_IMAGE2_PARTIAL_IMAGES) || 2)));
 const productAdTasks = new Map();
 const strictSpaceKeyframes = new Map();
 const OUTPUT_SIZE_PRESETS = {
@@ -6386,6 +6387,59 @@ function _extractOpenAICompatibleImagePayload(data) {
   return { url, b64 };
 }
 
+function _shouldStreamWebangGptImage2(provider = {}, providerId = '', modelId = '') {
+  return String(modelId || '').trim().toLowerCase() === 'gpt-image-2'
+    && _isWebangMaasProvider(provider, providerId)
+    && !_isGeminiImageChatModel(modelId);
+}
+
+function _isReadableStream(value) {
+  return !!value && typeof value.on === 'function' && typeof value.pipe === 'function';
+}
+
+function _readStreamText(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}
+
+function _parseSseDataPayloads(text = '') {
+  const payloads = [];
+  const blocks = String(text || '').split(/\r?\n\r?\n/);
+  for (const block of blocks) {
+    const dataText = block
+      .split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.replace(/^data:\s?/, ''))
+      .join('\n')
+      .trim();
+    if (!dataText || dataText === '[DONE]') continue;
+    try { payloads.push(JSON.parse(dataText)); } catch { payloads.push(dataText); }
+  }
+  return payloads;
+}
+
+function _parseOpenAICompatibleStreamResponse(text = '') {
+  const ssePayloads = _parseSseDataPayloads(text);
+  for (let i = ssePayloads.length - 1; i >= 0; i--) {
+    const payload = ssePayloads[i];
+    const parsed = _extractOpenAICompatibleImagePayload(payload);
+    if (parsed.url || parsed.b64) return payload;
+  }
+  if (ssePayloads.length) return ssePayloads[ssePayloads.length - 1];
+  try { return JSON.parse(String(text || '')); } catch {}
+  return { data: [] };
+}
+
+async function _normalizeOpenAICompatibleImageResponseData(response) {
+  if (!_isReadableStream(response?.data)) return { data: response?.data, streamText: '' };
+  const streamText = await _readStreamText(response.data);
+  return { data: _parseOpenAICompatibleStreamResponse(streamText), streamText };
+}
+
 function _providerResponsePreview(err) {
   const data = err?.response?.data;
   if (data === undefined || data === null) return '';
@@ -6408,6 +6462,8 @@ function _attachOpenAICompatibleProviderRequest(err, meta = {}) {
     size: meta.size || '',
     aspect_ratio: meta.aspectRatio || '',
     reference_count: Number(meta.referenceCount || 0),
+    stream: meta.stream === true,
+    partial_images: Number(meta.partialImages || 0),
     adapter: meta.adapter || 'openai-compatible',
     status,
     response_body_preview: responsePreview,
@@ -6455,6 +6511,7 @@ async function _generateViaOpenAICompatibleImageModel({
   const outPath = path.join(destDir, `${filename}_${pid}_${model}`.replace(/[^\w.-]+/g, '_').slice(0, 180) + '.png');
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   let requestEndpoint = '';
+  const useGptImage2Stream = _shouldStreamWebangGptImage2(provider, pid, model);
 
   const parseImagePayload = data => {
     const parsed = _extractOpenAICompatibleImagePayload(data);
@@ -6489,6 +6546,10 @@ async function _generateViaOpenAICompatibleImageModel({
       form.append('prompt', safePrompt);
       form.append('n', '1');
       form.append('size', size);
+      if (useGptImage2Stream) {
+        form.append('stream', 'true');
+        form.append('partial_images', String(GPT_IMAGE2_STREAM_PARTIAL_IMAGES));
+      }
       for (let i = 0; i < refs.length; i++) {
         const resolved = await _resolveImageForExternalApi(req, refs[i], { preferPublicUrl: true });
         const buf = await _fetchImageBuffer(_absolutePublicUrl(req, resolved || refs[i]));
@@ -6499,6 +6560,7 @@ async function _generateViaOpenAICompatibleImageModel({
         timeout: MODEL_PROVIDER_TIMEOUT_MS,
         maxContentLength: 80 * 1024 * 1024,
         maxBodyLength: 80 * 1024 * 1024,
+        responseType: useGptImage2Stream ? 'stream' : 'json',
       });
     } else {
       const generationBody = {
@@ -6508,13 +6570,20 @@ async function _generateViaOpenAICompatibleImageModel({
         size,
       };
       if (imageAdapter.response_format !== false) generationBody.response_format = imageAdapter.response_format || 'url';
+      if (useGptImage2Stream) {
+        generationBody.stream = true;
+        generationBody.partial_images = GPT_IMAGE2_STREAM_PARTIAL_IMAGES;
+      }
       requestEndpoint = imageAdapter.generation_endpoint || '/images/generations';
       response = await axios.post(`${baseUrl}${requestEndpoint}`, generationBody, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         timeout: MODEL_PROVIDER_TIMEOUT_MS,
+        responseType: useGptImage2Stream ? 'stream' : 'json',
       });
     }
-    const { url, b64 } = parseImagePayload(response.data);
+    const normalizedResponse = await _normalizeOpenAICompatibleImageResponseData(response);
+    const responseData = normalizedResponse.data;
+    const { url, b64 } = parseImagePayload(responseData);
     if (url) {
       if (/^data:image\/\w+;base64,/i.test(url)) {
         fs.writeFileSync(outPath, Buffer.from(String(url).replace(/^data:image\/\w+;base64,/i, ''), 'base64'));
@@ -6532,7 +6601,7 @@ async function _generateViaOpenAICompatibleImageModel({
         provider: provider.id || pid,
         model,
         category: 'image',
-        usage: response.data?.usage || {},
+        usage: responseData?.usage || {},
         durationMs: Date.now() - started,
         status: 'success',
         userId: req.user?.id || req.userId || '',
@@ -6551,6 +6620,8 @@ async function _generateViaOpenAICompatibleImageModel({
       size,
       aspectRatio: _normalizeAspectRatio(aspectRatio, '16:9'),
       referenceCount: refs.length,
+      stream: useGptImage2Stream,
+      partialImages: useGptImage2Stream ? GPT_IMAGE2_STREAM_PARTIAL_IMAGES : 0,
       adapter: _providerAdapterId(provider, pid)
         ? `${_providerAdapterId(provider, pid)}${_isGeminiImageChatModel(model) ? '-gemini-chat-image' : '-image'}`
         : `${pid || 'openai'}-image`,

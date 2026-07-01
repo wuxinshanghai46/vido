@@ -20,6 +20,7 @@ const BASE_HOST = 'https://api.deyunai.com';
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
+const GPT_IMAGE2_STREAM_PARTIAL_IMAGES = Math.max(1, Math.min(3, Math.round(Number(process.env.GPT_IMAGE2_PARTIAL_IMAGES) || 2)));
 
 // 海外通道判定（用于决定走 /v1 还是 /c35/v1）
 //   注意：gemini-3.1-flash-lite-preview 是漫路接的"国内代理 Gemini"，走 /v1
@@ -100,6 +101,54 @@ function extractImageUrlsFromAnyPayload(payload) {
   return Array.from(urls);
 }
 
+function isReadableStream(value) {
+  return !!value && typeof value.on === 'function' && typeof value.pipe === 'function';
+}
+
+function readStreamText(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}
+
+function parseSseDataPayloads(text = '') {
+  const payloads = [];
+  const blocks = String(text || '').split(/\r?\n\r?\n/);
+  for (const block of blocks) {
+    const dataText = block
+      .split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.replace(/^data:\s?/, ''))
+      .join('\n')
+      .trim();
+    if (!dataText || dataText === '[DONE]') continue;
+    try { payloads.push(JSON.parse(dataText)); } catch { payloads.push(dataText); }
+  }
+  return payloads;
+}
+
+function parseStreamResponsePayload(text = '') {
+  const ssePayloads = parseSseDataPayloads(text);
+  if (ssePayloads.length) return ssePayloads[ssePayloads.length - 1];
+  try { return JSON.parse(String(text || '')); } catch {}
+  return String(text || '');
+}
+
+function extractImageUrlsFromStreamText(text = '') {
+  const urls = new Set();
+  const payloads = parseSseDataPayloads(text);
+  if (!payloads.length) {
+    try { payloads.push(JSON.parse(String(text || ''))); } catch {}
+  }
+  for (const payload of payloads) {
+    extractImageUrlsFromAnyPayload(payload).forEach(url => urls.add(url));
+  }
+  return Array.from(urls);
+}
+
 function buildProviderImageError(message, payload) {
   const err = new Error(message);
   const urls = extractImageUrlsFromAnyPayload(payload);
@@ -162,6 +211,8 @@ function assertGptImage2BodyContract(body) {
     'size',
     'input_fidelity',
     'mask_url',
+    'stream',
+    'partial_images',
   ]);
   const unexpected = Object.keys(body || {}).filter(k => !allowed.has(k));
   if (unexpected.length) {
@@ -189,6 +240,8 @@ function summarizeGptImage2Request(endpoint, body = {}) {
     input_fidelity: body.input_fidelity || '',
     output_format: body.output_format || '',
     n: body.n || 0,
+    stream: body.stream === true,
+    partial_images: body.partial_images || 0,
     image_count: images.length,
     images_shape: !images.length
       ? 'none'
@@ -278,6 +331,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         output_format: 'png',
         quality: 'auto',
         size: normalizeGptImage2Size(size),
+        stream: true,
+        partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES,
       };
       const isEdit = refs.length > 0;
       if (isEdit) {
@@ -294,8 +349,10 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       const submitRes = await axios.post(
         buildEnterpriseImageUrl(endpoint),
         body,
-        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, validateStatus: () => true }
+        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true }
       );
+      const streamText = isReadableStream(submitRes.data) ? await readStreamText(submitRes.data) : '';
+      if (streamText) submitRes.data = parseStreamResponsePayload(streamText);
       if (submitRes.status >= 400) {
         const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
         err.providerRequest = requestSummary;
@@ -308,14 +365,15 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         throw err;
       }
       _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
-      const urls = extractImageUrlsFromSyncPayload(submitRes.data);
+      const streamUrls = streamText ? extractImageUrlsFromStreamText(streamText) : [];
+      const urls = streamUrls.length ? streamUrls : extractImageUrlsFromSyncPayload(submitRes.data);
       if (!urls.length) {
         const err = new Error('漫路 GPT Image 2 未返回图片数据: ' + JSON.stringify(submitRes.data).slice(0, 300));
         err.providerRequest = requestSummary;
         throw err;
       }
       _ok = true;
-      return { urls, taskId: _taskId, raw: submitRes.data };
+      return { urls, taskId: _taskId, raw: submitRes.data, stream: !!streamText, partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES };
     }
 
     const body = { model, prompt, n, size };
