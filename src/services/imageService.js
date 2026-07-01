@@ -14,6 +14,7 @@ const ffmpegPath = (process.env.FFMPEG_PATH && process.env.FFMPEG_PATH !== 'ffmp
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const CHAR_IMG_DIR = path.join(OUTPUT_DIR, 'characters');
 const SCENE_IMG_DIR = path.join(OUTPUT_DIR, 'scenes');
+const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
 function ensureDir() {
   fs.mkdirSync(CHAR_IMG_DIR, { recursive: true });
@@ -371,7 +372,7 @@ async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', 
       outputFormat: 'png',
     }, {
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 30000,
+      timeout: MODEL_PROVIDER_TIMEOUT_MS,
     });
 
     if (submitRes.data?.code !== 200 || !submitRes.data?.data?.taskId) {
@@ -381,8 +382,8 @@ async function generateNanoBananaImage({ prompt, filename, aspectRatio = '1:1', 
     _taskId = submitRes.data.data.taskId;
     console.log(`[ImageService] NanoBanana taskId=${_taskId}, polling...`);
 
-    // Step 2: Poll for completion (max 120s)
-    const maxWait = 120000;
+    // Step 2: Poll for completion (max 10 minutes)
+    const maxWait = MODEL_PROVIDER_TIMEOUT_MS;
     const interval = 3000;
     const start = Date.now();
 
@@ -484,7 +485,7 @@ async function generateMxapiImage({ prompt, filename, aspectRatio = '1:1', resol
     const res = await axios.post(`${baseUrl}${endpoint}`, {
       messages: [{ role: 'user', content: finalPrompt }],
       stream: false,
-    }, { headers, timeout: 120000 });
+    }, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
 
     // 返回可能在 data.data.url / data.choices[0].message.content (含图片URL) / data.url
     const data = res.data?.data || res.data;
@@ -932,7 +933,7 @@ async function generateDeyunaiImage({ prompt, filename, aspectRatio = '1:1', res
     size,
     aspectRatio,
     referenceImages,
-    timeoutMs: 180000,
+    timeoutMs: MODEL_PROVIDER_TIMEOUT_MS,
     userId,
     agentId: agentId || 'image_gen',
   });

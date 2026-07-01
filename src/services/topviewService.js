@@ -5,6 +5,7 @@ const https = require('https');
 const http = require('http');
 
 const TEMP_DIR = path.join(__dirname, '../../outputs/topview-assets');
+const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
 function providerConfig() {
   const { getApiKey, loadSettings } = require('./settingsService');
@@ -370,7 +371,7 @@ async function generateTextToImage({ prompt, model = 'topview-nano-banana-2', as
   if (finalResolution) body.resolution = finalResolution;
   if (!body.prompt) throw new Error('Topview Text-to-Image requires prompt');
   if (typeof onProgress === 'function') onProgress({ stage: 'topview_t2i_submitting', model_id: displayModel });
-  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/text2image/task/submit`, cfg, body);
+  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/text2image/task/submit`, cfg, body, MODEL_PROVIDER_TIMEOUT_MS);
   const taskId = submit.result?.taskId || submit.taskId;
   if (!taskId) throw new Error('Topview Text-to-Image submit succeeded without taskId');
   const result = await waitTopviewTask({
@@ -380,7 +381,7 @@ async function generateTextToImage({ prompt, model = 'topview-nano-banana-2', as
     kind: 'text_to_image',
     onProgress,
     intervalMs: 4000,
-    timeoutMs: 5 * 60 * 1000,
+    timeoutMs: MODEL_PROVIDER_TIMEOUT_MS,
   });
   const imageUrl = firstImageUrl(result);
   if (!imageUrl) throw new Error('Topview Text-to-Image succeeded without image URL');
@@ -433,7 +434,7 @@ async function generateImageEdit({ prompt, referenceImages = [], model = 'topvie
   if (finalResolution) body.resolution = finalResolution;
   if (!body.prompt) throw new Error('Topview Image Edit requires prompt');
   if (typeof onProgress === 'function') onProgress({ stage: 'topview_image_edit_submitting', model_id: displayModel, reference_count: inputImageFileIds.length });
-  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/image_edit/task/submit`, cfg, body);
+  const submit = await jsonRequest('POST', `${cfg.baseUrl}/v1/common_task/image_edit/task/submit`, cfg, body, MODEL_PROVIDER_TIMEOUT_MS);
   const taskId = submit.result?.taskId || submit.taskId;
   if (!taskId) throw new Error('Topview Image Edit submit succeeded without taskId');
   const result = await waitTopviewTask({
@@ -443,7 +444,7 @@ async function generateImageEdit({ prompt, referenceImages = [], model = 'topvie
     kind: 'image_edit',
     onProgress,
     intervalMs: 4000,
-    timeoutMs: 5 * 60 * 1000,
+    timeoutMs: MODEL_PROVIDER_TIMEOUT_MS,
   });
   const imageUrl = firstImageUrl(result);
   if (!imageUrl) throw new Error('Topview Image Edit succeeded without image URL');

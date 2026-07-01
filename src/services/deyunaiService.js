@@ -19,6 +19,7 @@ const { loadSettings } = require('./settingsService');
 const BASE_HOST = 'https://api.deyunai.com';
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
 // 海外通道判定（用于决定走 /v1 还是 /c35/v1）
 //   注意：gemini-3.1-flash-lite-preview 是漫路接的"国内代理 Gemini"，走 /v1
@@ -257,12 +258,12 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  * @param {number} [opts.n=1]
  * @param {string} [opts.size='1024x1024']
  * @param {Array}  [opts.referenceImages] - 参考图 URL（多模态模型支持）
- * @param {number} [opts.timeoutMs=180000]
+ * @param {number} [opts.timeoutMs=MODEL_PROVIDER_TIMEOUT_MS]
  * @param {string} [opts.userId]
  * @param {string} [opts.agentId]
  * @returns {Promise<{ urls:string[], taskId:string }>}
  */
-async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = 180000, userId = null, agentId = null }) {
+async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
@@ -333,7 +334,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     const submitRes = await axios.post(
       buildImageUrl('/images/generations', model),
       body,
-      { headers: buildHeaders(model), timeout: 30000, validateStatus: () => true }
+      { headers: buildHeaders(model), timeout: timeoutMs, validateStatus: () => true }
     );
     if (submitRes.status >= 400) {
       throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);

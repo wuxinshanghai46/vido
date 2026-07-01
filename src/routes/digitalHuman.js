@@ -1530,6 +1530,7 @@ function imageUploadSingle(req, res, next) {
 }
 
 const _sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 const productAdTasks = new Map();
 const strictSpaceKeyframes = new Map();
 const OUTPUT_SIZE_PRESETS = {
@@ -6355,7 +6356,7 @@ async function _generateViaOpenAICompatibleImageModel({
         image_config: { aspect_ratio: _normalizeAspectRatio(aspectRatio, '16:9') },
       }, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 180000,
+        timeout: MODEL_PROVIDER_TIMEOUT_MS,
       });
     } else if (refs.length) {
       requestEndpoint = imageAdapter.edit_endpoint || '/images/edits';
@@ -6372,7 +6373,7 @@ async function _generateViaOpenAICompatibleImageModel({
       }
       response = await axios.post(`${baseUrl}${requestEndpoint}`, form, {
         headers: { Authorization: `Bearer ${apiKey}`, ...form.getHeaders() },
-        timeout: 180000,
+        timeout: MODEL_PROVIDER_TIMEOUT_MS,
         maxContentLength: 80 * 1024 * 1024,
         maxBodyLength: 80 * 1024 * 1024,
       });
@@ -6387,7 +6388,7 @@ async function _generateViaOpenAICompatibleImageModel({
       requestEndpoint = imageAdapter.generation_endpoint || '/images/generations';
       response = await axios.post(`${baseUrl}${requestEndpoint}`, generationBody, {
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 180000,
+        timeout: MODEL_PROVIDER_TIMEOUT_MS,
       });
     }
     const { url, b64 } = parseImagePayload(response.data);
@@ -7732,7 +7733,7 @@ async function _generateViaDeyunaiNanoBanana({ prompt, aspectRatio, filename, de
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: 120000 });
+      r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
       lastErr = null;
       break;
     } catch (err) {
@@ -7846,7 +7847,7 @@ async function _generateViaDeyunaiSpecificImageModel({ model, prompt, aspectRati
       aspectRatio: _normalizeAspectRatio(aspectRatio, '9:16'),
       referenceImages: (referenceImages || []).filter(Boolean).slice(0, 4),
       inputFidelity,
-      timeoutMs: 180000,
+      timeoutMs: 600000,
       agentId: 'digital_human_step1',
     });
   } catch (err) {
@@ -8235,7 +8236,7 @@ async function _generateViaFluxKontextMulti({ prompt, image1Url, image2Url, aspe
   console.log(`[DH/flux-kontext] 调 ${modelPath} 提交任务…`);
   let prediction;
   try {
-    const r = await axios.post(submitUrl, body, { headers, timeout: 90000 });
+    const r = await axios.post(submitUrl, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
     prediction = r.data;
   } catch (err) {
     throw new Error(_formatReplicateError('flux-kontext 提交失败', err));
@@ -8528,7 +8529,7 @@ async function _runInstantIDForProduct({ apiKey, refFaceUrl, poseImageUrl, promp
   };
   let r;
   try {
-    r = await axios.post(submitUrl, { input }, { headers, timeout: 120000 });
+    r = await axios.post(submitUrl, { input }, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
   } catch (err) {
     throw new Error(_formatReplicateError('InstantID 提交失败', err));
   }
@@ -22905,7 +22906,7 @@ async function _generateViaReplicateFluxFill({ req, imagePath, maskPath, prompt,
   };
   let r;
   try {
-    r = await axios.post(submitUrl, body, { headers, timeout: 120000 });
+    r = await axios.post(submitUrl, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
   } catch (err) {
     throw new Error(_formatReplicateError('flux-fill local repaint submit failed', err));
   }

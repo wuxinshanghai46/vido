@@ -27,6 +27,7 @@ const { registerCapability } = require('./workflowEngine');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const WORKFLOW_ASSETS = path.join(OUTPUT_DIR, 'workflow-assets');
+const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 if (!fs.existsSync(WORKFLOW_ASSETS)) fs.mkdirSync(WORKFLOW_ASSETS, { recursive: true });
 
 function getKey(providerId, envFallback) {
@@ -95,7 +96,7 @@ registerCapability('image_gen', {
     const size = sizeMap[aspectRatio] || '1024x1024';
     const body = { model: params.model || 'nano-banana', prompt, n: 1, size };
 
-    const r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: 120000 });
+    const r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
     let url = _extractImageUrl(r.data);
     const taskId = _extractTaskId(r.data);
     if (!url && taskId) url = await _pollDeyunai(baseUrl, headers, taskId);
@@ -133,8 +134,11 @@ async function _pollDeyunai(baseUrl, headers, taskId) {
     `${baseUrl}/tasks/${encodeURIComponent(taskId)}`,
     `${baseUrl}/task/${encodeURIComponent(taskId)}`,
   ];
-  for (let i = 0; i < 50; i++) {
+  const started = Date.now();
+  let i = 0;
+  while (Date.now() - started < MODEL_PROVIDER_TIMEOUT_MS) {
     await _sleep(i < 2 ? 1800 : 3000);
+    i += 1;
     for (const u of urls) {
       try {
         const r = await axios.get(u, { headers, timeout: 25000 });
@@ -224,9 +228,10 @@ async function _runFluxKontextMulti(prompt, image1Url, image2Url, aspectRatio) {
       safety_tolerance: 2,
     },
   };
-  const r = await axios.post(submitUrl, body, { headers, timeout: 90000 });
+  const r = await axios.post(submitUrl, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
   let result = r.data;
-  for (let i = 0; i < 30 && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status); i++) {
+  const started = Date.now();
+  while (Date.now() - started < MODEL_PROVIDER_TIMEOUT_MS && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status)) {
     await _sleep(2500);
     const pollR = await axios.get(`https://api.replicate.com/v1/predictions/${result.id}`, { headers: { Authorization: 'Bearer ' + key }, timeout: 25000 });
     result = pollR.data;
@@ -251,7 +256,7 @@ async function _runNanoBananaMultiRef(prompt, refs, aspectRatio) {
     image_url: refs[0],
   };
   if (refs.length > 1) body.image_urls = refs.slice(0, 4);
-  const r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: 120000 });
+  const r = await axios.post(`${baseUrl}/images/generations`, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
   let url = _extractImageUrl(r.data);
   const taskId = _extractTaskId(r.data);
   if (!url && taskId) url = await _pollDeyunai(baseUrl, headers, taskId);
@@ -284,9 +289,10 @@ registerCapability('cutout', {
     const headers = { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', Prefer: 'wait=60' };
     // BiRefNet 真实 input：image + resolution（"WxH" 字符串），不存在 model_input_size 字段
     const body = { input: { image: params.imageUrl, resolution: params.resolution || '1024x1024' } };
-    const r = await axios.post(submitUrl, body, { headers, timeout: 90000 });
+    const r = await axios.post(submitUrl, body, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
     let result = r.data;
-    for (let i = 0; i < 30 && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status); i++) {
+    const started = Date.now();
+    while (Date.now() - started < MODEL_PROVIDER_TIMEOUT_MS && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status)) {
       await _sleep(2500);
       const pollR = await axios.get(`https://api.replicate.com/v1/predictions/${result.id}`, { headers: { Authorization: 'Bearer ' + key }, timeout: 25000 });
       result = pollR.data;
@@ -378,9 +384,10 @@ registerCapability('inpaint', {
           safety_tolerance: 2,
         };
 
-    const r = await axios.post(submitUrl, { input }, { headers, timeout: 120000 });
+    const r = await axios.post(submitUrl, { input }, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
     let result = r.data;
-    for (let i = 0; i < 40 && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status); i++) {
+    const started = Date.now();
+    while (Date.now() - started < MODEL_PROVIDER_TIMEOUT_MS && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status)) {
       await _sleep(2500);
       const pollR = await axios.get(`https://api.replicate.com/v1/predictions/${result.id}`, { headers: { Authorization: 'Bearer ' + key }, timeout: 25000 });
       result = pollR.data;
@@ -450,9 +457,10 @@ async function _runInstantID(refFaceUrl, targetUrl, prompt, negativePrompt) {
   };
   if (targetUrl) input.pose_image = targetUrl;
 
-  const r = await axios.post(submitUrl, { input }, { headers, timeout: 120000 });
+  const r = await axios.post(submitUrl, { input }, { headers, timeout: MODEL_PROVIDER_TIMEOUT_MS });
   let result = r.data;
-  for (let i = 0; i < 40 && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status); i++) {
+  const started = Date.now();
+  while (Date.now() - started < MODEL_PROVIDER_TIMEOUT_MS && result?.status && !['succeeded', 'failed', 'canceled'].includes(result.status)) {
     await _sleep(2500);
     const pollR = await axios.get(`https://api.replicate.com/v1/predictions/${result.id}`, { headers: { Authorization: 'Bearer ' + key }, timeout: 25000 });
     result = pollR.data;
@@ -479,7 +487,7 @@ async function _runDashScopeFace(model, refFaceUrl, targetUrl, prompt) {
   const r = await axios.post(
     'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
     body,
-    { headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, timeout: 90000 },
+    { headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, timeout: MODEL_PROVIDER_TIMEOUT_MS },
   );
   const url = r.data?.output?.results?.[0]?.url || r.data?.output?.url;
   if (!url) throw new Error('DashScope 无返回 URL: ' + JSON.stringify(r.data).slice(0, 200));
