@@ -8312,7 +8312,14 @@
     renderLuxuryWorkflowProgressBox(step4ScriptBox, empty);
     renderLuxuryWorkflowProgressBox(scriptTableBox, empty);
     renderLuxuryWorkflowProgressBox(frameBox, empty);
-    if (!progress || !progress.active) return;
+    if (!progress || !progress.active) {
+      const scriptError = String(state.luxuryAd.scriptError || '').trim();
+      if (scriptError && actionBox) {
+        actionBox.hidden = false;
+        actionBox.innerHTML = renderLuxuryScriptError(scriptError, state.luxuryAd.scriptErrorDetails);
+      }
+      return;
+    }
     if (progress.keyframes) {
       renderLuxuryWorkflowProgressBox(frameBox, progress);
     } else if (progress.detail) {

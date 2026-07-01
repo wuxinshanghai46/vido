@@ -12606,7 +12606,7 @@ function _isWeakLuxuryProductName(value = '') {
     || /�|[?？]{3,}/.test(s)
     || /^微信图片[_\-\d]/.test(s)
     || /^主商品$|^商品图$|^产品图$/i.test(s)
-    || /^(剧情广告|广告片|广告数字人|普通广告数字人|由广告设想识别|上传主商品)$/i.test(s);
+    || /^(剧情广告|广告片|广告数字人|普通广告数字人|由广告设想识别|上传主商品|广告主体|广告需求中的商品\/服务主体|用户广告需求中的真实商品或服务)$/i.test(s);
 }
 
 function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary = '' } = {}) {
@@ -12640,7 +12640,9 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
   ];
   const hit = keywordMap.find(x => x.re.test(joined));
   if (hit) return hit.value;
-  return _isWeakLuxuryProductName(productName) ? '上传主商品' : String(productName || '上传主商品').trim().slice(0, 40);
+  return _isWeakLuxuryProductName(productName)
+    ? '用户广告需求中的真实商品或服务'
+    : String(productName || '用户广告需求中的真实商品或服务').trim().slice(0, 40);
 }
 
 function _extractLuxuryBriefForbiddenTerms(text = '') {
@@ -17168,6 +17170,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       ? 'App、化妆品、通用办公焦虑、扫地机器人、清洁电器、泛生活方式或其他行业'
       : 'App、化妆品、机器人、扫地机器人、清洁电器、通用办公焦虑、泛生活方式或其他行业';
     const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject, brief, scene: visualReferenceBrief || null });
+    const subjectPlaceholderInstruction = '占位词禁用：上传主商品、主商品、主产品、广告主体、已确认主体、商品/服务主体、用户广告需求中的真实商品或服务、广告需求中的商品/服务主体 都是系统占位/后台说明，不能原样写入画面、动作、台词、目的、product_subject、scene_bible 或 spoken_line。没有上传主商品时，必须从广告需求里提炼观众能看见的真实商品、服务、空间、人物行动、界面流程或业务证据来写。';
     const subjectLockInstruction = `广告主体锁定：本片必须围绕「${productSubject}」展开，关键词至少包括 ${subjectKeywords.join(' / ') || productSubject}。所有场景、动作、台词、证明和收束都要服务这个主体；禁止改写成 ${subjectForbiddenDrift}。${forbiddenBriefInstruction ? ` ${forbiddenBriefInstruction}` : ''}${robotAssistantGuard ? ` ${robotAssistantGuard}` : ''}`;
     const uploadedAssetNotes = [
       ...(briefReferenceAssets.length ? briefReferenceAssets.map(x => x && (x.name || x.url || x.image_url) ? `需求参考图${x.index || ''}：${x.name || x.url || x.image_url}` : '') : []),
@@ -17228,6 +17231,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '跨行业防污染规则：严禁从历史案例、知识库或默认样例迁移“建筑空间、建材展厅、材料墙、外立面、样板间、钢材、金属板、设计师带看”等词；只有用户原文、上传素材分析或已确认剧本明确出现这些内容时才能使用。视频网站、软件平台、AI工具、SaaS、内容创作类广告必须围绕界面、创作工作流、内容形态、用户使用场景和平台价值展开，不得变成建筑空间或建材场景。',
       'AI/智能生活防跑偏规则：“AI、智能、智能生活、智能助手”不是电脑、代码、dashboard、手机 App 或扫地机器人的同义词。只有用户原文、素材或本镜剧情明确出现 API、开发接入、代码、IDE、后台、扫地机器人、清洁设备时，才允许对应画面；否则必须按本镜剧情里的真实生活/服务/主体证据生成。',
       robotAssistantGuard,
+      subjectPlaceholderInstruction,
       controlledGuide.enabled ? controlledGuide.storyboard_rules : '',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
@@ -17303,6 +17307,7 @@ ${isDetailedMode ? (explicitShotTarget ? `请根据剧情生成正好 ${wantedSh
 ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
 - 目标时长不是镜头数量公式：无论用户选择多少秒，都必须先根据广告内容、台词量、素材、表达节奏和目标效果判断结构；允许 1 个长镜头讲清，也允许多镜头快节奏，不得因为秒数机械拆镜。
 - 主商品类别必须锁定为「${productSubject}」，不能把它改成化妆品、香水瓶、护肤品、饮料瓶、手机、首饰或任何无关消费品。
+- ${subjectPlaceholderInstruction}
 - ${productLockPrompt}
 - 第 3 步剧本必须体现四类专业贡献：编剧给出镜头戏剧作用和观众文案；导演写人物/主体行为动作和情绪；摄影指导写焦段/景别/光位/机位/运动；声音设计写 SFX/Audio。
 - 广告词必须短、准、有品牌记忆点；禁止输出“简介便利、通过AI让视频制作更便捷、更高效、告别繁琐、效率倍增、创作只需片刻”等泛泛句式，除非用户要求原封不动使用。
@@ -18289,7 +18294,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         }
         return '';
       };
-      const scriptInternalNoise = /(广告需求识别|由广告需求识别|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|主商品|产品名称|一句话需求|brief|prompt|exact uploaded)/i;
+      const scriptInternalNoise = /(广告需求识别|由广告需求识别|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|上传主商品|主商品|主产品|广告主体|已确认主体|商品\/服务主体|用户广告需求中的真实商品或服务|广告需求中的商品\/服务主体|产品名称|一句话需求|brief|prompt|exact uploaded)/i;
       const isUsableScriptVisual = (value = '') => {
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s || s.length < 8) return false;
@@ -18417,6 +18422,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         '只输出 JSON 数组，不要 markdown，不要解释。',
         subjectLockInstruction,
         forbiddenBriefInstruction,
+        subjectPlaceholderInstruction,
         castInstruction,
         genderInstruction,
         '重写目标：把抽象模板句改成可直接进入审核表的成片脚本。画面=具体场所+主体状态+可见证据；动作=主体正在做的可拍动作；台词=成片里能听到的一句自然话；目的=2-6 个字短标签。',
@@ -18518,6 +18524,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 1000
         '你是剧情广告剧本缺字段补全 agent。你的任务不是重写整版剧本，只根据前后镜头和编剧蓝图补足被点名缺失的字段。',
         '只输出 JSON 数组，不要 markdown，不要解释。',
         subjectLockInstruction,
+        subjectPlaceholderInstruction,
         castInstruction,
         genderInstruction,
         robotAssistantGuard,
@@ -18672,6 +18679,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
           : '你是剧情广告剧本审核表 writer。你的任务是把编剧蓝图直接写成用户第 3 步要审核的镜头表，不要让后端再猜测和拼装内容。',
         '只输出 JSON 数组，不要 markdown，不要解释。',
         subjectLockInstruction,
+        subjectPlaceholderInstruction,
         castInstruction,
         genderInstruction,
         robotAssistantGuard,
@@ -18965,6 +18973,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         '只输出 JSON 对象，不要 markdown，不要解释。',
         `广告主体必须作为故事中的可见证据出现：${productSubject}。故事主语必须来自用户确认的主体：可以是人物、产品、动物、机器人、外星人、吉祥物、空间、服务流程或其它行业对象，不能强行套真人导购或历史行业场景。`,
         forbiddenBriefInstruction,
+        subjectPlaceholderInstruction,
         castInstruction,
         `目标总时长约 ${targetDuration} 秒。蓝图必须先规划足够支撑该时长的剧情信息量：较短视频可以集中表达，较长视频必须增加更完整的场景铺垫、主体操作过程、结果反馈、对比证明或行动收束。不得先写短剧本再靠 duration 拉长。`,
         '学习竞品脚本写法：先把每个 beat 想成最终表格里的一行，必须有具体场所/主体状态/可见证据、可拍动作、可直接配音的一句话、短目的标签；不要输出后台分析句。',
@@ -19221,7 +19230,8 @@ index,title,role,story_stage,duration,objective,purpose,content_prompt,scene_con
           '如果两个镜头的主要画面/动作/台词重复，或 purpose 只是 context、feature_1、product_reveal、proof、offer、cta 等内部标签，必须 rejected。',
           '如果画面、动作、台词或目的出现“相关证据、主体证据、当前业务真正需要看见、人物或主体、同一位剧情角色、已确认场景、作用被看见、核心问题、角色带你、答案开始具体、细节被看见、选择理由讲清楚”等抽象模板词，必须 rejected，并要求改成具体可见商品/服务/主体介绍镜头。',
           '如果台词不像人在讲一个具体故事，而只是概念、口号、卖点列表，必须 rejected。',
-          '检查台词里是否出现后台流程词：广告需求、广告需求识别、由广告需求识别、用户需求、系统识别、自动识别、参考素材摘要、主商品。出现任何一个都必须 rejected。',
+          subjectPlaceholderInstruction,
+          '检查台词、画面、动作、目的里是否出现后台流程词：广告需求、广告需求识别、由广告需求识别、用户需求、系统识别、自动识别、参考素材摘要、上传主商品、主商品、主产品、广告主体、已确认主体、商品/服务主体。出现任何一个都必须 rejected。',
           '如果不合格，approved 必须为 false，并在 errors 里写具体问题。'
         ].join('\n');
         const reviewUser = `广告需求：${brief}
