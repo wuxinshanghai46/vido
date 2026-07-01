@@ -56,7 +56,8 @@ const LUXURY_STORYBOARD_OUTLINE_RUNNING_TIMEOUT_MS = Math.max(3 * 60 * 1000, Num
 const LUXURY_STORYBOARD_DETAIL_RUNNING_TIMEOUT_MS = Math.max(8 * 60 * 1000, Number(process.env.LUXURY_STORYBOARD_DETAIL_TIMEOUT_MS) || 24 * 60 * 1000);
 const LUXURY_STORY_MODEL_FAILURE_COOLDOWN_MS = Math.max(60 * 1000, Number(process.env.LUXURY_STORY_MODEL_FAILURE_COOLDOWN_MS) || 10 * 60 * 1000);
 const LUXURY_PERSON_SHEET_RESULT_TTL_MS = 90 * 60 * 1000;
-const LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS = 18 * 60 * 1000;
+const LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS = Math.max(18 * 60 * 1000, Number(process.env.LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS) || 35 * 60 * 1000);
+const LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS = Math.max(LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS + 2 * 60 * 1000, Number(process.env.LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS) || 40 * 60 * 1000);
 const LUXURY_PERSON_SHEET_PERSIST_PREFIX = 'dh.luxury_person_sheet.result.';
 const LUXURY_PERSON_SHEET_RECOVERY_DELAY_MS = Math.max(1000, Number(process.env.LUXURY_PERSON_SHEET_RECOVERY_DELAY_MS) || 8000);
 const luxuryPersonSheetActiveJobs = new Set();
@@ -15432,7 +15433,7 @@ async function _generateLuxuryRealisticActorPackage({
   const attempts = [];
   let actorBible = null;
   const requiredViewKeys = new Set(views.filter(view => view.backView !== true).map(view => view.key));
-  const actorPackageDeadline = Date.now() + 18 * 60 * 1000;
+  const actorPackageDeadline = Date.now() + LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS;
   for (const view of views) {
     if (Date.now() > actorPackageDeadline) {
       attempts.push({
