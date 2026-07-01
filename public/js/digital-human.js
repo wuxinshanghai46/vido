@@ -7039,8 +7039,10 @@
   function luxuryAdCastProfiles() {
     const spec = state.luxuryAd.personSpec || {};
     const current = Array.isArray(state.luxuryAd.castProfiles) ? state.luxuryAd.castProfiles : [];
-    const manualHasProfile = current.some(p => p && Object.values(p).some(v => typeof v === 'string' ? v.trim() : !!v));
+    const manualHasProfile = current.some(p => luxuryAdCastProfileHasValue(p) && !luxuryAdCastProfileIsAutoPersonAsset(p));
     if (manualHasProfile) return current;
+    const assetProfile = luxuryAdCastProfileFromPersonAsset();
+    if (assetProfile) return [assetProfile];
     const hasUserProfile = [
       spec.roleName,
       spec.displayName,
@@ -7078,6 +7080,98 @@
         outfit: !!String(spec.wardrobeText || '').trim(),
       },
     }];
+  }
+
+  function luxuryAdCastProfileHasValue(profile = null) {
+    return !!(profile && Object.values(profile).some(v => typeof v === 'string' ? v.trim() : !!v));
+  }
+
+  function luxuryAdCastProfileIsAutoPersonAsset(profile = null) {
+    return !!(profile && profile.id === 'cast_primary' && (
+      profile.sourceType
+      || profile.assetId
+      || profile.actor_asset_id
+      || profile.actor_id
+      || profile.identityLock?.face
+    ));
+  }
+
+  function luxuryAdCastProfileFromPersonAsset(asset = state.luxuryAd.personAsset) {
+    if (!asset || asset.uploading || asset.failed || typeof asset !== 'object') return null;
+    const urls = luxuryActorAssetUrls(asset);
+    const primaryUrl = compactLuxuryUrl(asset.image_url || asset.url || asset.previewUrl || urls[0] || '');
+    const assetId = asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id || '';
+    if (!primaryUrl && !assetId) return null;
+    const spec = luxuryAdPersonSpec();
+    const gender = luxuryPersonGenderLabel(asset.detected_gender || asset.gender || spec.gender || '') || '按演员包识别';
+    const origin = luxuryPersonOriginLabel(asset.origin || spec.origin || '') || '按演员包参考';
+    const age = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(asset.age || asset.age_range || spec.age || '')]
+      || String(asset.age || asset.age_range || '').trim()
+      || '按广告需求判断';
+    const roleName = String(spec.roleName || asset.role || asset.identity || '').trim() || '广告核心人物';
+    const displayName = String(spec.displayName || asset.display_name || asset.character_name || '').trim();
+    const appearanceParts = [
+      age,
+      String(spec.appearanceText || '').trim(),
+      String(asset.spec_description || asset.description || '').trim(),
+      primaryUrl ? '已锁定演员包脸型、五官、身形和真实照片质感' : '',
+    ].filter(Boolean);
+    const outfit = String(spec.wardrobeText || asset.outfit || '').trim() || '保持演员包中的同一套服装、发型和整体气质';
+    const handProp = String(asset.hand_prop || spec.handProp || '').trim() || '按剧本动作自然使用相关道具';
+    const behavior = String(asset.behavior || '').trim() || '围绕已确认广告主体完成体验、讲解、演示和行动引导';
+    return {
+      id: 'cast_primary',
+      name: displayName || '核心人物',
+      displayName,
+      roleName,
+      role: roleName,
+      sourceType: luxuryAdActorReferenceKind(asset),
+      assetId,
+      actor_asset_id: asset.actor_asset_id || '',
+      actor_id: asset.actor_id || '',
+      referenceImageUrl: primaryUrl,
+      image_url: primaryUrl,
+      extra_image_urls: urls.map(compactLuxuryUrl).filter(Boolean).slice(1),
+      gender,
+      origin,
+      appearance: {
+        gender,
+        ageRange: age,
+        origin,
+        userPrompt: appearanceParts.join('；'),
+        temperament: String(spec.temperamentText || '').trim(),
+      },
+      wardrobe: {
+        mode: spec.wardrobeMode || 'auto',
+        userPrompt: outfit,
+      },
+      hairMakeup: {
+        userPrompt: String(spec.hairMakeupText || '').trim() || '保持演员包发型和妆造一致',
+      },
+      outfit,
+      hand_prop: handProp,
+      behavior,
+      negativeText: String(spec.negativeText || '').trim(),
+      description: [
+        appearanceParts.join('；'),
+        outfit ? `服装：${outfit}` : '',
+        handProp ? `手部/道具：${handProp}` : '',
+        behavior ? `动作习惯：${behavior}` : '',
+      ].filter(Boolean).join('；'),
+      identityLock: {
+        face: true,
+        outfit: true,
+      },
+    };
+  }
+
+  function syncLuxuryCastProfilesFromPersonAsset() {
+    const profile = luxuryAdCastProfileFromPersonAsset();
+    if (!profile) return;
+    const current = Array.isArray(state.luxuryAd.castProfiles) ? state.luxuryAd.castProfiles : [];
+    const hasManualProfile = current.some(p => luxuryAdCastProfileHasValue(p) && !luxuryAdCastProfileIsAutoPersonAsset(p));
+    if (hasManualProfile) return;
+    state.luxuryAd.castProfiles = [profile];
   }
 
   function luxuryAdPersonSpec() {
@@ -7490,6 +7584,7 @@
       expected_people: rawPersonCount || (assetCastMode === 'group' ? 3 : (assetCastMode === 'dual' ? 2 : 1)),
       reference_kind: luxuryAdActorReferenceKind(asset),
     };
+    syncLuxuryCastProfilesFromPersonAsset();
     syncLuxuryPersonSpecControls();
   }
 
@@ -7504,7 +7599,9 @@
 
   function luxuryAdPersonAssetPayload() {
     const generated = state.luxuryAd.personAsset;
-    if (generated && (generated.url || generated.image_url || generated.previewUrl)) {
+    const generatedUrls = generated ? luxuryActorAssetUrls(generated).map(compactLuxuryUrl).filter(Boolean) : [];
+    const generatedAssetId = generated?.actor_asset_id || generated?.asset_library_id || generated?.material_id || generated?.id || '';
+    if (generated && (generated.url || generated.image_url || generated.previewUrl || generatedUrls[0] || generatedAssetId)) {
       const referenceKind = luxuryAdActorReferenceKind(generated);
       const isAiGenerated = referenceKind === 'ai_generated';
       const isSyntheticActor = referenceKind === 'synthetic_realistic_actor'
@@ -7537,7 +7634,7 @@
         detected_gender: luxuryPersonConfirmedGender(generated.detected_gender, generated.metadata?.detected_gender),
         age: generated.age || generated.age_range || generated.metadata?.age || generated.metadata?.age_range || '',
         origin: generated.origin || generated.metadata?.origin || '',
-        image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || ''),
+        image_url: compactLuxuryUrl(generated.url || generated.image_url || generated.previewUrl || generatedUrls[0] || ''),
         extra_image_urls: Array.isArray(generated.extra_image_urls) ? generated.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [],
         view_images: Array.isArray(generated.view_images) ? generated.view_images.map(view => ({
           ...view,
@@ -8033,6 +8130,7 @@
           material_id: saved.id,
           source: 'actor_library',
         };
+        syncLuxuryCastProfilesFromPersonAsset();
         renderLuxuryAdPerson();
       }
       return saved;
@@ -12283,9 +12381,13 @@
           actor_id: contractActorAsset.actor_id || restoredPersonAsset.actor_id || '',
           actor_asset_id: contractActorAsset.actor_asset_id || restoredPersonAsset.actor_asset_id || '',
         } : {}),
+        url: restoredPersonAsset.url || restoredPersonAsset.image_url || restoredPersonAsset.previewUrl || restoredUrls[0] || '',
+        image_url: restoredPersonAsset.image_url || restoredPersonAsset.url || restoredPersonAsset.previewUrl || restoredUrls[0] || '',
+        previewUrl: restoredPersonAsset.previewUrl || restoredPersonAsset.image_url || restoredPersonAsset.url || restoredUrls[0] || '',
         extra_image_urls: restoredUrls.slice(1),
         view_count: Math.max(Number(restoredPersonAsset.view_count || 0), restoredUrls.length || 1),
       };
+      applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
     } else {
       state.luxuryAd.personAsset = null;
     }
