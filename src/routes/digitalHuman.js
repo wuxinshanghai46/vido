@@ -15428,6 +15428,7 @@ async function _generateLuxuryRealisticActorPackage({
     {
       key: 'front',
       prompt: `${castingSheetCore} FRONT VIEW: ${expectedPeople === 1 ? 'the selected person facing camera directly' : `all ${expectedPeople} cast members facing camera directly in one clean lineup`}, calm natural expression, eyes visible, complete body visible from head to shoes when possible, lower-body clothing clearly visible.`,
+      initialRequired: true,
     },
     {
       key: 'side',
@@ -15446,9 +15447,11 @@ async function _generateLuxuryRealisticActorPackage({
   const outputs = [];
   const attempts = [];
   let actorBible = null;
-  const requiredViewKeys = new Set(views.filter(view => view.backView !== true).map(view => view.key));
+  const initialViews = views.filter(view => view.initialRequired === true);
+  const supplementalViews = views.filter(view => view.initialRequired !== true);
+  const requiredViewKeys = new Set(initialViews.map(view => view.key));
   const actorPackageDeadline = Date.now() + LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS;
-  for (const view of views) {
+  const generateActorView = async (view, { requiredView = false, candidatePasses = 1, supplemental = false } = {}) => {
     if (Date.now() > actorPackageDeadline) {
       attempts.push({
         provider_id: 'actor-package',
@@ -15476,8 +15479,6 @@ async function _generateLuxuryRealisticActorPackage({
     ].filter(Boolean).slice(0, 4);
     let generated = null;
     let lastViewErr = null;
-    const requiredView = requiredViewKeys.has(view.key);
-    const candidatePasses = requiredView ? 2 : 1;
     const viewPrompt = actorBible && view.key !== 'front'
       ? `${view.prompt} ${_luxuryActorBiblePromptText(actorBible, { viewKey: view.key })}`
       : view.prompt;
@@ -15503,6 +15504,7 @@ async function _generateLuxuryRealisticActorPackage({
         });
         attempts.push(...(candidate.attempts || []).map(a => ({ ...a, view: view.key, candidate_pass: passIndex + 1 })));
         generated = _luxuryBetterActorViewCandidate(candidate, generated);
+        if (generated) break;
       } catch (err) {
         lastViewErr = err;
         const failedAttempts = Array.isArray(err?.luxuryKeyframeAttempts)
@@ -15516,19 +15518,20 @@ async function _generateLuxuryRealisticActorPackage({
       if (!requiredView) {
         attempts.push({
           provider_id: 'actor-package',
-          model_id: 'optional-view',
+          model_id: supplemental ? 'supplemental-view' : 'optional-view',
           ok: false,
           view: view.key,
           optional: true,
+          supplemental: supplemental === true,
           error: lastViewErr?.message || `optional ${view.key} view did not produce a usable candidate`,
         });
         console.warn(`[DH/luxury-ad/person-sheet] optional view ${view.key} skipped after failed candidates:`, String(lastViewErr?.message || '').slice(0, 240));
-        continue;
+        return null;
       }
       if (lastViewErr) {
         lastViewErr.status = lastViewErr.status || 502;
         lastViewErr.code = lastViewErr.code || 'LUXURY_PERSON_SHEET_REQUIRED_VIEW_FAILED';
-        lastViewErr.message = `人物演员包四视图生成未完成：${view.key} 视图失败；${lastViewErr.message || '没有生成可用候选图'}`;
+        lastViewErr.message = `人物演员包正面定稿生成未完成：${view.key} 视图失败；${lastViewErr.message || '没有生成可用候选图'}`;
         lastViewErr.luxuryKeyframeAttempts = attempts;
         lastViewErr.details = {
           ...(lastViewErr.details && typeof lastViewErr.details === 'object' ? lastViewErr.details : {}),
@@ -15551,7 +15554,7 @@ async function _generateLuxuryRealisticActorPackage({
       };
       throw err;
     }
-    outputs.push({
+    const output = {
       key: view.key,
       model: generated.model,
       path: generated.outPath,
@@ -15562,7 +15565,9 @@ async function _generateLuxuryRealisticActorPackage({
       actor_bible_source: actorBible && view.key !== 'front' ? 'front_view_actor_bible' : '',
       selected_score: Math.round(_luxuryGeneratedActorViewScore(generated) * 10) / 10,
       back_view_asset: view.backView === true,
-    });
+      supplemental_view: supplemental === true,
+    };
+    outputs.push(output);
     if (view.key === 'front' && !actorBible) {
       try {
         actorBible = await _extractLuxuryActorBibleFromFront(req, generated.outPath, {
@@ -15603,6 +15608,14 @@ async function _generateLuxuryRealisticActorPackage({
         throw bibleErr;
       }
     }
+    return output;
+  };
+  for (const view of initialViews) {
+    await generateActorView(view, {
+      requiredView: requiredViewKeys.has(view.key),
+      candidatePasses: 1,
+      supplemental: false,
+    });
   }
   const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
   fs.mkdirSync(actorDir, { recursive: true });
@@ -15630,7 +15643,15 @@ async function _generateLuxuryRealisticActorPackage({
       url: x.url || '',
       image_url: x.url || '',
       back_view_asset: x.back_view_asset === true,
+      supplemental_view: x.supplemental_view === true,
     })).filter(x => x.url),
+    view_generation_status: {
+      mode: 'front_first',
+      ready_views: outputs.map(x => x.key).filter(Boolean),
+      pending_views: supplementalViews.map(x => x.key).filter(Boolean),
+      required_for_initial_use: Array.from(requiredViewKeys),
+      non_blocking_supplements: true,
+    },
     actor_bible: actorBible || null,
     stable_attributes: [
       expectedPeople === 1 ? 'same realistic face identity' : `same ${expectedPeople} realistic face identities`,
@@ -15649,6 +15670,51 @@ async function _generateLuxuryRealisticActorPackage({
   // when the selected video model is Webang Seedance; Topview uses its own upload flow.
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+  if (supplementalViews.length) {
+    setImmediate(async () => {
+      for (const view of supplementalViews) {
+        try {
+          const output = await generateActorView(view, {
+            requiredView: false,
+            candidatePasses: 1,
+            supplemental: true,
+          });
+          if (!output) continue;
+          actorAsset.extra_image_urls = outputs.slice(1).map(x => x.url).filter(Boolean);
+          actorAsset.view_images = outputs.map(x => ({
+            key: x.key || '',
+            url: x.url || '',
+            image_url: x.url || '',
+            back_view_asset: x.back_view_asset === true,
+            supplemental_view: x.supplemental_view === true,
+          })).filter(x => x.url);
+          actorAsset.view_generation_status = {
+            mode: 'front_first',
+            ready_views: outputs.map(x => x.key).filter(Boolean),
+            pending_views: supplementalViews.map(x => x.key).filter(key => !outputs.some(x => x.key === key)),
+            required_for_initial_use: Array.from(requiredViewKeys),
+            non_blocking_supplements: true,
+          };
+          fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
+          fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+        } catch (err) {
+          attempts.push({
+            provider_id: 'actor-package',
+            model_id: 'supplemental-view',
+            ok: false,
+            view: view.key,
+            optional: true,
+            supplemental: true,
+            error: String(err?.message || err).slice(0, 240),
+          });
+          console.warn(`[DH/luxury-ad/person-sheet] supplemental view ${view.key} skipped:`, String(err?.message || err).slice(0, 240));
+          try {
+            fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+          } catch (_) {}
+        }
+      }
+    });
+  }
   return { actorAsset, outputs, attempts };
 }
 
@@ -15990,6 +16056,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
       view_images: actorAsset.view_images || [],
+      view_generation_status: actorAsset.view_generation_status || null,
       cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
@@ -16015,8 +16082,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
         view_images: actorAsset.view_images || [],
+        view_generation_status: actorAsset.view_generation_status || null,
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、背面、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
+        description: `AI 真人感一致性演员：正面定妆通过后已可用于分镜；侧面/动作/背面作为非阻塞补充参考后台生成。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     });
     _storeLuxuryPersonSheetResult(req, request_key, { status: 'done', result: {
@@ -16025,6 +16093,7 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       image_url: imageUrl,
       extra_image_urls: actorAsset.extra_image_urls || [],
       view_images: actorAsset.view_images || [],
+      view_generation_status: actorAsset.view_generation_status || null,
       cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
       filename: path.basename(imageUrl || ''),
       model: actorPack.outputs?.[0]?.model || '',
@@ -16050,8 +16119,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
         image_url: imageUrl,
         extra_image_urls: actorAsset.extra_image_urls || [],
         view_images: actorAsset.view_images || [],
+        view_generation_status: actorAsset.view_generation_status || null,
         view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员包：正面定妆、侧面/半侧、背面、动作参考。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
+        description: `AI 真人感一致性演员：正面定妆通过后已可用于分镜；侧面/动作/背面作为非阻塞补充参考后台生成。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
       },
     } });
   } catch (err) {

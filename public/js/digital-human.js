@@ -7621,7 +7621,8 @@
           url: compactLuxuryUrl(view.url || view.image_url || view.imageUrl || ''),
           image_url: compactLuxuryUrl(view.image_url || view.url || view.imageUrl || ''),
         })).filter(view => view.url || view.image_url) : [],
-        view_count: generated.view_count || 4,
+        view_generation_status: generated.view_generation_status || generated.metadata?.view_generation_status || null,
+        view_count: generated.view_count || generated.view_images?.length || 1,
         description: generated.spec_description || generated.description || luxuryAdPersonDescription(),
       };
     }
@@ -8006,7 +8007,7 @@
     const elapsedText = formatLuxuryElapsedText(elapsedSec);
     const canSeeDebug = canViewLuxuryInternalPipeline();
     const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
-    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面、侧面/半侧、动作参考图，并尝试补充背面。');
+    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面定妆照；通过后即可绑定演员，侧面/动作/背面会作为补充参考后台生成。');
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
@@ -8096,6 +8097,7 @@
           expected_people: asset.expected_people || asset.person_count || '',
           cast_assets: Array.isArray(asset.cast_assets) ? asset.cast_assets : [],
           view_images: viewImages,
+          view_generation_status: asset.view_generation_status || null,
           is_ai_generated: !!asset.is_ai_generated,
           person_spec: luxuryAdPersonSpec(),
         },
@@ -9576,11 +9578,10 @@
     state.luxuryAd.personGenerationError = null;
     const personProgressStages = [
       { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
-      { at: 2500, percent: 24, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
-      { at: 8500, percent: 48, phase: generationPeople > 1 ? '逐个生成侧面/半侧参考' : '生成侧面/半侧参考', message: generationPeople > 1 ? '每个人单独复用自己的脸型、发型、服装和身形比例。' : '复用同一脸型、发型、服装和身形比例。' },
-      { at: 15000, percent: 68, phase: generationPeople > 1 ? '逐个尝试补充背面' : '尝试补充背面', message: generationPeople > 1 ? '背面作为补充参考生成，通过后才会展示。' : '背面作为补充参考生成，通过后才会展示。' },
-      { at: 21500, percent: 82, phase: generationPeople > 1 ? '逐个生成动作参考照' : '生成动作参考照', message: generationPeople > 1 ? '每个人单独生成动作参考，不把多人混成一张图。' : '同一演员进入剧本需要的动作姿态，保持衣服和发型一致。' },
-      { at: 29000, percent: 88, phase: '整理演员参考', message: '正在确认人物设定、参考图一致性和可用性。', debugPhase: '人物设定 QA 与素材入库', debugMessage: '检查构图、设定匹配、参考图一致性和入库条件，通过后才绑定 actor_id。' },
+      { at: 2500, percent: 28, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
+      { at: 8500, percent: 58, phase: '正面构图 QA', message: '检查正面定妆照是否符合人物设定、构图和可复用要求。' },
+      { at: 15000, percent: 78, phase: '抽取人物锁', message: '从正面定稿中抽取脸型、发型、服装和身形锁，供后续分镜使用。' },
+      { at: 21500, percent: 88, phase: '准备绑定演员', message: '正面通过后即可入库，侧面/动作/背面将作为非阻塞补充参考继续生成。', debugPhase: '正面 QA 与 actor_id 入库', debugMessage: '只把通过正面 QA 和人物锁抽取的资产绑定 actor_id；补充视图失败不会污染演员库。' },
     ];
     const updatePersonProgress = () => {
       const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
@@ -9666,9 +9667,9 @@
           label: '拟真演员',
           percent: 88,
         phase: '后台生成中',
-          message: '人物包已提交到后台，正在等待模型生成和参考图校验返回。',
+          message: '人物包已提交到后台，正面通过后会先返回可用演员。',
           debugPhase: '后台模型与 QA',
-          debugMessage: '人物包已提交到后台，正在等待模型、构图 QA、设定 QA 和一致性 QA 返回。',
+          debugMessage: '人物包已提交到后台，等待正面模型、构图 QA、设定 QA 和人物锁抽取返回；补充视图不阻塞 actor_id。',
         };
         renderLuxuryAdPerson();
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 20 * 60 * 1000, missingRetryMs: 90000 });
@@ -9694,8 +9695,8 @@
         startedAt: state.luxuryAd.personGenerationProgress?.startedAt || Date.now(),
         label: '拟真演员',
         percent: 96,
-        phase: '演员包生成完成',
-        message: '已返回可用演员参考图，正在更新页面。',
+        phase: '演员已可用',
+        message: '正面定妆已通过并绑定演员，补充参考图会在后台继续尝试。',
       };
       state.luxuryAd.personAsset = {
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
@@ -9718,13 +9719,14 @@
         view_images: Array.isArray(character.view_images)
           ? character.view_images
           : (Array.isArray(r.actor_asset?.view_images) ? r.actor_asset.view_images : (Array.isArray(r.view_images) ? r.view_images : [])),
+        view_generation_status: character.view_generation_status || r.actor_asset?.view_generation_status || r.view_generation_status || null,
         url: primaryActorUrl,
         image_url: primaryActorUrl,
         previewUrl: primaryActorUrl,
         extra_image_urls: extraActorUrls,
         view_count: Math.max(1, actorUrls.length || (1 + extraActorUrls.length)),
         uploading: false,
-        description: character.description || '拟真一致性演员：正面、侧面/半侧、动作参考；如背面通过校验会一并展示。',
+        description: character.description || '拟真一致性演员：正面定妆已可用；侧面/动作/背面为非阻塞补充参考。',
         spec_description: personDescription,
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
