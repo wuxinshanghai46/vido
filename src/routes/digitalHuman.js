@@ -16272,6 +16272,25 @@ function _publicLuxuryStoryboardResult(item) {
   if (item.status === 'done') return { success: true, status: 'done', result: item.result };
   if (item.status === 'error') return { success: false, status: 'error', error: item.error || '生成失败', details: item.details || null };
   const startedAt = Number(item.started_at || 0);
+  if (item.status === 'running' && startedAt > 0 && startedAt < SERVER_STARTED_AT - 2000) {
+    const detail = _luxuryStoryboardRunningTimeoutMs(item) === LUXURY_STORYBOARD_DETAIL_RUNNING_TIMEOUT_MS;
+    return {
+      success: false,
+      status: 'error',
+      error: detail
+        ? '剧本生成任务在服务重启后中断，请重新点击“确认基础信息，生成剧本”。'
+        : '场景配置生成任务在服务重启后中断，请重新生成基础信息。',
+      details: {
+        status: 503,
+        code: detail ? 'LUXURY_SCRIPT_JOB_INTERRUPTED' : 'LUXURY_OUTLINE_JOB_INTERRUPTED',
+        message: '后台长任务创建时间早于当前服务启动时间，原任务进程已不存在。',
+        started_at: item.started_at || null,
+        server_started_at: SERVER_STARTED_AT,
+      },
+      started_at: item.started_at || null,
+      updated_at: item.updated_at || null,
+    };
+  }
   if (item.status === 'running' && startedAt > 0 && Date.now() - startedAt > _luxuryStoryboardRunningTimeoutMs(item)) {
     const timeout = _luxuryStoryboardTimeoutError(item);
     return { success: false, status: 'error', error: timeout.error, details: timeout.details, started_at: item.started_at || null, updated_at: item.updated_at || null };
