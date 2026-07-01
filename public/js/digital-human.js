@@ -8066,7 +8066,9 @@
 
   async function persistLuxuryPersonAssetToLibrary(asset = {}, source = 'luxury_ad') {
     const url = compactLuxuryUrl(asset.image_url || asset.url || asset.previewUrl || '');
-    if (!url || /^blob:/i.test(url) || asset.actor_asset_id || asset.asset_library_id) return null;
+    if (!url || /^blob:/i.test(url)) return null;
+    const alreadyInLibrary = !!(asset.asset_library_id || asset.material_id || (asset.source === 'actor_library' && asset.actor_asset_id));
+    if (alreadyInLibrary) return asset;
     try {
       const viewImages = Array.isArray(asset.view_images)
         ? asset.view_images.map(view => ({
@@ -8091,6 +8093,8 @@
           from: source,
           reference_kind: asset.reference_kind || (source === 'uploaded_person_reference' ? 'real_photo' : 'ai_generated'),
           source: asset.source || source,
+          generated_actor_id: asset.actor_id || '',
+          generated_actor_asset_id: asset.actor_asset_id || '',
           gender: asset.gender || '',
           origin: asset.origin || '',
           cast_mode: asset.cast_mode || asset.castMode || '',
@@ -8120,6 +8124,29 @@
       console.warn('[luxuryAd] save actor asset failed:', err.message || err);
       return null;
     }
+  }
+
+  async function ensureLuxuryPersonAssetPersisted(reason = '') {
+    const asset = state.luxuryAd.personAsset || null;
+    if (!asset || asset.uploading || asset.failed || typeof asset !== 'object') return null;
+    const url = compactLuxuryUrl(asset.image_url || asset.url || asset.previewUrl || '');
+    if (!url || /^blob:/i.test(url)) {
+      throw new Error('人物素材没有可入库的图片地址，请重新生成或上传人物参考。');
+    }
+    const alreadyInLibrary = !!(asset.asset_library_id || asset.material_id || (asset.source === 'actor_library' && asset.actor_asset_id));
+    if (alreadyInLibrary) {
+      syncLuxuryCastProfilesFromPersonAsset();
+      return asset;
+    }
+    const saved = await persistLuxuryPersonAssetToLibrary(asset, reason || asset.source || 'luxury_ad');
+    const nextAsset = state.luxuryAd.personAsset || null;
+    const savedId = saved?.id || nextAsset?.asset_library_id || nextAsset?.material_id || '';
+    if (!savedId) {
+      throw new Error('人物素材已生成但写入角色素材库失败，请重新生成或检查素材库接口。');
+    }
+    applyLuxuryPersonAssetConstraints(nextAsset || state.luxuryAd.personAsset);
+    syncLuxuryCastProfilesFromPersonAsset();
+    return state.luxuryAd.personAsset;
   }
 
   async function openLuxuryAdActorLibrary() {
@@ -9522,9 +9549,9 @@
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
-      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'uploaded_person_reference');
-      persistLuxuryAdPersonDraft().catch(() => {});
-      toast('真人照片参考已上传，会用于后续剧本和分镜保持人物一致', 'success');
+      await ensureLuxuryPersonAssetPersisted('uploaded_person_reference');
+      await persistLuxuryAdPersonDraft();
+      toast('真人照片参考已上传并写入角色素材库，会用于后续剧本和分镜保持人物一致', 'success');
     } catch (err) {
       state.luxuryAd.personAsset = state.luxuryAd.personAsset ? { ...state.luxuryAd.personAsset, uploading: false, failed: true } : null;
       syncLuxuryAdUploadFlags();
@@ -9734,9 +9761,9 @@
       renderLuxuryAdPerson();
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
-      persistLuxuryPersonAssetToLibrary(state.luxuryAd.personAsset, 'local_actor_library_generated');
-      persistLuxuryAdPersonDraft().catch(() => {});
-      toast('拟真一致性演员已生成，并会写入角色素材库用于后续分镜人物一致性锁定', 'success');
+      await ensureLuxuryPersonAssetPersisted('local_actor_library_generated');
+      await persistLuxuryAdPersonDraft();
+      toast('拟真一致性演员已生成并写入角色素材库，用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.luxuryAd.personGenerationError = {
         endpoint: '/api/dh/luxury-ad/person-sheet',
@@ -11290,6 +11317,30 @@
     return voice || '';
   }
 
+  function luxuryAdValidationCharacters(info = {}) {
+    const explicit = Array.isArray(info.characters) ? info.characters.filter(Boolean) : [];
+    if (explicit.length) return explicit;
+    return luxuryAdCastProfiles().filter(Boolean).map((profile, i) => {
+      const appearance = profile.appearance || {};
+      const wardrobe = profile.wardrobe || {};
+      const hairMakeup = profile.hairMakeup || {};
+      const description = String(profile.description || [
+        appearance.userPrompt,
+        wardrobe.userPrompt,
+        hairMakeup.userPrompt,
+        profile.outfit,
+        profile.hand_prop,
+        profile.behavior,
+      ].filter(Boolean).join('；')).trim();
+      return {
+        name: String(profile.name || profile.displayName || profile.roleName || profile.role || `核心人物${i + 1}`).trim(),
+        gender: String(profile.gender || appearance.gender || '').trim(),
+        origin: String(profile.origin || appearance.origin || '').trim(),
+        description,
+      };
+    });
+  }
+
   function validateLuxuryAdScriptSegments(segments = [], info = {}, { detail = true } = {}) {
     const errors = [];
     const list = Array.isArray(segments) ? segments : [];
@@ -11297,7 +11348,7 @@
     const spec = luxuryAdPersonSpec();
     const castMode = String(spec.castMode || 'single');
     const expectedPeople = castMode === 'single' ? 1 : (castMode === 'group' ? 3 : 2);
-    const characters = Array.isArray(info.characters) ? info.characters : [];
+    const characters = luxuryAdValidationCharacters(info);
     if (detail && expectedPeople > 0 && characters.length < expectedPeople) {
       errors.push(`人物表数量不完整：当前 ${characters.length} 个，人物配置要求 ${expectedPeople} 个。`);
     }
@@ -13309,6 +13360,13 @@
           renderLuxuryAdPerson();
         }
       }
+      if (state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading && !state.luxuryAd.personAsset.failed) {
+        await ensureLuxuryPersonAssetPersisted('storyboard');
+        syncLuxuryCastProfilesFromPersonAsset();
+      }
+      const personSpecPayload = luxuryAdPersonSpec();
+      const castProfilesPayload = luxuryAdCastProfiles();
+      const personAssetPayload = luxuryAdPersonAssetPayload();
       const requestBody = {
         production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
@@ -13344,11 +13402,11 @@
         // 中文说明：用户主动重新生成剧本时只保留原始需求、素材、人物和规格约束，不把上一版镜头框架继续交给模型。
         regenerate_from_scratch: !!isRewriteScript,
         script_edit_state: state.luxuryAd.scriptEditState || null,
-        person_spec: luxuryAdPersonSpec(),
-        cast_profiles: luxuryAdCastProfiles(),
+        person_spec: personSpecPayload,
+        cast_profiles: castProfilesPayload,
         product_profile: state.luxuryAd.productProfile || null,
         revision_history: isRewriteScript ? [] : (Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : []),
-        person_asset: luxuryAdPersonAssetPayload(),
+        person_asset: personAssetPayload,
         request_key: requestKey,
         request_async: true,
       };
@@ -13607,6 +13665,13 @@
       if (!state.luxuryAd.productionProjectId && singleIndex === null) {
         await saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => null);
       }
+      if (state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading && !state.luxuryAd.personAsset.failed) {
+        await ensureLuxuryPersonAssetPersisted('keyframe');
+        syncLuxuryCastProfilesFromPersonAsset();
+      }
+      const personSpecPayload = luxuryAdPersonSpec();
+      const castProfilesPayload = luxuryAdCastProfiles();
+      const personAssetPayload = luxuryAdPersonAssetPayload();
       const requestBody = {
         avatar_id: state.selectedAvatar?.id || '',
         background_url: compactLuxuryUrl(refs[0] || ''),
@@ -13629,9 +13694,9 @@
         controlled_production: luxuryControlledProductionPayload(),
         production_project_id: state.luxuryAd.productionProjectId || '',
         brief_info: state.luxuryAd.briefInfo || null,
-        person_asset: luxuryAdPersonAssetPayload(),
-        person_spec: luxuryAdPersonSpec(),
-        cast_profiles: luxuryAdCastProfiles(),
+        person_asset: personAssetPayload,
+        person_spec: personSpecPayload,
+        cast_profiles: castProfilesPayload,
         product_profile: state.luxuryAd.productProfile || null,
         revision_history: Array.isArray(state.luxuryAd.revisionHistory) ? state.luxuryAd.revisionHistory : [],
         reference_assets: luxuryAdReferenceAssets()

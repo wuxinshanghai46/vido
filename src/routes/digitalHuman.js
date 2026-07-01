@@ -17542,6 +17542,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
         person_asset?.spec_description,
         lockedActorGender === 'male' ? '男性青年，保持演员包里的脸型、发型、身形和真实照片质感' : '',
         lockedActorGender === 'female' ? '女性青年，保持演员包里的脸型、发型、身形和真实照片质感' : '',
+        !lockedActorGender ? '保持已入库演员包中的脸型、五官、发型、身形和真实照片质感' : '',
       ].filter(Boolean).join('；')).slice(0, 220),
       outfit: '保持演员包中的同一套服装、发型和整体气质',
       hand_prop: platformOrCreativeBrief ? '可自然操作电脑、平板或创作界面，按镜头需要出现' : '按剧本动作自然使用相关道具；不得默认电脑、平板、扫地机器人或控制面板',
@@ -19782,13 +19783,14 @@ ${JSON.stringify(scenes, null, 2)}
         seenCharacters.add(normalizedKey);
         return true;
       });
-      if (rawCharacters.length < expectedPeople) {
-        throw new Error(`AI 返回人物表不完整：人物配置要求 ${expectedPeople} 人，实际返回 ${rawCharacters.length} 人。`);
+      const validationCharacters = hasConfirmedPersonAsset ? [lockedActorCharacter()] : rawCharacters;
+      if (validationCharacters.length < expectedPeople) {
+        throw new Error(`AI 返回人物表不完整：人物配置要求 ${expectedPeople} 人，实际返回 ${validationCharacters.length} 人。`);
       }
-      if (castMode === 'single' && rawCharacters.length > 1) {
-        throw new Error(`AI 返回人物表与单人配置不一致：人物配置要求 1 人，实际返回 ${rawCharacters.length} 人。`);
+      if (castMode === 'single' && validationCharacters.length > 1) {
+        throw new Error(`AI 返回人物表与单人配置不一致：人物配置要求 1 人，实际返回 ${validationCharacters.length} 人。`);
       }
-      rawCharacters.slice(0, expectedPeople).forEach((c, i) => {
+      validationCharacters.slice(0, expectedPeople).forEach((c, i) => {
         if (!c || typeof c !== 'object') throw new Error(`AI 返回人物表第 ${i + 1} 个不是完整人物对象。`);
         const name = String(c.name || c.character || c.label || '').trim();
         const gender = String(c.gender || c.sex || '').trim();
