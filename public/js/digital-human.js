@@ -7502,6 +7502,7 @@
       .join(' ')
       .toLowerCase();
     if (asset.is_ai_generated === true || metadata.is_ai_generated === true || kind === 'ai_generated') return false;
+    if (kind === 'synthetic_realistic_actor' || asset.production_usable_actor === true || metadata.production_usable_actor === true) return false;
     return /real_photo|uploaded_photo|uploaded_person_reference|human_photo|authorized_real_actor|licensed_actor|真人照片|授权真人|真人演员/.test(text);
   }
 
@@ -8310,11 +8311,14 @@
     const asset = state.luxuryAd.personAsset || null;
     const isReal = asset && (luxuryAdActorIsRealPerson(asset) || luxuryAdActorReferenceKind(asset) === 'real_photo');
     const isAi = asset && luxuryAdActorIsAiGenerated(asset);
+    const isSyntheticActor = asset && luxuryAdActorIsSyntheticRealistic(asset);
     copy.textContent = isReal
       ? '当前已使用真人照片参考，系统会按这张真人图锁定人物身份和气质；AI 演员包不会参与本次真人参考。'
-      : isAi
-        ? '当前是 AI 拟真演员参考，不等同于真人照片；需要真人广告请上传真人照片或选择授权真人演员。'
-        : '用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；真人演员请上传真人照片或选择授权演员库。';
+      : isSyntheticActor
+        ? '当前已使用入库的拟真一致性演员，系统会按该演员锁定人物身份、气质和后续分镜一致性。'
+        : isAi
+          ? '当前是 AI 拟真演员参考，不等同于真人照片；需要真人广告请上传真人照片或选择授权真人演员。'
+          : '用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；真人演员请上传真人照片或选择授权演员库。';
   }
 
   function renderLuxuryAdPostScriptPerson() {
