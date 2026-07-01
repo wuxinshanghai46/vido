@@ -9045,7 +9045,11 @@
 
   function luxuryAdMaxReachableStep(gate = luxuryAdGateState()) {
     if (gate.materialMode) return gate.contentReady ? 5 : 1;
-    if (state.luxuryAd.routeFocus === 'person') return Math.max(2, gate.contentReady ? 2 : 1);
+    const personFocusIsConfigOnly = state.luxuryAd.routeFocus === 'person'
+      && !gate.storyboardReady
+      && !gate.detailedReady
+      && !gate.previewReady;
+    if (personFocusIsConfigOnly) return Math.max(2, gate.contentReady ? 2 : 1);
     if (gate.sceneGenerating) return 1;
     if (gate.scriptGenerating) return 2;
     if (gate.previewReady) return 5;
@@ -12336,9 +12340,10 @@
     const url = new URL('/digital-human', window.location.origin);
     url.searchParams.set('tab', 'luxury-ad');
     if (project && typeof project === 'object') {
-      url.searchParams.set('lux_step', String(luxuryAdProjectSavedStep(project)));
+      const savedStep = luxuryAdProjectSavedStep(project);
+      url.searchParams.set('lux_step', String(savedStep));
       const focus = luxuryAdProjectSavedFocus(project);
-      if (focus) url.searchParams.set('lux_focus', focus);
+      if (focus && savedStep <= 2) url.searchParams.set('lux_focus', focus);
     }
     const cleanProjectId = String(projectId || '').trim();
     // 中文注释：只有明确传入项目 ID 时才写入继续制作参数，避免空参数污染普通剧情广告入口。
@@ -12385,7 +12390,8 @@
     state.luxuryAd.content = project.text || state.luxuryAd.content || '';
     // 中文注释：旧页面补存可能把 current_step 写成 1；恢复时以已保存产物和项目阶段为准。
     state.luxuryAd.currentStep = Math.max(luxuryAdProjectSavedStep(project), inferredStep);
-    state.luxuryAd.routeFocus = luxuryAdProjectSavedFocus(project);
+    const savedFocus = luxuryAdProjectSavedFocus(project);
+    state.luxuryAd.routeFocus = state.luxuryAd.currentStep <= 2 ? savedFocus : '';
     state.luxuryAd.flowMode = draft.flow_mode || project.flow_mode || 'story';
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
