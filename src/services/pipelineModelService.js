@@ -407,6 +407,79 @@ function _findProviderForRouting(providerId = '') {
   }
 }
 
+function _findProviderInSettings(settings = {}, providerId = '') {
+  const target = String(providerId || '').trim().toLowerCase();
+  if (!target) return null;
+  return (settings.providers || []).find(p =>
+    p && p.enabled !== false
+    && [p.id, p.preset].filter(Boolean).some(v => String(v).trim().toLowerCase() === target)
+  ) || null;
+}
+
+function _findPresetModel(provider = {}, modelId = '') {
+  const target = String(modelId || '').trim().toLowerCase();
+  if (!target) return null;
+  try {
+    const { PROVIDER_PRESETS } = require('./settingsService');
+    const presetId = String(provider.preset || provider.id || '').trim();
+    const preset = PROVIDER_PRESETS?.[presetId];
+    return (preset?.defaultModels || []).find(m =>
+      String(m?.id || '').trim().toLowerCase() === target
+    ) || null;
+  } catch {
+    return null;
+  }
+}
+
+function ensureProviderModelsEnabledForStage(models = []) {
+  const input = Array.isArray(models) ? models : [];
+  const targets = input
+    .filter(m => m && m.enabled !== false && m.provider_id && m.model_id)
+    .map(m => ({
+      provider_id: String(m.provider_id).trim(),
+      model_id: String(m.model_id).trim(),
+    }))
+    .filter(m => m.provider_id && m.model_id);
+
+  if (!targets.length) return [];
+
+  try {
+    const { loadSettings, saveSettings } = require('./settingsService');
+    const settings = loadSettings();
+    let changed = false;
+    const autoEnabled = [];
+
+    for (const target of targets) {
+      const provider = _findProviderInSettings(settings, target.provider_id);
+      if (!provider) continue;
+      provider.models = Array.isArray(provider.models) ? provider.models : [];
+      const model = provider.models.find(m =>
+        String(m?.id || '').trim().toLowerCase() === target.model_id.toLowerCase()
+      );
+
+      if (model) {
+        if (model.enabled === false) {
+          model.enabled = true;
+          changed = true;
+          autoEnabled.push({ ...target, action: 'enabled_existing_provider_model' });
+        }
+        continue;
+      }
+
+      const presetModel = _findPresetModel(provider, target.model_id);
+      if (!presetModel) continue;
+      provider.models.push({ ...presetModel, id: target.model_id, enabled: true });
+      changed = true;
+      autoEnabled.push({ ...target, action: 'added_preset_provider_model' });
+    }
+
+    if (changed) saveSettings(settings);
+    return autoEnabled;
+  } catch {
+    return [];
+  }
+}
+
 function _modelUseMatchesStage(stageType = '', provider = {}, model = {}) {
   const type = String(stageType || '').toLowerCase();
   const use = String(model.use || model.type || '').toLowerCase();
@@ -506,6 +579,7 @@ async function validateStageModelLive(stageId, model = {}, options = {}) {
 }
 
 function setStageConfig(stageId, models) {
+  const autoEnabled = ensureProviderModelsEnabledForStage(models);
   const config = loadConfig();
   config.stages = config.stages || {};
   const rejected = [];
@@ -545,10 +619,11 @@ function setStageConfig(stageId, models) {
     .sort((a, b) => a.priority - b.priority);
   config.stages[stageId] = validated;
   saveConfig(config);
-  return { models: validated, rejected };
+  return { models: validated, rejected, auto_enabled_models: autoEnabled };
 }
 
 async function setStageConfigAsync(stageId, models, options = {}) {
+  const autoEnabled = ensureProviderModelsEnabledForStage(models);
   const config = loadConfig();
   config.stages = config.stages || {};
   const rejected = [];
@@ -589,7 +664,7 @@ async function setStageConfigAsync(stageId, models, options = {}) {
   }
   config.stages[stageId] = validated.sort((a, b) => a.priority - b.priority);
   saveConfig(config);
-  return { models: config.stages[stageId], rejected };
+  return { models: config.stages[stageId], rejected, auto_enabled_models: autoEnabled };
 }
 
 /**
