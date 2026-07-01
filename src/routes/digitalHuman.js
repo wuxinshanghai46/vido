@@ -3586,6 +3586,36 @@ function _luxuryQaHasHardForbiddenMismatch(text = '', subject = '') {
   return /unrelated product category|wrong product|wrong subject|different subject|replaced subject|无关主体|错误主体|错品类|换成/.test(combined);
 }
 
+function _luxuryQaBool(value, fallback = null) {
+  if (value === true || value === false) return value;
+  if (typeof value === 'number') return value !== 0;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return fallback;
+  if (/^(true|yes|y|1|pass|matched?|ok|符合|通过|是)$/.test(text)) return true;
+  if (/^(false|no|n|0|fail(?:ed)?|mismatch|不符合|不通过|否)$/.test(text)) return false;
+  return fallback;
+}
+
+function _luxuryQaNumber(value, fallback = null) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.round(n));
+}
+
+function _luxuryQaHasSceneLock(scene = {}) {
+  return !!(
+    scene.segment_contract
+    || scene.master_scene_reference
+    || scene.environment_lock
+    || scene.scene_lock
+    || scene.reality_lock
+    || scene.visual_locks?.scene_lock
+    || scene.visual_locks?.reality_lock
+    || scene.visual_contract?.allowed_environment
+    || scene.visual_contract?.scene_type
+  );
+}
+
 function _cleanQaList(value = [], maxItem = 140, maxItems = 8) {
   const placeholders = /^(short|none|null|n\/a|na|not applicable|no|nothing|empty|无|无关|没有|未见|无无关主体|no unrelated subjects?|no major mismatches?)$/i;
   const arr = Array.isArray(value) ? value : (value ? [value] : []);
@@ -5970,6 +6000,11 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       ? 'strict_generated_presenter_seed_identity'
       : 'strict_user_or_selected_identity')
     : 'none';
+  const multiCharacterContract = _luxuryBuildMultiCharacterContract(scene, subject);
+  const expectedPersonCount = multiCharacterContract?.required
+    ? Math.max(2, Math.min(6, Math.round(Number(multiCharacterContract.expected_count) || 2)))
+    : (personRequired ? 1 : 0);
+  const hasSceneLock = _luxuryQaHasSceneLock(scene);
   const expected = {
     shot: `${shotIndex + 1}/${totalShots}`,
     product_subject: _compactQaText(subject, 120),
@@ -5982,6 +6017,9 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
         ].filter(Boolean).join(' ')
       : '',
     person_required: personRequired,
+    expected_person_count: expectedPersonCount,
+    single_person_lock: expectedPersonCount === 1,
+    multi_character_contract: multiCharacterContract?.required ? multiCharacterContract : null,
     visible_subject_required: visibleSubject.required,
     visible_subject_contract: visibleSubject.contract,
     title: _compactQaText(scene.title || scene.story_stage || '', 120),
@@ -6036,10 +6074,18 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'You are the strict final QA gate for a high-end commercial storyboard keyframe.',
     images.length > 1 ? `Images 1-${images.length - 1} are required visual references: identity, product/material, scene and style anchors when provided. Image ${images.length} is the generated keyframe to judge.` : 'The image is the generated keyframe to judge.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
+    'Schema: {"pass":boolean,"score":0-100,"subject_match":boolean,"storyboard_match":boolean,"person_count":number,"expected_person_count":number,"person_count_match":boolean,"extra_people":boolean,"same_actor_identity":boolean,"scene_family_match":boolean,"product_category_match":boolean,"story_emotion_match":boolean,"fatal_issues":[],"review_issues":[],"quality_dimensions":{"realism":0-100,"scene_continuity":0-100,"product_fidelity":0-100,"asset_fidelity":0-100,"ui_overlay":0-100,"character_consistency":0-100},"major_mismatches":[],"unrelated_subjects":[],"observed":"brief observation","reason":"brief reason"}',
     'Keep observed and reason under 80 characters. Keep major_mismatches to at most 3 short items, each under 80 characters.',
-    'For major_mismatches and unrelated_subjects: return an empty array [] when there are none. Never output placeholder words such as "short", "none" or "n/a".',
+    'For fatal_issues, review_issues, major_mismatches and unrelated_subjects: return an empty array [] when there are none. Never output placeholder words such as "short", "none" or "n/a".',
     'Pass only if the generated keyframe visibly follows the confirmed storyboard content, advertised product category, material/scene subject, action and camera intention.',
+    expectedPersonCount > 0
+      ? `PERSON COUNT HARD GATE: expected_person_count is ${expectedPersonCount}. Count every visible human-like figure including back-view people, customers, audience members, poster/reflection people, mannequins, tiny background people, duplicated presenters and partial heads. Set extra_people=true and pass=false if any people beyond the expected count appear.`
+      : 'If no person is required, people may appear only when the confirmed script or reference explicitly needs them; otherwise extra/background people should be treated as a review issue or fatal issue when they alter the subject/story.',
+    expectedPersonCount === 1
+      ? 'SINGLE PERSON LOCK: exactly one campaign presenter/actor total is allowed. No second person, no customer, no audience, no back-view person, no reflection person, no poster person, no mannequin person, no duplicate presenter, and no tiny background person.'
+      : '',
+    'Fatal issues mean the image must be regenerated: wrong advertised subject/category, required person/subject missing, extra people beyond expected_person_count, unrelated entity/object/person/prop becoming a main subject, actor identity switch, scene family replacement when scene locks exist, non-photographic output, severe hand/body deformation, or large fake readable text.',
+    'Review issues mean the image can be shown as a candidate but should be reviewed: mild crop/framing differences, slightly weak emotion, minor product detail softness, small composition deviation, or non-blocking UI/detail issues.',
     'When identity_reference_mode is strict_user_or_selected_identity or strict_generated_presenter_seed_identity and reference images include a person, hard fail if the generated visible actor switches to a different age/gender/face impression/hairstyle/outfit family instead of the same campaign presenter.',
     'A generated presenter seed is an internal identity lock, not loose inspiration. Treat it like a casting reference selected by the system from the user brief.',
     softwareWorkflowSubject
@@ -6066,6 +6112,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     'Storyboard_match is judged on a single still frame: accept an equivalent frozen pose, facial expression, prop relationship and camera framing that clearly represents the requested action. Do not fail only because a continuous verb such as flipping, tapping, checking or reviewing cannot literally animate in one image.',
     'Hard fail storyboard_match if the frame misses the required story emotion or role transition. If expected emotion says tired, anxious, frustrated, troubled, doubtful, relieved, confident, inviting, 疲惫, 烦躁, 困扰, 半信半疑, 释然, 自信 or 邀请, the actor face, gaze, posture or gesture must visibly express that beat. A calm neutral presenter cannot pass a frustration/problem shot.',
     'Score quality_dimensions strictly and output all six numeric fields. Put scene_continuity and product_fidelity before character_consistency. realism means real commercial photography, scene_continuity means same real-world campaign setting, product_fidelity means product/category/workflow/package/material preservation according to product_subject_type, asset_fidelity means uploaded/reference lock fidelity, ui_overlay means subtle readable post-production UI without covering face/hands/product, character_consistency means same actor if required.',
+    'Set scene_family_match=false if the generated location changes to a different room/store/factory/office/lab/showroom family than the storyboard or scene references. Set product_category_match=false if the advertised subject category is replaced by another product, prop, carrier, object or creature.',
     'Hard fail if the generated scene violates director_allowed_environment, director_must_show, director_must_not_show, or director_qa_contract.',
     'Hard fail if the frame looks like an AI poster, CGI render, over-smoothed plastic face, mannequin, wax figure, fashion catalogue, jewelry store, cosmetics shelf, or illustrated concept art instead of a real live-action commercial frame.',
     softwareWorkflowSubject
@@ -6084,6 +6131,20 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const majorMismatches = _cleanQaList(parsed.major_mismatches, 140, 8);
   const unrelatedSubjects = _cleanQaList(parsed.unrelated_subjects, 100, 8);
+  const fatalIssues = _cleanQaList(parsed.fatal_issues, 140, 8);
+  const reviewIssues = _cleanQaList(parsed.review_issues, 140, 8);
+  const hasCharacterLock = !!(scene.character_lock || scene.visual_locks?.character_lock || strictIdentityReferenceUrl);
+  const personCount = _luxuryQaNumber(parsed.person_count, null);
+  const parsedExpectedPersonCount = _luxuryQaNumber(parsed.expected_person_count, expectedPersonCount);
+  const personCountMatch = expectedPersonCount > 0
+    ? (_luxuryQaBool(parsed.person_count_match, null) === true
+      || (personCount !== null && personCount === expectedPersonCount))
+    : (_luxuryQaBool(parsed.person_count_match, true) !== false);
+  const extraPeople = _luxuryQaBool(parsed.extra_people, false) === true;
+  const sameActorIdentity = _luxuryQaBool(parsed.same_actor_identity, hasCharacterLock ? null : true);
+  const sceneFamilyMatch = _luxuryQaBool(parsed.scene_family_match, hasSceneLock ? null : true);
+  const productCategoryMatch = _luxuryQaBool(parsed.product_category_match, parsed.subject_match === true);
+  const storyEmotionMatch = _luxuryQaBool(parsed.story_emotion_match, true);
   const rawDims = parsed.quality_dimensions && typeof parsed.quality_dimensions === 'object'
     ? parsed.quality_dimensions
     : {};
@@ -6102,7 +6163,6 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     ...(Array.isArray(scene.visual_locks?.asset_manifest?.items) ? scene.visual_locks.asset_manifest.items : []),
   ];
   const hasNonPersonAssetLocks = manifestItems.some(item => !/person|actor|character|presenter/i.test(String(item?.role || item?.source || '')));
-  const hasCharacterLock = !!(scene.character_lock || scene.visual_locks?.character_lock || strictIdentityReferenceUrl);
   const uiOverlay = scene.ui_overlay && typeof scene.ui_overlay === 'object' ? scene.ui_overlay : {};
   const uiLock = scene.ui_lock && typeof scene.ui_lock === 'object' ? scene.ui_lock : {};
   const visualUiLock = scene.visual_locks?.ui_lock && typeof scene.visual_locks.ui_lock === 'object'
@@ -6124,10 +6184,31 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && (!hasUiLock || qualityDimensions.ui_overlay >= 70);
   const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
   const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
+  const derivedFatalIssues = [
+    expectedPersonCount > 0 && !personCountMatch ? `person_count_mismatch: expected ${expectedPersonCount}, got ${personCount === null ? 'unknown' : personCount}` : '',
+    expectedPersonCount === 1 && extraPeople ? 'extra_people_in_single_person_keyframe' : '',
+    productCategoryMatch === false ? 'product_category_mismatch' : '',
+    parsed.subject_match !== true ? 'subject_mismatch' : '',
+    unrelatedSubjects.length ? `unrelated_subjects: ${unrelatedSubjects.join('; ')}` : '',
+    hasCharacterLock && sameActorIdentity === false ? 'actor_identity_mismatch' : '',
+    hasSceneLock && sceneFamilyMatch === false ? 'scene_family_mismatch' : '',
+    hardForbiddenMismatch ? 'hard_forbidden_subject_or_category' : '',
+  ].filter(Boolean);
+  const derivedReviewIssues = [
+    storyEmotionMatch === false ? 'story_emotion_weak_or_mismatched' : '',
+    !hasSceneLock && sceneFamilyMatch === false ? 'scene_family_changed_without_explicit_scene_lock' : '',
+    Number(qualityDimensions.realism) > 0 && Number(qualityDimensions.realism) < 76 ? `realism:${qualityDimensions.realism}` : '',
+    Number(qualityDimensions.scene_continuity) > 0 && Number(qualityDimensions.scene_continuity) < 72 ? `scene_continuity:${qualityDimensions.scene_continuity}` : '',
+    Number(qualityDimensions.product_fidelity) > 0 && Number(qualityDimensions.product_fidelity) < productFidelityThreshold ? `product_fidelity:${qualityDimensions.product_fidelity}` : '',
+    Number(qualityDimensions.character_consistency) > 0 && hasCharacterLock && Number(qualityDimensions.character_consistency) < 74 ? `character_consistency:${qualityDimensions.character_consistency}` : '',
+  ].filter(Boolean);
+  const allFatalIssues = _cleanQaList([...fatalIssues, ...derivedFatalIssues], 160, 10);
+  const allReviewIssues = _cleanQaList([...reviewIssues, ...derivedReviewIssues], 160, 10);
+  const hasFatalIssue = allFatalIssues.length > 0;
   const usableQualityPass = parsed.subject_match === true
     && parsed.storyboard_match === true
     && unrelatedSubjects.length === 0
-    && !hardForbiddenMismatch
+    && !hasFatalIssue
     && parsed.pass === true
     && score >= 70
     && qualityDimensions.realism >= 70
@@ -6136,20 +6217,45 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && (!hasAssetLocks || qualityDimensions.asset_fidelity >= usableAssetFidelityThreshold)
     && (!hasCharacterLock || qualityDimensions.character_consistency >= 68)
     && (!hasUiLock || qualityDimensions.ui_overlay >= 60);
-  const strictPass = parsed.pass === true && score >= 82 && parsed.subject_match === true && parsed.storyboard_match === true && unrelatedSubjects.length === 0 && qualityPass && !hardForbiddenMismatch;
+  const strictPass = parsed.pass === true
+    && score >= 82
+    && parsed.subject_match === true
+    && parsed.storyboard_match === true
+    && personCountMatch
+    && !extraPeople
+    && (sameActorIdentity !== false)
+    && (sceneFamilyMatch !== false)
+    && productCategoryMatch !== false
+    && storyEmotionMatch !== false
+    && unrelatedSubjects.length === 0
+    && allFatalIssues.length === 0
+    && allReviewIssues.length === 0
+    && qualityPass
+    && !hardForbiddenMismatch;
+  const candidateReviewPass = usableQualityPass && !strictPass && allFatalIssues.length === 0;
   const qa = {
-    pass: strictPass || usableQualityPass,
+    pass: strictPass || candidateReviewPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
+    expected_person_count: parsedExpectedPersonCount,
+    person_count: personCount,
+    person_count_match: personCountMatch,
+    extra_people: extraPeople,
+    same_actor_identity: sameActorIdentity,
+    scene_family_match: sceneFamilyMatch,
+    product_category_match: productCategoryMatch,
+    story_emotion_match: storyEmotionMatch,
     quality_dimensions: qualityDimensions,
     quality_pass: qualityPass,
     strict_pass: strictPass,
-    manual_review_required: !strictPass && usableQualityPass,
-    accepted_with_warning: !strictPass && usableQualityPass,
+    fatal_issues: allFatalIssues,
+    review_issues: allReviewIssues,
+    manual_review_required: candidateReviewPass,
+    accepted_with_warning: candidateReviewPass,
     acceptance_mode: strictPass
       ? 'strict'
-      : (usableQualityPass ? 'usable_70_80_quality_band' : 'rejected'),
+      : (candidateReviewPass ? 'candidate_review_nonfatal' : 'rejected'),
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
@@ -6157,10 +6263,11 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     provider,
     expected,
   };
-  if (hardForbiddenMismatch) {
+  if (hasFatalIssue) {
     qa.pass = false;
     qa.manual_review_required = false;
     qa.accepted_with_warning = false;
+    qa.acceptance_mode = 'fatal_rejected';
   }
   return qa;
 }
@@ -13283,6 +13390,18 @@ async function _createLuxuryHumanEnvironmentLayoutAnchor({ filename, destDir, as
 function _luxuryQaRepairInstruction(qa = null) {
   if (!qa) return '';
   const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
+  const expectedPersonCount = Number(qa.expected_person_count);
+  const observedPersonCount = Number(qa.person_count);
+  const countIssues = [
+    Number.isFinite(expectedPersonCount) && expectedPersonCount > 0 && qa.person_count_match === false
+      ? `visible person count mismatch: expected exactly ${expectedPersonCount}, observed ${Number.isFinite(observedPersonCount) ? observedPersonCount : 'unknown'}`
+      : '',
+    qa.extra_people === true ? 'remove every extra unrequested person, duplicate actor, audience/customer figure, reflection, poster person, mannequin or background human-like figure' : '',
+    qa.same_actor_identity === false ? 'preserve the same campaign actor identity from the locked person reference; do not switch face, gender, age impression, hairstyle or outfit family' : '',
+    qa.scene_family_match === false ? 'return to the same confirmed scene family and location type required by this storyboard/reference' : '',
+    qa.product_category_match === false ? 'restore the advertised subject category and do not replace it with a different entity, product, prop, object or visual carrier' : '',
+    qa.story_emotion_match === false ? 'make the actor pose, face, gaze and gesture express the exact story beat/emotion required by this shot' : '',
+  ].filter(Boolean);
   const dimIssues = [
     Number(dims.realism) > 0 && Number(dims.realism) < 76 ? `realism score too low (${dims.realism}); make it look like real commercial photography in a practical social/workplace scene` : '',
     Number(dims.asset_fidelity) > 0 && Number(dims.asset_fidelity) < 76 ? `asset fidelity too low (${dims.asset_fidelity}); obey uploaded/reference product/person/scene locks` : '',
@@ -13292,6 +13411,9 @@ function _luxuryQaRepairInstruction(qa = null) {
     Number(dims.ui_overlay) > 0 && Number(dims.ui_overlay) < 70 ? `UI overlay score too low (${dims.ui_overlay}); keep UI subtle, anchored, readable and non-obstructive` : '',
   ].filter(Boolean);
   const issues = [
+    ...(Array.isArray(qa.fatal_issues) ? qa.fatal_issues.map(x => `fatal issue: ${x}`) : []),
+    ...countIssues,
+    ...(Array.isArray(qa.review_issues) ? qa.review_issues.map(x => `review issue: ${x}`) : []),
     ...dimIssues,
     ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
     ...(Array.isArray(qa.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
@@ -13323,6 +13445,14 @@ function _luxuryQaFailureText(qa = null) {
   if (!qa) return '';
   const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
   return [
+    ...(Array.isArray(qa.fatal_issues) ? qa.fatal_issues.map(x => `fatal:${x}`) : []),
+    ...(Array.isArray(qa.review_issues) ? qa.review_issues.map(x => `review:${x}`) : []),
+    qa.person_count_match === false ? `person_count_mismatch expected:${qa.expected_person_count ?? ''} observed:${qa.person_count ?? ''}` : '',
+    qa.extra_people === true ? 'extra_people' : '',
+    qa.same_actor_identity === false ? 'actor_identity_mismatch' : '',
+    qa.scene_family_match === false ? 'scene_family_mismatch' : '',
+    qa.product_category_match === false ? 'product_category_mismatch' : '',
+    qa.story_emotion_match === false ? 'story_emotion_mismatch' : '',
     ...(Array.isArray(qa.major_mismatches) ? qa.major_mismatches : []),
     ...(Array.isArray(qa.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
     qa.observed,
@@ -13371,6 +13501,8 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   const wrongScene = /wrong scene|unrelated.*scene|warehouse|factory|office|retail|exterior|interior|location|environment|场景|仓库|工厂|办公室|门店|外景|内景/.test(failureText);
   const wrongProduct = /wrong product|unrelated subject|cosmetic|perfume|skincare|bottle|phone|watch|jewelry|beverage|产品|品类|香水|护肤|手机|珠宝|手表/.test(failureText);
   const wrongActor = /different actor|identity|face|gender|hairstyle|outfit|人物|人脸|发型|性别|穿搭|换人/.test(failureText);
+  const personCountMismatch = qa?.person_count_match === false || /person_count_mismatch|extra_people|extra people/i.test(failureText);
+  const expectedPersonCount = Number(qa?.expected_person_count);
 
   if (realismLow || /ai|cgi|poster|plastic|render|illustration|假|塑料|海报/.test(failureText)) {
     repairNotes.push('realism');
@@ -13392,6 +13524,28 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
     repairNotes.push('character_identity');
     mustShow.push('the same campaign presenter identity when a person appears: same age impression, gender, face impression, hairstyle, body proportions and outfit family');
     mustNotShow.push('new random actor, changed gender, changed hairstyle, changed wardrobe family, hidden face, back-only person when the action requires presenter identity');
+  }
+  if (personCountMismatch) {
+    repairNotes.push('person_count_control');
+    if (Number.isFinite(expectedPersonCount) && expectedPersonCount > 0) {
+      mustShow.push(`exactly ${expectedPersonCount} visible campaign person${expectedPersonCount === 1 ? '' : 's'} when this shot contains people`);
+    }
+    mustNotShow.push('extra unrequested people, duplicate presenter, customer/audience figure, poster/reflection person, mannequin, background human-like figure, or any second person when the shot is single-person');
+  }
+  if (qa?.scene_family_match === false) {
+    repairNotes.push('scene_family');
+    mustShow.push('the same confirmed scene family/location type required by this storyboard and its locked references');
+    mustNotShow.push('substituting a different room, store, factory, office, lab, showroom, street, exterior or generic template location unless this shot explicitly asks for it');
+  }
+  if (qa?.product_category_match === false) {
+    repairNotes.push('product_category');
+    mustShow.push(`the advertised subject category and evidence required by this project: ${_luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || contract.product_subject || 'the advertised subject')}`);
+    mustNotShow.push('turning another entity, object, device, prop, decoration or unrelated product category into the main advertised subject');
+  }
+  if (qa?.story_emotion_match === false) {
+    repairNotes.push('story_emotion');
+    mustShow.push('the exact story beat through visible face, gaze, posture, hand action and subject relationship');
+    mustNotShow.push('neutral presenter pose when the shot requires a problem, doubt, frustration, relief, confidence, invitation or other explicit emotional transition');
   }
   if (assetLow || scene.visual_locks || scene.asset_manifest) {
     repairNotes.push('asset_fidelity');
@@ -13419,6 +13573,8 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
       'QA-REWRITTEN HARD CONTRACT:',
       qa?.reason ? `Previous QA reason: ${_luxuryStrictText(qa.reason, 180)}.` : '',
       qa?.observed ? `Previous observation: ${_luxuryStrictText(qa.observed, 180)}.` : '',
+      Array.isArray(qa?.fatal_issues) && qa.fatal_issues.length ? `Fatal QA issues: ${_luxuryStrictText(qa.fatal_issues.join('; '), 220)}.` : '',
+      Array.isArray(qa?.review_issues) && qa.review_issues.length ? `Review QA issues: ${_luxuryStrictText(qa.review_issues.join('; '), 220)}.` : '',
       'The next keyframe must fix every listed failure and will be rejected if any required subject, real-world scene, presenter identity, product evidence or lock reference is missing or replaced.',
     ].filter(Boolean).join(' '),
     repair_notes: repairNotes,
