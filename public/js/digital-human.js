@@ -6720,17 +6720,17 @@
   function renderLuxuryIndustryControls() {
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
-      panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <span>
-          <b id="dhLuxIndustrySummaryTitle"></b>
-          <small id="dhLuxIndustrySummarySub"></small>
-        </span>
-        <em>选择</em>
+      panel.innerHTML = `<button class="dh-btn dh-btn-ghost dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
+        <span id="dhLuxIndustrySummaryTitle"></span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
     setText('#dhLuxIndustrySummaryTitle', summary.title);
-    setText('#dhLuxIndustrySummarySub', summary.sub);
+    const open = $('#dhLuxIndustryOpen', panel);
+    if (open) {
+      // 中文注释：行业入口只展示当前选择摘要，详细补充和禁用词仍在弹窗内编辑，避免首屏占用过多空间。
+      open.title = summary.sub || '点击选择行业；选错后可重新选择。';
+    }
   }
 
   function markLuxuryIndustryDirty({ render = true, selection = null } = {}) {

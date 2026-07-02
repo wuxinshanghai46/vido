@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260626-theme-native-controls">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260701-person-cast-profile">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260702-industry-compact-theme">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -1185,17 +1185,6 @@
                 <span class="dh-luxgen-badge" id="dhLuxAdRequirementState">待填写</span>
               </div>
               <textarea class="dh-input" id="dhLuxAdText" maxlength="1800" placeholder="例如：我想做一条 AI 机器人智能生活广告。画面要有真实家庭场景，从生活混乱到 AI 机器人帮助用户整理日程、家务和设备，最后引导体验未来科技。"></textarea>
-              <div class="dh-demo-entry-tools dh-lux-industry-panel">
-                <div class="dh-demo-chip-row dh-lux-industry-row">
-                  <span class="dh-demo-chip-label">行业</span>
-                  <select class="dh-input" id="dhLuxAdIndustry" aria-label="选择一级行业"></select>
-                  <select class="dh-input" id="dhLuxAdSubIndustry" aria-label="选择细分行业"></select>
-                </div>
-                <div class="dh-demo-grid two dh-lux-industry-notes">
-                  <input class="dh-input" id="dhLuxAdIndustryNote" maxlength="240" placeholder="行业补充：如高端不锈钢装饰材料，不是厨具">
-                  <input class="dh-input" id="dhLuxAdIndustryForbidden" maxlength="240" placeholder="禁止出现：如厨房、水槽、锅具">
-                </div>
-              </div>
               <div id="dhLuxAdControlledProduction"></div>
               <div class="dh-demo-entry-tools">
                 <div class="dh-demo-chip-row">
@@ -1215,6 +1204,7 @@
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdSaveDraft" type="button">保存进度</button>
               </div>
               <div class="dh-demo-entry-assist">
+                <div class="dh-lux-industry-panel"></div>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdWrite" type="button">AI 帮我写</button>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdClean" type="button">AI 帮我整理内容</button>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdSample" type="button">粘贴示例</button>
@@ -2020,6 +2010,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260701-project-step-restore"></script>
+  <script src="/js/digital-human.js?v=20260702-industry-compact-theme"></script>
 </body>
 </html>
