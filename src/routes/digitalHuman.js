@@ -3861,6 +3861,78 @@ function _luxuryCleanRobotAssistantDriftText(value = '', { productSubject = '', 
   return text;
 }
 
+function _luxuryConfirmedDemandText(productSubject = '', scene = {}, { brief = '', allowSceneExplicit = true } = {}) {
+  const visualContract = scene?.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
+  const strictContract = scene?.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object' ? scene.strict_storyboard_contract : {};
+  const parts = [
+    productSubject,
+    brief,
+    scene?.product_subject,
+    scene?.product_name,
+    scene?.title,
+    scene?.role,
+    scene?.objective,
+    scene?.purpose,
+    scene?.script_purpose,
+    scene?.voiceover,
+    scene?.narration,
+    allowSceneExplicit ? scene?.content_prompt : '',
+    allowSceneExplicit ? scene?.scene_content : '',
+    allowSceneExplicit ? scene?.display_visual : '',
+    allowSceneExplicit ? scene?.visual : '',
+    allowSceneExplicit ? scene?.visual_prompt : '',
+    allowSceneExplicit ? scene?.action : '',
+    allowSceneExplicit ? scene?.visual_action : '',
+    allowSceneExplicit ? scene?.material_usage : '',
+    allowSceneExplicit ? scene?.subject_type : '',
+    allowSceneExplicit ? scene?.subjectType : '',
+    allowSceneExplicit ? visualContract.allowed_environment : '',
+    allowSceneExplicit ? visualContract.image_prompt : '',
+    allowSceneExplicit ? visualContract.qa_contract : '',
+    allowSceneExplicit && Array.isArray(visualContract.must_show) ? visualContract.must_show.join(' ') : '',
+    allowSceneExplicit ? strictContract.visible_subject : '',
+    allowSceneExplicit ? strictContract.scene : '',
+    allowSceneExplicit ? strictContract.visual : '',
+    allowSceneExplicit ? strictContract.action : '',
+    allowSceneExplicit && Array.isArray(strictContract.must_show) ? strictContract.must_show.join(' ') : '',
+  ];
+  return parts.filter(Boolean).map(x => String(x || '')).join(' ');
+}
+
+function _luxuryUnconfirmedDriftLabels(productSubject = '', scene = {}, opts = {}) {
+  const confirmed = _luxuryConfirmedDemandText(productSubject, scene, opts);
+  const subjectText = [productSubject, opts.brief].filter(Boolean).join(' ');
+  const labels = [];
+  const hasExplicitRobot = _luxuryHasExplicitRobotAssistantSubjectText(confirmed);
+  const hasExplicitSoftware = _luxuryIsSoftwareWorkflowSubject(productSubject || scene?.product_subject || '', scene)
+    || _luxuryHasExplicitSoftwareOpsText(confirmed);
+  const hasExplicitRetail = /货架|仓库|库存|订单|补货|门店|零售|超市|shelf|warehouse|inventory|order|retail/i.test(confirmed);
+  const hasExplicitFashionRetail = /服装|衣服|女装|男装|鞋|包|箱包|配饰|饰品|珠宝|腕表|美妆|护肤|香水|化妆品|口红|精品店|apparel|fashion|clothing|garment|shoe|bag|accessor|cosmetic|skincare|perfume|lipstick|jewelry|watch|boutique/i.test(confirmed);
+  const hasExplicitMaterial = /钢|金属|板材|建材|材料|墙板|外立面|不锈钢|steel|metal|panel|facade|material/i.test(confirmed);
+  if (!_luxuryHasExplicitRobotAssistantSubjectText(subjectText) && !hasExplicitRobot) {
+    labels.push('robot/android/mechanical assistant/industrial automation subject');
+  }
+  if (!hasExplicitSoftware) {
+    labels.push('generic dashboard, code screen, backend console, order/inventory UI or phone-app carrier');
+  }
+  if (!hasExplicitRetail) labels.push('retail shelf, warehouse, stock-room or order-management setup');
+  if (!hasExplicitFashionRetail) labels.push('cosmetics, perfume, jewelry, fashion-beauty counter or boutique props');
+  if (!hasExplicitMaterial && !_isLuxurySteelMaterialSubject(productSubject || scene?.product_subject || '', scene)) {
+    labels.push('material showroom, facade panel display or raw material wall');
+  }
+  return Array.from(new Set(labels)).slice(0, 6);
+}
+
+function _luxuryUnconfirmedSubjectDriftPrompt(productSubject = '', scene = {}, opts = {}) {
+  const labels = _luxuryUnconfirmedDriftLabels(productSubject, scene, opts);
+  if (!labels.length) return '';
+  return [
+    'UNCONFIRMED SUBJECT DRIFT RULE: follow only the user brief, uploaded assets, confirmed script and current shot contract.',
+    `Do not add or replace the shot with: ${labels.join('; ')}.`,
+    'If the customer explicitly requested any of those in the brief, assets, manual edit, or confirmed shot, that confirmed request wins for that shot.',
+  ].join(' ');
+}
+
 function _luxuryHasExplicitSoftwareOpsText(value = '') {
   const text = String(value || '');
   const serviceSubject = /软件|系统|SaaS|小程序|应用|App\b|APP\b|后台|管理系统|CRM|ERP|工单|审批|报表|表单|工作台|看板|仪表盘|workflow|software|platform|dashboard|interface|screen|app|service|console|workspace/i.test(text);
@@ -13254,12 +13326,14 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneE
       'Any device/interface/tool/place is only an evidence carrier when explicitly confirmed; do not turn the campaign into a default carrier ad.',
       'The frame must show the confirmed workflow/use/result evidence in the confirmed context.',
       'Do not invent unrelated goods, places, UI, props, logos, readable text or default industry scenes.',
+      _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     ].filter(Boolean).join(' ');
   }
   return [
     `PRODUCT SUBJECT LOCK: the advertised product category is "${subject}".`,
     'The hero subject must stay in this product category and must be visually derived from reference image 1.',
     'Do not invent a different product/service category, unrelated packaged goods, default props, default UI carrier, default place, logo or readable text unless the confirmed brief explicitly names it.',
+    _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     'If the uploaded main subject is abstract, material, service, scene or relationship evidence, treat that confirmed evidence as the subject itself instead of placing unrelated objects on it.',
     rawSubject && rawSubject !== subject ? `Original product wording: ${rawSubject}. Preserve that exact advertised category from the user brief and references.` : '',
     'The product should look finished, installed, polished, premium and commercially usable.',
@@ -13286,12 +13360,14 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSce
       '正向主体锚点：必须看见同一真人演员/用户角色在已确认业务场景中执行已确认的使用、创作、协作、操作、转化或结果动作。',
       '画面证据只能来自用户需求、上传素材、已确认剧本或人工编辑；不要自动套用手机、订单、货架、仓库、后台等模板。',
       'Never output a generic carrier ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, fixed order/inventory setup, or empty workplace.',
+      _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     ].join(' ');
   }
   return [
     `ABSOLUTE FIRST PRIORITY: the visible hero subject must be "${subject}".`,
     `正向主体锚点：画面主要视觉权重必须属于"${subject}"，不要只拍氛围、空场景、随机道具或默认行业模板。`,
     'Never replace the advertised subject with an unrelated category, default carrier, default place, default prop, fake UI, logo or readable generated text.',
+    _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
   ].filter(Boolean).join(' ');
 }
 
@@ -20887,6 +20963,7 @@ function _luxuryBuildLocalDirectorContract(scene = {}, index = 0, total = 6, {
   ]).filter(Boolean).slice(0, 8);
   const mustNotShow = _luxuryDirectorList(aiContract.must_not_show || aiContract.mustNotShow, [
     ..._luxuryGenericForbiddenDriftList(),
+    ..._luxuryUnconfirmedDriftLabels(subject, scene).map(label => `unconfirmed ${label}`),
     personRequired ? 'omitting the confirmed person/role when this shot explicitly requires one' : '',
   ]).filter(Boolean).slice(0, 12);
   const referenceStrategy = _luxuryDirectorText(
@@ -21250,6 +21327,11 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     if (!mustShow.includes(item) && mustShow.length < 10) mustShow.push(item);
   });
   const mustNotShow = _luxuryStrictList(visualContract.must_not_show || scene.must_not_show, 14);
+  _luxuryUnconfirmedDriftLabels(subject, scene)
+    .map(label => `unconfirmed ${label}`)
+    .forEach(item => {
+      if (!mustNotShow.includes(item) && mustNotShow.length < 14) mustNotShow.push(item);
+    });
   const controlledNegative = _luxuryStrictText(scene.controlled_production?.negative_control?.text || controlledGuide?.control?.negative_control?.text || '', 260);
   if (controlledNegative && !mustNotShow.includes(controlledNegative)) mustNotShow.push(controlledNegative);
   while (mustNotShow.length < 3) {
@@ -21363,6 +21445,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     currentShotForImage ? `Current shot image execution packet: ${_luxuryStrictText(JSON.stringify(currentShotForImage), 1800)}.` : '',
     `Shot: ${contract.shot_id}/${contract.shot_count}; role: ${contract.role}; duration: ${contract.duration}s.`,
     `Product subject: ${contract.product_subject}.`,
+    _luxuryUnconfirmedSubjectDriftPrompt(contract.product_subject || scene.product_subject, scene),
     `Visible subject: ${contract.visible_subject}.`,
     `Scene: ${contract.scene}.`,
     `Visual event: ${contract.visual}.`,
@@ -24845,9 +24928,11 @@ function _luxuryGptImage2EditPrompt({
       : location.wantsExterior && !location.wantsInterior
       ? 'Place the action in the confirmed real exterior or storefront environment.'
       : 'Place the action in a coherent real commercial environment with depth and practical lighting.';
+  const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject || subject, scene);
   const promptText = _luxuryFitImagePromptParts([
     `SHOT EXECUTION CONTRACT: create one ${apiIntegrationShot ? 'photorealistic commercial still frame' : 'photorealistic commercial storyboard still'}, shot ${shotNo}${total ? ` of ${total}` : ''}, ${_normalizeAspectRatio(aspectRatio, '16:9')}.`,
     subject ? `Advertised subject: ${subject}.` : '',
+    unconfirmedDriftRule,
     softwareWorkflowSubject ? `SOFTWARE/SERVICE WORKFLOW LOCK: the advertised subject is the lived workflow and result, not a physical retail product. ${workflowEvidenceRule} Avoid readable fake UI text.` : '',
     robotAssistantGuard,
     softwareWorkflowSubject ? `SCENE-SPECIFIC CARRIER: ${workflowCarrierRule}. Use this carrier only if it is supported by the confirmed shot; do not default to laptop, dashboard, order form, inventory screen, phone app or physical package.` : '',
@@ -25153,8 +25238,10 @@ function _buildLuxuryImageModelStrictPrompt({
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change pose, expression, camera angle and scene placement according to the current shot. Do not copy its background, fixed smile/neutral expression, or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
+  const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject, scene);
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
+    unconfirmedDriftRule,
     robotAssistantGuard ? `MANDATORY ROBOT ASSISTANT LOCK: ${robotAssistantGuard}` : '',
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired
@@ -26285,9 +26372,11 @@ function _buildLuxuryKeyframePrompt({
   const actorRule = _luxuryKeyframeVisibleSubjectInstruction(visibleSubject, hasAvatar);
   const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
   const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || visualContract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
+  const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject, scene);
   const prompt = [
     _luxurySteelEnvironmentLockPrompt(productSubject || scene.product_subject, scene),
     `SHOT CONTRACT: shot ${shotNo}${total ? ` of ${total}` : ''}. Product subject: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 140)}.`,
+    unconfirmedDriftRule,
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired ? _luxuryKeyframeHumanAnchor(scene, hasAvatar) : '',
     visibleSubjectRequired
