@@ -294,6 +294,8 @@
           overview: null,
           server: null,
           recent: [],
+          usagePage: { total: 0, limit: 100, offset: 0, summary: null, facets: {} },
+          usageFilters: { date_from: '', date_to: '', provider: '', model: '', status: '', agent_id: '' },
           budgetOpen: false,
           budgetSaving: false,
           budgetForm: { monthly_budget_usd: 0, alert_threshold: 0.8, usd_cny_rate: 7.2 }
@@ -338,6 +340,21 @@
         alerts() {
           return this.overview?.alerts || [];
         },
+        usageLoadedCount() {
+          return (this.recent || []).length;
+        },
+        usageHasMore() {
+          return this.usageLoadedCount < Number(this.usagePage?.total || 0);
+        },
+        usageProviders() {
+          return this.usageFacetValues('providers');
+        },
+        usageModels() {
+          return this.usageFacetValues('models');
+        },
+        usageAgents() {
+          return this.usageFacetValues('agents');
+        },
         overviewCards() {
           const stats = this.displayStats;
           const budget = this.budget;
@@ -369,19 +386,80 @@
           this.loading = true;
           this.error = '';
           try {
+            this.usagePage.offset = 0;
             const [overview, server, recent] = await Promise.all([
               api.get(`/api/admin/token-stats/overview?days=${this.days}`, { cache: !force, ttl: 8000 }),
               api.get('/api/admin/token-stats/server', { cache: !force, ttl: 8000 }),
-              api.get('/api/admin/token-stats/recent?limit=50', { cache: !force, ttl: 8000 })
+              this.fetchUsageRows({ force, append: false })
             ]);
             this.overview = overview;
             this.server = server;
-            this.recent = Array.isArray(recent) ? recent : [];
+            if (recent) this.applyUsagePage(recent, false);
           } catch (error) {
             this.error = error.message || '加载失败';
           } finally {
             this.loading = false;
           }
+        },
+        usageFacetValues(key) {
+          const list = this.usagePage?.facets?.[key] || [];
+          return Array.isArray(list) ? list.map(item => item.value).filter(Boolean) : [];
+        },
+        usageQueryParams(offset = 0) {
+          const params = new URLSearchParams();
+          params.set('format', 'page');
+          params.set('limit', String(this.usagePage.limit || 100));
+          params.set('offset', String(offset));
+          Object.entries(this.usageFilters || {}).forEach(([key, value]) => {
+            const text = String(value || '').trim();
+            if (text) params.set(key, text);
+          });
+          return params;
+        },
+        async fetchUsageRows({ force = false, append = false } = {}) {
+          const offset = append ? this.usageLoadedCount : 0;
+          return api.get('/api/admin/token-stats/recent?' + this.usageQueryParams(offset).toString(), { cache: false, ttl: force ? 0 : 8000 });
+        },
+        applyUsagePage(page, append = false) {
+          const items = Array.isArray(page) ? page : (page.items || []);
+          this.recent = append ? [...(this.recent || []), ...items] : items;
+          this.usagePage = {
+            ...this.usagePage,
+            total: Number(page.total || items.length || 0),
+            limit: Number(page.limit || this.usagePage.limit || 100),
+            offset: Number(page.offset || 0),
+            summary: page.summary || null,
+            facets: page.facets || this.usagePage.facets || {}
+          };
+        },
+        async queryUsage() {
+          this.loading = true;
+          this.error = '';
+          try {
+            const page = await this.fetchUsageRows({ force: true, append: false });
+            this.applyUsagePage(page, false);
+          } catch (error) {
+            this.error = error.message || '调用记录查询失败';
+          } finally {
+            this.loading = false;
+          }
+        },
+        async loadMoreUsage() {
+          if (!this.usageHasMore || this.loading) return;
+          this.loading = true;
+          this.error = '';
+          try {
+            const page = await this.fetchUsageRows({ force: true, append: true });
+            this.applyUsagePage(page, true);
+          } catch (error) {
+            this.error = error.message || '加载更多调用记录失败';
+          } finally {
+            this.loading = false;
+          }
+        },
+        resetUsageFilters() {
+          this.usageFilters = { date_from: '', date_to: '', provider: '', model: '', status: '', agent_id: '' };
+          this.queryUsage();
         },
         tableRows(type) {
           const rows = this.stats[type] || [];
@@ -581,9 +659,46 @@
             </div>
 
             <div class="monitor-section">
-              <div class="monitor-section-title">最近 50 次调用</div>
+              <div class="monitor-section-title">调用记录</div>
+              <div class="monitor-usage-filters">
+                <label>开始日期 <input type="date" v-model="usageFilters.date_from" /></label>
+                <label>结束日期 <input type="date" v-model="usageFilters.date_to" /></label>
+                <label>厂商
+                  <input list="monitorUsageProviders" v-model.trim="usageFilters.provider" placeholder="全部厂商" />
+                  <datalist id="monitorUsageProviders"><option v-for="p in usageProviders" :key="p" :value="p"></option></datalist>
+                </label>
+                <label>模型
+                  <input list="monitorUsageModels" v-model.trim="usageFilters.model" placeholder="全部模型" />
+                  <datalist id="monitorUsageModels"><option v-for="m in usageModels" :key="m" :value="m"></option></datalist>
+                </label>
+                <label>Agent
+                  <input list="monitorUsageAgents" v-model.trim="usageFilters.agent_id" placeholder="全部 Agent" />
+                  <datalist id="monitorUsageAgents"><option v-for="a in usageAgents" :key="a" :value="a"></option></datalist>
+                </label>
+                <label>状态
+                  <select v-model="usageFilters.status">
+                    <option value="">全部</option>
+                    <option value="success">成功</option>
+                    <option value="fail">失败</option>
+                  </select>
+                </label>
+                <label>每页
+                  <select v-model.number="usagePage.limit">
+                    <option :value="100">100</option>
+                    <option :value="300">300</option>
+                    <option :value="500">500</option>
+                    <option :value="1000">1000</option>
+                  </select>
+                </label>
+                <button class="btn-sm" @click="queryUsage" :disabled="loading">查询</button>
+                <button class="btn-sm" @click="resetUsageFilters" :disabled="loading">重置</button>
+              </div>
+              <div class="monitor-usage-summary">
+                已加载 {{ num(usageLoadedCount) }} / {{ num(usagePage.total) }} 次调用
+                <span v-if="usagePage.summary">成本 {{ cny(usagePage.summary.cost_usd, 4) }} <span class="vue-muted">{{ usd(usagePage.summary.cost_usd) }}</span></span>
+              </div>
               <div v-if="!recent.length" class="monitor-empty">暂无调用记录</div>
-              <div v-else class="vue-table-scroll">
+              <div v-if="recent.length" class="vue-table-scroll">
                 <table class="monitor-table">
                   <thead><tr><th>时间</th><th>接入厂商</th><th>模型</th><th>Agent</th><th>Tokens</th><th>成本</th><th>耗时</th><th>状态</th></tr></thead>
                   <tbody>
@@ -599,6 +714,9 @@
                     </tr>
                   </tbody>
                 </table>
+              </div>
+              <div class="monitor-usage-actions" v-if="usageHasMore">
+                <button class="btn-sm" @click="loadMoreUsage" :disabled="loading">加载更多</button>
               </div>
             </div>
           </template>

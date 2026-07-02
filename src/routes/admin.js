@@ -1649,10 +1649,35 @@ router.get('/token-stats/by-day', (req, res) => {
 });
 
 // 鏈€杩?N 鏉¤皟鐢?
+function _adminUsageDateBoundary(value, endOfDay = false) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const time = endOfDay ? '23:59:59.999' : '00:00:00.000';
+    return new Date(`${text}T${time}+08:00`).toISOString();
+  }
+  const d = new Date(text);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
 router.get('/token-stats/recent', (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    res.json({ success: true, data: _enrichUsageRows(tracker.listRecent(limit)) });
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = parseInt(req.query.offset) || 0;
+    const result = tracker.listUsage({
+      limit,
+      offset,
+      from: _adminUsageDateBoundary(req.query.from || req.query.date_from || req.query.start_date, false),
+      to: _adminUsageDateBoundary(req.query.to || req.query.date_to || req.query.end_date, true),
+      provider: String(req.query.provider || '').trim(),
+      model: String(req.query.model || '').trim(),
+      category: String(req.query.category || '').trim(),
+      agent_id: String(req.query.agent_id || req.query.agent || '').trim(),
+      status: String(req.query.status || '').trim(),
+    });
+    result.items = _enrichUsageRows(result.items);
+    // 中文注释：兼容旧前端传 limit=50，同时给新前端返回 total/summary/facets 以支持按日期、厂商、模型查询全量记录。
+    res.json({ success: true, data: req.query.format === 'page' ? result : result.items });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

@@ -476,9 +476,88 @@ function groupByDay(records) {
 }
 
 // 最近 N 条调用
+function summarizeUsage(records = []) {
+  return records.reduce((acc, row) => {
+    acc.calls += 1;
+    acc.input_tokens += Number(row.input_tokens || 0);
+    acc.output_tokens += Number(row.output_tokens || 0);
+    acc.total_tokens += Number(row.total_tokens || 0);
+    acc.image_count += Number(row.image_count || 0);
+    acc.video_seconds += Number(row.video_seconds || 0);
+    acc.cost_usd += Number(row.cost_usd || 0);
+    if ((row.status || 'success') === 'fail') acc.fail_count += 1;
+    else acc.success_count += 1;
+    return acc;
+  }, {
+    calls: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    image_count: 0,
+    video_seconds: 0,
+    cost_usd: 0,
+    success_count: 0,
+    fail_count: 0,
+  });
+}
+
+function usageFacet(records = [], field) {
+  const map = new Map();
+  records.forEach(row => {
+    const value = String(row[field] || '').trim();
+    if (!value) return;
+    const current = map.get(value) || { value, calls: 0, cost_usd: 0 };
+    current.calls += 1;
+    current.cost_usd += Number(row.cost_usd || 0);
+    map.set(value, current);
+  });
+  return Array.from(map.values())
+    .map(item => ({ ...item, cost_usd: Number(item.cost_usd.toFixed(6)) }))
+    .sort((a, b) => b.calls - a.calls || String(a.value).localeCompare(String(b.value)));
+}
+
+function listUsage({
+  limit = 100,
+  offset = 0,
+  from,
+  to,
+  provider,
+  model,
+  category,
+  agent_id,
+  status,
+} = {}) {
+  const pageLimit = Math.max(1, Math.min(5000, Math.round(Number(limit)) || 100));
+  const pageOffset = Math.max(0, Math.round(Number(offset)) || 0);
+  const filter = {};
+  if (from) filter.from = from;
+  if (to) filter.to = to;
+  if (provider) filter.provider = provider;
+  if (model) filter.model = model;
+  if (category) filter.category = category;
+  if (agent_id) filter.agent_id = agent_id;
+  if (status) filter.status = status;
+
+  // 中文注释：全量调用记录只做查询和分页，不清理、不折叠历史数据，避免管理员看不到真实成本来源。
+  const records = db.listTokenUsage(filter);
+  const items = records.slice(pageOffset, pageOffset + pageLimit);
+  return {
+    total: records.length,
+    limit: pageLimit,
+    offset: pageOffset,
+    items,
+    summary: summarizeUsage(records),
+    facets: {
+      providers: usageFacet(records, 'provider'),
+      models: usageFacet(records, 'model'),
+      agents: usageFacet(records, 'agent_id'),
+      statuses: usageFacet(records, 'status'),
+    },
+  };
+}
+
 function listRecent(limit = 50) {
-  const records = db.listTokenUsage();
-  return records.slice(0, limit);
+  return listUsage({ limit }).items;
 }
 
 // ═══════════════════════════════════════════════════
@@ -652,6 +731,7 @@ function checkAlerts() {
 module.exports = {
   record,
   getStats,
+  listUsage,
   listRecent,
   loadBudget,
   saveBudget,

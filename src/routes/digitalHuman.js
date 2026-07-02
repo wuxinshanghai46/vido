@@ -26592,7 +26592,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           return key && arr.findIndex(x => x[1].map(ref => ref.resolved).filter(Boolean).join('|') === key) === i;
         });
         if (!refModes.length) refModes.push(['generation', []]);
-        const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 2)) || 2));
+        const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 1)) || 1));
         const maxGptImage2RefsPerCall = Math.max(1, Math.min(2, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_REFS_PER_CALL || 1)) || 1));
         let gptImage2CallCount = 0;
         const runGptImage2 = async (refItemsForMode, suffix, inputFidelity = 'high', promptOverride = promptForAttempt) => {
@@ -26916,6 +26916,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   }
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
   const repairCounts = new Map();
+  const maxQaRejectedImageCandidates = Math.max(1, Math.min(3, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_MAX_QA_REJECTED_CANDIDATES || 1)) || 1));
+  let qaRejectedImageCandidates = 0;
   const maxQaRepairRetries = allowQaRepair
     ? Math.max(0, Math.min(4, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 1)) || 1))
     : 0;
@@ -26979,6 +26981,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         const repairKey = `${model.provider_id}/${model.model_id}`;
         const usedRepairs = Number(repairCounts.get(repairKey) || 0);
         const qaForRepair = _luxuryQaRejectRepairPayload(err);
+        qaRejectedImageCandidates += 1;
         if (allowQaRepair && qaForRepair && usedRepairs < maxQaRepairRetries && typeof qaRepairHook === 'function') {
           try {
             const repairPatch = await qaRepairHook({
@@ -27021,6 +27024,17 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; retrying the same model with rewritten QA contract ${usedRepairs + 1}/${maxQaRepairRetries}:`, shortError(err));
           i -= 1;
           continue;
+        }
+        // 中文注释：已产生候选图但 QA 不合格时，不再跨模型继续烧图；保留真实 QA 错误给前端人工判断或单镜重试。
+        if (qaRejectedImageCandidates >= maxQaRejectedImageCandidates) {
+          attempts.push({
+            provider_id: 'cost-control',
+            model_id: 'qa-reject-stop',
+            ok: false,
+            error: `已生成 ${qaRejectedImageCandidates} 张候选图但 QA 不合格，停止继续调用图片模型`,
+            max_qa_rejected_candidates: maxQaRejectedImageCandidates,
+          });
+          break;
         }
         console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; trying next configured model:`, shortError(err));
         if (strictSingleCandidate) break;

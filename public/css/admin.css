@@ -1516,6 +1516,12 @@ body {
 .monitor-cost-cell { position: relative; }
 .monitor-mini-bar { height: 2px; background: var(--accent); margin-top: 2px; }
 .monitor-empty { padding: 20px; text-align: center; color: var(--text3); font-size: 12px; background: var(--bg2); border-radius: 6px; }
+.monitor-usage-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 10px 0 12px; }
+.monitor-usage-filters label { display: flex; flex-direction: column; gap: 4px; min-width: 120px; font-size: 11px; color: var(--text3); }
+.monitor-usage-filters input,
+.monitor-usage-filters select { min-height: 30px; border: 1px solid var(--border2); border-radius: 6px; padding: 5px 8px; background: var(--bg); color: var(--text); }
+.monitor-usage-summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 10px; font-size: 12px; color: var(--text2); }
+.monitor-usage-actions { display: flex; justify-content: center; padding-top: 12px; }
 
 .monitor-day-chart { display: flex; flex-direction: column; gap: 4px; max-height: 400px; overflow-y: auto; }
 .monitor-day-bar { display: grid; grid-template-columns: 60px 1fr 240px; gap: 10px; align-items: center; padding: 4px 0; }
