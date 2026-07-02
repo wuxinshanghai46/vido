@@ -265,6 +265,70 @@ function _luxuryAdProjectTextKey(value = '') {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function _luxuryAdProjectTextHash(value = '') {
+  const key = _luxuryAdProjectTextKey(value);
+  return key ? crypto.createHash('sha1').update(key).digest('hex') : '';
+}
+
+function _luxuryAdProjectHasDerivedState(row = {}) {
+  return !!(
+    row.production_contract
+    || row.industry_contract
+    || row.asset_manifest
+    || row.visual_locks
+    || row.global_visual_bible
+    || (Array.isArray(row.scenes) && row.scenes.length)
+    || (Array.isArray(row.keyframes) && row.keyframes.length)
+    || (Array.isArray(row.storyboard_sheets) && row.storyboard_sheets.length)
+  );
+}
+
+function _luxuryAdProjectSubjectTokens(row = {}) {
+  return [
+    row.product_subject,
+    row.industry_contract?.product_subject,
+    row.asset_manifest?.product_subject,
+    row.visual_locks?.asset_manifest?.product_subject,
+    row.visual_locks?.product_lock?.subject,
+    row.production_contract?.visual_locks?.asset_manifest?.product_subject,
+    row.production_contract?.visual_locks?.product_lock?.subject,
+  ]
+    .map(v => String(v || '').replace(/\s+/g, '').trim())
+    .filter(v => v.length >= 2 && !/^(主商品|主产品|商品|产品|服务|广告主体|主体|品牌|用户需求|用户广告需求|产品宣传)$/i.test(v))
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .slice(0, 8);
+}
+
+function _luxuryBriefMentionsProjectSubject(compactText = '', subject = '') {
+  const text = String(compactText || '');
+  const token = String(subject || '').replace(/\s+/g, '').trim();
+  if (!text || !token) return false;
+  if (text.includes(token) || token.includes(text.slice(0, Math.min(text.length, 12)))) return true;
+  const parts = [];
+  for (let i = 0; i <= token.length - 2; i += 1) {
+    const part = token.slice(i, i + 2);
+    if (!/^(高端|产品|服务|广告|主体|用户|需求|场景|空间|商业|真实)$/.test(part)) parts.push(part);
+  }
+  return parts.some(part => text.includes(part));
+}
+
+function _luxuryAdProjectConflictsWithBrief(row = {}, bodyText = '') {
+  const textKey = _luxuryAdProjectTextKey(bodyText);
+  if (!row || !textKey) return false;
+  const existingText = _luxuryAdProjectTextKey(row.text || row.brief_text || row.ad_text || row.draft_state?.text || row.draft_state?.ad_text || '');
+  const existingHash = row.text_hash || row.brief_hash || _luxuryAdProjectTextHash(existingText);
+  const nextHash = _luxuryAdProjectTextHash(textKey);
+  const hasDerived = _luxuryAdProjectHasDerivedState(row);
+  if (existingText && existingHash && nextHash && existingHash !== nextHash) return true;
+  // 中文注释：旧项目没有记录原始 brief，但已经有合同/分镜/关键帧时，不能让新 brief 借旧 project_id 覆盖。
+  if (!existingText && hasDerived) return true;
+  if (!hasDerived) return false;
+  const compactText = textKey.replace(/\s+/g, '');
+  const subjects = _luxuryAdProjectSubjectTokens(row);
+  // 中文注释：如果旧项目主体完全不在当前 brief 中，说明旧合同会污染新任务，必须切新项目。
+  return subjects.length > 0 && subjects.every(subject => !_luxuryBriefMentionsProjectSubject(compactText, subject));
+}
+
 function _canMergeLuxuryAdProjectByText(row = {}) {
   return LUXURY_AD_PROJECT_MERGE_STATES.has(String(row.project_state || '').trim());
 }
@@ -795,12 +859,23 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
       requestedId = '';
     }
   }
+  if (existingIndex >= 0 && bodyText && body.allow_project_text_change !== true && body.allowProjectTextChange !== true) {
+    if (_luxuryAdProjectConflictsWithBrief(data.projects[existingIndex], bodyText)) {
+      // 中文注释：旧项目主体/行业合同与当前 brief 冲突时，必须新建生产包，不能沿用旧合同污染新任务。
+      existingIndex = -1;
+      requestedId = '';
+    }
+  }
   if (existingIndex < 0 && requestKey) {
     existingIndex = data.projects.findIndex(p => {
       if (!_luxuryAdProjectBelongsTo(req, p)) return false;
       const keys = p.request_keys || {};
       return keys.storyboard === requestKey || keys.keyframe === requestKey || p.request_key === requestKey;
     });
+    if (existingIndex >= 0 && bodyText && _luxuryAdProjectConflictsWithBrief(data.projects[existingIndex], bodyText)) {
+      // 中文注释：request_key 只能恢复同一任务；如果恢复到旧主体合同，宁可新建，不允许串任务。
+      existingIndex = -1;
+    }
   }
   // 中文注释：不再在写入时按 text 自动合并项目；相同/相似需求也必须是独立任务，除非携带明确 project_id 或 request_key。
   const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
@@ -829,6 +904,16 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const industryContract = result.industry_contract || result.details?.industry_contract || body.industry_contract || body.industryContract || existing?.industry_contract || existing?.draft_state?.industry_contract || null;
   const industrySelection = result.industry_selection || body.industry_selection || body.industrySelection || industryContract?.industry_selection || existing?.industry_selection || existing?.draft_state?.industry_selection || null;
   const segmentPlan = result.segment_plan || result.details?.segment_plan || body.segment_plan || body.segmentPlan || existing?.segment_plan || null;
+  const projectProductSubject = result.product_subject
+    || contract?.visual_locks?.product_lock?.subject
+    || contract?.visual_locks?.asset_manifest?.product_subject
+    || industryContract?.product_subject
+    || body.product_subject
+    || body.productSubject
+    || body.product_name
+    || body.product_asset?.name
+    || existing?.product_subject
+    || '';
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
     || result.keyframe_generation_status === 'deferred_for_review';
@@ -882,8 +967,9 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
       storyboard_sheets: mergedStoryboardSheets,
     }).status,
     text: String(body.text || existing?.text || '').slice(0, 12000),
+    text_hash: _luxuryAdProjectTextHash(body.text || existing?.text || ''),
     product_name: body.product_name || body.product_asset?.name || existing?.product_name || '',
-    product_subject: result.production_contract?.visual_locks?.product_lock?.subject || existing?.product_subject || '',
+    product_subject: projectProductSubject,
     duration_sec: Number(body.duration_sec || existing?.duration_sec || 0) || null,
     ratio: result.ratio || body.aspect_ratio || body.aspectRatio || existing?.ratio || '',
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
@@ -4252,6 +4338,63 @@ function _luxuryShotImpliesHumanPresenter(scene = {}) {
   return /专业身份|入口引入|行业痛点|做了.*年|多年项目|项目经验|介绍员|讲解员|导购|顾问|设计师|店长|经理|客户|业主|入场|走入|走进|看向|拿着|翻看|手持|讲述|开场|身份|professional identity|presenter|host|designer|consultant|store manager|manager|client|customer|walks? in|enters?|holding|looks? at|reviewing/i.test(text);
 }
 
+function _luxuryNonHumanPrimaryKind(...parts) {
+  const text = parts.map(part => (typeof part === 'object'
+    ? _luxurySceneText(part, ['product_subject', 'title', 'objective', 'content_prompt', 'scene_content', 'visual', 'action', 'voiceover', 'narration'])
+    : String(part || ''))).join(' ');
+  if (/宠物|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|pet|dog|cat|animal/i.test(text)) return 'animal';
+  if (/机器人|机械臂|仿生|智能体|AI\s*机器人|虚拟人|吉祥物|IP形象|卡通角色|robot|android|mascot|non[-\s]?human/i.test(text)) return 'character';
+  if (/游戏角色|NPC|怪物|英雄|玩家角色|game character|avatar/i.test(text)) return 'character';
+  return '';
+}
+
+function _luxurySceneHumanIsPrimary(scene = {}) {
+  const text = _luxurySceneText(scene, [
+    'title',
+    'objective',
+    'intent',
+    'purpose',
+    'role',
+    'story_stage',
+    'content_prompt',
+    'scene_content',
+    'display_visual',
+    'visual',
+    'visual_prompt',
+    'action',
+    'visual_action',
+    'voiceover',
+    'narration',
+    'dialogue',
+  ]);
+  return /真人讲解|人物出镜|同一人物|真人演员|广告演员|讲解员|讲解者|导购|顾问|主持人|模特|设计师|店长|经理|口播|看向镜头|面对镜头|向镜头|带观众|带看|presenter|host|actor|model|consultant|speaks? to camera|talking to camera/i.test(text);
+}
+
+function _luxurySceneDominantNonHumanSubject(scene = {}, productSubject = '') {
+  const kind = _luxuryNonHumanPrimaryKind(productSubject, scene.product_subject, scene);
+  if (!kind) return false;
+  const text = _luxurySceneText(scene, [
+    'title',
+    'objective',
+    'intent',
+    'purpose',
+    'content_prompt',
+    'scene_content',
+    'display_visual',
+    'visual',
+    'visual_prompt',
+    'action',
+    'visual_action',
+    'voiceover',
+    'narration',
+  ]);
+  const subjectCue = kind === 'animal'
+    ? /宠物|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|玩具|叼|啃咬|追|翻滚|草坪|pet|dog|cat|toy|chew|fetch/i.test(text)
+    : /机器人|机械臂|智能体|虚拟人|吉祥物|IP形象|游戏角色|NPC|robot|android|mascot|avatar|game character/i.test(text);
+  // 中文注释：非真人主体广告中，主人/用户/手部可以是使用关系，但不能自动升级成全片真人主角。
+  return !!(subjectCue && !_luxurySceneHumanIsPrimary(scene));
+}
+
 function _luxuryShotSubjectType(scene = {}) {
   const raw = String(scene.subject_type || scene.subjectType || scene.scene_subject_type || '').trim().toLowerCase();
   const aliases = {
@@ -4283,6 +4426,8 @@ function _luxurySubjectTypeRequiresPerson(subjectType = '') {
 
 function _luxuryStoryboardRequiresPerson(scene = {}, subject = '') {
   const explicitSubjectType = _luxuryShotSubjectType(scene);
+  const userForcedHuman = explicitSubjectType === 'human_scene' && (scene.user_edited === true || scene.subject_type_user_set === true);
+  if (!userForcedHuman && _luxurySceneDominantNonHumanSubject(scene, subject)) return false;
   const subjectTypeDecision = _luxurySubjectTypeRequiresPerson(explicitSubjectType);
   if (subjectTypeDecision !== null) return subjectTypeDecision;
   if (scene.person_required === true || scene.character_required === true || scene.requires_person === true) return true;
@@ -13462,6 +13607,7 @@ function _luxuryIndustryDisambiguationPolicy(productSubject = '', scene = {}) {
     foodBeverage: /餐饮|食品|饮品|咖啡|茶|酒|餐厅|菜品|烘焙|食材|food|drink|coffee|tea|restaurant|bar|bakery/i.test(context),
     fashionBeauty: /服装|鞋|包|珠宝|腕表|美妆|护肤|香水|彩妆|穿搭|精品店|fashion|apparel|shoe|bag|jewelry|watch|cosmetic|skincare|perfume|makeup|boutique/i.test(context),
     softwareWorkflow: _luxuryIsSoftwareWorkflowSubject(subject, scene),
+    petAnimal: /宠物|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|发声玩具|宠物玩具|耐咬|拆家|pet|dog|cat|animal|chew toy|pet toy/i.test(context),
     homeInterior: /家居|家具|装修|室内|软装|酒店|民宿|地产|空间|住宅|客厅|卧室|home|furniture|interior|property|hotel|hospitality|living\s*space/i.test(context),
     healthcareEducation: /医疗|健康|诊所|教育|课程|学校|培训|clinic|medical|health|education|course|school|training/i.test(context),
   };
@@ -13580,6 +13726,22 @@ function _luxuryIndustryDisambiguationPolicy(productSubject = '', scene = {}) {
       'unconfirmed cookware or kitchen fixture becoming the advertised subject',
     ];
     policy.qaRule = 'For food/beverage subjects, pass only if the confirmed edible/drink/service evidence is the advertised subject; reject unrelated props or scene templates.';
+    return policy;
+  }
+  if (explicit.petAnimal) {
+    policy.id = 'pet_product_or_service';
+    policy.industry = 'pet products / pet life';
+    policy.allowedEnvironment = 'the confirmed pet life scene named by the brief or storyboard, such as home play, outdoor grass, pet care or pet service context';
+    policy.requiredEvidence = `pet evidence for ${subject}: visible pet, pet product/toy/food/service proof, safe interaction, use result or care action required by this shot`;
+    policy.mustShow = [
+      `confirmed pet/pet-product evidence of ${subject}`,
+      'the pet, product/toy/service proof and interaction required by the storyboard',
+    ];
+    policy.mustNotShow = [
+      'human furniture, baby product, home decor, restaurant food, generic human lifestyle product or software workflow replacing the pet subject',
+      'owner/presenter becoming the advertised subject unless the brief explicitly asks for a human-led talk-to-camera ad',
+    ];
+    policy.qaRule = 'For pet subjects, pass only if the pet and the confirmed pet product/service evidence are visible and coherent; reject frames where furniture, home decor, human presenter, software UI or unrelated lifestyle props replace the pet subject.';
     return policy;
   }
   if (explicit.homeInterior) {
@@ -17058,6 +17220,21 @@ function _luxuryLooksLikeExplicitHumanShot(value = '') {
 
 function _inferLuxuryRevisionSubjectType(rawType = 'auto', context = {}) {
   const normalized = _normalizeLuxuryRevisionSubjectType(rawType);
+  const sceneContext = {
+    ...(context.scene || {}),
+    content_prompt: context.content_prompt || context.scene?.content_prompt,
+    scene_content: context.scene_content || context.scene?.scene_content,
+    visual: context.visual || context.scene?.visual,
+    action: context.action || context.scene?.action,
+    product_subject: context.productSubject || context.scene?.product_subject,
+  };
+  if (normalized === 'human_scene'
+    && context.user_edited !== true
+    && !_luxurySceneHumanIsPrimary(sceneContext)
+    && _luxurySceneDominantNonHumanSubject(sceneContext, context.productSubject)) {
+    // 中文注释：模型把宠物/机器人/角色主体误标成人物镜头时，以当前 brief 主体为准纠偏。
+    return 'character_scene';
+  }
   if (normalized !== 'auto') return normalized;
   const text = [
     context.productSubject,
@@ -20722,6 +20899,7 @@ ${JSON.stringify(scenes, null, 2)}
         const storyPanelNeeded = isDetailedMode
           && !fastDetailedStoryboard
           && !_luxuryIsMacroDetailShot({ role, title: x.title || '', content_prompt: visual, visual })
+          && !_luxurySceneDominantNonHumanSubject({ ...x, role, content_prompt: visual, scene_content: visual, visual, action, visual_action: action, product_subject: productSubject }, productSubject)
           && _luxuryRoleNeedsStoryHuman(role, i, roleCount)
           && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief));
         if (storyPanelNeeded) {
@@ -20868,6 +21046,7 @@ ${JSON.stringify(scenes, null, 2)}
       const storyPanelNeeded = isDetailedMode
         && !fastDetailedStoryboard
         && !_luxuryIsMacroDetailShot({ role, title: s.title || '', content_prompt: visual, visual })
+        && !_luxurySceneDominantNonHumanSubject({ ...s, role, content_prompt: visual, scene_content: visual, visual, action, visual_action: action, product_subject: productSubject }, productSubject)
         && _luxuryRoleNeedsStoryHuman(role, i, scenes.length)
         && (continuousHuman || !_luxuryIsRobotAssistantSubject(productSubject, brief));
       if (storyPanelNeeded) {
@@ -20883,6 +21062,7 @@ ${JSON.stringify(scenes, null, 2)}
         role,
         index: i,
         totalShots: scenes.length,
+        subject_type: s.subject_type || s.subjectType || s.scene_subject_type || '',
         title: s.title || '',
         objective: s.objective || s.intent || s.purpose || '',
         content_prompt: visual,
@@ -20891,6 +21071,17 @@ ${JSON.stringify(scenes, null, 2)}
         visual,
         action,
         visual_action: action,
+        product_subject: productSubject,
+      }, productSubject);
+      const dominantNonHumanSubject = _luxurySceneDominantNonHumanSubject({
+        ...s,
+        role,
+        content_prompt: visual,
+        scene_content: visual,
+        visual,
+        action,
+        visual_action: action,
+        product_subject: productSubject,
       }, productSubject);
       const productOnlyMaterialShot = !corePersonRequired && _luxuryIsMaterialProductShot({ title: s.title || '', content_prompt: visual, visual }, productSubject);
       if (productOnlyMaterialShot) {
@@ -20989,7 +21180,7 @@ ${JSON.stringify(scenes, null, 2)}
         controlled_rules: controlledGuide.enabled ? controlledGuide.summary : '',
         controlled_qa_rules: controlledGuide.enabled ? controlledGuide.qa_rules : [],
         person_required: corePersonRequired,
-        storyboard_panel_required: corePersonRequired || (!_luxuryIsMacroDetailShot({ role, title: s.title || '', content_prompt: visual, visual }) && _luxuryRoleNeedsStoryHuman(role, i, scenes.length)),
+        storyboard_panel_required: corePersonRequired || (!dominantNonHumanSubject && !_luxuryIsMacroDetailShot({ role, title: s.title || '', content_prompt: visual, visual }) && _luxuryRoleNeedsStoryHuman(role, i, scenes.length)),
       };
     });
     if (isDetailedMode && scenes.length && !fastDetailedStoryboard) {
