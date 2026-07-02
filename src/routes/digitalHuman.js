@@ -5205,6 +5205,7 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
     ]),
   ].filter(Boolean).join(' ');
   const subject = _luxurySceneFriendlyProductSubject(productSubject || 'advertised subject') || 'advertised subject';
+  const policy = _luxuryIndustryDisambiguationPolicy(subject, { ...scene, product_subject: productSubject || subject });
   if (_luxuryIsSoftwareWorkflowSubject(productSubject || subject, { visual: text, content_prompt: text })) {
     return {
       industry: 'software / service workflow',
@@ -5212,12 +5213,23 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
       evidence: `workflow evidence for ${subject}: confirmed actor, tool, device, document, interface moment, place, before-after state, result proof or other carrier explicitly required by the brief/assets/storyboard`,
     };
   }
+  if (policy.id && policy.id !== 'confirmed_story_only') {
+    return {
+      industry: policy.industry,
+      scene: policy.allowedEnvironment,
+      evidence: policy.requiredEvidence,
+    };
+  }
   const rules = [
     {
       test: /钢|钢材|钢板|不锈钢|金属板材|金属板|建材|幕墙|护墙板|墙板|墙面|外立面|建筑外观|建筑材料|建筑装饰|architectural steel|facade|cladding|building material|wall panel/i,
       industry: 'architectural materials / building finishing',
-      scene: `premium material showroom, design consultation area, sample-wall display or installed application mockup for ${subject}`,
-      evidence: `visible sample boards, installed wall panels, edge/profile detail, finish texture or material display evidence of ${subject}`,
+      scene: policy.id === 'architectural_metal_material'
+        ? policy.allowedEnvironment
+        : `premium material showroom, design consultation area, sample-wall display, wall-panel installation or facade/cladding application for ${subject}`,
+      evidence: policy.id === 'architectural_metal_material'
+        ? policy.requiredEvidence
+        : `visible sample boards, installed wall panels, edge/profile detail, finish texture or material display evidence of ${subject}`,
     },
     {
       test: /餐饮|食品|饮品|咖啡|茶|酒|餐厅|菜|food|drink|coffee|tea|restaurant|bar/i,
@@ -13061,7 +13073,7 @@ function _normalizeLuxuryProductSubject(value = '', context = '') {
 }
 
 function _luxuryHasExplicitSteelSubject(text = '') {
-  return /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|幕墙钢|建筑钢|steel finished products?|finished steel|steel products?|steel sheets?|steel panels?|architectural steel|metal facade|metal cladding|facade cladding/i.test(String(text || ''));
+  return /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|幕墙钢|建筑钢|stainless steel|steel finished products?|finished steel|steel products?|steel sheets?|steel panels?|architectural steel|metal facade|metal cladding|facade cladding/i.test(String(text || ''));
 }
 
 function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
@@ -13082,6 +13094,192 @@ function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
     scene.topview_prompt,
   ].filter(Boolean).join(' ');
   return _luxuryHasExplicitSteelSubject(text);
+}
+
+function _luxuryIndustryDisambiguationPolicy(productSubject = '', scene = {}) {
+  const subject = String(productSubject || scene.product_subject || 'advertised subject').trim();
+  const context = [
+    subject,
+    scene.product_subject,
+    scene.product_lock?.subject,
+    scene.visual_locks?.product_lock?.subject,
+    scene.asset_manifest?.product_subject,
+    scene.visual_locks?.asset_manifest?.product_subject,
+    scene.title,
+    scene.objective,
+    scene.intent,
+    scene.purpose,
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.display_visual,
+    scene.action,
+    scene.visual_action,
+    scene.voiceover,
+    scene.narration,
+    scene.material_usage,
+    scene.material_hint,
+    scene.environment_lock,
+    scene.scene_type_lock,
+    scene.visual_contract?.allowed_environment,
+    scene.visual_contract?.image_prompt,
+    Array.isArray(scene.visual_contract?.must_show) ? scene.visual_contract.must_show.join(' ') : '',
+    Array.isArray(scene.visual_contract?.must_not_show) ? scene.visual_contract.must_not_show.join(' ') : '',
+  ].filter(Boolean).join(' ');
+  const explicit = {
+    architecturalMaterial: /建材|建筑|建筑材料|建筑装饰|装饰材料|墙板|护墙板|墙面|幕墙|外立面|立面|板材|型材|样板|展板|材料展厅|材料样板|金属板|金属板材|architectural|building|facade|cladding|wall\s*panel|material\s*showroom|sample[-\s]?wall|finish(?:ing)?\s*material/i.test(context),
+    kitchenCookware: /厨房|厨具|餐厨|锅具|锅|水槽|洗菜盆|台面|橱柜|水龙头|灶台|kitchen|cookware|\bpot\b|\bpan\b|sink|countertop|faucet|cabinet/i.test(context),
+    foodBeverage: /餐饮|食品|饮品|咖啡|茶|酒|餐厅|菜品|烘焙|食材|food|drink|coffee|tea|restaurant|bar|bakery/i.test(context),
+    fashionBeauty: /服装|鞋|包|珠宝|腕表|美妆|护肤|香水|彩妆|穿搭|精品店|fashion|apparel|shoe|bag|jewelry|watch|cosmetic|skincare|perfume|makeup|boutique/i.test(context),
+    softwareWorkflow: _luxuryIsSoftwareWorkflowSubject(subject, scene),
+    homeInterior: /家居|家具|装修|室内|软装|酒店|民宿|地产|空间|住宅|客厅|卧室|home|furniture|interior|property|hotel|hospitality|living\s*space/i.test(context),
+    healthcareEducation: /医疗|健康|诊所|教育|课程|学校|培训|clinic|medical|health|education|course|school|training/i.test(context),
+  };
+  const policy = {
+    id: 'confirmed_story_only',
+    subject,
+    industry: 'confirmed storyboard industry',
+    allowedEnvironment: 'only the environment explicitly confirmed by the user brief, uploaded assets, storyboard, shot contract or manual edit',
+    requiredEvidence: `visible evidence that still reads as ${subject}, using only the carrier named by this shot`,
+    mustShow: [
+      `confirmed advertised subject evidence: ${subject}`,
+      'the exact environment and evidence carrier required by the current shot contract',
+    ],
+    mustNotShow: [
+      'default industry template or stock scene not named by this customer request',
+      'unconfirmed product carrier, prop, UI, package, showroom, kitchen, shelf, warehouse, office or exterior replacement',
+    ],
+    qaRule: 'Reject any frame that swaps the confirmed industry, environment or evidence carrier for a default template not present in the brief/assets/storyboard.',
+  };
+  if (_isLuxurySteelMaterialSubject(subject, scene) && !explicit.kitchenCookware) {
+    policy.id = 'architectural_metal_material';
+    policy.industry = 'architectural materials / building finishing';
+    policy.allowedEnvironment = explicit.architecturalMaterial
+      ? 'premium material showroom, design consultation area, sample-wall display, wall-panel installation, facade/cladding application, or architectural material detail scene confirmed by this shot'
+      : 'premium material showroom, design consultation area, sample-wall display, wall-panel installation or facade/cladding material application; do not infer kitchen or cookware use';
+    policy.requiredEvidence = `architectural material evidence for ${subject}: sample boards, installed wall panels, facade/cladding panels, edge/profile detail, brushed finish texture, material seam, or material display wall`;
+    policy.mustShow = [
+      `architectural/building-finishing evidence of ${subject}`,
+      'sample boards, wall panels, facade/cladding panels, profile edges, material texture or material display wall',
+      'a real commercial material/showroom/design-consultation scene when a person appears',
+    ];
+    policy.mustNotShow = [
+      'kitchen, sink, faucet, cooking pot, pan, cookware, dining table, food-service counter, appliance demo, household cleaning scene, or generic home kitchen unless explicitly requested by the brief/assets/storyboard',
+      'turning the material into a consumer utensil, prop, appliance, package, logo or readable text',
+      'factory/raw warehouse steel piles unless the confirmed storyboard explicitly asks for manufacturing or warehouse footage',
+    ];
+    policy.qaRule = 'For architectural metal/material subjects, pass only if the image proves building-finishing/material evidence. Hard fail if the main evidence becomes kitchenware, sink, cookware, appliance or home-kitchen use unless that use was explicitly confirmed.';
+    return policy;
+  }
+  if (_isLuxurySteelMaterialSubject(subject, scene) && explicit.kitchenCookware) {
+    policy.id = 'confirmed_kitchen_metal_product';
+    policy.industry = 'kitchen / cookware / home product';
+    policy.allowedEnvironment = 'the confirmed kitchen, cookware, sink, countertop or home-use setting named by this shot';
+    policy.requiredEvidence = `confirmed kitchen/home-use stainless evidence for ${subject}: the exact sink, cookware, countertop, appliance or fixture named by the brief/assets/storyboard`;
+    policy.mustShow = [
+      `confirmed kitchen/home-use evidence of ${subject}`,
+      'only the cookware, sink, countertop, appliance or fixture explicitly named by this customer request',
+    ];
+    policy.mustNotShow = [
+      'architectural facade, wall-panel showroom, material sample wall or construction-material scene unless explicitly requested',
+      'unconfirmed extra cookware, food props, restaurant setup or home appliance becoming the advertised subject',
+    ];
+    policy.qaRule = 'For kitchen/home-use metal subjects, pass only when the exact confirmed kitchen carrier is visible; reject architectural material scenes if the customer asked for kitchen use.';
+    return policy;
+  }
+  if (explicit.softwareWorkflow) {
+    policy.id = 'software_service_workflow';
+    policy.industry = 'software / service workflow';
+    policy.allowedEnvironment = 'the real user/workflow environment explicitly named by the brief/assets/storyboard';
+    policy.requiredEvidence = `workflow evidence for ${subject}: actor role, tool/device/interface moment, document, result state or service-use proof explicitly required by this shot`;
+    policy.mustShow = [
+      `confirmed workflow/use/result evidence for ${subject}`,
+      'the named user role performing the confirmed task in the confirmed environment',
+    ];
+    policy.mustNotShow = [
+      'default dashboard, code screen, order form, inventory shelf, warehouse, retail counter, phone packshot or floating UI unless explicitly requested',
+      'material showroom, cosmetics shelf, pure carrier ad, empty office or sci-fi lab replacement',
+    ];
+    policy.qaRule = 'For software/service subjects, pass only if the lived workflow/result evidence matches the current shot. Hard fail default UI templates or unrelated physical-product scenes.';
+    return policy;
+  }
+  if (explicit.fashionBeauty) {
+    policy.id = 'fashion_beauty_retail';
+    policy.industry = 'fashion / beauty / lifestyle retail';
+    policy.allowedEnvironment = 'premium boutique, styling studio, beauty counter, fitting area or product display setting explicitly appropriate to this confirmed subject';
+    policy.requiredEvidence = `fashion/beauty evidence for ${subject}: advertised item, wearable detail, packaging, finish, fitting, texture or usage proof required by this shot`;
+    policy.mustShow = [
+      `confirmed fashion/beauty/lifestyle evidence of ${subject}`,
+      'the item, styling/fitting moment, packaging or texture evidence named by this shot',
+    ];
+    policy.mustNotShow = [
+      'material showroom, facade panel, kitchen/cookware, software dashboard, warehouse or unrelated retail shelf unless explicitly requested',
+      'random luxury props replacing the advertised item',
+    ];
+    policy.qaRule = 'For fashion/beauty subjects, pass only if the advertised item or required use/display proof is visible; reject material, kitchen, software or unrelated product substitutions.';
+    return policy;
+  }
+  if (explicit.foodBeverage) {
+    policy.id = 'food_beverage';
+    policy.industry = 'food and beverage';
+    policy.allowedEnvironment = 'restaurant, cafe, bar counter, kitchen pass, dining table, serving ritual or ingredient/product setting explicitly required by this shot';
+    policy.requiredEvidence = `food/beverage evidence for ${subject}: plated product, drink, packaging, serving ritual, ingredient detail or service moment required by the storyboard`;
+    policy.mustShow = [
+      `confirmed food/beverage evidence of ${subject}`,
+      'the serving, preparation, packaging, ingredient or dining/service moment named by this shot',
+    ];
+    policy.mustNotShow = [
+      'material showroom, facade panel, software dashboard, cosmetics shelf, fashion boutique, warehouse or unrelated consumer product replacement',
+      'unconfirmed cookware or kitchen fixture becoming the advertised subject',
+    ];
+    policy.qaRule = 'For food/beverage subjects, pass only if the confirmed edible/drink/service evidence is the advertised subject; reject unrelated props or scene templates.';
+    return policy;
+  }
+  if (explicit.homeInterior) {
+    policy.id = 'home_interior_space';
+    policy.industry = 'space / hospitality / home interior';
+    policy.allowedEnvironment = 'the confirmed interior, home, hotel, property, consultation or designed-room setting named by this shot';
+    policy.requiredEvidence = `space/interior evidence for ${subject}: room feature, furnishing, layout, material, service detail or experience proof required by this shot`;
+    policy.mustShow = [
+      `confirmed space/interior evidence of ${subject}`,
+      'the room, furnishing, layout, material or service moment required by the storyboard',
+    ];
+    policy.mustNotShow = [
+      'unconfirmed kitchen cookware, material showroom, software dashboard, cosmetics shelf, factory, warehouse or generic exterior',
+      'random decor prop replacing the advertised subject',
+    ];
+    policy.qaRule = 'For space/interior subjects, pass only if the confirmed room/space/service evidence is visible; reject unrelated product or location templates.';
+    return policy;
+  }
+  if (explicit.healthcareEducation) {
+    policy.id = 'professional_service';
+    policy.industry = 'professional service';
+    policy.allowedEnvironment = 'the confirmed clinic, classroom, consultation room, studio, training, reception or professional service setting named by this shot';
+    policy.requiredEvidence = `professional-service evidence for ${subject}: service interaction, tool, document, demonstration or outcome proof required by this shot`;
+    policy.mustShow = [
+      `confirmed professional-service evidence of ${subject}`,
+      'the service interaction, tool, document, learning/medical/professional moment or outcome named by this shot',
+    ];
+    policy.mustNotShow = [
+      'retail shelf, material showroom, kitchen/cookware, fashion/beauty counter, software dashboard, warehouse or unrelated product template unless explicitly requested',
+      'fake readable documents or UI text replacing the real service evidence',
+    ];
+    policy.qaRule = 'For professional-service subjects, pass only if the confirmed service interaction/outcome evidence is visible; reject unrelated product templates.';
+    return policy;
+  }
+  return policy;
+}
+
+function _luxuryIndustryDisambiguationPrompt(productSubject = '', scene = {}) {
+  const policy = _luxuryIndustryDisambiguationPolicy(productSubject, scene);
+  return [
+    `INDUSTRY DISAMBIGUATION LOCK: subject "${policy.subject}" belongs to ${policy.industry} for this shot.`,
+    `Allowed evidence/environment: ${policy.requiredEvidence}; ${policy.allowedEnvironment}.`,
+    `Must show: ${policy.mustShow.join('; ')}.`,
+    `Must not show: ${policy.mustNotShow.join('; ')}.`,
+    `QA rule: ${policy.qaRule}`,
+  ].filter(Boolean).join(' ');
 }
 
 async function _createLuxurySteelReferenceAnchor(req, { filename = '', destDir = JIMENG_ASSETS_DIR } = {}) {
@@ -13308,6 +13506,7 @@ function _luxuryImageSubjectAlias(productSubject = '', scene = {}) {
 function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
+  const industryPolicyPrompt = _luxuryIndustryDisambiguationPrompt(rawSubject || subject, scene);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject);
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
@@ -13326,6 +13525,7 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneE
       'Any device/interface/tool/place is only an evidence carrier when explicitly confirmed; do not turn the campaign into a default carrier ad.',
       'The frame must show the confirmed workflow/use/result evidence in the confirmed context.',
       'Do not invent unrelated goods, places, UI, props, logos, readable text or default industry scenes.',
+      industryPolicyPrompt,
       _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     ].filter(Boolean).join(' ');
   }
@@ -13333,16 +13533,18 @@ function _luxuryProductLockPrompt(productSubject = '', scene = {}, { allowSceneE
     `PRODUCT SUBJECT LOCK: the advertised product category is "${subject}".`,
     'The hero subject must stay in this product category and must be visually derived from reference image 1.',
     'Do not invent a different product/service category, unrelated packaged goods, default props, default UI carrier, default place, logo or readable text unless the confirmed brief explicitly names it.',
+    industryPolicyPrompt,
     _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     'If the uploaded main subject is abstract, material, service, scene or relationship evidence, treat that confirmed evidence as the subject itself instead of placing unrelated objects on it.',
     rawSubject && rawSubject !== subject ? `Original product wording: ${rawSubject}. Preserve that exact advertised category from the user brief and references.` : '',
-    'The product should look finished, installed, polished, premium and commercially usable.',
+    'The product should look finished, installed, polished, premium and commercially usable only within the confirmed industry/use case above.',
   ].filter(Boolean).join(' ');
 }
 
 function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSceneExplicit = false } = {}) {
   const rawSubject = String(productSubject || 'uploaded main product').trim();
   const subject = _luxuryImageSubjectAlias(rawSubject, scene);
+  const industryPolicyPrompt = _luxuryIndustryDisambiguationPrompt(rawSubject || subject, scene);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(rawSubject || subject);
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: rawSubject || subject, brief: '', scene, allowSceneExplicit });
   if (robotAssistantSubject) {
@@ -13360,6 +13562,7 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSce
       '正向主体锚点：必须看见同一真人演员/用户角色在已确认业务场景中执行已确认的使用、创作、协作、操作、转化或结果动作。',
       '画面证据只能来自用户需求、上传素材、已确认剧本或人工编辑；不要自动套用手机、订单、货架、仓库、后台等模板。',
       'Never output a generic carrier ad, isolated UI mockup, material showroom, beauty product shelf, sci-fi dashboard, fixed order/inventory setup, or empty workplace.',
+      industryPolicyPrompt,
       _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
     ].join(' ');
   }
@@ -13367,12 +13570,20 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSce
     `ABSOLUTE FIRST PRIORITY: the visible hero subject must be "${subject}".`,
     `正向主体锚点：画面主要视觉权重必须属于"${subject}"，不要只拍氛围、空场景、随机道具或默认行业模板。`,
     'Never replace the advertised subject with an unrelated category, default carrier, default place, default prop, fake UI, logo or readable generated text.',
+    industryPolicyPrompt,
     _luxuryUnconfirmedSubjectDriftPrompt(rawSubject || subject, scene, { allowSceneExplicit }),
   ].filter(Boolean).join(' ');
 }
 
 function _luxurySteelEnvironmentLockPrompt(productSubject = '', scene = {}) {
-  return '';
+  const policy = _luxuryIndustryDisambiguationPolicy(productSubject, scene);
+  if (!policy || policy.id === 'confirmed_story_only') return '';
+  return [
+    'CONFIRMED INDUSTRY / USE-CASE LOCK:',
+    `Subject "${policy.subject}" must be visualized as ${policy.industry}.`,
+    `Allowed scene/evidence: ${policy.allowedEnvironment}; ${policy.requiredEvidence}.`,
+    `Hard negatives for this shot: ${policy.mustNotShow.join('; ')}.`,
+  ].join(' ');
 }
 
 function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
@@ -13383,12 +13594,14 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   const isSteelOrMaterial = _isLuxurySteelMaterialSubject(subject, scene);
   const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
+  const policy = _luxuryIndustryDisambiguationPolicy(subject, scene);
   if (personRequired && softwareWorkflow) {
     return [
       'REQUIRED SERVICE STORY VISUAL ANCHOR:',
       'The first readable subject must be the confirmed person/role performing the confirmed workflow, service use, transformation or result in the confirmed environment.',
       `The advertised service evidence must remain visible as "${subject}" through the carriers explicitly required by the brief/assets/script; do not require a physical package for the service itself.`,
       'The frame must look like a live-action commercial storyboard panel: confirmed role + confirmed environment + confirmed evidence + requested emotion/action.',
+      `Industry evidence lock: ${policy.requiredEvidence}.`,
       '中文硬约束：画面必须像真人实拍广告，商品/服务主体、人物动作和场景都来自已确认需求；不能自动套用手机、订单、货架、仓库、后台等模板。',
     ].join(' ');
   }
@@ -13397,6 +13610,8 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
       'REQUIRED STORY VISUAL ANCHOR:',
       'The first readable subject must be a real human actor inside a believable commercial scene, performing the storyboard action.',
       `The advertised product evidence must remain visible and recognizable as "${subject}", but it is proof inside the story scene, not a product-only catalogue hero.`,
+      `Industry evidence lock: ${policy.requiredEvidence}.`,
+      `Do not cross into these unconfirmed carriers: ${policy.mustNotShow.join('; ')}.`,
       'The frame must look like a live-action commercial storyboard panel: person + environment + product/material evidence in one coherent shot.',
       'Do not output an isolated product packshot, empty background, catalogue still, or default scene template.',
       '中文硬约束：画面第一眼必须有人物在已确认场景中行动，同时看见商品/服务主体；不能自动改成固定行业场景或纯产品图。',
@@ -13405,6 +13620,8 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   return [
     'REQUIRED POSITIVE VISUAL ANCHOR:',
     `The main visible subject must be "${subject}".`,
+    `Industry evidence lock: ${policy.requiredEvidence}.`,
+    `Do not cross into these unconfirmed carriers: ${policy.mustNotShow.join('; ')}.`,
     'The subject must be readable in the first glance and should not be replaced by generic luxury props, abstract atmosphere, unrelated objects, default UI carriers or empty scenery.',
   ].join(' ');
 }
@@ -13413,11 +13630,15 @@ function _luxuryKeyframeSceneRecipe(productSubject = '', scene = {}) {
   const text = [productSubject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.objective, scene.voiceover]
     .filter(Boolean)
     .join(' ');
+  const policy = _luxuryIndustryDisambiguationPolicy(productSubject || scene.product_subject, scene);
   return [
-    'GENERIC CONFIRMED-SCENE RECIPE:',
+    'CONFIRMED-SCENE RECIPE:',
     'Create a realistic live-action commercial scene from the confirmed storyboard contract only.',
+    `Use-case/industry: ${policy.industry}.`,
+    `Allowed evidence/environment: ${policy.requiredEvidence}; ${policy.allowedEnvironment}.`,
     'Show the explicitly required subject, person/action, evidence carriers, result state and environment; do not add carriers or places that are not present in the brief, assets, script or manual edits.',
     text ? `Confirmed shot evidence text: ${_luxuryStrictText(text, 260)}.` : '',
+    `Avoid for this shot: ${policy.mustNotShow.join('; ')}.`,
     'Use practical natural lighting, believable real-world details and real camera perspective. Avoid default carrier ads, default workplace scenes, unrelated props, fake readable UI and template locations.',
   ].filter(Boolean).join(' ');
 }
@@ -13645,6 +13866,7 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   const contract = scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object'
     ? { ...scene.strict_storyboard_contract }
     : _buildLuxuryStrictStoryboardContract(scene, index, total, { productSubject, aspectRatio });
+  const industryPolicy = _luxuryIndustryDisambiguationPolicy(productSubject || scene.product_subject || contract.product_subject, scene);
   const originalMustShow = Array.isArray(contract.must_show) ? contract.must_show : [];
   const originalMustNotShow = Array.isArray(contract.must_not_show) ? contract.must_not_show : [];
   const mustShow = [];
@@ -13674,8 +13896,10 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   if (missedSubject || wrongProduct || productLow) {
     repairNotes.push('required_subject');
     mustShow.push(`the advertised subject evidence must be visibly readable as ${_luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || contract.product_subject || 'the advertised product/service')}`);
+    mustShow.push(`industry-specific evidence must be: ${industryPolicy.requiredEvidence}`);
     mustShow.push('the exact storyboard-required subject/evidence/use moment in the same frame, not a generic substitute');
     mustNotShow.push('any unrelated category, stock prop, default industry carrier, or unconfirmed product/service/person/place unless explicitly requested');
+    mustNotShow.push(...(industryPolicy.mustNotShow || []).map(x => `repeat industry drift: ${x}`));
   }
   if (sceneLow || wrongScene) {
     repairNotes.push('scene_environment');
@@ -13737,6 +13961,7 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
       qa?.observed ? `Previous observation: ${_luxuryStrictText(qa.observed, 180)}.` : '',
       Array.isArray(qa?.fatal_issues) && qa.fatal_issues.length ? `Fatal QA issues: ${_luxuryStrictText(qa.fatal_issues.join('; '), 220)}.` : '',
       Array.isArray(qa?.review_issues) && qa.review_issues.length ? `Review QA issues: ${_luxuryStrictText(qa.review_issues.join('; '), 220)}.` : '',
+      industryPolicy.qaRule ? `Industry-specific repair rule: ${industryPolicy.qaRule}` : '',
       'The next keyframe must fix every listed failure and will be rejected if any required subject, real-world scene, presenter identity, product evidence or lock reference is missing or replaced.',
     ].filter(Boolean).join(' '),
     repair_notes: repairNotes,
@@ -21270,6 +21495,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
   const locks = scene.visual_locks || null;
   const locksPrompt = _luxuryLocksPrompt(locks, 900);
   const subject = _luxuryStrictText(productSubject || scene.product_subject || '', 140);
+  const industryPolicy = _luxuryIndustryDisambiguationPolicy(subject || productSubject || scene.product_subject, scene);
   const multiCharacterContract = _luxuryBuildMultiCharacterContract(scene, subject);
   const visual = _luxuryStrictText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 520);
   const action = _luxuryCleanActionField(scene.action || scene.visual_action || '', scene);
@@ -21315,6 +21541,8 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     : '';
   const mustShow = _luxuryStrictList(visualContract.must_show || scene.must_show, 10);
   [
+    industryPolicy.requiredEvidence ? `industry-specific subject evidence: ${industryPolicy.requiredEvidence}` : '',
+    industryPolicy.allowedEnvironment ? `allowed industry environment: ${industryPolicy.allowedEnvironment}` : '',
     locks?.reality_lock?.scene_basis ? `real-world scene basis: ${locks.reality_lock.scene_basis}` : '',
     locks?.product_lock?.subject ? `locked product subject: ${locks.product_lock.subject}` : '',
     locks?.character_lock?.prompt ? 'same uploaded/reference actor identity when a person appears' : '',
@@ -21327,6 +21555,11 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     if (!mustShow.includes(item) && mustShow.length < 10) mustShow.push(item);
   });
   const mustNotShow = _luxuryStrictList(visualContract.must_not_show || scene.must_not_show, 14);
+  (industryPolicy.mustNotShow || [])
+    .map(item => `industry drift forbidden: ${item}`)
+    .forEach(item => {
+      if (!mustNotShow.includes(item) && mustNotShow.length < 14) mustNotShow.push(item);
+    });
   _luxuryUnconfirmedDriftLabels(subject, scene)
     .map(label => `unconfirmed ${label}`)
     .forEach(item => {
@@ -21345,6 +21578,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     multiCharacterContract.required ? multiCharacterContract.qa_rule : '',
     controlledRuleText ? `Controlled production QA: ${controlledRuleText}` : '',
     segmentRuleText ? `Segment continuity QA: ${segmentRuleText}` : '',
+    industryPolicy.qaRule ? `Industry disambiguation QA: ${industryPolicy.qaRule}` : '',
     ...(Array.isArray(scene.controlled_qa_rules) ? scene.controlled_qa_rules : (controlledGuide?.qa_rules || [])),
   ].filter(Boolean).join(' '), 1100);
   return {
@@ -21375,6 +21609,7 @@ function _buildLuxuryStrictStoryboardContract(scene = {}, index = 0, total = 1, 
     character_lock: locks?.character_lock || scene.character_lock || null,
     multi_character_contract: multiCharacterContract,
     product_lock: locks?.product_lock || scene.product_lock || null,
+    industry_policy: industryPolicy,
     scene_lock: locks?.scene_lock || scene.scene_lock || null,
     prop_lock: locks?.prop_lock || scene.prop_lock || null,
     ui_lock: locks?.ui_lock || scene.ui_lock || null,
@@ -21433,6 +21668,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     ? packet.current_shot
     : null;
   const currentShotForImage = currentShot ? { ...currentShot } : null;
+  const industryPolicyPrompt = _luxuryIndustryDisambiguationPrompt(contract.product_subject || scene.product_subject, scene);
   if (currentShotForImage?.dialogue) {
     currentShotForImage.spoken_intent = _luxuryStrictText(currentShotForImage.dialogue, 180);
     delete currentShotForImage.dialogue;
@@ -21445,6 +21681,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     currentShotForImage ? `Current shot image execution packet: ${_luxuryStrictText(JSON.stringify(currentShotForImage), 1800)}.` : '',
     `Shot: ${contract.shot_id}/${contract.shot_count}; role: ${contract.role}; duration: ${contract.duration}s.`,
     `Product subject: ${contract.product_subject}.`,
+    industryPolicyPrompt,
     _luxuryUnconfirmedSubjectDriftPrompt(contract.product_subject || scene.product_subject, scene),
     `Visible subject: ${contract.visible_subject}.`,
     `Scene: ${contract.scene}.`,
@@ -21476,9 +21713,11 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
 // 中文说明：图片分镜和图生视频是两套提示词。图片 prompt 决定“这一帧长什么样”，
 // 视频 prompt 只决定“已通过 QA 的这一帧如何运动”，不能复用图片 prompt 重新描述画面。
 function _buildLuxuryImageContract(scene = {}, contract = {}) {
+  const industryPolicy = contract.industry_policy || _luxuryIndustryDisambiguationPolicy(contract.product_subject || scene.product_subject, scene);
   return {
     contract_type: 'luxury_image_keyframe_contract_v1',
     subject: contract.product_subject || scene.product_subject || '',
+    industry_policy: industryPolicy,
     visible_subject: contract.visible_subject || '',
     visible_evidence: Array.isArray(contract.must_show) ? contract.must_show : [],
     scene: contract.scene || '',
