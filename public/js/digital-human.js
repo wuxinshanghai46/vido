@@ -6739,7 +6739,6 @@
     const tags = [
       (current.intent && current.intent !== 'auto') ? `方向：${luxuryAdIntentLabel(current.intent)}` : '',
       current.note ? `补充：${current.note}` : '',
-      current.forbidden ? `禁用：${current.forbidden}` : '',
     ].filter(Boolean);
     return {
       title,
@@ -6753,7 +6752,7 @@
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
       panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <small>行业</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
+        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
@@ -6820,7 +6819,6 @@
         </section>
         <section class="dh-lux-industry-modal-fields">
           <label><span>行业补充 <button class="dh-lux-industry-ai-btn" type="button" id="dhLuxIndustryAiFill">AI 根据需求补充</button></span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="例如：高端不锈钢装饰材料，不是厨具">${escapeHtml(current.note || '')}</textarea></label>
-          <label><span>禁止出现</span><textarea class="dh-input" id="dhLuxIndustryModalForbidden" maxlength="240" rows="3" placeholder="例如：厨房、水槽、锅具">${escapeHtml(current.forbidden || '')}</textarea></label>
         </section>
       </div>
       <div class="dh-modal-foot">
@@ -6838,7 +6836,7 @@
     const current = normalizeLuxuryIndustrySelection({
       ...draft,
       note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
-      forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+      forbidden: '',
     });
     const primaryOption = luxuryIndustryOption(current.primary);
     const secondaryOption = (primaryOption[2] || []).find(([value]) => value === current.secondary) || null;
@@ -6847,7 +6845,7 @@
       const r = await api('/api/dh/scripts/write', {
         method: 'POST',
         body: {
-          topic: `请根据广告需求补充行业边界。广告需求：${brief}\n当前行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}\n表达方向：${luxuryAdIntentLabel(current.intent || 'auto')}\n已有补充：${current.note || '无'}\n已有禁止项：${current.forbidden || '无'}\n请输出两句：第一句写“行业补充：...”，第二句写“禁止出现：...”。`,
+          topic: `请根据广告需求补充行业边界。广告需求：${brief}\n当前行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}\n表达方向：${luxuryAdIntentLabel(current.intent || 'auto')}\n已有补充：${current.note || '无'}\n只输出一句“行业补充：...”，不要输出禁止项。`,
           duration_sec: 20,
           style: current.intent || 'auto',
           tone: '简洁、具体、可用于视频质检',
@@ -6856,14 +6854,12 @@
       });
       if (!r?.success) throw new Error(r?.error || 'AI 补充失败');
       const text = String(r.text || '').trim();
-      const noteMatch = text.match(/行业补充[:：]\s*([\s\S]*?)(?:禁止出现[:：]|$)/);
-      const forbiddenMatch = text.match(/禁止出现[:：]\s*([\s\S]*)$/);
+      const noteMatch = text.match(/行业补充[:：]\s*([\s\S]*)$/);
       const note = (noteMatch?.[1] || text.split(/[。；;\n]/)[0] || '').replace(/^[-\s]+/, '').trim().slice(0, 240);
-      const forbidden = (forbiddenMatch?.[1] || '').replace(/^[-\s]+/, '').trim().slice(0, 240);
       applyDraft({
         ...current,
         note: note || current.note,
-        forbidden: forbidden || current.forbidden,
+        forbidden: '',
       });
       toast('AI 已根据当前需求补充行业信息，请确认后保存', 'success');
     } catch (err) {
@@ -6897,7 +6893,7 @@
         secondary: activeSecondary,
         intent: activeIntent,
         note: $('#dhLuxIndustryModalNote')?.value || '',
-        forbidden: $('#dhLuxIndustryModalForbidden')?.value || '',
+        forbidden: '',
       });
       modal.classList.remove('open');
       // 中文注释：保存行业选择后才清理当前任务派生结果；弹窗内临时点选不影响当前任务。
@@ -6913,7 +6909,7 @@
           primary: primary.dataset.luxIndustryPrimary || 'auto',
           secondary: '',
           note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
-          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+          forbidden: '',
         });
         rerender();
         return;
@@ -6924,7 +6920,7 @@
           ...draft,
           secondary: secondary.dataset.luxIndustrySecondary || '',
           note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
-          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+          forbidden: '',
         });
         rerender();
         return;
@@ -6935,7 +6931,7 @@
           ...draft,
           intent: intent.dataset.luxIndustryIntent || 'auto',
           note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
-          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+          forbidden: '',
         });
         rerender();
         return;
