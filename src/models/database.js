@@ -205,6 +205,36 @@ function normalizeNovelUpdateFields(fields = {}) {
 
 // ——— 导出统一接口（保持向后兼容）———
 
+function archiveGenericTask(module, taskType, row = {}, extra = {}) {
+  if (!row || !row.id) return;
+  require('../services/taskArchiveService').upsertArchive({
+    id: `${module}:${taskType}:${row.id}`,
+    task_id: row.id,
+    project_id: row.project_id || row.id,
+    user_id: row.user_id || null,
+    module,
+    task_type: taskType,
+    title: row.title || row.name || row.topic || row.theme || taskType,
+    status: row.status || row.state || row.runtime_status?.agent_workflow || 'saved',
+    content: row.content || row.text || row.prompt || row.description || row.requirement || '',
+    script: row.script || row.scenes || row.chapters || null,
+    storyboard: row.storyboard || row.scenes || row.keyframes || null,
+    prompts: row.prompt ? [{ source: taskType, prompt: row.prompt }] : [],
+    video: {
+      video_url: row.video_url || row.videoUrl || row.output_url || row.result_url || '',
+      clips: row.clips || row.video_clips || [],
+    },
+    source_snapshot: row,
+    ...extra,
+    created_at: row.created_at,
+  });
+}
+
+function removeGenericTaskArchive(module, taskType, id) {
+  if (!id) return;
+  require('../services/taskArchiveService').removeArchive(`${module}:${taskType}:${id}`);
+}
+
 const db = {
   // ——— Projects ———
   insertProject(row) {
@@ -213,6 +243,7 @@ const db = {
     row.updated_at = row.created_at;
     data.projects.push(row);
     writeProjectDB(data);
+    archiveGenericTask('projects', 'project', row);
   },
   getProject(id) {
     return readProjectDB().projects.find(p => p.id === id) || null;
@@ -228,12 +259,13 @@ const db = {
     if (idx !== -1) {
       data.projects[idx] = { ...data.projects[idx], ...fields, updated_at: new Date().toISOString() };
       writeProjectDB(data);
+      archiveGenericTask('projects', 'project', data.projects[idx]);
     }
   },
   deleteProject(id) {
     const data = readProjectDB();
     const idx = data.projects.findIndex(p => p.id === id);
-    if (idx !== -1) { data.projects.splice(idx, 1); writeProjectDB(data); }
+    if (idx !== -1) { data.projects.splice(idx, 1); writeProjectDB(data); removeGenericTaskArchive('projects', 'project', id); }
   },
 
   // ——— Stories ———
@@ -242,6 +274,7 @@ const db = {
     row.created_at = new Date().toISOString();
     data.stories.push(row);
     writeProjectDB(data);
+    archiveGenericTask('projects', 'story', row);
   },
   getStoryByProject(projectId) {
     return readProjectDB().stories.find(s => s.project_id === projectId) || null;
@@ -253,6 +286,7 @@ const db = {
     row.created_at = new Date().toISOString();
     data.video_clips.push(row);
     writeProjectDB(data);
+    archiveGenericTask('projects', 'video_clip', row);
   },
   updateClip(id, fields) {
     const data = readProjectDB();
@@ -260,6 +294,7 @@ const db = {
     if (idx !== -1) {
       data.video_clips[idx] = { ...data.video_clips[idx], ...fields };
       writeProjectDB(data);
+      archiveGenericTask('projects', 'video_clip', data.video_clips[idx]);
     }
   },
   getClipsByProject(projectId) {
@@ -277,6 +312,7 @@ const db = {
     row.created_at = new Date().toISOString();
     data.final_videos.push(row);
     writeProjectDB(data);
+    archiveGenericTask('projects', 'final_video', row);
   },
   getFinalVideoByProject(projectId) {
     // 取最新的记录（多次生成时返回最后一条）
@@ -285,46 +321,51 @@ const db = {
   },
 
   // ——— I2V Tasks（图生视频）———
-  insertI2VTask(row)          { i2vStore.insert(row); },
+  insertI2VTask(row)          { i2vStore.insert(row); archiveGenericTask('i2v', 'image_to_video', row); },
   getI2VTask(id)              { return i2vStore.get(id); },
   listI2VTasks(userId)        { return i2vStore.list(t => !userId || t.user_id === userId); },
-  updateI2VTask(id, fields)   { i2vStore.update(id, fields); },
-  deleteI2VTask(id)           { i2vStore.delete(id); },
+  updateI2VTask(id, fields)   { i2vStore.update(id, fields); archiveGenericTask('i2v', 'image_to_video', i2vStore.get(id)); },
+  deleteI2VTask(id)           { i2vStore.delete(id); removeGenericTaskArchive('i2v', 'image_to_video', id); },
 
   // ——— Novels（AI 小说）———
-  insertNovel(row)            { novelStore.insert(row); },
+  insertNovel(row)            { novelStore.insert(row); archiveGenericTask('novel', 'novel', row); },
   getNovel(id)                { return novelStore.get(id); },
   listNovels(userId)          { return novelStore.list(n => !userId || n.user_id === userId); },
-  updateNovel(id, fields)     { novelStore.update(id, normalizeNovelUpdateFields(fields)); },
-  deleteNovel(id)             { novelStore.delete(id); },
+  updateNovel(id, fields)     { novelStore.update(id, normalizeNovelUpdateFields(fields)); archiveGenericTask('novel', 'novel', novelStore.get(id)); },
+  deleteNovel(id)             { novelStore.delete(id); removeGenericTaskArchive('novel', 'novel', id); },
 
   // ——— Assets（素材库）———
-  insertAsset(row)            { assetStore.insert(row); },
+  insertAsset(row) {
+    assetStore.insert(row);
+    if (row && (row.type === 'character' || row.category === 'character')) {
+      require('../services/taskArchiveService').upsertActorAsset(row);
+    }
+  },
   getAsset(id)                { return assetStore.get(id); },
   listAssets(userId, type)    { return assetStore.list(a => (!userId || a.user_id === userId) && (!type || type === 'all' || a.type === type)); },
   updateAsset(id, fields)     { assetStore.update(id, fields); },
   deleteAsset(id)             { assetStore.delete(id); },
 
   // ——— Portraits（形象生成）———
-  insertPortrait(row)         { portraitStore.insert(row); },
+  insertPortrait(row)         { portraitStore.insert(row); archiveGenericTask('digital_human', 'portrait', row); },
   getPortrait(id)             { return portraitStore.get(id); },
   listPortraits(userId)       { return portraitStore.list(t => !userId || t.user_id === userId); },
-  updatePortrait(id, fields)  { portraitStore.update(id, fields); },
-  deletePortrait(id)          { portraitStore.delete(id); },
+  updatePortrait(id, fields)  { portraitStore.update(id, fields); archiveGenericTask('digital_human', 'portrait', portraitStore.get(id)); },
+  deletePortrait(id)          { portraitStore.delete(id); removeGenericTaskArchive('digital_human', 'portrait', id); },
 
   // ——— Comic Tasks（漫画生成）———
-  insertComicTask(row)        { comicStore.insert(row); },
+  insertComicTask(row)        { comicStore.insert(row); archiveGenericTask('comic', 'comic_task', row); },
   getComicTask(id)            { return comicStore.get(id); },
   listComicTasks(userId)      { return comicStore.list(t => !userId || t.user_id === userId); },
-  updateComicTask(id, fields) { comicStore.update(id, fields); },
-  deleteComicTask(id)         { comicStore.delete(id); },
+  updateComicTask(id, fields) { comicStore.update(id, fields); archiveGenericTask('comic', 'comic_task', comicStore.get(id)); },
+  deleteComicTask(id)         { comicStore.delete(id); removeGenericTaskArchive('comic', 'comic_task', id); },
 
   // ——— Avatar Tasks（数字人视频）———
-  insertAvatarTask(row)       { avatarStore.insert(row); },
+  insertAvatarTask(row)       { avatarStore.insert(row); archiveGenericTask('digital_human', 'avatar_video', row); },
   getAvatarTask(id)           { return avatarStore.get(id); },
   listAvatarTasks(userId)     { return avatarStore.list(t => !userId || t.user_id === userId); },
-  updateAvatarTask(id, fields){ avatarStore.update(id, fields); },
-  deleteAvatarTask(id)        { avatarStore.delete(id); },
+  updateAvatarTask(id, fields){ avatarStore.update(id, fields); archiveGenericTask('digital_human', 'avatar_video', avatarStore.get(id)); },
+  deleteAvatarTask(id)        { avatarStore.delete(id); removeGenericTaskArchive('digital_human', 'avatar_video', id); },
 
   // ——— Monitor Accounts（监控账号）———
   insertMonitor(row)            { monitorStore.insert(row); },
@@ -334,13 +375,13 @@ const db = {
   deleteMonitor(id)             { monitorStore.delete(id); },
 
   // ——— Monitor Contents（内容库）———
-  insertContent(row)            { contentStore.insert(row); },
+  insertContent(row)            { contentStore.insert(row); archiveGenericTask('radar', 'content', row); },
   getContent(id)                { return contentStore.get(id); },
   listContents(userId, accountId) {
     return contentStore.list(c => (!userId || c.user_id === userId) && (!accountId || c.account_id === accountId));
   },
-  updateContent(id, fields)     { contentStore.update(id, fields); },
-  deleteContent(id)             { contentStore.delete(id); },
+  updateContent(id, fields)     { contentStore.update(id, fields); archiveGenericTask('radar', 'content', contentStore.get(id)); },
+  deleteContent(id)             { contentStore.delete(id); removeGenericTaskArchive('radar', 'content', id); },
 
   // ——— Radar Subscriptions（关键词订阅）———
   insertSubscription(row)        { subscriptionStore.insert(row); },
@@ -351,11 +392,11 @@ const db = {
   deleteSubscription(id)         { subscriptionStore.delete(id); },
 
   // ——— Replicate Tasks（复刻任务）———
-  insertReplicateTask(row)      { replicateStore.insert(row); },
+  insertReplicateTask(row)      { replicateStore.insert(row); archiveGenericTask('replicate', 'replicate_task', row); },
   getReplicateTask(id)          { return replicateStore.get(id); },
   listReplicateTasks(userId)    { return replicateStore.list(t => !userId || t.user_id === userId); },
-  updateReplicateTask(id, fields){ replicateStore.update(id, fields); },
-  deleteReplicateTask(id)       { replicateStore.delete(id); },
+  updateReplicateTask(id, fields){ replicateStore.update(id, fields); archiveGenericTask('replicate', 'replicate_task', replicateStore.get(id)); },
+  deleteReplicateTask(id)       { replicateStore.delete(id); removeGenericTaskArchive('replicate', 'replicate_task', id); },
 
   // ——— Custom Voices（自定义声音）———
   insertVoice(row)            { voiceStore.insert(row); },

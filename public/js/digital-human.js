@@ -4287,6 +4287,7 @@
     state.luxuryAd.productionContract = null;
     state.luxuryAd.productionProjectId = '';
     state.luxuryAd.productionProject = null;
+    clearLuxuryAdProjectRouteParam('luxury-ad');
     state.luxuryAd.storyboardDetailed = false;
     state.luxuryAd.segments = [];
     state.luxuryAd.keyframes = [];
@@ -5982,6 +5983,7 @@
     state.luxuryAd.productionContract = null;
     state.luxuryAd.productionProjectId = '';
     state.luxuryAd.productionProject = null;
+    clearLuxuryAdProjectRouteParam('luxury-ad');
   }
 
   function resetLuxuryAdFrameGenerationState() {
@@ -6770,6 +6772,7 @@
   function markLuxuryIndustryDirty({ render = true, selection = null } = {}) {
     // 中文注释：行业改变只清理后续派生内容，不改用户原始需求，也不把行业替换成固定场景。
     state.luxuryAd.industry = normalizeLuxuryIndustrySelection(selection || luxuryIndustrySelectionPayload());
+    resetLuxuryAdProjectIdentityForNewBrief();
     state.luxuryAd.adType = state.luxuryAd.industry.intent || state.luxuryAd.adType || 'auto';
     state.luxuryAd.industryContract = null;
     state.luxuryAd.briefInfo = null;
@@ -7024,6 +7027,7 @@
 
   function markLuxuryControlledProductionDirty({ renderControl = true } = {}) {
     // 中文注释：制作控制改变会影响后续剧本/分镜，所以只清掉派生产物，不改用户原始需求和已上传素材。
+    resetLuxuryAdProjectIdentityForNewBrief();
     state.luxuryAd.briefInfo = null;
     state.luxuryAd.visualReferenceBrief = null;
     state.luxuryAd.assetManifest = null;
@@ -8548,6 +8552,7 @@
       if (!btn) return;
       const asset = items.find(x => x.id === btn.dataset.luxActorMaterial);
       if (!asset) return;
+      resetLuxuryAdProjectIdentityForNewBrief();
       state.selectedAvatar = null;
       state.luxuryAd.personAsset = luxuryActorMaterialToPersonAsset(asset);
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -9803,6 +9808,7 @@
     const picked = pickUploadableImages(fileList, { maxCount: 1, label: '商品图片' });
     const file = picked.files[0];
     if (!file) return toast(picked.error || '请上传商品图片文件', 'error');
+    resetLuxuryAdProjectIdentityForNewBrief();
     if (state.luxuryAd.productAsset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(state.luxuryAd.productAsset.previewUrl);
     state.luxuryAd.productAsset = {
       name: file.name || '主产品图',
@@ -9840,6 +9846,7 @@
     if (!product) return;
     if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再删除主体图', 'error');
     if (product.uploading) return toast('主体图正在上传，上传完成后再删除', 'error');
+    resetLuxuryAdProjectIdentityForNewBrief();
     revokeLuxuryBlobPreview(product);
     state.luxuryAd.productAsset = null;
     syncLuxuryAdUploadFlags();
@@ -9860,6 +9867,7 @@
     const picked = pickUploadableImages(fileList, { maxCount: 1, label: '真人参考图片' });
     const file = picked.files[0];
     if (!file) return toast(picked.error || '请上传真人参考图片', 'error');
+    resetLuxuryAdProjectIdentityForNewBrief();
     if (state.luxuryAd.personAsset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(state.luxuryAd.personAsset.previewUrl);
     state.luxuryAd.personAsset = {
       id: 'uploaded_person_reference',
@@ -10075,6 +10083,7 @@
         ? (Array.isArray(character.extra_image_urls) ? character.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [])
         : actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
       const detectedGender = await detectLuxuryAdPersonGender(primaryActorUrl);
+      resetLuxuryAdProjectIdentityForNewBrief();
       state.luxuryAd.personGenerationError = null;
       state.luxuryAd.personGenerationProgress = {
         active: true,
@@ -10180,6 +10189,7 @@
     const picked = pickUploadableImages(fileList, { maxCount: remaining, label: '需求参考图' });
     const files = picked.files;
     if (!files.length) return toast(remaining <= 0 ? '需求参考图最多上传 6 张' : (picked.error || '请上传图片文件'), 'error');
+    resetLuxuryAdProjectIdentityForNewBrief();
     const start = existing.length;
     const next = [...existing];
     files.forEach((f, i) => {
@@ -18167,6 +18177,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       const field = e.target.dataset.luxPersonSpec;
       setLuxuryAdRouteFocus('person');
       luxuryAdPersonSpec()[field] = e.target.value || '';
+      resetLuxuryAdProjectIdentityForNewBrief();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];
@@ -18261,6 +18272,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       }
       const field = e.target.dataset.luxPersonSpec;
       luxuryAdPersonSpec()[field] = e.target.value || '';
+      resetLuxuryAdProjectIdentityForNewBrief();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];

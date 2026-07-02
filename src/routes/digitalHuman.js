@@ -25,6 +25,7 @@ const modelCapabilityService = require('../services/modelCapabilityService');
 const sqliteConfig = require('../db/sqlite');
 const contentRecords = require('../repositories/contentRecordRepository');
 const appKv = require('../repositories/appKvRepository');
+const taskArchiveService = require('../services/taskArchiveService');
 
 const JIMENG_ASSETS_DIR = path.join(__dirname, '../../outputs/jimeng-assets');
 const DH_IMAGES_DIR = path.join(__dirname, '../../outputs/dh-images');
@@ -954,6 +955,7 @@ function _compactLuxuryAdDraftBody(body = {}) {
     voice_volume: Math.max(0.6, Math.min(1.2, Number(body.voice_volume ?? body.voiceVolume ?? body.bgm_asset?.voice_volume ?? 1) || 1)),
     bgm_volume: Math.max(0, Math.min(0.35, Number(body.bgm_volume ?? body.bgmVolume ?? body.bgm_asset?.volume ?? 0.16) || 0.16)),
     voice_id: String(body.voice_id || body.voiceId || '').slice(0, 160),
+    voice_direction: String(body.voice_direction || body.voiceDirection || '').slice(0, 400),
     subtitle: _compactLuxuryAdSubtitle(body.subtitle) || (body.subtitle !== false ? { show: true } : false),
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
     route_focus: String(body.route_focus || body.routeFocus || '').slice(0, 40),
@@ -1140,6 +1142,11 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     global_visual_bible: _jsonClone(result.global_visual_bible || existing?.global_visual_bible || null),
     segment_plan: _jsonClone(segmentPlan || null),
     bgm_asset: compactBgmAsset,
+    bgm_volume: Math.max(0, Math.min(0.35, Number(body.bgm_volume ?? body.bgmVolume ?? existing?.bgm_volume ?? existing?.draft_state?.bgm_volume ?? compactBgmAsset?.volume ?? 0.16) || 0.16)),
+    voice_id: String(body.voice_id || body.voiceId || existing?.voice_id || existing?.draft_state?.voice_id || '').slice(0, 160),
+    voice_direction: String(body.voice_direction || body.voiceDirection || existing?.voice_direction || existing?.draft_state?.voice_direction || '').slice(0, 400),
+    voice_volume: Math.max(0.6, Math.min(1.2, Number(body.voice_volume ?? body.voiceVolume ?? existing?.voice_volume ?? existing?.draft_state?.voice_volume ?? 1) || 1)),
+    subtitle: _compactLuxuryAdSubtitle(body.subtitle) || existing?.subtitle || existing?.draft_state?.subtitle || (body.subtitle !== false ? { show: true } : false),
     avatar_task_id: result.avatar_task_id || result.task_id || body.avatar_task_id || existing?.avatar_task_id || '',
     video_url: result.video_url || result.videoUrl || body.video_url || body.videoUrl || existing?.video_url || '',
     videoUrl: result.videoUrl || result.video_url || body.videoUrl || body.video_url || existing?.videoUrl || '',
@@ -1170,6 +1177,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const overflow = Math.max(0, data.projects.length - 300);
   if (overflow) data.projects.splice(0, overflow);
   _writeLuxuryAdProjectStore(data);
+  taskArchiveService.upsertLuxuryAdProject(row);
   return _publicLuxuryAdProject(row);
 }
 
@@ -18101,6 +18109,33 @@ router.get('/luxury-ad/projects', (req, res) => {
   }
 });
 
+router.get('/task-archives', (req, res) => {
+  try {
+    const uid = scopeUserId(req);
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 80));
+    const rows = taskArchiveService.listArchives({
+      user_id: uid || undefined,
+      module: req.query.module ? String(req.query.module) : undefined,
+      task_type: req.query.task_type ? String(req.query.task_type) : undefined,
+      project_id: req.query.project_id ? String(req.query.project_id) : undefined,
+      status: req.query.status ? String(req.query.status) : undefined,
+    }).filter(row => _luxuryAdProjectBelongsTo(req, row)).slice(0, limit);
+    res.json({ success: true, archives: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '任务档案读取失败' });
+  }
+});
+
+router.get('/task-archives/:id', (req, res) => {
+  try {
+    const archive = taskArchiveService.getArchive(req.params.id);
+    if (!archive || !_luxuryAdProjectBelongsTo(req, archive)) return res.status(404).json({ success: false, error: '任务档案不存在' });
+    res.json({ success: true, archive });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '任务档案读取失败' });
+  }
+});
+
 router.get('/luxury-ad/projects/:id', (req, res) => {
   try {
     const project = _getLuxuryAdProject(req, req.params.id);
@@ -18119,6 +18154,7 @@ router.delete('/luxury-ad/projects/:id', (req, res) => {
     data.projects = data.projects.filter(project => !(project.id === id && _luxuryAdProjectBelongsTo(req, project)));
     if (data.projects.length === before) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
     _writeLuxuryAdProjectStore(data);
+    taskArchiveService.removeArchive(id);
     res.json({ success: true, id });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message || '剧情广告项目删除失败' });
