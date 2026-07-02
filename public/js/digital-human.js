@@ -6681,50 +6681,61 @@
 
   function luxuryIndustrySelectionPayload() {
     const current = normalizeLuxuryIndustrySelection(state.luxuryAd.industry);
-    const primary = luxuryIndustryOption($('#dhLuxAdIndustry')?.value || current.primary || 'auto')[0];
+    const primary = luxuryIndustryOption(current.primary || 'auto')[0];
     const primaryOption = luxuryIndustryOption(primary);
     const subs = primaryOption[2] || [];
-    const secondaryEl = $('#dhLuxAdSubIndustry');
-    const secondaryValue = secondaryEl ? secondaryEl.value : (current.secondary || '');
+    const secondaryValue = current.secondary || '';
     const secondary = subs.some(([value]) => value === secondaryValue) ? secondaryValue : '';
     const secondaryOption = subs.find(([value]) => value === secondary) || null;
-    const noteEl = $('#dhLuxAdIndustryNote');
-    const forbiddenEl = $('#dhLuxAdIndustryForbidden');
     return {
       primary,
       primary_label: primaryOption[1],
       secondary,
       secondary_label: secondaryOption ? secondaryOption[1] : '',
-      note: String(noteEl ? noteEl.value : (current.note || '')).trim().slice(0, 240),
-      forbidden: String(forbiddenEl ? forbiddenEl.value : (current.forbidden || '')).trim().slice(0, 240),
+      note: String(current.note || '').trim().slice(0, 240),
+      forbidden: String(current.forbidden || '').trim().slice(0, 240),
+    };
+  }
+
+  function luxuryIndustrySummary(selection = state.luxuryAd.industry) {
+    const current = normalizeLuxuryIndustrySelection(selection);
+    const primaryOption = luxuryIndustryOption(current.primary);
+    const subs = primaryOption[2] || [];
+    const secondaryOption = subs.find(([value]) => value === current.secondary) || null;
+    const title = current.primary === 'auto'
+      ? '行业：自动判断'
+      : `行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}`;
+    const tags = [
+      current.note ? `补充：${current.note}` : '',
+      current.forbidden ? `禁用：${current.forbidden}` : '',
+    ].filter(Boolean);
+    return {
+      title,
+      sub: tags.length ? tags.join(' · ') : '点击选择行业；选错后可重新选择。',
+      primaryLabel: primaryOption[1],
+      secondaryLabel: secondaryOption ? secondaryOption[1] : '',
     };
   }
 
   function renderLuxuryIndustryControls() {
-    const primarySelect = $('#dhLuxAdIndustry');
-    const secondarySelect = $('#dhLuxAdSubIndustry');
-    const noteInput = $('#dhLuxAdIndustryNote');
-    const forbiddenInput = $('#dhLuxAdIndustryForbidden');
-    if (!primarySelect || !secondarySelect) return;
-    const current = normalizeLuxuryIndustrySelection(state.luxuryAd.industry);
-    primarySelect.innerHTML = LUXURY_INDUSTRY_OPTIONS
-      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
-      .join('');
-    primarySelect.value = current.primary;
-    const subs = luxuryIndustryOption(current.primary)[2] || [];
-    secondarySelect.innerHTML = [
-      '<option value="">不指定细分</option>',
-      ...subs.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`),
-    ].join('');
-    secondarySelect.value = current.secondary;
-    secondarySelect.disabled = !subs.length;
-    if (noteInput) noteInput.value = current.note;
-    if (forbiddenInput) forbiddenInput.value = current.forbidden;
+    const panel = $('.dh-lux-industry-panel');
+    if (panel && !$('#dhLuxIndustryOpen', panel)) {
+      panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
+        <span>
+          <b id="dhLuxIndustrySummaryTitle"></b>
+          <small id="dhLuxIndustrySummarySub"></small>
+        </span>
+        <em>选择</em>
+      </button>`;
+    }
+    const summary = luxuryIndustrySummary();
+    setText('#dhLuxIndustrySummaryTitle', summary.title);
+    setText('#dhLuxIndustrySummarySub', summary.sub);
   }
 
-  function markLuxuryIndustryDirty({ render = true } = {}) {
+  function markLuxuryIndustryDirty({ render = true, selection = null } = {}) {
     // 中文注释：行业改变只清理后续派生内容，不改用户原始需求，也不把行业替换成固定场景。
-    state.luxuryAd.industry = normalizeLuxuryIndustrySelection(luxuryIndustrySelectionPayload());
+    state.luxuryAd.industry = normalizeLuxuryIndustrySelection(selection || luxuryIndustrySelectionPayload());
     state.luxuryAd.industryContract = null;
     state.luxuryAd.briefInfo = null;
     state.luxuryAd.visualReferenceBrief = null;
@@ -6742,6 +6753,104 @@
       renderLuxuryAdStoryboard();
       updateLuxuryAdStepLocks();
     }
+  }
+
+  function renderLuxuryIndustryModal(selection = state.luxuryAd.industry) {
+    const current = normalizeLuxuryIndustrySelection(selection);
+    const primaryOption = luxuryIndustryOption(current.primary);
+    const subs = primaryOption[2] || [];
+    return `<div class="dh-lux-industry-modal-card" role="dialog" aria-modal="true" aria-label="选择行业">
+      <div class="dh-modal-head">
+        <b>选择行业</b>
+        <button type="button" class="dh-modal-close" data-lux-industry-close aria-label="关闭">×</button>
+      </div>
+      <div class="dh-lux-industry-modal-body">
+        <section>
+          <div class="dh-lux-industry-modal-title"><b>一级行业</b><span>只作为行业边界和 QA 规则，不固定具体场景。</span></div>
+          <div class="dh-lux-industry-tile-grid">
+            ${LUXURY_INDUSTRY_OPTIONS.map(([value, label]) => `<button type="button" class="${value === current.primary ? 'active' : ''}" data-lux-industry-primary="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('')}
+          </div>
+        </section>
+        <section>
+          <div class="dh-lux-industry-modal-title"><b>细分行业</b><span>不确定可以不指定，系统仍按广告需求判断。</span></div>
+          <div class="dh-lux-industry-tile-grid compact">
+            <button type="button" class="${!current.secondary ? 'active' : ''}" data-lux-industry-secondary="">不指定细分</button>
+            ${subs.map(([value, label]) => `<button type="button" class="${value === current.secondary ? 'active' : ''}" data-lux-industry-secondary="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('')}
+          </div>
+        </section>
+        <section class="dh-lux-industry-modal-fields">
+          <label><span>行业补充</span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="例如：高端不锈钢装饰材料，不是厨具">${escapeHtml(current.note || '')}</textarea></label>
+          <label><span>禁止出现</span><textarea class="dh-input" id="dhLuxIndustryModalForbidden" maxlength="240" rows="3" placeholder="例如：厨房、水槽、锅具">${escapeHtml(current.forbidden || '')}</textarea></label>
+        </section>
+      </div>
+      <div class="dh-modal-foot">
+        <button class="dh-btn dh-btn-ghost" type="button" data-lux-industry-close>取消</button>
+        <button class="dh-btn dh-btn-primary" type="button" id="dhLuxIndustrySave">保存选择</button>
+      </div>
+    </div>`;
+  }
+
+  function openLuxuryIndustryModal() {
+    if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
+    let modal = $('#dhLuxIndustryModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'dhLuxIndustryModal';
+      modal.className = 'dh-lux-industry-modal open';
+      document.body.appendChild(modal);
+    }
+    modal.classList.add('open');
+    let draft = normalizeLuxuryIndustrySelection(state.luxuryAd.industry);
+    const rerender = () => {
+      modal.innerHTML = renderLuxuryIndustryModal(draft);
+    };
+    const save = () => {
+      const next = normalizeLuxuryIndustrySelection({
+        ...draft,
+        note: $('#dhLuxIndustryModalNote')?.value || '',
+        forbidden: $('#dhLuxIndustryModalForbidden')?.value || '',
+      });
+      const prev = JSON.stringify(normalizeLuxuryIndustrySelection(state.luxuryAd.industry));
+      const changed = JSON.stringify(next) !== prev;
+      modal.classList.remove('open');
+      if (changed) {
+        // 中文注释：保存行业选择后才清理当前任务派生结果；弹窗内临时点选不影响当前任务。
+        markLuxuryIndustryDirty({ selection: next });
+        setLuxuryProgress('content');
+      } else {
+        renderLuxuryIndustryControls();
+      }
+    };
+    rerender();
+    modal.onclick = e => {
+      const primary = e.target.closest('[data-lux-industry-primary]');
+      if (primary) {
+        draft = normalizeLuxuryIndustrySelection({
+          ...draft,
+          primary: primary.dataset.luxIndustryPrimary || 'auto',
+          secondary: '',
+          note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
+          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+        });
+        rerender();
+        return;
+      }
+      const secondary = e.target.closest('[data-lux-industry-secondary]');
+      if (secondary) {
+        draft = normalizeLuxuryIndustrySelection({
+          ...draft,
+          secondary: secondary.dataset.luxIndustrySecondary || '',
+          note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
+          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+        });
+        rerender();
+        return;
+      }
+      if (e.target.closest('#dhLuxIndustrySave')) return save();
+      if (e.target.closest('[data-lux-industry-close]') || e.target === modal) {
+        modal.classList.remove('open');
+      }
+    };
   }
 
   function normalizeLuxuryControlledProduction(input = null) {
@@ -9329,7 +9438,7 @@
         else el.removeAttribute('title');
       });
     };
-    lockControl('#dhLuxAdText, #dhLuxAdIndustry, #dhLuxAdSubIndustry, #dhLuxAdIndustryNote, #dhLuxAdIndustryForbidden, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
+    lockControl('#dhLuxAdText, #dhLuxIndustryOpen, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
     lockControl(
       '#dhLuxAdProductDrop, #dhLuxAdProductClear, #dhLuxAdUploadPersonRef, #dhLuxAdPickActorAsset, #dhLuxAdPickPerson, #dhLuxAdAiPersonSpec, [data-lux-person-spec], [data-lux-brief-field]',
       step2Locked || personGenerating,
@@ -17123,6 +17232,10 @@
       renderLuxuryAdStoryboard();
       setLuxuryProgress('content');
       updateLuxuryAdStepLocks();
+      return;
+    }
+    if (closest('#dhLuxIndustryOpen')) {
+      openLuxuryIndustryModal();
       return;
     }
     if (closest('#dhLuxAdWrite')) {
