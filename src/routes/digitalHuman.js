@@ -769,6 +769,8 @@ function _compactLuxuryAdDraftBody(body = {}) {
     flow_mode: String(body.flow_mode || body.flowMode || '').slice(0, 40),
     route_focus: String(body.route_focus || body.routeFocus || '').slice(0, 40),
     segment_plan: _jsonClone(body.segment_plan || body.segmentPlan || null),
+    industry_selection: _jsonClone(body.industry_selection || body.industrySelection || null),
+    industry_contract: _jsonClone(body.industry_contract || body.industryContract || null),
     ad_type: String(body.ad_type || body.adType || 'auto').slice(0, 60),
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,
@@ -798,11 +800,26 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);
   const keyframes = Array.isArray(result.keyframes) ? result.keyframes : (Array.isArray(body.keyframes) ? body.keyframes : null);
   const storyboardSheets = Array.isArray(result.storyboard_sheets) ? result.storyboard_sheets : (Array.isArray(body.storyboard_sheets) ? body.storyboard_sheets : null);
-  const mergedScenes = _mergeLuxuryProjectScenes(scenes, existing?.scenes);
+  // 中文注释：剧情/分镜重新生成时必须以本次确认的镜头表为准，不能把旧项目尾巴按 index 合并回来。
+  const replaceScenes = Array.isArray(scenes) && (
+    body.replace_scenes === true
+    || body.replaceScenes === true
+    || patch.replace_scenes === true
+    || body.request_stage === 'storyboard'
+    || body.request_stage === 'keyframe'
+    || body.storyboard_detailed === true
+    || body.storyboardDetailed === true
+    || body.storyboard_review_only === true
+    || result.storyboard_mode === 'planning_sheet'
+    || result.reference_mode === 'storyboard_planning_sheet'
+  );
+  const mergedScenes = replaceScenes ? scenes : _mergeLuxuryProjectScenes(scenes, existing?.scenes);
   const clearKeyframes = body.clear_keyframes === true || body.clearKeyframes === true || patch.clear_keyframes === true;
   const mergedKeyframes = clearKeyframes ? [] : _mergeLuxuryProjectKeyframes(keyframes, existing?.keyframes);
   const mergedStoryboardSheets = clearKeyframes ? [] : _mergeLuxuryProjectSheets(storyboardSheets, existing?.storyboard_sheets);
   const contract = result.production_contract || result.details?.production_contract || patch.production_contract || null;
+  const industryContract = result.industry_contract || result.details?.industry_contract || body.industry_contract || body.industryContract || existing?.industry_contract || existing?.draft_state?.industry_contract || null;
+  const industrySelection = result.industry_selection || body.industry_selection || body.industrySelection || industryContract?.industry_selection || existing?.industry_selection || existing?.draft_state?.industry_selection || null;
   const segmentPlan = result.segment_plan || result.details?.segment_plan || body.segment_plan || body.segmentPlan || existing?.segment_plan || null;
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
@@ -863,11 +880,13 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     ratio: result.ratio || body.aspect_ratio || body.aspectRatio || existing?.ratio || '',
     output_size: result.output_size || body.output_size || body.outputSize || existing?.output_size || '',
     resolution: result.resolution || existing?.resolution || '',
-    brief_info: _jsonClone(body.brief_info || existing?.brief_info || null),
+    brief_info: _jsonClone(result.brief_info || body.brief_info || existing?.brief_info || null),
     cast_profiles: castProfiles,
     product_profile: productProfile,
     revision_history: revisionHistory,
     controlled_production: controlledProduction,
+    industry_selection: _jsonClone(industrySelection || null),
+    industry_contract: _jsonClone(industryContract || null),
     scenes: mergedScenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i)),
     keyframes: mergedKeyframes.map((kf, i) => _compactLuxuryAdProjectKeyframe(kf, i)),
     storyboard_sheets: _compactLuxuryAdProjectSheets(mergedStoryboardSheets),
@@ -12927,6 +12946,8 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     const normalized = _normalizeLuxuryProductSubject(v, joined);
     if (normalized && !_isWeakLuxuryProductName(normalized)) return normalized.slice(0, 40);
   }
+  // 中文注释：主体识别不能从“不要/No/Avoid”这类否定片段里取词，否则禁用项会被误识别成广告主体。
+  const keywordSource = joined.replace(/(?:不要|禁止|不能|不得|避免|别|no|not|do\s*not|don't|without|avoid)[^。；;,\n]{0,90}(?:AI\s*机器人|机器人|智能体|机械臂|仿生|robot\s*assistant|robot|android)[^。；;,\n]{0,40}/ig, ' ');
   const keywordMap = [
     { re: /AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android/i, value: 'AI机器人智能生活助手' },
     { re: /智能生活|智能家居|家庭助手|home\s*assistant|smart\s*home/i, value: '智能生活/智能家居服务' },
@@ -12936,7 +12957,7 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     { re: /艺术墙|背景墙|墙面|展墙/i, value: '定制墙面材料' },
     { re: /家具|沙发|椅|桌|柜/i, value: '高端家具' },
   ];
-  const hit = keywordMap.find(x => x.re.test(joined));
+  const hit = keywordMap.find(x => x.re.test(keywordSource));
   if (hit) return hit.value;
   return _isWeakLuxuryProductName(productName)
     ? '用户广告需求中的真实商品或服务'
@@ -13101,8 +13122,303 @@ function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
   return _luxuryHasExplicitSteelSubject(text);
 }
 
+const LUXURY_INDUSTRY_CATALOG = {
+  auto: { label: '自动判断', subs: {} },
+  building_materials: {
+    label: '建材 / 建筑装饰',
+    subs: { metal_material: '金属材料', wall_panel: '墙板 / 护墙', stone_tile: '石材 / 瓷砖', doors_windows: '门窗幕墙' },
+    allowed_scenes: ['材料展厅', '设计咨询区', '样板墙', '安装/应用细节', '建筑立面或室内装饰应用'],
+    subject_evidence: ['材质纹理', '样板/板材', '安装边缘', '墙面/立面应用', '工艺细节'],
+    forbidden_drift: ['厨房厨具', '锅具水槽', '餐饮场景', '软件界面', '无关货架或仓库'],
+  },
+  home_living: {
+    label: '家居 / 家装',
+    subs: { furniture: '家具', soft_decor: '软装', whole_house: '全屋定制', smart_home: '智能家居' },
+    allowed_scenes: ['真实居住空间', '家装咨询/展示空间', '家具使用场景', '软装搭配场景'],
+    subject_evidence: ['空间布局', '家具/家居主体', '材质与尺度', '真实使用动作', '前后效果'],
+    forbidden_drift: ['默认材料展厅', '无关厨房厨具', '纯软件屏幕', '工厂仓库替代'],
+  },
+  real_estate: {
+    label: '地产 / 空间',
+    subs: { residential: '住宅', commercial_space: '商业空间', hotel_hospitality: '酒店民宿', office_space: '办公空间' },
+    allowed_scenes: ['样板间', '商业空间', '酒店/民宿体验', '办公空间', '项目实景或服务接待'],
+    subject_evidence: ['空间动线', '户型/场景亮点', '体验动作', '服务触点', '真实空间尺度'],
+    forbidden_drift: ['无关商品货架', '单品目录图', '软件界面替代', '泛材料样板墙替代'],
+  },
+  food_beverage: {
+    label: '餐饮 / 食品饮料',
+    subs: { restaurant: '餐厅', beverage: '饮品', bakery: '烘焙', packaged_food: '包装食品' },
+    allowed_scenes: ['餐厅', '咖啡/饮品吧台', '餐桌服务', '出品/制作过程', '包装食品展示'],
+    subject_evidence: ['菜品/饮品', '出品动作', '包装', '食材细节', '消费体验'],
+    forbidden_drift: ['建材展厅', '软件仪表盘', '美妆柜台', '无关厨具成为主体'],
+  },
+  beauty_fashion: {
+    label: '美妆 / 时尚',
+    subs: { skincare_makeup: '护肤彩妆', apparel: '服装', shoe_bag: '鞋包', perfume: '香水香氛' },
+    allowed_scenes: ['精品店', '造型/试穿空间', '美妆柜台', '生活方式场景', '产品细节展示'],
+    subject_evidence: ['穿搭/试用', '包装与质感', '妆效/肤感', '面料/配饰细节', '陈列与体验'],
+    forbidden_drift: ['建材样板', '厨房厨具', '软件界面', '仓库货架替代'],
+  },
+  jewelry_luxury: {
+    label: '珠宝 / 奢侈品',
+    subs: { jewelry: '珠宝首饰', watch: '腕表', high_luxury: '高奢精品' },
+    allowed_scenes: ['珠宝精品店', '高奢展示台', '佩戴试戴', '礼赠/收藏场景', '工艺细节展示'],
+    subject_evidence: ['珠宝/腕表主体', '佩戴关系', '材质切面', '光泽与工艺', '包装或服务仪式'],
+    forbidden_drift: ['普通服装替代珠宝', '建材金属板替代', '厨房金属物件', '无关科技 UI'],
+  },
+  ecommerce_retail: {
+    label: '电商 / 零售',
+    subs: { live_commerce: '直播电商', store_retail: '门店零售', cross_border: '跨境电商', new_consumer: '新消费' },
+    allowed_scenes: ['直播/内容消费场景', '门店体验', '商品陈列', '开箱/使用', '订单履约证据'],
+    subject_evidence: ['真实商品', '导购/主播动作', '陈列关系', '包装/开箱', '用户购买或使用触点'],
+    forbidden_drift: ['无商品纯 UI', '仓库单据替代所有画面', '无关行业柜台', '默认办公室模板'],
+  },
+  digital_software: {
+    label: '软件 / SaaS',
+    subs: { saas: 'SaaS', enterprise_software: '企业软件', mobile_app: 'App', developer_tool: '开发者工具' },
+    allowed_scenes: ['真实工作流', '业务使用现场', '设备/界面使用瞬间', '协作/结果展示', '客户服务流程'],
+    subject_evidence: ['用户角色', '设备或界面瞬间', '任务前后状态', '文档/结果证据', '业务流程动作'],
+    forbidden_drift: ['默认假仪表盘', '无关仓库货架', '材料展厅', '科技实验室替代真实业务'],
+  },
+  ai_technology: {
+    label: 'AI / 科技',
+    subs: { ai_product: 'AI 产品', robotics: '机器人', iot_hardware: '智能硬件', cloud_compute: '云计算' },
+    allowed_scenes: ['真实应用场景', '人机协作', '智能硬件使用', '业务效率提升现场', '科技产品演示'],
+    subject_evidence: ['AI 结果状态', '设备/机器人主体', '人机交互动作', '业务前后对比', '真实使用证据'],
+    forbidden_drift: ['无关机器人替代主体', '固定科幻实验室', '假 UI 堆砌', '把服务变成不相关硬件'],
+  },
+  game_entertainment: {
+    label: '游戏 / 娱乐',
+    subs: { mobile_game: '手游', pc_console_game: '端游 / 主机', ip_content: 'IP 内容', live_stream: '直播娱乐' },
+    allowed_scenes: ['真实玩家/观众场景', '游戏内容氛围', '直播/社区互动', 'IP 角色或内容体验', '娱乐场景'],
+    subject_evidence: ['玩法/角色/内容氛围', '玩家反应', '互动行为', '设备或观看触点', '活动/社区证据'],
+    forbidden_drift: ['企业软件 UI', '电商货架', '材料展厅', '无关金融/物流场景'],
+  },
+  finance: {
+    label: '金融 / 保险',
+    subs: { banking: '银行', insurance: '保险', wealth: '理财财富', fintech: '金融科技' },
+    allowed_scenes: ['咨询/服务场景', '家庭/企业决策场景', '风险保障场景', '真实业务流程', '专业沟通场景'],
+    subject_evidence: ['客户需求', '专业顾问互动', '服务结果', '安全/保障证据', '真实业务材料'],
+    forbidden_drift: ['承诺收益画面', '夸大财富暗示', '无关股票大屏', '默认软件仪表盘替代服务'],
+  },
+  logistics: {
+    label: '物流 / 供应链',
+    subs: { express: '快递', freight: '货运', warehouse: '仓储', cold_chain: '冷链' },
+    allowed_scenes: ['仓储分拣', '运输交付', '冷链/货运流程', '供应链协同', '客户收发货现场'],
+    subject_evidence: ['包裹/货物', '车辆或仓储动作', '扫码/交接', '温控或时效证据', '流程节点'],
+    forbidden_drift: ['电商直播替代物流', '普通办公室模板', '无关工厂制造', '软件 UI 独占画面'],
+  },
+  industrial_manufacturing: {
+    label: '工业制造',
+    subs: { equipment: '设备', factory: '工厂产线', materials: '工业材料', automation: '自动化' },
+    allowed_scenes: ['工厂产线', '设备运行', '工艺检测', '工业材料应用', '工程师操作现场'],
+    subject_evidence: ['设备/产线主体', '工艺动作', '检测/精度证据', '材料应用', '工程师操作'],
+    forbidden_drift: ['家居厨房', '美妆零售', '金融咨询', '无关科幻机器人'],
+  },
+  automotive: { label: '汽车 / 出行', subs: { vehicle: '整车', new_energy: '新能源', parts: '汽配', mobility: '出行服务' }, allowed_scenes: ['真实道路/车内', '展厅', '用车生活', '服务交付'], subject_evidence: ['车辆/部件', '驾驶或乘坐体验', '功能动作', '服务触点'], forbidden_drift: ['无关软件仪表盘', '材料展厅', '电商货架'] },
+  medical_health: { label: '医疗 / 健康', subs: { clinic: '诊所医院', medical_device: '医疗器械', wellness: '健康管理', pharma: '医药' }, allowed_scenes: ['诊疗/咨询', '健康管理', '设备使用', '服务结果'], subject_evidence: ['专业人员互动', '设备/服务证据', '健康场景', '流程说明'], forbidden_drift: ['夸大疗效', '无关零售货架', '软件 UI 独占画面'] },
+  education_training: { label: '教育 / 培训', subs: { k12: 'K12', vocational: '职业教育', language: '语言培训', knowledge_paid: '知识付费' }, allowed_scenes: ['课堂/学习', '训练实操', '线上学习使用', '成果展示'], subject_evidence: ['学习互动', '教材/设备', '老师或学员动作', '成果证明'], forbidden_drift: ['默认办公室', '电商货架', '材料展厅'] },
+  tourism_hospitality: { label: '旅游 / 酒店', subs: { destination: '目的地', hotel: '酒店', travel_service: '旅行服务', culture_tourism: '文旅' }, allowed_scenes: ['目的地实景', '酒店体验', '旅程服务', '文化体验'], subject_evidence: ['真实空间/景点', '入住或游玩动作', '服务细节', '体验结果'], forbidden_drift: ['无关地产样板间', '电商货架', '软件屏幕替代'] },
+  sports_fitness: { label: '运动 / 健身', subs: { fitness: '健身', outdoor: '户外', sports_goods: '运动装备', sports_service: '运动服务' }, allowed_scenes: ['训练场景', '户外运动', '装备使用', '课程/服务'], subject_evidence: ['运动动作', '装备主体', '教练互动', '身体状态/结果'], forbidden_drift: ['办公室模板', '美妆柜台', '材料展厅'] },
+  mother_baby: { label: '母婴 / 家庭', subs: { baby_product: '母婴用品', parent_child: '亲子服务', maternity: '孕产', family_life: '家庭生活' }, allowed_scenes: ['家庭照护', '亲子互动', '孕产服务', '用品使用'], subject_evidence: ['亲子关系', '产品/服务使用', '安全舒适证据', '家庭场景'], forbidden_drift: ['成人商务主持默认模板', '无关货架', '工业场景'] },
+  pet: { label: '宠物', subs: { pet_food: '宠物食品', pet_goods: '宠物用品', pet_service: '宠物服务', pet_medical: '宠物医疗' }, allowed_scenes: ['宠物生活', '喂养/护理', '宠物店/服务', '宠物医疗'], subject_evidence: ['宠物主体', '用品/食品', '照护动作', '服务结果'], forbidden_drift: ['人类食品餐饮替代', '母婴用品替代', '无关家居空镜'] },
+  agriculture: { label: '农业 / 生鲜', subs: { fresh_food: '生鲜', farm_product: '农产品', planting: '种植', aquaculture: '养殖' }, allowed_scenes: ['产地', '采摘/加工', '生鲜陈列', '供应链交付'], subject_evidence: ['农产品主体', '产地证据', '新鲜度', '加工/交付流程'], forbidden_drift: ['普通餐饮替代', '电商 UI 独占画面', '无关工厂'] },
+  public_service: { label: '政企 / 公共服务', subs: { city_service: '城市服务', public_welfare: '公益', government: '政务', enterprise_brand: '企业品牌' }, allowed_scenes: ['公共服务现场', '企业服务', '公益行动', '城市应用'], subject_evidence: ['服务对象', '现场行动', '结果证据', '协作流程'], forbidden_drift: ['商业零售硬套', '无关金融收益暗示', '虚假公文文字'] },
+  b2b_service: { label: 'B2B / 专业服务', subs: { consulting: '咨询', legal: '法律', accounting: '财税', marketing_service: '营销服务' }, allowed_scenes: ['专业咨询', '客户沟通', '方案交付', '业务协作'], subject_evidence: ['专业人员互动', '客户问题', '方案或结果', '真实服务触点'], forbidden_drift: ['默认软件仪表盘', '无关货架仓库', '假文本文件替代服务'] },
+};
+
+function _luxuryIndustryArray(value, fallback = []) {
+  return Array.isArray(value) ? value.map(x => String(x || '').trim()).filter(Boolean) : fallback;
+}
+
+function _luxuryIndustryKbQuery({ selected = {}, productSubject = '', brief = '', scene = {} } = {}) {
+  return _dhKbQuery(
+    '剧情广告 行业合同 行业消歧 主体证据 禁止漂移 QA 提示词',
+    selected.primary_label,
+    selected.secondary_label,
+    selected.note,
+    productSubject,
+    brief,
+    scene.visual,
+    scene.content_prompt,
+    scene.asset_manifest?.product_subject,
+  );
+}
+
+function _luxuryIndustryKbDocMatchesSelection(doc = {}, selected = {}) {
+  const id = String(doc.id || '');
+  const primary = String(selected.primary || '').trim();
+  if (/contract_method/.test(id)) return true;
+  if (!primary || primary === 'auto') return true;
+  const industryIds = Array.isArray(doc.industry_ids) ? doc.industry_ids.map(x => String(x || '').trim()) : [];
+  if (industryIds.includes(primary)) return true;
+  // 中文注释：兼容已写入 outputs 的旧 seed；不要让用户禁用词把其它行业知识召回进当前合同。
+  const legacyMap = {
+    building_materials: [/materials_vs_kitchen/],
+    home_living: [/materials_vs_kitchen/],
+    real_estate: [/materials_vs_kitchen/],
+    digital_software: [/software_ai_workflow/],
+    ai_technology: [/software_ai_workflow/],
+    ecommerce_retail: [/commerce_finance_logistics/],
+    finance: [/commerce_finance_logistics/],
+    logistics: [/commerce_finance_logistics/],
+    industrial_manufacturing: [/manufacturing_pet_game/],
+    pet: [/manufacturing_pet_game/],
+    game_entertainment: [/manufacturing_pet_game/],
+  };
+  return (legacyMap[primary] || []).some(pattern => pattern.test(id));
+}
+
+function _extractLuxuryIndustryKbNotes(kbContext = '') {
+  const text = String(kbContext || '').trim();
+  if (!text) return [];
+  return text
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(line => line && !/^【/.test(line))
+    .filter(line => /行业|证据|禁止|QA|漂移|workflow|evidence|negative|reject|hard negative/i.test(line))
+    .slice(0, 10)
+    .map(line => line.slice(0, 260));
+}
+
+function _buildLuxuryIndustryKbContext({ selected = {}, productSubject = '', brief = '', scene = {} } = {}) {
+  try {
+    const kb = require('../services/knowledgeBaseService');
+    const query = _luxuryIndustryKbQuery({ selected, productSubject, brief, scene }).toLowerCase();
+    const tokens = Array.from(new Set(query
+      .split(/[\s,，。；;、/|·\-_\n\r\t]+/)
+      .map(x => String(x || '').trim())
+      .filter(x => x.length >= 2)
+      .slice(0, 40)));
+    const docs = kb.listDocs({ collection: 'production' })
+      .filter(d => /^kb_luxury_ad_industry_/.test(String(d.id || '')))
+      .filter(d => _luxuryIndustryKbDocMatchesSelection(d, selected));
+    const scored = docs.map(d => {
+      const hay = [
+        d.id,
+        d.title,
+        d.summary,
+        d.content,
+        d.subcategory,
+        (d.tags || []).join(' '),
+        (d.keywords || []).join(' '),
+        (d.prompt_snippets || []).join(' '),
+      ].filter(Boolean).join(' ').toLowerCase();
+      let score = 0;
+      for (const tok of tokens) if (hay.includes(tok)) score += tok.length > 3 ? 3 : 1;
+      if (/contract_method/.test(d.id)) score += 100;
+      if (_luxuryIndustryKbDocMatchesSelection(d, selected) && selected.primary !== 'auto') score += 20;
+      return { d, score };
+    })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4)
+      .map(x => x.d);
+    if (!scored.length) return '';
+    // 中文注释：行业 KB 只提取本地结构化 seed，避免把其它行业历史案例当成当前客户场景。
+    return scored.map(d => {
+      const snippets = Array.isArray(d.prompt_snippets) && d.prompt_snippets.length
+        ? `可复用片段：${d.prompt_snippets.slice(0, 3).join(' | ')}`
+        : '';
+      return [
+        `【${d.subcategory || '行业知识'}】${d.title}`,
+        d.summary ? `摘要：${d.summary}` : '',
+        d.content ? d.content.slice(0, 700) : '',
+        snippets,
+      ].filter(Boolean).join('\n');
+    }).join('\n\n');
+  } catch (err) {
+    console.warn('[DH/industry-kb] skipped:', err.message);
+    return '';
+  }
+}
+
+function _normalizeLuxuryIndustrySelection(input = null) {
+  const src = input && typeof input === 'object' ? input : {};
+  const primary = LUXURY_INDUSTRY_CATALOG[src.primary || src.industry_id || src.id] ? String(src.primary || src.industry_id || src.id) : 'auto';
+  const entry = LUXURY_INDUSTRY_CATALOG[primary] || LUXURY_INDUSTRY_CATALOG.auto;
+  const rawSecondary = String(src.secondary || src.sub_industry_id || '').trim();
+  const secondary = entry.subs && entry.subs[rawSecondary] ? rawSecondary : '';
+  return {
+    primary,
+    primary_label: entry.label || '自动判断',
+    secondary,
+    secondary_label: secondary ? entry.subs[secondary] : '',
+    note: String(src.note || src.user_note || '').trim().slice(0, 240),
+    forbidden: String(src.forbidden || src.user_forbidden_text || '').trim().slice(0, 240),
+  };
+}
+
+function _buildLuxuryIndustryContract({ selection = null, existing = null, productSubject = '', brief = '', scene = {} } = {}) {
+  const selected = _normalizeLuxuryIndustrySelection(selection || existing?.industry_selection || null);
+  const inferred = _luxuryIndustryDisambiguationPolicy(productSubject, { ...scene, industry_contract: null });
+  const entry = LUXURY_INDUSTRY_CATALOG[selected.primary] || LUXURY_INDUSTRY_CATALOG.auto;
+  const useSelected = selected.primary !== 'auto';
+  const industryLabel = useSelected ? selected.primary_label : inferred.industry;
+  const subject = String(productSubject || inferred.subject || 'advertised subject').trim();
+  const allowedScenes = useSelected ? _luxuryIndustryArray(entry.allowed_scenes, [inferred.allowedEnvironment]) : [inferred.allowedEnvironment];
+  const subjectEvidence = useSelected ? _luxuryIndustryArray(entry.subject_evidence, [inferred.requiredEvidence]) : [inferred.requiredEvidence];
+  const forbiddenDrift = [
+    ...(useSelected ? _luxuryIndustryArray(entry.forbidden_drift, inferred.mustNotShow || []) : _luxuryIndustryArray(inferred.mustNotShow, [])),
+    selected.forbidden,
+  ].filter(Boolean);
+  const kbContext = _buildLuxuryIndustryKbContext({ selected, productSubject: subject, brief, scene });
+  const kbNotes = _extractLuxuryIndustryKbNotes(kbContext);
+  // 中文注释：行业合同只定义边界、证据和禁区；不生成固定场景，也不替用户补写业务。
+  return {
+    contract_type: 'luxury_industry_contract_v1',
+    source: useSelected ? 'user_selected' : 'auto_inferred',
+    industry_id: useSelected ? selected.primary : inferred.id,
+    industry_label: industryLabel,
+    sub_industry_id: selected.secondary,
+    sub_industry_label: selected.secondary_label,
+    industry_selection: selected,
+    product_subject: subject,
+    user_note: selected.note,
+    user_forbidden_text: selected.forbidden,
+    allowed_scenes: allowedScenes,
+    subject_evidence: subjectEvidence,
+    forbidden_drift: forbiddenDrift,
+    knowledge_context: kbContext,
+    knowledge_notes: kbNotes,
+    story_rules: [
+      `剧情必须先服从客户 brief，再用 ${industryLabel} 的真实业务语境消歧。`,
+      '不要把行业合同当成固定镜头模板；每一镜仍按客户产品、卖点、人物和节奏独立编写。',
+      forbiddenDrift.length ? `禁用项只能作为反向约束，不能被写成角色、道具、场景、剧情动作或画面主体：${forbiddenDrift.join('；')}` : '',
+      selected.note ? `客户行业补充：${selected.note}` : '',
+      ...kbNotes.slice(0, 3),
+    ].filter(Boolean),
+    keyframe_rules: [
+      `画面必须出现能证明 "${subject}" 属于 ${industryLabel} 的行业证据。`,
+      '不得用默认场景、无关道具或其他行业载体替代已确认主体。',
+    ],
+    qa_rules: [
+      `QA 必须检查行业是否仍为 ${industryLabel}。`,
+      `QA 必须检查主体证据：${subjectEvidence.join('；')}`,
+      forbiddenDrift.length ? `QA 必须拒绝：${forbiddenDrift.join('；')}` : '',
+      ...kbNotes.slice(3, 7).map(note => `KB 规则：${note}`),
+    ].filter(Boolean),
+  };
+}
+
+function _luxuryIndustryContractPrompt(contract = null) {
+  if (!contract || typeof contract !== 'object') return '';
+  return [
+    `INDUSTRY CONTRACT: ${contract.industry_label || contract.industry_id || 'confirmed industry'}${contract.sub_industry_label ? ` / ${contract.sub_industry_label}` : ''}.`,
+    `Advertised subject: ${contract.product_subject || 'confirmed subject'}.`,
+    contract.user_note ? `Customer industry note: ${contract.user_note}.` : '',
+    _luxuryIndustryArray(contract.allowed_scenes).length ? `Allowed scene/evidence carriers: ${contract.allowed_scenes.join('; ')}.` : '',
+    _luxuryIndustryArray(contract.subject_evidence).length ? `Required subject evidence: ${contract.subject_evidence.join('; ')}.` : '',
+    _luxuryIndustryArray(contract.forbidden_drift).length ? `Forbidden industry drift: ${contract.forbidden_drift.join('; ')}.` : '',
+    _luxuryIndustryArray(contract.knowledge_notes).length ? `Industry KB notes: ${contract.knowledge_notes.join(' | ')}.` : '',
+    _luxuryIndustryArray(contract.forbidden_drift).length ? 'Forbidden terms are hard negatives only: never use them as a subject, role, prop, environment, plot device, UI, or positive visual detail.' : '',
+    'Use this as boundary and QA contract only. Do not turn it into a fixed scenario template; obey the customer brief for the actual story.',
+  ].filter(Boolean).join(' ');
+}
+
 function _luxuryIndustryDisambiguationPolicy(productSubject = '', scene = {}) {
   const subject = String(productSubject || scene.product_subject || 'advertised subject').trim();
+  const industryContract = scene && typeof scene.industry_contract === 'object' ? scene.industry_contract : null;
   const context = [
     subject,
     scene.product_subject,
@@ -13157,6 +13473,23 @@ function _luxuryIndustryDisambiguationPolicy(productSubject = '', scene = {}) {
     ],
     qaRule: 'Reject any frame that swaps the confirmed industry, environment or evidence carrier for a default template not present in the brief/assets/storyboard.',
   };
+  if (industryContract) {
+    const allowedScenes = _luxuryIndustryArray(industryContract.allowed_scenes);
+    const subjectEvidence = _luxuryIndustryArray(industryContract.subject_evidence);
+    const forbiddenDrift = _luxuryIndustryArray(industryContract.forbidden_drift);
+    policy.id = industryContract.industry_id || policy.id;
+    policy.industry = industryContract.industry_label || industryContract.industry || policy.industry;
+    policy.allowedEnvironment = allowedScenes.join(' / ') || policy.allowedEnvironment;
+    policy.requiredEvidence = subjectEvidence.join(' / ') || policy.requiredEvidence;
+    policy.mustShow = [
+      `confirmed advertised subject evidence: ${subject}`,
+      ...subjectEvidence,
+      ...(industryContract.user_note ? [`customer industry note: ${industryContract.user_note}`] : []),
+    ].filter(Boolean);
+    policy.mustNotShow = forbiddenDrift.length ? forbiddenDrift : policy.mustNotShow;
+    policy.qaRule = _luxuryIndustryArray(industryContract.qa_rules).join(' ') || policy.qaRule;
+    return policy;
+  }
   if (_isLuxurySteelMaterialSubject(subject, scene) && !explicit.kitchenCookware) {
     policy.id = 'architectural_metal_material';
     policy.industry = 'architectural materials / building finishing';
@@ -17723,6 +18056,8 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       product_asset = null,
       brief_reference_assets = [],
       visual_reference_brief = null,
+      industry_selection = null,
+      industry_contract = null,
       reference_assets = [],
       outline_segments = [],
       person_spec = null,
@@ -17822,7 +18157,20 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       referenceImages: uploadedReferenceAssets.map(x => x.url || x.image_url || x.previewUrl).filter(Boolean),
       productSubject,
     });
-    const productLockPrompt = _luxuryProductLockPrompt(productSubject, { visual: brief, content_prompt: brief, asset_manifest: luxuryAssetManifest });
+    const luxuryIndustryContract = _buildLuxuryIndustryContract({
+      selection: industry_selection,
+      existing: industry_contract,
+      productSubject,
+      brief,
+      scene: { visual: brief, content_prompt: brief, asset_manifest: luxuryAssetManifest },
+    });
+    const industryContractPrompt = _luxuryIndustryContractPrompt(luxuryIndustryContract);
+    const productLockPrompt = _luxuryProductLockPrompt(productSubject, {
+      visual: brief,
+      content_prompt: brief,
+      asset_manifest: luxuryAssetManifest,
+      industry_contract: luxuryIndustryContract,
+    });
     const luxuryVisualLocks = _buildLuxuryVisualLocks({
       assetManifest: luxuryAssetManifest,
       visualReferenceBrief,
@@ -17965,7 +18313,13 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const forbiddenBriefInstruction = forbiddenPromptTerms.length
       ? `用户明确禁止项：${forbiddenPromptTerms.join('、')}。这些词只能作为排除条件，不能当作剧情来源、场景、道具、职业或台词素材；输出中出现这些禁止项或同义近似表达应判定为失败。`
       : '';
-    const robotSubjectAllowed = /AI\s*机器人|机器人|智能体|机械臂|仿生|robot|android/i.test(`${productSubject}\n${brief}`);
+    // 中文注释：机器人是否允许只能来自已确认广告主体；brief 里的 “No robot/不要机器人” 只能作为禁用项，不能反向放行机器人主体。
+    const robotForbiddenByBrief = [
+      ...forbiddenPromptTerms,
+      ..._luxuryIndustryArray(luxuryIndustryContract?.forbidden_drift),
+      luxuryIndustryContract?.user_forbidden_text,
+    ].some(term => /AI\s*机器人|机器人|智能体|机械臂|仿生|robot|android/i.test(String(term || '')));
+    const robotSubjectAllowed = !robotForbiddenByBrief && /AI\s*机器人|机器人|智能体|机械臂|仿生|robot|android/i.test(String(productSubject || ''));
     const subjectForbiddenDrift = robotSubjectAllowed
       ? 'App、化妆品、通用办公焦虑、扫地机器人、清洁电器、泛生活方式或其他行业'
       : 'App、化妆品、机器人、扫地机器人、清洁电器、通用办公焦虑、泛生活方式或其他行业';
@@ -18008,6 +18362,7 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       '只输出 JSON 数组，不要输出说明文字。第 2 步只输出场景顺序与素材清单；第 3 步输出剧本审核表，必须写清楚每镜秒数、画面、动作、台词、目的、情绪、镜头和声音。',
       '语言标准：像商业广告导演案和摄影分镜，不像普通数字人口播拆句，不重复套模板，不写空泛功能词。',
       subjectLockInstruction,
+      industryContractPrompt,
       forbiddenBriefInstruction,
       'SCRIPT SUBJECT RULE: never assume every commercial must contain a human. The confirmed subject may be a person, animal, robot, alien, mascot, creature, product, object, vehicle, place or service scene. Write the script around the user-submitted brief and confirmed references. Human/person/cast rules apply only when the brief or confirmed script explicitly requires human characters; otherwise do not invent a presenter, customer or designer.',
       '剧本必须是在叙述一件事：从问题或场景进入，主体出现，细节推进，可信证明，最后行动引导；台词要一句一句推动故事，不要堆“高级感、空间主角、质感被看见”这种口号。',
@@ -18035,8 +18390,9 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
       controlledGuide.enabled ? controlledGuide.storyboard_rules : '',
       '禁止泛泛营销套话：便捷、高效、效率倍增、智能集成、只需片刻、告别繁琐，除非用户原始需求明确要求这种口径。'
     ].filter(Boolean).join(' ');
-    const user = `主商品：${productSubject}
+const user = `主商品：${productSubject}
 主体锁定要求：${subjectLockInstruction}
+行业合同：${industryContractPrompt || '按用户需求自动判断，禁止套用默认行业模板'}
 ${forbiddenBriefInstruction ? `${forbiddenBriefInstruction}\n` : ''}
 原始上传名称：${product_name || '主商品'}
 广告需求：${brief}
@@ -18108,6 +18464,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
 - 目标时长不是镜头数量公式：无论用户选择多少秒，都必须先根据广告内容、台词量、素材、表达节奏和目标效果判断结构；允许 1 个长镜头讲清，也允许多镜头快节奏，不得因为秒数机械拆镜。
 - 主商品类别必须锁定为「${productSubject}」，不能把它改成化妆品、香水瓶、护肤品、饮料瓶、手机、首饰或任何无关消费品。
 - ${subjectPlaceholderInstruction}
+- ${industryContractPrompt || '行业必须来自本次客户需求，不允许套用默认行业模板。'}
 - ${productLockPrompt}
 - 第 3 步剧本必须体现四类专业贡献：编剧给出镜头戏剧作用和观众文案；导演写人物/主体行为动作和情绪；摄影指导写焦段/景别/光位/机位/运动；声音设计写 SFX/Audio。
 - 广告词必须短、准、有品牌记忆点；禁止输出“简介便利、通过AI让视频制作更便捷、更高效、告别繁琐、效率倍增、创作只需片刻”等泛泛句式，除非用户要求原封不动使用。
@@ -19221,6 +19578,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         '你是剧情广告逐镜重写 agent。只重写被点名不合格的镜头，不能重写其它镜头；用户已确认的镜头数量、顺序、时长和人物数量规则必须尊重。',
         '只输出 JSON 数组，不要 markdown，不要解释。',
         subjectLockInstruction,
+        industryContractPrompt,
         forbiddenBriefInstruction,
         subjectPlaceholderInstruction,
         castInstruction,
@@ -20403,6 +20761,7 @@ ${JSON.stringify(scenes, null, 2)}
           material_hint: materialUsage,
           product_subject: productSubject,
           product_lock_prompt: productLockPrompt,
+          industry_contract: luxuryIndustryContract,
         };
       });
     if (scenes.length < minSceneCount) {
@@ -20649,6 +21008,7 @@ ${JSON.stringify(scenes, null, 2)}
       }));
     }
     scenes = scenes.map(scene => _attachLuxuryVisualLocks(scene, luxuryVisualLocks));
+    scenes = scenes.map(scene => ({ ...scene, industry_contract: luxuryIndustryContract }));
     const briefInfo = _fallbackLuxuryBriefInfo({
       brief,
       durationSec: targetDuration,
@@ -20657,6 +21017,7 @@ ${JSON.stringify(scenes, null, 2)}
       outputRatio: output_ratio,
     });
     briefInfo.person_spec = resolvedPersonSpec;
+    briefInfo.industry_contract = luxuryIndustryContract;
     briefInfo.recommended_shot_count = wantedShots;
     briefInfo.shot_count_range = isDetailedMode
       ? { min: minAllowedShots, max: maxAllowedShots }
@@ -20693,7 +21054,7 @@ ${JSON.stringify(scenes, null, 2)}
         }));
       }
     }
-    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, segment_plan: isDetailedMode ? (storyPlan?.segment_plan || []) : [], controlled_production: controlledGuide.control, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
+    const responseBody = { success: true, segments: scenes, scenes, brief_info: briefInfo, visual_reference_brief: visualReferenceBrief || null, asset_manifest: luxuryAssetManifest, visual_locks: luxuryVisualLocks, global_visual_bible: finalGlobalVisualBible, segment_plan: isDetailedMode ? (storyPlan?.segment_plan || []) : [], controlled_production: controlledGuide.control, industry_selection: luxuryIndustryContract.industry_selection, industry_contract: luxuryIndustryContract, person_spec: resolvedPersonSpec, total_duration: targetDuration, fallback: false, product_subject: productSubject, planning_mode: isDetailedMode ? 'detailed' : 'outline', recommended_shot_count: wantedShots, shot_count_range: briefInfo.shot_count_range };
     const productionProject = _upsertLuxuryAdProductionProject(req, { ...req.body, request_stage: 'storyboard', storyboard_request_key: request_key, storyboard_detailed: isDetailedMode }, responseBody, { project_state: isDetailedMode ? 'frame_reviewing' : 'script_reviewing' });
     responseBody.production_project = productionProject;
     responseBody.production_project_id = productionProject.id;
@@ -28472,6 +28833,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       global_visual_bible = null,
       segment_plan = null,
       production_contract = null,
+      industry_selection = null,
+      industry_contract = null,
       controlled_production = null,
       production_project_id = '',
       guide_gender = 'female',
@@ -28601,6 +28964,13 @@ router.post('/spaces/keyframes', async (req, res) => {
       backgroundUrl: background_url,
       productSubject,
     }) : null;
+    const luxuryIndustryContract = isLuxury ? _buildLuxuryIndustryContract({
+      selection: industry_selection,
+      existing: industry_contract || brief_info?.industry_contract,
+      productSubject,
+      brief: text,
+      scene: { visual: text, content_prompt: scene_prompt || text, asset_manifest: luxuryAssetManifest },
+    }) : null;
     const luxuryVisualLocks = isLuxury ? _buildLuxuryVisualLocks({
       assetManifest: luxuryAssetManifest,
       visualReferenceBrief,
@@ -28630,6 +29000,8 @@ router.post('/spaces/keyframes', async (req, res) => {
       })
       : await _buildSpaceAdStoryboard({ title, text, durationSec: duration_sec, segments: guideSegments, scenePrompt: scene_prompt, adMode: ad_mode, adStyle: ad_style, shotCount: limit });
     if (isLuxury) {
+      // 中文注释：关键帧阶段复用剧情阶段行业合同，只约束行业边界，不补写固定业务场景。
+      scenes = scenes.map(scene => ({ ...scene, industry_contract: luxuryIndustryContract }));
       if (controlledGuide?.enabled) {
         // 中文注释：关键帧阶段只把已确认的增强规则附到镜头合同，不在这里新增兜底镜头。
         scenes = scenes.map(scene => ({
@@ -28658,6 +29030,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         productSubject,
         sceneBible: brief_info?.scene_bible || global_visual_bible || null,
       });
+      scenes = scenes.map(scene => ({ ...scene, industry_contract: luxuryIndustryContract }));
     }
     let luxuryPreSeedAssets = null;
     if (isLuxury) {
@@ -28665,6 +29038,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       const needsTaskActorSeed = !avatar?.image_url
         && !luxuryPersonAssetImageUrl
         && !luxuryBriefPersonReferenceImage
+        && !luxuryStoryboardReviewOnly
         && _luxuryStoryboardNeedsSeedPresenter(scenes, productSubject);
       if (needsTaskActorSeed) {
         luxuryPreSeedAssets = await _prepareLuxuryStoryboardSeedAssets(req, {
@@ -28780,6 +29154,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         asset_manifest: luxuryAssetManifest || undefined,
         visual_locks: luxuryVisualLocks || undefined,
         global_visual_bible: luxuryGlobalVisualBible || undefined,
+        industry_contract: luxuryIndustryContract || undefined,
         production_contract: luxuryProductionContract,
         shot_count: scenes.length,
         ratio: aspectRatio,
@@ -28810,6 +29185,8 @@ router.post('/spaces/keyframes', async (req, res) => {
             final_keyframes_required: true,
           },
           ...(luxuryPlanningMeta || {}),
+          industry_selection: luxuryIndustryContract?.industry_selection || undefined,
+          industry_contract: luxuryIndustryContract || undefined,
           reference_mode: 'storyboard_planning_sheet',
         };
         const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, reviewBody);
@@ -29100,6 +29477,7 @@ router.post('/spaces/keyframes', async (req, res) => {
           source_reference_images: luxuryReferences,
           asset_manifest: luxuryAssetManifest || undefined,
           visual_locks: luxuryVisualLocks || undefined,
+          industry_contract: luxuryIndustryContract || undefined,
           character_lock: luxuryCharacterLock || undefined,
         });
         _publishLuxuryKeyframePartial(req, req.body || {}, {
@@ -29113,6 +29491,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             visual_locks: luxuryVisualLocks || undefined,
             global_visual_bible: luxuryGlobalVisualBible || undefined,
             segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            industry_contract: luxuryIndustryContract || undefined,
             production_contract: luxuryPlanningMeta?.production_contract || undefined,
           },
         });
@@ -29220,6 +29599,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             visual_locks: luxuryVisualLocks || undefined,
             global_visual_bible: luxuryGlobalVisualBible || undefined,
             segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            industry_contract: luxuryIndustryContract || undefined,
             production_contract: luxuryPlanningMeta?.production_contract || undefined,
           },
         });
@@ -29294,6 +29674,7 @@ router.post('/spaces/keyframes', async (req, res) => {
               visual_locks: luxuryVisualLocks || undefined,
               global_visual_bible: luxuryGlobalVisualBible || undefined,
               segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+              industry_contract: luxuryIndustryContract || undefined,
               production_contract: luxuryPlanningMeta?.production_contract || undefined,
             },
           });
@@ -29319,6 +29700,7 @@ router.post('/spaces/keyframes', async (req, res) => {
         source_brief_reference_images: isLuxury ? briefReferenceImages : undefined,
         asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined,
         visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined,
+        industry_contract: isLuxury ? luxuryIndustryContract || undefined : undefined,
         seed_reference_images: isLuxury ? luxurySeedReferenceImages : undefined,
         luxury_seed_assets: isLuxury ? luxurySeedAssets : undefined,
         continuity_bible: isLuxury ? [sc.continuity_bible, luxuryReferenceContinuityBible].filter(Boolean).join(' ') || undefined : undefined,
@@ -29337,6 +29719,7 @@ router.post('/spaces/keyframes', async (req, res) => {
             visual_locks: luxuryVisualLocks || undefined,
             global_visual_bible: luxuryGlobalVisualBible || undefined,
             segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            industry_contract: luxuryIndustryContract || undefined,
             production_contract: luxuryPlanningMeta?.production_contract || undefined,
           },
         });
@@ -29376,7 +29759,7 @@ router.post('/spaces/keyframes', async (req, res) => {
       };
       throw err;
     }
-    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, segment_plan: isLuxury ? _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }) : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
+    const responseBody = { success: true, scenes, keyframes, storyboard_sheets: storyboardSheets, asset_manifest: isLuxury ? luxuryAssetManifest || undefined : undefined, visual_locks: isLuxury ? luxuryVisualLocks || undefined : undefined, global_visual_bible: isLuxury ? luxuryGlobalVisualBible || undefined : undefined, segment_plan: isLuxury ? _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }) : undefined, industry_selection: isLuxury ? luxuryIndustryContract?.industry_selection || undefined : undefined, industry_contract: isLuxury ? luxuryIndustryContract || undefined : undefined, production_contract: isLuxury ? luxuryPlanningMeta?.production_contract || undefined : undefined, shot_count: scenes.length, ratio: aspectRatio, output_size: normalizedOutputSize, resolution: _outputSizeString(aspectRatio, normalizedOutputSize), reference_mode: keyframes[0]?.reference_mode || 'locked_composite' };
     if (isLuxury) {
       const productionProject = _upsertLuxuryAdProductionProject(req, req.body || {}, responseBody);
       responseBody.production_project = productionProject;

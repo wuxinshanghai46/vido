@@ -136,6 +136,8 @@
       flowMode: 'material',
       content: '',
       adType: 'auto',
+      industry: { primary: 'auto', secondary: '', note: '', forbidden: '' },
+      industryContract: null,
       durationSec: 30,
       outputRatio: '9:16',
       outputSize: 'standard',
@@ -4217,6 +4219,8 @@
     state.luxuryAd.currentStep = 1;
     state.luxuryAd.content = '';
     state.luxuryAd.adType = 'auto';
+    state.luxuryAd.industry = { primary: 'auto', secondary: '', note: '', forbidden: '' };
+    state.luxuryAd.industryContract = null;
     state.luxuryAd.durationSec = 30;
     state.luxuryAd.outputRatio = '9:16';
     state.luxuryAd.outputSize = 'standard';
@@ -4289,6 +4293,7 @@
       const el = $(sel);
       if (el) el.value = '';
     });
+    renderLuxuryIndustryControls();
     renderLuxuryAd();
     if (!quiet) toast('已清空剧情广告表单，可以重新创建', 'success');
   }
@@ -6598,6 +6603,117 @@
   ];
 
   const LUXURY_CONTROL_PRODUCT_METHOD_LABELS = Object.fromEntries(LUXURY_CONTROL_PRODUCT_METHODS);
+
+  const LUXURY_INDUSTRY_OPTIONS = [
+    ['auto', '自动判断', []],
+    ['building_materials', '建材 / 建筑装饰', [['metal_material', '金属材料'], ['wall_panel', '墙板 / 护墙'], ['stone_tile', '石材 / 瓷砖'], ['doors_windows', '门窗幕墙']]],
+    ['home_living', '家居 / 家装', [['furniture', '家具'], ['soft_decor', '软装'], ['whole_house', '全屋定制'], ['smart_home', '智能家居']]],
+    ['real_estate', '地产 / 空间', [['residential', '住宅'], ['commercial_space', '商业空间'], ['hotel_hospitality', '酒店民宿'], ['office_space', '办公空间']]],
+    ['food_beverage', '餐饮 / 食品饮料', [['restaurant', '餐厅'], ['beverage', '饮品'], ['bakery', '烘焙'], ['packaged_food', '包装食品']]],
+    ['beauty_fashion', '美妆 / 时尚', [['skincare_makeup', '护肤彩妆'], ['apparel', '服装'], ['shoe_bag', '鞋包'], ['perfume', '香水香氛']]],
+    ['jewelry_luxury', '珠宝 / 奢侈品', [['jewelry', '珠宝首饰'], ['watch', '腕表'], ['high_luxury', '高奢精品']]],
+    ['ecommerce_retail', '电商 / 零售', [['live_commerce', '直播电商'], ['store_retail', '门店零售'], ['cross_border', '跨境电商'], ['new_consumer', '新消费']]],
+    ['digital_software', '软件 / SaaS', [['saas', 'SaaS'], ['enterprise_software', '企业软件'], ['mobile_app', 'App'], ['developer_tool', '开发者工具']]],
+    ['ai_technology', 'AI / 科技', [['ai_product', 'AI 产品'], ['robotics', '机器人'], ['iot_hardware', '智能硬件'], ['cloud_compute', '云计算']]],
+    ['game_entertainment', '游戏 / 娱乐', [['mobile_game', '手游'], ['pc_console_game', '端游 / 主机'], ['ip_content', 'IP 内容'], ['live_stream', '直播娱乐']]],
+    ['finance', '金融 / 保险', [['banking', '银行'], ['insurance', '保险'], ['wealth', '理财财富'], ['fintech', '金融科技']]],
+    ['logistics', '物流 / 供应链', [['express', '快递'], ['freight', '货运'], ['warehouse', '仓储'], ['cold_chain', '冷链']]],
+    ['industrial_manufacturing', '工业制造', [['equipment', '设备'], ['factory', '工厂产线'], ['materials', '工业材料'], ['automation', '自动化']]],
+    ['automotive', '汽车 / 出行', [['vehicle', '整车'], ['new_energy', '新能源'], ['parts', '汽配'], ['mobility', '出行服务']]],
+    ['medical_health', '医疗 / 健康', [['clinic', '诊所医院'], ['medical_device', '医疗器械'], ['wellness', '健康管理'], ['pharma', '医药']]],
+    ['education_training', '教育 / 培训', [['k12', 'K12'], ['vocational', '职业教育'], ['language', '语言培训'], ['knowledge_paid', '知识付费']]],
+    ['tourism_hospitality', '旅游 / 酒店', [['destination', '目的地'], ['hotel', '酒店'], ['travel_service', '旅行服务'], ['culture_tourism', '文旅']]],
+    ['sports_fitness', '运动 / 健身', [['fitness', '健身'], ['outdoor', '户外'], ['sports_goods', '运动装备'], ['sports_service', '运动服务']]],
+    ['mother_baby', '母婴 / 家庭', [['baby_product', '母婴用品'], ['parent_child', '亲子服务'], ['maternity', '孕产'], ['family_life', '家庭生活']]],
+    ['pet', '宠物', [['pet_food', '宠物食品'], ['pet_goods', '宠物用品'], ['pet_service', '宠物服务'], ['pet_medical', '宠物医疗']]],
+    ['agriculture', '农业 / 生鲜', [['fresh_food', '生鲜'], ['farm_product', '农产品'], ['planting', '种植'], ['aquaculture', '养殖']]],
+    ['public_service', '政企 / 公共服务', [['city_service', '城市服务'], ['public_welfare', '公益'], ['government', '政务'], ['enterprise_brand', '企业品牌']]],
+    ['b2b_service', 'B2B / 专业服务', [['consulting', '咨询'], ['legal', '法律'], ['accounting', '财税'], ['marketing_service', '营销服务']]],
+  ];
+
+  function luxuryIndustryOption(id = '') {
+    const key = String(id || 'auto');
+    return LUXURY_INDUSTRY_OPTIONS.find(([value]) => value === key) || LUXURY_INDUSTRY_OPTIONS[0];
+  }
+
+  function normalizeLuxuryIndustrySelection(input = null) {
+    const src = input && typeof input === 'object' ? input : {};
+    const primary = luxuryIndustryOption(src.primary || src.industry_id || src.id || 'auto')[0];
+    const subs = luxuryIndustryOption(primary)[2] || [];
+    const rawSecondary = String(src.secondary || src.sub_industry_id || '').trim();
+    const secondary = subs.some(([value]) => value === rawSecondary) ? rawSecondary : '';
+    return {
+      primary,
+      secondary,
+      note: String(src.note || src.user_note || '').trim().slice(0, 240),
+      forbidden: String(src.forbidden || src.user_forbidden_text || '').trim().slice(0, 240),
+    };
+  }
+
+  function luxuryIndustrySelectionPayload() {
+    const current = normalizeLuxuryIndustrySelection(state.luxuryAd.industry);
+    const primary = luxuryIndustryOption($('#dhLuxAdIndustry')?.value || current.primary || 'auto')[0];
+    const primaryOption = luxuryIndustryOption(primary);
+    const subs = primaryOption[2] || [];
+    const secondaryEl = $('#dhLuxAdSubIndustry');
+    const secondaryValue = secondaryEl ? secondaryEl.value : (current.secondary || '');
+    const secondary = subs.some(([value]) => value === secondaryValue) ? secondaryValue : '';
+    const secondaryOption = subs.find(([value]) => value === secondary) || null;
+    const noteEl = $('#dhLuxAdIndustryNote');
+    const forbiddenEl = $('#dhLuxAdIndustryForbidden');
+    return {
+      primary,
+      primary_label: primaryOption[1],
+      secondary,
+      secondary_label: secondaryOption ? secondaryOption[1] : '',
+      note: String(noteEl ? noteEl.value : (current.note || '')).trim().slice(0, 240),
+      forbidden: String(forbiddenEl ? forbiddenEl.value : (current.forbidden || '')).trim().slice(0, 240),
+    };
+  }
+
+  function renderLuxuryIndustryControls() {
+    const primarySelect = $('#dhLuxAdIndustry');
+    const secondarySelect = $('#dhLuxAdSubIndustry');
+    const noteInput = $('#dhLuxAdIndustryNote');
+    const forbiddenInput = $('#dhLuxAdIndustryForbidden');
+    if (!primarySelect || !secondarySelect) return;
+    const current = normalizeLuxuryIndustrySelection(state.luxuryAd.industry);
+    primarySelect.innerHTML = LUXURY_INDUSTRY_OPTIONS
+      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+      .join('');
+    primarySelect.value = current.primary;
+    const subs = luxuryIndustryOption(current.primary)[2] || [];
+    secondarySelect.innerHTML = [
+      '<option value="">不指定细分</option>',
+      ...subs.map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`),
+    ].join('');
+    secondarySelect.value = current.secondary;
+    secondarySelect.disabled = !subs.length;
+    if (noteInput) noteInput.value = current.note;
+    if (forbiddenInput) forbiddenInput.value = current.forbidden;
+  }
+
+  function markLuxuryIndustryDirty({ render = true } = {}) {
+    // 中文注释：行业改变只清理后续派生内容，不改用户原始需求，也不把行业替换成固定场景。
+    state.luxuryAd.industry = normalizeLuxuryIndustrySelection(luxuryIndustrySelectionPayload());
+    state.luxuryAd.industryContract = null;
+    state.luxuryAd.briefInfo = null;
+    state.luxuryAd.visualReferenceBrief = null;
+    state.luxuryAd.assetManifest = null;
+    state.luxuryAd.visualLocks = null;
+    state.luxuryAd.globalVisualBible = null;
+    state.luxuryAd.segmentPlan = null;
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.segments = [];
+    state.luxuryAd.storyboardDetailed = false;
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    if (render) {
+      renderLuxuryIndustryControls();
+      renderLuxuryAdStoryboard();
+      updateLuxuryAdStepLocks();
+    }
+  }
 
   function normalizeLuxuryControlledProduction(input = null) {
     const src = input && typeof input === 'object' ? input : {};
@@ -9184,7 +9300,7 @@
         else el.removeAttribute('title');
       });
     };
-    lockControl('#dhLuxAdText, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
+    lockControl('#dhLuxAdText, #dhLuxAdIndustry, #dhLuxAdSubIndustry, #dhLuxAdIndustryNote, #dhLuxAdIndustryForbidden, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
     lockControl(
       '#dhLuxAdProductDrop, #dhLuxAdProductClear, #dhLuxAdUploadPersonRef, #dhLuxAdPickActorAsset, #dhLuxAdPickPerson, #dhLuxAdAiPersonSpec, [data-lux-person-spec], [data-lux-brief-field]',
       step2Locked || personGenerating,
@@ -12233,6 +12349,11 @@
     state.luxuryAd.productionProject = project;
     state.luxuryAd.productionProjectId = project.id || state.luxuryAd.productionProjectId || '';
     if (project.production_contract) state.luxuryAd.productionContract = project.production_contract;
+    if (project.industry_contract) state.luxuryAd.industryContract = project.industry_contract;
+    if (project.industry_selection || project.draft_state?.industry_selection) {
+      state.luxuryAd.industry = normalizeLuxuryIndustrySelection(project.industry_selection || project.draft_state?.industry_selection);
+      renderLuxuryIndustryControls();
+    }
     if (project.segment_plan) state.luxuryAd.segmentPlan = project.segment_plan;
     const projectHasDetailedScript = Array.isArray(project.scenes)
       && project.scenes.length > 0
@@ -12271,6 +12392,8 @@
       storyboard_detailed: !!state.luxuryAd.storyboardDetailed,
       keyframe_planning_only: !!state.luxuryAd.keyframePlanningOnly,
       ad_type: state.luxuryAd.adType || 'auto',
+      industry_selection: luxuryIndustrySelectionPayload(),
+      industry_contract: state.luxuryAd.industryContract || state.luxuryAd.briefInfo?.industry_contract || null,
       auto_enhance: state.luxuryAd.autoEnhance !== false,
       expand_brief: state.luxuryAd.expandBrief !== false,
       voice_id: state.luxuryAd.voiceId || '',
@@ -13438,6 +13561,8 @@
       const personSpecPayload = luxuryAdPersonSpec();
       const castProfilesPayload = luxuryAdCastProfiles();
       const personAssetPayload = luxuryAdPersonAssetPayload();
+      const industrySelectionPayload = luxuryIndustrySelectionPayload();
+      state.luxuryAd.industry = normalizeLuxuryIndustrySelection(industrySelectionPayload);
       const requestBody = {
         production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
@@ -13448,6 +13573,9 @@
         product_name: state.luxuryAd.productAsset?.name || '',
         asset_summary: luxuryAdAssetSummary() || (detail ? '用户未上传参考素材，本次按广告需求直接生成商品/场景/人物视觉，不要要求用户补传图片。' : '暂未上传图片，本次只生成场景配置和素材清单'),
         ad_type: state.luxuryAd.adType || 'auto',
+        // 中文注释：行业选择只作为边界合同输入，不让前端生成固定行业模板或兜底场景。
+        industry_selection: industrySelectionPayload,
+        industry_contract: state.luxuryAd.industryContract || null,
         output_ratio: state.luxuryAd.outputRatio || '9:16',
         expand_brief: state.luxuryAd.expandBrief !== false,
         planning_mode: detail ? 'detailed' : 'outline',
@@ -13535,6 +13663,8 @@
       if (r.visual_locks) state.luxuryAd.visualLocks = r.visual_locks;
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
       if (r.segment_plan) state.luxuryAd.segmentPlan = r.segment_plan;
+      if (r.industry_contract) state.luxuryAd.industryContract = r.industry_contract;
+      if (r.industry_selection) state.luxuryAd.industry = normalizeLuxuryIndustrySelection(r.industry_selection);
       if (r.production_project) applyLuxuryProductionProject(r.production_project);
       else if (r.production_project_id) state.luxuryAd.productionProjectId = r.production_project_id;
       if (!detail && r.person_spec && typeof r.person_spec === 'object') {
@@ -13744,6 +13874,8 @@
       const personSpecPayload = luxuryAdPersonSpec();
       const castProfilesPayload = luxuryAdCastProfiles();
       const personAssetPayload = luxuryAdPersonAssetPayload();
+      const industrySelectionPayload = luxuryIndustrySelectionPayload();
+      state.luxuryAd.industry = normalizeLuxuryIndustrySelection(industrySelectionPayload);
       const requestBody = {
         avatar_id: state.selectedAvatar?.id || '',
         background_url: compactLuxuryUrl(refs[0] || ''),
@@ -13763,6 +13895,9 @@
         global_visual_bible: state.luxuryAd.globalVisualBible || null,
         segment_plan: state.luxuryAd.segmentPlan || null,
         production_contract: state.luxuryAd.productionContract || null,
+        // 中文注释：分镜阶段复用同一份行业合同，避免剧情和画面各自猜行业。
+        industry_selection: industrySelectionPayload,
+        industry_contract: state.luxuryAd.industryContract || state.luxuryAd.briefInfo?.industry_contract || null,
         controlled_production: luxuryControlledProductionPayload(),
         production_project_id: state.luxuryAd.productionProjectId || '',
         brief_info: state.luxuryAd.briefInfo || null,
@@ -13826,6 +13961,7 @@
       if (r.global_visual_bible) state.luxuryAd.globalVisualBible = r.global_visual_bible;
       if (r.segment_plan) state.luxuryAd.segmentPlan = r.segment_plan;
       if (r.production_contract) state.luxuryAd.productionContract = r.production_contract;
+      if (r.industry_contract) state.luxuryAd.industryContract = r.industry_contract;
       if (planningSheetMode) {
         validateLuxuryAdStoryboardPlan(returnedScenes.length ? returnedScenes : requestSegments, requestSegments);
       } else {
@@ -19050,6 +19186,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         return;
       }
       state.luxuryAd.content = e.target.value || '';
+      state.luxuryAd.industryContract = null;
       state.luxuryAd.briefInfo = null;
       state.luxuryAd.visualReferenceBrief = null;
       state.luxuryAd.assetManifest = null;
@@ -19062,6 +19199,28 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       setLuxuryProgress('content');
       updateLuxuryAdStepLocks();
     });
+    const luxIndustry = $('#dhLuxAdIndustry');
+    const luxSubIndustry = $('#dhLuxAdSubIndustry');
+    const luxIndustryNote = $('#dhLuxAdIndustryNote');
+    const luxIndustryForbidden = $('#dhLuxAdIndustryForbidden');
+    const onLuxuryIndustryInput = e => {
+      if (luxuryAdStepIsLocked(1)) {
+        renderLuxuryIndustryControls();
+        toast(luxuryAdLockedStepMessage(1), 'error');
+        return;
+      }
+      if (e?.target?.id === 'dhLuxAdIndustry') {
+        const primary = luxuryIndustryOption(e.target.value || 'auto')[0];
+        state.luxuryAd.industry = { ...normalizeLuxuryIndustrySelection(state.luxuryAd.industry), primary, secondary: '' };
+      }
+      // 中文注释：行业修改会影响剧本、提示词和 QA 合同，因此必须重新生成后续内容。
+      markLuxuryIndustryDirty();
+      setLuxuryProgress('content');
+    };
+    if (luxIndustry) luxIndustry.addEventListener('change', onLuxuryIndustryInput);
+    if (luxSubIndustry) luxSubIndustry.addEventListener('change', onLuxuryIndustryInput);
+    if (luxIndustryNote) luxIndustryNote.addEventListener('input', onLuxuryIndustryInput);
+    if (luxIndustryForbidden) luxIndustryForbidden.addEventListener('input', onLuxuryIndustryInput);
     const luxDuration = $('#dhLuxAdDuration');
     if (luxDuration) luxDuration.addEventListener('change', e => handleLuxuryAdDurationChange(e.target.value));
     const luxRatio = $('#dhLuxAdRatio');
@@ -19088,6 +19247,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxAutoEnhance) luxAutoEnhance.addEventListener('change', e => { state.luxuryAd.autoEnhance = !!e.target.checked; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
     const luxExpandBrief = $('#dhLuxAdExpandBrief');
     if (luxExpandBrief) luxExpandBrief.addEventListener('change', e => { state.luxuryAd.expandBrief = !!e.target.checked; state.luxuryAd.segments = []; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.keyframes = []; renderLuxuryAdStoryboard(); });
+    renderLuxuryIndustryControls();
     updateOutputHints();
     if ((initialTab === 'luxury-ad' || initialTab === 'material-film') && initialLuxuryStep) {
       state.luxuryAd.currentStep = initialLuxuryStep;

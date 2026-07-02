@@ -517,6 +517,7 @@ const SCENE_AGENT_MAP = {
   avatar_script: ['digital_human', 'copywriter', 'prompt_engineer'],
   showroom_guide: ['digital_human', 'storyboard', 'atmosphere', 'prompt_engineer'],
   digital_ad: ['digital_human', 'copywriter', 'storyboard', 'prompt_engineer'],
+  luxury_ad_industry: ['screenwriter', 'director', 'storyboard', 'prompt_engineer', 'art_director'],
   // 剧情/编剧
   story:         ['screenwriter', 'prompt_engineer'],
   screenwriter:  ['screenwriter', 'prompt_engineer'],
