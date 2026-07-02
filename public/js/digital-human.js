@@ -6752,16 +6752,18 @@
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
       panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
+        <span id="dhLuxIndustrySummaryTitle">行业选择：自动判断</span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
     const titleEl = $('#dhLuxIndustrySummaryTitle', panel);
-    if (titleEl) titleEl.textContent = summary.title || '行业：自动判断';
+    if (titleEl) titleEl.textContent = String(summary.title || '行业：自动判断').replace(/^行业：/, '行业选择：');
     const open = $('#dhLuxIndustryOpen', panel);
     if (open) {
+      open.querySelector('small')?.remove();
       // 中文注释：行业入口只展示当前选择摘要，详细补充和禁用词仍在弹窗内编辑，避免首屏占用过多空间。
       open.title = summary.sub || '点击选择行业；选错后可重新选择。';
+      open.classList.toggle('has-selection', normalizeLuxuryIndustrySelection(state.luxuryAd.industry).primary !== 'auto');
     }
   }
 
@@ -6898,6 +6900,7 @@
       modal.classList.remove('open');
       // 中文注释：保存行业选择后才清理当前任务派生结果；弹窗内临时点选不影响当前任务。
       markLuxuryIndustryDirty({ selection: next });
+      renderLuxuryIndustryControls();
       setLuxuryProgress('content');
     };
     rerender();
@@ -9679,6 +9682,7 @@
     if (autoEnhance) autoEnhance.checked = state.luxuryAd.autoEnhance !== false;
     const expandBrief = $('#dhLuxAdExpandBrief');
     if (expandBrief) expandBrief.checked = state.luxuryAd.expandBrief !== false;
+    renderLuxuryIndustryControls();
     $$('[data-lux-ad-type]').forEach(b => b.classList.toggle('active', b.dataset.luxAdType === (state.luxuryAd.adType || 'auto')));
     $$('[data-lux-ratio]').forEach(b => b.classList.toggle('active', b.dataset.luxRatio === (state.luxuryAd.outputRatio || '9:16')));
     $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b.dataset.luxVideoResolution === (state.luxuryAd.videoResolution || '720p')));
