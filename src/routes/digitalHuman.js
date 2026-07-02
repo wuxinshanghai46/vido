@@ -14170,6 +14170,62 @@ function _luxuryQaRepairInstruction(qa = null) {
   ].join(' ');
 }
 
+function _luxuryBuildQaAcceptanceContractPrompt(scene = {}, contract = null, {
+  productSubject = '',
+  personRequired = false,
+} = {}) {
+  const visualContract = scene.visual_contract && typeof scene.visual_contract === 'object' ? scene.visual_contract : {};
+  const strict = contract && typeof contract === 'object'
+    ? contract
+    : (scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object' ? scene.strict_storyboard_contract : {});
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || strict.product_subject || scene.product_subject || 'advertised subject');
+  const industryPolicy = strict.industry_policy || _luxuryIndustryDisambiguationPolicy(subject, scene);
+  const expectedPeople = Number(
+    strict.multi_character_contract?.expected_count
+    || scene.multi_character_contract?.expected_count
+    || scene.person_count
+    || scene.expected_person_count
+    || (personRequired ? 1 : 0)
+  );
+  const mustShow = _luxuryStrictList([
+    ...(Array.isArray(strict.must_show) ? strict.must_show : []),
+    ...(Array.isArray(visualContract.must_show) ? visualContract.must_show : []),
+    ...(Array.isArray(industryPolicy.mustShow) ? industryPolicy.mustShow : []),
+  ], 8);
+  const mustNotShow = _luxuryStrictList([
+    ...(Array.isArray(strict.must_not_show) ? strict.must_not_show : []),
+    ...(Array.isArray(visualContract.must_not_show) ? visualContract.must_not_show : []),
+    ...(Array.isArray(industryPolicy.mustNotShow) ? industryPolicy.mustNotShow.map(x => `industry drift: ${x}`) : []),
+  ], 10);
+  // 中文注释：QA 验收合同只来自当前任务、当前镜头和当前行业合同；不得读取或复用其他任务的画面要求。
+  return _luxuryStrictText([
+    'QA ACCEPTANCE CONTRACT FOR THIS SHOT ONLY:',
+    `Subject/category must match: ${subject}.`,
+    industryPolicy.requiredEvidence ? `Required industry evidence: ${industryPolicy.requiredEvidence}.` : '',
+    industryPolicy.allowedEnvironment ? `Allowed environment family: ${industryPolicy.allowedEnvironment}.` : '',
+    `Realism must be live-action commercial photography, not poster/CGI/illustration.`,
+    expectedPeople > 0 ? `Visible people: exactly ${expectedPeople} campaign person${expectedPeople === 1 ? '' : 's'} when the shot contains people; no duplicate actor or background human-like figure.` : 'Visible people: only if this shot explicitly requires them; no random extra person.',
+    scene.character_lock || strict.character_lock ? 'Character consistency: preserve the confirmed actor identity when a person appears; only expression, pose and camera may change.' : '',
+    strict.action || scene.action || scene.visual_action ? `Story action must match: ${_luxuryCleanActionField(strict.action || scene.action || scene.visual_action || '', scene)}.` : '',
+    strict.camera || scene.camera || scene.camera_label ? `Camera/framing must match: ${strict.camera || scene.camera || scene.camera_label}.` : '',
+    mustShow.length ? `Must visibly pass: ${mustShow.join('; ')}.` : '',
+    mustNotShow.length ? `Hard reject if present: ${mustNotShow.join('; ')}.` : '',
+    strict.qa_contract ? `Existing QA rule: ${strict.qa_contract}.` : '',
+    'If any required subject, industry evidence, actor identity, scene family, product proof, story action or person count cannot be satisfied, do not invent another business/category.',
+  ].filter(Boolean).join(' '), 1500);
+}
+
+function _luxuryQaRejectRepairPayload(err = null) {
+  if (!err) return null;
+  const qa = err.qa || err.details?.qa || err.data?.qa || null;
+  if (!qa || typeof qa !== 'object') return null;
+  const message = String(err.message || '').replace(/\s+/g, ' ');
+  if (/timeout|401|403|unauthorized|forbidden|api key|token|令牌|Internal Server Error|status code 500|HTTP 500/i.test(message)) {
+    return null;
+  }
+  return qa;
+}
+
 function _luxuryQaFailureText(qa = null) {
   if (!qa) return '';
   const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : {};
@@ -22043,6 +22099,10 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     : null;
   const currentShotForImage = currentShot ? { ...currentShot } : null;
   const industryPolicyPrompt = _luxuryIndustryDisambiguationPrompt(contract.product_subject || scene.product_subject, scene);
+  const qaAcceptancePrompt = _luxuryBuildQaAcceptanceContractPrompt(scene, contract, {
+    productSubject: contract.product_subject || scene.product_subject,
+    personRequired: !!(scene.person_required || scene.character_lock || contract.character_lock || contract.multi_character_contract?.required),
+  });
   if (currentShotForImage?.dialogue) {
     currentShotForImage.spoken_intent = _luxuryStrictText(currentShotForImage.dialogue, 180);
     delete currentShotForImage.dialogue;
@@ -22074,6 +22134,7 @@ function _compileLuxuryShotImagePrompt(scene = {}, contract = {}, { aspectRatio 
     contract.controlled_rules ? `Controlled production rules: ${contract.controlled_rules}.` : '',
     `Must show: ${contract.must_show.join('; ')}.`,
     `Must not show: ${contract.must_not_show.join('; ')}.`,
+    qaAcceptancePrompt,
     `QA acceptance rule: ${contract.qa_contract}.`,
     _luxuryUiOverlayPrompt(scene.ui_overlay),
     scene.continuity_bible ? `Campaign continuity: ${_luxuryStrictText(scene.continuity_bible, 520)}.` : '',
@@ -25811,6 +25872,10 @@ function _buildLuxuryImageModelStrictPrompt({
     ? _luxuryStrictText(JSON.stringify(scene.shot_execution_packet), 1150)
     : '';
   const compiled = _luxuryStrictText(scene.compiled_image_prompt || shotContractPrompt || '', 760);
+  const qaAcceptancePrompt = _luxuryBuildQaAcceptanceContractPrompt(scene, scene.strict_storyboard_contract || null, {
+    productSubject: productSubject || scene.product_subject,
+    personRequired,
+  });
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || '');
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true });
   const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true };
@@ -25874,6 +25939,7 @@ function _buildLuxuryImageModelStrictPrompt({
     humanAnchor,
     multiCharacterPrompt,
     generatedPresenterGuidance,
+    qaAcceptancePrompt ? `MANDATORY QA ACCEPTANCE BEFORE GENERATION: ${qaAcceptancePrompt}` : '',
     personRequired ? expressionDirection : '',
     visual ? `MUST SHOW: ${visual}.` : '',
     action ? `REQUIRED ACTION: ${action}.` : '',
@@ -26660,7 +26726,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const configuredModels = strictSingleCandidate ? configuredModelsAll.slice(0, 1) : configuredModelsAll;
   const repairCounts = new Map();
   const maxQaRepairRetries = allowQaRepair
-    ? Math.max(0, Math.min(4, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 3)) || 3))
+    ? Math.max(0, Math.min(4, Math.round(Number(process.env.VIDO_LUXURY_KEYFRAME_QA_RETRIES || 1)) || 1))
     : 0;
 
   for (let i = 0; i < configuredModels.length; i++) {
@@ -26721,10 +26787,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
         }
         const repairKey = `${model.provider_id}/${model.model_id}`;
         const usedRepairs = Number(repairCounts.get(repairKey) || 0);
-        if (allowQaRepair && usedRepairs < maxQaRepairRetries && typeof qaRepairHook === 'function') {
+        const qaForRepair = _luxuryQaRejectRepairPayload(err);
+        if (allowQaRepair && qaForRepair && usedRepairs < maxQaRepairRetries && typeof qaRepairHook === 'function') {
           try {
             const repairPatch = await qaRepairHook({
-              qa: err.qa || null,
+              qa: qaForRepair,
               error: err,
               prompt: currentPrompt,
               repairInstruction,
@@ -26757,7 +26824,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
             });
           }
         }
-        if (allowQaRepair && repairInstruction && usedRepairs < maxQaRepairRetries) {
+        // 中文注释：只有结构化 QA 画面不合格才重写当前镜头提示词；接口/鉴权/超时类错误必须按原错误暴露，不能伪装成提示词修复。
+        if (allowQaRepair && qaForRepair && repairInstruction && usedRepairs < maxQaRepairRetries) {
           repairCounts.set(repairKey, usedRepairs + 1);
           console.warn(`[DH/luxury-ad] keyframe QA rejected ${_pipelineModelLabel(model)}; retrying the same model with rewritten QA contract ${usedRepairs + 1}/${maxQaRepairRetries}:`, shortError(err));
           i -= 1;
