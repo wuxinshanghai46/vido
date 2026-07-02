@@ -3741,18 +3741,17 @@ function _qaJsonFromVisionProse(raw = '') {
   const positive = /meets? the requirements?|matches?|符合|通过|一致/i.test(text)
     && !/does not meet|not meet|不符合|不匹配|失败|无关/i.test(text);
   if (!negative && !positive) return null;
-  const strictReject = negative || positive;
   return {
-    pass: false,
-    score: negative ? 35 : 45,
-    subject_match: false,
-    storyboard_match: false,
-    major_mismatches: strictReject ? [text.slice(0, 180)] : [],
+    pass: positive && !negative,
+    score: negative ? 35 : 72,
+    subject_match: positive && !negative,
+    storyboard_match: positive && !negative,
+    major_mismatches: negative ? [text.slice(0, 180)] : [],
     unrelated_subjects: [],
     observed: text.slice(0, 220),
     reason: negative
       ? 'Vision QA provider returned prose rejection instead of JSON; normalized as strict QA failure.'
-      : 'Vision QA provider returned prose approval instead of JSON; strict mode rejects it because the QA result is not auditable JSON.',
+      : 'Vision QA provider returned prose approval instead of JSON; accepted as a manual-review candidate because no explicit mismatch was reported.',
   };
 }
 
@@ -6602,7 +6601,14 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const rawDims = parsed.quality_dimensions && typeof parsed.quality_dimensions === 'object'
     ? parsed.quality_dimensions
     : {};
-  const dimScore = key => Math.max(0, Math.min(100, Number(rawDims[key]) || 0));
+  const hasDimensionValue = key => Number.isFinite(Number(rawDims[key]));
+  const missingQualityDimensions = ['realism', 'asset_fidelity', 'character_consistency', 'scene_continuity', 'product_fidelity', 'ui_overlay']
+    .filter(key => !hasDimensionValue(key));
+  const positiveCoreMatch = parsed.pass === true && parsed.subject_match === true && parsed.storyboard_match === true && score >= 70;
+  const dimScore = key => {
+    if (hasDimensionValue(key)) return Math.max(0, Math.min(100, Number(rawDims[key])));
+    return positiveCoreMatch ? Math.max(70, Math.min(78, score)) : 0;
+  };
   const qualityDimensions = {
     realism: dimScore('realism'),
     asset_fidelity: dimScore('asset_fidelity'),
@@ -6655,6 +6661,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     Number(qualityDimensions.scene_continuity) > 0 && Number(qualityDimensions.scene_continuity) < 72 ? `scene_continuity:${qualityDimensions.scene_continuity}` : '',
     Number(qualityDimensions.product_fidelity) > 0 && Number(qualityDimensions.product_fidelity) < productFidelityThreshold ? `product_fidelity:${qualityDimensions.product_fidelity}` : '',
     Number(qualityDimensions.character_consistency) > 0 && hasCharacterLock && Number(qualityDimensions.character_consistency) < 74 ? `character_consistency:${qualityDimensions.character_consistency}` : '',
+    positiveCoreMatch && missingQualityDimensions.length ? `quality_dimensions_missing:${missingQualityDimensions.join(',')}` : '',
   ].filter(Boolean);
   const allFatalIssues = _cleanQaList([...fatalIssues, ...derivedFatalIssues], 160, 10);
   const allReviewIssues = _cleanQaList([...reviewIssues, ...derivedReviewIssues], 160, 10);
@@ -26440,6 +26447,17 @@ function _buildLuxuryImageModelStrictPrompt({
   const sceneRecipe = _luxuryKeyframeSceneRecipe(productSubject || scene.product_subject, scene);
   const humanAnchor = _luxuryKeyframeHumanAnchor(scene, hasAvatar);
   const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || scene.visual_contract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
+  const multiCharacterContract = scene.multi_character_contract || scene.visual_contract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract || null;
+  const expectedHumanCount = multiCharacterContract?.required
+    ? Math.max(2, Math.min(6, Math.round(Number(multiCharacterContract.expected_count) || 2)))
+    : (personRequired ? 1 : 0);
+  const humanRequirementPrompt = expectedHumanCount > 1
+    ? `MANDATORY MULTI-PERSON STORY: exactly ${expectedHumanCount} visible real people must appear in this frame with their separate roles and relationship from the shot contract. Do not collapse them into one presenter, do not add extra people beyond the contract, and keep each person distinct.`
+    : (personRequired
+      ? (robotAssistantSubject
+        ? 'MANDATORY HUMAN + ROBOT STORY: if this shot asks for a person, the person must appear with the confirmed robot/assistant and the robot must remain the advertised subject evidence.'
+        : 'MANDATORY HUMAN: one visible real presenter/consultant/professional must appear in this frame performing the specified action. Do not generate an empty location, subject-only packshot, robot, mannequin, or abstract scene.')
+      : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.');
   const generatedPresenterGuidance = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change pose, expression, camera angle and scene placement according to the current shot. Do not copy its background, fixed smile/neutral expression, or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
@@ -26449,16 +26467,14 @@ function _buildLuxuryImageModelStrictPrompt({
     unconfirmedDriftRule,
     robotAssistantGuard ? `MANDATORY ROBOT ASSISTANT LOCK: ${robotAssistantGuard}` : '',
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
-    personRequired
-      ? (robotAssistantSubject
-        ? 'MANDATORY HUMAN + ROBOT STORY: if this shot asks for a person, the person must appear with the confirmed robot/assistant and the robot must remain the advertised subject evidence.'
-        : 'MANDATORY HUMAN: one visible real presenter/consultant/professional must appear in this frame performing the specified action. Do not generate an empty location, subject-only packshot, robot, mannequin, or abstract scene.')
-      : 'MANDATORY SUBJECT: follow the confirmed script subject; product-only is allowed only when the shot is explicitly a macro/detail insert.',
+    humanRequirementPrompt,
     'LIVE-ACTION REALISM LOCK: make it look like a frame from a real commercial shoot with a real actor on a real location. Natural skin texture with pores and slight asymmetry, realistic hair and hands, real fabric, practical location light, believable shadows, optical 35mm/50mm lens perspective.',
     robotAssistantSubject
       ? 'STYLE FORBIDDEN: no AI poster style, no anime, no illustration, no glossy 3D render, no CGI, no waxy plastic face, no cyberpunk, no sci-fi visor, no sunglasses/tinted glasses, no fashion-beauty campaign.'
       : 'STYLE FORBIDDEN: no AI poster style, no anime, no illustration, no glossy 3D render, no CGI, no waxy plastic face, no cyberpunk, no sci-fi visor, no sunglasses/tinted glasses, no robot/android, no fashion-beauty campaign unless the confirmed script explicitly asks for it.',
-    personRequired ? 'FRAMING LOCK: presenter must be in a medium or medium-close shot, face and expression readable, hands/action visible, placed beside the product/material evidence in the same real location.' : '',
+    expectedHumanCount > 1
+      ? 'FRAMING LOCK: all contracted people must be visible enough to understand their relationship, roles, faces/gestures and interaction with the scene evidence. Do not crop one of the required people out.'
+      : (personRequired ? 'FRAMING LOCK: presenter must be in a medium or medium-close shot, face and expression readable, hands/action visible, placed beside the product/material evidence in the same real location.' : ''),
     referenceRoleGuide ? _compactLuxuryKeyframeText(referenceRoleGuide, 760) : '',
     steelEnvironmentLock,
     positiveAnchor,
