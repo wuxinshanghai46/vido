@@ -6742,11 +6742,11 @@
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
       panel.innerHTML = `<button class="dh-btn dh-btn-ghost dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle"></span>
+        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
-    setText('#dhLuxIndustrySummaryTitle', summary.title);
+    setText('#dhLuxIndustrySummaryTitle', summary.title || '行业：自动判断');
     const open = $('#dhLuxIndustryOpen', panel);
     if (open) {
       // 中文注释：行业入口只展示当前选择摘要，详细补充和禁用词仍在弹窗内编辑，避免首屏占用过多空间。

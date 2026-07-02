@@ -17979,9 +17979,11 @@ function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
   const port = process.env.PORT || 3000;
   const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'luxury-ad/storyboard');
   const timeoutMs = _luxuryStoryboardRunningTimeoutMs(body);
+  const requestTimeoutMs = timeoutMs + 15000;
   let completed = false;
   const watchdog = setTimeout(() => {
     if (completed) return;
+    completed = true;
     const timeout = _luxuryStoryboardTimeoutError(body);
     _storeLuxuryStoryboardResult(req, requestKey, timeout);
     console.error('[DH/luxury-ad/storyboard/async] timeout:', timeout.error);
@@ -17996,13 +17998,15 @@ function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
           'Content-Type': 'application/json',
           ...internalAuthHeaders,
         },
-        timeout: 0,
+        timeout: requestTimeoutMs,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
+      if (completed) return;
       completed = true;
       if (watchdog) clearTimeout(watchdog);
     } catch (err) {
+      if (completed) return;
       completed = true;
       if (watchdog) clearTimeout(watchdog);
       const responseBody = err.response?.data && typeof err.response.data === 'object' ? err.response.data : null;
@@ -18021,6 +18025,7 @@ function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
   const requestKey = String(body.request_key || '').trim();
   const port = process.env.PORT || 3000;
   const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'dh/spaces/keyframes');
+  const requestTimeoutMs = 90 * 60 * 1000;
   setImmediate(async () => {
     try {
       await axios.post(`http://127.0.0.1:${port}/api/dh/spaces/keyframes`, {
@@ -18031,7 +18036,7 @@ function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
           'Content-Type': 'application/json',
           ...internalAuthHeaders,
         },
-        timeout: 0,
+        timeout: requestTimeoutMs,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       });
