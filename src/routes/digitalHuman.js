@@ -5205,7 +5205,12 @@ function _luxuryIndustrySeedContract({ productSubject = '', scenes = [], brief =
     ]),
   ].filter(Boolean).join(' ');
   const subject = _luxurySceneFriendlyProductSubject(productSubject || 'advertised subject') || 'advertised subject';
-  const policy = _luxuryIndustryDisambiguationPolicy(subject, { ...scene, product_subject: productSubject || subject });
+  const policy = _luxuryIndustryDisambiguationPolicy(subject, {
+    product_subject: productSubject || subject,
+    visual: text,
+    content_prompt: text,
+    scene_content: text,
+  });
   if (_luxuryIsSoftwareWorkflowSubject(productSubject || subject, { visual: text, content_prompt: text })) {
     return {
       industry: 'software / service workflow',
