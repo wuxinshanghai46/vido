@@ -270,6 +270,20 @@ function _luxuryAdProjectTextHash(value = '') {
   return key ? crypto.createHash('sha1').update(key).digest('hex') : '';
 }
 
+function _luxuryAdProjectIndustryKey(row = {}) {
+  const selection = row.industry_selection || row.draft_state?.industry_selection || row.industry_contract?.industry_selection || {};
+  const primary = String(selection.primary || selection.industry_id || row.industry_contract?.industry_id || '').trim();
+  const secondary = String(selection.secondary || selection.sub_industry_id || row.industry_contract?.sub_industry_id || '').trim();
+  const label = String(row.industry_contract?.industry_label || selection.primary_label || '').trim();
+  return [primary || label || 'auto', secondary].join('::');
+}
+
+function _luxuryAdProjectGroupKey(row = {}) {
+  const textKey = _luxuryAdProjectTextKey(row.text);
+  if (!textKey) return '';
+  return `${textKey}::industry=${_luxuryAdProjectIndustryKey(row)}`;
+}
+
 function _luxuryAdProjectHasDerivedState(row = {}) {
   return !!(
     row.production_contract
@@ -391,9 +405,11 @@ function _luxuryAdProjectCompletenessScore(row = {}) {
 }
 
 function _compareLuxuryAdProjectCandidate(a = {}, b = {}) {
+  const timeDelta = String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''));
+  if (timeDelta) return timeDelta;
   const scoreDelta = _luxuryAdProjectCompletenessScore(b) - _luxuryAdProjectCompletenessScore(a);
   if (scoreDelta) return scoreDelta;
-  return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || ''));
+  return 0;
 }
 
 function _findBestLuxuryAdProjectIndexByText(projects = [], req, bodyText = '') {
@@ -416,13 +432,13 @@ function _listLuxuryAdProjects(req, limit = 20) {
   _readLuxuryAdProjectStore().projects
     .filter(row => _luxuryAdProjectBelongsTo(req, row))
     .forEach(row => {
-      const textKey = _luxuryAdProjectTextKey(row.text);
-      if (!textKey || !_canMergeLuxuryAdProjectByText(row)) {
+      const groupKey = _luxuryAdProjectGroupKey(row);
+      if (!groupKey || !_canMergeLuxuryAdProjectByText(row)) {
         ungrouped.push(row);
         return;
       }
-      const current = groupedByText.get(textKey);
-      if (!current || _compareLuxuryAdProjectCandidate(row, current) < 0) groupedByText.set(textKey, row);
+      const current = groupedByText.get(groupKey);
+      if (!current || _compareLuxuryAdProjectCandidate(row, current) < 0) groupedByText.set(groupKey, row);
     });
   return [...groupedByText.values(), ...ungrouped]
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
@@ -13422,6 +13438,12 @@ const LUXURY_INDUSTRY_CATALOG = {
   public_service: { label: '政企 / 公共服务', subs: { city_service: '城市服务', public_welfare: '公益', government: '政务', enterprise_brand: '企业品牌' }, allowed_scenes: ['公共服务现场', '企业服务', '公益行动', '城市应用'], subject_evidence: ['服务对象', '现场行动', '结果证据', '协作流程'], forbidden_drift: ['商业零售硬套', '无关金融收益暗示', '虚假公文文字'] },
   b2b_service: { label: 'B2B / 专业服务', subs: { consulting: '咨询', legal: '法律', accounting: '财税', marketing_service: '营销服务' }, allowed_scenes: ['专业咨询', '客户沟通', '方案交付', '业务协作'], subject_evidence: ['专业人员互动', '客户问题', '方案或结果', '真实服务触点'], forbidden_drift: ['默认软件仪表盘', '无关货架仓库', '假文本文件替代服务'] },
 };
+const LUXURY_INDUSTRY_ALIASES = {
+  tourism_hotel: 'tourism_hospitality',
+  hotel: 'tourism_hospitality',
+  hospitality: 'tourism_hospitality',
+  travel_hotel: 'tourism_hospitality',
+};
 
 function _luxuryIndustryArray(value, fallback = []) {
   return Array.isArray(value) ? value.map(x => String(x || '').trim()).filter(Boolean) : fallback;
@@ -13531,7 +13553,9 @@ function _buildLuxuryIndustryKbContext({ selected = {}, productSubject = '', bri
 
 function _normalizeLuxuryIndustrySelection(input = null) {
   const src = input && typeof input === 'object' ? input : {};
-  const primary = LUXURY_INDUSTRY_CATALOG[src.primary || src.industry_id || src.id] ? String(src.primary || src.industry_id || src.id) : 'auto';
+  const rawPrimary = String(src.primary || src.industry_id || src.id || '').trim();
+  const aliasedPrimary = LUXURY_INDUSTRY_ALIASES[rawPrimary] || rawPrimary;
+  const primary = LUXURY_INDUSTRY_CATALOG[aliasedPrimary] ? aliasedPrimary : 'auto';
   const entry = LUXURY_INDUSTRY_CATALOG[primary] || LUXURY_INDUSTRY_CATALOG.auto;
   const rawSecondary = String(src.secondary || src.sub_industry_id || '').trim();
   const secondary = entry.subs && entry.subs[rawSecondary] ? rawSecondary : '';
@@ -20200,22 +20224,56 @@ ${JSON.stringify(previousScenes, null, 2).slice(0, 16000)}
       return requireLuxuryScriptShotCount(table, '剧本表 writer 返回结果');
     };
     const luxuryDialogueSpeakers = (scene = {}, characterList = []) => {
-      const lines = Array.isArray(scene?.dialogue_lines)
-        ? scene.dialogue_lines
-        : String(scene?.dialogue || scene?.dialogue_text || scene?.conversation || '').split(/\n+/);
+      const lines = [
+        ...(Array.isArray(scene?.dialogue_lines) ? scene.dialogue_lines : []),
+        scene?.dialogue,
+        scene?.dialogue_text,
+        scene?.conversation,
+        scene?.voiceover,
+        scene?.narration,
+        scene?.ad_copy,
+        scene?.text,
+      ].filter(Boolean);
       const characterNames = new Set((Array.isArray(characterList) ? characterList : []).map(luxuryCharacterName).filter(Boolean));
       const speakers = new Set();
       const generic = /^(旁白|画外音|字幕|解说|文案|镜头|画面|视觉|voiceover|narration|vo|os)$/i;
       const roleLike = /^(客户|顾客|用户|观众|销售|销售人员|顾问|助理|设计师|经理|讲解者|讲解员|主持人|人物|男士|女士)$/;
       lines.forEach(line => {
         const textLine = String(line || '').trim();
-        const m = textLine.match(/^([^：:\n]{1,12})[：:]/);
-        if (!m) return;
-        const prefix = m[1].replace(/\s+/g, '').trim();
-        if (!prefix || generic.test(prefix)) return;
-        if (characterNames.has(prefix) || roleLike.test(prefix)) speakers.add(prefix);
+        const re = /(?:^|[\n。！？!?；;])\s*([^：:\n。！？!?；;]{1,24})[：:]/g;
+        let m;
+        while ((m = re.exec(textLine))) {
+          const prefix = m[1].replace(/\s+/g, '').trim();
+          if (!prefix || generic.test(prefix)) continue;
+          if (characterNames.has(prefix) || roleLike.test(prefix) || /^[A-Za-z][A-Za-z0-9_-]{1,20}$/.test(prefix)) speakers.add(prefix);
+        }
       });
       return speakers;
+    };
+    const luxuryNamedInteractiveParticipants = (sceneList = [], characterList = []) => {
+      const names = new Set((Array.isArray(characterList) ? characterList : []).map(luxuryCharacterName).filter(Boolean));
+      const participants = new Set();
+      const roleActor = /(客户|顾客|用户|观众|销售|销售人员|顾问|助理|设计师|经理|礼宾经理|讲解者|讲解员|主持人|人物|男士|女士)/g;
+      const latinName = /\b[A-Z][a-z]+(?:\.\s*[A-Z][a-z]+|[\s-][A-Z][a-z]+)?\b/g;
+      (Array.isArray(sceneList) ? sceneList : []).forEach(scene => {
+        const text = [
+          scene?.characters,
+          scene?.visual,
+          scene?.action,
+          scene?.visual_action,
+          scene?.voiceover,
+          scene?.narration,
+          scene?.ad_copy,
+          scene?.text,
+        ].filter(Boolean).join(' ');
+        names.forEach(name => {
+          if (name && text.includes(name)) participants.add(name);
+        });
+        let m;
+        while ((m = latinName.exec(text))) participants.add(m[0].replace(/\s+/g, ' ').trim());
+        while ((m = roleActor.exec(text))) participants.add(m[1]);
+      });
+      return participants;
     };
     const luxurySingleCastAliases = (characterList = []) => {
       const aliases = new Set();
@@ -20314,7 +20372,10 @@ ${JSON.stringify(previousScenes, null, 2).slice(0, 16000)}
         }
       });
       if (castMode === 'single' && singlePersonLeaks.length) return `单人配置不一致：${singlePersonLeaks.slice(0, 4).join('；')}。`;
-      if (expectedPeople >= 2 && scriptSpeakers.size < 2) return `双人/多人剧本没有体现至少两个人名的对话，当前说话人 ${scriptSpeakers.size} 个。`;
+      if (expectedPeople >= 2 && scriptSpeakers.size < 2) {
+        const participants = luxuryNamedInteractiveParticipants(sceneList, baseChars.length ? baseChars : sceneChars);
+        if (participants.size < 2) return `双人/多人剧本没有体现至少两个人物参与互动，当前可识别人物 ${participants.size} 个，说话人 ${scriptSpeakers.size} 个。`;
+      }
       return '';
     };
     const isBlockingLuxuryReviewError = (message = '') => {
@@ -20901,7 +20962,8 @@ ${JSON.stringify(scenes, null, 2)}
         }
       });
       if (expectedPeople >= 2 && scriptSpeakers.size < 2) {
-        throw new Error(`双人剧本没有体现至少两个人名的对话，当前说话人 ${scriptSpeakers.size} 个。`);
+        const participants = luxuryNamedInteractiveParticipants(scenes, rawCharacters);
+        if (participants.size < 2) throw new Error(`双人剧本没有体现至少两个人物参与互动，当前可识别人物 ${participants.size} 个，说话人 ${scriptSpeakers.size} 个。`);
       }
     }
     const finalSceneList = (Array.isArray(scenes) ? scenes : [])

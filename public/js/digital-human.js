@@ -6664,9 +6664,17 @@
     ['public_service', '政企 / 公共服务', [['city_service', '城市服务'], ['public_welfare', '公益'], ['government', '政务'], ['enterprise_brand', '企业品牌']]],
     ['b2b_service', 'B2B / 专业服务', [['consulting', '咨询'], ['legal', '法律'], ['accounting', '财税'], ['marketing_service', '营销服务']]],
   ];
+  const LUXURY_INDUSTRY_ALIASES = {
+    tourism_hotel: 'tourism_hospitality',
+    hotel: 'tourism_hospitality',
+    hospitality: 'tourism_hospitality',
+    travel_hotel: 'tourism_hospitality',
+    hotel_hospitality: 'real_estate',
+  };
 
   function luxuryIndustryOption(id = '') {
-    const key = String(id || 'auto');
+    const raw = String(id || 'auto');
+    const key = LUXURY_INDUSTRY_ALIASES[raw] || raw;
     return LUXURY_INDUSTRY_OPTIONS.find(([value]) => value === key) || LUXURY_INDUSTRY_OPTIONS[0];
   }
 
@@ -6722,9 +6730,12 @@
     const primaryOption = luxuryIndustryOption(current.primary);
     const subs = primaryOption[2] || [];
     const secondaryOption = subs.find(([value]) => value === current.secondary) || null;
+    const secondarySuffix = secondaryOption && !String(primaryOption[1] || '').includes(secondaryOption[1])
+      ? ` / ${secondaryOption[1]}`
+      : '';
     const title = current.primary === 'auto'
       ? '行业：自动判断'
-      : `行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}`;
+      : `行业：${primaryOption[1]}${secondarySuffix}`;
     const tags = [
       (current.intent && current.intent !== 'auto') ? `方向：${luxuryAdIntentLabel(current.intent)}` : '',
       current.note ? `补充：${current.note}` : '',
@@ -6741,12 +6752,13 @@
   function renderLuxuryIndustryControls() {
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
-      panel.innerHTML = `<button class="dh-btn dh-btn-ghost dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
+      panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
+        <small>行业</small><span id="dhLuxIndustrySummaryTitle">行业：自动判断</span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
-    setText('#dhLuxIndustrySummaryTitle', summary.title || '行业：自动判断');
+    const titleEl = $('#dhLuxIndustrySummaryTitle', panel);
+    if (titleEl) titleEl.textContent = summary.title || '行业：自动判断';
     const open = $('#dhLuxIndustryOpen', panel);
     if (open) {
       // 中文注释：行业入口只展示当前选择摘要，详细补充和禁用词仍在弹窗内编辑，避免首屏占用过多空间。
@@ -6876,21 +6888,21 @@
       modal.innerHTML = renderLuxuryIndustryModal(draft);
     };
     const save = () => {
+      const activePrimary = modal.querySelector('[data-lux-industry-primary].active')?.dataset?.luxIndustryPrimary || draft.primary || 'auto';
+      const activeSecondary = modal.querySelector('[data-lux-industry-secondary].active')?.dataset?.luxIndustrySecondary || draft.secondary || '';
+      const activeIntent = modal.querySelector('[data-lux-industry-intent].active')?.dataset?.luxIndustryIntent || draft.intent || 'auto';
       const next = normalizeLuxuryIndustrySelection({
         ...draft,
+        primary: activePrimary,
+        secondary: activeSecondary,
+        intent: activeIntent,
         note: $('#dhLuxIndustryModalNote')?.value || '',
         forbidden: $('#dhLuxIndustryModalForbidden')?.value || '',
       });
-      const prev = JSON.stringify(normalizeLuxuryIndustrySelection(state.luxuryAd.industry));
-      const changed = JSON.stringify(next) !== prev;
       modal.classList.remove('open');
-      if (changed) {
-        // 中文注释：保存行业选择后才清理当前任务派生结果；弹窗内临时点选不影响当前任务。
-        markLuxuryIndustryDirty({ selection: next });
-        setLuxuryProgress('content');
-      } else {
-        renderLuxuryIndustryControls();
-      }
+      // 中文注释：保存行业选择后才清理当前任务派生结果；弹窗内临时点选不影响当前任务。
+      markLuxuryIndustryDirty({ selection: next });
+      setLuxuryProgress('content');
     };
     rerender();
     modal.onclick = e => {

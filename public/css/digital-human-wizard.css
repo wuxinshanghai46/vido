@@ -997,8 +997,9 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 }
 .dh-demo-entry h2 { margin: 0 0 8px; color: var(--dh-text); font-size: 30px; line-height: 1.15; letter-spacing: 0; }
 .dh-demo-entry textarea { min-height: 190px; resize: vertical; margin-top: 16px; font-size: 15px; line-height: 1.8; }
-.dh-lux-industry-panel { flex: 1 0 100%; min-width: 0; display: flex; }
-.dh-lux-industry-summary { width: 100%; max-width: none; min-height: 44px; padding: 8px 14px; border-radius: 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.dh-lux-industry-panel { flex: 1 0 100%; width: 100%; min-width: 0; display: flex; }
+.dh-lux-industry-summary { appearance: none; width: 100%; max-width: none; min-height: 44px; padding: 8px 14px; border: 1px solid rgba(143,178,255,.22); border-radius: 10px; background: rgba(8,14,24,.52); color: var(--dh-text); cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.dh-lux-industry-summary:hover { border-color: rgba(33,255,243,.38); background: rgba(33,255,243,.06); }
 .dh-lux-industry-summary small { color: var(--dh-text-muted); font-size: 11px; font-weight: 900; }
 .dh-lux-industry-summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dh-lux-industry-modal { position: fixed; inset: 0; z-index: 22000; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.72); backdrop-filter: blur(10px); }
