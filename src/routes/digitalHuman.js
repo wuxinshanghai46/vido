@@ -270,6 +270,70 @@ function _luxuryAdProjectTextHash(value = '') {
   return key ? crypto.createHash('sha1').update(key).digest('hex') : '';
 }
 
+function _stableLuxuryTaskScopeValue(value, depth = 0) {
+  if (depth > 5) return null;
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value.replace(/\s+/g, ' ').trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(item => _stableLuxuryTaskScopeValue(item, depth + 1))
+      .filter(item => item !== null && item !== '' && !(Array.isArray(item) && !item.length))
+      .slice(0, 24);
+  }
+  if (typeof value === 'object') {
+    const out = {};
+    Object.keys(value)
+      .sort()
+      .forEach(key => {
+        if (/^(local_path|localPath|previewBlob|blob|base64|dataUrl|created_at|updated_at)$/i.test(key)) return;
+        const next = _stableLuxuryTaskScopeValue(value[key], depth + 1);
+        if (next !== null && next !== '' && !(Array.isArray(next) && !next.length)) out[key] = next;
+      });
+    return out;
+  }
+  return null;
+}
+
+function _luxuryAdProjectTaskScope(body = {}) {
+  const b = body && typeof body === 'object' ? body : {};
+  const productAsset = b.product_asset || b.productAsset || null;
+  const personAsset = b.person_asset || b.personAsset || null;
+  return _stableLuxuryTaskScopeValue({
+    text: b.text || b.brief || '',
+    product_subject: b.product_subject || b.productSubject || '',
+    product_name: b.product_name || b.productName || productAsset?.name || '',
+    product_asset: productAsset ? {
+      id: productAsset.id || productAsset.asset_id || productAsset.assetId || productAsset.material_id || productAsset.materialId || '',
+      name: productAsset.name || '',
+      url: productAsset.url || productAsset.image_url || productAsset.imageUrl || '',
+    } : null,
+    product_profile: b.product_profile || b.productProfile || null,
+    industry_selection: b.industry_selection || b.industrySelection || b.industry_contract?.industry_selection || b.industryContract?.industry_selection || null,
+    industry_supplement: b.industry_selection?.supplement || b.industrySelection?.supplement || b.industry_contract?.supplement || b.industryContract?.supplement || '',
+    industry_forbidden: b.industry_selection?.forbidden || b.industrySelection?.forbidden || b.industry_contract?.forbidden || b.industryContract?.forbidden || '',
+    person_spec: b.person_spec || b.personSpec || null,
+    cast_profiles: b.cast_profiles || b.castProfiles || null,
+    person_asset: personAsset ? {
+      id: personAsset.id || personAsset.actor_asset_id || personAsset.actorAssetId || personAsset.asset_library_id || personAsset.assetLibraryId || personAsset.material_id || personAsset.materialId || '',
+      name: personAsset.name || '',
+      cast_mode: personAsset.cast_mode || personAsset.castMode || '',
+      expected_people: personAsset.expected_people || personAsset.person_count || '',
+      url: personAsset.url || personAsset.image_url || personAsset.imageUrl || '',
+    } : null,
+    brief_reference_assets: b.brief_reference_assets || b.briefReferenceAssets || [],
+    reference_assets: b.reference_assets || b.referenceAssets || [],
+    reference_images: b.reference_images || b.referenceImages || [],
+    controlled_production: b.controlled_production || b.controlledProduction || null,
+  }) || {};
+}
+
+function _luxuryAdProjectTaskScopeHash(body = {}) {
+  const scope = _luxuryAdProjectTaskScope(body);
+  const key = JSON.stringify(scope);
+  return key && key !== '{}' ? crypto.createHash('sha1').update(key).digest('hex') : '';
+}
+
 function _luxuryAdProjectIndustryKey(row = {}) {
   const selection = row.industry_selection || row.draft_state?.industry_selection || row.industry_contract?.industry_selection || {};
   const primary = String(selection.primary || selection.industry_id || row.industry_contract?.industry_id || '').trim();
@@ -324,6 +388,62 @@ function _luxuryBriefMentionsProjectSubject(compactText = '', subject = '') {
     if (!/^(高端|产品|服务|广告|主体|用户|需求|场景|空间|商业|真实)$/.test(part)) parts.push(part);
   }
   return parts.some(part => text.includes(part));
+}
+
+function _luxuryAdProjectCastScopeKey(value = null) {
+  const src = value && typeof value === 'object' ? value : {};
+  const castMode = String(src.castMode || src.cast_mode || '').trim();
+  const expected = String(src.expected_people || src.person_count || '').trim();
+  if (!castMode && !expected) return '';
+  return `${castMode || 'auto'}::${expected || 'auto'}`;
+}
+
+function _luxuryAdProjectPersonAssetKey(value = null) {
+  const src = value && typeof value === 'object' ? value : {};
+  return String(
+    src.id
+    || src.actor_asset_id
+    || src.actorAssetId
+    || src.asset_library_id
+    || src.assetLibraryId
+    || src.material_id
+    || src.materialId
+    || src.image_url
+    || src.imageUrl
+    || src.url
+    || ''
+  ).trim();
+}
+
+function _luxuryAdProjectLegacyScopeConflicts(row = {}, body = {}) {
+  if (!row || !body || typeof body !== 'object') return false;
+  const incomingIndustry = _luxuryAdProjectIndustryKey({
+    industry_selection: body.industry_selection || body.industrySelection || body.industry_contract?.industry_selection || body.industryContract?.industry_selection || null,
+    industry_contract: body.industry_contract || body.industryContract || null,
+  });
+  const existingIndustry = _luxuryAdProjectIndustryKey(row);
+  if (incomingIndustry && existingIndustry && incomingIndustry !== 'auto::' && existingIndustry !== 'auto::' && incomingIndustry !== existingIndustry) return true;
+
+  const incomingCast = _luxuryAdProjectCastScopeKey(body.person_spec || body.personSpec || body.person_asset || body.personAsset);
+  const existingCast = _luxuryAdProjectCastScopeKey(row.draft_state?.person_spec || row.person_spec || row.person_asset || row.draft_state?.person_asset);
+  if (incomingCast && existingCast && incomingCast !== existingCast) return true;
+
+  const incomingPerson = _luxuryAdProjectPersonAssetKey(body.person_asset || body.personAsset);
+  const existingPerson = _luxuryAdProjectPersonAssetKey(row.draft_state?.person_asset || row.person_asset);
+  if (incomingPerson && existingPerson && incomingPerson !== existingPerson) return true;
+
+  const incomingSubject = _deriveLuxuryProductSubjectFromCurrentInput(body, {
+    text: body.text || body.brief || '',
+    productName: body.product_subject || body.productSubject || body.product_name || body.productName || body.product_asset?.name || body.productAsset?.name || '',
+    assetSummary: body.asset_summary || body.assetSummary || '',
+    segments: body.segments || body.outline_segments || body.outlineSegments || [],
+  });
+  if (incomingSubject && !_isWeakLuxuryProductName(incomingSubject)) {
+    const compact = String(body.text || body.brief || '').replace(/\s+/g, '');
+    const subjects = _luxuryAdProjectSubjectTokens(row);
+    if (subjects.length && subjects.every(subject => !_luxuryBriefMentionsProjectSubject(compact, subject) && subject !== incomingSubject.replace(/\s+/g, ''))) return true;
+  }
+  return false;
 }
 
 function _luxuryAdProjectConflictsWithBrief(row = {}, bodyText = '') {
@@ -427,20 +547,9 @@ function _findBestLuxuryAdProjectIndexByText(projects = [], req, bodyText = '') 
 
 function _listLuxuryAdProjects(req, limit = 20) {
   const max = Math.max(1, Math.min(100, Number(limit) || 20));
-  const groupedByText = new Map();
-  const ungrouped = [];
-  _readLuxuryAdProjectStore().projects
+  // 中文注释：任务中心必须按项目实例展示，不能再按文案/行业折叠；同一用户相似文案也可能是完全独立任务。
+  return _readLuxuryAdProjectStore().projects
     .filter(row => _luxuryAdProjectBelongsTo(req, row))
-    .forEach(row => {
-      const groupKey = _luxuryAdProjectGroupKey(row);
-      if (!groupKey || !_canMergeLuxuryAdProjectByText(row)) {
-        ungrouped.push(row);
-        return;
-      }
-      const current = groupedByText.get(groupKey);
-      if (!current || _compareLuxuryAdProjectCandidate(row, current) < 0) groupedByText.set(groupKey, row);
-    });
-  return [...groupedByText.values(), ...ungrouped]
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
     .slice(0, max)
     .map(_publicLuxuryAdProject);
@@ -866,7 +975,18 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const cleanText = _luxuryAdProjectTextKey;
   const bodyText = cleanText(body.text || body.brief || '');
   const requestKey = String(body.request_key || body.storyboard_request_key || body.keyframe_request_key || '').trim();
+  const incomingTaskScopeHash = _luxuryAdProjectTaskScopeHash(body);
   let existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
+  if (existingIndex >= 0 && incomingTaskScopeHash && data.projects[existingIndex]?.task_scope_hash && data.projects[existingIndex].task_scope_hash !== incomingTaskScopeHash) {
+    // 中文注释：前端如果误带了旧 project_id，但本次文案/行业/人物/素材/镜头范围已变，必须新建任务，不能把旧人物或主体混进来。
+    existingIndex = -1;
+    requestedId = '';
+  }
+  if (existingIndex >= 0 && incomingTaskScopeHash && !data.projects[existingIndex]?.task_scope_hash && _luxuryAdProjectLegacyScopeConflicts(data.projects[existingIndex], body)) {
+    // 中文注释：兼容旧数据；旧项目没有 task_scope_hash 时，也要用行业/人物/主体判断是否串任务。
+    existingIndex = -1;
+    requestedId = '';
+  }
   if (existingIndex >= 0 && bodyText) {
     const existingText = cleanText(data.projects[existingIndex]?.text || '');
     // 中文注释：写入阶段必须硬隔离任务；如果旧 project_id 携带到另一条广告需求，不能静默覆盖旧项目。
@@ -888,6 +1008,14 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
       const keys = p.request_keys || {};
       return keys.storyboard === requestKey || keys.keyframe === requestKey || p.request_key === requestKey;
     });
+    if (existingIndex >= 0 && incomingTaskScopeHash && data.projects[existingIndex]?.task_scope_hash && data.projects[existingIndex].task_scope_hash !== incomingTaskScopeHash) {
+      // 中文注释：request_key 只能恢复同一任务范围；范围不同说明客户端或轮询串到了旧任务。
+      existingIndex = -1;
+    }
+    if (existingIndex >= 0 && incomingTaskScopeHash && !data.projects[existingIndex]?.task_scope_hash && _luxuryAdProjectLegacyScopeConflicts(data.projects[existingIndex], body)) {
+      // 中文注释：旧任务恢复同样不能凭 request_key 混用不同人物/行业/主体。
+      existingIndex = -1;
+    }
     if (existingIndex >= 0 && bodyText && _luxuryAdProjectConflictsWithBrief(data.projects[existingIndex], bodyText)) {
       // 中文注释：request_key 只能恢复同一任务；如果恢复到旧主体合同，宁可新建，不允许串任务。
       existingIndex = -1;
@@ -920,15 +1048,18 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
   const industryContract = result.industry_contract || result.details?.industry_contract || body.industry_contract || body.industryContract || existing?.industry_contract || existing?.draft_state?.industry_contract || null;
   const industrySelection = result.industry_selection || body.industry_selection || body.industrySelection || industryContract?.industry_selection || existing?.industry_selection || existing?.draft_state?.industry_selection || null;
   const segmentPlan = result.segment_plan || result.details?.segment_plan || body.segment_plan || body.segmentPlan || existing?.segment_plan || null;
+  const currentInputProductSubject = _deriveLuxuryProductSubjectFromCurrentInput(body, {
+    text: body.text || body.brief || '',
+    productName: body.product_subject || body.productSubject || body.product_name || body.productName || body.product_asset?.name || body.productAsset?.name || '',
+    assetSummary: body.asset_summary || body.assetSummary || '',
+    segments: body.segments || body.outline_segments || body.outlineSegments || [],
+  });
   const projectProductSubject = result.product_subject
     || contract?.visual_locks?.product_lock?.subject
     || contract?.visual_locks?.asset_manifest?.product_subject
     || industryContract?.product_subject
-    || body.product_subject
-    || body.productSubject
-    || body.product_name
-    || body.product_asset?.name
-    || existing?.product_subject
+    || currentInputProductSubject
+    || (!bodyText ? existing?.product_subject : '')
     || '';
   const reviewOnly = result.storyboard_mode === 'planning_sheet'
     || result.reference_mode === 'storyboard_planning_sheet'
@@ -974,6 +1105,8 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
     id,
     kind: 'luxury_ad_production_project',
     user_id: existing?.user_id || scopeUserId(req) || req.user?.id || null,
+    task_scope_hash: incomingTaskScopeHash || existing?.task_scope_hash || '',
+    task_scope: incomingTaskScopeHash ? _luxuryAdProjectTaskScope(body) : (existing?.task_scope || null),
     title,
     project_state,
     status: _normalizeLuxuryAdProjectRuntimeState({
@@ -13176,6 +13309,42 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
     : String(productName || '用户广告需求中的真实商品或服务').trim().slice(0, 40);
 }
 
+function _deriveLuxuryProductSubjectFromCurrentInput(body = {}, {
+  text = '',
+  productName = '',
+  assetSummary = '',
+  segments = [],
+} = {}) {
+  const b = body && typeof body === 'object' ? body : {};
+  const productAsset = b.product_asset || b.productAsset || null;
+  const productProfile = b.product_profile || b.productProfile || null;
+  const explicitProduct = [
+    b.product_subject,
+    b.productSubject,
+    productProfile?.product_subject,
+    productProfile?.subject,
+    productProfile?.name,
+    productName,
+    b.product_name,
+    b.productName,
+    productAsset?.name,
+    productAsset?.title,
+  ]
+    .map(v => String(v || '').replace(/\s+/g, ' ').trim())
+    .find(v => v && !_isWeakLuxuryProductName(v));
+  const currentText = [
+    text || b.text || b.brief || '',
+    b.scene_prompt || b.scenePrompt || '',
+    assetSummary || b.asset_summary || b.assetSummary || '',
+    Array.isArray(segments) ? JSON.stringify(segments) : '',
+  ].filter(Boolean).join('\n');
+  return _deriveLuxuryProductSubject({
+    text: currentText,
+    productName: explicitProduct || '',
+    assetSummary: assetSummary || b.asset_summary || b.assetSummary || '',
+  });
+}
+
 function _compactLuxuryFailureText(value = '', max = 220) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -18474,7 +18643,12 @@ router.post('/luxury-ad/storyboard', async (req, res) => {
     const referenceShotLockNote = isDetailedMode && referenceLockedShotTarget
       ? `本次用户只上传了 ${uploadedReferenceAssets.length} 张顺序分镜/场景画面，只允许输出 ${wantedShots} 个镜头；不得新增没有上传素材支撑的额外镜头。`
       : '';
-    const productSubject = _deriveLuxuryProductSubject({ text: brief, productName: product_name || visualReferenceBrief?.product_subject || '', assetSummary: enrichedAssetSummary });
+    const productSubject = _deriveLuxuryProductSubjectFromCurrentInput(req.body || {}, {
+      text: brief,
+      productName: product_name || visualReferenceBrief?.product_subject || '',
+      assetSummary: enrichedAssetSummary,
+      segments: outline_segments,
+    });
     const controlledGuide = _buildLuxuryControlledProductionGuide(controlled_production, { productSubject, productAsset: product_asset });
     _assertLuxuryControlledProductionReady(controlled_production, { productAsset: product_asset });
     const luxuryAssetManifest = _buildLuxuryAssetManifest({
@@ -27739,10 +27913,11 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
         }]
         : _fallbackGuideSegments(text, Math.max(12, Number(durationSec) || Math.ceil(String(text).length / 4))));
     const luxuryProductName = payload.product_name || payload.productName || payload.product?.name || payload.product_asset?.name || '';
-    const productSubject = isLuxury ? _deriveLuxuryProductSubject({
+    const productSubject = isLuxury ? _deriveLuxuryProductSubjectFromCurrentInput(payload, {
       text: [text, scenePrompt, payload.asset_summary || payload.assetSummary || '', JSON.stringify(guideSegments || [])].join('\n'),
       productName: luxuryProductName,
       assetSummary: payload.asset_summary || payload.assetSummary || '',
+      segments: guideSegments,
     }) : '';
     const luxuryAsyncBriefReferenceAssets = Array.isArray(payload.brief_reference_assets)
       ? payload.brief_reference_assets.filter(x => x && (x.url || x.image_url || x.previewUrl || x.name)).slice(0, 6)
@@ -29361,10 +29536,11 @@ router.post('/spaces/keyframes', async (req, res) => {
         }]
         : _fallbackGuideSegments(text, Math.max(12, Number(duration_sec) || Math.ceil(String(text).length / 4))));
     const luxuryProductName = product_name || req.body?.productName || product_asset?.name || '';
-    const productSubject = isLuxury ? _deriveLuxuryProductSubject({
+    const productSubject = isLuxury ? _deriveLuxuryProductSubjectFromCurrentInput(req.body || {}, {
       text: [text, scene_prompt, enrichedAssetSummary, JSON.stringify(guideSegments || [])].join('\n'),
       productName: luxuryProductName,
       assetSummary: enrichedAssetSummary,
+      segments: guideSegments,
     }) : '';
     const controlledGuide = isLuxury ? _buildLuxuryControlledProductionGuide(controlled_production, { productSubject, productAsset: product_asset }) : null;
     if (isLuxury) _assertLuxuryControlledProductionReady(controlled_production, { productAsset: product_asset });
