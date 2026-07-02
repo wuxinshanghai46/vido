@@ -17901,6 +17901,22 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
         reference_mode: publicProject.reference_mode || '',
         keyframe_error: '',
       };
+      if (projectState === 'frame_generating') {
+        return res.json({
+          success: true,
+          status: 'running',
+          partial: {
+            ...result,
+            status: 'running',
+            keyframe_generation_status: publicProject.keyframe_generation_status || 'running',
+            generated_count: (publicProject.keyframes || []).filter(k => k && (k.image_url || k.imageUrl)).length,
+            total_shots: (publicProject.scenes || []).length,
+          },
+          production_project: publicProject,
+          production_project_id: project.id,
+          recovered_from_project: true,
+        });
+      }
       return res.json({ success: true, status: 'done', result, recovered_from_project: true });
     }
     return res.status(404).json({ success: false, status: 'missing', error: '分镜生成结果还未产生或已过期' });

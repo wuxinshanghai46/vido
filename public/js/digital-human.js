@@ -9289,7 +9289,7 @@
     const assetsReady = contentReady;
     const previewReady = materialMode
       ? (contentReady && materialAssetCount > 0)
-      : detailedReady && storyboardReady && keyframes.length >= segments.length && segments.every((_, i) => !!(keyframes[i]?.image_url || keyframes[i]?.imageUrl));
+      : detailedReady && storyboardReady && segments.every((_, i) => luxuryFrameHasImage(luxuryFrameForShot(keyframes, i)));
     let step = 0;
     let hint = materialMode
       ? '第 1 步：先写广告需求，再上传素材、选择演员和配音。'
@@ -11116,6 +11116,19 @@
     });
   }
 
+  function luxuryFrameForShot(keyframes = [], shotIndex = 0) {
+    const list = Array.isArray(keyframes) ? keyframes : [];
+    const idx = Math.max(0, Math.floor(Number(shotIndex) || 0));
+    const exact = list.find((frame, fallbackIndex) => {
+      if (!frame || typeof frame !== 'object' || !luxuryFrameHasExplicitIndex(frame)) return false;
+      return luxuryFrameIndex(frame, fallbackIndex) === idx;
+    });
+    if (exact) return exact;
+    const positional = list[idx] || {};
+    if (!luxuryFrameHasExplicitIndex(positional) || luxuryFrameIndex(positional, idx) === idx) return positional;
+    return {};
+  }
+
   function luxurySelectItemsForShotRequest(items = [], singleIndex = null, total = 0) {
     const list = Array.isArray(items) ? items : [];
     if (!Number.isInteger(singleIndex)) return list.slice(0, total || list.length);
@@ -11146,10 +11159,15 @@
 
   function applyLuxuryKeyframePartial(partial = null, { totalShots = 0, startedAt = Date.now() } = {}) {
     if (!partial || typeof partial !== 'object') return false;
-    if (partial.production_project) applyLuxuryProductionProject(partial.production_project);
+    const project = partial.production_project && typeof partial.production_project === 'object' ? partial.production_project : null;
+    if (project) applyLuxuryProductionProject(project);
     else if (partial.production_project_id) state.luxuryAd.productionProjectId = partial.production_project_id;
-    const incomingScenes = Array.isArray(partial.scenes) ? partial.scenes : [];
-    const incomingFrames = Array.isArray(partial.keyframes) ? partial.keyframes : [];
+    const incomingScenes = Array.isArray(partial.scenes)
+      ? partial.scenes
+      : (Array.isArray(project?.scenes) ? project.scenes : []);
+    const incomingFrames = Array.isArray(partial.keyframes)
+      ? partial.keyframes
+      : (Array.isArray(project?.keyframes) ? project.keyframes : []);
     const total = Math.max(
       Number(totalShots) || 0,
       Number(partial.total_shots) || 0,
@@ -11168,8 +11186,11 @@
       state.luxuryAd.keyframeError = '';
       state.luxuryAd.keyframeErrorDetails = null;
     }
-    if (Array.isArray(partial.storyboard_sheets) && partial.storyboard_sheets.length) {
-      state.luxuryAd.storyboardSheets = partial.storyboard_sheets;
+    const incomingSheets = Array.isArray(partial.storyboard_sheets)
+      ? partial.storyboard_sheets
+      : (Array.isArray(project?.storyboard_sheets) ? project.storyboard_sheets : []);
+    if (incomingSheets.length) {
+      state.luxuryAd.storyboardSheets = incomingSheets;
     }
     if (partial.asset_manifest) state.luxuryAd.assetManifest = partial.asset_manifest;
     if (partial.visual_locks) state.luxuryAd.visualLocks = partial.visual_locks;
@@ -12095,7 +12116,7 @@
       </div>` : ''}
       <div class="dh-lux-sheet-grid">
         ${segments.map((seg, i) => {
-          const kf = keyframes[i] || {};
+          const kf = luxuryFrameForShot(keyframes, i);
           const img = kf.image_url || kf.imageUrl || '';
           const preview = img ? luxuryAssetPreviewUrl({ url: img }) : '';
           const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
@@ -13085,7 +13106,7 @@
       ${renderLuxuryStoryboardBriefingEntry(segments, keyframes)}
       ${renderLuxuryStoryboardSheet(segments, keyframes)}
     ` + segments.map((seg, i) => {
-      const kf = keyframes[i] || {};
+      const kf = luxuryFrameForShot(keyframes, i);
       const img = kf.image_url || kf.imageUrl || '';
       const binding = luxuryAdShotBoundAssets(seg, i);
       const boundImage = binding.ref?.url || binding.ref?.previewUrl || '';
@@ -13498,7 +13519,7 @@
         user_edited: true,
       };
       state.luxuryAd.segments = (state.luxuryAd.segments || []).map((item, i) => i === idx ? next : item);
-      const hadFrame = Array.isArray(state.luxuryAd.keyframes) && !!state.luxuryAd.keyframes[idx]?.image_url;
+      const hadFrame = Array.isArray(state.luxuryAd.keyframes) && luxuryFrameHasImage(luxuryFrameForShot(state.luxuryAd.keyframes, idx));
       markLuxuryAdScriptEdited('shot_editor_save', { affectedIndex: idx });
       if (hadFrame) {
         toast('已保存修改，这个镜头需要重新生成预览', 'success');
@@ -14224,7 +14245,7 @@
           mergedSegments[singleIndex] = returnedScenes[0];
           state.luxuryAd.segments = applyLuxuryShotBindings(mergedSegments);
         }
-        if (!planningSheetMode && !luxuryFrameHasImage(state.luxuryAd.keyframes[singleIndex])) {
+        if (!planningSheetMode && !luxuryFrameHasImage(luxuryFrameForShot(state.luxuryAd.keyframes, singleIndex))) {
           throw new Error(`第 ${singleIndex + 1} 镜没有返回可用关键帧图片，不能标记为已生成。`);
         }
       }
@@ -14317,7 +14338,7 @@
     const keyframes = Array.isArray(state.luxuryAd.keyframes) ? state.luxuryAd.keyframes : [];
     return segments
       .map((_, i) => i)
-      .filter(i => !luxuryFrameHasImage(keyframes[i]));
+      .filter(i => !luxuryFrameHasImage(luxuryFrameForShot(keyframes, i)));
   }
 
   function luxuryAdFrameReadiness() {
