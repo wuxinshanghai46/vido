@@ -782,11 +782,19 @@ function _compactLuxuryAdDraftBody(body = {}) {
 function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {}) {
   const now = new Date().toISOString();
   const data = _readLuxuryAdProjectStore();
-  const requestedId = String(body.production_project_id || body.project_id || result.production_project_id || '').trim();
+  let requestedId = String(body.production_project_id || body.project_id || result.production_project_id || '').trim();
   const cleanText = _luxuryAdProjectTextKey;
   const bodyText = cleanText(body.text || body.brief || '');
   const requestKey = String(body.request_key || body.storyboard_request_key || body.keyframe_request_key || '').trim();
   let existingIndex = requestedId ? data.projects.findIndex(p => p.id === requestedId && _luxuryAdProjectBelongsTo(req, p)) : -1;
+  if (existingIndex >= 0 && bodyText) {
+    const existingText = cleanText(data.projects[existingIndex]?.text || '');
+    // 中文注释：写入阶段必须硬隔离任务；如果旧 project_id 携带到另一条广告需求，不能静默覆盖旧项目。
+    if (existingText && existingText !== bodyText && body.allow_project_text_change !== true && body.allowProjectTextChange !== true) {
+      existingIndex = -1;
+      requestedId = '';
+    }
+  }
   if (existingIndex < 0 && requestKey) {
     existingIndex = data.projects.findIndex(p => {
       if (!_luxuryAdProjectBelongsTo(req, p)) return false;
@@ -794,7 +802,7 @@ function _upsertLuxuryAdProductionProject(req, body = {}, result = {}, patch = {
       return keys.storyboard === requestKey || keys.keyframe === requestKey || p.request_key === requestKey;
     });
   }
-  if (existingIndex < 0 && bodyText) existingIndex = _findBestLuxuryAdProjectIndexByText(data.projects, req, bodyText);
+  // 中文注释：不再在写入时按 text 自动合并项目；相同/相似需求也必须是独立任务，除非携带明确 project_id 或 request_key。
   const existing = existingIndex >= 0 ? data.projects[existingIndex] : null;
   const id = existing?.id || requestedId || uuidv4();
   const scenes = Array.isArray(result.scenes) ? result.scenes : (Array.isArray(body.scenes) ? body.scenes : null);

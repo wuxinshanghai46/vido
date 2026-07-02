@@ -5993,6 +5993,35 @@
     if (state.luxuryAd.workflowProgress?.keyframes) state.luxuryAd.workflowProgress = null;
   }
 
+  function resetLuxuryAdProjectIdentityForNewBrief() {
+    // 中文注释：广告需求一旦被改成新任务，必须清掉旧项目归属；否则后续请求会把新内容写回旧 project_id。
+    state.luxuryAd.productionProjectId = '';
+    state.luxuryAd.productionProject = null;
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.industryContract = null;
+    state.luxuryAd.assetManifest = null;
+    state.luxuryAd.visualLocks = null;
+    state.luxuryAd.globalVisualBible = null;
+    state.luxuryAd.segmentPlan = null;
+    state.luxuryAd.briefInfo = null;
+    state.luxuryAd.visualReferenceBrief = null;
+    state.luxuryAd.segments = [];
+    state.luxuryAd.storyboardDetailed = false;
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.storyboardRequest = null;
+    state.luxuryAd.usageRows = [];
+    state.luxuryAd.usageSummary = null;
+    state.luxuryAd.usageByStep = {};
+    state.luxuryAd.usageTaskRows = [];
+    state.luxuryAd.usageTaskSummary = null;
+    state.luxuryAd.usageRequestKeys = {};
+    clearLuxuryAdProjectRouteParam('luxury-ad');
+  }
+
   function luxuryMaterialAssetUrls() {
     const urls = [];
     const add = value => {
@@ -9504,11 +9533,9 @@
           },
         });
         if (!r.success) throw new Error(r.error || 'AI 写作失败');
-        state.luxuryAd.content = (r.text || '').trim();
-        state.luxuryAd.briefInfo = null;
-        state.luxuryAd.segments = [];
-        state.luxuryAd.storyboardDetailed = false;
-        state.luxuryAd.keyframes = [];
+        const nextText = (r.text || '').trim();
+        if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
+        state.luxuryAd.content = nextText;
         const input = $('#dhLuxAdText');
         if (input) input.value = state.luxuryAd.content;
         renderLuxuryAdStoryboard();
@@ -9545,11 +9572,9 @@
         },
       });
       if (!r.success) throw new Error(r.error || 'AI 整理失败');
-      state.luxuryAd.content = (r.text || '').trim();
-      state.luxuryAd.briefInfo = null;
-      state.luxuryAd.segments = [];
-      state.luxuryAd.storyboardDetailed = false;
-      state.luxuryAd.keyframes = [];
+      const nextText = (r.text || '').trim();
+      if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
+      state.luxuryAd.content = nextText;
       const input = $('#dhLuxAdText');
       if (input) input.value = state.luxuryAd.content;
       renderLuxuryAdStoryboard();
@@ -17093,11 +17118,8 @@
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
       const input = $('#dhLuxAdText');
       if (input) input.value = SPACE_LUXURY_SAMPLE_TEXT;
+      if (SPACE_LUXURY_SAMPLE_TEXT !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
       state.luxuryAd.content = SPACE_LUXURY_SAMPLE_TEXT;
-      state.luxuryAd.briefInfo = null;
-      state.luxuryAd.segments = [];
-      state.luxuryAd.storyboardDetailed = false;
-      state.luxuryAd.keyframes = [];
       renderLuxuryAdStoryboard();
       setLuxuryProgress('content');
       updateLuxuryAdStepLocks();
@@ -19185,16 +19207,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         toast(luxuryAdLockedStepMessage(1), 'error');
         return;
       }
-      state.luxuryAd.content = e.target.value || '';
-      state.luxuryAd.industryContract = null;
-      state.luxuryAd.briefInfo = null;
-      state.luxuryAd.visualReferenceBrief = null;
-      state.luxuryAd.assetManifest = null;
-      state.luxuryAd.visualLocks = null;
-      state.luxuryAd.globalVisualBible = null;
-      state.luxuryAd.segments = [];
-      state.luxuryAd.storyboardDetailed = false;
-      state.luxuryAd.keyframes = [];
+      const nextText = e.target.value || '';
+      if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
+      state.luxuryAd.content = nextText;
       renderLuxuryAdStoryboard();
       setLuxuryProgress('content');
       updateLuxuryAdStepLocks();
