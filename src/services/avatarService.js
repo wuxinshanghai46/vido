@@ -1056,12 +1056,16 @@ function getArkKey() {
  * @param {string} model - 模型 id
  * @param {string} apiKey - Ark API Key
  * @param {Function} onProgress
- * @param {object} opts - { ratio, duration, hasAudio: boolean }
+ * @param {object} opts - { ratio, duration, hasAudio: boolean, resolution?: '480p'|'720p'|'1080p'|'4k' }
  * @returns {Promise<{videoBuffer: Buffer, audioEmbedded: boolean, videoUrl: string}>}
  */
 async function _seedanceAVGenerate(imgParam, prompt, model, apiKey, onProgress, opts = {}) {
   const ratio = opts.ratio || '9:16';
   const duration = Math.min(Math.max(opts.duration || 5, 3), 10);
+  const rawResolution = String(opts.resolution || opts.videoResolution || '720p').trim().toLowerCase().replace(/\s+/g, '');
+  const resolution = rawResolution === '4k' || rawResolution === '2160p'
+    ? '4k'
+    : (['480p', '720p', '1080p'].includes(rawResolution) ? rawResolution : '720p');
   // hasAudio：1.5-pro/2.0 支持音频同步输出
   const hasAudio = opts.hasAudio ?? isSeedanceAVModel(model);
 
@@ -1076,7 +1080,7 @@ async function _seedanceAVGenerate(imgParam, prompt, model, apiKey, onProgress, 
   const cameraMoveFlag = hasAudio
     ? (isGuideMotion ? ' --cameramove true' : ' --cameramove false')
     : '';
-  const promptWithFlags = `${prompt} --resolution 720p --ratio ${ratio} --duration ${duration}${cameraMoveFlag}`;
+  const promptWithFlags = `${prompt} --resolution ${resolution} --ratio ${ratio} --duration ${duration}${cameraMoveFlag}`;
   try {
 
   // Ark image 接受 URL / data URI / base64

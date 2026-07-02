@@ -1668,13 +1668,47 @@ function _normalizeAspectRatio(v, fallback = '9:16') {
 function _normalizeOutputSize(v) {
   return ['standard', 'hd', 'fullhd'].includes(v) ? v : 'standard';
 }
+function _normalizeVideoResolution(v) {
+  const raw = String(v || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (raw === '4k' || raw === '2160p') return '4k';
+  if (['480p', '720p', '1080p'].includes(raw)) return raw;
+  return '720p';
+}
 function _outputPixels(aspectRatio = '9:16', outputSize = 'standard') {
   const ar = _normalizeAspectRatio(aspectRatio);
   const size = _normalizeOutputSize(outputSize);
   return OUTPUT_SIZE_PRESETS[ar]?.[size] || OUTPUT_SIZE_PRESETS['9:16'].standard;
 }
+function _sizeSpecPixels(aspectRatio = '9:16', outputSize = 'standard') {
+  if (Array.isArray(outputSize) && outputSize.length >= 2) {
+    const w = Math.round(Number(outputSize[0]) || 0);
+    const h = Math.round(Number(outputSize[1]) || 0);
+    if (w > 0 && h > 0) return [w, h];
+  }
+  if (outputSize && typeof outputSize === 'object') {
+    const w = Math.round(Number(outputSize.w || outputSize.width) || 0);
+    const h = Math.round(Number(outputSize.h || outputSize.height) || 0);
+    if (w > 0 && h > 0) return [w, h];
+  }
+  return _outputPixels(aspectRatio, outputSize);
+}
 function _outputSizeString(aspectRatio, outputSize) {
   const [w, h] = _outputPixels(aspectRatio, outputSize);
+  return `${w}x${h}`;
+}
+function _videoResolutionPixels(aspectRatio = '9:16', videoResolution = '720p') {
+  const ar = _normalizeAspectRatio(aspectRatio);
+  const res = _normalizeVideoResolution(videoResolution);
+  const presets = {
+    '480p': { '9:16': [480, 854], '16:9': [854, 480], '1:1': [480, 480], '3:4': [480, 640], '4:3': [640, 480] },
+    '720p': { '9:16': [720, 1280], '16:9': [1280, 720], '1:1': [720, 720], '3:4': [720, 960], '4:3': [960, 720] },
+    '1080p': { '9:16': [1080, 1920], '16:9': [1920, 1080], '1:1': [1080, 1080], '3:4': [1080, 1440], '4:3': [1440, 1080] },
+    '4k': { '9:16': [2160, 3840], '16:9': [3840, 2160], '1:1': [2160, 2160], '3:4': [2160, 2880], '4:3': [2880, 2160] },
+  };
+  return presets[res]?.[ar] || presets['720p']['9:16'];
+}
+function _videoResolutionSizeString(aspectRatio = '9:16', videoResolution = '720p') {
+  const [w, h] = _videoResolutionPixels(aspectRatio, videoResolution);
   return `${w}x${h}`;
 }
 function _topviewImageResolutionFromOutputSize(outputSize = 'standard') {
@@ -9321,7 +9355,7 @@ async function _concatVideosSmooth(videoPaths, outputPath, ratio = '9:16', outpu
   const ffmpeg = _ffmpegBin();
   const durations = videoPaths.map(p => _probeMediaDuration(ffmpeg, p, 5));
   const xfadeDur = 0.35;
-  const [w, h] = _outputPixels(ratio, outputSize);
+  const [w, h] = _sizeSpecPixels(ratio, outputSize);
   const size = { w, h };
   const args = ['-y'];
   videoPaths.forEach(p => args.push('-i', p));
@@ -9603,6 +9637,7 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
     durationSec = 30,
     aspectRatio = '9:16',
     outputSize = 'standard',
+    videoResolution = '720p',
     subtitle = null,
     bgmAsset = null,
     personAsset = null,
@@ -9688,6 +9723,7 @@ async function _runMaterialFilmTask(req, taskId, payload = {}) {
     user_id: productAdTasks.get(taskId)?.user_id,
     ratio: aspectRatio,
     output_size: outputSize,
+    video_resolution: _normalizeVideoResolution(videoResolution),
     resolution: _outputSizeString(aspectRatio, outputSize),
     created_at: productAdTasks.get(taskId)?.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -10445,7 +10481,7 @@ function _generateLocalLicensedBgm({ durationSec = 30, profile = {}, filename = 
 }
 
 async function _muxAudioWithLoopedVideo(videoPath, audioPath, outputPath, ratio = '16:9', outputSize = 'standard') {
-  const [w, h] = _outputPixels(ratio, outputSize);
+  const [w, h] = _sizeSpecPixels(ratio, outputSize);
   execFileSync(_ffmpegBin(), [
     '-y',
     '-stream_loop', '-1',
@@ -10871,6 +10907,7 @@ async function _runProductAdTask(req, taskId, { avatar, product, topic, title = 
       user_id: productAdTasks.get(taskId)?.user_id,
       ratio: aspectRatio,
       output_size: outputSize,
+      video_resolution: videoResolution,
       resolution: _outputSizeString(aspectRatio, outputSize),
       model,
       created_at: task.created_at,
@@ -11018,6 +11055,7 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
   scenes = [],
   aspectRatio,
   outputSize,
+  videoResolution = '720p',
   adMode,
   adStyle,
   subtitle,
@@ -11039,7 +11077,9 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
     _dhKbQuery(title, text, scenePrompt, keyframes, scenes, adMode, adStyle),
     { limit: 4, maxCharsPerDoc: 520 }
   );
-  const size = _outputSizeString(aspectRatio, outputSize);
+  const normalizedVideoResolution = _normalizeVideoResolution(videoResolution);
+  const videoPixels = _videoResolutionPixels(aspectRatio, normalizedVideoResolution);
+  const size = _videoResolutionSizeString(aspectRatio, normalizedVideoResolution);
   const modelId = pipelineVideoModel.model_id;
 
   for (let i = 0; i < keyframes.length; i++) {
@@ -11090,7 +11130,7 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
   if (!clips.length) throw new Error('DeyunAI video produced no downloadable clips');
   _taskPatch(taskId, { stage: 'post_effects', progress: 84, message: 'Stitching DeyunAI commercial shots' });
   const concatPath = path.join(taskDir, 'deyunai_ad_concat.mp4');
-  await _concatVideosSmooth(clips, concatPath, aspectRatio, outputSize);
+  await _concatVideosSmooth(clips, concatPath, aspectRatio, videoPixels);
 
   const voiceSegments = _voiceSegmentsFromKeyframes(keyframes, text || title || '');
   const voiceover = voiceSegments.map(s => s.text).filter(Boolean).join(' ') || text;
@@ -11108,7 +11148,7 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
       });
       if (!audioPath) audioPath = await generateSpeech(voiceover, audioBase, { voiceId: voiceId || null, speed: 1.0 });
       const muxPath = path.join(taskDir, 'deyunai_ad_audio.mp4');
-      await _muxAudioWithLoopedVideo(concatPath, audioPath, muxPath, aspectRatio, outputSize);
+      await _muxAudioWithLoopedVideo(concatPath, audioPath, muxPath, aspectRatio, videoPixels);
       finalPath = muxPath;
     } catch (audioErr) {
       console.warn('[DH/space-ad/deyunai] voiceover failed:', audioErr.message);
@@ -11174,6 +11214,7 @@ async function _runDeyunaiAdMarketingVideo(req, taskId, {
     user_id: productAdTasks.get(taskId)?.user_id,
     ratio: aspectRatio,
     output_size: outputSize,
+    video_resolution: normalizedVideoResolution,
     resolution: size,
     model: modelId,
     provider_id: 'deyunai',
@@ -11654,6 +11695,8 @@ router.post('/product-ads/generate', async (req, res) => {
       aspectRatio: aspectRatioBody,
       output_size,
       outputSize,
+      video_resolution,
+      videoResolution,
       replaces_task_id = '',
     } = req.body || {};
     const aspectRatio = _normalizeAspectRatio(aspect_ratio || aspectRatioBody, '9:16');
@@ -27574,9 +27617,10 @@ async function _createLuxuryAdReferenceKeyframeFallback({
 }
 
 async function _runSpaceStoryboardTask(req, taskId, payload) {
-  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', voiceDirection = '', productionProjectId = '', production_project_id = '', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard' } = payload;
+  const { avatar, backgroundUrl, text, voiceId, title, scenePrompt, durationSec, segments, speechSegments = [], subtitle, adMode = 'digital_ad', adStyle = 'luxury_soft', voiceDirection = '', productionProjectId = '', production_project_id = '', shotCount = 4, keyframes: providedKeyframes = [], guideGender = 'female', aspectRatio: rawAspectRatio = '16:9', outputSize: rawOutputSize = 'standard', video_resolution, videoResolution: rawVideoResolution } = payload;
   const aspectRatio = _normalizeAspectRatio(rawAspectRatio, '16:9');
   const outputSize = _normalizeOutputSize(rawOutputSize);
+  const videoResolution = _normalizeVideoResolution(video_resolution || rawVideoResolution);
   const isLuxury = adMode === 'luxury_ad';
   const linkedProductionProjectId = String(productionProjectId || production_project_id || '').trim();
   const isShowroomGuide = adMode === 'showroom_guide';
@@ -27913,6 +27957,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             scenes,
             aspectRatio,
             outputSize,
+            videoResolution,
             adMode,
             adStyle,
             subtitle,
@@ -27949,6 +27994,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             scenes,
             aspectRatio,
             outputSize,
+            videoResolution,
             adMode,
             adStyle,
             pipelineVideoModel: candidateVideoModel,
@@ -28128,6 +28174,8 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             filename: webangFilename,
             image_url: kf.image_url,
             aspectRatio,
+            videoResolution,
+            resolution: videoResolution,
             userId: req.user?.id || req.userId || '',
             agentId: 'luxury_ad.video',
           });
@@ -28139,7 +28187,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
             model,
             apiKey,
             info => _taskPatch(taskId, { message: info.message || `Seedance 广告镜头 ${i + 1}` }),
-            { ratio: aspectRatio, duration: seedanceDuration, hasAudio: false, allowCameraMove: isShowroomGuide }
+            { ratio: aspectRatio, duration: seedanceDuration, hasAudio: false, allowCameraMove: isShowroomGuide, resolution: videoResolution }
           );
           videoBuffer = generated.videoBuffer;
         }
@@ -28294,6 +28342,7 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           task_id: taskId,
           ratio: aspectRatio,
           output_size: outputSize,
+          video_resolution: videoResolution,
           resolution: taskData.resolution,
         }, {
           project_state: 'video_ready',
@@ -30433,6 +30482,7 @@ router.post('/material-film/generate', async (req, res) => {
     const taskId = uuidv4();
     const normalizedAspectRatio = _normalizeAspectRatio(aspect_ratio || aspectRatio, '9:16');
     const normalizedOutputSize = _normalizeOutputSize(output_size || outputSize);
+    const normalizedVideoResolution = _normalizeVideoResolution(video_resolution || videoResolution);
     _markTaskSuperseded(replaces_task_id, taskId, req.user?.id || null);
     const task = {
       id: taskId,
@@ -30461,6 +30511,7 @@ router.post('/material-film/generate', async (req, res) => {
       ad_mode: 'material_film',
       ratio: normalizedAspectRatio,
       output_size: normalizedOutputSize,
+      video_resolution: normalizedVideoResolution,
       resolution: _outputSizeString(normalizedAspectRatio, normalizedOutputSize),
     };
     productAdTasks.set(taskId, task);
@@ -30479,6 +30530,7 @@ router.post('/material-film/generate', async (req, res) => {
       voiceDirection: voice_direction,
       aspectRatio: normalizedAspectRatio,
       outputSize: normalizedOutputSize,
+      videoResolution: normalizedVideoResolution,
     }).catch(err => {
       console.error('[DH/material-film] 失败:', err.message);
       _taskPatch(taskId, {

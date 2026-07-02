@@ -12,6 +12,7 @@
     '3:4': { standard: '768×1024', hd: '960×1280', fullhd: '1080×1440' },
     '4:3': { standard: '1024×768', hd: '1280×960', fullhd: '1440×1080' },
   };
+  const VIDEO_RESOLUTION_LABELS = { '480p': '480p', '720p': '720p', '1080p': '1080p', '4k': '4K' };
   const VOICE_PREVIEW_CACHE_TTL = 10 * 60 * 1000;
   const VOICE_PREVIEW_CACHE_LIMIT = 12;
   const VOICE_PREVIEW_STORAGE = 'vido-voice-preview-v1';
@@ -141,6 +142,7 @@
       durationSec: 30,
       outputRatio: '9:16',
       outputSize: 'standard',
+      videoResolution: '720p',
       subtitle: true,
       autoEnhance: true,
       expandBrief: true,
@@ -4224,6 +4226,7 @@
     state.luxuryAd.durationSec = 30;
     state.luxuryAd.outputRatio = '9:16';
     state.luxuryAd.outputSize = 'standard';
+    state.luxuryAd.videoResolution = '720p';
     state.luxuryAd.subtitle = true;
     state.luxuryAd.autoEnhance = true;
     state.luxuryAd.expandBrief = true;
@@ -6158,10 +6161,12 @@
   function updateLuxuryAdOutputHint() {
     const ratio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
     const size = $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard';
+    const videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '720p';
     state.luxuryAd.outputRatio = ratio;
     state.luxuryAd.outputSize = size;
+    state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[videoResolution] ? videoResolution : '720p';
     const hint = $('#dhLuxAdOutputHint');
-    if (hint) hint.textContent = `${ratio} · ${outputPixels(ratio, size)}`;
+    if (hint) hint.textContent = `${ratio} · 关键帧 ${outputPixels(ratio, size)} · 视频 ${VIDEO_RESOLUTION_LABELS[state.luxuryAd.videoResolution] || '720p'}`;
   }
 
   function renderLuxuryAdVoice() {
@@ -6671,9 +6676,13 @@
     const subs = luxuryIndustryOption(primary)[2] || [];
     const rawSecondary = String(src.secondary || src.sub_industry_id || '').trim();
     const secondary = subs.some(([value]) => value === rawSecondary) ? rawSecondary : '';
+    const intent = ['auto', 'product', 'brand', 'space'].includes(src.intent || src.ad_type || src.style)
+      ? (src.intent || src.ad_type || src.style)
+      : 'auto';
     return {
       primary,
       secondary,
+      intent,
       note: String(src.note || src.user_note || '').trim().slice(0, 240),
       forbidden: String(src.forbidden || src.user_forbidden_text || '').trim().slice(0, 240),
     };
@@ -6692,9 +6701,20 @@
       primary_label: primaryOption[1],
       secondary,
       secondary_label: secondaryOption ? secondaryOption[1] : '',
+      intent: current.intent || state.luxuryAd.adType || 'auto',
+      intent_label: luxuryAdIntentLabel(current.intent || state.luxuryAd.adType || 'auto'),
       note: String(current.note || '').trim().slice(0, 240),
       forbidden: String(current.forbidden || '').trim().slice(0, 240),
     };
+  }
+
+  function luxuryAdIntentLabel(value = 'auto') {
+    return ({
+      auto: '自动判断',
+      product: '产品宣传',
+      brand: '品牌故事',
+      space: '空间展示',
+    })[String(value || 'auto')] || '自动判断';
   }
 
   function luxuryIndustrySummary(selection = state.luxuryAd.industry) {
@@ -6706,6 +6726,7 @@
       ? '行业：自动判断'
       : `行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}`;
     const tags = [
+      (current.intent && current.intent !== 'auto') ? `方向：${luxuryAdIntentLabel(current.intent)}` : '',
       current.note ? `补充：${current.note}` : '',
       current.forbidden ? `禁用：${current.forbidden}` : '',
     ].filter(Boolean);
@@ -6721,7 +6742,7 @@
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
       panel.innerHTML = `<button class="dh-btn dh-btn-ghost dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <span id="dhLuxIndustrySummaryTitle"></span>
+        <small>行业选择</small><span id="dhLuxIndustrySummaryTitle"></span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
@@ -6736,6 +6757,7 @@
   function markLuxuryIndustryDirty({ render = true, selection = null } = {}) {
     // 中文注释：行业改变只清理后续派生内容，不改用户原始需求，也不把行业替换成固定场景。
     state.luxuryAd.industry = normalizeLuxuryIndustrySelection(selection || luxuryIndustrySelectionPayload());
+    state.luxuryAd.adType = state.luxuryAd.industry.intent || state.luxuryAd.adType || 'auto';
     state.luxuryAd.industryContract = null;
     state.luxuryAd.briefInfo = null;
     state.luxuryAd.visualReferenceBrief = null;
@@ -6778,8 +6800,14 @@
             ${subs.map(([value, label]) => `<button type="button" class="${value === current.secondary ? 'active' : ''}" data-lux-industry-secondary="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('')}
           </div>
         </section>
+        <section>
+          <div class="dh-lux-industry-modal-title"><b>表达方向</b><span>替代首屏广告类型，只影响广告意图，不改变行业边界。</span></div>
+          <div class="dh-lux-industry-tile-grid compact">
+            ${['auto', 'product', 'brand', 'space'].map(value => `<button type="button" class="${value === (current.intent || 'auto') ? 'active' : ''}" data-lux-industry-intent="${escapeHtml(value)}">${escapeHtml(luxuryAdIntentLabel(value))}</button>`).join('')}
+          </div>
+        </section>
         <section class="dh-lux-industry-modal-fields">
-          <label><span>行业补充</span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="例如：高端不锈钢装饰材料，不是厨具">${escapeHtml(current.note || '')}</textarea></label>
+          <label><span>行业补充 <button class="dh-lux-industry-ai-btn" type="button" id="dhLuxIndustryAiFill">AI 根据需求补充</button></span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="例如：高端不锈钢装饰材料，不是厨具">${escapeHtml(current.note || '')}</textarea></label>
           <label><span>禁止出现</span><textarea class="dh-input" id="dhLuxIndustryModalForbidden" maxlength="240" rows="3" placeholder="例如：厨房、水槽、锅具">${escapeHtml(current.forbidden || '')}</textarea></label>
         </section>
       </div>
@@ -6788,6 +6816,49 @@
         <button class="dh-btn dh-btn-primary" type="button" id="dhLuxIndustrySave">保存选择</button>
       </div>
     </div>`;
+  }
+
+  async function aiFillLuxuryIndustryDraft(draft, modal, applyDraft) {
+    const btn = $('#dhLuxIndustryAiFill', modal);
+    const old = btn?.textContent;
+    const brief = ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
+    if (!brief) return toast('请先填写广告需求，再让 AI 补充行业信息', 'error');
+    const current = normalizeLuxuryIndustrySelection({
+      ...draft,
+      note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
+      forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+    });
+    const primaryOption = luxuryIndustryOption(current.primary);
+    const secondaryOption = (primaryOption[2] || []).find(([value]) => value === current.secondary) || null;
+    if (btn) { btn.disabled = true; btn.textContent = 'AI 补充中...'; }
+    try {
+      const r = await api('/api/dh/scripts/write', {
+        method: 'POST',
+        body: {
+          topic: `请根据广告需求补充行业边界。广告需求：${brief}\n当前行业：${primaryOption[1]}${secondaryOption ? ` / ${secondaryOption[1]}` : ''}\n表达方向：${luxuryAdIntentLabel(current.intent || 'auto')}\n已有补充：${current.note || '无'}\n已有禁止项：${current.forbidden || '无'}\n请输出两句：第一句写“行业补充：...”，第二句写“禁止出现：...”。`,
+          duration_sec: 20,
+          style: current.intent || 'auto',
+          tone: '简洁、具体、可用于视频质检',
+          mode: 'luxury_ad',
+        },
+      });
+      if (!r?.success) throw new Error(r?.error || 'AI 补充失败');
+      const text = String(r.text || '').trim();
+      const noteMatch = text.match(/行业补充[:：]\s*([\s\S]*?)(?:禁止出现[:：]|$)/);
+      const forbiddenMatch = text.match(/禁止出现[:：]\s*([\s\S]*)$/);
+      const note = (noteMatch?.[1] || text.split(/[。；;\n]/)[0] || '').replace(/^[-\s]+/, '').trim().slice(0, 240);
+      const forbidden = (forbiddenMatch?.[1] || '').replace(/^[-\s]+/, '').trim().slice(0, 240);
+      applyDraft({
+        ...current,
+        note: note || current.note,
+        forbidden: forbidden || current.forbidden,
+      });
+      toast('AI 已根据当前需求补充行业信息，请确认后保存', 'success');
+    } catch (err) {
+      toast('AI 补充行业失败：' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old || 'AI 根据需求补充'; }
+    }
   }
 
   function openLuxuryIndustryModal() {
@@ -6844,6 +6915,21 @@
           forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
         });
         rerender();
+        return;
+      }
+      const intent = e.target.closest('[data-lux-industry-intent]');
+      if (intent) {
+        draft = normalizeLuxuryIndustrySelection({
+          ...draft,
+          intent: intent.dataset.luxIndustryIntent || 'auto',
+          note: $('#dhLuxIndustryModalNote')?.value || draft.note || '',
+          forbidden: $('#dhLuxIndustryModalForbidden')?.value || draft.forbidden || '',
+        });
+        rerender();
+        return;
+      }
+      if (e.target.closest('#dhLuxIndustryAiFill')) {
+        aiFillLuxuryIndustryDraft(draft, modal, next => { draft = normalizeLuxuryIndustrySelection(next); rerender(); });
         return;
       }
       if (e.target.closest('#dhLuxIndustrySave')) return save();
@@ -9575,6 +9661,8 @@
     if (ratio) ratio.value = state.luxuryAd.outputRatio || '9:16';
     const size = $('#dhLuxAdSize');
     if (size) size.value = state.luxuryAd.outputSize || 'standard';
+    const videoResolution = $('#dhLuxAdVideoResolution');
+    if (videoResolution) videoResolution.value = state.luxuryAd.videoResolution || '720p';
     const subtitle = $('#dhLuxAdSubtitle');
     if (subtitle) subtitle.value = luxuryAdSubtitleEnabled() ? 'on' : 'off';
     const subtitleToggle = $('#dhLuxAdSubtitleToggle');
@@ -9585,6 +9673,7 @@
     if (expandBrief) expandBrief.checked = state.luxuryAd.expandBrief !== false;
     $$('[data-lux-ad-type]').forEach(b => b.classList.toggle('active', b.dataset.luxAdType === (state.luxuryAd.adType || 'auto')));
     $$('[data-lux-ratio]').forEach(b => b.classList.toggle('active', b.dataset.luxRatio === (state.luxuryAd.outputRatio || '9:16')));
+    $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b.dataset.luxVideoResolution === (state.luxuryAd.videoResolution || '720p')));
     updateLuxuryAdOutputHint();
     renderLuxuryAdControlledProduction();
     renderLuxuryAdAssets();
@@ -12522,6 +12611,7 @@
       duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
       aspect_ratio: state.luxuryAd.outputRatio || $('#dhLuxAdRatio')?.value || '9:16',
       output_size: state.luxuryAd.outputSize || $('#dhLuxAdSize')?.value || 'standard',
+      video_resolution: state.luxuryAd.videoResolution || $('#dhLuxAdVideoResolution')?.value || '720p',
       current_step: state.luxuryAd.currentStep || 1,
       storyboard_detailed: !!state.luxuryAd.storyboardDetailed,
       keyframe_planning_only: !!state.luxuryAd.keyframePlanningOnly,
@@ -12710,6 +12800,7 @@
     state.luxuryAd.durationSec = Number(project.duration_sec || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = project.ratio || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = project.output_size || state.luxuryAd.outputSize || 'standard';
+    state.luxuryAd.videoResolution = project.video_resolution || draft.video_resolution || state.luxuryAd.videoResolution || '720p';
     state.luxuryAd.adType = draft.ad_type || state.luxuryAd.adType || 'auto';
     state.luxuryAd.autoEnhance = draft.auto_enhance !== false;
     state.luxuryAd.expandBrief = draft.expand_brief !== false;
@@ -13639,6 +13730,7 @@
     state.luxuryAd.durationSec = Number($('#dhLuxAdDuration')?.value || state.luxuryAd.durationSec || 30);
     state.luxuryAd.outputRatio = $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16';
     state.luxuryAd.outputSize = $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard';
+    state.luxuryAd.videoResolution = $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '720p';
     state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload($('#dhLuxAdSubtitleToggle')
       ? !!$('#dhLuxAdSubtitleToggle')?.checked
       : (($('#dhLuxAdSubtitle')?.value || 'on') !== 'off'));
@@ -13697,6 +13789,7 @@
       const personAssetPayload = luxuryAdPersonAssetPayload();
       const industrySelectionPayload = luxuryIndustrySelectionPayload();
       state.luxuryAd.industry = normalizeLuxuryIndustrySelection(industrySelectionPayload);
+      state.luxuryAd.adType = industrySelectionPayload.intent || 'auto';
       const requestBody = {
         production_project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
         project_id: state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '',
@@ -13706,11 +13799,13 @@
         shot_count_mode: shotCountMode,
         product_name: state.luxuryAd.productAsset?.name || '',
         asset_summary: luxuryAdAssetSummary() || (detail ? '用户未上传参考素材，本次按广告需求直接生成商品/场景/人物视觉，不要要求用户补传图片。' : '暂未上传图片，本次只生成场景配置和素材清单'),
-        ad_type: state.luxuryAd.adType || 'auto',
+        ad_type: industrySelectionPayload.intent || state.luxuryAd.adType || 'auto',
         // 中文注释：行业选择只作为边界合同输入，不让前端生成固定行业模板或兜底场景。
         industry_selection: industrySelectionPayload,
         industry_contract: state.luxuryAd.industryContract || null,
         output_ratio: state.luxuryAd.outputRatio || '9:16',
+        output_size: state.luxuryAd.outputSize || 'standard',
+        video_resolution: state.luxuryAd.videoResolution || '720p',
         expand_brief: state.luxuryAd.expandBrief !== false,
         planning_mode: detail ? 'detailed' : 'outline',
         controlled_production: luxuryControlledProductionPayload(),
@@ -14058,6 +14153,7 @@
         storyboard_review_only: singleIndex === null && !force,
         storyboard_final_keyframes: !!force || singleIndex !== null,
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
+        video_resolution: state.luxuryAd.videoResolution || '720p',
       };
       let r;
       try {
@@ -14368,6 +14464,7 @@
         speech_segments: compactLuxurySegments(state.luxuryAd.segments || []),
         generation_mode: 'luxury_storyboard',
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
+        video_resolution: state.luxuryAd.videoResolution || '720p',
       };
       const r = await api('/api/dh/spaces/generate', {
         method: 'POST',
@@ -14462,6 +14559,7 @@
         generation_mode: 'material_film',
         ad_mode: 'material_film',
         ...outputPayload(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
+        video_resolution: state.luxuryAd.videoResolution || '720p',
       };
       const r = await api('/api/dh/material-film/generate', {
         method: 'POST',
@@ -16998,6 +17096,17 @@
       updateLuxuryAdStepLocks();
       return;
     }
+    const luxVideoResolution = closest('[data-lux-video-resolution]');
+    if (luxVideoResolution) {
+      if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
+      const value = luxVideoResolution.dataset.luxVideoResolution || '720p';
+      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[value] ? value : '720p';
+      const resolutionSelect = $('#dhLuxAdVideoResolution');
+      if (resolutionSelect) resolutionSelect.value = state.luxuryAd.videoResolution;
+      $$('[data-lux-video-resolution]').forEach(b => b.classList.toggle('active', b === luxVideoResolution));
+      updateLuxuryAdOutputHint();
+      return;
+    }
     const luxControlEnv = closest('[data-lux-control-env]');
     if (luxControlEnv) {
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
@@ -19355,6 +19464,11 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (luxRatio) luxRatio.addEventListener('change', e => { state.luxuryAd.outputRatio = e.target.value || '9:16'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
     const luxSize = $('#dhLuxAdSize');
     if (luxSize) luxSize.addEventListener('change', e => { state.luxuryAd.outputSize = e.target.value || 'standard'; state.luxuryAd.storyboardDetailed = false; state.luxuryAd.globalVisualBible = null; state.luxuryAd.keyframes = []; updateLuxuryAdOutputHint(); renderLuxuryAdStoryboard(); });
+    const luxVideoResolution = $('#dhLuxAdVideoResolution');
+    if (luxVideoResolution) luxVideoResolution.addEventListener('change', e => {
+      state.luxuryAd.videoResolution = VIDEO_RESOLUTION_LABELS[e.target.value] ? e.target.value : '720p';
+      updateLuxuryAdOutputHint();
+    });
     const luxSubtitle = $('#dhLuxAdSubtitle');
     if (luxSubtitle) luxSubtitle.addEventListener('change', e => {
       state.luxuryAd.subtitle = getLuxuryAdSubtitlePayload(e.target.value !== 'off');

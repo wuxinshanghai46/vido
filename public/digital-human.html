@@ -1164,6 +1164,24 @@
             </div>
           </div>
 
+          <div class="dh-demo-entry-tools dh-luxgen-top-tools">
+            <div class="dh-lux-industry-panel"></div>
+            <div class="dh-demo-chip-row">
+              <span class="dh-demo-chip-label">画面比例</span>
+              <button type="button" class="dh-chip active" data-lux-ratio="9:16">9:16</button>
+              <button type="button" class="dh-chip" data-lux-ratio="16:9">16:9</button>
+              <button type="button" class="dh-chip" data-lux-ratio="1:1">1:1</button>
+            </div>
+            <div class="dh-demo-chip-row">
+              <span class="dh-demo-chip-label">视频分辨率</span>
+              <button type="button" class="dh-chip" data-lux-video-resolution="480p">480p</button>
+              <button type="button" class="dh-chip active" data-lux-video-resolution="720p">720p</button>
+              <button type="button" class="dh-chip" data-lux-video-resolution="1080p">1080p</button>
+              <button type="button" class="dh-chip" data-lux-video-resolution="4k">4K</button>
+            </div>
+            <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhLuxAdGenerate" type="button">生成场景配置</button>
+            <button class="dh-btn dh-btn-ghost" id="dhLuxAdSaveDraft" type="button">保存进度</button>
+          </div>
           <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告完整流程" id="dhLuxAdSteps">
             <div class="active" data-lux-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
             <div class="locked" data-lux-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
@@ -1186,25 +1204,7 @@
               </div>
               <textarea class="dh-input" id="dhLuxAdText" maxlength="1800" placeholder="例如：我想做一条 AI 机器人智能生活广告。画面要有真实家庭场景，从生活混乱到 AI 机器人帮助用户整理日程、家务和设备，最后引导体验未来科技。"></textarea>
               <div id="dhLuxAdControlledProduction"></div>
-              <div class="dh-demo-entry-tools">
-                <div class="dh-demo-chip-row">
-                  <span class="dh-demo-chip-label">广告类型</span>
-                  <button type="button" class="dh-chip active" data-lux-ad-type="auto">自动判断</button>
-                  <button type="button" class="dh-chip" data-lux-ad-type="product">产品宣传</button>
-                  <button type="button" class="dh-chip" data-lux-ad-type="brand">品牌故事</button>
-                  <button type="button" class="dh-chip" data-lux-ad-type="space">空间展示</button>
-                </div>
-                <div class="dh-demo-chip-row">
-                  <span class="dh-demo-chip-label">画面比例</span>
-                  <button type="button" class="dh-chip active" data-lux-ratio="9:16">9:16</button>
-                  <button type="button" class="dh-chip" data-lux-ratio="16:9">16:9</button>
-                  <button type="button" class="dh-chip" data-lux-ratio="1:1">1:1</button>
-                </div>
-                <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhLuxAdGenerate" type="button">生成场景配置</button>
-                <button class="dh-btn dh-btn-ghost" id="dhLuxAdSaveDraft" type="button">保存进度</button>
-              </div>
               <div class="dh-demo-entry-assist">
-                <div class="dh-lux-industry-panel"></div>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdWrite" type="button">AI 帮我写</button>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdClean" type="button">AI 帮我整理内容</button>
                 <button class="dh-btn dh-btn-ghost" id="dhLuxAdSample" type="button">粘贴示例</button>
@@ -1528,6 +1528,12 @@
                 <option value="standard" selected>标准</option>
                 <option value="hd">高清</option>
                 <option value="fullhd">超清</option>
+              </select>
+              <select class="dh-input dh-luxgen-hidden-control" id="dhLuxAdVideoResolution" aria-hidden="true">
+                <option value="480p">480p</option>
+                <option value="720p" selected>720p</option>
+                <option value="1080p">1080p</option>
+                <option value="4k">4K</option>
               </select>
               <input type="checkbox" id="dhLuxAdAutoEnhance" checked hidden>
               <input type="checkbox" id="dhLuxAdExpandBrief" checked hidden>

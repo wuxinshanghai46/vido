@@ -1656,7 +1656,26 @@ function _findWebangSeedanceProvider(settings = {}) {
     .sort((a, b) => _webangProviderPriority(a) - _webangProviderPriority(b))[0] || null;
 }
 
-async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
+function _normalizeSeedanceResolution(value = '') {
+  const raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (raw === '4k' || raw === '2160p') return '4k';
+  if (['480p', '720p', '1080p'].includes(raw)) return raw;
+  return '720p';
+}
+
+function _deyunaiVideoSize(aspectRatio = '9:16', videoResolution = '720p') {
+  const ratio = ['9:16', '16:9', '1:1', '3:4', '4:3'].includes(aspectRatio) ? aspectRatio : '9:16';
+  const resolution = _normalizeSeedanceResolution(videoResolution);
+  const presets = {
+    '480p': { '9:16': '480x854', '16:9': '854x480', '1:1': '480x480', '3:4': '480x640', '4:3': '640x480' },
+    '720p': { '9:16': '720x1280', '16:9': '1280x720', '1:1': '720x720', '3:4': '720x960', '4:3': '960x720' },
+    '1080p': { '9:16': '1080x1920', '16:9': '1920x1080', '1:1': '1080x1080', '3:4': '1080x1440', '4:3': '1440x1080' },
+    '4k': { '9:16': '2160x3840', '16:9': '3840x2160', '1:1': '2160x2160', '3:4': '2160x2880', '4:3': '2880x2160' },
+  };
+  return presets[resolution]?.[ratio] || presets['720p']['9:16'];
+}
+
+async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', userId = null, agentId = null }) {
   const { getApiKey, loadSettings } = require('./settingsService');
   let provider = null;
   try {
@@ -1683,15 +1702,16 @@ async function generateWebangSeedanceClip({ prompt, duration = 5, outputDir, fil
       content.push({ type: 'image_url', image_url: { url: imageAsset.assetUrl } });
     }
 
-    const body = {
-      model,
-      content,
-      ratio: ratioFlag,
-      duration: durSec,
-      resolution: '720p',
-      generate_audio: false,
-      watermark: false
-    };
+  const requestedResolution = _normalizeSeedanceResolution(videoResolution || resolution);
+  const body = {
+    model,
+    content,
+    ratio: ratioFlag,
+    duration: durSec,
+    resolution: requestedResolution,
+    generate_audio: false,
+    watermark: false
+  };
 
     console.log(`[Webang Seedance] submit model=${model}, prompt长度=${prompt.length}, image=${!!image_url}`);
     const submit = await _webangRequest('POST', baseUrl, '/videos/generations', apiKey, body);
@@ -2254,7 +2274,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, userId = null, agentId = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2280,10 +2300,7 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
   }
 
   // size: sora-2 仅支持 1280x720 / 720x1280
-  const sizeMap = {
-    '16:9': '1280x720', '9:16': '720x1280', '1:1': '1024x1024',
-  };
-  const size = sizeMap[aspectRatio] || '720x1280';
+  const size = String(requestedSize || '').trim() || _deyunaiVideoSize(aspectRatio, videoResolution || resolution);
   console.log(`[VideoService] 漫路视频 model=${chosen.id} size=${size} duration=${duration}s`);
 
   const r = await dy.generateVideo({
