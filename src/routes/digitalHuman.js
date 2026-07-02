@@ -16797,7 +16797,92 @@ function _publicLuxuryKeyframeResult(item) {
       : null;
     return { success: false, status: 'error', error: _compactDhPublicMessage(item.error || '生成失败'), details };
   }
-  return { success: true, status: item.status || 'running', started_at: item.started_at || null, updated_at: item.updated_at || null };
+  const partial = item.partial && typeof item.partial === 'object' ? item.partial : null;
+  return {
+    success: true,
+    status: item.status || 'running',
+    started_at: item.started_at || null,
+    updated_at: item.updated_at || null,
+    ...(partial ? { partial } : {}),
+    ...(item.production_project ? { production_project: item.production_project } : {}),
+    ...(item.production_project_id ? { production_project_id: item.production_project_id } : {}),
+  };
+}
+
+function _luxuryKeyframeShotStatuses({ scenes = [], keyframes = [], failures = [], currentIndex = null, currentStatus = '' } = {}) {
+  const total = Math.max(
+    Array.isArray(scenes) ? scenes.length : 0,
+    Array.isArray(keyframes) ? keyframes.length : 0,
+  );
+  const done = new Set((Array.isArray(keyframes) ? keyframes : [])
+    .filter(kf => _luxuryProjectFrameImage(kf))
+    .map((kf, fallbackIndex) => _luxuryProjectFrameIndex(kf, fallbackIndex)));
+  const failed = new Map((Array.isArray(failures) ? failures : []).map(failure => {
+    const idx = _luxuryProjectFrameIndex(failure || {}, failure?.shot_index ?? failure?.index ?? 0);
+    return [idx, failure];
+  }));
+  return Array.from({ length: total }, (_, i) => {
+    const failure = failed.get(i);
+    let status = 'pending';
+    if (done.has(i)) status = 'done';
+    else if (failure) status = 'failed';
+    else if (Number.isInteger(currentIndex) && i === currentIndex && currentStatus) status = currentStatus;
+    return {
+      index: i,
+      shot_index: i,
+      status,
+      ...(failure ? {
+        error: _compactDhPublicMessage(failure.error || ''),
+        code: failure.code || '',
+      } : {}),
+    };
+  });
+}
+
+function _publishLuxuryKeyframePartial(req, body = {}, {
+  scenes = [],
+  keyframes = [],
+  storyboardSheets = [],
+  failures = [],
+  currentIndex = null,
+  currentStatus = 'generating',
+  meta = {},
+} = {}) {
+  const requestKey = String(body.request_key || body.keyframe_request_key || '').trim();
+  const adMode = String(body.ad_mode || body.adMode || '').trim();
+  if (!requestKey || adMode !== 'luxury_ad') return null;
+  const shotStatuses = _luxuryKeyframeShotStatuses({ scenes, keyframes, failures, currentIndex, currentStatus });
+  const partialBody = {
+    success: true,
+    status: 'running',
+    keyframe_generation_status: 'running',
+    reference_mode: keyframes.some(kf => _luxuryProjectFrameImage(kf)) ? 'partial_keyframes' : 'storyboard_planning_sheet',
+    scenes,
+    keyframes,
+    storyboard_sheets: storyboardSheets,
+    shot_statuses: shotStatuses,
+    generated_count: keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length,
+    total_shots: Math.max(scenes.length, shotStatuses.length),
+    missing_count: Math.max(0, Math.max(scenes.length, shotStatuses.length) - keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length),
+    ...meta,
+  };
+  const productionProject = _upsertLuxuryAdProductionProject(req, {
+    ...(body || {}),
+    request_stage: 'keyframe',
+    keyframe_request_key: requestKey,
+    project_state: 'frame_generating',
+  }, partialBody, {
+    project_state: 'frame_generating',
+  });
+  partialBody.production_project = productionProject;
+  partialBody.production_project_id = productionProject.id;
+  _storeLuxuryKeyframeResult(req, requestKey, {
+    status: 'running',
+    partial: partialBody,
+    production_project: productionProject,
+    production_project_id: productionProject.id,
+  });
+  return partialBody;
 }
 
 router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
@@ -26752,6 +26837,20 @@ async function _runSpaceStoryboardTask(req, taskId, payload) {
           qa: isLuxury ? (shotPlan?.qa || null) : undefined,
         });
         _taskPatch(taskId, { keyframes, keyframeUrl: keyframes[0]?.image_url, image_url: keyframes[0]?.image_url, thumbnail_url: keyframes[0]?.image_url });
+        if (isLuxury) {
+          _publishLuxuryKeyframePartial(req, payload, {
+            scenes,
+            keyframes,
+            currentIndex: i,
+            currentStatus: 'done',
+            meta: {
+              asset_manifest: luxuryAsyncAssetManifest || undefined,
+              visual_locks: luxuryAsyncVisualLocks || undefined,
+              global_visual_bible: luxuryAsyncGlobalVisualBible || undefined,
+              segment_plan: _normalizeLuxurySegmentPlan(payload.segment_plan, scenes, { productSubject, sceneBible: payload.brief_info?.scene_bible || payload.global_visual_bible || null }),
+            },
+          });
+        }
       }
     }
 
@@ -28670,6 +28769,20 @@ router.post('/spaces/keyframes', async (req, res) => {
           visual_locks: luxuryVisualLocks || undefined,
           character_lock: luxuryCharacterLock || undefined,
         });
+        _publishLuxuryKeyframePartial(req, req.body || {}, {
+          scenes,
+          keyframes,
+          failures: luxuryKeyframeShotFailures,
+          currentIndex: publicShotIndex,
+          currentStatus: 'done',
+          meta: {
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
+            global_visual_bible: luxuryGlobalVisualBible || undefined,
+            segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            production_contract: luxuryPlanningMeta?.production_contract || undefined,
+          },
+        });
         continue;
       }
       const shotBackgroundUrl = isLuxury ? background_url : background_url;
@@ -28763,6 +28876,20 @@ router.post('/spaces/keyframes', async (req, res) => {
           code: shotErr.code || '',
           attempts: Array.isArray(shotAttempts) ? shotAttempts : [],
         });
+        _publishLuxuryKeyframePartial(req, req.body || {}, {
+          scenes,
+          keyframes,
+          failures: luxuryKeyframeShotFailures,
+          currentIndex: publicShotIndex,
+          currentStatus: 'failed',
+          meta: {
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
+            global_visual_bible: luxuryGlobalVisualBible || undefined,
+            segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            production_contract: luxuryPlanningMeta?.production_contract || undefined,
+          },
+        });
         console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} keyframe failed; continuing remaining shots:`, shotErr.message || shotErr);
         continue;
       }
@@ -28823,6 +28950,20 @@ router.post('/spaces/keyframes', async (req, res) => {
             code: 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED',
             qa: keyframeQa,
           });
+          _publishLuxuryKeyframePartial(req, req.body || {}, {
+            scenes,
+            keyframes,
+            failures: luxuryKeyframeShotFailures,
+            currentIndex: publicShotIndex,
+            currentStatus: 'failed',
+            meta: {
+              asset_manifest: luxuryAssetManifest || undefined,
+              visual_locks: luxuryVisualLocks || undefined,
+              global_visual_bible: luxuryGlobalVisualBible || undefined,
+              segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+              production_contract: luxuryPlanningMeta?.production_contract || undefined,
+            },
+          });
           console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
           continue;
         }
@@ -28851,6 +28992,22 @@ router.post('/spaces/keyframes', async (req, res) => {
         character_lock: isLuxury ? luxuryCharacterLock || undefined : undefined,
         qa: isLuxury ? keyframeQa : undefined,
       });
+      if (isLuxury) {
+        _publishLuxuryKeyframePartial(req, req.body || {}, {
+          scenes,
+          keyframes,
+          failures: luxuryKeyframeShotFailures,
+          currentIndex: publicShotIndex,
+          currentStatus: 'done',
+          meta: {
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
+            global_visual_bible: luxuryGlobalVisualBible || undefined,
+            segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            production_contract: luxuryPlanningMeta?.production_contract || undefined,
+          },
+        });
+      }
     }
     const routeGeneratedKeyframeCount = keyframes.filter(kf => _luxuryProjectFrameImage(kf)).length;
     const routeShouldCreateResultStoryboardSheets = isLuxury

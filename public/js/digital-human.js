@@ -10797,6 +10797,56 @@
     });
   }
 
+  function applyLuxuryKeyframePartial(partial = null, { totalShots = 0, startedAt = Date.now() } = {}) {
+    if (!partial || typeof partial !== 'object') return false;
+    if (partial.production_project) applyLuxuryProductionProject(partial.production_project);
+    else if (partial.production_project_id) state.luxuryAd.productionProjectId = partial.production_project_id;
+    const incomingScenes = Array.isArray(partial.scenes) ? partial.scenes : [];
+    const incomingFrames = Array.isArray(partial.keyframes) ? partial.keyframes : [];
+    const total = Math.max(
+      Number(totalShots) || 0,
+      Number(partial.total_shots) || 0,
+      incomingScenes.length,
+      state.luxuryAd.segments?.length || 0,
+      incomingFrames.length,
+    );
+    if (incomingScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(incomingScenes);
+    if (incomingFrames.length) {
+      state.luxuryAd.keyframes = mergeLuxuryKeyframesPreservingImages(
+        state.luxuryAd.keyframes || [],
+        incomingFrames,
+        total,
+      );
+      state.luxuryAd.keyframePlanningOnly = false;
+      state.luxuryAd.keyframeError = '';
+      state.luxuryAd.keyframeErrorDetails = null;
+    }
+    if (Array.isArray(partial.storyboard_sheets) && partial.storyboard_sheets.length) {
+      state.luxuryAd.storyboardSheets = partial.storyboard_sheets;
+    }
+    if (partial.asset_manifest) state.luxuryAd.assetManifest = partial.asset_manifest;
+    if (partial.visual_locks) state.luxuryAd.visualLocks = partial.visual_locks;
+    if (partial.global_visual_bible) state.luxuryAd.globalVisualBible = partial.global_visual_bible;
+    if (partial.segment_plan) state.luxuryAd.segmentPlan = partial.segment_plan;
+    if (partial.production_contract) state.luxuryAd.productionContract = partial.production_contract;
+    state.luxuryAd.keyframeShotStatuses = Array.isArray(partial.shot_statuses) ? partial.shot_statuses : [];
+    const generated = (state.luxuryAd.keyframes || []).filter(luxuryFrameHasImage).length;
+    const failedCount = state.luxuryAd.keyframeShotStatuses.filter(x => x?.status === 'failed').length;
+    const currentStatus = state.luxuryAd.keyframeShotStatuses.find(x => x?.status === 'generating' || x?.status === 'qa_retrying');
+    const statusText = failedCount
+      ? `，${failedCount} 镜待单独重试`
+      : (currentStatus ? `，第 ${Number(currentStatus.index || currentStatus.shot_index || 0) + 1} 镜处理中` : '');
+    state.luxuryAd.keyframeProgress = {
+      current: Math.min(generated, total || generated),
+      total: total || generated || 1,
+      startedAt: state.luxuryAd.keyframeProgress?.startedAt || startedAt,
+      message: `真实关键帧已生成 ${generated}/${total || generated}${statusText}。合格镜头会先显示，全部完成前不能进入成片。`,
+    };
+    updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
+    renderLuxuryAdStoryboard();
+    return true;
+  }
+
   function luxuryAdOutlineMaterialNeed(seg = {}, index = 0) {
     const raw = String(seg.required_material || seg.material_need || seg.material_requirement || seg.material_usage || seg.material_hint || '').replace(/\s+/g, ' ').trim();
     if (raw && !/@(?:主商品|参考|分镜画面)\d*/.test(raw)) return raw.slice(0, 80);
@@ -10829,6 +10879,7 @@
     state.luxuryAd.keyframeError = '';
     state.luxuryAd.keyframeErrorDetails = null;
     state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.keyframeShotStatuses = [];
     if (clearFrames) {
       if (affected !== null && Array.isArray(state.luxuryAd.keyframes) && state.luxuryAd.keyframes.length) {
         state.luxuryAd.keyframes[affected] = {
@@ -11701,7 +11752,13 @@
           const img = kf.image_url || kf.imageUrl || '';
           const preview = img ? luxuryAssetPreviewUrl({ url: img }) : '';
           const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
-          const pendingLabel = `镜头 ${String(i + 1).padStart(2, '0')} · 待生成分镜图`;
+          const shotStatus = (state.luxuryAd.keyframeShotStatuses || []).find(x => luxuryFrameIndex(x, i) === i);
+          const statusLabel = shotStatus?.status === 'failed'
+            ? '待单独重试'
+            : (shotStatus?.status === 'qa_retrying'
+              ? 'QA 修正中'
+              : (shotStatus?.status === 'generating' ? '生成中' : '待生成分镜图'));
+          const pendingLabel = `镜头 ${String(i + 1).padStart(2, '0')} · ${statusLabel}`;
           const action = luxuryShotActionText(seg) || luxuryShotContentPrompt(seg);
           const voice = luxuryShotNarrationText(seg);
           return `<article class="dh-lux-sheet-shot ${preview ? 'has-preview' : ''}">
@@ -13181,17 +13238,21 @@
         err.status = r.http_status || r.status_code || 422;
         throw err;
       }
+      const partialApplied = applyLuxuryKeyframePartial(r.partial || (r.production_project ? { production_project: r.production_project } : null), {
+        totalShots,
+        startedAt: started,
+      });
       if (r.status && r.status !== lastStatus) {
         lastStatus = r.status;
-        const elapsed = Math.max(1, Math.round((Date.now() - started) / 1000));
-        if (r.production_project) applyLuxuryProductionProject(r.production_project);
-        state.luxuryAd.keyframeProgress = {
-          current: Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots),
-          total: totalShots,
-          startedAt: state.luxuryAd.keyframeProgress?.startedAt || started,
-          message: '分镜生成时间较长，正在等待同一任务返回结果。',
-        };
-        updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
+        if (!partialApplied) {
+          state.luxuryAd.keyframeProgress = {
+            current: Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots),
+            total: totalShots,
+            startedAt: state.luxuryAd.keyframeProgress?.startedAt || started,
+            message: '分镜生成时间较长，正在等待同一任务返回结果。',
+          };
+          updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
+        }
       }
     }
     throw new Error('服务器仍在生成分镜，请稍后刷新页面或重新进入本步骤查看');
@@ -13631,6 +13692,7 @@
     state.luxuryAd.keyframeError = '';
     state.luxuryAd.keyframeErrorDetails = null;
     state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.keyframeShotStatuses = [];
     if (singleIndex === null || force) {
       state.luxuryAd.keyframes = [];
       state.luxuryAd.storyboardSheets = [];
