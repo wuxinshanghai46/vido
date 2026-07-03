@@ -4267,6 +4267,10 @@ function _luxuryQaHasHardForbiddenMismatch(text = '', subject = '') {
   const subjectText = String(subject || '');
   if (/cosmetic|perfume|skincare|lotion|bottle|jewelry|watch|phone|beverage|化妆|香水|护肤|瓶|珠宝|手表|手机|饮料/.test(combined)
     && /钢|金属|板材|建材|材料|材质|墙面|展墙/i.test(subjectText)) return true;
+  if (!_luxuryHasExplicitRobotAssistantSubjectText(subjectText)
+    && /\b(robot|android|mechanical assistant|service robot|robotic mascot|humanoid machine)\b|机器人|机械助手|服务机器人|机器人助手|人形机器/i.test(combined)) return true;
+  if (!_luxuryHasExplicitAnimalSubjectText(subjectText)
+    && /\b(dog|puppy|pet|cat|animal)\b|小狗|狗狗|金毛|萨摩耶|宠物|猫咪|动物|毛孩子/i.test(combined)) return true;
   return /unrelated product category|wrong product|wrong subject|different subject|replaced subject|无关主体|错误主体|错品类|换成/.test(combined);
 }
 
@@ -4492,7 +4496,9 @@ function _luxuryIsEmbodiedAiOrHomeLifeText(value = '') {
 
 function _luxuryHasExplicitRobotAssistantSubjectText(value = '') {
   // 中文说明：只有用户/主体明确是实体机器人或机械主体时才进入机器人保护链路；“智能生活/智能家居/智能体”不能自动等同机器人。
-  return /(AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android)/i.test(String(value || ''));
+  let text = String(value || '');
+  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|不是|并非|非|无需|不需要|hard negative|must[_\s-]?not[_\s-]?show|do not|don't|without|no|not|avoid)\s*[^。；;.!?]{0,80}(?:AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|\brobot\s*assistant\b|\brobot\b|\bandroid\b)/ig, ' ');
+  return /(AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android)/i.test(text);
 }
 
 function _luxuryIsRobotAssistantSubject(...parts) {
@@ -4502,7 +4508,7 @@ function _luxuryIsRobotAssistantSubject(...parts) {
 
 function _luxuryHasExplicitAnimalSubjectText(value = '') {
   let text = String(value || '');
-  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|hard negative|must[_\s-]?not[_\s-]?show|do not|without|no)\s*[^。；;.!?]{0,80}(?:宠物|小狗|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|\bpet\b|\bdog\b|\bcat\b|\banimal\b)/ig, ' ');
+  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|不是|并非|非|无需|不需要|hard negative|must[_\s-]?not[_\s-]?show|do not|don't|without|no|not|avoid)\s*[^。；;.!?]{0,80}(?:宠物|小狗|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|\bpet\b|\bdog\b|\bcat\b|\banimal\b)/ig, ' ');
   return /宠物|小狗|狗狗|犬|金毛|萨摩耶|猫咪|动物|毛孩子|\bpet\b|\bdog\b|\bcat\b|\banimal\b/i.test(text);
 }
 
@@ -13861,6 +13867,17 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
   ].filter((url, i, arr) => url && arr.indexOf(url) === i).slice(-16);
   const firstProviderError = providerErrors.find(item => item.error)?.error || '';
   const firstQaReason = qaFailures.find(item => item.reason)?.reason || '';
+  const preflightIssues = [
+    ...(Array.isArray(details?.issues) ? details.issues : []),
+    ...attempts.flatMap(item => Array.isArray(item?.prompt_preflight_issues) ? item.prompt_preflight_issues : []),
+  ]
+    .map(item => ({
+      code: item?.code || '',
+      message: _compactLuxuryFailureText(item?.message || item?.error || item || '', 260),
+      severity: item?.severity || 'block',
+    }))
+    .filter(item => item.code || item.message)
+    .slice(0, 12);
   const summaryParts = [];
   if (failedShotIndexes.length) {
     summaryParts.push(`失败镜头：第 ${failedShotIndexes.map(i => Number(i) + 1).join('、')} 镜`);
@@ -13868,7 +13885,8 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
   if (generatedCount || totalShots) {
     summaryParts.push(`已生成 ${generatedCount || 0}/${totalShots || '?'} 镜`);
   }
-  if (firstProviderError) summaryParts.push(`模型返回：${firstProviderError}`);
+  if (preflightIssues.length) summaryParts.push(`出图前预检阻断：${preflightIssues.map(x => x.message || x.code).filter(Boolean).slice(0, 3).join('；')}`);
+  else if (firstProviderError) summaryParts.push(`模型返回：${firstProviderError}`);
   else if (firstQaReason) summaryParts.push(`QA 原因：${firstQaReason}`);
   else if (fallbackError) summaryParts.push(_compactLuxuryFailureText(fallbackError, 360));
   return {
@@ -13880,6 +13898,7 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
     total_shots: totalShots || undefined,
     provider_errors: providerErrors,
     qa_failures: qaFailures,
+    prompt_preflight_issues: preflightIssues,
     candidate_images: candidateImages,
   };
 }
@@ -27077,6 +27096,75 @@ function _luxuryDeyunaiAuditNeutralText(value = '', max = 180) {
     .trim();
 }
 
+function _luxuryPromptPositiveTextForPreflight(prompt = '') {
+  const negativeRe = /\b(?:do not|don't|never|without|no|avoid|forbidden|negative|hard negative|hard fail|reject|must[_\s-]?not[_\s-]?show|fail if|style forbidden|provider-submission safety)\b|不要|禁止|不得|不允许|不能|拒绝|避免|硬负面|违规|不合格/i;
+  return String(prompt || '')
+    .replace(/\s+/g, ' ')
+    .split(/[\n。；;.!?]+/)
+    .map(part => part.trim())
+    .filter(part => part && !negativeRe.test(part))
+    .join(' ')
+    .trim();
+}
+
+function _luxuryKeyframePromptContaminationIssues({
+  prompt = '',
+  scene = {},
+  productSubject = '',
+  refs = [],
+} = {}) {
+  const fullText = String(prompt || '');
+  const positiveText = _luxuryPromptPositiveTextForPreflight(fullText);
+  const confirmedText = [
+    productSubject,
+    _luxuryConfirmedDemandText(productSubject, scene, { allowSceneExplicit: true }),
+  ].filter(Boolean).join(' ');
+  const refText = (Array.isArray(refs) ? refs : [])
+    .map(ref => [
+      ref?.kind,
+      ref?.source,
+      ref?.resolved,
+      ref?.name,
+      ref?.label,
+    ].filter(Boolean).join(' '))
+    .join(' ');
+  const promptAndRefs = `${fullText} ${refText}`;
+  const positiveAndRefs = `${positiveText} ${refText}`;
+  const issues = [];
+  const add = (code, message) => {
+    if (!issues.some(x => x.code === code)) issues.push({ code, message, severity: 'block' });
+  };
+  if (/credential placeholder|integration credential placeholder|credential setup indicator/i.test(fullText)) {
+    add('visible_credential_placeholder_leaked', '提示词仍含可见 credential placeholder/credential setup indicator，占位词会被画到成片里。');
+  }
+  if (/deyunai[-_]?smoke|local_actor_group_smoke|actor-identity-group.*smoke|avatar_male-(?:biz|tech|news)/i.test(promptAndRefs)) {
+    add('smoke_or_demo_reference_leaked', '提示词或参考链路含烟测/演示素材，可能把旧任务人物或场景带入当前分镜。');
+  }
+  if (/\bAI Order Assistant\b/i.test(positiveAndRefs) && !/\bAI Order Assistant\b/i.test(confirmedText)) {
+    add('foreign_demo_subject_leaked', '正向提示或参考链路含旧任务 AI Order Assistant 主体。');
+  }
+  if (!(_luxuryHasExplicitRobotAssistantSubjectText(confirmedText) || _luxuryHasExplicitRobotAssistantSubjectText(productSubject))
+    && /\b(ROBOT ASSISTANT SUBJECT LOCK|confirmed robot\/assistant subject|shown as a robot\/assistant|robot\/assistant helping|robot assistant product|mechanical assistant|service robot|robotic mascot|humanoid machine|android)\b|机器人助手主体|机器人\/智能助手主体|服务机器人|人形机器/i.test(positiveAndRefs)) {
+    add('unconfirmed_robot_positive_prompt', '当前广告主体未确认机器人/机械助手，但正向提示或参考链路出现机器人主体。');
+  }
+  if (!_luxuryHasExplicitAnimalSubjectText(confirmedText)
+    && /\b(pet_product_or_service|confirmed pet|pet product|pet life scene|animal companion|puppy|dog\s+(?:running|toy|bowl|leash|companion|avatar|photo)|cat\s+(?:toy|avatar|photo))\b|宠物生活|宠物主体|宠物用品|宠物服务|小狗|狗狗|金毛|萨摩耶|猫咪|动物伙伴|毛孩子/i.test(positiveAndRefs)) {
+    add('unconfirmed_animal_positive_prompt', '当前广告主体未确认宠物/动物，但正向提示或参考链路出现宠物/动物主体。');
+  }
+  if (/\bplaceholder\s+(?:wording|words?|text|credential|token|secret)\b/i.test(positiveText)) {
+    add('visible_placeholder_wording_leaked', '正向提示要求渲染 placeholder/credential/token 等可见占位词。');
+  }
+  return issues;
+}
+
+function _luxuryPromptPreflightError(issues = []) {
+  const err = new Error('剧情广告分镜生成已停止：出图提示词/参考链路含有旧任务、烟测素材、可见占位词或未确认主体污染，已阻止调用图片模型。');
+  err.status = 422;
+  err.code = 'LUXURY_KEYFRAME_PROMPT_PREFLIGHT_FAILED';
+  err.details = { issues };
+  return err;
+}
+
 function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
   scene = {},
   productSubject = '',
@@ -28338,6 +28426,26 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     const model = configuredModels[i];
     const attemptPrompt = promptWithRepair(model);
     const attemptPromptChars = Array.from(String(attemptPrompt || '')).length;
+    const promptPreflightIssues = _luxuryKeyframePromptContaminationIssues({
+      prompt: attemptPrompt,
+      scene: currentScene,
+      productSubject,
+      refs,
+    });
+    if (promptPreflightIssues.length) {
+      const preflightErr = _luxuryPromptPreflightError(promptPreflightIssues);
+      addAttempt({ provider_id: 'preflight', model_id: 'prompt-contamination' }, false, preflightErr, {
+        prompt_chars: attemptPromptChars,
+        prompt_preflight_issues: promptPreflightIssues,
+      });
+      preflightErr.luxuryKeyframeAttempts = attempts;
+      preflightErr.details = {
+        ...(preflightErr.details || {}),
+        attempts,
+        luxuryKeyframeAttempts: attempts,
+      };
+      throw preflightErr;
+    }
     try {
       const outPath = await runCandidate(model, i + 1, attemptPrompt);
       const attemptMeta = {
