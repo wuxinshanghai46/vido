@@ -8438,9 +8438,8 @@
     const pct = Math.max(6, Math.min(96, softPct));
     const elapsedSec = Math.max(0, Math.round(elapsed / 1000));
     const elapsedText = formatLuxuryElapsedText(elapsedSec);
-    const canSeeDebug = canViewLuxuryInternalPipeline();
-    const phase = canSeeDebug ? (progress.debugPhase || progress.phase) : (progress.phase || '正在生成');
-    const message = canSeeDebug ? (progress.debugMessage || progress.message) : (progress.message || '正在生成正面定妆照；通过后即可绑定演员，侧面/动作/背面会作为补充参考后台生成。');
+    const phase = progress.phase || '正在生成';
+    const message = progress.message || '正在生成正面定妆照；通过后会保存人物参考。';
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
@@ -10100,7 +10099,7 @@
       { at: 2500, percent: 28, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
       { at: 8500, percent: 58, phase: '正面构图 QA', message: '检查正面定妆照是否符合人物设定、构图和可复用要求。' },
       { at: 15000, percent: 78, phase: '抽取人物锁', message: '从正面定稿中抽取脸型、发型、服装和身形锁，供后续分镜使用。' },
-      { at: 21500, percent: 88, phase: '准备绑定演员', message: '正面通过后即可入库，侧面/动作/背面将作为非阻塞补充参考继续生成。', debugPhase: '正面 QA 与 actor_id 入库', debugMessage: '只把通过正面 QA 和人物锁抽取的资产绑定 actor_id；补充视图失败不会污染演员库。' },
+      { at: 21500, percent: 88, phase: '保存人物参考', message: '正面定妆通过后会保存为可用人物参考，补充视图会继续完善。' },
     ];
     const updatePersonProgress = () => {
       const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
@@ -10114,8 +10113,6 @@
         percent: stage.percent,
         phase: stage.phase,
         message: stage.message,
-        debugPhase: stage.debugPhase || stage.phase,
-        debugMessage: stage.debugMessage || stage.message,
       };
       renderLuxuryAdPerson();
     };
@@ -10185,10 +10182,8 @@
           active: true,
           label: '拟真演员',
           percent: 88,
-        phase: '后台生成中',
+          phase: '后台生成中',
           message: '人物包已提交到后台，正面通过后会先返回可用演员。',
-          debugPhase: '后台模型与 QA',
-          debugMessage: '人物包已提交到后台，等待正面模型、构图 QA、设定 QA 和人物锁抽取返回；补充视图不阻塞 actor_id。',
         };
         renderLuxuryAdPerson();
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 45 * 60 * 1000, missingRetryMs: 90000 });

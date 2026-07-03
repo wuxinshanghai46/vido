@@ -15717,6 +15717,8 @@ function _isLuxuryActorGenderQaFailure(err) {
 function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspectRatio = '9:16', expectedPeople = 1, castMode = 'single', expectedGender = '', allowBarefoot = false } = {}) {
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
   const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
+  const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(basePrompt);
+  const dynamicSubstitutionBan = _luxuryPersonSheetDynamicSubstitutionBan(`${priorityConstraints} ${basePrompt}`);
   const castLabel = castMode === 'dual'
     ? 'two independent cast members'
     : (castMode === 'group' ? `${people} independent cast members` : 'one standalone person');
@@ -15725,7 +15727,10 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
     'The previous candidate failed QA. Generate a fresh clean casting-sheet image from the target attributes only.',
     `Generate a NEW pulled-back studio casting photo of ${castLabel}.`,
     genderInstruction,
-    'CASTING SHEET STYLE LOCK: practical full-length commercial casting photo, wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, no fashion editorial styling.',
+    priorityConstraints ? `KEEP THE ORIGINAL PERSON SETTINGS: ${priorityConstraints}. These settings override generic casting defaults.` : '',
+    'CASTING SHEET STYLE LOCK: practical full-length commercial casting photo, wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, no fashion editorial styling.',
+    priorityConstraints ? 'Do not simplify, restyle or replace the requested wardrobe, hair, makeup, age, gender or role with generic everyday casting clothes.' : 'Use modest age-appropriate wardrobe derived from the current brief.',
+    dynamicSubstitutionBan,
     people === 1
       ? 'Show exactly one complete person, camera far enough back to include head, shoulders, torso, waist, hips, legs and shoes or age-appropriate lower body in the same frame.'
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
@@ -15854,12 +15859,30 @@ function _extractLuxuryPersonSheetPriorityConstraints(prompt = '') {
   capture('Region/ethnicity', /Region\/ethnicity impression:\s*([^.;。；]+)/i, 120);
   capture('Age', /Age range\/impression:\s*([^.;。；]+)/i, 120);
   capture('Role', /Role\/identity\/job:\s*([^.;。；]+)/i, 140);
-  capture('Appearance', /Appearance and temperament:\s*([^.;。；]+)/i, 180);
-  capture('Wardrobe', /Wardrobe\/clothing hard constraint:\s*([^.;。；]+)/i, 220);
-  capture('Hair/grooming', /Hair, makeup and grooming hard constraint:\s*([^.;。；]+)/i, 180);
-  capture('Negative', /Visible negative constraints:\s*([^.;。；]+)/i, 180);
+  capture('Appearance', /Appearance and temperament (?:hard lock|guidance|preferred direction|hard constraint):\s*([^.;。；]+)/i, 180);
+  capture('Wardrobe', /Wardrobe\/clothing (?:hard lock|preferred direction|guidance|hard constraint):\s*([^.;。；]+)/i, 220);
+  capture('Hair/grooming', /Hair, makeup and grooming (?:hard lock|preferred direction|guidance|hard constraint):\s*([^.;。；]+)/i, 180);
+  capture('Negative', /Visible negative (?:hard constraints|hard lock|guidance|constraints):\s*([^.;。；]+)/i, 180);
   capture('Wardrobe lock', /Wardrobe lock:\s*([^.;。；]+)/i, 220);
   return picks.slice(0, 9).join('; ');
+}
+
+function _luxuryPersonSheetDynamicSubstitutionBan(value = '') {
+  const source = String(value || '');
+  const bans = [];
+  if (/礼服|晚礼服|高定|长裙|裙摆|及地|gown|evening\s*dress|formal\s*dress|couture|long\s*dress/i.test(source)) {
+    bans.push('Do not substitute the requested dress/gown/formalwear with casual clothes, T-shirt, blouse, shirt, sweater, jeans, trousers, shorts, sneakers or business suit.');
+  }
+  if (/高跟|细跟|heels?|stiletto/i.test(source)) {
+    bans.push('Requested footwear must remain visible as heels or the brief-specific footwear; do not crop feet, hide shoes, switch to sneakers, flats or bare feet.');
+  }
+  if (/长直发|长发|黑色.*发|深棕.*发|black\s+hair|dark\s+brown\s+hair|long\s+straight\s+hair/i.test(source)) {
+    bans.push('Do not replace the requested dark long/straight hairstyle with short hair, blonde hair, bright dyed hair, messy hair or tied-up styling unless the user brief says so.');
+  }
+  if (/西装|套装|suit|blazer/i.test(source)) {
+    bans.push('Do not replace the requested suit/formal set with casual sportswear, T-shirt, jeans or decorative costume styling.');
+  }
+  return bans.join(' ');
 }
 
 function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
@@ -15882,6 +15905,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     ? 'three-quarter front casting reference with face still visible to camera'
     : (/back/i.test(viewKey) ? 'back-view casting reference, body facing away from camera, face not required' : (/action/i.test(viewKey) ? 'small natural gesture casting reference' : 'front casting reference'));
   const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(prompt);
+  const dynamicSubstitutionBan = _luxuryPersonSheetDynamicSubstitutionBan(`${priorityConstraints} ${prompt}`);
   const neutralSource = _luxuryPersonSheetAuditNeutralText(prompt, priorityConstraints ? 520 : 760);
   const providerHint = policy.providerFamily === 'webang-maas'
     ? 'Use a concise commercial portrait instruction; keep the result as one clean standalone photo, not a collage or UI design.'
@@ -15904,7 +15928,10 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     hasReference
       ? 'Use the provided clean reference only for identity, age impression, hairstyle and wardrobe evidence; do not copy the source crop, background, lighting, pose or any unrelated scene.'
       : 'Derive the actor only from the confirmed campaign role, audience and person settings.',
-    'Use modest age-appropriate everyday clothing, natural grooming, calm expression, practical standing or gentle pose, neutral gray or white studio background, soft daylight and real-camera texture.',
+    priorityConstraints
+      ? 'Follow the priority wardrobe, hair, makeup, appearance and negative constraints above. Do not replace them with generic everyday casting defaults.'
+      : 'Use modest age-appropriate everyday clothing, natural grooming, calm expression, practical standing or gentle pose, neutral gray or white studio background, soft daylight and real-camera texture.',
+    dynamicSubstitutionBan,
     people === 1
       ? 'Keep exactly one actor total in one standalone photo, complete outfit and visible footwear, clean margin around the person, no extra people, no collage, no multi-panel contact sheet.'
       : `Keep exactly ${people} actors total in one standalone photo, separated clearly, complete outfits and visible footwear, no extra people, no merged bodies, no collage, no multi-panel contact sheet.`,
@@ -15923,9 +15950,12 @@ function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
     expectedGender = '',
     hasReference = false,
     viewKey = '',
+    sourcePrompt = '',
   } = opts;
   const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
   const genderInstruction = _luxuryRequestedGenderInstruction(expectedGender);
+  const priorityConstraints = _extractLuxuryPersonSheetPriorityConstraints(sourcePrompt);
+  const dynamicSubstitutionBan = _luxuryPersonSheetDynamicSubstitutionBan(`${priorityConstraints} ${sourcePrompt}`);
   const view = /side/i.test(viewKey)
     ? 'three-quarter front reference with face still visible to camera'
     : (/back/i.test(viewKey) ? 'back-view reference, body facing away from camera, face not required' : (/action/i.test(viewKey) ? 'small natural gesture reference' : 'front reference'));
@@ -15934,11 +15964,13 @@ function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
     castMode === 'dual'
       ? 'Create two separate age-appropriate campaign actors.'
       : (castMode === 'group' ? `Create exactly ${people} separate age-appropriate campaign actors.` : 'Create one age-appropriate campaign actor.'),
-    `${view}, modest everyday clothing, natural grooming, calm expression, neutral studio background, soft daylight.`,
+    `${view}, calm expression, neutral studio background, soft daylight.`,
     genderInstruction,
+    priorityConstraints ? `Keep required person settings: ${priorityConstraints}.` : 'Use modest age-appropriate wardrobe derived from the current brief.',
+    dynamicSubstitutionBan,
     hasReference ? 'Use the reference only for identity, age impression, hairstyle and wardrobe evidence.' : '',
     'Complete outfit and visible footwear, actor occupies about 60-78% of frame height, readable face/hair/clothing, no tiny person on large empty black/blank canvas, no horizontal banner, no extra people, no contact sheet, no collage, no multi-panel image, no readable text, no logos, no glamour styling, no revealing clothing, no intimate pose, no sensitive document or medical scene.',
-  ].filter(Boolean).join(' '), Math.min(Number(policy.maxPromptChars || 1100), 1100));
+  ].filter(Boolean).join(' '), Math.min(Number(policy.maxPromptChars || 1500), 1500));
 }
 
 function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
@@ -16249,6 +16281,7 @@ async function _generateLuxuryPersonSheetWithPipeline({
                   expectedGender,
                   hasReference: plan.refs.length > 0,
                   viewKey,
+                  sourcePrompt: promptText,
                 });
                 try {
                   return await _generateViaDeyunaiSpecificImageModel({
@@ -16779,6 +16812,15 @@ async function _generateLuxuryRealisticActorPackage({
     roleHint,
     promptText: [text, descriptionText, personContextNotes, sceneNotes].filter(Boolean).join('\n').slice(0, 900),
   });
+  const personWardrobeSetting = String(spec.wardrobeText || spec.wardrobe_text || spec.wardrobe || spec.clothing || spec.outfit || '').trim();
+  const personHairSetting = String(spec.hairMakeupText || spec.hair_makeup_text || spec.hairMakeup || spec.hair_makeup || spec.hair || spec.makeup || '').trim();
+  const hasPersonStylingSetting = !!(personWardrobeSetting || personHairSetting || explicitPersonSettings);
+  const dynamicStylingSubstitutionBan = _luxuryPersonSheetDynamicSubstitutionBan([
+    explicitPersonSettings,
+    personWardrobeSetting,
+    personHairSetting,
+    roleHint,
+  ].filter(Boolean).join(' '));
   const castMode = ['dual', 'group'].includes(String(spec.castMode || spec.cast_mode || '').toLowerCase())
     ? String(spec.castMode || spec.cast_mode || '').toLowerCase()
     : 'single';
@@ -16895,9 +16937,11 @@ async function _generateLuxuryRealisticActorPackage({
   const footwearLock = allowBarefoot
     ? 'Footwear lock: barefoot styling is allowed only because the confirmed person/wardrobe brief explicitly asks for it; keep the same barefoot/footwear state across all views.'
     : 'Footwear lock: do not generate a barefoot teen/adult actor. Use visible closed-toe shoes, flats, sneakers, socks, or brief-appropriate footwear; keep the same footwear across all views, and do not hide, crop, blur, or omit the feet.';
-  const wardrobe = expectedPeople === 1
-    ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context; it may be casual, dress/skirt, smart-casual, activewear or formal only when context supports it, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
-    : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`;
+  const wardrobe = personWardrobeSetting
+    ? `the wardrobe described in CURRENT PERSON SETTINGS exactly: ${_luxuryStrictText(personWardrobeSetting, 260)}; keep the same garment type, color family, formality, accessories and footwear across all views; do not substitute casual or generic casting clothes`
+    : (expectedPeople === 1
+      ? 'the exact same clean age-appropriate outfit derived from the confirmed brief, script character table and scene context; it may be casual, dress/skirt, smart-casual, activewear or formal only when context supports it, with consistent top/bottom or one-piece clothing, accessories and shoes/socks across all views'
+      : `distinct but coordinated age-appropriate outfits for all ${expectedPeople} cast members, each derived from the confirmed brief, script character table and relationship context; keep each person's outfit family, accessories and shoes/socks stable across all views`);
   const youngerSubject = /infant|toddler|child|teen/.test(String(age.value || '').toLowerCase());
   const framingContract = expectedPeople > 1
     ? `CRITICAL FRAMING LOCK: ${expectedPeople}-person full-cast identity reference photo. Show every required cast member from head to shoes whenever possible; at minimum show each person's head, torso and lower body below the hips. Do not crop any required cast member at chest, waist or hips.`
@@ -16921,7 +16965,10 @@ async function _generateLuxuryRealisticActorPackage({
       : 'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
     'Actor scale lock: each required person should occupy about 60-78% of frame height in a clean vertical casting photo, with readable face, hair, top, lower garment and footwear. Do not make the actor a tiny sticker, small inset, distant figure, floating card, horizontal banner, contact-sheet tile, black stage void or large empty-background composition.',
-    'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, natural hands, real fabric folds and calm non-editorial styling.',
+    hasPersonStylingSetting
+      ? 'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, follow the current person styling settings exactly where provided, natural hands, real fabric folds and calm non-editorial styling.'
+      : 'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, natural hands, real fabric folds and calm non-editorial styling.',
+    dynamicStylingSubstitutionBan,
   ].join(' ');
   const castingSheetCore = [
     hardFramingLead,
@@ -16943,7 +16990,9 @@ async function _generateLuxuryRealisticActorPackage({
     castConsistencyLock,
     'Real-camera full-length fitting photo: centered standing body, complete outfit, shoes or age-appropriate lower body visible, visible floor contact, neutral seamless studio, soft daylight, natural skin texture, normal hands, real fabric folds.',
     'Usability lock: the actor must be large and clear enough for later storyboard identity reuse; no tiny person on a mostly black/blank canvas, no wide banner layout, no picture-in-picture or decorative frame.',
-    'Use simple everyday styling appropriate to the selected age and brief. Keep lighting flat and documentary, like an actor casting sheet or wardrobe fitting photo.',
+    hasPersonStylingSetting
+      ? 'Do not simplify, restyle or replace the current person wardrobe, hair or makeup with generic everyday styling. Keep lighting flat and documentary, like an actor casting sheet or wardrobe fitting photo.'
+      : 'Use simple everyday styling appropriate to the selected age and brief. Keep lighting flat and documentary, like an actor casting sheet or wardrobe fitting photo.',
     castIdentityStable,
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
     roleHint ? `Selected person controls and short role hint: ${roleHint.slice(0, 240)}.` : '',
