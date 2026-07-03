@@ -690,8 +690,14 @@ app.get('/home.html', (req, res) => res.sendFile(path.join(__dirname, '../public
 // 登录后工作台
 app.get('/dashboard', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
 app.get('/index.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/index.html')));
-app.get('/digital-human', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
-app.get('/digital-human.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/digital-human.html')));
+function sendNoStoreHtml(res, filePath) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  return res.sendFile(filePath);
+}
+app.get('/digital-human', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+app.get('/digital-human.html', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
 function sendNoStorePage(res, filePath) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
