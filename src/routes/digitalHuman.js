@@ -52,6 +52,7 @@ const luxuryKeyframeResults = new Map();
 const luxuryKeyframeActiveJobs = new Set();
 const luxuryPersonSheetResults = new Map();
 const luxuryStoryModelHealth = new Map();
+const luxuryActorSupplementActiveJobs = new Set();
 const SERVER_STARTED_AT = Date.now();
 const LUXURY_STORYBOARD_RESULT_TTL_MS = 90 * 60 * 1000;
 const LUXURY_STORYBOARD_OUTLINE_RUNNING_TIMEOUT_MS = Math.max(3 * 60 * 1000, Number(process.env.LUXURY_STORYBOARD_OUTLINE_TIMEOUT_MS) || 8 * 60 * 1000);
@@ -751,6 +752,21 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     ...(Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []),
     ...(Array.isArray(asset.extra_images) ? asset.extra_images : []),
   ].map(cleanUrl).filter(Boolean).filter(x => x !== url).slice(0, 8);
+  const viewImages = (Array.isArray(asset.view_images) ? asset.view_images : (Array.isArray(asset.views) ? asset.views : []))
+    .map((view, index) => {
+      if (!view || typeof view !== 'object') return null;
+      const viewUrl = cleanUrl(view.url || view.image_url || view.imageUrl || '');
+      if (!viewUrl) return null;
+      return {
+        key: String(view.key || view.view || view.type || `view_${index + 1}`).slice(0, 40),
+        label: _projectText(view.label || view.name || view.key || `参考${index + 1}`, 60),
+        url: viewUrl,
+        image_url: viewUrl,
+        model: _projectText(view.model || '', 80),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 8);
   const castAssets = (Array.isArray(asset.cast_assets) ? asset.cast_assets : [])
     .map((member, index) => {
       if (!member || typeof member !== 'object') return null;
@@ -818,7 +834,10 @@ function _compactLuxuryAdDraftAsset(asset = null) {
     volume: Number.isFinite(volume) ? Math.max(0, Math.min(1.2, volume)) : undefined,
     voice_volume: Number.isFinite(voiceVolume) ? Math.max(0.6, Math.min(1.2, voiceVolume)) : undefined,
     extra_image_urls: extraImageUrls,
-    view_count: Math.max(Number(asset.view_count || 0), url ? 1 + extraImageUrls.length : extraImageUrls.length),
+    view_images: viewImages,
+    view_generation_status: asset.view_generation_status || asset.metadata?.view_generation_status || null,
+    person_sheet_request_key: asset.person_sheet_request_key || asset.metadata?.person_sheet_request_key || '',
+    view_count: Math.max(Number(asset.view_count || 0), viewImages.length || 0, url ? 1 + extraImageUrls.length : extraImageUrls.length),
     description: _projectText(asset.description || asset.spec_description || '', 600),
     spec_description: _projectText(asset.spec_description || '', 600),
   };
@@ -18636,9 +18655,43 @@ router.get('/luxury-ad/projects/:id', (req, res) => {
   try {
     const project = _getLuxuryAdProject(req, req.params.id);
     if (!project) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
-    res.json({ success: true, project });
+    res.json({ success: true, project: _hydrateLuxuryAdProjectActorsFromDisk(project) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message || '剧情广告生产包读取失败' });
+  }
+});
+
+router.get('/luxury-ad/actor-package/:actorId', (req, res) => {
+  try {
+    const actorId = _normalizeLuxuryActorDiskId(req.params.actorId);
+    if (!actorId) return res.status(400).json({ success: false, error: '演员包 ID 无效' });
+    const actorPack = _readLuxuryActorPackageFromDisk(actorId);
+    if (!actorPack) return res.status(404).json({ success: false, error: '演员包不存在' });
+    const missingViews = _luxuryActorMissingSupplementalViews(actorPack.actorAsset, actorPack.outputs);
+    const resumeStarted = missingViews.length ? _resumeLuxuryActorSupplementalViews(req, actorId) : false;
+    if (missingViews.length) {
+      actorPack.actorAsset.view_generation_status = {
+        ...(actorPack.actorAsset.view_generation_status || {}),
+        mode: 'front_first',
+        ready_views: (actorPack.outputs || []).map(x => x.key).filter(Boolean),
+        pending_views: missingViews,
+        required_for_initial_use: ['front'],
+        non_blocking_supplements: true,
+        resume_supplement_active: resumeStarted || luxuryActorSupplementActiveJobs.has(actorId),
+      };
+    }
+    const responsePayload = _luxuryActorPackageResponsePayload({
+      actorPack: {
+        actorAsset: actorPack.actorAsset,
+        outputs: actorPack.outputs,
+        attempts: [],
+      },
+      roleHint: actorPack.actorAsset?.description || '',
+    });
+    responsePayload.resume_supplement_active = resumeStarted || luxuryActorSupplementActiveJobs.has(actorId);
+    res.json(responsePayload);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || '演员包读取失败' });
   }
 });
 
@@ -18957,11 +19010,253 @@ function _readLuxuryActorJson(filePath) {
   }
 }
 
+function _normalizeLuxuryActorDiskId(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const clean = raw
+    .replace(/^actor-library-realistic-/i, '')
+    .replace(/^actor_asset_/i, '')
+    .replace(/[?#].*$/, '');
+  if (!/^[a-z0-9_-]{6,160}$/i.test(clean)) return '';
+  return clean;
+}
+
+function _readLuxuryActorPackageFromDisk(actorId = '') {
+  const cleanActorId = _normalizeLuxuryActorDiskId(actorId);
+  if (!cleanActorId) return null;
+  const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${cleanActorId}`);
+  const actorAsset = _readLuxuryActorJson(path.join(actorDir, 'actor_asset.json'));
+  if (!actorAsset || typeof actorAsset !== 'object') return null;
+  const outputs = _readLuxuryActorJson(path.join(actorDir, 'outputs.json'));
+  return {
+    actorId: cleanActorId,
+    actorAsset: {
+      ...actorAsset,
+      actor_id: actorAsset.actor_id || cleanActorId,
+      actor_asset_id: actorAsset.actor_asset_id || `actor_asset_${cleanActorId}`,
+    },
+    outputs: Array.isArray(outputs) ? outputs : [],
+  };
+}
+
+function _luxuryActorMissingSupplementalViews(actorAsset = {}, outputs = []) {
+  const expected = ['front', 'side', 'back', 'action'];
+  const ready = new Set([
+    ...(Array.isArray(outputs) ? outputs.map(x => x?.key).filter(Boolean) : []),
+    ...(Array.isArray(actorAsset.view_images) ? actorAsset.view_images.map(x => x?.key || x?.view).filter(Boolean) : []),
+    ...(Array.isArray(actorAsset.view_generation_status?.ready_views) ? actorAsset.view_generation_status.ready_views : []),
+  ].map(x => String(x || '').trim()).filter(Boolean));
+  return expected.filter(key => key !== 'front' && !ready.has(key));
+}
+
+function _luxuryActorSupplementPrompt(actorAsset = {}, viewKey = '') {
+  const viewLabel = viewKey === 'side'
+    ? 'THREE-QUARTER FRONT VIEW'
+    : (viewKey === 'back' ? 'BACK VIEW' : 'ACTION VIEW');
+  const bibleText = actorAsset.actor_bible
+    ? _luxuryActorBiblePromptText(actorAsset.actor_bible, { viewKey })
+    : '';
+  const baseIdentity = [
+    actorAsset.prompt || '',
+    actorAsset.description || '',
+    actorAsset.spec_description || '',
+    Array.isArray(actorAsset.stable_attributes) ? actorAsset.stable_attributes.join('; ') : '',
+  ].filter(Boolean).join(' ');
+  const backRule = viewKey === 'back'
+    ? 'For the back view, the body faces away from camera. A visible face is not required. Preserve the same hairstyle/back silhouette, outfit, accessories, lower garment and shoes.'
+    : '';
+  const actionRule = viewKey === 'action'
+    ? 'For the action view, keep the face visible and change only one small natural gesture or pose. Do not change identity, hairstyle, outfit, shoes or age impression.'
+    : '';
+  const sideRule = viewKey === 'side'
+    ? 'For the three-quarter view, turn the body about 30 degrees while keeping the face partly visible to camera. Do not show a back-only pose.'
+    : '';
+  return [
+    'RECOVER MISSING ACTOR PACKAGE VIEW. Generate exactly one new realistic actor reference photo for the existing actor package.',
+    `Requested missing view: ${viewLabel}.`,
+    'Use the provided reference images as the identity and wardrobe lock. The accepted front view is the source of truth.',
+    'Keep the exact same actor identity, age impression, body proportions, hairstyle, hair color, outfit family, accessories, lower-body garment and footwear state.',
+    'Vertical 9:16 full-length practical casting-sheet photo, neutral white or gray studio background, real-camera daylight, readable face/hair/top/lower garment/shoes when the view allows it.',
+    'No contact sheet, no collage, no duplicated person, no extra people, no text, no watermark, no black banner, no tiny inset, no outfit restyling.',
+    sideRule,
+    backRule,
+    actionRule,
+    baseIdentity ? `Existing actor lock: ${baseIdentity.slice(0, 1200)}.` : '',
+    bibleText,
+  ].filter(Boolean).join(' ');
+}
+
+async function _resumeLuxuryActorSupplementalViews(req, actorId = '') {
+  const cleanActorId = _normalizeLuxuryActorDiskId(actorId);
+  if (!cleanActorId || luxuryActorSupplementActiveJobs.has(cleanActorId)) return false;
+  const actorPack = _readLuxuryActorPackageFromDisk(cleanActorId);
+  if (!actorPack?.actorAsset) return false;
+  const missing = _luxuryActorMissingSupplementalViews(actorPack.actorAsset, actorPack.outputs);
+  if (!missing.length) return false;
+
+  luxuryActorSupplementActiveJobs.add(cleanActorId);
+  setImmediate(async () => {
+    const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${cleanActorId}`);
+    const attempts = [];
+    try {
+      const pack = _readLuxuryActorPackageFromDisk(cleanActorId);
+      if (!pack?.actorAsset) return;
+      const actorAsset = pack.actorAsset;
+      const outputs = Array.isArray(pack.outputs) ? [...pack.outputs] : [];
+      const baseUrl = _publicBaseUrl(req);
+      const expectedPeople = Math.max(1, Math.min(6, Math.round(Number(actorAsset.expected_people || actorAsset.person_count) || 1)));
+      const castMode = actorAsset.cast_mode || (expectedPeople > 2 ? 'group' : (expectedPeople === 2 ? 'dual' : 'single'));
+      const expectedGender = actorAsset.gender || '';
+      const referenceImages = [
+        actorAsset.image_url,
+        ...(Array.isArray(actorAsset.view_images) ? actorAsset.view_images.map(x => x?.url || x?.image_url).filter(Boolean) : []),
+        ...(Array.isArray(actorAsset.extra_image_urls) ? actorAsset.extra_image_urls : []),
+      ].filter(Boolean).slice(0, 4);
+      const consistencyReferencePaths = outputs.map(x => x?.path).filter(p => p && fs.existsSync(p)).slice(0, 2);
+      for (const viewKey of _luxuryActorMissingSupplementalViews(actorAsset, outputs)) {
+        try {
+          const candidate = await _generateLuxuryPersonSheetWithPipeline({
+            req,
+            prompt: _luxuryActorSupplementPrompt(actorAsset, viewKey),
+            aspectRatio: '9:16',
+            filename: `${cleanActorId}_${viewKey}_resume`,
+            destDir: JIMENG_ASSETS_DIR,
+            referenceImages,
+            outputSize: 'hd',
+            expectedPeople,
+            castMode,
+            expectedGender,
+            personSpec: {},
+            roleHint: actorAsset.prompt || actorAsset.description || '',
+            consistencyReferencePaths: viewKey === 'back' ? [] : consistencyReferencePaths,
+            allowBackView: viewKey === 'back',
+            allowBarefoot: /barefoot|赤脚|光脚|裸足/i.test([actorAsset.prompt, actorAsset.description, actorAsset.actor_bible?.footwear].filter(Boolean).join(' ')),
+          });
+          attempts.push(...(candidate.attempts || []).map(a => ({ ...a, view: viewKey, resume_supplement: true })));
+          const generated = _luxuryBetterActorViewCandidate(candidate, null);
+          if (!generated) continue;
+          const output = {
+            key: viewKey,
+            model: generated.model,
+            path: generated.outPath,
+            url: `${baseUrl}/public/jimeng-assets/${path.basename(generated.outPath)}`,
+            frame_qa: generated.frameQa || null,
+            consistency_qa: generated.consistencyQa || null,
+            spec_qa: generated.specQa || null,
+            actor_bible_source: actorAsset.actor_bible ? 'front_view_actor_bible' : '',
+            selected_score: Math.round(_luxuryGeneratedActorViewScore(generated) * 10) / 10,
+            back_view_asset: viewKey === 'back',
+            supplemental_view: true,
+            resumed_supplemental_view: true,
+          };
+          outputs.push(output);
+          actorAsset.extra_image_urls = outputs.slice(1).map(x => x.url).filter(Boolean);
+          actorAsset.view_images = outputs.map(x => ({
+            key: x.key || '',
+            url: x.url || '',
+            image_url: x.url || '',
+            back_view_asset: x.back_view_asset === true,
+            supplemental_view: x.supplemental_view === true,
+          })).filter(x => x.url);
+          actorAsset.view_generation_status = {
+            mode: 'front_first',
+            ready_views: outputs.map(x => x.key).filter(Boolean),
+            pending_views: _luxuryActorMissingSupplementalViews(actorAsset, outputs),
+            required_for_initial_use: ['front'],
+            non_blocking_supplements: true,
+            resumed_at: new Date().toISOString(),
+          };
+          fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
+          fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+        } catch (err) {
+          attempts.push({
+            provider_id: 'actor-package',
+            model_id: 'resume-supplemental-view',
+            ok: false,
+            view: viewKey,
+            error: String(err?.message || err).slice(0, 240),
+          });
+          console.warn(`[DH/luxury-ad/actor-package] resume ${cleanActorId} ${viewKey} failed:`, String(err?.message || err).slice(0, 240));
+        }
+      }
+      const finalPack = _readLuxuryActorPackageFromDisk(cleanActorId);
+      if (finalPack?.actorAsset) {
+        const finalMissing = _luxuryActorMissingSupplementalViews(finalPack.actorAsset, finalPack.outputs);
+        finalPack.actorAsset.view_generation_status = {
+          ...(finalPack.actorAsset.view_generation_status || {}),
+          ready_views: (finalPack.outputs || []).map(x => x.key).filter(Boolean),
+          pending_views: finalMissing,
+          non_blocking_supplements: true,
+          resumed_at: new Date().toISOString(),
+        };
+        fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(finalPack.actorAsset, null, 2), 'utf8');
+      }
+    } finally {
+      luxuryActorSupplementActiveJobs.delete(cleanActorId);
+    }
+  });
+  return true;
+}
+
+function _hydrateLuxuryPersonAssetFromDisk(asset = null) {
+  if (!asset || typeof asset !== 'object') return asset;
+  const actorId = _normalizeLuxuryActorDiskId(
+    asset.actor_id
+    || asset.actor_asset_id
+    || asset.asset_library_id
+    || asset.material_id
+    || asset.id
+    || ''
+  );
+  if (!actorId) return asset;
+  const actorPack = _readLuxuryActorPackageFromDisk(actorId);
+  if (!actorPack?.actorAsset) return asset;
+  const diskAsset = actorPack.actorAsset;
+  const imageUrl = diskAsset.image_url || asset.image_url || asset.url || asset.previewUrl || '';
+  const extraImageUrls = Array.isArray(diskAsset.extra_image_urls)
+    ? diskAsset.extra_image_urls
+    : (Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls : []);
+  const viewImages = Array.isArray(diskAsset.view_images)
+    ? diskAsset.view_images
+    : (Array.isArray(asset.view_images) ? asset.view_images : []);
+  return {
+    ...asset,
+    ...diskAsset,
+    id: asset.id || diskAsset.actor_asset_id || `actor_asset_${actorPack.actorId}`,
+    actor_id: diskAsset.actor_id || actorPack.actorId,
+    actor_asset_id: diskAsset.actor_asset_id || asset.actor_asset_id || `actor_asset_${actorPack.actorId}`,
+    image_url: imageUrl,
+    url: asset.url || imageUrl,
+    previewUrl: asset.previewUrl || imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_images: viewImages,
+    view_generation_status: diskAsset.view_generation_status || asset.view_generation_status || null,
+    view_count: Math.max(1, viewImages.length || (1 + extraImageUrls.length), Number(asset.view_count || 0) || 0),
+  };
+}
+
+function _hydrateLuxuryAdProjectActorsFromDisk(project = null) {
+  if (!project || typeof project !== 'object') return project;
+  const draftState = project.draft_state && typeof project.draft_state === 'object'
+    ? { ...project.draft_state }
+    : {};
+  const next = { ...project, draft_state: draftState };
+  if (draftState.person_asset) draftState.person_asset = _hydrateLuxuryPersonAssetFromDisk(draftState.person_asset);
+  if (next.person_asset) next.person_asset = _hydrateLuxuryPersonAssetFromDisk(next.person_asset);
+  if (next.production_contract && typeof next.production_contract === 'object') {
+    const contract = { ...next.production_contract };
+    if (contract.actor_asset) contract.actor_asset = _hydrateLuxuryPersonAssetFromDisk(contract.actor_asset);
+    if (contract.actor_reference) contract.actor_reference = _hydrateLuxuryPersonAssetFromDisk(contract.actor_reference);
+    next.production_contract = contract;
+  }
+  return next;
+}
+
 function _hydrateLuxuryActorPackageResultFromDisk(result = {}) {
   if (!result || typeof result !== 'object') return result;
   const currentAsset = result.actor_asset && typeof result.actor_asset === 'object' ? result.actor_asset : {};
   const currentCharacter = result.character && typeof result.character === 'object' ? result.character : {};
-  const actorId = String(
+  const actorId = _normalizeLuxuryActorDiskId(
     currentAsset.actor_id
     || currentCharacter.actor_id
     || currentAsset.actor_asset_id
@@ -18969,15 +19264,14 @@ function _hydrateLuxuryActorPackageResultFromDisk(result = {}) {
     || currentAsset.id
     || currentCharacter.id
     || ''
-  ).trim();
-  if (!actorId || /[\\/]/.test(actorId)) return result;
+  );
+  if (!actorId) return result;
 
-  const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
-  const diskAsset = _readLuxuryActorJson(path.join(actorDir, 'actor_asset.json'));
-  if (!diskAsset || typeof diskAsset !== 'object') return result;
-  const diskOutputs = _readLuxuryActorJson(path.join(actorDir, 'outputs.json'));
-  const outputs = Array.isArray(diskOutputs) && diskOutputs.length
-    ? diskOutputs
+  const actorPack = _readLuxuryActorPackageFromDisk(actorId);
+  if (!actorPack?.actorAsset) return result;
+  const diskAsset = actorPack.actorAsset;
+  const outputs = Array.isArray(actorPack.outputs) && actorPack.outputs.length
+    ? actorPack.outputs
     : (Array.isArray(result.outputs) ? result.outputs : []);
 
   const imageUrl = diskAsset.image_url || currentAsset.image_url || currentCharacter.image_url || result.image_url || result.imageUrl || '';

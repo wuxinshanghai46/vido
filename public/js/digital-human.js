@@ -8751,10 +8751,18 @@
         ...(Array.isArray(viewStatus.ready_views) ? viewStatus.ready_views : []),
       ]);
       const pendingViewKeys = Array.isArray(viewStatus.pending_views) ? viewStatus.pending_views.filter(Boolean) : [];
-      const expectedViewLabels = ['front', 'side', 'back', 'action'].map(key => luxuryActorAssetViewLabel({ key }, 0));
+      const expectedViewKeys = ['front', 'side', 'back', 'action'];
+      const expectedViewLabels = expectedViewKeys.map(key => luxuryActorAssetViewLabel({ key }, 0));
       const pendingLabels = pendingViewKeys.map(key => luxuryActorAssetViewLabel({ key }, 0));
+      const readyLabels = expectedViewLabels.filter((_, i) => readyViewKeys.has(expectedViewKeys[i]));
+      const readyCount = Math.min(4, Math.max(1, readyViewKeys.size || actorViewEntries.length || 1));
+      const viewPercent = Math.max(25, Math.min(100, Math.round((readyCount / 4) * 100)));
       const viewProgressHtml = isSyntheticActor && !castMembers.length
-        ? `<div class="dh-lux-actor-view-status"><b>演员参考 ${Math.min(4, Math.max(1, readyViewKeys.size || actorViewEntries.length || 1))}/4</b><span>${pendingLabels.length ? `正在自动补齐：${escapeHtml(pendingLabels.join('、'))}` : `已生成：${escapeHtml(expectedViewLabels.filter((_, i) => readyViewKeys.has(['front', 'side', 'back', 'action'][i])).join('、') || actorViewEntries.map(x => x.label).join('、') || '正面')}`}</span></div>`
+        ? `<div class="dh-lux-actor-view-status">
+            <div class="dh-lux-actor-view-status-head"><b>演员参考 ${readyCount}/4</b><span>${viewPercent}%</span></div>
+            <div class="dh-lux-actor-view-bar" aria-hidden="true"><i style="width:${viewPercent}%"></i></div>
+            <div class="dh-lux-actor-view-status-copy">${pendingLabels.length ? `正在自动补齐：${escapeHtml(pendingLabels.join('、'))}` : `已生成：${escapeHtml(readyLabels.join('、') || actorViewEntries.map(x => x.label).join('、') || '正面')}`}</div>
+          </div>`
         : '';
       const castGrid = castMembers.length > 1
         ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => {
@@ -13012,6 +13020,7 @@
         view_count: Math.max(Number(restoredPersonAsset.view_count || 0), restoredUrls.length || 1),
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
+      refreshLuxuryPersonAssetFromServer({ silent: true }).catch(() => {});
     } else {
       state.luxuryAd.personAsset = null;
     }
@@ -13836,14 +13845,17 @@
       : (Array.isArray(actorAsset.view_images) ? actorAsset.view_images : (Array.isArray(payload.view_images) ? payload.view_images : []));
     const nextUrls = luxuryActorUrlsFromSources(character, actorAsset, payload, payload.outputs);
     const currentUrls = luxuryActorAssetUrls(state.luxuryAd.personAsset);
-    if (!nextViewImages.length && nextUrls.length <= currentUrls.length) return false;
+    const nextStatus = character.view_generation_status || actorAsset.view_generation_status || payload.view_generation_status || null;
+    const currentStatusText = JSON.stringify(state.luxuryAd.personAsset.view_generation_status || null);
+    const nextStatusText = JSON.stringify(nextStatus || null);
+    if (!nextViewImages.length && nextUrls.length <= currentUrls.length && currentStatusText === nextStatusText) return false;
     const primaryUrl = state.luxuryAd.personAsset.image_url || state.luxuryAd.personAsset.url || nextUrls[0] || '';
     state.luxuryAd.personAsset = {
       ...state.luxuryAd.personAsset,
       person_sheet_request_key: state.luxuryAd.personAsset.person_sheet_request_key || character.person_sheet_request_key || actorAsset.person_sheet_request_key || payload.person_sheet_request_key || '',
       extra_image_urls: nextUrls.filter(url => url && url !== primaryUrl).slice(0, 8),
       view_images: nextViewImages,
-      view_generation_status: character.view_generation_status || actorAsset.view_generation_status || payload.view_generation_status || state.luxuryAd.personAsset.view_generation_status || null,
+      view_generation_status: nextStatus || state.luxuryAd.personAsset.view_generation_status || null,
       view_count: Math.max(state.luxuryAd.personAsset.view_count || 1, nextUrls.length || nextViewImages.length || 1),
       uploading: false,
     };
@@ -13854,6 +13866,55 @@
     await ensureLuxuryPersonAssetPersisted('actor_supplemental_views');
     await persistLuxuryAdPersonDraft();
     return true;
+  }
+
+  async function refreshLuxuryPersonAssetFromServer(opts = {}) {
+    const asset = state.luxuryAd.personAsset || null;
+    if (!asset || asset.uploading || asset.failed) return false;
+    const currentCount = luxuryActorAssetViewEntries(asset).length;
+    if (currentCount >= 4) return false;
+    const actorId = String(asset.actor_id || asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id || '').trim();
+    if (!actorId || !luxuryAdActorIsSyntheticRealistic(asset)) return false;
+    let body = null;
+    try {
+      body = await api(`/api/dh/luxury-ad/actor-package/${encodeURIComponent(actorId)}`);
+    } catch (err) {
+      if (!opts.silent) toast('演员参考图刷新失败：' + (err.message || err), 'error');
+      return false;
+    }
+    const changed = await applyLuxuryPersonSheetSupplementalResult(body);
+    const requestKey = state.luxuryAd.personAsset?.person_sheet_request_key || body?.person_sheet_request_key || '';
+    if (requestKey && luxuryPersonPayloadHasPendingViews(body)) {
+      watchLuxuryPersonSheetSupplementalViews(requestKey);
+    } else if (luxuryPersonPayloadHasPendingViews(body)) {
+      watchLuxuryActorPackageSupplementalViews(actorId);
+    }
+    return changed;
+  }
+
+  async function watchLuxuryActorPackageSupplementalViews(actorId) {
+    const key = String(actorId || '').trim();
+    if (!key) return;
+    state.luxuryAd.actorSupplementWatchKey = key;
+    const started = Date.now();
+    let lastCount = luxuryActorAssetViewEntries(state.luxuryAd.personAsset || {}).length;
+    while (state.luxuryAd.actorSupplementWatchKey === key && Date.now() - started < 12 * 60 * 1000) {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      let body = null;
+      try {
+        body = await api(`/api/dh/luxury-ad/actor-package/${encodeURIComponent(key)}`);
+      } catch (_) {
+        continue;
+      }
+      if (!body) continue;
+      const changed = await applyLuxuryPersonSheetSupplementalResult(body);
+      const nextCount = luxuryActorAssetViewEntries(state.luxuryAd.personAsset || {}).length;
+      if (changed && nextCount > lastCount) {
+        lastCount = nextCount;
+        toast(`演员参考图已更新：${nextCount}/4`, 'success');
+      }
+      if (!luxuryPersonPayloadHasPendingViews(body) || nextCount >= 4) break;
+    }
   }
 
   async function watchLuxuryPersonSheetSupplementalViews(requestKey) {
