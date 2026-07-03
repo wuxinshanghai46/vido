@@ -7613,7 +7613,6 @@
     const gender = LUXURY_PERSON_SPEC_LABELS.gender[spec.gender] || String(spec.gender || '').trim() || '按故事判断';
     const age = LUXURY_PERSON_SPEC_LABELS.age[spec.age] || String(spec.age || '').trim() || '按广告需求判断';
     const origin = LUXURY_PERSON_SPEC_LABELS.origin[spec.origin] || String(spec.origin || '').trim() || '按广告需求判断';
-    const referencePerson = selectedAvatarImageUrl(state.selectedAvatar || {}) ? (state.selectedAvatar?.name || '已选数字人形象') : '';
     const profileLines = [
       spec.displayName ? `人物姓名：${spec.displayName}` : '',
       spec.roleName ? `人物身份：${spec.roleName}` : '',
@@ -7628,7 +7627,6 @@
       `人物年龄：${age}`,
       `地域/种族：${origin}`,
       ...profileLines,
-      referencePerson ? `参考数字人形象：${referencePerson}` : '',
       'AI 生成只作为拟真演员参考；需要真人请上传真人照片或使用授权真人演员素材。',
       '没有手动填写姓名时，编剧必须为每个出场人物生成正式姓名；服装、发型、妆造和身份必须进入人物档案。',
     ].filter(Boolean).join('；');
@@ -8563,47 +8561,86 @@
 
   async function openLuxuryAdActorLibrary() {
     let items = [];
-    try {
-      const r = await api('/api/assets?type=character');
-      items = Array.isArray(r?.data) ? r.data : [];
-    } catch (err) {
-      return toast('角色素材库加载失败：' + err.message, 'error');
-    }
+    let activeGenderFilter = 'all';
     const old = document.getElementById('__dh_lux_actor_library');
     if (old) old.remove();
     const mask = document.createElement('div');
     mask.id = '__dh_lux_actor_library';
     mask.style.cssText = 'position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:24px';
-    const cards = items.length ? items.map(asset => {
-      const urls = luxuryActorAssetUrls(asset);
-      const thumb = urls[0] || '';
-      const refLabel = luxuryAdActorReferenceLabel(asset);
-      const genderLabel = luxuryPersonGenderLabel(asset.gender || asset.metadata?.gender || '');
-      const ageLabel = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '')] || '';
-      const desc = String(asset.description || '可作为剧情广告人物一致性参考')
-        .replace(/\s+/g, ' ')
-        .replace(/CONSISTENT REAL CAMPAIGN CHARACTER ASSET:?/ig, '一致性演员参考')
-        .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
-        .slice(0, 72);
-      return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="display:flex;gap:10px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:10px;padding:10px;min-height:92px;max-height:112px;overflow:hidden">
-        <span style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0">${thumb ? `<img src="${escapeHtml(withAuthQuery(thumb))}" alt="" style="width:100%;height:100%;object-fit:cover">` : '角色'}</span>
-        <span style="min-width:0;display:block;overflow:hidden">
-          <b style="display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(asset.name || '角色素材')}</b>
-          <small style="display:block;margin-top:4px;color:rgba(255,255,255,.66);line-height:1.35;max-height:38px;overflow:hidden">${escapeHtml([refLabel, genderLabel, ageLabel, `${urls.length || 1} 张参考图`].filter(Boolean).join(' · '))}<br>${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
-        </span>
-      </button>`;
-    }).join('') : '<div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">演员库还没有可选人物。真人演员请先上传真人参考；AI 拟真演员可先生成演员包后入库。</div>';
-    mask.innerHTML = `<div style="width:min(760px,94vw);max-height:82vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
+    mask.innerHTML = `<div style="width:min(960px,96vw);max-height:86vh;overflow:hidden;background:#111318;border:1px solid rgba(255,255,255,.14);border-radius:14px;color:#fff;box-shadow:0 18px 60px rgba(0,0,0,.45);display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.1)">
         <div><b>选择真人演员/演员库</b><div style="font-size:12px;color:rgba(255,255,255,.62);margin-top:3px">选择授权真人或已入库人物参考；后续剧本、分镜和关键帧会使用同一个人物参考。</div></div>
         <button type="button" data-lux-actor-close style="border:0;background:transparent;color:#fff;font-size:20px;cursor:pointer">×</button>
       </div>
-      <div style="padding:14px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${cards}</div>
+      <div data-lux-actor-tabs style="display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08)">
+        <button type="button" data-lux-actor-filter="all" style="border:1px solid rgba(89,213,255,.55);background:linear-gradient(135deg,#39c7f3,#78e277);color:#06131a;border-radius:999px;padding:7px 16px;font-weight:800;cursor:pointer">全部</button>
+        <button type="button" data-lux-actor-filter="female" style="border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;border-radius:999px;padding:7px 16px;font-weight:800;cursor:pointer">女</button>
+        <button type="button" data-lux-actor-filter="male" style="border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;border-radius:999px;padding:7px 16px;font-weight:800;cursor:pointer">男</button>
+      </div>
+      <div data-lux-actor-body style="padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px">
+        <div style="padding:28px;text-align:center;color:rgba(255,255,255,.72)">正在加载演员库...</div>
+      </div>
     </div>`;
     document.body.appendChild(mask);
     const close = () => mask.remove();
+    const bodyEl = mask.querySelector('[data-lux-actor-body]');
+    const tabEl = mask.querySelector('[data-lux-actor-tabs]');
+    const actorGender = asset => luxuryPersonConfirmedGender(
+      asset.gender,
+      asset.detected_gender,
+      asset.metadata?.gender,
+      asset.metadata?.detected_gender,
+      asset.metadata?.person_gender,
+    );
+    const updateTabs = () => {
+      tabEl?.querySelectorAll('[data-lux-actor-filter]').forEach(btn => {
+        const active = btn.dataset.luxActorFilter === activeGenderFilter;
+        btn.style.border = active ? '1px solid rgba(89,213,255,.55)' : '1px solid rgba(255,255,255,.14)';
+        btn.style.background = active ? 'linear-gradient(135deg,#39c7f3,#78e277)' : 'rgba(255,255,255,.06)';
+        btn.style.color = active ? '#06131a' : '#fff';
+      });
+    };
+    const renderActorRows = () => {
+      updateTabs();
+      if (!bodyEl) return;
+      const filtered = activeGenderFilter === 'all'
+        ? items
+        : items.filter(asset => actorGender(asset) === activeGenderFilter);
+      if (!filtered.length) {
+        bodyEl.innerHTML = `<div style="padding:30px;text-align:center;color:rgba(255,255,255,.72)">${activeGenderFilter === 'all' ? '演员库还没有可选人物。真人演员请先上传真人参考；AI 拟真演员可先生成演员包后入库。' : '当前分类没有可选演员。'}</div>`;
+        return;
+      }
+      bodyEl.innerHTML = filtered.map(asset => {
+        const urls = luxuryActorAssetUrls(asset).slice(0, 4);
+        const refLabel = luxuryAdActorReferenceLabel(asset);
+        const genderLabel = luxuryPersonGenderLabel(actorGender(asset) || asset.gender || asset.metadata?.gender || '');
+        const ageLabel = LUXURY_PERSON_SPEC_LABELS.age[luxuryPersonAgeSpecValue(asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || '')] || '';
+        const desc = String(asset.description || asset.metadata?.description || '可作为剧情广告人物一致性参考')
+          .replace(/\s+/g, ' ')
+          .replace(/CONSISTENT REAL CAMPAIGN CHARACTER ASSET:?/ig, '一致性演员参考')
+          .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
+          .slice(0, 120);
+        const imageStrip = urls.length
+          ? urls.map((url, index) => `<span style="width:104px;height:140px;border-radius:8px;overflow:hidden;background:#0c1018;border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="${escapeHtml(withAuthQuery(url))}" alt="视图${index + 1}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;background:#05070b"></span>`).join('')
+          : '<span style="width:104px;height:140px;border-radius:8px;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgba(255,255,255,.7)">无预览</span>';
+        return `<button type="button" data-lux-actor-material="${escapeHtml(asset.id)}" style="width:100%;display:grid;grid-template-columns:minmax(220px,456px) minmax(0,1fr);gap:14px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:12px;padding:12px;min-height:168px;cursor:pointer">
+          <span style="display:flex;gap:8px;overflow:hidden">${imageStrip}</span>
+          <span style="min-width:0;display:block">
+            <b style="display:block;font-size:16px;line-height:1.25;margin-bottom:8px">${escapeHtml(asset.name || '角色素材')}</b>
+            <small style="display:block;color:rgba(255,255,255,.72);line-height:1.55;margin-bottom:8px">${escapeHtml([refLabel, genderLabel, ageLabel, `${luxuryActorAssetUrls(asset).length || 1} 张参考图`].filter(Boolean).join(' · '))}</small>
+            <small style="display:block;color:rgba(255,255,255,.58);line-height:1.5;max-height:44px;overflow:hidden">${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
+          </span>
+        </button>`;
+      }).join('');
+    };
     mask.addEventListener('click', e => {
       if (e.target === mask || e.target.closest('[data-lux-actor-close]')) return close();
+      const filterBtn = e.target.closest('[data-lux-actor-filter]');
+      if (filterBtn) {
+        activeGenderFilter = filterBtn.dataset.luxActorFilter || 'all';
+        renderActorRows();
+        return;
+      }
       const btn = e.target.closest('[data-lux-actor-material]');
       if (!btn) return;
       const asset = items.find(x => x.id === btn.dataset.luxActorMaterial);
@@ -8626,6 +8663,15 @@
       persistLuxuryAdPersonDraft().catch(() => {});
       toast(`已选择角色素材「${asset.name || '演员'}」${[gender ? `人物性别已同步为${gender}` : '', age ? `年龄已同步为${age}` : ''].filter(Boolean).join('，')}`, 'success');
     });
+    try {
+      const r = await api('/api/assets?type=character&limit=120&fast=1');
+      items = Array.isArray(r?.data) ? r.data : [];
+    } catch (err) {
+      if (bodyEl) bodyEl.innerHTML = `<div style="grid-column:1/-1;padding:28px;text-align:center;color:#ffb4b4">角色素材库加载失败：${escapeHtml(err.message || err)}</div>`;
+      toast('角色素材库加载失败：' + err.message, 'error');
+      return;
+    }
+    renderActorRows();
   }
 
   function renderLuxuryAdPerson() {
@@ -9598,7 +9644,7 @@
     };
     lockControl('#dhLuxAdText, #dhLuxIndustryOpen, #dhLuxAdWrite, #dhLuxAdClean, #dhLuxAdSample, [data-lux-ad-type], [data-lux-ratio]', step1Locked, luxuryAdLockedStepMessage(1));
     lockControl(
-      '#dhLuxAdProductDrop, #dhLuxAdProductClear, #dhLuxAdUploadPersonRef, #dhLuxAdPickActorAsset, #dhLuxAdPickPerson, #dhLuxAdAiPersonSpec, [data-lux-person-spec], [data-lux-brief-field]',
+      '#dhLuxAdProductDrop, #dhLuxAdProductClear, #dhLuxAdUploadPersonRef, #dhLuxAdPickActorAsset, #dhLuxAdAiPersonSpec, [data-lux-person-spec], [data-lux-brief-field]',
       step2Locked || personGenerating,
       personGenerating ? luxuryPersonGenerationLockMessage() : luxuryAdLockedStepMessage(2)
     );
@@ -17419,15 +17465,6 @@
       if (luxuryPersonGenerationActive()) return toast(luxuryPersonGenerationLockMessage(), 'error');
       setLuxuryAdRouteFocus('person');
       generateLuxuryAdPersonSheet();
-      return;
-    }
-    if (closest('#dhLuxAdPickPerson')) {
-      if (luxuryAdStepIsLocked(2)) return toast(luxuryAdLockedStepMessage(2), 'error');
-      if (luxuryPersonGenerationActive()) return toast(luxuryPersonGenerationLockMessage(), 'error');
-      setLuxuryAdRouteFocus('person');
-      state.luxuryAd.personAsset = null;
-      state.avatarPickReturn = 'luxury-ad';
-      switchTab('step2');
       return;
     }
     if (closest('#dhLuxAdSample')) {

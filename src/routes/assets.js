@@ -191,10 +191,13 @@ function syncGeneratedActorLibraryAssets(userId) {
 // GET /api/assets — 列表
 router.get('/', (req, res) => {
   const { type } = req.query;
-  if (!type || type === 'all' || type === 'character') {
+  const skipSync = /^(1|true|yes)$/i.test(String(req.query.skip_sync || req.query.fast || ''));
+  if (!skipSync && (!type || type === 'all' || type === 'character')) {
     syncGeneratedActorLibraryAssets(req.user.id);
   }
-  const assets = db.listAssets(req.user.id, type || 'all').map(serializeAsset);
+  const limit = Math.max(1, Math.min(300, Number(req.query.limit) || 0));
+  let assets = db.listAssets(req.user.id, type || 'all').map(serializeAsset);
+  if (limit) assets = assets.slice(0, limit);
   res.json({ success: true, data: assets });
 });
 

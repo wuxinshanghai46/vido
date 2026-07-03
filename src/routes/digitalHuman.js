@@ -568,6 +568,46 @@ function _getLuxuryAdProject(req, id = '') {
   return row && _luxuryAdProjectBelongsTo(req, row) ? _publicLuxuryAdProject(row) : null;
 }
 
+function _luxuryAdProjectIdCandidates(row = {}) {
+  return [
+    row.id,
+    row.project_id,
+    row.projectId,
+    row.production_project_id,
+    row.productionProjectId,
+    row.task_id,
+    row.taskId,
+    row.archive_id,
+    row.request_key,
+    row.requestKey,
+    row.draft_state?.productionProjectId,
+    row.draft_state?.production_project_id,
+  ].filter(Boolean).map(value => String(value).trim());
+}
+
+function _luxuryAdProjectMatchesDeleteId(row = {}, id = '') {
+  const clean = String(id || '').trim();
+  if (!clean) return false;
+  const candidates = _luxuryAdProjectIdCandidates(row);
+  if (candidates.includes(clean)) return true;
+  if (/^luxury_project_/i.test(clean) && candidates.includes(clean.replace(/^luxury_project_/i, ''))) return true;
+  if (/^lux-project-/i.test(clean) && candidates.includes(clean.replace(/^lux-project-/i, ''))) return true;
+  const archive = taskArchiveService.getArchive(clean);
+  if (archive) {
+    const archiveProjectIds = [
+      archive.project_id,
+      archive.projectId,
+      archive.production_project_id,
+      archive.productionProjectId,
+      archive.task_id,
+      archive.taskId,
+      archive.id,
+    ].filter(Boolean).map(value => String(value).trim());
+    if (archiveProjectIds.some(value => candidates.includes(value))) return true;
+  }
+  return false;
+}
+
 function _luxuryAdProductionStage({ reviewOnly = false, finalKeyframes = false, scenes = [], keyframes = [], contract = null, errorCode = '', keyframeError = '' } = {}) {
   const code = String(errorCode || '').trim();
   if (code === 'LUXURY_ACTOR_REFERENCE_REQUIRED') return 'actor_required';
@@ -18532,12 +18572,18 @@ router.delete('/luxury-ad/projects/:id', (req, res) => {
   try {
     const id = String(req.params.id || '').trim();
     const data = _readLuxuryAdProjectStore();
-    const before = data.projects.length;
-    data.projects = data.projects.filter(project => !(project.id === id && _luxuryAdProjectBelongsTo(req, project)));
-    if (data.projects.length === before) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
+    const removed = [];
+    data.projects = data.projects.filter(project => {
+      const match = _luxuryAdProjectBelongsTo(req, project) && _luxuryAdProjectMatchesDeleteId(project, id);
+      if (match) removed.push(project);
+      return !match;
+    });
+    if (!removed.length) return res.status(404).json({ success: false, error: '剧情广告生产包不存在' });
     _writeLuxuryAdProjectStore(data);
-    taskArchiveService.removeArchive(id);
-    res.json({ success: true, id });
+    const archiveIds = new Set([id]);
+    removed.forEach(project => _luxuryAdProjectIdCandidates(project).forEach(value => archiveIds.add(value)));
+    archiveIds.forEach(value => taskArchiveService.removeArchive(value));
+    res.json({ success: true, id, removed: removed.map(project => project.id).filter(Boolean) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message || '剧情广告项目删除失败' });
   }
