@@ -17056,10 +17056,47 @@ async function _generateLuxuryRealisticActorPackage({
   const outputs = [];
   const attempts = [];
   let actorBible = null;
-  const initialViews = views.filter(view => view.initialRequired === true);
-  const supplementalViews = views.filter(view => view.initialRequired !== true);
-  const requiredViewKeys = new Set(initialViews.map(view => view.key));
+  const initialViews = views;
+  const supplementalViews = [];
+  const requiredViewKeys = new Set(views.map(view => view.key));
   const actorPackageDeadline = Date.now() + LUXURY_PERSON_SHEET_GENERATION_TIMEOUT_MS;
+  const requestKey = String(req.body?.request_key || req.query?.request_key || '').trim();
+  const actorViewLabel = key => ({
+    front: '正面',
+    side: '侧面/半侧',
+    back: '背面',
+    action: '动作',
+  }[String(key || '')] || String(key || '参考图'));
+  const publishActorProgress = (phase = 'generating', currentViewKey = '') => {
+    if (!requestKey) return;
+    const readyViews = outputs.map(x => x.key).filter(Boolean);
+    const readySet = new Set(readyViews);
+    const pendingViews = views.map(x => x.key).filter(key => !readySet.has(key));
+    const readyCount = Math.min(views.length, readyViews.length);
+    const totalViews = views.length || 4;
+    const currentLabel = actorViewLabel(currentViewKey || pendingViews[0] || '');
+    const message = readyCount >= totalViews
+      ? `4 视图已生成完成，正在写入演员包。`
+      : (phase === 'view_done'
+        ? `已生成 ${readyCount}/${totalViews} 张，下一张：${actorViewLabel(pendingViews[0] || '')}。`
+        : `正在生成第 ${Math.min(totalViews, readyCount + 1)}/${totalViews} 张：${currentLabel}。`);
+    _storeLuxuryPersonSheetResult(req, requestKey, {
+      status: 'running',
+      worker_status: 'generating_four_views',
+      message,
+      progress: {
+        mode: 'full_four_view_required',
+        phase,
+        total_views: totalViews,
+        ready_count: readyCount,
+        ready_views: readyViews,
+        pending_views: pendingViews,
+        current_view: currentViewKey || pendingViews[0] || '',
+        current_view_label: currentLabel,
+        percent: Math.max(12, Math.min(98, Math.round((readyCount / totalViews) * 92) || 12)),
+      },
+    });
+  };
   const generateActorView = async (view, { requiredView = false, candidatePasses = 1, supplemental = false } = {}) => {
     if (Date.now() > actorPackageDeadline) {
       attempts.push({
@@ -17177,6 +17214,7 @@ async function _generateLuxuryRealisticActorPackage({
       supplemental_view: supplemental === true,
     };
     outputs.push(output);
+    publishActorProgress('view_done', view.key);
     if (view.key === 'front' && !actorBible) {
       try {
         actorBible = await _extractLuxuryActorBibleFromFront(req, generated.outPath, {
@@ -17220,6 +17258,7 @@ async function _generateLuxuryRealisticActorPackage({
     return output;
   };
   for (const view of initialViews) {
+    publishActorProgress('generating', view.key);
     await generateActorView(view, {
       requiredView: requiredViewKeys.has(view.key),
       candidatePasses: view.key === 'front' ? 2 : 1,
@@ -17255,11 +17294,11 @@ async function _generateLuxuryRealisticActorPackage({
       supplemental_view: x.supplemental_view === true,
     })).filter(x => x.url),
     view_generation_status: {
-      mode: 'front_first',
+      mode: 'full_four_view_required',
       ready_views: outputs.map(x => x.key).filter(Boolean),
-      pending_views: supplementalViews.map(x => x.key).filter(Boolean),
+      pending_views: views.map(x => x.key).filter(key => !outputs.some(x => x.key === key)),
       required_for_initial_use: Array.from(requiredViewKeys),
-      non_blocking_supplements: true,
+      non_blocking_supplements: false,
     },
     actor_bible: actorBible || null,
     stable_attributes: [
@@ -17279,6 +17318,7 @@ async function _generateLuxuryRealisticActorPackage({
   // when the selected video model is Webang Seedance; Topview uses its own upload flow.
   fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
   fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+  publishActorProgress('complete', '');
   if (supplementalViews.length) {
     setImmediate(async () => {
       for (const view of supplementalViews) {
@@ -18998,6 +19038,7 @@ function _publicLuxuryPersonSheetResult(item) {
     worker_status: item.worker_status || '',
     recovery_status: item.recovery_status || '',
     message: item.message || '',
+    progress: item.progress || null,
   };
 }
 

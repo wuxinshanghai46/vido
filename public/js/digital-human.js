@@ -10202,9 +10202,9 @@
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
           label: '拟真演员',
-          percent: 88,
-          phase: '后台生成中',
-          message: '人物包已提交到后台，正面通过后会先返回可用演员。',
+          percent: 18,
+          phase: '完整生成 4 视图',
+          message: '人物包已提交到后台，正在按正面、侧面、背面、动作完整生成 4 张演员参考。',
         };
         renderLuxuryAdPerson();
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 45 * 60 * 1000, missingRetryMs: 90000 });
@@ -10231,8 +10231,8 @@
         startedAt: state.luxuryAd.personGenerationProgress?.startedAt || Date.now(),
         label: '拟真演员',
         percent: 96,
-        phase: '演员已可用',
-        message: '正面定妆已通过并绑定演员，侧面、背面和动作参考会自动补齐并刷新显示。',
+        phase: '4 视图已完成',
+        message: '正面、侧面、背面和动作 4 张演员参考已生成完成。',
       };
       state.luxuryAd.personAsset = {
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
@@ -10263,7 +10263,7 @@
         extra_image_urls: extraActorUrls,
         view_count: Math.max(1, actorUrls.length || (1 + extraActorUrls.length)),
         uploading: false,
-        description: character.description || '拟真一致性演员：正面定妆已可用；侧面/动作/背面为非阻塞补充参考。',
+        description: character.description || '拟真一致性演员：4 视图已完整生成，可用于后续分镜人物一致性锁定。',
         spec_description: personDescription,
       };
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -13806,13 +13806,26 @@
           err.data = r.details || null;
           throw err;
         }
+        const progress = r.progress && typeof r.progress === 'object' ? r.progress : null;
+        const readyCount = Number(progress?.ready_count || 0) || 0;
+        const totalViews = Number(progress?.total_views || 4) || 4;
+        const currentLabel = progress?.current_view_label || '';
+        const pendingLabels = Array.isArray(progress?.pending_views)
+          ? progress.pending_views.map(key => luxuryActorAssetViewLabel({ key }, 0)).filter(Boolean)
+          : [];
         state.luxuryAd.personGenerationProgress = {
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
           label: '拟真演员',
-          phase: r.recovery_status ? '后台任务恢复中' : '后台生成中',
-          message: r.message || '服务器正在继续生成演员包，页面会自动刷新结果。',
-          percent: Math.max(86, Number(state.luxuryAd.personGenerationProgress?.percent || 86)),
+          phase: r.recovery_status ? '后台任务恢复中' : '完整生成 4 视图',
+          message: progress
+            ? (readyCount >= totalViews
+              ? '4 张演员参考已生成完成，正在写入结果。'
+              : `已完成 ${readyCount}/${totalViews} 张${currentLabel ? `，正在生成：${currentLabel}` : ''}${pendingLabels.length ? `；剩余：${pendingLabels.join('、')}` : ''}。`)
+            : (r.message || '服务器正在完整生成 4 张演员参考，页面会自动刷新进度。'),
+          percent: progress
+            ? Math.max(12, Math.min(98, Number(progress.percent || 12) || 12))
+            : Math.max(18, Number(state.luxuryAd.personGenerationProgress?.percent || 18)),
         };
         renderLuxuryAdPerson();
       } catch (err) {
