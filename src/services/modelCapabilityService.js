@@ -90,7 +90,7 @@ function inferModelCapabilities(model = {}) {
     caps.realistic_photo = true;
   }
 
-  if (/gpt-image-2/.test(modelId) || /topview-gpt-image-2/.test(modelId) || /nano-banana|qwen-image/.test(text)) {
+  if (/gpt-image-2/.test(modelId) || /topview-gpt-image-2/.test(modelId)) {
     caps.actor_sheet_full_body = true;
     caps.portrait_aspect_lock = true;
   }

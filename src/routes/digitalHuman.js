@@ -16924,7 +16924,7 @@ async function _generateLuxuryRealisticActorPackage({
   for (const view of initialViews) {
     await generateActorView(view, {
       requiredView: requiredViewKeys.has(view.key),
-      candidatePasses: view.key === 'front' ? 3 : 2,
+      candidatePasses: view.key === 'front' ? 2 : 1,
       supplemental: false,
     });
   }
@@ -16987,7 +16987,7 @@ async function _generateLuxuryRealisticActorPackage({
         try {
           const output = await generateActorView(view, {
             requiredView: false,
-            candidatePasses: 2,
+            candidatePasses: 1,
             supplemental: true,
           });
           if (!output) continue;
@@ -18777,6 +18777,22 @@ function _recoverLuxuryPersonSheetRunningJobs() {
         username: item.user_name || '',
       },
     };
+    if (item.recovery_status === 'running_after_restart') {
+      _storeLuxuryPersonSheetResult(fakeReq, requestKey, {
+        status: 'error',
+        worker_status: 'interrupted_after_recovery',
+        recovery_status: 'interrupted_after_recovery',
+        error: '人物演员包后台任务在服务更新后再次中断，请重新点击生成拟真演员。',
+        details: {
+          status: 503,
+          code: 'PERSON_ACTOR_PACKAGE_INTERRUPTED_AFTER_RECOVERY',
+          message: '该人物包任务已经经历过一次服务恢复，再次重启时系统停止继续恢复，避免同一个 request_key 反复从头生成导致用户长时间空等。',
+          started_at: item.started_at || null,
+          updated_at: item.updated_at || null,
+        },
+      });
+      continue;
+    }
     const startedAt = Number(item.started_at || 0);
     if (startedAt && Date.now() - startedAt > LUXURY_PERSON_SHEET_RUNNING_TIMEOUT_MS) {
       _storeLuxuryPersonSheetResult(fakeReq, requestKey, {
