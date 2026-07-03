@@ -6044,6 +6044,27 @@
     clearLuxuryAdProjectRouteParam('luxury-ad');
   }
 
+  function resetLuxuryAdDerivedOutputsForSourceChange({ clearScript = true } = {}) {
+    // 中文注释：人物/主体来源变化只影响后续剧本和分镜，不能清掉同一任务已生成的基础信息、场景配置或 project_id。
+    state.luxuryAd.productionContract = null;
+    state.luxuryAd.assetManifest = null;
+    state.luxuryAd.visualLocks = null;
+    state.luxuryAd.globalVisualBible = null;
+    state.luxuryAd.keyframes = [];
+    state.luxuryAd.storyboardSheets = [];
+    state.luxuryAd.keyframePlanningOnly = false;
+    state.luxuryAd.keyframeError = '';
+    state.luxuryAd.keyframeErrorDetails = null;
+    state.luxuryAd.keyframeGenerating = false;
+    state.luxuryAd.keyframeProgress = null;
+    state.luxuryAd.workflowProgress = null;
+    if (clearScript && state.luxuryAd.storyboardDetailed) {
+      state.luxuryAd.storyboardDetailed = false;
+      state.luxuryAd.scriptError = '';
+      state.luxuryAd.scriptErrorDetails = null;
+    }
+  }
+
   function luxuryMaterialAssetUrls() {
     const urls = [];
     const add = value => {
@@ -8668,7 +8689,7 @@
       if (!btn) return;
       const asset = items.find(x => x.id === btn.dataset.luxActorMaterial);
       if (!asset) return;
-      resetLuxuryAdProjectIdentityForNewBrief();
+      resetLuxuryAdDerivedOutputsForSourceChange();
       state.selectedAvatar = null;
       state.luxuryAd.personAsset = luxuryActorMaterialToPersonAsset(asset);
       applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
@@ -9638,12 +9659,15 @@
     setLuxuryButtonLock('#dhLuxAdGenerate', step1Locked || busyGenerating || !gate.contentReady, step1Locked ? luxuryAdLockedStepMessage(1) : (gate.contentReady ? gate.hint : '请先写广告需求，或点击 AI 帮我写'));
     setLuxuryButtonLock(
       '#dhLuxAdStoryboard',
-      step2Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !(gate.contentReady && gate.storyboardReady && gate.titleReady))),
+      step2Locked || (gate.materialMode ? (busyGenerating || !gate.contentReady) : (busyGenerating || !gate.contentReady || (gate.storyboardReady && !gate.titleReady))),
       gate.materialMode
         ? (step2Locked ? luxuryAdLockedStepMessage(2) : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : '')))
-        : (step2Locked ? luxuryAdLockedStepMessage(2) : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (!gate.storyboardReady ? '请先生成场景配置' : (!gate.titleReady ? '请先填写标题' : '')))))
+        : (step2Locked ? luxuryAdLockedStepMessage(2) : (busyGenerating ? gate.hint : (!gate.contentReady ? '请先写广告需求' : (gate.storyboardReady && !gate.titleReady ? '请先填写标题' : ''))))
     );
     const storyboardBtn = $('#dhLuxAdStoryboard');
+    if (storyboardBtn && !gate.materialMode && !gate.storyboardReady && gate.contentReady && !busyGenerating) {
+      storyboardBtn.textContent = '生成基础信息 / 场景配置';
+    }
     if (storyboardBtn && !gate.materialMode && gate.detailedReady && gate.storyboardReady && !busyGenerating) {
       storyboardBtn.disabled = false;
       storyboardBtn.removeAttribute('title');
@@ -9953,7 +9977,7 @@
     const picked = pickUploadableImages(fileList, { maxCount: 1, label: '商品图片' });
     const file = picked.files[0];
     if (!file) return toast(picked.error || '请上传商品图片文件', 'error');
-    resetLuxuryAdProjectIdentityForNewBrief();
+    resetLuxuryAdDerivedOutputsForSourceChange();
     if (state.luxuryAd.productAsset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(state.luxuryAd.productAsset.previewUrl);
     state.luxuryAd.productAsset = {
       name: file.name || '主产品图',
@@ -9991,7 +10015,7 @@
     if (!product) return;
     if (state.luxuryAd.keyframeGenerating) return toast('正在生成画面预览，完成后再删除主体图', 'error');
     if (product.uploading) return toast('主体图正在上传，上传完成后再删除', 'error');
-    resetLuxuryAdProjectIdentityForNewBrief();
+    resetLuxuryAdDerivedOutputsForSourceChange();
     revokeLuxuryBlobPreview(product);
     state.luxuryAd.productAsset = null;
     syncLuxuryAdUploadFlags();
@@ -10012,7 +10036,7 @@
     const picked = pickUploadableImages(fileList, { maxCount: 1, label: '真人参考图片' });
     const file = picked.files[0];
     if (!file) return toast(picked.error || '请上传真人参考图片', 'error');
-    resetLuxuryAdProjectIdentityForNewBrief();
+    resetLuxuryAdDerivedOutputsForSourceChange();
     if (state.luxuryAd.personAsset?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(state.luxuryAd.personAsset.previewUrl);
     state.luxuryAd.personAsset = {
       id: 'uploaded_person_reference',
@@ -10224,7 +10248,7 @@
         ? (Array.isArray(character.extra_image_urls) ? character.extra_image_urls.map(compactLuxuryUrl).filter(Boolean) : [])
         : actorUrls.filter(url => url && url !== primaryActorUrl).slice(0, 8);
       const detectedGender = await detectLuxuryAdPersonGender(primaryActorUrl);
-      resetLuxuryAdProjectIdentityForNewBrief();
+      resetLuxuryAdDerivedOutputsForSourceChange();
       state.luxuryAd.personGenerationError = null;
       state.luxuryAd.personGenerationProgress = {
         active: true,
@@ -12967,15 +12991,36 @@
     renderTaskCenter();
   }
 
+  function luxuryRestoredProjectScenes(project = {}, draft = project?.draft_state || {}) {
+    const sources = [
+      project?.scenes,
+      project?.segments,
+      draft?.scenes,
+      draft?.segments,
+      draft?.outline_segments,
+      draft?.outlineSegments,
+    ];
+    return sources.find(list => Array.isArray(list) && list.length) || [];
+  }
+
+  function luxuryRestoredProjectBriefInfo(project = {}, draft = project?.draft_state || {}, scenes = []) {
+    const restored = project?.brief_info || draft?.brief_info || draft?.briefInfo || null;
+    const text = project?.text || draft?.text || state.luxuryAd.content || '';
+    if (restored && typeof restored === 'object') return deriveLuxuryBriefInfo(text, scenes, restored);
+    if (String(text || '').trim() || scenes.length) return deriveLuxuryBriefInfo(text, scenes, {});
+    return null;
+  }
+
   function restoreLuxuryAdProject(project = null, opts = {}) {
     if (!project || typeof project !== 'object') return;
     const draft = project.draft_state || {};
+    const restoredScenes = luxuryRestoredProjectScenes(project, draft);
     const inferredStep = project.keyframes?.length
       ? 5
       : (['frame_reviewing', 'frame_ready', 'frame_failed'].includes(project.project_state) || project.storyboard_sheets?.length
         ? 4
-        : (project.scenes?.length ? 3 : 1));
-    state.luxuryAd.content = project.text || state.luxuryAd.content || '';
+        : (restoredScenes.length ? 3 : 1));
+    state.luxuryAd.content = project.text || draft.text || state.luxuryAd.content || '';
     // 中文注释：旧页面补存可能把 current_step 写成 1；恢复时以已保存产物和项目阶段为准。
     state.luxuryAd.currentStep = Math.max(luxuryAdProjectSavedStep(project), inferredStep);
     const savedFocus = luxuryAdProjectSavedFocus(project);
@@ -13043,7 +13088,7 @@
       state.luxuryAd.bgmAsset.volume = luxuryAdBgmVolume();
       state.luxuryAd.bgmAsset.voice_volume = luxuryAdVoiceVolume();
     }
-    state.luxuryAd.briefInfo = project.brief_info || state.luxuryAd.briefInfo || null;
+    state.luxuryAd.briefInfo = luxuryRestoredProjectBriefInfo(project, draft, restoredScenes) || state.luxuryAd.briefInfo || null;
     state.luxuryAd.assetManifest = project.asset_manifest || null;
     state.luxuryAd.visualLocks = project.visual_locks || null;
     state.luxuryAd.globalVisualBible = project.global_visual_bible || null;
@@ -13051,7 +13096,7 @@
     state.luxuryAd.productionContract = project.production_contract || null;
     state.luxuryAd.productionProject = project;
     state.luxuryAd.productionProjectId = project.id || '';
-    state.luxuryAd.segments = applyLuxuryShotBindings(Array.isArray(project.scenes) ? project.scenes : []);
+    state.luxuryAd.segments = applyLuxuryShotBindings(restoredScenes);
     syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec, { preserveTarget: true });
     state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
     state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
@@ -13346,7 +13391,10 @@
       return;
     }
     if (!segments.length) {
-      if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('还没有基础信息', '先写广告需求。AI 会先解析标题、主题、风格、时长和比例。');
+      if (sceneHost) {
+        if (state.luxuryAd.briefInfo || state.luxuryAd.content || $('#dhLuxAdText')?.value) renderLuxuryAdOutline(sceneHost, []);
+        else sceneHost.innerHTML = luxuryAdEmptyBlock('还没有基础信息', '先写广告需求。AI 会先解析标题、主题、风格、时长和比例。');
+      }
       if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('还没有剧本', '请先完成基础信息配置，再生成剧本。');
       if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('还没有分镜', '确认剧本后再生成分镜。');
       renderLuxuryAdPostScriptPerson();
@@ -17684,6 +17732,7 @@
     const luxStoryboardBtn = closest('#dhLuxAdStoryboard');
     if (luxStoryboardBtn) {
       if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      else if (!Array.isArray(state.luxuryAd.segments) || !state.luxuryAd.segments.length) await buildLuxuryAdStoryboard({ autoNext: false, detail: false, triggerButton: luxStoryboardBtn });
       else if (state.luxuryAd.storyboardDetailed && Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length) showLuxuryAdStep(3);
       else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxStoryboardBtn });
       return;
@@ -18456,7 +18505,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       const spec = luxuryAdPersonSpec();
       spec[field] = e.target.value || '';
       markLuxuryPersonSpecFieldSource(spec, field, 'manual');
-      resetLuxuryAdProjectIdentityForNewBrief();
+      resetLuxuryAdDerivedOutputsForSourceChange();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];
@@ -18553,7 +18602,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       const spec = luxuryAdPersonSpec();
       spec[field] = e.target.value || '';
       markLuxuryPersonSpecFieldSource(spec, field, 'manual');
-      resetLuxuryAdProjectIdentityForNewBrief();
+      resetLuxuryAdDerivedOutputsForSourceChange();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];

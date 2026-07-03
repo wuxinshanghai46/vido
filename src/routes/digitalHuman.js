@@ -1059,6 +1059,13 @@ function _compactLuxuryAdDraftBody(body = {}) {
     auto_enhance: body.auto_enhance !== false,
     expand_brief: body.expand_brief !== false,
   };
+  const draftText = String(body.text || body.brief || body.ad_text || '').trim();
+  if (draftText) out.text = draftText.slice(0, 12000);
+  const draftBriefInfo = body.brief_info || body.briefInfo || null;
+  if (draftBriefInfo && typeof draftBriefInfo === 'object') out.brief_info = _jsonClone(draftBriefInfo);
+  if (Array.isArray(body.scenes) && body.scenes.length) {
+    out.scenes = body.scenes.map((scene, i) => _compactLuxuryAdProjectScene(scene, i));
+  }
   Object.keys(out).forEach(key => out[key] === undefined && delete out[key]);
   return out;
 }
