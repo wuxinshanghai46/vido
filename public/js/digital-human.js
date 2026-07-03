@@ -10743,14 +10743,23 @@
   }
 
   function luxuryShotVoiceText(seg = {}) {
-    const raw = luxuryCleanAudienceLine(seg.ad_copy || seg.subtitle || seg.voiceover || seg.text || '');
+    const raw = luxuryCleanAudienceLine(luxuryStripInternalPromptText(seg.ad_copy || seg.subtitle || seg.voiceover || seg.text || ''));
     if (luxuryLooksLikeNonAudienceLine(raw)) return '';
     return raw.slice(0, 34);
   }
 
+  function luxuryStripInternalPromptText(value = '') {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/\b(?:STORYBOARD DIRECTOR CONTRACT|QA-REWRITTEN HARD CONTRACT|SHOT EXECUTION CONTRACT|SHOT CONTRACT|COMPILED CONTRACT|INDUSTRY CONTRACT|NON-NEGOTIABLE ACTOR PACKAGE OUTPUT CONTRACT|BRIEF-DERIVED CASTING CONTRACT|AUTHENTIC HUMAN FACE CONTRACT|WARDROBE VARIETY CONTRACT)\s*:[\s\S]*$/gi, '')
+      .replace(/\b(?:Required schema|Schema)\s*:\s*\{[\s\S]*$/gi, '')
+      .trim();
+  }
+
   function luxuryShotVisualText(seg = {}) {
-    const raw = String(seg.scene_content || seg.display_visual || seg.visual || seg.scene || '').replace(/\s+/g, ' ').trim();
-    if (luxuryLooksLikeBriefNoise(raw)
+    const raw = luxuryStripInternalPromptText(seg.scene_content || seg.display_visual || seg.visual || seg.scene || '');
+    if (!raw
+      || luxuryLooksLikeBriefNoise(raw)
       || /^(按|根据).*(生成|推进)/.test(raw)
       || /主商品作为视觉中心|主商品占据画面中心|建立高端广告氛围|突出高级感|突出空间搭配效果|按广告需求|按广告内容/.test(raw)) {
       return luxuryRecoveredVisualFromAction(seg);
@@ -10759,7 +10768,7 @@
   }
 
   function luxuryShotContentPrompt(seg = {}) {
-    const raw = String(seg.content_prompt || seg.scene_prompt || seg.scene_content || seg.display_visual || seg.visual || seg.scene || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryStripInternalPromptText(seg.content_prompt || seg.scene_prompt || seg.scene_content || seg.display_visual || seg.visual || seg.scene || '');
     const visual = luxuryShotVisualText(seg);
     if (!raw || luxuryLooksLikeBriefNoise(raw) || /^(按|根据).*(生成|推进)/.test(raw)) return visual;
     return luxuryCompactReviewText(raw, 220);
@@ -10795,9 +10804,9 @@
   }
 
   function luxuryShotOtherText(seg = {}) {
-    const raw = String(seg.other || seg.style_note || seg.tone_note || '').replace(/\s+/g, ' ').trim();
-    const lighting = String(seg.lighting_style || seg.lighting || '').replace(/\s+/g, ' ').trim();
-    const transition = String(seg.transition || seg.transition_note || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryStripInternalPromptText(seg.other || seg.style_note || seg.tone_note || '');
+    const lighting = luxuryStripInternalPromptText(seg.lighting_style || seg.lighting || '');
+    const transition = luxuryStripInternalPromptText(seg.transition || seg.transition_note || '');
     const parts = [];
     if (raw) parts.push(raw.replace(/旁白\/广告词/g, '旁白/字幕'));
     if (lighting && !raw.includes(lighting)) parts.push(`光线：${lighting}`);
@@ -10826,7 +10835,7 @@
   }
 
   function luxuryShotEmotionText(seg = {}) {
-    const raw = String(seg.emotion || seg.mood || seg.atmosphere || seg.expression || seg.tone || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryStripInternalPromptText(seg.emotion || seg.mood || seg.atmosphere || seg.expression || seg.tone || '');
     if (raw && !luxuryLooksLikeBriefCopy(raw)) return raw.slice(0, 90);
     const role = String(seg.shot_role || seg.role || seg.type || '').toLowerCase();
     if (role === 'hook') return '安静、克制、带一点期待感。';
@@ -10836,7 +10845,7 @@
   }
 
   function luxuryShotAudioText(seg = {}) {
-    const raw = String(seg.sfx_audio || seg.sfx || seg.audio || seg.sound || seg.sound_design || '').replace(/\s+/g, ' ').trim();
+    const raw = luxuryStripInternalPromptText(seg.sfx_audio || seg.sfx || seg.audio || seg.sound || seg.sound_design || '');
     if (raw && !luxuryLooksLikeBriefCopy(raw)) return raw.slice(0, 110);
     const role = String(seg.shot_role || seg.role || seg.type || '').toLowerCase();
     if (role === 'macro') return '轻微质感声、柔和提示音，配合细节推进。';
@@ -10999,7 +11008,7 @@
             : (/(chat|message|消息|对话)/i.test(source) ? 'message_cards' : 'app_ui_cards'))));
     const placement = String(raw?.placement || raw?.position || '').trim()
       || (/(phone|mobile|手机)/i.test(source) ? '贴近手机屏幕' : '主体旁侧悬浮，不遮挡人脸和产品');
-    const content = String(raw?.content || raw?.text || source || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+    const content = luxuryStripInternalPromptText(raw?.content || raw?.text || source || '').slice(0, 220);
     const motion = String(raw?.motion || raw?.animation || '').trim()
       || (/(check|tick|确认|对勾|勾)/i.test(source) ? '轻微弹出并柔和发光' : '半透明卡片轻滑入场后稳定停留');
     const style = String(raw?.style || '').trim() || '极简半透明玻璃质感，无无关文字';

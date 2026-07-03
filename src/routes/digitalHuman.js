@@ -649,8 +649,16 @@ function _isFinalLuxuryStoryboardSheet(sheet = {}) {
   return !!(sheet.image_url || sheet.imageUrl || sheet.url);
 }
 
+function _stripLuxuryInternalPromptText(value = '') {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\b(?:STORYBOARD DIRECTOR CONTRACT|QA-REWRITTEN HARD CONTRACT|SHOT EXECUTION CONTRACT|SHOT CONTRACT|COMPILED CONTRACT|INDUSTRY CONTRACT|NON-NEGOTIABLE ACTOR PACKAGE OUTPUT CONTRACT|BRIEF-DERIVED CASTING CONTRACT|AUTHENTIC HUMAN FACE CONTRACT|WARDROBE VARIETY CONTRACT)\s*:[\s\S]*$/gi, '')
+    .replace(/\b(?:Required schema|Schema)\s*:\s*\{[\s\S]*$/gi, '')
+    .trim();
+}
+
 function _projectText(value = '', max = 1200) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const text = _stripLuxuryInternalPromptText(value);
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
