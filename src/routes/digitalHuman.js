@@ -2867,7 +2867,17 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   const peopleOk = isMultiCast ? parsedPersonCount === peopleCount : (parsed.single_person === true || textImpliesSingle);
   const textImpliesGender = !!requiredGender && positiveText && new RegExp(`\\b${requiredGender}\\b|${requiredGender === 'female' ? 'woman|girl|女性|女' : 'man|male|男性|男'}`, 'i').test([parsed.reason, parsed.observed].join(' '));
   const genderOk = !requiredGender || observedGender === requiredGender || textImpliesGender;
-  const pass = parsed.pass === true
+  const positiveOverride = parsed.pass !== true
+    && score >= 88
+    && positiveText
+    && mismatches.length === 0
+    && lowerBodyVisible
+    && lowerGarmentVisible
+    && actorLargeEnough
+    && !largeEmptyBackground
+    && !insetOrTinyPerson
+    && (acceptableFraming || /full[-\s]?body|knee[-\s]?up|thigh[-\s]?up|完整|全身|膝上/i.test(qaText));
+  const pass = (parsed.pass === true || positiveOverride)
     && (score >= 72 || positiveText)
     && peopleOk
     && genderOk
@@ -2903,14 +2913,18 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     provider,
   };
   if (pass && (
-    parsed.lower_body_visible !== true
+    positiveOverride
+    || parsed.pass !== true
+    || parsed.lower_body_visible !== true
     || parsed.trousers_or_skirt_visible !== true
     || parsed.single_person !== true
     || (requiredGender && observedGender !== requiredGender)
     || !acceptableFraming
   )) {
     qa.soft_pass = true;
-    qa.reason = qa.reason || 'Vision QA text and score confirmed the actor framing while some boolean fields were incomplete.';
+    qa.reason = qa.reason || (positiveOverride
+      ? 'Vision QA returned contradictory pass=false but high score and positive evidence confirmed the actor framing.'
+      : 'Vision QA text and score confirmed the actor framing while some boolean fields were incomplete.');
   }
   if (!pass) {
     const genderMsg = requiredGender && !genderOk ? `；gender=${qa.gender_presentation}，expected=${requiredGender}` : '';
