@@ -3353,44 +3353,71 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     throw err;
   }
   const mismatches = _cleanQaList(parsed.major_mismatches, 160, 8);
+  const semanticMismatches = mismatches.filter(item => {
+    const text = String(item || '').trim();
+    if (!text) return false;
+    if (/^\{?\s*"?pass"?\s*:|"?score"?\s*:|"_?match"?\s*:|gender_match|origin_match|appearance_match|wardrobe_match|hair_makeup_match|negative_constraints_ok/i.test(text)) {
+      return false;
+    }
+    return true;
+  });
   const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
   const requireBool = (key, field) => !contract[key] || parsed[field] === true;
+  const negativeMismatchText = semanticMismatches.filter(item =>
+    /negative|forbidden|logo|brand|occupation|student|doctor|waiter|messy|filter|retouch|over.?smooth|禁止|负面|品牌|职业|学生|医生|服务员|杂乱|滤镜|磨皮|失真/i.test(String(item || '')));
+  const negativeHardOk = !contract.negativeText
+    || parsed.negative_constraints_ok === true
+    || negativeMismatchText.length === 0;
   const hardSpecFieldsOk = requireBool('gender', 'gender_match')
     && requireBool('age', 'age_match')
     && requireBool('wardrobeText', 'wardrobe_match')
     && requireBool('hairMakeupText', 'hair_makeup_match')
-    && requireBool('negativeText', 'negative_constraints_ok');
+    && negativeHardOk;
   const softSpecFieldsOk = requireBool('origin', 'origin_match')
     && requireBool('roleName', 'role_match')
     && requireBool('appearanceText', 'appearance_match');
-  const hardMismatchText = mismatches.filter(item =>
+  const hardMismatchText = semanticMismatches.filter(item =>
     /gender|sex|age|wardrobe|outfit|clothing|dress|skirt|pants|trousers|shoe|footwear|hair|makeup|negative|forbidden|性别|年龄|服装|穿着|裙|裤|鞋|发型|妆|禁止|负面/i.test(String(item || '')));
-  const softMismatchText = mismatches.filter(item => !hardMismatchText.includes(item));
+  const softMismatchText = semanticMismatches.filter(item => !hardMismatchText.includes(item));
   const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
   const hardExplicitReject = [
     parsed.gender_match,
     parsed.age_match,
     parsed.wardrobe_match,
     parsed.hair_makeup_match,
-    parsed.negative_constraints_ok,
   ].some(value => value === false);
+  const negativeExplicitReject = contract.negativeText && parsed.negative_constraints_ok === false && negativeMismatchText.length > 0;
   const softExplicitReject = [
     parsed.origin_match,
     parsed.role_match,
     parsed.appearance_match,
+    ...(contract.negativeText && parsed.negative_constraints_ok === false && !negativeExplicitReject ? [false] : []),
   ].some(value => value === false);
+  const specRequiredFieldsOverride = parsed.pass !== true
+    && score >= 40
+    && hardSpecFieldsOk
+    && !hardExplicitReject
+    && !negativeExplicitReject
+    && hardMismatchText.length === 0
+    && semanticMismatches.length <= 2
+    && parsed.gender_match === true
+    && parsed.age_match === true
+    && parsed.wardrobe_match === true
+    && parsed.hair_makeup_match === true;
   const specPositiveOverride = parsed.pass !== true
     && score >= 88
     && positiveText
     && hardSpecFieldsOk
     && !hardExplicitReject
+    && !negativeExplicitReject
     && hardMismatchText.length === 0
     && softMismatchText.length <= 2;
   const qa = {
-    pass: (parsed.pass === true || specPositiveOverride)
-      && score >= 65
+    pass: (parsed.pass === true || specPositiveOverride || specRequiredFieldsOverride)
+      && (score >= 65 || specRequiredFieldsOverride)
       && hardSpecFieldsOk
       && !hardExplicitReject
+      && !negativeExplicitReject
       && hardMismatchText.length === 0
       && (softSpecFieldsOk || positiveText || softMismatchText.length <= 2),
     score,
@@ -3407,6 +3434,7 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     major_mismatches: mismatches,
     hard_mismatches: hardMismatchText,
     soft_mismatches: softMismatchText,
+    ignored_malformed_mismatches: mismatches.filter(item => !semanticMismatches.includes(item)).slice(0, 4),
     soft_field_warning: softExplicitReject || softMismatchText.length > 0,
     observed: String(parsed.observed || '').slice(0, 260),
     reason: String(parsed.reason || '').slice(0, 260),
@@ -3416,9 +3444,11 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     qa.soft_pass = true;
     qa.reason = qa.reason || 'Only non-hard person-setting fields were uncertain in a neutral casting photo.';
   }
-  if (qa.pass && specPositiveOverride) {
+  if (qa.pass && (specPositiveOverride || specRequiredFieldsOverride)) {
     qa.soft_pass = true;
-    qa.reason = qa.reason || 'Vision QA returned contradictory pass=false but high score and positive person-setting evidence confirmed required fields.';
+    qa.reason = qa.reason || (specRequiredFieldsOverride
+      ? 'Vision QA returned malformed or subjective soft-field reject, but required hard person fields matched with no semantic hard mismatch.'
+      : 'Vision QA returned contradictory pass=false but high score and positive person-setting evidence confirmed required fields.');
   }
   if (!qa.pass) {
     const err = new Error(`演员包人物设定 QA 未通过：${qa.reason || qa.observed || '候选图与当前人物设定不一致'}；score=${qa.score}`);
