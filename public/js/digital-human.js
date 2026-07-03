@@ -11340,8 +11340,24 @@
     });
   }
 
+  function mergeLuxurySegmentsPreservingExisting(existing = [], incoming = [], total = 0) {
+    const base = applyLuxuryShotBindings(Array.isArray(existing) ? existing : []);
+    const incomingList = applyLuxuryShotBindings(Array.isArray(incoming) ? incoming : []);
+    const incomingMax = incomingList.reduce((max, scene, i) => Math.max(max, luxuryFrameIndex(scene, i) + 1), 0);
+    const size = Math.max(total || 0, base.length || 0, incomingList.length || 0, incomingMax);
+    const incomingByIndex = new Map();
+    incomingList.forEach((scene, i) => incomingByIndex.set(luxuryFrameIndex(scene, i), scene || {}));
+    return Array.from({ length: size }, (_, i) => {
+      const prev = base[i] || {};
+      const next = incomingByIndex.get(i) || {};
+      if (!Object.keys(next).length) return prev;
+      return { ...prev, ...next, index: i, shot_index: i };
+    }).filter((scene, i) => Object.keys(scene || {}).length || i < size);
+  }
+
   function applyLuxuryKeyframePartial(partial = null, { totalShots = 0, startedAt = Date.now() } = {}) {
     if (!partial || typeof partial !== 'object') return false;
+    const previousSegments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.slice() : [];
     const project = partial.production_project && typeof partial.production_project === 'object' ? partial.production_project : null;
     if (project) applyLuxuryProductionProject(project);
     else if (partial.production_project_id) state.luxuryAd.productionProjectId = partial.production_project_id;
@@ -11358,7 +11374,13 @@
       state.luxuryAd.segments?.length || 0,
       incomingFrames.length,
     );
-    if (incomingScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(incomingScenes);
+    if (incomingScenes.length) {
+      state.luxuryAd.segments = mergeLuxurySegmentsPreservingExisting(
+        previousSegments.length ? previousSegments : state.luxuryAd.segments,
+        incomingScenes,
+        total,
+      );
+    }
     if (incomingFrames.length) {
       state.luxuryAd.keyframes = mergeLuxuryKeyframesPreservingImages(
         state.luxuryAd.keyframes || [],
@@ -12999,8 +13021,8 @@
       draft?.segments,
       draft?.outline_segments,
       draft?.outlineSegments,
-    ];
-    return sources.find(list => Array.isArray(list) && list.length) || [];
+    ].filter(list => Array.isArray(list) && list.length);
+    return sources.reduce((best, list) => (list.length > best.length ? list : best), []);
   }
 
   function luxuryRestoredProjectBriefInfo(project = {}, draft = project?.draft_state || {}, scenes = []) {
@@ -14637,11 +14659,18 @@
     } catch (err) {
       state.luxuryAd.keyframeGenerating = false;
       state.luxuryAd.keyframeProgress = null;
+      const previousSegments = Array.isArray(state.luxuryAd.segments) ? state.luxuryAd.segments.slice() : [];
       const failedPayload = err?.data && typeof err.data === 'object' ? err.data : null;
       const partialKeyframes = luxurySelectItemsForShotRequest(failedPayload?.keyframes || [], singleIndex, totalShots);
       const partialScenes = luxurySelectItemsForShotRequest(failedPayload?.scenes || [], singleIndex, totalShots);
       const partialSheets = Array.isArray(failedPayload?.storyboard_sheets) ? failedPayload.storyboard_sheets : [];
-      if (partialScenes.length) state.luxuryAd.segments = applyLuxuryShotBindings(partialScenes);
+      if (partialScenes.length) {
+        state.luxuryAd.segments = mergeLuxurySegmentsPreservingExisting(
+          previousSegments,
+          partialScenes,
+          previewSegments.length || totalShots,
+        );
+      }
       if (partialKeyframes.length) {
         state.luxuryAd.keyframes = mergeLuxuryKeyframesPreservingImages(
           state.luxuryAd.keyframes || [],
@@ -14650,7 +14679,19 @@
         );
       }
       if (partialSheets.length) state.luxuryAd.storyboardSheets = partialSheets;
-      if (failedPayload?.production_project) applyLuxuryProductionProject(failedPayload.production_project);
+      if (failedPayload?.production_project) {
+        applyLuxuryProductionProject(failedPayload.production_project);
+        const projectScenes = Array.isArray(failedPayload.production_project.scenes)
+          ? failedPayload.production_project.scenes
+          : [];
+        if (previousSegments.length > projectScenes.length) {
+          state.luxuryAd.segments = mergeLuxurySegmentsPreservingExisting(
+            previousSegments,
+            projectScenes,
+            previousSegments.length,
+          );
+        }
+      }
       else if (failedPayload?.production_project_id) state.luxuryAd.productionProjectId = failedPayload.production_project_id;
       state.luxuryAd.keyframeError = luxuryKeyframeErrorMessage(err);
       state.luxuryAd.keyframeErrorDetails = {
@@ -14661,7 +14702,19 @@
         ...(err?.data?.details || {}),
         raw: err?.data || null,
       };
-      if (err?.data?.details?.production_project) applyLuxuryProductionProject(err.data.details.production_project);
+      if (err?.data?.details?.production_project) {
+        applyLuxuryProductionProject(err.data.details.production_project);
+        const projectScenes = Array.isArray(err.data.details.production_project.scenes)
+          ? err.data.details.production_project.scenes
+          : [];
+        if (previousSegments.length > projectScenes.length) {
+          state.luxuryAd.segments = mergeLuxurySegmentsPreservingExisting(
+            previousSegments,
+            projectScenes,
+            previousSegments.length,
+          );
+        }
+      }
       else if (err?.data?.details?.production_project_id) state.luxuryAd.productionProjectId = err.data.details.production_project_id;
       if (err?.data?.details?.production_contract) state.luxuryAd.productionContract = err.data.details.production_contract;
       renderLuxuryAdStoryboard();
