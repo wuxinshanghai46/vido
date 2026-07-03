@@ -1070,6 +1070,19 @@
     renderSpaceGuide();
   }
 
+  function startNewLuxuryAdSession(tab = 'luxury-ad') {
+    resetLuxuryAdFormForNext({ quiet: true });
+    setLuxuryAdFlowMode(tab === 'material-film' ? 'material' : 'story', { preserveState: false });
+    clearLuxuryAdProjectRouteParam(tab);
+    writeDigitalHumanPageState({
+      tab,
+      luxury_project: '',
+      luxury_project_id: '',
+      lux_step: 1,
+      lux_focus: '',
+    });
+  }
+
   // ══════════════ Step 1 · 模式切换 + 选择 ══════════════
   function setMode(mode) {
     state.s1.mode = mode;
@@ -17089,6 +17102,9 @@
     const navItem = closest('.dh-nav-item');
     if (navItem?.dataset.tab) {
       if (SPACE_WORKFLOW_TABS.has(navItem.dataset.tab)) startNewSpaceGuideSession(navItem.dataset.tab);
+      if (navItem.dataset.tab === 'luxury-ad' || navItem.dataset.tab === 'material-film') {
+        startNewLuxuryAdSession(navItem.dataset.tab);
+      }
       if (navItem.dataset.tab === 'step2') state.avatarPickReturn = '';
       switchTab(navItem.dataset.tab, { defaultView: true });
       if (navItem.dataset.s1Shortcut === 'product') {
