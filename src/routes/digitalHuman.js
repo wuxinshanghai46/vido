@@ -27100,7 +27100,7 @@ function _luxuryPromptPositiveTextForPreflight(prompt = '') {
   const negativeRe = /\b(?:do not|don't|never|without|no|avoid|forbidden|negative|hard negative|hard fail|reject|must[_\s-]?not[_\s-]?show|fail if|style forbidden|provider-submission safety)\b|不要|禁止|不得|不允许|不能|拒绝|避免|硬负面|违规|不合格/i;
   return String(prompt || '')
     .replace(/\s+/g, ' ')
-    .split(/[\n。；;.!?]+/)
+    .split(/[\n。.!?]+/)
     .map(part => part.trim())
     .filter(part => part && !negativeRe.test(part))
     .join(' ')
