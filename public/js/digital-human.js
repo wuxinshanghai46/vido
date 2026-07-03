@@ -12388,15 +12388,11 @@
   function luxuryPipelineFallbackChain(stageId = '') {
     if (stageId === 'luxury_ad.person_sheet') {
       return [
-        { provider_id: 'webang-maas', model_id: 'gpt-image-2', enabled: true },
         { provider_id: 'apismile', model_id: 'gpt-image-2', enabled: true },
       ];
     }
     if (stageId === 'luxury_ad.keyframe') {
       return [
-        { provider_id: 'webang-maas', model_id: 'gpt-image-2', enabled: true },
-        { provider_id: 'webang-maas', model_id: 'gemini-3.1-flash-image-preview', enabled: true },
-        { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash-image', enabled: true },
         { provider_id: 'apismile', model_id: 'gpt-image-2', enabled: true },
       ];
     }

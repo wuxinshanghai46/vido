@@ -2807,7 +2807,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     'You are a strict QA gate for a commercial actor asset package.',
     'The attached image is one generated actor reference photo.',
     'Return ONLY compact JSON, no markdown.',
-    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"gender_presentation":"male|female|ambiguous|unknown","realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
+    'Schema: {"pass":boolean,"score":0-100,"framing":"full_body|knee_up|thigh_up|waist_up|bust|headshot|other","person_count":number,"single_person":boolean,"gender_presentation":"male|female|ambiguous|unknown","realistic_photo":boolean,"lower_body_visible":boolean,"trousers_or_skirt_visible":boolean,"knees_or_shoes_visible":boolean,"actor_large_enough":boolean,"large_empty_background":boolean,"inset_or_tiny_person":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
     `Expected cast: ${castLabel}. The image must show exactly ${peopleCount} distinct visible ${peopleCount === 1 ? 'person' : 'people'} as the actor reference.`,
     requiredGender ? `Hard fail if the visible actor gender presentation does not match the selected required value "${requiredGender}".` : '',
     allowBackView ? 'This is the requested BACK VIEW of the same actor package. A visible face is not required for this view; judge full-body framing, body count, realistic photo quality, hairstyle/back silhouette, lower-body clothing and wardrobe continuity evidence.' : '',
@@ -2816,6 +2816,7 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
       ? 'Pass only if it is a realistic live-action casting/reference photo of the confirmed two-person or multi-person cast, with distinct faces/bodies and no merged bodies, duplicated artifacts, extra strangers, or missing required cast members.'
       : 'Pass only if it is a realistic live-action casting/reference photo of exactly one person matching the requested age range, including babies, children, teenagers or adults when the brief requires them.',
     'The acceptable frame is full body, knee-up, or at minimum thigh-up where lower-body clothing is clearly visible below the waist/hips for every required visible person. For infants/toddlers, a full-body seated, standing, held-safe, or supported pose is acceptable when legs/onesie/diaper/lower garment are visible.',
+    'The actor must be large enough for reuse as an actor package: face, hair, top, lower garment and footwear must be readable, and the actor should occupy roughly 50-85% of frame height. Hard fail if the person is a tiny inset/sticker/distant figure, if the image is mostly empty black/blank background, or if it is a wide banner/picture-in-picture/contact-sheet layout rather than one casting photo.',
     'Hard fail if it is a headshot, bust portrait, shoulders-only, chest-up, waist-up, half-body portrait, beauty portrait, cropped at chest/waist/hips, or if no lower-body clothing/legs are visible for the required cast.',
     isMultiCast
       ? 'Hard fail if it looks like CGI, anime, illustration, wax figure, poster retouch, over-smoothed plastic AI faces, beauty-filter faces, doll-like faces, uncanny smiles, frozen stares, empty eyes, or if the person_count is not exactly the expected cast count.'
@@ -2851,6 +2852,13 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     || (positiveText && /full[-\s]?body|knee[-\s]?up|thigh[-\s]?up|lower body|legs?|shoes?|sneakers?|footwear|裤|腿|鞋/i.test([parsed.reason, parsed.observed].join(' ')));
   const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true
     || (positiveText && /trousers?|pants?|jeans|skirt|dress|lower garment|shoes?|sneakers?|footwear|裤|裙|鞋/i.test([parsed.reason, parsed.observed].join(' ')));
+  const qaText = [parsed.reason, parsed.observed, ...mismatches].join(' ');
+  const actorLargeEnough = parsed.actor_large_enough === true
+    || (positiveText && !/tiny|small inset|distant|too small|小人|过小|远处|贴片|插图|小图/.test(qaText));
+  const largeEmptyBackground = parsed.large_empty_background === true
+    || /large empty|mostly empty|blank canvas|black canvas|black background|empty black|大面积空|大面积黑|黑底|空白背景|留白过大/i.test(qaText);
+  const insetOrTinyPerson = parsed.inset_or_tiny_person === true
+    || /tiny|small inset|picture-in-picture|sticker|distant figure|contact sheet|poster layout|horizontal banner|小人|贴片|插图|小图|横幅|拼图/i.test(qaText);
   const acceptableFraming = /^(full_body|knee_up|thigh_up)$/.test(framing);
   const parsedPersonCount = Number.isFinite(Number(parsed.person_count))
     ? Math.max(0, Math.round(Number(parsed.person_count)))
@@ -2866,6 +2874,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     && (parsed.realistic_photo === true || positiveText)
     && lowerBodyVisible
     && lowerGarmentVisible
+    && actorLargeEnough
+    && !largeEmptyBackground
+    && !insetOrTinyPerson
     && (acceptableFraming || (positiveText && score >= 88 && lowerBodyVisible))
     && mismatches.length === 0;
   const qa = {
@@ -2883,6 +2894,9 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
     lower_body_visible: lowerBodyVisible,
     trousers_or_skirt_visible: lowerGarmentVisible,
     knees_or_shoes_visible: parsed.knees_or_shoes_visible === true,
+    actor_large_enough: actorLargeEnough,
+    large_empty_background: largeEmptyBackground,
+    inset_or_tiny_person: insetOrTinyPerson,
     major_mismatches: mismatches,
     observed: String(parsed.observed || '').slice(0, 240),
     reason: String(parsed.reason || '').slice(0, 240),
@@ -15411,7 +15425,8 @@ function _buildLuxuryActorFullBodyRetryPrompt(basePrompt = '', { qa = {}, aspect
       : `Show exactly ${people} complete independent people, each with head, torso, waist, hips, legs and shoes or age-appropriate lower body visible in the same frame.`,
     'Leave clean margin above the head and below the feet, with visible floor line or ground shadow. Use a neutral plain studio background and real-camera perspective.',
     allowBarefoot ? 'Bare feet are allowed only if explicitly required by the actor styling brief.' : 'FOOTWEAR LOCK: do not generate a barefoot teen/adult actor. Show visible closed-toe shoes, flats, sneakers, socks, or brief-appropriate footwear clearly at the bottom of the frame; do not hide, crop, blur, or omit the feet.',
-    'Use a longer distance portrait/photo lens feel; the subject should occupy about 55-70% of frame height, never fill the frame as a portrait.',
+    'Use a longer distance portrait/photo lens feel; the actor should occupy about 60-78% of frame height, large enough for face, hair and wardrobe QA, never a tiny person on a wide empty canvas.',
+    'Do not create a small inset, sticker-like person, picture-in-picture, contact-sheet tile, distant tiny figure, black stage void, large empty background, poster layout or horizontal banner composition.',
     'Do not crop at head, shoulders, chest, waist, hips, knees or shoes. Do not create a headshot, bust portrait, waist-up portrait, beauty portrait or poster crop.',
     'If reference images are provided, use them only for identity, age, haircut and outfit evidence; do not copy their crop, composition or close-up framing.',
     basePrompt,
@@ -15549,6 +15564,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     people === 1
       ? 'Keep exactly one actor total in one standalone photo, complete outfit and visible footwear, clean margin around the person, no extra people, no collage, no multi-panel contact sheet.'
       : `Keep exactly ${people} actors total in one standalone photo, separated clearly, complete outfits and visible footwear, no extra people, no merged bodies, no collage, no multi-panel contact sheet.`,
+    'Composition lock: the actor reference must be a usable casting photo, not a layout. Actor face, hair and clothing must be readable; actor occupies about 60-78% of frame height; no tiny person floating in a large black/blank canvas, no horizontal banner, no inset card.',
     providerHint,
     'Avoid glamour, revealing clothing, intimate posing, medical or identity-document styling, readable text, logos, watermarks, posters, weapons, uniforms unless explicitly required by the user brief.',
     neutralSource ? `Campaign/person constraints: ${neutralSource}` : '',
@@ -15577,7 +15593,7 @@ function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
     `${view}, modest everyday clothing, natural grooming, calm expression, neutral studio background, soft daylight.`,
     genderInstruction,
     hasReference ? 'Use the reference only for identity, age impression, hairstyle and wardrobe evidence.' : '',
-    'Complete outfit and visible footwear, no extra people, no contact sheet, no collage, no multi-panel image, no readable text, no logos, no glamour styling, no revealing clothing, no intimate pose, no sensitive document or medical scene.',
+    'Complete outfit and visible footwear, actor occupies about 60-78% of frame height, readable face/hair/clothing, no tiny person on large empty black/blank canvas, no horizontal banner, no extra people, no contact sheet, no collage, no multi-panel image, no readable text, no logos, no glamour styling, no revealing clothing, no intimate pose, no sensitive document or medical scene.',
   ].filter(Boolean).join(' '), Math.min(Number(policy.maxPromptChars || 1100), 1100));
 }
 
@@ -16550,6 +16566,7 @@ async function _generateLuxuryRealisticActorPackage({
       ? `Camera is pulled far enough back to show all ${expectedPeople} people with head, torso, hips, legs and shoes or age-appropriate lower bodies in one frame.`
       : 'Camera is pulled far enough back to show head, torso, hips, legs and shoes or age-appropriate lower body in one frame.',
     'The floor line or ground shadow is visible; leave small clean margin above the head and below the feet.',
+    'Actor scale lock: each required person should occupy about 60-78% of frame height in a clean vertical casting photo, with readable face, hair, top, lower garment and footwear. Do not make the actor a tiny sticker, small inset, distant figure, floating card, horizontal banner, contact-sheet tile, black stage void or large empty-background composition.',
     'Practical commercial casting sheet and wardrobe fitting reference, neutral gray or white seamless studio background, real-camera daylight, modest age-appropriate everyday wardrobe, natural hands, real fabric folds and calm non-editorial styling.',
   ].join(' ');
   const castingSheetCore = [
@@ -16571,6 +16588,7 @@ async function _generateLuxuryRealisticActorPackage({
     framingContract,
     castConsistencyLock,
     'Real-camera full-length fitting photo: centered standing body, complete outfit, shoes or age-appropriate lower body visible, visible floor contact, neutral seamless studio, soft daylight, natural skin texture, normal hands, real fabric folds.',
+    'Usability lock: the actor must be large and clear enough for later storyboard identity reuse; no tiny person on a mostly black/blank canvas, no wide banner layout, no picture-in-picture or decorative frame.',
     'Use simple everyday styling appropriate to the selected age and brief. Keep lighting flat and documentary, like an actor casting sheet or wardrobe fitting photo.',
     castIdentityStable,
     referencePersonUrl ? 'Use reference image 1 only to keep identity, age, haircut and outfit evidence. Do not copy crop or stylized rendering; expand to full-length or knee-up casting photo.' : '',
