@@ -8024,6 +8024,7 @@
         id: generated.id || 'luxury_ad_person_sheet',
         actor_asset_id: generated.actor_asset_id || generated.asset_library_id || generated.material_id || '',
         actor_id: generated.actor_id || generated.metadata?.actor_id || '',
+        person_sheet_request_key: generated.person_sheet_request_key || generated.metadata?.person_sheet_request_key || '',
         webang_asset_id: generated.webang_asset_id || generated.metadata?.webang_asset_id || '',
         webang_asset_url: generated.webang_asset_url || generated.metadata?.webang_asset_url || '',
         webang_asset_group_id: generated.webang_asset_group_id || generated.metadata?.webang_asset_group_id || '',
@@ -8744,6 +8745,17 @@
         : '';
       const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧、动作参考，并尝试补充背面。' : (isAiActor ? '正在生成正面、侧面/半侧、动作参考，并尝试补充背面。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
+      const viewStatus = generated.view_generation_status && typeof generated.view_generation_status === 'object' ? generated.view_generation_status : {};
+      const readyViewKeys = new Set([
+        ...actorViewEntries.map(entry => entry.key).filter(Boolean),
+        ...(Array.isArray(viewStatus.ready_views) ? viewStatus.ready_views : []),
+      ]);
+      const pendingViewKeys = Array.isArray(viewStatus.pending_views) ? viewStatus.pending_views.filter(Boolean) : [];
+      const expectedViewLabels = ['front', 'side', 'back', 'action'].map(key => luxuryActorAssetViewLabel({ key }, 0));
+      const pendingLabels = pendingViewKeys.map(key => luxuryActorAssetViewLabel({ key }, 0));
+      const viewProgressHtml = isSyntheticActor && !castMembers.length
+        ? `<div class="dh-lux-actor-view-status"><b>演员参考 ${Math.min(4, Math.max(1, readyViewKeys.size || actorViewEntries.length || 1))}/4</b><span>${pendingLabels.length ? `正在自动补齐：${escapeHtml(pendingLabels.join('、'))}` : `已生成：${escapeHtml(expectedViewLabels.filter((_, i) => readyViewKeys.has(['front', 'side', 'back', 'action'][i])).join('、') || actorViewEntries.map(x => x.label).join('、') || '正面')}`}</span></div>`
+        : '';
       const castGrid = castMembers.length > 1
         ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => {
           const previewIndex = Math.max(0, actorUrls.indexOf(member.image_url));
@@ -8767,6 +8779,7 @@
         <b>${escapeHtml(generated.name || defaultName)}</b>
         <small>${escapeHtml(generated.uploading ? loadingText : (actorMeta || generated.description || defaultDesc))}</small>
         ${progressHtml}
+        ${viewProgressHtml}
         ${previewButtons}
         ${realPersonWarning}
         ${errorHtml}
@@ -10211,12 +10224,13 @@
         label: '拟真演员',
         percent: 96,
         phase: '演员已可用',
-        message: '正面定妆已通过并绑定演员，补充参考图会在后台继续尝试。',
+        message: '正面定妆已通过并绑定演员，侧面、背面和动作参考会自动补齐并刷新显示。',
       };
       state.luxuryAd.personAsset = {
         id: character.id || character.actor_asset_id || 'luxury_ad_actor_package',
         actor_id: character.actor_id || r.actor_asset?.actor_id || '',
         actor_asset_id: character.actor_asset_id || r.actor_asset?.actor_asset_id || '',
+        person_sheet_request_key: requestKey || '',
         name: character.name || '拟真一致性演员',
         type: character.type || 'luxury_ad_actor_package',
         source: character.source || 'local_actor_library_generated',
@@ -10251,6 +10265,9 @@
       updateLuxuryAdStepLocks();
       await ensureLuxuryPersonAssetPersisted('local_actor_library_generated');
       await persistLuxuryAdPersonDraft();
+      if (requestKey && luxuryPersonPayloadHasPendingViews(r)) {
+        watchLuxuryPersonSheetSupplementalViews(requestKey);
+      }
       toast('拟真一致性演员已生成并写入角色素材库，用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.luxuryAd.personGenerationError = {
@@ -13799,6 +13816,70 @@
     const err = new Error('人物演员包后台仍未返回最终状态，请稍后进入本步骤查看，或重新点击生成拟真演员。');
     err.code = 'PERSON_ACTOR_PACKAGE_TIMEOUT';
     throw err;
+  }
+
+  function luxuryPersonPayloadHasPendingViews(payload = {}) {
+    const asset = payload.actor_asset || payload.character || payload || {};
+    const status = asset.view_generation_status || payload.view_generation_status || {};
+    const pending = Array.isArray(status.pending_views) ? status.pending_views.filter(Boolean) : [];
+    if (pending.length) return true;
+    const viewCount = luxuryActorAssetViewEntries(asset).length || Number(asset.view_count || payload.view_count || 0) || 0;
+    return viewCount > 0 && viewCount < 4 && (asset.reference_kind === 'synthetic_realistic_actor' || asset.type === 'luxury_ad_actor_package');
+  }
+
+  async function applyLuxuryPersonSheetSupplementalResult(payload = {}) {
+    if (!payload || !state.luxuryAd.personAsset) return false;
+    const character = payload.character || {};
+    const actorAsset = payload.actor_asset || {};
+    const nextViewImages = Array.isArray(character.view_images)
+      ? character.view_images
+      : (Array.isArray(actorAsset.view_images) ? actorAsset.view_images : (Array.isArray(payload.view_images) ? payload.view_images : []));
+    const nextUrls = luxuryActorUrlsFromSources(character, actorAsset, payload, payload.outputs);
+    const currentUrls = luxuryActorAssetUrls(state.luxuryAd.personAsset);
+    if (!nextViewImages.length && nextUrls.length <= currentUrls.length) return false;
+    const primaryUrl = state.luxuryAd.personAsset.image_url || state.luxuryAd.personAsset.url || nextUrls[0] || '';
+    state.luxuryAd.personAsset = {
+      ...state.luxuryAd.personAsset,
+      person_sheet_request_key: state.luxuryAd.personAsset.person_sheet_request_key || character.person_sheet_request_key || actorAsset.person_sheet_request_key || payload.person_sheet_request_key || '',
+      extra_image_urls: nextUrls.filter(url => url && url !== primaryUrl).slice(0, 8),
+      view_images: nextViewImages,
+      view_generation_status: character.view_generation_status || actorAsset.view_generation_status || payload.view_generation_status || state.luxuryAd.personAsset.view_generation_status || null,
+      view_count: Math.max(state.luxuryAd.personAsset.view_count || 1, nextUrls.length || nextViewImages.length || 1),
+      uploading: false,
+    };
+    applyLuxuryPersonAssetConstraints(state.luxuryAd.personAsset);
+    renderLuxuryAdPerson();
+    renderLuxuryAdStoryboard();
+    updateLuxuryAdStepLocks();
+    await ensureLuxuryPersonAssetPersisted('actor_supplemental_views');
+    await persistLuxuryAdPersonDraft();
+    return true;
+  }
+
+  async function watchLuxuryPersonSheetSupplementalViews(requestKey) {
+    const key = String(requestKey || '').trim();
+    if (!key) return;
+    state.luxuryAd.personSupplementWatchKey = key;
+    const started = Date.now();
+    let lastCount = luxuryActorAssetViewEntries(state.luxuryAd.personAsset || {}).length;
+    while (state.luxuryAd.personSupplementWatchKey === key && Date.now() - started < 12 * 60 * 1000) {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      let body = null;
+      try {
+        body = await api(`/api/dh/luxury-ad/person-sheet/result/${encodeURIComponent(key)}`);
+      } catch (_) {
+        continue;
+      }
+      const payload = body?.result || null;
+      if (!payload) continue;
+      const changed = await applyLuxuryPersonSheetSupplementalResult(payload);
+      const nextCount = luxuryActorAssetViewEntries(state.luxuryAd.personAsset || {}).length;
+      if (changed && nextCount > lastCount) {
+        lastCount = nextCount;
+        toast(`演员参考图已更新：${nextCount}/4`, 'success');
+      }
+      if (!luxuryPersonPayloadHasPendingViews(payload) || nextCount >= 4) break;
+    }
   }
 
   function isLuxuryStoryboardLongRunningError(err) {

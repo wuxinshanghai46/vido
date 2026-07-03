@@ -1486,6 +1486,8 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-lux-actor-views button:hover { border-color: rgba(33,255,243,.68); color: var(--dh-primary); background: rgba(33,255,243,.06); }
 .dh-lux-actor-views img { height: 56px; border: 0; border-radius: 0; }
 .dh-lux-actor-views span { display: block; padding: 0 4px 5px; font-size: 10px; font-weight: 800; line-height: 1.2; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh-lux-actor-view-status { margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(33,255,243,.22); border-radius: 8px; background: rgba(33,255,243,.07); color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; display: flex; gap: 8px; flex-wrap: wrap; }
+.dh-lux-actor-view-status b { color: var(--dh-text); }
 .dh-luxgen-character-sheet b { color: var(--dh-text); font-size: 13px; }
 .dh-luxgen-character-sheet small { color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; }
 .dh-luxgen-character-sheet .dh-lux-actor-cast-grid b { font-size: 12px; line-height: 1.2; }

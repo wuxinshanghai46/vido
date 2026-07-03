@@ -2815,10 +2815,14 @@ function _isLuxuryActorQaUnavailableError(err) {
 }
 
 function _luxuryActorQaTextLooksPositive(...parts) {
-  const text = parts.filter(Boolean).join(' ').toLowerCase();
+  const text = parts.filter(Boolean).join(' ').toLowerCase()
+    .replace(/without\s+(?:any\s+)?hard[-\s]?fail(?:ure)?\s+conditions?/g, '')
+    .replace(/no\s+hard[-\s]?fail(?:ure)?\s+conditions?/g, '')
+    .replace(/no\s+(?:major\s+)?mismatch(?:es)?/g, 'consistent')
+    .replace(/not visibly contradicted/g, 'consistent');
   if (!text) return false;
   const positive = /meets all (?:criteria|requirements)|meets every (?:criterion|requirement)|all (?:criteria|requirements) (?:are )?(?:met|satisfied)|appropriate framing|visible footwear|gender presentation|realistic actor reference photo|full[-\s]?body reference|matches|match(?:es|ed)? the reference|aligned|consistent|no mismatch|符合|通过|一致|匹配/.test(text);
-  const negative = /hard fail|fail(?:ed|s)?|does not|not match|mismatch|different|contradict|missing|required|cropped|headshot|bust|waist-up|no lower|barefoot|extra people|wrong|不通过|不符合|不一致|缺少|错误|冲突/.test(text);
+  const negative = /hard[-\s]?fail(?!\s*conditions?\b)|fail(?:ed|s)?|does not|not match|mismatch|different|contradict|missing|required\s+(?:field|item|element).*(?:missing|absent)|cropped|headshot|bust|waist-up|no lower|barefoot|extra people|wrong|不通过|不符合|不一致|缺少|错误|冲突/.test(text);
   return positive && !negative;
 }
 
@@ -2905,6 +2909,8 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   try {
     const qaResp = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
       stageId: 'luxury_ad.keyframe_qa',
+      strictSingleCandidate: true,
+      timeoutMs: 25000,
     });
     parsed = qaResp.parsed || {};
     provider = qaResp.provider;
@@ -3055,6 +3061,8 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     const qaResp = await _callMultimodalQaJson(req, prompt, imageDataUrls, {
       stageId: 'luxury_ad.keyframe_qa',
       maxTokens: 1800,
+      strictSingleCandidate: true,
+      timeoutMs: 25000,
     });
     parsed = qaResp.parsed || {};
     provider = qaResp.provider;
@@ -3299,6 +3307,8 @@ async function _extractLuxuryActorBibleFromFront(req, frontPath, {
     const qaResp = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(frontPath)], {
       stageId: 'luxury_ad.keyframe_qa',
       maxTokens: 1800,
+      strictSingleCandidate: true,
+      timeoutMs: 25000,
       retrySchema: '{"pass":boolean,"score":0-100,"person_count":number,"gender_presentation":"male|female|ambiguous|unknown","age_impression":"string","ethnicity_origin_impression":"string","face_identity":"string","hairstyle":"string","hair_length":"string","hair_color":"string","outfit_top":"string","outfit_bottom":"string","outfit_one_piece":"string","footwear":"string","accessories":"string","body_build":"string","must_keep":[],"mutable_fields":[],"observed":"brief observation","reason":"brief reason"}',
       retrySchemaNote: 'Return exactly the requested JSON object. Unknown visual fields must be the string "unknown".',
     });
@@ -3532,6 +3542,8 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     const qaResp = await _callMultimodalQaJson(req, prompt, [_imageFileToDataUrl(localPath)], {
       stageId: 'luxury_ad.keyframe_qa',
       maxTokens: 1800,
+      strictSingleCandidate: true,
+      timeoutMs: 25000,
       retrySchema: '{"pass":boolean,"score":0-100,"gender_match":boolean,"origin_match":boolean,"age_match":boolean,"role_match":boolean,"appearance_match":boolean,"wardrobe_match":boolean,"hair_makeup_match":boolean,"negative_constraints_ok":boolean,"major_mismatches":[],"observed":"brief observation","reason":"brief reason"}',
       retrySchemaNote: 'For every active contract field, return the matching boolean field. Empty arrays must be []. If a field cannot be visually proven but is not visibly contradicted, mark its match boolean true and explain the uncertainty in observed.',
     });
@@ -5653,6 +5665,7 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
   }
   const attempts = [];
   const selectedConfigs = strictSingleCandidate ? configured.slice(0, 1) : configured;
+  const timeoutMs = Math.max(8000, Math.min(45000, Math.round(Number(options.timeoutMs || 45000)) || 45000));
   const candidates = selectedConfigs.map(modelConfig => {
     const providerId = String(modelConfig.provider_id || '').trim();
     const model = String(modelConfig.model_id || '').trim();
@@ -5724,7 +5737,7 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
       }
       const r = await axios.post(`${candidate.baseUrl}/chat/completions`, payload, {
         headers: candidate.headers,
-        timeout: 45000,
+        timeout: timeoutMs,
       });
       try {
         require('../services/tokenTracker').record({
@@ -5773,7 +5786,7 @@ async function _callMultimodalQaJson(req, prompt, imageDataUrls = [], options = 
               };
               const retryResponse = await axios.post(`${candidate.baseUrl}/chat/completions`, retryPayload, {
                 headers: candidate.headers,
-                timeout: 45000,
+                timeout: timeoutMs,
               });
               const retryRaw = retryResponse.data?.choices?.[0]?.message?.content || '';
               const retryParsed = _jsonFromVisionReply(retryRaw);
@@ -17274,6 +17287,14 @@ async function _generateLuxuryRealisticActorPackage({
           };
           fs.writeFileSync(path.join(actorDir, 'actor_asset.json'), JSON.stringify(actorAsset, null, 2), 'utf8');
           fs.writeFileSync(path.join(actorDir, 'outputs.json'), JSON.stringify(outputs, null, 2), 'utf8');
+          const requestKey = String(req.body?.request_key || req.query?.request_key || '').trim();
+          if (requestKey) {
+            _storeLuxuryPersonSheetResult(req, requestKey, {
+              status: 'done',
+              worker_status: 'supplementing',
+              result: _luxuryActorPackageResponsePayload({ actorPack: { actorAsset, outputs, attempts }, roleHint }),
+            });
+          }
         } catch (err) {
           attempts.push({
             provider_id: 'actor-package',
@@ -17293,6 +17314,53 @@ async function _generateLuxuryRealisticActorPackage({
     });
   }
   return { actorAsset, outputs, attempts };
+}
+
+function _luxuryActorPackageResponsePayload({ actorPack = {}, roleHint = '' } = {}) {
+  const actorAsset = actorPack.actorAsset || {};
+  const imageUrl = actorAsset.image_url || '';
+  const extraImageUrls = actorAsset.extra_image_urls || [];
+  const viewImages = actorAsset.view_images || [];
+  const viewGenerationStatus = actorAsset.view_generation_status || null;
+  const castAssets = Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [];
+  const character = {
+    id: actorAsset.actor_asset_id,
+    actor_id: actorAsset.actor_id,
+    actor_asset_id: actorAsset.actor_asset_id,
+    name: actorAsset.name || 'AI 真人感一致性演员',
+    type: 'luxury_ad_actor_package',
+    source: actorAsset.source || 'local_actor_library_generated',
+    reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
+    is_ai_generated: false,
+    production_usable_actor: true,
+    gender: actorAsset.gender || '',
+    origin: actorAsset.origin || '',
+    cast_mode: actorAsset.cast_mode || 'single',
+    expected_people: actorAsset.expected_people || actorAsset.person_count || 1,
+    person_count: actorAsset.person_count || actorAsset.expected_people || 1,
+    cast_assets: castAssets,
+    image_url: imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_images: viewImages,
+    view_generation_status: viewGenerationStatus,
+    view_count: Math.max(1, viewImages.length || (1 + extraImageUrls.length)),
+    description: `AI 真人感一致性演员：正面定妆通过后已可用于分镜；侧面/动作/背面作为补充参考自动生成并展示。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${String(roleHint || '').slice(0, 80)}。`,
+  };
+  return {
+    success: true,
+    imageUrl,
+    image_url: imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_images: viewImages,
+    view_generation_status: viewGenerationStatus,
+    cast_assets: castAssets,
+    filename: path.basename(imageUrl || ''),
+    model: actorPack.outputs?.[0]?.model || '',
+    attempts: actorPack.attempts || [],
+    actor_asset: actorAsset,
+    outputs: actorPack.outputs || [],
+    character,
+  };
 }
 
 router.post('/luxury-ad/person-spec/assist', async (req, res) => {
@@ -17626,81 +17694,9 @@ router.post('/luxury-ad/person-sheet', async (req, res) => {
       baseUrl,
     });
     const actorAsset = actorPack.actorAsset;
-    const imageUrl = actorAsset.image_url || '';
-    res.json({
-      success: true,
-      imageUrl,
-      image_url: imageUrl,
-      extra_image_urls: actorAsset.extra_image_urls || [],
-      view_images: actorAsset.view_images || [],
-      view_generation_status: actorAsset.view_generation_status || null,
-      cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
-      filename: path.basename(imageUrl || ''),
-      model: actorPack.outputs?.[0]?.model || '',
-      attempts: actorPack.attempts || [],
-      actor_asset: actorAsset,
-      outputs: actorPack.outputs || [],
-      character: {
-        id: actorAsset.actor_asset_id,
-        actor_id: actorAsset.actor_id,
-        actor_asset_id: actorAsset.actor_asset_id,
-        name: actorAsset.name || 'AI 真人感一致性演员',
-        type: 'luxury_ad_actor_package',
-        source: actorAsset.source || 'local_actor_library_generated',
-        reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
-        is_ai_generated: false,
-        production_usable_actor: true,
-        gender: actorAsset.gender || '',
-        origin: actorAsset.origin || '',
-        cast_mode: actorAsset.cast_mode || 'single',
-        expected_people: actorAsset.expected_people || actorAsset.person_count || 1,
-        person_count: actorAsset.person_count || actorAsset.expected_people || 1,
-        cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
-        image_url: imageUrl,
-        extra_image_urls: actorAsset.extra_image_urls || [],
-        view_images: actorAsset.view_images || [],
-        view_generation_status: actorAsset.view_generation_status || null,
-        view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员：正面定妆通过后已可用于分镜；侧面/动作/背面作为非阻塞补充参考后台生成。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
-      },
-    });
-    _storeLuxuryPersonSheetResult(req, request_key, { status: 'done', result: {
-      success: true,
-      imageUrl,
-      image_url: imageUrl,
-      extra_image_urls: actorAsset.extra_image_urls || [],
-      view_images: actorAsset.view_images || [],
-      view_generation_status: actorAsset.view_generation_status || null,
-      cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
-      filename: path.basename(imageUrl || ''),
-      model: actorPack.outputs?.[0]?.model || '',
-      attempts: actorPack.attempts || [],
-      actor_asset: actorAsset,
-      outputs: actorPack.outputs || [],
-      character: {
-        id: actorAsset.actor_asset_id,
-        actor_id: actorAsset.actor_id,
-        actor_asset_id: actorAsset.actor_asset_id,
-        name: actorAsset.name || 'AI 真人感一致性演员',
-        type: 'luxury_ad_actor_package',
-        source: actorAsset.source || 'local_actor_library_generated',
-        reference_kind: actorAsset.reference_kind || 'synthetic_realistic_actor',
-        is_ai_generated: false,
-        production_usable_actor: true,
-        gender: actorAsset.gender || '',
-        origin: actorAsset.origin || '',
-        cast_mode: actorAsset.cast_mode || 'single',
-        expected_people: actorAsset.expected_people || actorAsset.person_count || 1,
-        person_count: actorAsset.person_count || actorAsset.expected_people || 1,
-        cast_assets: Array.isArray(actorAsset.cast_assets) ? actorAsset.cast_assets : [],
-        image_url: imageUrl,
-        extra_image_urls: actorAsset.extra_image_urls || [],
-        view_images: actorAsset.view_images || [],
-        view_generation_status: actorAsset.view_generation_status || null,
-        view_count: 1 + (actorAsset.extra_image_urls || []).length,
-        description: `AI 真人感一致性演员：正面定妆通过后已可用于分镜；侧面/动作/背面作为非阻塞补充参考后台生成。人物角色、年龄、服装和动作由广告需求、剧本人物表和分镜上下文推导：${roleHint.slice(0, 80)}。`,
-      },
-    } });
+    const responsePayload = _luxuryActorPackageResponsePayload({ actorPack, roleHint });
+    res.json(responsePayload);
+    _storeLuxuryPersonSheetResult(req, request_key, { status: 'done', result: responsePayload });
   } catch (err) {
     _storeLuxuryPersonSheetResult(req, req.body?.request_key, {
       status: 'error',
@@ -18928,7 +18924,7 @@ function _getLuxuryPersonSheetResult(req, requestKey = '') {
 function _publicLuxuryPersonSheetResult(item) {
   if (!item) return null;
   if (_isLuxuryInternalAuthExpiredResult(item)) return null;
-  if (item.status === 'done') return { success: true, status: 'done', result: item.result };
+  if (item.status === 'done') return { success: true, status: 'done', result: _hydrateLuxuryActorPackageResultFromDisk(item.result) };
   if (item.status === 'error') {
     const details = item.details && typeof item.details === 'object'
       ? {
@@ -18949,6 +18945,85 @@ function _publicLuxuryPersonSheetResult(item) {
     worker_status: item.worker_status || '',
     recovery_status: item.recovery_status || '',
     message: item.message || '',
+  };
+}
+
+function _readLuxuryActorJson(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function _hydrateLuxuryActorPackageResultFromDisk(result = {}) {
+  if (!result || typeof result !== 'object') return result;
+  const currentAsset = result.actor_asset && typeof result.actor_asset === 'object' ? result.actor_asset : {};
+  const currentCharacter = result.character && typeof result.character === 'object' ? result.character : {};
+  const actorId = String(
+    currentAsset.actor_id
+    || currentCharacter.actor_id
+    || currentAsset.actor_asset_id
+    || currentCharacter.actor_asset_id
+    || currentAsset.id
+    || currentCharacter.id
+    || ''
+  ).trim();
+  if (!actorId || /[\\/]/.test(actorId)) return result;
+
+  const actorDir = path.join(OUTPUT_ROOT_DIR, `actor-library-realistic-${actorId}`);
+  const diskAsset = _readLuxuryActorJson(path.join(actorDir, 'actor_asset.json'));
+  if (!diskAsset || typeof diskAsset !== 'object') return result;
+  const diskOutputs = _readLuxuryActorJson(path.join(actorDir, 'outputs.json'));
+  const outputs = Array.isArray(diskOutputs) && diskOutputs.length
+    ? diskOutputs
+    : (Array.isArray(result.outputs) ? result.outputs : []);
+
+  const imageUrl = diskAsset.image_url || currentAsset.image_url || currentCharacter.image_url || result.image_url || result.imageUrl || '';
+  const extraImageUrls = Array.isArray(diskAsset.extra_image_urls)
+    ? diskAsset.extra_image_urls
+    : (Array.isArray(currentAsset.extra_image_urls) ? currentAsset.extra_image_urls : (Array.isArray(result.extra_image_urls) ? result.extra_image_urls : []));
+  const viewImages = Array.isArray(diskAsset.view_images)
+    ? diskAsset.view_images
+    : (Array.isArray(currentAsset.view_images) ? currentAsset.view_images : (Array.isArray(result.view_images) ? result.view_images : []));
+  const viewGenerationStatus = diskAsset.view_generation_status || currentAsset.view_generation_status || result.view_generation_status || null;
+  const castAssets = Array.isArray(diskAsset.cast_assets)
+    ? diskAsset.cast_assets
+    : (Array.isArray(currentAsset.cast_assets) ? currentAsset.cast_assets : (Array.isArray(result.cast_assets) ? result.cast_assets : []));
+  const viewCount = Math.max(1, viewImages.length || (1 + extraImageUrls.length), Number(currentCharacter.view_count || currentAsset.view_count || result.view_count || 0) || 0);
+  const actorAsset = {
+    ...currentAsset,
+    ...diskAsset,
+    image_url: imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_images: viewImages,
+    view_generation_status: viewGenerationStatus,
+    cast_assets: castAssets,
+    view_count: viewCount,
+  };
+  return {
+    ...result,
+    imageUrl,
+    image_url: imageUrl,
+    extra_image_urls: extraImageUrls,
+    view_images: viewImages,
+    view_generation_status: viewGenerationStatus,
+    cast_assets: castAssets,
+    outputs,
+    actor_asset: actorAsset,
+    character: {
+      ...currentCharacter,
+      id: currentCharacter.id || actorAsset.actor_asset_id || actorAsset.actor_id,
+      actor_id: actorAsset.actor_id || actorId,
+      actor_asset_id: actorAsset.actor_asset_id || actorId,
+      image_url: imageUrl,
+      extra_image_urls: extraImageUrls,
+      view_images: viewImages,
+      view_generation_status: viewGenerationStatus,
+      cast_assets: castAssets,
+      view_count: viewCount,
+    },
   };
 }
 
