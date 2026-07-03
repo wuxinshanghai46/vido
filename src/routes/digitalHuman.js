@@ -49,6 +49,7 @@ function _hasExplicitPermission(req, ...permissions) {
 const productFuseTasks = new Map();
 const luxuryStoryboardResults = new Map();
 const luxuryKeyframeResults = new Map();
+const luxuryKeyframeActiveJobs = new Set();
 const luxuryPersonSheetResults = new Map();
 const luxuryStoryModelHealth = new Map();
 const SERVER_STARTED_AT = Date.now();
@@ -18085,10 +18086,18 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
       const hasReviewResult = String(project.keyframe_generation_status || '') === 'deferred_for_review'
         || String(project.reference_mode || '') === 'storyboard_planning_sheet';
       const projectState = String(project.project_state || '');
+      const updatedAt = Date.parse(project.updated_at || project.created_at || '') || 0;
+      const generatedCount = (publicProject.keyframes || []).filter(k => k && (k.image_url || k.imageUrl)).length;
+      const totalShots = (publicProject.scenes || []).length;
+      const missingCount = Math.max(0, totalShots - generatedCount);
+      const staleRunning = projectState === 'frame_generating'
+        && key
+        && !luxuryKeyframeActiveJobs.has(key)
+        && updatedAt
+        && updatedAt < SERVER_STARTED_AT - 2000;
       if (!hasKeyframes && !hasStoryboardSheets && !hasReviewResult) {
-        const updatedAt = Date.parse(project.updated_at || project.created_at || '') || 0;
         if (projectState === 'frame_generating') {
-          if (updatedAt && updatedAt < SERVER_STARTED_AT - 2000) {
+          if (staleRunning) {
             return res.json({
               success: false,
               status: 'error',
@@ -18125,6 +18134,29 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
         keyframe_error: '',
       };
       if (projectState === 'frame_generating') {
+        if (staleRunning) {
+          return res.json({
+            success: false,
+            status: 'error',
+            error: generatedCount
+              ? `分镜生成任务在服务更新后中断，已保留 ${generatedCount}/${totalShots || generatedCount} 张已生成分镜，请重新生成缺失镜头。`
+              : '分镜生成任务在服务重启后中断，请重新生成真实关键帧。',
+            details: {
+              code: 'LUXURY_KEYFRAME_JOB_INTERRUPTED',
+              production_project: publicProject,
+              production_project_id: project.id,
+              partial: {
+                ...result,
+                status: 'interrupted',
+                keyframe_generation_status: 'interrupted',
+                generated_count: generatedCount,
+                total_shots: totalShots,
+                missing_count: missingCount,
+              },
+            },
+            recovered_from_project: true,
+          });
+        }
         return res.json({
           success: true,
           status: 'running',
@@ -18132,8 +18164,9 @@ router.get('/spaces/keyframes/result/:requestKey', (req, res) => {
             ...result,
             status: 'running',
             keyframe_generation_status: publicProject.keyframe_generation_status || 'running',
-            generated_count: (publicProject.keyframes || []).filter(k => k && (k.image_url || k.imageUrl)).length,
-            total_shots: (publicProject.scenes || []).length,
+            generated_count: generatedCount,
+            total_shots: totalShots,
+            missing_count: missingCount,
           },
           production_project: publicProject,
           production_project_id: project.id,
@@ -18314,9 +18347,11 @@ function _startLuxuryStoryboardBackgroundJob(req, body = {}) {
 
 function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
   const requestKey = String(body.request_key || '').trim();
+  const resultKey = _luxuryKeyframeResultKey(req, requestKey);
   const port = process.env.PORT || 3000;
   const internalAuthHeaders = createInternalJobAuthHeaders(req.user, 'dh/spaces/keyframes');
   const requestTimeoutMs = 90 * 60 * 1000;
+  if (resultKey) luxuryKeyframeActiveJobs.add(resultKey);
   setImmediate(async () => {
     try {
       await axios.post(`http://127.0.0.1:${port}/api/dh/spaces/keyframes`, {
@@ -18339,6 +18374,8 @@ function _startLuxuryKeyframeBackgroundJob(req, body = {}) {
         details: err.response?.data || err.details || null,
       });
       console.error('[DH/spaces/keyframes/async] failed:', message);
+    } finally {
+      if (resultKey) luxuryKeyframeActiveJobs.delete(resultKey);
     }
   });
 }
