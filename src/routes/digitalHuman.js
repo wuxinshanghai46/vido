@@ -590,8 +590,11 @@ function _luxuryAdProjectMatchesDeleteId(row = {}, id = '') {
   if (!clean) return false;
   const candidates = _luxuryAdProjectIdCandidates(row);
   if (candidates.includes(clean)) return true;
+  if (clean.length >= 8 && candidates.some(value => String(value || '').startsWith(clean))) return true;
   if (/^luxury_project_/i.test(clean) && candidates.includes(clean.replace(/^luxury_project_/i, ''))) return true;
   if (/^lux-project-/i.test(clean) && candidates.includes(clean.replace(/^lux-project-/i, ''))) return true;
+  const unwrapped = clean.replace(/^(luxury_project_|lux-project-)/i, '');
+  if (unwrapped.length >= 8 && candidates.some(value => String(value || '').startsWith(unwrapped))) return true;
   const archive = taskArchiveService.getArchive(clean);
   if (archive) {
     const archiveProjectIds = [
@@ -604,6 +607,7 @@ function _luxuryAdProjectMatchesDeleteId(row = {}, id = '') {
       archive.id,
     ].filter(Boolean).map(value => String(value).trim());
     if (archiveProjectIds.some(value => candidates.includes(value))) return true;
+    if (archiveProjectIds.some(value => value.length >= 8 && candidates.some(candidate => candidate.startsWith(value)))) return true;
   }
   return false;
 }

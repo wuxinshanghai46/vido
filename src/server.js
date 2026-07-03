@@ -174,13 +174,50 @@ app.get('/api/projects/music/:filename', (req, res) => {
 });
 
 // 素材文件（公开，audio/img 标签无法带 Authorization header）
-app.get('/api/assets/file/:filename', (req, res) => {
+app.get('/api/assets/file/:filename', async (req, res) => {
   const fs = require('fs');
   const filename = path.basename(req.params.filename);
   const dirs = ['music', 'characters', 'scenes'];
   for (const sub of dirs) {
     const filePath = path.join(__dirname, '../outputs/assets', sub, filename);
-    if (fs.existsSync(filePath)) return res.sendFile(filePath);
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filename).toLowerCase();
+      const thumbWidth = Math.max(0, Math.min(1200, Math.round(Number(req.query.thumb || req.query.w || 0))));
+      if (thumbWidth && ['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+        const crypto = require('crypto');
+        const stat = fs.statSync(filePath);
+        const thumbDir = path.join(__dirname, '../outputs/asset-thumbs');
+        const cacheKey = crypto
+          .createHash('sha1')
+          .update([sub, filename, stat.size, Math.round(stat.mtimeMs), thumbWidth].join('|'))
+          .digest('hex')
+          .slice(0, 18);
+        const thumbPath = path.join(thumbDir, `${path.basename(filename, ext)}_${thumbWidth}_${cacheKey}.jpg`);
+        try {
+          fs.mkdirSync(thumbDir, { recursive: true });
+          if (!fs.existsSync(thumbPath)) {
+            const sharp = require('sharp');
+            await sharp(filePath)
+              .rotate()
+              .resize({ width: thumbWidth, withoutEnlargement: true })
+              .flatten({ background: '#111827' })
+              .jpeg({ quality: 78, mozjpeg: true })
+              .toFile(thumbPath);
+          }
+          const thumbStat = fs.statSync(thumbPath);
+          res.writeHead(200, {
+            'Content-Type': 'image/jpeg',
+            'Content-Length': thumbStat.size,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          });
+          return fs.createReadStream(thumbPath).pipe(res);
+        } catch (thumbErr) {
+          console.warn('[asset-thumb] fallback original:', thumbErr.message);
+        }
+      }
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.sendFile(filePath);
+    }
   }
   res.status(404).end();
 });

@@ -529,7 +529,7 @@
   function jimengThumbUrl(url, width = 480) {
     if (!url || /^(data|blob):/i.test(url)) return url;
     const clean = String(url);
-    if (!/\/public\/jimeng-assets\//i.test(clean) || !/\.(png|jpe?g|webp)(?:[?#]|$)/i.test(clean)) return clean;
+    if (!/(\/public\/jimeng-assets\/|\/api\/assets\/file\/)/i.test(clean) || !/\.(png|jpe?g|webp)(?:[?#]|$)/i.test(clean)) return clean;
     try {
       const u = new URL(clean, location.origin);
       u.searchParams.set('thumb', String(Math.max(120, Math.min(1200, Number(width) || 480))));
@@ -17594,9 +17594,21 @@
     if (luxProjectDelete) {
       const id = luxProjectDelete.dataset.luxProjectDelete;
       if (!id) return;
+      const project = (state.luxuryAdProjects || []).find(x => String(x.id || '') === String(id)) || {};
+      const title = project.title || project.brief_info?.title || '剧情广告项目';
+      const ok = await DhConfirm({
+        title: '删除剧情广告任务？',
+        message: `确定删除「${escapeHtml(title)}」吗？`,
+        detail: '删除后会从任务中心移除这条待继续任务和关联任务档案，不会删除已经合成完成的作品文件。',
+        confirmText: '确认删除',
+        cancelText: '取消',
+        type: 'danger',
+      });
+      if (!ok) return;
       try {
-        await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
-        state.luxuryAdProjects = (state.luxuryAdProjects || []).filter(x => String(x.id || '') !== String(id));
+        const result = await api(`/api/dh/luxury-ad/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const removedIds = new Set([id, ...(Array.isArray(result?.removed) ? result.removed : [])].map(String));
+        state.luxuryAdProjects = (state.luxuryAdProjects || []).filter(x => !removedIds.has(String(x.id || '')));
         if (state.luxuryAd.productionProjectId === id) {
           state.luxuryAd.productionProjectId = '';
           state.luxuryAd.productionProject = null;
