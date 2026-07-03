@@ -3136,15 +3136,21 @@ function _fallbackLuxuryActorBibleFromSpec({
   reason = '',
 } = {}) {
   const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
-  const { contract } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint });
+  const { contract, fieldHardness } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint });
   const gender = _normalizeLuxuryRequestedGender(contract.gender || expectedGender) || 'unknown';
   const ageText = contract.age || 'brief-matched age impression';
   const originText = contract.origin || 'brief-matched origin impression';
   const roleText = contract.roleName || roleHint || 'brief-derived campaign character';
-  const appearanceText = contract.appearanceText || roleText;
-  const wardrobeText = contract.wardrobeText || 'brief-derived age-appropriate outfit';
-  const hairText = contract.hairMakeupText || 'brief-derived stable hairstyle and natural grooming';
-  const negativeText = contract.negativeText || '';
+  const appearanceText = fieldHardness.appearanceText
+    ? (contract.appearanceText || roleText)
+    : 'approved front candidate visible facial identity and body impression';
+  const wardrobeText = fieldHardness.wardrobeText
+    ? (contract.wardrobeText || 'brief-derived age-appropriate outfit')
+    : 'approved front candidate visible outfit, garment category, colors and footwear';
+  const hairText = fieldHardness.hairMakeupText
+    ? (contract.hairMakeupText || 'brief-derived stable hairstyle and natural grooming')
+    : 'approved front candidate visible hairstyle and natural grooming';
+  const negativeText = fieldHardness.negativeText ? (contract.negativeText || '') : '';
   const mustKeep = [
     peopleCount > 1 ? `same ${peopleCount} visible cast members` : 'same single visible actor identity',
     gender !== 'unknown' ? `visible gender presentation: ${gender}` : '',
@@ -3185,6 +3191,7 @@ function _fallbackLuxuryActorBibleFromSpec({
     mutable_fields: ['pose', 'expression', 'camera angle', 'hand gesture', 'neutral studio lighting'],
     observed: 'Actor bible fallback generated from approved front candidate and user person settings.',
     reason: _luxuryActorBibleField(reason || 'Vision actor-bible extraction was unavailable or too strict; required front QA had already passed.', 260),
+    field_hardness: fieldHardness,
   };
 }
 
@@ -3314,6 +3321,67 @@ function _luxuryBetterActorViewCandidate(candidate, current) {
   return _luxuryGeneratedActorViewScore(candidate) > _luxuryGeneratedActorViewScore(current) ? candidate : current;
 }
 
+function _luxuryActorSpecFieldSet(value) {
+  const arr = Array.isArray(value)
+    ? value
+    : (typeof value === 'string' ? value.split(/[,\s]+/) : []);
+  return new Set(arr.map(item => String(item || '').trim()).filter(Boolean));
+}
+
+function _luxuryActorSpecModeIsExplicit(value = '') {
+  const text = String(value || '').trim().toLowerCase();
+  return !!text && !/^(auto|match_brief|brief|ai|assist|suggested|generated|inferred|default|none)$/i.test(text);
+}
+
+function _luxuryActorSpecHasReferenceProfile(raw = {}, kind = 'face') {
+  const profiles = Array.isArray(raw.cast_profiles || raw.castProfiles) ? (raw.cast_profiles || raw.castProfiles) : [];
+  return profiles.some(profile => {
+    if (!profile || typeof profile !== 'object') return false;
+    const sourceType = String(profile.sourceType || profile.source_type || '').trim().toLowerCase();
+    const hasAsset = !!(
+      profile.referenceImageUrl || profile.reference_image_url || profile.image_url || profile.url
+      || profile.assetId || profile.asset_id || profile.actor_asset_id || profile.actor_id
+    );
+    if (!hasAsset && (!sourceType || sourceType === 'user_contract')) return false;
+    if (kind === 'wardrobe') {
+      const wardrobeMode = profile.wardrobe?.mode || profile.wardrobeMode || '';
+      return profile.identityLock?.outfit === true && _luxuryActorSpecModeIsExplicit(wardrobeMode || sourceType);
+    }
+    return hasAsset || profile.identityLock?.face === true;
+  });
+}
+
+function _luxuryActorSpecFieldHardness(spec = {}, contract = {}) {
+  const raw = spec && typeof spec === 'object' ? spec : {};
+  const manual = _luxuryActorSpecFieldSet(
+    raw._manualPersonSpecFields || raw.manualPersonSpecFields || raw.manual_fields || raw.manualFields
+  );
+  const auto = _luxuryActorSpecFieldSet(
+    raw._autoFilledPersonSpecFields || raw.autoFilledPersonSpecFields || raw.auto_filled_fields || raw.aiFilledFields
+  );
+  const fieldIsManual = field => manual.has(field);
+  const fieldIsAuto = field => auto.has(field);
+  const identityExplicit = _luxuryActorSpecModeIsExplicit(raw.identityMode || raw.identity_mode);
+  const wardrobeExplicit = _luxuryActorSpecModeIsExplicit(raw.wardrobeMode || raw.wardrobe_mode);
+  const negativeExplicit = _luxuryActorSpecModeIsExplicit(raw.negativeMode || raw.negative_mode);
+  const referenceFace = !!(raw.reference_person || raw.referencePerson || raw.personAsset || raw.person_asset)
+    || _luxuryActorSpecHasReferenceProfile(raw, 'face');
+  const referenceWardrobe = _luxuryActorSpecHasReferenceProfile(raw, 'wardrobe');
+  const hardIfText = (field, condition) => !!contract[field] && !fieldIsAuto(field) && (fieldIsManual(field) || condition);
+  return {
+    gender: !!contract.gender,
+    age: !!contract.age,
+    origin: false,
+    roleName: false,
+    appearanceText: hardIfText('appearanceText', identityExplicit || referenceFace),
+    wardrobeText: hardIfText('wardrobeText', wardrobeExplicit || referenceWardrobe),
+    hairMakeupText: hardIfText('hairMakeupText', identityExplicit || referenceFace),
+    negativeText: hardIfText('negativeText', negativeExplicit || fieldIsManual('negativeText')),
+    manual_fields: Array.from(manual),
+    auto_fields: Array.from(auto),
+  };
+}
+
 function _luxuryActorSpecQaContract(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
   const raw = spec && typeof spec === 'object' ? spec : {};
   const read = (...keys) => {
@@ -3342,10 +3410,11 @@ function _luxuryActorSpecQaContract(spec = {}, { expectedGender = '', roleHint =
     negativeText: clean(read('negativeText', 'negative', 'forbidden', 'negative_text'), 320),
     promptContext: clean(promptText, 420),
   };
+  const fieldHardness = _luxuryActorSpecFieldHardness(raw, contract);
   const activeKeys = Object.entries(contract)
     .filter(([key, value]) => value && key !== 'promptContext' && key !== 'displayName')
     .map(([key]) => key);
-  return { contract, activeKeys };
+  return { contract, activeKeys, fieldHardness };
 }
 
 async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
@@ -3364,7 +3433,7 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     err.code = 'LUXURY_ACTOR_SPEC_FILE_MISSING';
     throw err;
   }
-  const { contract, activeKeys } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
+  const { contract, activeKeys, fieldHardness } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
   if (!activeKeys.length) return null;
   const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
   const prompt = [
@@ -3375,14 +3444,17 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     `Expected visible people: ${peopleCount}. Cast mode: ${castMode || 'single'}. View: ${viewKey || 'actor reference'}. Model: ${model || 'unknown'}.`,
     'Dynamic person settings contract:',
     JSON.stringify(contract),
+    'Field hardness contract:',
+    JSON.stringify(fieldHardness),
     'Required matching rules:',
     '- Only enforce fields that are non-empty in the contract.',
-    '- For roleName, appearanceText and origin, mark match=true unless the image visibly contradicts an explicit visual requirement. Do not fail merely because occupation, temperament, nationality, or identity cannot be proven from a neutral studio casting photo.',
+    '- Use field_hardness semantics: hard=true fields may fail the candidate when visibly contradicted; hard=false fields are soft guidance only and must not fail a neutral usable casting photo.',
+    '- For roleName, appearanceText and origin, mark match=true unless the image visibly contradicts an explicit hard visual requirement. Do not fail merely because occupation, temperament, nationality, or identity cannot be proven from a neutral studio casting photo.',
     '- Hard fail if explicit origin/ethnicity/region visibly conflicts with the person impression. If it is not visually decidable, set origin_match=true and mention uncertainty in observed.',
-    '- Hard fail if explicit wardrobeText conflicts with the actual visible outfit, especially top/bottom garment type, skirt/pants/dress, shoes, color family or style.',
+    '- Hard fail on wardrobeText only when field_hardness.wardrobeText is true and the actual visible outfit conflicts with garment type, shoes, color family or style. If field_hardness.wardrobeText is false, score it as a soft mismatch but do not fail.',
     '- Hard fail if explicit age or gender conflicts with the visible person impression.',
-    '- Hard fail if explicit roleName, hairMakeupText or appearanceText is visibly contradicted by the image.',
-    '- Hard fail if a negativeText item is visibly present.',
+    '- Hard fail on hairMakeupText or appearanceText only when their field_hardness value is true and the image visibly contradicts them. If hard=false, treat them as soft style guidance.',
+    '- Hard fail on negativeText only when field_hardness.negativeText is true and a negative item is visibly present. Auto-generated negativeText is soft guidance.',
     '- For side/action views, allow face details to be slightly less frontal, but at least one eye and enough facial structure must remain visible; still enforce outfit, hair length/style, age/gender impression, origin impression where visible, and negative constraints.',
   ].join(' ');
   let parsed;
@@ -3427,31 +3499,46 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
   const negativeMismatchText = semanticMismatches.filter(item =>
     /negative|forbidden|logo|brand|occupation|student|doctor|waiter|messy|filter|retouch|over.?smooth|禁止|负面|品牌|职业|学生|医生|服务员|杂乱|滤镜|磨皮|失真/i.test(String(item || '')));
   const negativeHardOk = !contract.negativeText
+    || !fieldHardness.negativeText
     || parsed.negative_constraints_ok === true
     || negativeMismatchText.length === 0;
   const hardSpecFieldsOk = requireBool('gender', 'gender_match')
     && requireBool('age', 'age_match')
-    && requireBool('wardrobeText', 'wardrobe_match')
-    && requireBool('hairMakeupText', 'hair_makeup_match')
+    && (!fieldHardness.appearanceText || requireBool('appearanceText', 'appearance_match'))
+    && (!fieldHardness.wardrobeText || requireBool('wardrobeText', 'wardrobe_match'))
+    && (!fieldHardness.hairMakeupText || requireBool('hairMakeupText', 'hair_makeup_match'))
     && negativeHardOk;
   const softSpecFieldsOk = requireBool('origin', 'origin_match')
     && requireBool('roleName', 'role_match')
-    && requireBool('appearanceText', 'appearance_match');
-  const hardMismatchText = semanticMismatches.filter(item =>
-    /gender|sex|age|wardrobe|outfit|clothing|dress|skirt|pants|trousers|shoe|footwear|hair|makeup|negative|forbidden|性别|年龄|服装|穿着|裙|裤|鞋|发型|妆|禁止|负面/i.test(String(item || '')));
+    && (!contract.appearanceText || fieldHardness.appearanceText || parsed.appearance_match === true)
+    && (!contract.wardrobeText || fieldHardness.wardrobeText || parsed.wardrobe_match === true)
+    && (!contract.hairMakeupText || fieldHardness.hairMakeupText || parsed.hair_makeup_match === true);
+  const hardMismatchText = semanticMismatches.filter(item => {
+    const text = String(item || '');
+    if (/gender|sex|性别/i.test(text)) return true;
+    if (/age|年龄/i.test(text)) return true;
+    if (fieldHardness.appearanceText && /appearance|look|face|body|temperament|外貌|气质|脸|身形/i.test(text)) return true;
+    if (fieldHardness.wardrobeText && /wardrobe|outfit|clothing|dress|skirt|pants|trousers|shoe|footwear|服装|穿着|裙|裤|鞋/i.test(text)) return true;
+    if (fieldHardness.hairMakeupText && /hair|makeup|grooming|发型|头发|妆/i.test(text)) return true;
+    if (fieldHardness.negativeText && /negative|forbidden|禁止|负面/i.test(text)) return true;
+    return false;
+  });
   const softMismatchText = semanticMismatches.filter(item => !hardMismatchText.includes(item));
   const positiveText = _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
   const hardExplicitReject = [
     parsed.gender_match,
     parsed.age_match,
-    parsed.wardrobe_match,
-    parsed.hair_makeup_match,
+    fieldHardness.appearanceText ? parsed.appearance_match : undefined,
+    fieldHardness.wardrobeText ? parsed.wardrobe_match : undefined,
+    fieldHardness.hairMakeupText ? parsed.hair_makeup_match : undefined,
   ].some(value => value === false);
-  const negativeExplicitReject = contract.negativeText && parsed.negative_constraints_ok === false && negativeMismatchText.length > 0;
+  const negativeExplicitReject = contract.negativeText && fieldHardness.negativeText && parsed.negative_constraints_ok === false && negativeMismatchText.length > 0;
   const softExplicitReject = [
     parsed.origin_match,
     parsed.role_match,
-    parsed.appearance_match,
+    !fieldHardness.appearanceText ? parsed.appearance_match : undefined,
+    !fieldHardness.wardrobeText ? parsed.wardrobe_match : undefined,
+    !fieldHardness.hairMakeupText ? parsed.hair_makeup_match : undefined,
     ...(contract.negativeText && parsed.negative_constraints_ok === false && !negativeExplicitReject ? [false] : []),
   ].some(value => value === false);
   const specRequiredFieldsOverride = parsed.pass !== true
@@ -3460,11 +3547,9 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     && !hardExplicitReject
     && !negativeExplicitReject
     && hardMismatchText.length === 0
-    && semanticMismatches.length <= 2
+    && semanticMismatches.length <= 3
     && parsed.gender_match === true
-    && parsed.age_match === true
-    && parsed.wardrobe_match === true
-    && parsed.hair_makeup_match === true;
+    && parsed.age_match === true;
   const specPositiveOverride = parsed.pass !== true
     && score >= 88
     && positiveText
@@ -3484,6 +3569,7 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     score,
     active_keys: activeKeys,
     contract,
+    field_hardness: fieldHardness,
     gender_match: parsed.gender_match === true,
     origin_match: parsed.origin_match === true,
     age_match: parsed.age_match === true,
@@ -16579,23 +16665,24 @@ function _luxuryActorAllowsBarefoot({ text = '', descriptionText = '', personCon
 }
 
 function _luxuryActorExplicitPersonSettingsPrompt(spec = {}, { expectedGender = '', roleHint = '', promptText = '' } = {}) {
-  const { contract, activeKeys } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
+  const { contract, activeKeys, fieldHardness } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint, promptText });
   const lines = [];
-  if (contract.gender) lines.push(`Visible gender presentation: ${contract.gender}.`);
-  if (contract.origin) lines.push(`Region/ethnicity impression: ${contract.origin}.`);
-  if (contract.age) lines.push(`Age range/impression: ${contract.age}.`);
-  if (contract.roleName) lines.push(`Role/identity/job: ${contract.roleName}.`);
-  if (contract.appearanceText) lines.push(`Appearance and temperament: ${contract.appearanceText}.`);
-  if (contract.wardrobeText) lines.push(`Wardrobe/clothing hard constraint: ${contract.wardrobeText}.`);
-  if (contract.hairMakeupText) lines.push(`Hair, makeup and grooming hard constraint: ${contract.hairMakeupText}.`);
-  if (contract.negativeText) lines.push(`Visible negative constraints: ${contract.negativeText}.`);
+  const label = (field, hardText, softText) => fieldHardness[field] ? hardText : softText;
+  if (contract.gender) lines.push(`Visible gender presentation hard lock: ${contract.gender}.`);
+  if (contract.origin) lines.push(`Region/ethnicity impression guidance: ${contract.origin}.`);
+  if (contract.age) lines.push(`Age range/impression hard lock: ${contract.age}.`);
+  if (contract.roleName) lines.push(`Role/identity/job guidance: ${contract.roleName}.`);
+  if (contract.appearanceText) lines.push(`${label('appearanceText', 'Appearance and temperament hard lock', 'Appearance and temperament guidance')}: ${contract.appearanceText}.`);
+  if (contract.wardrobeText) lines.push(`${label('wardrobeText', 'Wardrobe/clothing hard lock', 'Wardrobe/clothing preferred direction')}: ${contract.wardrobeText}.`);
+  if (contract.hairMakeupText) lines.push(`${label('hairMakeupText', 'Hair, makeup and grooming hard lock', 'Hair, makeup and grooming preferred direction')}: ${contract.hairMakeupText}.`);
+  if (contract.negativeText) lines.push(`${label('negativeText', 'Visible negative hard constraints', 'Visible negative guidance')}: ${contract.negativeText}.`);
   if (!lines.length) return '';
   return [
-    'STRICT CURRENT PERSON SETTINGS LOCK: follow the user-provided person settings below for this actor package. These settings are dynamic for the current brief; do not replace them with a generic beauty model, business presenter, student, influencer, or any fixed template.',
+    'CURRENT PERSON SETTINGS: follow the dynamic person settings below for this actor package. hard lock fields must be obeyed exactly; guidance fields are preferred directions and must not block generation of a usable casting photo. Do not replace them with a generic beauty model, business presenter, student, influencer, or any fixed template.',
     ...lines,
-    'If a field is explicit, keep it stable across front, side, back and action views. Outfit, hair length/style, age impression, region impression and role must not drift between views.',
+    'Keep hard lock fields stable across front, side, back and action views. For guidance fields, keep the actual accepted front-view result stable after it passes QA.',
     'When a field is empty, infer only from the current brief, script and reference assets; do not invent a default occupation, outfit, demographic or scene.',
-    `Active locked fields: ${activeKeys.join(', ') || 'none'}.`,
+    `Active fields: ${activeKeys.join(', ') || 'none'}. Hardness: ${JSON.stringify(fieldHardness)}.`,
   ].join(' ');
 }
 

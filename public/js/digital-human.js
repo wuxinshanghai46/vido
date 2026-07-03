@@ -170,6 +170,8 @@
         hairMakeupText: '',
         temperamentText: '',
         negativeText: '',
+        _autoFilledPersonSpecFields: [],
+        _manualPersonSpecFields: [],
       },
       castProfiles: [],
       productProfile: null,
@@ -4267,6 +4269,8 @@
       hairMakeupText: '',
       temperamentText: '',
       negativeText: '',
+      _autoFilledPersonSpecFields: [],
+      _manualPersonSpecFields: [],
     };
     state.luxuryAd.castProfiles = [];
     state.luxuryAd.productProfile = null;
@@ -7425,7 +7429,7 @@
       negativeText: String(spec.negativeText || '').trim(),
       identityLock: {
         face: !!state.luxuryAd.personAsset,
-        outfit: !!String(spec.wardrobeText || '').trim(),
+        outfit: !!String(spec.wardrobeText || '').trim() && luxuryPersonSpecFieldIsManual(spec, 'wardrobeText'),
       },
     }];
   }
@@ -7537,9 +7541,46 @@
       hairMakeupText: '',
       temperamentText: '',
       negativeText: '',
+      _autoFilledPersonSpecFields: [],
+      _manualPersonSpecFields: [],
       ...(state.luxuryAd.personSpec || {}),
     };
     return state.luxuryAd.personSpec;
+  }
+
+  const LUXURY_PERSON_SPEC_SOURCE_FIELDS = new Set([
+    'castMode',
+    'gender',
+    'age',
+    'origin',
+    'roleName',
+    'displayName',
+    'appearanceText',
+    'wardrobeText',
+    'hairMakeupText',
+    'negativeText',
+  ]);
+
+  function markLuxuryPersonSpecFieldSource(spec, field, source) {
+    if (!spec || !LUXURY_PERSON_SPEC_SOURCE_FIELDS.has(field)) return;
+    const manual = new Set(Array.isArray(spec._manualPersonSpecFields) ? spec._manualPersonSpecFields : []);
+    const auto = new Set(Array.isArray(spec._autoFilledPersonSpecFields) ? spec._autoFilledPersonSpecFields : []);
+    if (source === 'manual') {
+      auto.delete(field);
+      if (String(spec[field] || '').trim()) manual.add(field);
+      else manual.delete(field);
+    } else if (source === 'auto') {
+      if (!manual.has(field) && String(spec[field] || '').trim()) auto.add(field);
+    } else if (source === 'clear') {
+      manual.delete(field);
+      auto.delete(field);
+    }
+    spec._manualPersonSpecFields = Array.from(manual);
+    spec._autoFilledPersonSpecFields = Array.from(auto);
+  }
+
+  function luxuryPersonSpecFieldIsManual(spec, field) {
+    return Array.isArray(spec?._manualPersonSpecFields) && spec._manualPersonSpecFields.includes(field);
   }
 
   function luxuryPersonGenerationActive() {
@@ -7632,9 +7673,11 @@
       const suggestion = r.person_spec || {};
       let changed = 0;
       Object.entries(suggestion).forEach(([key, value]) => {
+        if (!LUXURY_PERSON_SPEC_SOURCE_FIELDS.has(key)) return;
         const current = String(spec[key] || '').trim();
         if (!current || (key === 'castMode' && current === 'auto') || (key === 'gender' && current === 'auto') || (key === 'age' && current === 'match_brief')) {
           spec[key] = value || spec[key];
+          markLuxuryPersonSpecFieldSource(spec, key, 'auto');
           if (value) changed += 1;
         }
       });
@@ -18188,7 +18231,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       }
       const field = e.target.dataset.luxPersonSpec;
       setLuxuryAdRouteFocus('person');
-      luxuryAdPersonSpec()[field] = e.target.value || '';
+      const spec = luxuryAdPersonSpec();
+      spec[field] = e.target.value || '';
+      markLuxuryPersonSpecFieldSource(spec, field, 'manual');
       resetLuxuryAdProjectIdentityForNewBrief();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
@@ -18283,7 +18328,9 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         return;
       }
       const field = e.target.dataset.luxPersonSpec;
-      luxuryAdPersonSpec()[field] = e.target.value || '';
+      const spec = luxuryAdPersonSpec();
+      spec[field] = e.target.value || '';
+      markLuxuryPersonSpecFieldSource(spec, field, 'manual');
       resetLuxuryAdProjectIdentityForNewBrief();
       if (state.luxuryAd.storyboardDetailed) {
         state.luxuryAd.storyboardDetailed = false;
