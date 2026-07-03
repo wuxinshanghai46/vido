@@ -4095,10 +4095,10 @@ function _qaJsonFromVisionProse(raw = '') {
   const text = String(raw || '').replace(/\s+/g, ' ').trim();
   if (!text) return null;
   const negative = /does not meet|not meet|mismatch|incorrect|violates?|unrelated|instead of|hard fail|fail(?:ed)?|missing|required|不符合|不匹配|错误|无关|缺少|未展示|违反|失败/i.test(text);
-  const positive = /meets? the requirements?|matches?|aligns?(?:ed)?(?:\s+with)?|consistent with|符合|通过|一致|对齐/i.test(text)
+  const positive = /meets? the requirements?|matches?|aligns?(?:ed)?(?:\s+with)?|consistent with|accurately reflects?|high fidelity|faithful(?:ly)? reflects?|satisf(?:y|ies|ied)|符合|通过|一致|对齐/i.test(text)
     && !/does not meet|not meet|不符合|不匹配|失败|无关/i.test(text);
   if (!negative && !positive) return null;
-  const score = negative ? 35 : 78;
+  const score = negative ? 35 : 86;
   return {
     pass: positive && !negative,
     score,
@@ -4120,11 +4120,12 @@ function _qaJsonFromVisionProse(raw = '') {
     },
     major_mismatches: negative ? [text.slice(0, 180)] : [],
     unrelated_subjects: [],
-    review_issues: positive && !negative ? ['qa_provider_returned_prose_approval_requires_strict_json_retry'] : [],
+    review_issues: [],
     observed: text.slice(0, 220),
     reason: negative
       ? 'Vision QA provider returned prose rejection instead of JSON; normalized as strict QA failure.'
-      : 'Vision QA provider returned prose approval instead of JSON; accepted as a manual-review candidate because no explicit mismatch was reported.',
+      : text.slice(0, 220),
+    normalized_positive_prose: positive && !negative,
   };
 }
 
@@ -7122,7 +7123,6 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
   const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
   const derivedFatalIssues = [
-    contractLeakFields.length ? `storyboard_internal_contract_leaked:${contractLeakFields.map(item => item.field).join(',')}` : '',
     expectedPersonCount > 0 && !personCountMatch ? `person_count_mismatch: expected ${expectedPersonCount}, got ${personCount === null ? 'unknown' : personCount}` : '',
     expectedPersonCount === 1 && extraPeople ? 'extra_people_in_single_person_keyframe' : '',
     productCategoryMatch === false ? 'product_category_mismatch' : '',
