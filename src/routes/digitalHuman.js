@@ -19229,7 +19229,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     };
     const isRetryableLuxuryAgentModelError = (err) => {
       const msg = String(err?.message || err || '');
-      return /400\s+status\s+code\s+\(no body\)|402|insufficient\s+(balance|quota)|quota|overdue|balance|no available channel|channel.*(disabled|unavailable)|model_not_found|model.*(not found|unavailable)|api key|timeout|ECONNRESET|ETIMEDOUT|429|503/i.test(msg);
+      return /400\s+status\s+code\s+\(no body\)|\b404\b|not\s+found|invalid[_\s-]?request|无\s*choices\s*内容|LLM\s*返回异常|402|insufficient\s+(balance|quota)|quota|overdue|balance|no available channel|channel.*(disabled|unavailable)|model_not_found|model.*(not found|unavailable)|api key|timeout|ECONNRESET|ETIMEDOUT|429|503/i.test(msg);
     };
     const callLuxuryStageLLM = async ({ name, systemPrompt, userPrompt, maxTokens, pipelineStageId, requestId, skipKB = false, modelPref = undefined }) => {
       const queue = modelPref !== undefined ? [modelPref] : luxuryAgentModelQueue(pipelineStageId);
