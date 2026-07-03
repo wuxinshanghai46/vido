@@ -2505,6 +2505,11 @@ function _luxuryStageRequiresAdminConfig(stageId = '') {
   return /^luxury_ad\./i.test(String(stageId || ''));
 }
 
+function _luxuryStageDisablesWebangMaas(stageId = '', model = {}) {
+  return /^luxury_ad\./i.test(String(stageId || ''))
+    && String(model?.provider_id || '').trim().toLowerCase() === 'webang-maas';
+}
+
 function _pickRunnablePipelineModels(stageId, options = {}) {
   try {
     const pms = require('../services/pipelineModelService');
@@ -2525,6 +2530,7 @@ function _pickRunnablePipelineModels(stageId, options = {}) {
         : [_pickPipelineModel(stageId)].filter(Boolean));
     return (list || [])
       .filter(m => m && m.enabled !== false)
+      .filter(m => !_luxuryStageDisablesWebangMaas(stageId, m))
       .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999))
       .filter(m => _pipelineModelRunnable(m, { ignoreProviderModelEnabled }));
   } catch {
@@ -2540,6 +2546,7 @@ function _pickConfiguredPipelineModels(stageId) {
       : [_pickPipelineModel(stageId)].filter(Boolean);
     return (list || [])
       .filter(m => m && m.enabled !== false)
+      .filter(m => !_luxuryStageDisablesWebangMaas(stageId, m))
       .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
   } catch {
     return [];
@@ -2741,7 +2748,7 @@ function _isLuxuryActorQaUnavailableError(err) {
 function _luxuryActorQaTextLooksPositive(...parts) {
   const text = parts.filter(Boolean).join(' ').toLowerCase();
   if (!text) return false;
-  const positive = /meets all criteria|matches|match(?:es|ed)? the reference|aligned|consistent|no mismatch|符合|通过|一致|匹配/.test(text);
+  const positive = /meets all (?:criteria|requirements)|meets every (?:criterion|requirement)|all (?:criteria|requirements) (?:are )?(?:met|satisfied)|appropriate framing|visible footwear|gender presentation|realistic actor reference photo|full[-\s]?body reference|matches|match(?:es|ed)? the reference|aligned|consistent|no mismatch|符合|通过|一致|匹配/.test(text);
   const negative = /hard fail|fail(?:ed|s)?|does not|not match|mismatch|different|contradict|missing|required|cropped|headshot|bust|waist-up|no lower|barefoot|extra people|wrong|不通过|不符合|不一致|缺少|错误|冲突/.test(text);
   return positive && !negative;
 }
@@ -2853,10 +2860,15 @@ async function _checkLuxuryActorAssetFramingQa(req, localPath, { viewKey = '', m
   const lowerGarmentVisible = parsed.trousers_or_skirt_visible === true
     || (positiveText && /trousers?|pants?|jeans|skirt|dress|lower garment|shoes?|sneakers?|footwear|裤|裙|鞋/i.test([parsed.reason, parsed.observed].join(' ')));
   const qaText = [parsed.reason, parsed.observed, ...mismatches].join(' ');
+  const explicitTinyReject = /tiny|small inset|distant|too small|小人|过小|远处|贴片|插图|小图/i.test(qaText);
+  const positiveFramingEvidence = positiveText
+    && /appropriate framing|full[-\s]?body|knee[-\s]?up|thigh[-\s]?up|visible footwear|realistic actor reference|casting\/reference|完整|全身|膝上/i.test(qaText);
+  const explicitLargeEmptyReject = /large empty|mostly empty|blank canvas|black canvas|empty black|mostly black|大面积空|大面积黑|黑底|空白背景|留白过大/i.test(qaText);
   const actorLargeEnough = parsed.actor_large_enough === true
-    || (positiveText && !/tiny|small inset|distant|too small|小人|过小|远处|贴片|插图|小图/.test(qaText));
+    || (positiveText && !explicitTinyReject);
   const largeEmptyBackground = parsed.large_empty_background === true
-    || /large empty|mostly empty|blank canvas|black canvas|black background|empty black|大面积空|大面积黑|黑底|空白背景|留白过大/i.test(qaText);
+    ? !(positiveFramingEvidence && actorLargeEnough && mismatches.length === 0 && !explicitLargeEmptyReject)
+    : explicitLargeEmptyReject;
   const insetOrTinyPerson = parsed.inset_or_tiny_person === true
     || /tiny|small inset|picture-in-picture|sticker|distant figure|contact sheet|poster layout|horizontal banner|小人|贴片|插图|小图|横幅|拼图/i.test(qaText);
   const acceptableFraming = /^(full_body|knee_up|thigh_up)$/.test(framing);
