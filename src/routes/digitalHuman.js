@@ -4500,6 +4500,12 @@ function _luxuryIsRobotAssistantSubject(...parts) {
   return _luxuryHasExplicitRobotAssistantSubjectText(text);
 }
 
+function _luxuryHasExplicitAnimalSubjectText(value = '') {
+  let text = String(value || '');
+  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|hard negative|must[_\s-]?not[_\s-]?show|do not|without|no)\s*[^。；;.!?]{0,80}(?:宠物|小狗|狗狗|狗|犬|金毛|萨摩耶|猫|猫咪|动物|毛孩子|\bpet\b|\bdog\b|\bcat\b|\banimal\b)/ig, ' ');
+  return /宠物|小狗|狗狗|犬|金毛|萨摩耶|猫咪|动物|毛孩子|\bpet\b|\bdog\b|\bcat\b|\banimal\b/i.test(text);
+}
+
 function _luxuryHasExplicitSweeperRobotText(...parts) {
   const text = parts.map(x => typeof x === 'object' ? JSON.stringify(x || {}) : String(x || '')).join(' ');
   return /(扫地机器人|扫地|拖地|吸尘|清洁机器人|清洁设备|地面清洁|vacuum|sweeper|floor\s*clean|cleaning\s*robot)/i.test(text);
@@ -4533,6 +4539,20 @@ function _luxuryUnconfirmedRobotDriftGuard({ productSubject = '', brief = '', sc
     'Do not add a robot, android, mechanical assistant, service robot, robotic mascot, robot screen, robot hand, robot delivery helper, smart-home robot, sweeper/vacuum robot, or humanoid machine as a subject, prop, helper or background character.',
     'Do not turn product delivery, product proof, service response, smart solution wording, technology mood, automation, precision, material samples, UI/status feedback or customer support into a robot character.',
     'If the shot needs proof of service or technology, show only the confirmed product, interface, human action, document, sample, device, space or result evidence named by this storyboard.',
+  ].join(' ');
+}
+
+function _luxuryUnconfirmedAnimalDriftGuard({ productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
+  const source = [
+    productSubject,
+    brief,
+    allowSceneExplicit && scene ? _luxuryConfirmedDemandText(productSubject, scene, { allowSceneExplicit: true }) : '',
+  ].filter(Boolean).join(' ');
+  if (_luxuryHasExplicitAnimalSubjectText(source)) return '';
+  return [
+    'UNCONFIRMED ANIMAL/PET DRIFT HARD NEGATIVE: this campaign is not a pet/animal story unless the current brief or confirmed storyboard explicitly says so.',
+    'Do not add a dog, cat, pet, puppy, animal companion, pet avatar, pet photo, pet toy, pet bowl, leash, kennel, grass pet-play scene, or animal mascot as a subject, prop, UI/avatar image or background element.',
+    'Do not turn service proof, friendly lifestyle mood, dashboard avatars, placeholder images, customer examples, user profiles, reliability examples or warm office scenes into pet content.',
   ].join(' ');
 }
 
@@ -4597,6 +4617,7 @@ function _luxuryUnconfirmedDriftLabels(productSubject = '', scene = {}, opts = {
   const subjectText = [productSubject, opts.brief].filter(Boolean).join(' ');
   const labels = [];
   const hasExplicitRobot = _luxuryHasExplicitRobotAssistantSubjectText(confirmed);
+  const hasExplicitAnimal = _luxuryHasExplicitAnimalSubjectText(confirmed);
   const hasExplicitSoftware = _luxuryIsSoftwareWorkflowSubject(productSubject || scene?.product_subject || '', scene)
     || _luxuryHasExplicitSoftwareOpsText(confirmed);
   const hasExplicitRetail = /货架|仓库|库存|订单|补货|门店|零售|超市|shelf|warehouse|inventory|order|retail/i.test(confirmed);
@@ -4605,6 +4626,7 @@ function _luxuryUnconfirmedDriftLabels(productSubject = '', scene = {}, opts = {
   if (!_luxuryHasExplicitRobotAssistantSubjectText(subjectText) && !hasExplicitRobot) {
     labels.push('robot/android/mechanical assistant/industrial automation subject');
   }
+  if (!hasExplicitAnimal) labels.push('dog, cat, pet, animal companion, pet avatar/photo or pet-life scene');
   if (!hasExplicitSoftware) {
     labels.push('generic dashboard, code screen, backend console, order/inventory UI or phone-app carrier');
   }
@@ -6658,6 +6680,7 @@ function _buildLuxuryVisualLocks({
   });
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief, scene: manifest });
   const nonRobotGuard = _luxuryUnconfirmedRobotDriftGuard({ productSubject: subject, brief, scene: manifest });
+  const nonAnimalGuard = _luxuryUnconfirmedAnimalDriftGuard({ productSubject: subject, brief, scene: manifest });
   const realityPrompt = [
     'REALITY LOCK: every keyframe must look like a real live-action commercial shot captured in a believable social/workplace setting, not an AI poster.',
     `Real-world scene basis: ${realScene}.`,
@@ -6667,6 +6690,7 @@ function _buildLuxuryVisualLocks({
     'Use practical location light and real camera perspective. Avoid fantasy lighting, glossy render, plastic skin, over-clean showroom, generic luxury props, sci-fi decor and abstract background.',
     robotGuard,
     nonRobotGuard,
+    nonAnimalGuard,
   ].join(' ');
   const productPrompt = softwareWorkflow
     ? [
@@ -6677,6 +6701,7 @@ function _buildLuxuryVisualLocks({
       'Do not replace the campaign with cosmetics, perfume, skincare, beverage, jewelry, watches, random retail goods, sci-fi lab UI, or a generic phone advertisement.',
       robotGuard,
       nonRobotGuard,
+      nonAnimalGuard,
     ].filter(Boolean).join(' ')
     : [
       `PRODUCT LOCK: advertised subject is ${subject}.`,
@@ -6684,6 +6709,7 @@ function _buildLuxuryVisualLocks({
       'Preserve category, shape, color, material, package/logo details when visible; do not redesign, rename, replace with cosmetics/perfume/beverage/phone/watch/jewelry/random stock goods.',
       robotGuard,
       nonRobotGuard,
+      nonAnimalGuard,
     ].filter(Boolean).join(' ');
   const scenePrompt = [
     `SCENE LOCK: use the uploaded or inferred real environment as the campaign world: ${realScene}.`,
@@ -6700,6 +6726,7 @@ function _buildLuxuryVisualLocks({
       ? 'Use only story-appropriate props that support the robot/assistant task. Do not add laptop, desktop screen, sweeper robot, cleaning appliance or control dashboard unless explicitly required by the brief or shot.'
       : 'Use story-appropriate practical props such as phone, paper order, sample, box, counter, tool or screen only when they support the brief and uploaded references. Do not introduce a robot or mechanical helper as a prop.',
     nonRobotGuard,
+    nonAnimalGuard,
   ].filter(Boolean).join(' ');
   const uiPrompt = [
     uiItems ? `UI LOCK: uploaded UI/interface evidence: ${uiItems}.` : '',
@@ -6842,6 +6869,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
   const unconfirmedRobotGuard = _luxuryUnconfirmedRobotDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
+  const unconfirmedAnimalGuard = _luxuryUnconfirmedAnimalDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
@@ -6867,6 +6895,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     product_subject_type: robotAssistantSubject ? 'robot_assistant_product' : (softwareWorkflowSubject ? 'software_service_workflow' : 'physical_or_material_product'),
     robot_assistant_guard: robotAssistantGuard,
     unconfirmed_robot_guard: unconfirmedRobotGuard,
+    unconfirmed_animal_guard: unconfirmedAnimalGuard,
     software_workflow_evidence_required: softwareWorkflowSubject
       ? [
           _luxurySoftwareWorkflowEvidencePrompt(subject),
@@ -6957,6 +6986,9 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       : '',
     !robotAssistantSubject
       ? 'For non-robot subjects, hard fail if a robot, android, mechanical assistant, service robot, robotic mascot, robot hand/body/screen, sweeper/vacuum robot, humanoid machine, or robot helper appears as a subject, prop, delivery agent, support assistant, background character, or technology metaphor unless the original brief or confirmed storyboard explicitly requested a robot.'
+      : '',
+    unconfirmedAnimalGuard
+      ? 'For non-animal subjects, hard fail if a dog, cat, pet, puppy, animal companion, pet photo/avatar, pet toy/bowl/leash, animal mascot, or pet-life scene appears as a subject, prop, UI image, user avatar, background detail, lifestyle metaphor or extra character unless the original brief or confirmed storyboard explicitly requested it.'
       : '',
     'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
     'If segment_contract is present, judge scene_continuity against that segment contract: the same segment should keep its space anchor, subject relationship, props/evidence chain and lighting logic. Do not require the same exact composition; require believable continuity.',
@@ -26994,12 +27026,12 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
     [/\bspeaking\b/gi, 'presenting'],
     [/\bvoice\s+selection\b/gi, 'audio option controls'],
     [/\bvoice\b/gi, 'audio option'],
-    [/\bAPI\s*key\b/gi, 'integration credential placeholder'],
+    [/\bAPI\s*key\b/gi, 'abstract secure integration status icon'],
     [/\bAPI\b/gi, 'integration interface'],
-    [/\bsecret\b/gi, 'credential placeholder'],
-    [/\btoken\b/gi, 'credential placeholder'],
+    [/\bsecret\b/gi, 'abstract secure field icon'],
+    [/\btoken\b(?!\s*(?:platform|aggregation|billing|pricing|usage|budget|cost|management|metering|平台|聚合|计费|用量|额度|成本|消耗|管理))/gi, 'abstract secure field icon'],
     [/\bcallback\b/gi, 'integration response indicator'],
-    [/\bkey\s+generation\b/gi, 'credential setup indicator'],
+    [/\bkey\s+generation\b/gi, 'account setup status icon'],
     [/\binterface\s+status\b/gi, 'connection status indicator'],
     [/\bAd\b/g, 'campaign'],
     [/['"]Novel['"]/g, 'writing module icon'],
@@ -27011,7 +27043,9 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
     text = text.replace(pattern, replacement);
   }
   text = text
-    .replace(/(密码|密钥|口令|令牌|token|secret|password|api\s*key|key\s+generation)/ig, 'credential placeholder')
+    .replace(/(密码|密钥|口令|令牌|password|api\s*key|key\s+generation)/ig, 'abstract secure field icon')
+    .replace(/\bsecret\b/ig, 'abstract secure field icon')
+    .replace(/\btoken\b(?!\s*(?:platform|aggregation|billing|pricing|usage|budget|cost|management|metering|平台|聚合|计费|用量|额度|成本|消耗|管理))/ig, 'abstract secure field icon')
     .replace(/(回调|callback|调用成功|接口状态|interface\s+status)/ig, 'integration status indicator')
     .replace(/(数字人)(?=向导|模块|输出|口播|说话|站在|生成|图标|功能|视频|$)/g, '屏幕演示人物')
     .replace(/(口播|说话|开口说话)/g, '演示表达')
@@ -27024,7 +27058,7 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
   if (softwareWorkflowSubject) {
     text = [
       text,
-      'Provider-submission safety: render software, account, integration, audio, presenter-output and campaign modules as abstract non-readable interface icons, status blocks, timelines, thumbnails, preview cards, or pseudo-code line blocks. Do not render actual credential strings, account data, sensitive readable records, or explicit speech bubbles.',
+      'Provider-submission safety: render software, account, integration, audio, presenter-output and campaign modules as abstract non-readable interface icons, status blocks, timelines, thumbnails, preview cards, or pseudo-code line blocks. Do not render actual credential strings, placeholder words, account data, sensitive readable records, or explicit speech bubbles.',
     ].join(' ');
   }
   return _luxuryCapImageModelPrompt(text, softwareWorkflowSubject ? 1900 : 1500);
@@ -27033,7 +27067,8 @@ function _luxuryDeyunaiGptImage2AuditSafePrompt(prompt = '', { softwareWorkflowS
 function _luxuryDeyunaiAuditNeutralText(value = '', max = 180) {
   return _compactLuxuryKeyframeText(value, max)
     .replace(/\bDigital\s+Human\b|\bdigital[-\s]?human\b/gi, 'onscreen presenter output')
-    .replace(/\bAPI\s*key\b|\bAPI\b|\bsecret\b|\btoken\b|\bpassword\b|\bcallback\b|\bvoice\b|\bspeaking\b/gi, 'abstract interface signal')
+    .replace(/\bAPI\s*key\b|\bAPI\b|\bsecret\b|\bpassword\b|\bcallback\b|\bvoice\b|\bspeaking\b/gi, 'abstract interface signal')
+    .replace(/\btoken\b(?!\s*(?:platform|aggregation|billing|pricing|usage|budget|cost|management|metering|平台|聚合|计费|用量|额度|成本|消耗|管理))/gi, 'abstract interface signal')
     .replace(/数字人|口播|说话|开口说话/g, '屏幕演示人物')
     .replace(/广告|投放|营销/g, '内容成品')
     .replace(/密钥|密码|令牌|接口|回调|调用成功|代码|账号|登录/g, '抽象状态')
@@ -27061,6 +27096,7 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
   const carrier = _luxuryDeyunaiAuditNeutralText(_luxuryWorkflowCarrierFromScene(scene, productSubject || scene.product_subject || subject, { allowSceneExplicit: true }), 180);
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(productSubject || scene.product_subject || subject);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: '', scene, allowSceneExplicit: true });
+  const unconfirmedAnimalGuard = _luxuryUnconfirmedAnimalDriftGuard({ productSubject: productSubject || scene.product_subject || subject, brief: '', scene, allowSceneExplicit: true });
   const actor = personRequired
     ? 'Use the same actor appearance from the reference image; keep face impression, age range, hairstyle and outfit family consistent.'
     : 'Include a person only if the shot requires it.';
@@ -27071,6 +27107,7 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
       ? `Subject context: ${subject} shown as a robot/assistant helping in a real task scene.`
       : `Subject context: ${subject} shown as a real creator workflow moment.`,
     robotAssistantGuard,
+    unconfirmedAnimalGuard,
     narration ? `Story beat to express: ${narration}.` : '',
     action ? `Actor action: ${action}.` : `Actor works naturally with the shot-confirmed evidence: ${carrier}.`,
     emotion ? `Expression direction: ${emotion}.` : '',
@@ -27083,7 +27120,7 @@ function _luxuryDeyunaiGptImage2MinimalAuditPrompt({
         ? 'Any interface must be the robot/service own interaction surface, status panel or result feedback required by this shot; no generic dashboard or computer UI.'
         : 'Any interface or device evidence must be abstract and non-readable, and only appear when the shot asks for it.'),
     apiIntegrationShot ? 'Use the phone only as secondary platform proof; avoid phone-only app mockups, comic/storyboard editing boards, video editing timelines and generic UI poster layouts.' : '',
-    'Keep the frame clean: no captions, slogans, watermarks, posters, floating diagrams, product packaging, extra people or readable documents.',
+    'Keep the frame clean: no captions, slogans, watermarks, posters, floating diagrams, product packaging, extra people, unrequested animals/pets or readable documents.',
     'Natural live-action photography, realistic hands, practical light and believable depth.',
   ].filter(Boolean).join(' '), 1150);
 }
@@ -27483,9 +27520,11 @@ function _buildLuxuryImageModelStrictPrompt({
     ? 'PRESENTER CONTINUITY LOCK: the system-generated presenter seed is a mandatory casting reference for every human shot. Preserve the same age, gender, face impression, hairstyle, body proportions and professional wardrobe family. Change pose, expression, camera angle and scene placement according to the current shot. Do not copy its background, fixed smile/neutral expression, or turn the scene into fashion retail, jewelry, cosmetics, cyberpunk, sci-fi, or a portrait studio.'
     : '';
   const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject, scene);
+  const unconfirmedAnimalDriftRule = _luxuryUnconfirmedAnimalDriftGuard({ productSubject: productSubject || scene.product_subject, brief: '', scene, allowSceneExplicit: true });
   return _luxuryFitImagePromptParts([
     `STRICT LUXURY AD KEYFRAME. Shot ${shotNo}${total ? `/${total}` : ''}. Advertised subject: ${_compactLuxuryKeyframeText(displayProductSubject, 120)}.`,
     unconfirmedDriftRule,
+    unconfirmedAnimalDriftRule,
     robotAssistantGuard ? `MANDATORY ROBOT ASSISTANT LOCK: ${robotAssistantGuard}` : '',
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     humanRequirementPrompt,
@@ -27518,7 +27557,7 @@ function _buildLuxuryImageModelStrictPrompt({
     subjectGuard,
     productLockForScene,
     'Style: natural film-still commercial photography, realistic skin texture, optical 35mm lens perspective, practical premium commercial light, advertised-subject evidence readable, no generated text, no watermark, no extra random people.',
-    'NEGATIVE: missing confirmed person when required, inconsistent random actor, wrong industry/location, unconfirmed scene template, subject-only packshot when action requires a story scene, cyber goggles, sunglasses, helmet, CGI, 3D render, AI illustration, waxy plastic face, robot/android, unrelated category drift, unconfirmed prop/UI/logo/text, catalog packshot.',
+    'NEGATIVE: missing confirmed person when required, inconsistent random actor, wrong industry/location, unconfirmed scene template, subject-only packshot when action requires a story scene, cyber goggles, sunglasses, helmet, CGI, 3D render, AI illustration, waxy plastic face, robot/android, dog/cat/pet/animal unless explicitly requested, unrelated category drift, unconfirmed prop/UI/logo/text, catalog packshot.',
   ], 2600);
 }
 
@@ -28633,11 +28672,13 @@ function _buildLuxuryKeyframePrompt({
   const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || visualContract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
   const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject, scene);
   const unconfirmedRobotDriftRule = _luxuryUnconfirmedRobotDriftGuard({ productSubject: productSubject || scene.product_subject, brief: '', scene, allowSceneExplicit: true });
+  const unconfirmedAnimalDriftRule = _luxuryUnconfirmedAnimalDriftGuard({ productSubject: productSubject || scene.product_subject, brief: '', scene, allowSceneExplicit: true });
   const prompt = [
     _luxurySteelEnvironmentLockPrompt(productSubject || scene.product_subject, scene),
     `SHOT CONTRACT: shot ${shotNo}${total ? ` of ${total}` : ''}. Product subject: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 140)}.`,
     unconfirmedDriftRule,
     unconfirmedRobotDriftRule,
+    unconfirmedAnimalDriftRule,
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired ? _luxuryKeyframeHumanAnchor(scene, hasAvatar) : '',
     visibleSubjectRequired
@@ -28675,6 +28716,7 @@ function _buildLuxuryKeyframePrompt({
     'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
     'Hard negative: unrelated subject/category, random stock prop, wrong industry/location, default scene template, unconfirmed UI carrier, fake readable text, changing the confirmed advertised subject into a different category.',
     unconfirmedRobotDriftRule ? 'Hard negative also includes any unrequested robot or mechanical assistant added as a metaphor for service, delivery, smart solution, automation, technology or product proof.' : '',
+    unconfirmedAnimalDriftRule ? 'Hard negative also includes any unrequested dog, cat, pet, animal companion, pet avatar/photo, animal mascot, pet-life scene or pet prop added as a friendly lifestyle metaphor, placeholder, dashboard avatar or extra character.' : '',
   ].filter(Boolean).join(' ');
   return prompt.slice(0, softwareWorkflowSubject ? 2400 : 2100);
 }
