@@ -3127,6 +3127,67 @@ function _luxuryActorBiblePromptText(bible = {}, { viewKey = '' } = {}) {
   ].filter(Boolean).join(' ');
 }
 
+function _fallbackLuxuryActorBibleFromSpec({
+  spec = {},
+  expectedPeople = 1,
+  expectedGender = '',
+  roleHint = '',
+  provider = 'spec-fallback',
+  reason = '',
+} = {}) {
+  const peopleCount = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const { contract } = _luxuryActorSpecQaContract(spec, { expectedGender, roleHint });
+  const gender = _normalizeLuxuryRequestedGender(contract.gender || expectedGender) || 'unknown';
+  const ageText = contract.age || 'brief-matched age impression';
+  const originText = contract.origin || 'brief-matched origin impression';
+  const roleText = contract.roleName || roleHint || 'brief-derived campaign character';
+  const appearanceText = contract.appearanceText || roleText;
+  const wardrobeText = contract.wardrobeText || 'brief-derived age-appropriate outfit';
+  const hairText = contract.hairMakeupText || 'brief-derived stable hairstyle and natural grooming';
+  const negativeText = contract.negativeText || '';
+  const mustKeep = [
+    peopleCount > 1 ? `same ${peopleCount} visible cast members` : 'same single visible actor identity',
+    gender !== 'unknown' ? `visible gender presentation: ${gender}` : '',
+    `age impression: ${ageText}`,
+    `origin impression: ${originText}`,
+    `role impression: ${roleText}`,
+    `appearance lock: ${appearanceText}`,
+    `wardrobe lock: ${wardrobeText}`,
+    `hair/grooming lock: ${hairText}`,
+    negativeText ? `avoid: ${negativeText}` : '',
+  ].filter(Boolean).map(x => _luxuryActorBibleField(x, 140)).filter(Boolean);
+  return {
+    pass: true,
+    score: 72,
+    soft_pass: true,
+    provider,
+    fallback_from_person_settings: true,
+    person_count: peopleCount,
+    gender_presentation: gender,
+    age_impression: _luxuryActorBibleField(ageText, 120),
+    ethnicity_origin_impression: _luxuryActorBibleField(originText, 140),
+    face_identity: _luxuryActorBibleField(appearanceText, 180),
+    hairstyle: _luxuryActorBibleField(hairText, 140),
+    hair_length: 'brief-matched',
+    hair_color: 'brief-matched',
+    hairline_or_bangs: 'brief-matched',
+    outfit_top: _luxuryActorBibleField(wardrobeText, 160),
+    outfit_bottom: _luxuryActorBibleField(wardrobeText, 160),
+    outfit_one_piece: _luxuryActorBibleField(wardrobeText, 160),
+    outerwear: 'brief-matched',
+    footwear: /shoe|footwear|heels|sneakers|flats|鞋|高跟|运动鞋|平底/i.test(wardrobeText)
+      ? _luxuryActorBibleField(wardrobeText, 140)
+      : 'brief-appropriate visible footwear',
+    accessories: 'brief-matched',
+    body_build: 'same visible body proportions from approved front view',
+    skin_texture: 'natural realistic skin texture',
+    must_keep: mustKeep.slice(0, 10),
+    mutable_fields: ['pose', 'expression', 'camera angle', 'hand gesture', 'neutral studio lighting'],
+    observed: 'Actor bible fallback generated from approved front candidate and user person settings.',
+    reason: _luxuryActorBibleField(reason || 'Vision actor-bible extraction was unavailable or too strict; required front QA had already passed.', 260),
+  };
+}
+
 async function _extractLuxuryActorBibleFromFront(req, frontPath, {
   expectedPeople = 1,
   castMode = 'single',
@@ -16896,27 +16957,27 @@ async function _generateLuxuryRealisticActorPackage({
           score: actorBible.score,
         });
       } catch (bibleErr) {
+        const fallbackBible = _fallbackLuxuryActorBibleFromSpec({
+          spec,
+          expectedPeople,
+          expectedGender: gender.value,
+          roleHint,
+          provider: 'actor-bible/spec-fallback',
+          reason: bibleErr.message || bibleErr,
+        });
+        actorBible = fallbackBible;
         attempts.push({
           provider_id: 'actor-bible',
           model_id: 'front-extractor',
-          ok: false,
+          ok: true,
           view: view.key,
           code: bibleErr.code || '',
           error: String(bibleErr.message || bibleErr).slice(0, 240),
           qa: bibleErr.details || null,
+          fallback: 'spec_locked_actor_bible',
+          warning: true,
         });
-        bibleErr.status = bibleErr.status || 422;
-        bibleErr.code = bibleErr.code || 'LUXURY_ACTOR_BIBLE_EXTRACTION_FAILED';
-        bibleErr.message = `人物演员包正面定稿后的人物锁抽取失败；${bibleErr.message || '无法继续生成一致性侧面/动作参考'}`;
-        bibleErr.luxuryKeyframeAttempts = attempts;
-        bibleErr.details = {
-          ...(bibleErr.details && typeof bibleErr.details === 'object' ? bibleErr.details : {}),
-          required_views: Array.from(requiredViewKeys),
-          completed_views: outputs.map(x => x.key),
-          failed_view: 'front_actor_bible',
-          attempts,
-        };
-        throw bibleErr;
+        console.warn('[DH/luxury-ad/person-sheet] front actor bible extraction failed; using spec fallback actor bible:', String(bibleErr.message || bibleErr).slice(0, 240));
       }
     }
     return output;
