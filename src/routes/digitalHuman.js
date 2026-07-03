@@ -4095,16 +4095,32 @@ function _qaJsonFromVisionProse(raw = '') {
   const text = String(raw || '').replace(/\s+/g, ' ').trim();
   if (!text) return null;
   const negative = /does not meet|not meet|mismatch|incorrect|violates?|unrelated|instead of|hard fail|fail(?:ed)?|missing|required|不符合|不匹配|错误|无关|缺少|未展示|违反|失败/i.test(text);
-  const positive = /meets? the requirements?|matches?|符合|通过|一致/i.test(text)
+  const positive = /meets? the requirements?|matches?|aligns?(?:ed)?(?:\s+with)?|consistent with|符合|通过|一致|对齐/i.test(text)
     && !/does not meet|not meet|不符合|不匹配|失败|无关/i.test(text);
   if (!negative && !positive) return null;
+  const score = negative ? 35 : 78;
   return {
     pass: positive && !negative,
-    score: negative ? 35 : 72,
+    score,
     subject_match: positive && !negative,
     storyboard_match: positive && !negative,
+    person_count_match: positive && !negative,
+    extra_people: false,
+    same_actor_identity: positive && !negative,
+    scene_family_match: positive && !negative,
+    product_category_match: positive && !negative,
+    story_emotion_match: positive && !negative,
+    quality_dimensions: {
+      realism: score,
+      scene_continuity: score,
+      product_fidelity: score,
+      asset_fidelity: score,
+      ui_overlay: positive && !negative ? 72 : 0,
+      character_consistency: score,
+    },
     major_mismatches: negative ? [text.slice(0, 180)] : [],
     unrelated_subjects: [],
+    review_issues: positive && !negative ? ['qa_provider_returned_prose_approval_requires_strict_json_retry'] : [],
     observed: text.slice(0, 220),
     reason: negative
       ? 'Vision QA provider returned prose rejection instead of JSON; normalized as strict QA failure.'
@@ -4507,6 +4523,17 @@ function _luxuryRobotAssistantDriftGuard({ productSubject = '', brief = '', scen
     !allowComputer ? 'Do not turn the story into laptop, desktop monitor, code editor, dashboard, backend console or developer workstation shots unless this exact carrier is explicitly requested.' : '',
     'A product interface is allowed only as the robot/service own interaction panel, status surface, app-like product screen, or result feedback required by the shot; it must not become a generic computer dashboard.',
   ].filter(Boolean).join(' ');
+}
+
+function _luxuryUnconfirmedRobotDriftGuard({ productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
+  const subjectSource = [productSubject, brief].filter(Boolean).join(' ');
+  if (_luxuryIsRobotAssistantSubject(subjectSource)) return '';
+  return [
+    'UNCONFIRMED ROBOT DRIFT HARD NEGATIVE: this campaign is not a robot/AI-assistant product unless the current brief explicitly says so.',
+    'Do not add a robot, android, mechanical assistant, service robot, robotic mascot, robot screen, robot hand, robot delivery helper, smart-home robot, sweeper/vacuum robot, or humanoid machine as a subject, prop, helper or background character.',
+    'Do not turn product delivery, product proof, service response, smart solution wording, technology mood, automation, precision, material samples, UI/status feedback or customer support into a robot character.',
+    'If the shot needs proof of service or technology, show only the confirmed product, interface, human action, document, sample, device, space or result evidence named by this storyboard.',
+  ].join(' ');
 }
 
 function _luxuryCleanRobotAssistantDriftText(value = '', { productSubject = '', brief = '', scene = null, allowSceneExplicit = false } = {}) {
@@ -5045,7 +5072,7 @@ function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
     || scene.requires_person === false
     || scene.visible_subject_required === false);
   const storyRequiresHuman = !explicitFalse && _luxuryStoryboardRequiresPerson(scene, subject);
-  const text = _luxurySceneText(scene, [
+  const subjectFields = [
     'title',
     'objective',
     'intent',
@@ -5070,13 +5097,18 @@ function _luxuryStoryboardVisibleSubjectRequirement(scene = {}, subject = '') {
     'character_prompt',
     'creature',
     'subject',
-    'director_prompt',
-    'qa_contract',
-    'continuity_bible',
     'brief_reference_summary',
-    'director_must_show',
-    'director_must_not_show',
-  ]);
+  ];
+  const text = subjectFields
+    .map(key => {
+      const value = scene?.[key];
+      if (Array.isArray(value) || (value && typeof value === 'object')) {
+        return _luxuryCleanStoryboardDisplayText(JSON.stringify(value), 260);
+      }
+      return _luxuryCleanStoryboardDisplayText(value, 260);
+    })
+    .filter(Boolean)
+    .join(' ');
   const characterText = JSON.stringify({
     characters: scene.characters || scene.character_profiles || [],
     dialogue_lines: scene.dialogue_lines || [],
@@ -5292,7 +5324,7 @@ function _luxurySceneFriendlyProductSubject(subject = '') {
 
 function _luxuryQaExpectedVisual(scene = {}, subject = '') {
   scene = _luxuryApplySoftwareWorkflowSceneContract(scene, subject || scene.product_subject || '');
-  const base = _compactQaText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 420);
+  const base = _compactQaText(_luxuryCleanStoryboardDisplayText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || '', 420), 420);
   if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
     const workflowContract = [
       _luxurySoftwareWorkflowEvidencePrompt(subject),
@@ -5307,7 +5339,7 @@ function _luxuryQaExpectedVisual(scene = {}, subject = '') {
 
 function _luxuryQaExpectedAction(scene = {}, subject = '', personRequired = false) {
   scene = _luxuryApplySoftwareWorkflowSceneContract(scene, subject || scene.product_subject || '');
-  const base = _compactQaText(_luxuryCleanActionField(scene.action || scene.visual_action || '', scene), 260);
+  const base = _compactQaText(_luxuryCleanActionField(_luxuryCleanStoryboardDisplayText(scene.action || scene.visual_action || '', 260), scene), 260);
   if (_luxuryIsSoftwareWorkflowSubject(subject, scene)) {
     return _compactQaText([base, 'Software/service workflow action: judge whether the confirmed actor, tool, device, document, interface, place or result evidence communicates the requested service story. Use only evidence named by the brief, assets or storyboard; do not inject an order/inventory template.'].filter(Boolean).join(' '), 420);
   }
@@ -6625,6 +6657,7 @@ function _buildLuxuryVisualLocks({
     scene: realScene,
   });
   const robotGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief, scene: manifest });
+  const nonRobotGuard = _luxuryUnconfirmedRobotDriftGuard({ productSubject: subject, brief, scene: manifest });
   const realityPrompt = [
     'REALITY LOCK: every keyframe must look like a real live-action commercial shot captured in a believable social/workplace setting, not an AI poster.',
     `Real-world scene basis: ${realScene}.`,
@@ -6633,6 +6666,7 @@ function _buildLuxuryVisualLocks({
       : 'Prefer ordinary practical details: ceiling lights, real shelves/desks/counters, paper documents, phones, packages, tools, fingerprints, slight clutter, natural hand occlusion and imperfect human expression.',
     'Use practical location light and real camera perspective. Avoid fantasy lighting, glossy render, plastic skin, over-clean showroom, generic luxury props, sci-fi decor and abstract background.',
     robotGuard,
+    nonRobotGuard,
   ].join(' ');
   const productPrompt = softwareWorkflow
     ? [
@@ -6642,12 +6676,14 @@ function _buildLuxuryVisualLocks({
       'A phone, tablet, computer screen, paper order, shelf, package or dashboard is only workflow evidence, not the advertised product itself.',
       'Do not replace the campaign with cosmetics, perfume, skincare, beverage, jewelry, watches, random retail goods, sci-fi lab UI, or a generic phone advertisement.',
       robotGuard,
+      nonRobotGuard,
     ].filter(Boolean).join(' ')
     : [
       `PRODUCT LOCK: advertised subject is ${subject}.`,
       productItems ? `Uploaded product/reference evidence: ${productItems}.` : '',
       'Preserve category, shape, color, material, package/logo details when visible; do not redesign, rename, replace with cosmetics/perfume/beverage/phone/watch/jewelry/random stock goods.',
       robotGuard,
+      nonRobotGuard,
     ].filter(Boolean).join(' ');
   const scenePrompt = [
     `SCENE LOCK: use the uploaded or inferred real environment as the campaign world: ${realScene}.`,
@@ -6662,7 +6698,8 @@ function _buildLuxuryVisualLocks({
     propItems ? `PROP LOCK: recurring real props/evidence: ${propItems}.` : '',
     robotAssistantSubject
       ? 'Use only story-appropriate props that support the robot/assistant task. Do not add laptop, desktop screen, sweeper robot, cleaning appliance or control dashboard unless explicitly required by the brief or shot.'
-      : 'Use story-appropriate practical props such as phone, paper order, sample, box, counter, tool or screen only when they support the brief and uploaded references.',
+      : 'Use story-appropriate practical props such as phone, paper order, sample, box, counter, tool or screen only when they support the brief and uploaded references. Do not introduce a robot or mechanical helper as a prop.',
+    nonRobotGuard,
   ].filter(Boolean).join(' ');
   const uiPrompt = [
     uiItems ? `UI LOCK: uploaded UI/interface evidence: ${uiItems}.` : '',
@@ -6804,6 +6841,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const personRequired = visibleSubject.humanRequired;
   const robotAssistantSubject = _luxuryIsRobotAssistantSubject(subject);
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
+  const unconfirmedRobotGuard = _luxuryUnconfirmedRobotDriftGuard({ productSubject: subject, brief: '', scene, allowSceneExplicit: true });
   const softwareWorkflowSubject = !robotAssistantSubject && _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const generatedPresenterSeedUrl = scene.luxury_seed_assets?.presenter?.source === 'generated_presenter_seed'
     ? String(scene.luxury_seed_assets?.presenter?.url || '').trim()
@@ -6828,6 +6866,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     product_subject: _compactQaText(subject, 120),
     product_subject_type: robotAssistantSubject ? 'robot_assistant_product' : (softwareWorkflowSubject ? 'software_service_workflow' : 'physical_or_material_product'),
     robot_assistant_guard: robotAssistantGuard,
+    unconfirmed_robot_guard: unconfirmedRobotGuard,
     software_workflow_evidence_required: softwareWorkflowSubject
       ? [
           _luxurySoftwareWorkflowEvidencePrompt(subject),
@@ -6915,6 +6954,9 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
       : '',
     robotAssistantSubject
       ? 'For robot/assistant subjects, subject_match requires the confirmed robot/assistant to be visible as the advertised subject and helping through the story action. A product interface may pass only when it is the robot/service own interaction surface, status panel or result feedback; generic computer dashboards do not pass.'
+      : '',
+    !robotAssistantSubject
+      ? 'For non-robot subjects, hard fail if a robot, android, mechanical assistant, service robot, robotic mascot, robot hand/body/screen, sweeper/vacuum robot, humanoid machine, or robot helper appears as a subject, prop, delivery agent, support assistant, background character, or technology metaphor unless the original brief or confirmed storyboard explicitly requested a robot.'
       : '',
     'Hard fail if asset_manifest, reality_lock, character_lock, product_lock, scene_lock, prop_lock or ui_lock is present and the generated keyframe visibly violates it.',
     'If segment_contract is present, judge scene_continuity against that segment contract: the same segment should keep its space anchor, subject relationship, props/evidence chain and lighting logic. Do not require the same exact composition; require believable continuity.',
@@ -28590,10 +28632,12 @@ function _buildLuxuryKeyframePrompt({
   const lockPrompt = _luxuryLocksPrompt(scene.visual_locks || null, 1150);
   const multiCharacterPrompt = _luxuryMultiCharacterPrompt(scene.multi_character_contract || visualContract?.multi_character_contract || scene.strict_storyboard_contract?.multi_character_contract, 'image');
   const unconfirmedDriftRule = _luxuryUnconfirmedSubjectDriftPrompt(productSubject || scene.product_subject, scene);
+  const unconfirmedRobotDriftRule = _luxuryUnconfirmedRobotDriftGuard({ productSubject: productSubject || scene.product_subject, brief: '', scene, allowSceneExplicit: true });
   const prompt = [
     _luxurySteelEnvironmentLockPrompt(productSubject || scene.product_subject, scene),
     `SHOT CONTRACT: shot ${shotNo}${total ? ` of ${total}` : ''}. Product subject: ${_compactLuxuryKeyframeText(productSubject || scene.product_subject, 140)}.`,
     unconfirmedDriftRule,
+    unconfirmedRobotDriftRule,
     lockPrompt ? `MANDATORY ASSET + REALITY LOCKS: ${lockPrompt}` : '',
     personRequired ? _luxuryKeyframeHumanAnchor(scene, hasAvatar) : '',
     visibleSubjectRequired
@@ -28630,6 +28674,7 @@ function _buildLuxuryKeyframePrompt({
     'Create one premium commercial storyboard keyframe that exactly matches the shot contract above. The frame must be a still keyframe, realistic, cinematic, product-readable, and coherent with the story.',
     'No subtitles, no text overlay, no bottom caption bar, no label such as AD KEYFRAME, no watermark, no extra random people, no product redesign.',
     'Hard negative: unrelated subject/category, random stock prop, wrong industry/location, default scene template, unconfirmed UI carrier, fake readable text, changing the confirmed advertised subject into a different category.',
+    unconfirmedRobotDriftRule ? 'Hard negative also includes any unrequested robot or mechanical assistant added as a metaphor for service, delivery, smart solution, automation, technology or product proof.' : '',
   ].filter(Boolean).join(' ');
   return prompt.slice(0, softwareWorkflowSubject ? 2400 : 2100);
 }

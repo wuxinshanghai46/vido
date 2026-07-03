@@ -13814,8 +13814,20 @@
       }
       if (r.status === 'done' && r.result) return r.result;
       if (r.status === 'error') {
+        const errorDetails = r.details || {};
+        applyLuxuryKeyframePartial(
+          errorDetails.partial
+          || (errorDetails.production_project ? { production_project: errorDetails.production_project } : null)
+          || (Array.isArray(errorDetails.keyframes) || Array.isArray(errorDetails.scenes)
+            ? errorDetails
+            : null),
+          {
+            totalShots,
+            startedAt: started,
+          },
+        );
         const err = new Error(r.error || '分镜生成失败');
-        err.data = { code: r.code || r.details?.code || '', details: r.details || {}, production_project: r.details?.production_project || null };
+        err.data = { code: r.code || errorDetails?.code || '', details: errorDetails || {}, production_project: errorDetails?.production_project || null };
         err.status = r.http_status || r.status_code || 422;
         throw err;
       }
