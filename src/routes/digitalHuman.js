@@ -16877,7 +16877,7 @@ async function _generateLuxuryRealisticActorPackage({
   for (const view of initialViews) {
     await generateActorView(view, {
       requiredView: requiredViewKeys.has(view.key),
-      candidatePasses: 1,
+      candidatePasses: view.key === 'front' ? 3 : 2,
       supplemental: false,
     });
   }
@@ -16940,7 +16940,7 @@ async function _generateLuxuryRealisticActorPackage({
         try {
           const output = await generateActorView(view, {
             requiredView: false,
-            candidatePasses: 1,
+            candidatePasses: 2,
             supplemental: true,
           });
           if (!output) continue;
