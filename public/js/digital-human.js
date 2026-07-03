@@ -832,6 +832,9 @@
         else url.searchParams.delete('lux_focus');
         routeState.lux_focus = focus;
         routeState.luxury_project = String(state.luxuryAd.productionProjectId || state.luxuryAd.productionProject?.id || '').trim();
+        if (opts.preserveLuxuryProject === true && routeState.luxury_project) {
+          url.searchParams.set('luxury_project', routeState.luxury_project);
+        }
       } else {
         url.searchParams.delete('lux_step');
         url.searchParams.delete('lux_focus');
@@ -19949,9 +19952,21 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     }
     const initialAvatarTab = getInitialAvatarTab();
     if (initialAvatarTab) state._myAvTab = initialAvatarTab;
-    // 中文注释：首屏如果来自“继续制作”深链，先保留一次项目参数，等恢复项目后再主动清理。
-    switchTab(initialTab, { preserveLuxuryProject: !!initialLuxuryProjectId });
-    const restoredLuxuryProject = await restoreLuxuryAdProjectFromUrl(initialLuxuryProjectId);
+    let luxuryProjectToRestore = initialLuxuryProjectId;
+    if (!luxuryProjectToRestore
+      && (initialTab === 'luxury-ad' || initialTab === 'material-film')
+      && Number(initialLuxuryStep || 0) >= 3) {
+      await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
+      const latestProject = (state.luxuryAdProjects || []).find(project => {
+        const scenes = Array.isArray(project?.scenes) ? project.scenes : [];
+        const draftScenes = Array.isArray(project?.draft_state?.scenes) ? project.draft_state.scenes : [];
+        return (scenes.length || draftScenes.length) > 1;
+      });
+      luxuryProjectToRestore = String(latestProject?.id || '').trim();
+    }
+    // 中文注释：首屏如果来自“继续制作”深链或第 3 步后的无 ID 旧链接，保留项目参数，避免刷新后回到本地旧草稿。
+    switchTab(initialTab, { preserveLuxuryProject: !!luxuryProjectToRestore });
+    const restoredLuxuryProject = await restoreLuxuryAdProjectFromUrl(luxuryProjectToRestore);
     if (!restoredLuxuryProject && (state.activeTab === 'luxury-ad' || state.activeTab === 'material-film') && initialLuxuryFocus) {
       state.luxuryAd.routeFocus = initialLuxuryFocus;
       if (initialLuxuryFocus === 'person') state.luxuryAd.currentStep = Math.max(2, Number(state.luxuryAd.currentStep || 1));
