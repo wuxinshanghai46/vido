@@ -185,6 +185,10 @@ function _luxuryProjectKeyframeHasTrustedQa(kf = {}) {
   if (_isReferenceLockedLuxuryKeyframe(kf)) return true;
   const qa = kf.qa && typeof kf.qa === 'object' ? kf.qa : null;
   if (!qa) return false;
+  if (qa.accepted_with_warning === true || qa.manual_review_required === true) return false;
+  if (Array.isArray(qa.fatal_issues) && qa.fatal_issues.length) return false;
+  if (Array.isArray(qa.review_issues) && qa.review_issues.length) return false;
+  if (qa.strict_pass === false) return false;
   const reason = String(qa.reason || '').toLowerCase();
   if (/malformed json|prose approval|not auditable|weak match|workflow mismatch|scene differ|mismatch|reject|not match|不可审计|不一致|拒绝/.test(reason)) return false;
   const dims = qa.quality_dimensions && typeof qa.quality_dimensions === 'object' ? qa.quality_dimensions : null;
@@ -198,7 +202,7 @@ function _luxuryProjectKeyframeHasTrustedQa(kf = {}) {
   const explicitMatchesReady = explicitSubjectMatch && explicitStoryboardMatch;
   const legacyPositiveReady = scoreReady && !explicitSubjectReject && !explicitStoryboardReject;
   return dimsReady
-    && (qa.pass === true || qa.accepted_with_warning === true)
+    && qa.pass === true
     && (explicitMatchesReady || legacyPositiveReady);
 }
 
@@ -4479,14 +4483,15 @@ function _luxuryApplySoftwareWorkflowSceneContract(scene = {}, productSubject = 
 function _luxuryCleanActionField(value = '', scene = {}) {
   let raw = String(value || '').replace(/\s+/g, ' ').trim();
   if (!raw) return '';
+  if (_luxuryHasStoryboardContractLeak(raw)) return '';
   const visualLike = /背景|场景|环境|画面|主商品|主体位于|产品(登场|露出|亮相|扬场)|光线|镜头|构图|特写|中远景|近景|远景|景别|缓慢|推进|平移|转场|background|scene|environment|camera|shot|lighting|composition|close[-\s]?up|wide shot/i;
   const actionLike = /人物|角色|演员|主体|用户|客户|顾客|观众|手|眼神|表情|指|拿|持|触摸|点击|操作|走|看|说|回应|点头|展示|打开|切换|拖拽|生成|编辑|上传|选择|确认|actor|character|person|user|customer|hand|point|hold|touch|click|operate|walk|look|speak|respond|nod|show|open|switch|confirm/i;
-  if (visualLike && !actionLike) return '';
+  if (visualLike.test(raw) && !actionLike.test(raw)) return '';
   raw = raw
     .replace(/^(?:在)?[^，。；;]{0,50}(?:背景|场景|环境|画面|光线|镜头|构图|景别)[^，。；;]*[，。；;]\s*/i, '')
     .replace(/^(?:极近景|近景|中景|中远景|远景|特写|镜头|画面)[^，。；;]{0,40}[，。；;]\s*/i, '')
     .trim();
-  if (visualLike && !actionLike.test(raw)) return '';
+  if (visualLike.test(raw) && !actionLike.test(raw)) return '';
   return _luxuryStrictText(raw, 260);
 }
 
@@ -6505,6 +6510,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     director_qa_contract: _compactQaText(scene.qa_contract || scene.visual_contract?.qa_contract || scene.director_prompt || '', 760),
     identity_reference_mode: strictIdentityReferenceMode,
   };
+  const contractLeakFields = _luxuryStoryboardContractLeakFields(scene);
   const images = [];
   const qaReferenceUrls = [
     strictIdentityReferenceUrl,
@@ -6645,6 +6651,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const combined = [...majorMismatches, ...unrelatedSubjects, String(parsed.observed || ''), String(parsed.reason || '')].join(' ');
   const hardForbiddenMismatch = _luxuryQaHasHardForbiddenMismatch(combined, subject);
   const derivedFatalIssues = [
+    contractLeakFields.length ? `storyboard_internal_contract_leaked:${contractLeakFields.map(item => item.field).join(',')}` : '',
     expectedPersonCount > 0 && !personCountMatch ? `person_count_mismatch: expected ${expectedPersonCount}, got ${personCount === null ? 'unknown' : personCount}` : '',
     expectedPersonCount === 1 && extraPeople ? 'extra_people_in_single_person_keyframe' : '',
     productCategoryMatch === false ? 'product_category_mismatch' : '',
@@ -6695,7 +6702,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && !hardForbiddenMismatch;
   const candidateReviewPass = usableQualityPass && !strictPass && allFatalIssues.length === 0;
   const qa = {
-    pass: strictPass || candidateReviewPass,
+    pass: strictPass,
     score,
     subject_match: parsed.subject_match === true,
     storyboard_match: parsed.storyboard_match === true,
@@ -6713,16 +6720,17 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     fatal_issues: allFatalIssues,
     review_issues: allReviewIssues,
     manual_review_required: candidateReviewPass,
-    accepted_with_warning: candidateReviewPass,
+    accepted_with_warning: false,
     acceptance_mode: strictPass
       ? 'strict'
-      : (candidateReviewPass ? 'candidate_review_nonfatal' : 'rejected'),
+      : (candidateReviewPass ? 'candidate_review_blocked' : 'rejected'),
     major_mismatches: majorMismatches,
     unrelated_subjects: unrelatedSubjects,
     observed: String(parsed.observed || '').slice(0, 260),
     reason: String(parsed.reason || '').slice(0, 260),
     provider,
     expected,
+    contract_leak_fields: contractLeakFields,
   };
   if (hasFatalIssue) {
     qa.pass = false;
@@ -13290,7 +13298,9 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
   const namedProduct = String(productName || '').replace(/\s+/g, ' ').trim();
   const joined = [text, productName, assetSummary].filter(Boolean).join('\n');
   const normalizedNamed = _normalizeLuxuryProductSubject(namedProduct, joined);
-  if (normalizedNamed && !_isWeakLuxuryProductName(normalizedNamed)) return normalizedNamed.slice(0, 40);
+  const concreteMaterialSubject = _luxuryConcreteMaterialSubject(normalizedNamed, joined);
+  if (normalizedNamed && !_isWeakLuxuryProductName(normalizedNamed) && !_isWeakLuxurySubjectContract(normalizedNamed, joined)) return normalizedNamed.slice(0, 40);
+  if (concreteMaterialSubject) return concreteMaterialSubject;
   const explicit = [
     /(?:卖点[\/／]?资料|卖点资料)[:：]\s*([^\n，。；;]{2,40})/i,
     /(?:产品\/品牌|产品品牌|产品名称|产品|品牌|主商品|商品)[:：]\s*([^\n，。；;]{2,40})/i,
@@ -13304,14 +13314,17 @@ function _deriveLuxuryProductSubject({ text = '', productName = '', assetSummary
       .replace(/(?:卖点[\/／]?资料|目标客户|画面风格|广告需求).*$/i, '')
       .trim();
     const normalized = _normalizeLuxuryProductSubject(v, joined);
-    if (normalized && !_isWeakLuxuryProductName(normalized)) return normalized.slice(0, 40);
+    const concrete = _luxuryConcreteMaterialSubject(normalized, joined);
+    if (normalized && !_isWeakLuxuryProductName(normalized) && !_isWeakLuxurySubjectContract(normalized, joined)) return normalized.slice(0, 40);
+    if (concrete) return concrete;
   }
   // 中文注释：主体识别不能从“不要/No/Avoid”这类否定片段里取词，否则禁用项会被误识别成广告主体。
   const keywordSource = joined.replace(/(?:不要|禁止|不能|不得|避免|别|no|not|do\s*not|don't|without|avoid)[^。；;,\n]{0,90}(?:AI\s*机器人|机器人|智能体|机械臂|仿生|robot\s*assistant|robot|android)[^。；;,\n]{0,40}/ig, ' ');
   const keywordMap = [
     { re: /AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android/i, value: 'AI机器人智能生活助手' },
     { re: /智能生活|智能家居|家庭助手|home\s*assistant|smart\s*home/i, value: '智能生活/智能家居服务' },
-    { re: /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|steel finished products?|finished steel|steel products?|steel sheets?|architectural steel|facade cladding/i, value: '钢材/金属板材' },
+    { re: /不锈钢|stainless steel/i, value: '不锈钢金属板材/材料样板' },
+    { re: /成品钢材|钢材成品|钢材|钢板|金属板材|金属板|金属肌理|金属材料|steel finished products?|finished steel|steel products?|steel sheets?|architectural steel|facade cladding/i, value: '成品钢材/金属板材' },
     { re: /木饰面|木墙|木材|木纹|护墙板/i, value: '木饰面/木作材料' },
     { re: /石材|岩板|大理石|瓷砖/i, value: '石材/岩板材料' },
     { re: /艺术墙|背景墙|墙面|展墙/i, value: '定制墙面材料' },
@@ -13346,9 +13359,14 @@ function _deriveLuxuryProductSubjectFromCurrentInput(body = {}, {
     productAsset?.title,
   ]
     .map(v => String(v || '').replace(/\s+/g, ' ').trim())
-    .find(v => v && !_isWeakLuxuryProductName(v));
+    .find(v => v && !_isWeakLuxuryProductName(v) && !_isWeakLuxurySubjectContract(v, [text, assetSummary].filter(Boolean).join('\n')));
   const currentText = [
     text || b.text || b.brief || '',
+    productName,
+    b.product_name,
+    b.productName,
+    productAsset?.name,
+    productAsset?.title,
     b.scene_prompt || b.scenePrompt || '',
     assetSummary || b.asset_summary || b.assetSummary || '',
     Array.isArray(segments) ? JSON.stringify(segments) : '',
@@ -13496,6 +13514,27 @@ function _normalizeLuxuryProductSubject(value = '', context = '') {
 
 function _luxuryHasExplicitSteelSubject(text = '') {
   return /成品钢材|钢材成品|钢材|钢板|不锈钢|金属板材|金属板|金属肌理|金属材料|幕墙钢|建筑钢|stainless steel|steel finished products?|finished steel|steel products?|steel sheets?|steel panels?|architectural steel|metal facade|metal cladding|facade cladding/i.test(String(text || ''));
+}
+
+function _luxuryConcreteMaterialSubject(value = '', context = '') {
+  const text = [value, context].filter(Boolean).join(' ');
+  if (/不锈钢|stainless steel/i.test(text)) return '不锈钢金属板材/材料样板';
+  if (/成品钢材|钢材成品|钢材|钢板|steel finished products?|finished steel|steel products?|steel sheets?|steel panels?/i.test(text)) return '成品钢材/金属板材';
+  if (/金属板材|金属板|金属肌理|金属材料|幕墙钢|建筑钢|metal facade|metal cladding|facade cladding/i.test(text)) return '金属板材/建筑装饰材料';
+  return '';
+}
+
+function _isWeakLuxurySubjectContract(value = '', context = '') {
+  const raw = String(value || '').replace(/\s+/g, '').trim();
+  if (!raw) return true;
+  if (_isWeakLuxuryProductName(raw)) return true;
+  if (/^(安心选择|放心选择|品质之选|高端定制|值得信赖|专业之选|解决方案|服务方案|宣传片|广告片)$/i.test(raw)) return true;
+  if (/[/／|]/.test(raw)) {
+    const parts = raw.split(/[/／|]+/).filter(Boolean);
+    if (parts.length >= 2 && parts.slice(1).every(part => /^(安心选择|放心选择|品质之选|高端定制|值得信赖|专业之选|解决方案|服务方案|卖点|亮点)$/i.test(part))) return true;
+  }
+  if (_luxuryHasExplicitSteelSubject([raw, context].join(' ')) && !/板材|样板|材料|面板|墙板|幕墙|立面|纹理|表面|sheet|panel|material|facade|cladding/i.test(raw)) return true;
+  return false;
 }
 
 function _isLuxurySteelMaterialSubject(productSubject = '', scene = {}) {
@@ -22283,6 +22322,46 @@ function _luxuryStrictText(value = '', max = 420) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function _luxuryHasStoryboardContractLeak(value = '') {
+  return /STORYBOARD\s+DIRECTOR|DIRECTOR\s+CONTRACT|Confirmed storyboard contract|QA ACCEPTANCE CONTRACT|Visible subject:|live-action commercial storyboard frame|advertised subject evidence|Storyboard director visual contract|SHOT EXECUTION PACKET|COMPILED CONTRACT/i.test(String(value || ''));
+}
+
+function _luxuryStoryboardContractLeakFields(scene = {}) {
+  const fields = [
+    'title',
+    'objective',
+    'purpose',
+    'script_purpose',
+    'content_prompt',
+    'scene_content',
+    'display_visual',
+    'visual',
+    'action',
+    'visual_action',
+    'voiceover',
+    'narration',
+    'ad_copy',
+    'subtitle',
+    'text',
+  ];
+  return fields
+    .filter(key => _luxuryHasStoryboardContractLeak(scene?.[key]))
+    .map(key => ({
+      field: key,
+      sample: _luxuryStrictText(scene?.[key], 160),
+    }));
+}
+
+function _luxuryCleanStoryboardDisplayText(value = '', max = 420) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (_luxuryHasStoryboardContractLeak(text)) {
+    const beforeLeak = text.split(/STORYBOARD\s+DIRECTOR|DIRECTOR\s+CONTRACT|Confirmed storyboard contract|QA ACCEPTANCE CONTRACT|Visible subject:|live-action commercial storyboard frame|advertised subject evidence|Storyboard director visual contract|SHOT EXECUTION PACKET|COMPILED CONTRACT/i)[0];
+    return _luxuryStrictText(beforeLeak, max);
+  }
+  return _luxuryStrictText(text, max);
+}
+
 // Strict storyboard list normalizer: list fields must be explicit arrays or
 // separator-delimited text from the confirmed shot, never invented silently.
 function _luxuryStrictList(value, maxItems = 8) {
@@ -26414,7 +26493,10 @@ function _buildLuxuryImageModelStrictPrompt({
   const robotAssistantGuard = _luxuryRobotAssistantDriftGuard({ productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true });
   const driftContext = { productSubject: productSubject || scene.product_subject || '', brief: '', scene, allowSceneExplicit: true };
   const visual = _compactLuxuryKeyframeText(
-    _luxuryCleanRobotAssistantDriftText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt, driftContext),
+    _luxuryCleanRobotAssistantDriftText(
+      _luxuryCleanStoryboardDisplayText(scene.content_prompt || scene.scene_content || scene.display_visual || scene.visual || scene.visual_prompt, 520),
+      driftContext,
+    ),
     260,
   );
   const action = _compactLuxuryKeyframeText(_luxuryCleanRobotAssistantDriftText(_luxuryCleanActionField(_luxuryRawSceneActionText(scene), scene), driftContext), 220);
@@ -26424,7 +26506,7 @@ function _buildLuxuryImageModelStrictPrompt({
     [scene.shot_angle, scene.shot_size, scene.camera, scene.camera_label, scene.lighting_style].filter(Boolean).join('; '),
     180,
   );
-  const narration = _compactLuxuryKeyframeText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 180);
+  const narration = _compactLuxuryKeyframeText(_luxuryCleanStoryboardDisplayText(scene.voiceover || scene.narration || scene.ad_copy || scene.subtitle || scene.text || '', 260), 180);
   const refRule = hasStoryLayoutReference
     ? 'Reference rule: reference image 1 is composition only; create a real photorealistic ad frame with the required presenter, action, product evidence and scene.'
     : hasAnyReference
@@ -30284,44 +30366,49 @@ router.post('/spaces/keyframes', async (req, res) => {
           totalShots: scenes.length,
           productSubject,
         });
-        if (!keyframeQa?.pass) {
-          const issues = [
-            ...(Array.isArray(keyframeQa?.major_mismatches) ? keyframeQa.major_mismatches : []),
-            ...(Array.isArray(keyframeQa?.unrelated_subjects) ? keyframeQa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
-            keyframeQa?.reason || '',
-          ].filter(Boolean).slice(0, 5).join('；');
-          if (!isLuxury) {
-            const err = new Error(`第 ${i + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`);
-            err.status = 422;
-            err.code = 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED';
-            err.details = { qa: keyframeQa };
-            throw err;
-          }
-          luxuryKeyframeShotFailures.push({
-            shot_index: publicShotIndex,
-            title: sc.title || sc.label || `镜头 ${publicShotIndex + 1}`,
-            error: `第 ${publicShotIndex + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`,
-            code: 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED',
-            qa: keyframeQa,
-          });
-          _publishLuxuryKeyframePartial(req, req.body || {}, {
-            scenes,
-            keyframes,
-            failures: luxuryKeyframeShotFailures,
-            currentIndex: publicShotIndex,
-            currentStatus: 'failed',
-            meta: {
-              asset_manifest: luxuryAssetManifest || undefined,
-              visual_locks: luxuryVisualLocks || undefined,
-              global_visual_bible: luxuryGlobalVisualBible || undefined,
-              segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
-              industry_contract: luxuryIndustryContract || undefined,
-              production_contract: luxuryPlanningMeta?.production_contract || undefined,
-            },
-          });
-          console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
-          continue;
-        }
+      }
+      const keyframeQaRejected = isLuxury && (
+        !keyframeQa?.pass
+        || keyframeQa.accepted_with_warning === true
+        || keyframeQa.manual_review_required === true
+        || keyframeQa.strict_pass === false
+        || (Array.isArray(keyframeQa.fatal_issues) && keyframeQa.fatal_issues.length > 0)
+        || (Array.isArray(keyframeQa.review_issues) && keyframeQa.review_issues.length > 0)
+        || (Array.isArray(keyframeQa.contract_leak_fields) && keyframeQa.contract_leak_fields.length > 0)
+      );
+      if (keyframeQaRejected) {
+        const issues = [
+          ...(Array.isArray(keyframeQa?.fatal_issues) ? keyframeQa.fatal_issues.map(x => `硬失败：${x}`) : []),
+          ...(Array.isArray(keyframeQa?.review_issues) ? keyframeQa.review_issues.map(x => `待复核：${x}`) : []),
+          ...(Array.isArray(keyframeQa?.contract_leak_fields) ? keyframeQa.contract_leak_fields.map(x => `内部合同泄漏：${x.field || x}`) : []),
+          ...(Array.isArray(keyframeQa?.major_mismatches) ? keyframeQa.major_mismatches : []),
+          ...(Array.isArray(keyframeQa?.unrelated_subjects) ? keyframeQa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
+          keyframeQa?.reason || '',
+        ].filter(Boolean).slice(0, 5).join('；');
+        luxuryKeyframeShotFailures.push({
+          shot_index: publicShotIndex,
+          title: sc.title || sc.label || `镜头 ${publicShotIndex + 1}`,
+          error: `第 ${publicShotIndex + 1} 镜分镜图未通过剧本一致性检查：${issues || '画面主体或内容不符合已确认分镜'}`,
+          code: 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED',
+          qa: keyframeQa,
+        });
+        _publishLuxuryKeyframePartial(req, req.body || {}, {
+          scenes,
+          keyframes,
+          failures: luxuryKeyframeShotFailures,
+          currentIndex: publicShotIndex,
+          currentStatus: 'failed',
+          meta: {
+            asset_manifest: luxuryAssetManifest || undefined,
+            visual_locks: luxuryVisualLocks || undefined,
+            global_visual_bible: luxuryGlobalVisualBible || undefined,
+            segment_plan: _normalizeLuxurySegmentPlan(segment_plan, scenes, { productSubject, sceneBible: brief_info?.scene_bible || global_visual_bible || null }),
+            industry_contract: luxuryIndustryContract || undefined,
+            production_contract: luxuryPlanningMeta?.production_contract || undefined,
+          },
+        });
+        console.warn(`[DH/spaces/keyframes] shot ${publicShotIndex + 1} QA failed; continuing remaining shots:`, issues || 'storyboard mismatch');
+        continue;
       }
       const url = `${base}/public/jimeng-assets/${path.basename(keyframePath)}`;
       keyframes.push({
@@ -30600,12 +30687,21 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
       failures.push({ index, reason: 'qa_missing', message: 'Generated luxury keyframe must pass storyboard QA before video generation.' });
       return;
     }
-    if (qa.pass !== true && qa.accepted_with_warning !== true) {
+    if (qa.pass !== true || qa.accepted_with_warning === true || qa.manual_review_required === true || qa.strict_pass === false) {
       failures.push({
         index,
         reason: 'qa_failed',
         score: qa.score,
-        message: qa.reason || 'Generated luxury keyframe QA did not pass.',
+        message: qa.reason || 'Generated luxury keyframe must pass strict storyboard QA before video generation.',
+      });
+    }
+    if ((Array.isArray(qa.fatal_issues) && qa.fatal_issues.length) || (Array.isArray(qa.review_issues) && qa.review_issues.length)) {
+      failures.push({
+        index,
+        reason: 'qa_issues_not_strict',
+        fatal_issues: qa.fatal_issues || [],
+        review_issues: qa.review_issues || [],
+        message: 'Luxury keyframe still has fatal/review QA issues and cannot enter video generation.',
       });
     }
 
@@ -30621,9 +30717,7 @@ function _validateLuxuryAdVideoPrecheck({ keyframes = [] } = {}) {
 
     requiredDims.forEach(dim => {
       const score = _numScore(dims[dim]);
-      const threshold = qa.accepted_with_warning === true
-        ? (warningThresholds[dim] ?? thresholds[dim])
-        : thresholds[dim];
+      const threshold = thresholds[dim];
       if (score === null) {
         failures.push({ index, reason: `${dim}_missing`, dimension: dim, threshold, message: `Missing ${dim} QA score.` });
       } else if (score < threshold) {
