@@ -434,20 +434,33 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       if (_defaultHeaders) sdkOpts.defaultHeaders = _defaultHeaders;
 
       const client = new OpenAI(sdkOpts);
-      const maxTokenValue = Math.max(1024, Math.min(16000, Number(opts.maxTokens) || 4096));
-      const completionPayload = {
+      const maxTokenValue = Math.max(1024, Math.min(32000, Number(opts.maxTokens) || 4096));
+      const buildCompletionPayload = (tokenLimit) => ({
         model: config.model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
-        ]
+        ],
+        ...(_isGpt5FamilyModel(config.model)
+          ? { max_completion_tokens: tokenLimit }
+          : { max_tokens: tokenLimit }),
+      });
+      const readCompletionText = (completion) => {
+        const msg = completion?.choices?.[0]?.message;
+        return msg?.content || msg?.reasoning_content || '';
       };
+      const reasoningBudgetExhausted = (completion, tokenLimit) => {
+        const usage = completion?.usage || {};
+        const details = usage.completion_tokens_details || usage.completionTokensDetails || {};
+        const reasoningTokens = Number(details.reasoning_tokens || details.reasoningTokens || 0);
+        const textTokens = Number(details.text_tokens || details.textTokens || 0);
+        const completionTokens = Number(usage.completion_tokens || usage.completionTokens || 0);
+        return reasoningTokens > 0
+          && textTokens === 0
+          && completionTokens >= Math.max(1, Math.floor(Number(tokenLimit || 0) * 0.9));
+      };
+      let completionPayload = buildCompletionPayload(maxTokenValue);
       // 中文说明：微众 MaaS 文档要求 GPT-5 系列使用 max_completion_tokens，不能继续发送 max_tokens。
-      if (_isGpt5FamilyModel(config.model)) {
-        completionPayload.max_completion_tokens = maxTokenValue;
-      } else {
-        completionPayload.max_tokens = maxTokenValue;
-      }
       let completion = await client.chat.completions.create(completionPayload);
       // 漫路 (deyunai) 等聚合平台有时把 chat.completions 返回成"字符串化的 JSON"而不是对象
       //   ↓ 检测到字符串先 JSON.parse 一下，恢复成标准结构
@@ -457,8 +470,20 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       }
       // 推理类模型（DeepSeek-R1 / Gemini-3.x-thinking）输出在 reasoning_content 而非 content
       // → fallback 同时读 content + reasoning_content
-      const _msg = completion?.choices?.[0]?.message;
-      const _content = _msg?.content || _msg?.reasoning_content || '';
+      let _content = readCompletionText(completion);
+      if ((!completion?.choices?.length || !_content) && reasoningBudgetExhausted(completion, maxTokenValue)) {
+        const retryTokenValue = Math.min(32000, Math.max(maxTokenValue + 6000, Math.ceil(maxTokenValue * 2)));
+        if (retryTokenValue > maxTokenValue) {
+          console.warn(`[callLLM] ${config.providerId}/${config.model} reasoning tokens exhausted max_tokens=${maxTokenValue}; retry with ${retryTokenValue}`);
+          completionPayload = buildCompletionPayload(retryTokenValue);
+          completion = await client.chat.completions.create(completionPayload);
+          if (typeof completion === 'string') {
+            try { completion = JSON.parse(completion); }
+            catch (_) { /* keep defensive check below */ }
+          }
+          _content = readCompletionText(completion);
+        }
+      }
       if (!completion?.choices?.length || !_content) {
         const raw = (typeof completion === 'string' ? completion : JSON.stringify(completion || {})).slice(0, 300);
         throw new Error(`LLM 返回异常（${config.providerId}/${config.model}），无 choices 内容。原始响应: ${raw}`);

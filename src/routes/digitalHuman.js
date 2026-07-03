@@ -21273,7 +21273,7 @@ ${JSON.stringify(scenes, null, 2)}
 目标时长：${targetDuration} 秒；画面比例：${output_ratio}
 
 请按剧情输出 ${explicitShotTarget ? `正好 ${Math.max(1, Math.min(18, wantedShots))} 个场景顺序对象` : `1-${Math.max(1, Math.min(18, maxAllowedShots))} 个场景顺序对象，由内容复杂度和表达节奏决定`}；不要为了凑数重复场景，也不要为了少场景省略关键表达。`;
-      scenes = await callLuxuryAgent({ name: llmStageId, systemPrompt: outlineSys, userPrompt: outlineUser, json: 'array', maxTokens: 3500 });
+      scenes = await callLuxuryAgent({ name: llmStageId, systemPrompt: outlineSys, userPrompt: outlineUser, json: 'array', maxTokens: 9000 });
     }
     const maxSceneCount = isDetailedMode ? maxAllowedShots : 8;
     const minSceneCount = isDetailedMode ? 1 : 1;
