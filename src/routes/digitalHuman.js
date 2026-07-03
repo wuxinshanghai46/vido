@@ -15537,7 +15537,7 @@ function _luxuryPersonSheetModelPolicy(model = {}) {
       auditMode: 'strict_submit_audit',
       promptStyle: 'neutral_commercial_casting_sheet',
       referenceMode: 'single_clean_reference_edit',
-      maxPromptChars: 1350,
+      maxPromptChars: 1850,
       maxRefsPerCall: 1,
       adapterHints: {
         deyunai: {
@@ -15553,7 +15553,7 @@ function _luxuryPersonSheetModelPolicy(model = {}) {
       auditMode: isGptImage2 ? 'strict_submit_audit' : 'strict_visual_qa',
       promptStyle: 'neutral_commercial_casting_sheet',
       referenceMode: isGptImage2 ? 'single_clean_reference_edit' : 'role_limited_references',
-      maxPromptChars: isGptImage2 ? 1450 : (isGeminiImage || isNanoBanana ? 1700 : 1850),
+      maxPromptChars: isGptImage2 ? 1900 : (isGeminiImage || isNanoBanana ? 2100 : 2200),
       maxRefsPerCall: isGptImage2 ? 1 : 2,
       providerFamily: providerId || 'generic',
       adapterHints: {},
@@ -15584,6 +15584,36 @@ function _luxuryPersonSheetAuditNeutralText(value = '', max = 900) {
     .replace(/身体比例|臀|腿部|胸|腰|身材/g, '整体体态')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function _luxuryPersonSheetNonNegotiablePrompt({
+  aspectRatio = '9:16',
+  expectedPeople = 1,
+  castMode = 'single',
+  expectedGender = '',
+  allowBarefoot = false,
+  view = 'front casting reference',
+} = {}) {
+  const people = Math.max(1, Math.min(6, Math.round(Number(expectedPeople) || 1)));
+  const castLabel = castMode === 'dual'
+    ? 'two separate visible actors'
+    : (castMode === 'group' ? `${people} separate visible actors` : 'exactly one visible actor');
+  return [
+    'NON-NEGOTIABLE ACTOR PACKAGE OUTPUT CONTRACT:',
+    `Canvas must be a real vertical portrait image (${_normalizeAspectRatio(aspectRatio, '9:16')}), not a horizontal banner, not a letterboxed preview, not a black/blank stage.`,
+    `Generate one standalone studio casting-sheet photo for ${view}; show ${castLabel}, no extra people, no duplicate person, no collage, no multi-panel/contact-sheet layout, no picture-in-picture or inset card.`,
+    people === 1
+      ? 'The actor must be framed as a usable full-length identity reference: head, face, hair, torso, waist, hips, lower garment, legs/ankles and footwear visible whenever physically possible.'
+      : 'Every required actor must be framed as a usable identity reference with head, face, hair, torso, waist, hips, lower garment, legs/ankles and footwear visible whenever physically possible.',
+    'Actor scale: each required actor should occupy about 60-78% of frame height, centered, readable face and clothing, small margin above head and below feet, visible floor line or ground shadow.',
+    allowBarefoot
+      ? 'Barefoot styling is allowed only when explicitly required by the person brief; otherwise keep footwear consistent.'
+      : 'Footwear is required for teen/adult actors: show clear closed-toe shoes, flats, sneakers, socks, heels or brief-appropriate footwear; never crop, hide, blur or omit feet.',
+    'Reject internally before output if the result would be headshot, bust portrait, waist-up, half-body, cropped at hips/knees/feet, tiny distant person, large empty background, poster/fashion editorial, beauty portrait, UI/card layout, text/logo/watermark, cartoon/CGI/anime.',
+    expectedGender && _normalizeLuxuryRequestedGender(expectedGender)
+      ? `Visible gender presentation must match: ${_normalizeLuxuryRequestedGender(expectedGender)}.`
+      : '',
+  ].filter(Boolean).join(' ');
 }
 
 function _extractLuxuryPersonSheetPriorityConstraints(prompt = '') {
@@ -15643,6 +15673,14 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
       ? 'Prefer real-camera texture, natural skin variation and visible fabric detail; avoid over-smoothed generic AI faces.'
       : '');
   return _luxuryCapImageModelPrompt([
+    _luxuryPersonSheetNonNegotiablePrompt({
+      aspectRatio,
+      expectedPeople: people,
+      castMode,
+      expectedGender,
+      allowBarefoot: /barefoot|bare feet|赤脚|光脚/i.test(prompt),
+      view,
+    }),
     `Photorealistic commercial casting reference, ${_normalizeAspectRatio(aspectRatio, '9:16')}.`,
     `Create ${castLabel} for a neutral studio casting sheet; ${view}.`,
     genderInstruction,
@@ -15658,7 +15696,7 @@ function _applyLuxuryPersonSheetModelPolicyPrompt(prompt = '', policy = {}, {
     providerHint,
     'Avoid glamour, revealing clothing, intimate posing, medical or identity-document styling, readable text, logos, watermarks, posters, weapons, uniforms unless explicitly required by the user brief.',
     neutralSource ? `Campaign/person constraints: ${neutralSource}` : '',
-  ].filter(Boolean).join(' '), policy.maxPromptChars || 1350);
+  ].filter(Boolean).join(' '), policy.maxPromptChars || 1800);
 }
 
 function _buildLuxuryPersonSheetAuditMinimalPrompt(policy = {}, opts = {}) {
@@ -16649,8 +16687,17 @@ async function _generateLuxuryRealisticActorPackage({
     : (youngerSubject
       ? 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; supported full-body seated or standing pose is acceptable when the lower garment and legs are visible. Do not crop at chest, waist or hips.'
       : 'CRITICAL FRAMING LOCK: vertical full-length identity reference photo. Show the person from head to shoes whenever possible; at minimum show head, torso and lower body below the hips. Do not crop at chest, waist or hips.');
+  const nonNegotiableActorPackageContract = _luxuryPersonSheetNonNegotiablePrompt({
+    aspectRatio,
+    expectedPeople,
+    castMode,
+    expectedGender: gender.value,
+    allowBarefoot,
+    view: 'the requested actor reference view',
+  });
   const hardFramingLead = [
     // 中文说明：生图 prompt 只保留正向构图要求；负向 AI 脸/半身判断留给 QA，降低上游提交审核误伤。
+    nonNegotiableActorPackageContract,
     expectedPeople > 1 ? `FULL-CAST IDENTITY REFERENCE PHOTO WITH EXACTLY ${expectedPeople} PEOPLE.` : 'VERTICAL 9:16 FULL-BODY IDENTITY REFERENCE PHOTO.',
     expectedPeople > 1
       ? `Camera is pulled far enough back to show all ${expectedPeople} people with head, torso, hips, legs and shoes or age-appropriate lower bodies in one frame.`
