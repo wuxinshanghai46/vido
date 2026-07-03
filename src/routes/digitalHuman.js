@@ -4268,7 +4268,7 @@ function _luxuryQaHasHardForbiddenMismatch(text = '', subject = '') {
   if (/cosmetic|perfume|skincare|lotion|bottle|jewelry|watch|phone|beverage|化妆|香水|护肤|瓶|珠宝|手表|手机|饮料/.test(combined)
     && /钢|金属|板材|建材|材料|材质|墙面|展墙/i.test(subjectText)) return true;
   if (!_luxuryHasExplicitRobotAssistantSubjectText(subjectText)
-    && /\b(robot|android|mechanical assistant|service robot|robotic mascot|humanoid machine)\b|机器人|机械助手|服务机器人|机器人助手|人形机器/i.test(combined)) return true;
+    && /\b(robot|mechanical assistant|service robot|robotic mascot|humanoid machine|android\s+(?:robot|assistant|humanoid|machine)|humanoid android)\b|机器人|机械助手|服务机器人|机器人助手|人形机器/i.test(combined)) return true;
   if (!_luxuryHasExplicitAnimalSubjectText(subjectText)
     && /\b(dog|puppy|pet|cat|animal)\b|小狗|狗狗|金毛|萨摩耶|宠物|猫咪|动物|毛孩子/i.test(combined)) return true;
   return /unrelated product category|wrong product|wrong subject|different subject|replaced subject|无关主体|错误主体|错品类|换成/.test(combined);
@@ -4497,8 +4497,8 @@ function _luxuryIsEmbodiedAiOrHomeLifeText(value = '') {
 function _luxuryHasExplicitRobotAssistantSubjectText(value = '') {
   // 中文说明：只有用户/主体明确是实体机器人或机械主体时才进入机器人保护链路；“智能生活/智能家居/智能体”不能自动等同机器人。
   let text = String(value || '');
-  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|不是|并非|非|无需|不需要|hard negative|must[_\s-]?not[_\s-]?show|do not|don't|without|no|not|avoid)\s*[^。；;.!?]{0,80}(?:AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|\brobot\s*assistant\b|\brobot\b|\bandroid\b)/ig, ' ');
-  return /(AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|robot|android)/i.test(text);
+  text = text.replace(/(?:不要|禁止|不得|不允许|不能|无|没有|拒绝|避免|硬负面|不是|并非|非|无需|不需要|hard negative|must[_\s-]?not[_\s-]?show|do not|don't|without|no|not|avoid)\s*[^。；;.!?]{0,80}(?:AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|\brobot\s*assistant\b|\brobot\b|\bandroid\s+(?:robot|assistant|humanoid|machine)\b|\bhumanoid android\b)/ig, ' ');
+  return /(AI\s*机器人|智能机器人|机器人助手|机器人|机械臂|仿生机器人|人形机器人|robot\s*assistant|\brobot\b|android\s+(?:robot|assistant|humanoid|machine)|humanoid android)/i.test(text);
 }
 
 function _luxuryIsRobotAssistantSubject(...parts) {
@@ -27131,28 +27131,41 @@ function _luxuryKeyframePromptContaminationIssues({
   const promptAndRefs = `${fullText} ${refText}`;
   const positiveAndRefs = `${positiveText} ${refText}`;
   const issues = [];
-  const add = (code, message) => {
-    if (!issues.some(x => x.code === code)) issues.push({ code, message, severity: 'block' });
+  const evidenceFor = (pattern, text) => {
+    const match = String(text || '').match(pattern);
+    if (!match) return '';
+    const source = String(text || '');
+    const index = Math.max(0, match.index || 0);
+    return source.slice(Math.max(0, index - 48), Math.min(source.length, index + String(match[0] || '').length + 80)).replace(/\s+/g, ' ').trim();
   };
-  if (/credential placeholder|integration credential placeholder|credential setup indicator/i.test(fullText)) {
-    add('visible_credential_placeholder_leaked', '提示词仍含可见 credential placeholder/credential setup indicator，占位词会被画到成片里。');
+  const add = (code, message, evidence = '') => {
+    if (!issues.some(x => x.code === code)) issues.push({ code, message, severity: 'block', evidence: evidence || undefined });
+  };
+  const credentialPlaceholderRe = /credential placeholder|integration credential placeholder|credential setup indicator/i;
+  if (credentialPlaceholderRe.test(fullText)) {
+    add('visible_credential_placeholder_leaked', '提示词仍含可见 credential placeholder/credential setup indicator，占位词会被画到成片里。', evidenceFor(credentialPlaceholderRe, fullText));
   }
-  if (/deyunai[-_]?smoke|local_actor_group_smoke|actor-identity-group.*smoke|avatar_male-(?:biz|tech|news)/i.test(promptAndRefs)) {
-    add('smoke_or_demo_reference_leaked', '提示词或参考链路含烟测/演示素材，可能把旧任务人物或场景带入当前分镜。');
+  const smokeDemoRe = /deyunai[-_]?smoke|local_actor_group_smoke|actor-identity-group.*smoke|avatar_male-(?:biz|tech|news)/i;
+  if (smokeDemoRe.test(promptAndRefs)) {
+    add('smoke_or_demo_reference_leaked', '提示词或参考链路含烟测/演示素材，可能把旧任务人物或场景带入当前分镜。', evidenceFor(smokeDemoRe, promptAndRefs));
   }
-  if (/\bAI Order Assistant\b/i.test(positiveAndRefs) && !/\bAI Order Assistant\b/i.test(confirmedText)) {
-    add('foreign_demo_subject_leaked', '正向提示或参考链路含旧任务 AI Order Assistant 主体。');
+  const aiOrderAssistantRe = /\bAI Order Assistant\b/i;
+  if (aiOrderAssistantRe.test(positiveAndRefs) && !aiOrderAssistantRe.test(confirmedText)) {
+    add('foreign_demo_subject_leaked', '正向提示或参考链路含旧任务 AI Order Assistant 主体。', evidenceFor(aiOrderAssistantRe, positiveAndRefs));
   }
+  const unconfirmedRobotRe = /\b(ROBOT ASSISTANT SUBJECT LOCK|confirmed robot\/assistant subject|shown as a robot\/assistant|robot\/assistant helping|robot assistant product|mechanical assistant|service robot|robotic mascot|humanoid machine|android\s+(?:robot|assistant|humanoid|machine)|humanoid android)\b|机器人助手主体|机器人\/智能助手主体|服务机器人|人形机器/i;
   if (!(_luxuryHasExplicitRobotAssistantSubjectText(confirmedText) || _luxuryHasExplicitRobotAssistantSubjectText(productSubject))
-    && /\b(ROBOT ASSISTANT SUBJECT LOCK|confirmed robot\/assistant subject|shown as a robot\/assistant|robot\/assistant helping|robot assistant product|mechanical assistant|service robot|robotic mascot|humanoid machine|android)\b|机器人助手主体|机器人\/智能助手主体|服务机器人|人形机器/i.test(positiveAndRefs)) {
-    add('unconfirmed_robot_positive_prompt', '当前广告主体未确认机器人/机械助手，但正向提示或参考链路出现机器人主体。');
+    && unconfirmedRobotRe.test(positiveAndRefs)) {
+    add('unconfirmed_robot_positive_prompt', '当前广告主体未确认机器人/机械助手，但正向提示或参考链路出现机器人主体。', evidenceFor(unconfirmedRobotRe, positiveAndRefs));
   }
+  const unconfirmedAnimalRe = /\b(pet_product_or_service|confirmed pet|pet product|pet life scene|animal companion|puppy|dog\s+(?:running|toy|bowl|leash|companion|avatar|photo)|cat\s+(?:toy|avatar|photo))\b|宠物生活|宠物主体|宠物用品|宠物服务|小狗|狗狗|金毛|萨摩耶|猫咪|动物伙伴|毛孩子/i;
   if (!_luxuryHasExplicitAnimalSubjectText(confirmedText)
-    && /\b(pet_product_or_service|confirmed pet|pet product|pet life scene|animal companion|puppy|dog\s+(?:running|toy|bowl|leash|companion|avatar|photo)|cat\s+(?:toy|avatar|photo))\b|宠物生活|宠物主体|宠物用品|宠物服务|小狗|狗狗|金毛|萨摩耶|猫咪|动物伙伴|毛孩子/i.test(positiveAndRefs)) {
-    add('unconfirmed_animal_positive_prompt', '当前广告主体未确认宠物/动物，但正向提示或参考链路出现宠物/动物主体。');
+    && unconfirmedAnimalRe.test(positiveAndRefs)) {
+    add('unconfirmed_animal_positive_prompt', '当前广告主体未确认宠物/动物，但正向提示或参考链路出现宠物/动物主体。', evidenceFor(unconfirmedAnimalRe, positiveAndRefs));
   }
-  if (/\bplaceholder\s+(?:wording|words?|text|credential|token|secret)\b/i.test(positiveText)) {
-    add('visible_placeholder_wording_leaked', '正向提示要求渲染 placeholder/credential/token 等可见占位词。');
+  const visiblePlaceholderRe = /\bplaceholder\s+(?:wording|words?|text|credential|token|secret)\b/i;
+  if (visiblePlaceholderRe.test(positiveText)) {
+    add('visible_placeholder_wording_leaked', '正向提示要求渲染 placeholder/credential/token 等可见占位词。', evidenceFor(visiblePlaceholderRe, positiveText));
   }
   return issues;
 }
