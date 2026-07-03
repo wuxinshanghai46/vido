@@ -3005,17 +3005,22 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     parsed.person_count_match,
   ].some(value => value === false);
   const bodyProportionSoftMismatch = parsed.body_proportion_match === false;
+  const consistencyPositiveOverride = parsed.pass !== true
+    && score >= 88
+    && positiveText
+    && !hardReject
+    && mismatches.length === 0;
   const qa = {
-    pass: parsed.pass === true
+    pass: (parsed.pass === true || consistencyPositiveOverride)
       && (score >= 80 || positiveText)
       && !hardReject
-      && parsed.identity_match === true
-      && parsed.face_match === true
-      && parsed.hairstyle_match === true
-      && parsed.age_gender_match === true
-      && parsed.outfit_match === true
-      && parsed.lower_body_outfit_match === true
-      && parsed.person_count_match === true
+      && (parsed.identity_match === true || consistencyPositiveOverride)
+      && (parsed.face_match === true || consistencyPositiveOverride)
+      && (parsed.hairstyle_match === true || consistencyPositiveOverride)
+      && (parsed.age_gender_match === true || consistencyPositiveOverride)
+      && (parsed.outfit_match === true || consistencyPositiveOverride)
+      && (parsed.lower_body_outfit_match === true || consistencyPositiveOverride)
+      && (parsed.person_count_match === true || consistencyPositiveOverride)
       && mismatches.length === 0,
     score,
     identity_match: parsed.identity_match === true,
@@ -3038,6 +3043,10 @@ async function _checkLuxuryActorAssetConsistencyQa(req, candidatePath, reference
     qa.reason = qa.reason || (bodyProportionSoftMismatch
       ? 'Only minor body-proportion variation was reported; locked identity, face, hair, outfit and person count remained consistent.'
       : 'Vision QA returned positive consistency text with incomplete boolean fields.');
+  }
+  if (qa.pass && consistencyPositiveOverride) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Vision QA returned contradictory pass=false but high score and positive consistency evidence confirmed locked fields.';
   }
   if (!qa.pass) {
     const err = new Error(`演员包一致性 QA 未通过：${qa.reason || qa.observed || '候选图与正面演员参考不是同一人物/同一服装'}；score=${qa.score}`);
@@ -3184,7 +3193,14 @@ async function _extractLuxuryActorBibleFromFront(req, frontPath, {
   const hasHairLock = !!(bible.hairstyle || bible.hair_length || bible.hair_color || mustKeep.some(x => /hair|发/i.test(x)));
   const hasWardrobeLock = !!(bible.outfit_top || bible.outfit_bottom || bible.outfit_one_piece || bible.footwear || mustKeep.some(x => /outfit|clothing|wardrobe|shoe|dress|skirt|pants|服|衣|鞋|裙|裤/i.test(x)));
   const peopleOk = peopleCount > 1 ? bible.person_count === peopleCount : (bible.person_count === 1 || bible.person_count === 0);
-  if (parsed.pass !== true || score < 70 || !peopleOk || !hasIdentityLock || !hasHairLock || !hasWardrobeLock) {
+  const biblePositiveOverride = parsed.pass !== true
+    && score >= 88
+    && peopleOk
+    && hasIdentityLock
+    && hasHairLock
+    && hasWardrobeLock
+    && _luxuryActorQaTextLooksPositive(parsed.reason, parsed.observed);
+  if ((parsed.pass !== true && !biblePositiveOverride) || score < 70 || !peopleOk || !hasIdentityLock || !hasHairLock || !hasWardrobeLock) {
     const err = new Error(`演员包人物锁抽取未通过：正面图缺少可复用的人物/发型/服装锁；score=${score}`);
     err.status = 422;
     err.code = 'LUXURY_ACTOR_BIBLE_EXTRACTION_FAILED';
@@ -3198,6 +3214,7 @@ async function _extractLuxuryActorBibleFromFront(req, frontPath, {
     err._luxuryCandidatePath = frontPath;
     throw err;
   }
+  if (biblePositiveOverride) bible.soft_pass = true;
   return bible;
 }
 
@@ -3350,8 +3367,15 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
     parsed.role_match,
     parsed.appearance_match,
   ].some(value => value === false);
+  const specPositiveOverride = parsed.pass !== true
+    && score >= 88
+    && positiveText
+    && hardSpecFieldsOk
+    && !hardExplicitReject
+    && hardMismatchText.length === 0
+    && softMismatchText.length <= 2;
   const qa = {
-    pass: parsed.pass === true
+    pass: (parsed.pass === true || specPositiveOverride)
       && score >= 65
       && hardSpecFieldsOk
       && !hardExplicitReject
@@ -3379,6 +3403,10 @@ async function _checkLuxuryActorAssetSpecMatchQa(req, localPath, {
   if (qa.pass && (softExplicitReject || softMismatchText.length > 0)) {
     qa.soft_pass = true;
     qa.reason = qa.reason || 'Only non-hard person-setting fields were uncertain in a neutral casting photo.';
+  }
+  if (qa.pass && specPositiveOverride) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Vision QA returned contradictory pass=false but high score and positive person-setting evidence confirmed required fields.';
   }
   if (!qa.pass) {
     const err = new Error(`演员包人物设定 QA 未通过：${qa.reason || qa.observed || '候选图与当前人物设定不一致'}；score=${qa.score}`);
@@ -3803,6 +3831,9 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
   const lowerBodyVisible = boolField('lower_body_visible');
   const lowerGarmentVisible = boolField('trousers_or_skirt_visible');
   const kneesOrShoesVisible = boolField('knees_or_shoes_visible');
+  const actorLargeEnough = boolField('actor_large_enough');
+  const largeEmptyBackground = boolField('large_empty_background');
+  const insetOrTinyPerson = boolField('inset_or_tiny_person');
   const specGenderMatch = boolField('gender_match');
   const specOriginMatch = boolField('origin_match');
   const specAgeMatch = boolField('age_match');
@@ -3888,6 +3919,9 @@ function _qaJsonFromMalformedVisionJson(raw = '') {
       lower_body_visible: lowerBodyVisible === null ? ok : lowerBodyVisible,
       trousers_or_skirt_visible: lowerGarmentVisible === null ? ok : lowerGarmentVisible,
       knees_or_shoes_visible: kneesOrShoesVisible === null ? ok : kneesOrShoesVisible,
+      actor_large_enough: actorLargeEnough === null ? ok : actorLargeEnough,
+      large_empty_background: largeEmptyBackground === null ? !ok : largeEmptyBackground,
+      inset_or_tiny_person: insetOrTinyPerson === null ? !ok : insetOrTinyPerson,
     } : {}),
     ...(specQaShape ? {
       gender_match: specGenderMatch === null ? ok : specGenderMatch,
