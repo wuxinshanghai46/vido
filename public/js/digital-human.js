@@ -6994,11 +6994,14 @@
         methods,
       },
       style: {
-        mode: ['classic', 'tech_commercial'].includes(String(style.mode || 'classic')) ? String(style.mode || 'classic') : 'classic',
-        notes: String(style.notes || '').trim().slice(0, 240),
+        mode: 'classic',
+        notes: [
+          String(style.mode || '').trim() === 'tech_commercial' && !/科技感|UI|轻科幻/.test(String(style.notes || '')) ? '科技感商业 / 轻科幻 UI' : '',
+          String(style.notes || '').trim(),
+        ].filter(Boolean).join('；').slice(0, 240),
       },
       negative: {
-        text: String(negative.text || src.negative_text || '').trim().slice(0, 240),
+        text: normalizeLuxuryNegativeControlText(negative.text || src.negative_text || '').slice(0, 240),
       },
     };
   }
@@ -7012,7 +7015,6 @@
     return ctrl.environment.mode !== 'auto'
       || !!ctrl.environment.custom
       || ctrl.product.enabled === true
-      || ctrl.style.mode !== 'classic'
       || !!ctrl.style.notes
       || !!ctrl.negative.text;
   }
@@ -7033,7 +7035,7 @@
         methods: ctrl.product.methods,
       },
       style_control: {
-        mode: ctrl.style.mode,
+        mode: 'classic',
         notes: ctrl.style.notes,
       },
       negative_control: {
@@ -7066,6 +7068,29 @@
     return found ? found[1] : (fallback || value || '自动');
   }
 
+  function normalizeLuxuryNegativeControlText(value = '') {
+    const text = String(value || '')
+      .replace(/^["“]|["”]$/g, '')
+      .replace(/^(?:禁止项|画面禁止项|严格画面禁止项清单|负面约束|Negative)\s*[:：]\s*/i, '')
+      .trim();
+    if (!text) return '';
+    const parts = text
+      .split(/[；;\n。]+/)
+      .map(item => item.replace(/^[\s\-*•、，,.\d）)]+/, '').trim())
+      .filter(Boolean);
+    const negativeParts = parts.map(item => {
+      const line = item.replace(/^(?:不要|禁止|避免|不能|不得|别|无|无需)\s*/, '').trim();
+      if (!line) return '';
+      if (/^(不要|禁止|避免|不能|不得|别)/.test(item)) return item;
+      if (/^无(?:需|须|关)/.test(item)) return `不要${line}`;
+      if (/(错误|无关|跑偏|跑到|变成|替代|夸张|过度|失真|塑料|水印|logo|字幕|文字|海报|纯\s*UI|办公室|厨房|厨具|货架|仓库|展厅|西装|白衬衫|抢主体|遮挡|模糊|低清|畸变|多余人物|额外人物)/i.test(item)) {
+        return `不要${line}`;
+      }
+      return '';
+    }).filter(Boolean);
+    return Array.from(new Set(negativeParts)).join('；').slice(0, 420);
+  }
+
   async function aiWriteLuxuryControlField(field = '') {
     const ctrl = luxuryControlledProduction();
     const isStyle = field === 'style';
@@ -7077,13 +7102,13 @@
       return;
     }
     const envLabel = luxuryControlOptionLabel(LUXURY_CONTROL_ENVIRONMENT_OPTIONS, ctrl.environment.mode, '自动');
-    const styleLabel = ctrl.style.mode === 'tech_commercial' ? '科技感商业 / 轻科幻 UI' : '普通真实商业广告';
+    const styleLabel = ctrl.style.notes ? `用户风格方向：${ctrl.style.notes}` : '未单独填写风格方向';
     const product = state.luxuryAd.productAsset || null;
     const productText = product?.name || product?.filename || product?.url ? `已上传主体/商品素材：${product.name || product.filename || '已上传'}` : '未上传主体/商品素材';
     const currentText = isStyle ? ctrl.style.notes : ctrl.negative.text;
     const outputRule = isStyle
       ? '只输出“风格方向补充说明”，80-160字，说明画面质感、光线、空间、UI浮层、镜头情绪；不要写标题、不要分镜编号、不要生成完整剧本。'
-      : '只输出“禁止项”，用中文分号分隔，覆盖场景错误、画风错误、人物错误、商品错误、UI错误；不要写标题、不要解释原因。';
+      : '只输出“禁止项”，每一条必须以“不要/禁止/避免/不能”开头，用中文分号分隔；只写不能出现的场景错误、画风错误、人物错误、商品错误、UI错误。禁止复述广告需求，禁止写“拍摄/展示/聚焦/最终希望/目标观众”等正向画面描述，不要写标题、不要解释原因。';
     const topic = [
       `广告需求：${content}`,
       `当前场景方向：${envLabel}${ctrl.environment.custom ? `；自定义：${ctrl.environment.custom}` : ''}`,
@@ -7115,7 +7140,9 @@
         const el = document.querySelector('[data-lux-control-style-notes]');
         if (el) el.value = ctrl.style.notes;
       } else {
-        ctrl.negative.text = text.slice(0, 420);
+        const negativeText = normalizeLuxuryNegativeControlText(text);
+        if (!negativeText) throw new Error('AI 返回的是正向画面描述，不是禁止项，请重新帮写或手动填写“不要...”类约束');
+        ctrl.negative.text = negativeText;
         const el = document.querySelector('[data-lux-control-negative]');
         if (el) el.value = ctrl.negative.text;
       }
@@ -7178,11 +7205,7 @@
           </section>
           <section class="dh-luxgen-control-card">
             <div class="dh-luxgen-control-title"><span><b>风格方向</b><span>控制画面质感、光线、空间和 UI 浮层等表达；不改用户原始广告需求。</span></span><button type="button" data-lux-control-ai="style">AI 帮写</button></div>
-            <select class="dh-input" data-lux-control-style-mode>
-              <option value="classic" ${ctrl.style.mode === 'classic' ? 'selected' : ''}>保持普通真实商业广告</option>
-              <option value="tech_commercial" ${ctrl.style.mode === 'tech_commercial' ? 'selected' : ''}>科技感商业 / 轻科幻 UI</option>
-            </select>
-            <textarea class="dh-input" rows="3" data-lux-control-style-notes placeholder="参考视频风格要点，例如：浅色零售空间、透明 UI 浮层、经理看手机确认订单，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
+            <textarea class="dh-input" rows="4" data-lux-control-style-notes placeholder="直接写清楚画面风格，例如：保持普通真实商业广告；浅色零售空间；柔和自然光；少量透明 UI 浮层；镜头克制，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
           </section>
           <section class="dh-luxgen-control-card">
             <div class="dh-luxgen-control-title"><span><b>禁止项</b><span>明确不能出现的画面、人物、商品或风格错误；命中后质检会判失败。</span></span><button type="button" data-lux-control-ai="negative">AI 帮写</button></div>
@@ -17256,7 +17279,7 @@
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
       const ctrl = luxuryControlledProduction();
       ctrl.environment.mode = luxControlEnv.dataset.luxControlEnv || 'auto';
-      if (ctrl.environment.mode === 'tech_commercial') ctrl.style.mode = 'tech_commercial';
+      if (ctrl.environment.mode === 'tech_commercial' && !ctrl.style.notes) ctrl.style.notes = '科技感商业 / 轻科幻 UI；保留真人实拍和产品可读性，UI 只能作为轻量增强层。';
       markLuxuryControlledProductionDirty();
       return;
     }
@@ -18347,13 +18370,13 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
       markLuxuryControlledProductionDirty();
       return;
     }
-    if (e.target.matches?.('[data-lux-control-style-mode]')) {
+    if (e.target.matches?.('[data-lux-control-negative]')) {
+      if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
       const ctrl = luxuryControlledProduction();
-      ctrl.style.mode = e.target.value || 'classic';
-      if (ctrl.style.mode === 'tech_commercial' && ctrl.environment.mode === 'auto') {
-        ctrl.environment.mode = 'tech_commercial';
-      }
-      markLuxuryControlledProductionDirty();
+      const cleaned = normalizeLuxuryNegativeControlText(e.target.value || '');
+      ctrl.negative.text = cleaned;
+      e.target.value = cleaned;
+      markLuxuryControlledProductionDirty({ renderControl: false });
       return;
     }
     if (e.target.dataset?.luxShotSubjectType) {

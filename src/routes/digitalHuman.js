@@ -838,6 +838,28 @@ function _compactLuxuryAdSubtitle(subtitle = null) {
   };
 }
 
+function _normalizeLuxuryNegativeControlText(value = '') {
+  const raw = _projectText(value || '', 360)
+    .replace(/^(?:禁止项|画面禁止项|严格画面禁止项清单|负面约束|Negative)\s*[:：]\s*/i, '')
+    .trim();
+  if (!raw) return '';
+  const parts = raw
+    .split(/[；;\n。]+/)
+    .map(item => item.replace(/^[\s\-*•、，,.\d）)]+/, '').trim())
+    .filter(Boolean);
+  const normalized = parts.map(item => {
+    const line = item.replace(/^(?:不要|禁止|避免|不能|不得|别|无|无需)\s*/, '').trim();
+    if (!line) return '';
+    if (/^(不要|禁止|避免|不能|不得|别)/.test(item)) return item;
+    if (/^无(?:需|须|关)/.test(item)) return `不要${line}`;
+    if (/(错误|无关|跑偏|跑到|变成|替代|夸张|过度|失真|塑料|水印|logo|字幕|文字|海报|纯\s*UI|办公室|厨房|厨具|货架|仓库|展厅|西装|白衬衫|抢主体|遮挡|模糊|低清|畸变|多余人物|额外人物)/i.test(item)) {
+      return `不要${line}`;
+    }
+    return '';
+  }).filter(Boolean);
+  return Array.from(new Set(normalized)).join('；').slice(0, 300);
+}
+
 function _normalizeLuxuryControlledProduction(input = null) {
   const src = input && typeof input === 'object' ? input : {};
   const enabled = src.enabled === true || src.mode === 'controlled';
@@ -846,14 +868,19 @@ function _normalizeLuxuryControlledProduction(input = null) {
   const style = src.style_control || src.style || {};
   const negative = src.negative_control || src.negative || {};
   const envMode = ['auto', 'indoor', 'outdoor', 'mixed', 'tech_commercial', 'custom'].includes(String(env.mode || 'auto')) ? String(env.mode || 'auto') : 'auto';
-  const styleMode = ['classic', 'tech_commercial'].includes(String(style.mode || 'classic')) ? String(style.mode || 'classic') : 'classic';
+  const styleMode = String(style.mode || '').trim() === 'tech_commercial' ? 'tech_commercial' : 'classic';
+  const styleNotes = [
+    styleMode === 'tech_commercial' && !/科技感|UI|轻科幻/.test(String(style.notes || '')) ? '科技感商业 / 轻科幻 UI' : '',
+    style.notes || '',
+  ].filter(Boolean).join('；');
+  const negativeText = _normalizeLuxuryNegativeControlText(negative.text || src.negative_text || '');
   const methods = (Array.isArray(product.methods) ? product.methods : [])
     .map(x => String(x || '').trim())
     .filter(x => ['detail', 'in_hand', 'usage_demo', 'scene_evidence', 'proof', 'cta'].includes(x))
     .slice(0, 8);
   const clean = {
-    enabled: !!enabled || envMode !== 'auto' || styleMode !== 'classic' || !!String(env.custom || '').trim() || !!String(style.notes || '').trim() || !!String(negative.text || '').trim() || product.enabled === true,
-    mode: (!!enabled || envMode !== 'auto' || styleMode !== 'classic' || product.enabled === true) ? 'controlled' : 'classic',
+    enabled: !!enabled || envMode !== 'auto' || !!String(env.custom || '').trim() || !!String(styleNotes || '').trim() || !!negativeText || product.enabled === true,
+    mode: (!!enabled || envMode !== 'auto' || product.enabled === true) ? 'controlled' : 'classic',
     environment_control: {
       mode: envMode,
       custom: _projectText(env.custom || '', 200),
@@ -865,17 +892,16 @@ function _normalizeLuxuryControlledProduction(input = null) {
       methods,
     },
     style_control: {
-      mode: styleMode,
-      notes: _projectText(style.notes || '', 300),
+      mode: 'classic',
+      notes: _projectText(styleNotes || '', 300),
     },
     negative_control: {
-      text: _projectText(negative.text || src.negative_text || '', 300),
+      text: negativeText,
     },
   };
   clean.enabled = clean.enabled || clean.environment_control.mode !== 'auto'
     || !!clean.environment_control.custom
     || clean.product_control.enabled
-    || clean.style_control.mode !== 'classic'
     || !!clean.style_control.notes
     || !!clean.negative_control.text;
   clean.mode = clean.enabled ? 'controlled' : 'classic';
@@ -915,7 +941,7 @@ function _buildLuxuryControlledProductionGuide(controlledProduction = null, { pr
     clean.environment_control.custom ? `用户自定义场景要求：${clean.environment_control.custom}` : '',
     clean.environment_control.mode === 'outdoor' ? '必须规划真实室外镜头，场景应来自用户需求和行业真实使用地点，不得退回默认室内办公室。' : '',
     clean.environment_control.mode === 'mixed' ? '必须让室内和室外镜头都有明确剧情功能，不能只在文字里提到室外。' : '',
-    clean.environment_control.mode === 'tech_commercial' || clean.style_control.mode === 'tech_commercial'
+    clean.environment_control.mode === 'tech_commercial' || /科技感|UI|轻科幻/.test(clean.style_control.notes || '')
       ? '科技感商业规则：允许透明 UI、数据浮层、屏幕确认、智能设备和轻科幻质感；人物、空间、商品仍必须是真实商业摄影，不允许变成纯 3D CG、塑料 AI 脸、抽象海报或无法落地的未来实验室。'
       : '',
   ].filter(Boolean).join(' ');
@@ -926,14 +952,13 @@ function _buildLuxuryControlledProductionGuide(controlledProduction = null, { pr
     clean.product_control.lock_strength === 'strict' ? '严格锁定时，如果上传商品图不可用或镜头无法表达商品证据，应返回失败，不得换成无关商品。' : '',
   ].filter(Boolean).join(' ') : '';
   const styleRule = [
-    clean.style_control.mode === 'tech_commercial' ? '风格方向：科技感商业，保留真人实拍和产品可读性，UI/VFX 只能作为后期增强层。' : '',
     clean.style_control.notes ? `用户风格说明：${clean.style_control.notes}` : '',
   ].filter(Boolean).join(' ');
   const negativeRule = clean.negative_control.text ? `禁止项：${clean.negative_control.text}。这些内容出现时应判定失败，不得静默替换为兜底画面。` : '';
   const qaRules = [
     clean.environment_control.mode !== 'auto' || clean.environment_control.custom ? `QA 必须检查场景是否符合：${envRule}` : '',
     clean.product_control.enabled ? `QA 必须检查商品/服务证据是否符合：${productRule}` : '',
-    clean.style_control.mode !== 'classic' || clean.style_control.notes ? `QA 必须检查风格是否符合：${styleRule}` : '',
+    clean.style_control.notes ? `QA 必须检查风格是否符合：${styleRule}` : '',
     negativeRule ? `QA 必须检查禁止项：${negativeRule}` : '',
   ].filter(Boolean);
   const summary = [envRule, productRule, styleRule, negativeRule].filter(Boolean).join('\n');
