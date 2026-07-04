@@ -4283,6 +4283,32 @@ function _compactQaText(value = '', max = 520) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function _luxuryIsTransientImageProviderError(err = null) {
+  const text = [
+    err?.code,
+    err?.message,
+    err?.response?.status,
+    err?.response?.statusText,
+    err?.response?.data?.code,
+    err?.response?.data?.reason,
+    err?.response?.data?.message,
+    typeof err?.response?.data === 'string' ? err.response.data : '',
+  ].filter(Boolean).join(' ');
+  return /HTTP\s*50[0-9]|status code 50[0-9]|Bad Gateway|Internal Server Error|gateway|upstream|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNABORTED|EAI_AGAIN|ENOTFOUND|UNKXXXO?004IFR/i.test(text);
+}
+
+function _luxuryIsProviderSubmitAuditError(err = null) {
+  const text = [
+    err?.code,
+    err?.message,
+    err?.response?.data?.code,
+    err?.response?.data?.reason,
+    err?.response?.data?.message,
+    typeof err?.response?.data === 'string' ? err.response.data : '',
+  ].filter(Boolean).join(' ');
+  return /AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(text);
+}
+
 function _luxuryQaHasHardForbiddenMismatch(text = '', subject = '') {
   const combined = String(text || '').toLowerCase();
   const subjectText = String(subject || '');
@@ -13830,6 +13856,7 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
       prompt_chars: item.prompt_chars || undefined,
       reference_retry_mode: item.reference_retry_mode || undefined,
       next_retry: item.next_retry || undefined,
+      failure_kind: item.failure_kind || undefined,
     }))
     .filter(item => item.error || item.provider_id || item.model_id)
     .slice(-24);
@@ -13850,6 +13877,12 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
   ].filter((url, i, arr) => url && arr.indexOf(url) === i).slice(-16);
   const firstProviderError = providerErrors.find(item => item.error)?.error || '';
   const firstQaReason = qaFailures.find(item => item.reason)?.reason || '';
+  const transientProviderCount = providerErrors.filter(item =>
+    item.failure_kind === 'provider_transient' || /HTTP\s*50[0-9]|status code 50[0-9]|Bad Gateway|Internal Server Error|gateway|timeout|ECONNRESET|ETIMEDOUT/i.test(item.error)
+  ).length;
+  const auditProviderCount = providerErrors.filter(item =>
+    item.failure_kind === 'provider_submit_audit' || /AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(item.error)
+  ).length;
   const preflightIssues = [
     ...(Array.isArray(details?.issues) ? details.issues : []),
     ...attempts.flatMap(item => Array.isArray(item?.prompt_preflight_issues) ? item.prompt_preflight_issues : []),
@@ -13869,6 +13902,8 @@ function _luxuryKeyframeFailureDiagnosis(details = {}, fallbackError = '') {
     summaryParts.push(`已生成 ${generatedCount || 0}/${totalShots || '?'} 镜`);
   }
   if (preflightIssues.length) summaryParts.push(`出图前预检阻断：${preflightIssues.map(x => x.message || x.code).filter(Boolean).slice(0, 3).join('；')}`);
+  else if (transientProviderCount) summaryParts.push(`图片通道临时故障：${transientProviderCount} 次 5xx/网关/超时类错误，不能视为画面 QA 不合格`);
+  else if (auditProviderCount) summaryParts.push(`图片通道提交审核拒绝：${auditProviderCount} 次，需检查当前提示词/参考图合规性`);
   else if (firstProviderError) summaryParts.push(`模型返回：${firstProviderError}`);
   else if (firstQaReason) summaryParts.push(`QA 原因：${firstQaReason}`);
   else if (fallbackError) summaryParts.push(_compactLuxuryFailureText(fallbackError, 360));
@@ -14449,14 +14484,34 @@ function _luxuryKeyframeSubjectGuard(productSubject = '', scene = {}, { allowSce
   ].filter(Boolean).join(' ');
 }
 
-function _luxurySteelEnvironmentLockPrompt(productSubject = '', scene = {}) {
-  const policy = _luxuryIndustryDisambiguationPolicy(productSubject, scene);
-  if (!policy || policy.id === 'confirmed_story_only') return '';
+function _luxuryCurrentShotEvidenceLockPrompt(productSubject = '', scene = {}) {
+  const subject = _luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || 'advertised subject');
+  const evidence = _luxuryStrictList([
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.action,
+    scene.visual_action,
+    scene.objective,
+    scene.voiceover,
+    scene.product_lock,
+    scene.scene_lock,
+    scene.prop_lock,
+    scene.ui_lock,
+    scene.reality_lock,
+    scene.visual_locks?.product_lock,
+    scene.visual_locks?.scene_lock,
+    scene.visual_locks?.prop_lock,
+    scene.visual_locks?.ui_lock,
+    scene.visual_locks?.reality_lock,
+  ], 8);
+  if (!evidence.length) return '';
   return [
-    'CONFIRMED INDUSTRY / USE-CASE LOCK:',
-    `Subject "${policy.subject}" must be visualized as ${policy.industry}.`,
-    `Allowed scene/evidence: ${policy.allowedEnvironment}; ${policy.requiredEvidence}.`,
-    `Hard negatives for this shot: ${policy.mustNotShow.join('; ')}.`,
+    'CURRENT SHOT EVIDENCE LOCK:',
+    `Confirmed subject: ${subject}.`,
+    `Use only these current-shot evidence cues: ${evidence.join('; ')}.`,
+    'Do not import any carrier, place, prop, UI, person, animal, mechanical assistant, scene family or business workflow that is not present in the current brief, uploaded assets, storyboard contract or manual edits.',
   ].join(' ');
 }
 
@@ -14465,27 +14520,38 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   const text = [subject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.voiceover, scene.topview_prompt]
     .filter(Boolean)
     .join(' ');
-  const isSteelOrMaterial = _isLuxurySteelMaterialSubject(subject, scene);
   const softwareWorkflow = _luxuryIsSoftwareWorkflowSubject(subject, scene);
   const personRequired = _luxuryStoryboardRequiresPerson(scene, subject);
-  const policy = _luxuryIndustryDisambiguationPolicy(subject, scene);
+  const currentEvidence = _luxuryStrictList([
+    scene.visual,
+    scene.visual_prompt,
+    scene.content_prompt,
+    scene.scene_content,
+    scene.action,
+    scene.visual_action,
+    scene.product_lock,
+    scene.scene_lock,
+    scene.prop_lock,
+    scene.ui_lock,
+    scene.reality_lock,
+  ], 6);
   if (personRequired && softwareWorkflow) {
     return [
       'REQUIRED SERVICE STORY VISUAL ANCHOR:',
       'The first readable subject must be the confirmed person/role performing the confirmed workflow, service use, transformation or result in the confirmed environment.',
       `The advertised service evidence must remain visible as "${subject}" through the carriers explicitly required by the brief/assets/script; do not require a physical package for the service itself.`,
       'The frame must look like a live-action commercial storyboard panel: confirmed role + confirmed environment + confirmed evidence + requested emotion/action.',
-      `Industry evidence lock: ${policy.requiredEvidence}.`,
-      '中文硬约束：画面必须像真人实拍广告，商品/服务主体、人物动作和场景都来自已确认需求；不能自动套用手机、订单、货架、仓库、后台等模板。',
-    ].join(' ');
+      currentEvidence.length ? `Current-shot evidence lock: ${currentEvidence.join('; ')}.` : '',
+      '中文硬约束：画面必须像真人实拍广告，商品/服务主体、人物动作和场景都来自已确认需求；不能自动套用任何未确认载体、流程、道具、环境或界面模板。',
+    ].filter(Boolean).join(' ');
   }
   if (personRequired) {
     return [
       'REQUIRED STORY VISUAL ANCHOR:',
       'The first readable subject must be a real human actor inside a believable commercial scene, performing the storyboard action.',
       `The advertised product evidence must remain visible and recognizable as "${subject}", but it is proof inside the story scene, not a product-only catalogue hero.`,
-      `Industry evidence lock: ${policy.requiredEvidence}.`,
-      `Do not cross into these unconfirmed carriers: ${policy.mustNotShow.join('; ')}.`,
+      currentEvidence.length ? `Current-shot evidence lock: ${currentEvidence.join('; ')}.` : '',
+      'Do not cross into unconfirmed carriers, places, props, UI, people, animals, mechanical assistants or workflows.',
       'The frame must look like a live-action commercial storyboard panel: person + environment + product/material evidence in one coherent shot.',
       'Do not output an isolated product packshot, empty background, catalogue still, or default scene template.',
       '中文硬约束：画面第一眼必须有人物在已确认场景中行动，同时看见商品/服务主体；不能自动改成固定行业场景或纯产品图。',
@@ -14494,25 +14560,21 @@ function _luxuryKeyframePositiveAnchor(productSubject = '', scene = {}) {
   return [
     'REQUIRED POSITIVE VISUAL ANCHOR:',
     `The main visible subject must be "${subject}".`,
-    `Industry evidence lock: ${policy.requiredEvidence}.`,
-    `Do not cross into these unconfirmed carriers: ${policy.mustNotShow.join('; ')}.`,
+    currentEvidence.length ? `Current-shot evidence lock: ${currentEvidence.join('; ')}.` : '',
+    'Do not cross into unconfirmed carriers, places, props, UI, people, animals, mechanical assistants or workflows.',
     'The subject must be readable in the first glance and should not be replaced by generic luxury props, abstract atmosphere, unrelated objects, default UI carriers or empty scenery.',
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 }
 
 function _luxuryKeyframeSceneRecipe(productSubject = '', scene = {}) {
   const text = [productSubject, scene.visual, scene.visual_prompt, scene.content_prompt, scene.scene_content, scene.objective, scene.voiceover]
     .filter(Boolean)
     .join(' ');
-  const policy = _luxuryIndustryDisambiguationPolicy(productSubject || scene.product_subject, scene);
   return [
     'CONFIRMED-SCENE RECIPE:',
     'Create a realistic live-action commercial scene from the confirmed storyboard contract only.',
-    `Use-case/industry: ${policy.industry}.`,
-    `Allowed evidence/environment: ${policy.requiredEvidence}; ${policy.allowedEnvironment}.`,
     'Show the explicitly required subject, person/action, evidence carriers, result state and environment; do not add carriers or places that are not present in the brief, assets, script or manual edits.',
     text ? `Confirmed shot evidence text: ${_luxuryStrictText(text, 260)}.` : '',
-    `Avoid for this shot: ${policy.mustNotShow.join('; ')}.`,
     'Use practical natural lighting, believable real-world details and real camera perspective. Avoid default carrier ads, default environments, unrelated props, fake readable UI and template locations.',
   ].filter(Boolean).join(' ');
 }
@@ -14707,7 +14769,27 @@ function _luxuryBuildQaAcceptanceContractPrompt(scene = {}, contract = null, {
     ? contract
     : (scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object' ? scene.strict_storyboard_contract : {});
   const subject = _luxurySceneFriendlyProductSubject(productSubject || strict.product_subject || scene.product_subject || 'advertised subject');
-  const industryPolicy = strict.industry_policy || _luxuryIndustryDisambiguationPolicy(subject, scene);
+  const currentEvidence = _luxuryStrictList([
+    strict.product_subject,
+    scene.product_subject,
+    strict.visual,
+    scene.visual,
+    scene.content_prompt,
+    scene.scene_content,
+    strict.action,
+    scene.action,
+    scene.visual_action,
+    scene.product_lock,
+    scene.scene_lock,
+    scene.prop_lock,
+    scene.ui_lock,
+    scene.reality_lock,
+    scene.visual_locks?.product_lock,
+    scene.visual_locks?.scene_lock,
+    scene.visual_locks?.prop_lock,
+    scene.visual_locks?.ui_lock,
+    scene.visual_locks?.reality_lock,
+  ], 10);
   const expectedPeople = Number(
     strict.multi_character_contract?.expected_count
     || scene.multi_character_contract?.expected_count
@@ -14718,19 +14800,16 @@ function _luxuryBuildQaAcceptanceContractPrompt(scene = {}, contract = null, {
   const mustShow = _luxuryStrictList([
     ...(Array.isArray(strict.must_show) ? strict.must_show : []),
     ...(Array.isArray(visualContract.must_show) ? visualContract.must_show : []),
-    ...(Array.isArray(industryPolicy.mustShow) ? industryPolicy.mustShow : []),
   ], 8);
   const mustNotShow = _luxuryStrictList([
     ...(Array.isArray(strict.must_not_show) ? strict.must_not_show : []),
     ...(Array.isArray(visualContract.must_not_show) ? visualContract.must_not_show : []),
-    ...(Array.isArray(industryPolicy.mustNotShow) ? industryPolicy.mustNotShow.map(x => `industry drift: ${x}`) : []),
   ], 10);
-  // 中文注释：QA 验收合同只来自当前任务、当前镜头和当前行业合同；不得读取或复用其他任务的画面要求。
+  // 中文注释：QA 验收合同只来自当前任务、当前镜头和当前锁定证据；不得读取固定行业表或历史任务模板。
   return _luxuryStrictText([
     'QA ACCEPTANCE CONTRACT FOR THIS SHOT ONLY:',
     `Subject/category must match: ${subject}.`,
-    industryPolicy.requiredEvidence ? `Required industry evidence: ${industryPolicy.requiredEvidence}.` : '',
-    industryPolicy.allowedEnvironment ? `Allowed environment family: ${industryPolicy.allowedEnvironment}.` : '',
+    currentEvidence.length ? `Required current-shot evidence: ${currentEvidence.join('; ')}.` : '',
     `Realism must be live-action commercial photography, not poster/CGI/illustration.`,
     expectedPeople > 0 ? `Visible people: exactly ${expectedPeople} campaign person${expectedPeople === 1 ? '' : 's'} when the shot contains people; no duplicate actor or background human-like figure.` : 'Visible people: only if this shot explicitly requires them; no random extra person.',
     scene.character_lock || strict.character_lock ? 'Character consistency: preserve the confirmed actor identity when a person appears; only expression, pose and camera may change.' : '',
@@ -14739,7 +14818,7 @@ function _luxuryBuildQaAcceptanceContractPrompt(scene = {}, contract = null, {
     mustShow.length ? `Must visibly pass: ${mustShow.join('; ')}.` : '',
     mustNotShow.length ? `Hard reject if present: ${mustNotShow.join('; ')}.` : '',
     strict.qa_contract ? `Existing QA rule: ${strict.qa_contract}.` : '',
-    'If any required subject, industry evidence, actor identity, scene family, product proof, story action or person count cannot be satisfied, do not invent another business/category.',
+    'If any required subject, current-shot evidence, actor identity, scene family, product proof, story action or person count cannot be satisfied, do not invent another business/category.',
   ].filter(Boolean).join(' '), 1500);
 }
 
@@ -14748,7 +14827,7 @@ function _luxuryQaRejectRepairPayload(err = null) {
   const qa = err.qa || err.details?.qa || err.data?.qa || null;
   if (!qa || typeof qa !== 'object') return null;
   const message = String(err.message || '').replace(/\s+/g, ' ');
-  if (/timeout|401|403|unauthorized|forbidden|api key|token|令牌|Internal Server Error|status code 500|HTTP 500/i.test(message)) {
+  if (/timeout|401|403|unauthorized|forbidden|api key|token|令牌|Internal Server Error|status code 50[0-9]|HTTP 50[0-9]|Bad Gateway|gateway/i.test(message)) {
     return null;
   }
   return qa;
@@ -14796,14 +14875,13 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   const contract = scene.strict_storyboard_contract && typeof scene.strict_storyboard_contract === 'object'
     ? { ...scene.strict_storyboard_contract }
     : _buildLuxuryStrictStoryboardContract(scene, index, total, { productSubject, aspectRatio });
-  const industryPolicy = _luxuryIndustryDisambiguationPolicy(productSubject || scene.product_subject || contract.product_subject, scene);
   const originalMustShow = Array.isArray(contract.must_show) ? contract.must_show : [];
   const originalMustNotShow = Array.isArray(contract.must_not_show) ? contract.must_not_show : [];
   const mustShow = [];
   const mustNotShow = [
-    'AI poster look, CGI render, illustration, waxy plastic skin, mannequin, fashion catalogue pose',
-    'unrelated product category, random luxury props, catalogue packshot when the storyboard requires a real action scene',
-    'generic empty background, scene replacement, wrong industry environment, wrong actor, missing required subject',
+    'non-photographic look, synthetic render, illustration, artificial skin/body, catalogue pose when the storyboard requires an action scene',
+    'unrelated subject category, random props, generic packshot when the storyboard requires a live story moment',
+    'generic empty background, scene replacement, wrong current-shot environment, wrong actor, missing required subject',
   ];
   const repairNotes = [];
   const realismLow = Number(dims.realism) > 0 && Number(dims.realism) < 76;
@@ -14812,8 +14890,10 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   const sceneLow = Number(dims.scene_continuity) > 0 && Number(dims.scene_continuity) < 72;
   const productLow = Number(dims.product_fidelity) > 0 && Number(dims.product_fidelity) < 74;
   const missedSubject = /missing|required subject|omits|does not show|未出现|缺少|没有|没按要求/.test(failureText);
-  const wrongScene = /wrong scene|unrelated.*scene|warehouse|factory|office|retail|exterior|interior|location|environment|场景|仓库|工厂|办公室|门店|外景|内景/.test(failureText);
-  const wrongProduct = /wrong product|unrelated subject|cosmetic|perfume|skincare|bottle|phone|watch|jewelry|beverage|产品|品类|香水|护肤|手机|珠宝|手表/.test(failureText);
+  const wrongScene = qa?.scene_family_match === false
+    || /wrong scene|unrelated.*scene|scene replacement|different environment|location mismatch|environment mismatch|场景不一致|场景替换|环境不一致/.test(failureText);
+  const wrongProduct = qa?.product_category_match === false
+    || /wrong product|wrong subject|unrelated subject|category mismatch|subject mismatch|replaced subject|产品不一致|主体不一致|品类不一致|替换主体|无关主体/.test(failureText);
   const wrongActor = /different actor|identity|face|gender|hairstyle|outfit|人物|人脸|发型|性别|穿搭|换人/.test(failureText);
   const personCountMismatch = qa?.person_count_match === false || /person_count_mismatch|extra_people|extra people/i.test(failureText);
   const expectedPersonCount = Number(qa?.expected_person_count);
@@ -14821,15 +14901,13 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
   if (realismLow || /ai|cgi|poster|plastic|render|illustration|假|塑料|海报/.test(failureText)) {
     repairNotes.push('realism');
     mustShow.push('real live-action commercial photography in a practical real-world location, natural skin texture, real fabric, believable shadows and optical lens perspective');
-    mustNotShow.push('over-polished AI poster, CGI, 3D render, plastic skin, beauty-ad mannequin, floating surreal composition');
+    mustNotShow.push('over-polished poster, CGI, 3D render, plastic surface or skin, mannequin-like subject, floating surreal composition');
   }
   if (missedSubject || wrongProduct || productLow) {
     repairNotes.push('required_subject');
     mustShow.push(`the advertised subject evidence must be visibly readable as ${_luxurySceneFriendlyProductSubject(productSubject || scene.product_subject || contract.product_subject || 'the advertised product/service')}`);
-    mustShow.push(`industry-specific evidence must be: ${industryPolicy.requiredEvidence}`);
     mustShow.push('the exact storyboard-required subject/evidence/use moment in the same frame, not a generic substitute');
     mustNotShow.push('any unrelated category, stock prop, default industry carrier, or unconfirmed product/service/person/place unless explicitly requested');
-    mustNotShow.push(...(industryPolicy.mustNotShow || []).map(x => `repeat industry drift: ${x}`));
   }
   if (sceneLow || wrongScene) {
     repairNotes.push('scene_environment');
@@ -14891,7 +14969,6 @@ function _rewriteLuxuryShotContractFromQa(scene = {}, qa = null, {
       qa?.observed ? `Previous observation: ${_luxuryStrictText(qa.observed, 180)}.` : '',
       Array.isArray(qa?.fatal_issues) && qa.fatal_issues.length ? `Fatal QA issues: ${_luxuryStrictText(qa.fatal_issues.join('; '), 220)}.` : '',
       Array.isArray(qa?.review_issues) && qa.review_issues.length ? `Review QA issues: ${_luxuryStrictText(qa.review_issues.join('; '), 220)}.` : '',
-      industryPolicy.qaRule ? `Industry-specific repair rule: ${industryPolicy.qaRule}` : '',
       'The next keyframe must fix every listed failure and will be rejected if any required subject, real-world scene, presenter identity, product evidence or lock reference is missing or replaced.',
     ].filter(Boolean).join(' '),
     repair_notes: repairNotes,
@@ -22906,7 +22983,7 @@ function _mergeLuxuryStoryboardDirectorContracts(scenes = [], contracts = [], op
     const directorPrompt = [
       `STORYBOARD DIRECTOR CONTRACT: ${contract.image_prompt}`,
       _luxuryLocksPrompt(scene.visual_locks, 900),
-      _luxurySteelEnvironmentLockPrompt(opts.productSubject || scene.product_subject, scene),
+      _luxuryCurrentShotEvidenceLockPrompt(opts.productSubject || scene.product_subject, scene),
       `Reference strategy: ${contract.reference_strategy}`,
       `QA contract: ${contract.qa_contract}`,
     ].filter(Boolean).join(' ');
@@ -25920,35 +25997,6 @@ function _buildLuxuryCharacterConsistencyLock(avatar = null) {
   };
 }
 
-function _controlledLuxurySteelCompositeQa({ scene = {}, productSubject = '', outPath = '', shotIndex = 0, totalShots = 1 } = {}) {
-  return {
-    pass: true,
-    score: 88,
-    subject_match: true,
-    storyboard_match: true,
-    major_mismatches: [],
-    unrelated_subjects: [],
-    observed: 'Deterministic controlled composite accepted: visible presenter layer, finished steel/material facade panel anchor, no factory/warehouse generator output.',
-    reason: 'Controlled steel presenter composite uses a deterministic background/person composition and is accepted by the controlled-policy gate; strict free-generation visual QA remains enabled for all model-generated candidates.',
-    provider: 'controlled-policy/deterministic-steel-presenter',
-    expected: {
-      shot: `${Number(shotIndex || 0) + 1}/${Math.max(1, Number(totalShots || scene.totalShots || 1))}`,
-      product_subject: _compactQaText(productSubject || scene.product_subject || 'advertised subject', 120),
-      person_required: true,
-      controlled_composite: true,
-      required_elements: ['visible presenter', 'confirmed advertised subject evidence', 'non-factory non-warehouse setting'],
-      note: 'Interaction is represented by controlled placement/gesture cue; do not reject this deterministic fallback for lack of model-painted hand contact.',
-    },
-  };
-}
-
-function _canUseControlledLuxurySteelPresenterOnly(scenes = [], productSubject = '') {
-  const list = Array.isArray(scenes) ? scenes.filter(Boolean) : [];
-  if (!list.length) return false;
-  return list.every(sc => _luxuryStoryboardRequiresPerson(sc, productSubject || sc.product_subject)
-    && _isLuxurySteelMaterialSubject(productSubject || sc.product_subject, sc));
-}
-
 async function _createLuxuryAdReferenceKeyframeLegacyUnused({
   req,
   avatar = null,
@@ -26430,38 +26478,6 @@ function _buildLuxuryCharacterConsistencyLock(avatar = null) {
     ].filter(Boolean).join(' '),
   };
 }
-
-// Accept deterministic steel composites through the QA gate while preserving strict QA for model-generated candidates.
-function _controlledLuxurySteelCompositeQa({ scene = {}, productSubject = '', outPath = '', shotIndex = 0, totalShots = 1 } = {}) {
-  return {
-    pass: true,
-    score: 88,
-    subject_match: true,
-    storyboard_match: true,
-    major_mismatches: [],
-    unrelated_subjects: [],
-    observed: 'Deterministic controlled composite accepted: visible presenter layer, finished steel/material facade panel anchor, no factory/warehouse generator output.',
-    reason: 'Controlled steel presenter composite uses a deterministic background/person composition and is accepted by the controlled-policy gate; strict free-generation visual QA remains enabled for all model-generated candidates.',
-    provider: 'controlled-policy/deterministic-steel-presenter',
-    expected: {
-      shot: `${Number(shotIndex || 0) + 1}/${Math.max(1, Number(totalShots || scene.totalShots || 1))}`,
-      product_subject: _compactQaText(productSubject || scene.product_subject || 'advertised subject', 120),
-      person_required: true,
-      controlled_composite: true,
-      required_elements: ['visible presenter', 'confirmed advertised subject evidence', 'non-factory non-warehouse setting'],
-      note: 'Interaction is represented by controlled placement/gesture cue; do not reject this deterministic fallback for lack of model-painted hand contact.',
-    },
-  };
-}
-
-// Detect the narrow steel-presenter case where every storyboard panel requires a visible person.
-function _canUseControlledLuxurySteelPresenterOnly(scenes = [], productSubject = '') {
-  const list = Array.isArray(scenes) ? scenes.filter(Boolean) : [];
-  if (!list.length) return false;
-  return list.every(sc => _luxuryStoryboardRequiresPerson(sc, productSubject || sc.product_subject)
-    && _isLuxurySteelMaterialSubject(productSubject || sc.product_subject, sc));
-}
-
 // Keep image-model prompts below provider caps while preserving the hard storyboard contract first.
 function _luxuryFitImagePromptParts(parts = [], maxChars = 1850) {
   const cleanParts = (Array.isArray(parts) ? parts : [])
@@ -26964,7 +26980,8 @@ function _luxuryIsQaRejectError(err = null) {
   const code = String(err?.code || '');
   const status = Number(err?.status || 0);
   const message = String(err?.message || err || '');
-  return status === 422
+  if (_luxuryIsTransientImageProviderError(err) || _luxuryIsProviderSubmitAuditError(err)) return false;
+  return (status === 422 && /QA|质检|分镜图|storyboard|mismatch|不一致|不符合/i.test(message))
     || code === 'LUXURY_KEYFRAME_STORYBOARD_QA_FAILED'
     || /QA未通过|QA failed|分镜图与剧本不一致|storyboard.*mismatch|Missing required|Wrong product|Wrong scene/i.test(message);
 }
@@ -27512,7 +27529,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           return key && arr.findIndex(x => x[1].map(ref => ref.resolved).filter(Boolean).join('|') === key) === i;
         });
         if (!refModes.length) refModes.push(['generation', []]);
-        const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 1)) || 1));
+        const maxGptImage2Calls = Math.max(1, Math.min(4, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_CALLS_PER_SHOT || 3)) || 3));
         const maxGptImage2RefsPerCall = Math.max(1, Math.min(2, Math.round(Number(process.env.VIDO_GPT_IMAGE2_MAX_REFS_PER_CALL || 1)) || 1));
         let gptImage2CallCount = 0;
         const runGptImage2 = async (refItemsForMode, suffix, inputFidelity = 'high', promptOverride = promptForAttempt) => {
@@ -27549,7 +27566,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
               return await runGptImage2(refItemsForMode, suffixParts.length ? `_${suffixParts.join('_')}` : '', inputFidelity);
             } catch (err) {
               lastGptErr = err;
-              const auditSubmitRejected = /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(err.message || err?.response?.data || ''));
+              const auditSubmitRejected = _luxuryIsProviderSubmitAuditError(err);
+              const transientProviderError = _luxuryIsTransientImageProviderError(err);
               const reachedCallBudget = gptImage2CallCount >= maxGptImage2Calls;
               if (auditSubmitRejected && !reachedCallBudget) {
                 const minimalAuditPrompt = _luxuryDeyunaiGptImage2MinimalAuditPrompt({
@@ -27577,7 +27595,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                     call_budget: `${gptImage2CallCount}/${maxGptImage2Calls}`,
                     max_refs_per_call: maxGptImage2RefsPerCall,
                     reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
-                    audit_rejection: /AuditSubmitIllegal|content audit|submit.*illegal|审核|违规/i.test(String(minimalErr.message || minimalErr?.response?.data || ''))
+                    audit_rejection: _luxuryIsProviderSubmitAuditError(minimalErr)
                       ? 'provider_submit_audit_rejected_minimal_prompt'
                       : undefined,
                     rule: 'same_model_minimal_audit_safe_prompt_after_submit_rejection',
@@ -27589,13 +27607,13 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 && !auditSubmitRejected
                 && !reachedCallBudget
                 && fidelityIndex < fidelityModes.length - 1
-                && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
+                && transientProviderError;
               const mayRetryWithFewerRefs = !mayRetryLowFidelity
                 && !auditSubmitRejected
                 && !reachedCallBudget
                 && fidelityIndex === fidelityModes.length - 1
                 && modeIndex < refModes.length - 1
-                && (!err.response?.status || err.response?.status >= 500 || /HTTP 500|Internal Server Error|UNKXXXO004IFR|未返回图片数据|timeout|gateway/i.test(String(err.message || '')));
+                && transientProviderError;
               addAttempt(model, false, err, {
                 prompt_chars: Array.from(String(promptForAttempt || '')).length,
                 prompt_mode: 'gpt-image-2-audit-safe-edit',
@@ -27612,7 +27630,8 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
                 reference_prepare: 'clean_jpeg_before_deyunai_gpt_image_2_edits',
                 next_retry: auditSubmitRejected ? '' : (mayRetryLowFidelity ? 'same-model-low-input-fidelity' : (mayRetryWithFewerRefs ? 'same-model-fewer-references' : '')),
                 audit_rejection: auditSubmitRejected ? 'provider_submit_audit_rejected_prompt_or_reference' : undefined,
-                rule: 'reference_preserving_required_for_locked_actor_keyframe',
+                failure_kind: auditSubmitRejected ? 'provider_submit_audit' : (transientProviderError ? 'provider_transient' : 'provider_or_model_error'),
+                rule: 'reference_preserving_required_for_current_keyframe',
               });
               console.warn(`[DH/luxury-ad] deyunai gpt-image-2 edits failed (${modeName}, input_fidelity=${inputFidelity}); ${auditSubmitRejected ? 'provider submit audit rejected, stop duplicate retry' : (mayRetryLowFidelity ? 'retrying low fidelity' : (mayRetryWithFewerRefs ? 'retrying fewer refs' : 'stop same-model retry'))}:`, shortError(err));
               if (mayRetryLowFidelity) continue;
@@ -27697,59 +27716,59 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   const tryControlledCandidate = async (phase = 'after-models') => {
     if (controlledCandidateTried || typeof controlledCandidateFactory !== 'function') return null;
     controlledCandidateTried = true;
-    const controlledModel = { provider_id: 'controlled', model_id: 'forced-presenter-steel-keyframe' };
+    const controlledModel = { provider_id: 'controlled', model_id: 'external-controlled-keyframe' };
     try {
-      console.info(`[DH/luxury-ad] trying forced presenter steel controlled candidate (${phase})`);
+      console.info(`[DH/luxury-ad] trying external controlled keyframe candidate (${phase})`);
       const forcedPath = await controlledCandidateFactory();
       if (!forcedPath || !fs.existsSync(forcedPath)) {
-        addAttempt(controlledModel, false, new Error('forced presenter fallback did not return an image file'));
+        addAttempt(controlledModel, false, new Error('external controlled candidate did not return an image file'));
         return null;
       }
       let qa = null;
       if (typeof controlledCandidateQa === 'function') {
-        qa = await controlledCandidateQa({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/forced-presenter-steel-keyframe', phase });
+        qa = await controlledCandidateQa({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/external-controlled-keyframe', phase });
       } else if (typeof qaCheck === 'function') {
-        qa = await qaCheck({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/forced-presenter-steel-keyframe' });
+        qa = await qaCheck({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/external-controlled-keyframe' });
         if (!qa?.pass) {
           const issues = [
             ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
             ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
             qa?.reason || '',
           ].filter(Boolean).slice(0, 5).join('; ');
-          addAttempt(controlledModel, false, new Error(`QA failed: ${issues || 'forced presenter steel keyframe mismatch'}`));
+          addAttempt(controlledModel, false, new Error(`QA failed: ${issues || 'controlled keyframe mismatch'}`));
           return null;
         }
       }
       addAttempt(controlledModel, true);
-      return { outPath: forcedPath, model: 'controlled/forced-presenter-steel-keyframe', attempts, qa };
+      return { outPath: forcedPath, model: 'controlled/external-controlled-keyframe', attempts, qa };
     } catch (err) {
       addAttempt(controlledModel, false, err);
-      console.warn('[DH/luxury-ad] forced presenter steel fallback failed:', shortError(err));
+      console.warn('[DH/luxury-ad] external controlled keyframe candidate failed:', shortError(err));
     }
     return null;
   };
 
   const tryControlledPathCandidate = async (phase = 'after-models') => {
     if (!controlledCandidatePath || !fs.existsSync(controlledCandidatePath)) return null;
-    const controlledModel = { provider_id: 'controlled', model_id: 'steel-facade-keyframe' };
+    const controlledModel = { provider_id: 'controlled', model_id: 'external-controlled-path-keyframe' };
     try {
       let qa = null;
       if (typeof controlledCandidateQa === 'function') {
-        qa = await controlledCandidateQa({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/steel-facade-keyframe', phase });
+        qa = await controlledCandidateQa({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/external-controlled-path-keyframe', phase });
       } else if (typeof qaCheck === 'function') {
-        qa = await qaCheck({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/steel-facade-keyframe' });
+        qa = await qaCheck({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/external-controlled-path-keyframe' });
         if (!qa?.pass) {
           const issues = [
             ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
             ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `unrelated subject: ${x}`) : []),
             qa?.reason || '',
           ].filter(Boolean).slice(0, 5).join('; ');
-          addAttempt(controlledModel, false, new Error(`QA failed: ${issues || 'controlled steel facade keyframe mismatch'}`));
+          addAttempt(controlledModel, false, new Error(`QA failed: ${issues || 'controlled keyframe mismatch'}`));
           return null;
         }
       }
       addAttempt(controlledModel, true);
-      return { outPath: controlledCandidatePath, model: 'controlled/steel-facade-keyframe', attempts, qa };
+      return { outPath: controlledCandidatePath, model: 'controlled/external-controlled-path-keyframe', attempts, qa };
     } catch (err) {
       addAttempt(controlledModel, false, err);
     }
@@ -27762,7 +27781,7 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
     const controlledPathResult = await tryControlledPathCandidate('preferred-first');
     if (controlledPathResult) return controlledPathResult;
   } else if (preferControlledCandidate) {
-    console.info('[DH/luxury-ad] controlled steel candidate is reference/diagnostic only; real image model generation is required for final keyframes');
+    console.info('[DH/luxury-ad] controlled candidate is reference/diagnostic only; real image model generation is required for final keyframes');
   }
 
   const configuredModelsRaw = _uniquePipelineModels([
@@ -27993,47 +28012,47 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
   }
 
   if (allowControlledFinal && !controlledCandidateTried && typeof controlledCandidateFactory === 'function') {
-    const controlledModel = { provider_id: 'controlled', model_id: 'forced-presenter-steel-keyframe' };
+    const controlledModel = { provider_id: 'controlled', model_id: 'external-controlled-keyframe' };
     try {
       const forcedPath = await controlledCandidateFactory();
       if (forcedPath && fs.existsSync(forcedPath)) {
         let qa = null;
         if (typeof controlledCandidateQa === 'function') {
-          qa = await controlledCandidateQa({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/forced-presenter-steel-keyframe', phase: 'after-models' });
+          qa = await controlledCandidateQa({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/external-controlled-keyframe', phase: 'after-models' });
           addAttempt(controlledModel, true);
-          return { outPath: forcedPath, model: 'controlled/forced-presenter-steel-keyframe', attempts, qa };
+          return { outPath: forcedPath, model: 'controlled/external-controlled-keyframe', attempts, qa };
         } else if (typeof qaCheck === 'function') {
-          qa = await qaCheck({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/forced-presenter-steel-keyframe' });
+          qa = await qaCheck({ outPath: forcedPath, model: controlledModel, modelLabel: 'controlled/external-controlled-keyframe' });
           if (!qa?.pass) {
             const issues = [
               ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
               ...(Array.isArray(qa?.unrelated_subjects) ? qa.unrelated_subjects.map(x => `出现无关主体：${x}`) : []),
               qa?.reason || '',
             ].filter(Boolean).slice(0, 5).join('；');
-            addAttempt(controlledModel, false, new Error(`QA未通过：${issues || '强制真人钢材分镜仍不一致'}`));
+            addAttempt(controlledModel, false, new Error(`QA未通过：${issues || '受控候选分镜仍不一致'}`));
           } else {
             addAttempt(controlledModel, true);
-            return { outPath: forcedPath, model: 'controlled/forced-presenter-steel-keyframe', attempts, qa };
+            return { outPath: forcedPath, model: 'controlled/external-controlled-keyframe', attempts, qa };
           }
         } else {
           addAttempt(controlledModel, true);
-          return { outPath: forcedPath, model: 'controlled/forced-presenter-steel-keyframe', attempts, qa: null };
+          return { outPath: forcedPath, model: 'controlled/external-controlled-keyframe', attempts, qa: null };
         }
       } else {
-        addAttempt(controlledModel, false, new Error('forced presenter fallback did not return an image file'));
+        addAttempt(controlledModel, false, new Error('external controlled candidate did not return an image file'));
       }
     } catch (err) {
       addAttempt(controlledModel, false, err);
-      console.warn('[DH/luxury-ad] forced presenter steel fallback failed:', shortError(err));
+      console.warn('[DH/luxury-ad] external controlled keyframe candidate failed:', shortError(err));
     }
   }
 
   if (allowControlledFinal && controlledCandidatePath && fs.existsSync(controlledCandidatePath)) {
-    const controlledModel = { provider_id: 'controlled', model_id: 'steel-facade-keyframe' };
+    const controlledModel = { provider_id: 'controlled', model_id: 'external-controlled-path-keyframe' };
     try {
       let qa = null;
       if (typeof qaCheck === 'function') {
-        qa = await qaCheck({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/steel-facade-keyframe' });
+        qa = await qaCheck({ outPath: controlledCandidatePath, model: controlledModel, modelLabel: 'controlled/external-controlled-path-keyframe' });
         if (!qa?.pass) {
           const issues = [
             ...(Array.isArray(qa?.major_mismatches) ? qa.major_mismatches : []),
@@ -28043,11 +28062,11 @@ async function _generateLuxuryReferenceKeyframeImageSafe({
           addAttempt(controlledModel, false, new Error(`QA未通过：${issues || '受控分镜图与剧本不一致'}`));
         } else {
           addAttempt(controlledModel, true);
-          return { outPath: controlledCandidatePath, model: 'controlled/steel-facade-keyframe', attempts, qa };
+          return { outPath: controlledCandidatePath, model: 'controlled/external-controlled-path-keyframe', attempts, qa };
         }
       } else {
         addAttempt(controlledModel, true);
-        return { outPath: controlledCandidatePath, model: 'controlled/steel-facade-keyframe', attempts, qa: null };
+        return { outPath: controlledCandidatePath, model: 'controlled/external-controlled-path-keyframe', attempts, qa: null };
       }
     } catch (err) {
       addAttempt(controlledModel, false, err);

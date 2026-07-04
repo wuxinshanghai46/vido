@@ -4859,18 +4859,29 @@
   }
 
   function luxuryFailedKeyframeCandidates(details = null) {
-    const rawAttempts = [
+    const rawAttemptSources = [
       details?.attempts,
       details?.details?.attempts,
       details?.raw?.attempts,
       details?.raw?.details?.attempts,
       details?.raw?.details?.details?.attempts,
+      details?.provider_errors,
+      details?.details?.provider_errors,
+      details?.raw?.provider_errors,
+      details?.raw?.details?.provider_errors,
       details?.candidate_images,
       details?.details?.candidate_images,
       details?.raw?.details?.candidate_images,
-    ].find(Array.isArray) || [];
+    ].filter(Array.isArray);
+    const rawAttempts = rawAttemptSources.flat();
+    const normalizedAttempts = rawAttempts.map(item => {
+      if (typeof item === 'string') {
+        return { ok: false, image_url: item, candidate_label: '候选图' };
+      }
+      return item;
+    });
     const seen = new Set();
-    return rawAttempts
+    return normalizedAttempts
       .filter(a => a && a.ok !== true && (a.image_url || a.imageUrl || a.url || a.candidate_url))
       .map((a, i) => {
         const url = a.image_url || a.imageUrl || a.url || a.candidate_url || '';
