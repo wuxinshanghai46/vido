@@ -2860,6 +2860,18 @@ function _luxuryActorQaTextLooksPositive(...parts) {
   return positive && !negative;
 }
 
+function _luxuryKeyframeQaTextLooksPositive(...parts) {
+  const text = parts.filter(Boolean).join(' ').toLowerCase()
+    .replace(/without\s+(?:any\s+)?hard[-\s]?fail(?:ure)?\s+conditions?/g, '')
+    .replace(/no\s+hard[-\s]?fail(?:ure)?\s+conditions?/g, '')
+    .replace(/no\s+(?:major\s+)?mismatch(?:es)?/g, 'consistent')
+    .replace(/not visibly contradicted/g, 'consistent');
+  if (!text) return false;
+  const positive = /high fidelity|excellent|accurate(?:ly)?|faithful(?:ly)?|reflects?|rendering|consisten(?:t|cy)|aligned?|matches?|satisf(?:y|ies|ied)|符合|通过|一致|匹配|高度还原|准确/.test(text);
+  const negative = /hard[-\s]?fail(?!\s*conditions?\b)|fail(?:ed|s)?|does not|not match|mismatch|different|contradict|missing|required\s+(?:field|item|element).*(?:missing|absent)|extra people|wrong|reject|weak match|malformed|不通过|不符合|不一致|缺少|错误|冲突|拒绝/.test(text);
+  return positive && !negative;
+}
+
 function _softLuxuryActorQa(kind, err, extra = {}) {
   return {
     pass: true,
@@ -7007,7 +7019,16 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
   const hasDimensionValue = key => Number.isFinite(Number(rawDims[key]));
   const missingQualityDimensions = ['realism', 'asset_fidelity', 'character_consistency', 'scene_continuity', 'product_fidelity', 'ui_overlay']
     .filter(key => !hasDimensionValue(key));
-  const positiveCoreMatch = parsed.pass === true && parsed.subject_match === true && parsed.storyboard_match === true && score >= 70;
+  const positiveQaText = _luxuryKeyframeQaTextLooksPositive(parsed.reason, parsed.observed);
+  const positiveContradictoryPass = parsed.pass !== true
+    && score >= 88
+    && parsed.subject_match === true
+    && parsed.storyboard_match === true
+    && positiveQaText
+    && majorMismatches.length === 0
+    && unrelatedSubjects.length === 0;
+  const effectiveParsedPass = parsed.pass === true || positiveContradictoryPass;
+  const positiveCoreMatch = effectiveParsedPass && parsed.subject_match === true && parsed.storyboard_match === true && score >= 70;
   const dimScore = key => {
     if (hasDimensionValue(key)) return Math.max(0, Math.min(100, Number(rawDims[key])));
     return positiveCoreMatch ? Math.max(70, Math.min(78, score)) : 0;
@@ -7064,7 +7085,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     Number(qualityDimensions.scene_continuity) > 0 && Number(qualityDimensions.scene_continuity) < 72 ? `scene_continuity:${qualityDimensions.scene_continuity}` : '',
     Number(qualityDimensions.product_fidelity) > 0 && Number(qualityDimensions.product_fidelity) < productFidelityThreshold ? `product_fidelity:${qualityDimensions.product_fidelity}` : '',
     Number(qualityDimensions.character_consistency) > 0 && hasCharacterLock && Number(qualityDimensions.character_consistency) < 74 ? `character_consistency:${qualityDimensions.character_consistency}` : '',
-    positiveCoreMatch && missingQualityDimensions.length ? `quality_dimensions_missing:${missingQualityDimensions.join(',')}` : '',
+    positiveCoreMatch && missingQualityDimensions.length && !positiveContradictoryPass ? `quality_dimensions_missing:${missingQualityDimensions.join(',')}` : '',
   ].filter(Boolean);
   const allFatalIssues = _cleanQaList([...fatalIssues, ...derivedFatalIssues], 160, 10);
   const allReviewIssues = _cleanQaList([...reviewIssues, ...derivedReviewIssues], 160, 10);
@@ -7073,7 +7094,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && parsed.storyboard_match === true
     && unrelatedSubjects.length === 0
     && !hasFatalIssue
-    && parsed.pass === true
+    && effectiveParsedPass
     && score >= 70
     && qualityDimensions.realism >= 70
     && qualityDimensions.product_fidelity >= usableProductFidelityThreshold
@@ -7081,7 +7102,7 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     && (!hasAssetLocks || qualityDimensions.asset_fidelity >= usableAssetFidelityThreshold)
     && (!hasCharacterLock || qualityDimensions.character_consistency >= 68)
     && (!hasUiLock || qualityDimensions.ui_overlay >= 60);
-  const strictPass = parsed.pass === true
+  const strictPass = effectiveParsedPass
     && score >= 82
     && parsed.subject_match === true
     && parsed.storyboard_match === true
@@ -7127,7 +7148,13 @@ async function _checkLuxuryKeyframeMatchesStoryboard(req, {
     provider,
     expected,
     contract_leak_fields: contractLeakFields,
+    parsed_pass: parsed.pass === true,
+    qa_pass_corrected: positiveContradictoryPass,
   };
+  if (positiveContradictoryPass) {
+    qa.soft_pass = true;
+    qa.reason = qa.reason || 'Vision QA returned pass=false but high score and positive match fields confirmed the keyframe.';
+  }
   if (hasFatalIssue) {
     qa.pass = false;
     qa.manual_review_required = false;
