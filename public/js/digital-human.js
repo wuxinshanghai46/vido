@@ -10924,11 +10924,7 @@
   function luxuryShotEmotionText(seg = {}) {
     const raw = luxuryStripInternalPromptText(seg.emotion || seg.mood || seg.atmosphere || seg.expression || seg.tone || '');
     if (raw && !luxuryLooksLikeBriefCopy(raw)) return raw.slice(0, 90);
-    const role = String(seg.shot_role || seg.role || seg.type || '').toLowerCase();
-    if (role === 'hook') return '安静、克制、带一点期待感。';
-    if (role === 'macro') return '专注、细腻，突出高级质感。';
-    if (role === 'cta') return '确定、清晰、可信。';
-    return '自然放松，有真实商业广告的呼吸感。';
+    return '';
   }
 
   function luxuryShotAudioText(seg = {}) {
@@ -12324,7 +12320,6 @@
           const action = luxuryShotActionText(seg);
           const voice = luxuryShotDialogueText(seg, characters, i);
           const purpose = luxuryScriptPurposeLabel(seg, i, segments.length);
-          const mood = luxuryShotEmotionText(seg);
           const seconds = luxuryAdShotSeconds(seg, state.luxuryAd.durationSec, segments.length);
           const subjectType = normalizeLuxuryShotSubjectType(seg);
           const subjectLabel = luxuryShotSubjectTypeLabel(subjectType);
@@ -12339,7 +12334,7 @@
           return `<tr ${i === 0 ? 'class="is-active"' : ''}>
             <td>${i + 1}</td>
             <td>${escapeHtml(String(seconds))}</td>
-            <td><b class="${visual ? '' : 'dh-lux-field-missing'}">${escapeHtml(visual || luxuryFieldPlaceholder('画面'))}</b>${mood ? `<span>${escapeHtml(mood)}</span>` : ''}</td>
+            <td><b class="${visual ? '' : 'dh-lux-field-missing'}">${escapeHtml(visual || luxuryFieldPlaceholder('画面'))}</b></td>
             <td><b class="${action ? '' : 'dh-lux-field-missing'}">${escapeHtml(action || luxuryFieldPlaceholder('动作'))}</b></td>
             <td class="dh-demo-dialogue ${voice ? '' : 'dh-lux-field-missing'}">${escapeHtml(voice || luxuryFieldPlaceholder('台词'))}</td>
             <td>${escapeHtml(purpose)}</td>

@@ -21221,6 +21221,15 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           && /(音乐|配乐|BGM|音效|声效|环境声|氛围声|提示音|whoosh|收尾|开场|片尾|空气感|节奏|氛围)/i.test(s);
         return wrapped || cueOnly;
       };
+      const scriptTextRenderDirective = (value = '') => {
+        const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
+        if (!s) return false;
+        // 中文注释：脚本分镜表不能把“让图片模型画文字/UI”的执行指令当成画面、动作或台词。
+        // 所有可读文字、品牌字、UI 标签都必须进入后期叠加或留白策略，避免模型生成乱码/幻觉品牌。
+        return /^(UI|文字|字幕|标题|标语|品牌字|品牌词|LOGO|Logo|logo|界面|屏幕|面板|浮层|悬浮|弹窗|卡片|按钮|标签)[:：]/i.test(s)
+          || /(显示|出现|标出|写出|写着|浮现|渐显).{0,24}(文字|字幕|标题|标语|品牌字|品牌词|LOGO|Logo|logo|UI|界面|标签)/i.test(s)
+          || /(文字|字幕|标题|标语|品牌字|品牌词|LOGO|Logo|logo|UI|界面|标签).{0,24}(显示|出现|标出|写出|写着|浮现|渐显)/i.test(s);
+      };
       const commercialStoryboardIssue = (scene = {}, shotNo = 0, isEndcard = false) => {
         const visual = _stripLuxuryBriefNoise(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || '').replace(/\s+/g, ' ').trim();
         const action = _stripLuxuryBriefNoise(scene.action || scene.visual_action || '').replace(/\s+/g, ' ').trim();
@@ -21230,6 +21239,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!all) return '';
         if (isAudioCueCopy(copy)) {
           return `第 ${shotNo} 镜台词不可商用：台词栏写成了音乐/音效/环境声说明，必须改成观众听到的旁白/对白；声音说明应放入 sfx_audio。`;
+        }
+        if (scriptTextRenderDirective([visual, action, copy].filter(Boolean).join('；'))) {
+          return `第 ${shotNo} 镜分镜不可商用：不能把 UI/文字/字幕/品牌字作为图片生成指令写进画面、动作或台词；需要文字时只能写“预留后期叠字位置”，具体文字交给后期合成。`;
         }
         if (!isEndcard && /(画面中没有主体|没有主体|无主体|主体缺席|主体不出现|画面没有.*主体)/.test(all)) {
           return `第 ${shotNo} 镜商业分镜不可用：不能写无主体镜头，必须写清当前广告主体、产品/服务证据、空间或流程证据。`;
@@ -21249,6 +21261,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s || s.length < 8) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
+        if (scriptTextRenderDirective(s)) return false;
         if (/^(按|根据).*(生成|推进|展示)/.test(s)) return false;
         return true;
       };
@@ -21256,6 +21269,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s || s.length < 4) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
+        if (scriptTextRenderDirective(s)) return false;
         return true;
       };
       const isUsableScriptCopy = (value = '') => {
@@ -21263,6 +21277,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!s || s.length < 3) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
         if (isAudioCueCopy(s)) return false;
+        if (scriptTextRenderDirective(s)) return false;
         if (/^（?(提示音|环境声|音乐|温暖环境音乐|SFX|Audio)[）)]?$/i.test(s)) return false;
         return true;
       };
@@ -21349,7 +21364,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       const text = String(issue || '');
       if (!text.trim()) return false;
       // 中文说明：硬阻断只保留会破坏现有流程的数据结构问题；文案可读性问题只用于推动模型重写，不能把完整剧本直接判失败。
-      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致|总时长承载|内容承载不足|承载不足|商业分镜不可用|商业分镜不可拍|台词不可商用|画面不可验收)/.test(text);
+      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致|总时长承载|内容承载不足|承载不足|商业分镜不可用|商业分镜不可拍|分镜不可商用|台词不可商用|画面不可验收)/.test(text);
     };
     const luxuryScriptBlockingIssues = (issues = []) => (Array.isArray(issues) ? issues : [issues])
       .filter(issue => isLuxuryScriptBlockingIssue(issue));
