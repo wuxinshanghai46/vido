@@ -16140,10 +16140,24 @@ function _cleanLuxuryAdCopy(value = '', fallbackOpts = {}) {
     .replace(/[。；;，,]\s*$/g, '')
     .trim();
   const subjectContext = [fallbackOpts.productSubject, fallbackOpts.brief].filter(Boolean).join(' ');
-  if (_looksLikeLuxuryScriptPlaceholder(s) || _looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, subjectContext) || _hasLuxuryAbstractStoryboardLeak(s)) {
+  if (_looksLikeLuxuryScriptPlaceholder(s) || _looksLikeLuxuryBrief(s) || _isWeakLuxuryAdLine(s, subjectContext) || _hasLuxuryAbstractStoryboardLeak(s) || !_isLuxuryCommercialSpokenLine(s)) {
     return fallbackOpts.disableGeneratedScriptFallbacks === true ? '' : _fallbackLuxuryAdCopy(fallbackOpts);
   }
   return s.slice(0, 34);
+}
+
+function _isLuxuryCommercialSpokenLine(value = '') {
+  const s = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  // 中文注释：台词列只能是成片中观众能听到或看到的话，不能把音乐、音效、镜头说明或括号提示塞进来。
+  if (/^[(（【\[][^）)\]】]{0,120}[)）】\]]$/.test(s)) return false;
+  if (/^(音乐|配乐|BGM|音效|声效|环境声|氛围声|提示音|开场|收尾|片尾|镜头|画面|视觉|动作|转场|光线|风格|氛围|SFX|Audio)[:：\s]/i.test(s)) return false;
+  if (/(音乐|配乐|BGM|音效|声效|环境声|氛围声|提示音|轻柔|清脆|低频|鼓点|无对白|旁白语气|镜头推进|画面展示|视觉呈现|氛围音乐)/i.test(s)
+    && !/[？?！!。]/.test(s.replace(/[()（）【】\[\]]/g, ''))) return false;
+  if (/^(有空间感|高级感|氛围感|质感|克制|好奇|专注|细腻|可信|轻柔|沉稳|舒缓|明亮|温暖|清冷)[，,、\s]*(的)?(氛围|音乐|配乐|声音|感觉)?$/i.test(s)) return false;
+  if (/^(?:此镜|本镜|镜头|画面|视觉|动作).{0,12}(展示|表现|呈现|说明|突出|推进)/.test(s)) return false;
+  if (/^(?:开场|收尾|片尾).{0,20}(音乐|配乐|氛围|声效|环境声)/.test(s)) return false;
+  return true;
 }
 
 function _looksLikeLuxuryScriptPlaceholder(value = '') {
@@ -21162,6 +21176,17 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       '禁止把“高级感、质感、气质、氛围、光影、艺术、存在感、语言、答案、价值、选择理由”等抽象词当作画面、动作或台词的核心内容；这些词只能作为辅助风格，不能替代具体事件。',
       '每一镜必须比上一镜增加一个新信息：新的问题来源、主体动作、证据、结果、对比或行动；不能用同一类姿态和同一句文案换词重复。',
     ];
+    // 中文说明：主创作阶段使用“创作规则”，不注入硬 QA 合同，避免模型为了规避失败而写出审核说明、括号提示或空泛台词。
+    const commercialStoryboardCreativeRules = [
+      '创作目标：写一条能拍成广告短片的连续故事，不是写审核报告、产品图库说明或风格散文。',
+      '每个镜头都按四列思考：画面=观众看见的具体事件；动作=主体正在做什么；台词=成片里能听到或看到的一句话；目的=短剧情职责标签。',
+      '先让观众看见问题或期待，再让当前广告主体进入，接着展示动作、证据、结果或对比，最后自然收束到行动。',
+      '台词要像真实广告旁白或人物会说的话，承接当前画面并推进下一镜；不能写音乐、音效、镜头说明、括号提示或只有氛围的描述。',
+      '镜头数量由内容复杂度、目标时长和台词承载量决定；简单内容可以少镜头讲清，复杂内容可以多镜头快节奏。',
+      '不同用户、行业、产品、服务或场景必须从当前 brief、素材、人物设定和人工编辑推导；不能复用旧任务或默认模板。',
+      '允许没有真人；只有当前需求或剧情确实需要人物时才写人物。非人物主体、产品、空间、服务流程或界面也可以独立承担故事推进。',
+      '如果需要屏幕、文字或品牌信息，剧本可以说明后期叠加或预留位置，但不要把图片模型直接生成可读文字当作镜头内容。',
+    ];
     const luxuryScriptStructureIssues = (sceneList = []) => {
       const list = Array.isArray(sceneList) ? sceneList.filter(x => x && typeof x === 'object') : [];
       const issues = [];
@@ -21283,6 +21308,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (isAudioCueCopy(copy)) {
           return `第 ${shotNo} 镜台词不可商用：台词栏写成了音乐/音效/环境声说明，必须改成观众听到的旁白/对白；声音说明应放入 sfx_audio。`;
         }
+        if (copy && !_isLuxuryCommercialSpokenLine(copy)) {
+          return `第 ${shotNo} 镜台词不可商用：台词栏不能写括号提示、音乐音效、镜头说明或氛围说明，必须改成观众能听到或看到的一句自然广告话。`;
+        }
         const textDirectiveFields = [
           ['画面', visual],
           ['动作', action],
@@ -21324,6 +21352,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!s || s.length < 3) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
         if (isAudioCueCopy(s)) return false;
+        if (!_isLuxuryCommercialSpokenLine(s)) return false;
         if (/^（?(提示音|环境声|音乐|温暖环境音乐|SFX|Audio)[）)]?$/i.test(s)) return false;
         return true;
       };
@@ -21442,7 +21471,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         subjectPlaceholderInstruction,
         castInstruction,
         genderInstruction,
-        ...commercialStoryboardContractRules,
+        ...commercialStoryboardCreativeRules,
         '重写目标：把抽象模板句改成可直接进入审核表的成片脚本。画面=具体场所+主体状态+可见证据；动作=主体正在做的可拍动作；台词=成片里能听到的一句自然话；目的=2-6 个字短标签。',
         '重写时必须像商业分镜表，不像品牌散文：每个问题镜头都要写出观众看见的业务事件、当前主体如何介入、结果如何变化，以及一句能直接配音的口语台词。',
         `广告主体是「${productSubject}」。必须让主体或主体证据在问题镜头里具体可见，不要写“相关证据、主体证据、人物或主体、当前业务、已确认场景、答案开始具体、角色带你、细节被看见、选择理由”等抽象词。`,
@@ -21548,7 +21577,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 1000
         castInstruction,
         genderInstruction,
         robotAssistantGuard,
-        ...commercialStoryboardContractRules,
+        ...commercialStoryboardCreativeRules,
         '必须保留镜头数量、镜头顺序、人物数量、剧情方向和已有有效内容；只返回被点名镜头的补丁对象。',
         '每个补丁对象必须包含 __shot_no，以及缺失字段对应的内容：缺画面时给 content_prompt、scene_content、visual；缺动作时给 action、visual_action；缺台词/旁白时给 voiceover、narration、ad_copy、subtitle、text。',
         '如果 missing_fields 里包含 copy，必须返回非空 voiceover/narration/ad_copy/subtitle/text，不能只返回画面或动作；如果包含 action，必须返回非空 action/visual_action。',
@@ -21704,7 +21733,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         castInstruction,
         genderInstruction,
         robotAssistantGuard,
-        ...commercialStoryboardContractRules,
+        ...commercialStoryboardCreativeRules,
         castMode === 'single'
           ? '单人配置硬规则：全片只能出现同一位核心真人；可以出现当前任务确认的非人物主体、商品、服务证据或界面，但不得新增第二真人、镜头外对话人或“两人同框”等第二人物关系。'
           : '多人配置硬规则：人物数量、关系和说话人必须严格符合人物配置，不得新增未授权角色。',
@@ -21975,7 +22004,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 24000)}`;
         '竞品脚本学习规则：每一行都必须能直接放进审核表，画面=具体场所+主体状态+可见证据，动作=主体正在做什么，台词=成片里能听到的一句自然话，目的=短标签。',
         '一条好剧本不是解释产品，而是让观众看见：开场困扰/期待、环境状态、主体登场、功能动作、使用结果、对比证明、优惠或行动。',
         '每一镜必须比上一镜多一个新信息；禁止把同一句“问题、需要、答案、选择理由、价值”换词重复。',
-        ...commercialStoryboardContractRules,
+        ...commercialStoryboardCreativeRules,
       ];
       const repairSys = [
         '你是剧情广告脚本质量修复 agent。你的任务是把抽象、模板化、看不懂的镜头表修成可审核的商业广告故事脚本。',
@@ -22038,7 +22067,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         forbiddenBriefInstruction,
         subjectPlaceholderInstruction,
         castInstruction,
-        ...commercialStoryboardContractRules,
+        ...commercialStoryboardCreativeRules,
         `目标总时长约 ${targetDuration} 秒。蓝图必须先规划足够支撑该时长的剧情信息量：较短视频可以集中表达，较长视频必须增加更完整的场景铺垫、主体操作过程、结果反馈、对比证明或行动收束。不得先写短剧本再靠 duration 拉长。`,
         '学习竞品脚本写法：先把每个 beat 想成最终表格里的一行，必须有具体场所/主体状态/可见证据、可拍动作、可直接配音的一句话、短目的标签；不要输出后台分析句。',
         '竞品级标准：每一行都要形成“具体场景里的明确阻碍或期待 -> 主体以可见动作介入 -> 结果或界面变化出现 -> 台词说一句人话”的推进。不要用“进入画面重点位置、近景展示外观结构、准备被使用或介绍”这类通用句。',
