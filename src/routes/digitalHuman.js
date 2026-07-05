@@ -20483,7 +20483,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       throw new Error(`${name} 执行失败：${attempts.join('；') || String(lastErr?.message || 'unknown error')}`);
     };
     const isJsonIncompleteAgentError = (err) => /没有返回完整 JSON|Unexpected end of JSON|LLM .*JSON|JSON/.test(String(err?.message || ''));
-    const callLuxuryAgentArrayInChunks = async ({ name, systemPrompt, baseUserPrompt, sceneList = [], chunkSize = 2, maxTokens = 7000, pipelineStageId = llmStageId }) => {
+    const callLuxuryAgentArrayInChunks = async ({ name, systemPrompt, baseUserPrompt, sceneList = [], chunkSize = 2, maxTokens = 7000, pipelineStageId = llmStageId, allowPartial = false }) => {
       const source = Array.isArray(sceneList) ? sceneList : [];
       const chunks = [];
       for (let start = 0; start < source.length; start += chunkSize) {
@@ -20502,6 +20502,19 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           pipelineStageId,
         });
         if (!Array.isArray(partResult) || partResult.length !== part.length) {
+          if (allowPartial && Array.isArray(partResult) && partResult.length > 0) {
+            // 中文说明：质量修复阶段允许模型只返回部分问题镜头，但不能因此丢掉其它镜头；未返回的镜头保留原稿，后续逐镜校验继续处理。
+            const patchByIndex = new Map();
+            partResult.forEach((item, i) => {
+              const idx = Number(item?.index || item?.shot_index || item?.beat_index || item?.__shot_no || item?.shot_no || part[i]?.index || part[i]?.__shot_no || 0);
+              if (Number.isFinite(idx) && idx > 0) patchByIndex.set(idx, item);
+            });
+            chunks.push(...part.map((scene, i) => {
+              const idx = Number(scene?.index || scene?.shot_index || scene?.beat_index || scene?.__shot_no || start + i + 1);
+              return patchByIndex.get(idx) || patchByIndex.get(start + i + 1) || scene;
+            }));
+            continue;
+          }
           throw new Error(`${name} 分批执行失败：第 ${Math.floor(start / chunkSize) + 1} 批需要 ${part.length} 镜，实际返回 ${Array.isArray(partResult) ? partResult.length : 0} 镜。`);
         }
         chunks.push(...partResult);
@@ -21503,6 +21516,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 1000
         chunkSize: 2,
         maxTokens: 6000,
         pipelineStageId: 'luxury_ad.script',
+        allowPartial: true,
       });
       const byShot = new Map();
       rewritten.forEach((item, i) => {
@@ -22048,6 +22062,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
           chunkSize: payload.length > 8 ? 2 : 3,
           maxTokens: 5000,
           pipelineStageId: 'luxury_ad.script',
+          allowPartial: true,
         });
       }
       return callLuxuryAgent({
