@@ -4116,6 +4116,63 @@
     }).join('')}</div>`;
   }
 
+  function renderTaskStoryboardSheets(storyboardSheets = []) {
+    const sheets = Array.isArray(storyboardSheets)
+      ? storyboardSheets.filter(sheet => sheet && (sheet.image_url || sheet.imageUrl || sheet.url))
+      : [];
+    if (!sheets.length) return `<div class="dh-task-empty-note">暂无分段故事板；生成审核分镜板后会在这里显示整页故事板。</div>`;
+    return `<div class="dh-task-segment-list dh-task-storyboard-list">${sheets.map((sheet, i) => {
+      const img = sheet.image_url || sheet.imageUrl || sheet.url || '';
+      const shotRange = sheet.shot_start && sheet.shot_end ? `镜头 ${sheet.shot_start}-${sheet.shot_end}` : `第 ${i + 1} 页`;
+      const mode = sheet.planning_only || sheet.planningOnly ? '审核分镜板' : '真实关键帧故事板';
+      return `<div class="dh-task-segment-row dh-task-storyboard-row">
+        <div class="dh-task-segment-time">${String(i + 1).padStart(2, '0')}</div>
+        <div class="dh-task-segment-main">
+          <div class="dh-task-segment-text">${escapeHtml(mode)} · ${escapeHtml(shotRange)}</div>
+          <img src="${escapeHtml(withAuthQuery(img))}" alt="${escapeHtml(mode)}" style="width:100%;max-width:520px;max-height:680px;object-fit:contain;border-radius:8px;margin:8px 0;border:1px solid var(--dh-border);background:#f8fafc">
+          <div class="dh-task-segment-meta">布局：${escapeHtml(sheet.layout || 'storyboard sheet')}</div>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
+  function renderTaskShotStatuses(shotStatuses = [], shotContracts = []) {
+    const rows = Array.isArray(shotStatuses) ? shotStatuses : [];
+    const contracts = Array.isArray(shotContracts) ? shotContracts : [];
+    if (!rows.length && !contracts.length) return `<div class="dh-task-empty-note">暂无逐镜状态；新的剧情广告会按镜头独立记录生成和 QA 状态。</div>`;
+    const max = Math.max(rows.length, contracts.length);
+    const labelMap = {
+      pending: '待生成',
+      storyboard_ready: '故事板已生成',
+      keyframe_review: '关键帧待复核',
+      keyframe_passed: '关键帧已通过',
+      failed: '失败',
+      generating: '生成中',
+      qa_retrying: 'QA 复评中',
+    };
+    return `<div class="dh-task-segment-list dh-task-storyboard-list">${Array.from({ length: max }, (_, i) => {
+      const row = rows[i] || {};
+      const contract = contracts[i] || {};
+      const status = row.status || 'pending';
+      const title = row.title || contract.title || `镜头 ${i + 1}`;
+      const time = Number.isFinite(Number(contract.time_start)) && Number.isFinite(Number(contract.time_end))
+        ? `${contract.time_start}-${contract.time_end}s`
+        : `${contract.duration || ''}${contract.duration ? 's' : ''}`;
+      return `<div class="dh-task-segment-row dh-task-storyboard-row">
+        <div class="dh-task-segment-time">${String(i + 1).padStart(2, '0')}</div>
+        <div class="dh-task-segment-main">
+          <div class="dh-task-segment-text">${escapeHtml(title)} · ${escapeHtml(labelMap[status] || status)}</div>
+          ${time ? `<div class="dh-task-segment-meta">时间：${escapeHtml(time)}</div>` : ''}
+          ${contract.story_role ? `<div class="dh-task-segment-meta">目的：${escapeHtml(contract.story_role)}</div>` : ''}
+          ${contract.subject_strategy ? `<div class="dh-task-segment-meta">主体策略：${escapeHtml(contract.subject_strategy)}</div>` : ''}
+          ${contract.visual ? `<div class="dh-task-segment-meta">画面合同：${escapeHtml(contract.visual)}</div>` : ''}
+          ${contract.action ? `<div class="dh-task-segment-meta">动作合同：${escapeHtml(contract.action)}</div>` : ''}
+          ${row.message ? `<div class="dh-task-segment-meta">状态说明：${escapeHtml(row.message)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   function renderTaskDetailPanel(data = {}) {
     const detail = data.createDetail || {};
     const type = getTaskType(data);
@@ -4126,6 +4183,9 @@
     const segments = detail.segments || data.segments || snapshot.segments || project.scenes || projectDraft.scenes || data.retryPayload?.segments || [];
     const scenes = detail.scenes || data.scenes || snapshot.scenes || project.scenes || projectDraft.scenes || [];
     const keyframes = detail.keyframes || data.keyframes || snapshot.keyframes || project.keyframes || projectDraft.keyframes || [];
+    const storyboardSheets = detail.storyboardSheets || detail.storyboard_sheets || data.storyboard_sheets || snapshot.storyboard_sheets || project.storyboard_sheets || projectDraft.storyboard_sheets || [];
+    const shotStatuses = detail.shotStatuses || detail.shot_statuses || data.shot_statuses || snapshot.shot_statuses || project.shot_statuses || projectDraft.shot_statuses || [];
+    const shotContracts = detail.shotContracts || detail.shot_contracts || data.shot_contracts || snapshot.shot_contracts || project.shot_contracts || projectDraft.shot_contracts || [];
     const clips = detail.clips || data.clips || snapshot.clips || data.clip_urls || snapshot.clip_urls || project.clips || project.clip_urls || [];
     const subtitle = detail.subtitle || data.subtitle || project.subtitle || projectDraft.subtitle || data.retryPayload?.subtitle || null;
     const bgm = detail.bgmAsset || data.bgmAsset || project.bgm_asset || projectDraft.bgm_asset || data.retryPayload?.bgm_asset || null;
@@ -4142,6 +4202,8 @@
       ['BGM', bgm ? `${bgm.name || bgm.original_name || bgm.matched_mood || '已配置'}${bgm.volume ? ` · 音量 ${Math.round(Number(bgm.volume) * 100)}%` : ''}` : ''],
       ['广告风格', detail.adStyle || ''],
       ['镜头数量', (detail.shotCount || scenes.length || keyframes.length) ? `${detail.shotCount || scenes.length || keyframes.length} 镜头` : ''],
+      ['版本号', project.version_id || detail.versionId || ''],
+      ['数据分区', project.data_partition?.project_id && project.data_partition?.version_id ? `${project.data_partition.project_id} · ${project.data_partition.version_id}` : ''],
       ['素材数量', Array.isArray(materialAssets) && materialAssets.length ? `${materialAssets.length} 个素材` : ''],
       ['字幕', subtitle ? (subtitle.show === false ? '关闭' : `${subtitle.style || 'popup'} · ${subtitle.fontSize || 60}px`) : ''],
     ]);
@@ -4188,6 +4250,14 @@
         <section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">${sectionLabels.storyboard}</div>
           ${renderTaskStoryboards(scenes, keyframes, clips)}
+        </section>
+        <section class="dh-task-create-section dh-task-create-section-wide">
+          <div class="dh-task-detail-title">分段故事板</div>
+          ${renderTaskStoryboardSheets(storyboardSheets)}
+        </section>
+        <section class="dh-task-create-section dh-task-create-section-wide">
+          <div class="dh-task-detail-title">逐镜状态 / 镜头合同</div>
+          ${renderTaskShotStatuses(shotStatuses, shotContracts)}
         </section>
         <section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">${sectionLabels.prompts}</div>
@@ -6692,44 +6762,18 @@
 
   const LUXURY_CONTROL_PRODUCT_METHOD_LABELS = Object.fromEntries(LUXURY_CONTROL_PRODUCT_METHODS);
 
+  // 中文注释：前端不再枚举固定行业。具体业务边界由用户需求和自由补充文本决定。
   const LUXURY_INDUSTRY_OPTIONS = [
-    ['auto', '自动判断', []],
-    ['building_materials', '建材 / 建筑装饰', [['metal_material', '金属材料'], ['wall_panel', '墙板 / 护墙'], ['stone_tile', '石材 / 瓷砖'], ['doors_windows', '门窗幕墙']]],
-    ['home_living', '家居 / 家装', [['furniture', '家具'], ['soft_decor', '软装'], ['whole_house', '全屋定制'], ['smart_home', '智能家居']]],
-    ['real_estate', '地产 / 空间', [['residential', '住宅'], ['commercial_space', '商业空间'], ['hotel_hospitality', '酒店民宿'], ['office_space', '办公空间']]],
-    ['food_beverage', '餐饮 / 食品饮料', [['restaurant', '餐厅'], ['beverage', '饮品'], ['bakery', '烘焙'], ['packaged_food', '包装食品']]],
-    ['beauty_fashion', '美妆 / 时尚', [['skincare_makeup', '护肤彩妆'], ['apparel', '服装'], ['shoe_bag', '鞋包'], ['perfume', '香水香氛']]],
-    ['jewelry_luxury', '珠宝 / 奢侈品', [['jewelry', '珠宝首饰'], ['watch', '腕表'], ['high_luxury', '高奢精品']]],
-    ['ecommerce_retail', '电商 / 零售', [['live_commerce', '直播电商'], ['store_retail', '门店零售'], ['cross_border', '跨境电商'], ['new_consumer', '新消费']]],
-    ['digital_software', '软件 / SaaS', [['saas', 'SaaS'], ['enterprise_software', '企业软件'], ['mobile_app', 'App'], ['developer_tool', '开发者工具']]],
-    ['ai_technology', 'AI / 科技', [['ai_product', 'AI 产品'], ['robotics', '机器人'], ['iot_hardware', '智能硬件'], ['cloud_compute', '云计算']]],
-    ['game_entertainment', '游戏 / 娱乐', [['mobile_game', '手游'], ['pc_console_game', '端游 / 主机'], ['ip_content', 'IP 内容'], ['live_stream', '直播娱乐']]],
-    ['finance', '金融 / 保险', [['banking', '银行'], ['insurance', '保险'], ['wealth', '理财财富'], ['fintech', '金融科技']]],
-    ['logistics', '物流 / 供应链', [['express', '快递'], ['freight', '货运'], ['warehouse', '仓储'], ['cold_chain', '冷链']]],
-    ['industrial_manufacturing', '工业制造', [['equipment', '设备'], ['factory', '工厂产线'], ['materials', '工业材料'], ['automation', '自动化']]],
-    ['automotive', '汽车 / 出行', [['vehicle', '整车'], ['new_energy', '新能源'], ['parts', '汽配'], ['mobility', '出行服务']]],
-    ['medical_health', '医疗 / 健康', [['clinic', '诊所医院'], ['medical_device', '医疗器械'], ['wellness', '健康管理'], ['pharma', '医药']]],
-    ['education_training', '教育 / 培训', [['k12', 'K12'], ['vocational', '职业教育'], ['language', '语言培训'], ['knowledge_paid', '知识付费']]],
-    ['tourism_hospitality', '旅游 / 酒店', [['destination', '目的地'], ['hotel', '酒店'], ['travel_service', '旅行服务'], ['culture_tourism', '文旅']]],
-    ['sports_fitness', '运动 / 健身', [['fitness', '健身'], ['outdoor', '户外'], ['sports_goods', '运动装备'], ['sports_service', '运动服务']]],
-    ['mother_baby', '母婴 / 家庭', [['baby_product', '母婴用品'], ['parent_child', '亲子服务'], ['maternity', '孕产'], ['family_life', '家庭生活']]],
-    ['pet', '宠物', [['pet_food', '宠物食品'], ['pet_goods', '宠物用品'], ['pet_service', '宠物服务'], ['pet_medical', '宠物医疗']]],
-    ['agriculture', '农业 / 生鲜', [['fresh_food', '生鲜'], ['farm_product', '农产品'], ['planting', '种植'], ['aquaculture', '养殖']]],
-    ['public_service', '政企 / 公共服务', [['city_service', '城市服务'], ['public_welfare', '公益'], ['government', '政务'], ['enterprise_brand', '企业品牌']]],
-    ['b2b_service', 'B2B / 专业服务', [['consulting', '咨询'], ['legal', '法律'], ['accounting', '财税'], ['marketing_service', '营销服务']]],
+    ['auto', '按当前需求判断', []],
+    ['custom', '自定义业务边界', []],
   ];
-  const LUXURY_INDUSTRY_ALIASES = {
-    tourism_hotel: 'tourism_hospitality',
-    hotel: 'tourism_hospitality',
-    hospitality: 'tourism_hospitality',
-    travel_hotel: 'tourism_hospitality',
-    hotel_hospitality: 'real_estate',
-  };
+  const LUXURY_INDUSTRY_ALIASES = {};
 
   function luxuryIndustryOption(id = '') {
     const raw = String(id || 'auto');
     const key = LUXURY_INDUSTRY_ALIASES[raw] || raw;
-    return LUXURY_INDUSTRY_OPTIONS.find(([value]) => value === key) || LUXURY_INDUSTRY_OPTIONS[0];
+    return LUXURY_INDUSTRY_OPTIONS.find(([value]) => value === key)
+      || (key && key !== 'auto' ? [key, key, []] : LUXURY_INDUSTRY_OPTIONS[0]);
   }
 
   function normalizeLuxuryIndustrySelection(input = null) {
@@ -6737,7 +6781,7 @@
     const primary = luxuryIndustryOption(src.primary || src.industry_id || src.id || 'auto')[0];
     const subs = luxuryIndustryOption(primary)[2] || [];
     const rawSecondary = String(src.secondary || src.sub_industry_id || '').trim();
-    const secondary = subs.some(([value]) => value === rawSecondary) ? rawSecondary : '';
+    const secondary = rawSecondary && subs.some(([value]) => value === rawSecondary) ? rawSecondary : '';
     const intent = ['auto', 'product', 'brand', 'space'].includes(src.intent || src.ad_type || src.style)
       ? (src.intent || src.ad_type || src.style)
       : 'auto';
@@ -6788,15 +6832,15 @@
       ? ` / ${secondaryOption[1]}`
       : '';
     const title = current.primary === 'auto'
-      ? '行业：自动判断'
-      : `行业：${primaryOption[1]}${secondarySuffix}`;
+      ? '业务边界：按当前需求判断'
+      : `业务边界：${primaryOption[1]}${secondarySuffix}`;
     const tags = [
       (current.intent && current.intent !== 'auto') ? `方向：${luxuryAdIntentLabel(current.intent)}` : '',
       current.note ? `补充：${current.note}` : '',
     ].filter(Boolean);
     return {
       title,
-      sub: tags.length ? tags.join(' · ') : '点击选择行业；选错后可重新选择。',
+      sub: tags.length ? tags.join(' · ') : '点击补充当前业务边界；不套固定行业模板。',
       primaryLabel: primaryOption[1],
       secondaryLabel: secondaryOption ? secondaryOption[1] : '',
     };
@@ -6806,12 +6850,12 @@
     const panel = $('.dh-lux-industry-panel');
     if (panel && !$('#dhLuxIndustryOpen', panel)) {
       panel.innerHTML = `<button class="dh-lux-industry-summary" id="dhLuxIndustryOpen" type="button">
-        <span id="dhLuxIndustrySummaryTitle">行业选择：自动判断</span>
+        <span id="dhLuxIndustrySummaryTitle">业务边界：按当前需求判断</span>
       </button>`;
     }
     const summary = luxuryIndustrySummary();
     const titleEl = $('#dhLuxIndustrySummaryTitle', panel);
-    if (titleEl) titleEl.textContent = String(summary.title || '行业：自动判断').replace(/^行业：/, '行业选择：');
+    if (titleEl) titleEl.textContent = String(summary.title || '行业：自动判断').replace(/^行业：/, '业务边界：');
     const open = $('#dhLuxIndustryOpen', panel);
     if (open) {
       open.querySelector('small')?.remove();
@@ -6851,18 +6895,18 @@
     const subs = primaryOption[2] || [];
     return `<div class="dh-lux-industry-modal-card" role="dialog" aria-modal="true" aria-label="选择行业">
       <div class="dh-modal-head">
-        <b>选择行业</b>
+        <b>业务边界</b>
         <button type="button" class="dh-modal-close" data-lux-industry-close aria-label="关闭">×</button>
       </div>
       <div class="dh-lux-industry-modal-body">
         <section>
-          <div class="dh-lux-industry-modal-title"><b>一级行业</b><span>只作为行业边界和 QA 规则，不固定具体场景。</span></div>
+          <div class="dh-lux-industry-modal-title"><b>业务判断</b><span>只作为当前任务边界，不固定具体场景、职业或道具。</span></div>
           <div class="dh-lux-industry-tile-grid">
             ${LUXURY_INDUSTRY_OPTIONS.map(([value, label]) => `<button type="button" class="${value === current.primary ? 'active' : ''}" data-lux-industry-primary="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('')}
           </div>
         </section>
         <section>
-          <div class="dh-lux-industry-modal-title"><b>细分行业</b><span>不确定可以不指定，系统仍按广告需求判断。</span></div>
+          <div class="dh-lux-industry-modal-title"><b>细分补充</b><span>不确定可以不指定，系统仍按广告需求判断。</span></div>
           <div class="dh-lux-industry-tile-grid compact">
             <button type="button" class="${!current.secondary ? 'active' : ''}" data-lux-industry-secondary="">不指定细分</button>
             ${subs.map(([value, label]) => `<button type="button" class="${value === current.secondary ? 'active' : ''}" data-lux-industry-secondary="${escapeHtml(value)}">${escapeHtml(label)}</button>`).join('')}
@@ -6875,7 +6919,7 @@
           </div>
         </section>
         <section class="dh-lux-industry-modal-fields">
-          <label><span>行业补充 <button class="dh-lux-industry-ai-btn" type="button" id="dhLuxIndustryAiFill">AI 根据需求补充</button></span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="例如：高端不锈钢装饰材料，不是厨具">${escapeHtml(current.note || '')}</textarea></label>
+          <label><span>业务补充 <button class="dh-lux-industry-ai-btn" type="button" id="dhLuxIndustryAiFill">AI 根据需求补充</button></span><textarea class="dh-input" id="dhLuxIndustryModalNote" maxlength="240" rows="3" placeholder="写清当前任务自己的主体、场景边界、不能出现的误解方向，不要套用其它任务内容。">${escapeHtml(current.note || '')}</textarea></label>
         </section>
       </div>
       <div class="dh-modal-foot">
@@ -7217,7 +7261,7 @@
             <div class="dh-luxgen-segmented" role="group" aria-label="场景方向">
               ${LUXURY_CONTROL_ENVIRONMENT_OPTIONS.map(([value, label]) => `<button type="button" data-lux-control-env="${value}" class="${ctrl.environment.mode === value ? 'active' : ''}">${label}</button>`).join('')}
             </div>
-            <input class="dh-input" data-lux-control-custom-env placeholder="自定义场景要求，例如：城市街区外景 + 门店入口 + 夜间霓虹" value="${escapeHtml(ctrl.environment.custom)}">
+            <input class="dh-input" data-lux-control-custom-env placeholder="自定义场景要求：只写本次任务明确需要的空间、时间、光线或动线" value="${escapeHtml(ctrl.environment.custom)}">
           </section>
           <section class="dh-luxgen-control-card">
             <div class="dh-luxgen-control-title"><span><b>商品融入</b><span>${productReady ? '用于要求商品/服务成为镜头证据，可设置出现频率、锁定程度和展示方式。' : '启用后会要求商品/服务入镜；有主体主图时可按图锁定外观。'}</span></span></div>
@@ -7240,11 +7284,11 @@
           </section>
           <section class="dh-luxgen-control-card">
             <div class="dh-luxgen-control-title"><span><b>风格方向</b><span>控制画面质感、光线、空间和 UI 浮层等表达；不改用户原始广告需求。</span></span><button type="button" data-lux-control-ai="style">AI 帮写</button></div>
-            <textarea class="dh-input" rows="4" data-lux-control-style-notes placeholder="直接写清楚画面风格，例如：保持普通真实商业广告；浅色零售空间；柔和自然光；少量透明 UI 浮层；镜头克制，不要变成纯 3D CG。">${escapeHtml(ctrl.style.notes)}</textarea>
+            <textarea class="dh-input" rows="4" data-lux-control-style-notes placeholder="直接写清楚本次任务的画面风格、光线、真实程度和禁止偏离方向。">${escapeHtml(ctrl.style.notes)}</textarea>
           </section>
           <section class="dh-luxgen-control-card">
             <div class="dh-luxgen-control-title"><span><b>禁止项</b><span>明确不能出现的画面、人物、商品或风格错误；命中后质检会判失败。</span></span><button type="button" data-lux-control-ai="negative">AI 帮写</button></div>
-            <textarea class="dh-input" rows="4" data-lux-control-negative placeholder="例如：不要室内办公室；不要塑料 AI 脸；不要无关化妆品瓶；不要纯 UI 海报。">${escapeHtml(ctrl.negative.text)}</textarea>
+            <textarea class="dh-input" rows="4" data-lux-control-negative placeholder="写清本次任务明确不能出现的画面、人物、商品、载体或风格错误。">${escapeHtml(ctrl.negative.text)}</textarea>
           </section>
         </div>
       </details>`;
@@ -8117,6 +8161,17 @@
     };
   }
 
+  function luxuryAdPersonAssetIsRestorable(asset = null, contractActorAsset = null) {
+    if (!asset || typeof asset !== 'object') return false;
+    if (asset.uploading || asset.failed) return false;
+    if (/failed|uploading|pending/i.test(String(asset.id || asset.status || asset.state || ''))) return false;
+    const urls = luxuryActorUrlsFromSources(asset, contractActorAsset);
+    const hasActorId = !!(asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.webang_asset_id);
+    const hasCastAssets = Array.isArray(asset.cast_assets) && asset.cast_assets.some(member => luxuryActorUrlsFromSources(member).length);
+    const hasViews = Array.isArray(asset.view_images) && asset.view_images.some(view => luxuryActorUrlsFromSources(view).length);
+    return !!(urls.length || hasActorId || hasCastAssets || hasViews);
+  }
+
   function luxuryAdPersonDesignReady() {
     if (luxuryAdIsMaterialMode()) return true;
     const spec = luxuryAdPersonSpec();
@@ -8335,7 +8390,7 @@
       return msg || '候选演员图与当前人物设定不一致，系统已拦截本次结果，未写入演员库。';
     }
     if (/LUXURY_ACTOR_FRAMING_QA_FAILED|构图 QA|FRAMING_QA|LOWER_BODY|TROUSERS|GARMENT|半身|头像|WAIST_UP|BUST|HEADSHOT/i.test(text)) {
-      return '演员包构图质检未通过：系统检测到人物参考图不符合完整演员定妆照要求，因此没有写入演员库。请重新生成或调整人物描述/参考图。';
+      return '演员包构图质检未通过：系统检测到人物参考图不符合完整演员参考要求，因此没有写入演员库。请重新生成或调整人物描述/参考图。';
     }
     if (/PANXXXO100IFR|INTERNAL SERVER ERROR|CODE=500|HTTP\s*500/i.test(text)) {
       return canSeeDebug
@@ -8474,15 +8529,14 @@
     const pct = Math.max(6, Math.min(96, softPct));
     const elapsedSec = Math.max(0, Math.round(elapsed / 1000));
     const elapsedText = formatLuxuryElapsedText(elapsedSec);
-    const phase = progress.phase || '正在生成';
-    const message = progress.message || '正在生成正面定妆照；通过后会保存人物参考。';
+    const message = progress.message || '已提交生成请求，正在生成第 1/4 张。';
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
         <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(elapsedText)}</em><i>${pct}%</i></span>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
-      <small>${escapeHtml(phase || '准备生成')} · ${escapeHtml(message || '正在整理演员参考图。')}</small>
+      <small>${escapeHtml(message || '正在生成演员参考图。')}</small>
     </div>`;
   }
 
@@ -8778,7 +8832,7 @@
       const errorHtml = generated.failed && state.luxuryAd.personGenerationError
         ? `<div class="dh-lux-person-error"><b>人物演员包生成失败</b><span>${escapeHtml(luxuryPersonGenerationErrorExplanation(state.luxuryAd.personGenerationError))}</span><small>${escapeHtml(luxuryPersonGenerationUserAction(state.luxuryAd.personGenerationError))}</small>${canViewLuxuryInternalPipeline() ? `${renderLuxuryPersonFailedCandidates(state.luxuryAd.personGenerationError)}${renderLuxuryFullErrorReceipt(state.luxuryAd.personGenerationError, '人物接口完整错误回执')}` : ''}</div>`
         : '';
-      const loadingText = isSyntheticActor ? '正在按角色库标准生成正面、侧面/半侧、动作参考，并尝试补充背面。' : (isAiActor ? '正在生成正面、侧面/半侧、动作参考，并尝试补充背面。' : '真人照片上传中。');
+      const loadingText = isSyntheticActor ? '正在生成演员参考图，页面会显示完成数量。' : (isAiActor ? '正在生成演员参考图，页面会显示完成数量。' : '真人照片上传中。');
       const progressHtml = generated.uploading ? luxuryPersonGenerationProgressHtml() : '';
       const viewStatus = generated.view_generation_status && typeof generated.view_generation_status === 'object' ? generated.view_generation_status : {};
       const readyViewKeys = new Set([
@@ -8787,16 +8841,14 @@
       ]);
       const pendingViewKeys = Array.isArray(viewStatus.pending_views) ? viewStatus.pending_views.filter(Boolean) : [];
       const expectedViewKeys = ['front', 'side', 'back', 'action'];
-      const expectedViewLabels = expectedViewKeys.map(key => luxuryActorAssetViewLabel({ key }, 0));
-      const pendingLabels = pendingViewKeys.map(key => luxuryActorAssetViewLabel({ key }, 0));
-      const readyLabels = expectedViewLabels.filter((_, i) => readyViewKeys.has(expectedViewKeys[i]));
-      const readyCount = Math.min(4, Math.max(1, readyViewKeys.size || actorViewEntries.length || 1));
+      const readyCount = Math.min(4, Math.max(0, readyViewKeys.size || actorViewEntries.length || 0));
       const viewPercent = Math.max(25, Math.min(100, Math.round((readyCount / 4) * 100)));
+      const nextIndex = Math.min(4, Math.max(1, readyCount + (readyCount >= 4 ? 0 : 1)));
       const viewProgressHtml = isSyntheticActor && !castMembers.length
         ? `<div class="dh-lux-actor-view-status">
             <div class="dh-lux-actor-view-status-head"><b>演员参考 ${readyCount}/4</b><span>${viewPercent}%</span></div>
             <div class="dh-lux-actor-view-bar" aria-hidden="true"><i style="width:${viewPercent}%"></i></div>
-            <div class="dh-lux-actor-view-status-copy">${pendingLabels.length ? `正在自动补齐：${escapeHtml(pendingLabels.join('、'))}` : `已生成：${escapeHtml(readyLabels.join('、') || actorViewEntries.map(x => x.label).join('、') || '正面')}`}</div>
+            <div class="dh-lux-actor-view-status-copy">${readyCount >= 4 ? '已完成 4/4 张。' : `已完成 ${readyCount}/4 张，正在生成第 ${nextIndex}/4 张。`}</div>
           </div>`
         : '';
       const castGrid = castMembers.length > 1
@@ -8920,7 +8972,7 @@
       </div>
       <div class="dh-luxgen-live-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <div class="dh-luxgen-live-meta">
-        <span>${escapeHtml(progress.phase || '正在生成')}</span>
+        ${progress.keyframes ? '' : `<span>${escapeHtml(progress.phase || '正在生成')}</span>`}
         <small>${escapeHtml(progress.message || '请保持页面打开，完成后会自动进入下一步。')}</small>
       </div>`;
   }
@@ -9180,7 +9232,7 @@
     renderLuxuryWorkflowProgress();
   }
 
-  function updateLuxuryKeyframeWorkflowProgress({ current = 0, total = 1, startedAt = Date.now(), message = '' } = {}) {
+  function updateLuxuryKeyframeWorkflowProgress({ current = 0, total = 1, startedAt = Date.now() } = {}) {
     const elapsedSec = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
     const doneRatio = total > 0 ? Math.max(0, Math.min(1, Number(current || 0) / total)) : 0;
     const timeCurve = 1 - Math.exp(-elapsedSec / 95);
@@ -9193,8 +9245,10 @@
       elapsedSec,
       percent,
       label: '分镜生成中',
-      phase: current > 0 ? `正在处理第 ${Math.min(total, current + 1)} / ${total} 镜` : '准备逐镜生成',
-      message: message || `正在按已确认剧本生成分镜：${current}/${total}。`,
+      phase: '分镜生成',
+      message: current >= total
+        ? `已完成 ${total}/${total} 镜，正在写入结果。`
+        : `已完成 ${current}/${total} 镜，正在生成第 ${Math.min(total, current + 1)}/${total} 镜。`,
     };
     renderLuxuryWorkflowProgress();
   }
@@ -10130,6 +10184,22 @@
     if (!luxuryAdIsMaterialMode() && !luxuryAdPersonDesignReady()) {
       return toast(luxuryAdPersonDesignGateMessage(), 'error');
     }
+    const referenceCandidate = luxuryAdPersonAssetPayload();
+    const referenceKind = luxuryAdActorReferenceKind(referenceCandidate || {});
+    // 中文说明：生成本次拟真演员的规格前，必须先切断上一轮 AI 演员包。
+    // 否则旧人物虽然不会作为 reference_person 传入，但会先被 luxuryAdCastProfiles()
+    // 转成 cast_profiles / person_context，继续把旧脸、旧衣服和旧描述带进模型。
+    const referencePerson = referenceKind === 'real_photo'
+      ? referenceCandidate
+      : null;
+    let clearedStalePersonAsset = false;
+    if (referenceCandidate && referenceKind !== 'real_photo') {
+      state.luxuryAd.personAsset = null;
+      state.luxuryAd.castProfiles = (Array.isArray(state.luxuryAd.castProfiles) ? state.luxuryAd.castProfiles : [])
+        .filter(profile => luxuryAdCastProfileHasValue(profile) && !luxuryAdCastProfileIsAutoPersonAsset(profile));
+      state.luxuryAd.keyframes = [];
+      clearedStalePersonAsset = true;
+    }
     const generationSpec = luxuryAdPersonGenerationSpec();
     const text = rawText || `按当前人物设定生成拟真演员参考：${luxuryAdPersonDescription(generationSpec)}`;
     if (luxuryPersonAgeNeedsRealReference(generationSpec.age)) {
@@ -10143,22 +10213,25 @@
       ? Math.max(3, Math.min(6, Number(generationSpec.expected_people || generationSpec.person_count || 3) || 3))
       : luxuryCastModeExpectedPeople(generationCastMode);
     const generationCastAssets = generationPeople > 1 ? luxuryPlaceholderCastAssets(generationCastMode, generationPeople) : [];
-    const referenceCandidate = luxuryAdPersonAssetPayload();
-    const referenceKind = luxuryAdActorReferenceKind(referenceCandidate || {});
-    const referencePerson = referenceKind === 'real_photo' || referenceKind === 'synthetic_realistic_actor'
-      ? referenceCandidate
-      : null;
     const btn = $('#dhLuxAdGeneratePersonSheet');
     const old = btn?.innerHTML;
     setLuxuryPersonActionState('#dhLuxAdGeneratePersonSheet', true);
     if (btn) { btn.disabled = true; btn.innerHTML = '生成拟真演员中…'; }
     state.luxuryAd.personGenerationError = null;
+    if (clearedStalePersonAsset) {
+      // 中文说明：刷新页面时只能恢复已完成演员包；重新生成前先把旧演员草稿写空，避免刷新后旧人物再次回灌。
+      await saveLuxuryAdDraft({ silent: true, projectState: 'script_reviewing' }).catch(err => {
+        console.warn('[luxuryAd] clear stale person draft failed:', err.message || err);
+        return null;
+      });
+      state.luxuryAd.personAsset = null;
+    }
     const personProgressStages = [
-      { at: 0, percent: 10, phase: '准备人物设定', message: '读取广告需求、人物性别、年龄和地域约束。' },
-      { at: 2500, percent: 28, phase: generationPeople > 1 ? '逐个生成正面定妆照' : '生成正面定妆照', message: generationPeople > 1 ? `按${generationPeople}个独立人物逐个生成，不合成同框人物。` : '要求竖构图、全身或膝上以上，锁定发型和同一套服装。' },
-      { at: 8500, percent: 58, phase: '正面构图 QA', message: '检查正面定妆照是否符合人物设定、构图和可复用要求。' },
-      { at: 15000, percent: 78, phase: '抽取人物锁', message: '从正面定稿中抽取脸型、发型、服装和身形锁，供后续分镜使用。' },
-      { at: 21500, percent: 88, phase: '保存人物参考', message: '正面定妆通过后会保存为可用人物参考，补充视图会继续完善。' },
+      { at: 0, percent: 10, phase: '拟真演员', message: '已完成 0/4 张，正在生成第 1/4 张。' },
+      { at: 2500, percent: 28, phase: '拟真演员', message: '已完成 0/4 张，正在生成第 1/4 张。' },
+      { at: 8500, percent: 58, phase: '拟真演员', message: '已完成 1/4 张，正在生成第 2/4 张。' },
+      { at: 15000, percent: 78, phase: '拟真演员', message: '已完成 2/4 张，正在生成第 3/4 张。' },
+      { at: 21500, percent: 88, phase: '拟真演员', message: '已完成 3/4 张，正在生成第 4/4 张。' },
     ];
     const updatePersonProgress = () => {
       const start = state.luxuryAd.personGenerationProgress?.startedAt || Date.now();
@@ -10180,8 +10253,8 @@
       startedAt: Date.now(),
       label: '拟真演员',
       percent: 10,
-      phase: '准备人物设定',
-      message: '读取广告需求、人物性别、年龄和地域约束。',
+      phase: '拟真演员',
+          message: '已完成 0/4 张，正在生成第 1/4 张。',
     };
     const personProgressTimer = setInterval(updatePersonProgress, 1400);
     state.luxuryAd.personAsset = {
@@ -10241,8 +10314,8 @@
           active: true,
           label: '拟真演员',
           percent: 18,
-          phase: '完整生成 4 视图',
-          message: '人物包已提交到后台，正在按正面、侧面、背面、动作完整生成 4 张演员参考。',
+          phase: '拟真演员',
+          message: '已完成 0/4 张，正在生成第 1/4 张。',
         };
         renderLuxuryAdPerson();
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 45 * 60 * 1000, missingRetryMs: 90000 });
@@ -11308,6 +11381,19 @@
     return !!(frame && (frame.image_url || frame.imageUrl || frame.url));
   }
 
+  function luxuryFrameListHasImage(frames = []) {
+    return Array.isArray(frames) && frames.some(luxuryFrameHasImage);
+  }
+
+  function luxuryAdProjectHasUnusableKeyframeState(project = {}) {
+    const stateName = String(project?.project_state || '').trim();
+    return stateName === 'frame_failed'
+      || stateName === 'frame_generating'
+      || !!project?.last_error
+      || !!project?.keyframe_error
+      || !!project?.draft_state?.keyframe_error;
+  }
+
   function luxuryFrameIndex(frame = {}, fallback = 0) {
     const raw = frame?.shot_index ?? frame?.index ?? frame?.scene_index ?? frame?.shotNo ?? frame?.shot_no;
     const n = Number(raw);
@@ -11427,16 +11513,13 @@
     if (partial.production_contract) state.luxuryAd.productionContract = partial.production_contract;
     state.luxuryAd.keyframeShotStatuses = Array.isArray(partial.shot_statuses) ? partial.shot_statuses : [];
     const generated = (state.luxuryAd.keyframes || []).filter(luxuryFrameHasImage).length;
-    const failedCount = state.luxuryAd.keyframeShotStatuses.filter(x => x?.status === 'failed').length;
-    const currentStatus = state.luxuryAd.keyframeShotStatuses.find(x => x?.status === 'generating' || x?.status === 'qa_retrying');
-    const statusText = failedCount
-      ? `，${failedCount} 镜待单独重试`
-      : (currentStatus ? `，第 ${Number(currentStatus.index || currentStatus.shot_index || 0) + 1} 镜处理中` : '');
     state.luxuryAd.keyframeProgress = {
       current: Math.min(generated, total || generated),
       total: total || generated || 1,
       startedAt: state.luxuryAd.keyframeProgress?.startedAt || startedAt,
-      message: `真实关键帧已生成 ${generated}/${total || generated}${statusText}。合格镜头会先显示，全部完成前不能进入成片。`,
+      message: generated >= (total || generated || 1)
+        ? `已完成 ${total || generated}/${total || generated} 镜，正在写入结果。`
+        : `已完成 ${generated}/${total || generated} 镜，正在生成第 ${Math.min(total || generated || 1, generated + 1)}/${total || generated} 镜。`,
     };
     updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
     renderLuxuryAdStoryboard();
@@ -13060,9 +13143,10 @@
     if (!project || typeof project !== 'object') return;
     const draft = project.draft_state || {};
     const restoredScenes = luxuryRestoredProjectScenes(project, draft);
-    const inferredStep = project.keyframes?.length
+    const projectHasKeyframeImages = luxuryFrameListHasImage(project.keyframes);
+    const inferredStep = projectHasKeyframeImages
       ? 5
-      : (['frame_reviewing', 'frame_ready', 'frame_failed'].includes(project.project_state) || project.storyboard_sheets?.length
+      : (['frame_generating', 'frame_reviewing', 'frame_ready', 'frame_failed'].includes(project.project_state) || project.storyboard_sheets?.length
         ? 4
         : (restoredScenes.length ? 3 : 1));
     state.luxuryAd.content = project.text || draft.text || state.luxuryAd.content || '';
@@ -13091,11 +13175,11 @@
     state.luxuryAd.revisionHistory = Array.isArray(project.revision_history)
       ? project.revision_history
       : (Array.isArray(draft.revision_history) ? draft.revision_history : []);
-    const restoredPersonAsset = draft.person_asset || state.luxuryAd.personAsset || null;
+    const restoredPersonAsset = draft.person_asset || project.person_asset || null;
     const contractActorAsset = project.production_contract?.actor_asset
       || project.production_contract?.actor_reference
       || null;
-    if (restoredPersonAsset) {
+    if (luxuryAdPersonAssetIsRestorable(restoredPersonAsset, contractActorAsset)) {
       const restoredUrls = luxuryActorUrlsFromSources(restoredPersonAsset, contractActorAsset);
       state.luxuryAd.personAsset = {
         ...restoredPersonAsset,
@@ -13113,6 +13197,7 @@
       refreshLuxuryPersonAssetFromServer({ silent: true }).catch(() => {});
     } else {
       state.luxuryAd.personAsset = null;
+      state.luxuryAd.personGenerationProgress = null;
     }
     state.luxuryAd.productAsset = draft.product_asset || state.luxuryAd.productAsset || null;
     state.luxuryAd.controlledProduction = normalizeLuxuryControlledProduction(draft.controlled_production || draft.controlledProduction || project.controlled_production || null);
@@ -13143,13 +13228,18 @@
     state.luxuryAd.productionProjectId = project.id || '';
     state.luxuryAd.segments = applyLuxuryShotBindings(restoredScenes);
     syncLuxuryAdDurationFromSegments(state.luxuryAd.segments, state.luxuryAd.durationSec, { preserveTarget: true });
-    state.luxuryAd.keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
-    state.luxuryAd.storyboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
-    const restoredHasKeyframeImages = state.luxuryAd.keyframes.some(luxuryFrameHasImage);
+    const restoredKeyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
+    const restoredStoryboardSheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
+    const restoredHasKeyframeImages = luxuryFrameListHasImage(restoredKeyframes);
+    // 中文说明：刷新项目时只恢复可用分镜图。若上一轮分镜失败且没有任何可用图，
+    // 直接清空失败候选，用户重新生成时从当前剧本和人物合同开始，不展示旧失败态。
+    const dropUnusableKeyframes = !restoredHasKeyframeImages && luxuryAdProjectHasUnusableKeyframeState(project);
+    state.luxuryAd.keyframes = dropUnusableKeyframes ? [] : restoredKeyframes;
+    state.luxuryAd.storyboardSheets = dropUnusableKeyframes ? [] : restoredStoryboardSheets;
     state.luxuryAd.storyboardDetailed = !!draft.storyboard_detailed || ['frame_reviewing', 'frame_ready', 'frame_failed', 'video_generating', 'video_ready'].includes(project.project_state);
-    state.luxuryAd.keyframePlanningOnly = !restoredHasKeyframeImages && (!!draft.keyframe_planning_only || project.reference_mode === 'storyboard_planning_sheet');
-    state.luxuryAd.keyframeError = project.last_error || '';
-    state.luxuryAd.keyframeErrorDetails = project.last_error ? { production_project: project } : null;
+    state.luxuryAd.keyframePlanningOnly = dropUnusableKeyframes ? false : (!restoredHasKeyframeImages && (!!draft.keyframe_planning_only || project.reference_mode === 'storyboard_planning_sheet'));
+    state.luxuryAd.keyframeError = dropUnusableKeyframes ? '' : (project.last_error || '');
+    state.luxuryAd.keyframeErrorDetails = dropUnusableKeyframes ? null : (project.last_error ? { production_project: project } : null);
     state.luxuryAd.scriptError = '';
     state.luxuryAd.scriptErrorDetails = null;
     state.luxuryAd.sceneGenerating = false;
@@ -13181,10 +13271,15 @@
   function luxuryAdProjectToTask(project = {}) {
     const keyframes = Array.isArray(project.keyframes) ? project.keyframes : [];
     const scenes = Array.isArray(project.scenes) ? project.scenes : [];
+    const sheets = Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : [];
+    const shotStatuses = Array.isArray(project.shot_statuses) ? project.shot_statuses : [];
     const keyframeCount = keyframes.filter(k => k?.image_url || k?.imageUrl || k?.url).length;
+    const sheetCount = sheets.filter(s => s?.image_url || s?.imageUrl || s?.url).length;
+    const storyboardReadyCount = shotStatuses.filter(s => ['storyboard_ready', 'keyframe_review', 'keyframe_passed'].includes(String(s?.status || ''))).length;
     const shotCount = scenes.length;
     const inferredReady = keyframeCount > 0 && (!shotCount || keyframeCount >= shotCount);
-    const status = project.status === 'failed' ? 'failed' : ((project.status === 'ready' || inferredReady) ? 'ready' : 'draft');
+    const storyboardReady = shotCount > 0 && (storyboardReadyCount >= shotCount || sheetCount > 0);
+    const status = project.status === 'failed' ? 'failed' : ((project.status === 'ready' || inferredReady) ? 'ready' : (storyboardReady ? 'working' : 'draft'));
     const firstKeyframe = keyframes.find(k => k?.image_url || k?.imageUrl || k?.url) || null;
     const firstSheet = (Array.isArray(project.storyboard_sheets) ? project.storyboard_sheets : []).find(s => s?.image_url || s?.imageUrl || s?.url) || null;
     const thumbnailUrl = project.thumbnail_url
@@ -13211,7 +13306,7 @@
       thumbnailUrl,
       imageUrl: thumbnailUrl,
       textPreview: project.text || '',
-      progress: status === 'ready' ? 90 : (shotCount ? (keyframeCount ? 75 : 45) : 15),
+      progress: status === 'ready' ? 90 : (shotCount ? (keyframeCount ? 75 : (storyboardReady ? 62 : 45)) : 15),
       project,
     };
   }
@@ -13887,7 +13982,7 @@
             current: Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots),
             total: totalShots,
             startedAt: state.luxuryAd.keyframeProgress?.startedAt || started,
-            message: '分镜生成时间较长，正在等待同一任务返回结果。',
+            message: `已完成 ${Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots)}/${totalShots} 镜，正在生成第 ${Math.min(totalShots, Math.min(Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)), totalShots) + 1)}/${totalShots} 镜。`,
           };
           updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
         }
@@ -13914,20 +14009,16 @@
         const progress = r.progress && typeof r.progress === 'object' ? r.progress : null;
         const readyCount = Number(progress?.ready_count || 0) || 0;
         const totalViews = Number(progress?.total_views || 4) || 4;
-        const currentLabel = progress?.current_view_label || '';
-        const pendingLabels = Array.isArray(progress?.pending_views)
-          ? progress.pending_views.map(key => luxuryActorAssetViewLabel({ key }, 0)).filter(Boolean)
-          : [];
         state.luxuryAd.personGenerationProgress = {
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
           label: '拟真演员',
-          phase: r.recovery_status ? '后台任务恢复中' : '完整生成 4 视图',
+          phase: r.recovery_status ? '后台任务恢复中' : '拟真演员',
           message: progress
             ? (readyCount >= totalViews
-              ? '4 张演员参考已生成完成，正在写入结果。'
-              : `已完成 ${readyCount}/${totalViews} 张${currentLabel ? `，正在生成：${currentLabel}` : ''}${pendingLabels.length ? `；剩余：${pendingLabels.join('、')}` : ''}。`)
-            : (r.message || '服务器正在完整生成 4 张演员参考，页面会自动刷新进度。'),
+              ? `已完成 ${totalViews}/${totalViews} 张，正在写入结果。`
+              : `已完成 ${readyCount}/${totalViews} 张，正在生成第 ${Math.min(totalViews, readyCount + 1)}/${totalViews} 张。`)
+            : '已完成 0/4 张，正在生成第 1/4 张。',
           percent: progress
             ? Math.max(12, Math.min(98, Number(progress.percent || 12) || 12))
             : Math.max(18, Number(state.luxuryAd.personGenerationProgress?.percent || 18)),
@@ -14471,9 +14562,11 @@
     state.luxuryAd.keyframeErrorDetails = null;
     state.luxuryAd.keyframePlanningOnly = false;
     state.luxuryAd.keyframeShotStatuses = [];
+    let clearedKeyframeDraft = false;
     if (singleIndex === null || force) {
       state.luxuryAd.keyframes = [];
       state.luxuryAd.storyboardSheets = [];
+      clearedKeyframeDraft = true;
     }
     else state.luxuryAd.keyframes = (state.luxuryAd.keyframes || []).map((item, i) => i === singleIndex ? {} : item);
     state.luxuryAd.keyframeProgress = {
@@ -14482,9 +14575,9 @@
       startedAt,
       message: singleIndex === null
         ? (reviewOnlyRequest
-          ? `正在生成审核分镜板：0/${totalShots}。`
-          : `正在生成真实关键帧：0/${totalShots}。`)
-        : `正在重新生成第 ${singleIndex + 1} 镜。`,
+          ? `已完成 0/${totalShots} 镜，正在生成第 1/${totalShots} 镜。`
+          : `已完成 0/${totalShots} 镜，正在生成第 1/${totalShots} 镜。`)
+        : `已完成 0/1 镜，正在生成第 1/1 镜。`,
     };
     updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
     setLuxuryProgress('keyframes');
@@ -14502,9 +14595,9 @@
         startedAt,
         message: singleIndex === null
           ? (reviewOnlyRequest
-            ? `正在生成审核分镜板：约 ${estimated}/${total}。系统只整理镜头表、画面、动作和分镜板，不调用最终关键帧模型。`
-            : `正在生成真实关键帧：约 ${estimated}/${total}。系统会按同一真人演员、剧情动作和写实摄影要求逐镜生成，通常需要 1-3 分钟。`)
-          : `正在重新生成第 ${singleIndex + 1} 镜。`,
+            ? `已完成 ${estimated}/${total} 镜，正在生成第 ${Math.min(total, estimated + 1)}/${total} 镜。`
+            : `已完成 ${estimated}/${total} 镜，正在生成第 ${Math.min(total, estimated + 1)}/${total} 镜。`)
+          : `已完成 0/1 镜，正在生成第 1/1 镜。`,
       };
       updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
       renderLuxuryAdStoryboard();
@@ -14512,8 +14605,15 @@
     try {
       const requestKey = luxuryKeyframeRequestKey(singleIndex);
       activeRequestKey = requestKey;
-      if (!state.luxuryAd.productionProjectId && singleIndex === null) {
-        await saveLuxuryAdDraft({ silent: true, projectState: 'frame_reviewing' }).catch(() => null);
+      if (singleIndex === null) {
+        // 中文说明：整组分镜重新生成时先把旧失败候选写空；刷新后不再恢复没有可用图的旧分镜。
+        await saveLuxuryAdDraft({
+          silent: true,
+          projectState: clearedKeyframeDraft ? 'frame_generating' : 'frame_reviewing',
+        }).catch(err => {
+          console.warn('[luxuryAd] save cleared keyframe draft failed:', err.message || err);
+          return null;
+        });
       }
       if (state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading && !state.luxuryAd.personAsset.failed) {
         await ensureLuxuryPersonAssetPersisted('keyframe');
@@ -14589,7 +14689,7 @@
           current: Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)),
           total: totalShots,
           startedAt,
-          message: '分镜生成时间较长，正在等待同一任务返回结果。',
+          message: `已完成 ${Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0))}/${totalShots} 镜，正在生成第 ${Math.min(totalShots, Math.max(0, Number(state.luxuryAd.keyframeProgress?.current || 0)) + 1)}/${totalShots} 镜。`,
         };
         updateLuxuryKeyframeWorkflowProgress(state.luxuryAd.keyframeProgress);
         r = await pollLuxuryKeyframeResult(requestKey, { timeoutMs: 0, totalShots });
@@ -14740,6 +14840,12 @@
       }
       else if (err?.data?.details?.production_project_id) state.luxuryAd.productionProjectId = err.data.details.production_project_id;
       if (err?.data?.details?.production_contract) state.luxuryAd.productionContract = err.data.details.production_contract;
+      if (!luxuryFrameListHasImage(state.luxuryAd.keyframes)) {
+        // 中文说明：本轮没有任何可用分镜图时，不把失败候选或占位图继续保存为项目状态。
+        state.luxuryAd.keyframes = [];
+        state.luxuryAd.storyboardSheets = [];
+        state.luxuryAd.keyframePlanningOnly = false;
+      }
       renderLuxuryAdStoryboard();
       saveLuxuryAdDraft({ silent: true, projectState: 'frame_failed' }).catch(() => {});
       toast('剧情广告分镜生成失败：' + state.luxuryAd.keyframeError, 'error');
@@ -18598,8 +18704,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         state.luxuryAd.storyboardDetailed = false;
         state.luxuryAd.keyframes = [];
       }
-      const identityFields = new Set(['castMode', 'gender', 'age', 'origin']);
-      if (identityFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
+      const personContractFields = new Set(['castMode', 'gender', 'age', 'origin', 'roleName', 'displayName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText']);
+      if (personContractFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
         state.luxuryAd.personAsset = null;
         state.luxuryAd.keyframes = [];
         renderLuxuryAdPerson();
@@ -18696,8 +18802,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
         state.luxuryAd.keyframes = [];
         toast('人物配置已变更，请重新生成剧本，避免人物和对白不一致。', 'info');
       }
-      const identityFields = new Set(['castMode', 'gender', 'age', 'origin']);
-      if (identityFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
+      const personContractFields = new Set(['castMode', 'gender', 'age', 'origin', 'roleName', 'displayName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText']);
+      if (personContractFields.has(field) && state.luxuryAd.personAsset && !state.luxuryAd.personAsset.uploading) {
         state.luxuryAd.personAsset = null;
         state.luxuryAd.keyframes = [];
       }

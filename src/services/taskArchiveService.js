@@ -134,6 +134,8 @@ function removeArchive(id) {
 }
 
 function promptTextFrom(item = {}) {
+  // 中文注释：归档可能接收到失败链路留下的空镜头，空项不应阻断任务状态写回。
+  if (!item || typeof item !== 'object') return '';
   return [
     item.prompt,
     item.image_prompt,
@@ -146,6 +148,8 @@ function promptTextFrom(item = {}) {
 }
 
 function compactPromptItem(item = {}, index = 0, source = '') {
+  // 中文注释：只归档真实存在的提示词项，避免 null/非对象数据导致整条任务归档失败。
+  if (!item || typeof item !== 'object') return null;
   const prompt = promptTextFrom(item);
   if (!prompt) return null;
   return {
