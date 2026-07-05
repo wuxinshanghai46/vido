@@ -21157,6 +21157,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       '目的列必须是短的商业职责标签，例如痛点、场景代入、主体亮相、功能演示、结果证明、前后对比、行动号召；不能写成文案句或内部标签说明。',
       '如果这一镜有真人、商品、空间、服务流程、界面或非真人主体，必须明确它和当前广告主体的关系；没有得到用户或素材确认的主体不能出现。',
       '允许无真人镜头，但不允许无主体镜头；产品细节、空间、服务流程、界面、品牌片尾都必须有明确可见主体和商业证据。',
+      '如果需要屏幕/UI/字幕/品牌字/LOGO/标语，画面和动作仍必须先描述真实可拍主体与事件；可读文字只能写成“预留后期叠字位置/后期合成对应文案”，不能让图片模型直接生成文字。',
       '禁止把“高级感、质感、气质、氛围、光影、艺术、存在感、语言、答案、价值、选择理由”等抽象词当作画面、动作或台词的核心内容；这些词只能作为辅助风格，不能替代具体事件。',
       '每一镜必须比上一镜增加一个新信息：新的问题来源、主体动作、证据、结果、对比或行动；不能用同一类姿态和同一句文案换词重复。',
     ];
@@ -21240,8 +21241,14 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (isAudioCueCopy(copy)) {
           return `第 ${shotNo} 镜台词不可商用：台词栏写成了音乐/音效/环境声说明，必须改成观众听到的旁白/对白；声音说明应放入 sfx_audio。`;
         }
-        if (scriptTextRenderDirective([visual, action, copy].filter(Boolean).join('；'))) {
-          return `第 ${shotNo} 镜分镜不可商用：不能把 UI/文字/字幕/品牌字作为图片生成指令写进画面、动作或台词；需要文字时只能写“预留后期叠字位置”，具体文字交给后期合成。`;
+        const textDirectiveFields = [
+          ['画面', visual],
+          ['动作', action],
+          ['台词', copy],
+        ].filter(([, value]) => scriptTextRenderDirective(value));
+        if (textDirectiveFields.length) {
+          const fieldLabels = textDirectiveFields.map(([label]) => label).join('、');
+          return `第 ${shotNo} 镜分镜不可商用：${fieldLabels}栏把 UI/文字/字幕/品牌字写成了图片生成指令；必须保留真实可拍主体与事件，需要文字时只写“预留后期叠字位置”，具体文字交给后期合成。`;
         }
         if (!isEndcard && /(画面中没有主体|没有主体|无主体|主体缺席|主体不出现|画面没有.*主体)/.test(all)) {
           return `第 ${shotNo} 镜商业分镜不可用：不能写无主体镜头，必须写清当前广告主体、产品/服务证据、空间或流程证据。`;
@@ -21261,7 +21268,6 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s || s.length < 8) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
-        if (scriptTextRenderDirective(s)) return false;
         if (/^(按|根据).*(生成|推进|展示)/.test(s)) return false;
         return true;
       };
@@ -21269,7 +21275,6 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s || s.length < 4) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
-        if (scriptTextRenderDirective(s)) return false;
         return true;
       };
       const isUsableScriptCopy = (value = '') => {
@@ -21277,7 +21282,6 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (!s || s.length < 3) return false;
         if (_hasLuxuryAbstractStoryboardLeak(s) || scriptInternalNoise.test(s)) return false;
         if (isAudioCueCopy(s)) return false;
-        if (scriptTextRenderDirective(s)) return false;
         if (/^（?(提示音|环境声|音乐|温暖环境音乐|SFX|Audio)[）)]?$/i.test(s)) return false;
         return true;
       };
