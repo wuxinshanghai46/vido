@@ -15629,16 +15629,16 @@ function _fallbackLuxuryNarrativeLine({ role = '', productSubject = '主商品',
   ];
   if (continuousHuman || _luxuryNeedsContinuousHuman(storyText)) {
     const humanLines = [
-      '先跟着角色，从真实场景进入',
-      '角色带你看见问题和需要',
-      `${name}出现后，答案开始具体`,
-      '角色边体验边把变化讲清楚',
-      '细节放近看，理由更可信',
-      '换到真实场景，优势更自然',
-      '角色继续演示，证明选择价值',
-      '对比之后，判断变得简单',
-      '从体验到服务，都要讲明白',
-      '最后把选择理由讲清楚',
+      `现场问题出现，${name}需要给出可见答案`,
+      `同一位角色把注意力转向${name}的真实证据`,
+      `${name}进入使用过程，画面必须看见具体变化`,
+      `角色通过一次可拍操作说明${name}的作用`,
+      `镜头靠近当前证据，让观众看见判断依据`,
+      `把${name}放回真实使用场景验证结果`,
+      `角色继续完成演示，证明前后状态变化`,
+      `对比结果出现，观众能看见选择依据`,
+      `从体验到服务，镜头必须给出下一步`,
+      `最后用明确行动收束到${name}`,
     ];
     return humanLines[Math.min(idx, humanLines.length - 1)] || humanLines[humanLines.length - 1];
   }
@@ -15659,7 +15659,7 @@ function _isWeakLuxuryAdLine(value = '', productSubject = '') {
 function _hasLuxuryAbstractStoryboardLeak(value = '') {
   const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
   if (!s) return false;
-  return /(相关证据|主体证据|当前业务真正需要|人物或主体|同一位剧情角色|已确认的真实场景|已确认场景|作用被看见|核心问题|结果证据|选择理由|当前业务|具体问题|关键证据|使用细节|发生了变化|变得更清楚|答案开始具体|先跟着角色|角色带你|角色边体验|角色继续演示|从体验到服务|最后把选择理由|问题出现时|需求才真正清楚|细节被看见|价值才站得住|放进真实场景|优势更清楚|一次体验|关键变化|靠近使用|改变发生在眼前|稳定表现|长期选择|判断变得简单|把更好的方案|带到现场|稳定构图|行动意图|可信证据点|卖点通过动作成立|单独图库特写|不是单独图库|证据点|让卖点|让价值|自然收束|出现在[^，。；]{0,18}使用场景中|进入画面(?:中心|重点位置)|近景展示[^，。；]{0,28}(?:外观|结构|界面|核心卖点)|完整使用场景中(?:运转|被展示)|手部或主体直接操作|开场先(?:建立|呈现)用户(?:面对的)?(?:具体)?问题|场景展示它准备被使用或介绍)/.test(s);
+  return /(相关证据|主体证据|当前业务真正需要|人物或主体|同一位剧情角色|已确认的真实场景|已确认场景|作用被看见|核心问题|结果证据|选择理由|当前业务|具体问题|关键证据|使用细节|发生了变化|变得更清楚|答案开始具体|先跟着角色|角色带你|角色边体验|角色继续演示|从体验到服务|最后把选择理由|问题出现时|需求才真正清楚|细节被看见|价值才站得住|放进真实场景|优势更清楚|一次体验|关键变化|靠近使用|改变发生在眼前|稳定表现|长期选择|判断变得简单|把更好的方案|带到现场|稳定构图|行动意图|可信证据点|卖点通过动作成立|单独图库特写|不是单独图库|证据点|让卖点|让价值|自然收束|出现在[^，。；]{0,18}使用场景中|进入画面(?:中心|重点位置)|近景展示[^，。；]{0,28}(?:外观|结构|界面|核心卖点)|完整使用场景中(?:运转|被展示)|手部或主体直接操作|开场先(?:建立|呈现)用户(?:面对的)?(?:具体)?问题|场景展示它准备被使用或介绍|光的语言|光影的诗|存在本身|质感吸引|氛围本身|每一寸细节|时间的设计|设计的灵魂|诗意表达|诗性表达|沉默邀请|静默邀请|抽象美学表达|当[^，。；]{1,20}拥有了|不是[^，。；]{1,20}，?而是|让[^，。；]{1,20}成为[^，。；]{1,20}主角)/.test(s);
 }
 
 function _fallbackLuxuryAdCopy(opts = {}) {
@@ -21150,6 +21150,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
     // 中文说明：通用商业分镜合同。这里不枚举任何固定行业、固定场景、固定职业或固定道具，只规定所有行业都必须满足的“可拍、可验收、可连续叙事”标准。
     const commercialStoryboardContractRules = [
       '商业分镜硬标准：每一镜都必须是可拍摄的广告事件，不是诗意文案、风格描述、情绪标签或后台分析。',
+      '商业事件结构：每一镜必须能归入一个明确职责：痛点/场景代入/主体亮相/功能演示/结果证明/前后对比/权益或行动收束；画面、动作、台词三列必须共同服务这个职责。',
       '画面列必须写清：当前场所/载体、可见主体、主体状态、产品/服务/空间/流程证据、观众能看到的变化；这些内容只能来自广告需求、素材、剧本蓝图或人工编辑。',
       '动作列必须写清：谁或什么在做什么，如何移动、操作、触发、对比、展示或完成；不能只写镜头推进、光线变化、氛围变化或“成为主角”。',
       '台词列必须是成片里能听到或看到的一句自然商业表达，承接当前画面并推进下一步；禁止把音乐、音效、环境声、开场/收尾声音说明写进台词，这些只能放入 sfx_audio。',
@@ -21212,8 +21213,49 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         return '';
       };
       const scriptInternalNoise = /(广告需求识别|由广告需求识别|按广告需求|广告需求|用户需求|系统识别|自动识别|参考素材摘要|上传主商品|主商品|主产品|广告主体|已确认主体|商品\/服务主体|用户广告需求中的真实商品或服务|广告需求中的商品\/服务主体|产品名称|一句话需求|brief|prompt|exact uploaded)/i;
-      const commercialPoeticNoise = /(光的语言|存在本身|不是镜头|没有主体|无主体|主体缺席|绝对的主角|空气感|氛围感|高级感|质感|气质|克制|诗意|诗性|沉默|静默|沉淀|抽象|答案开始|细节被看见|价值站得住|选择理由|作用被看见|核心问题|角色带你|把.*讲清楚|让.*成为.*主角|静谧如画|无声.*邀请|设计.*灵魂|专属.*美学|复古格调|艺术品|艺术感|邀请意味|冷暖色调|高级.*背景|优雅.*姿态)/;
+      const commercialPoeticNoise = /(光的语言|光影的诗|存在本身|不是镜头|没有主体|无主体|主体缺席|绝对的主角|空气感|氛围感|高级感|质感|气质|克制|诗意表达|诗性表达|沉默邀请|静默邀请|沉淀感|抽象表达|答案开始|细节被看见|价值站得住|选择理由|作用被看见|核心问题|角色带你|把.*讲清楚|让.*成为.*主角|静谧如画|无声.*邀请|设计.*灵魂|专属.*美学|邀请意味|冷暖色调|高级.*背景)/;
       const commercialConcreteSignal = /(出现|看见|显示|写着|拿起|放下|打开|关闭|点击|滑动|输入|扫描|对比|靠近|贴近|指向|递给|接过|安装|摆放|排列|切换|变化|变成|完成|确认|标注|亮起|落下|进入|走向|停在|转身|触摸|操作|展示|露出|推近|拉开|聚焦|读到|听到|完成|生成|同步|通过|失败|解决|减少|增加|清空|固定|收纳|连接|启动|结束)/;
+      const commercialBusinessEvidenceSignal = /(问题|困扰|冲突|需求|客户|用户|观众|主体|产品|商品|服务|方案|空间|流程|证据|结果|对比|变化|反馈|状态|清单|记录|订单|预约|咨询|交付|安装|试用|体验|选择|确认|完成|数据|指标|样品|样本|材料|设备|工具|屏幕|界面|文件|表单|报告|包装|细节|前后|处理|解决|行动)/;
+      const commercialBusinessActionSignal = /(拿起|放下|打开|关闭|点击|滑动|输入|扫描|对比|整理|确认|完成|递给|接过|指向|触摸|靠近|推近|拉开|转身|走向|进入|停在|展示|切换|变化|亮起|出现|生成|同步|标注|排列|摆放|安装|试用|体验|查看|复核|选择|咨询|下单|预约|签收|交付|讲解|比较|操作|使用|处理|解决|收起|归类|合并|筛选|读取|拍摄|连接|启动|结束)/;
+      const commercialAestheticPrimaryNoise = /(光的语言|光影的诗|存在本身|时间的设计|设计的灵魂|美学表达|质感吸引|氛围本身|高级感|氛围感|诗意|诗性|沉默|静默|优雅姿态|柔和姿态|从容姿态|克制姿态|冷暖交织|梦幻|浪漫|每一寸细节|当[^，。；]{1,20}拥有了|不是[^，。；]{1,20}，?而是|让[^，。；]{1,20}成为[^，。；]{1,20}主角)/;
+      const commercialPersonPoseOnly = /(身姿|姿态|凝视|静立|伫立|侧身|微笑|裙摆|礼服|发丝|目光|眼神|优雅|柔和)/;
+      const commercialCopyLooksPoetic = /(光的语言|光影的诗|每一寸|设计的灵魂|诗意表达|抽象美学|当[^，。；!?！？]{1,20}拥有了|不是[^，。；!?！？]{1,20}，?而是|让[^，。；!?！？]{1,20}成为|定义[^，。；!?！？]{1,20}美|时间的设计|岁月的痕迹|沉默地诉说|无声地邀请|温柔地诉说|优雅地表达)/;
+      const shortPurposeOk = (value = '') => {
+        const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, '').trim();
+        return !!s && s.length <= 12 && !/[。；;，,！？!?]/.test(s);
+      };
+      const commercialScriptRowIssue = (scene = {}, shotNo = 0, isEndcard = false) => {
+        const visual = _stripLuxuryBriefNoise(scene.content_prompt || scene.scene_content || scene.visual || scene.display_visual || '').replace(/\s+/g, ' ').trim();
+        const action = _stripLuxuryBriefNoise(scene.action || scene.visual_action || '').replace(/\s+/g, ' ').trim();
+        const copy = _stripLuxuryBriefNoise(luxurySceneSpokenText(scene)).replace(/\s+/g, ' ').trim();
+        const purpose = _stripLuxuryBriefNoise(scene.purpose || scene.script_purpose || scene.objective || '').replace(/\s+/g, ' ').trim();
+        const rowText = [visual, action, copy].filter(Boolean).join('；');
+        const roleText = [scene.role, scene.story_stage, scene.subject_type, scene.subjectType, purpose].filter(Boolean).join(' ');
+        const isQuietDetail = /(product_detail|detail|macro|细节|特写|brand_endcard|endcard|片尾)/i.test(roleText);
+        const hasSubject = _luxurySubjectHit(rowText, subjectKeywords, productSubject);
+        const hasEvidence = commercialBusinessEvidenceSignal.test(rowText) || hasSubject;
+        const hasEvent = commercialBusinessActionSignal.test([visual, action].filter(Boolean).join('；'));
+        // 中文说明：这里不按行业枚举，只要求每一行是“商业事件”，而不是审美短文。
+        if (!isEndcard && commercialAestheticPrimaryNoise.test(rowText) && (!hasEvent || !hasEvidence)) {
+          return `第 ${shotNo} 镜商业事件不成立：画面/动作/台词主要是审美或诗意描述，缺少可拍的主体事件、业务证据和结果变化。`;
+        }
+        if (!isEndcard && !hasEvidence) {
+          return `第 ${shotNo} 镜缺少商业证据：必须让观众看见当前广告主体、问题来源、产品/服务证据、使用过程、结果或对比之一。`;
+        }
+        if (!isEndcard && !isQuietDetail && !hasEvent) {
+          return `第 ${shotNo} 镜缺少可拍动作：动作栏必须写清主体如何出现、移动、操作、展示、比较、确认或完成结果，不能只写镜头/光线/姿态。`;
+        }
+        if (!isEndcard && commercialPersonPoseOnly.test([visual, action].join('；')) && !hasSubject && !/问题|困扰|冲突|需求|结果|对比|证据|产品|服务|主体/.test(rowText)) {
+          return `第 ${shotNo} 镜人物抢主体：人物姿态不能替代广告主体，必须写清人物与当前产品/服务/问题证据的关系。`;
+        }
+        if (copy && commercialCopyLooksPoetic.test(copy)) {
+          return `第 ${shotNo} 镜台词不可商用：台词是诗意口号，不是成片里能听懂的一句商业表达；必须改成围绕当前问题、证据、结果或行动的自然话。`;
+        }
+        if (!shortPurposeOk(purpose)) {
+          return `第 ${shotNo} 镜目的不可商用：目的必须是 2-6 字左右的剧情职责标签，不能写成文案句或后台解释。`;
+        }
+        return '';
+      };
       const isAudioCueCopy = (value = '') => {
         const s = _stripLuxuryBriefNoise(value).replace(/\s+/g, ' ').trim();
         if (!s) return false;
@@ -21351,6 +21393,8 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         if (uiIssue) issues.push(uiIssue);
         const painIssue = vaguePainIssue(scene, n, i);
         if (painIssue) issues.push(painIssue);
+        const rowIssue = commercialScriptRowIssue(scene, n, isEndcard);
+        if (rowIssue) issues.push(rowIssue);
         const commercialIssue = commercialStoryboardIssue(scene, n, isEndcard);
         if (commercialIssue) issues.push(commercialIssue);
         const driftIssue = luxuryScriptDriftIssue([visualText, actionText, copyText, purposeText].filter(Boolean).join('；'), n);
@@ -21368,7 +21412,7 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
       const text = String(issue || '');
       if (!text.trim()) return false;
       // 中文说明：硬阻断只保留会破坏现有流程的数据结构问题；文案可读性问题只用于推动模型重写，不能把完整剧本直接判失败。
-      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致|总时长承载|内容承载不足|承载不足|商业分镜不可用|商业分镜不可拍|分镜不可商用|台词不可商用|画面不可验收)/.test(text);
+      return /(镜头数量|数量不足|数量超出|缺少画面|缺少动作|缺少台词|缺少台词\/旁白|缺少可信证明|缺少行动收束|包含后台流程词|剧情漂移|明确禁止项|缺少广告主体|人物表|人物一致性|不完整|不一致|总时长承载|内容承载不足|承载不足|商业事件不成立|缺少商业证据|缺少可拍动作|人物抢主体|商业分镜不可用|商业分镜不可拍|分镜不可商用|台词不可商用|目的不可商用|画面不可验收)/.test(text);
     };
     const luxuryScriptBlockingIssues = (issues = []) => (Array.isArray(issues) ? issues : [issues])
       .filter(issue => isLuxuryScriptBlockingIssue(issue));
@@ -21400,7 +21444,9 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
         genderInstruction,
         ...commercialStoryboardContractRules,
         '重写目标：把抽象模板句改成可直接进入审核表的成片脚本。画面=具体场所+主体状态+可见证据；动作=主体正在做的可拍动作；台词=成片里能听到的一句自然话；目的=2-6 个字短标签。',
+        '重写时必须像商业分镜表，不像品牌散文：每个问题镜头都要写出观众看见的业务事件、当前主体如何介入、结果如何变化，以及一句能直接配音的口语台词。',
         `广告主体是「${productSubject}」。必须让主体或主体证据在问题镜头里具体可见，不要写“相关证据、主体证据、人物或主体、当前业务、已确认场景、答案开始具体、角色带你、细节被看见、选择理由”等抽象词。`,
+        '禁止继续输出只表达审美、氛围、姿态或存在感的诗意句式；商用剧本必须写清主体事件、可见证据、动作变化和结果。',
         '每个问题镜头必须承接前后镜头：不要孤立喊口号，不要解释后台流程，不要写产品图库描述，不要把画面写成导演提示词。',
         '如果问题是时长或内容承载不足，必须补充该镜头能真实表演的台词、动作过程、结果反馈和可见证明；不能只改 duration 数字。',
         '允许根据广告需求和编剧蓝图重新设计该镜头的一句自然台词，但必须服务当前镜头职责，不写空泛设问或模板口号。',
@@ -21670,6 +21716,8 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         `目标总时长约 ${targetDuration} 秒，这是剧本内容承载要求，不是后期把短稿数字拉长。每镜 duration 必须由该镜台词长度、动作过程、画面证明和节奏停顿共同支撑；如果写 ${targetDuration} 秒，就要写出能支撑 ${targetDuration} 秒的剧情、动作和台词信息量。`,
         '不同目标时长必须是不同剧本：30 秒可以短促，60 秒必须增加更完整的铺垫、操作过程、结果反馈、证明或自然转化；不得把 30 秒剧本改成 60 秒数字。每一镜不能只有一句短台词配长停顿。',
         '竞品级写法：画面列必须是具体事件，包含场所、主体状态和可见证据；动作列必须是可拍动作，包含主体如何出现、移动、操作、切换或展示结果；台词列必须是一句口语化成片文案。',
+        '竞品级行结构：每一行都必须回答四件事：观众此刻看见什么问题/主体/证据；主体正在做什么；这一动作带来什么变化；这一镜为什么推进购买/咨询/理解。任一项缺失就整行重写。',
+        '严禁把人物姿态、光影、展陈、审美形容词当作广告内容主体；人物只能服务当前广告主体和业务证据，不能抢走主体。',
         '痛点写法：必须拍出“为什么痛”，不能只写人物焦虑、头疼、无力。画面里要有当前业务里的具体冲突来源，动作里要写人物或主体如何被这个冲突打断或推动。',
         'UI写法：禁止只写“界面显示、按钮脉冲、光晕、列表”等装饰词。如果需要 UI，必须写清 UI 在什么已确认载体上、显示哪些与当前业务相关的信息、当前主体如何处理、处理后状态如何变化。',
         '严禁剧情漂移：只能使用广告需求、主体、素材解析、已有场景顺序或编剧蓝图里已经出现的对象和环境；不得自行加入无来源行业、无来源角色或无来源业务。',
@@ -21679,6 +21727,7 @@ ${JSON.stringify(payload, null, 2).slice(0, 12000)}`;
         'purpose/script_purpose：写 2-6 字短标签，例如痛点、场景代入、主体亮相、功能演示、结果证明、前后对比、行动号召；不能写长句。',
         'subject_type 必须按画面主体选择：真人同框用 human_scene；非人物角色或非真人主体用 character_scene；商品或服务独立介绍用 product_only；细节特写用 product_detail；界面流程用 ui_screen；结果证明用 proof_scene；片尾用 brand_endcard。',
         '禁止输出这些后端模板或近似表达：稳定构图、可信证据点、行动意图、卖点通过动作成立、不是单独图库特写、自然收束、角色带你、答案开始具体、细节被看见、价值站得住。',
+        '禁止输出诗意品牌片句式或近似表达：只写审美、氛围、姿态、存在感或抽象价值，不写主体事件和商业证据的内容都必须重写。',
         '每一镜必须比上一镜推进一个新信息，画面、动作、台词三列都不能复制上一镜句式。',
         rewritingInvalidTable ? (explicitShotTarget
           ? '重写要求：保持用户明确指定的镜头数量、总时长目标和主体约束；每个被点名的问题必须在整版新稿中自然解决。不要只补空字段，不要沿用导致失败的模板句。'
@@ -21993,6 +22042,8 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         `目标总时长约 ${targetDuration} 秒。蓝图必须先规划足够支撑该时长的剧情信息量：较短视频可以集中表达，较长视频必须增加更完整的场景铺垫、主体操作过程、结果反馈、对比证明或行动收束。不得先写短剧本再靠 duration 拉长。`,
         '学习竞品脚本写法：先把每个 beat 想成最终表格里的一行，必须有具体场所/主体状态/可见证据、可拍动作、可直接配音的一句话、短目的标签；不要输出后台分析句。',
         '竞品级标准：每一行都要形成“具体场景里的明确阻碍或期待 -> 主体以可见动作介入 -> 结果或界面变化出现 -> 台词说一句人话”的推进。不要用“进入画面重点位置、近景展示外观结构、准备被使用或介绍”这类通用句。',
+        '商业职责优先：先规划 problem/context/product_reveal/feature/demo/proof/comparison/offer/cta 等职责，再写画面和台词；不能先写漂亮画面再给它套目的。',
+        '如果一个 beat 只剩人物姿态、光影、空间氛围、审美质感或诗意台词，说明它不是商业 beat，必须重写成当前广告主体的具体问题、动作、证据或结果。',
         '严禁剧情漂移：不得自行发明 brief、素材、主体信息中没有的行业场景、角色关系或业务对象；宽泛概念只能落到当前资料已经支持的具体画面。',
         '好剧本要逐镜递进：痛点不是概念，要有可见乱象或期待；主体登场要有画面事件；卖点要通过操作/界面/细节被看见；证明要有结果或对比；结尾要有自然行动。',
         '对标竞品工作流：每个 beat 都必须是 live-action commercial story panel，脚本主体、真实背景、产品/服务证据同场推进；只有脚本明确有人物时才要求人物出现。不要写与当前任务无关的空镜、图库式展示或未确认载体。',
@@ -22000,6 +22051,7 @@ ${storyPlan ? `编剧蓝图：${JSON.stringify(storyPlan, null, 2).slice(0, 9000
         '必须按通用故事脊柱推进：问题/期待 -> 场景代入 -> 主体登场 -> 解决或体验 -> 可视化证明 -> 对比或承诺 -> 行动收束。每个 beat 只承担一个推进职责，不能重复上一段画面或台词。',
         '每个 beat 的 spoken_line 必须像成片里能听到的一句人话：先承接上一段情境，再推进下一段。禁止只写抽象卖点、广告口号或形容词堆叠。',
         '禁止使用抽象占位句或近似句：角色带你看见问题和需要、答案开始具体、细节被看见、价值站得住、优势更清楚、变化说明白、判断变得简单、把选择理由讲清楚。遇到这类意图必须改成具体场景事件、主体动作和观众能听懂的自然话。',
+        '禁止使用诗意品牌片句式或近似句：只写审美、氛围、姿态、存在感或抽象价值，不写主体事件和商业证据的内容都必须改成可拍商业事件。',
         `目标时长约 ${targetDuration} 秒，但故事蓝图不能按秒数套固定 beat 数；请根据用户内容复杂度、台词承载量和广告目标决定需要几个剧情 beat。`,
         '段落连续性规则：必须输出 segment_plan。segment 是连续空间/连续主体/连续证据链的合同，不是固定秒数模板，也不是镜头数公式。能在一个空间讲清就只输出 1 个 segment；只有空间、任务、证明点、主体关系确实变化时才新增 segment。',
         'segment_plan 只描述段落级固定项：固定空间、固定主体/人物/产品、固定道具或 UI 证据、光线锚点、进入/退出状态、为什么自然进入下一段；不得规定固定 8-15 秒，不得为了凑数量拆段。',
