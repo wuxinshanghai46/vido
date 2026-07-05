@@ -14261,6 +14261,16 @@
     try {
       const lockedShotLimit = detail ? luxuryAdLockedShotLimit() : 0;
       let sourceSegments = detail ? clampLuxuryAdSegmentsToLockedAssets(state.luxuryAd.segments || []) : (state.luxuryAd.segments || []);
+      if (detail && isRewriteScript) {
+        // 中文说明：用户主动重新生成剧本时，页面必须先清掉旧剧本，避免后台失败后继续展示旧脚本，误判为新生成结果。
+        state.luxuryAd.segments = [];
+        state.luxuryAd.storyboardDetailed = false;
+        state.luxuryAd.keyframes = [];
+        state.luxuryAd.storyboardSheets = [];
+        state.luxuryAd.keyframeError = '';
+        state.luxuryAd.keyframeErrorDetails = null;
+        renderLuxuryAdStoryboard();
+      }
       if (detail && lockedShotLimit > 0 && sourceSegments.length !== (state.luxuryAd.segments || []).length) {
         state.luxuryAd.segments = sourceSegments;
         state.luxuryAd.keyframes = [];
@@ -14430,12 +14440,20 @@
     } catch (err) {
       const publicMessage = luxuryScriptErrorMessage(err?.message || '', err?.data || err?.details || null);
       if (detail) {
-        const hasUsableDetailedScript = !!state.luxuryAd.storyboardDetailed
+        const hasUsableDetailedScript = !isRewriteScript
+          && !!state.luxuryAd.storyboardDetailed
           && Array.isArray(state.luxuryAd.segments)
           && state.luxuryAd.segments.length > 0;
         state.luxuryAd.sceneGenerating = false;
         state.luxuryAd.scriptGenerating = false;
         state.luxuryAd.workflowProgress = null;
+        if (isRewriteScript) {
+          // 中文说明：重新生成失败时不能回显旧剧本；旧内容会让用户误以为失败任务产出了不可商用脚本。
+          state.luxuryAd.segments = [];
+          state.luxuryAd.storyboardDetailed = false;
+          state.luxuryAd.keyframes = [];
+          state.luxuryAd.storyboardSheets = [];
+        }
         state.luxuryAd.scriptError = hasUsableDetailedScript ? '' : publicMessage;
         state.luxuryAd.scriptErrorDetails = hasUsableDetailedScript ? null : (err.data || err.details || null);
         renderLuxuryAdStoryboard();

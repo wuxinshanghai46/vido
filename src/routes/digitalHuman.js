@@ -20493,14 +20493,25 @@ ${continuousHumanInstruction ? `- ${continuousHumanInstruction}` : ''}
           `\n只处理下面 ${part.length} 个镜头，必须返回 JSON 数组，数组长度必须等于 ${part.length}，index 必须保持原值，不要返回其他镜头：`,
           JSON.stringify(part, null, 2),
         ].join('\n');
-        const partResult = await callLuxuryAgent({
-          name: `${name}.part${Math.floor(start / chunkSize) + 1}`,
-          systemPrompt,
-          userPrompt,
-          json: 'array',
-          maxTokens,
-          pipelineStageId,
-        });
+        let partResult = null;
+        try {
+          partResult = await callLuxuryAgent({
+            name: `${name}.part${Math.floor(start / chunkSize) + 1}`,
+            systemPrompt,
+            userPrompt,
+            json: 'array',
+            maxTokens,
+            pipelineStageId,
+          });
+        } catch (err) {
+          if (allowPartial) {
+            // 中文说明：逐镜修复是改稿步骤，不是最终验收；模型 JSON 失败时保留原批次，交给后续结构检查明确报错，不能丢镜头或回退旧任务。
+            console.warn(`[DH/luxury-ad/storyboard] ${name}.part${Math.floor(start / chunkSize) + 1} partial repair failed, keep original chunk:`, String(err?.message || err).slice(0, 240));
+            chunks.push(...part);
+            continue;
+          }
+          throw err;
+        }
         if (!Array.isArray(partResult) || partResult.length !== part.length) {
           if (allowPartial && Array.isArray(partResult) && partResult.length > 0) {
             // 中文说明：质量修复阶段允许模型只返回部分问题镜头，但不能因此丢掉其它镜头；未返回的镜头保留原稿，后续逐镜校验继续处理。
