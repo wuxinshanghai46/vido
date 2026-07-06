@@ -617,6 +617,7 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
 });
 
 app.use('/api/dh', authenticate, requirePermission('avatar'), require('./routes/digitalHuman'));
+app.use('/api/new-story-ad', authenticate, requirePermission('avatar'), require('./routes/newStoryAd'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));

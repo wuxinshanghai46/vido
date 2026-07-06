@@ -1196,7 +1196,7 @@ async function generateCharacterThreeView(opts) {
   const {
     name, role, description, dim, race, species, animStyle,
     aspectRatio, resolution, referenceImages = [], image_model = '',
-    lockPromptEn = '', lockPromptCn = '', includeFace = true,
+    lockPromptEn = '', lockPromptCn = '', includeFace = true, includeAction = false,
   } = opts || {};
   if (!name) throw new Error('name 必填');
 
@@ -1229,6 +1229,13 @@ async function generateCharacterThreeView(opts) {
       useRefs: 'front_side',
     },
     {
+      key: 'action',
+      label: '动作',
+      hintEn: 'full-body realistic commercial action pose, same exact person as references, natural business gesture with visible hands, slight body turn, believable live-action casting reference, same face identity, same hairstyle, same outfit family, same body proportions, clean studio background, not a fashion poster, not CGI, not anime',
+      hintCn: '全身真实商业动作姿势，同一个演员身份，双手可见，自然职场手势或展示动作，身体轻微转向，真人实拍感演员参考，脸型发型服装和身材比例与前面参考一致，干净摄影棚背景，禁止时尚海报感、CG感、动漫感',
+      useRefs: 'front_side_back',
+    },
+    {
       key: 'face',
       label: '面部特写',
       hintEn: 'head and shoulders close-up portrait, front view, same face and hairstyle as reference image, neutral calm expression, pure clean white background, sharp focus on facial features for character identity locking',
@@ -1236,7 +1243,11 @@ async function generateCharacterThreeView(opts) {
       useRefs: 'front',
     },
   ];
-  const sheetViews = includeFace === false ? views.filter(v => v.key !== 'face') : views;
+  const sheetViews = views.filter(v => {
+    if (v.key === 'face') return includeFace !== false;
+    if (v.key === 'action') return includeAction === true;
+    return true;
+  });
 
   // provider 优先级：用户指定 > jimeng（i2i 强）> mxapi > nanobanana > openai/zhipu（t2i 回退）
   const userSpecifiedTV = image_model && image_model !== 'auto';
@@ -1253,6 +1264,7 @@ async function generateCharacterThreeView(opts) {
     if (v.useRefs === 'initial') vRefs = referenceImages || [];
     else if (v.useRefs === 'front' && partResults.front?.filePath) vRefs = [partResults.front.filePath];
     else if (v.useRefs === 'front_side') vRefs = [partResults.front?.filePath, partResults.side?.filePath].filter(Boolean);
+    else if (v.useRefs === 'front_side_back') vRefs = [partResults.front?.filePath, partResults.side?.filePath, partResults.back?.filePath].filter(Boolean);
 
     // prompt：锁定 prompt 前置 + 本视角提示
     const promptEn = `${lockEn}${lockEn ? ', ' : ''}${v.hintEn}`;
@@ -1328,6 +1340,7 @@ async function generateCharacterThreeView(opts) {
     front: toEntry('front', partResults.front),
     side:  toEntry('side',  partResults.side),
     back:  toEntry('back',  partResults.back),
+    action: partResults.action ? toEntry('action', partResults.action) : null,
     face:  partResults.face ? toEntry('face',  partResults.face) : null,
     sheet: {
       key: 'sheet', label: '拼贴参考图',

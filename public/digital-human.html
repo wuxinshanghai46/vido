@@ -7,7 +7,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>
     (() => {
-      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','luxury-ad'];
+      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','luxury-ad','new-story-ad'];
       let tab = 'step1';
       try {
         const params = new URLSearchParams(location.search);
@@ -15,10 +15,10 @@
         tab = tabs.includes(urlTab) ? urlTab : 'step1';
         const luxStep = Number(params.get('lux_step') || 0) || 0;
         const luxFocus = params.get('lux_focus') || '';
-        if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
+        if ((tab === 'luxury-ad' || tab === 'material-film' || tab === 'new-story-ad') && luxStep) {
           document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
         }
-        if ((tab === 'luxury-ad' || tab === 'material-film') && luxFocus) {
+        if ((tab === 'luxury-ad' || tab === 'material-film' || tab === 'new-story-ad') && luxFocus) {
           document.documentElement.dataset.dhInitialLuxFocus = luxFocus;
         }
       } catch {}
@@ -41,7 +41,8 @@
     html[data-dh-initial-tab="product-dh"] .dh-tab-pane[data-pane="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-tab-pane[data-pane="space-guide"],
     html[data-dh-initial-tab="material-film"] .dh-tab-pane[data-pane="luxury-ad"],
-    html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"] { display: block !important; }
+    html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"],
+    html[data-dh-initial-tab="new-story-ad"] .dh-tab-pane[data-pane="luxury-ad"] { display: block !important; }
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) .dh-nav-item.active {
       background: transparent;
       color: var(--dh-text-soft);
@@ -57,7 +58,8 @@
     html[data-dh-initial-tab="product-dh"] .dh-nav-item[data-tab="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-nav-item[data-tab="space-guide"],
     html[data-dh-initial-tab="material-film"] .dh-nav-item[data-tab="material-film"],
-    html[data-dh-initial-tab="luxury-ad"] .dh-nav-item[data-tab="luxury-ad"] {
+    html[data-dh-initial-tab="luxury-ad"] .dh-nav-item[data-tab="luxury-ad"],
+    html[data-dh-initial-tab="new-story-ad"] .dh-nav-item[data-tab="new-story-ad"] {
       background: var(--dh-primary-bg) !important;
       color: var(--dh-primary) !important;
       font-weight: 500 !important;
@@ -120,6 +122,10 @@
           </a>
           <a class="dh-nav-item" data-tab="luxury-ad">
             <span class="dh-nav-icon">🎞️</span>剧情广告
+          </a>
+          <a class="dh-nav-item" data-tab="new-story-ad">
+            <span class="dh-nav-icon">🎬</span>新剧情广告
+            <span class="dh-nav-badge" style="background:linear-gradient(135deg,#10b981,#06b6d4);color:white">重构</span>
           </a>
         </div>
         <div class="dh-nav-group">
@@ -2021,6 +2027,6 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260706-storyboard-stale-clear"></script>
+  <script src="/js/digital-human.js?v=20260707-new-story-ad-step-refresh-speed"></script>
 </body>
 </html>
