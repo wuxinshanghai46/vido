@@ -1,7 +1,7 @@
-const { callLLM } = require('../storyService');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
 const storage = require('./storageService');
+const providerAdapters = require('./providerAdapterRegistry');
 
 const FALLBACKS = [
   { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 900, enabled: true },
@@ -193,15 +193,16 @@ async function generateText({
     const model = candidates[i];
     const start = Date.now();
     try {
-      const text = await callLLM(systemPrompt, userPrompt, {
-        preferredStoryModel: { ...model, _stageId: stage },
-        pipelineStageId: stage,
-        agentId: stage,
-        requestId: taskId ? `${taskId}:${stage}` : stage,
+      const result = await providerAdapters.generateText({
+        model: { ...model, _stageId: stage },
+        stage,
+        taskId,
+        systemPrompt,
+        userPrompt,
         maxTokens,
         temperature,
-        skipKB: skipKb,
       });
+      const text = result.text;
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
       storage.saveModelCall({
@@ -209,6 +210,8 @@ async function generateText({
         stage,
         provider_id: model.provider_id,
         model_id: model.model_id,
+        adapter: result.adapter || '',
+        family: result.family || '',
         status: 'success',
         latency_ms: latency,
         fallback_rank: i + 1,
@@ -235,6 +238,8 @@ async function generateText({
         stage,
         provider_id: model.provider_id,
         model_id: model.model_id,
+        adapter: '',
+        family: '',
         status: 'failed',
         error_code: classified.code,
         error_message: String(err.message || err).slice(0, 500),

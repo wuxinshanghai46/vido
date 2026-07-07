@@ -918,8 +918,14 @@ video::-webkit-media-controls-enclosure { padding-bottom: 0 !important; }
 .dh-luxgen-usage-row { display: grid; grid-template-columns: minmax(120px, 1.4fr) minmax(110px, 1fr) minmax(86px, .8fr) minmax(96px, .8fr); gap: 8px; align-items: center; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,.035); color: var(--dh-text-soft); font-size: 12px; }
 .dh-luxgen-usage-row b { color: var(--dh-text); font-weight: 800; overflow-wrap: anywhere; }
 .dh-luxgen-usage-row code { color: var(--dh-primary); font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
-.dh-luxgen-step-action.is-generating { position: relative; overflow: hidden; color: var(--dh-primary); border-color: rgba(33,255,243,.48); background: rgba(33,255,243,.055); }
-.dh-luxgen-step-action.is-generating::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent); animation: dhLuxButtonSweep 1.15s linear infinite; }
+.dh-luxgen-step-action.is-generating,
+.dh-demo-entry-assist .dh-btn.is-generating,
+.dh-luxgen-control-title button.is-generating { position: relative; overflow: hidden; color: var(--dh-primary); border-color: rgba(33,255,243,.48); background: rgba(33,255,243,.055); cursor: wait; }
+.dh-luxgen-step-action.is-generating::after,
+.dh-demo-entry-assist .dh-btn.is-generating::after,
+.dh-luxgen-control-title button.is-generating::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent); animation: dhLuxButtonSweep 1.15s linear infinite; }
+.dh-demo-entry-assist .dh-btn.is-generating,
+.dh-luxgen-control-title button.is-generating { opacity: 1; }
 @keyframes dhLuxProgressSweep { from { transform: translateX(-110%); } to { transform: translateX(260%); } }
 @keyframes dhLuxButtonSweep { to { transform: translateX(100%); } }
 .dh-luxgen-writer-mask { position: fixed; inset: 0; z-index: 20000; background: rgba(0,0,0,.72); backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; padding: 24px; }

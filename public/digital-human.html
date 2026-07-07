@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -15,18 +15,18 @@
         tab = tabs.includes(urlTab) ? urlTab : 'step1';
         const luxStep = Number(params.get('lux_step') || 0) || 0;
         const luxFocus = params.get('lux_focus') || '';
-        if ((tab === 'luxury-ad' || tab === 'material-film' || tab === 'new-story-ad') && luxStep) {
+        if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
           document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
         }
-        if ((tab === 'luxury-ad' || tab === 'material-film' || tab === 'new-story-ad') && luxFocus) {
+        if ((tab === 'luxury-ad' || tab === 'material-film') && luxFocus) {
           document.documentElement.dataset.dhInitialLuxFocus = luxFocus;
         }
       } catch {}
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=20260626-theme-native-controls">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260703-actor-view-progress">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260707-new-story-ad-old-ui-scroll">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260707-nsa-ai-button-busy">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -42,7 +42,7 @@
     html[data-dh-initial-tab="space-guide"] .dh-tab-pane[data-pane="space-guide"],
     html[data-dh-initial-tab="material-film"] .dh-tab-pane[data-pane="luxury-ad"],
     html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"],
-    html[data-dh-initial-tab="new-story-ad"] .dh-tab-pane[data-pane="luxury-ad"] { display: block !important; }
+    html[data-dh-initial-tab="new-story-ad"] .dh-tab-pane[data-pane="new-story-ad"] { display: block !important; }
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) .dh-nav-item.active {
       background: transparent;
       color: var(--dh-text-soft);
@@ -168,6 +168,406 @@
       </header>
 
       <section class="dh-view" id="dhView">
+
+        <div class="dh-tab-pane dh-new-story-ad-pane" data-pane="new-story-ad">
+          <div id="dhNewStoryAdLegacyMount">
+          <div class="dh-wizard-head">
+            <div>
+              <div class="dh-wizard-title" id="dhNsaAdModeTitle">素材审片</div>
+              <div class="dh-wizard-sub" id="dhNsaAdModeSub">选择演员、上传多张素材，AI 生成广告词后直接合成基础广告。</div>
+            </div>
+          </div>
+
+          <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告完整流程" id="dhNsaAdSteps">
+            <div class="active" data-nsa-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
+            <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
+            <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧本生成</span><small>按时间段拆解</small></div>
+            <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>分镜生成</span><small>形象和镜头</small></div>
+            <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
+          </div>
+          <div id="dhNsaAdCapabilityStrip" class="dh-lux-commercial-guard"></div>
+          <div class="dh-luxgen-live-progress" id="dhNsaAdLiveProgress" hidden></div>
+          <div class="dh-luxgen-usage" id="dhNsaAdUsagePanel" hidden></div>
+
+          <section class="dh-demo-stage dh-luxgen-stage active" data-panel="1">
+            <div class="dh-demo-entry">
+              <div class="dh-demo-headline compact">
+                <div>
+                  <h2>广告需求</h2>
+                  <p class="dh-demo-copy">写清产品、卖点、目标客户和收束方式，系统会生成场景配置并进入后续制作。</p>
+                </div>
+                <span class="dh-luxgen-badge" id="dhNsaAdRequirementState">待填写</span>
+              </div>
+              <textarea class="dh-input" id="dhNsaAdText" maxlength="1800" placeholder="例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后的引导动作，系统会按本次需求生成分镜。"></textarea>
+          <div class="dh-demo-entry-tools dh-luxgen-top-tools">
+            <div class="dh-lux-industry-panel">
+              <button class="dh-lux-industry-summary" id="dhNsaIndustryOpen" type="button">
+                <small>行业选择</small><span id="dhNsaIndustrySummaryTitle">行业：自动判断</span>
+              </button>
+            </div>
+            <div class="dh-demo-chip-row">
+              <span class="dh-demo-chip-label">画面比例</span>
+              <button type="button" class="dh-chip active" data-nsa-ratio="9:16">9:16</button>
+              <button type="button" class="dh-chip" data-nsa-ratio="16:9">16:9</button>
+              <button type="button" class="dh-chip" data-nsa-ratio="1:1">1:1</button>
+            </div>
+            <div class="dh-demo-chip-row">
+              <span class="dh-demo-chip-label">视频分辨率</span>
+              <button type="button" class="dh-chip" data-nsa-video-resolution="480p">480p</button>
+              <button type="button" class="dh-chip active" data-nsa-video-resolution="720p">720p</button>
+              <button type="button" class="dh-chip" data-nsa-video-resolution="1080p">1080p</button>
+              <button type="button" class="dh-chip" data-nsa-video-resolution="4k">4K</button>
+            </div>
+            <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdGenerate" type="button">生成场景配置</button>
+          </div>
+              <div id="dhNsaAdControlledProduction"></div>
+              <div class="dh-demo-entry-assist">
+                <button class="dh-btn dh-btn-ghost" id="dhNsaAdWrite" type="button">AI 帮我写</button>
+                <button class="dh-btn dh-btn-ghost" id="dhNsaAdClean" type="button">AI 帮我整理内容</button>
+                <button class="dh-btn dh-btn-ghost" id="dhNsaAdSample" type="button">粘贴示例</button>
+              </div>
+              <div class="dh-luxgen-gate-hint" id="dhNsaAdGateHint">先描述你想做什么广告；AI 会先生成场景配置，确认后再生成剧本和分镜。</div>
+            </div>
+          </section>
+
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="2">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">2</span>基础信息 / 场景配置</h3>
+                  <p class="dh-demo-copy">系统根据广告需求先整理标题、主题、风格、时长和比例，再确认主体来源。</p>
+                </div>
+                <div class="dh-demo-script-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep2" type="button">保存进度</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认基础信息，生成剧本</button>
+                </div>
+              </div>
+              <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-action-progress" id="dhNsaAdActionProgress" hidden></div>
+              <div class="dh-demo-grid two dh-luxgen-source-grid single">
+                <div class="dh-demo-person-source">
+                  <div class="dh-luxgen-product-asset" id="dhNsaAdProductAsset"><div class="dh-luxgen-product-empty">未上传商品/主体图</div></div>
+                  <div>
+                    <b>商品/主体来源</b>
+                    <p class="dh-demo-copy">这里上传要介绍的商品、品牌主体或空间主图。生成剧本时会把它作为画面证据；不上传时，系统只按广告需求推断主体。</p>
+                    <span class="dh-luxgen-badge" id="dhNsaAdProductState">可选上传</span>
+                  </div>
+                  <div class="dh-demo-person-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdProductDrop" type="button">上传商品/主体图</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdProductClear" type="button" hidden disabled>删除主体图</button>
+                    <input type="file" id="dhNsaAdProductFile" accept="image/*" hidden>
+                  </div>
+                </div>
+              </div>
+              <div class="dh-luxgen-post-script-person" id="dhNsaAdPostScriptPerson">
+                <div class="dh-demo-section-title">人物配置</div>
+                <div class="dh-demo-guide">
+                  <b>先定人物约束</b>
+                  <span>剧本前先确认人数、性别、年龄、地域/种族或人物一致性参考；真人演员请上传真人照片或从演员库选择授权演员，拟真演员包只作为一致性参考。</span>
+                </div>
+                <div class="dh-demo-person-source">
+                  <input type="file" id="dhNsaAdPersonFile" accept="image/*" hidden>
+                  <div class="dh-luxgen-person-current" id="dhNsaAdPersonCurrent">
+                    <span class="dh-luxgen-person-badge">未选择</span>
+                    <div class="dh-luxgen-person-copy"><b>可不选人物参考图</b><small>先确认人物设定；需要真人一致性时再上传或选择演员。</small></div>
+                  </div>
+                  <div class="dh-luxgen-person-main">
+                    <div class="dh-luxgen-person-head">
+                      <div>
+                        <b>人物来源</b>
+                        <p class="dh-demo-copy">用于锁定剧本人物数量、地域/种族、对白关系和后续分镜一致性；可让 AI 先按广告需求补齐人物设定，再手动微调。</p>
+                      </div>
+                    </div>
+                    <div class="dh-luxgen-mini-actions">
+                      <span>系统会优先补齐留空字段；真人入口仍是“上传真人参考”和“选择真人演员/演员库”。“穿着/服装”会进入演员包生成约束，用来控制衣服、颜色、鞋和配饰。</span>
+                    </div>
+                    <div class="dh-luxgen-person-spec">
+                      <label>
+                        <span>人物数量</span>
+                        <select class="dh-input" data-nsa-person-spec="castMode">
+                          <option value="auto">按内容判断</option>
+                          <option value="single">单人</option>
+                          <option value="dual">双人对话</option>
+                          <option value="group">多人 / 群体</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>人物性别</span>
+                        <select class="dh-input" data-nsa-person-spec="gender">
+                          <option value="auto">按故事判断</option>
+                          <option value="male">男性</option>
+                          <option value="female">女性</option>
+                          <option value="mixed">双人/多人混合</option>
+                          <option value="all_male">双人/多人全男性</option>
+                          <option value="all_female">双人/多人全女性</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>人物年龄</span>
+                        <select class="dh-input" data-nsa-person-spec="age">
+                          <option value="match_brief">按广告需求判断</option>
+                          <option value="infant_0_1">婴儿 / 0-1</option>
+                          <option value="toddler_1_3">幼儿 / 1-3</option>
+                          <option value="child_4_7">儿童 / 4-7</option>
+                          <option value="child_8_12">少儿 / 8-12</option>
+                          <option value="teen_13_17">青少年 / 13-17</option>
+                          <option value="young_adult_17_25">年轻成人 / 17-25</option>
+                          <option value="young_adult">青年 / 25-32</option>
+                          <option value="adult_30_40">成熟青年 / 30-40</option>
+                          <option value="middle_40_55">中年 / 40-55</option>
+                          <option value="senior_55_plus">年长 / 55+</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>地域 / 种族</span>
+                        <select class="dh-input" data-nsa-person-spec="origin">
+                          <option value="east_asian_cn">中国 / 东亚面孔</option>
+                          <option value="southeast_asian">东南亚</option>
+                          <option value="white_european">欧美白人</option>
+                          <option value="black_african">非洲裔 / 黑人</option>
+                          <option value="middle_eastern">中东</option>
+                          <option value="south_asian">南亚</option>
+                          <option value="latino">拉美</option>
+                          <option value="mixed_global">多种族 / 国际化</option>
+                          <option value="match_brief">按广告需求判断</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>人物身份 / 职业</span>
+                        <input class="dh-input" data-nsa-person-spec="roleName" maxlength="80" placeholder="如：店长、用户、品牌顾问；不确定可留空让 AI 从需求判断">
+                      </label>
+                      <label>
+                        <span>人物姓名</span>
+                        <input class="dh-input" data-nsa-person-spec="displayName" maxlength="40" placeholder="可手动指定；留空时由编剧生成正式人名">
+                      </label>
+                      <label class="dh-luxgen-person-text-field">
+                        <span>外貌 / 气质</span>
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="appearanceText" maxlength="260" placeholder="脸型、体型、年龄感、真实感、气质等"></textarea>
+                      </label>
+                      <label class="dh-luxgen-person-text-field">
+                        <span>穿着 / 服装</span>
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="wardrobeText" maxlength="320" placeholder="写清上衣、裤装/裙装、鞋、配饰、颜色、材质；生成演员包会尽量按这里的服装约束执行"></textarea>
+                      </label>
+                      <label class="dh-luxgen-person-text-field">
+                        <span>发型 / 妆造</span>
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="hairMakeupText" maxlength="220" placeholder="发型、妆容、眼镜、胡须等"></textarea>
+                      </label>
+                      <label class="dh-luxgen-person-text-field">
+                        <span>人物禁止项</span>
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="negativeText" maxlength="320" placeholder="如：不要西装、不要白衬衫、不要夸张表情"></textarea>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="dh-demo-person-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdUploadPersonRef" type="button">上传真人参考</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdPickActorAsset" type="button">选择真人演员/演员库</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">辅助补齐</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-person-generate-btn" id="dhNsaAdGeneratePersonSheet" type="button" aria-pressed="false">生成拟真演员</button>
+                  </div>
+                </div>
+              </div>
+              <div class="dh-demo-section-title">视频基础信息</div>
+              <div id="dhNsaAdSceneConfigHost" class="dh-luxgen-storyboard">
+                <div class="dh-luxgen-empty"><b>还没有基础信息</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="3">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3 id="dhNsaAdStep3Title"><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
+                  <p class="dh-demo-copy" id="dhNsaAdStep3Copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
+                </div>
+                <div class="dh-demo-script-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdScriptRegenerateTop" type="button">重新生成剧本</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep3" type="button">保存进度</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdPreviewFrames" type="button">确认剧本，生成分镜</button>
+                </div>
+              </div>
+              <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-top-progress" id="dhNsaAdScriptTopProgress" hidden></div>
+              <div id="dhNsaAdScriptHost" class="dh-demo-table-wrap">
+                <div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“确认配置，生成剧本”。</span></div>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="4">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
+                  <p class="dh-demo-copy" id="dhNsaAdStep4Copy">分镜把主体画面、可选人物和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、声音字幕和 AI 指令。</p>
+                </div>
+                <div class="dh-demo-script-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdRegenerateScriptFromStep4" type="button">重新生成剧本</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep4" type="button">保存进度</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
+                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实关键帧</button>
+                  <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">确认分镜，进入广告合成</button>
+                </div>
+              </div>
+              <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-step4-progress" id="dhNsaAdStep4ScriptProgress" hidden></div>
+              <input type="file" id="dhNsaAdAssetFile" accept="image/*" hidden>
+              <div class="dh-demo-guide" id="dhNsaAdFrameGuide">
+                <b id="dhNsaAdFrameGuideTitle">按剧本生成</b>
+                <span id="dhNsaAdFrameGuideCopy">分镜必须严格沿用第 3 步已确认的镜头、人物、台词和动作；如果生成结果缺镜头、乱改主体或与剧本不一致，系统会报错而不是自动兜底。</span>
+              </div>
+              <div id="dhNsaAdCommercialGuard" class="dh-lux-commercial-guard"></div>
+              <div class="dh-demo-section-title"><span id="dhNsaAdFrameSectionTitle">分镜结果</span> <span class="dh-luxgen-badge" id="dhNsaAdFrameState">可选上传</span></div>
+              <div id="dhNsaAdFrameHost" class="dh-demo-frame-list">
+                <div class="dh-luxgen-empty"><b>还没有分镜</b><span>确认剧本后点击“确认剧本，生成分镜”。</span></div>
+              </div>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="5">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">5</span>广告合成</h3>
+                  <p class="dh-demo-copy">合成前确认配音和字幕。点击“合成广告”后进入任务中心，在任务详情里查看广告需求、场景配置、剧本、分镜、配音字幕和视频进度。</p>
+                </div>
+                <div class="dh-demo-script-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep5" type="button">保存进度</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdConfirmGenerate" type="button">合成广告</button>
+                </div>
+              </div>
+              <div class="dh-demo-compose-grid dh-luxgen-compose-audio">
+                <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-voice-card">
+                  <div class="dh-luxgen-audio-head">
+                    <div>
+                      <small>配音</small>
+                      <b>旁白声音</b>
+                    </div>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdVoiceOpen">选择配音</button>
+                  </div>
+                  <div class="dh-space-voice-current" id="dhNsaAdVoiceCurrent">
+                    <div class="dh-voice-opt-icon">TV</div>
+                    <div class="dh-voice-opt-body">
+                      <div class="dh-voice-opt-name">未选择配音</div>
+                      <div class="dh-voice-opt-sub">剧情广告必须手动选择声音</div>
+                    </div>
+                  </div>
+                  <div class="dh-luxgen-mix-row dh-luxgen-mix-row-voice">
+                    <label for="dhNsaAdVoiceVolume">旁白音量 <b id="dhNsaAdVoiceVolumeLabel">100%</b></label>
+                    <input id="dhNsaAdVoiceVolume" type="range" min="60" max="120" step="5" value="100">
+                  </div>
+                  <div class="dh-luxgen-voice-direction" id="dhNsaAdVoiceDirection"></div>
+                </div>
+                <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-bgm-card" id="dhNsaAdBgmCard">
+                  <div class="dh-luxgen-audio-head">
+                    <div>
+                      <small>背景音乐</small>
+                      <b id="dhNsaAdBgmStatus">未配置，可先合成无配乐广告片</b>
+                    </div>
+                    <div class="dh-luxgen-bgm-actions">
+                      <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" id="dhNsaAdMusicLibrary">公开曲库</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdBgmUpload">上传 BGM</button>
+                    </div>
+                  </div>
+                  <span id="dhNsaAdBgmLicense">优先从公开曲库选择真实纯音乐；本地程序化 BGM 已不作为默认推荐。</span>
+                  <div class="dh-luxgen-bgm-picker" id="dhNsaAdBgmProfiles">
+                    <button class="dh-luxgen-bgm-select" type="button" id="dhNsaAdBgmProfileToggle" aria-expanded="false">
+                      <span>
+                        <em>曲风</em>
+                        <b id="dhNsaAdBgmProfileLabel">自动匹配</b>
+                        <small id="dhNsaAdBgmProfileDesc">按广告内容自动选择曲风。</small>
+                      </span>
+                      <i aria-hidden="true">⌄</i>
+                    </button>
+                    <div class="dh-luxgen-bgm-menu" id="dhNsaAdBgmProfileMenu" hidden></div>
+                  </div>
+                  <div class="dh-luxgen-mix-row dh-luxgen-mix-row-bgm">
+                    <label for="dhNsaAdBgmVolume">BGM 音量 <b id="dhNsaAdBgmVolumeLabel">16%</b></label>
+                    <input id="dhNsaAdBgmVolume" type="range" min="0" max="35" step="1" value="16">
+                  </div>
+                  <div class="dh-luxgen-bgm-preview" id="dhNsaAdBgmPreview"></div>
+                  <input type="file" id="dhNsaAdBgmFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden>
+                </div>
+                <div class="dh-demo-card dh-luxgen-compose-card">
+                  <small>字幕</small>
+                  <label class="dh-switch dh-luxgen-subtitle-switch">
+                    <input type="checkbox" id="dhNsaAdSubtitleToggle" checked>
+                    <span>显示字幕</span>
+                  </label>
+                  <select class="dh-input" id="dhNsaAdSubtitle">
+                    <option value="on" selected>默认生成</option>
+                    <option value="off">不生成字幕</option>
+                  </select>
+                  <button class="dh-link-btn dh-luxgen-subtitle-style" id="dhNsaAdSubtitleStyleBtn" type="button">调整字幕样式 →</button>
+                </div>
+                <div class="dh-demo-card dh-luxgen-compose-card">
+                  <small>合成检查</small>
+                  <b id="dhNsaAdComposeSummary">未生成分镜</b>
+                  <span id="dhNsaAdProgressHint">当前：等待填写广告需求，之后先生成场景配置</span>
+                </div>
+              </div>
+              <div class="dh-demo-task-shell">
+                <aside class="dh-demo-task-list">
+                  <div class="dh-demo-task-card">
+                    <b>剧情广告</b>
+                    <span class="dh-demo-muted" id="dhNsaAdTaskMeta">提交后进入任务中心 · 30 秒 · 9:16</span>
+                    <div class="dh-demo-progress-line"><i></i></div>
+                    <p class="dh-demo-muted">任务中心会显示逐镜视频、配音、字幕和最终合成进度。</p>
+                  </div>
+                </aside>
+                <div class="dh-demo-task-detail">
+                  <div class="dh-demo-guide">
+                    <b>任务详情会保留全部内容</b>
+                    <span>不是只看一个进度条；后续可回看剧本、分镜、配音字幕和最终成片。</span>
+                  </div>
+                  <div class="dh-demo-detail-grid">
+                    <div class="dh-demo-card"><small>场景配置</small><b id="dhNsaAdSceneSummary">待生成</b><span>人物、主体、场景和剧本节奏。</span></div>
+                    <div class="dh-demo-card"><small>剧本生成</small><b id="dhNsaAdScriptSummary">待生成</b><span>包含画面、动作、台词、目的。</span></div>
+                    <div class="dh-demo-card"><small>分镜生成</small><b id="dhNsaAdFrameSummary">待生成</b><span>每镜包含画面、动作表情、镜头、声音。</span></div>
+                    <div class="dh-demo-card"><small>配音</small><b id="dhNsaAdVoiceSummary">未选择</b><span>每句台词会跟配音绑定。</span></div>
+                    <div class="dh-demo-card"><small>字幕</small><b id="dhNsaAdSubtitleSummary">默认开启</b><span>跟随剧本台词自动生成。</span></div>
+                    <div class="dh-demo-card"><small>视频合成</small><b>逐镜生成后拼接成片</b><span>任务中心展示每个片段和最终成片。</span></div>
+                  </div>
+                </div>
+              </div>
+              <select class="dh-input dh-luxgen-hidden-control" id="dhNsaAdDuration" aria-hidden="true">
+                <option value="15">15 秒</option>
+                <option value="30" selected>30 秒</option>
+                <option value="45">45 秒</option>
+                <option value="60">60 秒</option>
+              </select>
+              <select class="dh-input dh-luxgen-hidden-control" id="dhNsaAdRatio" aria-hidden="true">
+                <option value="9:16" selected>9:16 竖屏广告</option>
+                <option value="16:9">16:9 横屏广告</option>
+                <option value="1:1">1:1 方形广告</option>
+                <option value="4:3">4:3 人物参考 / 横版</option>
+                <option value="3:4">3:4 竖版人物</option>
+              </select>
+              <select class="dh-input dh-luxgen-hidden-control" id="dhNsaAdSize" aria-hidden="true">
+                <option value="standard" selected>标准</option>
+                <option value="hd">高清</option>
+                <option value="fullhd">超清</option>
+              </select>
+              <select class="dh-input dh-luxgen-hidden-control" id="dhNsaAdVideoResolution" aria-hidden="true">
+                <option value="480p">480p</option>
+                <option value="720p" selected>720p</option>
+                <option value="1080p">1080p</option>
+                <option value="4k">4K</option>
+              </select>
+              <input type="checkbox" id="dhNsaAdAutoEnhance" checked hidden>
+              <input type="checkbox" id="dhNsaAdExpandBrief" checked hidden>
+              <div class="dh-field-hint dh-luxgen-hidden-control" id="dhNsaAdOutputHint">9:16 · 720×1280</div>
+              <div class="dh-luxgen-progress dh-luxgen-hidden-control" id="dhNsaAdProgress">
+                <div class="active"><span></span>广告需求</div>
+                <div><span></span>场景配置</div>
+                <div><span></span>剧本生成</div>
+                <div><span></span>分镜生成</div>
+                <div><span></span>广告合成</div>
+              </div>
+            </section>
+          </section>
+        </div>
+
+        <!-- ━━ 双人对话 ━━ -->
+          </div>
+        </div>
 
         <!-- ━━ Step 1: 生成形象 ━━ -->
         <div class="dh-tab-pane active" data-pane="step1">
@@ -1813,6 +2213,7 @@ B: ...
               <button data-task-type="product_ad">商品口播视频</button>
               <button data-task-type="material_film">素材审片</button>
               <button data-task-type="luxury_ad">剧情广告</button>
+              <button data-task-type="new_story_ad">新剧情广告</button>
             </div>
             <div class="dh-task-type-tabs dh-task-status-tabs" id="dhTaskStatusTabs">
               <button class="active" data-task-status="pending" data-label="待处理">待处理</button>
@@ -2027,6 +2428,7 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260707-new-story-ad-step-refresh-speed"></script>
+  <script src="/js/digital-human.js?v=20260707-nsa-task-restore"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260707-nsa-optional-person-copy"></script>
 </body>
 </html>

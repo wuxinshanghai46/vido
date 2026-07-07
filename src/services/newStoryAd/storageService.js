@@ -32,7 +32,18 @@ function writeJson(filePath, data) {
   ensureDir(filePath);
   const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmp, filePath);
+  try {
+    fs.renameSync(tmp, filePath);
+  } catch (err) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(err.code)) {
+      try { fs.unlinkSync(tmp); } catch {}
+      throw err;
+    }
+    // Windows can briefly lock JSON files while another process or antivirus scans them.
+    // Fall back to copy+unlink so the new-story-ad task store does not fail the pipeline.
+    fs.copyFileSync(tmp, filePath);
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 }
 
 function readDb() {
@@ -167,6 +178,8 @@ function saveModelCall(call) {
     stage: call.stage || '',
     provider_id: call.provider_id || '',
     model_id: call.model_id || '',
+    adapter: call.adapter || '',
+    family: call.family || '',
     status: call.status || 'unknown',
     error_code: call.error_code || '',
     error_message: call.error_message || '',

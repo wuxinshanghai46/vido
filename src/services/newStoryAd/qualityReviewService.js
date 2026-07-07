@@ -10,6 +10,14 @@ function localReview(ctx, shots) {
   if (ctx.shot_count && list.length !== ctx.shot_count) blocking.push(`镜头数量不符合用户指定：需要 ${ctx.shot_count}，实际 ${list.length}`);
 
   const forbiddenText = (ctx.forbidden || []).filter(Boolean);
+  const controls = ctx.controlled_production || {};
+  const envControl = controls.environment_control || {};
+  const productControl = controls.product_control || {};
+  const styleControl = controls.style_control || {};
+  const negativeControl = controls.negative_control || {};
+  const productRequired = productControl.enabled === true;
+  const productMethods = Array.isArray(productControl.methods) ? productControl.methods.filter(Boolean) : [];
+  const explicitNegative = String(negativeControl.text || '').split(/[，,；;\n]/).map(x => x.trim()).filter(Boolean);
   const charNames = (ctx.characters || []).map(c => c.name).filter(Boolean);
   const multiMode = ctx.cast_mode === 'multi' || charNames.length >= 3;
   const requiredHints = `${ctx.brief || ''} ${ctx.product_subject || ''}`;
@@ -26,6 +34,7 @@ function localReview(ctx, shots) {
     const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
     const dialogueText = dialogue.map(d => `${d?.speaker || ''} ${d?.line || ''}`).join(' ');
     const all = `${visual} ${layerText} ${storyVisual} ${promoVisual} ${action} ${voice} ${dialogueText} ${shot.purpose || ''}`;
+    const hasProductLayer = /(product|material|proof|comparison|brand|offer|result|ui|商品|产品|材料|材质|证据|证明|品牌|细节|展示|演示|使用|手持|收束|引导)/i.test(`${layerText} ${promoVisual} ${shot.material_usage || ''} ${shot.keyframe_notes || ''}`);
 
     if (!visual.trim()) blocking.push(`第 ${n} 镜缺少画面`);
     if (!action.trim()) blocking.push(`第 ${n} 镜缺少动作`);
@@ -39,9 +48,24 @@ function localReview(ctx, shots) {
     if (asksProduct && !/(product|material|proof|comparison|brand|ui|result|offer|产品|材料|证据|对比|品牌|界面|结果)/i.test(layerText) && !/(产品|服务|主体|纹理|质感|界面|材料|对比|结果|证据|卖点|品牌|细节|方案|客户价值)/.test(all)) {
       rewrite.push(`第 ${n} 镜用户需求需要宣传/产品证据，但商业视觉维度偏弱`);
     }
+    if (productRequired && !hasProductLayer) {
+      rewrite.push(`第 ${n} 镜高级配置要求商品入镜，但分镜缺少商品/材料/证据呈现`);
+    }
+    if (productRequired && productMethods.length && !new RegExp(productMethods.join('|'), 'i').test(`${layerText} ${promoVisual} ${shot.material_usage || ''} ${shot.keyframe_notes || ''}`)) {
+      warnings.push(`第 ${n} 镜未明确体现高级配置的商品呈现方式：${productMethods.join('、')}`);
+    }
+    if (envControl.mode && envControl.mode !== 'auto' && !String(shot.scene || shot.visual || shot.keyframe_notes || '').trim()) {
+      rewrite.push(`第 ${n} 镜高级配置要求场景方向 ${envControl.mode}，但镜头没有明确空间承载`);
+    }
+    if (styleControl.notes && !String(shot.keyframe_notes || shot.visual || '').trim()) {
+      rewrite.push(`第 ${n} 镜高级配置要求画面风格，但镜头缺少可传递给关键帧的视觉描述`);
+    }
 
     forbiddenText.forEach((word) => {
       if (word && all.includes(word)) blocking.push(`第 ${n} 镜出现用户明确禁止项：${word}`);
+    });
+    explicitNegative.forEach((word) => {
+      if (word && all.includes(word)) blocking.push(`第 ${n} 镜出现高级配置禁止项：${word}`);
     });
     if (/广告需求|系统识别|后台|prompt|QA|审核|模型|合同/.test(all)) blocking.push(`第 ${n} 镜包含内部流程词`);
     if (/高级感|氛围感|诗意|质感|光影|存在感/.test(all) && !/(展示|操作|对比|出现|变化|结果|证据|完成|查看|确认|使用|打开|点击|递给|拿起|靠近|纹理|界面|材料)/.test(all)) {

@@ -225,19 +225,6 @@
       taskId: '',
       taskUrl: '',
     },
-    newStoryAd: {
-      taskId: '',
-      task: null,
-      context: null,
-      sceneConfig: null,
-      blueprint: null,
-      shots: [],
-      review: null,
-      keyframeContracts: [],
-      modelMeta: null,
-      savedTaskId: '',
-      lastBriefKey: '',
-    },
     // 音色列表（从 /api/avatar/voice-list 拉）
     voices: [],
     voicesLoaded: false,
@@ -261,6 +248,9 @@
     serverVideoTasks: [],
     serverVideoTasksLoading: false,
     serverVideoTasksLoadedAt: 0,
+    newStoryAdTasks: [],
+    newStoryAdTasksLoading: false,
+    newStoryAdTasksLoadedAt: 0,
     luxuryAdProjects: [],
     luxuryAdProjectsLoading: false,
     luxuryAdProjectsLoadedAt: 0,
@@ -763,16 +753,12 @@
   } catch {}
 
   function spacePaneForTab(tab) {
-    if (tab === 'material-film' || tab === 'new-story-ad') return 'luxury-ad';
+    if (tab === 'material-film') return 'luxury-ad';
     return tab;
   }
 
   function isLuxuryFlowTab(tab = state.activeTab) {
-    return tab === 'luxury-ad' || tab === 'material-film' || tab === 'new-story-ad';
-  }
-
-  function isNewStoryAdModule() {
-    return state.activeTab === 'new-story-ad';
+    return tab === 'luxury-ad' || tab === 'material-film';
   }
 
   function isLuxuryAdModule() {
@@ -863,6 +849,23 @@
         routeState.lux_step = 0;
         routeState.lux_focus = '';
       }
+      if (tab === 'new-story-ad') {
+        if (opts.defaultView === true) {
+          url.searchParams.delete('nsa_step');
+          url.searchParams.delete('nsa_task_id');
+          try { localStorage.removeItem('vido_new_story_ad_current_task_id'); } catch {}
+          routeState.nsa_step = 0;
+        } else {
+          const currentNsaStep = Number(window.__newStoryAdLegacyUI?.state?.currentStep || new URLSearchParams(location.search || '').get('nsa_step') || 1);
+          const nsaStep = Math.max(1, Math.min(5, Number.isFinite(currentNsaStep) ? currentNsaStep : 1));
+          url.searchParams.set('nsa_step', String(nsaStep));
+          routeState.nsa_step = nsaStep;
+        }
+      } else {
+        url.searchParams.delete('nsa_step');
+        url.searchParams.delete('nsa_task_id');
+        routeState.nsa_step = 0;
+      }
       // 中文注释：除继续制作的首屏恢复外，任何普通切换栏目都要清理项目详情参数。
       if (opts.preserveLuxuryProject !== true) url.searchParams.delete('luxury_project');
       writeDigitalHumanPageState(routeState);
@@ -926,6 +929,13 @@
     });
   }
 
+  function ensureNewStoryAdPanel() {
+    try {
+      window.__newStoryAdLegacyUI?.mount?.();
+      document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
+    } catch {}
+  }
+
   function primeInitialDigitalHumanRoute(tab = getInitialTab(), luxStep = getInitialLuxuryStep(), luxFocus = getInitialLuxuryFocus()) {
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     state.activeTab = tab;
@@ -959,6 +969,7 @@
       setLuxuryAdFlowMode(tab === 'material-film' ? 'material' : 'story');
       syncLuxuryAdStepPanels(luxuryAdGateState(), { preserveRouteStep: true });
     }
+    if (tab === 'new-story-ad') ensureNewStoryAdPanel();
     try {
       delete document.documentElement.dataset.dhInitialTab;
       delete document.documentElement.dataset.dhInitialLuxStep;
@@ -1019,6 +1030,9 @@
       state.luxuryAd.routeFocus = '';
       syncLuxuryAdStepPanels(luxuryAdGateState());
     }
+    if (tab === 'new-story-ad') {
+      window.__newStoryAdLegacyUI?.resetForNewSession?.();
+    }
   }
 
   function switchTab(tab, opts = {}) {
@@ -1069,14 +1083,7 @@
         updateLuxuryAdStepLocks();
       });
     }
-    if (tab === 'new-story-ad') {
-      setLuxuryAdFlowMode('story', { preserveState: opts.preserveLuxuryState === true });
-      renderLuxuryAd();
-      loadVoicesIfNeeded().then(() => {
-        renderLuxuryAdVoice();
-        updateLuxuryAdStepLocks();
-      });
-    }
+    if (tab === 'new-story-ad') ensureNewStoryAdPanel();
     if (tab === 'tasks') {
       renderTaskCenter();
       if (!state.serverVideoTasksLoadedAt || Date.now() - state.serverVideoTasksLoadedAt > 30000) {
@@ -1098,8 +1105,8 @@
   function startNewSpaceGuideSession(tab = 'space-guide') {
     state.selectedAvatar = null;
     resetSpaceGuideFormForNext({ quiet: true });
-    if (tab === 'luxury-ad' || tab === 'new-story-ad') resetLuxuryAdFormForNext({ quiet: true });
-    state.space.adMode = (tab === 'luxury-ad' || tab === 'new-story-ad') ? 'luxury' : 'standard';
+    if (tab === 'luxury-ad') resetLuxuryAdFormForNext({ quiet: true });
+    state.space.adMode = tab === 'luxury-ad' ? 'luxury' : 'standard';
     const preview = $('#dhSpacePreview');
     if (preview) preview.innerHTML = state.space.adMode === 'luxury'
       ? '<div class="dh-space-preview-empty"><b>准备好了就开始</b><span>请先选择形象、上传多张参考画面或产品物料，再生成剧情分镜关键帧。</span></div>'
@@ -1110,7 +1117,6 @@
   function startNewLuxuryAdSession(tab = 'luxury-ad') {
     resetLuxuryAdFormForNext({ quiet: true });
     setLuxuryAdFlowMode(tab === 'material-film' ? 'material' : 'story', { preserveState: false });
-    if (tab === 'new-story-ad') resetNewStoryAdState();
     clearLuxuryAdProjectRouteParam(tab);
     writeDigitalHumanPageState({
       tab,
@@ -3983,7 +3989,11 @@
       submitted: 8, preparing: 12, prepare_image: 14, prepare_audio: 18,
       detecting: 22, submitting: 28, polling: 35, running: 42,
       storyboard: 18, keyframes: 36, guide_keyframe: 34, guide_video: 58,
-      video: 64, post_effects: 88,
+      scene_config: 22, scene_config_done: 32, blueprint: 46, blueprint_done: 56,
+      storyboard_failed: 82, keyframe_contract_ready: 88, keyframes_ready: 100,
+      keyframes_failed: 96,
+      tts: 58, tts_ready: 64, video: 72, video_ready: 84, compose: 92, final_video_ready: 100,
+      post_effects: 88,
     };
     const stage = task.stage || task.status || 'submitted';
     const base = stageBase[stage] ?? 10;
@@ -4206,19 +4216,72 @@
     }).join('')}</div>`;
   }
 
+  function renderTaskBlueprintTable(blueprint = {}) {
+    const beats = Array.isArray(blueprint?.beats) ? blueprint.beats : [];
+    if (!beats.length) return '<div class="dh-task-empty-note">暂无剧情蓝图记录</div>';
+    return `<div class="dh-task-segment-list dh-task-storyboard-list">${beats.map((beat, i) => {
+      const title = beat.title || beat.role || `剧情 Beat ${i + 1}`;
+      const plot = beat.plot || beat.visual || '';
+      const line = beat.spoken_line || beat.dialogue || beat.voiceover || '';
+      const proof = beat.visual_proof || beat.proof || '';
+      return `<div class="dh-task-segment-row dh-task-storyboard-row">
+        <div class="dh-task-segment-time">${String(beat.beat_index || i + 1).padStart(2, '0')}</div>
+        <div class="dh-task-segment-main">
+          <div class="dh-task-segment-text">${escapeHtml(title)}</div>
+          ${plot ? `<div class="dh-task-segment-meta">剧情：${escapeHtml(plot)}</div>` : ''}
+          ${line ? `<div class="dh-task-segment-meta">台词/旁白：${escapeHtml(line)}</div>` : ''}
+          ${proof ? `<div class="dh-task-segment-meta">可见证据：${escapeHtml(proof)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
+  function renderTaskNewStoryStoryboardTable(rows = [], contracts = []) {
+    const shots = Array.isArray(rows) ? rows : [];
+    const contractList = Array.isArray(contracts) ? contracts : [];
+    if (!shots.length) return '<div class="dh-task-empty-note">暂无新剧情广告分镜表</div>';
+    return `<div class="dh-task-segment-list dh-task-storyboard-list">${shots.map((shot, i) => {
+      const contract = contractList.find(x => Number(x.index || x.shot_index || 0) === Number(shot.index || shot.shot_index || i + 1)) || contractList[i] || {};
+      const title = shot.title || contract.title || `镜头 ${i + 1}`;
+      const time = Number.isFinite(Number(shot.duration || contract.duration)) ? `${shot.duration || contract.duration}s` : '';
+      const visual = shot.visual || shot.visual_description || contract.visual || '';
+      const action = shot.action || contract.action || '';
+      const voice = shot.voiceover || contract.voiceover || '';
+      const dialogue = Array.isArray(shot.dialogue_lines)
+        ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '：' : ''}${d.line || d.text || ''}`).filter(Boolean).join('；')
+        : (shot.dialogue || '');
+      const strategy = contract.subject_strategy || contract.reference_strategy || '';
+      return `<div class="dh-task-segment-row dh-task-storyboard-row">
+        <div class="dh-task-segment-time">${String(shot.index || shot.shot_index || i + 1).padStart(2, '0')}</div>
+        <div class="dh-task-segment-main">
+          <div class="dh-task-segment-text">${escapeHtml(title)}${shot.role ? ` · ${escapeHtml(shot.role)}` : ''}${time ? ` · ${escapeHtml(time)}` : ''}</div>
+          ${visual ? `<div class="dh-task-segment-meta">画面：${escapeHtml(visual)}</div>` : ''}
+          ${action ? `<div class="dh-task-segment-meta">动作：${escapeHtml(action)}</div>` : ''}
+          ${voice ? `<div class="dh-task-segment-meta">旁白：${escapeHtml(voice)}</div>` : ''}
+          ${dialogue ? `<div class="dh-task-segment-meta">对白：${escapeHtml(dialogue)}</div>` : ''}
+          ${strategy ? `<div class="dh-task-segment-meta">合同策略：${escapeHtml(strategy)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   function renderTaskDetailPanel(data = {}) {
     const detail = data.createDetail || {};
     const type = getTaskType(data);
     const isLuxury = type === 'luxury_ad';
+    const isNewStoryAd = type === 'new_story_ad';
+    const isStoryAd = isLuxury || isNewStoryAd;
     const project = data.project || {};
     const projectDraft = project.draft || {};
     const snapshot = data.snapshot || {};
     const segments = detail.segments || data.segments || snapshot.segments || project.scenes || projectDraft.scenes || data.retryPayload?.segments || [];
-    const scenes = detail.scenes || data.scenes || snapshot.scenes || project.scenes || projectDraft.scenes || [];
+    const scenes = detail.storyboardTable || detail.storyboard_table || detail.scenes || data.storyboardTable || data.storyboard_table || data.scenes || snapshot.storyboard_table || snapshot.scenes || project.scenes || projectDraft.scenes || [];
     const keyframes = detail.keyframes || data.keyframes || snapshot.keyframes || project.keyframes || projectDraft.keyframes || [];
     const storyboardSheets = detail.storyboardSheets || detail.storyboard_sheets || data.storyboard_sheets || snapshot.storyboard_sheets || project.storyboard_sheets || projectDraft.storyboard_sheets || [];
     const shotStatuses = detail.shotStatuses || detail.shot_statuses || data.shot_statuses || snapshot.shot_statuses || project.shot_statuses || projectDraft.shot_statuses || [];
     const shotContracts = detail.shotContracts || detail.shot_contracts || data.shot_contracts || snapshot.shot_contracts || project.shot_contracts || projectDraft.shot_contracts || [];
+    const blueprint = detail.blueprint || data.blueprint || snapshot.blueprint || project.blueprint || projectDraft.blueprint || null;
+    const modelCalls = detail.modelCalls || detail.model_calls || data.model_calls || data.modelCalls || snapshot.model_calls || [];
     const clips = detail.clips || data.clips || snapshot.clips || data.clip_urls || snapshot.clip_urls || project.clips || project.clip_urls || [];
     const subtitle = detail.subtitle || data.subtitle || project.subtitle || projectDraft.subtitle || data.retryPayload?.subtitle || null;
     const qa = detail.qa || detail.qualityReview || detail.quality_review || data.quality_review || {};
@@ -4254,12 +4317,14 @@
       ['QA 硬阻断', qaBlocking.join('；')],
       ['QA 优化建议', qaRewrite.concat(qaWarnings).join('；')],
       ['生成流程', detail.workflow || ''],
+      ['场景配置', isNewStoryAd && detail.sceneConfig ? '已生成' : ''],
+      ['模型阶段', isNewStoryAd && Array.isArray(modelCalls) && modelCalls.length ? `${modelCalls.length} 次调用记录` : ''],
     ]);
-    const sectionLabels = isLuxury ? {
+    const sectionLabels = isStoryAd ? {
       copy: '广告需求',
-      segments: '剧本',
-      storyboard: '分镜',
-      prompts: '配音 / 字幕 / 合成',
+      segments: isNewStoryAd ? '剧情蓝图摘要' : '剧本',
+      storyboard: isNewStoryAd ? '新分镜表' : '分镜',
+      prompts: isNewStoryAd ? '模型与 QA' : '配音 / 字幕 / 合成',
     } : {
       copy: '文案',
       segments: '切割与效果',
@@ -4287,21 +4352,26 @@
           <div class="dh-task-detail-title">${sectionLabels.segments}</div>
           ${renderTaskSegments(segments)}
         </section>
+        ${isNewStoryAd ? `<section class="dh-task-create-section dh-task-create-section-wide">
+          <div class="dh-task-detail-title">剧情蓝图</div>
+          ${renderTaskBlueprintTable(blueprint || {})}
+        </section>` : ''}
         <section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">${sectionLabels.storyboard}</div>
-          ${renderTaskStoryboards(scenes, keyframes, clips)}
+          ${isNewStoryAd ? renderTaskNewStoryStoryboardTable(scenes, shotContracts) : renderTaskStoryboards(scenes, keyframes, clips)}
         </section>
-        <section class="dh-task-create-section dh-task-create-section-wide">
+        ${isNewStoryAd ? '' : `<section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">分段故事板</div>
           ${renderTaskStoryboardSheets(storyboardSheets)}
-        </section>
+        </section>`}
         <section class="dh-task-create-section dh-task-create-section-wide">
-          <div class="dh-task-detail-title">逐镜状态 / 镜头合同</div>
+          <div class="dh-task-detail-title">${isNewStoryAd ? '关键帧合同' : '逐镜状态 / 镜头合同'}</div>
           ${renderTaskShotStatuses(shotStatuses, shotContracts)}
         </section>
         <section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">${sectionLabels.prompts}</div>
           ${prompts || '<div class="dh-task-empty-note">暂无镜头提示词记录</div>'}
+          ${isNewStoryAd && Array.isArray(modelCalls) && modelCalls.length ? `<div class="dh-task-segment-meta" style="margin-top:8px">模型调用：${escapeHtml(modelCalls.map(m => `${m.stage || ''}:${m.provider_id || ''}/${m.model_id || ''}${m.status ? `(${m.status})` : ''}`).slice(-8).join('；'))}</div>` : ''}
         </section>
       </div>
     </div>`;
@@ -4550,11 +4620,37 @@
       action: String(contract.action || contract.visual_contract?.action || '').slice(0, 360),
       duration: contract.duration || contract.duration_sec || '',
     } : null;
+    const compactBlueprint = blueprint => blueprint && typeof blueprint === 'object' ? {
+      story_title: blueprint.story_title || blueprint.title || '',
+      logline: String(blueprint.logline || '').slice(0, 500),
+      characters: compactList(blueprint.characters, c => c && typeof c === 'object' ? {
+        name: c.name || '',
+        role: c.role || '',
+        profile: String(c.profile || c.description || '').slice(0, 220),
+      } : null),
+      beats: compactList(blueprint.beats, beat => beat && typeof beat === 'object' ? {
+        beat_index: beat.beat_index || beat.index || '',
+        title: beat.title || '',
+        role: beat.role || '',
+        plot: String(beat.plot || beat.visual || '').slice(0, 520),
+        spoken_line: String(beat.spoken_line || beat.dialogue || beat.voiceover || '').slice(0, 260),
+        visual_proof: String(beat.visual_proof || beat.proof || '').slice(0, 260),
+      } : null),
+    } : null;
+    const compactSceneConfig = config => config && typeof config === 'object' ? {
+      advertised_subject: config.advertised_subject || '',
+      cast_mode: config.cast_mode || '',
+      business_boundary: String(config.business_boundary || '').slice(0, 400),
+      story_strategy: compactList(config.story_strategy, x => String(x || '').slice(0, 160)),
+      forbidden: compactList(config.forbidden || config.forbidden_elements, x => String(x || '').slice(0, 120)),
+    } : null;
     const detail = task.createDetail && typeof task.createDetail === 'object' ? task.createDetail : {};
     const retry = task.retryPayload && typeof task.retryPayload === 'object' ? task.retryPayload : null;
     return {
       taskId: task.taskId,
       taskType: task.taskType,
+      source: task.source || detail.source || '',
+      serverTaskId: task.serverTaskId || detail.serverTaskId || '',
       status: task.status,
       stage: task.stage,
       progress: task.progress,
@@ -4578,6 +4674,8 @@
       } : null,
       createDetail: {
         title: detail.title || task.avatarName || '',
+        source: detail.source || task.source || '',
+        serverTaskId: detail.serverTaskId || task.serverTaskId || '',
         productionProjectId: detail.productionProjectId || task.projectId || task.production_project_id || '',
         durationSec: detail.durationSec || '',
         text: String(detail.text || '').slice(0, 800),
@@ -4595,11 +4693,14 @@
         scenePrompt: String(detail.scenePrompt || '').slice(0, 800),
         cameraPrompt: String(detail.cameraPrompt || '').slice(0, 300),
         segments: compactList(detail.segments || detail.scenes, compactScene),
-        scenes: compactList(detail.scenes || detail.segments, compactScene),
+        scenes: compactList(detail.scenes || detail.storyboardTable || detail.segments, compactScene),
+        storyboardTable: compactList(detail.storyboardTable || detail.scenes, compactScene),
         keyframes: compactList(detail.keyframes, compactFrame),
         shotContracts: compactList(detail.shotContracts || detail.shot_contracts, compactContract),
         qa: detail.qa || detail.qualityReview || detail.quality_review || null,
         modelMeta: detail.modelMeta || detail.model_meta || null,
+        blueprint: compactBlueprint(detail.blueprint || task.blueprint),
+        sceneConfig: compactSceneConfig(detail.sceneConfig || task.sceneConfig),
         clips: compactList(detail.clips, clip => typeof clip === 'string' ? clip : (clip?.video_url || clip?.url || null)),
         shotCount: detail.shotCount || '',
         composeNote: detail.composeNote || '',
@@ -4755,6 +4856,19 @@
       storyboard: isLuxury ? '生成视频' : '生成分镜',
       keyframes: isLuxury ? '生成分镜' : '生成关键帧',
       draft: '制作进度已保存',
+      scene_config: '生成场景配置',
+      scene_config_done: '场景配置已完成',
+      blueprint: '生成剧情蓝图',
+      blueprint_done: '剧情蓝图已完成',
+      storyboard_failed: '分镜 QA 未通过',
+      keyframe_contract_ready: '关键帧合同已就绪',
+      keyframes_ready: '关键帧已就绪',
+      keyframes_failed: '关键帧生成失败',
+      tts: '生成 TTS',
+      tts_ready: 'TTS 已就绪',
+      video_ready: '逐镜视频已就绪',
+      compose: '合成成片',
+      final_video_ready: '成片已就绪',
       script_reviewing: '剧本待继续编辑',
       frame_generating: '真实关键帧生成中',
       frame_reviewing: '分镜待继续编辑',
@@ -4770,7 +4884,7 @@
   function updateTaskBadge() {
     const badge = $('#dhTaskCount');
     if (!badge) return;
-    const active = readVideoTasks().filter(t => ACTIVE_TASK_STATUSES.has(t.status)).length;
+    const active = [...readVideoTasks(), ...(state.newStoryAdTasks || [])].filter(t => ACTIVE_TASK_STATUSES.has(t.status)).length;
     badge.textContent = String(active);
     badge.style.display = active ? 'inline-flex' : 'none';
   }
@@ -4779,7 +4893,10 @@
     const rawType = String(task?.taskType || task?.type || task?.mode || task?.kind || '').toLowerCase();
     const adMode = String(task?.ad_mode || task?.adMode || task?.retryPayload?.ad_mode || task?.createDetail?.adMode || '').toLowerCase();
     const generationMode = String(task?.generation_mode || task?.generationMode || task?.retryPayload?.generation_mode || '').toLowerCase();
+    const source = String(task?.source || task?.module || task?.createDetail?.source || task?.retryPayload?.source || '').toLowerCase();
+    const taskId = String(task?.taskId || task?.id || '').toLowerCase();
     const title = String(task?.title || task?.avatarName || task?.createDetail?.title || '').toLowerCase();
+    if (rawType === 'new_story_ad' || rawType === 'new-story-ad' || adMode === 'new_story_ad' || generationMode.includes('new_story_ad') || source.includes('new_story_ad') || title.includes('新剧情广告')) return 'new_story_ad';
     if (rawType === 'luxury_ad' || adMode === 'luxury_ad' || generationMode.includes('luxury') || title.includes('剧情广告')) return 'luxury_ad';
     if (rawType === 'material_film' || adMode === 'material_film' || generationMode.includes('material_film') || title.includes('素材成片') || title.includes('素材审片')) return 'material_film';
     if (rawType === 'product_ad' || rawType === 'product_avatar' || adMode === 'product_ad' || adMode.includes('product')) return 'product_ad';
@@ -4866,6 +4983,7 @@
       material_film: '素材审片',
       digital_ad: '空间导览',
       luxury_ad: '剧情广告',
+      new_story_ad: '新剧情广告',
     }[type] || '数字人';
   }
 
@@ -5181,6 +5299,7 @@
     const projectTasks = (state.luxuryAdProjects || []).map(luxuryAdProjectToTask);
     return state.s3.runningTasks.get(id)
       || (state.serverVideoTasks || []).find(x => String(x.taskId) === id)
+      || (state.newStoryAdTasks || []).find(x => String(x.taskId) === id)
       || readVideoTasks().find(x => String(x.taskId) === id)
       || projectTasks.find(x => String(x.taskId) === id || String(x.projectId) === id)
       || null;
@@ -5199,9 +5318,28 @@
       clips: raw.clips || raw.clip_urls || normalized.clips || [],
     };
   }
+
   async function loadTaskDetailIfNeeded(taskId) {
     const id = String(taskId || '');
     if (!id || id.startsWith('lux-project-')) return;
+    const existing = findTaskCenterTask(id);
+    if (getTaskType(existing) === 'new_story_ad') {
+      try {
+        const r = await api('/api/new-story-ad/tasks/' + encodeURIComponent(id));
+        const detailed = normalizeNewStoryAdTask(r || {});
+        if (!detailed) return;
+        const list = state.newStoryAdTasks || [];
+        const idx = list.findIndex(x => String(x.taskId) === id);
+        if (idx >= 0) list[idx] = { ...list[idx], ...detailed };
+        else list.unshift(detailed);
+        state.newStoryAdTasks = list;
+        refreshTaskProgressModal();
+        renderTaskCenter();
+      } catch (err) {
+        console.warn('[DH/new-story-ad/tasks] detail load failed:', err?.message || err);
+      }
+      return;
+    }
     try {
       const r = await api('/api/dh/videos/tasks/' + encodeURIComponent(id));
       const detailed = mergeRemoteTaskDetail(r?.data || {});
@@ -5288,10 +5426,13 @@
     const host = $('#dhTaskList');
     if (!host) { updateTaskBadge(); return; }
     if (state.activeTaskType === 'luxury_ad') refreshLuxuryAdProjectsForTaskCenter({ silent: true });
+    if (state.activeTaskType === 'new_story_ad' && !state.newStoryAdTasksLoading && (!state.newStoryAdTasksLoadedAt || Date.now() - state.newStoryAdTasksLoadedAt > 30000)) {
+      restoreNewStoryAdTasks({ silent: true }).then(() => renderTaskCenter());
+    }
     const projectTasks = state.activeTaskType === 'luxury_ad'
       ? (state.luxuryAdProjects || []).map(luxuryAdProjectToTask)
       : [];
-    const tasks = taskCenterVisibleTasks([...(state.serverVideoTasks || []), ...readVideoTasks(), ...projectTasks]);
+    const tasks = taskCenterVisibleTasks([...(state.serverVideoTasks || []), ...(state.newStoryAdTasks || []), ...readVideoTasks(), ...projectTasks]);
     $$('#dhTaskTypeTabs [data-task-type]').forEach(btn => {
       const type = btn.dataset.taskType;
       const count = tasks.filter(t => getTaskType(t) === type).length;
@@ -5356,8 +5497,7 @@
       const progressBar = active
         ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>`
         : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
-      const isNewStoryAdTask = String(t.createDetail?.adMode || '') === '新剧情广告';
-      const canRetry = !isNewStoryAdTask && !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
+      const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
       const idLabel = t.isLuxuryProjectDraft
         ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
         : `ID ${String(t.taskId).slice(0, 8)}`;
@@ -5733,10 +5873,100 @@
     };
   }
 
+  function normalizeNewStoryAdTask(raw = {}) {
+    const bundle = raw.bundle && typeof raw.bundle === 'object' ? raw.bundle : raw;
+    const task = bundle.task || raw.task || raw;
+    const outputs = bundle.outputs || raw.outputs || {};
+    const ctx = outputs.context || task.request || raw.context || {};
+    const taskId = task.id || task.taskId || raw.id || raw.taskId || raw.task_id;
+    if (!taskId) return null;
+    const shots = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : (Array.isArray(raw.shots) ? raw.shots : []);
+    const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
+    const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
+    const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
+    const finalVideo = outputs.final_video || raw.final_video || {};
+    const finalUrl = finalVideo.video_url || finalVideo.videoUrl || '';
+    const title = task.title || ctx.product_subject || ctx.productSubject || '新剧情广告任务';
+    const brief = task.brief || ctx.brief || ctx.content || '';
+    const createdAt = task.created_at || task.createdAt || raw.created_at || Date.now();
+    const updatedAt = task.updated_at || task.updatedAt || raw.updated_at || createdAt;
+    const status = String(task.status || raw.status || 'draft').trim() || 'draft';
+    const stage = task.stage || raw.stage || 'draft';
+    return {
+      taskId,
+      taskType: 'new_story_ad',
+      type: 'new_story_ad',
+      source: 'new_story_ad',
+      status,
+      stage,
+      progress: Number(task.progress || raw.progress || 0) || 0,
+      error: task.error || raw.error || '',
+      message: task.message || raw.message || '',
+      avatarName: title,
+      textPreview: brief,
+      videoUrl: finalUrl,
+      video_url: finalUrl,
+      previewUrl: keyframes.find(k => k?.image_url || k?.imageUrl)?.image_url || keyframes.find(k => k?.image_url || k?.imageUrl)?.imageUrl || '',
+      imageUrl: keyframes.find(k => k?.image_url || k?.imageUrl)?.image_url || keyframes.find(k => k?.image_url || k?.imageUrl)?.imageUrl || '',
+      ratio: ctx.output_ratio || ctx.aspect_ratio || '',
+      resolution: ctx.resolution || '',
+      user_id: task.user_id || ctx.user_id || '',
+      userId: task.user_id || ctx.user_id || '',
+      startedAt: typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now()),
+      updatedAt: typeof updatedAt === 'number' ? updatedAt : (Date.parse(updatedAt) || Date.now()),
+      scenes: shots,
+      keyframes,
+      clips,
+      snapshot: {
+        ...raw,
+        outputs,
+        model_calls: bundle.model_calls || raw.model_calls || [],
+      },
+      createDetail: {
+        source: 'new_story_ad',
+        adMode: '新剧情广告',
+        title,
+        durationSec: ctx.duration_sec || ctx.duration || '',
+        text: brief,
+        voiceId: ctx.voice_id || ctx.voiceId || '',
+        outputRatio: ctx.output_ratio || ctx.aspect_ratio || '',
+        outputSize: ctx.output_size || ctx.outputSize || '',
+        shotCount: shots.length || ctx.shot_count || '',
+        segments: Array.isArray(outputs.blueprint?.beats) ? outputs.blueprint.beats : [],
+        scenes: shots,
+        storyboardTable: shots,
+        keyframes,
+        shotContracts: contracts,
+        qa: outputs.quality_review || null,
+        blueprint: outputs.blueprint || null,
+        sceneConfig: outputs.scene_config || null,
+        modelCalls: bundle.model_calls || raw.model_calls || [],
+        clips,
+        composeNote: finalUrl ? '新剧情广告成片已生成' : '',
+        submittedAt: task.created_at || '',
+      },
+    };
+  }
+
+  async function restoreNewStoryAdTasks(opts = {}) {
+    if (state.newStoryAdTasksLoading) return;
+    state.newStoryAdTasksLoading = true;
+    try {
+      const r = await api('/api/new-story-ad/tasks?limit=80&mine=1');
+      state.newStoryAdTasks = (r?.tasks || r?.data || []).map(normalizeNewStoryAdTask).filter(Boolean);
+      state.newStoryAdTasksLoadedAt = Date.now();
+    } catch (err) {
+      if (!opts.silent) console.warn('[DH/new-story-ad/tasks] restore failed:', err);
+    } finally {
+      state.newStoryAdTasksLoading = false;
+    }
+  }
+
   async function restoreVideoTasks(opts = {}) {
     if (state.serverVideoTasksLoading) return;
     state.serverVideoTasksLoading = true;
     const local = readVideoTasks();
+    const newStoryPromise = restoreNewStoryAdTasks({ silent: opts.silent !== false });
     try {
       const r = await api('/api/dh/videos/tasks?lite=1');
       const remoteTasks = (r?.data || []).map(normalizeRemoteVideoTask).filter(Boolean);
@@ -5785,7 +6015,7 @@
           const running = state.s3.runningTasks.get(t.taskId);
           if (running?.pollTimer) clearInterval(running.pollTimer);
           state.s3.runningTasks.delete(t.taskId);
-          announceCompletedVideoTask(t);
+          announceCompletedVideoTask(t, { focus: opts.focusCompleted === true });
         });
       } else {
         renderTaskCenter();
@@ -5794,7 +6024,9 @@
       if (!opts.silent) console.warn('[DH/tasks] restore from server failed:', err);
       renderTaskCenter();
     } finally {
+      await newStoryPromise;
       state.serverVideoTasksLoading = false;
+      renderTaskCenter();
     }
     readVideoTasks()
       .filter(t => ACTIVE_TASK_STATUSES.has(t.status) || isRecoverableServerTimeoutTask(t))
@@ -6188,7 +6420,6 @@
     state.luxuryAd.usageTaskRows = [];
     state.luxuryAd.usageTaskSummary = null;
     state.luxuryAd.usageRequestKeys = {};
-    if (isNewStoryAdModule()) resetNewStoryAdState();
     clearLuxuryAdProjectRouteParam(isLuxuryFlowTab(state.activeTab) ? state.activeTab : 'luxury-ad');
   }
 
@@ -6227,18 +6458,15 @@
 
   function renderLuxuryAdModeUi() {
     const material = luxuryAdIsMaterialMode();
-    const newStory = isNewStoryAdModule();
     const title = $('#dhLuxAdModeTitle');
     const sub = $('#dhLuxAdModeSub');
     const modeRow = $('#dhLuxAdModeRow');
     if (modeRow) modeRow.remove();
-    if (title) title.textContent = material ? '素材审片' : (newStory ? '新剧情广告' : '剧情广告');
+    if (title) title.textContent = material ? '素材审片' : '剧情广告';
     if (sub) {
       sub.textContent = material
         ? '选择演员、上传多张素材，AI 生成广告词后直接合成基础广告；不生成分镜图片。'
-        : (newStory
-          ? '沿用剧情广告的操作界面和 1-5 步流程，底层使用新剧情广告独立链路。'
-          : '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。');
+        : '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。';
     }
     const labels = material
       ? [
@@ -6360,624 +6588,6 @@
     if (hint) hint.textContent = `${ratio} · 关键帧 ${outputPixels(ratio, size)} · 视频 ${VIDEO_RESOLUTION_LABELS[state.luxuryAd.videoResolution] || '720p'}`;
   }
 
-  function resetNewStoryAdState() {
-    state.newStoryAd = {
-      taskId: '',
-      task: null,
-      context: null,
-      sceneConfig: null,
-      blueprint: null,
-      shots: [],
-      review: null,
-      keyframeContracts: [],
-      modelMeta: null,
-      savedTaskId: '',
-      lastBriefKey: '',
-    };
-  }
-
-  function newStoryAdText() {
-    return ($('#dhLuxAdText')?.value || state.luxuryAd.content || '').trim();
-  }
-
-  function newStoryAdAssetsPayload() {
-    const assets = [];
-    const add = (asset = {}, type = 'reference') => {
-      const url = compactLuxuryUrl(asset.url || asset.image_url || asset.previewUrl || '');
-      const name = String(asset.name || asset.filename || '').trim();
-      const description = String(asset.description || asset.summary || '').trim();
-      if (!url && !name && !description) return;
-      assets.push({
-        id: asset.id || `asset_${assets.length + 1}`,
-        type: asset.type || asset.kind || type,
-        url,
-        name,
-        description,
-      });
-    };
-    if (state.luxuryAd.productAsset) add(state.luxuryAd.productAsset, 'product');
-    filledLuxuryAdBriefReferences().forEach(asset => add(asset, 'brief_reference'));
-    luxuryAdReferenceAssets().forEach(asset => add(asset, 'storyboard_reference'));
-    return assets.slice(0, 12);
-  }
-
-  function newStoryAdRequestPayload() {
-    updateLuxuryAdOutputHint();
-    const text = newStoryAdText();
-    const personSpec = luxuryAdPersonSpec();
-    const castProfiles = luxuryAdCastProfiles();
-    return {
-      brief: text,
-      content: text,
-      product_subject: state.luxuryAd.productAsset?.name || state.luxuryAd.briefInfo?.product_subject || '',
-      duration: Number($('#dhLuxAdDuration')?.value || state.luxuryAd.durationSec || 30),
-      output_ratio: $('#dhLuxAdRatio')?.value || state.luxuryAd.outputRatio || '9:16',
-      output_size: $('#dhLuxAdSize')?.value || state.luxuryAd.outputSize || 'standard',
-      video_resolution: $('#dhLuxAdVideoResolution')?.value || state.luxuryAd.videoResolution || '720p',
-      cast_mode: personSpec.castMode || 'auto',
-      characters: castProfiles,
-      assets: newStoryAdAssetsPayload(),
-      forbidden: [
-        state.luxuryAd.industry?.forbidden || '',
-        state.luxuryAd.controlledProduction?.negative?.text || '',
-        personSpec.negativeText || '',
-      ].filter(Boolean),
-    };
-  }
-
-  function newStoryAdBriefKey(payload = newStoryAdRequestPayload()) {
-    return JSON.stringify({
-      brief: payload.brief || '',
-      duration: payload.duration || 30,
-      ratio: payload.output_ratio || '9:16',
-      cast: payload.cast_mode || 'auto',
-      assets: (payload.assets || []).map(a => a.url || a.name || '').join('|'),
-    });
-  }
-
-  function newStoryAdSetBusy(btn, label) {
-    const old = btn?.innerHTML;
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = label;
-    }
-    return () => {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = old || btn.innerHTML;
-      }
-    };
-  }
-
-  function newStoryAdTimedSegments(segments = []) {
-    const list = Array.isArray(segments) ? segments : [];
-    const total = Math.max(1, Number(state.luxuryAd.durationSec) || 30);
-    const specified = list.reduce((sum, seg) => sum + (Number(seg.duration || seg.duration_sec || seg.seconds || 0) || 0), 0);
-    const base = specified > 0 ? 0 : Math.max(1, Math.round((total / Math.max(1, list.length)) * 10) / 10);
-    let used = 0;
-    return list.map((seg, i) => {
-      const isLast = i === list.length - 1;
-      const duration = specified > 0
-        ? Math.max(1, Number(seg.duration || seg.duration_sec || seg.seconds || base || 4) || 4)
-        : (isLast ? Math.max(1, Math.round((total - used) * 10) / 10) : base);
-      const start = Math.round(used * 10) / 10;
-      const end = Math.round((used + duration) * 10) / 10;
-      used = end;
-      return { ...seg, duration, duration_sec: duration, seconds: duration, start, end };
-    });
-  }
-
-  function newStoryAdSegmentsFromBeats(blueprint = {}) {
-    const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
-    return newStoryAdTimedSegments(beats.map((beat, i) => {
-      const visual = [beat.scene, beat.plot, beat.visual_proof].filter(Boolean).join('；');
-      return {
-        index: i,
-        title: beat.role || `剧情段落 ${i + 1}`,
-        role: beat.role || 'story',
-        story_stage: beat.role || '',
-        subject_type: beat.subject_type || 'auto',
-        objective: beat.why_next || beat.role || '',
-        purpose: beat.role || '',
-        script_purpose: beat.role || '',
-        scene_content: visual,
-        visual,
-        display_visual: visual,
-        content_prompt: visual,
-        action: beat.action || '',
-        visual_action: beat.action || '',
-        narration: beat.spoken_line || '',
-        voiceover: beat.spoken_line || '',
-        ad_copy: beat.spoken_line || '',
-        subtitle: beat.spoken_line || '',
-        text: beat.spoken_line || '',
-        material_usage: beat.visual_proof || '',
-        source_beat: beat,
-      };
-    }));
-  }
-
-  function newStoryAdSegmentsFromShots(shots = []) {
-    return newStoryAdTimedSegments((Array.isArray(shots) ? shots : []).map((shot, i) => ({
-      index: i,
-      title: shot.title || `镜头 ${i + 1}`,
-      role: shot.role || shot.purpose || 'story',
-      story_stage: shot.role || shot.purpose || '',
-      subject_type: shot.subject_type || shot.subjectType || 'auto',
-      objective: shot.purpose || shot.objective || shot.role || '',
-      purpose: shot.purpose || shot.objective || shot.role || '',
-      script_purpose: shot.purpose || shot.objective || shot.role || '',
-      scene_content: shot.visual || shot.content_prompt || '',
-      visual: shot.visual || shot.content_prompt || '',
-      display_visual: shot.visual || shot.content_prompt || '',
-      content_prompt: shot.visual || shot.content_prompt || '',
-      action: shot.action || shot.visual_action || '',
-      visual_action: shot.action || shot.visual_action || '',
-      narration: shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '',
-      voiceover: shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '',
-      ad_copy: shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '',
-      subtitle: shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '',
-      text: shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '',
-      dialogue_lines: Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [],
-      characters: Array.isArray(shot.characters) ? shot.characters : [],
-      material_usage: shot.material_usage || '',
-      keyframe_notes: shot.keyframe_notes || '',
-      style_note: shot.keyframe_notes || '',
-      source_shot: shot,
-    })));
-  }
-
-  function newStoryAdApplySceneConfig(response = {}) {
-    const sceneConfig = response.scene_config || response.sceneConfig || response;
-    const bundle = response.bundle || {};
-    const outputs = bundle.outputs || {};
-    state.newStoryAd = {
-      ...state.newStoryAd,
-      taskId: response.task_id || response.taskId || state.newStoryAd.taskId,
-      task: bundle.task || state.newStoryAd.task,
-      context: outputs.context || state.newStoryAd.context,
-      sceneConfig,
-      blueprint: null,
-      shots: [],
-      review: null,
-      keyframeContracts: [],
-      modelMeta: sceneConfig?.model_meta || null,
-    };
-    const incoming = {
-      title: sceneConfig.advertised_subject || sceneConfig.title || sceneConfig.business_boundary || '',
-      theme: sceneConfig.business_boundary || sceneConfig.advertised_subject || '',
-      style: (Array.isArray(sceneConfig.story_strategy) ? sceneConfig.story_strategy.slice(0, 2).join(' · ') : '') || '商用剧情广告',
-      duration_sec: Number(state.luxuryAd.durationSec) || 30,
-      aspect_ratio: state.luxuryAd.outputRatio || '9:16',
-      role_notes: sceneConfig.cast_mode || '',
-    };
-    state.luxuryAd.briefInfo = deriveLuxuryBriefInfo(state.luxuryAd.content, [], incoming);
-    state.luxuryAd.segmentPlan = Array.isArray(sceneConfig.story_strategy) ? sceneConfig.story_strategy : [];
-    state.luxuryAd.segments = [];
-    state.luxuryAd.storyboardDetailed = false;
-    state.luxuryAd.keyframes = [];
-    state.luxuryAd.storyboardSheets = [];
-    state.luxuryAd.productionContract = null;
-    syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
-  }
-
-  function newStoryAdApplyBlueprint(response = {}) {
-    const blueprint = response.blueprint || response;
-    const bundle = response.bundle || {};
-    const outputs = bundle.outputs || {};
-    const segments = newStoryAdSegmentsFromBeats(blueprint);
-    state.newStoryAd = {
-      ...state.newStoryAd,
-      taskId: response.task_id || response.taskId || state.newStoryAd.taskId,
-      task: bundle.task || state.newStoryAd.task,
-      context: outputs.context || state.newStoryAd.context,
-      blueprint,
-      shots: [],
-      review: null,
-      keyframeContracts: [],
-      modelMeta: blueprint?.model_meta || state.newStoryAd.modelMeta || null,
-    };
-    state.luxuryAd.briefInfo = deriveLuxuryBriefInfo(state.luxuryAd.content, segments, {
-      ...(state.luxuryAd.briefInfo || {}),
-      title: blueprint.story_title || blueprint.title || state.luxuryAd.briefInfo?.title || '',
-      theme: blueprint.logline || state.luxuryAd.briefInfo?.theme || '',
-      characters: Array.isArray(blueprint.characters) ? blueprint.characters : state.luxuryAd.briefInfo?.characters,
-    });
-    state.luxuryAd.segments = applyLuxuryShotBindings(segments);
-    state.luxuryAd.storyboardDetailed = true;
-    state.luxuryAd.keyframes = [];
-    state.luxuryAd.storyboardSheets = [];
-    state.luxuryAd.productionContract = null;
-    syncLuxuryBriefInfoToControls(state.luxuryAd.briefInfo);
-  }
-
-  function newStoryAdApplyStoryboard(response = {}) {
-    const shots = Array.isArray(response.shots) ? response.shots : [];
-    const segments = newStoryAdSegmentsFromShots(shots);
-    const incomingKeyframes = Array.isArray(response.keyframes) ? response.keyframes : [];
-    state.newStoryAd = {
-      ...state.newStoryAd,
-      taskId: response.task_id || response.taskId || state.newStoryAd.taskId,
-      shots,
-      review: response.review || null,
-      keyframeContracts: Array.isArray(response.keyframe_contracts) ? response.keyframe_contracts : [],
-      modelMeta: response.model_meta || state.newStoryAd.modelMeta || null,
-    };
-    state.luxuryAd.segments = applyLuxuryShotBindings(segments);
-    state.luxuryAd.storyboardDetailed = true;
-    state.luxuryAd.keyframes = incomingKeyframes;
-    state.luxuryAd.storyboardSheets = [];
-    state.luxuryAd.keyframePlanningOnly = !incomingKeyframes.some(luxuryFrameHasImage);
-    state.luxuryAd.productionContract = {
-      mode: 'new_story_ad_keyframe_contract',
-      contracts: state.newStoryAd.keyframeContracts,
-      review: state.newStoryAd.review,
-    };
-  }
-
-  function newStoryAdApplyKeyframes(response = {}) {
-    const keyframes = Array.isArray(response.keyframes) ? response.keyframes : [];
-    state.newStoryAd = {
-      ...state.newStoryAd,
-      keyframeContracts: Array.isArray(response.keyframe_contracts) ? response.keyframe_contracts : state.newStoryAd.keyframeContracts,
-      modelMeta: response.model_meta || state.newStoryAd.modelMeta || null,
-    };
-    state.luxuryAd.keyframes = keyframes;
-    state.luxuryAd.keyframePlanningOnly = !keyframes.some(luxuryFrameHasImage);
-    state.luxuryAd.keyframeError = '';
-    state.luxuryAd.keyframeErrorDetails = null;
-  }
-
-  function renderNewStoryAdFrameCards(host, segments = []) {
-    if (!host) return;
-    const review = state.newStoryAd.review || {};
-    const contracts = Array.isArray(state.newStoryAd.keyframeContracts) ? state.newStoryAd.keyframeContracts : [];
-    const blocking = Array.isArray(review.blocking_issues) ? review.blocking_issues : [];
-    const rewrite = Array.isArray(review.rewrite_issues) ? review.rewrite_issues : [];
-    const guard = $('#dhLuxAdCommercialGuard');
-    if (guard) {
-      guard.innerHTML = `<div class="dh-demo-script-review ${blocking.length ? 'dh-lux-keyframe-error' : ''}">
-        <div>
-          <b>商用 QA：${blocking.length ? '存在硬阻断' : '已通过硬阻断检查'}</b>
-          <span>${blocking.length ? escapeHtml(blocking.join('；')) : `可优化项 ${rewrite.length} 条 · 关键帧合同 ${contracts.length} 条`}</span>
-        </div>
-      </div>`;
-    }
-    if (!segments.length) {
-      host.innerHTML = luxuryAdEmptyBlock('还没有分镜', '确认剧本后再生成分镜。');
-      return;
-    }
-    const ratioStyle = luxuryAspectRatioStyle(state.luxuryAd.outputRatio || '9:16');
-    host.innerHTML = `
-      <div class="dh-demo-script-review">
-        <div>
-          <b>分镜结果</b>
-          <span>新剧情广告独立链路已生成 ${segments.length} 镜 · QA ${blocking.length ? '硬阻断待处理' : '通过'} · 关键帧合同 ${contracts.length} 条</span>
-        </div>
-      </div>
-      ${rewrite.length ? `<div class="dh-demo-script-review"><b>可优化项</b><span>${escapeHtml(rewrite.slice(0, 6).join('；'))}</span></div>` : ''}
-      ${segments.map((seg, i) => {
-        const contract = contracts[i] || {};
-        const visual = luxuryShotContentPrompt(seg);
-        const action = luxuryShotActionText(seg);
-        const voice = luxuryShotNarrationText(seg);
-        const timeRange = luxuryAdShotTimeRange(seg, i, segments.length);
-        const subjectType = normalizeLuxuryShotSubjectType(seg);
-        return `<article class="dh-demo-frame-card">
-          <div class="dh-demo-frame-visual pending" style="${ratioStyle}">
-            <b>${String(i + 1).padStart(2, '0')} · ${escapeHtml(seg.title || `镜头 ${i + 1}`)}</b>
-            <span>${escapeHtml(timeRange)} · 商用分镜已生成 · 等待后续图/视频模型消费合同</span>
-          </div>
-          <div class="dh-demo-frame-info">
-            <div class="dh-demo-card"><small>时间 / 目的</small><b>${escapeHtml(timeRange)} · ${escapeHtml(seg.objective || seg.purpose || '剧情推进')}</b><span>${escapeHtml(seg.role || '')}</span></div>
-            <div class="dh-demo-card"><small>画面主体</small><b>${escapeHtml(luxuryShotSubjectTypeLabel(subjectType))}</b><span>${escapeHtml(luxuryShotSubjectTypeHelp(subjectType))}</span></div>
-            <div class="dh-demo-card"><small>内容 / 台词</small><b>${escapeHtml(visual)}</b><span>台词：${escapeHtml(voice || '无台词')}</span></div>
-            <div class="dh-demo-card"><small>动作 / 表情</small><b>${escapeHtml(action || '按剧情动作执行')}</b><span>${escapeHtml(seg.keyframe_notes || contract.visual_contract?.evidence || '')}</span></div>
-            <div class="dh-demo-card"><small>镜头合同</small><b>${escapeHtml(contract.subject_lock?.advertised_subject || state.luxuryAd.briefInfo?.title || '当前广告主体')}</b><span>${escapeHtml(contract.visual_contract?.must_show || visual)}</span></div>
-            <div class="dh-demo-card wide"><small>多人/对白</small><b>${escapeHtml((seg.dialogue_lines || []).map(d => `${d.speaker || '旁白'}：${d.line || ''}`).filter(Boolean).join('；') || '按剧本旁白/对白执行')}</b><span>人物锁：${escapeHtml((contract.cast_lock?.characters || []).map(c => c.name || c.role).filter(Boolean).join('、') || '按当前任务设定')}</span></div>
-          </div>
-        </article>`;
-      }).join('')}`;
-  }
-
-  function renderNewStoryAdStoryboard(sceneHost, scriptHost, frameHost) {
-    const segments = state.luxuryAd.segments || [];
-    if (state.luxuryAd.sceneGenerating) {
-      if (sceneHost) sceneHost.innerHTML = luxuryAdEmptyBlock('场景配置生成中', '新剧情广告独立链路正在整理业务边界、人物模式、主体和禁用项。');
-      if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('等待剧本', '场景配置完成后再生成剧本。');
-      if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本确认后才会生成分镜和商用 QA。');
-      updateLuxuryAdStepLocks();
-      return;
-    }
-    if (state.luxuryAd.scriptGenerating) {
-      if (sceneHost) renderLuxuryAdOutline(sceneHost, segments);
-      if (scriptHost) scriptHost.innerHTML = luxuryAdEmptyBlock('剧本生成中', '正在生成可审核剧本表。');
-      if (frameHost) frameHost.innerHTML = luxuryAdEmptyBlock('等待分镜', '剧本完成后再生成分镜。');
-      updateLuxuryAdStepLocks();
-      return;
-    }
-    if (sceneHost) renderLuxuryAdOutline(sceneHost, segments);
-    if (scriptHost) renderLuxuryAdScriptTable(scriptHost, segments);
-    if (frameHost) {
-      if (state.newStoryAd.shots?.length) renderNewStoryAdFrameCards(frameHost, segments);
-      else frameHost.innerHTML = luxuryAdEmptyBlock('还没有分镜', '确认剧本后再生成分镜。');
-    }
-    updateLuxuryAdStepLocks();
-  }
-
-  async function newStoryAdAssist(mode, topic) {
-    const r = await api('/api/new-story-ad/assist', {
-      method: 'POST',
-      body: {
-        ...newStoryAdRequestPayload(),
-        brief: topic,
-        content: topic,
-        mode,
-      },
-    });
-    if (!r.success) throw new Error(r.error || 'AI 辅助失败');
-    return r;
-  }
-
-  function applyNewStoryAdAssistResult(result = {}) {
-    const nextText = String(result.brief || result.text || '').trim();
-    if (!nextText) throw new Error('AI 没有返回可用广告需求');
-    if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
-    state.luxuryAd.content = nextText;
-    const input = $('#dhLuxAdText');
-    if (input) input.value = nextText;
-    if (result.cast_mode) state.luxuryAd.personSpec.castMode = result.cast_mode;
-    if (Array.isArray(result.characters)) state.luxuryAd.castProfiles = result.characters;
-    setLuxuryProgress('content');
-    renderLuxuryAdStoryboard();
-    updateLuxuryAdStepLocks();
-  }
-
-  function waitNewStoryAdProgressMinimum(startedAt, minMs = 900) {
-    const remain = minMs - (Date.now() - Number(startedAt || Date.now()));
-    return remain > 0 ? new Promise(resolve => setTimeout(resolve, remain)) : Promise.resolve();
-  }
-
-  function waitNewStoryAdProgressPaint() {
-    return new Promise(resolve => {
-      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
-      else setTimeout(resolve, 0);
-    });
-  }
-
-  async function newStoryAdGenerateSceneConfig(triggerButton = null) {
-    const payload = newStoryAdRequestPayload();
-    if (!payload.brief) return toast('请先输入广告需求、产品介绍或一句话想法', 'error');
-    const briefKey = newStoryAdBriefKey(payload);
-    if (state.newStoryAd.lastBriefKey && state.newStoryAd.lastBriefKey !== briefKey) resetNewStoryAdState();
-    state.luxuryAd.content = payload.brief;
-    state.luxuryAd.durationSec = payload.duration;
-    state.luxuryAd.outputRatio = payload.output_ratio;
-    state.luxuryAd.outputSize = payload.output_size || state.luxuryAd.outputSize || 'standard';
-    state.luxuryAd.videoResolution = payload.video_resolution || '720p';
-    const progressStartedAt = Date.now();
-    const restore = newStoryAdSetBusy(triggerButton || $('#dhLuxAdGenerate'), '生成场景配置中…');
-    const progressTimer = startLuxuryWorkflowProgress({ detail: false });
-    state.luxuryAd.sceneGenerating = true;
-    state.luxuryAd.scriptError = '';
-    state.luxuryAd.scriptErrorDetails = null;
-    state.newStoryAd.lastBriefKey = briefKey;
-    setLuxuryProgress('storyboard');
-    syncLuxuryAdStepPanels();
-    renderLuxuryAdStoryboard();
-    try {
-      await waitNewStoryAdProgressPaint();
-      if (!state.newStoryAd.taskId) {
-        updateLuxuryWorkflowProgress('正在创建新剧情广告独立任务。', 18);
-        const created = await api('/api/new-story-ad/tasks', { method: 'POST', body: payload });
-        state.newStoryAd.taskId = created.task?.id || created.task_id || created.taskId || '';
-        state.newStoryAd.task = created.task || null;
-        state.newStoryAd.context = created.context || null;
-      }
-      updateLuxuryWorkflowProgress('正在生成场景配置和人物模式。', 72);
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.newStoryAd.taskId)}/scene-config`, { method: 'POST', body: {} });
-      updateLuxuryWorkflowProgress('场景配置已返回，正在写入当前页面。', 96);
-      newStoryAdApplySceneConfig(r);
-      toast('场景配置已生成，下一步确认基础信息并生成剧本', 'success');
-      showLuxuryAdStep(2, { silent: true });
-      rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
-      return true;
-    } catch (err) {
-      toast('新剧情广告场景配置生成失败：' + err.message, 'error');
-      return false;
-    } finally {
-      await waitNewStoryAdProgressMinimum(progressStartedAt);
-      state.luxuryAd.sceneGenerating = false;
-      stopLuxuryWorkflowProgress(progressTimer);
-      restore();
-      syncLuxuryAdStepPanels();
-      renderLuxuryAdStoryboard();
-      updateLuxuryAdStepLocks();
-    }
-  }
-
-  async function newStoryAdGenerateBlueprint(triggerButton = null, { rewrite = false } = {}) {
-    if (!state.newStoryAd.taskId || !state.newStoryAd.sceneConfig) {
-      const ok = await newStoryAdGenerateSceneConfig($('#dhLuxAdGenerate'));
-      if (!ok) return false;
-    }
-    const progressStartedAt = Date.now();
-    const restore = newStoryAdSetBusy(triggerButton || $('#dhLuxAdStoryboard'), rewrite ? '重新生成剧本中…' : '生成剧本中…');
-    const progressTimer = startLuxuryWorkflowProgress({ detail: true });
-    state.luxuryAd.scriptGenerating = true;
-    state.luxuryAd.currentStep = 3;
-    rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
-    if (rewrite) {
-      state.newStoryAd.blueprint = null;
-      state.newStoryAd.shots = [];
-      state.newStoryAd.review = null;
-      state.newStoryAd.keyframeContracts = [];
-      state.luxuryAd.segments = [];
-      state.luxuryAd.storyboardDetailed = false;
-      state.luxuryAd.keyframes = [];
-    }
-    setLuxuryProgress('script');
-    syncLuxuryAdStepPanels();
-    renderLuxuryAdStoryboard();
-    try {
-      await waitNewStoryAdProgressPaint();
-      updateLuxuryWorkflowProgress('正在生成剧情蓝图、人物对白和时间节奏。', 62);
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.newStoryAd.taskId)}/blueprint`, { method: 'POST', body: {} });
-      updateLuxuryWorkflowProgress('剧本蓝图已返回，正在整理成老版剧本表。', 96);
-      newStoryAdApplyBlueprint(r);
-      toast(`剧本已生成：${state.luxuryAd.segments.length} 个剧情段落`, 'success');
-      showLuxuryAdStep(3, { silent: true });
-      rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
-      return true;
-    } catch (err) {
-      state.luxuryAd.scriptError = err.message || '剧本生成失败';
-      state.luxuryAd.scriptErrorDetails = err.data || null;
-      toast('新剧情广告剧本生成失败：' + err.message, 'error');
-      return false;
-    } finally {
-      await waitNewStoryAdProgressMinimum(progressStartedAt);
-      state.luxuryAd.scriptGenerating = false;
-      stopLuxuryWorkflowProgress(progressTimer);
-      restore();
-      syncLuxuryAdStepPanels();
-      renderLuxuryAdStoryboard();
-      updateLuxuryAdStepLocks();
-    }
-  }
-
-  async function newStoryAdGenerateStoryboard(triggerButton = null) {
-    if (!state.newStoryAd.blueprint) {
-      const ok = await newStoryAdGenerateBlueprint($('#dhLuxAdStoryboard'));
-      if (!ok) return false;
-    }
-    const restore = newStoryAdSetBusy(triggerButton || $('#dhLuxAdPreviewFrames'), '生成分镜中…');
-    const progressStartedAt = Date.now();
-    const progressTotal = Math.max(1, state.luxuryAd.segments?.length || state.newStoryAd.blueprint?.beats?.length || 1);
-    updateLuxuryKeyframeWorkflowProgress({ current: 0, total: progressTotal, startedAt: progressStartedAt });
-    const progressTimer = setInterval(() => {
-      const elapsedMs = Date.now() - progressStartedAt;
-      const softCurrent = Math.min(progressTotal - 1, Math.max(0, Math.floor((elapsedMs / 9000) * progressTotal)));
-      updateLuxuryKeyframeWorkflowProgress({ current: softCurrent, total: progressTotal, startedAt: progressStartedAt });
-    }, 1200);
-    state.luxuryAd.keyframeGenerating = true;
-    state.luxuryAd.keyframePlanningOnly = true;
-    state.luxuryAd.keyframeError = '';
-    state.luxuryAd.keyframeErrorDetails = null;
-    state.luxuryAd.currentStep = 4;
-    rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
-    setLuxuryProgress('keyframes');
-    showLuxuryAdStep(4, { silent: true });
-    renderLuxuryAdStoryboard();
-    try {
-      await waitNewStoryAdProgressPaint();
-      updateLuxuryKeyframeWorkflowProgress({ current: Math.max(1, Math.floor(progressTotal * 0.35)), total: progressTotal, startedAt: progressStartedAt });
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.newStoryAd.taskId)}/storyboard`, { method: 'POST', body: {} });
-      newStoryAdApplyStoryboard(r);
-      updateLuxuryKeyframeWorkflowProgress({ current: Math.max(1, Math.floor(progressTotal * 0.55)), total: progressTotal, startedAt: progressStartedAt });
-      if (state.newStoryAd.review?.blocking_issues?.length) {
-        toast(`分镜已生成：${state.newStoryAd.shots.length} 镜，但商用 QA 存在硬阻断`, 'error');
-        showLuxuryAdStep(4, { silent: true });
-        return false;
-      }
-      const k = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.newStoryAd.taskId)}/keyframes`, {
-        method: 'POST',
-        body: {
-          output_ratio: state.luxuryAd.outputRatio || '9:16',
-          resolution: state.luxuryAd.outputSize || '2K',
-        },
-      });
-      updateLuxuryKeyframeWorkflowProgress({ current: progressTotal, total: progressTotal, startedAt: progressStartedAt });
-      newStoryAdApplyKeyframes(k);
-      toast(`分镜已生成：${state.newStoryAd.shots.length} 镜，商用 QA ${state.newStoryAd.review?.blocking_issues?.length ? '存在硬阻断' : '通过'}`, state.newStoryAd.review?.blocking_issues?.length ? 'error' : 'success');
-      showLuxuryAdStep(4, { silent: true });
-      rememberActiveTab(state.activeTab, { preserveLuxuryProject: true });
-      return !state.newStoryAd.review?.blocking_issues?.length && state.luxuryAd.keyframes.some(luxuryFrameHasImage);
-    } catch (err) {
-      state.luxuryAd.keyframeError = err.message || '分镜镜头生成失败';
-      state.luxuryAd.keyframeErrorDetails = err.data || null;
-      if (Array.isArray(err.data?.partial)) {
-        newStoryAdApplyStoryboard({ shots: err.data.partial, review: err.data.review || err.data });
-      }
-      if (Array.isArray(err.data?.keyframes)) {
-        state.luxuryAd.keyframes = err.data.keyframes;
-        state.luxuryAd.keyframePlanningOnly = !state.luxuryAd.keyframes.some(luxuryFrameHasImage);
-      }
-      toast('新剧情广告分镜生成失败：' + err.message, 'error');
-      return false;
-    } finally {
-      await waitNewStoryAdProgressMinimum(progressStartedAt);
-      state.luxuryAd.keyframeGenerating = false;
-      stopLuxuryWorkflowProgress(progressTimer);
-      restore();
-      syncLuxuryAdStepPanels();
-      renderLuxuryAdStoryboard();
-      updateLuxuryAdStepLocks();
-    }
-  }
-
-  function newStoryAdBuildTaskPayload(status = 'done') {
-    const taskId = state.newStoryAd.savedTaskId || `new-story-ad-${state.newStoryAd.taskId || Date.now()}`;
-    state.newStoryAd.savedTaskId = taskId;
-    const text = newStoryAdText();
-    const segments = compactLuxurySegments(state.luxuryAd.segments || []);
-    const contracts = state.newStoryAd.keyframeContracts || [];
-    const title = state.luxuryAd.briefInfo?.title || state.newStoryAd.sceneConfig?.advertised_subject || '新剧情广告';
-    return {
-      taskId,
-      taskType: 'luxury_ad',
-      status,
-      stage: status === 'done' ? 'done' : 'draft',
-      progress: status === 'done' ? 100 : 0,
-      avatarName: title,
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
-      previewUrl: '',
-      textPreview: `${state.luxuryAd.durationSec || 30}s · ${segments.length || state.newStoryAd.shots.length || 0} 镜头 · ${text.slice(0, 50)}`,
-      createDetail: {
-        title,
-        durationSec: state.luxuryAd.durationSec || 30,
-        text,
-        adMode: '新剧情广告',
-        outputRatio: state.luxuryAd.outputRatio || '9:16',
-        outputSize: state.luxuryAd.outputSize || 'standard',
-        resolution: outputPixels(state.luxuryAd.outputRatio, state.luxuryAd.outputSize),
-        productName: state.newStoryAd.sceneConfig?.advertised_subject || state.luxuryAd.productAsset?.name || '',
-        briefInfo: state.luxuryAd.briefInfo || {},
-        scenePrompt: text,
-        cameraPrompt: '新剧情广告：按独立分镜表、商用 QA 和关键帧合同进入后续图/视频生成。',
-        segments,
-        scenes: segments,
-        keyframes: [],
-        shotContracts: contracts,
-        qa: state.newStoryAd.review || null,
-        modelMeta: state.newStoryAd.modelMeta || null,
-        shotCount: segments.length || state.newStoryAd.shots.length || '',
-        composeNote: `新剧情广告独立链路 · 场景配置/剧本/分镜/QA/关键帧合同已保存 · 后续图/视频生成消费合同`,
-        workflow: '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成（任务中心保存）',
-        submittedAt: new Date().toISOString(),
-      },
-    };
-  }
-
-  function newStoryAdSaveProgress({ final = false } = {}) {
-    if (!state.newStoryAd.sceneConfig && !state.newStoryAd.blueprint && !state.newStoryAd.shots?.length) {
-      return toast('还没有可保存的新剧情广告内容', 'error');
-    }
-    if (final) {
-      const gate = luxuryAdGateState();
-      if (!gate.previewReady) return toast(gate.hint || '请先生成通过商用 QA 的分镜', 'error');
-    }
-    const task = newStoryAdBuildTaskPayload(final ? 'done' : 'pending');
-    upsertVideoTask(task);
-    state.activeTaskType = 'luxury_ad';
-    state.activeTaskStatus = final ? 'done' : 'pending';
-    rememberTaskCenterState();
-    renderTaskCenter();
-    if (final) switchTab('tasks');
-    toast(final ? '新剧情广告已保存到任务中心' : '新剧情广告进度已保存到任务中心', 'success');
-    return task;
-  }
-
   function renderLuxuryAdVoice() {
     const host = $('#dhLuxAdVoiceCurrent');
     renderLuxuryVoiceDirection();
@@ -7030,23 +6640,6 @@
     renderTaskCenter();
     switchTab('tasks');
   }
-
-  window.__dhNewStoryAd = {
-    upsertTask(task) {
-      if (!task?.taskId) return null;
-      return upsertVideoTask(task);
-    },
-    openTaskCenter(status = 'done') {
-      state.activeTaskType = 'luxury_ad';
-      state.activeTaskStatus = status || 'done';
-      rememberTaskCenterState();
-      renderTaskCenter();
-      switchTab('tasks');
-    },
-    refreshTaskCenter() {
-      renderTaskCenter();
-    },
-  };
 
   function normalizeLuxuryAdBgmAsset(bgm = null) {
     if (!bgm || typeof bgm !== 'object') return null;
@@ -10248,14 +9841,6 @@
     const landingAssetsReady = luxuryAdHasLandingAssets();
     const productReady = !!state.luxuryAd.productAsset?.url && !state.luxuryAd.uploading;
     const assetsReady = contentReady;
-    const newStoryMode = isNewStoryAdModule();
-    const newStorySceneReady = !!state.newStoryAd.sceneConfig;
-    const newStoryScriptReady = !!state.newStoryAd.blueprint;
-    const newStoryFrameReady = Array.isArray(state.newStoryAd.shots) && state.newStoryAd.shots.length > 0;
-    const newStoryImageReady = newStoryFrameReady
-      && segments.length > 0
-      && segments.every((_, i) => luxuryFrameHasImage(luxuryFrameForShot(keyframes, i)));
-    const newStoryBlocking = Array.isArray(state.newStoryAd.review?.blocking_issues) && state.newStoryAd.review.blocking_issues.length > 0;
     const previewReady = materialMode
       ? (contentReady && materialAssetCount > 0)
       : detailedReady && storyboardReady && segments.every((_, i) => luxuryFrameHasImage(luxuryFrameForShot(keyframes, i)));
@@ -10263,63 +9848,6 @@
     let hint = materialMode
       ? '第 1 步：先写广告需求，再上传素材、选择演员和配音。'
       : '第 1 步：先描述你想做什么广告，AI 会先生成视频基础信息。';
-    if (newStoryMode) {
-      const nsStoryboardReady = newStorySceneReady || storyboardReady;
-      const nsDetailedReady = newStoryScriptReady || detailedReady;
-      const nsPreviewReady = newStoryImageReady && !newStoryBlocking;
-      if (sceneGenerating) {
-        step = 1;
-        hint = '正在生成场景配置，请稍等。';
-      } else if (scriptGenerating) {
-        step = 2;
-        hint = '正在生成剧本，请稍等。';
-      } else if (state.luxuryAd.keyframeGenerating) {
-        step = 3;
-        hint = '正在生成分镜和商用 QA，请稍等。';
-      } else if (!contentReady) {
-        step = 0;
-        hint = '第 1 步：写广告需求；可以自己写，也可以点击 AI 帮我写。';
-      } else if (!newStorySceneReady) {
-        step = 0;
-        hint = '第 1 步：点击“生成场景配置”，新模块会先整理业务边界、人物和主体。';
-      } else if (!newStoryScriptReady) {
-        step = 1;
-        hint = '第 2 步：场景配置已生成，确认后生成剧本。';
-      } else if (!newStoryFrameReady) {
-        step = 2;
-        hint = '第 3 步：剧本已生成，确认后生成分镜和商用 QA。';
-      } else if (newStoryBlocking) {
-        step = 3;
-        hint = '分镜已生成但商用 QA 存在硬阻断，请重新生成或修复后再进入广告合成。';
-      } else if (!newStoryImageReady) {
-        step = 3;
-        hint = '分镜表已生成，但真实镜头图还没有全部生成，不能进入广告合成。';
-      } else {
-        step = 4;
-        hint = '第 5 步：分镜、商用 QA 和真实镜头图已就绪，可以进入广告合成。';
-      }
-      return {
-        text,
-        refs,
-        segments,
-        keyframes,
-        materialMode: false,
-        newStoryMode: true,
-        materialAssetCount,
-        contentReady,
-        storyboardReady: nsStoryboardReady,
-        detailedReady: nsDetailedReady,
-        titleReady: true,
-        sceneGenerating,
-        scriptGenerating,
-        landingAssetsReady,
-        productReady,
-        assetsReady,
-        previewReady: nsPreviewReady,
-        step,
-        hint,
-      };
-    }
     if (materialMode) {
       if (!contentReady) {
         step = 0;
@@ -10489,19 +10017,6 @@
     const material = gate.materialMode;
     const materialCount = gate.materialAssetCount || 0;
     const setText = (selector, value) => { const el = $(selector); if (el) el.textContent = value; };
-    if (gate.newStoryMode) {
-      const review = state.newStoryAd.review || {};
-      const blocking = Array.isArray(review.blocking_issues) ? review.blocking_issues.length : 0;
-      const contracts = Array.isArray(state.newStoryAd.keyframeContracts) ? state.newStoryAd.keyframeContracts.length : 0;
-      setText('#dhLuxAdComposeSummary', gate.previewReady ? `${frames}/${shots} 镜头图 · ${seconds} 秒 · ${ratio}` : (shots ? `${frames}/${shots} 镜头图 · 待补齐` : '未生成分镜'));
-      setText('#dhLuxAdTaskMeta', `保存后进入任务中心 · ${seconds} 秒 · ${ratio}`);
-      setText('#dhLuxAdSceneSummary', state.newStoryAd.sceneConfig ? '已生成场景配置' : '待生成');
-      setText('#dhLuxAdScriptSummary', state.newStoryAd.blueprint ? `${shots} 镜头 · 按剧情拆解` : '待生成');
-      setText('#dhLuxAdFrameSummary', gate.previewReady ? `${frames} 张真实镜头图 · QA ${blocking ? '有硬阻断' : '通过'}` : (shots ? `${frames}/${shots} 张真实镜头图` : '待生成'));
-      setText('#dhLuxAdVoiceSummary', '任务中心保存');
-      setText('#dhLuxAdSubtitleSummary', `${contracts} 条关键帧合同`);
-      return;
-    }
     setText('#dhLuxAdComposeSummary', material ? `${materialCount} 个素材 · ${seconds} 秒 · ${ratio}` : (frames ? `${frames} 分镜 · ${seconds} 秒 · ${ratio}` : '未生成分镜'));
     setText('#dhLuxAdTaskMeta', `提交后进入任务中心 · ${seconds} 秒 · ${ratio}`);
     setText('#dhLuxAdSceneSummary', material ? `${materialCount} 个用户素材` : (gate.storyboardReady ? `${shots} 个场景配置` : '待生成'));
@@ -10664,12 +10179,6 @@
         const materialCount = gate.materialAssetCount || 0;
         frameState.textContent = materialCount ? `素材 ${materialCount} 个` : '待上传素材';
         frameState.classList.toggle('ready', materialCount > 0);
-      } else if (gate.newStoryMode) {
-        const blocking = Array.isArray(state.newStoryAd.review?.blocking_issues) ? state.newStoryAd.review.blocking_issues.length : 0;
-        frameState.textContent = state.newStoryAd.shots?.length
-          ? (blocking ? `QA 硬阻断 ${blocking} 条` : `已生成 ${state.newStoryAd.shots.length} 镜`)
-          : '待生成';
-        frameState.classList.toggle('ready', gate.previewReady);
       } else {
         const refCount = luxuryAdReferenceAssets().filter(x => x.url || x.previewUrl).length;
         frameState.textContent = refCount ? `已上传 ${refCount} 张` : '可选上传';
@@ -10794,29 +10303,25 @@
       const old = btn?.innerHTML;
       if (btn) { btn.disabled = true; btn.innerHTML = 'AI 写作中…'; }
       try {
-        if (isNewStoryAdModule()) {
-          applyNewStoryAdAssistResult(await newStoryAdAssist('write', topic));
-        } else {
-          const r = await api('/api/dh/scripts/write', {
-            method: 'POST',
-            body: {
-              topic,
-              duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
-              style: state.luxuryAd.adType || 'auto',
-              tone: '',
-              mode: 'luxury_ad',
-            },
-          });
-          if (!r.success) throw new Error(r.error || 'AI 写作失败');
-          const nextText = (r.text || '').trim();
-          if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
-          state.luxuryAd.content = nextText;
-          const input = $('#dhLuxAdText');
-          if (input) input.value = state.luxuryAd.content;
-          renderLuxuryAdStoryboard();
-          setLuxuryProgress('content');
-          updateLuxuryAdStepLocks();
-        }
+        const r = await api('/api/dh/scripts/write', {
+          method: 'POST',
+          body: {
+            topic,
+            duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
+            style: state.luxuryAd.adType || 'auto',
+            tone: '',
+            mode: 'luxury_ad',
+          },
+        });
+        if (!r.success) throw new Error(r.error || 'AI 写作失败');
+        const nextText = (r.text || '').trim();
+        if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
+        state.luxuryAd.content = nextText;
+        const input = $('#dhLuxAdText');
+        if (input) input.value = state.luxuryAd.content;
+        renderLuxuryAdStoryboard();
+        setLuxuryProgress('content');
+        updateLuxuryAdStepLocks();
         toast('AI 已写好广告词/需求，可继续生成场景配置', 'success');
         close();
       } catch (err) {
@@ -10837,29 +10342,25 @@
     const old = btn?.innerHTML;
     if (btn) { btn.disabled = true; btn.innerHTML = 'AI 整理中…'; }
     try {
-      if (isNewStoryAdModule()) {
-        applyNewStoryAdAssistResult(await newStoryAdAssist('clean', text));
-      } else {
-        const r = await api('/api/dh/scripts/write', {
-          method: 'POST',
-          body: {
-            topic: text,
-            duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
-            style: state.luxuryAd.adType || 'auto',
-            tone: '',
-            mode: 'luxury_ad',
-          },
-        });
-        if (!r.success) throw new Error(r.error || 'AI 整理失败');
-        const nextText = (r.text || '').trim();
-        if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
-        state.luxuryAd.content = nextText;
-        const input = $('#dhLuxAdText');
-        if (input) input.value = state.luxuryAd.content;
-        renderLuxuryAdStoryboard();
-        setLuxuryProgress('content');
-        updateLuxuryAdStepLocks();
-      }
+      const r = await api('/api/dh/scripts/write', {
+        method: 'POST',
+        body: {
+          topic: text,
+          duration_sec: state.luxuryAd.durationSec || Number($('#dhLuxAdDuration')?.value || 30),
+          style: state.luxuryAd.adType || 'auto',
+          tone: '',
+          mode: 'luxury_ad',
+        },
+      });
+      if (!r.success) throw new Error(r.error || 'AI 整理失败');
+      const nextText = (r.text || '').trim();
+      if (nextText !== (state.luxuryAd.content || '')) resetLuxuryAdProjectIdentityForNewBrief();
+      state.luxuryAd.content = nextText;
+      const input = $('#dhLuxAdText');
+      if (input) input.value = state.luxuryAd.content;
+      renderLuxuryAdStoryboard();
+      setLuxuryProgress('content');
+      updateLuxuryAdStepLocks();
       toast('AI 已整理成广告片需求，可继续生成详细分镜', 'success');
     } catch (err) {
       toast('AI 整理内容失败：' + err.message, 'error');
@@ -11126,10 +10627,8 @@
         request_key: requestKey,
         request_async: true,
       };
-      const usingNewStoryPersonSheet = isNewStoryAdModule();
-      const personSheetEndpoint = usingNewStoryPersonSheet
-        ? '/api/new-story-ad/person-sheet'
-        : '/api/dh/luxury-ad/person-sheet';
+      const usingNewStoryPersonSheet = false;
+      const personSheetEndpoint = '/api/dh/luxury-ad/person-sheet';
       let r;
       try {
         r = await api(personSheetEndpoint, {
@@ -11227,7 +10726,7 @@
       toast('拟真一致性演员已生成并写入角色素材库，用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.luxuryAd.personGenerationError = {
-        endpoint: isNewStoryAdModule() ? '/api/new-story-ad/person-sheet' : '/api/dh/luxury-ad/person-sheet',
+        endpoint: '/api/dh/luxury-ad/person-sheet',
         status: err?.status || err?.data?.status || 0,
         code: err?.data?.code || err?.code || 'PERSON_ACTOR_PACKAGE_FAILED',
         message: err?.data?.message || err?.data?.error || err.message || '人物演员包生成失败',
@@ -12019,12 +11518,6 @@
 
   function luxuryAdStepIsLocked(step) {
     const n = Number(step);
-    if (isNewStoryAdModule()) {
-      if (n === 1) return !!(state.newStoryAd.sceneConfig || state.newStoryAd.blueprint || state.newStoryAd.shots?.length);
-      if (n === 2) return !!(state.newStoryAd.blueprint || state.newStoryAd.shots?.length);
-      if (n === 3) return !!state.newStoryAd.shots?.length;
-      return false;
-    }
     if (n === 1) return Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length > 0;
     if (n === 2) return !!state.luxuryAd.storyboardDetailed || luxuryAdHasFrameProgress();
     if (n === 3) return luxuryAdHasFrameProgress();
@@ -14345,10 +13838,6 @@
     renderLuxuryCommercialGuard();
     if (luxuryAdIsMaterialMode()) {
       renderMaterialFilmStoryboard(sceneHost, scriptHost, frameHost);
-      return;
-    }
-    if (isNewStoryAdModule()) {
-      renderNewStoryAdStoryboard(sceneHost, scriptHost, frameHost);
       return;
     }
     if (state.luxuryAd.sceneGenerating) {
@@ -18462,7 +17951,7 @@
     const navItem = closest('.dh-nav-item');
     if (navItem?.dataset.tab) {
       if (SPACE_WORKFLOW_TABS.has(navItem.dataset.tab)) startNewSpaceGuideSession(navItem.dataset.tab);
-      if (navItem.dataset.tab === 'luxury-ad' || navItem.dataset.tab === 'material-film' || navItem.dataset.tab === 'new-story-ad') {
+      if (navItem.dataset.tab === 'luxury-ad' || navItem.dataset.tab === 'material-film') {
         startNewLuxuryAdSession(navItem.dataset.tab);
       }
       if (navItem.dataset.tab === 'step2') state.avatarPickReturn = '';
@@ -18772,8 +18261,7 @@
       const old = btn?.innerHTML;
       try {
         if (btn) { btn.disabled = true; btn.innerHTML = '保存中…'; }
-        if (isNewStoryAdModule()) newStoryAdSaveProgress({ final: false });
-        else await saveLuxuryAdDraft({ silent: false });
+        await saveLuxuryAdDraft({ silent: false });
       } catch (err) {
         toast('保存制作进度失败：' + err.message, 'error');
       } finally {
@@ -18783,22 +18271,16 @@
     }
     const luxDetectStyleBtn = closest('#dhLuxAdDetectStyle');
     if (luxDetectStyleBtn) {
-      if (isNewStoryAdModule()) await newStoryAdGenerateSceneConfig(luxDetectStyleBtn);
-      else await buildLuxuryAdStoryboard({ autoNext: false, detail: false, triggerButton: luxDetectStyleBtn });
+      await buildLuxuryAdStoryboard({ autoNext: false, detail: false, triggerButton: luxDetectStyleBtn });
       return;
     }
     if (closest('#dhLuxAdAutoVisuals')) {
-      if (isNewStoryAdModule()) {
-        const sceneOk = state.newStoryAd.sceneConfig || await newStoryAdGenerateSceneConfig($('#dhLuxAdGenerate'));
-        const scriptOk = sceneOk && (state.newStoryAd.blueprint || await newStoryAdGenerateBlueprint($('#dhLuxAdStoryboard')));
-        if (scriptOk) await newStoryAdGenerateStoryboard($('#dhLuxAdPreviewFrames'));
-      } else autoGenerateLuxuryAdAiVisuals();
+      autoGenerateLuxuryAdAiVisuals();
       return;
     }
     const luxStoryboardBtn = closest('#dhLuxAdStoryboard');
     if (luxStoryboardBtn) {
-      if (isNewStoryAdModule()) await newStoryAdGenerateBlueprint(luxStoryboardBtn);
-      else if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
       else if (!Array.isArray(state.luxuryAd.segments) || !state.luxuryAd.segments.length) await buildLuxuryAdStoryboard({ autoNext: false, detail: false, triggerButton: luxStoryboardBtn });
       else if (state.luxuryAd.storyboardDetailed && Array.isArray(state.luxuryAd.segments) && state.luxuryAd.segments.length) showLuxuryAdStep(3);
       else await buildLuxuryAdStoryboard({ autoNext: false, detail: true, triggerButton: luxStoryboardBtn });
@@ -18806,8 +18288,7 @@
     }
     const luxScriptRegenerateBtn = closest('#dhLuxAdScriptRegenerateTop') || closest('#dhLuxAdRegenerateScriptFromStep4');
     if (luxScriptRegenerateBtn) {
-      if (isNewStoryAdModule()) await newStoryAdGenerateBlueprint(luxScriptRegenerateBtn, { rewrite: true });
-      else if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
       else {
         resetLuxuryAdFrameGenerationState();
         renderLuxuryAdStoryboard();
@@ -18823,44 +18304,36 @@
     }
     const luxGenerateBtn = closest('#dhLuxAdGenerate');
     if (luxGenerateBtn) {
-      if (isNewStoryAdModule()) await newStoryAdGenerateSceneConfig(luxGenerateBtn);
-      else if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
+      if (luxuryAdIsMaterialMode()) buildMaterialFilmCopyPlan();
       else await buildLuxuryAdStoryboard({ autoNext: true, detail: false, triggerButton: luxGenerateBtn });
       return;
     }
     if (closest('#dhLuxAdFillMissingFrames') || closest('#dhLuxAdFillMissingFramesTop')) {
-      if (isNewStoryAdModule()) newStoryAdGenerateStoryboard(closest('#dhLuxAdFillMissingFrames') || closest('#dhLuxAdFillMissingFramesTop'));
-      else fillMissingLuxuryAdKeyframes();
+      fillMissingLuxuryAdKeyframes();
       return;
     }
     if (closest('#dhLuxAdRegenerateFrames') || closest('#dhLuxAdGenerateFinalFrames')) {
-      if (isNewStoryAdModule()) newStoryAdGenerateStoryboard(closest('#dhLuxAdRegenerateFrames') || closest('#dhLuxAdGenerateFinalFrames'));
-      else generateLuxuryAdKeyframes({ autoSubmit: false, force: true });
+      generateLuxuryAdKeyframes({ autoSubmit: false, force: true });
       return;
     }
     const luxuryShotRegenerate = closest('[data-lux-shot-regenerate]');
     if (luxuryShotRegenerate) {
       const idx = Number(luxuryShotRegenerate.dataset.luxShotRegenerate);
-      if (isNewStoryAdModule()) newStoryAdGenerateStoryboard(luxuryShotRegenerate);
-      else generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
+      generateLuxuryAdKeyframes({ autoSubmit: false, onlyIndex: idx });
       return;
     }
     if (closest('#dhLuxAdPreviewFrames')) {
-      if (isNewStoryAdModule()) newStoryAdGenerateStoryboard(closest('#dhLuxAdPreviewFrames'));
-      else if (luxuryAdIsMaterialMode()) showLuxuryAdStep(5);
+      if (luxuryAdIsMaterialMode()) showLuxuryAdStep(5);
       else generateLuxuryAdKeyframes({ autoSubmit: false, force: state.luxuryAd.keyframePlanningOnly === true });
       return;
     }
     if (closest('#dhLuxAdGoCompose')) {
-      if (isNewStoryAdModule()) {
-        if (ensureLuxuryAdFrameReadyForCompose()) showLuxuryAdStep(5);
-      } else if (ensureLuxuryAdFrameReadyForCompose()) showLuxuryAdStep(5);
+      if (ensureLuxuryAdFrameReadyForCompose()) showLuxuryAdStep(5);
       return;
     }
     if (closest('[data-lux-material-compose]')) { showLuxuryAdStep(5); return; }
     if (closest('#dhLuxAdConfirmGenerate')) {
-      if (isNewStoryAdModule()) newStoryAdSaveProgress({ final: true });
-      else if (luxuryAdIsMaterialMode()) submitMaterialFilmAd();
+      if (luxuryAdIsMaterialMode()) submitMaterialFilmAd();
       else submitLuxuryAd();
       return;
     }
@@ -18931,6 +18404,7 @@
       const id = taskPreview.dataset.taskPreview;
       const meta = state.s3.runningTasks.get(id)
         || (state.serverVideoTasks || []).find(x => String(x.taskId) === String(id))
+        || (state.newStoryAdTasks || []).find(x => String(x.taskId) === String(id))
         || readVideoTasks().find(x => String(x.taskId) === String(id));
       const url = meta?.videoUrl || meta?.video_url || '';
       if (url) openVideoPreviewModal(url, meta.avatarName || '数字人作品');
@@ -18979,8 +18453,10 @@
       const meta = state.s3.runningTasks.get(id);
       if (meta?.pollTimer) clearInterval(meta.pollTimer);
       state.s3.runningTasks.delete(id);
+      state.newStoryAdTasks = (state.newStoryAdTasks || []).filter(x => String(x.taskId) !== String(id));
       removeStoredVideoTask(id);
       toast('任务已移除', 'success');
+      renderTaskCenter();
       return;
     }
 

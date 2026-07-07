@@ -1045,6 +1045,556 @@
         "priority": 1,
         "enabled": true
       }
+    ],
+    "new_story_ad.scene_config": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.blueprint": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.storyboard_table": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.storyboard_rewrite": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.qa": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.json_repair": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.assist": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-5.5",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-pro",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "apismile",
+        "model_id": "gemini-2.5-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-flash",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gemini-2.5-pro",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "deepseek",
+        "model_id": "deepseek-chat",
+        "priority": 6,
+        "enabled": true
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-pro",
+        "priority": 7,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "claude-sonnet-4-6",
+        "priority": 8,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gpt-4o",
+        "priority": 9,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "gemini-2.5-flash",
+        "priority": 10,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.person_sheet": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
+        "priority": 2,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
+        "priority": 3,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-gpt-image-2",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "jimeng",
+        "model_id": "jimeng_t2i_v30",
+        "priority": 6,
+        "enabled": true
+      }
+    ],
+    "new_story_ad.keyframe": [
+      {
+        "provider_id": "apismile",
+        "model_id": "gpt-image-2",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-maas",
+        "model_id": "gpt-image-2",
+        "priority": 2,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana-pro",
+        "priority": 3,
+        "enabled": false
+      },
+      {
+        "provider_id": "deyunai",
+        "model_id": "nano-banana",
+        "priority": 4,
+        "enabled": false
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-gpt-image-2",
+        "priority": 5,
+        "enabled": false
+      },
+      {
+        "provider_id": "jimeng",
+        "model_id": "jimeng_t2i_v30",
+        "priority": 6,
+        "enabled": true
+      }
+    ],
+    "new_story_ad.video": [
+      {
+        "provider_id": "webang-seedance",
+        "model_id": "doubao-seedance-2-0-260128",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "webang-seedance",
+        "model_id": "doubao-seedance-2-0-fast-260128",
+        "priority": 2,
+        "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-pro",
+        "priority": 3,
+        "enabled": false
+      },
+      {
+        "provider_id": "volcengine",
+        "model_id": "doubao-seedance-2-0-260128",
+        "priority": 4,
+        "enabled": false
+      }
+    ],
+    "new_story_ad.tts": [
+      {
+        "provider_id": "aliyun-tts",
+        "model_id": "cosyvoice-v3.5-plus",
+        "priority": 1,
+        "enabled": true
+      },
+      {
+        "provider_id": "aliyun-tts",
+        "model_id": "cosyvoice-v3-flash",
+        "priority": 2,
+        "enabled": true
+      }
     ]
   }
 }

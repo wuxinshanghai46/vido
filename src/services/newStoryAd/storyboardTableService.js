@@ -171,6 +171,9 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
       'voiceover must be a natural short line that can be heard in the final video.',
+      'If Advanced production controls are enabled, obey them shot by shot: scene direction constrains location, product presentation controls product visibility and method, style direction controls visual tone, and negative requirements are forbidden.',
+      'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
+      'Do not output shots that violate negative requirements.',
     ].join('\n');
 
     const userPrompt = `${contextPrompt(ctx)}
@@ -242,6 +245,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } 
     'Do not add new story events that the user did not provide.',
     'Fix thin shots by strengthening the visual layers required by the user brief.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
+    'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}

@@ -66,6 +66,9 @@ app.use((req, res, next) => {
 // 屏蔽未登录直接访问 .html 文件（防绕过路由层直接取源码）
 const _PUBLIC_HTML = new Set(['/home.html', '/login.html', '/ai-novel.html']);
 app.use((req, res, next) => {
+  if (req.path === '/new-story-ad.html') {
+    return requirePageAuth(req, res, () => res.redirect('/digital-human?tab=new-story-ad'));
+  }
   if (req.path.endsWith('.html') && !_PUBLIC_HTML.has(req.path)) {
     return requirePageAuth(req, res, next);
   }
@@ -699,6 +702,8 @@ function sendNoStoreHtml(res, filePath) {
 }
 app.get('/digital-human', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
 app.get('/digital-human.html', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+app.get('/new-story-ad', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
+app.get('/new-story-ad.html', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
 function sendNoStorePage(res, filePath) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');

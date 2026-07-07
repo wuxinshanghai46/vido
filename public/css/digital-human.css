@@ -37,7 +37,7 @@ html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light;
 /* ═══════════════════════════════════════════════ Layout ═══ */
 .dh-app { display: flex; height: 100vh; overflow: hidden; }
 .dh-sidebar { width: 220px; background: var(--dh-bg); border-right: 1px solid var(--dh-border); padding: 20px 12px; display: flex; flex-direction: column; flex-shrink: 0; }
-.dh-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.dh-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ═══════════════════════════════════════════════ Sidebar ═══ */
 .dh-logo { display: flex; align-items: baseline; gap: 6px; padding: 0 8px 24px; }
@@ -73,7 +73,7 @@ html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light;
 .dh-back-vido:hover { background: var(--dh-bg-gray); border-color: var(--dh-primary-light); }
 
 /* ═══════════════════════════════════════════════ View / Home ═══ */
-.dh-view { flex: 1; overflow-y: auto; padding: 28px 36px; }
+.dh-view { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 36px; }
 .dh-home { width: 100%; max-width: none; margin: 0; }
 
 .dh-hero { text-align: center; padding: 40px 20px; background: var(--dh-bg-soft); border: 1px solid var(--dh-border); border-radius: var(--dh-radius-lg); margin-bottom: 32px; position: relative; overflow: hidden; }
@@ -237,6 +237,11 @@ html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light;
 /* ═══ Tab panes ═══ */
 .dh-tab-pane { display: none; }
 .dh-tab-pane.active { display: block; }
+.dh-new-story-ad-pane.active {
+  display: block;
+  min-height: 0;
+}
+#dhNewStoryAdLegacyMount { min-height: 100%; }
 
 /* ═══ Studio (full creation) ═══ */
 .dh-studio { max-width: 1400px; margin: 0 auto; }

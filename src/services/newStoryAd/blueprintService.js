@@ -62,6 +62,9 @@ async function generateBlueprint(ctx, { taskId = '' } = {}) {
     'Each beat should include only the visual layers that are actually needed for that beat. Some beats may be pure product proof, some may be pure story reaction, some may combine several layers.',
     'The important rule is completeness relative to the user request, not a fixed set of columns.',
     'characters.name must be a stable short name. Never use descriptions such as "elegant woman", "customer", "presenter" as name; those belong in role or description.',
+    'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
+    'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
+    'Never put explicitly forbidden people, objects, carrier forms, styles or wrong products into beats.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}

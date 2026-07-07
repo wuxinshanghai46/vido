@@ -8,7 +8,10 @@ const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTabl
 const { reviewStoryboard } = require('./qualityReviewService');
 const { buildKeyframeContracts } = require('./keyframeContractService');
 const diagnostics = require('./diagnosticsService');
-const imageService = require('../imageService');
+const mediaAdapter = require('./mediaAdapter');
+const ttsAdapter = require('./ttsAdapter');
+const videoAdapter = require('./videoAdapter');
+const composeService = require('./composeService');
 
 function taskTitle(ctx) {
   return cleanText(ctx.product_subject || ctx.brief || '新剧情广告任务', 60);
@@ -177,7 +180,16 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
     visualContract.evidence ? `Commercial evidence: ${cleanText(visualContract.evidence, 300)}` : '',
     visualContract.style ? `Style: ${cleanText(visualContract.style, 260)}` : '',
+    visualContract.scene_direction && visualContract.scene_direction !== 'auto' ? `Scene direction: ${cleanText(visualContract.scene_direction, 80)}` : '',
+    visualContract.custom_scene_requirement ? `Custom scene requirement: ${cleanText(visualContract.custom_scene_requirement, 240)}` : '',
+    visualContract.product_required ? `Product visibility: required, presence ${cleanText(visualContract.product_presence || 'medium', 40)}, lock ${cleanText(visualContract.product_lock_strength || 'standard', 40)}.` : '',
+    Array.isArray(visualContract.product_methods) && visualContract.product_methods.length ? `Product presentation methods: ${cleanText(visualContract.product_methods.join(', '), 240)}` : '',
+    visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
+    visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
+    ctx.person_asset ? `Locked real actor/person asset: ${cleanText(JSON.stringify(ctx.person_asset), 1200)}` : '',
+    Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
+    ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
@@ -185,8 +197,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
 }
 
 function keyframeUrlFromResult(result = {}) {
+  if (result.image_url || result.imageUrl || result.url) return result.image_url || result.imageUrl || result.url;
   const filename = result.filename || (result.filePath ? require('path').basename(result.filePath) : '');
-  return filename ? `/api/story/character-image/${filename}` : '';
+  return filename ? mediaAdapter.publicAssetUrl(filename) : '';
 }
 
 async function generateKeyframesStage(taskId, options = {}) {
@@ -220,13 +233,13 @@ async function generateKeyframesStage(taskId, options = {}) {
     const prompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i);
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
     try {
-      const result = await imageService.generateDramaImage({
+      const result = await mediaAdapter.generateImage({
         prompt,
         filename,
+        stage: 'new_story_ad.keyframe',
         aspectRatio: ctx.output_ratio || '9:16',
         resolution: options.resolution || '2K',
-        referenceImages: Array.isArray(ctx.assets) ? ctx.assets.map(a => a.url).filter(Boolean).slice(0, 4) : [],
-        image_model: options.image_model || options.imageModel || 'auto',
+        imageModel: options.image_model || options.imageModel || 'auto',
       });
       const imageUrl = keyframeUrlFromResult(result);
       if (!imageUrl) throw new Error('Image provider returned no image url');
@@ -273,6 +286,118 @@ async function generateKeyframesStage(taskId, options = {}) {
   return { keyframes, keyframe_contracts: contracts, attempts };
 }
 
+async function ensureStoryboardForMedia(taskId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  let shots = storage.getOutput(taskId, 'storyboard_table');
+  if (!Array.isArray(shots) || !shots.length) {
+    const generated = await generateStoryboardStage(taskId);
+    shots = generated.shots || [];
+  }
+  if (!Array.isArray(shots) || !shots.length) throw new Error('Storyboard table is empty');
+  return shots;
+}
+
+async function ensureContractsForMedia(taskId, ctx, shots) {
+  let contracts = storage.getOutput(taskId, 'keyframe_contracts');
+  if (!Array.isArray(contracts) || contracts.length !== shots.length) {
+    contracts = buildKeyframeContracts(ctx, shots);
+    storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  }
+  return contracts;
+}
+
+async function generateTtsStage(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const shots = await ensureStoryboardForMedia(taskId);
+  const voiceId = cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120);
+  storage.updateTask(taskId, { status: 'running', stage: 'tts' });
+  storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
+  const tts_audio = await ttsAdapter.generateVoiceover({
+    taskId,
+    shots,
+    voiceId,
+    speed: options.speed || ctx.tts_speed || 1,
+    allowSilentFallback: options.allow_silent_fallback !== false && options.allowSilentFallback !== false,
+  });
+  storage.saveOutput(taskId, 'tts_audio', tts_audio);
+  storage.saveStage(taskId, 'tts', {
+    status: 'done',
+    output_summary: `${tts_audio.tracks.length} audio tracks`,
+    diagnostics: {
+      provider_used: tts_audio.provider_used || '',
+      warnings: tts_audio.warnings || [],
+    },
+  });
+  storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
+  return { tts_audio };
+}
+
+async function generateVideoStage(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const shots = await ensureStoryboardForMedia(taskId);
+  const contracts = await ensureContractsForMedia(taskId, ctx, shots);
+  let keyframes = storage.getOutput(taskId, 'keyframes');
+  if (!Array.isArray(keyframes) || keyframes.filter(k => k?.image_url || k?.imageUrl).length < shots.length) {
+    try {
+      const generated = await generateKeyframesStage(taskId, options);
+      keyframes = generated.keyframes || [];
+    } catch (err) {
+      if (options.require_keyframes === true || options.requireKeyframes === true) throw err;
+      keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+    }
+  }
+  let ttsAudio = storage.getOutput(taskId, 'tts_audio');
+  if (!ttsAudio && options.auto_tts !== false && options.autoTts !== false) {
+    const generatedTts = await generateTtsStage(taskId, options);
+    ttsAudio = generatedTts.tts_audio;
+  }
+  storage.updateTask(taskId, { status: 'running', stage: 'video' });
+  storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
+  const generated = await videoAdapter.generateShotVideos({
+    taskId,
+    shots,
+    keyframes: Array.isArray(keyframes) ? keyframes : [],
+    ttsAudio,
+    contracts,
+    ctx,
+    options,
+  });
+  storage.saveOutput(taskId, 'video_clips', generated.clips);
+  storage.saveStage(taskId, 'video', {
+    status: 'done',
+    output_summary: `${generated.clips.length} video clips`,
+    diagnostics: { provider_used: generated.provider_used || '' },
+  });
+  storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
+  return { video_clips: generated.clips };
+}
+
+async function composeStage(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  let clips = storage.getOutput(taskId, 'video_clips');
+  if (!Array.isArray(clips) || !clips.length) {
+    const generated = await generateVideoStage(taskId, options);
+    clips = generated.video_clips || [];
+  }
+  storage.updateTask(taskId, { status: 'running', stage: 'compose' });
+  storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
+  const final_video = await composeService.concatVideos({ taskId, clips });
+  storage.saveOutput(taskId, 'final_video', final_video);
+  storage.saveStage(taskId, 'compose', {
+    status: 'done',
+    output_summary: `final video from ${final_video.clip_count || clips.length} clips`,
+    diagnostics: { provider_used: final_video.provider_used || '' },
+  });
+  storage.updateTask(taskId, { status: 'done', stage: 'final_video_ready' });
+  return { final_video, video_clips: clips };
+}
+
 async function runFull(body = {}, user = {}) {
   const { task, context } = createTask(body, user);
   try {
@@ -310,18 +435,42 @@ function modelHealth() {
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
+  const isStyleControl = mode === 'style_control' || mode === 'style';
+  const isNegativeControl = mode === 'negative_control' || mode === 'negative';
+  const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const systemPrompt = [
     '你是新剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
+    '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
+    '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
+    '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
   ].join('\n');
-  const userPrompt = `${contextPrompt(ctx)}
-
-模式：${mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
-
-输出 JSON：
-{
+  const outputSchema = isStyleControl
+    ? `{
+  "text": "只包含画面风格、光线、真实程度、镜头情绪和不能偏离的质感方向，80-180 字"
+}`
+    : isNegativeControl
+      ? `{
+  "text": "用分号分隔的禁止项，例如：不要出现无关人物；避免卡通质感；禁止商品变形"
+}`
+      : isPersonSpec
+        ? `{
+  "person_spec": {
+    "castMode": "auto/single/dual/group",
+    "gender": "auto/male/female/mixed/all_male/all_female",
+    "age": "match_brief/young_adult/adult_30_40/middle_40_55/senior_55_plus",
+    "origin": "east_asian_cn/match_brief/mixed_global",
+    "roleName": "人物身份或职业",
+    "displayName": "正式人物姓名，可留空",
+    "appearanceText": "脸型、体型、年龄感、商业真实感、气质、表情可信度，80-160 字",
+    "wardrobeText": "上衣、下装、鞋、配饰、颜色、材质、与产品/场景的关系，80-160 字",
+    "hairMakeupText": "发型、妆容、眼镜、胡须或其它妆造细节，50-120 字",
+    "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔"
+  }
+}`
+      : `{
   "brief": "可直接放入广告需求文本框的完整需求",
   "product_subject": "广告主体",
   "cast_mode": "auto/single/dual/multi/no_human",
@@ -329,6 +478,12 @@ async function assistBrief(body = {}, user = {}) {
   "forbidden": ["禁止项"],
   "characters": [{"name":"角色名","role":"剧情职责","description":"简短说明"}]
 }`;
+  const userPrompt = `${contextPrompt(ctx)}
+
+模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+
+输出 JSON：
+${outputSchema}`;
   const result = await modelGateway.generateText({
     taskId: cleanText(body.task_id || body.taskId || '', 80),
     stage: 'new_story_ad.assist',
@@ -343,6 +498,43 @@ async function assistBrief(body = {}, user = {}) {
     taskId: cleanText(body.task_id || body.taskId || '', 80),
     stage: 'new_story_ad.json_repair',
   });
+  if (isStyleControl || isNegativeControl) {
+    const text = cleanText(parsed.text || parsed.brief || parsed.content || '', 800);
+    return {
+      brief: text,
+      text,
+      mode,
+      model_meta: {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models,
+      },
+    };
+  }
+  if (isPersonSpec) {
+    const raw = parsed.person_spec || parsed.personSpec || parsed;
+    const spec = raw && typeof raw === 'object' ? raw : {};
+    return {
+      person_spec: {
+        castMode: cleanText(spec.castMode || spec.cast_mode || 'auto', 40),
+        gender: cleanText(spec.gender || 'auto', 40),
+        age: cleanText(spec.age || 'match_brief', 40),
+        origin: cleanText(spec.origin || 'east_asian_cn', 60),
+        roleName: cleanText(spec.roleName || spec.role_name || '', 100),
+        displayName: cleanText(spec.displayName || spec.display_name || '', 60),
+        appearanceText: cleanText(spec.appearanceText || spec.appearance || spec.description || '', 360),
+        wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
+        hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),
+        negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
+      },
+      mode,
+      model_meta: {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models,
+      },
+    };
+  }
   return {
     brief: cleanText(parsed.brief || parsed.content || ctx.brief, 3000),
     product_subject: cleanText(parsed.product_subject || parsed.productSubject || ctx.product_subject, 200),
@@ -365,6 +557,9 @@ module.exports = {
   generateStoryboardStage,
   buildKeyframeContractStage,
   generateKeyframesStage,
+  generateTtsStage,
+  generateVideoStage,
+  composeStage,
   runFull,
   publicTaskBundle,
   modelHealth,

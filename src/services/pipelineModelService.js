@@ -66,6 +66,19 @@ const PIPELINE_SCHEMA = {
     { id: 'luxury_ad.tts',          name: '5 广告合成 / 配音 TTS',   type: 'tts',   desc: '剧情广告旁白、口播或字幕配音' },
     { id: 'luxury_ad.post',         name: '5 广告合成 / 字幕后期',   type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
   ],
+  '新剧情广告': [
+    { id: 'new_story_ad.scene_config', name: '1 场景配置', type: 'story', desc: '把任务需求整理成独立上下文、主体、人物、素材和禁止项，不继承旧任务' },
+    { id: 'new_story_ad.blueprint', name: '2 剧情蓝图', type: 'story', desc: '生成角色、剧情 beat、可见证据和商业叙事结构' },
+    { id: 'new_story_ad.storyboard_table', name: '3 分镜表', type: 'story', desc: '把剧情蓝图拆成逐镜可执行分镜表，包含画面、动作、对白、旁白和时长' },
+    { id: 'new_story_ad.storyboard_rewrite', name: '3.1 分镜表重写', type: 'story', desc: '根据商用 QA 的可改写问题重写分镜表，不改变任务边界' },
+    { id: 'new_story_ad.qa', name: '3.2 商用 QA', type: 'story', desc: '检查剧情边界、角色一致性、镜头可拍性和广告主体可见证据' },
+    { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
+    { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
+    { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
+    { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
+    { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
+    { id: 'new_story_ad.tts', name: '5 配音 TTS', type: 'tts', desc: '后续按分镜表生成旁白、对白或字幕配音' },
+  ],
   '网剧': [
     { id: 'drama.script',          name: '剧本 / 分镜生成',          type: 'story', desc: '编剧 LLM，输出剧本+分镜 JSON' },
     { id: 'drama.character_image', name: '角色形象图',               type: 'image', desc: '为每个角色生成统一形象图' },
@@ -91,6 +104,27 @@ const PIPELINE_SCHEMA = {
 
 // 代码 fallback 默认链路（当用户没在 admin 里手动配置时，作为预填展示）
 //   注意：这只是"建议默认值"，实际业务还是按各 service 内部的 fallback 逻辑跑
+const NEW_STORY_AD_TEXT_DEFAULTS = [
+  { provider_id: 'apismile', model_id: 'gpt-5.5', priority: 1, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-pro', priority: 2, enabled: true },
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 4, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gemini-2.5-pro', priority: 5, enabled: false },
+  { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 6, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', priority: 7, enabled: false },
+  { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 8, enabled: false },
+  { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
+];
+const NEW_STORY_AD_IMAGE_DEFAULTS = [
+  { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
+  { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 2, enabled: false },
+  { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: false },
+  { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: false },
+  { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 5, enabled: false },
+  { provider_id: 'jimeng', model_id: 'jimeng_t2i_v30', priority: 6, enabled: true },
+];
+
 const STAGE_DEFAULTS = {
   // 数字人
   'avatar.describe':     [{ provider_id: 'deyunai', model_id: 'gpt-4o-mini', priority: 1, enabled: false }],
@@ -311,6 +345,26 @@ const STAGE_DEFAULTS = {
   ],
   'luxury_ad.post': [
     { provider_id: 'local', model_id: 'ffmpeg-effects', priority: 1, enabled: true },
+  ],
+  // 新剧情广告
+  'new_story_ad.scene_config': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.blueprint': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.storyboard_table': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.storyboard_rewrite': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.qa': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.json_repair': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.assist': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.video': [
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
+    { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 3, enabled: false },
+    { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 4, enabled: false },
+  ],
+  'new_story_ad.tts': [
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3.5-plus', priority: 1, enabled: true },
+    { provider_id: 'aliyun-tts', model_id: 'cosyvoice-v3-flash', priority: 2, enabled: true },
   ],
   // 网剧
   'drama.script':        [{ provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 1, enabled: true }],

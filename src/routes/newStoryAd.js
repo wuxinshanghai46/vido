@@ -2,12 +2,16 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
 const router = express.Router();
 const service = require('../services/newStoryAd');
 const storage = require('../services/newStoryAd/storageService');
 const modelGateway = require('../services/newStoryAd/modelGateway');
+const mediaAdapter = require('../services/newStoryAd/mediaAdapter');
+const ttsAdapter = require('../services/newStoryAd/ttsAdapter');
+const videoAdapter = require('../services/newStoryAd/videoAdapter');
+const composeService = require('../services/newStoryAd/composeService');
 const db = require('../models/database');
-const imageService = require('../services/imageService');
 
 function userFromReq(req) {
   return req.user || req.auth || {};
@@ -31,6 +35,38 @@ function asyncRoute(fn) {
 }
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
+      cb(null, mediaAdapter.ASSET_DIR);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      const role = String(req.body?.role || 'asset').replace(/[^a-z0-9_-]/ig, '_').slice(0, 32) || 'asset';
+      cb(null, `${role}_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const name = file.originalname || '';
+    const ok = file.mimetype?.startsWith('image/')
+      || file.mimetype?.startsWith('audio/')
+      || /\.(png|jpe?g|webp|bmp|gif|mp3|wav|m4a|aac|ogg|flac)$/i.test(name);
+    cb(null, ok);
+  },
+});
+
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ success: false, error: '文件超过 50MB，请压缩后再上传' });
+    }
+    return res.status(400).json({ success: false, error: err.message || '文件上传失败' });
+  });
+}
 
 function normalizeLocalPublicUrl(url = '') {
   const raw = String(url || '').trim();
@@ -308,6 +344,20 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
   ].filter(Boolean).join('\n');
 }
 
+function buildActorViewPrompt(basePrompt = '', view = 'front') {
+  const viewPrompts = {
+    front: 'View requirement: FRONT full-body casting reference, standing naturally, face clearly visible, both feet visible, clean neutral background.',
+    side: 'View requirement: SIDE or three-quarter profile full-body casting reference of the same actor, same face identity, same age impression, same body proportions and wardrobe family, both feet visible.',
+    back: 'View requirement: BACK full-body casting reference of the same actor, same hairstyle, same body proportions and same wardrobe family, both feet visible.',
+    action: 'View requirement: NATURAL COMMERCIAL ACTION POSE full-body reference of the same actor, subtle presenting gesture, same identity, same outfit family, realistic human hands and feet.',
+  };
+  return [
+    basePrompt,
+    viewPrompts[view] || viewPrompts.front,
+    'Consistency rule: this image is one view of a four-view actor package. Keep the actor identity, age, body type, hairstyle, outfit color/material family and realism consistent across all views.',
+  ].filter(Boolean).join('\n\n');
+}
+
 router.get('/health', (req, res) => {
   const stages = [
     'new_story_ad.scene_config',
@@ -317,6 +367,10 @@ router.get('/health', (req, res) => {
     'new_story_ad.qa',
     'new_story_ad.json_repair',
     'new_story_ad.assist',
+    'new_story_ad.person_sheet',
+    'new_story_ad.keyframe',
+    'new_story_ad.video',
+    'new_story_ad.tts',
   ];
   res.json({
     success: true,
@@ -336,6 +390,56 @@ router.get('/model-health', (req, res) => {
     module: 'new_story_ad',
     model_health: service.modelHealth(),
   });
+});
+
+router.post('/upload', uploadSingle, (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, error: '请选择文件' });
+  const filename = path.basename(req.file.filename);
+  const url = mediaAdapter.publicAssetUrl(filename);
+  const isAudio = req.file.mimetype?.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(req.file.originalname || '');
+  const asset = {
+    id: `new_story_asset_${uuidv4()}`,
+    module: 'new_story_ad',
+    role: String(req.body?.role || 'asset').trim() || 'asset',
+    name: req.file.originalname || filename,
+    original_name: req.file.originalname || filename,
+    filename,
+    file_url: url,
+    url,
+    image_url: isAudio ? '' : url,
+    mimetype: req.file.mimetype || '',
+    size: req.file.size || 0,
+    created_at: new Date().toISOString(),
+  };
+  res.json({ success: true, data: asset, asset, url, file_url: url, image_url: asset.image_url });
+});
+
+router.get('/assets/:filename', (req, res) => {
+  const filePath = mediaAdapter.assetPathFromName(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '资产不存在' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
+});
+
+router.get('/audio/:filename', (req, res) => {
+  const filePath = ttsAdapter.audioPathFromName(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Audio asset not found' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
+});
+
+router.get('/videos/:filename', (req, res) => {
+  const filePath = videoAdapter.videoPathFromName(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Video asset not found' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
+});
+
+router.get('/compose/:filename', (req, res) => {
+  const filePath = composeService.composePathFromName(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Final video not found' });
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.sendFile(filePath);
 });
 
 router.get('/tasks', (req, res) => {
@@ -380,32 +484,29 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     context,
   });
   try {
-    const threeView = await imageService.generateCharacterThreeView({
-      name: actorId,
-      role: 'main',
-      description,
-      dim: 'realistic',
-      race: '人',
-      species: '',
-      animStyle: '',
-      aspectRatio: '3:4',
-      resolution: '2K',
-      referenceImages: [],
-      image_model: body.image_model || 'auto',
-      lockPromptEn: description,
-      includeFace: false,
-      includeAction: true,
-    });
-    const viewImages = [threeView.front, threeView.side, threeView.back, threeView.action]
-      .filter(Boolean)
-      .map(v => ({
-        key: v.key,
-        label: v.label,
-        url: normalizeLocalPublicUrl(v.url),
-        image_url: normalizeLocalPublicUrl(v.url),
-        provider_used: v.provider_used || '',
-      }));
+    const viewKeys = ['front', 'side', 'back', 'action'];
+    const generatedViews = [];
+    for (const key of viewKeys) {
+      const generated = await mediaAdapter.generateActorReference({
+        filename: `actor_${actorId}_${key}_${Date.now()}`,
+        prompt: buildActorViewPrompt(description, key),
+        aspectRatio: '3:4',
+        imageModel: body.image_model || body.imageModel || 'auto',
+      });
+      const actorUrl = normalizeLocalPublicUrl(generated.image_url || generated.url || '');
+      if (actorUrl) {
+        generatedViews.push({
+          key,
+          label: key,
+          url: actorUrl,
+          image_url: actorUrl,
+          provider_used: generated.provider_used || '',
+        });
+      }
+    }
+    const viewImages = generatedViews;
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
+    const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
     const actorAsset = ensureActorAssetForUser(userId, {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
@@ -427,14 +528,14 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       prompt: description,
     }, {
       generated_by: 'new_story_ad.person_sheet',
-      provider_used: threeView.provider_used || '',
+      provider_used: providerUsed,
       request_key: body.request_key || '',
     });
     return res.json(actorPayload(actorAsset, {
       status: 'done',
       generated: true,
       fallback_used: false,
-      provider_used: threeView.provider_used || '',
+      provider_used: providerUsed,
       request_key: body.request_key || '',
     }));
   } catch (err) {
@@ -499,6 +600,21 @@ router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
     note: '当前接口生成关键帧合同，供后续图片/视频生成模块消费。',
     bundle: service.publicTaskBundle(req.params.id),
   });
+}));
+
+router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
+  const result = await service.generateTtsStage(req.params.id, req.body || {});
+  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+}));
+
+router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
+  const result = await service.generateVideoStage(req.params.id, req.body || {});
+  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+}));
+
+router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
+  const result = await service.composeStage(req.params.id, req.body || {});
+  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
 }));
 
 router.post('/storyboard', asyncRoute(async (req, res) => {

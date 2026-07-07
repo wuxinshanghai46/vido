@@ -94,6 +94,114 @@ function normalizeAssets(input) {
   })).filter(x => x.url || x.description || x.name);
 }
 
+function normalizePersonAsset(input = null) {
+  if (!input || typeof input !== 'object') return null;
+  const imageUrl = cleanText(input.image_url || input.imageUrl || input.url || input.previewUrl || '', 1000);
+  const actorAssetId = cleanText(input.actor_asset_id || input.actorAssetId || input.asset_library_id || input.material_id || input.id || '', 120);
+  if (!imageUrl && !actorAssetId) return null;
+  return {
+    id: cleanText(input.id || actorAssetId || 'new_story_person_asset', 120),
+    actor_asset_id: actorAssetId,
+    actor_id: cleanText(input.actor_id || input.actorId || '', 120),
+    name: cleanText(input.name || '', 120),
+    type: cleanText(input.type || 'new_story_ad_actor', 80),
+    source: cleanText(input.source || 'person_asset', 120),
+    reference_kind: cleanText(input.reference_kind || input.referenceKind || '', 80),
+    real_person_reference: input.real_person_reference === true || input.realPersonReference === true,
+    production_usable_actor: input.production_usable_actor === true || input.productionUsableActor === true,
+    is_ai_generated: input.is_ai_generated === true || input.isAiGenerated === true,
+    gender: cleanText(input.gender || input.detected_gender || '', 40),
+    age: cleanText(input.age || input.age_range || '', 80),
+    origin: cleanText(input.origin || input.region || input.ethnicity || '', 120),
+    cast_mode: cleanText(input.cast_mode || input.castMode || '', 40),
+    expected_people: cleanText(input.expected_people || input.person_count || '', 20),
+    image_url: imageUrl,
+    extra_image_urls: Array.isArray(input.extra_image_urls) ? input.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 8) : [],
+    view_images: Array.isArray(input.view_images) ? input.view_images.map(view => ({
+      key: cleanText(view?.key || view?.view || view?.type || '', 40),
+      label: cleanText(view?.label || view?.name || '', 80),
+      url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
+      image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
+    })).filter(view => view.url || view.image_url).slice(0, 8) : [],
+    cast_assets: Array.isArray(input.cast_assets) ? input.cast_assets.map((member, idx) => ({
+      cast_member_index: Number(member?.cast_member_index || member?.index || idx + 1) || idx + 1,
+      cast_role: cleanText(member?.cast_role || member?.role || member?.name || `角色${idx + 1}`, 80),
+      name: cleanText(member?.name || member?.cast_role || `角色${idx + 1}`, 80),
+      image_url: cleanText(member?.image_url || member?.url || '', 1000),
+      extra_image_urls: Array.isArray(member?.extra_image_urls) ? member.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 6) : [],
+    })).filter(member => member.image_url || member.name).slice(0, 8) : [],
+    description: cleanText(input.description || input.spec_description || '', 1000),
+  };
+}
+
+function normalizeCastProfiles(input) {
+  const raw = Array.isArray(input) ? input : [];
+  return raw.map((profile, idx) => {
+    if (!profile || typeof profile !== 'object') return null;
+    return {
+      id: cleanText(profile.id || `cast_${idx + 1}`, 80),
+      name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
+      displayName: cleanText(profile.displayName || profile.name || '', 120),
+      roleName: cleanText(profile.roleName || profile.role || '', 120),
+      sourceType: cleanText(profile.sourceType || profile.reference_kind || '', 80),
+      assetId: cleanText(profile.assetId || profile.actor_asset_id || profile.id || '', 120),
+      actor_asset_id: cleanText(profile.actor_asset_id || '', 120),
+      actor_id: cleanText(profile.actor_id || '', 120),
+      referenceImageUrl: cleanText(profile.referenceImageUrl || profile.image_url || profile.url || '', 1000),
+      image_url: cleanText(profile.image_url || profile.referenceImageUrl || profile.url || '', 1000),
+      extra_image_urls: Array.isArray(profile.extra_image_urls) ? profile.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 8) : [],
+      appearance: profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {},
+      wardrobe: profile.wardrobe && typeof profile.wardrobe === 'object' ? profile.wardrobe : {},
+      hairMakeup: profile.hairMakeup && typeof profile.hairMakeup === 'object' ? profile.hairMakeup : {},
+      outfit: cleanText(profile.outfit || '', 500),
+      negativeText: cleanText(profile.negativeText || '', 500),
+      description: cleanText(profile.description || '', 1000),
+      identityLock: profile.identityLock && typeof profile.identityLock === 'object' ? profile.identityLock : {},
+    };
+  }).filter(Boolean);
+}
+
+function normalizeControlledProduction(input = null) {
+  const src = input && typeof input === 'object' ? input : {};
+  const environment = src.environment_control || src.environment || {};
+  const product = src.product_control || src.product || {};
+  const style = src.style_control || src.style || {};
+  const negative = src.negative_control || src.negative || {};
+  const envMode = cleanText(environment.mode || 'auto', 40);
+  const productMethods = Array.isArray(product.methods)
+    ? product.methods.map(x => cleanText(x, 40)).filter(Boolean).slice(0, 12)
+    : [];
+  const result = {
+    enabled: src.enabled === true || src.mode === 'controlled',
+    mode: src.mode === 'controlled' ? 'controlled' : 'classic',
+    environment_control: {
+      mode: ['auto', 'indoor', 'outdoor', 'mixed', 'tech_commercial', 'custom'].includes(envMode) ? envMode : 'auto',
+      custom: cleanText(environment.custom || '', 200),
+    },
+    product_control: {
+      enabled: product.enabled === true,
+      presence: ['low', 'medium', 'high'].includes(product.presence) ? product.presence : 'medium',
+      lock_strength: ['loose', 'standard', 'strict'].includes(product.lock_strength || product.lockStrength) ? (product.lock_strength || product.lockStrength) : 'standard',
+      methods: productMethods,
+    },
+    style_control: {
+      mode: cleanText(style.mode || 'classic', 40),
+      notes: cleanText(style.notes || style.text || '', 500),
+    },
+    negative_control: {
+      text: cleanText(negative.text || src.negative_text || '', 500),
+    },
+  };
+  result.enabled = result.enabled
+    || result.environment_control.mode !== 'auto'
+    || !!result.environment_control.custom
+    || result.product_control.enabled
+    || !!result.style_control.notes
+    || !!result.negative_control.text;
+  if (result.enabled) result.mode = 'controlled';
+  return result;
+}
+
 function buildContext(body = {}, user = {}) {
   const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
@@ -107,6 +215,11 @@ function buildContext(body = {}, user = {}) {
     ? body.forbidden.map(x => cleanText(x, 100)).filter(Boolean)
     : cleanText(body.forbidden || body.negative || '', 500).split(/[，,;\n]/).map(x => cleanText(x, 100)).filter(Boolean);
   const castMode = inferCastMode({ castMode: body.cast_mode || body.castMode, characters, brief });
+  const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
+  const personSpec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
+  const personAsset = normalizePersonAsset(body.person_asset || body.personAsset);
+  const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
+  const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   return {
     request_id: cleanText(body.request_id || body.requestId || uuidv4(), 80),
     brief,
@@ -114,10 +227,21 @@ function buildContext(body = {}, user = {}) {
     target_duration: targetDuration,
     shot_count: shotCount,
     output_ratio: outputRatio,
+    video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
     cast_mode: castMode,
     characters,
     assets,
     forbidden,
+    controlled_production: controlledProduction,
+    person_spec: personSpec,
+    person_asset: personAsset,
+    cast_profiles: castProfiles,
+    person_context: {
+      source: cleanText(personContext.source || (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'), 120),
+      real_person_locked: personContext.real_person_locked === true || personAsset?.real_person_reference === true,
+      production_usable_actor: personContext.production_usable_actor === true || personAsset?.production_usable_actor === true,
+      person_notes: Array.isArray(personContext.person_notes) ? personContext.person_notes.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 12) : [],
+    },
     user_id: user?.id || user?.userId || '',
     created_at: new Date().toISOString(),
   };
@@ -128,6 +252,26 @@ function inferSubjectFromBrief(brief = '') {
   if (!text) return '当前广告主体';
   const m = text.match(/(?:推广|介绍|展示|宣传|卖点|广告|为|给)([^，。；,.!?！？]{2,30})/);
   return cleanText(m?.[1] || text.slice(0, 24), 80) || '当前广告主体';
+}
+
+function controlledProductionPrompt(ctrl = {}) {
+  if (!ctrl || ctrl.enabled !== true) return 'Advanced production controls: disabled.';
+  const env = ctrl.environment_control || {};
+  const product = ctrl.product_control || {};
+  const style = ctrl.style_control || {};
+  const negative = ctrl.negative_control || {};
+  const lines = ['Advanced production controls: enabled. These are hard creative constraints for scene config, blueprint, storyboard and keyframes.'];
+  if (env.mode && env.mode !== 'auto') lines.push(`Scene direction: ${env.mode}.`);
+  if (env.custom) lines.push(`Custom scene requirement: ${env.custom}`);
+  if (product.enabled) {
+    lines.push(`Product must appear according to shot rules. Presence: ${product.presence || 'medium'}. Lock strength: ${product.lock_strength || 'standard'}.`);
+    if (Array.isArray(product.methods) && product.methods.length) {
+      lines.push(`Required product presentation methods when suitable: ${product.methods.join(', ')}.`);
+    }
+  }
+  if (style.notes) lines.push(`Visual style direction: ${style.notes}`);
+  if (negative.text) lines.push(`Negative visual requirements: ${negative.text}`);
+  return lines.join('\n');
 }
 
 function contextPrompt(ctx) {
@@ -141,12 +285,23 @@ function contextPrompt(ctx) {
     ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须先给稳定短名，name 不得写成“气质美女/客户顾问/展示者”这类描述。',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
+    ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',
+    controlledProductionPrompt(ctx.controlled_production),
+    ctx.person_asset ? `Locked real actor/person asset: ${JSON.stringify(ctx.person_asset)}` : '',
+    ctx.cast_profiles?.length ? `Locked cast profiles: ${JSON.stringify(ctx.cast_profiles)}` : '',
+    ctx.person_context?.person_notes?.length ? `Person context notes: ${ctx.person_context.person_notes.join('; ')}` : '',
+    ctx.person_asset ? `真人/演员素材锁：${JSON.stringify(ctx.person_asset)}` : '',
+    ctx.cast_profiles?.length ? `演员档案锁：${JSON.stringify(ctx.cast_profiles)}` : '',
+    ctx.person_context?.person_notes?.length ? `人物上下文：${ctx.person_context.person_notes.join('；')}` : '',
+    ctx.person_spec && Object.keys(ctx.person_spec).length ? `人物约束：${JSON.stringify(ctx.person_spec)}` : '',
+    `视频分辨率：${ctx.video_resolution || '720p'}`,
   ].join('\n');
 }
 
 module.exports = {
   buildContext,
   contextPrompt,
+  controlledProductionPrompt,
   cleanText,
   normalizeCharacters,
   normalizeCharacter,
