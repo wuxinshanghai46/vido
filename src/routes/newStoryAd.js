@@ -354,6 +354,7 @@ function buildActorViewPrompt(basePrompt = '', view = 'front') {
   return [
     basePrompt,
     viewPrompts[view] || viewPrompts.front,
+    'Background rule: every view must use the exact same clean light-gray studio casting background. No showroom, no interior scene, no product wall, no furniture, no props, no text, no logo, no environmental storytelling.',
     'Consistency rule: this image is one view of a four-view actor package. Keep the actor identity, age, body type, hairstyle, outfit color/material family and realism consistent across all views.',
   ].filter(Boolean).join('\n\n');
 }
@@ -456,6 +457,11 @@ router.get('/tasks', (req, res) => {
 router.post('/tasks', (req, res) => {
   const created = service.createTask(req.body || {}, userFromReq(req));
   res.json({ success: true, ...created });
+});
+
+router.put('/tasks/:id', (req, res) => {
+  const updated = service.updateTaskRequest(req.params.id, req.body || {}, userFromReq(req));
+  res.json({ success: true, ...updated, bundle: service.publicTaskBundle(req.params.id) });
 });
 
 router.post('/assist', asyncRoute(async (req, res) => {

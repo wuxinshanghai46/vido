@@ -5498,6 +5498,7 @@
         ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>`
         : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
       const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
+      const isNewStoryAdTask = getTaskType(t) === 'new_story_ad';
       const idLabel = t.isLuxuryProjectDraft
         ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
         : `ID ${String(t.taskId).slice(0, 8)}`;
@@ -5522,6 +5523,7 @@
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-lux-project-continue="${escapeHtml(t.projectId)}">继续制作</button>` : ''}
+            ${isNewStoryAdTask ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-new-story-ad-continue="${escapeHtml(t.taskId)}" data-new-story-ad-step="${escapeHtml(t.resumeStep || 1)}">继续制作</button>` : ''}
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">查看详情</button>` : ''}
             ${playableVideoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
             ${canRetry ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(t.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>` : ''}
@@ -5886,6 +5888,10 @@
     const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
     const finalVideo = outputs.final_video || raw.final_video || {};
     const finalUrl = finalVideo.video_url || finalVideo.videoUrl || '';
+    const resumeStep = finalUrl ? 5
+      : (keyframes.length || shots.length ? 4
+        : (outputs.blueprint ? 3
+          : (outputs.scene_config ? 2 : 1)));
     const title = task.title || ctx.product_subject || ctx.productSubject || '新剧情广告任务';
     const brief = task.brief || ctx.brief || ctx.content || '';
     const createdAt = task.created_at || task.createdAt || raw.created_at || Date.now();
@@ -5900,6 +5906,7 @@
       status,
       stage,
       progress: Number(task.progress || raw.progress || 0) || 0,
+      resumeStep,
       error: task.error || raw.error || '',
       message: task.message || raw.message || '',
       avatarName: title,
@@ -5952,8 +5959,13 @@
     if (state.newStoryAdTasksLoading) return;
     state.newStoryAdTasksLoading = true;
     try {
-      const r = await api('/api/new-story-ad/tasks?limit=80&mine=1');
-      state.newStoryAdTasks = (r?.tasks || r?.data || []).map(normalizeNewStoryAdTask).filter(Boolean);
+      let r = await api('/api/new-story-ad/tasks?limit=80&mine=1');
+      let rows = r?.tasks || r?.data || [];
+      if (!rows.length) {
+        r = await api('/api/new-story-ad/tasks?limit=80');
+        rows = r?.tasks || r?.data || [];
+      }
+      state.newStoryAdTasks = rows.map(normalizeNewStoryAdTask).filter(Boolean);
       state.newStoryAdTasksLoadedAt = Date.now();
     } catch (err) {
       if (!opts.silent) console.warn('[DH/new-story-ad/tasks] restore failed:', err);
@@ -5961,6 +5973,12 @@
       state.newStoryAdTasksLoading = false;
     }
   }
+
+  window.__dhRefreshNewStoryAdTasks = async function() {
+    await restoreNewStoryAdTasks({ silent: true });
+    renderTaskCenter();
+    updateTaskBadge();
+  };
 
   async function restoreVideoTasks(opts = {}) {
     if (state.serverVideoTasksLoading) return;
@@ -18365,6 +18383,15 @@
       const resumeUrl = luxuryAdProjectResumeUrl(id, project);
       const opened = window.open(resumeUrl, '_blank', 'noopener');
       if (!opened) window.location.href = resumeUrl;
+      return;
+    }
+    const newStoryAdContinue = closest('[data-new-story-ad-continue]');
+    if (newStoryAdContinue) {
+      const id = String(newStoryAdContinue.dataset.newStoryAdContinue || '').trim();
+      const step = Math.max(1, Math.min(5, Number(newStoryAdContinue.dataset.newStoryAdStep || 1) || 1));
+      if (!id) return;
+      try { localStorage.setItem('vido_new_story_ad_current_task_id', id); } catch {}
+      window.location.href = `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(id)}&nsa_step=${step}`;
       return;
     }
     const luxProjectDelete = closest('[data-lux-project-delete]');

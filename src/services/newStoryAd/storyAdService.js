@@ -20,8 +20,10 @@ function taskTitle(ctx) {
 function publicTaskBundle(taskId) {
   const bundle = storage.getTaskBundle(taskId);
   const outputs = Object.fromEntries((bundle.outputs || []).map(x => [x.kind, x.payload]));
+  const context = outputs.context || bundle.task?.request || {};
   return {
     ...bundle,
+    context,
     outputs,
   };
 }
@@ -39,6 +41,20 @@ function createTask(body = {}, user = {}) {
   storage.saveOutput(id, 'context', ctx);
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
   return { task, context: ctx };
+}
+
+function updateTaskRequest(taskId, body = {}, user = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = buildContext({ ...(task.request || {}), ...(body || {}), task_id: taskId }, user);
+  const updated = storage.updateTask(taskId, {
+    title: taskTitle(ctx),
+    brief: ctx.brief,
+    request: ctx,
+  });
+  storage.saveOutput(taskId, 'context', ctx);
+  storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
+  return { task: updated, context: ctx };
 }
 
 async function generateSceneConfig(taskId) {
@@ -552,6 +568,7 @@ ${outputSchema}`;
 
 module.exports = {
   createTask,
+  updateTaskRequest,
   generateSceneConfig,
   generateBlueprintStage,
   generateStoryboardStage,

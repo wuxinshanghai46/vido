@@ -203,6 +203,49 @@
     return urls;
   }
 
+  const ACTOR_VIEW_LABELS = {
+    front: '正面',
+    side: '侧面',
+    back: '背面',
+    action: '动作',
+  };
+
+  function actorViewKey(value = '', index = 0) {
+    const raw = String(value || '').toLowerCase();
+    if (/front|frontal|main|primary|正面/.test(raw)) return 'front';
+    if (/side|profile|semi|half|侧面|半侧/.test(raw)) return 'side';
+    if (/back|rear|背面/.test(raw)) return 'back';
+    if (/action|pose|gesture|motion|动作/.test(raw)) return 'action';
+    return ['front', 'side', 'back', 'action'][Number(index) || 0] || `view_${index + 1}`;
+  }
+
+  function actorViewLabel(key = '', index = 0) {
+    return ACTOR_VIEW_LABELS[key] || `参考 ${Number(index) + 1}`;
+  }
+
+  function actorViewEntries(asset = {}) {
+    const metadata = asset?.metadata || {};
+    const sourceViews = Array.isArray(asset?.view_images) && asset.view_images.length
+      ? asset.view_images
+      : (Array.isArray(metadata.view_images) ? metadata.view_images : []);
+    const entries = [];
+    const seen = new Set();
+    const push = (view, index = entries.length) => {
+      const url = compactUrl(typeof view === 'string' ? view : (view?.url || view?.image_url || view?.imageUrl || view?.file_url || view?.previewUrl || ''));
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      const key = actorViewKey(typeof view === 'string' ? '' : (view?.key || view?.view || view?.label || ''), index);
+      entries.push({
+        key,
+        label: (typeof view === 'object' && view?.label && !/^(front|side|back|action)$/i.test(String(view.label))) ? view.label : actorViewLabel(key, index),
+        url,
+      });
+    };
+    sourceViews.forEach(push);
+    if (!entries.length) actorUrls(asset).slice(0, 4).forEach((url, index) => push({ url, key: actorViewKey('', index) }, index));
+    return entries;
+  }
+
   function actorReferenceKind(asset = {}) {
     const metadata = asset.metadata || {};
     const source = String(asset.source || metadata.source || asset.type || '').toLowerCase();
@@ -1052,7 +1095,8 @@
       host.innerHTML = '<span class="dh-luxgen-person-badge">未选择</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>可先用 AI 补齐人物设定；真人演员请选择演员库或上传真人参考。</small></div>';
       return;
     }
-    const urls = actorUrls(asset);
+    const viewEntries = actorViewEntries(asset);
+    const urls = viewEntries.map(view => view.url);
     const src = previewUrl(asset) || urls[0] || '';
     const castMembers = actorCastMembers(asset).filter(member => member.image_url || member.name);
     const isReal = actorIsRealPerson(asset);
@@ -1080,14 +1124,14 @@
           <b>${escapeHtml(member.name || member.cast_role || `角色${i + 1}`)}</b>
         </span>`).join('')}</div>`
       : '';
-    const viewStrip = !castGrid && urls.length > 1
-      ? `<div class="dh-lux-actor-views">${urls.slice(0, 6).map((url, i) => `<button type="button" title="演员参考 ${i + 1}"><img src="${escapeHtml(withAuthQuery(url))}" alt="演员参考 ${i + 1}" loading="lazy" decoding="async"><span>${i + 1}</span></button>`).join('')}</div>`
+    const viewStrip = !castGrid && viewEntries.length > 1
+      ? `<div class="dh-lux-actor-views">${viewEntries.slice(0, 6).map((view, i) => `<button type="button" data-nsa-person-preview="${i}" title="${escapeHtml(view.label)}"><img src="${escapeHtml(withAuthQuery(view.url))}" alt="${escapeHtml(view.label)}" loading="lazy" decoding="async"><span>${escapeHtml(view.label)}</span></button>`).join('')}</div>`
       : '';
     const warning = isAi && !isReal && !isSynthetic
       ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#b7791f;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考；真人广告请上传真人照片或选择授权真人演员。</div>'
       : '';
     host.innerHTML = `<div class="dh-luxgen-character-sheet ${asset.failed ? 'is-failed' : ''}">
-      ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" title="演员参考图"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
+      ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-nsa-person-preview="0" title="${escapeHtml(viewEntries[0]?.label || '演员参考图')}"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
       <b>${escapeHtml(asset.name || defaultName)}</b>
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
       ${viewStrip}
@@ -1582,6 +1626,21 @@
     rememberTaskId(state.taskId);
     renderStatus();
     return state.taskId;
+  }
+
+  async function saveCurrentTaskProgress() {
+    const id = await ensureTask();
+    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: { ...payload(), task_id: id },
+    });
+    normalizeBundle(r);
+    if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
+      await window.__dhRefreshNewStoryAdTasks();
+    }
+    renderAll();
+    toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
+    return id;
   }
 
   async function runStage(stage, button) {
@@ -2271,6 +2330,15 @@
         openPreview(previewUrl(asset), asset?.name || '参考素材');
         return;
       }
+      const personPreview = target.closest('[data-nsa-person-preview]');
+      if (personPreview && host.contains(personPreview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const asset = state.personAsset || state.actorAsset || null;
+        const entry = actorViewEntries(asset)[Number(personPreview.dataset.nsaPersonPreview || 0)] || null;
+        if (entry?.url) openPreview(withAuthQuery(entry.url), `${asset?.name || '人物参考'} · ${entry.label || ''}`);
+        return;
+      }
       const shotUpload = target.closest('[data-nsa-shot-upload]');
       if (shotUpload && host.contains(shotUpload)) {
         e.preventDefault();
@@ -2323,10 +2391,10 @@
         dhNsaAdWrite: () => assist('write', btn),
         dhNsaAdClean: () => assist('clean', btn),
         dhNsaAdSample: () => { const text = within('#dhNsaAdText'); if (text) text.value = SAMPLE_BRIEF; renderStatus(); },
-        dhNsaAdSaveDraftStep2: () => ensureTask().then(() => toast('新剧情广告任务已保存', 'success')).catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep3: () => ensureTask().then(() => toast('新剧情广告任务已保存', 'success')).catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep4: () => ensureTask().then(() => toast('新剧情广告任务已保存', 'success')).catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep5: () => ensureTask().then(() => toast('新剧情广告任务已保存', 'success')).catch(err => toast(err.message, 'error')),
+        dhNsaAdSaveDraftStep2: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
+        dhNsaAdSaveDraftStep3: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
+        dhNsaAdSaveDraftStep4: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
+        dhNsaAdSaveDraftStep5: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdVoiceOpen: () => toast('配音选择面板稍后接入；当前使用默认配音设置。'),
         dhNsaAdMusicLibrary: () => toast('公开曲库稍后接入；当前可上传自有 BGM 或先合成无配乐成片。'),
