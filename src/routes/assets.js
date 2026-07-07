@@ -8,6 +8,7 @@ const db = require('../models/database');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
 const ASSETS_DIR = path.join(OUTPUT_DIR, 'assets');
+const PUBLIC_ACTOR_USER_ID = 'public_actor_library';
 
 // 确保目录存在
 ['music', 'characters', 'scenes'].forEach(sub => {
@@ -109,6 +110,28 @@ function serializeAsset(asset) {
   };
 }
 
+function isCharacterAssetType(type) {
+  return !type || type === 'all' || type === 'character';
+}
+
+function mergeAssetRows(rows = []) {
+  const seen = new Set();
+  return rows.filter(asset => {
+    const key = String(asset?.id || asset?.actor_asset_id || asset?.metadata?.actor_asset_id || '');
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function listAssetsForRequest(userId, type) {
+  const own = db.listAssets(userId, type || 'all');
+  if (!isCharacterAssetType(type)) return own;
+  const publicActors = db.listAssets(PUBLIC_ACTOR_USER_ID, 'character');
+  return mergeAssetRows([...publicActors, ...own]);
+}
+
 function normalizeLocalPublicUrl(url = '') {
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -192,11 +215,11 @@ function syncGeneratedActorLibraryAssets(userId) {
 router.get('/', (req, res) => {
   const { type } = req.query;
   const skipSync = /^(1|true|yes)$/i.test(String(req.query.skip_sync || req.query.fast || ''));
-  if (!skipSync && (!type || type === 'all' || type === 'character')) {
-    syncGeneratedActorLibraryAssets(req.user.id);
+  if (!skipSync && isCharacterAssetType(type)) {
+    syncGeneratedActorLibraryAssets(PUBLIC_ACTOR_USER_ID);
   }
   const limit = Math.max(1, Math.min(300, Number(req.query.limit) || 0));
-  let assets = db.listAssets(req.user.id, type || 'all').map(serializeAsset);
+  let assets = listAssetsForRequest(req.user.id, type || 'all').map(serializeAsset);
   if (limit) assets = assets.slice(0, limit);
   res.json({ success: true, data: assets });
 });

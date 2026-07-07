@@ -35,6 +35,7 @@ function asyncRoute(fn) {
 }
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
+const PUBLIC_ACTOR_USER_ID = 'public_actor_library';
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -234,7 +235,18 @@ function requestedGender(spec = {}, text = '') {
 
 function pickLocalActorFallback({ userId = '', spec = {}, brief = '' } = {}) {
   const gender = requestedGender(spec, brief);
-  const dbActors = db.listAssets(userId, 'character')
+  const seen = new Set();
+  const dbActors = [
+    ...db.listAssets(PUBLIC_ACTOR_USER_ID, 'character'),
+    ...db.listAssets(userId, 'character'),
+  ]
+    .filter(a => {
+      const key = String(a?.id || a?.actor_asset_id || a?.metadata?.actor_asset_id || '');
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .filter(a => a && (a.image_url || a.file_url || a.url))
     .filter(a => a.production_usable_actor === true || /actor|synthetic_realistic|local_actor/i.test([a.source, a.reference_kind, a.description].filter(Boolean).join(' ')));
   const localActors = readLocalActorLibrary();
@@ -513,7 +525,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     const viewImages = generatedViews;
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
     const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
-    const actorAsset = ensureActorAssetForUser(userId, {
+    const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
       actor_id: actorId,
@@ -541,6 +553,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       status: 'done',
       generated: true,
       fallback_used: false,
+      public_actor_library: true,
       provider_used: providerUsed,
       request_key: body.request_key || '',
     }));
@@ -551,7 +564,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       err.code = err.code || 'NEW_STORY_PERSON_SHEET_PROVIDER_UNAVAILABLE';
       throw err;
     }
-    const actorAsset = ensureActorAssetForUser(userId, fallback, {
+    const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, fallback, {
       generated_by: 'new_story_ad.person_sheet.fallback',
       fallback_reason: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',
@@ -564,6 +577,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       status: 'fallback_actor_library',
       generated: false,
       fallback_used: true,
+      public_actor_library: true,
       fallback_reason: '图片供应商额度/频率或通道失败，已切换到本地可商用演员库候选。',
       provider_error: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',

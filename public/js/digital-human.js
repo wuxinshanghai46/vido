@@ -5095,15 +5095,21 @@
         </div>`;
       document.body.appendChild(modal);
       modal.addEventListener('click', e => {
-        if (e.target.closest('[data-modal-close]')) modal.classList.remove('open');
+        if (e.target.closest('[data-modal-close]') || e.target.closest('.dh-image-modal-img')) modal.classList.remove('open');
       });
       document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && modal.classList.contains('open')) modal.classList.remove('open');
       });
     }
     const url = withAuthQuery(imageUrl);
+    const img = modal.querySelector('.dh-image-modal-img');
+    if (modal.classList.contains('open') && img?.dataset.sourceUrl === url) {
+      modal.classList.remove('open');
+      return;
+    }
     modal.querySelector('.dh-video-modal-title').textContent = title || '镜头预览';
-    modal.querySelector('.dh-image-modal-img').src = url;
+    img.src = url;
+    img.dataset.sourceUrl = url;
     modal.querySelector('.dh-image-modal-open').href = url;
     modal.classList.add('open');
   }
