@@ -344,7 +344,8 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
   return [
     'Strict live-action photorealistic full-body commercial actor casting reference. It must look like a real adult human photographed by a real camera, not an AI beauty poster.',
     'Natural skin pores, imperfect human expression, realistic hands, real fabric wrinkles, normal body proportions, believable commercial wardrobe, clean studio casting background.',
-    'The actor must be reusable across multiple storyboard shots. Preserve face identity, age impression, hairstyle, body proportions and wardrobe family.',
+    'The actor must be reusable across multiple storyboard shots. Preserve face identity, age impression, hairstyle, body proportions and the exact same outfit across every generated view.',
+    'Wardrobe consistency is mandatory: keep the same clothing category, color, fabric, cut, sleeve/hem length, shoes, accessories and styling in all views. If wardrobe is not specified, choose one simple commercial outfit and repeat that exact outfit in all views.',
     'Show full body from head to feet, realistic clothing and shoes, no cartoon, no anime, no 3D render, no waxy skin, no plastic face, no over-smoothed glamour retouching, no poster text.',
     brief ? `Campaign brief: ${String(brief).slice(0, 1200)}` : '',
     description ? `User actor description: ${String(description).slice(0, 800)}` : '',
@@ -359,15 +360,16 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
 function buildActorViewPrompt(basePrompt = '', view = 'front') {
   const viewPrompts = {
     front: 'View requirement: FRONT full-body casting reference, standing naturally, face clearly visible, both feet visible, clean neutral background.',
-    side: 'View requirement: SIDE or three-quarter profile full-body casting reference of the same actor, same face identity, same age impression, same body proportions and wardrobe family, both feet visible.',
-    back: 'View requirement: BACK full-body casting reference of the same actor, same hairstyle, same body proportions and same wardrobe family, both feet visible.',
-    action: 'View requirement: NATURAL COMMERCIAL ACTION POSE full-body reference of the same actor, subtle presenting gesture, same identity, same outfit family, realistic human hands and feet.',
+    side: 'View requirement: SIDE or three-quarter profile full-body casting reference of the same actor, same face identity, same age impression, same body proportions and the exact same outfit, both feet visible.',
+    back: 'View requirement: BACK full-body casting reference of the same actor, same hairstyle, same body proportions and the exact same outfit, both feet visible.',
+    action: 'View requirement: NATURAL COMMERCIAL ACTION POSE full-body casting reference of the same actor. Use only a subtle presenting gesture or walking-ready pose in the same studio. Keep the exact same outfit, shoes, accessories, hairstyle, body proportions and identity. This is not a storyboard scene.',
   };
   return [
     basePrompt,
     viewPrompts[view] || viewPrompts.front,
     'Background rule: every view must use the exact same clean light-gray studio casting background. No showroom, no interior scene, no product wall, no furniture, no props, no text, no logo, no environmental storytelling.',
-    'Consistency rule: this image is one view of a four-view actor package. Keep the actor identity, age, body type, hairstyle, outfit color/material family and realism consistent across all views.',
+    'Wardrobe lock rule: all four views must show the same exact clothing items, color, fabric, cut, sleeve/hem length, shoes and accessories. Do not change into another dress, shirt, jacket, pants, skirt, shoes, jewelry or styling between views.',
+    'Consistency rule: this image is one view of a four-view actor package. Keep the actor identity, age, body type, hairstyle, exact outfit and realism consistent across all views.',
   ].filter(Boolean).join('\n\n');
 }
 
