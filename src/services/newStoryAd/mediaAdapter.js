@@ -66,6 +66,26 @@ function sizeFor(config = {}, aspectRatio = '9:16') {
   return sizes.portrait || '1024x1536';
 }
 
+function isDeyunaiConfig(config = {}) {
+  return /deyunai|漫路/i.test([
+    config.providerId,
+    config.provider?.id,
+    config.provider?.preset,
+    config.provider?.name,
+    config.adapter,
+    config.family,
+  ].filter(Boolean).join(' '));
+}
+
+function deyunaiSizeFor(config = {}, aspectRatio = '9:16') {
+  const size = sizeFor(config, aspectRatio);
+  if (String(config.modelId || '').trim().toLowerCase() !== 'gpt-image-2') return size;
+  const ratio = String(aspectRatio || '').trim();
+  if (ratio === '16:9' || ratio === '4:3') return '1536x1024';
+  if (ratio === '9:16' || ratio === '3:4') return '1024x1536';
+  return '1024x1024';
+}
+
 function publicAssetUrl(filename) {
   return `/api/new-story-ad/assets/${encodeURIComponent(path.basename(filename))}`;
 }
@@ -87,6 +107,113 @@ function writeBase64Asset(base64, filename) {
   const out = path.join(ASSET_DIR, filename);
   fs.writeFileSync(out, Buffer.from(clean, 'base64'));
   return out;
+}
+
+function imageUrlsFromPayload(payload = {}) {
+  const urls = [];
+  const add = value => {
+    const text = String(value || '').trim();
+    if (text) urls.push(text);
+  };
+  const data = payload?.data;
+  if (Array.isArray(data)) data.forEach(item => add(item?.url || item?.b64_json || item?.image_url));
+  if (Array.isArray(data?.task_result?.images)) data.task_result.images.forEach(item => add(item?.url || item?.b64_json || item?.image_url));
+  if (Array.isArray(payload?.task_result?.images)) payload.task_result.images.forEach(item => add(item?.url || item?.b64_json || item?.image_url));
+  add(payload?.url || payload?.image_url || payload?.b64_json);
+  return urls.filter(Boolean);
+}
+
+function taskIdFromPayload(payload = {}) {
+  return String(payload?.data?.task_id || payload?.task_id || payload?.id || '').trim();
+}
+
+function taskStatusFromPayload(payload = {}) {
+  return String(payload?.data?.task_status || payload?.task_status || payload?.status || '').trim().toLowerCase();
+}
+
+function taskErrorFromPayload(payload = {}) {
+  const data = payload?.data || payload || {};
+  return data.error_msg || data.error || data.message || data.task_status_msg || JSON.stringify(payload).slice(0, 300);
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function generateDeyunaiImageViaTask(config = {}, { prompt = '', aspectRatio = '9:16', filename = '', stage = '', resolution = '2K' } = {}) {
+  const baseURL = String(config.baseURL || 'https://api.deyunai.com/v1').replace(/\/+$/, '');
+  const body = {
+    model: config.modelId,
+    prompt,
+    size: deyunaiSizeFor(config, aspectRatio),
+    n: 1,
+  };
+  if (config.modelId !== 'gpt-image-2' && aspectRatio) {
+    body.aspect_ratio = aspectRatio;
+    body.aspectRatio = aspectRatio;
+  }
+  const headers = {
+    Authorization: `Bearer ${config.apiKey}`,
+    'Content-Type': 'application/json',
+  };
+  const submit = await axios.post(`${baseURL}/images/generations`, body, {
+    headers,
+    timeout: 120000,
+    validateStatus: () => true,
+  });
+  if (submit.status >= 400) {
+    throw new Error(`deyunai image submit HTTP ${submit.status}: ${JSON.stringify(submit.data).slice(0, 300)}`);
+  }
+  let payload = submit.data || {};
+  let urls = imageUrlsFromPayload(payload);
+  const taskId = taskIdFromPayload(payload);
+  if (!urls.length && taskId) {
+    const deadline = Date.now() + 360000;
+    while (Date.now() < deadline) {
+      await wait(3000);
+      const poll = await axios.get(`${baseURL}/images/generations/${encodeURIComponent(taskId)}`, {
+        headers,
+        timeout: 30000,
+        validateStatus: () => true,
+      });
+      if (poll.status >= 400) {
+        throw new Error(`deyunai image poll HTTP ${poll.status}: ${JSON.stringify(poll.data).slice(0, 300)}`);
+      }
+      payload = poll.data || {};
+      urls = imageUrlsFromPayload(payload);
+      const status = taskStatusFromPayload(payload);
+      if (urls.length) break;
+      if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(status)) {
+        throw new Error(`deyunai image task failed: ${taskErrorFromPayload(payload)}`);
+      }
+    }
+  }
+  const firstUrl = urls[0] || '';
+  if (!firstUrl) throw new Error(`deyunai image provider returned no image url: ${JSON.stringify(payload).slice(0, 300)}`);
+  if (/^data:image\/\w+;base64,/i.test(firstUrl)) {
+    const safe = safeFilename(filename || `${stage}_${Date.now()}`, '.png');
+    const filePath = writeBase64Asset(firstUrl, safe);
+    return {
+      filePath,
+      filename: safe,
+      image_url: publicAssetUrl(safe),
+      url: publicAssetUrl(safe),
+      provider_used: `${config.providerId}/${config.modelId}`,
+      adapter: config.adapter,
+      family: config.family,
+      resolution,
+      task_id: taskId,
+    };
+  }
+  return {
+    image_url: firstUrl,
+    url: firstUrl,
+    provider_used: `${config.providerId}/${config.modelId}`,
+    adapter: config.adapter,
+    family: config.family,
+    remote: true,
+    task_id: taskId,
+  };
 }
 
 async function imageBufferFromResult(result = {}) {
@@ -193,6 +320,15 @@ async function generateImage({
       config = resolveImageAdapter(model);
       if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
         throw new Error(`adapter ${config.adapter} is not implemented in new_story_ad image adapter`);
+      }
+      if (isDeyunaiConfig(config)) {
+        return await generateDeyunaiImageViaTask(config, {
+          prompt,
+          aspectRatio,
+          filename,
+          stage,
+          resolution,
+        });
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await client.images.generate({
