@@ -1795,12 +1795,12 @@
     if (guard) {
       const blocking = Array.isArray(state.review?.blocking_issues) ? state.review.blocking_issues : [];
       guard.innerHTML = state.review
-        ? `<div class="${blocking.length ? 'dh-task-warning' : 'dh-task-ok'}">${blocking.length ? `??????? ${blocking.length} ????${escapeHtml(blocking.join('?'))}` : '???????'}</div>`
+        ? `<div class="${blocking.length ? 'dh-task-warning' : 'dh-task-ok'}">${blocking.length ? `\u5206\u955c QA \u53d1\u73b0 ${blocking.length} \u4e2a\u95ee\u9898\uff1a${escapeHtml(blocking.join('\uff1b'))}` : '\u5206\u955c QA \u5df2\u901a\u8fc7'}</div>`
         : '';
     }
     if (!host) return;
     if (!Array.isArray(state.shots) || !state.shots.length) {
-      host.innerHTML = '<div class="dh-luxgen-empty"><b>?????</b><span>??????????????</span></div>';
+      host.innerHTML = '<div class="dh-luxgen-empty"><b>\u8fd8\u6ca1\u6709\u5206\u955c</b><span>\u8bf7\u5148\u751f\u6210\u5206\u955c\u8868\u6216\u771f\u5b9e\u5173\u952e\u5e27\u3002</span></div>';
       return;
     }
     host.innerHTML = `<div class="dh-nsa-frame-list">${state.shots.map((shot, i) => {
@@ -1809,28 +1809,29 @@
       const image = frame.image_url || frame.imageUrl || frame.url || '';
       const preview = image ? withAuthQuery(image) : '';
       const dialogue = Array.isArray(shot.dialogue_lines)
-        ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '?' : ''}${d.line || d.text || ''}`).filter(Boolean).join('?')
+        ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '\uff1a' : ''}${d.line || d.text || ''}`).filter(Boolean).join('\uff1b')
         : (shot.dialogue || shot.voiceover || '');
       const duration = shotFieldValue(shot, contract, 'duration');
+      const title = shot.title || `\u7b2c ${i + 1} \u955c`;
       return `<article class="dh-nsa-frame-card">
-        <button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="??? ${i + 1} ???"` : 'disabled'}>
-          ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(shot.title || `?? ${i + 1}`)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
-          <b>${String(i + 1).padStart(2, '0')} ? ${escapeHtml(shot.title || `?? ${i + 1}`)}</b>
-          <small>${preview ? '??????' : '??????'}</small>
+        <button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+          ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
+          <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
+          <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
         </button>
         <div class="dh-nsa-frame-editor">
-          <div class="dh-nsa-frame-head"><b>${escapeHtml(shot.title || `?? ${i + 1}`)}</b><span>${escapeHtml(duration ? `${duration}s` : '????')}</span></div>
-          <label><span>??</span><input class="dh-input" type="number" min="1" max="30" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
-          <label><span>??</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
-          <label><span>??</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
-          <label><span>??/??</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
-          <label><span>??/??</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
-          ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>????</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
+          <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
+          <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="30" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
+          <label><span>\u753b\u9762\u63cf\u8ff0</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
+          <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
+          <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
+          <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+          ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
           ${frame.error ? `<p class="dh-nsa-frame-error">${escapeHtml(frame.error)}</p>` : ''}
           <div class="dh-nsa-frame-actions">
-            <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">????</button>
-            <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">??????</button>
-            ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">????</button>` : ''}
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
+            ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">\u67e5\u770b\u5927\u56fe</button>` : ''}
           </div>
         </div>
       </article>`;
@@ -1970,7 +1971,7 @@
   async function regenerateSingleKeyframe(index = 0, button = null) {
     const id = await ensureTask();
     await saveStoryboardEdits(id);
-    const label = `????? ${Number(index) + 1} ??...`;
+    const label = `\u6b63\u5728\u91cd\u65b0\u751f\u6210\u7b2c ${Number(index) + 1} \u955c...`;
     state.stageProgress = { active: true, stage: 'keyframes', label, total: Math.max(1, state.shots.length || 1), startedAt: Date.now() };
     setBusy(true, label);
     setButtonBusy(button, true, label);
@@ -1978,12 +1979,12 @@
       const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
       normalizeBundle(r);
       renderAll();
-      toast(`? ${Number(index) + 1} ??????`, 'success');
+      toast(`\u7b2c ${Number(index) + 1} \u955c\u5df2\u91cd\u65b0\u751f\u6210`, 'success');
       return true;
     } catch (err) {
       if (err.data) normalizeBundle(err.data);
       renderAll();
-      toast(err.message || '????????', 'error');
+      toast(err.message || '\u91cd\u65b0\u751f\u6210\u672c\u955c\u5931\u8d25', 'error');
       return false;
     } finally {
       setButtonBusy(button, false);
@@ -2601,7 +2602,7 @@
     const host = root();
     if (!host || host.dataset.bound === '1') return;
     host.dataset.bound = '1';
-    host.addEventListener('click', e => {
+    host.addEventListener('click', async e => {
       const target = e.target;
       const btn = target.closest('button, [role="button"], a');
       const step = target.closest('[data-nsa-step]');
@@ -2731,6 +2732,36 @@
         state.pendingShotUploadIndex = Number(shotUpload.dataset.nsaShotUpload || 0);
         const input = within('#dhNsaAdAssetFile');
         if (input) input.click();
+        return;
+      }
+      const framePreview = target.closest('[data-nsa-frame-preview]');
+      if (framePreview && host.contains(framePreview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = Number(framePreview.dataset.nsaFramePreview || 0);
+        const frame = state.keyframes[index] || {};
+        const url = frame.image_url || frame.imageUrl || frame.url || '';
+        if (url) openPreview(withAuthQuery(url), `\u7b2c ${index + 1} \u955c\u5927\u56fe`);
+        return;
+      }
+      const shotSave = target.closest('[data-nsa-shot-save]');
+      if (shotSave && host.contains(shotSave)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = Number(shotSave.dataset.nsaShotSave || 0);
+        $$(`[data-nsa-shot-index="${index}"][data-nsa-shot-field]`, host).forEach(updateShotField);
+        setButtonBusy(shotSave, true, '\u4fdd\u5b58\u4e2d...');
+        try {
+          const id = await ensureTask();
+          await saveStoryboardEdits(id);
+          renderAll();
+          toast(`\u7b2c ${index + 1} \u955c\u5df2\u4fdd\u5b58`, 'success');
+        } catch (err) {
+          renderAll();
+          toast(err.message || '\u4fdd\u5b58\u672c\u955c\u5931\u8d25', 'error');
+        } finally {
+          setButtonBusy(shotSave, false);
+        }
         return;
       }
       const shotRegenerate = target.closest('[data-nsa-shot-regenerate]');
