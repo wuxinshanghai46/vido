@@ -140,11 +140,46 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function limitPromptForDeyunai(prompt = '', max = 2400) {
+  const text = String(prompt || '').trim();
+  if (text.length <= max) return text;
+  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const mustKeep = [];
+  const normal = [];
+  const tail = [];
+  for (const p of paragraphs) {
+    if (/^(Create|This is|Panel order|Top-|Bottom-|Hard negative|Additional negative|Use real camera)/i.test(p)) {
+      mustKeep.push(p);
+    } else if (/negative|forbidden|禁止|不要|不能|避免|不得/i.test(p)) {
+      tail.push(p);
+    } else {
+      normal.push(p);
+    }
+  }
+  const ordered = [...mustKeep, ...normal, ...tail];
+  const selected = [];
+  let used = 0;
+  for (const p of ordered) {
+    const room = max - used - (selected.length ? 2 : 0);
+    if (room <= 0) break;
+    if (p.length <= room) {
+      selected.push(p);
+      used += p.length + (selected.length > 1 ? 2 : 0);
+      continue;
+    }
+    if (room > 120) {
+      selected.push(`${p.slice(0, room - 1)}…`);
+    }
+    break;
+  }
+  return selected.join('\n\n').slice(0, max);
+}
+
 async function generateDeyunaiImageViaTask(config = {}, { prompt = '', aspectRatio = '9:16', filename = '', stage = '', resolution = '2K' } = {}) {
   const baseURL = String(config.baseURL || 'https://api.deyunai.com/v1').replace(/\/+$/, '');
   const body = {
     model: config.modelId,
-    prompt,
+    prompt: limitPromptForDeyunai(prompt),
     size: deyunaiSizeFor(config, aspectRatio),
     n: 1,
   };
