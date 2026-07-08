@@ -728,7 +728,7 @@ function _jimengRequest(ak, sk, query, body) {
   });
 }
 
-async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '', referenceImages = [], aspectRatio = '' }) {
+async function generateJimengImage({ prompt, filename, dim = '2d', negativePrompt = '', referenceImages = [], aspectRatio = '', model = '', image_model = '' }) {
   const rawKey = getApiKey('jimeng') || process.env.JIMENG_API_KEY;
   if (!rawKey) throw new Error('未配置即梦AI Key');
   if (!rawKey.includes(':')) throw new Error('即梦AI Key 格式错误，应为 AccessKeyId:SecretAccessKey');
@@ -738,8 +738,9 @@ async function generateJimengImage({ prompt, filename, dim = '2d', negativePromp
 
   // 选择模型：有参考图 → 强制 i2i v30（保证角色一致性）；否则从 settings 读首个 use=image
   const hasRefs = (referenceImages || []).filter(u => /^https?:\/\//.test(u)).length > 0;
-  let reqKey = hasRefs ? 'jimeng_i2i_v30' : 'jimeng_t2i_v30';
-  if (!hasRefs) {
+  const explicitModel = String(model || (String(image_model || '').includes('::') ? String(image_model).split('::')[1] : '') || '').trim();
+  let reqKey = hasRefs ? 'jimeng_i2i_v30' : (explicitModel || 'jimeng_t2i_v30');
+  if (!hasRefs && !explicitModel) {
     try {
       const { loadSettings } = require('./settingsService');
       const settings = loadSettings();
@@ -1156,7 +1157,7 @@ async function generateDramaImage({ prompt, filename, aspectRatio = '16:9', reso
     console.log(`[ImageService] 分镜图 → provider=${provider}, prompt长度=${prompt?.length}, 参考图=${refCount}`);
     switch (provider) {
       case 'jimeng':
-        return await generateJimengImage({ prompt, filename: destFilename, dim: '2d', referenceImages, aspectRatio });
+        return await generateJimengImage({ prompt, filename: destFilename, dim: '2d', referenceImages, aspectRatio, image_model });
       case 'mxapi':
         return await generateMxapiImage({ prompt, filename: destFilename, aspectRatio, resolution, referenceImages, imageType: 'scene' });
       case 'nanobanana':
