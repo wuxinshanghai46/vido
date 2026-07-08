@@ -1440,6 +1440,16 @@
     const stage = progress.stage || '';
     const total = Math.max(1, Number(progress.total || stageItemCount(stage)) || 1);
     const elapsed = Math.max(0, Date.now() - (Number(progress.startedAt || 0) || Date.now()));
+    if (stage === 'single_keyframe') {
+      const shotNo = Math.max(1, Number(progress.shotNo || progress.targetIndex + 1 || 1) || 1);
+      const pct = Math.max(8, Math.min(88, Math.round(8 + Math.min(80, elapsed / 1200))));
+      return {
+        title: `正在重新生成第 ${shotNo} 镜真实关键帧`,
+        stat: `已耗时 ${formatElapsedText(elapsed)} · ${pct}%`,
+        percent: pct,
+        message: `当前只重新生成第 ${shotNo} 镜；不会按整批 ${state.shots.length || 0} 镜统计，完成后会自动替换这一镜图片。`,
+      };
+    }
     if (stage === 'keyframes') {
       const completed = Math.min(total, completedKeyframeCount());
       const current = Math.min(total, completed + 1);
@@ -1502,6 +1512,23 @@
       }
       setBusy(true, label);
     }, intervalMs);
+  }
+  function startSingleKeyframeProgress(index = 0, label = '') {
+    stopStageProgress();
+    const shotNo = Math.max(1, Number(index) + 1 || 1);
+    state.stageProgress = {
+      active: true,
+      stage: 'single_keyframe',
+      label,
+      total: 1,
+      targetIndex: Number(index) || 0,
+      shotNo,
+      startedAt: Date.now(),
+    };
+    state.stageProgressTimer = setInterval(() => {
+      if (!state.stageProgress?.active) return;
+      setBusy(true, label);
+    }, 1000);
   }
   function setBusy(isBusy, label = '处理中...') {
     if (!isBusy) stopStageProgress();
@@ -1975,7 +2002,7 @@
   async function regenerateSingleKeyframe(index = 0, button = null) {
     const shotNo = Number(index) + 1;
     const label = `\u6b63\u5728\u91cd\u65b0\u751f\u6210\u7b2c ${shotNo} \u955c...`;
-    state.stageProgress = { active: true, stage: 'keyframes', label, total: Math.max(1, state.shots.length || 1), startedAt: Date.now() };
+    startSingleKeyframeProgress(index, label);
     setBusy(true, label);
     setButtonBusy(button, true, label);
     try {
