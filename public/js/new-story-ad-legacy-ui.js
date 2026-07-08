@@ -1458,6 +1458,20 @@
     return true;
   }
 
+  function formatCastMode(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    const labels = {
+      auto: '自动判断',
+      single: '单人物展示 / 导览',
+      dual: '双人物对话 / 互动',
+      multi: '多人剧情 / 群体展示',
+      group: '多人剧情 / 群体展示',
+      no_human: '无人物，仅产品 / 空间 / 材料',
+      none: '无人物，仅产品 / 空间 / 材料',
+    };
+    return labels[raw] || value || '-';
+  }
+
   function renderScene() {
     const host = within('#dhNsaAdSceneConfigHost');
     if (!host) return;
@@ -1473,7 +1487,8 @@
       ['剧情策略', Array.isArray(sc.story_strategy) ? sc.story_strategy.join('；') : ''],
       ['禁止项', Array.isArray(sc.forbidden || sc.forbidden_elements) ? (sc.forbidden || sc.forbidden_elements).join('；') : ''],
     ];
-    host.innerHTML = `<div class="dh-lux-asset-manifest">${rows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
+    const displayRows = rows.map(([k, v]) => (v === sc.cast_mode ? [k, formatCastMode(sc.cast_mode || sc.castMode)] : [k, v]));
+    host.innerHTML = `<div class="dh-lux-asset-manifest">${displayRows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
   }
 
   function renderBlueprint() {
