@@ -1815,9 +1815,16 @@
     else if (field === 'visual') { shot.visual = value; shot.visual_description = value; shot.content_prompt = value; }
     else if (field === 'action') { shot.action = value; shot.visual_action = value; }
     else if (field === 'voiceover') { shot.voiceover = value; shot.narration = value; shot.subtitle = value; }
+    else if (field === 'purpose') { shot.purpose = value; shot.objective = value; shot.role = value; shot.keyframe_notes = value; shot.material_usage = value; }
     else { shot[field] = value; }
     shot.edited_at = new Date().toISOString();
     return true;
+  }
+
+  function syncShotFieldsFromDom(index = 0, scope = host) {
+    const shotIndex = Math.max(0, Number(index) || 0);
+    $$(`[data-nsa-shot-index="${shotIndex}"][data-nsa-shot-field]`, scope || root()).forEach(updateShotField);
+    return state.shots[shotIndex] || null;
   }
 
   function renderStoryboard() {
@@ -1991,9 +1998,36 @@
 
   async function saveStoryboardEdits(taskId = state.taskId) {
     if (!taskId || !Array.isArray(state.shots) || !state.shots.length) return null;
+    const shots = state.shots.map((shot, index) => {
+      const duration = shot.duration || shot.duration_sec || 3;
+      const visual = shot.visual || shot.visual_description || shot.content_prompt || '';
+      const action = shot.action || shot.visual_action || '';
+      const voiceover = shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
+      const purpose = shot.purpose || shot.objective || shot.role || '';
+      return {
+        ...shot,
+        index: index + 1,
+        shot_index: index + 1,
+        duration,
+        duration_sec: duration,
+        visual,
+        visual_description: visual,
+        content_prompt: visual,
+        action,
+        visual_action: action,
+        voiceover,
+        narration: voiceover,
+        subtitle: voiceover,
+        purpose,
+        objective: purpose,
+        role: purpose || shot.role || '',
+        keyframe_notes: purpose,
+        material_usage: purpose,
+      };
+    });
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
       method: 'PUT',
-      body: { shots: state.shots },
+      body: { shots },
     });
     normalizeBundle(r);
     return r;
@@ -2777,7 +2811,7 @@
         e.preventDefault();
         e.stopPropagation();
         const index = Number(shotSave.dataset.nsaShotSave || 0);
-        $$(`[data-nsa-shot-index="${index}"][data-nsa-shot-field]`, host).forEach(updateShotField);
+        syncShotFieldsFromDom(index, host);
         setButtonBusy(shotSave, true, '\u4fdd\u5b58\u4e2d...');
         try {
           const id = await ensureTask();
@@ -2797,6 +2831,7 @@
         e.preventDefault();
         e.stopPropagation();
         const index = Number(shotRegenerate.dataset.nsaShotRegenerate || 0);
+        syncShotFieldsFromDom(index, host);
         toast(`\u5df2\u63d0\u4ea4\u7b2c ${index + 1} \u955c\u91cd\u65b0\u751f\u6210`, 'info');
         await regenerateSingleKeyframe(index, shotRegenerate);
         return;
@@ -2862,6 +2897,10 @@
     }, true);
     host.addEventListener('input', e => {
       const target = e.target;
+      if (updateShotField(target)) {
+        renderStatus();
+        return;
+      }
       if (updateBlueprintField(target)) {
         renderStatus();
         return;
