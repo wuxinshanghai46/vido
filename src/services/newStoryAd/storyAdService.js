@@ -114,12 +114,20 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
   return normalized;
 }
 
-function normalizeStoryboardShot(shot = {}, index = 0) {
+function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
   const duration = Math.max(1, Math.min(30, Number(shot.duration || shot.duration_sec || 0) || 3));
   const visual = cleanText(shot.visual || shot.visual_description || shot.content_prompt || '', 1400);
   const action = cleanText(shot.action || shot.visual_action || '', 900);
   const voiceover = cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 700);
   const title = cleanText(shot.title || `Shot ${index + 1}`, 140);
+  const purpose = cleanText(shot.purpose || shot.objective || shot.role || '', 160);
+  const previousVisual = cleanText(previousShot.visual || previousShot.visual_description || previousShot.content_prompt || '', 1400);
+  const incomingEditedFields = shot._nsa_user_edited_fields && typeof shot._nsa_user_edited_fields === 'object'
+    ? shot._nsa_user_edited_fields
+    : {};
+  const visualChanged = !!visual && !!previousVisual && visual !== previousVisual;
+  const userVisualOverride = shot.user_visual_override === true || incomingEditedFields.visual === true || visualChanged;
+  const editedFields = userVisualOverride ? { ...incomingEditedFields, visual: true } : incomingEditedFields;
   return {
     ...shot,
     index: index + 1,
@@ -134,7 +142,11 @@ function normalizeStoryboardShot(shot = {}, index = 0) {
     visual_action: action,
     voiceover,
     narration: voiceover,
-    purpose: cleanText(shot.purpose || shot.objective || shot.role || '', 160),
+    purpose,
+    keyframe_notes: userVisualOverride ? [purpose, visual].filter(Boolean).join('\n') : cleanText(shot.keyframe_notes || '', 900),
+    material_usage: userVisualOverride ? [purpose, visual].filter(Boolean).join('\n') : cleanText(shot.material_usage || '', 900),
+    user_visual_override: userVisualOverride || undefined,
+    _nsa_user_edited_fields: Object.keys(editedFields).length ? editedFields : undefined,
     edited_at: new Date().toISOString(),
   };
 }
@@ -145,7 +157,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   const current = storage.getOutput(taskId, 'storyboard_table') || [];
   const source = Array.isArray(shots) && shots.length ? shots : current;
   const normalized = source
-    .map((shot, index) => normalizeStoryboardShot(shot, index))
+    .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
   storage.saveOutput(taskId, 'storyboard_table', normalized);
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -325,10 +337,10 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     `Advertised subject: ${cleanText(ctx.product_subject, 160)}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
     userVisualOverride ? `User-edited visual override, highest priority: ${visualText}` : '',
-    userVisualOverride ? 'If action, evidence, contract or previous generated image conflicts with the user-edited visual, follow the user-edited visual and ignore the conflicting old object/layout wording.' : '',
+    userVisualOverride ? 'User override mode: rebuild the keyframe from the edited visual and current style controls. Older storyboard fields are not object or layout constraints.' : '',
     `Visual: ${visualText}`,
     userVisualOverride
-      ? `Action intent only: adapt the gesture and camera rhythm from this action to the edited visual, but ignore any old object, carrier, layout, board, block, tile, sample, edge or panel wording that conflicts with the visual: ${actionText}`
+      ? 'Action guidance: use a natural commercial camera rhythm that supports the edited visual. Do not import object layout or carrier form from older action text.'
       : `Action: ${actionText}`,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
     !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
@@ -337,8 +349,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.style ? `Style: ${cleanText(visualContract.style, 260)}` : '',
     visualContract.scene_direction && visualContract.scene_direction !== 'auto' ? `Scene direction: ${cleanText(visualContract.scene_direction, 80)}` : '',
     visualContract.custom_scene_requirement ? `Custom scene requirement: ${cleanText(visualContract.custom_scene_requirement, 240)}` : '',
-    visualContract.product_required ? `Product visibility: required, presence ${cleanText(visualContract.product_presence || 'medium', 40)}, lock ${cleanText(visualContract.product_lock_strength || 'standard', 40)}.` : '',
-    Array.isArray(visualContract.product_methods) && visualContract.product_methods.length ? `Product presentation methods: ${cleanText(visualContract.product_methods.join(', '), 240)}` : '',
+    !userVisualOverride && visualContract.product_required ? `Product visibility: required, presence ${cleanText(visualContract.product_presence || 'medium', 40)}, lock ${cleanText(visualContract.product_lock_strength || 'standard', 40)}.` : '',
+    !userVisualOverride && Array.isArray(visualContract.product_methods) && visualContract.product_methods.length ? `Product presentation methods: ${cleanText(visualContract.product_methods.join(', '), 240)}` : '',
     visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
@@ -349,10 +361,10 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
-    userVisualOverride ? 'Do not use stale storyboard nouns from older hidden fields as the subject. The edited visual is the source of truth for object layout, surface type, carrier, material form and composition.' : '',
-    previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its premium wall/surface texture continuity, lighting mood, material realism, framing discipline and commercial tone when compatible with the edited visual.` : '',
-    previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${cleanText(previousFrame.prompt, 500)}` : '',
-    userVisualOverride ? `Final priority: generate this edited visual: ${visualText}. Keep continuity with the prior shot only where it does not contradict this edited visual. Do not revert to separated samples, boards, blocks, tiles, matrix displays or old carrier wording unless those words are explicitly present in the edited visual.` : '',
+    userVisualOverride ? 'The edited visual is the only source of truth for object layout, surface type, carrier, material form and composition.' : '',
+    previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its lighting mood, material realism, framing discipline and commercial tone only where compatible with the edited visual.` : '',
+    !userVisualOverride && previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${cleanText(previousFrame.prompt, 500)}` : '',
+    userVisualOverride ? `Final priority: generate only this edited visual: ${visualText}. Any composition, object layout, carrier and material form must come from this edited visual, not from cached or generated fields.` : '',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
   return parts.filter(Boolean).join('\n');
