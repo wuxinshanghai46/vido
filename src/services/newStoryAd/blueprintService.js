@@ -77,7 +77,7 @@ Return JSON in this shape:
   "visual_requirements": ["story", "product", "material", "proof"],
   "target_beat_count": ${targetCount || 0},
   "segment_plan": [{"segment_id":"seg_1","name":"section","space_anchor":"fixed space or carrier","fixed_subjects":"fixed subjects/relationships","continuity_rules":["rules"]}],
-  "characters": [{"name":"stable short name, e.g. Lin Yue / Chen Yuan; not a descriptor","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
+  "characters": [{"name":"stable short task-local name, e.g. Role A / Role B; not a real fixed person","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
   "beats": [{
     "beat_index": 1,
     "role": "story function label",

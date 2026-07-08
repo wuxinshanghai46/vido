@@ -21,7 +21,7 @@
   ];
   const BGM_PROFILES = [
     ['auto', '自动匹配', '按广告内容自动选择曲风。'],
-    ['warm', '温暖叙事', '适合生活方式、家居、服务类剧情。'],
+    ['warm', '温暖叙事', '适合生活方式、服务类或情感表达类剧情。'],
     ['premium', '高级质感', '适合品牌、空间、产品质感表达。'],
     ['tech', '科技律动', '适合软件、数据、效率工具。'],
   ];
@@ -891,7 +891,7 @@
     });
     $$('[data-nsa-person-spec]', root()).forEach(el => {
       if (el.tagName === 'SELECT') {
-        if (el.dataset.nsaPersonSpec === 'origin') el.value = 'east_asian_cn';
+        if (el.dataset.nsaPersonSpec === 'origin') el.value = 'match_brief';
         else if (el.dataset.nsaPersonSpec === 'age') el.value = 'match_brief';
         else el.value = el.querySelector('option')?.value || '';
       } else {
@@ -2549,7 +2549,7 @@
       `人物数量：${labels.castMode[spec.castMode] || spec.castMode || '按内容判断'}`,
       `人物性别：${labels.gender[spec.gender] || spec.gender || '按故事判断'}`,
       `人物年龄：${labels.age[spec.age] || spec.age || '按广告需求判断'}`,
-      `地域/种族：${labels.origin[spec.origin] || spec.origin || '中国 / 东亚面孔'}`,
+      `地域/种族：${labels.origin[spec.origin] || spec.origin || '按广告需求判断'}`,
       spec.displayName ? `人物姓名：${spec.displayName}` : '',
       spec.roleName ? `人物身份：${spec.roleName}` : '',
       spec.appearanceText ? `外貌气质：${spec.appearanceText}` : '',
@@ -2577,7 +2577,7 @@
     changed += set('castMode', normalized.castMode || 'single', true);
     changed += set('gender', normalized.gender || 'auto', true);
     changed += set('age', normalized.age || 'match_brief', true);
-    changed += set('origin', normalized.origin || 'east_asian_cn', true);
+    changed += set('origin', normalized.origin || 'match_brief', true);
     changed += set('roleName', normalized.roleName || '');
     changed += set('displayName', normalized.displayName || '');
     changed += set('appearanceText', normalized.appearanceText || '');
@@ -2596,7 +2596,7 @@
       castMode: isGroup ? 'group' : (isDual ? 'dual' : 'single'),
       gender: isMale ? 'male' : (isFemale ? 'female' : 'auto'),
       age: /老板|厂家|经理|经销商|顾问|专家|负责人/.test(brief) ? 'adult_30_40' : 'match_brief',
-      origin: 'east_asian_cn',
+      origin: 'match_brief',
       roleName: /顾问|销售|经销商|导购/.test(brief) ? '品牌顾问 / 商业讲解人' : '广告主角',
       appearanceText: '符合当前广告需求的真实商业广告人物，五官自然，表情可信，气质干净专业；根据任务内容、目标用户和剧情关系判断年龄感、职业感和亲和度，避免网红脸和过度磨皮。',
       wardrobeText: '服装贴合当前产品定位、使用场景和目标客群，干净真实，颜色克制；鞋、配饰和整体风格保持商业广告质感，不抢主体画面。',

@@ -257,13 +257,13 @@ async function generateText({
 function mockResponse(stage) {
   if (/blueprint/.test(stage)) {
     return JSON.stringify({
-      story_title: '新剧情广告测试蓝图',
-      logline: '用户遇到具体问题，广告主体以可见动作解决并形成结果证明。',
-      characters: [{ name: '主角A', role: '核心人物', profile: '真实人物，承担主要动作' }],
+      story_title: '任务专属剧情广告蓝图',
+      logline: '目标用户遇到当前任务描述的问题，广告主体以可见动作解决并形成结果证明。',
+      characters: [{ name: '角色A', role: '按当前任务生成的核心人物', profile: '真实人物，承担当前任务需要的主要动作' }],
       beats: [
-        { beat_index: 1, role: '痛点', plot: '用户看见具体问题', spoken_line: '这个问题每天都在拖慢效率。', visual_proof: '问题证据清晰可见' },
-        { beat_index: 2, role: '主体亮相', plot: '广告主体进入并开始处理', spoken_line: '现在换一种更清楚的处理方式。', visual_proof: '主体与问题同框' },
-        { beat_index: 3, role: '结果证明', plot: '结果变化被看见', spoken_line: '处理后的变化一眼就能看出来。', visual_proof: '前后对比明确' },
+        { beat_index: 1, role: '痛点', plot: '目标用户看见当前任务里的具体问题', spoken_line: '这个问题需要被更清楚地解决。', visual_proof: '当前任务的问题证据清晰可见' },
+        { beat_index: 2, role: '主体亮相', plot: '当前广告主体进入并开始处理', spoken_line: '现在用更直接的方式处理。', visual_proof: '广告主体与问题证据同框' },
+        { beat_index: 3, role: '结果证明', plot: '处理结果被看见', spoken_line: '变化已经清楚呈现出来。', visual_proof: '结果变化明确' },
       ],
     });
   }
@@ -272,22 +272,21 @@ function mockResponse(stage) {
   }
   if (/assist/.test(stage)) {
     return JSON.stringify({
-      brief: '为一款企业知识库软件生成 30 秒多人剧情广告：张经理、李工和王总在会议室发现资料混乱，随后打开系统展示自动整理、快速检索和客户汇报依据清晰的变化。画面要有高级感，但每一镜都落到具体动作和可见证据。',
-      product_subject: '企业知识库软件',
-      cast_mode: 'multi',
+      brief: '根据当前用户填写的广告需求生成任务专属剧情广告：保留原始产品或服务、目标用户、核心卖点、期望场景和引导动作，不替换成固定行业模板。',
+      product_subject: '当前任务广告主体',
+      cast_mode: 'auto',
       shot_count: 3,
-      forbidden: ['宠物', '机器人', '旧任务人物'],
+      forbidden: ['未授权行业', '旧任务人物', '与当前任务无关的主体'],
       characters: [
-        { name: '张经理', role: '项目负责人' },
-        { name: '李工', role: '技术同事' },
-        { name: '王总', role: '客户决策人' },
+        { name: '角色A', role: '当前任务核心人物' },
+        { name: '角色B', role: '当前任务辅助人物' },
       ],
     });
   }
   return JSON.stringify([
-    { index: 1, title: '问题出现', role: '痛点', duration: 5, visual: '真实场景里，用户面对清晰可见的问题证据。', action: '用户停下操作并指向问题来源。', voiceover: '这个问题每天都在拖慢效率。', dialogue_lines: [{ speaker: '张经理', line: '这些资料每天都在拖慢交付。' }, { speaker: '李工', line: '我先把问题来源标出来。' }], purpose: '痛点', characters: [{ name: '张经理', action: '发现问题' }, { name: '李工', action: '标注问题' }] },
-    { index: 2, title: '主体介入', role: '主体亮相', duration: 8, visual: '广告主体与问题证据同框出现。', action: '主体开始处理并展示核心步骤。', voiceover: '现在换一种更清楚的处理方式。', dialogue_lines: [{ speaker: '李工', line: '我打开系统，先看自动整理结果。' }, { speaker: '张经理', line: '项目资料已经能按客户检索了。' }], purpose: '亮相', characters: [{ name: '李工', action: '操作主体' }, { name: '张经理', action: '查看结果' }] },
-    { index: 3, title: '结果证明', role: '结果证明', duration: 7, visual: '前后结果形成可见对比。', action: '用户确认处理结果并自然收束。', voiceover: '处理后的变化一眼就能看出来。', dialogue_lines: [{ speaker: '王总', line: '现在交付依据清楚多了。' }, { speaker: '张经理', line: '这版可以直接进入客户汇报。' }], purpose: '证明', characters: [{ name: '王总', action: '确认结果' }, { name: '张经理', action: '收束汇报' }] },
+    { index: 1, title: '问题出现', role: '痛点', duration: 5, visual: '当前任务场景里，目标用户面对清晰可见的问题证据。', action: '角色A停下当前动作并指出问题来源。', voiceover: '这个问题需要被更清楚地解决。', dialogue_lines: [{ speaker: '角色A', line: '这里的问题已经影响到了结果。' }], purpose: '痛点', characters: [{ name: '角色A', action: '发现问题' }] },
+    { index: 2, title: '主体介入', role: '主体亮相', duration: 8, visual: '当前广告主体与问题证据同框出现。', action: '角色A开始处理并展示当前任务需要的核心步骤。', voiceover: '现在用更直接的方式处理。', dialogue_lines: [{ speaker: '角色A', line: '先看最关键的一步。' }], purpose: '亮相', characters: [{ name: '角色A', action: '操作或展示主体' }] },
+    { index: 3, title: '结果证明', role: '结果证明', duration: 7, visual: '当前任务的结果变化形成可见对比。', action: '角色A确认处理结果并自然收束。', voiceover: '变化已经清楚呈现出来。', dialogue_lines: [{ speaker: '角色A', line: '现在结果已经清楚了。' }], purpose: '证明', characters: [{ name: '角色A', action: '确认结果' }] },
   ]);
 }
 

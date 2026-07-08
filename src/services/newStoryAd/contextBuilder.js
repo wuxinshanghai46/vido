@@ -12,9 +12,9 @@ function inferGenderFromText(text = '') {
 }
 
 const DEFAULT_NAMES = {
-  female: ['\u6797\u60a6', '\u9648\u5c9a', '\u6c88\u77e5', '\u5468\u53ef', '\u8bb8\u5b81', '\u82cf\u6674'],
-  male: ['\u9648\u8fdc', '\u987e\u660e', '\u5468\u8861', '\u6797\u5ddd', '\u8bb8\u821f', '\u6c88\u8d8a'],
-  neutral: ['\u5468\u7136', '\u6797\u4e00', '\u9648\u5b89', '\u8bb8\u8bfa', '\u82cf\u8a00', '\u987e\u9752'],
+  female: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
+  male: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
+  neutral: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
 };
 
 function looksLikeDescriptorName(name = '') {
