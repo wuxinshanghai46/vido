@@ -400,8 +400,7 @@ function preferDeyunaiForNonVideoStages(stages = {}, defaults = {}) {
     const models = stages?.[stageId] || [];
     const list = Array.isArray(models) ? models.filter(Boolean).map(model => ({ ...model })) : [];
     const meta = getStageMeta(stageId);
-    const stageType = String(meta?.type || '').toLowerCase();
-    if (!list.length || stageType === 'video' || String(stageId || '').startsWith('new_story_ad.')) {
+    if (!list.length || String(meta?.type || '').toLowerCase() === 'video') {
       next[stageId] = list;
       continue;
     }

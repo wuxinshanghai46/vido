@@ -651,15 +651,10 @@ async function assistBrief(body = {}, user = {}) {
     '你是新剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
-    '只允许补齐空字段；已有字段、已上传/已选择的真人演员素材、演员档案和场景资产必须视为锁定约束。',
-    '不能为了显得完整而编造姓名、职业、城市、品牌、行业空间、豪宅/展厅/主背景墙等未在需求中出现的内容。',
-    '所有补齐内容都必须可被当前广告需求直接支持；不确定时写中性可拍描述，不写具体身份履历。',
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
-    '当 mode 是 person_spec 时，只补齐人物生成规则：外貌、穿着、发型妆造和人物禁止项。没有明确姓名时 displayName 必须留空；没有明确职业时 roleName 写“按剧情需求出现的真实成年人物”。',
-    '当 mode 是 person_spec 且存在真人/演员素材锁时，不得创造新脸、新姓名、新职业；只把素材可见特征整理成生成约束。',
-    '当 mode 是 scene_spec 时，只补齐空场景空间锁：布局、材质光线、可运动区域和禁止项；必须是可复用的无人场景资产，不得出现人物、手、身体局部、倒影或人形剪影。',
-    '当 mode 是 scene_spec 时，不得写死未授权行业、城市、豪宅、展厅、店铺、办公室、LOGO 或旧任务场景；如果需求没有明确空间，写“与当前广告主体直接相关的真实可拍空间”。',
+    '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
+    '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
   ].join('\n');
   const outputSchema = isStyleControl
@@ -738,24 +733,14 @@ ${outputSchema}`;
   if (isPersonSpec) {
     const raw = parsed.person_spec || parsed.personSpec || parsed;
     const spec = raw && typeof raw === 'object' ? raw : {};
-    const sourceRole = cleanText(ctx.person_spec?.roleName || ctx.person_spec?.role_name || '', 100);
-    const sourceName = cleanText(ctx.person_spec?.displayName || ctx.person_spec?.display_name || '', 60);
-    const lockedName = cleanText(ctx.person_asset?.name || ctx.cast_profiles?.[0]?.name || ctx.characters?.[0]?.name || '', 60);
-    const displayName = sourceName || lockedName ? cleanText(spec.displayName || spec.display_name || sourceName || lockedName, 60) : '';
-    const suggestedRole = cleanText(spec.roleName || spec.role_name || '', 100);
-    const roleName = sourceRole
-      ? cleanText(suggestedRole || sourceRole, 100)
-      : suggestedRole && !ctx.person_asset
-        ? '按剧情需求出现的真实成年人物'
-        : '';
     return {
       person_spec: {
         castMode: cleanText(spec.castMode || spec.cast_mode || 'auto', 40),
         gender: cleanText(spec.gender || 'auto', 40),
         age: cleanText(spec.age || 'match_brief', 40),
         origin: cleanText(spec.origin || 'match_brief', 60),
-        roleName,
-        displayName,
+        roleName: cleanText(spec.roleName || spec.role_name || '', 100),
+        displayName: cleanText(spec.displayName || spec.display_name || '', 60),
         appearanceText: cleanText(spec.appearanceText || spec.appearance || spec.description || '', 360),
         wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
         hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),

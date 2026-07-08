@@ -6,7 +6,6 @@ const sharp = require('sharp');
 const OpenAI = require('openai');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
-const imageService = require('../imageService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
@@ -30,82 +29,10 @@ function adapterFamily(provider = {}) {
   return String(provider.adapter_config?.family || provider.adapter || provider.preset || provider.id || 'openai-compatible').toLowerCase();
 }
 
-function modelKey(model = {}) {
-  return `${String(model.provider_id || model.providerId || '').toLowerCase()}::${String(model.model_id || model.model || '').toLowerCase()}`;
-}
-
-function uniqueModels(models = []) {
-  const seen = new Set();
-  const out = [];
-  for (const model of models) {
-    const key = modelKey(model);
-    if (!key || key === '::' || seen.has(key)) continue;
-    seen.add(key);
-    out.push(model);
-  }
-  return out;
-}
-
-function providerRank(providerId = '') {
-  const id = String(providerId || '').toLowerCase();
-  const order = ['jimeng', 'nanobanana', 'topview', 'zhipu', 'openai', 'deyunai', 'mxapi', 'replicate', 'stability'];
-  const index = order.indexOf(id);
-  return index >= 0 ? index + 1 : 50;
-}
-
-function preferredProviderImageModel(provider = {}) {
-  const models = (provider.models || []).filter(m => m && m.enabled !== false && imageUseMatches(m));
-  if (!models.length) return null;
-  const preferred = [
-    /jimeng_t2i_v40|high_aes_general_v40/i,
-    /nano.?banana.?pro/i,
-    /topview.*seedream|seedream.?5/i,
-    /gpt.?image/i,
-    /jimeng_t2i_v30|high_aes_general_v21/i,
-    /cogview-4|dall-e-3/i,
-  ];
-  for (const rx of preferred) {
-    const found = models.find(m => rx.test(`${m.id || ''} ${m.name || ''}`));
-    if (found) return found;
-  }
-  return models[0];
-}
-
-function settingsImageCandidates() {
-  const settings = loadSettings();
-  return (settings.providers || [])
-    .filter(p => p && p.enabled !== false && p.api_key)
-    .map(provider => {
-      const model = preferredProviderImageModel(provider);
-      const providerId = String(provider.id || provider.preset || provider.name || '').trim();
-      if (!providerId || !model?.id) return null;
-      return {
-        provider_id: providerId,
-        model_id: model.id,
-        priority: 100 + providerRank(providerId),
-        enabled: true,
-        source: 'settings_image_provider',
-      };
-    })
-    .filter(Boolean);
-}
-
-function imageCandidateAvailable(model = {}) {
-  const providerId = String(model.provider_id || model.providerId || '').trim();
-  const modelId = String(model.model_id || model.model || '').trim();
-  if (!providerId || !modelId || model.enabled === false) return false;
-  const settings = loadSettings();
-  const provider = (settings.providers || []).find(p => p.enabled !== false && p.api_key && providerMatches(p, providerId));
-  if (!provider) return false;
-  return (provider.models || []).some(m => String(m.id || '').trim() === modelId && m.enabled !== false && imageUseMatches(m));
-}
-
 function stageCandidates(stage) {
-  const configured = pipeline.pickAllEnabled(stage);
-  const defaults = (pipeline.getStageDefaults(stage) || []).filter(x => x.enabled !== false);
-  return uniqueModels([...configured, ...defaults, ...settingsImageCandidates()])
-    .filter(imageCandidateAvailable)
-    .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999));
+  return pipeline.pickAllEnabled(stage).length
+    ? pipeline.pickAllEnabled(stage)
+    : (pipeline.getStageDefaults(stage) || []).filter(x => x.enabled !== false);
 }
 
 function resolveImageAdapter(model = {}) {
@@ -160,46 +87,6 @@ function writeBase64Asset(base64, filename) {
   const out = path.join(ASSET_DIR, filename);
   fs.writeFileSync(out, Buffer.from(clean, 'base64'));
   return out;
-}
-
-function copyGeneratedAsset(result = {}, filename = '', providerUsed = '') {
-  const sourcePath = result.filePath || result.path || '';
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
-    throw new Error('image service returned no local file path');
-  }
-  ensureDir(ASSET_DIR);
-  const ext = path.extname(sourcePath) || '.png';
-  const base = filename || path.basename(sourcePath, ext) || `new_story_ad_asset_${Date.now()}`;
-  const safe = safeFilename(base, ext);
-  const out = path.join(ASSET_DIR, safe);
-  if (path.resolve(sourcePath) !== path.resolve(out)) fs.copyFileSync(sourcePath, out);
-  return {
-    filePath: out,
-    filename: safe,
-    image_url: publicAssetUrl(safe),
-    url: publicAssetUrl(safe),
-    provider_used: providerUsed,
-  };
-}
-
-function imageServiceProvider(providerId = '') {
-  const id = String(providerId || '').trim().toLowerCase();
-  return ['jimeng', 'nanobanana', 'topview', 'zhipu', 'mxapi', 'replicate', 'stability', 'deyunai'].includes(id);
-}
-
-async function generateWithImageService({ model = {}, prompt = '', filename = '', aspectRatio = '9:16', resolution = '2K' } = {}) {
-  const providerId = String(model.provider_id || model.providerId || '').trim();
-  const modelId = String(model.model_id || model.model || '').trim();
-  const imageModel = modelId ? `${providerId}::${modelId}` : providerId;
-  const safeBase = safeFilename(filename || `new_story_ad_${Date.now()}`, '.png').replace(/\.png$/i, '');
-  const result = await imageService.generateDramaImage({
-    prompt,
-    filename: safeBase,
-    aspectRatio,
-    resolution,
-    image_model: imageModel,
-  });
-  return copyGeneratedAsset(result, filename, `${providerId}/${modelId}`);
 }
 
 async function imageBufferFromResult(result = {}) {
@@ -300,17 +187,11 @@ async function generateImage({
     ? candidates.filter(m => String(m.model_id || m.model || '') === preferred || String(m.provider_id || '') === preferred)
     : candidates;
   const errors = [];
-  if (!filtered.length) {
-    throw new Error(`new_story_ad image models failed: ${stage} 没有可用图片模型；请检查管理后台该阶段模型与供应商 Key/图片能力是否一致`);
-  }
   for (const model of filtered) {
     let config = null;
     try {
-      if (imageServiceProvider(model.provider_id || model.providerId)) {
-        return await generateWithImageService({ model, prompt, filename, aspectRatio, resolution });
-      }
       config = resolveImageAdapter(model);
-      if (!/(openai|compatible|apismile|webang|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
+      if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
         throw new Error(`adapter ${config.adapter} is not implemented in new_story_ad image adapter`);
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
@@ -371,5 +252,4 @@ module.exports = {
   generateActorReference,
   splitActorSheet,
   splitReferenceSheet,
-  stageCandidates,
 };
