@@ -56,7 +56,7 @@ function joinVisualLayers({ shotType = '', visualLayers = [], visual = '' } = {}
 }
 
 function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
-  const characters = normalizeCharacters(ctx.characters || []);
+  const characters = normalizeCharacters(ctx.characters || [], `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   const n = Number(shot.index || shot.shot_index || idx + 1);
   const voice = clampText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '', 90);
   const shotType = clampText(shot.shot_type || shot.camera || shot.lens || '', 80);
@@ -231,7 +231,10 @@ Return JSON array for current beats only. Fields:
 
   const shots = normalizeShots(all, {
     ...ctx,
-    characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters),
+    characters: normalizeCharacters(
+      Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters,
+      `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
+    ),
   });
   return { shots, model_meta: meta };
 }
@@ -274,7 +277,10 @@ Return the repaired full JSON array. Do not change shot count. Do not invent unp
 
   return normalizeShots(parsed, {
     ...ctx,
-    characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters),
+    characters: normalizeCharacters(
+      Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters,
+      `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
+    ),
   });
 }
 

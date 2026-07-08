@@ -11,11 +11,26 @@ function inferGenderFromText(text = '') {
   return '';
 }
 
-const DEFAULT_NAMES = {
-  female: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
-  male: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
-  neutral: ['\u89d2\u8272A', '\u89d2\u8272B', '\u89d2\u8272C', '\u89d2\u8272D', '\u89d2\u8272E', '\u89d2\u8272F'],
-};
+const NAME_SURNAMES = '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜谢邹喻柏水窦章云苏潘葛范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉岑薛雷贺倪汤滕罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹';
+const NAME_GIVEN_CHARS = '安然宁清雅知辰一诺可言景舟明远若初思予嘉禾亦晨书衡子墨云舒星河沐阳承宇温言卓然之夏南乔予白青禾映川宥宁启航修远以恒';
+
+function hashSeed(seed = '') {
+  const text = cleanText(seed, 1000) || 'new_story_ad_character_seed';
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0);
+}
+
+function generatedFormalName({ seed = '', gender = '', idx = 0, role = '' } = {}) {
+  const base = hashSeed(`${seed}|${gender}|${role}|${idx}`);
+  const surname = NAME_SURNAMES[base % NAME_SURNAMES.length];
+  const first = NAME_GIVEN_CHARS[(base + idx * 7) % NAME_GIVEN_CHARS.length];
+  const second = NAME_GIVEN_CHARS[(Math.floor(base / 13) + idx * 11) % NAME_GIVEN_CHARS.length];
+  return `${surname}${first}${second === first ? '' : second}`;
+}
 
 function looksLikeDescriptorName(name = '') {
   const s = cleanText(name, 80);
@@ -25,7 +40,7 @@ function looksLikeDescriptorName(name = '') {
     '\u8bb2\u89e3\u8005', '\u5c55\u793a\u8005', '\u5f15\u5bfc\u8005', '\u5ba2\u6237', '\u987e\u95ee',
     '\u9500\u552e', '\u7528\u6237', '\u6f14\u5458', '\u6a21\u7279', '\u7f8e\u5973', '\u5e05\u54e5',
   ];
-  if (exactDescriptors.some(word => s === word || new RegExp(`^${word}\\d+$`, 'i').test(s))) return true;
+  if (exactDescriptors.some(word => s === word || new RegExp(`^${word}(\\d+|[A-Z]|[甲乙丙丁一二三四五六])$`, 'i').test(s))) return true;
   const descriptorWords = [
     '\u6c14\u8d28', '\u7f8e\u5973', '\u5e05\u54e5', '\u9ad8\u8d35', '\u4f18\u96c5',
     '\u957f\u53d1', '\u77ed\u53d1', '\u5ba2\u6237', '\u987e\u95ee', '\u9500\u552e',
@@ -36,20 +51,20 @@ function looksLikeDescriptorName(name = '') {
   return s.length > 8;
 }
 
-function defaultCharacterName(gender = '', idx = 0) {
-  const pool = gender === 'female' ? DEFAULT_NAMES.female : (gender === 'male' ? DEFAULT_NAMES.male : DEFAULT_NAMES.neutral);
-  return pool[idx % pool.length];
+function defaultCharacterName(gender = '', idx = 0, seed = '', role = '') {
+  return generatedFormalName({ seed, gender, idx, role });
 }
 
-function normalizeCharacter(item, idx = 0) {
+function normalizeCharacter(item, idx = 0, seed = '') {
   if (typeof item === 'string') {
     const role = cleanText(item, 80);
     const gender = inferGenderFromText(role);
     return {
-      name: defaultCharacterName(gender, idx),
+      name: defaultCharacterName(gender, idx, seed, role),
       role,
       gender,
       description: role,
+      name_generated: true,
     };
   }
   const source = item && typeof item === 'object' ? item : {};
@@ -57,18 +72,20 @@ function normalizeCharacter(item, idx = 0) {
   const description = cleanText(source.description || source.appearance || source.profile || source.desc || '', 360);
   const gender = cleanText(source.gender || inferGenderFromText(`${source.name || ''} ${role} ${description}`), 30);
   const rawName = cleanText(source.name || source.character_name || source.displayName || source.label || '', 40);
+  const shouldGenerateName = looksLikeDescriptorName(rawName);
   return {
-    name: looksLikeDescriptorName(rawName) ? defaultCharacterName(gender, idx) : rawName,
+    name: shouldGenerateName ? defaultCharacterName(gender, idx, seed, role || description) : rawName,
     role,
     gender,
     description,
+    name_generated: shouldGenerateName || undefined,
   };
 }
 
-function normalizeCharacters(input) {
+function normalizeCharacters(input, seed = '') {
   const raw = Array.isArray(input) ? input : [];
   return raw
-    .map((item, idx) => normalizeCharacter(item, idx))
+    .map((item, idx) => normalizeCharacter(item, idx, seed))
     .filter(x => x.name || x.role || x.description);
 }
 
@@ -205,7 +222,8 @@ function normalizeControlledProduction(input = null) {
 function buildContext(body = {}, user = {}) {
   const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
-  const characters = normalizeCharacters(body.characters || body.cast || body.people);
+  const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
+  const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);
   const assets = normalizeAssets(body.assets || body.references || body.images);
   const targetDuration = Math.max(10, Math.min(120, Number(body.duration || body.target_duration || body.targetDuration || 30) || 30));
   const rawShotCount = Number(body.shot_count || body.shotCount || 0) || 0;
@@ -221,7 +239,7 @@ function buildContext(body = {}, user = {}) {
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   return {
-    request_id: cleanText(body.request_id || body.requestId || uuidv4(), 80),
+    request_id: requestId,
     brief,
     product_subject: productSubject || inferSubjectFromBrief(brief),
     target_duration: targetDuration,
@@ -282,7 +300,7 @@ function contextPrompt(ctx) {
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
     `人物模式：${ctx.cast_mode}`,
-    ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须先给稳定短名，name 不得写成“气质美女/客户顾问/展示者”这类描述。',
+    ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
     ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',

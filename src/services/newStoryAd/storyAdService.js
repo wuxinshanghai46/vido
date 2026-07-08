@@ -57,13 +57,13 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   return { task: updated, context: ctx };
 }
 
-function normalizeBlueprintDraft(blueprint = {}) {
+function normalizeBlueprintDraft(blueprint = {}, seed = '') {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
   return {
     ...blueprint,
     story_title: cleanText(blueprint.story_title || blueprint.title || '新剧情广告剧本', 120),
     logline: cleanText(blueprint.logline || blueprint.summary || '', 500),
-    characters: normalizeCharacters(Array.isArray(blueprint.characters) ? blueprint.characters : []),
+    characters: normalizeCharacters(Array.isArray(blueprint.characters) ? blueprint.characters : [], seed),
     beats: beats.map((beat, index) => {
       const duration = Math.max(1, Math.min(30, Number(beat.duration || beat.duration_sec || beat.seconds || 0) || 3));
       const visual = cleanText(beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '', 1200);
@@ -99,7 +99,8 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
   const previous = storage.getOutput(taskId, 'blueprint') || {};
-  const normalized = normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) });
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const normalized = normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   storage.saveOutput(taskId, 'blueprint', normalized);
   storage.saveStage(taskId, 'blueprint', {
     status: 'done',
@@ -230,9 +231,10 @@ async function generateStoryboardStage(taskId) {
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
+  const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx,
-    characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters),
+    characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters, characterSeed),
   };
   storage.updateTask(taskId, { status: 'running', stage: 'storyboard' });
   storage.saveStage(taskId, 'storyboard', { status: 'running', input_summary: `${blueprint.beats?.length || 0} beats` });
@@ -288,12 +290,30 @@ async function buildKeyframeContractStage(taskId) {
   return contracts;
 }
 
-function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
+function previousKeyframeContext(keyframes = [], index = 0) {
+  if (!Array.isArray(keyframes) || index <= 0) return null;
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const frame = keyframes[i] || {};
+    const imageUrl = frame.image_url || frame.imageUrl || frame.url || '';
+    if (!imageUrl) continue;
+    return {
+      index: i + 1,
+      title: frame.title || `Shot ${i + 1}`,
+      image_url: imageUrl,
+      prompt: cleanText(frame.prompt || '', 700),
+    };
+  }
+  return null;
+}
+
+function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, options = {}) {
   const visualContract = contract.visual_contract || {};
   const personAsset = ctx.person_asset || {};
   const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
+  const actionText = cleanText(shot.action || shot.visual_action || '', 500);
+  const previousFrame = options.previousFrame || null;
   const actorReferenceText = [
     personAsset.name ? `Actor name: ${cleanText(personAsset.name, 120)}` : '',
     personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 900)}` : '',
@@ -307,11 +327,13 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     userVisualOverride ? `User-edited visual override, highest priority: ${visualText}` : '',
     userVisualOverride ? 'If action, evidence, contract or previous generated image conflicts with the user-edited visual, follow the user-edited visual and ignore the conflicting old object/layout wording.' : '',
     `Visual: ${visualText}`,
-    `Action: ${cleanText(shot.action || shot.visual_action || '', 500)}`,
+    userVisualOverride
+      ? `Action intent only: adapt the gesture and camera rhythm from this action to the edited visual, but ignore any old object, carrier, layout, board, block, tile, sample, edge or panel wording that conflicts with the visual: ${actionText}`
+      : `Action: ${actionText}`,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
-    visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
-    visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
-    visualContract.evidence ? `Commercial evidence: ${cleanText(visualContract.evidence, 300)}` : '',
+    !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
+    !userVisualOverride && visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
+    !userVisualOverride && visualContract.evidence ? `Commercial evidence: ${cleanText(visualContract.evidence, 300)}` : '',
     visualContract.style ? `Style: ${cleanText(visualContract.style, 260)}` : '',
     visualContract.scene_direction && visualContract.scene_direction !== 'auto' ? `Scene direction: ${cleanText(visualContract.scene_direction, 80)}` : '',
     visualContract.custom_scene_requirement ? `Custom scene requirement: ${cleanText(visualContract.custom_scene_requirement, 240)}` : '',
@@ -327,7 +349,10 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
-    userVisualOverride ? `Final visual priority: render this edited visual, not the previous image composition: ${visualText}` : '',
+    userVisualOverride ? 'Do not use stale storyboard nouns from older hidden fields as the subject. The edited visual is the source of truth for object layout, surface type, carrier, material form and composition.' : '',
+    previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its premium wall/surface texture continuity, lighting mood, material realism, framing discipline and commercial tone when compatible with the edited visual.` : '',
+    previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${cleanText(previousFrame.prompt, 500)}` : '',
+    userVisualOverride ? `Final priority: generate this edited visual: ${visualText}. Keep continuity with the prior shot only where it does not contradict this edited visual. Do not revert to separated samples, boards, blocks, tiles, matrix displays or old carrier wording unless those words are explicitly present in the edited visual.` : '',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
   return parts.filter(Boolean).join('\n');
@@ -367,7 +392,8 @@ async function generateKeyframesStage(taskId, options = {}) {
   storage.saveStage(taskId, 'keyframes', { status: 'running', input_summary: `${indexes.length} image keyframes` });
   for (const i of indexes) {
     const shot = shots[i] || {};
-    const prompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i);
+    const previousFrame = previousKeyframeContext(keyframes, i);
+    const prompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame });
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
     try {
       const result = await mediaAdapter.generateImage({
@@ -678,7 +704,9 @@ ${outputSchema}`;
     cast_mode: cleanText(parsed.cast_mode || parsed.castMode || ctx.cast_mode || 'auto', 40),
     shot_count: Math.max(0, Math.min(18, Number(parsed.shot_count || parsed.shotCount || ctx.shot_count || 0) || 0)),
     forbidden: Array.isArray(parsed.forbidden) ? parsed.forbidden.map(x => cleanText(x, 100)).filter(Boolean) : ctx.forbidden,
-    characters: Array.isArray(parsed.characters) ? normalizeCharacters(parsed.characters) : ctx.characters,
+    characters: Array.isArray(parsed.characters)
+      ? normalizeCharacters(parsed.characters, `${ctx.request_id || body.task_id || body.taskId || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`)
+      : ctx.characters,
     model_meta: {
       used_model: result.used_model,
       fallback_used: result.fallback_used,

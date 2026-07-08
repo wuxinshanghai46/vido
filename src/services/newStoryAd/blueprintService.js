@@ -16,6 +16,7 @@ function normalizeBlueprint(blueprint, ctx) {
   const bp = blueprint && typeof blueprint === 'object' ? blueprint : {};
   const beats = Array.isArray(bp.beats) ? bp.beats : [];
   const targetCount = desiredBeatCount(ctx);
+  const characterSeed = `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   return {
     story_title: bp.story_title || bp.title || `${ctx.product_subject}剧情广告`,
     logline: bp.logline || bp.synopsis || '',
@@ -23,7 +24,7 @@ function normalizeBlueprint(blueprint, ctx) {
     visual_requirements: Array.isArray(bp.visual_requirements) ? bp.visual_requirements.map(x => clean(x, 80)).filter(Boolean) : [],
     target_beat_count: Number(bp.target_beat_count || targetCount || beats.length || 0) || 0,
     segment_plan: Array.isArray(bp.segment_plan) ? bp.segment_plan : [],
-    characters: normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters),
+    characters: normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed),
     beats: beats.map((beat, idx) => ({
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -61,7 +62,7 @@ async function generateBlueprint(ctx, { taskId = '' } = {}) {
     'For each task, first infer which visual dimensions are needed by the user brief: story, character, product, material, space, UI, proof, comparison, emotion, brand, offer, process, result, or others.',
     'Each beat should include only the visual layers that are actually needed for that beat. Some beats may be pure product proof, some may be pure story reaction, some may combine several layers.',
     'The important rule is completeness relative to the user request, not a fixed set of columns.',
-    'characters.name must be a stable short name. Never use descriptions such as "elegant woman", "customer", "presenter" as name; those belong in role or description.',
+    'characters.name must be a task-local formal person name when a person appears. If the user did not provide a name, generate a fresh stable name for this task; never use role placeholders or descriptions such as "elegant woman", "customer", "presenter" as final names.',
     'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
     'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
     'Never put explicitly forbidden people, objects, carrier forms, styles or wrong products into beats.',
@@ -77,7 +78,7 @@ Return JSON in this shape:
   "visual_requirements": ["story", "product", "material", "proof"],
   "target_beat_count": ${targetCount || 0},
   "segment_plan": [{"segment_id":"seg_1","name":"section","space_anchor":"fixed space or carrier","fixed_subjects":"fixed subjects/relationships","continuity_rules":["rules"]}],
-  "characters": [{"name":"stable short task-local name, e.g. Role A / Role B; not a real fixed person","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
+  "characters": [{"name":"fresh stable formal person name for this task, generated when user did not provide one","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
   "beats": [{
     "beat_index": 1,
     "role": "story function label",

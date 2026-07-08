@@ -254,12 +254,30 @@ async function generateText({
   throw err;
 }
 
-function mockResponse(stage) {
+function mockName(seed = '', idx = 0) {
+  const surnames = '赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜';
+  const given = '安然宁清雅知辰一诺可言景舟明远若初思予嘉禾亦晨书衡子墨云舒';
+  const text = `${seed || 'new_story_ad_mock'}|${idx}`;
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const base = Math.abs(hash >>> 0);
+  const surname = surnames[base % surnames.length];
+  const first = given[(base + idx * 5) % given.length];
+  const second = given[(Math.floor(base / 11) + idx * 7) % given.length];
+  return `${surname}${second === first ? first : `${first}${second}`}`;
+}
+
+function mockResponse(stage, userPrompt = '') {
+  const primaryName = mockName(userPrompt || stage, 0);
+  const supportName = mockName(userPrompt || stage, 1);
   if (/blueprint/.test(stage)) {
     return JSON.stringify({
       story_title: '任务专属剧情广告蓝图',
       logline: '目标用户遇到当前任务描述的问题，广告主体以可见动作解决并形成结果证明。',
-      characters: [{ name: '角色A', role: '按当前任务生成的核心人物', profile: '真实人物，承担当前任务需要的主要动作' }],
+      characters: [{ name: primaryName, role: '按当前任务生成的核心人物', profile: '真实人物，承担当前任务需要的主要动作' }],
       beats: [
         { beat_index: 1, role: '痛点', plot: '目标用户看见当前任务里的具体问题', spoken_line: '这个问题需要被更清楚地解决。', visual_proof: '当前任务的问题证据清晰可见' },
         { beat_index: 2, role: '主体亮相', plot: '当前广告主体进入并开始处理', spoken_line: '现在用更直接的方式处理。', visual_proof: '广告主体与问题证据同框' },
@@ -278,15 +296,15 @@ function mockResponse(stage) {
       shot_count: 3,
       forbidden: ['未授权行业', '旧任务人物', '与当前任务无关的主体'],
       characters: [
-        { name: '角色A', role: '当前任务核心人物' },
-        { name: '角色B', role: '当前任务辅助人物' },
+        { name: primaryName, role: '当前任务核心人物' },
+        { name: supportName, role: '当前任务辅助人物' },
       ],
     });
   }
   return JSON.stringify([
-    { index: 1, title: '问题出现', role: '痛点', duration: 5, visual: '当前任务场景里，目标用户面对清晰可见的问题证据。', action: '角色A停下当前动作并指出问题来源。', voiceover: '这个问题需要被更清楚地解决。', dialogue_lines: [{ speaker: '角色A', line: '这里的问题已经影响到了结果。' }], purpose: '痛点', characters: [{ name: '角色A', action: '发现问题' }] },
-    { index: 2, title: '主体介入', role: '主体亮相', duration: 8, visual: '当前广告主体与问题证据同框出现。', action: '角色A开始处理并展示当前任务需要的核心步骤。', voiceover: '现在用更直接的方式处理。', dialogue_lines: [{ speaker: '角色A', line: '先看最关键的一步。' }], purpose: '亮相', characters: [{ name: '角色A', action: '操作或展示主体' }] },
-    { index: 3, title: '结果证明', role: '结果证明', duration: 7, visual: '当前任务的结果变化形成可见对比。', action: '角色A确认处理结果并自然收束。', voiceover: '变化已经清楚呈现出来。', dialogue_lines: [{ speaker: '角色A', line: '现在结果已经清楚了。' }], purpose: '证明', characters: [{ name: '角色A', action: '确认结果' }] },
+    { index: 1, title: '问题出现', role: '痛点', duration: 5, visual: '当前任务场景里，目标用户面对清晰可见的问题证据。', action: `${primaryName}停下当前动作并指出问题来源。`, voiceover: '这个问题需要被更清楚地解决。', dialogue_lines: [{ speaker: primaryName, line: '这里的问题已经影响到了结果。' }], purpose: '痛点', characters: [{ name: primaryName, action: '发现问题' }] },
+    { index: 2, title: '主体介入', role: '主体亮相', duration: 8, visual: '当前广告主体与问题证据同框出现。', action: `${primaryName}开始处理并展示当前任务需要的核心步骤。`, voiceover: '现在用更直接的方式处理。', dialogue_lines: [{ speaker: primaryName, line: '先看最关键的一步。' }], purpose: '亮相', characters: [{ name: primaryName, action: '操作或展示主体' }] },
+    { index: 3, title: '结果证明', role: '结果证明', duration: 7, visual: '当前任务的结果变化形成可见对比。', action: `${primaryName}确认处理结果并自然收束。`, voiceover: '变化已经清楚呈现出来。', dialogue_lines: [{ speaker: primaryName, line: '现在结果已经清楚了。' }], purpose: '证明', characters: [{ name: primaryName, action: '确认结果' }] },
   ]);
 }
 
