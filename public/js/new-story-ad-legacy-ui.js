@@ -1,7 +1,7 @@
 (() => {
   const ROOT_ID = 'dhNewStoryAdLegacyMount';
   const TASK_STORAGE_KEY = 'vido_new_story_ad_current_task_id';
-  const SAMPLE_BRIEF = '我想做一条不锈钢产品的剧情广告：展示不锈钢可以打造高级背景墙、家居展台和不同纹理颜色搭配，让用户看到原料到高端空间效果的变化，节奏沉稳、有真人看细节，最后引导联系定制。';
+  const SAMPLE_BRIEF = '我想做一条品牌剧情广告：写清产品或服务、目标用户、核心卖点、期望场景和最后的引导动作。剧情要有真人或主体细节，节奏清晰，最后引导用户咨询或下单。';
   const VIDEO_RESOLUTION_LABELS = { '480p': '480p', '720p': '720p', '1080p': '1080p', '4k': '4K' };
   const CONTROL_ENVIRONMENT_OPTIONS = [
     ['auto', '自动'],
@@ -751,7 +751,7 @@
       },
       controlled_production: ctrl,
       forbidden: negative,
-      source: 'new_story_ad_old_ui_clone',
+      source: 'new_story_ad_legacy_style_ui',
     };
   }
 
@@ -2463,21 +2463,16 @@
   function fallbackPersonSpecFromBrief(brief = '') {
     const isMale = /男|先生|老板|师傅|厂家|经理/.test(brief) && !/女|女士|美女|太太/.test(brief);
     const isFemale = /女|女士|美女|太太|模特/.test(brief);
-    const isDual = /双人|两人|对话|客户.*顾问|经销商.*客户/.test(brief);
+    const isDual = /双人|两人|对话|客户.*顾问|销售.*客户|经销商.*客户/.test(brief);
     const isGroup = /多人|团队|群像|一家人|员工/.test(brief);
-    const productTone = /不锈钢|金属|建材|背景墙|材料/.test(brief);
     return {
       castMode: isGroup ? 'group' : (isDual ? 'dual' : 'single'),
       gender: isMale ? 'male' : (isFemale ? 'female' : 'auto'),
-      age: /老板|厂家|经理|经销商|顾问/.test(brief) ? 'adult_30_40' : 'match_brief',
+      age: /老板|厂家|经理|经销商|顾问|专家|负责人/.test(brief) ? 'adult_30_40' : 'match_brief',
       origin: 'east_asian_cn',
-      roleName: /经销商/.test(brief) ? '建材经销商 / 品牌顾问' : (/厂家|材料/.test(brief) ? '不锈钢材料品牌顾问' : '广告主角'),
-      appearanceText: productTone
-        ? '真实商业广告人物，五官自然，年龄感成熟可信，气质专业沉稳；表情克制、有信任感，适合在高端展厅或材料展示场景中观察细节。'
-        : '符合广告需求的真实商业广告人物，五官自然，表情可信，气质干净专业，避免网红脸和过度磨皮。',
-      wardrobeText: productTone
-        ? '简洁商务休闲或高级展厅工作装，颜色以黑、白、灰、深蓝等低饱和色为主；服装干净合身，鞋和配饰克制，避免抢走不锈钢产品视觉重点。'
-        : '服装贴合产品定位和使用场景，干净真实，颜色克制，避免夸张造型；鞋、配饰和整体风格保持商业广告质感。',
+      roleName: /顾问|销售|经销商|导购/.test(brief) ? '品牌顾问 / 商业讲解人' : '广告主角',
+      appearanceText: '符合当前广告需求的真实商业广告人物，五官自然，表情可信，气质干净专业；根据任务内容、目标用户和剧情关系判断年龄感、职业感和亲和度，避免网红脸和过度磨皮。',
+      wardrobeText: '服装贴合当前产品定位、使用场景和目标客群，干净真实，颜色克制；鞋、配饰和整体风格保持商业广告质感，不抢主体画面。',
       hairMakeupText: '发型整洁自然，妆容清爽克制，皮肤保留真实质感；可有轻微商务妆、自然眉眼和干净发际线，避免厚重滤镜、夸张美瞳或塑料感皮肤。',
       negativeText: '不要卡通、不要塑料感皮肤、不要多余人物、不要水印文字、不要夸张变形；不要网红脸、廉价服装、过度磨皮、表情浮夸或与产品定位不符的造型。',
     };
