@@ -57,6 +57,62 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   return { task: updated, context: ctx };
 }
 
+function normalizeBlueprintDraft(blueprint = {}) {
+  const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  return {
+    ...blueprint,
+    story_title: cleanText(blueprint.story_title || blueprint.title || '新剧情广告剧本', 120),
+    logline: cleanText(blueprint.logline || blueprint.summary || '', 500),
+    characters: normalizeCharacters(Array.isArray(blueprint.characters) ? blueprint.characters : []),
+    beats: beats.map((beat, index) => {
+      const duration = Math.max(1, Math.min(30, Number(beat.duration || beat.duration_sec || beat.seconds || 0) || 3));
+      const visual = cleanText(beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '', 1200);
+      const action = cleanText(beat.action || beat.character_action || beat.behavior || '', 800);
+      const spoken = cleanText(beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue || '', 600);
+      const proof = cleanText(beat.visual_proof || beat.evidence || beat.purpose || beat.objective || '', 800);
+      const title = cleanText(beat.title || beat.role || `镜头 ${index + 1}`, 120);
+      return {
+        ...beat,
+        beat_index: index + 1,
+        index: index + 1,
+        duration,
+        duration_sec: duration,
+        title,
+        role: cleanText(beat.role || title || 'story', 80),
+        plot: visual || action || cleanText(beat.plot || '', 1200),
+        visual,
+        story_visual: visual,
+        action,
+        spoken_line: spoken,
+        voiceover: spoken,
+        visual_proof: proof,
+        purpose: cleanText(beat.purpose || beat.objective || proof || beat.role || '', 160),
+        confirmed: beat.confirmed !== false,
+      };
+    }).filter(beat => beat.plot || beat.visual || beat.action || beat.spoken_line || beat.visual_proof),
+    edited_at: new Date().toISOString(),
+    edited_by_user: true,
+  };
+}
+
+function updateBlueprint(taskId, blueprint = {}, user = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const previous = storage.getOutput(taskId, 'blueprint') || {};
+  const normalized = normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) });
+  storage.saveOutput(taskId, 'blueprint', normalized);
+  storage.saveStage(taskId, 'blueprint', {
+    status: 'done',
+    output_summary: `${normalized.beats.length} script shots saved`,
+    diagnostics: {
+      edited_by: user.id || user.username || '',
+      edited_by_user: true,
+    },
+  });
+  storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done' });
+  return normalized;
+}
+
 async function generateSceneConfig(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -569,6 +625,7 @@ ${outputSchema}`;
 module.exports = {
   createTask,
   updateTaskRequest,
+  updateBlueprint,
   generateSceneConfig,
   generateBlueprintStage,
   generateStoryboardStage,

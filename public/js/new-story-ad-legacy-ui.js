@@ -65,6 +65,7 @@
       uiExpanded: false,
     },
     controlAiPending: {},
+    blueprintDirty: false,
     busy: false,
     currentStep: 1,
   };
@@ -1491,6 +1492,99 @@
     host.innerHTML = `<div class="dh-lux-asset-manifest">${displayRows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
   }
 
+  function blueprintBeats() {
+    if (!state.blueprint || typeof state.blueprint !== 'object') return [];
+    if (!Array.isArray(state.blueprint.beats)) state.blueprint.beats = [];
+    return state.blueprint.beats;
+  }
+
+  function blueprintBeatDuration(beat = {}, index = 0, total = 1) {
+    const explicit = Number(beat.duration || beat.duration_sec || beat.seconds || 0);
+    if (Number.isFinite(explicit) && explicit > 0) return Math.max(1, Math.round(explicit));
+    const target = Number(state.context?.target_duration || state.context?.duration_sec || state.context?.duration || 30) || 30;
+    return Math.max(2, Math.round(target / Math.max(1, total || 1)));
+  }
+
+  function blueprintFieldValue(beat = {}, field = '', index = 0, total = 1) {
+    if (field === 'duration') return String(blueprintBeatDuration(beat, index, total));
+    if (field === 'title') return beat.title || beat.role || beat.story_role || `镜头 ${index + 1}`;
+    if (field === 'visual') return beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '';
+    if (field === 'action') return beat.action || beat.character_action || beat.behavior || beat.plot || '';
+    if (field === 'spoken_line') return beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue || '';
+    if (field === 'visual_proof') return beat.visual_proof || beat.evidence || beat.promo_visual || beat.purpose || '';
+    if (field === 'purpose') return beat.purpose || beat.objective || beat.role || '';
+    return beat[field] || '';
+  }
+
+  function normalizeBlueprintForSave() {
+    const bp = state.blueprint && typeof state.blueprint === 'object' ? state.blueprint : {};
+    const beats = Array.isArray(bp.beats) ? bp.beats : [];
+    return {
+      ...bp,
+      story_title: bp.story_title || bp.title || '新剧情广告剧本',
+      logline: bp.logline || bp.summary || '',
+      beats: beats.map((beat, i) => {
+        const total = beats.length || 1;
+        const duration = blueprintBeatDuration(beat, i, total);
+        const title = blueprintFieldValue(beat, 'title', i, total);
+        const visual = blueprintFieldValue(beat, 'visual', i, total);
+        const action = blueprintFieldValue(beat, 'action', i, total);
+        const spoken = blueprintFieldValue(beat, 'spoken_line', i, total);
+        const proof = blueprintFieldValue(beat, 'visual_proof', i, total);
+        const purpose = blueprintFieldValue(beat, 'purpose', i, total);
+        return {
+          ...beat,
+          beat_index: i + 1,
+          index: i + 1,
+          duration,
+          duration_sec: duration,
+          title,
+          role: beat.role || title || purpose || 'story',
+          plot: visual || action || beat.plot || '',
+          visual,
+          story_visual: visual,
+          action,
+          spoken_line: spoken,
+          voiceover: spoken,
+          visual_proof: proof,
+          purpose,
+          confirmed: beat.confirmed !== false,
+        };
+      }).filter(beat => beat.plot || beat.visual || beat.action || beat.spoken_line || beat.visual_proof),
+    };
+  }
+
+  function updateBlueprintField(target) {
+    if (!target?.matches?.('[data-nsa-blueprint-field]')) return false;
+    const beats = blueprintBeats();
+    const index = Number(target.dataset.nsaBlueprintIndex || 0);
+    const field = target.dataset.nsaBlueprintField || '';
+    const beat = beats[index];
+    if (!beat || !field) return true;
+    const value = field === 'duration'
+      ? Math.max(1, Math.min(30, Number(target.value || 0) || blueprintBeatDuration(beat, index, beats.length)))
+      : target.value || '';
+    if (field === 'duration') {
+      beat.duration = value;
+      beat.duration_sec = value;
+    } else if (field === 'visual') {
+      beat.visual = value;
+      beat.story_visual = value;
+      beat.plot = value || beat.plot || '';
+    } else if (field === 'spoken_line') {
+      beat.spoken_line = value;
+      beat.voiceover = value;
+    } else if (field === 'visual_proof') {
+      beat.visual_proof = value;
+      beat.evidence = value;
+    } else {
+      beat[field] = value;
+      if (field === 'title') beat.role = value || beat.role;
+    }
+    state.blueprintDirty = true;
+    return true;
+  }
+
   function renderBlueprint() {
     const host = within('#dhNsaAdScriptHost');
     if (!host) return;
@@ -1500,6 +1594,70 @@
     }
     const bp = state.blueprint || {};
     const beats = Array.isArray(bp.beats) ? bp.beats : [];
+    if (!beats.length) {
+      host.innerHTML = '<div class="dh-luxgen-empty"><b>剧本为空</b><span>请重新生成剧本，或添加镜头后再进入分镜。</span></div>';
+      return;
+    }
+    const totalSeconds = beats.reduce((sum, beat, i) => sum + blueprintBeatDuration(beat, i, beats.length), 0);
+    const avgSeconds = Math.round((totalSeconds / Math.max(1, beats.length)) * 10) / 10;
+    host.innerHTML = `<div class="dh-demo-script-review">
+      <div>
+        <h4>剧本审核</h4>
+        <p>第 1 版 · 待确认 · ${escapeHtml(bp.story_title || bp.title || '新剧情广告')} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒</p>
+      </div>
+      <div class="dh-demo-script-actions">
+        <button type="button" class="dh-luxgen-edit" data-nsa-blueprint-add>添加一镜</button>
+        <span class="dh-luxgen-status ready">可编辑</span>
+      </div>
+    </div>
+    <div class="dh-lux-script-stats">
+      <span><small>最终时长</small><b>${escapeHtml(String(totalSeconds))} 秒</b></span>
+      <span><small>镜头数量</small><b>${beats.length} 镜</b></span>
+      <span><small>平均镜长</small><b>${escapeHtml(String(avgSeconds))} 秒/镜</b></span>
+      <em>这里调整秒数、画面、动作、台词和补充说明后，会先保存到新剧情广告任务，再生成分镜。</em>
+    </div>
+    <div class="dh-demo-script-mainline">
+      <b>脚本主线</b>
+      <span>${escapeHtml(bp.logline || bp.summary || '按当前广告需求生成，可继续补充每一镜细节。')}</span>
+    </div>
+    <div class="dh-demo-script-overview dh-lux-script-checklist">
+      <b>生成分镜图前先确认</b>
+      <span>如果需要加时间、补画面或改台词，直接在下方逐镜修改；确认后再点击“确认脚本，生成分镜”。</span>
+    </div>
+    <table class="dh-demo-table">
+      <thead>
+        <tr>
+          <th style="width:58px">镜</th>
+          <th style="width:74px">秒</th>
+          <th style="width:24%">画面</th>
+          <th style="width:21%">动作</th>
+          <th style="width:18%">台词/旁白</th>
+          <th style="width:18%">目的/补充</th>
+          <th style="width:104px">状态</th>
+          <th style="width:72px">编辑</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${beats.map((beat, i) => {
+          const missing = [
+            !blueprintFieldValue(beat, 'visual', i, beats.length) ? '缺画面' : '',
+            !blueprintFieldValue(beat, 'action', i, beats.length) ? '缺动作' : '',
+            !blueprintFieldValue(beat, 'spoken_line', i, beats.length) ? '缺台词' : '',
+          ].filter(Boolean);
+          return `<tr>
+            <td>${i + 1}</td>
+            <td><input class="dh-input dh-lux-shot-duration-input" type="number" min="1" max="30" step="1" value="${escapeHtml(blueprintFieldValue(beat, 'duration', i, beats.length))}" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="duration"></td>
+            <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="visual">${escapeHtml(blueprintFieldValue(beat, 'visual', i, beats.length))}</textarea></td>
+            <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="action">${escapeHtml(blueprintFieldValue(beat, 'action', i, beats.length))}</textarea></td>
+            <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="spoken_line">${escapeHtml(blueprintFieldValue(beat, 'spoken_line', i, beats.length))}</textarea></td>
+            <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="visual_proof">${escapeHtml(blueprintFieldValue(beat, 'visual_proof', i, beats.length) || blueprintFieldValue(beat, 'purpose', i, beats.length))}</textarea></td>
+            <td><span class="dh-luxgen-status ${missing.length ? 'error' : 'ready'}">${escapeHtml(missing.length ? missing.join(' / ') : '可确认')}</span></td>
+            <td><button type="button" class="dh-luxgen-edit danger" data-nsa-blueprint-delete="${i}" ${beats.length <= 1 ? 'disabled' : ''}>删除</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+    return;
     host.innerHTML = `<div class="dh-task-create-panel">
       <div class="dh-task-create-section dh-task-create-section-wide">
         <div class="dh-task-detail-title">${escapeHtml(bp.story_title || '剧本生成结果')}</div>
@@ -1645,6 +1803,7 @@
 
   async function saveCurrentTaskProgress() {
     const id = await ensureTask();
+    if (state.blueprint) await saveBlueprintEdits(id);
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: { ...payload(), task_id: id },
@@ -1656,6 +1815,19 @@
     renderAll();
     toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
+  }
+
+  async function saveBlueprintEdits(taskId = state.taskId) {
+    if (!state.blueprint || !taskId) return null;
+    const blueprint = normalizeBlueprintForSave();
+    state.blueprint = blueprint;
+    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
+      method: 'PUT',
+      body: { blueprint },
+    });
+    normalizeBundle(r);
+    state.blueprintDirty = false;
+    return r;
   }
 
   async function runStage(stage, button) {
@@ -1684,6 +1856,7 @@
         showStep(3);
       } else if (stage === 'storyboard') {
         if (!state.blueprint) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/blueprint`, { method: 'POST', body: {} }));
+        if (state.blueprint) await saveBlueprintEdits(id);
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} });
         normalizeBundle(r);
         showStep(4);
@@ -2354,6 +2527,41 @@
         if (entry?.url) openPreview(withAuthQuery(entry.url), `${asset?.name || '人物参考'} · ${entry.label || ''}`);
         return;
       }
+      const blueprintAdd = target.closest('[data-nsa-blueprint-add]');
+      if (blueprintAdd && host.contains(blueprintAdd)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const beats = blueprintBeats();
+        beats.push({
+          beat_index: beats.length + 1,
+          duration: 3,
+          duration_sec: 3,
+          title: `补充镜头 ${beats.length + 1}`,
+          role: '补充',
+          plot: '',
+          visual: '',
+          action: '',
+          spoken_line: '',
+          visual_proof: '',
+          confirmed: true,
+        });
+        state.blueprintDirty = true;
+        renderBlueprint();
+        return;
+      }
+      const blueprintDelete = target.closest('[data-nsa-blueprint-delete]');
+      if (blueprintDelete && host.contains(blueprintDelete)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const beats = blueprintBeats();
+        const index = Number(blueprintDelete.dataset.nsaBlueprintDelete || 0);
+        if (beats.length <= 1) return toast('至少保留 1 个镜头', 'error');
+        beats.splice(index, 1);
+        beats.forEach((beat, i) => { beat.beat_index = i + 1; beat.index = i + 1; });
+        state.blueprintDirty = true;
+        renderBlueprint();
+        return;
+      }
       const shotUpload = target.closest('[data-nsa-shot-upload]');
       if (shotUpload && host.contains(shotUpload)) {
         e.preventDefault();
@@ -2431,6 +2639,10 @@
     }, true);
     host.addEventListener('input', e => {
       const target = e.target;
+      if (updateBlueprintField(target)) {
+        renderStatus();
+        return;
+      }
       if (target?.id === 'dhNsaAdText') {
         markSourceDirty();
         renderStatus();

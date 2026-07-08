@@ -490,6 +490,12 @@ router.put('/tasks/:id', (req, res) => {
   res.json({ success: true, ...updated, bundle: service.publicTaskBundle(req.params.id) });
 });
 
+router.put('/tasks/:id/blueprint', (req, res) => {
+  const body = req.body || {};
+  const blueprint = service.updateBlueprint(req.params.id, body.blueprint || body || {}, userFromReq(req));
+  res.json({ success: true, task_id: req.params.id, blueprint, bundle: service.publicTaskBundle(req.params.id) });
+});
+
 router.post('/assist', asyncRoute(async (req, res) => {
   const result = await service.assistBrief(req.body || {}, userFromReq(req));
   res.json({ success: true, ...result });
