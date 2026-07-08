@@ -66,6 +66,8 @@
     },
     controlAiPending: {},
     blueprintDirty: false,
+    stageProgress: null,
+    stageProgressTimer: null,
     busy: false,
     currentStep: 1,
   };
@@ -1411,13 +1413,100 @@
     ].forEach(sel => setButtonLock(sel, false));
   }
 
+  function stageItemCount(stage = '') {
+    if (stage === 'storyboard') return Math.max(1, blueprintBeats().length || state.shots.length || 1);
+    if (stage === 'keyframes') return Math.max(1, state.shots.length || state.contracts.length || state.keyframes.length || 1);
+    return 1;
+  }
+
+  function completedKeyframeCount() {
+    return (Array.isArray(state.keyframes) ? state.keyframes : []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url || frame.error)).length;
+  }
+
+  function stopStageProgress() {
+    if (state.stageProgressTimer) {
+      clearInterval(state.stageProgressTimer);
+      state.stageProgressTimer = null;
+    }
+    state.stageProgress = null;
+  }
+
+  function stageProgressSnapshot(label = '') {
+    const progress = state.stageProgress || {};
+    const stage = progress.stage || '';
+    const total = Math.max(1, Number(progress.total || stageItemCount(stage)) || 1);
+    const elapsed = Math.max(0, Date.now() - (Number(progress.startedAt || 0) || Date.now()));
+    if (stage === 'keyframes') {
+      const completed = Math.min(total, completedKeyframeCount());
+      const current = Math.min(total, completed + 1);
+      const pct = completed >= total ? 96 : Math.max(8, Math.min(92, Math.round(8 + (completed / total) * 78 + Math.min(10, elapsed / 9000))));
+      return {
+        title: `\u751f\u6210\u771f\u5b9e\u5173\u952e\u5e27\u4e2d\uff1a\u7b2c ${current}/${total} \u955c`,
+        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
+        percent: pct,
+        message: `\u5df2\u5b8c\u6210 ${completed}/${total} \u5f20\u5173\u952e\u5e27\uff1b\u5f53\u524d\u6b63\u5728\u751f\u6210\u7b2c ${current} \u955c\uff0c\u5b8c\u6210\u4e00\u5f20\u4f1a\u81ea\u52a8\u66f4\u65b0\u3002`,
+      };
+    }
+    if (stage === 'storyboard') {
+      const pct = Math.max(12, Math.min(88, Math.round(18 + elapsed / 900)));
+      return {
+        title: `\u751f\u6210\u5206\u955c\u8868\u4e2d\uff1a\u5171 ${total} \u955c`,
+        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
+        percent: pct,
+        message: '\u6b63\u5728\u6309\u5df2\u786e\u8ba4\u5267\u672c\u751f\u6210\u5206\u955c\u8868\uff0c\u5e76\u8fdb\u884c\u955c\u5934\u3001\u52a8\u4f5c\u3001\u53f0\u8bcd\u548c\u5546\u4e1a\u4e00\u81f4\u6027\u68c0\u67e5\u3002',
+      };
+    }
+    const pct = Math.max(12, Math.min(86, Math.round(18 + elapsed / 1000)));
+    return {
+      title: label || progress.label || '\u5904\u7406\u4e2d...',
+      stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
+      percent: pct,
+      message: progress.message || '\u6b63\u5728\u6267\u884c\u5f53\u524d\u9636\u6bb5\uff0c\u8bf7\u7a0d\u5019\u3002',
+    };
+  }
+
+  function renderStageProgress(label = '') {
+    const snap = stageProgressSnapshot(label);
+    return `<div class="dh-lux-person-progress">
+      <div class="dh-lux-person-progress-head">
+        <b>${escapeHtml(snap.title)}</b>
+        <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em></span>
+      </div>
+      <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${snap.percent}%"></i></div>
+      <small>${escapeHtml(snap.message)}</small>
+    </div>`;
+  }
+  function startStageProgress(stage = '', label = '') {
+    stopStageProgress();
+    const trackable = stage === 'storyboard' || stage === 'keyframes';
+    if (!trackable) return;
+    state.stageProgress = {
+      active: true,
+      stage,
+      label,
+      total: stageItemCount(stage),
+      startedAt: Date.now(),
+    };
+    const intervalMs = stage === 'keyframes' ? 2000 : 1000;
+    state.stageProgressTimer = setInterval(async () => {
+      if (!state.stageProgress?.active) return;
+      if (stage === 'keyframes' && state.taskId) {
+        try {
+          const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}`);
+          normalizeBundle(r);
+        } catch {}
+      }
+      setBusy(true, label);
+    }, intervalMs);
+  }
   function setBusy(isBusy, label = '处理中...') {
+    if (!isBusy) stopStageProgress();
     state.busy = !!isBusy;
     const host = within('#dhNsaAdLiveProgress');
     if (host) {
       host.hidden = !isBusy;
       host.innerHTML = isBusy
-        ? `<div class="dh-lux-person-progress"><div class="dh-lux-person-progress-head"><b>${escapeHtml(label)}</b><span>running</span></div><div class="dh-lux-person-progress-track"><i style="width:42%"></i></div><small>正在生成当前阶段内容，请稍候。</small></div>`
+        ? renderStageProgress(label)
         : '';
     }
     ['#dhNsaAdGenerate', '#dhNsaAdStoryboard', '#dhNsaAdPreviewFrames', '#dhNsaAdGenerateFinalFrames', '#dhNsaAdConfirmGenerate'].forEach(sel => {
@@ -1834,14 +1923,16 @@
     const labels = {
       scene: '生成场景配置中...',
       blueprint: '生成剧本中...',
-      storyboard: '生成分镜中...',
-      keyframes: '生成真实关键帧中...',
+      storyboard: '\u751f\u6210\u5206\u955c\u8868\u4e2d...',
+      keyframes: '\u751f\u6210\u771f\u5b9e\u5173\u952e\u5e27\u4e2d...',
       tts: '生成配音中...',
       video: '生成逐镜视频中...',
       compose: '合成成片中...',
     };
-    setBusy(true, labels[stage] || '处理中...');
-    setButtonBusy(button, true, labels[stage] || '处理中...');
+    const busyLabel = labels[stage] || '\u5904\u7406\u4e2d...';
+    startStageProgress(stage, busyLabel);
+    setBusy(true, busyLabel);
+    setButtonBusy(button, true, busyLabel);
     try {
       const id = await ensureTask();
       let r = null;
@@ -2225,8 +2316,8 @@
 
   function formatElapsedText(ms = 0) {
     const sec = Math.max(0, Math.round(Number(ms) / 1000) || 0);
-    if (sec >= 60) return `${Math.floor(sec / 60)}分${String(sec % 60).padStart(2, '0')}秒`;
-    return `${sec}秒`;
+    if (sec >= 60) return `${Math.floor(sec / 60)}\u5206${String(sec % 60).padStart(2, '0')}\u79d2`;
+    return `${sec}\u79d2`;
   }
 
   function personGenerationProgressHtml() {
