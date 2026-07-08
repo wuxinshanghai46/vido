@@ -1,6 +1,8 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const sharp = require('sharp');
 const OpenAI = require('openai');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
@@ -85,6 +87,60 @@ function writeBase64Asset(base64, filename) {
   const out = path.join(ASSET_DIR, filename);
   fs.writeFileSync(out, Buffer.from(clean, 'base64'));
   return out;
+}
+
+async function imageBufferFromResult(result = {}) {
+  if (result.filePath && fs.existsSync(result.filePath)) return fs.readFileSync(result.filePath);
+  const value = String(result.image_url || result.imageUrl || result.url || '').trim();
+  if (!value) throw new Error('image result has no readable url');
+  if (value.startsWith('/api/new-story-ad/assets/')) {
+    const filePath = assetPathFromName(decodeURIComponent(value.split('/').pop() || ''));
+    if (filePath && fs.existsSync(filePath)) return fs.readFileSync(filePath);
+  }
+  if (/^https?:\/\//i.test(value)) {
+    const response = await axios.get(value, { responseType: 'arraybuffer', timeout: 120000 });
+    return Buffer.from(response.data);
+  }
+  throw new Error(`unsupported image url for local processing: ${value.slice(0, 120)}`);
+}
+
+async function splitActorSheet({ source = {}, filenamePrefix = 'new_story_actor_sheet', viewKeys = ['front', 'side', 'back', 'action'] } = {}) {
+  const input = await imageBufferFromResult(source);
+  const normalized = await sharp(input).rotate().png().toBuffer();
+  const meta = await sharp(normalized).metadata();
+  const fullW = Number(meta.width || 0);
+  const fullH = Number(meta.height || 0);
+  if (fullW < 400 || fullH < 400) throw new Error(`actor sheet image is too small: ${fullW}x${fullH}`);
+  const cellW = Math.floor(fullW / 2);
+  const cellH = Math.floor(fullH / 2);
+  const rects = [
+    { left: 0, top: 0, width: cellW, height: cellH },
+    { left: cellW, top: 0, width: fullW - cellW, height: cellH },
+    { left: 0, top: cellH, width: cellW, height: fullH - cellH },
+    { left: cellW, top: cellH, width: fullW - cellW, height: fullH - cellH },
+  ];
+  ensureDir(ASSET_DIR);
+  const views = [];
+  for (let i = 0; i < rects.length; i += 1) {
+    const key = viewKeys[i] || `view_${i + 1}`;
+    const safe = safeFilename(`${filenamePrefix}_${key}_${Date.now()}_${i + 1}`, '.png');
+    const out = path.join(ASSET_DIR, safe);
+    await sharp(normalized)
+      .extract(rects[i])
+      .resize(768, 1024, { fit: 'contain', background: { r: 242, g: 244, b: 247, alpha: 1 } })
+      .png()
+      .toFile(out);
+    views.push({
+      key,
+      label: key,
+      url: publicAssetUrl(safe),
+      image_url: publicAssetUrl(safe),
+      filename: safe,
+      filePath: out,
+      provider_used: source.provider_used || '',
+    });
+  }
+  return views;
 }
 
 function writeMockSvg(filename, prompt = '') {
@@ -174,4 +230,5 @@ module.exports = {
   publicAssetUrl,
   generateImage,
   generateActorReference,
+  splitActorSheet,
 };

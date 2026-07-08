@@ -5113,6 +5113,7 @@
     modal.querySelector('.dh-image-modal-open').href = url;
     modal.classList.add('open');
   }
+  window.openImagePreviewModal = openImagePreviewModal;
 
   function luxuryFailedKeyframeCandidates(details = null) {
     const rawAttemptSources = [

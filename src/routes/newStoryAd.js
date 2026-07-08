@@ -373,6 +373,18 @@ function buildActorViewPrompt(basePrompt = '', view = 'front') {
   ].filter(Boolean).join('\n\n');
 }
 
+function buildActorSheetPrompt(basePrompt = '') {
+  return [
+    basePrompt,
+    'Generate one single 2x2 actor casting reference sheet, not four separate images.',
+    'Panel order is mandatory: top-left FRONT full body, top-right SIDE or three-quarter full body, bottom-left BACK full body, bottom-right SUBTLE COMMERCIAL ACTION POSE full body.',
+    'Every panel must show the same adult actor identity, same face, same age impression, same body proportions, same hairstyle, and the exact same outfit.',
+    'Wardrobe lock is mandatory across all four panels: identical clothing items, color, fabric, cut, sleeve length, hem length, shoes, accessories and styling. Do not change clothing in the action pose.',
+    'Use the same clean light-gray studio casting background in all panels. No showroom, no interior scene, no product wall, no furniture, no props, no text, no labels, no logo, no watermark.',
+    'Each panel should be a full-body casting photo from head to feet, realistic hands and feet, natural commercial expression, no cartoon, no anime, no 3D render, no beauty poster.',
+  ].filter(Boolean).join('\n\n');
+}
+
 router.get('/health', (req, res) => {
   const stages = [
     'new_story_ad.scene_config',
@@ -505,26 +517,17 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   });
   try {
     const viewKeys = ['front', 'side', 'back', 'action'];
-    const generatedViews = [];
-    for (const key of viewKeys) {
-      const generated = await mediaAdapter.generateActorReference({
-        filename: `actor_${actorId}_${key}_${Date.now()}`,
-        prompt: buildActorViewPrompt(description, key),
-        aspectRatio: '3:4',
-        imageModel: body.image_model || body.imageModel || 'auto',
-      });
-      const actorUrl = normalizeLocalPublicUrl(generated.image_url || generated.url || '');
-      if (actorUrl) {
-        generatedViews.push({
-          key,
-          label: key,
-          url: actorUrl,
-          image_url: actorUrl,
-          provider_used: generated.provider_used || '',
-        });
-      }
-    }
-    const viewImages = generatedViews;
+    const sheet = await mediaAdapter.generateActorReference({
+      filename: `actor_${actorId}_sheet_${Date.now()}`,
+      prompt: buildActorSheetPrompt(description),
+      aspectRatio: '3:4',
+      imageModel: body.image_model || body.imageModel || 'auto',
+    });
+    const viewImages = await mediaAdapter.splitActorSheet({
+      source: sheet,
+      filenamePrefix: `actor_${actorId}`,
+      viewKeys,
+    });
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
     const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
     const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
@@ -549,6 +552,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     }, {
       generated_by: 'new_story_ad.person_sheet',
       provider_used: providerUsed,
+      actor_sheet_url: normalizeLocalPublicUrl(sheet.image_url || sheet.url || ''),
       request_key: body.request_key || '',
     });
     return res.json(actorPayload(actorAsset, {
