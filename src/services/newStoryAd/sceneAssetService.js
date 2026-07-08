@@ -57,41 +57,43 @@ function normalizeSceneAssets(input = []) {
   return raw.map(normalizeSceneAsset).filter(Boolean);
 }
 
-function compactField(value = '', max = 360) {
-  const text = cleanText(value, Math.max(max * 2, max + 80)).replace(/\s+/g, ' ').trim();
-  if (text.length <= max) return text;
-  return `${Array.from(text).slice(0, Math.max(0, max - 1)).join('')}…`;
-}
-
 function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
-  const brief = compactField(ctx.brief || body.brief || '', 220);
-  const subject = compactField(ctx.product_subject || sceneConfig.advertised_subject || body.product_subject || '', 160);
+  const brief = cleanText(ctx.brief || body.brief || '', 1600);
+  const subject = cleanText(ctx.product_subject || sceneConfig.advertised_subject || body.product_subject || '', 240);
   const sceneSpec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
-  const custom = compactField(body.description || body.scene_description || body.prompt || '', 180);
-  const layout = compactField(sceneSpec.layoutText || sceneSpec.layout_text || sceneSpec.layout || '', 340);
-  const materialLight = compactField(sceneSpec.materialLightText || sceneSpec.material_light_text || sceneSpec.material || sceneSpec.light || '', 340);
-  const interaction = compactField(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 180);
-  const style = compactField(ctx.controlled_production?.style_control?.notes || '', 160);
-  const negative = compactField(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 260);
-  const business = compactField(sceneConfig.business_boundary || '', 120);
-  const strategy = compactField(sceneConfig.story_strategy ? JSON.stringify(sceneConfig.story_strategy) : '', 120);
+  const custom = cleanText(body.description || body.scene_description || body.prompt || '', 1200);
+  const layout = cleanText(sceneSpec.layoutText || sceneSpec.layout_text || sceneSpec.layout || '', 800);
+  const materialLight = cleanText(sceneSpec.materialLightText || sceneSpec.material_light_text || sceneSpec.material || sceneSpec.light || '', 800);
+  const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600);
+  const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 600);
+  const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
+  const noHumanNegative = [
+    'Absolutely empty scene only.',
+    'No people, no human figure, no actor, no model, no presenter, no customer, no staff.',
+    'No back view, no side profile, no face, no head, no hair, no body, no arms, no hands, no legs, no silhouette, no reflection of a person.',
+    'Do not use human scale figures or mannequins as spatial references; use furniture, product plinths, counters, empty walking space or neutral props instead.',
+  ].join(' ');
   return [
-    'Generate ONE 2x2 photorealistic EMPTY commercial scene reference sheet; reusable scene lock asset, not a storyboard keyframe.',
-    'Highest priority scene identity: premium stainless-steel material showroom / aesthetic exhibition space; same space in all panels.',
+    'Create one single 2x2 photorealistic commercial scene reference sheet for a video ad production.',
+    'This is a reusable EMPTY SCENE asset package, not a storyboard keyframe. It must contain no people or human-like subjects. No text labels, no logos, no watermark.',
+    'Panel order is mandatory:',
+    'Top-left MASTER VIEW: wide establishing view that defines the whole space layout.',
+    'Top-right REVERSE OR SIDE VIEW: same space from a different angle, preserving the same layout, materials, lighting and object positions.',
+    'Bottom-left INTERACTION POSITION VIEW: empty camera position suitable for later adding a person or product interaction; show only usable foreground/background relation and clear standing/display area, but do not show any person, body part or silhouette.',
+    'Bottom-right DETAIL VIEW: close material/detail reference from the same space, preserving the exact material family, lighting and color palette.',
+    'Keep all four panels in the same task-specific space. Do not invent a different room, different carrier, different material family or unrelated industry.',
     brief ? `Campaign brief: ${brief}` : '',
     subject ? `Advertised subject: ${subject}` : '',
     custom ? `User scene requirement: ${custom}` : '',
-    layout ? `Spatial lock: ${layout}` : '',
-    materialLight ? `Material and lighting lock: ${materialLight}` : '',
-    interaction ? `Future actor/camera path only, keep the scene empty: ${interaction}` : '',
-    business ? `Business boundary: ${business}` : '',
-    strategy ? `Scene strategy: ${strategy}` : '',
-    style ? `Visual style: ${style}` : '',
-    'Panel contract: top-left master wide view; top-right reverse/side view same layout; bottom-left empty interaction/camera position; bottom-right close material detail. Preserve walls, floor, display zones, stainless-steel textures, palette and lighting across panels.',
-    'Hard negatives: no people, human figure, actor, model, silhouette, mannequin, body parts, or reflection of a person. No text labels, logo, watermark or readable signage.',
-    'Do not replace with generic luxury interior, classical room, marble palace, wood showroom, plaster columns, sculptures, hotel lobby, home living room or unrelated exhibition hall.',
-    negative ? `Additional negatives: ${negative}` : '',
-    'Real camera photography, coherent perspective, premium modern minimalist aesthetics, refined metal texture, commercial production quality.',
+    layout ? `Scene layout requirement: ${layout}` : '',
+    materialLight ? `Scene material and lighting requirement: ${materialLight}` : '',
+    interaction ? `Scene interaction and camera position requirement: ${interaction}` : '',
+    sceneConfig.business_boundary ? `Business boundary: ${cleanText(sceneConfig.business_boundary, 500)}` : '',
+    sceneConfig.story_strategy ? `Scene/story strategy: ${cleanText(JSON.stringify(sceneConfig.story_strategy), 900)}` : '',
+    style ? `Visual style direction: ${style}` : '',
+    `Hard negative requirements: ${noHumanNegative}`,
+    negative ? `Additional negative requirements: ${negative}` : '',
+    'Use real camera photography, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective. No cartoon, no anime, no 3D render, no poster text.',
   ].filter(Boolean).join('\n\n');
 }
 
@@ -184,5 +186,4 @@ module.exports = {
   normalizeSceneAssets,
   saveSceneAssetsToTask,
   generateSceneAsset,
-  _buildSceneSheetPrompt: buildSceneSheetPrompt,
 };
