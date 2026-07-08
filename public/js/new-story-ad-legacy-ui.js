@@ -1969,22 +1969,23 @@
   }
 
   async function regenerateSingleKeyframe(index = 0, button = null) {
-    const id = await ensureTask();
-    await saveStoryboardEdits(id);
-    const label = `\u6b63\u5728\u91cd\u65b0\u751f\u6210\u7b2c ${Number(index) + 1} \u955c...`;
+    const shotNo = Number(index) + 1;
+    const label = `\u6b63\u5728\u91cd\u65b0\u751f\u6210\u7b2c ${shotNo} \u955c...`;
     state.stageProgress = { active: true, stage: 'keyframes', label, total: Math.max(1, state.shots.length || 1), startedAt: Date.now() };
     setBusy(true, label);
     setButtonBusy(button, true, label);
     try {
+      const id = await ensureTask();
+      await saveStoryboardEdits(id);
       const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
       normalizeBundle(r);
       renderAll();
-      toast(`\u7b2c ${Number(index) + 1} \u955c\u5df2\u91cd\u65b0\u751f\u6210`, 'success');
+      toast(`\u7b2c ${shotNo} \u955c\u5df2\u91cd\u65b0\u751f\u6210`, 'success');
       return true;
     } catch (err) {
       if (err.data) normalizeBundle(err.data);
       renderAll();
-      toast(err.message || '\u91cd\u65b0\u751f\u6210\u672c\u955c\u5931\u8d25', 'error');
+      toast(err.message || `\u7b2c ${shotNo} \u955c\u91cd\u65b0\u751f\u6210\u5931\u8d25`, 'error');
       return false;
     } finally {
       setButtonBusy(button, false);
@@ -2742,6 +2743,7 @@
         const frame = state.keyframes[index] || {};
         const url = frame.image_url || frame.imageUrl || frame.url || '';
         if (url) openPreview(withAuthQuery(url), `\u7b2c ${index + 1} \u955c\u5927\u56fe`);
+        else toast(`\u7b2c ${index + 1} \u955c\u6682\u65e0\u53ef\u9884\u89c8\u56fe\u7247`, 'info');
         return;
       }
       const shotSave = target.closest('[data-nsa-shot-save]');
@@ -2768,7 +2770,9 @@
       if (shotRegenerate && host.contains(shotRegenerate)) {
         e.preventDefault();
         e.stopPropagation();
-        regenerateSingleKeyframe(Number(shotRegenerate.dataset.nsaShotRegenerate || 0), shotRegenerate);
+        const index = Number(shotRegenerate.dataset.nsaShotRegenerate || 0);
+        toast(`\u5df2\u63d0\u4ea4\u7b2c ${index + 1} \u955c\u91cd\u65b0\u751f\u6210`, 'info');
+        await regenerateSingleKeyframe(index, shotRegenerate);
         return;
       }
       const bgmProfileToggle = target.closest('#dhNsaAdBgmProfileToggle');
