@@ -650,7 +650,11 @@
     let data = null;
     try { data = raw ? JSON.parse(raw) : null; } catch {}
     if (!resp.ok || data?.success === false) {
-      const err = new Error(apiErrorMessage(data?.error) || apiErrorMessage(data?.message) || raw.slice(0, 180) || `HTTP ${resp.status}`);
+      const isHtmlError = /^\s*<!doctype html|^\s*<html[\s>]/i.test(raw || '');
+      const friendly = isHtmlError && resp.status === 404
+        ? `接口不存在或服务仍是旧版本，请重启服务后再试：${path}`
+        : (isHtmlError ? `接口返回了 HTML 错误页：HTTP ${resp.status}` : '');
+      const err = new Error(apiErrorMessage(data?.error) || apiErrorMessage(data?.message) || friendly || raw.slice(0, 180) || `HTTP ${resp.status}`);
       err.status = resp.status;
       err.data = data;
       throw err;
