@@ -137,6 +137,54 @@
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
 
+  const PROMPT_LABEL_TEXT = {
+    medium: '镜头类型',
+    story: '剧情画面',
+    character: '人物',
+    product: '产品/商品',
+    material: '材质/材料',
+    space: '空间',
+    comparison: '对比/说明',
+    emotion: '情绪',
+    process: '过程',
+    proof: '证明',
+    brand: '品牌',
+    offer: '卖点',
+    result: '结果',
+    action: '动作',
+  };
+  const SHOT_TYPE_TEXT = {
+    insert: '细节插入镜头',
+    medium: '中景',
+    close_up: '特写',
+    closeup: '特写',
+    product_detail: '产品细节',
+    reaction: '反应镜头',
+    endcard: '收束画面',
+    wide: '全景',
+  };
+
+  function editorFriendlyPromptText(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const labelKeys = Object.keys(PROMPT_LABEL_TEXT);
+    const shotTypeKeys = Object.keys(SHOT_TYPE_TEXT);
+    const labelPattern = labelKeys.join('|');
+    const shotTypePattern = shotTypeKeys.join('|');
+    if (!new RegExp(`\\b(${labelPattern})\\s*:|^\\s*(${shotTypePattern})\\s*;`, 'i').test(raw)) return raw;
+
+    let text = raw
+      .replace(new RegExp(`^\\s*(${shotTypePattern})\\s*;\\s*`, 'i'), (_, type) => `镜头类型：${SHOT_TYPE_TEXT[String(type).toLowerCase()] || type}\n`)
+      .replace(new RegExp(`\\s*;\\s*(?=(${labelPattern})\\s*:)`, 'gi'), '\n')
+      .replace(new RegExp(`\\b(${labelPattern})\\s*:\\s*`, 'gi'), (_, key) => `\n${PROMPT_LABEL_TEXT[String(key).toLowerCase()] || key}：`);
+
+    return text
+      .split(/\n+/)
+      .map(line => line.replace(/\s+/g, ' ').trim())
+      .filter(line => line && !/^[^：:]+[：:]$/.test(line))
+      .join('\n');
+  }
+
   function outputPixels(ratio = '9:16', size = 'standard') {
     const table = {
       '9:16': { standard: '720×1280', hd: '900×1600', fullhd: '1080×1920' },
@@ -1797,7 +1845,7 @@
 
   function shotFieldValue(shot = {}, contract = {}, field = '') {
     if (field === 'duration') return shot.duration || shot.duration_sec || contract.duration || '';
-    if (field === 'visual') return shot.visual || shot.visual_description || shot.content_prompt || contract.visual || '';
+    if (field === 'visual') return editorFriendlyPromptText(shot.visual || shot.visual_description || shot.content_prompt || contract.visual || '');
     if (field === 'action') return shot.action || shot.visual_action || contract.action || '';
     if (field === 'voiceover') return shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
     if (field === 'purpose') return shot.purpose || shot.objective || shot.role || contract.subject_strategy || '';
