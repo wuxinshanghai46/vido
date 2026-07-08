@@ -99,7 +99,9 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
   const previous = storage.getOutput(taskId, 'blueprint') || {};
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const normalized = normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   storage.saveOutput(taskId, 'blueprint', normalized);
   storage.saveStage(taskId, 'blueprint', {
@@ -318,6 +320,31 @@ function previousKeyframeContext(keyframes = [], index = 0) {
   return null;
 }
 
+function sceneAssetForShot(ctx = {}, shot = {}, index = 0) {
+  const assets = Array.isArray(ctx.scene_assets) ? ctx.scene_assets : [];
+  if (!assets.length) return null;
+  const sceneId = cleanText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120);
+  const matched = sceneId
+    ? assets.find(asset => String(asset.scene_id || asset.id) === String(sceneId))
+    : null;
+  return matched || assets[Math.min(index, assets.length - 1)] || assets[0] || null;
+}
+
+function sceneAssetPrompt(asset = {}) {
+  if (!asset || typeof asset !== 'object') return '';
+  const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+  return [
+    `Locked scene asset: ${cleanText(asset.name || asset.scene_id || asset.id || 'task scene', 120)}`,
+    asset.lock_strength ? `Scene lock strength: ${cleanText(asset.lock_strength, 60)}` : '',
+    asset.layout_summary ? `Scene layout lock: ${cleanText(asset.layout_summary, 600)}` : '',
+    asset.material_summary ? `Scene material lock: ${cleanText(asset.material_summary, 600)}` : '',
+    asset.style_summary ? `Scene style lock: ${cleanText(asset.style_summary, 360)}` : '',
+    views.length ? `Scene reference views: ${cleanText(views.map(view => `${view.key || view.label || 'view'}=${view.url || view.image_url || ''}`).join('; '), 1600)}` : '',
+    asset.negative ? `Scene negative requirements: ${cleanText(asset.negative, 360)}` : '',
+    'Keep the same scene identity, layout logic, material family, lighting direction and commercial realism across shots. Do not switch to another unrelated space.',
+  ].filter(Boolean).join('\n');
+}
+
 function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, options = {}) {
   const visualContract = contract.visual_contract || {};
   const personAsset = ctx.person_asset || {};
@@ -326,6 +353,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const actionText = cleanText(shot.action || shot.visual_action || '', 500);
   const previousFrame = options.previousFrame || null;
+  const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
+  const sceneReferenceText = sceneAssetPrompt(sceneAsset);
   const actorReferenceText = [
     personAsset.name ? `Actor name: ${cleanText(personAsset.name, 120)}` : '',
     personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 900)}` : '',
@@ -354,6 +383,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
+    sceneReferenceText ? `Strict scene consistency lock:\n${sceneReferenceText}` : '',
     ctx.person_asset ? `Locked real actor/person asset: ${cleanText(JSON.stringify(ctx.person_asset), 1200)}` : '',
     actorReferenceText ? `Strict actor consistency lock:\n${actorReferenceText}` : '',
     actorReferenceText ? 'If the shot includes any body part, hand, sleeve, reflection or partial figure, it must belong to the same locked actor identity and the same wardrobe family from the actor reference. Do not invent a different sleeve, hand, age, body shape, hair, skin tone, outfit color or fashion style.' : '',
@@ -379,7 +409,9 @@ function keyframeUrlFromResult(result = {}) {
 async function generateKeyframesStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) {
     const generated = await generateStoryboardStage(taskId);
@@ -405,7 +437,8 @@ async function generateKeyframesStage(taskId, options = {}) {
   for (const i of indexes) {
     const shot = shots[i] || {};
     const previousFrame = previousKeyframeContext(keyframes, i);
-    const prompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame });
+    const sceneAsset = sceneAssetForShot(ctx, shot, i);
+    const prompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame, sceneAsset });
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
     try {
       const result = await mediaAdapter.generateImage({
@@ -613,6 +646,7 @@ async function assistBrief(body = {}, user = {}) {
   const isStyleControl = mode === 'style_control' || mode === 'style';
   const isNegativeControl = mode === 'negative_control' || mode === 'negative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
+  const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
   const systemPrompt = [
     '你是新剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
@@ -620,6 +654,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
+    '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
   ].join('\n');
   const outputSchema = isStyleControl
@@ -645,7 +680,16 @@ async function assistBrief(body = {}, user = {}) {
     "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔"
   }
 }`
-      : `{
+      : isSceneSpec
+        ? `{
+  "scene_spec": {
+    "layoutText": "空间布局、主体位置、前景/背景关系、可持续复用的场景身份，80-180 字",
+    "materialLightText": "材质、色彩、光线方向、真实拍摄质感和商业高级感，80-180 字",
+    "interactionText": "人物或商品可在空间中出现的位置、动作区域、镜头可运动范围，60-140 字",
+    "negativeText": "场景四视图不能出现的空间错误、材质错误、风格错误、文字水印或无关元素，分号分隔"
+  }
+}`
+        : `{
   "brief": "可直接放入广告需求文本框的完整需求",
   "product_subject": "广告主体",
   "cast_mode": "auto/single/dual/multi/no_human",
@@ -655,7 +699,7 @@ async function assistBrief(body = {}, user = {}) {
 }`;
   const userPrompt = `${contextPrompt(ctx)}
 
-模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 
 输出 JSON：
 ${outputSchema}`;
@@ -701,6 +745,24 @@ ${outputSchema}`;
         wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
         hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),
         negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
+      },
+      mode,
+      model_meta: {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models,
+      },
+    };
+  }
+  if (isSceneSpec) {
+    const raw = parsed.scene_spec || parsed.sceneSpec || parsed;
+    const spec = raw && typeof raw === 'object' ? raw : {};
+    return {
+      scene_spec: {
+        layoutText: cleanText(spec.layoutText || spec.layout_text || spec.layout || spec.description || '', 420),
+        materialLightText: cleanText(spec.materialLightText || spec.material_light_text || spec.materialLight || spec.material || spec.light || '', 420),
+        interactionText: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 320),
+        negativeText: cleanText(spec.negativeText || spec.negative_text || spec.negative || '', 420),
       },
       mode,
       model_meta: {

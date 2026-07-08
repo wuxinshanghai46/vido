@@ -11,6 +11,7 @@ const mediaAdapter = require('../services/newStoryAd/mediaAdapter');
 const ttsAdapter = require('../services/newStoryAd/ttsAdapter');
 const videoAdapter = require('../services/newStoryAd/videoAdapter');
 const composeService = require('../services/newStoryAd/composeService');
+const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
 const db = require('../models/database');
 
 function userFromReq(req) {
@@ -395,6 +396,7 @@ router.get('/health', (req, res) => {
     'new_story_ad.json_repair',
     'new_story_ad.assist',
     'new_story_ad.person_sheet',
+    'new_story_ad.scene_asset',
     'new_story_ad.keyframe',
     'new_story_ad.video',
     'new_story_ad.tts',
@@ -601,6 +603,16 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       request_key: body.request_key || '',
     }));
   }
+}));
+
+router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
+  const result = await sceneAssetService.generateSceneAsset(req.params.id, req.body || {});
+  res.json({
+    success: true,
+    task_id: req.params.id,
+    ...result,
+    bundle: service.publicTaskBundle(req.params.id),
+  });
 }));
 
 router.get('/tasks/:id', (req, res) => {

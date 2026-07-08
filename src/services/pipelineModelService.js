@@ -75,6 +75,7 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
     { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
+    { id: 'new_story_ad.scene_asset', name: '场景四视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间四视图，锁定场景布局、材质和光线一致性' },
     { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
     { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
     { id: 'new_story_ad.tts', name: '5 配音 TTS', type: 'tts', desc: '后续按分镜表生成旁白、对白或字幕配音' },
@@ -355,6 +356,7 @@ const STAGE_DEFAULTS = {
   'new_story_ad.json_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.assist': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_asset': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },

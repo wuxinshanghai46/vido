@@ -105,6 +105,26 @@ async function imageBufferFromResult(result = {}) {
 }
 
 async function splitActorSheet({ source = {}, filenamePrefix = 'new_story_actor_sheet', viewKeys = ['front', 'side', 'back', 'action'] } = {}) {
+  return splitReferenceSheet({
+    source,
+    filenamePrefix,
+    viewKeys,
+    outputWidth: 768,
+    outputHeight: 1024,
+    fit: 'contain',
+    background: { r: 242, g: 244, b: 247, alpha: 1 },
+  });
+}
+
+async function splitReferenceSheet({
+  source = {},
+  filenamePrefix = 'new_story_reference_sheet',
+  viewKeys = ['view_1', 'view_2', 'view_3', 'view_4'],
+  outputWidth = 1024,
+  outputHeight = 576,
+  fit = 'cover',
+  background = { r: 5, g: 7, b: 11, alpha: 1 },
+} = {}) {
   const input = await imageBufferFromResult(source);
   const normalized = await sharp(input).rotate().png().toBuffer();
   const meta = await sharp(normalized).metadata();
@@ -127,7 +147,7 @@ async function splitActorSheet({ source = {}, filenamePrefix = 'new_story_actor_
     const out = path.join(ASSET_DIR, safe);
     await sharp(normalized)
       .extract(rects[i])
-      .resize(768, 1024, { fit: 'contain', background: { r: 242, g: 244, b: 247, alpha: 1 } })
+      .resize(outputWidth, outputHeight, { fit, background })
       .png()
       .toFile(out);
     views.push({
@@ -231,4 +251,5 @@ module.exports = {
   generateImage,
   generateActorReference,
   splitActorSheet,
+  splitReferenceSheet,
 };

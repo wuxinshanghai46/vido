@@ -45,6 +45,8 @@
     personSpecLock: null,
     castProfiles: [],
     personGenerationProgress: null,
+    sceneAssets: [],
+    sceneGenerationProgress: null,
     productAsset: null,
     referenceAssets: [],
     bgmAsset: null,
@@ -767,6 +769,8 @@
     const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '新剧情广告';
     const person = collectPersonSpec();
     const personAsset = personAssetPayload();
+    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
+    const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
     const castProfiles = state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []);
     const ctrl = controlledPayload();
     const negative = [
@@ -791,6 +795,8 @@
       references: assetPayloadList(),
       person_spec: person,
       person_asset: personAsset,
+      scene_spec: sceneSpec,
+      scene_assets: sceneAssets,
       cast_profiles: castProfiles,
       person_context: {
         source: personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec',
@@ -846,6 +852,8 @@
     state.ttsAudio = null;
     state.videoClips = [];
     state.finalVideo = null;
+    state.sceneAssets = [];
+    state.sceneGenerationProgress = null;
   }
 
   function resetForNewSession() {
@@ -859,6 +867,8 @@
     state.personSpecLock = null;
     state.castProfiles = [];
     state.personGenerationProgress = null;
+    state.sceneAssets = [];
+    state.sceneGenerationProgress = null;
     state.productAsset = null;
     state.referenceAssets.forEach(revokePreview);
     state.referenceAssets = [];
@@ -1240,6 +1250,15 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    if (window.NewStoryAdSceneAssets?.hydrate) {
+      window.NewStoryAdSceneAssets.hydrate(state, {
+        request: state.context || {},
+        outputs,
+        response,
+      });
+    } else {
+      state.sceneAssets = outputs.scene_assets || response.scene_assets || state.context?.scene_assets || state.sceneAssets || [];
+    }
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
     if (state.taskId) rememberTaskId(state.taskId);
   }
@@ -1348,6 +1367,11 @@
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips || [];
     state.finalVideo = outputs.final_video || state.finalVideo;
+    if (window.NewStoryAdSceneAssets?.hydrate) {
+      window.NewStoryAdSceneAssets.hydrate(state, { request, outputs, response: bundle });
+    } else {
+      state.sceneAssets = outputs.scene_assets || request.scene_assets || request.sceneAssets || state.sceneAssets || [];
+    }
 
     setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '');
     setFieldValue('#dhNsaAdDuration', request.duration_sec || request.duration || 30);
@@ -1398,10 +1422,11 @@
     }
   }
 
-  function setButtonLock(selector, locked, title = '') {
+  function setButtonLock(selector, locked, title = '', options = {}) {
     const btn = within(selector);
     if (!btn) return;
-    btn.disabled = !!state.busy || !!locked;
+    const busyLocked = !!state.busy && !options.allowBusy;
+    btn.disabled = busyLocked || !!locked;
     if (btn.disabled) btn.setAttribute('aria-disabled', 'true');
     else btn.removeAttribute('aria-disabled');
     btn.classList.toggle('is-disabled', btn.disabled);
@@ -1445,7 +1470,10 @@
     setButtonLock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     setButtonLock('#dhNsaAdGoCompose', !hasShots, '请先生成分镜');
     setButtonLock('#dhNsaAdConfirmGenerate', !hasShots, '请先生成分镜');
-    setButtonLock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定');
+    setButtonLock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
+    setButtonLock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
+    setButtonLock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
+    setButtonLock('#dhNsaAdAiSceneSpec', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
 
     [
       '#dhNsaAdWrite',
@@ -1997,11 +2025,21 @@
     updateLocks();
   }
 
+  function renderSceneAssets() {
+    if (window.NewStoryAdSceneAssets?.render) {
+      window.NewStoryAdSceneAssets.render({
+        host: within('#dhNsaAdSceneAssetCurrent'),
+        state,
+      });
+    }
+  }
+
   function renderAll() {
     syncOptionControls();
     renderAdvancedControls();
     renderAssets();
     renderPerson();
+    renderSceneAssets();
     renderAudio();
     renderScene();
     renderBlueprint();
@@ -2635,6 +2673,45 @@
     }
   }
 
+  function fallbackSceneSpecFromBrief(brief = '') {
+    return {
+      layoutText: `围绕当前广告需求建立一个可连续拍摄的真实商业空间：明确主体展示区、人物行动区、前景和背景层次，保证多个镜头能在同一空间内切换视角而不跳场。`,
+      materialLightText: `材质、色彩和光线按广告主体定位判断，保持真实摄影质感、自然商业布光和统一色温；材质细节清晰可读，避免廉价棚拍、过度虚化或不相关装饰。`,
+      interactionText: `预留后续可放置人物或商品的空白站位、展示区、近景特写区和移动镜头路径；当前场景四视图必须保持空场景，只表现空间结构、可互动区域和镜头位置，不生成人物。`,
+      negativeText: `不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影；不要出现与当前广告需求无关的空间；不要文字水印、品牌乱入、卡通或三维渲染感；不要突然换场景、换材质、换光线方向。`,
+    };
+  }
+
+  async function fillSceneSpecFromBrief(button = null) {
+    const brief = (within('#dhNsaAdText')?.value || '').trim();
+    if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
+    const label = '补齐场景中...';
+    setButtonBusy(button, true, label);
+    try {
+      let suggestion = null;
+      try {
+        const r = await api('/api/new-story-ad/assist', {
+          method: 'POST',
+          body: {
+            ...payload(),
+            brief,
+            mode: 'scene_spec',
+            scene_spec: window.NewStoryAdSceneAssets?.specPayload?.() || {},
+          },
+        });
+        suggestion = r.scene_spec || r.sceneSpec || null;
+      } catch (err) {
+        suggestion = fallbackSceneSpecFromBrief(brief);
+      }
+      const changed = window.NewStoryAdSceneAssets?.applySpecSuggestion?.(suggestion || fallbackSceneSpecFromBrief(brief));
+      markSourceDirty();
+      renderAll();
+      toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
   async function generatePersonSheet(button) {
     if (state.personGenerationProgress?.active) return toast('正在生成拟真演员，人物数量、性别、年龄、外貌、穿着等约束已提交给后台，生成完成或失败后再修改。', 'error');
     const description = [
@@ -2813,6 +2890,26 @@
         if (entry?.url) openPreview(withAuthQuery(entry.url), `${asset?.name || '人物参考'} · ${entry.label || ''}`);
         return;
       }
+      const scenePreview = target.closest('[data-nsa-scene-preview]');
+      if (scenePreview && host.contains(scenePreview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const [assetRaw, viewRaw] = String(scenePreview.dataset.nsaScenePreview || '0:0').split(':');
+        const asset = (state.sceneAssets || [])[Number(assetRaw || 0)] || null;
+        const views = Array.isArray(asset?.view_images) ? asset.view_images : [];
+        const entry = views[Number(viewRaw || 0)] || null;
+        const url = entry?.url || entry?.image_url || '';
+        if (url) openPreview(withAuthQuery(url), `${asset?.name || '场景四视图'} · ${entry.label || ''}`);
+        return;
+      }
+      const sceneSelect = target.closest('[data-nsa-scene-select]');
+      if (sceneSelect && host.contains(sceneSelect)) {
+        e.preventDefault();
+        e.stopPropagation();
+        state.sceneSelectedIndex = Number(sceneSelect.dataset.nsaSceneSelect || 0) || 0;
+        renderAll();
+        return;
+      }
       const blueprintAdd = target.closest('[data-nsa-blueprint-add]');
       if (blueprintAdd && host.contains(blueprintAdd)) {
         e.preventDefault();
@@ -2939,6 +3036,37 @@
         dhNsaAdSaveDraftStep4: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
         dhNsaAdSaveDraftStep5: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
+        dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
+        dhNsaAdGenerateSceneSheet: () => {
+          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景四视图模块未加载，请刷新页面后重试。', 'error');
+          return window.NewStoryAdSceneAssets.generate({
+            state,
+            ensureTask,
+            api,
+            payload,
+            renderAll,
+            setBusy,
+            setButtonBusy,
+            toast,
+            button: btn,
+            append: false,
+          });
+        },
+        dhNsaAdAddSceneSheet: () => {
+          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景四视图模块未加载，请刷新页面后重试。', 'error');
+          return window.NewStoryAdSceneAssets.generate({
+            state,
+            ensureTask,
+            api,
+            payload,
+            renderAll,
+            setBusy,
+            setButtonBusy,
+            toast,
+            button: btn,
+            append: true,
+          });
+        },
         dhNsaAdVoiceOpen: () => toast('配音选择面板稍后接入；当前使用默认配音设置。'),
         dhNsaAdMusicLibrary: () => toast('公开曲库稍后接入；当前可上传自有 BGM 或先合成无配乐成片。'),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),
@@ -3009,6 +3137,11 @@
       if (target?.matches?.('[data-nsa-person-spec]')) {
         markSourceDirty();
         renderStatus();
+        return;
+      }
+      if (target?.matches?.('[data-nsa-scene-spec]')) {
+        markSourceDirty();
+        renderStatus();
       }
     });
     host.addEventListener('change', e => {
@@ -3059,6 +3192,11 @@
       if (target?.id === 'dhNsaAdVideoResolution') {
         state.videoResolution = VIDEO_RESOLUTION_LABELS[target.value] ? target.value : '720p';
         syncOptionControls();
+        return;
+      }
+      if (target?.id === 'dhNsaAdSceneMode') {
+        markSourceDirty();
+        renderStatus();
         return;
       }
       if (target?.id === 'dhNsaAdSubtitleToggle') {

@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260707-new-story-ad-old-ui-scroll">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260708-nsa-frame-actions2">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260708-nsa-scene-actions">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -363,6 +363,54 @@
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">辅助补齐</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-person-generate-btn" id="dhNsaAdGeneratePersonSheet" type="button" aria-pressed="false">生成拟真演员</button>
                   </div>
+                </div>
+              </div>
+              <div class="dh-demo-section-title">场景空间锁</div>
+              <div class="dh-demo-person-source dh-nsa-scene-source">
+                <div class="dh-nsa-scene-current" id="dhNsaAdSceneAssetCurrent">
+                  <div class="dh-luxgen-empty"><b>未生成场景四视图</b><span>可跳过；需要固定空间一致性时点击生成。</span></div>
+                </div>
+                <div class="dh-luxgen-person-main dh-nsa-scene-main">
+                  <div class="dh-luxgen-person-head">
+                    <div>
+                      <b>场景来源</b>
+                      <p class="dh-demo-copy">用于锁定本次任务的空间布局、材质、光线和互动位；可让 AI 先按广告需求补齐空间设定，再手动微调。</p>
+                    </div>
+                    <label class="dh-nsa-scene-mode">
+                      <span>场景数量</span>
+                      <select class="dh-input" id="dhNsaAdSceneMode">
+                        <option value="auto">按剧情自动判断</option>
+                        <option value="single">单场景锁定</option>
+                        <option value="multi">多场景锁定</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="dh-luxgen-mini-actions">
+                    <span>系统会优先补齐留空字段；“生成/重新生成当前场景”会替换当前选中场景，“追加新场景”才会新增一套独立空间资产，后续关键帧会按当前任务读取。</span>
+                  </div>
+                  <div class="dh-nsa-scene-spec-grid">
+                    <label>
+                      <span>空间布局</span>
+                      <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="layoutText" maxlength="420" placeholder="写清空间结构、主体位置、前景/背景关系；不填可让 AI 按广告需求补齐。"></textarea>
+                    </label>
+                    <label>
+                      <span>材质 / 光线</span>
+                      <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="materialLightText" maxlength="420" placeholder="写清材质、色彩、光线方向、真实拍摄质感和商业高级感。"></textarea>
+                    </label>
+                    <label>
+                      <span>互动位 / 镜头位</span>
+                      <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="interactionText" maxlength="320" placeholder="写清后续可放置人物或商品的空白站位、展示区和镜头移动范围；场景四视图本身不生成人物。"></textarea>
+                    </label>
+                    <label>
+                      <span>场景禁止项</span>
+                      <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="negativeText" maxlength="420" placeholder="如：不要真人/背影/手/人形剪影、不要换场景、不要无关行业装饰、不要文字水印、不要卡通或三维渲染感。"></textarea>
+                    </label>
+                  </div>
+                </div>
+                <div class="dh-demo-person-actions">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
                 </div>
               </div>
               <div class="dh-demo-section-title">视频基础信息</div>
@@ -2429,6 +2477,7 @@ B: ...
   </div>
 
   <script src="/js/digital-human.js?v=20260708-nsa-frame-review"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260708-nsa-visual-override-clean"></script>
+  <script src="/js/new-story-ad/scene-assets.js?v=20260708-nsa-scene-actions"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260708-nsa-scene-actions"></script>
 </body>
 </html>

@@ -111,6 +111,46 @@ function normalizeAssets(input) {
   })).filter(x => x.url || x.description || x.name);
 }
 
+function normalizeSceneAssets(input) {
+  const raw = Array.isArray(input) ? input : [];
+  return raw.map((item, idx) => {
+    if (!item || typeof item !== 'object') return null;
+    const viewImages = Array.isArray(item.view_images) ? item.view_images.map((view, viewIdx) => ({
+      key: cleanText(view?.key || view?.view || ['master', 'reverse', 'interaction', 'detail'][viewIdx] || `view_${viewIdx + 1}`, 40),
+      label: cleanText(view?.label || view?.name || '', 80),
+      url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
+      image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
+    })).filter(view => view.url || view.image_url).slice(0, 8) : [];
+    const imageUrl = cleanText(item.image_url || item.imageUrl || item.url || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
+    if (!imageUrl && !viewImages.length && !item.layout_summary && !item.material_summary) return null;
+    return {
+      id: cleanText(item.id || item.scene_id || `scene_${idx + 1}`, 120),
+      scene_id: cleanText(item.scene_id || item.id || `scene_${idx + 1}`, 120),
+      name: cleanText(item.name || `任务场景 ${idx + 1}`, 120),
+      source: cleanText(item.source || 'new_story_ad_scene_asset', 120),
+      lock_strength: cleanText(item.lock_strength || item.lockStrength || 'standard', 40),
+      layout_summary: cleanText(item.layout_summary || item.layoutSummary || item.description || '', 1000),
+      material_summary: cleanText(item.material_summary || item.materialSummary || '', 1000),
+      style_summary: cleanText(item.style_summary || item.styleSummary || '', 800),
+      negative: cleanText(item.negative || item.negative_prompt || '', 800),
+      image_url: imageUrl,
+      view_images: viewImages,
+      view_count: Number(item.view_count || viewImages.length || (imageUrl ? 1 : 0)) || 0,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeSceneSpec(input = {}) {
+  const raw = input && typeof input === 'object' ? input : {};
+  return {
+    mode: cleanText(raw.mode || raw.sceneMode || 'auto', 40),
+    layoutText: cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600),
+    materialLightText: cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600),
+    interactionText: cleanText(raw.interactionText || raw.interaction_text || raw.interaction || raw.camera || '', 500),
+    negativeText: cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500),
+  };
+}
+
 function normalizePersonAsset(input = null) {
   if (!input || typeof input !== 'object') return null;
   const imageUrl = cleanText(input.image_url || input.imageUrl || input.url || input.previewUrl || '', 1000);
@@ -236,6 +276,8 @@ function buildContext(body = {}, user = {}) {
   const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
   const personSpec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const personAsset = normalizePersonAsset(body.person_asset || body.personAsset);
+  const sceneAssets = normalizeSceneAssets(body.scene_assets || body.sceneAssets);
+  const sceneSpec = normalizeSceneSpec(body.scene_spec || body.sceneSpec);
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   return {
@@ -253,6 +295,8 @@ function buildContext(body = {}, user = {}) {
     controlled_production: controlledProduction,
     person_spec: personSpec,
     person_asset: personAsset,
+    scene_spec: sceneSpec,
+    scene_assets: sceneAssets,
     cast_profiles: castProfiles,
     person_context: {
       source: cleanText(personContext.source || (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'), 120),
@@ -324,4 +368,6 @@ module.exports = {
   normalizeCharacters,
   normalizeCharacter,
   looksLikeDescriptorName,
+  normalizeSceneSpec,
+  normalizeSceneAssets,
 };
