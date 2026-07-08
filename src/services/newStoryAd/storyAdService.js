@@ -113,6 +113,56 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
   return normalized;
 }
 
+function normalizeStoryboardShot(shot = {}, index = 0) {
+  const duration = Math.max(1, Math.min(30, Number(shot.duration || shot.duration_sec || 0) || 3));
+  const visual = cleanText(shot.visual || shot.visual_description || shot.content_prompt || '', 1400);
+  const action = cleanText(shot.action || shot.visual_action || '', 900);
+  const voiceover = cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 700);
+  const title = cleanText(shot.title || `Shot ${index + 1}`, 140);
+  return {
+    ...shot,
+    index: index + 1,
+    shot_index: index + 1,
+    duration,
+    duration_sec: duration,
+    title,
+    visual,
+    visual_description: visual,
+    content_prompt: visual,
+    action,
+    visual_action: action,
+    voiceover,
+    narration: voiceover,
+    purpose: cleanText(shot.purpose || shot.objective || shot.role || '', 160),
+    edited_at: new Date().toISOString(),
+  };
+}
+
+function updateStoryboardTable(taskId, shots = [], user = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const current = storage.getOutput(taskId, 'storyboard_table') || [];
+  const source = Array.isArray(shots) && shots.length ? shots : current;
+  const normalized = source
+    .map((shot, index) => normalizeStoryboardShot(shot, index))
+    .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
+  storage.saveOutput(taskId, 'storyboard_table', normalized);
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const contracts = buildKeyframeContracts(ctx, normalized);
+  storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  storage.saveStage(taskId, 'storyboard', {
+    status: 'done',
+    output_summary: `${normalized.length} storyboard shots saved`,
+    diagnostics: {
+      edited_by: user.id || user.username || '',
+      edited_by_user: true,
+    },
+  });
+  storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} keyframe contracts rebuilt` });
+  storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready' });
+  return { shots: normalized, keyframe_contracts: contracts };
+}
+
 async function generateSceneConfig(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -240,6 +290,13 @@ async function buildKeyframeContractStage(taskId) {
 
 function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
   const visualContract = contract.visual_contract || {};
+  const personAsset = ctx.person_asset || {};
+  const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
+  const actorReferenceText = [
+    personAsset.name ? `Actor name: ${cleanText(personAsset.name, 120)}` : '',
+    personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 900)}` : '',
+    actorViews.length ? `Actor reference views: ${cleanText(actorViews.map(v => `${v.key || v.label || 'view'}=${v.url || v.image_url || ''}`).join('; '), 1200)}` : '',
+  ].filter(Boolean).join('\n');
   const parts = [
     'Photorealistic live-action commercial storyboard keyframe.',
     `Campaign brief: ${cleanText(ctx.brief, 900)}`,
@@ -260,6 +317,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
     ctx.person_asset ? `Locked real actor/person asset: ${cleanText(JSON.stringify(ctx.person_asset), 1200)}` : '',
+    actorReferenceText ? `Strict actor consistency lock:\n${actorReferenceText}` : '',
+    actorReferenceText ? 'If the shot includes any body part, hand, sleeve, reflection or partial figure, it must belong to the same locked actor identity and the same wardrobe family from the actor reference. Do not invent a different sleeve, hand, age, body shape, hair, skin tone, outfit color or fashion style.' : '',
+    actorReferenceText ? 'Do not crop into an anonymous hand-only product demo unless the storyboard explicitly says no person. Keep the person presence consistent with the current script and previous shots.' : '',
     Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
@@ -626,6 +686,7 @@ module.exports = {
   createTask,
   updateTaskRequest,
   updateBlueprint,
+  updateStoryboardTable,
   generateSceneConfig,
   generateBlueprintStage,
   generateStoryboardStage,

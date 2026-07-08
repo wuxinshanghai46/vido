@@ -496,6 +496,12 @@ router.put('/tasks/:id/blueprint', (req, res) => {
   res.json({ success: true, task_id: req.params.id, blueprint, bundle: service.publicTaskBundle(req.params.id) });
 });
 
+router.put('/tasks/:id/storyboard', (req, res) => {
+  const body = req.body || {};
+  const result = service.updateStoryboardTable(req.params.id, body.shots || body.storyboard_table || [], userFromReq(req));
+  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+});
+
 router.post('/assist', asyncRoute(async (req, res) => {
   const result = await service.assistBrief(req.body || {}, userFromReq(req));
   res.json({ success: true, ...result });

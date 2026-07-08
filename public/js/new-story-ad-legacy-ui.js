@@ -1764,39 +1764,77 @@
     </div>`;
   }
 
+  function shotFieldValue(shot = {}, contract = {}, field = '') {
+    if (field === 'duration') return shot.duration || shot.duration_sec || contract.duration || '';
+    if (field === 'visual') return shot.visual || shot.visual_description || shot.content_prompt || contract.visual || '';
+    if (field === 'action') return shot.action || shot.visual_action || contract.action || '';
+    if (field === 'voiceover') return shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
+    if (field === 'purpose') return shot.purpose || shot.objective || shot.role || contract.subject_strategy || '';
+    return shot[field] || '';
+  }
+
+  function updateShotField(target) {
+    if (!target?.matches?.('[data-nsa-shot-field]')) return false;
+    const index = Number(target.dataset.nsaShotIndex || 0);
+    const field = target.dataset.nsaShotField || '';
+    const shot = state.shots[index];
+    if (!shot || !field) return true;
+    const value = field === 'duration' ? Math.max(1, Math.min(30, Number(target.value || 0) || Number(shot.duration || 3) || 3)) : target.value || '';
+    if (field === 'duration') { shot.duration = value; shot.duration_sec = value; }
+    else if (field === 'visual') { shot.visual = value; shot.visual_description = value; shot.content_prompt = value; }
+    else if (field === 'action') { shot.action = value; shot.visual_action = value; }
+    else if (field === 'voiceover') { shot.voiceover = value; shot.narration = value; shot.subtitle = value; }
+    else { shot[field] = value; }
+    shot.edited_at = new Date().toISOString();
+    return true;
+  }
+
   function renderStoryboard() {
     const host = within('#dhNsaAdFrameHost');
     const guard = within('#dhNsaAdCommercialGuard');
     if (guard) {
       const blocking = Array.isArray(state.review?.blocking_issues) ? state.review.blocking_issues : [];
       guard.innerHTML = state.review
-        ? `<div class="${blocking.length ? 'dh-task-warning' : 'dh-task-ok'}">商用检查：${blocking.length ? `存在 ${blocking.length} 条需要处理的问题：${escapeHtml(blocking.join('；'))}` : '通过'}</div>`
+        ? `<div class="${blocking.length ? 'dh-task-warning' : 'dh-task-ok'}">${blocking.length ? `??????? ${blocking.length} ????${escapeHtml(blocking.join('?'))}` : '???????'}</div>`
         : '';
     }
     if (!host) return;
     if (!Array.isArray(state.shots) || !state.shots.length) {
-      host.innerHTML = '<div class="dh-luxgen-empty"><b>还没有分镜</b><span>确认剧本后点击“生成分镜”。</span></div>';
+      host.innerHTML = '<div class="dh-luxgen-empty"><b>?????</b><span>??????????????</span></div>';
       return;
     }
-    host.innerHTML = state.shots.map((shot, i) => {
+    host.innerHTML = `<div class="dh-nsa-frame-list">${state.shots.map((shot, i) => {
       const contract = state.contracts.find(x => Number(x.index || x.shot_index || 0) === Number(shot.index || shot.shot_index || i + 1)) || state.contracts[i] || {};
       const frame = state.keyframes[i] || {};
-      const image = frame.image_url || frame.imageUrl || '';
+      const image = frame.image_url || frame.imageUrl || frame.url || '';
+      const preview = image ? withAuthQuery(image) : '';
       const dialogue = Array.isArray(shot.dialogue_lines)
-        ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '：' : ''}${d.line || d.text || ''}`).filter(Boolean).join('；')
-        : (shot.dialogue || '');
-      return `<article class="dh-demo-frame-card">
-        <div class="dh-demo-frame-preview">${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(shot.title || `镜头 ${i + 1}`)}" loading="lazy">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}</div>
-        <div class="dh-demo-frame-body">
-          <div class="dh-demo-frame-head"><b>${escapeHtml(shot.title || `镜头 ${i + 1}`)}</b><span>${escapeHtml(shot.duration || contract.duration || '')}s</span></div>
-          <p><b>画面</b>：${escapeHtml(shot.visual || shot.visual_description || contract.visual || '')}</p>
-          <p><b>动作</b>：${escapeHtml(shot.action || contract.action || '')}</p>
-          ${shot.voiceover ? `<p><b>旁白</b>：${escapeHtml(shot.voiceover)}</p>` : ''}
-          ${dialogue ? `<p><b>对白</b>：${escapeHtml(dialogue)}</p>` : ''}
-          ${contract.subject_strategy ? `<p><b>合同策略</b>：${escapeHtml(contract.subject_strategy)}</p>` : ''}
+        ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '?' : ''}${d.line || d.text || ''}`).filter(Boolean).join('?')
+        : (shot.dialogue || shot.voiceover || '');
+      const duration = shotFieldValue(shot, contract, 'duration');
+      return `<article class="dh-nsa-frame-card">
+        <button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="??? ${i + 1} ???"` : 'disabled'}>
+          ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(shot.title || `?? ${i + 1}`)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
+          <b>${String(i + 1).padStart(2, '0')} ? ${escapeHtml(shot.title || `?? ${i + 1}`)}</b>
+          <small>${preview ? '??????' : '??????'}</small>
+        </button>
+        <div class="dh-nsa-frame-editor">
+          <div class="dh-nsa-frame-head"><b>${escapeHtml(shot.title || `?? ${i + 1}`)}</b><span>${escapeHtml(duration ? `${duration}s` : '????')}</span></div>
+          <label><span>??</span><input class="dh-input" type="number" min="1" max="30" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
+          <label><span>??</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
+          <label><span>??</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
+          <label><span>??/??</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
+          <label><span>??/??</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+          ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>????</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
+          ${frame.error ? `<p class="dh-nsa-frame-error">${escapeHtml(frame.error)}</p>` : ''}
+          <div class="dh-nsa-frame-actions">
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">????</button>
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">??????</button>
+            ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">????</button>` : ''}
+          </div>
         </div>
       </article>`;
-    }).join('');
+    }).join('')}</div>`;
   }
 
   function ensureMediaHost() {
@@ -1919,6 +1957,39 @@
     return r;
   }
 
+  async function saveStoryboardEdits(taskId = state.taskId) {
+    if (!taskId || !Array.isArray(state.shots) || !state.shots.length) return null;
+    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
+      method: 'PUT',
+      body: { shots: state.shots },
+    });
+    normalizeBundle(r);
+    return r;
+  }
+
+  async function regenerateSingleKeyframe(index = 0, button = null) {
+    const id = await ensureTask();
+    await saveStoryboardEdits(id);
+    const label = `????? ${Number(index) + 1} ??...`;
+    state.stageProgress = { active: true, stage: 'keyframes', label, total: Math.max(1, state.shots.length || 1), startedAt: Date.now() };
+    setBusy(true, label);
+    setButtonBusy(button, true, label);
+    try {
+      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
+      normalizeBundle(r);
+      renderAll();
+      toast(`? ${Number(index) + 1} ??????`, 'success');
+      return true;
+    } catch (err) {
+      if (err.data) normalizeBundle(err.data);
+      renderAll();
+      toast(err.message || '????????', 'error');
+      return false;
+    } finally {
+      setButtonBusy(button, false);
+      setBusy(false);
+    }
+  }
   async function runStage(stage, button) {
     const labels = {
       scene: '生成场景配置中...',
@@ -2666,7 +2737,7 @@
       if (shotRegenerate && host.contains(shotRegenerate)) {
         e.preventDefault();
         e.stopPropagation();
-        runStage('keyframes', shotRegenerate);
+        regenerateSingleKeyframe(Number(shotRegenerate.dataset.nsaShotRegenerate || 0), shotRegenerate);
         return;
       }
       const bgmProfileToggle = target.closest('#dhNsaAdBgmProfileToggle');
