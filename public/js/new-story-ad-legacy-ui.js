@@ -1495,7 +1495,7 @@
         title: `正在重新生成第 ${shotNo} 镜真实关键帧`,
         stat: `已耗时 ${formatElapsedText(elapsed)} · ${pct}%`,
         percent: pct,
-        message: `当前只重新生成第 ${shotNo} 镜；不会按整批 ${state.shots.length || 0} 镜统计，完成后会自动替换这一镜图片。`,
+        message: `当前正在重新生成第 ${shotNo} 镜，完成后会自动替换本镜图片。`,
       };
     }
     if (stage === 'keyframes') {
@@ -1859,8 +1859,15 @@
     const shot = state.shots[index];
     if (!shot || !field) return true;
     const value = field === 'duration' ? Math.max(1, Math.min(30, Number(target.value || 0) || Number(shot.duration || 3) || 3)) : target.value || '';
+    shot._nsa_user_edited_fields = { ...(shot._nsa_user_edited_fields || {}), [field]: true };
     if (field === 'duration') { shot.duration = value; shot.duration_sec = value; }
-    else if (field === 'visual') { shot.visual = value; shot.visual_description = value; shot.content_prompt = value; }
+    else if (field === 'visual') {
+      const visual = editorFriendlyPromptText(value);
+      shot.visual = visual;
+      shot.visual_description = visual;
+      shot.content_prompt = visual;
+      shot.user_visual_override = true;
+    }
     else if (field === 'action') { shot.action = value; shot.visual_action = value; }
     else if (field === 'voiceover') { shot.voiceover = value; shot.narration = value; shot.subtitle = value; }
     else if (field === 'purpose') { shot.purpose = value; shot.objective = value; shot.role = value; shot.keyframe_notes = value; shot.material_usage = value; }
@@ -2052,6 +2059,11 @@
       const action = shot.action || shot.visual_action || '';
       const voiceover = shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
       const purpose = shot.purpose || shot.objective || shot.role || '';
+      const userEditedFields = shot._nsa_user_edited_fields || {};
+      const userVisualOverride = shot.user_visual_override === true || userEditedFields.visual === true;
+      const editedVisualLock = userVisualOverride
+        ? [purpose, visual].filter(Boolean).join('\n')
+        : purpose;
       return {
         ...shot,
         index: index + 1,
@@ -2069,8 +2081,10 @@
         purpose,
         objective: purpose,
         role: purpose || shot.role || '',
-        keyframe_notes: purpose,
-        material_usage: purpose,
+        keyframe_notes: editedVisualLock || shot.keyframe_notes || '',
+        material_usage: editedVisualLock || shot.material_usage || '',
+        user_visual_override: userVisualOverride,
+        _nsa_user_edited_fields: userEditedFields,
       };
     });
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {

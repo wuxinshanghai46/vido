@@ -292,6 +292,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
   const visualContract = contract.visual_contract || {};
   const personAsset = ctx.person_asset || {};
   const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
+  const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
+  const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const actorReferenceText = [
     personAsset.name ? `Actor name: ${cleanText(personAsset.name, 120)}` : '',
     personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 900)}` : '',
@@ -302,7 +304,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     `Campaign brief: ${cleanText(ctx.brief, 900)}`,
     `Advertised subject: ${cleanText(ctx.product_subject, 160)}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
-    `Visual: ${cleanText(shot.visual || shot.content_prompt || '', 900)}`,
+    userVisualOverride ? `User-edited visual override, highest priority: ${visualText}` : '',
+    userVisualOverride ? 'If action, evidence, contract or previous generated image conflicts with the user-edited visual, follow the user-edited visual and ignore the conflicting old object/layout wording.' : '',
+    `Visual: ${visualText}`,
     `Action: ${cleanText(shot.action || shot.visual_action || '', 500)}`,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
     visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
@@ -323,6 +327,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0) {
     Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
+    userVisualOverride ? `Final visual priority: render this edited visual, not the previous image composition: ${visualText}` : '',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
   return parts.filter(Boolean).join('\n');
