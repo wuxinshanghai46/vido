@@ -21,6 +21,8 @@ function localReview(ctx, shots) {
   const charNames = (ctx.characters || []).map(c => c.name).filter(Boolean);
   const multiMode = ctx.cast_mode === 'multi' || charNames.length >= 3;
   const requiredHints = `${ctx.brief || ''} ${ctx.product_subject || ''}`;
+  const sceneAssets = Array.isArray(ctx.scene_assets) ? ctx.scene_assets : [];
+  const sceneIds = sceneAssets.map((asset, index) => String(asset.scene_id || asset.id || `scene_${index + 1}`)).filter(Boolean);
 
   list.forEach((shot, idx) => {
     const n = idx + 1;
@@ -35,6 +37,7 @@ function localReview(ctx, shots) {
     const dialogueText = dialogue.map(d => `${d?.speaker || ''} ${d?.line || ''}`).join(' ');
     const all = `${visual} ${layerText} ${storyVisual} ${promoVisual} ${action} ${voice} ${dialogueText} ${shot.purpose || ''}`;
     const hasProductLayer = /(product|material|proof|comparison|brand|offer|result|ui|商品|产品|材料|材质|证据|证明|品牌|细节|展示|演示|使用|手持|收束|引导)/i.test(`${layerText} ${promoVisual} ${shot.material_usage || ''} ${shot.keyframe_notes || ''}`);
+    const sceneId = String(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '').trim();
 
     if (!visual.trim()) blocking.push(`第 ${n} 镜缺少画面`);
     if (!action.trim()) blocking.push(`第 ${n} 镜缺少动作`);
@@ -75,6 +78,20 @@ function localReview(ctx, shots) {
       rewrite.push(`第 ${n} 镜动作不够具体`);
     }
     if (/[.。…]{3,}|……/.test(voice)) rewrite.push(`第 ${n} 镜台词含省略留白`);
+
+    if (sceneIds.length) {
+      if (!sceneId) {
+        blocking.push(`第 ${n} 镜缺少当前任务场景绑定 scene_id`);
+      } else if (!sceneIds.includes(sceneId)) {
+        blocking.push(`第 ${n} 镜绑定了不存在的场景资产：${sceneId}`);
+      }
+      if (!String(shot.scene_view || '').trim()) rewrite.push(`第 ${n} 镜缺少场景视角 scene_view`);
+      if (!String(shot.scene_zone || '').trim()) rewrite.push(`第 ${n} 镜缺少场景区域 scene_zone`);
+      const prevSceneId = idx > 0 ? String(list[idx - 1]?.scene_id || list[idx - 1]?.scene_asset_id || '').trim() : '';
+      if (prevSceneId && sceneId && prevSceneId !== sceneId && !String(shot.transition_reason || '').trim()) {
+        rewrite.push(`第 ${n} 镜切换场景但缺少转场原因`);
+      }
+    }
 
     if (multiMode) {
       const mentioned = new Set([

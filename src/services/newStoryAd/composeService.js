@@ -62,11 +62,63 @@ function localVideoPath(clip = {}) {
   return filePath && fs.existsSync(filePath) ? filePath : '';
 }
 
+function normalizeMediaRef(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/^https?:\/\/[^/]+(\/.+)$/i);
+  return m ? m[1] : raw;
+}
+
+function mediaRefFromAsset(asset = {}) {
+  if (!asset || typeof asset !== 'object') return '';
+  return asset.file_path || asset.path || asset.file_url || asset.url || asset.previewUrl || asset.preview_url || '';
+}
+
+function localBgmPath(asset = {}) {
+  const ref = normalizeMediaRef(mediaRefFromAsset(asset)).split('?')[0];
+  if (!ref) return '';
+  const decoded = decodeURIComponent(ref);
+  const filename = path.basename(decoded);
+  const candidates = [
+    decoded,
+    path.join(OUTPUT_DIR, 'music', filename),
+    path.join(OUTPUT_DIR, 'assets', 'music', filename),
+    path.join(OUTPUT_DIR, 'effects_assets', filename),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = path.resolve(path.isAbsolute(candidate) ? candidate : path.join(process.cwd(), candidate.replace(/^\/+/, '')));
+    if (!resolved.startsWith(path.resolve(OUTPUT_DIR))) continue;
+    if (fs.existsSync(resolved)) return resolved;
+  }
+  return '';
+}
+
+function clampVolume(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function effectsResultUrl(filePath = '') {
+  const base = path.basename(filePath || '', '.mp4').replace(/^fx_/, '');
+  return base ? `/api/workflow/effects/result/${encodeURIComponent(base)}` : '';
+}
+
 function quoteConcatPath(filePath = '') {
   return String(filePath).replace(/\\/g, '/').replace(/'/g, "'\\''");
 }
 
-async function concatVideos({ taskId = '', clips = [] } = {}) {
+async function concatVideos({
+  taskId = '',
+  clips = [],
+  bgmAsset = null,
+  bgmVolume = 0.16,
+  voiceVolume = 1,
+  subtitles = [],
+  subtitleEnabled = false,
+  subtitleStyle = 'popup',
+} = {}) {
   const inputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
   if (!inputs.length) throw new Error('new_story_ad compose requires at least one local video clip');
   ensureDir(COMPOSE_DIR);
@@ -79,13 +131,46 @@ async function concatVideos({ taskId = '', clips = [] } = {}) {
     fs.writeFileSync(listFile, inputs.map(p => `file '${quoteConcatPath(p)}'`).join('\n'), 'utf8');
     await execFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', out]);
   }
+  let finalPath = out;
+  let finalUrl = publicComposeUrl(filename);
+  const bgmPath = localBgmPath(bgmAsset || {});
+  const validSubtitles = subtitleEnabled
+    ? (Array.isArray(subtitles) ? subtitles : []).filter(item => item && item.text)
+    : [];
+  const needsEffects = !!bgmPath || validSubtitles.length > 0;
+  let providerUsed = 'local-ffmpeg/new-story-ad-compose';
+  if (needsEffects) {
+    const { applyEffects } = require('../effectsService');
+    const fx = await applyEffects({
+      videoPath: out,
+      texts: validSubtitles,
+      bgm: bgmPath ? {
+        path: bgmPath,
+        volume: clampVolume(bgmVolume, 0.16, 0, 0.35),
+        voice_volume: clampVolume(voiceVolume, 1, 0.6, 1.2),
+        fadeIn: 1,
+        fadeOut: 2,
+      } : null,
+      voiceVolume: clampVolume(voiceVolume, 1, 0.6, 1.2),
+      subtitleStyle: subtitleStyle || 'popup',
+    });
+    if (fx?.outputPath && fs.existsSync(fx.outputPath)) {
+      finalPath = fx.outputPath;
+      finalUrl = effectsResultUrl(fx.outputPath);
+      providerUsed += '+effects';
+    }
+  }
   return {
     filename,
-    file_path: out,
-    video_url: publicComposeUrl(filename),
-    videoUrl: publicComposeUrl(filename),
+    file_path: finalPath,
+    source_file_path: out,
+    video_url: finalUrl,
+    videoUrl: finalUrl,
     clip_count: inputs.length,
-    provider_used: 'local-ffmpeg/new-story-ad-compose',
+    bgm_applied: !!bgmPath,
+    subtitle_applied: validSubtitles.length > 0,
+    subtitle_style: subtitleStyle || 'popup',
+    provider_used: providerUsed,
   };
 }
 

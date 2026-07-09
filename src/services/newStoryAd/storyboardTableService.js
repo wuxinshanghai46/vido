@@ -1,10 +1,15 @@
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { contextPrompt, normalizeCharacters, looksLikeDescriptorName } = require('./contextBuilder');
+const { bindShotsToScenes, sceneBindingPrompt } = require('./sceneBindingService');
 
 function clampText(value = '', max = 260) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? text.slice(0, max).replace(/[，。；、,\s]*$/, '') : text;
+}
+
+function cleanSpeech(value = '', max = 90) {
+  return clampText(value, max).replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '').trim();
 }
 
 function canonicalSpeakerName(name = '', characters = []) {
@@ -23,7 +28,7 @@ function normalizeDialogue(lines, voice = '', characters = []) {
   const normalized = list
     .map(item => ({
       speaker: canonicalSpeakerName(item?.speaker || '旁白', characters),
-      line: clampText(item?.line || item?.text || '', 80),
+      line: cleanSpeech(item?.line || item?.text || '', 80),
     }))
     .filter(item => item.line);
   if (!normalized.length && voice) return [{ speaker: '旁白', line: clampText(voice, 80) }];
@@ -55,10 +60,19 @@ function joinVisualLayers({ shotType = '', visualLayers = [], visual = '' } = {}
   return clampText(parts.join('；'), 260);
 }
 
+function fallbackVoiceover(shot = {}, idx = 0, ctx = {}) {
+  const proof = clampText(shot.visual_proof || shot.evidence || shot.purpose || shot.objective || shot.selling_point || '', 42);
+  const visual = clampText(shot.visual || shot.story_visual || shot.promo_visual || shot.content_prompt || shot.action || '', 42);
+  const subject = clampText(ctx.product_subject || '当前主体', 20);
+  if (proof) return `这一镜看清${proof}。`;
+  if (visual) return `先看${visual}。`;
+  return `继续看${subject}的第 ${idx + 1} 个关键画面。`;
+}
+
 function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
   const characters = normalizeCharacters(ctx.characters || [], `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   const n = Number(shot.index || shot.shot_index || idx + 1);
-  const voice = clampText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || '', 90);
+  const voice = cleanSpeech(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || fallbackVoiceover(shot, idx, ctx), 90);
   const shotType = clampText(shot.shot_type || shot.camera || shot.lens || '', 80);
   const visualLayers = normalizeVisualLayers(shot);
   const storyVisual = clampText(shot.story_visual || shot.story_moment || shot.character_moment || '', 140);
@@ -72,7 +86,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     sellingPoint ? `宣传卖点：${sellingPoint}` : '',
     shot.keyframe_notes || '',
   ].filter(Boolean).join('；'), 220);
-  return {
+  const normalized = {
     index: n,
     title: clampText(shot.title || `镜头 ${n}`, 40),
     role: clampText(shot.role || shot.story_stage || shot.purpose || '', 40),
@@ -95,7 +109,15 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     })).filter(c => c.name || c.action) : [],
     material_usage: clampText(shot.material_usage || promoVisual || visualLayers.find(layer => /product|material|proof|brand|offer|result/i.test(layer.type))?.content || '', 160),
     keyframe_notes: keyframeNotes || clampText(shot.keyframe_notes || '', 180),
+    scene_id: clampText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120),
+    scene_asset_id: clampText(shot.scene_asset_id || shot.sceneAssetId || shot.scene_id || shot.sceneId || '', 120),
+    scene_name: clampText(shot.scene_name || shot.sceneName || '', 120),
+    scene_view: clampText(shot.scene_view || shot.sceneView || '', 40),
+    scene_zone: clampText(shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
+    transition_from: clampText(shot.transition_from || shot.transitionFrom || '', 120),
+    transition_reason: clampText(shot.transition_reason || shot.transitionReason || '', 240),
   };
+  return normalized;
 }
 
 function normalizeDurations(shots, ctx) {
@@ -128,7 +150,8 @@ function normalizeDurations(shots, ctx) {
 function normalizeShots(rows, ctx) {
   const sorted = (Array.isArray(rows) ? rows : [])
     .sort((a, b) => Number(a?.index || a?.shot_index || 0) - Number(b?.index || b?.shot_index || 0));
-  return normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
+  const normalized = normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
+  return bindShotsToScenes(normalized, ctx.scene_assets || []);
 }
 
 function chunksOf(items, size) {
@@ -171,14 +194,19 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
       'voiceover must be a natural short line that can be heard in the final video.',
+      'voiceover and dialogue_lines.line are not subtitle fields. They must contain dialogue or narrator voice only, without labels such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
       'If Advanced production controls are enabled, obey them shot by shot: scene direction constrains location, product presentation controls product visibility and method, style direction controls visual tone, and negative requirements are forbidden.',
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
       'Do not output shots that violate negative requirements.',
+      'If scene assets exist, scene_id must be selected from the current task scene assets only.',
+      'Do not invent unrelated spaces. A scene change must have transition_reason.',
     ].join('\n');
 
     const userPrompt = `${contextPrompt(ctx)}
 
 Blueprint: ${JSON.stringify(blueprint).slice(0, 14000)}
+
+${sceneBindingPrompt(ctx.scene_assets || [])}
 
 Current beats: ${JSON.stringify(chunk)}
 
@@ -202,7 +230,12 @@ Return JSON array for current beats only. Fields:
   "dialogue_lines": [{"speaker":"stable character name or narrator","line":"line"}],
   "characters": [{"name":"stable character name","action":"this shot action"}],
   "material_usage": "materials/evidence used",
-  "keyframe_notes": "subject, proof and composition to lock for keyframe"
+  "keyframe_notes": "subject, proof and composition to lock for keyframe",
+  "scene_id": "must match one current task scene_id when scene assets exist",
+  "scene_view": "master/reverse/interaction/detail",
+  "scene_zone": "the concrete zone inside this task scene",
+  "transition_from": "previous scene_id when changing scene, otherwise empty",
+  "transition_reason": "why this shot enters this scene; required when scene_id changes"
 }`;
 
     const result = await modelGateway.generateText({
@@ -249,11 +282,13 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } 
     'Fix thin shots by strengthening the visual layers required by the user brief.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
+    'Preserve scene_id, scene_view, scene_zone and transition_reason whenever they are valid for the current task scene assets.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}
 
 Blueprint: ${JSON.stringify(blueprint).slice(0, 10000)}
+${sceneBindingPrompt(ctx.scene_assets || [])}
 Current storyboard: ${JSON.stringify(shots).slice(0, 22000)}
 Issues to fix: ${issues.slice(0, 30).join('; ')}
 

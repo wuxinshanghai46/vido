@@ -35,6 +35,31 @@
     return changed;
   }
 
+  function applySpec(spec = {}, options = {}) {
+    const scope = root();
+    const clearMissing = options.clearMissing !== false;
+    const source = spec && typeof spec === 'object' ? spec : {};
+    ['layoutText', 'materialLightText', 'interactionText', 'negativeText'].forEach(key => {
+      const el = scope.querySelector(`[data-nsa-scene-spec="${key}"]`);
+      if (!el) return;
+      const value = source[key];
+      if (value !== undefined && value !== null) {
+        el.value = String(value);
+      } else if (clearMissing) {
+        el.value = '';
+      }
+    });
+    const mode = scope.querySelector('#dhNsaAdSceneMode');
+    if (mode) {
+      if (source.mode) mode.value = String(source.mode);
+      else if (clearMissing) mode.value = 'auto';
+    }
+  }
+
+  function clearSpecInputs() {
+    applySpec({}, { clearMissing: true });
+  }
+
   function normalizeView(view = {}, index = 0) {
     const key = clean(view.key || view.view || ['master', 'reverse', 'interaction', 'detail'][index] || `view_${index + 1}`, 40);
     const url = clean(view.url || view.image_url || view.imageUrl || view.file_url || '', 1000);
@@ -190,16 +215,9 @@
       || request.sceneAssets
       || [],
     );
-    if (assets.length) state.sceneAssets = assets;
+    state.sceneAssets = assets;
     const spec = request.scene_spec || request.sceneSpec || outputs.context?.scene_spec || response.context?.scene_spec || null;
-    if (spec && typeof spec === 'object') {
-      Object.entries(spec).forEach(([key, value]) => {
-        const el = root().querySelector(`[data-nsa-scene-spec="${key}"]`);
-        if (el && value !== undefined && value !== null) el.value = String(value);
-      });
-      const mode = root().querySelector('#dhNsaAdSceneMode');
-      if (mode && spec.mode) mode.value = String(spec.mode);
-    }
+    applySpec(spec, { clearMissing: true });
     return assets;
   }
 
@@ -278,6 +296,8 @@
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
     specPayload,
+    applySpec,
+    clearSpecInputs,
     applySpecSuggestion,
     render,
     payload,

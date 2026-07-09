@@ -81,7 +81,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     'Top-right REVERSE OR SIDE VIEW: same space from a different angle, preserving the same layout, materials, lighting and object positions.',
     'Bottom-left INTERACTION POSITION VIEW: empty camera position suitable for later adding a person or product interaction; show only usable foreground/background relation and clear standing/display area, but do not show any person, body part or silhouette.',
     'Bottom-right DETAIL VIEW: close material/detail reference from the same space, preserving the exact material family, lighting and color palette.',
-    'Keep all four panels in the same task-specific space. Do not invent a different room, different carrier, different material family or unrelated industry.',
+    'Keep all four panels in the same task-specific space. Do not invent a different specific space, carrier, material family or unrelated industry.',
     brief ? `Campaign brief: ${brief}` : '',
     subject ? `Advertised subject: ${subject}` : '',
     custom ? `User scene requirement: ${custom}` : '',

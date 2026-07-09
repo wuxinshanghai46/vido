@@ -26,6 +26,19 @@
     ['tech', '科技律动', '适合软件、数据、效率工具。'],
   ];
 
+  const SUBTITLE_STYLES = [
+    ['popup', '弹跳出现', '短视频常用，适合大多数剧情广告。'],
+    ['classic', '经典静态', '稳定克制，适合企业、服务和说明型广告。'],
+    ['bouncy', '节奏跳字', '更强节奏感，适合轻快内容。'],
+    ['karaoke', '逐字高亮', '强调口播跟读和重点词。'],
+    ['news', '信息条样式', '适合信息密度高、偏说明的广告。'],
+    ['neon', '霓虹发光', '适合潮流、科技、夜景或强视觉风格。'],
+  ];
+
+  function subtitleStyleLabel(id = '') {
+    return (SUBTITLE_STYLES.find(([key]) => key === id) || SUBTITLE_STYLES[0])[1];
+  }
+
   const state = {
     mounted: false,
     token: sessionStorage.getItem('vido_token') || localStorage.getItem('vido_token') || localStorage.getItem('token') || '',
@@ -52,12 +65,16 @@
     bgmAsset: null,
     bgmProfile: 'auto',
     voiceId: '',
+    voiceName: '',
+    voiceList: [],
+    voiceLoading: false,
     voiceVolume: 1,
     bgmVolume: 0.16,
     outputRatio: '9:16',
     outputSize: 'standard',
     videoResolution: '720p',
     subtitleEnabled: true,
+    subtitleStyle: 'popup',
     pendingShotUploadIndex: null,
     controlledProduction: {
       environment: { mode: 'auto', custom: '' },
@@ -80,6 +97,7 @@
   const within = sel => $(sel, root() || document);
 
   function routeStep() {
+    if (window.NewStoryAdTaskStore?.routeStep) return window.NewStoryAdTaskStore.routeStep();
     try {
       const step = Number(new URLSearchParams(location.search || '').get('nsa_step') || 0);
       if (Number.isFinite(step) && step >= 1 && step <= 5) return Math.round(step);
@@ -88,6 +106,7 @@
   }
 
   function routeTaskId() {
+    if (window.NewStoryAdTaskStore?.routeTaskId) return window.NewStoryAdTaskStore.routeTaskId();
     try {
       return normalizeText(new URLSearchParams(location.search || '').get('nsa_task_id') || '', 100);
     } catch {
@@ -96,6 +115,7 @@
   }
 
   function storedTaskId() {
+    if (window.NewStoryAdTaskStore?.storedTaskId) return window.NewStoryAdTaskStore.storedTaskId();
     try {
       return normalizeText(localStorage.getItem(TASK_STORAGE_KEY) || '', 100);
     } catch {
@@ -104,6 +124,10 @@
   }
 
   function rememberTaskId(taskId = state.taskId) {
+    if (window.NewStoryAdTaskStore?.rememberTaskId) {
+      window.NewStoryAdTaskStore.rememberTaskId(taskId || '', state.currentStep);
+      return;
+    }
     const id = normalizeText(taskId || '', 100);
     try {
       if (id) localStorage.setItem(TASK_STORAGE_KEY, id);
@@ -120,6 +144,10 @@
   }
 
   function rememberRouteStep(step = state.currentStep) {
+    if (window.NewStoryAdTaskStore?.rememberRouteStep) {
+      window.NewStoryAdTaskStore.rememberRouteStep(step, state.taskId || '');
+      return;
+    }
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', 'new-story-ad');
@@ -231,6 +259,7 @@
   }
 
   function actorUrls(asset = {}) {
+    if (window.NewStoryAdActors?.collectUrls) return window.NewStoryAdActors.collectUrls(asset);
     const urls = [];
     const push = value => {
       const url = compactUrl(value);
@@ -264,6 +293,7 @@
   };
 
   function actorViewKey(value = '', index = 0) {
+    if (window.NewStoryAdActors?.viewKey) return window.NewStoryAdActors.viewKey(value, index);
     const raw = String(value || '').toLowerCase();
     if (/front|frontal|main|primary|正面/.test(raw)) return 'front';
     if (/side|profile|semi|half|侧面|半侧/.test(raw)) return 'side';
@@ -273,10 +303,12 @@
   }
 
   function actorViewLabel(key = '', index = 0) {
+    if (window.NewStoryAdActors?.viewLabel) return window.NewStoryAdActors.viewLabel(key, index);
     return ACTOR_VIEW_LABELS[key] || `参考 ${Number(index) + 1}`;
   }
 
   function actorViewEntries(asset = {}) {
+    if (window.NewStoryAdActors?.viewEntries) return window.NewStoryAdActors.viewEntries(asset);
     const metadata = asset?.metadata || {};
     const sourceViews = Array.isArray(asset?.view_images) && asset.view_images.length
       ? asset.view_images
@@ -300,6 +332,7 @@
   }
 
   function actorReferenceKind(asset = {}) {
+    if (window.NewStoryAdActors?.referenceKind) return window.NewStoryAdActors.referenceKind(asset);
     const metadata = asset.metadata || {};
     const source = String(asset.source || metadata.source || asset.type || '').toLowerCase();
     const kind = String(asset.reference_kind || metadata.reference_kind || '').toLowerCase();
@@ -314,6 +347,7 @@
   }
 
   function actorReferenceLabel(asset = {}) {
+    if (window.NewStoryAdActors?.referenceLabel) return window.NewStoryAdActors.referenceLabel(asset);
     const kind = actorReferenceKind(asset);
     if (kind === 'real_photo') return '真人照片参考';
     if (kind === 'synthetic_realistic_actor') return '拟真一致性演员';
@@ -332,6 +366,7 @@
   }
 
   function personGenderValue(value = '') {
+    if (window.NewStoryAdActors?.genderValue) return window.NewStoryAdActors.genderValue(value);
     const raw = String(value || '').toLowerCase();
     if (/female|woman|girl|女/.test(raw)) return 'female';
     if (/male|man|boy|男/.test(raw)) return 'male';
@@ -656,6 +691,9 @@
 
   let refreshPromise = null;
   async function refreshAuth() {
+    if (window.NewStoryAdApi?.refreshAuth) {
+      return window.NewStoryAdApi.refreshAuth((token) => { state.token = token; });
+    }
     if (refreshPromise) return refreshPromise;
     refreshPromise = (async () => {
       try {
@@ -682,6 +720,13 @@
   }
 
   async function api(path, opts = {}) {
+    if (window.NewStoryAdApi?.request) {
+      return window.NewStoryAdApi.request(path, {
+        ...opts,
+        token: state.token,
+        onToken: (token) => { state.token = token; },
+      });
+    }
     const headers = { ...(opts.headers || {}) };
     if (!headers['Content-Type'] && !(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
     if (state.token) headers.Authorization = `Bearer ${state.token}`;
@@ -732,7 +777,7 @@
       ['#dhNsaAdGenerate', '生成场景配置'],
       ['#dhNsaAdStoryboard', '确认基础信息，生成剧本'],
       ['#dhNsaAdPreviewFrames', '确认剧本，生成分镜'],
-      ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实关键帧'],
+      ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
       ['#dhNsaAdGoCompose', '确认分镜，进入广告合成'],
       ['#dhNsaAdConfirmGenerate', '合成广告'],
     ];
@@ -787,9 +832,12 @@
       video_resolution: videoResolution,
       cast_mode: personSpec('castMode') || 'auto',
       voice_id: voiceId,
+      voice_name: state.voiceName || '',
       subtitle: state.subtitleEnabled,
+      subtitle_style: state.subtitleStyle || 'popup',
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
+      bgm_profile: state.bgmProfile || 'auto',
       bgm_asset: state.bgmAsset,
       assets: assetPayloadList(),
       references: assetPayloadList(),
@@ -875,12 +923,14 @@
     state.bgmAsset = null;
     state.bgmProfile = 'auto';
     state.voiceId = '';
+    state.voiceName = '';
     state.voiceVolume = 1;
     state.bgmVolume = 0.16;
     state.outputRatio = '9:16';
     state.outputSize = 'standard';
     state.videoResolution = '720p';
     state.subtitleEnabled = true;
+    state.subtitleStyle = 'popup';
     state.pendingShotUploadIndex = null;
     state.controlledProduction = {
       environment: { mode: 'auto', custom: '' },
@@ -908,6 +958,7 @@
         el.value = '';
       }
     });
+    window.NewStoryAdSceneAssets?.clearSpecInputs?.();
     showStep(1, { remember: false });
     setBusy(false);
     renderAll();
@@ -1023,6 +1074,25 @@
   }
 
   async function openActorLibrary() {
+    if (window.NewStoryAdActorLibrary?.open) {
+      return window.NewStoryAdActorLibrary.open({
+        api,
+        escapeHtml,
+        withAuthQuery,
+        actorUrls,
+        actorReferenceLabel,
+        personGenderValue,
+        toast,
+        onSelect: (asset) => {
+          markSourceDirty();
+          state.actorAsset = null;
+          state.personAsset = actorMaterialToPersonAsset(asset);
+          applyPersonAssetConstraints(state.personAsset);
+          renderAll();
+          toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步`, 'success');
+        },
+      });
+    }
     let items = [];
     let activeGenderFilter = 'all';
     const old = document.getElementById('__dh_nsa_actor_library');
@@ -1214,6 +1284,18 @@
     if (voiceLabel) voiceLabel.textContent = `${Math.round(state.voiceVolume * 100)}%`;
     if (bgmLabel) bgmLabel.textContent = `${Math.round(state.bgmVolume * 100)}%`;
 
+    const voiceCurrent = within('#dhNsaAdVoiceCurrent');
+    if (voiceCurrent) {
+      const selectedVoice = (state.voiceList || []).find(v => String(v.id || '') === String(state.voiceId || ''));
+      const name = state.voiceName || selectedVoice?.name || (state.voiceId ? state.voiceId : '未选择配音');
+      const provider = selectedVoice?.provider || selectedVoice?.providerId || (state.voiceId ? '已选择，可用于旁白合成' : '剧情广告必须手动选择声音');
+      voiceCurrent.innerHTML = `<div class="dh-voice-opt-icon">TV</div>
+        <div class="dh-voice-opt-body">
+          <div class="dh-voice-opt-name">${escapeHtml(name)}</div>
+          <div class="dh-voice-opt-sub">${escapeHtml(provider)}</div>
+        </div>`;
+    }
+
     const status = within('#dhNsaAdBgmStatus');
     const license = within('#dhNsaAdBgmLicense');
     const profileLabel = within('#dhNsaAdBgmProfileLabel');
@@ -1235,9 +1317,20 @@
       const url = previewUrl(state.bgmAsset);
       preview.innerHTML = url ? `<audio controls preload="none" src="${escapeHtml(url)}"></audio>` : '';
     }
+
+    const subtitleSelect = within('#dhNsaAdSubtitle');
+    const subtitleToggle = within('#dhNsaAdSubtitleToggle');
+    if (subtitleSelect && document.activeElement !== subtitleSelect) subtitleSelect.value = state.subtitleEnabled ? 'on' : 'off';
+    if (subtitleToggle && document.activeElement !== subtitleToggle) subtitleToggle.checked = !!state.subtitleEnabled;
   }
 
   function normalizeBundle(response = {}) {
+    if (window.NewStoryAdStateSync?.normalizeBundle) {
+      return window.NewStoryAdStateSync.normalizeBundle(response, {
+        state,
+        rememberTaskId,
+      });
+    }
     const bundle = response.bundle || response;
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
@@ -1353,6 +1446,16 @@
   }
 
   function hydrateTaskBundle(bundle = {}) {
+    if (window.NewStoryAdStateSync?.hydrateTaskBundle) {
+      return window.NewStoryAdStateSync.hydrateTaskBundle(bundle, {
+        state,
+        within,
+        root,
+        rememberTaskId,
+        hydrateControlledProduction,
+        applyPersonAssetConstraints,
+      });
+    }
     const task = bundle.task || {};
     const outputs = normalizeTaskOutputs(bundle);
     const request = outputs.context || task.request || {};
@@ -1379,7 +1482,9 @@
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
+    state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;
+    state.subtitleStyle = request.subtitle_style || request.subtitleStyle || state.subtitleStyle || 'popup';
     state.voiceVolume = Number(request.voice_volume || request.voiceVolume || state.voiceVolume || 1) || 1;
     state.bgmVolume = Number(request.bgm_volume || request.bgmVolume || state.bgmVolume || 0.16) || 0.16;
     state.bgmProfile = request.bgm_profile || request.bgmProfile || state.bgmProfile || 'auto';
@@ -1423,6 +1528,9 @@
   }
 
   function setButtonLock(selector, locked, title = '', options = {}) {
+    if (window.NewStoryAdButtonState?.setButtonLock) {
+      return window.NewStoryAdButtonState.setButtonLock(selector, locked, title, options, { state, within });
+    }
     const btn = within(selector);
     if (!btn) return;
     const busyLocked = !!state.busy && !options.allowBusy;
@@ -1435,6 +1543,9 @@
   }
 
   function setButtonBusy(button, busy, label = '') {
+    if (window.NewStoryAdButtonState?.setButtonBusy) {
+      return window.NewStoryAdButtonState.setButtonBusy(button, busy, label, { updateLocks });
+    }
     if (!button) return;
     if (busy) {
       if (!button.dataset.nsaOriginalText) button.dataset.nsaOriginalText = button.textContent.trim();
@@ -1455,6 +1566,9 @@
   }
 
   function updateLocks() {
+    if (window.NewStoryAdButtonState?.updateLocks) {
+      return window.NewStoryAdButtonState.updateLocks({ state, within, getPersonSpec: personSpec });
+    }
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     const hasBrief = brief.length >= 8;
     const hasScene = !!state.sceneConfig;
@@ -1465,7 +1579,7 @@
     setButtonLock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
     const generateBtn = within('#dhNsaAdGenerate');
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
-    setButtonLock('#dhNsaAdStoryboard', !hasScene && !state.taskId, '请先生成场景配置');
+    setButtonLock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
     setButtonLock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     setButtonLock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     setButtonLock('#dhNsaAdGoCompose', !hasShots, '请先生成分镜');
@@ -1500,6 +1614,7 @@
   }
 
   function completedKeyframeCount() {
+    if (window.NewStoryAdKeyframes?.completedCount) return window.NewStoryAdKeyframes.completedCount(state.keyframes);
     return (Array.isArray(state.keyframes) ? state.keyframes : []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url || frame.error)).length;
   }
 
@@ -1512,6 +1627,14 @@
   }
 
   function stageProgressSnapshot(label = '') {
+    if (window.NewStoryAdProgress?.snapshot) {
+      return window.NewStoryAdProgress.snapshot({
+        progress: state.stageProgress || {},
+        label,
+        total: stageItemCount(state.stageProgress?.stage || ''),
+        completed: completedKeyframeCount(),
+      });
+    }
     const progress = state.stageProgress || {};
     const stage = progress.stage || '';
     const total = Math.max(1, Number(progress.total || stageItemCount(stage)) || 1);
@@ -1568,8 +1691,6 @@
   }
   function startStageProgress(stage = '', label = '') {
     stopStageProgress();
-    const trackable = stage === 'storyboard' || stage === 'keyframes';
-    if (!trackable) return;
     state.stageProgress = {
       active: true,
       stage,
@@ -1624,6 +1745,15 @@
   }
 
   function showStep(step, opts = {}) {
+    if (window.NewStoryAdStepNavigation?.showStep) {
+      return window.NewStoryAdStepNavigation.showStep(step, opts, {
+        state,
+        root,
+        within,
+        queryAll: $$,
+        rememberRouteStep,
+      });
+    }
     state.currentStep = Math.max(1, Math.min(5, Number(step) || 1));
     $$('.dh-luxgen-stage', root()).forEach(panel => {
       panel.classList.toggle('active', Number(panel.dataset.panel || 0) === state.currentStep);
@@ -1638,6 +1768,9 @@
   }
 
   function stepReady(step) {
+    if (window.NewStoryAdStepNavigation?.stepReady) {
+      return window.NewStoryAdStepNavigation.stepReady(step, { state, within });
+    }
     if (step === 1) return !!state.taskId || !!(within('#dhNsaAdText')?.value || '').trim();
     if (step === 2) return !!state.sceneConfig;
     if (step === 3) return !!state.blueprint;
@@ -1647,6 +1780,9 @@
   }
 
   function canOpenStep(step) {
+    if (window.NewStoryAdStepNavigation?.canOpenStep) {
+      return window.NewStoryAdStepNavigation.canOpenStep(step, { state });
+    }
     if (step <= 1) return true;
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
     if (step === 3) return !!state.blueprint || !!state.sceneConfig;
@@ -1665,22 +1801,37 @@
       group: '多人剧情 / 群体展示',
       no_human: '无人物，仅产品 / 空间 / 材料',
       none: '无人物，仅产品 / 空间 / 材料',
+      animal: '动物 / 宠物主体',
+      pet: '动物 / 宠物主体',
     };
     return labels[raw] || value || '-';
+  }
+
+  function renderDraftSceneInfo() {
+    const brief = (within('#dhNsaAdText')?.value || '').trim();
+    const subject = state.context?.product_subject || payload().product_subject || (brief ? brief.slice(0, 36) : '当前广告主体');
+    const rows = [
+      ['广告主体', subject || '按广告需求判断'],
+      ['业务边界', brief ? '待 AI 根据当前广告需求确认，不继承其他任务。' : '待填写广告需求'],
+      ['人物/主体模式', formatCastMode(personSpec('castMode') || state.context?.cast_mode || 'auto')],
+      ['剧情策略', '待生成基础信息后确认'],
+      ['禁止项', '按当前任务禁止项和高级设置判断'],
+    ];
+    return `<div class="dh-lux-asset-manifest is-draft">${rows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
   }
 
   function renderScene() {
     const host = within('#dhNsaAdSceneConfigHost');
     if (!host) return;
     if (!state.sceneConfig) {
-      host.innerHTML = '<div class="dh-luxgen-empty"><b>还没有场景配置</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>';
+      host.innerHTML = renderDraftSceneInfo();
       return;
     }
     const sc = state.sceneConfig || {};
     const rows = [
       ['广告主体', sc.advertised_subject],
       ['业务边界', sc.business_boundary],
-      ['人物模式', sc.cast_mode],
+      ['人物/主体模式', sc.cast_mode],
       ['剧情策略', Array.isArray(sc.story_strategy) ? sc.story_strategy.join('；') : ''],
       ['禁止项', Array.isArray(sc.forbidden || sc.forbidden_elements) ? (sc.forbidden || sc.forbidden_elements).join('；') : ''],
     ];
@@ -1701,12 +1852,32 @@
     return Math.max(2, Math.round(target / Math.max(1, total || 1)));
   }
 
+  function fallbackBlueprintSpokenLine(beat = {}, index = 0) {
+    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const proof = clean(beat.visual_proof || beat.evidence || beat.purpose || beat.objective || '');
+    const visual = clean(beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '');
+    const action = clean(beat.action || beat.character_action || beat.behavior || '');
+    const subject = clean(state.context?.product_subject || state.sceneConfig?.advertised_subject || payload().product_subject || '当前主体');
+    const pick = text => text.length > 32 ? text.slice(0, 32).replace(/[，。；、,\s]*$/, '') : text;
+    if (proof) return `这一镜看清${pick(proof)}。`;
+    if (action) return `先看${pick(action)}。`;
+    if (visual) return `这里呈现${pick(visual)}。`;
+    return `继续看${pick(subject)}的第 ${index + 1} 个关键画面。`;
+  }
+
+  function normalizeSpeechText(value = '') {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '')
+      .trim();
+  }
+
   function blueprintFieldValue(beat = {}, field = '', index = 0, total = 1) {
     if (field === 'duration') return String(blueprintBeatDuration(beat, index, total));
     if (field === 'title') return beat.title || beat.role || beat.story_role || `镜头 ${index + 1}`;
     if (field === 'visual') return beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '';
     if (field === 'action') return beat.action || beat.character_action || beat.behavior || beat.plot || '';
-    if (field === 'spoken_line') return beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue || '';
+    if (field === 'spoken_line') return normalizeSpeechText(beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue) || fallbackBlueprintSpokenLine(beat, index);
     if (field === 'visual_proof') return beat.visual_proof || beat.evidence || beat.promo_visual || beat.purpose || '';
     if (field === 'purpose') return beat.purpose || beat.objective || beat.role || '';
     return beat[field] || '';
@@ -1781,6 +1952,27 @@
     return true;
   }
 
+  function blueprintMetrics() {
+    const beats = blueprintBeats();
+    const totalSeconds = beats.reduce((sum, beat, i) => sum + blueprintBeatDuration(beat, i, beats.length), 0);
+    const avgSeconds = Math.round((totalSeconds / Math.max(1, beats.length)) * 10) / 10;
+    return { beats, totalSeconds, avgSeconds };
+  }
+
+  function refreshBlueprintMetrics() {
+    const bp = state.blueprint || {};
+    const { beats, totalSeconds, avgSeconds } = blueprintMetrics();
+    const title = bp.story_title || bp.title || '新剧情广告';
+    const summary = within('[data-nsa-blueprint-summary]');
+    if (summary) summary.textContent = `第 1 版 · 待确认 · ${title} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒`;
+    const totalEl = within('[data-nsa-blueprint-total]');
+    if (totalEl) totalEl.textContent = `${totalSeconds} 秒`;
+    const countEl = within('[data-nsa-blueprint-count]');
+    if (countEl) countEl.textContent = `${beats.length} 镜`;
+    const avgEl = within('[data-nsa-blueprint-avg]');
+    if (avgEl) avgEl.textContent = `${avgSeconds} 秒/镜`;
+  }
+
   function renderBlueprint() {
     const host = within('#dhNsaAdScriptHost');
     if (!host) return;
@@ -1794,12 +1986,11 @@
       host.innerHTML = '<div class="dh-luxgen-empty"><b>剧本为空</b><span>请重新生成剧本，或添加镜头后再进入分镜。</span></div>';
       return;
     }
-    const totalSeconds = beats.reduce((sum, beat, i) => sum + blueprintBeatDuration(beat, i, beats.length), 0);
-    const avgSeconds = Math.round((totalSeconds / Math.max(1, beats.length)) * 10) / 10;
+    const { totalSeconds, avgSeconds } = blueprintMetrics();
     host.innerHTML = `<div class="dh-demo-script-review">
       <div>
         <h4>剧本审核</h4>
-        <p>第 1 版 · 待确认 · ${escapeHtml(bp.story_title || bp.title || '新剧情广告')} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒</p>
+        <p data-nsa-blueprint-summary>第 1 版 · 待确认 · ${escapeHtml(bp.story_title || bp.title || '新剧情广告')} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒</p>
       </div>
       <div class="dh-demo-script-actions">
         <button type="button" class="dh-luxgen-edit" data-nsa-blueprint-add>添加一镜</button>
@@ -1807,9 +1998,9 @@
       </div>
     </div>
     <div class="dh-lux-script-stats">
-      <span><small>最终时长</small><b>${escapeHtml(String(totalSeconds))} 秒</b></span>
-      <span><small>镜头数量</small><b>${beats.length} 镜</b></span>
-      <span><small>平均镜长</small><b>${escapeHtml(String(avgSeconds))} 秒/镜</b></span>
+      <span><small>最终时长</small><b data-nsa-blueprint-total>${escapeHtml(String(totalSeconds))} 秒</b></span>
+      <span><small>镜头数量</small><b data-nsa-blueprint-count>${beats.length} 镜</b></span>
+      <span><small>平均镜长</small><b data-nsa-blueprint-avg>${escapeHtml(String(avgSeconds))} 秒/镜</b></span>
       <em>这里调整秒数、画面、动作、台词和补充说明后，会先保存到新剧情广告任务，再生成分镜。</em>
     </div>
     <div class="dh-demo-script-mainline">
@@ -1864,7 +2055,7 @@
         <div class="dh-task-segment-main">
           <div class="dh-task-segment-text">${escapeHtml(beat.role || beat.title || `剧情 Beat ${i + 1}`)}</div>
           <div class="dh-task-segment-meta">${escapeHtml(beat.plot || beat.visual || '')}</div>
-          ${beat.spoken_line ? `<div class="dh-task-segment-meta">台词/旁白：${escapeHtml(beat.spoken_line)}</div>` : ''}
+          ${blueprintFieldValue(beat, 'spoken_line', i, beats.length) ? `<div class="dh-task-segment-meta">台词/旁白：${escapeHtml(blueprintFieldValue(beat, 'spoken_line', i, beats.length))}</div>` : ''}
           ${beat.visual_proof ? `<div class="dh-task-segment-meta">可见证据：${escapeHtml(beat.visual_proof)}</div>` : ''}
         </div>
       </div>`).join('')}</div>
@@ -1875,8 +2066,12 @@
     if (field === 'duration') return shot.duration || shot.duration_sec || contract.duration || '';
     if (field === 'visual') return editorFriendlyPromptText(shot.visual || shot.visual_description || shot.content_prompt || contract.visual || '');
     if (field === 'action') return shot.action || shot.visual_action || contract.action || '';
-    if (field === 'voiceover') return shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
+    if (field === 'voiceover') return normalizeSpeechText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '');
     if (field === 'purpose') return shot.purpose || shot.objective || shot.role || contract.subject_strategy || '';
+    if (field === 'scene_id') return shot.scene_id || shot.scene_asset_id || contract.scene_lock?.scene_id || '';
+    if (field === 'scene_view') return shot.scene_view || contract.scene_lock?.scene_view || '';
+    if (field === 'scene_zone') return shot.scene_zone || contract.scene_lock?.scene_zone || '';
+    if (field === 'transition_reason') return shot.transition_reason || contract.scene_lock?.transition_reason || '';
     return shot[field] || '';
   }
 
@@ -1897,8 +2092,18 @@
       shot.user_visual_override = true;
     }
     else if (field === 'action') { shot.action = value; shot.visual_action = value; }
-    else if (field === 'voiceover') { shot.voiceover = value; shot.narration = value; shot.subtitle = value; }
+    else if (field === 'voiceover') { const speech = normalizeSpeechText(value); shot.voiceover = speech; shot.narration = speech; shot.subtitle = speech; }
     else if (field === 'purpose') { shot.purpose = value; shot.objective = value; shot.role = value; shot.keyframe_notes = value; shot.material_usage = value; }
+    else if (field === 'scene_id') {
+      const matchedIndex = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id || '') === String(value));
+      const matched = matchedIndex >= 0 ? state.sceneAssets[matchedIndex] : null;
+      shot.scene_id = value;
+      shot.scene_asset_id = value;
+      shot.scene_name = matched?.name || shot.scene_name || '';
+    }
+    else if (field === 'scene_view') { shot.scene_view = value; }
+    else if (field === 'scene_zone') { shot.scene_zone = value; }
+    else if (field === 'transition_reason') { shot.transition_reason = value; }
     else { shot[field] = value; }
     shot.edited_at = new Date().toISOString();
     return true;
@@ -1924,24 +2129,28 @@
       host.innerHTML = '<div class="dh-luxgen-empty"><b>\u8fd8\u6ca1\u6709\u5206\u955c</b><span>\u8bf7\u5148\u751f\u6210\u5206\u955c\u8868\u6216\u771f\u5b9e\u5173\u952e\u5e27\u3002</span></div>';
       return;
     }
+    if (window.NewStoryAdStoryboard?.normalizeShots) {
+      state.shots = window.NewStoryAdStoryboard.normalizeShots(state.shots, state.sceneAssets || []);
+    }
     host.innerHTML = `<div class="dh-nsa-frame-list">${state.shots.map((shot, i) => {
       const contract = state.contracts.find(x => Number(x.index || x.shot_index || 0) === Number(shot.index || shot.shot_index || i + 1)) || state.contracts[i] || {};
       const frame = state.keyframes[i] || {};
-      const image = frame.image_url || frame.imageUrl || frame.url || '';
+      const image = window.NewStoryAdKeyframes?.frameUrl ? window.NewStoryAdKeyframes.frameUrl(frame) : (frame.image_url || frame.imageUrl || frame.url || '');
       const preview = image ? withAuthQuery(image) : '';
       const dialogue = Array.isArray(shot.dialogue_lines)
         ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '\uff1a' : ''}${d.line || d.text || ''}`).filter(Boolean).join('\uff1b')
         : (shot.dialogue || shot.voiceover || '');
       const duration = shotFieldValue(shot, contract, 'duration');
-      const title = shot.title || `\u7b2c ${i + 1} \u955c`;
+      const title = window.NewStoryAdKeyframes?.frameTitle ? window.NewStoryAdKeyframes.frameTitle(shot, i) : (shot.title || `\u7b2c ${i + 1} \u955c`);
       return `<article class="dh-nsa-frame-card">
-        <button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+        ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
           <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
           <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
-        </button>
+        </button>`}
         <div class="dh-nsa-frame-editor">
           <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
+          ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
           <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="30" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
           <label><span>\u753b\u9762\u63cf\u8ff0</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
           <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
@@ -1978,6 +2187,10 @@
       voiceSummary.textContent = tracks.length ? `已生成 ${tracks.length} 条音频` : '自动配音';
     }
     if (subtitleSummary) subtitleSummary.textContent = '跟随新分镜对白生成';
+    if (subtitleSummary) {
+      const styleLabel = subtitleStyleLabel(state.subtitleStyle || 'popup');
+      subtitleSummary.textContent = state.subtitleEnabled ? `已开启 · ${styleLabel}` : '不生成字幕';
+    }
     const host = ensureMediaHost();
     const tracks = Array.isArray(state.ttsAudio?.tracks) ? state.ttsAudio.tracks : [];
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
@@ -2049,6 +2262,15 @@
   }
 
   async function ensureTask() {
+    if (window.NewStoryAdTaskPersistence?.ensureTask) {
+      return window.NewStoryAdTaskPersistence.ensureTask({
+        state,
+        payload,
+        api,
+        rememberTaskId,
+        renderStatus,
+      });
+    }
     if (state.taskId) return state.taskId;
     const body = payload();
     if (body.brief.length < 8) throw new Error('请先填写至少 8 个字的广告需求');
@@ -2061,6 +2283,20 @@
   }
 
   async function saveCurrentTaskProgress(opts = {}) {
+    if (window.NewStoryAdTaskPersistence?.saveCurrentTaskProgress) {
+      return window.NewStoryAdTaskPersistence.saveCurrentTaskProgress(opts, {
+        state,
+        payload,
+        api,
+        rememberTaskId,
+        renderStatus,
+        renderAll,
+        toast,
+        normalizeBundle,
+        normalizeBlueprintForSave,
+        normalizeSpeechText,
+      });
+    }
     const id = await ensureTask();
     if (state.blueprint) await saveBlueprintEdits(id);
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
@@ -2076,7 +2312,36 @@
     return id;
   }
 
+  async function saveSceneAssetsProgress(taskId = state.taskId) {
+    if (window.NewStoryAdTaskPersistence?.saveSceneAssetsProgress) {
+      return window.NewStoryAdTaskPersistence.saveSceneAssetsProgress(taskId, {
+        state,
+        api,
+        normalizeBundle,
+      });
+    }
+    if (!taskId) return null;
+    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
+    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
+      method: 'PUT',
+      body: { scene_assets: sceneAssets },
+    });
+    normalizeBundle(r);
+    if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
+      await window.__dhRefreshNewStoryAdTasks();
+    }
+    return r;
+  }
+
   async function saveBlueprintEdits(taskId = state.taskId) {
+    if (window.NewStoryAdTaskPersistence?.saveBlueprintEdits) {
+      return window.NewStoryAdTaskPersistence.saveBlueprintEdits(taskId, {
+        state,
+        api,
+        normalizeBundle,
+        normalizeBlueprintForSave,
+      });
+    }
     if (!state.blueprint || !taskId) return null;
     const blueprint = normalizeBlueprintForSave();
     state.blueprint = blueprint;
@@ -2090,12 +2355,20 @@
   }
 
   async function saveStoryboardEdits(taskId = state.taskId) {
+    if (window.NewStoryAdTaskPersistence?.saveStoryboardEdits) {
+      return window.NewStoryAdTaskPersistence.saveStoryboardEdits(taskId, {
+        state,
+        api,
+        normalizeBundle,
+        normalizeSpeechText,
+      });
+    }
     if (!taskId || !Array.isArray(state.shots) || !state.shots.length) return null;
     const shots = state.shots.map((shot, index) => {
       const duration = shot.duration || shot.duration_sec || 3;
       const visual = shot.visual || shot.visual_description || shot.content_prompt || '';
       const action = shot.action || shot.visual_action || '';
-      const voiceover = shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '';
+      const voiceover = normalizeSpeechText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '');
       const purpose = shot.purpose || shot.objective || shot.role || '';
       const userEditedFields = shot._nsa_user_edited_fields || {};
       const userVisualOverride = shot.user_visual_override === true || userEditedFields.visual === true;
@@ -2123,6 +2396,13 @@
         material_usage: editedVisualLock || shot.material_usage || '',
         user_visual_override: userVisualOverride,
         _nsa_user_edited_fields: userEditedFields,
+        scene_id: shot.scene_id || shot.scene_asset_id || '',
+        scene_asset_id: shot.scene_asset_id || shot.scene_id || '',
+        scene_name: shot.scene_name || '',
+        scene_view: shot.scene_view || '',
+        scene_zone: shot.scene_zone || '',
+        transition_from: shot.transition_from || '',
+        transition_reason: shot.transition_reason || '',
       };
     });
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
@@ -2157,12 +2437,53 @@
       setBusy(false);
     }
   }
+
+  function generationFlowContext(button = null) {
+    return {
+      button,
+      state,
+      api,
+      payload,
+      ensureTask,
+      normalizeBundle,
+      renderAll,
+      toast,
+      showStep,
+      saveBlueprintEdits,
+      startStageProgress,
+      setBusy,
+      setButtonBusy,
+      mediaStagePayload,
+      getBriefInput: () => within('#dhNsaAdText'),
+    };
+  }
+
+  function mediaStagePayload() {
+    return {
+      voice_id: state.voiceId || '',
+      voice_name: state.voiceName || '',
+      voice_volume: state.voiceVolume,
+      bgm_volume: state.bgmVolume,
+      bgm_profile: state.bgmProfile || 'auto',
+      bgm_asset: state.bgmAsset || null,
+      subtitle: state.subtitleEnabled,
+      subtitle_style: state.subtitleStyle || 'popup',
+    };
+  }
+
   async function runStage(stage, button) {
+    if (window.NewStoryAdGenerationFlow?.runStage) {
+      try {
+        return await window.NewStoryAdGenerationFlow.runStage(stage, generationFlowContext(button));
+      } catch (err) {
+        console.warn('[newStoryAd] generation-flow fallback:', err.message || err);
+      }
+    }
     const labels = {
       scene: '生成场景配置中...',
       blueprint: '生成剧本中...',
       storyboard: '\u751f\u6210\u5206\u955c\u8868\u4e2d...',
-      keyframes: '\u751f\u6210\u771f\u5b9e\u5173\u952e\u5e27\u4e2d...',
+      keyframes: '生成真实画面中...',
       tts: '生成配音中...',
       video: '生成逐镜视频中...',
       compose: '合成成片中...',
@@ -2195,15 +2516,15 @@
         normalizeBundle(r);
         showStep(4);
       } else if (stage === 'tts') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/tts`, { method: 'POST', body: { voice_id: state.voiceId || '' } });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/tts`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
         showStep(5);
       } else if (stage === 'video') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: { voice_id: state.voiceId || '' } });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
         showStep(5);
       } else if (stage === 'compose') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/compose`, { method: 'POST', body: { voice_id: state.voiceId || '' } });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/compose`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
         showStep(5);
       }
@@ -2222,12 +2543,26 @@
   }
 
   async function runMediaChain(button) {
+    if (window.NewStoryAdGenerationFlow?.runMediaChain) {
+      try {
+        return await window.NewStoryAdGenerationFlow.runMediaChain(generationFlowContext(button));
+      } catch (err) {
+        console.warn('[newStoryAd] media-chain fallback:', err.message || err);
+      }
+    }
     if (!await runStage('tts', button)) return;
     if (!await runStage('video', button)) return;
     await runStage('compose', button);
   }
 
   async function assist(mode, button) {
+    if (window.NewStoryAdGenerationFlow?.assist) {
+      try {
+        return await window.NewStoryAdGenerationFlow.assist(mode, generationFlowContext(button));
+      } catch (err) {
+        console.warn('[newStoryAd] assist fallback:', err.message || err);
+      }
+    }
     const body = payload();
     if (body.brief.length < 3) return toast('请先写一点广告方向', 'error');
     const label = mode === 'clean' ? '整理需求中...' : 'AI 写作中...';
@@ -2289,6 +2624,9 @@
   }
 
   async function uploadAsset(file, role = 'asset') {
+    if (window.NewStoryAdUploads?.upload) {
+      return window.NewStoryAdUploads.upload({ api, file, role });
+    }
     if (!file) throw new Error('请选择文件');
     const fd = new FormData();
     fd.append('file', file);
@@ -2307,6 +2645,9 @@
   }
 
   async function detectPersonGender(imageUrl = '') {
+    if (window.NewStoryAdUploads?.detectPersonGender) {
+      return window.NewStoryAdUploads.detectPersonGender({ api, imageUrl, compactUrl });
+    }
     const url = compactUrl(imageUrl);
     if (!url) return '';
     try {
@@ -2543,6 +2884,207 @@
     }
   }
 
+  function ensureNsaModal(id, title) {
+    let modal = document.getElementById(id);
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'dh-nsa-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.56);display:none;align-items:center;justify-content:center;padding:24px;';
+    modal.innerHTML = `<div class="dh-nsa-modal-panel" style="width:min(920px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.28);padding:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
+        <b style="font-size:18px;">${escapeHtml(title)}</b>
+        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-modal-close>关闭</button>
+      </div>
+      <div data-nsa-modal-body></div>
+    </div>`;
+    modal.addEventListener('click', e => {
+      if (e.target === modal || e.target.closest('[data-nsa-modal-close]')) modal.style.display = 'none';
+    });
+    document.body.appendChild(modal);
+    return modal;
+  }
+
+  function showNsaModal(modal) {
+    if (modal) modal.style.display = 'flex';
+  }
+
+  async function loadNsaVoices(force = false) {
+    if (!force && Array.isArray(state.voiceList) && state.voiceList.length) return state.voiceList;
+    state.voiceLoading = true;
+    try {
+      const r = await api(`/api/avatar/voice-list?_t=${Date.now()}`);
+      const voices = Array.isArray(r.voices) ? r.voices : (Array.isArray(r.data?.voices) ? r.data.voices : []);
+      state.voiceList = voices.filter(voice => String(voice?.id || '').trim());
+      return voices;
+    } finally {
+      state.voiceLoading = false;
+    }
+  }
+
+  function voiceDisplay(voice = {}) {
+    const name = voice.name || voice.title || voice.id || '未命名音色';
+    const provider = voice.provider || voice.providerId || '系统';
+    const gender = voice.gender && voice.gender !== 'auto' ? ` · ${voice.gender}` : '';
+    return { name, sub: `${provider}${gender}` };
+  }
+
+  function renderNsaVoiceModal() {
+    const modal = ensureNsaModal('dhNsaVoicePickerModal', '选择旁白配音');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    const voices = Array.isArray(state.voiceList) ? state.voiceList : [];
+    body.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+        <input class="dh-input" data-nsa-voice-filter placeholder="搜索音色名称、供应商、性别" style="flex:1;">
+        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-refresh>刷新音色</button>
+      </div>
+      <div data-nsa-voice-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+        ${voices.map(voice => {
+          const display = voiceDisplay(voice);
+          const id = String(voice.id || '');
+          return `<button type="button" data-nsa-voice-select="${escapeHtml(id)}" data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="text-align:left;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:12px;min-height:78px;cursor:pointer;">
+            <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
+            <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
+            ${id === state.voiceId ? '<small style="color:#029e8d;font-weight:700;">已选择</small>' : ''}
+          </button>`;
+        }).join('') || '<div class="dh-task-empty-note">暂无可用音色，请先检查配音模型配置。</div>'}
+      </div>`;
+    body.querySelector('[data-nsa-voice-refresh]')?.addEventListener('click', async () => {
+      try {
+        await loadNsaVoices(true);
+        renderNsaVoiceModal();
+      } catch (err) {
+        toast(err.message || '音色列表刷新失败', 'error');
+      }
+    });
+    body.querySelector('[data-nsa-voice-filter]')?.addEventListener('input', e => {
+      const q = String(e.target.value || '').trim().toLowerCase();
+      body.querySelectorAll('[data-nsa-voice-select]').forEach(btn => {
+        btn.style.display = !q || String(btn.dataset.nsaVoiceSearch || '').includes(q) ? '' : 'none';
+      });
+    });
+    body.querySelector('[data-nsa-voice-list]')?.addEventListener('click', e => {
+      const btn = e.target.closest('[data-nsa-voice-select]');
+      if (!btn) return;
+      const id = btn.dataset.nsaVoiceSelect || '';
+      const voice = (state.voiceList || []).find(v => String(v.id || '') === id) || {};
+      state.voiceId = id;
+      state.voiceName = voice.name || id || '自动配音';
+      setFieldValue('#dhNsaAdVoiceId', state.voiceId);
+      renderAll();
+      modal.style.display = 'none';
+      toast('配音已选择', 'success');
+    });
+  }
+
+  async function openNsaVoiceModal() {
+    const modal = ensureNsaModal('dhNsaVoicePickerModal', '选择旁白配音');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    body.innerHTML = '<div class="dh-task-empty-note">正在加载可用音色...</div>';
+    showNsaModal(modal);
+    try {
+      await loadNsaVoices(false);
+      renderNsaVoiceModal();
+    } catch (err) {
+      body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '音色列表加载失败')}</div>`;
+    }
+  }
+
+  function musicSearchText() {
+    return normalizeText([
+      within('#dhNsaAdText')?.value || '',
+      state.context?.brief || '',
+      state.blueprint?.title || '',
+      state.bgmProfile || '',
+    ].filter(Boolean).join(' '), 600);
+  }
+
+  function renderNsaMusicModal(results = [], note = '') {
+    const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    body.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+        <input class="dh-input" data-nsa-music-query value="${escapeHtml(musicSearchText().slice(0, 80))}" placeholder="按当前广告内容搜索合适的纯音乐" style="flex:1;">
+        <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-search>搜索</button>
+      </div>
+      ${note ? `<p style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 12px;">${escapeHtml(note)}</p>` : ''}
+      <div data-nsa-music-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
+        ${results.map((item, index) => {
+          const title = item.title || item.name || `公开曲目 ${index + 1}`;
+          const creator = item.creator || item.author || item.source || '';
+          const url = item.preview_url || item.previewUrl || item.url || item.file_url || '';
+          const license = item.license || item.license_name || 'public';
+          return `<div style="border:1px solid #dbe7f5;border-radius:10px;padding:12px;background:#fff;">
+            <b style="display:block;margin-bottom:4px;">${escapeHtml(title)}</b>
+            <small style="display:block;color:#64748b;margin-bottom:8px;">${escapeHtml([creator, license].filter(Boolean).join(' · '))}</small>
+            ${url ? `<audio controls preload="none" src="${escapeHtml(url)}" style="width:100%;height:32px;"></audio>` : ''}
+            <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-import="${index}" style="margin-top:8px;">导入使用</button>
+          </div>`;
+        }).join('') || '<div class="dh-task-empty-note">暂无曲目，换一个关键词再试。</div>'}
+      </div>`;
+    body.querySelector('[data-nsa-music-search]')?.addEventListener('click', () => {
+      const q = body.querySelector('[data-nsa-music-query]')?.value || '';
+      openNsaMusicLibrary(q);
+    });
+    body.querySelector('[data-nsa-music-list]')?.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-nsa-music-import]');
+      if (!btn) return;
+      const item = results[Number(btn.dataset.nsaMusicImport)] || null;
+      if (!item) return;
+      btn.disabled = true;
+      btn.textContent = '导入中...';
+      try {
+        const r = await api('/api/dh/luxury-ad/open-music/import', { method: 'POST', body: { item } });
+        state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item;
+        renderAll();
+        ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库').style.display = 'none';
+        toast('背景音乐已导入', 'success');
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = '导入使用';
+        toast(err.message || '公开曲目导入失败', 'error');
+      }
+    });
+  }
+
+  async function openNsaMusicLibrary(query = '') {
+    const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    body.innerHTML = '<div class="dh-task-empty-note">正在搜索公开可用纯音乐...</div>';
+    showNsaModal(modal);
+    try {
+      const params = new URLSearchParams({
+        q: String(query || '').trim(),
+        profile_id: state.bgmProfile || 'auto',
+        text: musicSearchText(),
+        page_size: '16',
+      });
+      const r = await api(`/api/dh/luxury-ad/open-music/search?${params.toString()}`);
+      renderNsaMusicModal(Array.isArray(r.results) ? r.results : [], r.license_note || r.query || '');
+    } catch (err) {
+      body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '公开曲库搜索失败')}</div>`;
+    }
+  }
+
+  function openNsaSubtitleStyleModal() {
+    const modal = ensureNsaModal('dhNsaSubtitleStyleModal', '字幕样式');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+      ${SUBTITLE_STYLES.map(([id, label, desc]) => `<button type="button" data-nsa-subtitle-style="${escapeHtml(id)}" style="text-align:left;border:1px solid ${id === state.subtitleStyle ? '#38d9c8' : '#dbe7f5'};background:${id === state.subtitleStyle ? '#e8fffb' : '#fff'};border-radius:10px;padding:12px;cursor:pointer;">
+        <b style="display:block;margin-bottom:5px;">${escapeHtml(label)}</b>
+        <span style="display:block;color:#64748b;font-size:12px;line-height:1.5;">${escapeHtml(desc)}</span>
+      </button>`).join('')}
+    </div>`;
+    body.querySelectorAll('[data-nsa-subtitle-style]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.subtitleStyle = btn.dataset.nsaSubtitleStyle || 'popup';
+        state.subtitleEnabled = true;
+        renderAll();
+        modal.style.display = 'none';
+        toast('字幕样式已更新', 'success');
+      });
+    });
+    showNsaModal(modal);
+  }
+
   function openPreview(url = '', title = '预览') {
     if (!url) return;
     if (typeof window.openImagePreviewModal === 'function' && !/\.(mp3|wav|m4a|aac|ogg|flac)(\?|$)/i.test(url)) {
@@ -2559,6 +3101,7 @@
   }
 
   function personGenerationProgressHtml() {
+    if (window.NewStoryAdActors?.progressHtml) return window.NewStoryAdActors.progressHtml(state.personGenerationProgress, escapeHtml);
     const progress = state.personGenerationProgress;
     if (!progress || !progress.active) return '';
     const startedAt = Number(progress.startedAt || 0) || Date.now();
@@ -2578,7 +3121,7 @@
 
   function personDescription(spec = collectPersonSpec()) {
     const labels = {
-      castMode: { auto: '按内容判断', single: '单人', dual: '双人对话', group: '多人 / 群体' },
+      castMode: { auto: '按内容判断', no_human: '无人物 / 只拍主体', animal: '动物 / 宠物主体', single: '单人', dual: '双人对话', group: '多人 / 群体' },
       gender: { auto: '按故事判断', male: '男性', female: '女性', mixed: '双人/多人混合', all_male: '双人/多人全男性', all_female: '双人/多人全女性' },
       age: { match_brief: '按广告需求判断', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
       origin: { east_asian_cn: '中国 / 东亚面孔', match_brief: '按广告需求判断', mixed_global: '多种族 / 国际化' },
@@ -2626,14 +3169,16 @@
   }
 
   function fallbackPersonSpecFromBrief(brief = '') {
-    const isMale = /男|先生|老板|师傅|厂家|经理/.test(brief) && !/女|女士|美女|太太/.test(brief);
+    const isMale = /男|先生|老板|师傅|经理/.test(brief) && !/女|女士|美女|太太/.test(brief);
     const isFemale = /女|女士|美女|太太|模特/.test(brief);
     const isDual = /双人|两人|对话|客户.*顾问|销售.*客户|经销商.*客户/.test(brief);
     const isGroup = /多人|团队|群像|一家人|员工/.test(brief);
+    const noHuman = /无人|无人物|不出现人|不要人物|只拍产品|只拍空间|纯产品|纯空间/.test(brief);
+    const animal = /动物|宠物|萌宠/.test(brief);
     return {
-      castMode: isGroup ? 'group' : (isDual ? 'dual' : 'single'),
+      castMode: noHuman ? 'no_human' : (animal ? 'animal' : (isGroup ? 'group' : (isDual ? 'dual' : 'single'))),
       gender: isMale ? 'male' : (isFemale ? 'female' : 'auto'),
-      age: /老板|厂家|经理|经销商|顾问|专家|负责人/.test(brief) ? 'adult_30_40' : 'match_brief',
+      age: /老板|经理|经销商|顾问|专家|负责人/.test(brief) ? 'adult_30_40' : 'match_brief',
       origin: 'match_brief',
       roleName: /顾问|销售|经销商|导购/.test(brief) ? '品牌顾问 / 商业讲解人' : '广告主角',
       appearanceText: '符合当前广告需求的真实商业广告人物，五官自然，表情可信，气质干净专业；根据任务内容、目标用户和剧情关系判断年龄感、职业感和亲和度，避免网红脸和过度磨皮。',
@@ -2921,7 +3466,8 @@
         state.sceneSelectedIndex = Math.max(0, Math.min(state.sceneAssets.length - 1, Number(state.sceneSelectedIndex || 0)));
         renderAll();
         if (state.taskId) {
-          saveCurrentTaskProgress({ silent: true }).then(() => {
+          saveSceneAssetsProgress(state.taskId).then(() => {
+            renderAll();
             toast(`已删除 ${removed?.name || '场景空间锁'}`, 'success');
           }).catch(err => {
             toast(err.message || '场景删除保存失败', 'error');
@@ -3088,10 +3634,10 @@
             append: true,
           });
         },
-        dhNsaAdVoiceOpen: () => toast('配音选择面板稍后接入；当前使用默认配音设置。'),
-        dhNsaAdMusicLibrary: () => toast('公开曲库稍后接入；当前可上传自有 BGM 或先合成无配乐成片。'),
+        dhNsaAdVoiceOpen: () => openNsaVoiceModal(),
+        dhNsaAdMusicLibrary: () => openNsaMusicLibrary(),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),
-        dhNsaAdSubtitleStyleBtn: () => toast('字幕样式稍后接入；当前使用默认字幕。'),
+        dhNsaAdSubtitleStyleBtn: () => openNsaSubtitleStyleModal(),
         dhNsaAdProductDrop: () => within('#dhNsaAdProductFile')?.click(),
         dhNsaAdProductDropInline: () => within('#dhNsaAdProductFile')?.click(),
         dhNsaAdProductClear: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty(); renderAll(); toast('主体图已删除', 'success'); },
@@ -3113,6 +3659,7 @@
         return;
       }
       if (updateBlueprintField(target)) {
+        refreshBlueprintMetrics();
         renderStatus();
         return;
       }
@@ -3167,6 +3714,15 @@
     });
     host.addEventListener('change', e => {
       const target = e.target;
+      if (updateShotField(target)) {
+        renderStatus();
+        return;
+      }
+      if (updateBlueprintField(target)) {
+        refreshBlueprintMetrics();
+        renderStatus();
+        return;
+      }
       if (target?.matches?.('[data-nsa-control-product-enabled]')) {
         const ctrl = controlledProduction();
         ctrl.product.enabled = !!target.checked;

@@ -615,6 +615,17 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   });
 }));
 
+router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const sceneAssets = sceneAssetService.saveSceneAssetsToTask(req.params.id, body.scene_assets || body.sceneAssets || []);
+  res.json({
+    success: true,
+    task_id: req.params.id,
+    scene_assets: sceneAssets,
+    bundle: service.publicTaskBundle(req.params.id),
+  });
+}));
+
 router.get('/tasks/:id', (req, res) => {
   const bundle = service.publicTaskBundle(req.params.id);
   if (!bundle.task) return res.status(404).json({ success: false, error: '任务不存在' });

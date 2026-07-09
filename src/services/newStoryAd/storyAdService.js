@@ -12,6 +12,7 @@ const mediaAdapter = require('./mediaAdapter');
 const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
 const composeService = require('./composeService');
+const { bindShotsToScenes, selectSceneAsset } = require('./sceneBindingService');
 
 function taskTitle(ctx) {
   return cleanText(ctx.product_subject || ctx.brief || '新剧情广告任务', 60);
@@ -59,6 +60,14 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
 
 function normalizeBlueprintDraft(blueprint = {}, seed = '') {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const cleanSpeech = value => cleanText(value, 700).replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '').trim();
+  const fallbackSpoken = (beat = {}, index = 0) => {
+    const proof = cleanText(beat.visual_proof || beat.evidence || beat.purpose || beat.objective || '', 42);
+    const visual = cleanText(beat.visual || beat.story_visual || beat.promo_visual || beat.plot || beat.action || '', 42);
+    if (proof) return `这一镜看清${proof}。`;
+    if (visual) return `先看${visual}。`;
+    return `继续看第 ${index + 1} 镜的关键变化。`;
+  };
   return {
     ...blueprint,
     story_title: cleanText(blueprint.story_title || blueprint.title || '新剧情广告剧本', 120),
@@ -68,7 +77,7 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
       const duration = Math.max(1, Math.min(30, Number(beat.duration || beat.duration_sec || beat.seconds || 0) || 3));
       const visual = cleanText(beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '', 1200);
       const action = cleanText(beat.action || beat.character_action || beat.behavior || '', 800);
-      const spoken = cleanText(beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue || '', 600);
+      const spoken = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue || fallbackSpoken(beat, index));
       const proof = cleanText(beat.visual_proof || beat.evidence || beat.purpose || beat.objective || '', 800);
       const title = cleanText(beat.title || beat.role || `镜头 ${index + 1}`, 120);
       return {
@@ -120,7 +129,7 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
   const duration = Math.max(1, Math.min(30, Number(shot.duration || shot.duration_sec || 0) || 3));
   const visual = cleanText(shot.visual || shot.visual_description || shot.content_prompt || '', 1400);
   const action = cleanText(shot.action || shot.visual_action || '', 900);
-  const voiceover = cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 700);
+  const voiceover = cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 700).replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '').trim();
   const title = cleanText(shot.title || `Shot ${index + 1}`, 140);
   const purpose = cleanText(shot.purpose || shot.objective || shot.role || '', 160);
   const previousVisual = cleanText(previousShot.visual || previousShot.visual_description || previousShot.content_prompt || '', 1400);
@@ -149,6 +158,13 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
     material_usage: userVisualOverride ? [purpose, visual].filter(Boolean).join('\n') : cleanText(shot.material_usage || '', 900),
     user_visual_override: userVisualOverride || undefined,
     _nsa_user_edited_fields: Object.keys(editedFields).length ? editedFields : undefined,
+    scene_id: cleanText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || previousShot.scene_id || '', 120) || undefined,
+    scene_asset_id: cleanText(shot.scene_asset_id || shot.sceneAssetId || shot.scene_id || shot.sceneId || previousShot.scene_asset_id || '', 120) || undefined,
+    scene_name: cleanText(shot.scene_name || shot.sceneName || previousShot.scene_name || '', 120) || undefined,
+    scene_view: cleanText(shot.scene_view || shot.sceneView || previousShot.scene_view || '', 40) || undefined,
+    scene_zone: cleanText(shot.scene_zone || shot.sceneZone || shot.zone || previousShot.scene_zone || '', 160) || undefined,
+    transition_from: cleanText(shot.transition_from || shot.transitionFrom || previousShot.transition_from || '', 120) || undefined,
+    transition_reason: cleanText(shot.transition_reason || shot.transitionReason || previousShot.transition_reason || '', 240) || undefined,
     edited_at: new Date().toISOString(),
   };
 }
@@ -157,13 +173,16 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
   const current = storage.getOutput(taskId, 'storyboard_table') || [];
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const source = Array.isArray(shots) && shots.length ? shots : current;
-  const normalized = source
+  const normalizedRaw = source
     .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
+  const normalized = bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []);
   storage.saveOutput(taskId, 'storyboard_table', normalized);
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
-  const contracts = buildKeyframeContracts(ctx, normalized);
+  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const contracts = buildKeyframeContracts(contractCtx, normalized);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveStage(taskId, 'storyboard', {
     status: 'done',
@@ -188,6 +207,7 @@ async function generateSceneConfig(taskId) {
     '你是新剧情广告场景配置 agent。只输出 JSON 对象。',
     '你的职责是把用户需求整理成业务边界、主体、人物模式、素材使用、禁止项和建议镜头策略。',
     '不能自行继承旧任务、不能写固定行业模板。',
+    '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色。',
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
 
@@ -195,7 +215,7 @@ async function generateSceneConfig(taskId) {
 {
   "business_boundary": "本任务只允许使用的业务/行业/主体边界",
   "advertised_subject": "广告主体",
-  "cast_mode": "single/dual/multi/no_human/auto",
+  "cast_mode": "single/dual/multi/no_human/animal/auto",
   "asset_strategy": [{"asset_id":"素材ID","usage":"如何使用"}],
   "story_strategy": ["剧情策略"],
   "forbidden": ["禁止项"],
@@ -243,11 +263,13 @@ async function generateStoryboardStage(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx,
+    scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
     characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters, characterSeed),
   };
   storage.updateTask(taskId, { status: 'running', stage: 'storyboard' });
@@ -294,9 +316,13 @@ async function generateStoryboardStage(taskId) {
 async function buildKeyframeContractStage(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
-  const shots = storage.getOutput(taskId, 'storyboard_table');
+  const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
+  shots = bindShotsToScenes(shots, ctx.scene_assets);
+  storage.saveOutput(taskId, 'storyboard_table', shots);
   const contracts = buildKeyframeContracts(ctx, shots);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
@@ -322,12 +348,7 @@ function previousKeyframeContext(keyframes = [], index = 0) {
 
 function sceneAssetForShot(ctx = {}, shot = {}, index = 0) {
   const assets = Array.isArray(ctx.scene_assets) ? ctx.scene_assets : [];
-  if (!assets.length) return null;
-  const sceneId = cleanText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120);
-  const matched = sceneId
-    ? assets.find(asset => String(asset.scene_id || asset.id) === String(sceneId))
-    : null;
-  return matched || assets[Math.min(index, assets.length - 1)] || assets[0] || null;
+  return selectSceneAsset(assets, shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', index);
 }
 
 function sceneAssetPrompt(asset = {}) {
@@ -340,13 +361,14 @@ function sceneAssetPrompt(asset = {}) {
     asset.material_summary ? `Scene material lock: ${cleanText(asset.material_summary, 600)}` : '',
     asset.style_summary ? `Scene style lock: ${cleanText(asset.style_summary, 360)}` : '',
     views.length ? `Scene reference views: ${cleanText(views.map(view => `${view.key || view.label || 'view'}=${view.url || view.image_url || ''}`).join('; '), 1600)}` : '',
-    asset.negative ? `Scene negative requirements: ${cleanText(asset.negative, 360)}` : '',
+    asset.negative ? `Scene asset negative reference: ${cleanText(asset.negative, 360)}. In final keyframes, keep these as space-quality constraints only; do not apply "empty scene/no people" when the storyboard requires the locked actor.` : '',
     'Keep the same scene identity, layout logic, material family, lighting direction and commercial realism across shots. Do not switch to another unrelated space.',
   ].filter(Boolean).join('\n');
 }
 
 function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, options = {}) {
   const visualContract = contract.visual_contract || {};
+  const sceneLock = contract.scene_lock || null;
   const personAsset = ctx.person_asset || {};
   const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
@@ -355,6 +377,14 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const previousFrame = options.previousFrame || null;
   const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
   const sceneReferenceText = sceneAssetPrompt(sceneAsset);
+  const sceneBindingText = sceneLock ? [
+    `Shot scene binding: ${cleanText(sceneLock.scene_id || '', 120)} / ${cleanText(sceneLock.scene_name || '', 120)}`,
+    sceneLock.scene_view ? `Required scene view: ${cleanText(sceneLock.scene_view, 40)}` : '',
+    sceneLock.scene_zone ? `Required scene zone: ${cleanText(sceneLock.scene_zone, 160)}` : '',
+    sceneLock.transition_from ? `Transition from: ${cleanText(sceneLock.transition_from, 120)}` : '',
+    sceneLock.transition_reason ? `Transition reason: ${cleanText(sceneLock.transition_reason, 240)}` : '',
+    'The keyframe must be generated inside this bound task scene. Do not move the shot into another location or another industry setting.',
+  ].filter(Boolean).join('\n') : '';
   const actorReferenceText = [
     personAsset.name ? `Actor name: ${cleanText(personAsset.name, 120)}` : '',
     personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 900)}` : '',
@@ -383,6 +413,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
+    sceneBindingText ? `Storyboard scene binding lock:\n${sceneBindingText}` : '',
     sceneReferenceText ? `Strict scene consistency lock:\n${sceneReferenceText}` : '',
     ctx.person_asset ? `Locked real actor/person asset: ${cleanText(JSON.stringify(ctx.person_asset), 1200)}` : '',
     actorReferenceText ? `Strict actor consistency lock:\n${actorReferenceText}` : '',
@@ -395,6 +426,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its lighting mood, material realism, framing discipline and commercial tone only where compatible with the edited visual.` : '',
     !userVisualOverride && previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${cleanText(previousFrame.prompt, 500)}` : '',
     userVisualOverride ? `Final priority: generate only this edited visual: ${visualText}. Any composition, object layout, carrier and material form must come from this edited visual, not from cached or generated fields.` : '',
+    // 通用语义忠实约束：防止模型把抽象业务词擅自转成无关行业画面。
+    'Semantic fidelity rule: visualize the current task brief, advertised subject, locked scene asset and current shot action literally. Do not replace an abstract business concept with unrelated industry symbols, charts, trading screens, stock-market dashboards, generic finance UI, random data walls or abstract technology panels unless the user brief or the edited shot explicitly asks for that visual category.',
+    'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
   return parts.filter(Boolean).join('\n');
@@ -418,8 +452,14 @@ async function generateKeyframesStage(taskId, options = {}) {
     shots = generated.shots || [];
   }
   if (!Array.isArray(shots) || !shots.length) throw new Error('Storyboard table is empty');
+  const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  if (JSON.stringify(boundShots) !== JSON.stringify(shots)) {
+    shots = boundShots;
+    storage.saveOutput(taskId, 'storyboard_table', shots);
+  }
   let contracts = storage.getOutput(taskId, 'keyframe_contracts');
-  if (!Array.isArray(contracts) || contracts.length !== shots.length) {
+  const needsSceneContract = ctx.scene_assets.length && (!Array.isArray(contracts) || contracts.some(contract => !contract?.scene_lock));
+  if (!Array.isArray(contracts) || contracts.length !== shots.length || needsSceneContract) {
     contracts = buildKeyframeContracts(ctx, shots);
     storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   }
@@ -509,7 +549,9 @@ async function ensureStoryboardForMedia(taskId) {
 async function ensureContractsForMedia(taskId, ctx, shots) {
   let contracts = storage.getOutput(taskId, 'keyframe_contracts');
   if (!Array.isArray(contracts) || contracts.length !== shots.length) {
-    contracts = buildKeyframeContracts(ctx, shots);
+    const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+    const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+    contracts = buildKeyframeContracts(contractCtx, shots);
     storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   }
   return contracts;
@@ -585,9 +627,35 @@ async function generateVideoStage(taskId, options = {}) {
   return { video_clips: generated.clips };
 }
 
+function subtitleTextFromShot(shot = {}) {
+  return cleanText(
+    shot.voiceover || shot.narration || shot.dialogue || shot.ad_copy || shot.copy || shot.subtitle || '',
+    260
+  ).replace(/^(字幕|旁白|台词)\s*[：:]\s*/i, '');
+}
+
+function subtitleSegmentsFromShots(shots = [], subtitleStyle = 'popup') {
+  let cursor = 0;
+  return (Array.isArray(shots) ? shots : []).map((shot, index) => {
+    const duration = Math.max(1, Math.min(30, Number(shot.duration_sec || shot.duration || shot.seconds || 3) || 3));
+    const text = subtitleTextFromShot(shot);
+    const segment = text ? {
+      text,
+      startTime: cursor,
+      endTime: cursor + duration,
+      subtitleStyle,
+      shot_index: index + 1,
+    } : null;
+    cursor += duration;
+    return segment;
+  }).filter(Boolean);
+}
+
 async function composeStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const shots = await ensureStoryboardForMedia(taskId);
   let clips = storage.getOutput(taskId, 'video_clips');
   if (!Array.isArray(clips) || !clips.length) {
     const generated = await generateVideoStage(taskId, options);
@@ -595,7 +663,30 @@ async function composeStage(taskId, options = {}) {
   }
   storage.updateTask(taskId, { status: 'running', stage: 'compose' });
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
-  const final_video = await composeService.concatVideos({ taskId, clips });
+  const subtitleEnabled = options.subtitle !== false && ctx.subtitle !== false;
+  const subtitleStyle = cleanText(options.subtitle_style || options.subtitleStyle || ctx.subtitle_style || ctx.subtitleStyle || 'popup', 60);
+  const bgmAsset = options.bgm_asset || options.bgmAsset || ctx.bgm_asset || ctx.bgmAsset || null;
+  storage.saveOutput(taskId, 'context', {
+    ...ctx,
+    voice_id: cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120),
+    voice_name: cleanText(options.voice_name || options.voiceName || ctx.voice_name || ctx.voiceName || '', 120),
+    voice_volume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
+    bgm_volume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
+    bgm_profile: cleanText(options.bgm_profile || options.bgmProfile || ctx.bgm_profile || ctx.bgmProfile || 'auto', 60),
+    bgm_asset: bgmAsset,
+    subtitle: subtitleEnabled,
+    subtitle_style: subtitleStyle,
+  });
+  const final_video = await composeService.concatVideos({
+    taskId,
+    clips,
+    bgmAsset,
+    bgmVolume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
+    voiceVolume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
+    subtitles: subtitleSegmentsFromShots(shots, subtitleStyle),
+    subtitleEnabled,
+    subtitleStyle,
+  });
   storage.saveOutput(taskId, 'final_video', final_video);
   storage.saveStage(taskId, 'compose', {
     status: 'done',

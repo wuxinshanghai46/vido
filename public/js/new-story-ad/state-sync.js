@@ -1,0 +1,155 @@
+(() => {
+  function normalizeTaskOutputs(bundle = {}) {
+    const raw = bundle.outputs || {};
+    if (!Array.isArray(raw)) return raw && typeof raw === 'object' ? raw : {};
+    return Object.fromEntries(raw.map(item => [item.kind, item.payload]));
+  }
+
+  function setFieldValue(selector, value, { within } = {}) {
+    const el = typeof within === 'function' ? within(selector) : document.querySelector(selector);
+    if (!el || value === undefined || value === null) return;
+    el.value = String(value);
+  }
+
+  function hydrateSceneAssets(state = {}, { request = {}, outputs = {}, response = {} } = {}) {
+    if (window.NewStoryAdSceneAssets?.hydrate) {
+      window.NewStoryAdSceneAssets.hydrate(state, { request, outputs, response });
+      return;
+    }
+    state.sceneAssets = outputs.scene_assets
+      || response.scene_assets
+      || request.scene_assets
+      || request.sceneAssets
+      || state.sceneAssets
+      || [];
+  }
+
+  function normalizeBundle(response = {}, ctx = {}) {
+    const { state, rememberTaskId } = ctx;
+    if (!state) return;
+    const bundle = response.bundle || response;
+    const outputs = bundle.outputs || {};
+    state.context = outputs.context || response.context || state.context;
+    state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
+    state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
+    state.shots = outputs.storyboard_table || response.shots || state.shots || [];
+    state.contracts = outputs.keyframe_contracts || response.keyframe_contracts || state.contracts || [];
+    state.keyframes = outputs.keyframes || response.keyframes || state.keyframes || [];
+    state.review = outputs.quality_review || response.review || state.review;
+    state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
+    state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
+    state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    hydrateSceneAssets(state, {
+      request: state.context || {},
+      outputs,
+      response,
+    });
+    state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
+    if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
+  }
+
+  function hydrateAssets(state = {}, request = {}) {
+    const assets = Array.isArray(request.assets) ? request.assets : (Array.isArray(request.references) ? request.references : []);
+    const byType = type => assets.find(asset => String(asset?.type || '').toLowerCase() === type);
+    const product = request.product_asset || byType('product');
+    if (product && typeof product === 'object') {
+      state.productAsset = {
+        ...product,
+        previewUrl: product.previewUrl || product.image_url || product.url || product.file_url || '',
+      };
+    }
+    const person = request.person_asset || byType('person_reference');
+    if (person && typeof person === 'object' && !state.personAsset) {
+      state.personAsset = {
+        ...person,
+        previewUrl: person.previewUrl || person.image_url || person.url || person.file_url || '',
+      };
+      state.actorAsset = state.personAsset;
+    }
+    state.referenceAssets = assets
+      .filter(asset => asset && String(asset.type || '').toLowerCase() === 'storyboard_reference')
+      .map((asset, index) => ({
+        ...asset,
+        id: asset.id || `restored_reference_${index + 1}`,
+        previewUrl: asset.previewUrl || asset.image_url || asset.url || asset.file_url || '',
+      }));
+    if (request.bgm_asset) state.bgmAsset = request.bgm_asset;
+  }
+
+  function hydratePersonSpec(request = {}, ctx = {}) {
+    const { state, root, applyPersonAssetConstraints } = ctx;
+    if (!state) return;
+    const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
+    Object.entries(spec || {}).forEach(([key, value]) => {
+      const el = (typeof root === 'function' ? root() : document)?.querySelector(`[data-nsa-person-spec="${key}"]`);
+      if (el && value !== undefined && value !== null) el.value = String(value);
+    });
+    const personAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
+    if (personAsset && typeof personAsset === 'object') {
+      state.personAsset = {
+        ...personAsset,
+        previewUrl: personAsset.previewUrl || personAsset.image_url || personAsset.url || '',
+      };
+      state.actorAsset = state.personAsset;
+      if (typeof applyPersonAssetConstraints === 'function') applyPersonAssetConstraints(state.personAsset);
+    } else {
+      state.castProfiles = Array.isArray(request.cast_profiles || request.castProfiles)
+        ? (request.cast_profiles || request.castProfiles)
+        : [];
+    }
+  }
+
+  function hydrateTaskBundle(bundle = {}, ctx = {}) {
+    const {
+      state,
+      within,
+      rememberTaskId,
+      hydrateControlledProduction,
+      applyPersonAssetConstraints,
+      root,
+    } = ctx;
+    if (!state) return;
+    const task = bundle.task || {};
+    const outputs = normalizeTaskOutputs(bundle);
+    const request = {
+      ...(task.request || {}),
+      ...(outputs.context || {}),
+    };
+    state.taskId = task.id || request.task_id || request.taskId || state.taskId;
+    state.context = outputs.context || request || state.context;
+    state.sceneConfig = outputs.scene_config || state.sceneConfig;
+    state.blueprint = outputs.blueprint || state.blueprint;
+    state.shots = outputs.storyboard_table || state.shots || [];
+    state.contracts = outputs.keyframe_contracts || state.contracts || [];
+    state.keyframes = outputs.keyframes || state.keyframes || [];
+    state.review = outputs.quality_review || state.review;
+    state.ttsAudio = outputs.tts_audio || state.ttsAudio;
+    state.videoClips = outputs.video_clips || state.videoClips;
+    state.finalVideo = outputs.final_video || state.finalVideo;
+    hydrateSceneAssets(state, { request, outputs, response: bundle });
+
+    setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '', { within });
+    setFieldValue('#dhNsaAdDuration', request.duration_sec || request.duration || 30, { within });
+    state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
+    state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
+    state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
+    state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
+    state.subtitleEnabled = request.subtitle !== false;
+    state.voiceVolume = Number(request.voice_volume || request.voiceVolume || state.voiceVolume || 1) || 1;
+    state.bgmVolume = Number(request.bgm_volume || request.bgmVolume || state.bgmVolume || 0.16) || 0.16;
+    state.bgmProfile = request.bgm_profile || request.bgmProfile || state.bgmProfile || 'auto';
+    setFieldValue('#dhNsaAdVoiceId', state.voiceId, { within });
+    if (typeof hydrateControlledProduction === 'function') hydrateControlledProduction(request);
+    hydratePersonSpec(request, { state, root, applyPersonAssetConstraints });
+    hydrateAssets(state, request);
+    if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
+  }
+
+  window.NewStoryAdStateSync = {
+    normalizeTaskOutputs,
+    normalizeBundle,
+    hydrateTaskBundle,
+    hydrateAssets,
+    hydratePersonSpec,
+  };
+})();

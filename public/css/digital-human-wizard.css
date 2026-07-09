@@ -1368,6 +1368,35 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-frame-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .dh-nsa-frame-head b { min-width: 0; color: var(--dh-text); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-nsa-frame-head span { flex: 0 0 auto; padding: 3px 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--dh-primary) 22%, var(--dh-border)); color: var(--dh-primary); font-size: 12px; font-weight: 900; }
+.dh-nsa-frame-scene {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--dh-primary) 20%, var(--dh-border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--dh-primary) 5%, transparent);
+}
+.dh-nsa-frame-scene.is-empty {
+  grid-template-columns: 1fr;
+  color: var(--dh-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.dh-nsa-frame-scene-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.dh-nsa-frame-scene-title b { color: var(--dh-primary); font-size: 13px; white-space: nowrap; }
+.dh-nsa-frame-scene-title span { color: var(--dh-text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-nsa-frame-scene label { min-width: 0; display: grid; gap: 5px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
+.dh-nsa-frame-scene select,
+.dh-nsa-frame-scene input { width: 100%; min-height: 38px; box-sizing: border-box; }
 .dh-nsa-frame-editor label { min-width: 0; display: grid; gap: 6px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
 .dh-nsa-frame-editor label span { display: block; min-height: 18px; line-height: 18px; }
 .dh-nsa-frame-editor input,
@@ -1491,9 +1520,18 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 @keyframes dh-lux-person-progress-sheen { 0% { transform: translateX(-120%); } 58%, 100% { transform: translateX(120%); } }
 @keyframes dh-lux-person-progress-bar { to { transform: translateX(120%); } }
 
-.dh-nsa-scene-source { margin-top: 12px; }
+.dh-nsa-scene-source {
+  margin-top: 12px;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+  align-items: stretch;
+}
 .dh-nsa-scene-current { min-width: 0; }
-.dh-nsa-scene-main { min-width: 0; }
+.dh-nsa-scene-main {
+  min-width: 0;
+  align-self: stretch;
+  height: 100%;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
 .dh-nsa-scene-mode { flex: 0 0 190px; display: grid; gap: 6px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
 .dh-nsa-scene-spec-grid {
   display: grid;
@@ -1504,9 +1542,25 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   border: 1px solid color-mix(in srgb, var(--dh-primary) 16%, var(--dh-border));
   border-radius: 8px;
   background: color-mix(in srgb, var(--dh-primary) 4%, transparent);
+  align-self: stretch;
 }
 .dh-nsa-scene-spec-grid label { min-width: 0; display: grid; gap: 6px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
-.dh-nsa-scene-spec-grid textarea { min-height: 82px; resize: vertical; }
+.dh-nsa-scene-spec-grid textarea { min-height: 104px; height: 100%; resize: vertical; }
+.dh-nsa-scene-actions {
+  grid-column: auto;
+  align-self: end;
+  margin-top: 0;
+  padding-top: 10px;
+  gap: 8px;
+  border-top-color: color-mix(in srgb, var(--dh-primary) 14%, var(--dh-border));
+}
+.dh-nsa-scene-actions .dh-btn {
+  min-height: 38px;
+  padding-inline: 13px;
+}
+.dh-nsa-scene-actions .dh-luxgen-action-btn {
+  min-width: 0;
+}
 .dh-nsa-scene-list { display: grid; gap: 12px; }
 .dh-nsa-scene-current .dh-nsa-scene-list { gap: 10px; }
 .dh-nsa-scene-tabs {
@@ -1727,6 +1781,9 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 @media (max-width: 900px) {
   .dh-demo-grid, .dh-demo-grid.two, .dh-demo-detail-grid { grid-template-columns: 1fr; }
   .dh-nsa-frame-card, .dh-nsa-frame-editor { grid-template-columns: 1fr; }
+  .dh-nsa-frame-scene { grid-template-columns: 1fr; }
+  .dh-nsa-frame-scene-title { display: grid; justify-content: stretch; }
+  .dh-nsa-frame-scene-title span { white-space: normal; }
   .dh-nsa-frame-preview { max-height: 360px; }
   .dh-demo-headline, .dh-demo-guide, .dh-demo-person-source { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .dh-demo-script-actions { justify-content: flex-start; width: 100%; }

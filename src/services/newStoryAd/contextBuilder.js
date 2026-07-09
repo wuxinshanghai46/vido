@@ -91,10 +91,14 @@ function normalizeCharacters(input, seed = '') {
 
 function inferCastMode({ castMode = '', characters = [], brief = '' } = {}) {
   const explicit = cleanText(castMode, 40);
+  if (/no_human|none|无人物|无人|只拍主体|只拍产品|只拍空间/i.test(explicit)) return 'no_human';
+  if (/animal|pet|动物|宠物/i.test(explicit)) return 'animal';
   if (/multi|多人|三人|群像|团队/i.test(explicit)) return 'multi';
   if (/dual|双人|两人/i.test(explicit)) return 'dual';
   if (/single|单人|一人/i.test(explicit)) return 'single';
   const text = `${brief} ${characters.map(c => `${c.name}${c.role}`).join(' ')}`;
+  if (/无人|无人物|不出现人|不要人物|只拍产品|只拍空间|纯产品|纯空间/.test(text)) return 'no_human';
+  if (/动物|宠物|萌宠/.test(text)) return 'animal';
   if (characters.length >= 3 || /多人|三人|四人|团队|群像/.test(text)) return 'multi';
   if (characters.length === 2 || /双人|两人|夫妻|同事|客户.*顾问|主播.*助理/.test(text)) return 'dual';
   return 'auto';
@@ -336,6 +340,33 @@ function controlledProductionPrompt(ctrl = {}) {
   return lines.join('\n');
 }
 
+function sceneAssetsPrompt(sceneAssets = []) {
+  const list = Array.isArray(sceneAssets) ? sceneAssets : [];
+  if (!list.length) return [
+    '场景空间锁：未生成。',
+    '如本任务需要空间，必须按当前广告需求和用户设置动态判断，不能套用固定行业、固定场景或历史任务空间。',
+  ].join('\n');
+  const digest = list.map((asset, index) => ({
+    scene_id: cleanText(asset.scene_id || asset.id || `scene_${index + 1}`, 120),
+    name: cleanText(asset.name || `任务场景 ${index + 1}`, 120),
+    lock_strength: cleanText(asset.lock_strength || 'standard', 40),
+    layout_summary: cleanText(asset.layout_summary || '', 500),
+    material_summary: cleanText(asset.material_summary || '', 500),
+    style_summary: cleanText(asset.style_summary || '', 300),
+    views: (Array.isArray(asset.view_images) ? asset.view_images : []).map((view, viewIndex) => ({
+      key: cleanText(view?.key || view?.view || ['master', 'reverse', 'interaction', 'detail'][viewIndex] || `view_${viewIndex + 1}`, 40),
+      label: cleanText(view?.label || view?.name || '', 80),
+    })).slice(0, 8),
+  }));
+  return [
+    '场景空间锁：已生成，后续剧本、分镜和关键帧必须优先使用当前任务 scene_assets。',
+    `当前任务场景资产：${JSON.stringify(digest)}`,
+    '分镜必须为每镜输出 scene_id、scene_view、scene_zone、transition_from、transition_reason。',
+    '单场景任务必须保持同一 scene_id；多场景任务只有在剧情或商业表达需要时才能切换 scene_id，并说明转场原因。',
+    '禁止凭空新增当前任务场景资产之外的行业或具体空间。',
+  ].join('\n');
+}
+
 function contextPrompt(ctx) {
   return [
     `广告需求：${ctx.brief}`,
@@ -343,8 +374,12 @@ function contextPrompt(ctx) {
     `目标时长：${ctx.target_duration} 秒`,
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
-    `人物模式：${ctx.cast_mode}`,
-    ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。',
+    `人物/主体模式：${ctx.cast_mode}`,
+    ctx.cast_mode === 'no_human'
+      ? '角色设定：本任务选择无人物模式，不得强行加入真人、手部、背影或人形主体，除非用户需求另有明确要求。'
+      : (ctx.cast_mode === 'animal'
+        ? '角色设定：本任务为动物/宠物主体时，按用户需求建立动物主体一致性，不得强行改成人类角色。'
+        : (ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。')),
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
     ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',
@@ -356,6 +391,7 @@ function contextPrompt(ctx) {
     ctx.cast_profiles?.length ? `演员档案锁：${JSON.stringify(ctx.cast_profiles)}` : '',
     ctx.person_context?.person_notes?.length ? `人物上下文：${ctx.person_context.person_notes.join('；')}` : '',
     ctx.person_spec && Object.keys(ctx.person_spec).length ? `人物约束：${JSON.stringify(ctx.person_spec)}` : '',
+    sceneAssetsPrompt(ctx.scene_assets),
     `视频分辨率：${ctx.video_resolution || '720p'}`,
   ].join('\n');
 }

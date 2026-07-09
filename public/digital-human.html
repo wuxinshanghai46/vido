@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260709-nav-scroll-reset">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260709-nsa-scene-delete">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260709-nsa-scene-fill">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -285,6 +285,8 @@
                         <span>人物数量</span>
                         <select class="dh-input" data-nsa-person-spec="castMode">
                           <option value="auto">按内容判断</option>
+                          <option value="no_human">无人物 / 只拍主体</option>
+                          <option value="animal">动物 / 宠物主体</option>
                           <option value="single">单人</option>
                           <option value="dual">双人对话</option>
                           <option value="group">多人 / 群体</option>
@@ -406,11 +408,11 @@
                       <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="negativeText" maxlength="420" placeholder="如：不要真人/背影/手/人形剪影、不要换场景、不要无关行业装饰、不要文字水印、不要卡通或三维渲染感。"></textarea>
                     </label>
                   </div>
-                </div>
-                <div class="dh-demo-person-actions">
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
+                  <div class="dh-demo-person-actions dh-nsa-scene-actions">
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
+                  </div>
                 </div>
               </div>
               <div class="dh-demo-section-title">视频基础信息</div>
@@ -445,13 +447,13 @@
               <div class="dh-demo-headline">
                 <div>
                   <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
-                  <p class="dh-demo-copy" id="dhNsaAdStep4Copy">分镜把主体画面、可选人物和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、声音字幕和 AI 指令。</p>
+                  <p class="dh-demo-copy" id="dhNsaAdStep4Copy">分镜把主体画面、可选人物和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、台词/旁白和 AI 指令。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdRegenerateScriptFromStep4" type="button">重新生成剧本</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep4" type="button">保存进度</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
-                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实关键帧</button>
+                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
                   <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">确认分镜，进入广告合成</button>
                 </div>
               </div>
@@ -2474,7 +2476,20 @@ B: ...
   </div>
 
   <script src="/js/digital-human.js?v=20260709-nav-scroll-reset"></script>
-  <script src="/js/new-story-ad/scene-assets.js?v=20260709-nsa-scene-delete"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260709-nsa-scene-delete"></script>
+  <script src="/js/new-story-ad/api.js?v=20260709-nsa-modules-scene-bind"></script>
+  <script src="/js/new-story-ad/task-store.js?v=20260709-nsa-modules-scene-bind"></script>
+  <script src="/js/new-story-ad/progress.js?v=20260709-nsa-modules-scene-bind"></script>
+  <script src="/js/new-story-ad/scene-assets.js?v=20260709-nsa-scene-reset"></script>
+  <script src="/js/new-story-ad/state-sync.js?v=20260709-nsa-state-sync-split"></script>
+  <script src="/js/new-story-ad/button-state.js?v=20260709-nsa-button-state-split"></script>
+  <script src="/js/new-story-ad/step-navigation.js?v=20260709-nsa-step-navigation-split"></script>
+  <script src="/js/new-story-ad/task-persistence.js?v=20260709-nsa-task-persistence-split"></script>
+  <script src="/js/new-story-ad/storyboard.js?v=20260709-nsa-storyboard-scene-bind"></script>
+  <script src="/js/new-story-ad/actors.js?v=20260709-nsa-actors-keyframes-split"></script>
+  <script src="/js/new-story-ad/keyframes.js?v=20260709-nsa-actors-keyframes-split"></script>
+  <script src="/js/new-story-ad/uploads.js?v=20260709-nsa-uploads-actorlib-split"></script>
+  <script src="/js/new-story-ad/actor-library.js?v=20260709-nsa-uploads-actorlib-split"></script>
+  <script src="/js/new-story-ad/generation-flow.js?v=20260709-nsa-compose-controls"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260709-nsa-compose-controls"></script>
 </body>
 </html>
