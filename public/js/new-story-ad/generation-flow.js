@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   const STAGE_LABELS = {
     scene: '生成场景配置中...',
     blueprint: '生成剧本中...',
@@ -24,6 +24,15 @@
     };
   }
 
+  function keyframeStatusFromResponse(response = {}, state = {}) {
+    const fromResponse = response.keyframe_status || response.keyframeStatus || response.bundle?.keyframe_status || response.bundle?.keyframeStatus;
+    if (fromResponse && Number(fromResponse.total)) return fromResponse;
+    if (window.NewStoryAdKeyframes?.status) return window.NewStoryAdKeyframes.status(state.keyframes || [], state.shots || []);
+    const total = Math.max((state.shots || []).length, (state.keyframes || []).length);
+    const completed = (state.keyframes || []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length;
+    return { total, completed, missing: Math.max(0, total - completed), missing_indexes: [] };
+  }
+
   async function runStage(stage, ctx = {}) {
     const {
       button,
@@ -35,6 +44,7 @@
       toast,
       showStep,
       saveBlueprintEdits,
+      saveStoryboardEdits,
       startStageProgress,
       setBusy,
       setButtonBusy,
@@ -64,7 +74,9 @@
         showStep?.(4);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle?.(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} }));
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: {} });
+        if (state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
+        const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_only: true } : {} });
         normalizeBundle?.(r);
         showStep?.(4);
       } else if (stage === 'tts') {
@@ -81,7 +93,14 @@
         showStep?.(5);
       }
       renderAll?.();
-      toast?.('新剧情广告阶段已完成', 'success');
+      if (stage === 'keyframes') {
+        const status = keyframeStatusFromResponse(r, state);
+        if (status.missing > 0) toast?.(`真实画面已生成 ${status.completed}/${status.total}，还差 ${status.missing} 张，请点击补齐未生成镜头`, 'error');
+        else if (r?.skipped) toast?.(`真实画面已完整：${status.completed}/${status.total}，无需补齐`, 'success');
+        else toast?.(`真实画面已生成完成：${status.completed}/${status.total}`, 'success');
+      } else {
+        toast?.('剧情广告阶段已完成', 'success');
+      }
       return true;
     } catch (err) {
       if (err.data) normalizeBundle?.(err.data);
@@ -130,3 +149,4 @@
     STAGE_LABELS,
   };
 })();
+

@@ -67,6 +67,50 @@ function publicAssetUrl(asset) {
   return asset.file_url || asset.image_url || asset.url || '';
 }
 
+function compactAssetUrl(url = '') {
+  let raw = String(url || '').trim();
+  if (!raw) return '';
+  raw = raw.replace(/^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/i, '');
+  raw = raw.replace(/^https?:\/\/vido\.smsend\.cn/i, '');
+  raw = raw.split('#')[0].split('?')[0].replace(/\\/g, '/');
+  try { raw = decodeURI(raw); } catch {}
+  return raw.replace(/\/+/g, '/').toLowerCase();
+}
+
+function actorIdentityParts(asset = {}) {
+  if (!asset || typeof asset !== 'object') return [];
+  const metadata = asset.metadata || {};
+  const keys = [];
+  const add = (prefix, value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized) keys.push(`${prefix}:${normalized}`);
+  };
+  add('actor_asset', asset.actor_asset_id || asset.asset_library_id || metadata.actor_asset_id || metadata.asset_library_id);
+  add('actor', asset.actor_id || metadata.actor_id);
+  const viewImages = normalizeAssetViewImages(asset.view_images || metadata.view_images || metadata.views || []);
+  const viewUrls = [...new Set(viewImages
+    .map(view => compactAssetUrl(view.url || view.image_url || view.imageUrl || view.file_url || ''))
+    .filter(Boolean))];
+  if (viewUrls.length >= 2) keys.push(`views:${viewUrls.sort().join('|')}`);
+  const imageUrl = compactAssetUrl(asset.image_url || asset.file_url || asset.url || metadata.image_url || metadata.file_url || metadata.url || '');
+  if (imageUrl) keys.push(`image:${imageUrl}`);
+  return [...new Set(keys)];
+}
+
+function sameActorAsset(left = {}, right = {}) {
+  const leftKeys = new Set(actorIdentityParts(left));
+  return actorIdentityParts(right).some(key => leftKeys.has(key));
+}
+
+function findDuplicateCharacterAsset(userId, asset) {
+  if (!asset || asset.type !== 'character') return null;
+  const candidates = [
+    ...db.listAssets(PUBLIC_ACTOR_USER_ID, 'character'),
+    ...db.listAssets(userId, 'character'),
+  ];
+  return candidates.find(existing => sameActorAsset(existing, asset)) || null;
+}
+
 function serializeAsset(asset) {
   if (!asset) return asset;
   const imageUrl = publicAssetUrl(asset);
@@ -117,10 +161,12 @@ function isCharacterAssetType(type) {
 function mergeAssetRows(rows = []) {
   const seen = new Set();
   return rows.filter(asset => {
-    const key = String(asset?.id || asset?.actor_asset_id || asset?.metadata?.actor_asset_id || '');
-    if (!key) return true;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    const keys = actorIdentityParts(asset);
+    const fallbackId = String(asset?.id || '').trim().toLowerCase();
+    const identityKeys = keys.length ? keys : (fallbackId ? [`id:${fallbackId}`] : []);
+    if (!identityKeys.length) return true;
+    if (identityKeys.some(key => seen.has(key))) return false;
+    identityKeys.forEach(key => seen.add(key));
     return true;
   });
 }
@@ -242,6 +288,12 @@ router.post('/', (req, res) => {
   const extraImageUrls = normalizeAssetImageList(body.extra_image_urls || body.extra_images || body.views);
   const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
   const viewImages = normalizeAssetViewImages(body.view_images || metadata.view_images || []);
+  const actorAssetId = type === 'character'
+    ? String(body.actor_asset_id || body.asset_library_id || metadata.actor_asset_id || metadata.asset_library_id || '').trim()
+    : '';
+  const actorId = type === 'character'
+    ? String(body.actor_id || metadata.actor_id || actorAssetId || '').trim()
+    : '';
   if (type !== 'music' && !imageUrl && !extraImageUrls.length && !viewImages.length) {
     return res.status(400).json({ success: false, error: '请提供素材图片 URL' });
   }
@@ -261,11 +313,31 @@ router.post('/', (req, res) => {
     view_count: Number(body.view_count || viewImages.length || (imageUrl ? 1 + extraImageUrls.length : extraImageUrls.length)) || 1,
     status: body.status || 'active',
     source: body.source || 'linked',
+    actor_asset_id: actorAssetId,
+    actor_id: actorId,
+    reference_kind: body.reference_kind || metadata.reference_kind || '',
+    gender: body.gender || metadata.gender || '',
+    origin: body.origin || metadata.origin || metadata.region || metadata.ethnicity || metadata.race || '',
+    cast_mode: body.cast_mode || body.castMode || metadata.cast_mode || '',
+    expected_people: body.expected_people || metadata.expected_people || metadata.person_count || '',
+    person_count: body.person_count || metadata.person_count || metadata.expected_people || '',
+    cast_assets: Array.isArray(body.cast_assets) ? body.cast_assets : (Array.isArray(metadata.cast_assets) ? metadata.cast_assets : []),
+    is_ai_generated: body.is_ai_generated === true || metadata.is_ai_generated === true,
+    production_usable_actor: body.production_usable_actor === true || metadata.production_usable_actor === true,
     description: String(body.description || '').trim(),
     tags: Array.isArray(body.tags) ? body.tags.slice(0, 20) : [],
-    metadata,
+    metadata: {
+      ...metadata,
+      actor_asset_id: metadata.actor_asset_id || actorAssetId,
+      actor_id: metadata.actor_id || actorId,
+    },
     created_at: new Date().toISOString()
   };
+
+  const duplicate = findDuplicateCharacterAsset(req.user.id, asset);
+  if (duplicate) {
+    return res.json({ success: true, data: serializeAsset(duplicate), deduped: true });
+  }
 
   db.insertAsset(asset);
   res.json({ success: true, data: serializeAsset(asset) });

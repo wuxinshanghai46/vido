@@ -715,7 +715,8 @@
   }
 
   // ══════════════ Tabs ══════════════
-  const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'material-film', 'luxury-ad', 'new-story-ad'];
+  const DH_LEGACY_STORY_AD_DISABLED = true;
+  const DH_VALID_TABS = ['step1', 'step2', 'step3', 'tasks', 'dual', 'plaza', 'works', 'voice-clone', 'product-dh', 'space-guide', 'material-film', 'new-story-ad'];
   const DH_LAST_TAB_KEY = 'vido_dh_active_tab';
   const DH_PAGE_STATE_KEY = 'vido_page_state:/digital-human';
   const DH_LAST_TASK_TYPE_KEY = 'vido_dh_active_task_type';
@@ -748,7 +749,7 @@
     const params = new URLSearchParams(location.search || '');
     const taskType = params.get('task_type');
     const taskStatus = params.get('task_status');
-    if (taskType) state.activeTaskType = taskType;
+    if (taskType) state.activeTaskType = taskType === 'luxury_ad' ? 'new_story_ad' : taskType;
     if (taskStatus) state.activeTaskStatus = taskStatus;
   } catch {}
 
@@ -758,7 +759,7 @@
   }
 
   function isLuxuryFlowTab(tab = state.activeTab) {
-    return tab === 'luxury-ad' || tab === 'material-film';
+    return (DH_LEGACY_STORY_AD_DISABLED ? false : tab === 'luxury-ad') || tab === 'material-film';
   }
 
   function isLuxuryAdModule() {
@@ -876,6 +877,7 @@
   function getInitialTab() {
     try {
       const urlTab = new URLSearchParams(location.search).get('tab');
+      if (urlTab === 'luxury-ad') return 'new-story-ad';
       if (DH_VALID_TABS.includes(urlTab)) return urlTab;
     } catch {}
     const hashTab = String(location.hash || '').replace(/^#/, '').trim();
@@ -967,8 +969,8 @@
         'product-dh': '🛍️ 商品数字人',
         'space-guide': '📢 素材审片',
         'material-film': '📢 素材审片',
-        'luxury-ad': '🎞️ 剧情广告',
-        'new-story-ad': '🎬 新剧情广告',
+        'luxury-ad': '🎞️ 旧剧情广告',
+        'new-story-ad': '🎬 剧情广告',
       }[tab] || '数字人';
       crumb.style.visibility = '';
     }
@@ -1064,8 +1066,8 @@
       'product-dh': '🛍️ 商品数字人',
         'space-guide': '📢 素材审片',
         'material-film': '📢 素材审片',
-        'luxury-ad': '🎞️ 剧情广告',
-        'new-story-ad': '🎬 新剧情广告',
+        'luxury-ad': '🎞️ 旧剧情广告',
+        'new-story-ad': '🎬 剧情广告',
       }[tab] || '数字人';
 
     if (tab === 'step2') loadMyAvatars();
@@ -1083,7 +1085,7 @@
         updateLuxuryAdStepLocks();
       });
     }
-    if (tab === 'luxury-ad') {
+    if (!DH_LEGACY_STORY_AD_DISABLED && tab === 'luxury-ad') {
       setLuxuryAdFlowMode('story', { preserveState: opts.preserveLuxuryState === true });
       renderLuxuryAd();
       loadVoicesIfNeeded().then(() => {
@@ -2859,7 +2861,7 @@
         <div style="display:grid;gap:10px">
           <button class="dh-btn dh-btn-primary" data-scene="step3" type="button">③ 生成数字人</button>
           <button class="dh-btn dh-btn-ghost" data-scene="material-film" type="button">📢 素材审片</button>
-          <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button">🎞️ 剧情广告</button>
+          <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button" hidden aria-hidden="true">🎞️ 旧剧情广告</button>
           ${isProduct ? '<button class="dh-btn dh-btn-ghost" data-scene="product-dh" type="button">🛍️ 商品数字人</button>' : ''}
           <button class="dh-link-btn" data-scene="" type="button">取消</button>
         </div>
@@ -4248,7 +4250,7 @@
   function renderTaskNewStoryStoryboardTable(rows = [], contracts = []) {
     const shots = Array.isArray(rows) ? rows : [];
     const contractList = Array.isArray(contracts) ? contracts : [];
-    if (!shots.length) return '<div class="dh-task-empty-note">暂无新剧情广告分镜表</div>';
+    if (!shots.length) return '<div class="dh-task-empty-note">暂无剧情广告分镜表</div>';
     return `<div class="dh-task-segment-list dh-task-storyboard-list">${shots.map((shot, i) => {
       const contract = contractList.find(x => Number(x.index || x.shot_index || 0) === Number(shot.index || shot.shot_index || i + 1)) || contractList[i] || {};
       const title = shot.title || contract.title || `镜头 ${i + 1}`;
@@ -4974,7 +4976,10 @@
 
   function taskCenterVisibleTasks(rawTasks = []) {
     const groups = new Map();
-    (Array.isArray(rawTasks) ? rawTasks : []).filter(Boolean).forEach(task => {
+    (Array.isArray(rawTasks) ? rawTasks : [])
+      .filter(Boolean)
+      .filter(task => !(DH_LEGACY_STORY_AD_DISABLED && getTaskType(task) === 'luxury_ad'))
+      .forEach(task => {
       const key = taskCenterDedupeKey(task);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(task);
@@ -4991,8 +4996,8 @@
       product_ad: '商品口播视频',
       material_film: '素材审片',
       digital_ad: '空间导览',
-      luxury_ad: '剧情广告',
-      new_story_ad: '新剧情广告',
+      luxury_ad: '旧剧情广告',
+      new_story_ad: '剧情广告',
     }[type] || '数字人';
   }
 
@@ -5441,7 +5446,7 @@
   function renderTaskCenter() {
     const host = $('#dhTaskList');
     if (!host) { updateTaskBadge(); return; }
-    if (state.activeTaskType === 'luxury_ad') refreshLuxuryAdProjectsForTaskCenter({ silent: true });
+    if (!DH_LEGACY_STORY_AD_DISABLED && state.activeTaskType === 'luxury_ad') refreshLuxuryAdProjectsForTaskCenter({ silent: true });
     if (state.activeTaskType === 'new_story_ad' && !state.newStoryAdTasksLoading && (!state.newStoryAdTasksLoadedAt || Date.now() - state.newStoryAdTasksLoadedAt > 30000)) {
       restoreNewStoryAdTasks({ silent: true }).then(() => renderTaskCenter());
     }
@@ -5908,7 +5913,7 @@
       : (keyframes.length || shots.length ? 4
         : (outputs.blueprint ? 3
           : (outputs.scene_config ? 2 : 1)));
-    const title = task.title || ctx.product_subject || ctx.productSubject || '新剧情广告任务';
+    const title = task.title || ctx.product_subject || ctx.productSubject || '剧情广告任务';
     const brief = task.brief || ctx.brief || ctx.content || '';
     const createdAt = task.created_at || task.createdAt || raw.created_at || Date.now();
     const updatedAt = task.updated_at || task.updatedAt || raw.updated_at || createdAt;
@@ -5947,7 +5952,7 @@
       },
       createDetail: {
         source: 'new_story_ad',
-        adMode: '新剧情广告',
+        adMode: '剧情广告',
         title,
         durationSec: ctx.duration_sec || ctx.duration || '',
         text: brief,
@@ -5965,7 +5970,7 @@
         sceneConfig: outputs.scene_config || null,
         modelCalls: bundle.model_calls || raw.model_calls || [],
         clips,
-        composeNote: finalUrl ? '新剧情广告成片已生成' : '',
+        composeNote: finalUrl ? '剧情广告成片已生成' : '',
         submittedAt: task.created_at || '',
       },
     };
@@ -10674,7 +10679,7 @@
         if (usingNewStoryPersonSheet || !isLuxuryStoryboardLongRunningError(submitErr)) throw submitErr;
       }
       if (r?.status === 'accepted' && r?.request_key) {
-        if (usingNewStoryPersonSheet) throw new Error('新剧情广告人物接口返回异步任务，但没有返回可用人物结果');
+        if (usingNewStoryPersonSheet) throw new Error('剧情广告人物接口返回异步任务，但没有返回可用人物结果');
         state.luxuryAd.personGenerationProgress = {
           ...(state.luxuryAd.personGenerationProgress || {}),
           active: true,
@@ -10686,7 +10691,7 @@
         renderLuxuryAdPerson();
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 45 * 60 * 1000, missingRetryMs: 90000 });
       } else if (!r && requestKey) {
-        if (usingNewStoryPersonSheet) throw new Error('新剧情广告人物接口没有返回可用人物结果');
+        if (usingNewStoryPersonSheet) throw new Error('剧情广告人物接口没有返回可用人物结果');
         r = await pollLuxuryPersonSheetResult(requestKey, { timeoutMs: 45 * 60 * 1000, missingRetryMs: 45000 });
       }
       if (!r.success) throw new Error(r.error || '人物演员包生成失败');

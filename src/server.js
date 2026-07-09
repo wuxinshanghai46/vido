@@ -619,7 +619,48 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
   }
 });
 
-app.use('/api/dh', authenticate, requirePermission('avatar'), require('./routes/digitalHuman'));
+function legacyStoryAdDisabled(req, res, next) {
+  // 旧剧情广告已下线：保留历史代码，不再开放旧 luxury-ad 功能入口和接口。
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const legacyMode = [
+    body.ad_mode,
+    body.adMode,
+    body.mode,
+    body.generation_mode,
+    body.generationMode,
+    body.taskType,
+    body.type,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (/^\/luxury-ad(?:\/|$)/i.test(req.path) || /(^|\s)luxury_ad(\s|$)|luxury-ad/.test(legacyMode)) {
+    return res.status(410).json({
+      success: false,
+      error: '旧剧情广告已下线，请使用新版“剧情广告”。',
+      code: 'LEGACY_STORY_AD_DISABLED',
+    });
+  }
+  next();
+}
+
+app.use('/api/dh', legacyStoryAdDisabled, authenticate, requirePermission('avatar'), require('./routes/digitalHuman'));
+app.get('/api/new-story-ad/assets/:filename', async (req, res) => {
+  const fs = require('fs');
+  const mediaAdapter = require('./services/newStoryAd/mediaAdapter');
+  const filePath = mediaAdapter.assetPathFromName(req.params.filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'asset not found' });
+  const thumb = req.query.thumb || req.query.w || req.query.width;
+  if (thumb) {
+    try {
+      const thumbPath = await mediaAdapter.ensureAssetThumbnail(req.params.filename, thumb);
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+      res.type('image/webp');
+      return res.sendFile(thumbPath);
+    } catch (err) {
+      return res.status(err.status || 500).json({ success: false, error: String(err.message || err) });
+    }
+  }
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  return res.sendFile(filePath);
+});
 app.use('/api/new-story-ad', authenticate, requirePermission('avatar'), require('./routes/newStoryAd'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));

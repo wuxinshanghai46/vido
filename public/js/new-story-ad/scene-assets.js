@@ -74,8 +74,11 @@
 
   function normalizeAsset(asset = {}, index = 0) {
     if (!asset || typeof asset !== 'object') return null;
-    const views = Array.isArray(asset.view_images)
-      ? asset.view_images.map(normalizeView).filter(view => view.url || view.image_url)
+    const rawViews = Array.isArray(asset.view_images)
+      ? asset.view_images
+      : (Array.isArray(asset.views) ? asset.views : []);
+    const views = rawViews.length
+      ? rawViews.map(normalizeView).filter(view => view.url || view.image_url)
       : [];
     const url = clean(asset.image_url || asset.url || views[0]?.url || views[0]?.image_url || '', 1000);
     if (!url && !views.length) return null;

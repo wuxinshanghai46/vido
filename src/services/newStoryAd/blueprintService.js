@@ -1,4 +1,4 @@
-const modelGateway = require('./modelGateway');
+﻿const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { contextPrompt, normalizeCharacters } = require('./contextBuilder');
 
@@ -40,7 +40,7 @@ function pacingProfile(ctx = {}) {
   const fastCut = /快剪|快速剪辑|高频切换|混剪|闪切|多镜头|镜头密集|快速切换|montage/i.test(brief);
   const processHeavy = /步骤|流程|过程|教程|演示|对比|前后|先.*再|第一|第二|第三|第四|然后|接着|最后/.test(brief);
   const eventSignals = (brief.match(/步骤|流程|过程|对比|前后|痛点|解决|证明|展示|介绍|然后|接着|最后|第一|第二|第三|第四|[；;]/g) || []).length;
-  // 新剧情广告必须通用：这里不按行业/场景写死镜头数，只按用户内容密度和单镜可理解时长推导节奏。
+  // 剧情广告必须通用：这里不按行业/场景写死镜头数，只按用户内容密度和单镜可理解时长推导节奏。
   const minimumSecondsPerBeat = fastCut ? 2.4 : (processHeavy || eventSignals >= 5 ? 3.4 : 4.2);
   const preferredSecondsPerBeat = fastCut ? 3.0 : (processHeavy || eventSignals >= 5 ? 4.0 : 5.0);
   const durationRecommended = Math.max(3, Math.min(18, Math.round(targetDuration / preferredSecondsPerBeat)));
@@ -271,3 +271,4 @@ module.exports = {
   recommendedBeatCount,
   softBeatLimit,
 };
+

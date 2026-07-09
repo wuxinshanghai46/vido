@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   async function ensureTask(ctx = {}) {
     const { state, payload, api, rememberTaskId, renderStatus } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
@@ -98,21 +98,54 @@
     return response;
   }
 
+  function progressStageForState(state = {}) {
+    if (state.currentStep >= 5) return 'video_ready';
+    if (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url))) return 'keyframes_ready';
+    if (Array.isArray(state.shots) && state.shots.length) return 'keyframe_contract_ready';
+    if (state.blueprint) return 'blueprint_done';
+    if (state.sceneConfig) return 'scene_config_done';
+    return 'draft';
+  }
+
+  function progressSnapshotForState(state = {}, ctx = {}) {
+    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
+    const normalizeBlueprint = typeof ctx.normalizeBlueprintForSave === 'function' ? ctx.normalizeBlueprintForSave : () => state.blueprint;
+    return {
+      context: state.context || null,
+      scene_config: state.sceneConfig || null,
+      blueprint: state.blueprint ? normalizeBlueprint() : null,
+      storyboard_table: Array.isArray(state.shots) ? state.shots : [],
+      keyframe_contracts: Array.isArray(state.contracts) ? state.contracts : [],
+      keyframes: Array.isArray(state.keyframes) ? state.keyframes : [],
+      scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
+      quality_review: state.review || null,
+      tts_audio: state.ttsAudio || null,
+      video_clips: Array.isArray(state.videoClips) ? state.videoClips : [],
+      final_video: state.finalVideo || null,
+    };
+  }
+
   async function saveCurrentTaskProgress(opts = {}, ctx = {}) {
     const { state, api, payload, normalizeBundle, renderAll, toast } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
     const id = await ensureTask(ctx);
-    if (state.blueprint) await saveBlueprintEdits(id, ctx);
+    const progressStage = progressStageForState(state);
     const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: { ...payload(), task_id: id },
+      body: {
+        ...payload(),
+        task_id: id,
+        save_progress: true,
+        progress_stage: progressStage,
+        progress_snapshot: progressSnapshotForState(state, ctx),
+      },
     });
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
-      await window.__dhRefreshNewStoryAdTasks();
+      window.__dhRefreshNewStoryAdTasks().catch(() => {});
     }
     if (typeof renderAll === 'function') renderAll();
-    if (opts.silent !== true && typeof toast === 'function') toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
+    if (opts.silent !== true && typeof toast === 'function') toast('剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
   }
 
@@ -124,3 +157,4 @@
     saveStoryboardEdits,
   };
 })();
+

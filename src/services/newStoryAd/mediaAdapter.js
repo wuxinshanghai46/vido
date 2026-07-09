@@ -9,6 +9,7 @@ const { loadSettings } = require('../settingsService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
+const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -30,9 +31,21 @@ function adapterFamily(provider = {}) {
 }
 
 function stageCandidates(stage) {
-  return pipeline.pickAllEnabled(stage).length
-    ? pipeline.pickAllEnabled(stage)
-    : (pipeline.getStageDefaults(stage) || []).filter(x => x.enabled !== false);
+  const configured = pipeline.pickAllEnabled(stage);
+  const defaults = (pipeline.getStageDefaults(stage) || []).filter(x => x.enabled !== false);
+  return configured.length ? configured : defaults;
+}
+
+function modelKey(model = {}) {
+  return `${String(model.provider_id || model.providerId || '').trim()}/${String(model.model_id || model.model || '').trim()}`;
+}
+
+function preferredMatches(model = {}, preferred = '') {
+  const raw = String(preferred || '').trim().toLowerCase();
+  if (!raw || raw === 'auto') return true;
+  const providerId = String(model.provider_id || model.providerId || '').trim().toLowerCase();
+  const modelId = String(model.model_id || model.model || '').trim().toLowerCase();
+  return raw === providerId || raw === modelId || raw === `${providerId}/${modelId}`;
 }
 
 function resolveImageAdapter(model = {}) {
@@ -74,6 +87,38 @@ function assetPathFromName(filename = '') {
   const safe = path.basename(String(filename || '').split('?')[0]);
   if (!safe) return '';
   return path.join(ASSET_DIR, safe);
+}
+
+function assetThumbPathFromName(filename = '', width = 520) {
+  const safe = path.basename(String(filename || '').split('?')[0]).replace(/[^a-z0-9_.-]/ig, '_');
+  if (!safe) return '';
+  const size = Math.max(160, Math.min(960, Number(width) || 520));
+  return path.join(THUMB_DIR, `${safe}.${size}.webp`);
+}
+
+async function ensureAssetThumbnail(filename = '', width = 520) {
+  const source = assetPathFromName(filename);
+  if (!source || !fs.existsSync(source)) {
+    const err = new Error('Asset not found');
+    err.status = 404;
+    throw err;
+  }
+  const out = assetThumbPathFromName(filename, width);
+  if (out && fs.existsSync(out)) {
+    const stat = fs.statSync(out);
+    if (stat.isFile()) return out;
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  await sharp(source)
+    .rotate()
+    .resize({
+      width: Math.max(160, Math.min(960, Number(width) || 520)),
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 72, effort: 4 })
+    .toFile(out);
+  return out;
 }
 
 function safeFilename(name = 'new_story_ad_asset', ext = '.png') {
@@ -183,10 +228,23 @@ async function generateImage({
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
   const candidates = stageCandidates(stage);
   const preferred = String(imageModel || '').trim();
-  const filtered = preferred && preferred !== 'auto'
-    ? candidates.filter(m => String(m.model_id || m.model || '') === preferred || String(m.provider_id || '') === preferred)
+  const preferredCandidates = preferred && preferred !== 'auto'
+    ? candidates.filter(m => preferredMatches(m, preferred))
     : candidates;
+  const filtered = preferredCandidates.length ? preferredCandidates : candidates;
+  const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
+  if (String(stage || '').startsWith('new_story_ad.')) {
+    console.info('[new_story_ad:image_candidates]', JSON.stringify({
+      stage,
+      image_model: preferred || 'auto',
+      preferred_matched: preferredCandidates.map(modelKey).filter(Boolean),
+      candidates: candidates.map(modelKey).filter(Boolean),
+    }));
+  }
+  if (!filtered.length) {
+    throw new Error(`new_story_ad image models failed: no enabled image candidates for ${stage}`);
+  }
   for (const model of filtered) {
     let config = null;
     try {
@@ -228,10 +286,13 @@ async function generateImage({
       }
       throw new Error('image provider returned no url or b64_json');
     } catch (err) {
-      errors.push(`${model.provider_id}/${model.model_id}: ${String(err.message || err).slice(0, 180)}`);
+      errors.push(`${modelKey(model)}: ${String(err.message || err).slice(0, 180)}`);
     }
   }
-  throw new Error(`new_story_ad image models failed: ${errors.join('；')}`);
+  const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
+    ? `；ignored preferred=${preferred} because it is not enabled for ${stage}`
+    : '';
+  throw new Error(`new_story_ad image models failed: candidates=${candidateSummary}${ignoredPreferred}；${errors.join('；')}`);
 }
 
 async function generateActorReference({ prompt = '', filename = '', aspectRatio = '3:4', imageModel = 'auto' } = {}) {
@@ -246,7 +307,10 @@ async function generateActorReference({ prompt = '', filename = '', aspectRatio 
 
 module.exports = {
   ASSET_DIR,
+  THUMB_DIR,
   assetPathFromName,
+  assetThumbPathFromName,
+  ensureAssetThumbnail,
   publicAssetUrl,
   generateImage,
   generateActorReference,

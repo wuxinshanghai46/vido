@@ -393,6 +393,11 @@ const STAGE_DEFAULTS = {
 function listDefaults() { return STAGE_DEFAULTS; }
 function getStageDefaults(stageId) { return STAGE_DEFAULTS[stageId] || []; }
 
+function isStrictPipelineManagedStage(stageId) {
+  const id = String(stageId || '').trim();
+  return id.startsWith('new_story_ad.');
+}
+
 function preferDeyunaiForNonVideoStages(stages = {}, defaults = {}) {
   const next = {};
   const stageIds = new Set([...Object.keys(defaults || {}), ...Object.keys(stages || {})]);
@@ -400,7 +405,7 @@ function preferDeyunaiForNonVideoStages(stages = {}, defaults = {}) {
     const models = stages?.[stageId] || [];
     const list = Array.isArray(models) ? models.filter(Boolean).map(model => ({ ...model })) : [];
     const meta = getStageMeta(stageId);
-    if (!list.length || String(meta?.type || '').toLowerCase() === 'video') {
+    if (isStrictPipelineManagedStage(stageId) || !list.length || String(meta?.type || '').toLowerCase() === 'video') {
       next[stageId] = list;
       continue;
     }

@@ -273,7 +273,7 @@ function ensureActorAssetForUser(userId, actor = {}, patch = {}) {
     category: 'character',
     actor_asset_id: actorAssetId,
     actor_id: actor.actor_id || actorAssetId,
-    name: actor.name || patch.name || '新剧情广告演员资产',
+    name: actor.name || patch.name || '剧情广告演员资产',
     original_name: actor.original_name || actor.name || '',
     file_path: '',
     file_url: imageUrl || extraImages[0] || '',
@@ -443,12 +443,19 @@ router.post('/upload', uploadSingle, (req, res) => {
   res.json({ success: true, data: asset, asset, url, file_url: url, image_url: asset.image_url });
 });
 
-router.get('/assets/:filename', (req, res) => {
+router.get('/assets/:filename', asyncRoute(async (req, res) => {
   const filePath = mediaAdapter.assetPathFromName(req.params.filename);
   if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: '资产不存在' });
+  const thumb = req.query.thumb || req.query.w || req.query.width;
+  if (thumb) {
+    const thumbPath = await mediaAdapter.ensureAssetThumbnail(req.params.filename, thumb);
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.type('image/webp');
+    return res.sendFile(thumbPath);
+  }
   res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.sendFile(filePath);
-});
+  return res.sendFile(filePath);
+}));
 
 router.get('/audio/:filename', (req, res) => {
   const filePath = ttsAdapter.audioPathFromName(req.params.filename);
@@ -515,7 +522,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   const userId = user.id || user.username || 'anonymous';
   const brief = String(body.brief || body.content || '').trim();
   if (brief.length < 6) {
-    return res.status(400).json({ success: false, error: '请先填写广告需求，再生成新剧情广告人物演员包' });
+    return res.status(400).json({ success: false, error: '请先填写广告需求，再生成剧情广告人物演员包' });
   }
   const spec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const context = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
@@ -548,7 +555,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
       actor_id: actorId,
-      name: '新剧情广告拟真演员',
+      name: '剧情广告拟真演员',
       source: 'new_story_ad_actor_sheet',
       reference_kind: 'synthetic_realistic_actor',
       production_usable_actor: true,
@@ -578,6 +585,12 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       request_key: body.request_key || '',
     }));
   } catch (err) {
+    const allowActorLibraryFallback = body.allow_actor_library_fallback === true || body.allowActorLibraryFallback === true;
+    if (!allowActorLibraryFallback) {
+      err.status = err.status || 503;
+      err.code = err.code || 'NEW_STORY_PERSON_SHEET_PROVIDER_FAILED';
+      throw err;
+    }
     const fallback = pickLocalActorFallback({ userId, spec, brief });
     if (!fallback) {
       err.status = err.status || 503;

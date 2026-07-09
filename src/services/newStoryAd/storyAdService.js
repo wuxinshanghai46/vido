@@ -1,3 +1,4 @@
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const modelGateway = require('./modelGateway');
@@ -15,17 +16,120 @@ const composeService = require('./composeService');
 const { bindShotsToScenes, selectSceneAsset } = require('./sceneBindingService');
 
 function taskTitle(ctx) {
-  return cleanText(ctx.product_subject || ctx.brief || '新剧情广告任务', 60);
+  return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
+}
+
+function keyframeImageUrl(frame = {}) {
+  return String(frame.image_url || frame.imageUrl || frame.url || '').trim();
+}
+
+function localKeyframeAssetExists(url = '') {
+  const clean = String(url || '').split('?')[0];
+  if (!clean.startsWith('/api/new-story-ad/assets/')) return true;
+  const filename = decodeURIComponent(clean.split('/').pop() || '');
+  const filePath = mediaAdapter.assetPathFromName(filename);
+  return !!(filePath && fs.existsSync(filePath));
+}
+
+function isCompleteKeyframe(frame = {}) {
+  const url = keyframeImageUrl(frame);
+  return !!(url && localKeyframeAssetExists(url));
+}
+
+function keyframeCompletion(keyframes = [], shots = []) {
+  const total = Math.max(
+    Array.isArray(shots) ? shots.length : 0,
+    Array.isArray(keyframes) ? keyframes.length : 0,
+  );
+  const indexes = Array.from({ length: total }).map((_, index) => index);
+  const completed = indexes.filter(index => isCompleteKeyframe(keyframes[index])).length;
+  const failed = indexes.filter(index => keyframes[index]?.error && !isCompleteKeyframe(keyframes[index])).length;
+  const missing_indexes = indexes.filter(index => !isCompleteKeyframe(keyframes[index]));
+  return { total, completed, missing: Math.max(0, total - completed), failed, missing_indexes };
+}
+
+function isBeforeOrAtKeyframes(stage = '') {
+  return !['tts', 'tts_ready', 'video', 'video_ready', 'compose', 'final_video_ready'].includes(String(stage || ''));
+}
+
+function persistProgressSnapshot(taskId, snapshot = {}) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  const allowedOutputs = {
+    context: 'context',
+    scene_config: 'scene_config',
+    sceneConfig: 'scene_config',
+    blueprint: 'blueprint',
+    storyboard_table: 'storyboard_table',
+    storyboardTable: 'storyboard_table',
+    shots: 'storyboard_table',
+    keyframe_contracts: 'keyframe_contracts',
+    keyframeContracts: 'keyframe_contracts',
+    contracts: 'keyframe_contracts',
+    keyframes: 'keyframes',
+    scene_assets: 'scene_assets',
+    sceneAssets: 'scene_assets',
+    quality_review: 'quality_review',
+    review: 'quality_review',
+    tts_audio: 'tts_audio',
+    ttsAudio: 'tts_audio',
+    video_clips: 'video_clips',
+    videoClips: 'video_clips',
+    final_video: 'final_video',
+    finalVideo: 'final_video',
+  };
+  Object.entries(allowedOutputs).forEach(([inputKey, outputKind]) => {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, inputKey)) return;
+    const value = snapshot[inputKey];
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value) && !value.length) return;
+    if (value && typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length) return;
+    storage.saveOutput(taskId, outputKind, value);
+  });
 }
 
 function publicTaskBundle(taskId) {
   const bundle = storage.getTaskBundle(taskId);
   const outputs = Object.fromEntries((bundle.outputs || []).map(x => [x.kind, x.payload]));
+  const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
+  const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
+  const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
+  const keyframeStatus = keyframeCompletion(keyframes, storyboard);
+  if (bundle.task && storyboard.length && ['storyboard', 'storyboard_done'].includes(String(bundle.task.stage || ''))) {
+    storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${storyboard.length} 个镜头` });
+    if (contracts.length) {
+      storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
+    }
+    storage.updateTask(taskId, {
+      status: 'done',
+      stage: contracts.length ? 'keyframe_contract_ready' : 'storyboard_done',
+      error: '',
+    });
+    return publicTaskBundle(taskId);
+  }
+  if (bundle.task && keyframeStatus.total && keyframeStatus.completed) {
+    const complete = keyframeStatus.completed >= keyframeStatus.total;
+    storage.saveStage(taskId, 'keyframes', {
+      status: complete ? 'done' : 'partial',
+      output_summary: `${keyframeStatus.completed}/${keyframeStatus.total} image keyframes`,
+      diagnostics: { keyframe_status: keyframeStatus },
+    });
+    if (isBeforeOrAtKeyframes(bundle.task.stage)) {
+      const savedProgress = bundle.task.saved_progress === true;
+      const desired = complete
+        ? { status: savedProgress ? 'working' : 'done', stage: 'keyframes_ready', error: '' }
+        : { status: 'working', stage: 'keyframes_partial', error: '' };
+      if (bundle.task.status !== desired.status || bundle.task.stage !== desired.stage || bundle.task.error) {
+        storage.updateTask(taskId, desired);
+        return publicTaskBundle(taskId);
+      }
+    }
+  }
   const context = outputs.context || bundle.task?.request || {};
   return {
     ...bundle,
     context,
     outputs,
+    keyframe_status: keyframeStatus,
   };
 }
 
@@ -48,11 +152,21 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = buildContext({ ...(task.request || {}), ...(body || {}), task_id: taskId }, user);
-  const updated = storage.updateTask(taskId, {
+  const patch = {
     title: taskTitle(ctx),
     brief: ctx.brief,
     request: ctx,
-  });
+  };
+  if (body.save_progress === true || body.saveProgress === true) {
+    const progressStage = cleanText(body.progress_stage || body.progressStage || task.stage || 'draft', 80) || 'draft';
+    const finalDone = ['final_video_ready', 'done'].includes(progressStage);
+    patch.status = finalDone ? (task.status || 'done') : 'working';
+    patch.stage = progressStage;
+    patch.saved_progress = true;
+    patch.saved_progress_at = new Date().toISOString();
+    persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});
+  }
+  const updated = storage.updateTask(taskId, patch);
   storage.saveOutput(taskId, 'context', ctx);
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
   return { task: updated, context: ctx };
@@ -70,7 +184,7 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
   };
   return {
     ...blueprint,
-    story_title: cleanText(blueprint.story_title || blueprint.title || '新剧情广告剧本', 120),
+    story_title: cleanText(blueprint.story_title || blueprint.title || '剧情广告剧本', 120),
     logline: cleanText(blueprint.logline || blueprint.summary || '', 500),
     characters: normalizeCharacters(Array.isArray(blueprint.characters) ? blueprint.characters : [], seed),
     beats: beats.map((beat, index) => {
@@ -204,7 +318,7 @@ async function generateSceneConfig(taskId) {
   storage.updateTask(taskId, { status: 'running', stage: 'scene_config' });
   storage.saveStage(taskId, 'scene_config', { status: 'running', input_summary: ctx.brief });
   const systemPrompt = [
-    '你是新剧情广告场景配置 agent。只输出 JSON 对象。',
+    '你是剧情广告场景配置 agent。只输出 JSON 对象。',
     '你的职责是把用户需求整理成业务边界、主体、人物模式、素材使用、禁止项和建议镜头策略。',
     '不能自行继承旧任务、不能写固定行业模板。',
     '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色。',
@@ -294,7 +408,7 @@ async function generateStoryboardStage(taskId) {
     storage.saveOutput(taskId, 'storyboard_table', shots);
     storage.saveStage(taskId, 'storyboard', { status: 'failed', error: review.blocking_issues.join('；'), diagnostics: review });
     storage.updateTask(taskId, { status: 'failed', stage: 'storyboard_failed', error: review.blocking_issues.join('；') });
-    const err = new Error(`新剧情广告分镜硬阻断：${review.blocking_issues.join('；')}`);
+    const err = new Error(`剧情广告分镜硬阻断：${review.blocking_issues.join('；')}`);
     err.review = review;
     err.partial = shots;
     throw err;
@@ -470,11 +584,28 @@ async function generateKeyframesStage(taskId, options = {}) {
   const indexes = onlyIndex === null
     ? shots.map((_, i) => i)
     : [Math.max(0, Math.min(shots.length - 1, onlyIndex))];
+  const missingOnly = options.missing_only === true || options.missingOnly === true;
+  const targetIndexes = missingOnly
+    ? indexes.filter(i => !isCompleteKeyframe(existing[i]))
+    : indexes;
   const keyframes = existing.slice();
   const attempts = [];
+  const beforeStatus = keyframeCompletion(keyframes, shots);
+  if (!targetIndexes.length) {
+    storage.saveOutput(taskId, 'keyframes', keyframes);
+    storage.saveStage(taskId, 'keyframes', {
+      status: beforeStatus.completed >= beforeStatus.total ? 'done' : 'partial',
+      output_summary: `${beforeStatus.completed}/${beforeStatus.total} image keyframes`,
+      diagnostics: { attempts, keyframe_status: beforeStatus, skipped: true },
+    });
+    if (beforeStatus.completed >= beforeStatus.total) {
+      storage.updateTask(taskId, { status: 'done', stage: 'keyframes_ready', error: '' });
+    }
+    return { keyframes, keyframe_contracts: contracts, attempts, keyframe_status: beforeStatus, skipped: true };
+  }
   storage.updateTask(taskId, { status: 'running', stage: 'keyframes' });
-  storage.saveStage(taskId, 'keyframes', { status: 'running', input_summary: `${indexes.length} image keyframes` });
-  for (const i of indexes) {
+  storage.saveStage(taskId, 'keyframes', { status: 'running', input_summary: `${targetIndexes.length} image keyframes` });
+  for (const i of targetIndexes) {
     const shot = shots[i] || {};
     const previousFrame = previousKeyframeContext(keyframes, i);
     const sceneAsset = sceneAssetForShot(ctx, shot, i);
@@ -528,10 +659,17 @@ async function generateKeyframesStage(taskId, options = {}) {
     err.attempts = attempts;
     throw err;
   }
+  const finalStatus = keyframeCompletion(keyframes, shots);
   storage.saveOutput(taskId, 'keyframes', keyframes);
-  storage.saveStage(taskId, 'keyframes', { status: 'done', output_summary: `${keyframes.filter(k => k?.image_url || k?.imageUrl).length} image keyframes`, diagnostics: { attempts } });
-  storage.updateTask(taskId, { status: 'done', stage: 'keyframes_ready' });
-  return { keyframes, keyframe_contracts: contracts, attempts };
+  storage.saveStage(taskId, 'keyframes', {
+    status: finalStatus.completed >= finalStatus.total ? 'done' : 'partial',
+    output_summary: `${finalStatus.completed}/${finalStatus.total} image keyframes`,
+    diagnostics: { attempts, keyframe_status: finalStatus },
+  });
+  storage.updateTask(taskId, finalStatus.completed >= finalStatus.total
+    ? { status: 'done', stage: 'keyframes_ready', error: '' }
+    : { status: 'working', stage: 'keyframes_partial', error: '' });
+  return { keyframes, keyframe_contracts: contracts, attempts, keyframe_status: finalStatus };
 }
 
 async function ensureStoryboardForMedia(taskId) {
@@ -739,7 +877,7 @@ async function assistBrief(body = {}, user = {}) {
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
   const systemPrompt = [
-    '你是新剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
+    '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
@@ -898,3 +1036,4 @@ module.exports = {
   modelHealth,
   assistBrief,
 };
+

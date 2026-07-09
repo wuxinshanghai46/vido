@@ -88,6 +88,7 @@
     stageProgress: null,
     stageProgressTimer: null,
     busy: false,
+    restoringTask: false,
     currentStep: 1,
   };
 
@@ -445,7 +446,7 @@
       expected_people: asset.expected_people || metadata.expected_people || '',
       person_count: asset.person_count || metadata.person_count || '',
       view_count: Number(asset.view_count || urls.length) || 1,
-      description: asset.description || metadata.description || '授权真人/演员素材，会作为新剧情广告人物一致性参考。',
+      description: asset.description || metadata.description || '授权真人/演员素材，会作为剧情广告人物一致性参考。',
       metadata,
     };
   }
@@ -760,7 +761,7 @@
   function setCopy() {
     const title = within('#dhNsaAdModeTitle');
     const sub = within('#dhNsaAdModeSub');
-    if (title) title.textContent = '新剧情广告';
+    if (title) title.textContent = '剧情广告';
     if (sub) sub.textContent = '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。';
     const text = within('#dhNsaAdText');
     if (text) {
@@ -792,13 +793,14 @@
     if (!host) return;
     if (state.mounted && host.dataset.mounted === '1') return;
     if (!within('#dhNsaAdText') || !within('#dhNsaAdSteps')) {
-      host.innerHTML = '<div class="dh-luxgen-empty"><b>新剧情广告界面模板未找到</b><span>请刷新页面后重试。</span></div>';
+      host.innerHTML = '<div class="dh-luxgen-empty"><b>剧情广告界面模板未找到</b><span>请刷新页面后重试。</span></div>';
       return;
     }
     host.dataset.mounted = '1';
     state.mounted = true;
     setCopy();
     bind();
+    state.restoringTask = !!(routeTaskId() || storedTaskId()) && !state.taskId;
     showStep(routeStep(), { remember: false });
     renderAll();
     restoreCurrentTask();
@@ -811,7 +813,7 @@
     const size = within('#dhNsaAdSize')?.value || state.outputSize || 'standard';
     const videoResolution = within('#dhNsaAdVideoResolution')?.value || state.videoResolution || '720p';
     const voiceId = state.voiceId || '';
-    const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '新剧情广告';
+    const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '剧情广告';
     const person = collectPersonSpec();
     const personAsset = personAssetPayload();
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
@@ -1089,7 +1091,9 @@
           state.personAsset = actorMaterialToPersonAsset(asset);
           applyPersonAssetConstraints(state.personAsset);
           renderAll();
-          toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步`, 'success');
+          saveCurrentTaskProgress({ silent: true })
+            .then(() => toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步并保存`, 'success'))
+            .catch(err => toast(`已选择角色素材，但保存任务失败：${err.message || err}`, 'error'));
         },
       });
     }
@@ -1136,10 +1140,10 @@
         return;
       }
       bodyEl.innerHTML = filtered.map(asset => {
-        const urls = actorUrls(asset).slice(0, 4);
+        const urls = actorUrls(asset).slice(0, 1);
         const refLabel = actorReferenceLabel(asset);
         const genderLabel = actorGender(asset) === 'female' ? '女' : (actorGender(asset) === 'male' ? '男' : '');
-        const desc = String(asset.description || asset.metadata?.description || '可作为新剧情广告人物一致性参考')
+        const desc = String(asset.description || asset.metadata?.description || '可作为剧情广告人物一致性参考')
           .replace(/\s+/g, ' ')
           .replace(/CONSISTENT REAL CAMPAIGN CHARACTER ASSET:?/ig, '一致性演员参考')
           .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
@@ -1152,7 +1156,7 @@
           <span style="min-width:0;display:block">
             <b style="display:block;font-size:16px;line-height:1.25;margin-bottom:8px">${escapeHtml(asset.name || '角色素材')}</b>
             <small style="display:block;color:rgba(255,255,255,.72);line-height:1.55;margin-bottom:8px">${escapeHtml([refLabel, genderLabel, `${actorUrls(asset).length || 1} 张参考图`].filter(Boolean).join(' · '))}</small>
-            <small style="display:block;color:rgba(255,255,255,.58);line-height:1.5;max-height:44px;overflow:hidden">${escapeHtml(desc || '可作为新剧情广告人物一致性参考')}</small>
+            <small style="display:block;color:rgba(255,255,255,.58);line-height:1.5;max-height:44px;overflow:hidden">${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
           </span>
         </button>`;
       }).join('');
@@ -1175,7 +1179,9 @@
       applyPersonAssetConstraints(state.personAsset);
       renderAll();
       close();
-      toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步`, 'success');
+      saveCurrentTaskProgress({ silent: true })
+        .then(() => toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步并保存`, 'success'))
+        .catch(err => toast(`已选择角色素材，但保存任务失败：${err.message || err}`, 'error'));
     });
     try {
       const r = await api('/api/assets?type=character&limit=120&fast=1');
@@ -1209,7 +1215,7 @@
     host.innerHTML = `<div class="dh-luxgen-character-sheet">
       ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(asset.name || '人物参考')}" loading="lazy">` : '<div class="dh-luxgen-person-thumb">已选择</div>'}
       <b>${escapeHtml(asset.name || '人物参考')}</b>
-      <small>${escapeHtml(asset.description || '仅用于当前新剧情广告任务的人物一致性参考。')}</small>
+      <small>${escapeHtml(asset.description || '仅用于当前剧情广告任务的人物一致性参考。')}</small>
     </div>`;
   }
 
@@ -1396,6 +1402,23 @@
     });
   }
 
+  function isFallbackPersonAsset(asset = {}) {
+    if (!asset || typeof asset !== 'object') return false;
+    const metadata = asset.metadata || {};
+    const source = [
+      asset.generated_by,
+      metadata.generated_by,
+      asset.source,
+      metadata.source,
+      asset.status,
+      metadata.status,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return asset.fallback_used === true
+      || metadata.fallback_used === true
+      || Boolean(asset.fallback_reason || metadata.fallback_reason)
+      || /person_sheet\.fallback|fallback_actor_library/.test(source);
+  }
+
   function hydratePersonSpec(request = {}) {
     const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
     Object.entries(spec || {}).forEach(([key, value]) => {
@@ -1403,7 +1426,7 @@
       if (el && value !== undefined && value !== null) el.value = String(value);
     });
     const personAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
-    if (personAsset && typeof personAsset === 'object') {
+    if (personAsset && typeof personAsset === 'object' && !isFallbackPersonAsset(personAsset)) {
       state.personAsset = {
         ...personAsset,
         previewUrl: personAsset.previewUrl || personAsset.image_url || personAsset.url || '',
@@ -1428,7 +1451,7 @@
       };
     }
     const person = request.person_asset || byType('person_reference');
-    if (person && typeof person === 'object' && !state.personAsset) {
+    if (person && typeof person === 'object' && !state.personAsset && !isFallbackPersonAsset(person)) {
       state.personAsset = {
         ...person,
         previewUrl: person.previewUrl || person.image_url || person.url || person.file_url || '',
@@ -1506,16 +1529,88 @@
     }
   }
 
+  function personSpecSignature(value = {}) {
+    const spec = value && typeof value === 'object' ? value : {};
+    const pairs = Object.keys(spec)
+      .sort()
+      .map(key => [key, normalizeText(spec[key], 800).toLowerCase()])
+      .filter(([, val]) => val);
+    return pairs.length ? JSON.stringify(pairs) : '';
+  }
+
+  function applyRecoveredPersonAsset(asset = {}) {
+    if (!asset || typeof asset !== 'object' || isFallbackPersonAsset(asset)) return false;
+    state.personAsset = {
+      ...asset,
+      previewUrl: asset.previewUrl || asset.image_url || asset.url || asset.file_url || '',
+    };
+    state.actorAsset = state.personAsset;
+    applyPersonAssetConstraints(state.personAsset);
+    return true;
+  }
+
+  async function recoverPersonAssetFromLibrary(bundle = {}) {
+    if (state.personAsset || state.actorAsset) return false;
+    const outputs = normalizeTaskOutputs(bundle);
+    const sources = [
+      bundle.context,
+      bundle.task?.request,
+      outputs.context,
+    ].filter(Boolean);
+    const ids = [];
+    const addId = value => {
+      const id = normalizeText(value || '', 160);
+      if (id && !ids.includes(id)) ids.push(id);
+    };
+    sources.forEach(src => {
+      const asset = src.person_asset || src.personAsset || src.person_context?.person_asset || {};
+      if (asset && typeof asset === 'object' && !isFallbackPersonAsset(asset)) {
+        addId(asset.actor_asset_id || asset.asset_library_id || asset.material_id || asset.id);
+        if (asset.image_url || asset.url || asset.file_url) {
+          applyRecoveredPersonAsset(asset);
+          return;
+        }
+      }
+      addId(src.actor_asset_id || src.actorAssetId || src.person_asset_id || src.personAssetId);
+    });
+    if (state.personAsset) return true;
+    for (const id of ids) {
+      try {
+        const r = await api(`/api/assets/${encodeURIComponent(id)}`);
+        const asset = r?.data || null;
+        if (applyRecoveredPersonAsset(asset)) return true;
+      } catch {}
+    }
+    const taskSpec = sources
+      .map(src => personSpecSignature(src.person_spec || src.personSpec || src.person_context?.person_spec || {}))
+      .find(Boolean);
+    if (taskSpec) {
+      try {
+        const r = await api('/api/assets?type=character&limit=300&fast=1');
+        const items = Array.isArray(r?.data) ? r.data : [];
+        const matched = items.find(asset => {
+          const metadata = asset?.metadata || {};
+          return !isFallbackPersonAsset(asset) && personSpecSignature(metadata.person_spec || asset.person_spec || {}) === taskSpec;
+        });
+        if (applyRecoveredPersonAsset(matched)) return true;
+      } catch {}
+    }
+    return false;
+  }
+
   async function restoreCurrentTask() {
     const id = routeTaskId() || storedTaskId() || await fallbackLatestTaskId();
     if (!id || state.taskId) return false;
-    setBusy(true, '恢复当前新剧情广告任务中...');
+    state.restoringTask = true;
+    renderAll();
     try {
       const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`);
       const bundle = r.bundle || r;
       if (!bundle?.task) throw new Error('任务不存在');
       hydrateTaskBundle(bundle);
-      showStep(routeStep(), { remember: false });
+      await recoverPersonAssetFromLibrary(bundle);
+      const requestedStep = routeStep();
+      showStep(requestedStep === 3 && state.shots.length ? 4 : requestedStep, { remember: false });
       renderAll();
       return true;
     } catch (err) {
@@ -1523,7 +1618,8 @@
       toast('当前任务恢复失败，请从任务中心重新打开或新建任务', 'error');
       return false;
     } finally {
-      setBusy(false);
+      state.restoringTask = false;
+      renderAll();
     }
   }
 
@@ -1615,7 +1711,14 @@
 
   function completedKeyframeCount() {
     if (window.NewStoryAdKeyframes?.completedCount) return window.NewStoryAdKeyframes.completedCount(state.keyframes);
-    return (Array.isArray(state.keyframes) ? state.keyframes : []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url || frame.error)).length;
+    return (Array.isArray(state.keyframes) ? state.keyframes : []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length;
+  }
+
+  function keyframeStatus() {
+    if (window.NewStoryAdKeyframes?.status) return window.NewStoryAdKeyframes.status(state.keyframes || [], state.shots || []);
+    const total = Math.max((state.shots || []).length, (state.keyframes || []).length);
+    const completed = (state.keyframes || []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length;
+    return { total, completed, missing: Math.max(0, total - completed), failed: 0, missing_indexes: [] };
   }
 
   function stopStageProgress() {
@@ -1888,7 +1991,7 @@
     const beats = Array.isArray(bp.beats) ? bp.beats : [];
     return {
       ...bp,
-      story_title: bp.story_title || bp.title || '新剧情广告剧本',
+      story_title: bp.story_title || bp.title || '剧情广告剧本',
       logline: bp.logline || bp.summary || '',
       beats: beats.map((beat, i) => {
         const total = beats.length || 1;
@@ -1962,7 +2065,7 @@
   function refreshBlueprintMetrics() {
     const bp = state.blueprint || {};
     const { beats, totalSeconds, avgSeconds } = blueprintMetrics();
-    const title = bp.story_title || bp.title || '新剧情广告';
+    const title = bp.story_title || bp.title || '剧情广告';
     const summary = within('[data-nsa-blueprint-summary]');
     if (summary) summary.textContent = `第 1 版 · 待确认 · ${title} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒`;
     const totalEl = within('[data-nsa-blueprint-total]');
@@ -1990,7 +2093,7 @@
     host.innerHTML = `<div class="dh-demo-script-review">
       <div>
         <h4>剧本审核</h4>
-        <p data-nsa-blueprint-summary>第 1 版 · 待确认 · ${escapeHtml(bp.story_title || bp.title || '新剧情广告')} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒</p>
+        <p data-nsa-blueprint-summary>第 1 版 · 待确认 · ${escapeHtml(bp.story_title || bp.title || '剧情广告')} · 共 ${beats.length} 镜 · 总时长 ${totalSeconds} 秒</p>
       </div>
       <div class="dh-demo-script-actions">
         <button type="button" class="dh-luxgen-edit" data-nsa-blueprint-add>添加一镜</button>
@@ -2001,7 +2104,7 @@
       <span><small>最终时长</small><b data-nsa-blueprint-total>${escapeHtml(String(totalSeconds))} 秒</b></span>
       <span><small>镜头数量</small><b data-nsa-blueprint-count>${beats.length} 镜</b></span>
       <span><small>平均镜长</small><b data-nsa-blueprint-avg>${escapeHtml(String(avgSeconds))} 秒/镜</b></span>
-      <em>这里调整秒数、画面、动作、台词和补充说明后，会先保存到新剧情广告任务，再生成分镜。</em>
+      <em>这里调整秒数、画面、动作、台词和补充说明后，会先保存到剧情广告任务，再生成分镜。</em>
     </div>
     <div class="dh-demo-script-mainline">
       <b>脚本主线</b>
@@ -2125,6 +2228,10 @@
         : '';
     }
     if (!host) return;
+    if (state.restoringTask && (!Array.isArray(state.shots) || !state.shots.length)) {
+      host.innerHTML = '<div class="dh-luxgen-empty"><b>正在恢复分镜结果</b><span>正在读取任务中心保存的分镜和关键帧，请稍候。</span></div>';
+      return;
+    }
     if (!Array.isArray(state.shots) || !state.shots.length) {
       host.innerHTML = '<div class="dh-luxgen-empty"><b>\u8fd8\u6ca1\u6709\u5206\u955c</b><span>\u8bf7\u5148\u751f\u6210\u5206\u955c\u8868\u6216\u771f\u5b9e\u5173\u952e\u5e27\u3002</span></div>';
       return;
@@ -2143,7 +2250,7 @@
       const duration = shotFieldValue(shot, contract, 'duration');
       const title = window.NewStoryAdKeyframes?.frameTitle ? window.NewStoryAdKeyframes.frameTitle(shot, i) : (shot.title || `\u7b2c ${i + 1} \u955c`);
       return `<article class="dh-nsa-frame-card">
-        ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+        ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
           <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
           <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
@@ -2231,7 +2338,16 @@
     }
     const stateBadge = within('#dhNsaAdFrameState');
     if (stateBadge) {
-      stateBadge.textContent = state.keyframes.length ? `已生成 ${state.keyframes.length} 张关键帧` : (state.shots.length ? `已生成 ${state.shots.length} 镜分镜` : '待生成');
+      const kf = keyframeStatus();
+      stateBadge.textContent = kf.total
+        ? `已生成 ${kf.completed}/${kf.total} 张关键帧${kf.missing ? `，缺 ${kf.missing} 张` : ''}`
+        : (state.shots.length ? `已生成 ${state.shots.length} 镜分镜` : '待生成');
+    }
+    const fillMissing = within('#dhNsaAdFillMissingFramesTop');
+    if (fillMissing) {
+      const kf = keyframeStatus();
+      fillMissing.hidden = !(kf.total && kf.missing > 0);
+      fillMissing.textContent = kf.missing > 0 ? `补齐未生成镜头（${kf.missing}）` : '补齐未生成镜头';
     }
     showStep(state.currentStep);
     syncPersonSpecControls();
@@ -2295,21 +2411,57 @@
         normalizeBundle,
         normalizeBlueprintForSave,
         normalizeSpeechText,
+        saveSceneAssetsProgress,
       });
     }
     const id = await ensureTask();
-    if (state.blueprint) await saveBlueprintEdits(id);
+    const progressStage = state.currentStep >= 5 ? 'video_ready'
+      : (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url)) ? 'keyframes_ready'
+        : (Array.isArray(state.shots) && state.shots.length ? 'keyframe_contract_ready'
+          : (state.blueprint ? 'blueprint_done'
+            : (state.sceneConfig ? 'scene_config_done' : 'draft'))));
+    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: { ...payload(), task_id: id },
+      body: {
+        ...payload(),
+        task_id: id,
+        save_progress: true,
+        progress_stage: progressStage,
+        progress_snapshot: {
+          context: state.context || null,
+          scene_config: state.sceneConfig || null,
+          blueprint: state.blueprint ? normalizeBlueprintForSave() : null,
+          storyboard_table: Array.isArray(state.shots) ? state.shots : [],
+          keyframe_contracts: Array.isArray(state.contracts) ? state.contracts : [],
+          keyframes: Array.isArray(state.keyframes) ? state.keyframes : [],
+          scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
+          quality_review: state.review || null,
+          tts_audio: state.ttsAudio || null,
+          video_clips: Array.isArray(state.videoClips) ? state.videoClips : [],
+          final_video: state.finalVideo || null,
+        },
+      },
     });
     normalizeBundle(r);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
-      await window.__dhRefreshNewStoryAdTasks();
+      window.__dhRefreshNewStoryAdTasks().catch(() => {});
     }
     renderAll();
-    if (opts.silent !== true) toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
+    if (opts.silent !== true) toast('剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
+  }
+
+  async function saveCurrentTaskProgressFromButton(button = null) {
+    setButtonBusy(button, true, '保存中...');
+    try {
+      return await saveCurrentTaskProgress();
+    } catch (err) {
+      toast(err.message || '保存进度失败', 'error');
+      return null;
+    } finally {
+      setButtonBusy(button, false);
+    }
   }
 
   async function saveSceneAssetsProgress(taskId = state.taskId) {
@@ -2450,6 +2602,7 @@
       toast,
       showStep,
       saveBlueprintEdits,
+      saveStoryboardEdits,
       startStageProgress,
       setBusy,
       setButtonBusy,
@@ -2512,7 +2665,9 @@
         showStep(4);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} }));
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: {} });
+        if (state.shots.length) await saveStoryboardEdits(id);
+        const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_only: true } : {} });
         normalizeBundle(r);
         showStep(4);
       } else if (stage === 'tts') {
@@ -2529,7 +2684,14 @@
         showStep(5);
       }
       renderAll();
-      toast('新剧情广告阶段已完成', 'success');
+      if (stage === 'keyframes') {
+        const kf = r?.keyframe_status || r?.keyframeStatus || r?.bundle?.keyframe_status || keyframeStatus();
+        if (kf.missing > 0) toast(`真实画面已生成 ${kf.completed}/${kf.total}，还差 ${kf.missing} 张，请点击补齐未生成镜头`, 'error');
+        else if (r?.skipped) toast(`真实画面已完整：${kf.completed}/${kf.total}，无需补齐`, 'success');
+        else toast(`真实画面已生成完成：${kf.completed}/${kf.total}`, 'success');
+      } else {
+        toast('剧情广告阶段已完成', 'success');
+      }
       return true;
     } catch (err) {
       if (err.data) normalizeBundle(err.data);
@@ -2662,7 +2824,18 @@
   async function persistPersonAssetToLibrary(asset = {}, source = 'new_story_ad_uploaded_person_reference') {
     const imageUrl = compactUrl(asset.image_url || asset.url || asset.previewUrl || '');
     if (!imageUrl || /^blob:/i.test(imageUrl)) return null;
-    if (asset.asset_library_id || asset.material_id || (asset.source === 'actor_library' && asset.actor_asset_id)) return asset;
+    const metadata = asset.metadata || {};
+    const generatedBy = String(asset.generated_by || metadata.generated_by || '').toLowerCase();
+    const assetSource = String(asset.source || metadata.source || '').toLowerCase();
+    const alreadyLibraryAsset = asset.asset_library_id
+      || asset.material_id
+      || (asset.actor_asset_id && (
+        asset.public_actor_library === true
+        || asset.source === 'actor_library'
+        || assetSource === 'new_story_ad_actor_sheet'
+        || generatedBy === 'new_story_ad.person_sheet'
+      ));
+    if (alreadyLibraryAsset) return asset;
     try {
       const viewImages = Array.isArray(asset.view_images)
         ? asset.view_images.map(view => ({
@@ -2673,7 +2846,7 @@
         : [];
       const body = {
         type: 'character',
-        name: asset.name || '新剧情广告真人演员',
+        name: asset.name || '剧情广告真人演员',
         image_url: imageUrl,
         extra_image_urls: Array.isArray(asset.extra_image_urls) ? asset.extra_image_urls.map(compactUrl).filter(Boolean) : [],
         view_images: viewImages,
@@ -2681,7 +2854,7 @@
         view_count: Number(asset.view_count || viewImages.length || 1) || 1,
         source,
         description: asset.spec_description || asset.description || personDescription(),
-        tags: ['新剧情广告', '真人演员'],
+        tags: ['剧情广告', '真人演员'],
         metadata: {
           role: 'actor',
           from: source,
@@ -2763,7 +2936,7 @@
       name: file.name || '真人参考',
       previewUrl: URL.createObjectURL(file),
       uploading: true,
-      description: '用户上传的真人参考，只用于当前新剧情广告任务。',
+      description: '用户上传的真人参考，只用于当前剧情广告任务。',
     };
     state.actorAsset = null;
     markSourceDirty();
@@ -2772,7 +2945,7 @@
     try {
       const asset = await uploadAsset(file, 'person_reference');
       revokePreview(state.personAsset);
-      state.personAsset = { ...asset, previewUrl: asset.image_url || asset.url, uploading: false, description: '用户上传的真人参考，只用于当前新剧情广告任务。' };
+      state.personAsset = { ...asset, previewUrl: asset.image_url || asset.url, uploading: false, description: '用户上传的真人参考，只用于当前剧情广告任务。' };
       renderAll();
       toast('真人参考已上传', 'success');
     } catch (err) {
@@ -2797,7 +2970,7 @@
       previewUrl: URL.createObjectURL(file),
       uploading: true,
       view_count: 1,
-      description: '用户上传的真人照片参考，会作为新剧情广告人物身份和气质锁定。',
+      description: '用户上传的真人照片参考，会作为剧情广告人物身份和气质锁定。',
     };
     state.actorAsset = null;
     state.personSpecLock = null;
@@ -2826,7 +2999,7 @@
         gender: detectedGender || '',
         detected_gender: detectedGender || '',
         view_count: 1,
-        description: '用户上传的真人照片参考，会作为新剧情广告人物身份和气质锁定。',
+        description: '用户上传的真人照片参考，会作为剧情广告人物身份和气质锁定。',
       };
       applyPersonAssetConstraints(state.personAsset);
       renderAll();
@@ -3326,7 +3499,8 @@
       state.personGenerationProgress = null;
       renderPerson();
       persistPersonAssetToLibrary(state.actorAsset, 'new_story_ad_person_sheet').catch(() => {});
-      toast('拟真一致性演员已生成，可用于后续分镜人物一致性锁定', 'success');
+      await saveCurrentTaskProgress({ silent: true });
+      toast('拟真一致性演员已生成并保存，可用于后续分镜人物一致性锁定', 'success');
     } catch (err) {
       state.personGenerationProgress = null;
       renderPerson();
@@ -3598,10 +3772,10 @@
         dhNsaAdWrite: () => assist('write', btn),
         dhNsaAdClean: () => assist('clean', btn),
         dhNsaAdSample: () => { const text = within('#dhNsaAdText'); if (text) text.value = SAMPLE_BRIEF; renderStatus(); },
-        dhNsaAdSaveDraftStep2: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep3: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep4: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
-        dhNsaAdSaveDraftStep5: () => saveCurrentTaskProgress().catch(err => toast(err.message, 'error')),
+        dhNsaAdSaveDraftStep2: () => saveCurrentTaskProgressFromButton(btn),
+        dhNsaAdSaveDraftStep3: () => saveCurrentTaskProgressFromButton(btn),
+        dhNsaAdSaveDraftStep4: () => saveCurrentTaskProgressFromButton(btn),
+        dhNsaAdSaveDraftStep5: () => saveCurrentTaskProgressFromButton(btn),
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
         dhNsaAdGenerateSceneSheet: () => {
@@ -3856,3 +4030,4 @@
     mount();
   }
 })();
+

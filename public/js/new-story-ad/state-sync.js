@@ -11,6 +11,23 @@
     el.value = String(value);
   }
 
+  function isFallbackPersonAsset(asset = {}) {
+    if (!asset || typeof asset !== 'object') return false;
+    const metadata = asset.metadata || {};
+    const source = [
+      asset.generated_by,
+      metadata.generated_by,
+      asset.source,
+      metadata.source,
+      asset.status,
+      metadata.status,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return asset.fallback_used === true
+      || metadata.fallback_used === true
+      || Boolean(asset.fallback_reason || metadata.fallback_reason)
+      || /person_sheet\.fallback|fallback_actor_library/.test(source);
+  }
+
   function hydrateSceneAssets(state = {}, { request = {}, outputs = {}, response = {} } = {}) {
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, { request, outputs, response });
@@ -59,7 +76,7 @@
       };
     }
     const person = request.person_asset || byType('person_reference');
-    if (person && typeof person === 'object' && !state.personAsset) {
+    if (person && typeof person === 'object' && !state.personAsset && !isFallbackPersonAsset(person)) {
       state.personAsset = {
         ...person,
         previewUrl: person.previewUrl || person.image_url || person.url || person.file_url || '',
@@ -85,7 +102,7 @@
       if (el && value !== undefined && value !== null) el.value = String(value);
     });
     const personAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
-    if (personAsset && typeof personAsset === 'object') {
+    if (personAsset && typeof personAsset === 'object' && !isFallbackPersonAsset(personAsset)) {
       state.personAsset = {
         ...personAsset,
         previewUrl: personAsset.previewUrl || personAsset.image_url || personAsset.url || '',

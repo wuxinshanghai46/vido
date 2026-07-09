@@ -73,9 +73,24 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     'No back view, no side profile, no face, no head, no hair, no body, no arms, no hands, no legs, no silhouette, no reflection of a person.',
     'Do not use human scale figures or mannequins as spatial references; use furniture, product plinths, counters, empty walking space or neutral props instead.',
   ].join(' ');
+  const photographicRealism = [
+    'Photographic realism requirements:',
+    'Make it look like a real location or production set photographed by a commercial environment photographer, not an AI concept render.',
+    'Use physically plausible camera perspective, lens compression and scene geometry; keep fixed structures, ground planes, fixtures, props and products aligned to one coherent spatial system.',
+    'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
+    'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
+    'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
+  ].join('\n');
+  const antiAiNegative = [
+    'Strict anti-AI / anti-render negatives:',
+    'No CGI render look, no Unreal/Octane/3D render look, no plastic texture, no waxy surface, no over-smoothed material, no fantasy environment.',
+    'No generic luxury template, no repeated procedural texture, no melted details, no impossible reflections, no glowing seams, no excessive contrast, no heavy HDR, no fake bokeh.',
+    'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent material direction between panels.',
+  ].join(' ');
   return [
     'Create one single 2x2 photorealistic commercial scene reference sheet for a video ad production.',
     'This is a reusable EMPTY SCENE asset package, not a storyboard keyframe. It must contain no people or human-like subjects. No text labels, no logos, no watermark.',
+    photographicRealism,
     'Panel order is mandatory:',
     'Top-left MASTER VIEW: wide establishing view that defines the whole space layout.',
     'Top-right REVERSE OR SIDE VIEW: same space from a different angle, preserving the same layout, materials, lighting and object positions.',
@@ -92,8 +107,9 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     sceneConfig.story_strategy ? `Scene/story strategy: ${cleanText(JSON.stringify(sceneConfig.story_strategy), 900)}` : '',
     style ? `Visual style direction: ${style}` : '',
     `Hard negative requirements: ${noHumanNegative}`,
+    antiAiNegative,
     negative ? `Additional negative requirements: ${negative}` : '',
-    'Use real camera photography, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective. No cartoon, no anime, no 3D render, no poster text.',
+    'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
 }
 
@@ -151,7 +167,7 @@ async function generateSceneAsset(taskId, body = {}) {
   const asset = normalizeSceneAsset({
     id: sceneId,
     scene_id: sceneId,
-    name: body.name || sceneConfig.advertised_subject || '新剧情广告任务场景',
+    name: body.name || sceneConfig.advertised_subject || '剧情广告任务场景',
     source: 'new_story_ad_scene_sheet',
     lock_strength: body.lock_strength || body.lockStrength || 'standard',
     layout_summary: body.layout_summary || body.layoutSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).layoutText || sceneConfig.business_boundary || ctx.brief || '',

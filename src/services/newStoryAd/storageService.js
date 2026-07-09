@@ -82,7 +82,7 @@ function createTask(task) {
     type: 'new_story_ad',
     status: task.status || 'draft',
     stage: task.stage || 'draft',
-    title: task.title || '新剧情广告任务',
+    title: task.title || '剧情广告任务',
     brief: task.brief || '',
     user_id: task.user_id || '',
     request: task.request || {},

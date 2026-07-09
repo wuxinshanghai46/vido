@@ -7,12 +7,12 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <script>
     (() => {
-      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','luxury-ad','new-story-ad'];
+      const tabs = ['step1','step2','step3','tasks','dual','plaza','works','voice-clone','product-dh','space-guide','material-film','new-story-ad'];
       let tab = 'step1';
       try {
         const params = new URLSearchParams(location.search);
         const urlTab = params.get('tab');
-        tab = tabs.includes(urlTab) ? urlTab : 'step1';
+        tab = urlTab === 'luxury-ad' ? 'new-story-ad' : (tabs.includes(urlTab) ? urlTab : 'step1');
         const luxStep = Number(params.get('lux_step') || 0) || 0;
         const luxFocus = params.get('lux_focus') || '';
         if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
@@ -120,12 +120,12 @@
           <a class="dh-nav-item" data-tab="material-film">
             <span class="dh-nav-icon">📢</span>素材审片
           </a>
-          <a class="dh-nav-item" data-tab="luxury-ad">
-            <span class="dh-nav-icon">🎞️</span>剧情广告
+          <!-- 旧剧情广告入口已下线：旧功能代码保留但不再从左侧导航暴露。 -->
+          <a class="dh-nav-item" data-tab="luxury-ad" hidden aria-hidden="true">
+            <span class="dh-nav-icon">🎞️</span>旧剧情广告
           </a>
           <a class="dh-nav-item" data-tab="new-story-ad">
-            <span class="dh-nav-icon">🎬</span>新剧情广告
-            <span class="dh-nav-badge" style="background:linear-gradient(135deg,#10b981,#06b6d4);color:white">重构</span>
+            <span class="dh-nav-icon">🎬</span>剧情广告
           </a>
         </div>
         <div class="dh-nav-group">
@@ -410,8 +410,8 @@
                   </div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
                   </div>
                 </div>
               </div>
@@ -2259,8 +2259,8 @@ B: ...
               <button class="active" data-task-type="digital_human">数字人</button>
               <button data-task-type="product_ad">商品口播视频</button>
               <button data-task-type="material_film">素材审片</button>
-              <button data-task-type="luxury_ad">剧情广告</button>
-              <button data-task-type="new_story_ad">新剧情广告</button>
+              <button data-task-type="luxury_ad" hidden aria-hidden="true">旧剧情广告</button>
+              <button data-task-type="new_story_ad">剧情广告</button>
             </div>
             <div class="dh-task-type-tabs dh-task-status-tabs" id="dhTaskStatusTabs">
               <button class="active" data-task-status="pending" data-label="待处理">待处理</button>
@@ -2475,21 +2475,22 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260709-nav-scroll-reset"></script>
-  <script src="/js/new-story-ad/api.js?v=20260709-nsa-modules-scene-bind"></script>
-  <script src="/js/new-story-ad/task-store.js?v=20260709-nsa-modules-scene-bind"></script>
-  <script src="/js/new-story-ad/progress.js?v=20260709-nsa-modules-scene-bind"></script>
-  <script src="/js/new-story-ad/scene-assets.js?v=20260709-nsa-scene-reset"></script>
-  <script src="/js/new-story-ad/state-sync.js?v=20260709-nsa-state-sync-split"></script>
-  <script src="/js/new-story-ad/button-state.js?v=20260709-nsa-button-state-split"></script>
-  <script src="/js/new-story-ad/step-navigation.js?v=20260709-nsa-step-navigation-split"></script>
-  <script src="/js/new-story-ad/task-persistence.js?v=20260709-nsa-task-persistence-split"></script>
-  <script src="/js/new-story-ad/storyboard.js?v=20260709-nsa-storyboard-scene-bind"></script>
-  <script src="/js/new-story-ad/actors.js?v=20260709-nsa-actors-keyframes-split"></script>
-  <script src="/js/new-story-ad/keyframes.js?v=20260709-nsa-actors-keyframes-split"></script>
-  <script src="/js/new-story-ad/uploads.js?v=20260709-nsa-uploads-actorlib-split"></script>
-  <script src="/js/new-story-ad/actor-library.js?v=20260709-nsa-uploads-actorlib-split"></script>
-  <script src="/js/new-story-ad/generation-flow.js?v=20260709-nsa-compose-controls"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260709-nsa-compose-controls"></script>
+  <script src="/js/digital-human.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/task-store.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/progress.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/scene-assets.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/state-sync.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/button-state.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/step-navigation.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/task-persistence.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/storyboard.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/actors.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/keyframes.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/generation-flow.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260710-restore-no-progress"></script>
 </body>
 </html>
+

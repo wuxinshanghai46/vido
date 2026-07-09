@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
   function defaultEscape(value = '') {
     return String(value || '').replace(/[&<>"']/g, ch => ({
       '&': '&amp;',
@@ -69,7 +69,7 @@
         const urls = actorUrls(asset).slice(0, 4);
         const refLabel = actorReferenceLabel(asset);
         const genderLabel = actorGender(asset) === 'female' ? '女' : (actorGender(asset) === 'male' ? '男' : '');
-        const desc = String(asset.description || asset.metadata?.description || '可作为新剧情广告人物一致性参考')
+        const desc = String(asset.description || asset.metadata?.description || '可作为剧情广告人物一致性参考')
           .replace(/\s+/g, ' ')
           .replace(/CONSISTENT REAL CAMPAIGN CHARACTER ASSET:?/ig, '一致性演员参考')
           .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
@@ -82,7 +82,7 @@
           <span style="min-width:0;display:block">
             <b style="display:block;font-size:16px;line-height:1.25;margin-bottom:8px">${escapeHtml(asset.name || '角色素材')}</b>
             <small style="display:block;color:rgba(255,255,255,.72);line-height:1.55;margin-bottom:8px">${escapeHtml([refLabel, genderLabel, `${actorUrls(asset).length || 1} 张参考图`].filter(Boolean).join(' · '))}</small>
-            <small style="display:block;color:rgba(255,255,255,.58);line-height:1.5;max-height:44px;overflow:hidden">${escapeHtml(desc || '可作为新剧情广告人物一致性参考')}</small>
+            <small style="display:block;color:rgba(255,255,255,.58);line-height:1.5;max-height:44px;overflow:hidden">${escapeHtml(desc || '可作为剧情广告人物一致性参考')}</small>
           </span>
         </button>`;
       }).join('');
@@ -117,3 +117,4 @@
 
   window.NewStoryAdActorLibrary = { open };
 })();
+
