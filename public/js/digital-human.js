@@ -936,6 +936,13 @@
     } catch {}
   }
 
+  function resetMainViewScroll() {
+    try {
+      const view = $('#dhView');
+      if (view) view.scrollTop = 0;
+    } catch {}
+  }
+
   function primeInitialDigitalHumanRoute(tab = getInitialTab(), luxStep = getInitialLuxuryStep(), luxFocus = getInitialLuxuryFocus()) {
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     state.activeTab = tab;
@@ -1039,6 +1046,7 @@
     if (!tab) return;
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     if (tab !== state.activeTab) stopAudibleMedia({ reset: true });
+    const previousTab = state.activeTab;
     state.activeTab = tab;
     if (opts.defaultView === true) resetModuleDefaultView(tab);
     if (opts.remember !== false) rememberActiveTab(tab, opts);
@@ -1095,6 +1103,7 @@
     if (tab === 'product-dh') pdhOnTabOpen();
     if (tab === 'works') loadWorks();
     if (tab === 'voice-clone') { bindVoiceCloneUpload(); loadVoiceClones(); /* aliyun token 卡片已下线，统一到后台 AI 配置 */ }
+    if (tab !== previousTab) requestAnimationFrame(resetMainViewScroll);
     try {
       delete document.documentElement.dataset.dhInitialTab;
       delete document.documentElement.dataset.dhInitialLuxStep;

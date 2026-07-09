@@ -144,10 +144,13 @@
     const views = asset.view_images || [];
     const mainUrl = asset.url || asset.image_url || views[0]?.url || views[0]?.image_url || '';
     host.innerHTML = `<div class="dh-nsa-scene-list">
-      ${assets.length > 1 ? `<div class="dh-nsa-scene-tabs">
-        ${assets.map((item, index) => `<button type="button" class="${index === selectedIndex ? 'active' : ''}" data-nsa-scene-select="${index}">
-          <b>场景 ${index + 1}</b><span>${escapeHtml(item.name || '任务场景')}</span>
-        </button>`).join('')}
+      ${assets.length ? `<div class="dh-nsa-scene-tabs">
+        ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
+          <button type="button" data-nsa-scene-select="${index}">
+            <b>场景 ${index + 1}</b><span>${escapeHtml(item.name || '任务场景')}</span>
+          </button>
+          <button type="button" class="dh-nsa-scene-delete" data-nsa-scene-delete="${index}" aria-label="删除场景 ${index + 1}">×</button>
+        </div>`).join('')}
       </div>` : ''}
       <div class="dh-nsa-scene-card">
         <button type="button" class="dh-nsa-scene-thumb dh-nsa-scene-main-preview" data-nsa-scene-preview="${selectedIndex}:0">

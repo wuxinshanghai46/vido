@@ -2060,7 +2060,7 @@
     return state.taskId;
   }
 
-  async function saveCurrentTaskProgress() {
+  async function saveCurrentTaskProgress(opts = {}) {
     const id = await ensureTask();
     if (state.blueprint) await saveBlueprintEdits(id);
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
@@ -2072,7 +2072,7 @@
       await window.__dhRefreshNewStoryAdTasks();
     }
     renderAll();
-    toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
+    if (opts.silent !== true) toast('新剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
   }
 
@@ -2908,6 +2908,27 @@
         e.stopPropagation();
         state.sceneSelectedIndex = Number(sceneSelect.dataset.nsaSceneSelect || 0) || 0;
         renderAll();
+        return;
+      }
+      const sceneDelete = target.closest('[data-nsa-scene-delete]');
+      if (sceneDelete && host.contains(sceneDelete)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = Number(sceneDelete.dataset.nsaSceneDelete || -1);
+        if (!Number.isInteger(index) || index < 0 || index >= (state.sceneAssets || []).length) return;
+        const removed = (state.sceneAssets || [])[index];
+        state.sceneAssets = (state.sceneAssets || []).filter((_, i) => i !== index);
+        state.sceneSelectedIndex = Math.max(0, Math.min(state.sceneAssets.length - 1, Number(state.sceneSelectedIndex || 0)));
+        renderAll();
+        if (state.taskId) {
+          saveCurrentTaskProgress({ silent: true }).then(() => {
+            toast(`已删除 ${removed?.name || '场景空间锁'}`, 'success');
+          }).catch(err => {
+            toast(err.message || '场景删除保存失败', 'error');
+          });
+        } else {
+          toast(`已删除 ${removed?.name || '场景空间锁'}`, 'success');
+        }
         return;
       }
       const blueprintAdd = target.closest('[data-nsa-blueprint-add]');

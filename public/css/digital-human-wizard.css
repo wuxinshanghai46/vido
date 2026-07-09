@@ -1518,12 +1518,17 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   border-radius: 8px;
   background: color-mix(in srgb, var(--dh-primary) 4%, transparent);
 }
-.dh-nsa-scene-tabs button {
+.dh-nsa-scene-tab {
+  position: relative;
   min-width: 0;
   max-width: 100%;
+}
+.dh-nsa-scene-tab > button[data-nsa-scene-select] {
+  width: 100%;
+  min-width: 0;
   display: grid;
   gap: 2px;
-  padding: 6px 9px;
+  padding: 6px 28px 6px 9px;
   border: 1px solid var(--dh-border);
   border-radius: 7px;
   background: var(--dh-bg);
@@ -1531,13 +1536,37 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   cursor: pointer;
   text-align: left;
 }
-.dh-nsa-scene-tabs button.active {
+.dh-nsa-scene-tab.active > button[data-nsa-scene-select] {
   border-color: color-mix(in srgb, var(--dh-primary) 56%, var(--dh-border));
   background: color-mix(in srgb, var(--dh-primary) 12%, transparent);
   color: var(--dh-text);
 }
 .dh-nsa-scene-tabs b { font-size: 12px; line-height: 1.15; color: inherit; white-space: nowrap; }
 .dh-nsa-scene-tabs span { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: var(--dh-text-muted); }
+.dh-nsa-scene-delete {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(148,163,184,.55);
+  border-radius: 999px;
+  background: var(--dh-bg-elevate);
+  color: var(--dh-text-soft);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(15,23,42,.18);
+}
+.dh-nsa-scene-delete:hover {
+  border-color: var(--dh-error);
+  color: var(--dh-error);
+  background: color-mix(in srgb, var(--dh-error) 8%, var(--dh-bg-elevate));
+}
 .dh-nsa-scene-card {
   display: grid;
   grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
