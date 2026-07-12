@@ -142,6 +142,8 @@ async function parseOrRepair({ raw, expected = 'any', modelGateway = null, taskI
       systemPrompt,
       userPrompt,
       maxTokens: 6000,
+      maxCandidates: 1,
+      stageBudgetMs: 60000,
       skipKb: true,
     });
     return parseJson(result.text, expected);

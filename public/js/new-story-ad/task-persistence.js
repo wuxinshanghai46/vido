@@ -1,4 +1,33 @@
 ﻿(() => {
+  function isNetworkError(error) {
+    if (window.NewStoryAdGenerationFlow?.isNetworkError) return window.NewStoryAdGenerationFlow.isNetworkError(error);
+    return error instanceof TypeError || /failed to fetch|network|connection (?:reset|aborted)|load failed/i.test(String(error?.message || error || ''));
+  }
+
+  function storyboardCore(shots = []) {
+    return (Array.isArray(shots) ? shots : []).map(shot => ({
+      index: Number(shot?.index || shot?.shot_index || 0),
+      duration: Number(shot?.duration || shot?.duration_sec || 0),
+      visual: String(shot?.visual || shot?.visual_description || shot?.content_prompt || ''),
+      action: String(shot?.action || shot?.visual_action || ''),
+      voiceover: String(shot?.voiceover || shot?.narration || shot?.subtitle || ''),
+      purpose: String(shot?.purpose || shot?.objective || shot?.role || ''),
+    }));
+  }
+
+  async function recoverSavedOutput(taskId, outputKey, intended, ctx, originalError) {
+    if (!isNetworkError(originalError)) throw originalError;
+    const bundle = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
+    const persisted = bundle?.outputs?.[outputKey];
+    const matches = outputKey === 'storyboard_table'
+      ? JSON.stringify(storyboardCore(persisted)) === JSON.stringify(storyboardCore(intended))
+      : JSON.stringify(persisted) === JSON.stringify(intended);
+    if (!matches) throw originalError;
+    ctx.normalizeBundle?.(bundle);
+    ctx.toast?.('网络刚刚发生波动，服务器已保存修改，已自动恢复', 'info');
+    return bundle;
+  }
+
   async function ensureTask(ctx = {}) {
     const { state, payload, api, rememberTaskId, renderStatus } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
@@ -19,10 +48,15 @@
     if (typeof api !== 'function' || typeof normalizeBlueprintForSave !== 'function') throw new Error('剧本保存上下文未初始化');
     const blueprint = normalizeBlueprintForSave();
     state.blueprint = blueprint;
-    const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
-      method: 'PUT',
-      body: { blueprint },
-    });
+    let response;
+    try {
+      response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
+        method: 'PUT',
+        body: { blueprint },
+      });
+    } catch (error) {
+      response = await recoverSavedOutput(taskId, 'blueprint', blueprint, ctx, error);
+    }
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
     state.blueprintDirty = false;
     return response;
@@ -70,14 +104,23 @@
         scene_name: shot.scene_name || '',
         scene_view: shot.scene_view || '',
         scene_zone: shot.scene_zone || '',
+        scene_revision: Number(shot.scene_revision || 1) || 1,
+        camera_id: shot.camera_id || '',
+        zone_ids: Array.isArray(shot.zone_ids) ? shot.zone_ids : [],
+        anchor_ids: Array.isArray(shot.anchor_ids) ? shot.anchor_ids : [],
         transition_from: shot.transition_from || '',
         transition_reason: shot.transition_reason || '',
       };
     });
-    const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
-      method: 'PUT',
-      body: { shots },
-    });
+    let response;
+    try {
+      response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
+        method: 'PUT',
+        body: { shots },
+      });
+    } catch (error) {
+      response = await recoverSavedOutput(taskId, 'storyboard_table', shots, ctx, error);
+    }
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
     return response;
   }
@@ -140,6 +183,7 @@
         progress_snapshot: progressSnapshotForState(state, ctx),
       },
     });
+    state.pendingChangeScope = 'none';
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});

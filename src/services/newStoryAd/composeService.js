@@ -118,6 +118,7 @@ async function concatVideos({
   subtitles = [],
   subtitleEnabled = false,
   subtitleStyle = 'popup',
+  transitions = [],
 } = {}) {
   const inputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
   if (!inputs.length) throw new Error('new_story_ad compose requires at least one local video clip');
@@ -171,6 +172,12 @@ async function concatVideos({
     subtitle_applied: validSubtitles.length > 0,
     subtitle_style: subtitleStyle || 'popup',
     provider_used: providerUsed,
+    transition_plan: (Array.isArray(transitions) ? transitions : []).map((item, index) => ({
+      shot_index: index + 1,
+      type: item?.transition_type || item?.transitionType || 'hard_cut',
+      reason: item?.transition_reason || item?.transitionReason || '',
+      audio_bridge: item?.audio_bridge || item?.audioBridge || '',
+    })),
   };
 }
 

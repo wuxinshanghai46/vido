@@ -2,6 +2,9 @@ const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { contextPrompt, normalizeCharacters, looksLikeDescriptorName } = require('./contextBuilder');
 const { bindShotsToScenes, sceneBindingPrompt } = require('./sceneBindingService');
+const { withContinuityContracts } = require('./continuityService');
+
+const { ensureChineseOutput } = require('./outputLanguageService');
 
 function clampText(value = '', max = 260) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -114,8 +117,23 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     scene_name: clampText(shot.scene_name || shot.sceneName || '', 120),
     scene_view: clampText(shot.scene_view || shot.sceneView || '', 40),
     scene_zone: clampText(shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
+    scene_revision: Math.max(1, Number(shot.scene_revision || shot.sceneRevision || 1) || 1),
+    camera_id: clampText(shot.camera_id || shot.cameraId || '', 100),
+    zone_ids: (Array.isArray(shot.zone_ids) ? shot.zone_ids : []).map(value => clampText(value, 100)).filter(Boolean).slice(0, 16),
+    anchor_ids: (Array.isArray(shot.anchor_ids) ? shot.anchor_ids : []).map(value => clampText(value, 100)).filter(Boolean).slice(0, 24),
     transition_from: clampText(shot.transition_from || shot.transitionFrom || '', 120),
     transition_reason: clampText(shot.transition_reason || shot.transitionReason || '', 240),
+    entry_frame_state: clampText(shot.entry_frame_state || shot.entryFrameState || '', 240),
+    exit_frame_state: clampText(shot.exit_frame_state || shot.exitFrameState || '', 240),
+    action_start: clampText(shot.action_start || shot.actionStart || '', 180),
+    action_end: clampText(shot.action_end || shot.actionEnd || '', 180),
+    screen_direction: clampText(shot.screen_direction || shot.screenDirection || '', 80),
+    eyeline: clampText(shot.eyeline || shot.eyeLine || '', 100),
+    camera_axis: clampText(shot.camera_axis || shot.cameraAxis || '', 100),
+    camera_movement: clampText(shot.camera_movement || shot.cameraMovement || '', 140),
+    object_states: clampText(shot.object_states || shot.objectStates || '', 240),
+    transition_type: clampText(shot.transition_type || shot.transitionType || shot.transition || '', 40),
+    audio_bridge: clampText(shot.audio_bridge || shot.audioBridge || '', 160),
   };
   return normalized;
 }
@@ -151,7 +169,7 @@ function normalizeShots(rows, ctx) {
   const sorted = (Array.isArray(rows) ? rows : [])
     .sort((a, b) => Number(a?.index || a?.shot_index || 0) - Number(b?.index || b?.shot_index || 0));
   const normalized = normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
-  return bindShotsToScenes(normalized, ctx.scene_assets || []);
+  return withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || []));
 }
 
 function chunksOf(items, size) {
@@ -176,6 +194,72 @@ function plannedBeats(blueprint, ctx) {
   return beats.length ? beats : [{ beat_index: 1, role: 'story', plot: ctx.brief, spoken_line: '' }];
 }
 
+function alignShotsToBeats(rows, beats) {
+  const shots = Array.isArray(rows) ? rows : [];
+  const expected = (Array.isArray(beats) ? beats : []).map((beat, index) => Number(beat?.beat_index || index + 1));
+  const expectedSet = new Set(expected);
+  const claimed = shots.map(shot => Number(shot?.index || shot?.shot_index || 0));
+  const indexesAreUsable = claimed.length === shots.length
+    && new Set(claimed).size === claimed.length
+    && claimed.every(index => expectedSet.has(index));
+  return shots.slice(0, expected.length).map((shot, index) => ({
+    ...shot,
+    index: indexesAreUsable ? claimed[index] : expected[index],
+  }));
+}
+
+function missingBeatIndexes(beats, shots) {
+  const present = new Set((Array.isArray(shots) ? shots : []).map(shot => Number(shot?.index || shot?.shot_index || 0)));
+  return (Array.isArray(beats) ? beats : [])
+    .map((beat, index) => Number(beat?.beat_index || index + 1))
+    .filter(index => !present.has(index));
+}
+
+async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = '' } = {}) {
+  if (!beats.length) return { shots: [], model_meta: null };
+  const systemPrompt = [
+    'You repair a New Story Ad storyboard by generating only missing shots. Return a JSON array only.',
+    'Return exactly one shot for every supplied missing beat, in the same order, with index equal to beat_index.',
+    'All user-visible text must be natural Simplified Chinese. Technical enum values and IDs stay unchanged.',
+    'Do not invent a new person, product, industry, scene or plot. Use only the supplied context, blueprint and scene assets.',
+    'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers and continuity fields.',
+    'If scene assets exist, use only their scene_id, scene_revision, camera_id, zone_ids and anchor_ids.',
+  ].join('\n');
+  const userPrompt = `${contextPrompt(ctx)}
+
+Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
+${sceneBindingPrompt(ctx.scene_assets || [])}
+Missing beats: ${JSON.stringify(beats)}
+
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge.`;
+  const result = await modelGateway.generateText({
+    taskId,
+    stage: 'new_story_ad.storyboard_fill_missing',
+    systemPrompt,
+    userPrompt,
+    maxTokens: Math.min(6000, Math.max(2400, beats.length * 1200)),
+  });
+  const parsed = await jsonRepair.parseOrRepair({
+    raw: result.text,
+    expected: 'array',
+    modelGateway,
+    taskId,
+    stage: 'new_story_ad.json_repair',
+  });
+  const language = await ensureChineseOutput({ payload: parsed, kind: 'storyboard', taskId, context: ctx });
+  return {
+    shots: alignShotsToBeats(language.payload, beats),
+    model_meta: {
+      used_model: result.used_model,
+      fallback_used: result.fallback_used,
+      failed_models: result.failed_models,
+      language_repaired: language.repaired,
+      language_model: language.model_meta?.used_model || '',
+      fill_missing: true,
+    },
+  };
+}
+
 async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
   const beats = plannedBeats(blueprint, ctx);
   const beatChunks = chunksOf(beats, beats.length > 8 ? 3 : 4);
@@ -185,6 +269,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
   for (const chunk of beatChunks) {
     const systemPrompt = [
       'You are the storyboard table writer for New Story Ad. Return a JSON array only.',
+      'All user-visible text values must be natural Simplified Chinese, including shot title, role, purpose, visuals, actions, voiceover/dialogue, character names/actions, material notes, scene descriptions and transition/continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
       'Do not force fixed segments, fixed template, or fixed shot count. Shots must follow the user story content.',
       'Each input beat must produce one corresponding shot.',
       'Do not force every shot into a fixed story_visual + promo_visual pair.',
@@ -200,6 +285,8 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
       'Do not output shots that violate negative requirements.',
       'If scene assets exist, scene_id must be selected from the current task scene assets only.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
+      'Every shot after the first must describe entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type and audio_bridge when applicable.',
+      'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
     ].join('\n');
 
     const userPrompt = `${contextPrompt(ctx)}
@@ -232,10 +319,25 @@ Return JSON array for current beats only. Fields:
   "material_usage": "materials/evidence used",
   "keyframe_notes": "subject, proof and composition to lock for keyframe",
   "scene_id": "must match one current task scene_id when scene assets exist",
+  "scene_revision": "must match the selected current task scene revision",
   "scene_view": "master/reverse/interaction/detail",
+  "camera_id": "camera id from the selected scene contract",
   "scene_zone": "the concrete zone inside this task scene",
+  "zone_ids": ["zone ids from the selected scene contract"],
+  "anchor_ids": ["required spatial anchor ids visible in this shot"],
   "transition_from": "previous scene_id when changing scene, otherwise empty",
-  "transition_reason": "why this shot enters this scene; required when scene_id changes"
+  "transition_reason": "why this shot enters this scene; required when scene_id changes",
+  "entry_frame_state": "visible people, subject and object state at shot start",
+  "exit_frame_state": "visible people, subject and object state at shot end",
+  "action_start": "action state at the first frame",
+  "action_end": "action state at the final frame",
+  "screen_direction": "established left/right/toward/away direction when relevant",
+  "eyeline": "character eyeline when relevant",
+  "camera_axis": "spatial axis that must be preserved",
+  "camera_movement": "static/push/pull/pan/tilt/tracking/orbit/handheld as required by this shot",
+  "object_states": "product and prop positions/states that must not jump",
+  "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
+  "audio_bridge": "ambient or sound bridge into this shot, empty when none"
 }`;
 
     const result = await modelGateway.generateText({
@@ -254,12 +356,32 @@ Return JSON array for current beats only. Fields:
       stage: 'new_story_ad.json_repair',
     });
 
-    all.push(...parsed);
+    const language = await ensureChineseOutput({ payload: parsed, kind: 'storyboard', taskId, context: ctx });
+    all.push(...alignShotsToBeats(language.payload, chunk));
     meta.push({
       used_model: result.used_model,
       fallback_used: result.fallback_used,
       failed_models: result.failed_models,
+      language_repaired: language.repaired,
+      language_model: language.model_meta?.used_model || '',
     });
+  }
+
+  const missingIndexes = missingBeatIndexes(beats, all);
+  if (missingIndexes.length) {
+    const missingSet = new Set(missingIndexes);
+    const missingBeats = beats.filter((beat, index) => missingSet.has(Number(beat?.beat_index || index + 1)));
+    const filled = await generateMissingStoryboardBeats(ctx, blueprint, missingBeats, { taskId });
+    all.push(...filled.shots);
+    if (filled.model_meta) meta.push(filled.model_meta);
+  }
+
+  const unresolved = missingBeatIndexes(beats, all);
+  if (unresolved.length || all.length !== beats.length) {
+    const error = new Error(`分镜数量与已确认剧本不一致：需要 ${beats.length}，实际 ${all.length}，缺少第 ${unresolved.join('、') || '-'} 镜`);
+    error.code = 'STORYBOARD_COUNT_MISMATCH';
+    error.retryable = true;
+    throw error;
   }
 
   const shots = normalizeShots(all, {
@@ -274,32 +396,42 @@ Return JSON array for current beats only. Fields:
 
 async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } = {}) {
   if (!Array.isArray(issues) || !issues.length) return shots;
+  const indexes = Array.from(new Set(issues.flatMap((issue) => {
+    const matches = [...String(issue || '').matchAll(/第\s*(\d+)\s*镜/g)];
+    return matches.map(match => Number(match[1])).filter(n => n >= 1 && n <= shots.length);
+  }))).slice(0, 8);
+  if (!indexes.length) return shots;
+  const selected = indexes.map(index => shots[index - 1]).filter(Boolean);
+  const selectedIssues = issues.filter(issue => indexes.some(index => new RegExp(`第\\s*${index}\\s*镜`).test(String(issue || ''))));
 
   const systemPrompt = [
-    'You are the storyboard rewrite agent. Return the full JSON array only.',
-    'Keep shot count, characters, advertised subject, and story order.',
+    'You are the storyboard rewrite agent. Return a JSON array containing only the requested shot indexes.',
+    'All user-visible text values must be natural Simplified Chinese. Keep JSON keys, technical enum values, IDs, indexes and durations unchanged.',
+    'Preserve each original index. Do not add, remove, merge or reorder shots.',
+    'Keep characters, advertised subject, and story order.',
     'Do not add new story events that the user did not provide.',
     'Fix thin shots by strengthening the visual layers required by the user brief.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
-    'Preserve scene_id, scene_view, scene_zone and transition_reason whenever they are valid for the current task scene assets.',
+    'Preserve scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets.',
+    'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type and audio bridge.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}
 
 Blueprint: ${JSON.stringify(blueprint).slice(0, 10000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
-Current storyboard: ${JSON.stringify(shots).slice(0, 22000)}
-Issues to fix: ${issues.slice(0, 30).join('; ')}
+Shots to repair: ${JSON.stringify(selected).slice(0, 14000)}
+Issues to fix: ${selectedIssues.slice(0, 24).join('; ')}
 
-Return the repaired full JSON array. Do not change shot count. Do not invent unprovided plot.`;
+Return only the repaired shots with their original index. Do not invent unprovided plot.`;
 
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_rewrite',
     systemPrompt,
     userPrompt,
-    maxTokens: 10000,
+    maxTokens: Math.min(6000, Math.max(2400, selected.length * 900)),
   });
 
   const parsed = await jsonRepair.parseOrRepair({
@@ -310,7 +442,15 @@ Return the repaired full JSON array. Do not change shot count. Do not invent unp
     stage: 'new_story_ad.json_repair',
   });
 
-  return normalizeShots(parsed, {
+  const language = await ensureChineseOutput({ payload: parsed, kind: 'storyboard', taskId, context: ctx });
+  const repairedByIndex = new Map(language.payload.map((shot, idx) => {
+    const index = Number(shot?.index || shot?.shot_index || indexes[idx]);
+    return [index, shot];
+  }).filter(([index]) => indexes.includes(index)));
+  const merged = shots.map((shot, idx) => repairedByIndex.has(idx + 1)
+    ? { ...shot, ...repairedByIndex.get(idx + 1), index: idx + 1 }
+    : shot);
+  return normalizeShots(merged, {
     ...ctx,
     characters: normalizeCharacters(
       Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters,
@@ -323,4 +463,6 @@ module.exports = {
   generateStoryboardTable,
   rewriteStoryboard,
   normalizeShots,
+  alignShotsToBeats,
+  missingBeatIndexes,
 };

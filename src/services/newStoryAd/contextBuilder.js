@@ -124,6 +124,7 @@ function normalizeSceneAssets(input) {
       label: cleanText(view?.label || view?.name || '', 80),
       url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
       image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
+      camera_id: cleanText(view?.camera_id || ('camera_' + (view?.key || view?.view || ['master', 'reverse', 'interaction', 'detail'][viewIdx] || ('view_' + (viewIdx + 1)))), 100),
     })).filter(view => view.url || view.image_url).slice(0, 8) : [];
     const imageUrl = cleanText(item.image_url || item.imageUrl || item.url || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
     if (!imageUrl && !viewImages.length && !item.layout_summary && !item.material_summary) return null;
@@ -140,6 +141,10 @@ function normalizeSceneAssets(input) {
       image_url: imageUrl,
       view_images: viewImages,
       view_count: Number(item.view_count || viewImages.length || (imageUrl ? 1 : 0)) || 0,
+      scene_revision: Math.max(1, Number(item.scene_revision || item.sceneRevision || 1) || 1),
+      scene_contract: item.scene_contract && typeof item.scene_contract === 'object' ? item.scene_contract : null,
+      cross_view_qa: item.cross_view_qa && typeof item.cross_view_qa === 'object' ? item.cross_view_qa : null,
+      provider_used: cleanText(item.provider_used || '', 240),
     };
   }).filter(Boolean);
 }
@@ -301,6 +306,12 @@ function buildContext(body = {}, user = {}) {
     person_asset: personAsset,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
+    revisions: body.revisions && typeof body.revisions === 'object' ? {
+      source: Math.max(1, Number(body.revisions.source || 1) || 1),
+      scene: Math.max(1, Number(body.revisions.scene || 1) || 1),
+      person: Math.max(1, Number(body.revisions.person || 1) || 1),
+      product: Math.max(1, Number(body.revisions.product || 1) || 1),
+    } : { source: 1, scene: 1, person: 1, product: 1 },
     cast_profiles: castProfiles,
     person_context: {
       source: cleanText(personContext.source || (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'), 120),
@@ -353,6 +364,17 @@ function sceneAssetsPrompt(sceneAssets = []) {
     layout_summary: cleanText(asset.layout_summary || '', 500),
     material_summary: cleanText(asset.material_summary || '', 500),
     style_summary: cleanText(asset.style_summary || '', 300),
+    scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
+    anchors: (Array.isArray(asset.scene_contract?.anchors) ? asset.scene_contract.anchors : []).map(anchor => ({
+      id: cleanText(anchor.id || '', 100),
+      label: cleanText(anchor.label || '', 120),
+      relative_position: cleanText(anchor.relative_position || '', 180),
+    })).slice(0, 16),
+    zones: (Array.isArray(asset.scene_contract?.zones) ? asset.scene_contract.zones : []).map(zone => ({
+      id: cleanText(zone.id || '', 100),
+      label: cleanText(zone.label || '', 120),
+      purpose: cleanText(zone.purpose || '', 180),
+    })).slice(0, 16),
     views: (Array.isArray(asset.view_images) ? asset.view_images : []).map((view, viewIndex) => ({
       key: cleanText(view?.key || view?.view || ['master', 'reverse', 'interaction', 'detail'][viewIndex] || `view_${viewIndex + 1}`, 40),
       label: cleanText(view?.label || view?.name || '', 80),
@@ -361,7 +383,7 @@ function sceneAssetsPrompt(sceneAssets = []) {
   return [
     '场景空间锁：已生成，后续剧本、分镜和关键帧必须优先使用当前任务 scene_assets。',
     `当前任务场景资产：${JSON.stringify(digest)}`,
-    '分镜必须为每镜输出 scene_id、scene_view、scene_zone、transition_from、transition_reason。',
+    '分镜必须为每镜输出 scene_id、scene_revision、scene_view、camera_id、scene_zone、zone_ids、anchor_ids、transition_from、transition_reason。',
     '单场景任务必须保持同一 scene_id；多场景任务只有在剧情或商业表达需要时才能切换 scene_id，并说明转场原因。',
     '禁止凭空新增当前任务场景资产之外的行业或具体空间。',
   ].join('\n');
@@ -396,7 +418,33 @@ function contextPrompt(ctx) {
   ].join('\n');
 }
 
+function contextConflicts(ctx = {}) {
+  const conflicts = [];
+  const forbidden = (Array.isArray(ctx.forbidden) ? ctx.forbidden : []).join('；');
+  const negative = String(ctx.controlled_production?.negative_control?.text || '');
+  const noPerson = /(?:不能|不要|禁止|不得)出现(?:任何)?(?:人物|真人|演员|人像|人类)|(?:完全)?无人物|无人出镜/.test(`${forbidden}；${negative}`);
+  const personRequired = ['single', 'multi'].includes(String(ctx.cast_mode || ''))
+    || (Array.isArray(ctx.characters) && ctx.characters.length > 0)
+    || !!ctx.person_asset
+    || /(?:人物|真人|演员|老师|顾问|客户|用户|主持人|模特|主角|面对镜头|出镜)/.test(String(ctx.brief || ''));
+  if (personRequired && noPerson) {
+    conflicts.push('任务要求人物出镜，但全局禁止项同时要求不出现人物');
+  }
+  return conflicts;
+}
+
+function assertContextConsistent(ctx = {}) {
+  const conflicts = contextConflicts(ctx);
+  if (!conflicts.length) return ctx;
+  const error = new Error(`广告需求约束冲突：${conflicts.join('；')}。请修改需求或禁止项后重试。`);
+  error.status = 422;
+  error.code = 'INPUT_CONSTRAINT_CONFLICT';
+  error.conflicts = conflicts;
+  throw error;
+}
+
 module.exports = {
+  assertContextConsistent,
   buildContext,
   contextPrompt,
   controlledProductionPrompt,
@@ -406,4 +454,5 @@ module.exports = {
   looksLikeDescriptorName,
   normalizeSceneSpec,
   normalizeSceneAssets,
+  contextConflicts,
 };

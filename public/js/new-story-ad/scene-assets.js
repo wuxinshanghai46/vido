@@ -92,6 +92,9 @@
       url,
       view_images: views,
       view_count: Number(asset.view_count || views.length || (url ? 1 : 0)) || 0,
+      scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
+      scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : null,
+      cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
     };
   }
 
@@ -108,6 +111,13 @@
       '"': '&quot;',
       "'": '&#39;',
     }[ch]));
+  }
+
+  function thumbUrl(url = '', width = 480) {
+    const raw = String(url || '').trim();
+    if (!/^\/api\/new-story-ad\/assets\//i.test(raw)) return raw;
+    const size = Math.max(160, Math.min(960, Number(width) || 480));
+    return `${raw}${raw.includes('?') ? '&' : '?'}thumb=${size}`;
   }
 
   function formatElapsedText(ms = 0) {
@@ -171,6 +181,9 @@
     const asset = assets[selectedIndex];
     const views = asset.view_images || [];
     const mainUrl = asset.url || asset.image_url || views[0]?.url || views[0]?.image_url || '';
+    const qa = asset.cross_view_qa || asset.scene_contract?.cross_view_qa || {};
+    const qaPassed = qa.pass === true;
+    const qaScore = Number(qa.scene_consistency_score || 0);
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
@@ -182,21 +195,21 @@
       </div>` : ''}
       <div class="dh-nsa-scene-card">
         <button type="button" class="dh-nsa-scene-thumb dh-nsa-scene-main-preview" data-nsa-scene-preview="${selectedIndex}:0">
-          ${mainUrl ? `<img src="${escapeHtml(mainUrl)}" alt="${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}">` : '空间'}
+          ${mainUrl ? `<img src="${escapeHtml(thumbUrl(mainUrl, 560))}" alt="${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}" loading="eager" decoding="async" fetchpriority="high">` : '空间'}
         </button>
         <div class="dh-nsa-scene-body">
           <div class="dh-nsa-scene-head">
             <div>
               <b>${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}</b>
-              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', `${views.length || 1} 张空间参考`].filter(Boolean).join(' · '))}</span>
+              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', `${views.length || 1} 张空间参考`, qaScore ? `空间一致性 ${Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
             </div>
-            <em>已绑定当前任务</em>
+            <em>${qaPassed ? '空间锁已验证' : '空间锁待验证'}</em>
           </div>
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 4).map((view, index) => {
               const url = view.url || view.image_url || '';
               return `<button type="button" class="dh-nsa-scene-view" data-nsa-scene-preview="${selectedIndex}:${index}">
-                ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(view.label || `视角 ${index + 1}`)}">` : ''}
+                ${url ? `<img src="${escapeHtml(thumbUrl(url, 360))}" alt="${escapeHtml(view.label || `视角 ${index + 1}`)}" loading="lazy" decoding="async">` : ''}
                 <b>${escapeHtml(view.label || VIEW_LABELS[view.key] || `视角 ${index + 1}`)}</b>
               </button>`;
             }).join('')}
@@ -229,6 +242,7 @@
     ensureTask,
     api,
     payload: buildPayload,
+    normalizeBundle,
     renderAll,
     setBusy,
     setButtonBusy,
@@ -268,7 +282,7 @@
       const body = typeof buildPayload === 'function' ? buildPayload() : {};
       const currentIndex = Math.max(0, Math.min((state.sceneAssets || []).length - 1, Number(state.sceneSelectedIndex || 0) || 0));
       const currentAsset = !append && Array.isArray(state.sceneAssets) ? state.sceneAssets[currentIndex] : null;
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
+      const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
         method: 'POST',
         body: {
           ...body,
@@ -278,7 +292,11 @@
           lock_strength: 'standard',
         },
       });
-      state.sceneAssets = normalizeAssets(r.scene_assets || r.bundle?.outputs?.scene_assets || []);
+      const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
+        ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', { api })
+        : submitted;
+      if (typeof normalizeBundle === 'function') normalizeBundle(r);
+      state.sceneAssets = normalizeAssets(r.scene_assets || r.outputs?.scene_assets || r.bundle?.outputs?.scene_assets || []);
       state.sceneSelectedIndex = append ? Math.max(0, state.sceneAssets.length - 1) : currentIndex;
       state.sceneGenerationProgress = null;
       renderAll?.();
@@ -298,6 +316,7 @@
 
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
+    thumbUrl,
     specPayload,
     applySpec,
     clearSpecInputs,

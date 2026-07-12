@@ -41,10 +41,35 @@
       || [];
   }
 
+  function progressStageMatches(progressStage = '', activeStage = '') {
+    const uiStage = String(progressStage || '');
+    const serverStage = String(activeStage || '');
+    if (!uiStage || !serverStage) return false;
+    if (uiStage === serverStage) return true;
+    if (uiStage === 'scene' && serverStage === 'scene_config') return true;
+    if (uiStage === 'single_keyframe' && serverStage === 'keyframes') return true;
+    return false;
+  }
+
+  function syncActiveGenerationClock(state = {}, task = {}) {
+    const progress = state.stageProgress;
+    const generationId = String(task.active_generation_id || '');
+    const activeStage = String(task.active_stage || '');
+    if (!progress?.active || !generationId || !progressStageMatches(progress.stage, activeStage)) return false;
+    if (progress.generationId && String(progress.generationId) !== generationId) return false;
+    const timestamp = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
+    const startedAt = Date.parse(timestamp);
+    if (!Number.isFinite(startedAt)) return false;
+    progress.generationId = generationId;
+    progress.startedAt = startedAt;
+    return true;
+  }
+
   function normalizeBundle(response = {}, ctx = {}) {
     const { state, rememberTaskId } = ctx;
     if (!state) return;
     const bundle = response.bundle || response;
+    const task = response.task || bundle.task || {};
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
@@ -62,6 +87,12 @@
       response,
     });
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
+    state.activeGenerationId = task.active_generation_id || '';
+    state.activeStage = task.active_stage || '';
+    state.generationProgress = task.generation_progress || null;
+    state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
+    syncActiveGenerationClock(state, task);
+    if (!state.activeGenerationId) state.cancelRequested = false;
     if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
   }
 
@@ -133,6 +164,11 @@
       ...(outputs.context || {}),
     };
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
+    state.activeGenerationId = task.active_generation_id || '';
+    state.activeStage = task.active_stage || '';
+    state.generationProgress = task.generation_progress || null;
+    state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
+    if (!state.activeGenerationId) state.cancelRequested = false;
     state.context = outputs.context || request || state.context;
     state.sceneConfig = outputs.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || state.blueprint;
@@ -168,5 +204,7 @@
     hydrateTaskBundle,
     hydrateAssets,
     hydratePersonSpec,
+    progressStageMatches,
+    syncActiveGenerationClock,
   };
 })();

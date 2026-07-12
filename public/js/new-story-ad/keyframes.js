@@ -45,10 +45,16 @@
     const source = previewUrl ? thumbUrl(previewUrl, index < 2 ? 640 : 520) : '';
     const loading = index < 2 ? 'eager' : 'lazy';
     const priority = index < 2 ? ' fetchpriority="high"' : '';
+    const qa = frame.qa || {};
+    const qaText = qa.status === 'not_applicable'
+      ? '未启用场景空间锁'
+      : (qa.pass === true
+        ? `空间一致性已通过${qa.scene_consistency_score ? ` · ${Math.round(Number(qa.scene_consistency_score) * 100)}%` : ''}`
+        : (frame.error ? `失败：${frame.error}` : '等待空间一致性检查'));
     return `<button type="button" class="dh-nsa-frame-preview ${previewUrl ? '' : 'pending'}" ${previewUrl ? `data-nsa-frame-preview="${index}" data-nsa-frame-full="${esc(imageUrl || previewUrl)}" title="点击查看第 ${index + 1} 镜大图"` : 'disabled'}>
       ${source ? `<img src="${esc(source)}" alt="${esc(title)}" loading="${loading}" decoding="async"${priority} onerror="this.closest('.dh-nsa-frame-preview')?.classList.add('image-error')">` : `<span>${String(index + 1).padStart(2, '0')}</span>`}
       <b>${String(index + 1).padStart(2, '0')} · ${esc(title)}</b>
-      <small>${previewUrl ? '点击查看大图' : stateText}</small>
+      <small>${previewUrl ? qaText : stateText}</small>
     </button>`;
   }
 

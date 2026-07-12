@@ -5,7 +5,7 @@
     return `${sec}秒`;
   }
 
-  function snapshot({ progress = {}, label = '', total = 1, completed = 0 } = {}) {
+  function snapshot({ progress = {}, label = '', total = 1, completed = 0, serverProgress = null } = {}) {
     const stage = progress.stage || '';
     const count = Math.max(1, Number(progress.total || total) || 1);
     const elapsed = Math.max(0, Date.now() - (Number(progress.startedAt || 0) || Date.now()));
@@ -22,14 +22,18 @@
     }
 
     if (stage === 'keyframes') {
-      const done = Math.max(0, Math.min(count, Number(completed) || 0));
-      const current = Math.min(count, done + 1);
-      const pct = done >= count ? 96 : Math.max(8, Math.min(92, Math.round(8 + (done / count) * 78 + Math.min(10, elapsed / 9000))));
+      const tracked = serverProgress?.stage === 'keyframes' ? serverProgress : null;
+      const targetTotal = Math.max(1, Number(tracked?.target_total || count) || count);
+      const done = Math.max(0, Math.min(targetTotal, Number(tracked?.processed ?? completed) || 0));
+      const succeeded = Math.max(0, Number(tracked?.succeeded ?? done) || 0);
+      const failed = Math.max(0, Number(tracked?.failed) || 0);
+      const current = Math.max(1, Math.min(targetTotal, Number(tracked?.current_index) || done + 1));
+      const pct = done >= targetTotal ? 96 : Math.max(8, Math.min(92, Math.round(8 + (done / targetTotal) * 78 + Math.min(10, elapsed / 9000))));
       return {
-        title: `生成真实关键帧中：第 ${current}/${count} 镜`,
+        title: `生成真实画面中：第 ${current}/${targetTotal} 张`,
         stat: `已耗时 ${formatElapsedText(elapsed)} · ${pct}%`,
         percent: pct,
-        message: `已完成 ${done}/${count} 张关键帧；当前正在生成第 ${current} 镜，完成一张会自动更新。`,
+        message: `已处理 ${done}/${targetTotal} 张，成功 ${succeeded} 张${failed ? `，失败 ${failed} 张` : ''}；正在生成第 ${current} 张。`,
       };
     }
 

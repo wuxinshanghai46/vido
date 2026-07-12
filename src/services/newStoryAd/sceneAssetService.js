@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const mediaAdapter = require('./mediaAdapter');
 const { cleanText } = require('./contextBuilder');
+const sceneSpace = require('./sceneSpaceContractService');
+const cancellation = require('./cancellationContext');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 
@@ -22,8 +24,10 @@ function normalizeSceneView(view = {}, index = 0) {
     label: cleanText(view.label || sceneViewLabel(key), 80),
     url,
     image_url: cleanText(view.image_url || url, 1000),
+    source_url: cleanText(view.source_url || view.sourceUrl || '', 1600),
     filename: cleanText(view.filename || '', 160),
     provider_used: cleanText(view.provider_used || '', 160),
+    camera_id: cleanText(view.camera_id || 'camera_' + key, 100),
   };
 }
 
@@ -48,6 +52,17 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     url: primary,
     view_images: viewImages,
     view_count: Number(asset.view_count || viewImages.length || (primary ? 1 : 0)) || 0,
+    scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
+    scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object'
+      ? sceneSpace.normalizeContract(asset.scene_contract, {
+        sceneId: asset.scene_id || asset.id,
+        revision: asset.scene_revision || 1,
+        views: viewImages,
+      })
+      : null,
+    cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
+    provider_used: cleanText(asset.provider_used || '', 240),
+    prompt: cleanText(asset.prompt || '', 6000),
     created_at: asset.created_at || new Date().toISOString(),
   };
 }
@@ -88,15 +103,10 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent material direction between panels.',
   ].join(' ');
   return [
-    'Create one single 2x2 photorealistic commercial scene reference sheet for a video ad production.',
-    'This is a reusable EMPTY SCENE asset package, not a storyboard keyframe. It must contain no people or human-like subjects. No text labels, no logos, no watermark.',
+    'Create one photorealistic MASTER REFERENCE VIEW for a reusable commercial video scene.',
+    'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no panels, no split screen, no labels, no people or human-like subjects.',
     photographicRealism,
-    'Panel order is mandatory:',
-    'Top-left MASTER VIEW: wide establishing view that defines the whole space layout.',
-    'Top-right REVERSE OR SIDE VIEW: same space from a different angle, preserving the same layout, materials, lighting and object positions.',
-    'Bottom-left INTERACTION POSITION VIEW: empty camera position suitable for later adding a person or product interaction; show only usable foreground/background relation and clear standing/display area, but do not show any person, body part or silhouette.',
-    'Bottom-right DETAIL VIEW: close material/detail reference from the same space, preserving the exact material family, lighting and color palette.',
-    'Keep all four panels in the same task-specific space. Do not invent a different specific space, carrier, material family or unrelated industry.',
+    'Use a wide establishing composition that clearly defines the whole spatial layout and the relative position of fixed structures and movable anchors.',
     brief ? `Campaign brief: ${brief}` : '',
     subject ? `Advertised subject: ${subject}` : '',
     custom ? `User scene requirement: ${custom}` : '',
@@ -111,6 +121,84 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     negative ? `Additional negative requirements: ${negative}` : '',
     'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
+}
+
+async function localizeSceneViews(views = [], { taskId = '', sceneId = '', revision = 1 } = {}) {
+  const normalized = (Array.isArray(views) ? views : []).map(normalizeSceneView);
+  return Promise.all(normalized.map(async (view, index) => {
+    const sourceUrl = view.url || view.image_url || '';
+    if (!/^https?:\/\//i.test(sourceUrl)) return view;
+    const persisted = await mediaAdapter.persistImageResult({
+      result: { image_url: sourceUrl, url: sourceUrl },
+      filename: `scene_asset_${taskId || 'task'}_${sceneId || 'scene'}_r${Math.max(1, Number(revision) || 1)}_${view.key || index}_${Date.now()}_${index}`,
+      thumbnailWidths: [360, 560],
+    });
+    return normalizeSceneView({
+      ...view,
+      filename: persisted.filename,
+      source_url: sourceUrl,
+      url: persisted.url,
+      image_url: persisted.image_url,
+    }, index);
+  }));
+}
+
+function relinkContractViews(contract = null, views = []) {
+  if (!contract || typeof contract !== 'object') return contract;
+  const viewMap = new Map((views || []).map(view => [String(view.key || ''), view.url || view.image_url || '']));
+  return {
+    ...contract,
+    cameras: Array.isArray(contract.cameras) ? contract.cameras.map(camera => ({
+      ...camera,
+      reference_image_url: viewMap.get(String(camera.view_id || '')) || camera.reference_image_url || '',
+    })) : contract.cameras,
+  };
+}
+
+async function localizeSceneAssets(sceneAssets = [], { taskId = '' } = {}) {
+  const normalized = normalizeSceneAssets(sceneAssets);
+  const localized = [];
+  for (const asset of normalized) {
+    const views = await localizeSceneViews(asset.view_images || [], {
+      taskId,
+      sceneId: asset.scene_id || asset.id,
+      revision: asset.scene_revision || 1,
+    });
+    const contract = relinkContractViews(asset.scene_contract, views);
+    localized.push(normalizeSceneAsset({
+      ...asset,
+      image_url: views[0]?.url || asset.image_url || '',
+      url: views[0]?.url || asset.url || '',
+      view_images: views,
+      scene_contract: contract,
+      cross_view_qa: contract?.cross_view_qa || asset.cross_view_qa,
+    }));
+  }
+  return localized;
+}
+
+function buildDerivedViewPrompt(masterPrompt = '', viewKey = '') {
+  const instruction = {
+    reverse: 'Generate a reverse or side camera view of the exact same physical space. Preserve every fixed structure, opening, anchor object, material, color, light source and relative position. Reveal a geometrically plausible opposite/side relation; do not redesign the room.',
+    interaction: 'Generate an interaction-position camera view inside the exact same physical space. Preserve fixed structures and anchor positions. Choose a practical empty standing/display/action zone for later adding the current task subject, but do not add any person or replace the environment.',
+    detail: 'Generate a close material and construction-detail view taken inside the exact same physical space. Use only materials, seams, fixtures and colors visibly supported by the master reference. Do not invent a new wall system or decorative composition.',
+  }[viewKey] || 'Generate another camera view of the exact same physical space without redesigning it.';
+  return [
+    instruction,
+    'The supplied image is the canonical master scene reference and has highest priority.',
+    'Output one continuous photorealistic image only, no collage, no split screen, no labels, no logo and no people.',
+    'Scene identity lock is strict: preserve spatial geometry, anchor relations, material family and lighting direction.',
+    masterPrompt,
+  ].filter(Boolean).join('\n\n');
+}
+
+function sceneRequest(ctx = {}, body = {}) {
+  const spec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
+  return {
+    layout: cleanText(spec.layoutText || spec.layout_text || spec.layout || body.layout_summary || '', 1000),
+    material_light: cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000),
+    interaction: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800),
+  };
 }
 
 function mergeSceneAssets(existing = [], asset = {}) {
@@ -140,35 +228,96 @@ function saveSceneAssetsToTask(taskId, sceneAssets = []) {
 }
 
 async function generateSceneAsset(taskId, body = {}) {
+  cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneConfig = storage.getOutput(taskId, 'scene_config') || {};
   const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
+  const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
+  const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
   const prompt = buildSceneSheetPrompt({ ctx, sceneConfig, body });
-  const sheet = await mediaAdapter.generateImage({
+  const master = await mediaAdapter.generateImage({
+    taskId,
     stage: 'new_story_ad.scene_asset',
     prompt,
-    filename: `scene_asset_${taskId}_${sceneId}_sheet_${Date.now()}`,
+    filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_master_' + Date.now(),
     aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
     resolution: body.resolution || '2K',
     imageModel: body.image_model || body.imageModel || 'auto',
   });
-  const viewImages = await mediaAdapter.splitReferenceSheet({
-    source: sheet,
-    filenamePrefix: `scene_asset_${taskId}_${sceneId}`,
-    viewKeys: SCENE_VIEW_KEYS,
-    outputWidth: 1024,
-    outputHeight: 576,
-    fit: 'cover',
-  });
-  const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ') || sheet.provider_used || '';
+  cancellation.throwIfCancelled(taskId);
+  const viewImages = [normalizeSceneView({
+    key: 'master',
+    label: sceneViewLabel('master'),
+    url: master.url || master.image_url,
+    image_url: master.image_url || master.url,
+    provider_used: master.provider_used,
+  }, 0)];
+  for (const key of SCENE_VIEW_KEYS.slice(1)) {
+    cancellation.throwIfCancelled(taskId);
+    const generated = await mediaAdapter.generateImage({
+      taskId,
+      stage: 'new_story_ad.scene_asset',
+      prompt: buildDerivedViewPrompt(prompt, key),
+      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_' + key + '_' + Date.now(),
+      aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+      resolution: body.resolution || '2K',
+      imageModel: body.image_model || body.imageModel || 'auto',
+      referenceImages: [master.url || master.image_url],
+      requireReferences: true,
+      inputFidelity: 'high',
+    });
+    cancellation.throwIfCancelled(taskId);
+    viewImages.push(normalizeSceneView({
+      key,
+      label: sceneViewLabel(key),
+      url: generated.url || generated.image_url,
+      image_url: generated.image_url || generated.url,
+      provider_used: generated.provider_used,
+    }, viewImages.length));
+  }
+  const requested = sceneRequest(ctx, body);
+  const contractOptions = {
+    taskId,
+    sceneId,
+    revision,
+    views: viewImages.map(view => ({
+      ...view,
+      url: mediaAdapter.absolutePublicImageUrl(view.url || view.image_url),
+      image_url: mediaAdapter.absolutePublicImageUrl(view.image_url || view.url),
+    })),
+    requested,
+  };
+  let sceneContract = null;
+  try {
+    sceneContract = await sceneSpace.analyzeSceneViews(contractOptions);
+  } catch (error) {
+    if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
+    // Keep the four successfully generated views instead of discarding costly
+    // assets because an optional verifier is unavailable. The package remains
+    // explicitly unverified and can be rechecked later; it is never mislabeled
+    // as having passed commercial visual QA.
+    sceneContract = sceneSpace.buildUnverifiedContract(contractOptions, error);
+  }
+  if (sceneContract.qa_unavailable !== true && !sceneContract.cross_view_qa?.pass) {
+    const error = new Error('场景多视图空间一致性未通过：' + (sceneContract.cross_view_qa?.mismatch_reasons || []).join('；'));
+    error.code = 'SCENE_CROSS_VIEW_MISMATCH';
+    error.retryable = true;
+    error.partial = { scene_id: sceneId, scene_revision: revision, scene_contract: sceneContract };
+    throw error;
+  }
+  const localizedViews = await localizeSceneViews(viewImages, { taskId, sceneId, revision });
+  sceneContract = relinkContractViews(sceneContract, localizedViews);
+  viewImages.splice(0, viewImages.length, ...localizedViews);
+  const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ') || master.provider_used || '';
   const asset = normalizeSceneAsset({
     id: sceneId,
     scene_id: sceneId,
     name: body.name || sceneConfig.advertised_subject || '剧情广告任务场景',
     source: 'new_story_ad_scene_sheet',
+    scene_revision: revision,
     lock_strength: body.lock_strength || body.lockStrength || 'standard',
     layout_summary: body.layout_summary || body.layoutSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).layoutText || sceneConfig.business_boundary || ctx.brief || '',
     material_summary: body.material_summary || body.materialSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).materialLightText || '',
@@ -186,6 +335,8 @@ async function generateSceneAsset(taskId, body = {}) {
     view_count: viewImages.length,
     provider_used: providerUsed,
     prompt,
+    scene_contract: sceneContract,
+    cross_view_qa: sceneContract.cross_view_qa,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
   saveSceneAssetsToTask(taskId, sceneAssets);
@@ -200,6 +351,8 @@ module.exports = {
   SCENE_VIEW_KEYS,
   sceneViewLabel,
   normalizeSceneAssets,
+  localizeSceneViews,
+  localizeSceneAssets,
   saveSceneAssetsToTask,
   generateSceneAsset,
 };

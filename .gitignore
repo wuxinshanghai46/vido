@@ -19,6 +19,21 @@ seedance2.0/
 logs/
 .runtime/
 
+# Codex/local runtime artifacts
+.codex-run/
+.codex-server-*.log
+.server-*.log
+.server-start.err
+.sync-backup/
+.tmp/
+_server_sync/
+tmp/
+*.local-before-server-sync
+
+# Downloaded analysis media / macOS archive metadata
+douyin/__MACOSX/
+douyin/dl/
+
 # Local/server backup snapshots
 .backup/
 .backups/

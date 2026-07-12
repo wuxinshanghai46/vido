@@ -59,6 +59,7 @@
     castProfiles: [],
     personGenerationProgress: null,
     sceneAssets: [],
+    pendingChangeScope: 'none',
     sceneGenerationProgress: null,
     productAsset: null,
     referenceAssets: [],
@@ -87,6 +88,11 @@
     blueprintDirty: false,
     stageProgress: null,
     stageProgressTimer: null,
+    activeGenerationId: '',
+    activeStage: '',
+    generationProgress: null,
+    generationStartedAt: '',
+    cancelRequested: false,
     busy: false,
     restoringTask: false,
     currentStep: 1,
@@ -96,6 +102,17 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const root = () => document.getElementById(ROOT_ID);
   const within = sel => $(sel, root() || document);
+
+  function activeField(selector) {
+    const fields = $$(selector, root() || document);
+    return fields.find(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects?.().length)) || fields[0] || null;
+  }
+
+  function writeAllFields(selector, value) {
+    const fields = $$(selector, root() || document);
+    fields.forEach(el => { el.value = value; });
+    return fields.length;
+  }
 
   function routeStep() {
     if (window.NewStoryAdTaskStore?.routeStep) return window.NewStoryAdTaskStore.routeStep();
@@ -242,6 +259,7 @@
   function withAuthQuery(url = '') {
     const raw = String(url || '').trim();
     if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return raw;
+    if (/^\/api\/new-story-ad\/assets\//i.test(raw)) return raw;
     if (!state.token) return raw;
     try {
       const u = new URL(raw, location.origin);
@@ -468,8 +486,7 @@
     if (age) next.age = age;
     if (origin) next.origin = origin;
     Object.entries(next).forEach(([key, value]) => {
-      const el = root()?.querySelector(`[data-nsa-person-spec="${key}"]`);
-      if (el && value !== undefined && value !== null) el.value = value;
+      if (value !== undefined && value !== null) writeAllFields(`[data-nsa-person-spec="${key}"]`, value);
     });
     state.personSpecLock = {
       source: asset.name || asset.actor_asset_id || asset.id || '已选演员',
@@ -635,10 +652,10 @@
 
   function collectPersonSpec() {
     const spec = {};
-    $$('[data-nsa-person-spec]', root()).forEach(el => {
-      const key = el.dataset.nsaPersonSpec;
-      if (!key) return;
-      spec[key] = String(el.value || '').trim();
+    const keys = new Set($$('[data-nsa-person-spec]', root()).map(el => el.dataset.nsaPersonSpec).filter(Boolean));
+    keys.forEach(key => {
+      const el = activeField(`[data-nsa-person-spec="${key}"]`);
+      spec[key] = String(el?.value || '').trim();
     });
     return spec;
   }
@@ -860,11 +877,12 @@
       controlled_production: ctrl,
       forbidden: negative,
       source: 'new_story_ad_legacy_style_ui',
+      change_scope: state.pendingChangeScope || 'none',
     };
   }
 
   function personSpec(name) {
-    const el = root()?.querySelector(`[data-nsa-person-spec="${name}"]`);
+    const el = activeField(`[data-nsa-person-spec="${name}"]`);
     return el ? String(el.value || '').trim() : '';
   }
 
@@ -889,11 +907,22 @@
     if (taskMeta) taskMeta.textContent = `提交后进入任务中心 · ${Number(within('#dhNsaAdDuration')?.value || 30)} 秒 · ${state.outputRatio}`;
   }
 
-  function markSourceDirty() {
-    state.taskId = '';
-    rememberTaskId('');
-    state.context = null;
-    state.sceneConfig = null;
+  function markSourceDirty(scope = 'source') {
+    const priority = { none: 0, person: 1, scene: 2, product: 3, source: 4 };
+    const current = state.pendingChangeScope || 'none';
+    state.pendingChangeScope = priority[scope] >= priority[current] ? scope : current;
+    if (scope === 'source') {
+      state.context = null;
+      state.sceneConfig = null;
+      state.sceneAssets = [];
+      state.sceneGenerationProgress = null;
+    } else if (scope === 'scene' || scope === 'product') {
+      // Keep the last confirmed base information and scene previews visible
+      // while the user edits dependent controls. The pending scope is sent to
+      // the server, which performs revision invalidation only when the user
+      // actually saves or regenerates instead of blanking the page on input.
+      state.sceneGenerationProgress = null;
+    }
     state.blueprint = null;
     state.shots = [];
     state.contracts = [];
@@ -902,11 +931,11 @@
     state.ttsAudio = null;
     state.videoClips = [];
     state.finalVideo = null;
-    state.sceneAssets = [];
-    state.sceneGenerationProgress = null;
   }
 
   function resetForNewSession() {
+    state.taskId = '';
+    rememberTaskId('');
     markSourceDirty();
     revokePreview(state.actorAsset);
     revokePreview(state.personAsset);
@@ -942,6 +971,11 @@
       uiExpanded: false,
     };
     state.controlAiPending = {};
+    state.activeGenerationId = '';
+    state.activeStage = '';
+    state.generationProgress = null;
+    state.generationStartedAt = '';
+    state.cancelRequested = false;
     state.busy = false;
     ['#dhNsaAdText', '#dhNsaAdVoiceId'].forEach(sel => {
       const el = within(sel);
@@ -1086,7 +1120,7 @@
         personGenderValue,
         toast,
         onSelect: (asset) => {
-          markSourceDirty();
+          markSourceDirty('person');
           state.actorAsset = null;
           state.personAsset = actorMaterialToPersonAsset(asset);
           applyPersonAssetConstraints(state.personAsset);
@@ -1149,7 +1183,7 @@
           .replace(/Preserve face identity[\s\S]*$/i, '保持人物身份一致')
           .slice(0, 120);
         const imageStrip = urls.length
-          ? urls.map((url, index) => `<span style="width:104px;height:140px;border-radius:8px;overflow:hidden;background:#0c1018;border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="${escapeHtml(withAuthQuery(url))}" alt="视图${index + 1}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;background:#05070b"></span>`).join('')
+          ? urls.map((url, index) => `<span style="width:104px;height:140px;border-radius:8px;overflow:hidden;background:#0c1018;border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0"><img src="${escapeHtml(assetThumbUrl(url, 320))}" alt="视图${index + 1}" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:contain;background:#05070b"></span>`).join('')
           : '<span style="width:104px;height:140px;border-radius:8px;background:#1b2230;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:rgba(255,255,255,.7)">无预览</span>';
         return `<button type="button" data-nsa-actor-material="${escapeHtml(asset.id || asset.actor_asset_id || '')}" style="width:100%;display:grid;grid-template-columns:minmax(220px,456px) minmax(0,1fr);gap:14px;text-align:left;align-items:center;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;border-radius:12px;padding:12px;min-height:168px;cursor:pointer">
           <span style="display:flex;gap:8px;overflow:hidden">${imageStrip}</span>
@@ -1173,7 +1207,7 @@
       if (!btn) return;
       const asset = items.find(x => String(x.id || x.actor_asset_id || '') === String(btn.dataset.nsaActorMaterial || ''));
       if (!asset) return;
-      markSourceDirty();
+      markSourceDirty('person');
       state.actorAsset = null;
       state.personAsset = actorMaterialToPersonAsset(asset);
       applyPersonAssetConstraints(state.personAsset);
@@ -1261,18 +1295,18 @@
         : '这是 AI 拟真演员参考；需要真人广告请上传真人照片或选择授权真人演员。';
     const castGrid = castMembers.length > 1
       ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => `<span>
-          ${member.image_url ? `<img src="${escapeHtml(withAuthQuery(member.image_url))}" alt="${escapeHtml(member.name || `角色${i + 1}`)}" loading="lazy" decoding="async">` : '<i class="dh-lux-actor-cast-placeholder">未生成</i>'}
+          ${member.image_url ? `<img src="${escapeHtml(assetThumbUrl(member.image_url, 320))}" alt="${escapeHtml(member.name || `角色${i + 1}`)}" loading="lazy" decoding="async">` : '<i class="dh-lux-actor-cast-placeholder">未生成</i>'}
           <b>${escapeHtml(member.name || member.cast_role || `角色${i + 1}`)}</b>
         </span>`).join('')}</div>`
       : '';
     const viewStrip = !castGrid && viewEntries.length > 1
-      ? `<div class="dh-lux-actor-views">${viewEntries.slice(0, 6).map((view, i) => `<button type="button" data-nsa-person-preview="${i}" title="${escapeHtml(view.label)}"><img src="${escapeHtml(withAuthQuery(view.url))}" alt="${escapeHtml(view.label)}" loading="lazy" decoding="async"><span>${escapeHtml(view.label)}</span></button>`).join('')}</div>`
+      ? `<div class="dh-lux-actor-views">${viewEntries.slice(0, 6).map((view, i) => `<button type="button" data-nsa-person-preview="${i}" title="${escapeHtml(view.label)}"><img src="${escapeHtml(assetThumbUrl(view.url, 360))}" alt="${escapeHtml(view.label)}" loading="lazy" decoding="async"><span>${escapeHtml(view.label)}</span></button>`).join('')}</div>`
       : '';
     const warning = isAi && !isReal && !isSynthetic
       ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#b7791f;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考；真人广告请上传真人照片或选择授权真人演员。</div>'
       : '';
     host.innerHTML = `<div class="dh-luxgen-character-sheet ${asset.failed ? 'is-failed' : ''}">
-      ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-nsa-person-preview="0" title="${escapeHtml(viewEntries[0]?.label || '演员参考图')}"><img src="${escapeHtml(withAuthQuery(src))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
+      ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-nsa-person-preview="0" title="${escapeHtml(viewEntries[0]?.label || '演员参考图')}"><img src="${escapeHtml(assetThumbUrl(src, 480))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
       <b>${escapeHtml(asset.name || defaultName)}</b>
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
       ${viewStrip}
@@ -1338,6 +1372,7 @@
       });
     }
     const bundle = response.bundle || response;
+    const task = response.task || bundle.task || {};
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
@@ -1359,6 +1394,19 @@
       state.sceneAssets = outputs.scene_assets || response.scene_assets || state.context?.scene_assets || state.sceneAssets || [];
     }
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
+    state.activeGenerationId = task.active_generation_id || '';
+    state.activeStage = task.active_stage || '';
+    state.generationProgress = task.generation_progress || null;
+    state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
+    if (state.stageProgress?.active && state.activeGenerationId
+      && (!state.stageProgress.generationId || state.stageProgress.generationId === state.activeGenerationId)) {
+      const startedAt = Date.parse(state.generationStartedAt);
+      if (Number.isFinite(startedAt)) {
+        state.stageProgress.generationId = state.activeGenerationId;
+        state.stageProgress.startedAt = startedAt;
+      }
+    }
+    if (!state.activeGenerationId) state.cancelRequested = false;
     if (state.taskId) rememberTaskId(state.taskId);
   }
 
@@ -1402,6 +1450,13 @@
     });
   }
 
+  function assetThumbUrl(url = '', width = 420) {
+    const raw = withAuthQuery(url);
+    if (!/^\/api\/new-story-ad\/assets\//i.test(raw)) return raw;
+    const size = Math.max(160, Math.min(960, Number(width) || 420));
+    return `${raw}${raw.includes('?') ? '&' : '?'}thumb=${size}`;
+  }
+
   function isFallbackPersonAsset(asset = {}) {
     if (!asset || typeof asset !== 'object') return false;
     const metadata = asset.metadata || {};
@@ -1422,8 +1477,7 @@
   function hydratePersonSpec(request = {}) {
     const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
     Object.entries(spec || {}).forEach(([key, value]) => {
-      const el = root()?.querySelector(`[data-nsa-person-spec="${key}"]`);
-      if (el && value !== undefined && value !== null) el.value = String(value);
+      if (value !== undefined && value !== null) writeAllFields(`[data-nsa-person-spec="${key}"]`, String(value));
     });
     const personAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
     if (personAsset && typeof personAsset === 'object' && !isFallbackPersonAsset(personAsset)) {
@@ -1483,6 +1537,11 @@
     const outputs = normalizeTaskOutputs(bundle);
     const request = outputs.context || task.request || {};
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
+    state.activeGenerationId = task.active_generation_id || '';
+    state.activeStage = task.active_stage || '';
+    state.generationProgress = task.generation_progress || null;
+    state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
+    if (!state.activeGenerationId) state.cancelRequested = false;
     state.context = outputs.context || request || state.context;
     state.sceneConfig = outputs.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || state.blueprint;
@@ -1612,6 +1671,7 @@
       const requestedStep = routeStep();
       showStep(requestedStep === 3 && state.shots.length ? 4 : requestedStep, { remember: false });
       renderAll();
+      resumeActiveGeneration();
       return true;
     } catch (err) {
       rememberTaskId('');
@@ -1621,6 +1681,27 @@
       state.restoringTask = false;
       renderAll();
     }
+  }
+
+  function resumeActiveGeneration() {
+    if (!state.activeGenerationId || !state.taskId || !window.NewStoryAdGenerationFlow?.waitForStage) return false;
+    const persistedStage = state.activeStage || 'generation';
+    const uiStage = persistedStage === 'scene_config' ? 'scene' : persistedStage;
+    const label = window.NewStoryAdGenerationFlow.STAGE_LABELS?.[uiStage] || '正在生成中...';
+    startStageProgress(uiStage, label, { resume: true });
+    setBusy(true, label);
+    window.NewStoryAdGenerationFlow.waitForStage(state.taskId, persistedStage, generationFlowContext())
+      .then(bundle => {
+        normalizeBundle(bundle);
+        renderAll();
+      })
+      .catch(error => {
+        if (error.data) normalizeBundle(error.data);
+        renderAll();
+        toast(error.message || '生成任务已结束', error.code === 'USER_CANCELLED' ? 'info' : 'error');
+      })
+      .finally(() => setBusy(false));
+    return true;
   }
 
   function setButtonLock(selector, locked, title = '', options = {}) {
@@ -1736,6 +1817,7 @@
         label,
         total: stageItemCount(state.stageProgress?.stage || ''),
         completed: completedKeyframeCount(),
+        serverProgress: state.generationProgress || null,
       });
     }
     const progress = state.stageProgress || {};
@@ -1783,23 +1865,31 @@
 
   function renderStageProgress(label = '') {
     const snap = stageProgressSnapshot(label);
+    const canCancel = !!state.taskId && (!!state.activeGenerationId || !!state.stageProgress?.active || !!state.sceneGenerationProgress?.active);
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(snap.title)}</b>
-        <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em></span>
+        <div class="dh-nsa-progress-actions">
+          <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em></span>
+          ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>` : ''}
+        </div>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${snap.percent}%"></i></div>
       <small>${escapeHtml(snap.message)}</small>
     </div>`;
   }
-  function startStageProgress(stage = '', label = '') {
+  function startStageProgress(stage = '', label = '', { resume = false } = {}) {
     stopStageProgress();
+    const persistedStart = resume && state.activeGenerationId
+      ? Date.parse(state.generationStartedAt || '')
+      : NaN;
     state.stageProgress = {
       active: true,
       stage,
       label,
       total: stageItemCount(stage),
-      startedAt: Date.now(),
+      generationId: resume ? state.activeGenerationId : '',
+      startedAt: Number.isFinite(persistedStart) ? persistedStart : Date.now(),
     };
     const intervalMs = stage === 'keyframes' ? 2000 : 1000;
     state.stageProgressTimer = setInterval(async () => {
@@ -1979,7 +2069,7 @@
     if (field === 'duration') return String(blueprintBeatDuration(beat, index, total));
     if (field === 'title') return beat.title || beat.role || beat.story_role || `镜头 ${index + 1}`;
     if (field === 'visual') return beat.visual || beat.story_visual || beat.promo_visual || beat.plot || '';
-    if (field === 'action') return beat.action || beat.character_action || beat.behavior || beat.plot || '';
+    if (field === 'action') return beat.action || beat.character_action || beat.behavior || '';
     if (field === 'spoken_line') return normalizeSpeechText(beat.spoken_line || beat.voiceover || beat.copy || beat.dialogue) || fallbackBlueprintSpokenLine(beat, index);
     if (field === 'visual_proof') return beat.visual_proof || beat.evidence || beat.promo_visual || beat.purpose || '';
     if (field === 'purpose') return beat.purpose || beat.objective || beat.role || '';
@@ -2032,7 +2122,7 @@
     const beat = beats[index];
     if (!beat || !field) return true;
     const value = field === 'duration'
-      ? Math.max(1, Math.min(30, Number(target.value || 0) || blueprintBeatDuration(beat, index, beats.length)))
+      ? Math.max(1, Math.min(15, Number(target.value || 0) || blueprintBeatDuration(beat, index, beats.length)))
       : target.value || '';
     if (field === 'duration') {
       beat.duration = value;
@@ -2136,7 +2226,7 @@
           ].filter(Boolean);
           return `<tr>
             <td>${i + 1}</td>
-            <td><input class="dh-input dh-lux-shot-duration-input" type="number" min="1" max="30" step="1" value="${escapeHtml(blueprintFieldValue(beat, 'duration', i, beats.length))}" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="duration"></td>
+            <td><input class="dh-input dh-lux-shot-duration-input" type="number" min="1" max="15" step="1" value="${escapeHtml(blueprintFieldValue(beat, 'duration', i, beats.length))}" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="duration"></td>
             <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="visual">${escapeHtml(blueprintFieldValue(beat, 'visual', i, beats.length))}</textarea></td>
             <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="action">${escapeHtml(blueprintFieldValue(beat, 'action', i, beats.length))}</textarea></td>
             <td><textarea class="dh-input dh-lux-script-cell-input" rows="4" data-nsa-blueprint-index="${i}" data-nsa-blueprint-field="spoken_line">${escapeHtml(blueprintFieldValue(beat, 'spoken_line', i, beats.length))}</textarea></td>
@@ -2184,7 +2274,7 @@
     const field = target.dataset.nsaShotField || '';
     const shot = state.shots[index];
     if (!shot || !field) return true;
-    const value = field === 'duration' ? Math.max(1, Math.min(30, Number(target.value || 0) || Number(shot.duration || 3) || 3)) : target.value || '';
+    const value = field === 'duration' ? Math.max(1, Math.min(15, Number(target.value || 0) || Number(shot.duration || 3) || 3)) : target.value || '';
     shot._nsa_user_edited_fields = { ...(shot._nsa_user_edited_fields || {}), [field]: true };
     if (field === 'duration') { shot.duration = value; shot.duration_sec = value; }
     else if (field === 'visual') {
@@ -2258,11 +2348,27 @@
         <div class="dh-nsa-frame-editor">
           <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
           ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
-          <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="30" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
+          <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
           <label><span>\u753b\u9762\u63cf\u8ff0</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
           <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
           <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
           <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+          <details class="dh-nsa-continuity-editor">
+            <summary>镜头语言与前后镜连续性</summary>
+            <label><span>景别 / 焦段 / 景深</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'shot_type'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_type"></label>
+            <label><span>镜头运动</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'camera_movement'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_movement"></label>
+            <label><span>入镜状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="entry_frame_state">${escapeHtml(shotFieldValue(shot, contract, 'entry_frame_state'))}</textarea></label>
+            <label><span>出镜状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="exit_frame_state">${escapeHtml(shotFieldValue(shot, contract, 'exit_frame_state'))}</textarea></label>
+            <label><span>运动方向</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'screen_direction'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="screen_direction"></label>
+            <label><span>人物视线</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'eyeline'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="eyeline"></label>
+            <label><span>摄影轴线</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'camera_axis'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_axis"></label>
+            <label><span>产品与道具状态</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'object_states'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="object_states"></label>
+            <label><span>转场类型</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_type">
+              ${['none','hard_cut','cut_on_action','match_cut','dissolve','fade'].map(value => `<option value="${value}" ${String(shot.transition_type || '') === value ? 'selected' : ''}>${value}</option>`).join('')}
+            </select></label>
+            <label><span>转场原因</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_reason'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_reason"></label>
+            <label><span>环境声 / 音效桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
+          </details>
           ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
           ${frame.error ? `<p class="dh-nsa-frame-error">${escapeHtml(frame.error)}</p>` : ''}
           <div class="dh-nsa-frame-actions">
@@ -2443,6 +2549,7 @@
         },
       },
     });
+    state.pendingChangeScope = 'none';
     normalizeBundle(r);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});
@@ -2574,7 +2681,9 @@
     try {
       const id = await ensureTask();
       await saveStoryboardEdits(id);
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
+      const r = window.NewStoryAdGenerationFlow?.startStage
+        ? await window.NewStoryAdGenerationFlow.startStage(id, 'keyframes', { only_index: Number(index) || 0 }, generationFlowContext(button))
+        : await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
       normalizeBundle(r);
       renderAll();
       toast(`\u7b2c ${shotNo} \u955c\u5df2\u91cd\u65b0\u751f\u6210`, 'success');
@@ -2629,7 +2738,9 @@
       try {
         return await window.NewStoryAdGenerationFlow.runStage(stage, generationFlowContext(button));
       } catch (err) {
-        console.warn('[newStoryAd] generation-flow fallback:', err.message || err);
+        console.error('[newStoryAd] generation-flow failed:', err.message || err);
+        toast(err.message || '阶段执行失败', 'error');
+        return false;
       }
     }
     const labels = {
@@ -2704,6 +2815,11 @@
     }
   }
 
+  async function cancelCurrentGeneration() {
+    if (!window.NewStoryAdGenerationFlow?.cancelStage) return false;
+    return window.NewStoryAdGenerationFlow.cancelStage(generationFlowContext());
+  }
+
   async function runMediaChain(button) {
     if (window.NewStoryAdGenerationFlow?.runMediaChain) {
       try {
@@ -2768,7 +2884,7 @@
       if (field === 'negative') ctrl.negative.text = text;
       else ctrl.style.notes = text;
       ctrl.uiExpanded = true;
-      markSourceDirty();
+      markSourceDirty('scene');
       renderAll();
       toast(field === 'negative' ? '禁止项已整理' : '风格方向已整理', 'success');
     } catch (err) {
@@ -2913,7 +3029,7 @@
       previewUrl: URL.createObjectURL(file),
       uploading: true,
     };
-    markSourceDirty();
+    markSourceDirty('product');
     renderAll();
     toast('商品/主体图正在上传...');
     try {
@@ -2939,7 +3055,7 @@
       description: '用户上传的真人参考，只用于当前剧情广告任务。',
     };
     state.actorAsset = null;
-    markSourceDirty();
+    markSourceDirty('person');
     renderAll();
     toast('真人参考正在上传...');
     try {
@@ -2975,7 +3091,7 @@
     state.actorAsset = null;
     state.personSpecLock = null;
     state.castProfiles = [];
-    markSourceDirty();
+    markSourceDirty('person');
     renderAll();
     toast('真人参考正在上传...');
     try {
@@ -3285,7 +3401,10 @@
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
-        <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(formatElapsedText(elapsed))}</em><i>${pct}%</i></span>
+        <div class="dh-nsa-progress-actions">
+          <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(formatElapsedText(elapsed))}</em><i>${pct}%</i></span>
+          <button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>
+        </div>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <small>${escapeHtml(progress.message || '已提交生成请求，正在生成第 1/4 张。')}</small>
@@ -3296,7 +3415,7 @@
     const labels = {
       castMode: { auto: '按内容判断', no_human: '无人物 / 只拍主体', animal: '动物 / 宠物主体', single: '单人', dual: '双人对话', group: '多人 / 群体' },
       gender: { auto: '按故事判断', male: '男性', female: '女性', mixed: '双人/多人混合', all_male: '双人/多人全男性', all_female: '双人/多人全女性' },
-      age: { match_brief: '按广告需求判断', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
+      age: { match_brief: '按广告需求判断', young_adult_17_25: '年轻成人 / 17-25', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
       origin: { east_asian_cn: '中国 / 东亚面孔', match_brief: '按广告需求判断', mixed_global: '多种族 / 国际化' },
     };
     return [
@@ -3317,27 +3436,29 @@
 
   function applyPersonSpecSuggestion(suggestion = {}) {
     const normalized = suggestion && typeof suggestion === 'object' ? suggestion : {};
-    const set = (key, value, forceDefault = false) => {
-      const el = root()?.querySelector(`[data-nsa-person-spec="${key}"]`);
+    const set = (key, value, { overwrite = false, defaults = [] } = {}) => {
+      const el = activeField(`[data-nsa-person-spec="${key}"]`);
       if (!el || value === undefined || value === null || value === '') return 0;
       const current = String(el.value || '').trim();
       const shouldFill = !current
-        || (forceDefault && ['auto', 'match_brief'].includes(current));
+        || overwrite
+        || defaults.includes(current);
       if (!shouldFill) return 0;
-      el.value = value;
+      if (current === String(value).trim()) return 0;
+      writeAllFields(`[data-nsa-person-spec="${key}"]`, value);
       return 1;
     };
     let changed = 0;
-    changed += set('castMode', normalized.castMode || 'single', true);
-    changed += set('gender', normalized.gender || 'auto', true);
-    changed += set('age', normalized.age || 'match_brief', true);
-    changed += set('origin', normalized.origin || 'match_brief', true);
+    changed += set('castMode', normalized.castMode || 'single', { defaults: ['auto'] });
+    changed += set('gender', normalized.gender || 'auto', { defaults: ['auto'] });
+    changed += set('age', normalized.age || 'match_brief', { defaults: ['match_brief'] });
+    changed += set('origin', normalized.origin || 'match_brief', { defaults: ['match_brief'] });
     changed += set('roleName', normalized.roleName || '');
     changed += set('displayName', normalized.displayName || '');
-    changed += set('appearanceText', normalized.appearanceText || '');
-    changed += set('wardrobeText', normalized.wardrobeText || '');
-    changed += set('hairMakeupText', normalized.hairMakeupText || '');
-    changed += set('negativeText', normalized.negativeText || '');
+    changed += set('appearanceText', normalized.appearanceText || '', { overwrite: true });
+    changed += set('wardrobeText', normalized.wardrobeText || '', { overwrite: true });
+    changed += set('hairMakeupText', normalized.hairMakeupText || '', { overwrite: true });
+    changed += set('negativeText', normalized.negativeText || '', { overwrite: true });
     return changed;
   }
 
@@ -3383,9 +3504,9 @@
         suggestion = fallbackPersonSpecFromBrief(brief);
       }
       const changed = applyPersonSpecSuggestion(suggestion || fallbackPersonSpecFromBrief(brief));
-      markSourceDirty();
+      markSourceDirty('person');
       renderAll();
-      toast(changed ? '已根据当前剧情补齐人物设定，可继续手动微调' : '当前人物设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
+      toast(changed ? '已按当前年龄、性别和人物选择重新校准人物设定' : '当前人物设定已经与所选条件一致', changed ? 'success' : 'info');
     } finally {
       setButtonBusy(button, false);
     }
@@ -3422,7 +3543,7 @@
         suggestion = fallbackSceneSpecFromBrief(brief);
       }
       const changed = window.NewStoryAdSceneAssets?.applySpecSuggestion?.(suggestion || fallbackSceneSpecFromBrief(brief));
-      markSourceDirty();
+      markSourceDirty('scene');
       renderAll();
       toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
     } finally {
@@ -3441,6 +3562,11 @@
     ].filter(Boolean).join('；');
     if (description.length < 8) return toast('请先填写广告需求或人物设定', 'error');
     const generationSpec = collectPersonSpec();
+    const generationId = window.crypto?.randomUUID?.() || `person_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    await ensureTask();
+    state.activeGenerationId = generationId;
+    state.activeStage = 'person_sheet';
+    state.cancelRequested = false;
     const specDescription = personDescription(generationSpec);
     const stages = [
       { at: 0, percent: 10, message: '已完成 0/4 张，正在生成第 1/4 张。' },
@@ -3484,6 +3610,8 @@
           gender: personSpec('gender') || 'auto',
           age: personSpec('age') || '',
           cast_mode: personSpec('castMode') || 'auto',
+          task_id: state.taskId || '',
+          generation_id: generationId,
         },
       });
       state.actorAsset = r.actor_asset || r.character || r.actor || r.asset || r;
@@ -3504,9 +3632,14 @@
     } catch (err) {
       state.personGenerationProgress = null;
       renderPerson();
-      toast(err.message || '拟真演员生成失败', 'error');
+      toast(err.message || '拟真演员生成失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
     } finally {
       clearInterval(timer);
+      if (state.activeGenerationId === generationId) {
+        state.activeGenerationId = '';
+        state.activeStage = '';
+        state.cancelRequested = false;
+      }
       state.personGenerationProgress = null;
       setButtonBusy(button, false);
       renderPerson();
@@ -3524,6 +3657,13 @@
     host.addEventListener('click', async e => {
       const target = e.target;
       const btn = target.closest('button, [role="button"], a');
+      const cancelGeneration = target.closest('[data-nsa-cancel-generation]');
+      if (cancelGeneration && host.contains(cancelGeneration)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await cancelCurrentGeneration();
+        return;
+      }
       const step = target.closest('[data-nsa-step]');
       if (step) {
         e.preventDefault();
@@ -3538,7 +3678,7 @@
         e.preventDefault();
         e.stopPropagation();
         state.outputRatio = ratioBtn.dataset.nsaRatio || '9:16';
-        markSourceDirty();
+        markSourceDirty('source');
         renderAll();
         return;
       }
@@ -3562,7 +3702,7 @@
           ctrl.style.notes = '科技感商业广告质感；保留真实拍摄感和产品可读性，UI 只作为轻量增强层。';
         }
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('scene');
         renderAll();
         return;
       }
@@ -3580,7 +3720,7 @@
         else methods.delete(value);
         ctrl.product.methods = Array.from(methods).filter(Boolean);
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('product');
         renderAdvancedControls();
         renderStatus();
         return;
@@ -3785,6 +3925,7 @@
             ensureTask,
             api,
             payload,
+            normalizeBundle,
             renderAll,
             setBusy,
             setButtonBusy,
@@ -3800,6 +3941,7 @@
             ensureTask,
             api,
             payload,
+            normalizeBundle,
             renderAll,
             setBusy,
             setButtonBusy,
@@ -3814,8 +3956,8 @@
         dhNsaAdSubtitleStyleBtn: () => openNsaSubtitleStyleModal(),
         dhNsaAdProductDrop: () => within('#dhNsaAdProductFile')?.click(),
         dhNsaAdProductDropInline: () => within('#dhNsaAdProductFile')?.click(),
-        dhNsaAdProductClear: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty(); renderAll(); toast('主体图已删除', 'success'); },
-        dhNsaAdProductClearInline: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty(); renderAll(); toast('主体图已删除', 'success'); },
+        dhNsaAdProductClear: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); toast('主体图已删除', 'success'); },
+        dhNsaAdProductClearInline: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); toast('主体图已删除', 'success'); },
         dhNsaAdAssetDrop: () => within('#dhNsaAdAssetFile')?.click(),
         dhNsaAdUploadPersonRef: () => within('#dhNsaAdPersonFile')?.click(),
         dhNsaAdPickActorAsset: () => openActorLibrary(),
@@ -3838,7 +3980,7 @@
         return;
       }
       if (target?.id === 'dhNsaAdText') {
-        markSourceDirty();
+        markSourceDirty('source');
         renderStatus();
         return;
       }
@@ -3846,7 +3988,7 @@
         const ctrl = controlledProduction();
         ctrl.environment.custom = target.value || '';
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('scene');
         renderStatus();
         return;
       }
@@ -3854,7 +3996,7 @@
         const ctrl = controlledProduction();
         ctrl.style.notes = target.value || '';
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('scene');
         renderStatus();
         return;
       }
@@ -3862,7 +4004,7 @@
         const ctrl = controlledProduction();
         ctrl.negative.text = target.value || '';
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('scene');
         renderStatus();
         return;
       }
@@ -3877,12 +4019,12 @@
         return;
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
-        markSourceDirty();
+        markSourceDirty('person');
         renderStatus();
         return;
       }
       if (target?.matches?.('[data-nsa-scene-spec]')) {
-        markSourceDirty();
+        markSourceDirty('scene');
         renderStatus();
       }
     });
@@ -3901,7 +4043,7 @@
         const ctrl = controlledProduction();
         ctrl.product.enabled = !!target.checked;
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('product');
         renderAdvancedControls();
         renderStatus();
         return;
@@ -3910,7 +4052,7 @@
         const ctrl = controlledProduction();
         ctrl.product.presence = target.value || 'medium';
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('product');
         renderStatus();
         return;
       }
@@ -3918,12 +4060,12 @@
         const ctrl = controlledProduction();
         ctrl.product.lockStrength = target.value || 'standard';
         ctrl.uiExpanded = true;
-        markSourceDirty();
+        markSourceDirty('product');
         renderStatus();
         return;
       }
       if (target?.id === 'dhNsaAdDuration') {
-        markSourceDirty();
+        markSourceDirty('source');
         syncOptionControls();
         renderStatus();
         return;
@@ -3946,7 +4088,7 @@
         return;
       }
       if (target?.id === 'dhNsaAdSceneMode') {
-        markSourceDirty();
+        markSourceDirty('scene');
         renderStatus();
         return;
       }
@@ -3991,7 +4133,7 @@
         return;
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
-        markSourceDirty();
+        markSourceDirty('person');
         renderStatus();
       }
     });

@@ -9,6 +9,11 @@ let agentContext = { selected_nodes: [] };
 let agentBusy = false;
 let paletteCallback = null;
 let saveTimer = null;
+let canvasHistory = [];
+let canvasHistoryIndex = -1;
+let historyTimer = null;
+let historyApplying = false;
+let workflowRunning = false;
 
 // ═══ 节点类型定义 ═══
 // 每个节点有：id / label / icon / group / inputs / outputs / desc / runner（执行函数）
@@ -403,11 +408,12 @@ function renderMarkdown(text) {
 
   const user = getCurrentUser();
   if (user) {
-    document.getElementById('ac-credits-value').textContent = user.credits || 0;
     document.getElementById('ac-agent-username').textContent = user.username || '';
   }
 
   initEditor();
+  await loadCanvasFromQuery();
+  resetCanvasHistory();
   initCanvasEvents();
   initKeyboardShortcuts();
   initAgentEvents();
@@ -425,12 +431,14 @@ function initEditor() {
   // 暴露给节点内部的 onclick（需要 global 访问）
   window.__ACEditor = editor;
 
-  editor.on('nodeCreated', () => { updateEmptyGuide(); scheduleSave(); });
-  editor.on('nodeRemoved', () => { updateEmptyGuide(); scheduleSave(); });
-  editor.on('connectionCreated', scheduleSave);
-  editor.on('connectionRemoved', scheduleSave);
-  editor.on('nodeDataChanged', scheduleSave);
-  editor.on('nodeMoved', scheduleSave);
+  editor.on('nodeCreated', () => { updateEmptyGuide(); onCanvasMutated(); });
+  editor.on('nodeRemoved', () => { updateEmptyGuide(); onCanvasMutated(); });
+  editor.on('connectionCreated', onCanvasMutated);
+  editor.on('connectionRemoved', onCanvasMutated);
+  editor.on('nodeDataChanged', onCanvasMutated);
+  editor.on('nodeMoved', onCanvasMutated);
+  editor.on('nodeSelected', syncAgentContext);
+  editor.on('nodeUnselected', syncAgentContext);
   editor.on('zoom', updateZoomDisplay);
 
   updateEmptyGuide();
@@ -458,10 +466,18 @@ function scheduleSave() {
   saveTimer = setTimeout(doSave, 1500);
 }
 
+function onCanvasMutated() {
+  if (historyApplying) return;
+  scheduleSave();
+  clearTimeout(historyTimer);
+  historyTimer = setTimeout(captureCanvasHistory, 180);
+  syncAgentContext();
+}
+
 async function doSave() {
   try {
     const data = editor.export();
-    const name = document.getElementById('ac-project-name').value || 'Untitled';
+    const name = document.getElementById('ac-project-name').value || '未命名项目';
     const body = { id: window.__ACWorkflowId || null, name, drawflow: data.drawflow };
     const resp = await authFetch('/api/workflow/save', {
       method: 'POST', body: JSON.stringify(body)
@@ -471,14 +487,219 @@ async function doSave() {
       window.__ACWorkflowId = json.data.id;
       const status = document.getElementById('ac-save-status');
       if (status) status.textContent = '已保存 · 刚刚';
+      return true;
     }
   } catch (e) {
     const status = document.getElementById('ac-save-status');
     if (status) status.textContent = '保存失败';
   }
+  return false;
 }
 
 function onProjectRename() { scheduleSave(); }
+
+async function loadCanvasFromQuery() {
+  const workflowId = new URLSearchParams(location.search).get('id');
+  if (!workflowId) return;
+  try {
+    const resp = await authFetch(`/api/workflow/${encodeURIComponent(workflowId)}`);
+    const json = await resp.json();
+    if (!json.success || !json.data?.drawflow) throw new Error(json.error || '画布不存在');
+    window.__ACWorkflowId = json.data.id;
+    document.getElementById('ac-project-name').value = json.data.name || '未命名项目';
+    const graph = { drawflow: JSON.parse(JSON.stringify(json.data.drawflow)) };
+    const home = graph.drawflow?.Home?.data || {};
+    Object.values(home).forEach((node) => {
+      const type = String(node.name || node.class || '').replace(/^ac-node-/, '').replace(/^wf-node-/, '');
+      const definition = NODE_TYPES.find(item => item.id === type);
+      if (!definition) return;
+      node.name = type;
+      node.class = `ac-node-${type}`;
+      node.html = buildNodeHtml(type, node.data || {});
+    });
+    historyApplying = true;
+    editor.clear();
+    editor.import(graph);
+    historyApplying = false;
+    Object.keys(home).forEach(id => makeNodeResizable(id));
+    updateEmptyGuide();
+    syncAgentContext();
+    document.getElementById('ac-save-status').textContent = '已加载';
+  } catch (error) {
+    historyApplying = false;
+    toast(error.message || '画布加载失败', 'error');
+  }
+}
+
+function canvasSnapshot() {
+  return JSON.stringify(editor.export());
+}
+
+function resetCanvasHistory() {
+  canvasHistory = [canvasSnapshot()];
+  canvasHistoryIndex = 0;
+  updateHistoryButtons();
+}
+
+function captureCanvasHistory() {
+  if (historyApplying || !editor) return;
+  const snapshot = canvasSnapshot();
+  if (canvasHistory[canvasHistoryIndex] === snapshot) return;
+  canvasHistory = canvasHistory.slice(0, canvasHistoryIndex + 1);
+  canvasHistory.push(snapshot);
+  if (canvasHistory.length > 50) canvasHistory.shift();
+  canvasHistoryIndex = canvasHistory.length - 1;
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  const undo = document.getElementById('ac-undo-btn');
+  const redo = document.getElementById('ac-redo-btn');
+  if (undo) undo.disabled = canvasHistoryIndex <= 0;
+  if (redo) redo.disabled = canvasHistoryIndex < 0 || canvasHistoryIndex >= canvasHistory.length - 1;
+}
+
+function restoreCanvasSnapshot(index) {
+  if (index < 0 || index >= canvasHistory.length) return;
+  historyApplying = true;
+  editor.clear();
+  editor.import(JSON.parse(canvasHistory[index]));
+  canvasHistoryIndex = index;
+  const nodes = editor.drawflow?.drawflow?.Home?.data || {};
+  Object.keys(nodes).forEach(id => makeNodeResizable(id));
+  historyApplying = false;
+  updateHistoryButtons();
+  updateEmptyGuide();
+  syncAgentContext();
+  scheduleSave();
+}
+
+function undoCanvas() { restoreCanvasSnapshot(canvasHistoryIndex - 1); }
+function redoCanvas() { restoreCanvasSnapshot(canvasHistoryIndex + 1); }
+
+async function saveCanvasNow() {
+  clearTimeout(saveTimer);
+  document.getElementById('ac-save-status').textContent = '保存中…';
+  const ok = await doSave();
+  toast(ok ? '画布已保存' : '画布保存失败', ok ? 'success' : 'error');
+}
+
+function toggleCanvasTheme() {
+  const current = window.vidoTheme?.current?.() || document.documentElement.dataset.theme || 'purple';
+  window.vidoTheme?.store?.(current === 'light-mist' ? 'purple' : 'light-mist');
+}
+
+function syncAgentContext() {
+  if (!editor) return;
+  const nodes = editor.drawflow?.drawflow?.Home?.data || {};
+  const selected = document.querySelector('.drawflow-node.selected');
+  const selectedId = selected?.id?.replace('node-', '');
+  const summarize = (node, id) => ({
+    id: String(id),
+    type: String(node.name || node.class || '').replace(/^ac-node-/, ''),
+    label: NODE_TYPES.find(item => item.id === String(node.name || node.class || '').replace(/^ac-node-/, ''))?.label || node.name || '节点',
+    prompt: String(node.data?.prompt || '').slice(0, 500),
+    result: typeof node.data?.result === 'string' ? node.data.result.slice(0, 500) : String(node.data?.result?.text || '').slice(0, 500)
+  });
+  agentContext = {
+    selected_nodes: selectedId && nodes[selectedId] ? [summarize(nodes[selectedId], selectedId)] : [],
+    canvas_nodes: Object.entries(nodes).slice(0, 30).map(([id, node]) => summarize(node, id)),
+    project_name: document.getElementById('ac-project-name')?.value || '未命名项目'
+  };
+}
+
+function getCanvasExecutionOrder() {
+  const nodes = editor.drawflow?.drawflow?.Home?.data || {};
+  const ids = Object.keys(nodes);
+  const indegree = Object.fromEntries(ids.map(id => [id, 0]));
+  const edges = Object.fromEntries(ids.map(id => [id, []]));
+  ids.forEach((id) => {
+    Object.values(nodes[id].outputs || {}).forEach(output => (output.connections || []).forEach((connection) => {
+      const target = String(connection.node);
+      if (!(target in indegree)) return;
+      edges[id].push(target);
+      indegree[target] += 1;
+    }));
+  });
+  const queue = ids.filter(id => indegree[id] === 0);
+  const ordered = [];
+  while (queue.length) {
+    const id = queue.shift();
+    ordered.push(id);
+    edges[id].forEach((target) => { if (--indegree[target] === 0) queue.push(target); });
+  }
+  if (ordered.length !== ids.length) throw new Error('画布中存在循环连接，请先断开循环后再运行');
+  return ordered;
+}
+
+function setRunProgress(current, total, text) {
+  const panel = document.getElementById('ac-run-progress');
+  panel?.classList.toggle('show', total > 0);
+  const label = document.getElementById('ac-run-progress-text');
+  const count = document.getElementById('ac-run-progress-count');
+  const bar = document.getElementById('ac-run-progress-bar');
+  if (label) label.textContent = text || '正在运行';
+  if (count) count.textContent = `${current}/${total}`;
+  if (bar) bar.style.width = `${total ? Math.round(current / total * 100) : 0}%`;
+}
+
+async function runCanvasWorkflow() {
+  if (workflowRunning) return;
+  const order = getCanvasExecutionOrder();
+  if (!order.length) return toast('请先添加或选择一个工作流模板', 'info');
+  const runnable = order;
+  workflowRunning = true;
+  const button = document.getElementById('ac-run-all-btn');
+  if (button) button.disabled = true;
+  setRunProgress(0, runnable.length, '准备运行工作流');
+  try {
+    for (let index = 0; index < runnable.length; index++) {
+      const id = runnable[index];
+      const node = editor.drawflow.drawflow.Home.data[id];
+      const type = String(node.name || node.class || '').replace(/^ac-node-/, '');
+      setRunProgress(index, runnable.length, `正在运行 ${NODE_TYPES.find(item => item.id === type)?.label || type}`);
+      const success = await runNode(Number(id));
+      if (!success) throw new Error(`${NODE_TYPES.find(item => item.id === type)?.label || type} 节点运行失败，工作流已停止`);
+      setRunProgress(index + 1, runnable.length, `${NODE_TYPES.find(item => item.id === type)?.label || type} 已完成`);
+    }
+    await doSave();
+    toast('工作流运行完成', 'success');
+  } catch (error) {
+    toast(error.message || '工作流运行失败', 'error');
+  } finally {
+    workflowRunning = false;
+    if (button) button.disabled = false;
+    setTimeout(() => setRunProgress(0, 0, ''), 900);
+  }
+}
+
+function autoLayoutCanvas() {
+  const nodes = editor.drawflow?.drawflow?.Home?.data || {};
+  const order = getCanvasExecutionOrder();
+  const depth = {};
+  order.forEach((id) => {
+    let value = 0;
+    Object.values(nodes[id].inputs || {}).forEach(input => (input.connections || []).forEach(connection => {
+      value = Math.max(value, (depth[String(connection.node)] || 0) + 1);
+    }));
+    depth[id] = value;
+  });
+  const rows = {};
+  order.forEach((id) => {
+    const column = depth[id] || 0;
+    rows[column] = rows[column] || 0;
+    const x = 130 + column * 340;
+    const y = 110 + rows[column]++ * 260;
+    nodes[id].pos_x = x;
+    nodes[id].pos_y = y;
+    const element = document.getElementById(`node-${id}`);
+    if (element) { element.style.left = `${x}px`; element.style.top = `${y}px`; }
+    editor.updateConnectionNodes(`node-${id}`);
+  });
+  onCanvasMutated();
+  fitView();
+  toast('节点已自动整理', 'success');
+}
 
 // ═══ 节点构建 ═══
 function buildNodeHtml(type, data) {
@@ -589,14 +810,14 @@ function buildNodeBody(type, data) {
         ${resultField}
         ${caps}
         <div class="ac-node-footer">
-          <span class="ac-node-info">⊙ 100 · Phase 2</span>
-          <button class="ac-node-run" disabled>▶ 运行</button>
+          <span class="ac-node-info">连接图片后生成视频</span>
+          ${runBtn}
         </div>`;
     case 'merge':
       return `
-        <div class="ac-node-placeholder" style="text-align:center;color:var(--ac-text3);padding:28px 12px;font-size:12px">
-          ⊞ 最终合成<br/><span style="font-size:10px">连接多个输入节点 · Phase 2 接入</span>
-        </div>`;
+        <div class="ac-node-placeholder" style="text-align:center;color:var(--ac-text3);padding:18px 12px 10px;font-size:12px">连接一个或多个视频节点，按顺序合成为最终成片</div>
+        ${resultField}
+        <div class="ac-node-footer"><span class="ac-node-info">最终输出</span>${runBtn}</div>`;
     default:
       return '<div class="ac-node-placeholder">未知节点类型</div>';
   }
@@ -770,7 +991,11 @@ function initKeyboardShortcuts() {
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
-      doSave();
+      saveCanvasNow();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redoCanvas(); else undoCanvas();
     }
   });
 }
@@ -858,30 +1083,74 @@ async function sendAgentMessage() {
   document.getElementById('ac-agent-welcome').style.display = 'none';
   renderAgentBody();
 
-  agentHistory.push({ role: 'assistant', content: '思考中...', _loading: true });
+  syncAgentContext();
+  const assistant = { role: 'assistant', content: '', phases: [], actions: [], _streaming: true };
+  agentHistory.push(assistant);
   renderAgentBody();
   agentBusy = true;
   const sendBtn = document.getElementById('ac-agent-send-btn');
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const histForSend = agentHistory.filter(m => !m._loading).slice(0, -1);
-    const data = await safeFetchJSON('/api/agent/chat', {
+    const histForSend = agentHistory.slice(0, -2).map(item => ({ role: item.role, content: item.content }));
+    const response = await authFetch('/api/agent/chat-stream', {
       method: 'POST',
       body: JSON.stringify({ message, context: agentContext, history: histForSend })
     });
-    if (data.success && data.reply) {
-      agentHistory[agentHistory.length - 1] = { role: 'assistant', content: data.reply };
-    } else {
-      agentHistory[agentHistory.length - 1] = { role: 'assistant', content: '⚠ ' + (data.error || '生成失败') };
-    }
+    if (!response.ok || !response.body) throw new Error(`助手请求失败（${response.status}）`);
+    await consumeAgentStream(response, assistant);
   } catch (e) {
-    agentHistory[agentHistory.length - 1] = { role: 'assistant', content: '⚠ ' + e.message };
+    assistant.content = '⚠ ' + e.message;
+    assistant._streaming = false;
+    assistant.phases = assistant.phases.map(phase => phase.state === 'running' ? { ...phase, state: 'error' } : phase);
   } finally {
     agentBusy = false;
     if (sendBtn) sendBtn.disabled = false;
     renderAgentBody();
   }
+}
+
+async function consumeAgentStream(response, assistant) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const dispatch = (block) => {
+    let event = 'message';
+    let data = null;
+    block.split(/\r?\n/).forEach((line) => {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      if (line.startsWith('data:')) {
+        try { data = JSON.parse(line.slice(5).trim()); } catch {}
+      }
+    });
+    if (!data) return;
+    if (event === 'phase') {
+      const index = assistant.phases.findIndex(item => item.id === data.id);
+      if (index >= 0) assistant.phases[index] = data; else assistant.phases.push(data);
+    } else if (event === 'chunk') {
+      assistant.content += `${assistant.content ? '\n' : ''}${data.text || ''}`;
+    } else if (event === 'actions') {
+      assistant.actions = Array.isArray(data.actions) ? data.actions : [];
+    } else if (event === 'done') {
+      assistant.content = data.reply || assistant.content;
+      assistant._streaming = false;
+    } else if (event === 'error') {
+      assistant.content = `⚠ ${data.error || '生成失败'}`;
+      assistant._streaming = false;
+      assistant.phases = assistant.phases.map(phase => phase.state === 'running' ? { ...phase, state: 'error' } : phase);
+    }
+    renderAgentBody();
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || '';
+    blocks.forEach(dispatch);
+    if (done) break;
+  }
+  if (buffer.trim()) dispatch(buffer);
+  assistant._streaming = false;
 }
 
 // 稳健的 JSON 请求：如果响应是 HTML（错误页），抛出清晰错误
@@ -916,17 +1185,33 @@ function renderAgentBody() {
     return;
   }
   if (welcome) welcome.style.display = 'none';
-  agentHistory.forEach(m => {
+  agentHistory.forEach((m, messageIndex) => {
     const div = document.createElement('div');
-    div.className = 'ac-message ' + m.role + (m._loading ? ' loading' : '');
-    // 用户消息用 escape，AI 消息用 markdown 渲染
-    const content = (m.role === 'assistant' && !m._loading)
-      ? renderMarkdown(m.content)
-      : escapeHtml(m.content);
-    div.innerHTML = `<div class="ac-message-bubble">${content}</div>`;
+    div.className = `ac-message ${m.role}${m._streaming ? ' is-streaming' : ''}`;
+    if (m.role === 'user') {
+      div.innerHTML = `<div class="ac-message-bubble">${escapeHtml(m.content)}</div>`;
+    } else {
+      const phases = (m.phases || []).map((phase) => `<div class="ac-agent-phase ${escapeAttr(phase.state || '')}"><i>${phase.state === 'done' ? '✓' : phase.state === 'error' ? '!' : '·'}</i><span>${escapeHtml(phase.label || '')}</span><em>${phase.state === 'done' ? '完成' : phase.state === 'error' ? '失败' : '处理中'}</em></div>`).join('');
+      const answer = m.content ? `<div class="ac-agent-answer">${renderMarkdown(m.content)}</div>` : '';
+      const actions = (m.actions || []).map((action, actionIndex) => `<button class="ac-agent-action" onclick="applyAgentAction(${messageIndex},${actionIndex})">${escapeHtml(action.label || '应用到画布')}</button>`).join('');
+      div.innerHTML = `<div class="ac-message-bubble">${phases ? `<div class="ac-agent-waterfall">${phases}</div>` : ''}${answer}${actions ? `<div class="ac-agent-actions">${actions}</div>` : ''}</div>`;
+    }
     body.appendChild(div);
   });
   body.scrollTop = body.scrollHeight;
+}
+
+function applyAgentAction(messageIndex, actionIndex) {
+  const message = agentHistory[messageIndex];
+  const action = message?.actions?.[actionIndex];
+  if (!action) return;
+  const text = String(action.payload?.text || message.content || '').trim();
+  if (!text) return toast('没有可应用的内容', 'info');
+  const id = addNodeCenter('text', { prompt: text, result: { text } });
+  if (id == null) return toast('添加节点失败', 'error');
+  captureCanvasHistory();
+  syncAgentContext();
+  toast(action.type === 'add_next_step' ? '已作为下一步加入画布' : '已添加为文本节点', 'success');
 }
 
 function initAgentEvents() {
@@ -1004,8 +1289,8 @@ function runNodeBtn(btn) {
 
 async function runNode(nodeId) {
   const node = editor.drawflow.drawflow.Home.data[nodeId];
-  if (!node) return;
-  const type = node.class.replace('ac-node-', '');
+  if (!node) return false;
+  const type = String(node.name || node.class || '').replace('ac-node-', '');
   const fields = collectNodeData(nodeId);
   // 写回 Drawflow data
   editor.updateNodeDataFromId(nodeId, Object.assign({}, node.data, fields));
@@ -1028,17 +1313,21 @@ async function runNode(nodeId) {
       case 'background': result = await runBackground(prompt, fields); break;
       case 'character':  result = await runCharacter(prompt, fields, nodeId); break;
       case 'i2v':        result = await runI2V(prompt, fields, nodeId); break;
+      case 'video':      result = await runI2V(prompt, fields, nodeId); break;
       case 'avatar':     result = await runAvatar(prompt, fields, nodeId); break;
       case 'voice':      result = await runVoice(prompt, fields); break;
       case 'music':      result = await runMusic(prompt, fields); break;
+      case 'merge':      result = await runMerge(nodeId); break;
       default:           throw new Error('该节点暂未接入 API');
     }
     editor.updateNodeDataFromId(nodeId, Object.assign({}, node.data, fields, { result }));
     if (resultEl) resultEl.innerHTML = renderResult(type, result);
     toast('✓ ' + type + ' 已完成', 'success');
+    return true;
   } catch (e) {
     if (resultEl) resultEl.innerHTML = `<div class="ac-error">⚠ ${escapeHtml(e.message)}</div>`;
     toast('⚠ ' + e.message, 'error');
+    return false;
   } finally {
     if (runBtn) runBtn.disabled = false;
   }
@@ -1227,6 +1516,37 @@ async function pollI2V(taskId) {
   throw new Error('视频生成超时');
 }
 
+function getUpstreamVideoUrls(nodeId) {
+  const nodes = editor.drawflow?.drawflow?.Home?.data || {};
+  const node = nodes[nodeId];
+  const urls = [];
+  Object.values(node?.inputs || {}).forEach(input => (input.connections || []).forEach(connection => {
+    const upstream = nodes[String(connection.node)];
+    const result = upstream?.data?.result;
+    const url = result?.video_url || result?.videoUrl || '';
+    if (url && !urls.includes(url)) urls.push(url);
+  }));
+  return urls;
+}
+
+async function runMerge(nodeId) {
+  const videoUrls = getUpstreamVideoUrls(nodeId);
+  if (!videoUrls.length) throw new Error('请至少连接一个已生成视频的上游节点');
+  if (videoUrls.length === 1) return { video_url: videoUrls[0] };
+  const submitted = await safeFetchJSON('/api/workflow/concat', {
+    method: 'POST', body: JSON.stringify({ videoUrls })
+  });
+  if (!submitted.success || !submitted.taskId) throw new Error(submitted.error || '视频合成启动失败');
+  for (let index = 0; index < 80; index++) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    const status = await safeFetchJSON(`/api/workflow/effects/status/${encodeURIComponent(submitted.taskId)}`);
+    const task = status.data || {};
+    if (task.status === 'done') return { video_url: task.outputUrl };
+    if (task.status === 'error' || task.status === 'failed') throw new Error(task.error || '视频合成失败');
+  }
+  throw new Error('视频合成超时');
+}
+
 async function runAvatar(prompt, fields, nodeId) {
   let imgUrl = fields.image_url || getUpstreamImageUrl(nodeId);
   if (!imgUrl) throw new Error('请先上传人物照片');
@@ -1354,8 +1674,54 @@ function escapeHtml(str) {
 }
 function escapeAttr(str) { return escapeHtml(str); }
 
-// 占位（后续 Phase 实现）
-function openTemplates() { toast('模板库 — Phase 5', 'info'); }
-function openHistory() { toast('历史记录 — Phase 5', 'info'); }
-function openAssets() { toast('素材库 — Phase 5', 'info'); }
+function openCanvasLibrary(title, kicker, html) {
+  document.getElementById('ac-library-title').textContent = title;
+  document.getElementById('ac-library-kicker').textContent = kicker || '视频画布';
+  document.getElementById('ac-library-content').innerHTML = html;
+  document.getElementById('ac-library-modal').hidden = false;
+}
+
+function closeCanvasLibrary() { document.getElementById('ac-library-modal').hidden = true; }
+
+function openTemplates() {
+  const templates = [
+    ['text2video', '🎬', '文本生成短片', '文本 → 画面 → 视频，适合从一个想法开始'],
+    ['img2bg', '🧑', '人物与场景', '人物形象与场景背景并行生成'],
+    ['i2v', '✨', '首帧生成视频', '先生成首帧，再补充镜头运动'],
+    ['music2video', '🎵', '配乐视觉短片', '配乐、画面和视频组合工作流']
+  ];
+  openCanvasLibrary('工作流模板', '统一视频画布', `<div class="ac-library-grid">${templates.map(([id, icon, title, desc]) => `<button class="ac-library-card" onclick="useCanvasTemplate('${id}')"><i>${icon}</i><span><b>${title}</b><span>${desc}</span></span><em>添加 →</em></button>`).join('')}</div>`);
+}
+
+function useCanvasTemplate(id) {
+  closeCanvasLibrary();
+  quickCreate(id);
+  setTimeout(() => { autoLayoutCanvas(); captureCanvasHistory(); }, 80);
+}
+
+async function openHistory() {
+  openCanvasLibrary('最近保存', '项目与版本', '<div class="ac-library-empty">正在加载…</div>');
+  try {
+    const data = await safeFetchJSON('/api/workflow');
+    const rows = Array.isArray(data.data) ? data.data : [];
+    document.getElementById('ac-library-content').innerHTML = rows.length
+      ? `<div class="ac-library-grid">${rows.slice(0, 30).map(item => `<button class="ac-library-card" onclick="openWorkflowFromLibrary('${escapeAttr(item.id)}')"><i>▦</i><span><b>${escapeHtml(item.name || '未命名项目')}</b><span>${new Date(item.updated_at || item.created_at || Date.now()).toLocaleString()}</span></span><em>打开 →</em></button>`).join('')}</div>`
+      : '<div class="ac-library-empty">还没有保存的画布</div>';
+  } catch (error) {
+    document.getElementById('ac-library-content').innerHTML = `<div class="ac-library-empty">${escapeHtml(error.message || '加载失败')}</div>`;
+  }
+}
+
+async function openWorkflowFromLibrary(id) {
+  closeCanvasLibrary();
+  const url = new URL(location.href);
+  url.searchParams.set('id', id);
+  history.replaceState({}, '', url.pathname + url.search);
+  await loadCanvasFromQuery();
+  resetCanvasHistory();
+}
+
+function openAssets() {
+  openCanvasLibrary('素材与作品', '平台资源', '<div class="ac-library-links"><a href="/index.html#assets"><b>我的素材库</b><span>复用已经上传或生成的人物、场景、图片和音频</span></a><a href="/index.html#works"><b>我的作品</b><span>查看已经生成和合成完成的视频</span></a><a href="/index.html#projects"><b>我的项目</b><span>从已有项目继续编辑</span></a></div>');
+}
 function openHelp() { toast('双击画布添加节点，Ctrl+K 打开节点库', 'info'); }

@@ -102,7 +102,7 @@ function normalize(collection, row = {}) {
     id,
     collection,
     user_id: payload.user_id || payload.userId || null,
-    project_id: payload.project_id || payload.projectId || null,
+    project_id: payload.project_id || payload.projectId || payload.task_id || payload.taskId || null,
     account_id: payload.account_id || payload.accountId || null,
     type: payload.type || payload.category || null,
     status: payload.status || payload.state || null,
@@ -163,6 +163,56 @@ function get(collection, id) {
   const db = requireDatabase();
   const row = db.prepare('SELECT payload_json FROM content_records WHERE collection = ? AND id = ?').get(collection, String(id));
   return cacheSet(key, row ? jsonParse(row.payload_json) : null);
+}
+
+function upsertMany(collection, rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return [];
+  const db = requireDatabase();
+  const records = list.map(row => normalize(collection, row));
+  invalidateCollection(collection);
+  if (typeof db.upsertMany === 'function') {
+    db.upsertMany(
+      'content_records',
+      ['id', 'collection', 'user_id', 'project_id', 'account_id', 'type', 'status', 'payload_json', 'created_at', 'updated_at'],
+      ['collection', 'id'],
+      records.map(rec => [
+        rec.id,
+        rec.collection,
+        rec.user_id,
+        rec.project_id,
+        rec.account_id,
+        rec.type,
+        rec.status,
+        rec.payload_json,
+        rec.created_at,
+        rec.updated_at,
+      ]),
+    );
+  } else {
+    const apply = db.transaction(() => {
+      for (const rec of records) {
+        db.prepare(`
+          INSERT INTO content_records (
+            id, collection, user_id, project_id, account_id, type, status, payload_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(collection, id) DO UPDATE SET
+            user_id=excluded.user_id,
+            project_id=excluded.project_id,
+            account_id=excluded.account_id,
+            type=excluded.type,
+            status=excluded.status,
+            payload_json=excluded.payload_json,
+            updated_at=excluded.updated_at
+        `).run(
+          rec.id, rec.collection, rec.user_id, rec.project_id, rec.account_id,
+          rec.type, rec.status, rec.payload_json, rec.created_at, rec.updated_at,
+        );
+      }
+    });
+    apply();
+  }
+  return records.map(rec => jsonParse(rec.payload_json));
 }
 
 function normaliseFilters(filters = {}) {
@@ -232,4 +282,5 @@ module.exports = {
   stableId,
   update,
   upsert,
+  upsertMany,
 };

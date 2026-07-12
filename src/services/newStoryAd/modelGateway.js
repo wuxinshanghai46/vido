@@ -2,8 +2,13 @@ const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
 const storage = require('./storageService');
 const providerAdapters = require('./providerAdapterRegistry');
+const cancellation = require('./cancellationContext');
+
+const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
+const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
 
 const FALLBACKS = [
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 800, enabled: true },
   { provider_id: 'deepseek', model_id: 'deepseek-chat', priority: 900, enabled: true },
   { provider_id: 'openai', model_id: 'gpt-4o', priority: 910, enabled: true },
   { provider_id: 'openai', model_id: 'gpt-4o-mini', priority: 920, enabled: true },
@@ -15,7 +20,12 @@ const STAGE_FALLBACKS = {
   'new_story_ad.storyboard_table': FALLBACKS,
   'new_story_ad.storyboard_rewrite': FALLBACKS,
   'new_story_ad.qa': FALLBACKS,
+  'new_story_ad.scene_vision': FALLBACKS,
+  'new_story_ad.scene_consistency_qa': FALLBACKS,
   'new_story_ad.json_repair': FALLBACKS,
+  'new_story_ad.blueprint_language_repair': FALLBACKS,
+  'new_story_ad.blueprint_polish': FALLBACKS,
+  'new_story_ad.storyboard_language_repair': FALLBACKS,
   'new_story_ad.assist': FALLBACKS,
 };
 
@@ -25,6 +35,13 @@ function modelKey(model) {
 
 function storyUseMatches(model) {
   return ['story', 'chat', 'llm'].includes(String(model?.use || '').toLowerCase());
+}
+
+function visionUseMatches(model) {
+  const use = String(model?.use || model?.type || '').toLowerCase();
+  const id = String(model?.id || model?.model_id || '').toLowerCase();
+  return ['vision', 'vlm', 'multimodal'].includes(use)
+    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3))/.test(id));
 }
 
 function providerMatches(provider, providerId) {
@@ -40,7 +57,7 @@ function settingsIndex() {
   return { settings, providers };
 }
 
-function isConfiguredAndUsable(model) {
+function isConfiguredAndUsable(model, capability = 'story') {
   if (!model || model.enabled === false || !model.provider_id || !model.model_id) return { ok: false, reason: 'disabled_or_incomplete' };
   const { providers } = settingsIndex();
   const provider = providers.find(p => p.enabled && p.api_key && providerMatches(p, model.provider_id));
@@ -48,8 +65,47 @@ function isConfiguredAndUsable(model) {
   const providerModel = (provider.models || []).find(m => String(m.id || '') === String(model.model_id || ''));
   if (!providerModel) return { ok: false, reason: 'model_not_found' };
   if (providerModel.enabled === false) return { ok: false, reason: 'model_disabled' };
-  if (!storyUseMatches(providerModel)) return { ok: false, reason: 'model_not_text' };
+  if (capability === 'vision' ? !visionUseMatches(providerModel) : !storyUseMatches(providerModel)) {
+    return { ok: false, reason: capability === 'vision' ? 'model_not_vision' : 'model_not_text' };
+  }
   return { ok: true, provider, providerModel };
+}
+
+function settingsVisionCandidates() {
+  const { providers } = settingsIndex();
+  const rankProvider = (provider) => {
+    const hay = `${provider.id || ''} ${provider.preset || ''} ${provider.name || ''}`.toLowerCase();
+    if (/deyunai|漫路/.test(hay)) return 10;
+    if (/zhipu|智谱/.test(hay)) return 20;
+    if (/volc|ark|火山|seedance/.test(hay)) return 30;
+    if (/openai/.test(hay)) return 40;
+    return 100;
+  };
+  const out = [];
+  const rankModel = (model) => {
+    const id = String(model?.id || '').toLowerCase();
+    if (id === 'gpt-4o') return 0;
+    if (/gemini-2\.5-pro/.test(id)) return 1;
+    if (/gemini-2\.5-flash/.test(id)) return 2;
+    if (['vision', 'vlm', 'multimodal'].includes(String(model?.use || model?.type || '').toLowerCase())) return 3;
+    if (/gemini/.test(id)) return 4;
+    if (/gpt-4o-mini/.test(id)) return 5;
+    return 20;
+  };
+  providers
+    .filter(provider => provider.enabled && provider.api_key)
+    .sort((a, b) => rankProvider(a) - rankProvider(b))
+    .forEach(provider => {
+      (provider.models || [])
+        .filter(model => model.enabled !== false && visionUseMatches(model))
+        .forEach((model, index) => out.push({
+          provider_id: provider.id,
+          model_id: model.id,
+          priority: rankProvider(provider) + rankModel(model) + (index / 1000),
+          enabled: true,
+        }));
+    });
+  return out;
 }
 
 function settingsStoryCandidates() {
@@ -89,8 +145,19 @@ function getHealthScore(model) {
   if (row.cooldown_until && new Date(row.cooldown_until).getTime() > Date.now()) return -10000;
   const success = Number(row.success_count || 0);
   const failure = Number(row.failure_count || 0);
+  const consecutiveFailure = Number(row.consecutive_failure_count || 0);
   const latency = Number(row.avg_latency_ms || 0);
-  return success * 3 - failure * 5 - Math.min(5, Math.floor(latency / 30000));
+  return success * 2 - failure * 4 - consecutiveFailure * 40 - Math.min(8, Math.floor(latency / 15000));
+}
+
+function healthState(model) {
+  const row = storage.readHealth()[modelKey(model)] || {};
+  const cooldownUntil = row.cooldown_until ? new Date(row.cooldown_until).getTime() : 0;
+  return {
+    ...row,
+    circuit_open: Number.isFinite(cooldownUntil) && cooldownUntil > Date.now(),
+    cooldown_remaining_ms: Number.isFinite(cooldownUntil) ? Math.max(0, cooldownUntil - Date.now()) : 0,
+  };
 }
 
 function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
@@ -103,17 +170,21 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     success_count: 0,
     failure_count: 0,
     avg_latency_ms: 0,
+    consecutive_failure_count: 0,
   };
   if (ok) {
     row.success_count = Number(row.success_count || 0) + 1;
+    row.consecutive_failure_count = 0;
     row.cooldown_until = '';
     row.last_error_code = '';
+    row.last_success_at = new Date().toISOString();
   } else {
     row.failure_count = Number(row.failure_count || 0) + 1;
+    row.consecutive_failure_count = Number(row.consecutive_failure_count || 0) + 1;
     row.last_error_code = classifyError(error).code;
     row.last_failed_at = new Date().toISOString();
     const code = row.last_error_code;
-    if (row.failure_count >= 3 && /CONFIG|AUTH|MODEL/.test(code)) {
+    if (/AUTH_CONFIG|MODEL_CONFIG/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     } else if (/TIMEOUT|RATE_LIMIT|NETWORK/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -140,25 +211,42 @@ function uniqueModels(models) {
 }
 
 function candidatesForStage(stage) {
-  const configured = pipeline.pickAllEnabled(stage);
+  const inheritedStage = ['new_story_ad.blueprint_language_repair', 'new_story_ad.blueprint_polish'].includes(stage)
+    ? 'new_story_ad.blueprint'
+    : (stage === 'new_story_ad.storyboard_language_repair' ? 'new_story_ad.storyboard_table' : stage);
+  const configured = pipeline.pickAllEnabled(inheritedStage);
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
   const configuredOrSettings = configured.length ? configured : settingsStoryCandidates();
   return uniqueModels([...configuredOrSettings, ...defaults])
     .map((m, i) => ({ ...m, fallback_rank: i + 1 }))
     .filter(m => isConfiguredAndUsable(m).ok)
+    .filter(m => !healthState(m).circuit_open)
     .sort((a, b) => {
-      const healthDelta = getHealthScore(b) - getHealthScore(a);
-      if (healthDelta) return healthDelta;
-      return Number(a.priority || 999) - Number(b.priority || 999);
+      const priorityDelta = Number(a.priority || 999) - Number(b.priority || 999);
+      if (priorityDelta) return priorityDelta;
+      return getHealthScore(b) - getHealthScore(a);
+    });
+}
+
+function candidatesForVisionStage(stage) {
+  const configured = pipeline.pickAllEnabled(stage);
+  return uniqueModels([...configured, ...settingsVisionCandidates()])
+    .map((model, index) => ({ ...model, fallback_rank: index + 1 }))
+    .filter(model => isConfiguredAndUsable(model, 'vision').ok)
+    .filter(model => !healthState(model).circuit_open)
+    .sort((a, b) => {
+      const priorityDelta = Number(a.priority || 999) - Number(b.priority || 999);
+      return priorityDelta || (getHealthScore(b) - getHealthScore(a));
     });
 }
 
 function classifyError(error) {
   const msg = String(error?.message || error || '');
   if (/timeout|ETIMEDOUT|ECONNRESET/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
+  if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };
   if (/429|rate limit|quota/i.test(msg)) return { code: 'RATE_LIMIT', retryable: true };
-  if (/api key|unauthorized|401|403/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: true };
-  if (/model.*not found|model_not_found|不是可用|没有可用配置|not available|disabled/i.test(msg)) return { code: 'MODEL_CONFIG', retryable: true };
+  if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };
+  if (/configuration not found|model.*not found|model_not_found|不是可用|没有可用配置|not available|disabled/i.test(msg)) return { code: 'MODEL_CONFIG', retryable: false };
   if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(msg)) return { code: 'MODEL_JSON', retryable: true };
   if (/5\d\d|503|502|500/i.test(msg)) return { code: 'PROVIDER_5XX', retryable: true };
   return { code: 'UNKNOWN', retryable: false };
@@ -171,7 +259,10 @@ async function generateText({
   userPrompt,
   maxTokens = 4000,
   temperature = 0.3,
+  timeoutMs = 90000,
   skipKb = true,
+  maxCandidates = TEXT_MAX_CANDIDATES,
+  stageBudgetMs = TEXT_STAGE_BUDGET_MS,
 } = {}) {
   if (!stage) throw new Error('newStoryAd modelGateway requires stage');
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -186,11 +277,18 @@ async function generateText({
   }
   const candidates = candidatesForStage(stage);
   if (!candidates.length) {
-    throw new Error(`${stage} 没有可用文本模型：已过滤关闭供应商、无 Key、disabled 模型和非文本模型`);
+    const error = new Error(`${stage} 没有未熔断的可用文本模型，已立即停止本阶段`);
+    error.code = 'MODEL_CIRCUIT_OPEN';
+    error.retryable = true;
+    throw error;
   }
   const failed = [];
-  for (let i = 0; i < candidates.length; i += 1) {
-    const model = candidates[i];
+  const stageStarted = Date.now();
+  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || TEXT_MAX_CANDIDATES)));
+  for (let i = 0; i < attemptCandidates.length; i += 1) {
+    cancellation.throwIfCancelled(taskId);
+    if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
+    const model = attemptCandidates[i];
     const start = Date.now();
     try {
       const result = await providerAdapters.generateText({
@@ -201,7 +299,9 @@ async function generateText({
         userPrompt,
         maxTokens,
         temperature,
+        timeoutMs,
       });
+      cancellation.throwIfCancelled(taskId);
       const text = result.text;
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
@@ -246,12 +346,136 @@ async function generateText({
         latency_ms: latency,
         fallback_rank: i + 1,
       });
-      if (!classified.retryable && i >= candidates.length - 1) break;
+      if (!classified.retryable && i >= attemptCandidates.length - 1) break;
     }
   }
-  const err = new Error(`${stage} 模型全部失败：${failed.map(x => `${x.provider_id}/${x.model_id}:${x.code}`).join('；')}`);
+  const retryable = failed.some(item => ['TIMEOUT_OR_NETWORK', 'RATE_LIMIT', 'PROVIDER_5XX', 'MODEL_JSON'].includes(item.code));
+  const err = new Error(`${stage} 模型失败预算已耗尽：实际尝试 ${failed.length}/${candidates.length}；${failed.map(x => `${x.provider_id}/${x.model_id}:${x.code}`).join('；')}`);
+  err.code = retryable ? 'MODEL_ATTEMPTS_EXHAUSTED' : (failed[0]?.code || 'MODEL_UNAVAILABLE');
+  err.retryable = retryable;
+  err.attempted_count = failed.length;
+  err.candidate_count = candidates.length;
   err.failed_models = failed;
   throw err;
+}
+
+async function generateVision({
+  taskId = '',
+  stage = 'new_story_ad.scene_consistency_qa',
+  systemPrompt = '',
+  userPrompt = '',
+  imageUrls = [],
+  maxTokens = 4000,
+  timeoutMs = 120000,
+  maxCandidates = Math.min(2, TEXT_MAX_CANDIDATES),
+  stageBudgetMs = TEXT_STAGE_BUDGET_MS,
+} = {}) {
+  const urls = (Array.isArray(imageUrls) ? imageUrls : [])
+    .map(value => String(value || '').trim())
+    .filter(value => /^https?:\/\//i.test(value))
+    .slice(0, 8);
+  if (!urls.length) {
+    const error = new Error(`${stage} 缺少可供视觉模型读取的公网参考图`);
+    error.code = 'VISION_REFERENCE_UNAVAILABLE';
+    error.retryable = false;
+    throw error;
+  }
+  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
+    return {
+      text: JSON.stringify({
+        pass: true,
+        status: 'verified',
+        scene_consistency_score: 0.92,
+        anchor_consistency_score: 0.9,
+        camera_match_score: 0.9,
+        material_match_score: 0.92,
+        mismatch_reasons: [],
+        anchors: [],
+        zones: [],
+        geometry_facts: [],
+        materials: [],
+        lighting: {},
+      }),
+      used_model: 'mock/new-story-ad-vision',
+      fallback_used: false,
+      failed_models: [],
+      latency_ms: 1,
+    };
+  }
+  const candidates = candidatesForVisionStage(stage);
+  if (!candidates.length) {
+    const error = new Error(`${stage} 没有未熔断的可用视觉模型，已立即停止本阶段`);
+    error.code = 'VISION_CIRCUIT_OPEN';
+    error.retryable = true;
+    throw error;
+  }
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userPrompt },
+        ...urls.map(url => ({ type: 'image_url', image_url: { url } })),
+      ],
+    },
+  ];
+  const failed = [];
+  const stageStarted = Date.now();
+  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || 1)));
+  for (let i = 0; i < attemptCandidates.length; i += 1) {
+    cancellation.throwIfCancelled(taskId);
+    if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
+    const model = attemptCandidates[i];
+    const start = Date.now();
+    try {
+      const result = await providerAdapters.generateText({
+        model: { ...model, _stageId: stage },
+        stage,
+        taskId,
+        systemPrompt,
+        userPrompt,
+        messages,
+        maxTokens,
+        timeoutMs,
+      });
+      cancellation.throwIfCancelled(taskId);
+      const latency = Date.now() - start;
+      recordHealth(model, { ok: true, latencyMs: latency });
+      storage.saveModelCall({
+        task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+        adapter: result.adapter || '', family: result.family || '', status: 'success',
+        latency_ms: latency, fallback_rank: i + 1,
+      });
+      return {
+        text: result.text,
+        used_model: `${model.provider_id}/${model.model_id}`,
+        fallback_used: i > 0,
+        failed_models: failed,
+        latency_ms: latency,
+      };
+    } catch (err) {
+      const latency = Date.now() - start;
+      const classified = classifyError(err);
+      failed.push({
+        provider_id: model.provider_id,
+        model_id: model.model_id,
+        code: classified.code,
+        message: String(err.message || err).slice(0, 300),
+      });
+      recordHealth(model, { ok: false, error: err, latencyMs: latency });
+      storage.saveModelCall({
+        task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+        status: 'failed', error_code: classified.code,
+        error_message: String(err.message || err).slice(0, 500), latency_ms: latency,
+        fallback_rank: i + 1,
+      });
+    }
+  }
+  const error = new Error(`${stage} 视觉模型全部失败：${failed.map(item => `${item.provider_id}/${item.model_id}:${item.code}`).join('；')}`);
+  error.code = 'VISION_QA_UNAVAILABLE';
+  error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX/.test(item.code));
+  error.failed_models = failed;
+  throw error;
 }
 
 function mockName(seed = '', idx = 0) {
@@ -310,8 +534,12 @@ function mockResponse(stage, userPrompt = '') {
 
 module.exports = {
   candidatesForStage,
+  candidatesForVisionStage,
   generateText,
+  generateVision,
   classifyError,
   isConfiguredAndUsable,
   recordHealth,
+  getHealthScore,
+  healthState,
 };

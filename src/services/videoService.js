@@ -2220,6 +2220,10 @@ async function generateVideoClip(options) {
 
   // 火山方舟 Seedance 2.0 直连（doubao-seedance-* 模型）
   const isArkSeedance = model.startsWith('doubao-seedance-');
+  if (isArkSeedance && provider === 'deyunai') {
+    console.log(`[VideoService] 模型 ${model} 通过漫路 Seedance 路由`);
+    return generateDeyunaiClip(options);
+  }
   if (isArkSeedance && provider === 'webang-seedance') {
     console.log(`[VideoService] 模型 ${model} 通过微众 Seedance 路由`);
     return generateWebangSeedanceClip(options);
@@ -2290,8 +2294,8 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
   if (!chosen) {
     const vidModels = (dyP.models || []).filter(m => m.use === 'video' && m.enabled !== false);
     if (!vidModels.length) throw new Error('漫路无启用的视频模型（请去漫路控制台开通对应渠道）');
-    // 偏好 sora-2 > kling > veo > jimeng
-    const preferred = [/^sora-2$/i, /^sora-2-pro/i, /^kling/i, /^veo-3$/i, /^veo-3-fast/i, /^hailuo/i, /^minimax/i, /^jimeng/i];
+    // 通用图生视频优先使用 Seedance 2.0，其余已启用漫路模型作为能力级后备。
+    const preferred = [/^doubao-seedance-2-0/i, /^sora-2$/i, /^sora-2-pro/i, /^kling/i, /^veo-3$/i, /^veo-3-fast/i, /^hailuo/i, /^minimax/i, /^jimeng/i];
     for (const re of preferred) {
       chosen = vidModels.find(m => re.test(m.id));
       if (chosen) break;

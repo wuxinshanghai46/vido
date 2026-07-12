@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const aliyunVoice = require('../aliyunVoiceService');
+const cancellation = require('./cancellationContext');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const AUDIO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-audio');
@@ -101,12 +102,12 @@ async function generateShotAudio({
   index = 0,
   voiceId = '',
   speed = 1,
-  allowSilentFallback = true,
+  allowSilentFallback = false,
 } = {}) {
   const text = shotSpeechText(shot) || `Shot ${index + 1}`;
   const base = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
   const estimatedDuration = clamp(shot.duration_sec || shot.duration || Math.ceil(text.length / 5), 1.2, 10, 3);
-  if (process.env.NEW_STORY_AD_MOCK_TTS === '1' || !voiceId) {
+  if (process.env.NEW_STORY_AD_MOCK_TTS === '1') {
     const out = path.join(AUDIO_DIR, `${base}.wav`);
     writeSilenceWav(out, estimatedDuration);
     return publicResult(out, {
@@ -114,10 +115,11 @@ async function generateShotAudio({
       index: index + 1,
       text,
       duration_sec: estimatedDuration,
-      provider_used: process.env.NEW_STORY_AD_MOCK_TTS === '1' ? 'mock/new-story-ad-tts' : 'local/silent-audio',
-      warning: voiceId ? '' : 'voice_id is empty; generated silent timing audio',
+      provider_used: 'mock/new-story-ad-tts',
+      warning: 'test-only silent timing audio',
     });
   }
+  if (!voiceId) throw new Error('未选择配音音色，不能生成真实配音');
 
   const outBase = path.join(AUDIO_DIR, `${base}.mp3`);
   try {
@@ -133,6 +135,7 @@ async function generateShotAudio({
       provider_used: `aliyun-tts/${voiceId}`,
     });
   } catch (err) {
+    if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
     if (!allowSilentFallback) throw err;
     const fallback = path.join(AUDIO_DIR, `${base}_fallback.wav`);
     writeSilenceWav(fallback, estimatedDuration);
@@ -152,11 +155,12 @@ async function generateVoiceover({
   shots = [],
   voiceId = '',
   speed = 1,
-  allowSilentFallback = true,
+  allowSilentFallback = false,
 } = {}) {
   const list = Array.isArray(shots) ? shots : [];
   const tracks = [];
   for (let i = 0; i < list.length; i += 1) {
+    cancellation.throwIfCancelled(taskId);
     tracks.push(await generateShotAudio({
       taskId,
       shot: list[i],
@@ -165,6 +169,7 @@ async function generateVoiceover({
       speed,
       allowSilentFallback,
     }));
+    cancellation.throwIfCancelled(taskId);
   }
   return {
     tracks,

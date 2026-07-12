@@ -16,6 +16,13 @@ function storyUseMatches(model = {}) {
   return ['story', 'chat', 'llm'].includes(String(model.use || model.type || '').toLowerCase());
 }
 
+function visionUseMatches(model = {}) {
+  const use = String(model.use || model.type || '').toLowerCase();
+  const id = String(model.id || '').toLowerCase();
+  return ['vision', 'vlm', 'multimodal'].includes(use)
+    || (storyUseMatches(model) && /(?:gpt-4o(?:-mini)?|gemini-(?:2|3))/.test(id));
+}
+
 function adapterFamily(provider = {}) {
   return String(provider.adapter_config?.family || provider.adapter || provider.preset || provider.id || 'openai-compatible').toLowerCase();
 }
@@ -28,8 +35,10 @@ function resolveTextAdapter(model = {}) {
   const provider = (settings.providers || [])
     .find(p => p.enabled && p.api_key && providerMatches(p, providerId));
   if (!provider) throw new Error(`new_story_ad provider unavailable: ${providerId}`);
+  const expectsVision = /(?:scene_vision|consistency_qa|vision)/i.test(String(model._stageId || ''));
   const providerModel = (provider.models || [])
-    .find(m => String(m.id || '').trim() === modelId && m.enabled !== false && storyUseMatches(m));
+    .find(m => String(m.id || '').trim() === modelId && m.enabled !== false
+      && (expectsVision ? visionUseMatches(m) : storyUseMatches(m)));
   if (!providerModel) throw new Error(`new_story_ad model is not enabled text model: ${providerId}/${modelId}`);
   const adapter = provider.adapter || provider.preset || provider.id || providerId;
   return {
@@ -169,7 +178,11 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
 }
 
 async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {}) {
-  const sdkOpts = { apiKey: config.apiKey };
+  const sdkOpts = {
+    apiKey: config.apiKey,
+    timeout: Math.max(30000, Math.min(180000, Number(opts.timeoutMs) || 90000)),
+    maxRetries: 0,
+  };
   if (config.baseURL) sdkOpts.baseURL = config.baseURL;
   const headers = {};
   if (config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) {
@@ -191,7 +204,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   const maxTokenValue = Math.max(1024, Math.min(32000, Number(opts.maxTokens) || 4096));
   const buildPayload = (tokenLimit) => ({
     model: config.modelId,
-    messages: [
+    messages: Array.isArray(opts.messages) && opts.messages.length ? opts.messages : [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
@@ -221,15 +234,15 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   return { text, usage: completion.usage || {} };
 }
 
-async function generateText({ model, systemPrompt, userPrompt, maxTokens = 4096, temperature = 0.3 } = {}) {
+async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000 } = {}) {
   const config = resolveTextAdapter(model);
   let result;
   if (config.family.includes('anthropic') || config.providerId === 'anthropic') {
-    result = await callAnthropicMessages(config, systemPrompt, userPrompt, { maxTokens, temperature });
+    result = await callAnthropicMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs });
   } else if ((config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) && /^claude-/i.test(config.modelId)) {
-    result = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, { maxTokens, temperature });
+    result = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs });
   } else {
-    result = await callOpenAICompatible(config, systemPrompt, userPrompt, { maxTokens, temperature });
+    result = await callOpenAICompatible(config, systemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs });
   }
   return {
     text: result.text,

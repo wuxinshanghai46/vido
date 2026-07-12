@@ -1,13 +1,31 @@
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 
+const INTERNAL_PROCESS_PATTERNS = [
+  ['广告需求', /广告需求/],
+  ['系统识别', /系统识别/],
+  ['后台流程', /后台(?:任务|流程|执行|生成|处理|重试|队列|报错|错误)/],
+  ['Prompt', /\bprompt\b/i],
+  ['QA', /\bQA\b/i],
+  ['审核流程', /(?:自动|人工)?审核(?:中|通过|失败|结果|流程)?/],
+  ['模型内部状态', /(?:模型|供应商)(?:输出异常|返回失败|报错|错误|重试|候选|路由|配置|超时)/],
+  ['生成契约', /(?:分镜|关键帧|场景)(?:合同|契约)/],
+  ['结构化处理', /(?:JSON|schema|字段)(?:解析|修复|校验|输出)/i],
+];
+
+function internalProcessHits(value = '') {
+  const text = String(value || '');
+  return INTERNAL_PROCESS_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
+}
+
 function localReview(ctx, shots) {
   const blocking = [];
   const rewrite = [];
   const warnings = [];
   const list = Array.isArray(shots) ? shots : [];
   if (!list.length) blocking.push('分镜表为空');
-  if (ctx.shot_count && list.length !== ctx.shot_count) blocking.push(`镜头数量不符合用户指定：需要 ${ctx.shot_count}，实际 ${list.length}`);
+  const expectedCount = Number(ctx.expected_storyboard_count || ctx.shot_count || 0);
+  if (expectedCount && list.length !== expectedCount) blocking.push(`镜头数量与已确认剧本不一致：需要 ${expectedCount}，实际 ${list.length}`);
 
   const forbiddenText = (ctx.forbidden || []).filter(Boolean);
   const controls = ctx.controlled_production || {};
@@ -70,11 +88,12 @@ function localReview(ctx, shots) {
     explicitNegative.forEach((word) => {
       if (word && all.includes(word)) blocking.push(`第 ${n} 镜出现高级配置禁止项：${word}`);
     });
-    if (/广告需求|系统识别|后台|prompt|QA|审核|模型|合同/.test(all)) blocking.push(`第 ${n} 镜包含内部流程词`);
+    const processHits = internalProcessHits(all);
+    if (processHits.length) blocking.push(`第 ${n} 镜包含内部流程描述：${processHits.join('、')}`);
     if (/高级感|氛围感|诗意|质感|光影|存在感/.test(all) && !/(展示|操作|对比|出现|变化|结果|证据|完成|查看|确认|使用|打开|点击|递给|拿起|靠近|纹理|界面|材料)/.test(all)) {
       rewrite.push(`第 ${n} 镜高级感/氛围词没有落到具体可拍事件`);
     }
-    if (!/(拿起|放下|打开|点击|滑动|查看|确认|展示|对比|走向|递给|操作|使用|切换|生成|同步|完成|标注|出现|变化|触摸|靠近|转身|停留|扫过|推进|拉近|切到|掠过|环绕|定格)/.test(action)) {
+    if (action.trim().length < 12) {
       rewrite.push(`第 ${n} 镜动作不够具体`);
     }
     if (/[.。…]{3,}|……/.test(voice)) rewrite.push(`第 ${n} 镜台词含省略留白`);
@@ -85,8 +104,25 @@ function localReview(ctx, shots) {
       } else if (!sceneIds.includes(sceneId)) {
         blocking.push(`第 ${n} 镜绑定了不存在的场景资产：${sceneId}`);
       }
+      const sceneAsset = sceneAssets.find((asset, assetIndex) => String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`) === sceneId);
+      if (sceneAsset?.scene_contract?.status === 'rejected' || sceneAsset?.cross_view_qa?.pass === false) {
+        blocking.push(`第 ${n} 镜绑定的场景空间契约未通过多视图一致性验证`);
+      }
+      const expectedRevision = Math.max(1, Number(sceneAsset?.scene_revision || sceneAsset?.scene_contract?.scene_revision || 1) || 1);
+      if (sceneAsset && Number(shot.scene_revision || 0) !== expectedRevision) {
+        blocking.push(`第 ${n} 镜场景版本不一致：需要 r${expectedRevision}`);
+      }
       if (!String(shot.scene_view || '').trim()) rewrite.push(`第 ${n} 镜缺少场景视角 scene_view`);
+      if (shot.scene_view && !['master', 'reverse', 'interaction', 'detail'].includes(String(shot.scene_view))) {
+        blocking.push(`第 ${n} 镜场景视角无效：${shot.scene_view}`);
+      }
+      if (!String(shot.camera_id || '').trim()) rewrite.push(`第 ${n} 镜缺少场景机位 camera_id`);
       if (!String(shot.scene_zone || '').trim()) rewrite.push(`第 ${n} 镜缺少场景区域 scene_zone`);
+      const validZoneIds = new Set((sceneAsset?.scene_contract?.zones || []).map(zone => String(zone.id || '')).filter(Boolean));
+      const shotZoneIds = Array.isArray(shot.zone_ids) ? shot.zone_ids.map(String) : [];
+      if (validZoneIds.size && (!shotZoneIds.length || shotZoneIds.some(id => !validZoneIds.has(id)))) {
+        rewrite.push(`第 ${n} 镜缺少有效的结构化场景区域 zone_ids`);
+      }
       const prevSceneId = idx > 0 ? String(list[idx - 1]?.scene_id || list[idx - 1]?.scene_asset_id || '').trim() : '';
       if (prevSceneId && sceneId && prevSceneId !== sceneId && !String(shot.transition_reason || '').trim()) {
         rewrite.push(`第 ${n} 镜切换场景但缺少转场原因`);
@@ -122,7 +158,7 @@ function localReview(ctx, shots) {
 function splitModelBlockingIssues(issues = []) {
   const hard = [];
   const demoted = [];
-  issues.map(String).filter(Boolean).forEach((issue) => {
+  issues.map(normalizeIssue).filter(Boolean).forEach((issue) => {
     if (/高级感|氛围感|质感|诗意|文案|商业事件|商业证据|可拍|动作|台词|目的|空泛|自然|品牌感|卖点|故事画面|宣传画面|视觉维度/.test(issue)) {
       demoted.push(issue);
     } else {
@@ -130,6 +166,12 @@ function splitModelBlockingIssues(issues = []) {
     }
   });
   return { hard, demoted };
+}
+
+function normalizeIssue(value) {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return String(value || '').trim();
+  return String(value.message || value.issue || value.text || value.description || value.reason || '').trim();
 }
 
 function mergeReviews(local, model) {
@@ -141,9 +183,9 @@ function mergeReviews(local, model) {
     rewrite_issues: Array.from(new Set([
       ...(local.rewrite_issues || []),
       ...modelBlocking.demoted,
-      ...((safeModel.rewrite_issues || []).map(String)),
+      ...((safeModel.rewrite_issues || []).map(normalizeIssue).filter(Boolean)),
     ])),
-    warnings: Array.from(new Set([...(local.warnings || []), ...((safeModel.warnings || []).map(String))])),
+    warnings: Array.from(new Set([...(local.warnings || []), ...((safeModel.warnings || []).map(normalizeIssue).filter(Boolean))])),
     scores: {
       commercial: Number(safeModel.scores?.commercial || local.scores.commercial || 0),
       shootability: Number(safeModel.scores?.shootability || local.scores.shootability || 0),
@@ -195,6 +237,7 @@ Return JSON:
 }
 
 module.exports = {
+  internalProcessHits,
   localReview,
   reviewStoryboard,
   mergeReviews,

@@ -6,10 +6,15 @@ const sharp = require('sharp');
 const OpenAI = require('openai');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
+const deyunaiService = require('../deyunaiService');
+const modelGateway = require('./modelGateway');
+const storage = require('./storageService');
+const cancellation = require('./cancellationContext');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
 const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
+const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -38,6 +43,14 @@ function stageCandidates(stage) {
 
 function modelKey(model = {}) {
   return `${String(model.provider_id || model.providerId || '').trim()}/${String(model.model_id || model.model || '').trim()}`;
+}
+
+function availableImageCandidates(stage) {
+  return stageCandidates(stage)
+    .filter(model => !modelGateway.healthState(model).circuit_open)
+    .filter(model => {
+      try { resolveImageAdapter(model); return true; } catch { return false; }
+    });
 }
 
 function preferredMatches(model = {}, preferred = '') {
@@ -81,6 +94,29 @@ function sizeFor(config = {}, aspectRatio = '9:16') {
 
 function publicAssetUrl(filename) {
   return `/api/new-story-ad/assets/${encodeURIComponent(path.basename(filename))}`;
+}
+
+function publicBaseUrl() {
+  return String(
+    process.env.NEW_STORY_AD_PUBLIC_BASE_URL
+      || process.env.PUBLIC_BASE_URL
+      || 'https://www.vidoai.cn'
+  ).trim().replace(/\/$/, '');
+}
+
+function absolutePublicImageUrl(value = '') {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${publicBaseUrl()}${url}`;
+  return '';
+}
+
+function supportsReferenceImages(config = {}) {
+  const declared = config.provider?.adapter_config?.image?.reference_images;
+  if (declared === true) return true;
+  const family = `${config.family || ''} ${config.adapter || ''} ${config.providerId || ''}`;
+  return /deyunai|漫路/i.test(family);
 }
 
 function assetPathFromName(filename = '') {
@@ -149,6 +185,38 @@ async function imageBufferFromResult(result = {}) {
   throw new Error(`unsupported image url for local processing: ${value.slice(0, 120)}`);
 }
 
+async function persistImageResult({ result = {}, filename = '', thumbnailWidths = [] } = {}) {
+  const currentUrl = String(result.image_url || result.imageUrl || result.url || '').trim();
+  if (currentUrl.startsWith('/api/new-story-ad/assets/')) {
+    const localName = decodeURIComponent(currentUrl.split('/').pop()?.split('?')[0] || '');
+    await Promise.all((thumbnailWidths || []).map(width => ensureAssetThumbnail(localName, width)));
+    return { ...result, filename: result.filename || localName, image_url: currentUrl, url: currentUrl, remote: false };
+  }
+  const buffer = await imageBufferFromResult(result);
+  const safe = safeFilename(filename || `new_story_ad_asset_${Date.now()}`, '.png');
+  const filePath = path.join(ASSET_DIR, safe);
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  ensureDir(ASSET_DIR);
+  try {
+    await sharp(buffer).rotate().png({ compressionLevel: 8 }).toFile(tempPath);
+    fs.renameSync(tempPath, filePath);
+  } catch (error) {
+    try { if (fs.existsSync(tempPath)) fs.rmSync(tempPath, { force: true }); } catch (_) {}
+    throw error;
+  }
+  await Promise.all((thumbnailWidths || []).map(width => ensureAssetThumbnail(safe, width)));
+  const localUrl = publicAssetUrl(safe);
+  return {
+    ...result,
+    source_url: currentUrl,
+    filePath,
+    filename: safe,
+    image_url: localUrl,
+    url: localUrl,
+    remote: false,
+  };
+}
+
 async function splitActorSheet({ source = {}, filenamePrefix = 'new_story_actor_sheet', viewKeys = ['front', 'side', 'back', 'action'] } = {}) {
   return splitReferenceSheet({
     source,
@@ -205,6 +273,7 @@ async function splitReferenceSheet({
       provider_used: source.provider_used || '',
     });
   }
+  await Promise.all(views.flatMap(view => [320, 360, 480, 560].map(width => ensureAssetThumbnail(view.filename, width))));
   return views;
 }
 
@@ -218,12 +287,16 @@ function writeMockSvg(filename, prompt = '') {
 }
 
 async function generateImage({
+  taskId = '',
   stage = 'new_story_ad.keyframe',
   prompt = '',
   filename = '',
   aspectRatio = '9:16',
   resolution = '2K',
   imageModel = 'auto',
+  referenceImages = [],
+  requireReferences = false,
+  inputFidelity = 'high',
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
   const candidates = stageCandidates(stage);
@@ -231,9 +304,12 @@ async function generateImage({
   const preferredCandidates = preferred && preferred !== 'auto'
     ? candidates.filter(m => preferredMatches(m, preferred))
     : candidates;
-  const filtered = preferredCandidates.length ? preferredCandidates : candidates;
+  const filtered = (preferredCandidates.length ? preferredCandidates : candidates)
+    .filter(model => !modelGateway.healthState(model).circuit_open)
+    .slice(0, IMAGE_MAX_CANDIDATES);
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
+  const blockedProviders = new Set();
   if (String(stage || '').startsWith('new_story_ad.')) {
     console.info('[new_story_ad:image_candidates]', JSON.stringify({
       stage,
@@ -243,14 +319,64 @@ async function generateImage({
     }));
   }
   if (!filtered.length) {
-    throw new Error(`new_story_ad image models failed: no enabled image candidates for ${stage}`);
+    const error = new Error(`new_story_ad image models unavailable for ${stage}: no enabled candidate inside the current circuit-breaker window`);
+    error.code = 'IMAGE_CIRCUIT_OPEN';
+    error.retryable = true;
+    throw error;
   }
-  for (const model of filtered) {
+  for (let candidateIndex = 0; candidateIndex < filtered.length; candidateIndex += 1) {
+    cancellation.throwIfCancelled(taskId);
+    const model = filtered[candidateIndex];
+    if (blockedProviders.has(String(model.provider_id || ''))) continue;
+    const startedAt = Date.now();
     let config = null;
     try {
       config = resolveImageAdapter(model);
       if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
         throw new Error(`adapter ${config.adapter} is not implemented in new_story_ad image adapter`);
+      }
+      const references = (Array.isArray(referenceImages) ? referenceImages : [])
+        .map(absolutePublicImageUrl)
+        .filter(Boolean)
+        .slice(0, 4);
+      const referenceCapable = supportsReferenceImages(config);
+      if (requireReferences && (!references.length || !referenceCapable)) {
+        const reason = !references.length ? '没有可访问的公网参考图' : '模型适配器未声明参考图能力';
+        const error = new Error(`${config.providerId}/${config.modelId} 无法执行严格参考图生成：${reason}`);
+        error.code = 'REFERENCE_IMAGE_UNSUPPORTED';
+        error.retryable = false;
+        throw error;
+      }
+      // DeyunAI/漫路 image APIs have provider-specific streaming/async response
+      // formats. Always use the dedicated adapter, including text-to-image calls
+      // without reference images; the generic OpenAI image client cannot decode
+      // those responses reliably.
+      if (/deyunai|漫路/i.test(`${config.family} ${config.adapter} ${config.providerId}`)) {
+        const generated = await deyunaiService.generateImage({
+          model: config.modelId,
+          prompt,
+          n: 1,
+          size: sizeFor(config, aspectRatio),
+          aspectRatio,
+          referenceImages: referenceCapable ? references : [],
+          inputFidelity,
+        });
+        cancellation.throwIfCancelled(taskId);
+        const url = Array.isArray(generated?.urls) ? generated.urls.find(Boolean) : '';
+        if (!url) throw new Error('漫路图片生成未返回图片 URL');
+        const payload = {
+          image_url: url,
+          url,
+          provider_used: `${config.providerId}/${config.modelId}`,
+          adapter: config.adapter,
+          family: config.family,
+          remote: true,
+          reference_count: references.length,
+          reference_preserving: references.length > 0,
+        };
+        modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
+        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        return payload;
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await client.images.generate({
@@ -259,21 +385,27 @@ async function generateImage({
         size: sizeFor(config, aspectRatio),
         n: 1,
       });
+      cancellation.throwIfCancelled(taskId);
       const first = Array.isArray(response?.data) ? response.data[0] : null;
       if (first?.url) {
-        return {
+        const payload = {
           image_url: first.url,
           url: first.url,
           provider_used: `${config.providerId}/${config.modelId}`,
           adapter: config.adapter,
           family: config.family,
           remote: true,
+          reference_count: 0,
+          reference_preserving: false,
         };
+        modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
+        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        return payload;
       }
       if (first?.b64_json) {
         const safe = safeFilename(filename || `${stage}_${Date.now()}`, '.png');
         const filePath = writeBase64Asset(first.b64_json, safe);
-        return {
+        const payload = {
           filePath,
           filename: safe,
           image_url: publicAssetUrl(safe),
@@ -282,17 +414,43 @@ async function generateImage({
           adapter: config.adapter,
           family: config.family,
           resolution,
+          reference_count: 0,
+          reference_preserving: false,
         };
+        modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
+        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        return payload;
       }
       throw new Error('image provider returned no url or b64_json');
     } catch (err) {
-      errors.push(`${modelKey(model)}: ${String(err.message || err).slice(0, 180)}`);
+      const classified = modelGateway.classifyError(err);
+      if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED') modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
+      storage.saveModelCall({
+        task_id: taskId,
+        stage,
+        provider_id: model.provider_id,
+        model_id: model.model_id,
+        status: 'failed',
+        error_code: err.code || classified.code,
+        error_message: String(err.message || err).slice(0, 500),
+        latency_ms: Date.now() - startedAt,
+        fallback_rank: candidateIndex + 1,
+      });
+      errors.push({ model: modelKey(model), code: err.code || classified.code, retryable: err.retryable === true || classified.retryable, message: String(err.message || err).slice(0, 180) });
+      if ((err.code || classified.code) === 'PROVIDER_BILLING') blockedProviders.add(String(model.provider_id || ''));
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
     ? `；ignored preferred=${preferred} because it is not enabled for ${stage}`
     : '';
-  throw new Error(`new_story_ad image models failed: candidates=${candidateSummary}${ignoredPreferred}；${errors.join('；')}`);
+  const detail = errors
+    .map(item => `${item.model}：${item.message || item.code}`)
+    .join('；');
+  const error = new Error(`图片生成失败，已尝试 ${errors.length} 个模型并停止继续调用${ignoredPreferred ? `（${ignoredPreferred}）` : ''}${detail ? `：${detail}` : ''}`);
+  error.code = errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE');
+  error.retryable = errors.some(item => item.retryable);
+  error.attempts = errors;
+  throw error;
 }
 
 async function generateActorReference({ prompt = '', filename = '', aspectRatio = '3:4', imageModel = 'auto' } = {}) {
@@ -312,6 +470,10 @@ module.exports = {
   assetThumbPathFromName,
   ensureAssetThumbnail,
   publicAssetUrl,
+  absolutePublicImageUrl,
+  persistImageResult,
+  supportsReferenceImages,
+  availableImageCandidates,
   generateImage,
   generateActorReference,
   splitActorSheet,

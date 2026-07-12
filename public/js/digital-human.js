@@ -5980,12 +5980,11 @@
     if (state.newStoryAdTasksLoading) return;
     state.newStoryAdTasksLoading = true;
     try {
-      let r = await api('/api/new-story-ad/tasks?limit=80&mine=1');
-      let rows = r?.tasks || r?.data || [];
-      if (!rows.length) {
-        r = await api('/api/new-story-ad/tasks?limit=80');
-        rows = r?.tasks || r?.data || [];
-      }
+      // 管理员任务中心必须读取全平台数据；普通用户仍严格限定为本人任务。
+      // 旧逻辑无条件 mine=1，管理员只要自己有任务，就永远不会触发全量回退。
+      const query = currentDhUserIsAdmin() ? 'limit=200&all=1' : 'limit=80&mine=1';
+      const r = await api(`/api/new-story-ad/tasks?${query}`);
+      const rows = r?.tasks || r?.data || [];
       state.newStoryAdTasks = rows.map(normalizeNewStoryAdTask).filter(Boolean);
       state.newStoryAdTasksLoadedAt = Date.now();
     } catch (err) {

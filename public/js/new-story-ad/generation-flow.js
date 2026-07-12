@@ -33,6 +33,142 @@
     return { total, completed, missing: Math.max(0, total - completed), missing_indexes: [] };
   }
 
+  const STAGE_TIMEOUT_MS = 30 * 60 * 1000;
+  const STAGE_TIMEOUTS = {
+    scene_config: 10 * 60 * 1000,
+    scene_asset: 12 * 60 * 1000,
+    keyframes: 15 * 60 * 1000,
+    tts: 12 * 60 * 1000,
+    video: 20 * 60 * 1000,
+    compose: 12 * 60 * 1000,
+  };
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function isNetworkError(error) {
+    const message = String(error?.message || error || '');
+    return error instanceof TypeError
+      || /failed to fetch|network(?: error| changed)|connection (?:reset|aborted)|load failed|err_network_changed|err_connection_reset/i.test(message);
+  }
+
+  function stageWasAccepted(task = {}, expectedStage = '') {
+    const current = String(task.stage || '');
+    const active = String(task.active_stage || task.generation_stage || '');
+    if (current === expectedStage || current.startsWith(`${expectedStage}_`) || active === expectedStage) return true;
+    const downstream = {
+      scene_config: ['scene_config_done', 'blueprint', 'blueprint_done', 'storyboard', 'keyframe_contract_ready'],
+      blueprint: ['blueprint_done', 'storyboard', 'keyframe_contract_ready'],
+      storyboard: ['keyframe_contract_ready', 'keyframes', 'keyframes_ready', 'tts', 'video', 'compose', 'completed'],
+      keyframes: ['keyframes_ready', 'tts', 'video', 'compose', 'completed'],
+      tts: ['tts_ready', 'video', 'compose', 'completed'],
+      video: ['video_ready', 'compose', 'completed'],
+      compose: ['completed', 'compose_done'],
+    };
+    return (downstream[expectedStage] || []).some(stage => current === stage || current.startsWith(`${stage}_`));
+  }
+
+  async function recoverUncertainStageSubmission(taskId, expectedStage, ctx = {}, originalError) {
+    if (!isNetworkError(originalError)) throw originalError;
+    let lastError = originalError;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt) await sleep(700 * attempt);
+      try {
+        const bundle = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
+        ctx.normalizeBundle?.(bundle);
+        const task = bundle.task || {};
+        if (!stageWasAccepted(task, expectedStage)) continue;
+        ctx.toast?.('网络刚刚发生波动，服务器已接收任务，正在自动恢复进度', 'info');
+        if (String(task.status || '').toLowerCase() === 'failed') {
+          const error = new Error(task.error || `${STAGE_LABELS[expectedStage] || expectedStage}执行失败`);
+          error.code = task.error_code || 'STAGE_FAILED';
+          error.retryable = task.retryable === true;
+          error.data = bundle;
+          throw error;
+        }
+        if (task.active_generation_id || ['queued', 'running'].includes(String(task.status || '').toLowerCase())) {
+          return waitForStage(taskId, expectedStage, ctx);
+        }
+        return bundle;
+      } catch (error) {
+        if (!isNetworkError(error)) throw error;
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+
+  async function waitForStage(taskId, stage, ctx = {}) {
+    const { api, normalizeBundle } = ctx;
+    const started = Date.now();
+    const timeoutMs = STAGE_TIMEOUTS[stage] || STAGE_TIMEOUT_MS;
+    while (Date.now() - started < timeoutMs) {
+      const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
+      normalizeBundle?.(bundle);
+      const task = bundle.task || {};
+      const active = String(task.active_generation_id || '');
+      const status = String(task.status || '').toLowerCase();
+      const currentStage = String(task.stage || '');
+      if (status === 'cancelled' || currentStage.endsWith('_cancelled')) {
+        const error = new Error('已取消当前生成');
+        error.code = 'USER_CANCELLED';
+        error.retryable = true;
+        error.data = bundle;
+        throw error;
+      }
+      if (!active && status === 'failed') {
+        const error = new Error(task.error || `${stage} 阶段执行失败`);
+        error.code = task.error_code || 'STAGE_FAILED';
+        error.retryable = task.retryable === true;
+        error.data = bundle;
+        throw error;
+      }
+      if (!active && !['queued', 'running'].includes(status)) return bundle;
+      if (!active && currentStage && currentStage !== stage && !currentStage.endsWith('_queued')) return bundle;
+      await sleep(2500);
+    }
+    const error = new Error(`${STAGE_LABELS[stage] || stage}超过 ${Math.round(timeoutMs / 60000)} 分钟，已停止页面等待；请在任务中心查看状态或取消后重试`);
+    error.code = 'CLIENT_POLL_TIMEOUT';
+    error.retryable = true;
+    throw error;
+  }
+
+  async function startStage(taskId, stage, body, ctx = {}) {
+    const expectedStage = stage === 'scene' ? 'scene_config' : stage;
+    let response;
+    try {
+      response = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/${stage === 'scene' ? 'scene-config' : stage}`, {
+        method: 'POST',
+        body: body || {},
+      });
+    } catch (error) {
+      return recoverUncertainStageSubmission(taskId, expectedStage, ctx, error);
+    }
+    if (ctx.state && response.job) {
+      ctx.state.activeGenerationId = response.job.id || '';
+      ctx.state.activeStage = response.job.stage || expectedStage;
+      ctx.state.generationStartedAt = response.job.started_at || response.job.queued_at || new Date().toISOString();
+      ctx.state.generationProgress = ctx.state.activeStage === 'keyframes'
+        ? {
+            stage: 'keyframes', status: 'queued', target_total: body?.only_index !== undefined ? 1 : Math.max(1, ctx.state.shots?.length || 1),
+            processed: 0, succeeded: 0, failed: 0,
+            current_index: body?.only_index !== undefined ? Number(body.only_index) + 1 : 1,
+            started_at: ctx.state.generationStartedAt,
+          }
+        : null;
+      if (ctx.state.stageProgress?.active) {
+        ctx.state.stageProgress.generationId = ctx.state.activeGenerationId;
+        const startedAt = Date.parse(ctx.state.generationStartedAt);
+        if (Number.isFinite(startedAt)) ctx.state.stageProgress.startedAt = startedAt;
+      }
+      ctx.state.cancelRequested = false;
+      ctx.renderAll?.();
+    }
+    if (!response.job) return response;
+    return waitForStage(taskId, expectedStage, ctx);
+  }
+
   async function runStage(stage, ctx = {}) {
     const {
       button,
@@ -58,37 +194,37 @@
       const id = await ensureTask();
       let r = null;
       if (stage === 'scene') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/scene-config`, { method: 'POST', body: {} });
+        r = await startStage(id, 'scene', {}, ctx);
         normalizeBundle?.(r);
         showStep?.(2);
       } else if (stage === 'blueprint') {
-        if (!state.sceneConfig) normalizeBundle?.(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/scene-config`, { method: 'POST', body: {} }));
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/blueprint`, { method: 'POST', body: {} });
+        if (!state.sceneConfig) normalizeBundle?.(await startStage(id, 'scene', {}, ctx));
+        r = await startStage(id, 'blueprint', {}, ctx);
         normalizeBundle?.(r);
         showStep?.(3);
       } else if (stage === 'storyboard') {
-        if (!state.blueprint) normalizeBundle?.(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/blueprint`, { method: 'POST', body: {} }));
+        if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, ctx));
         if (state.blueprint && typeof saveBlueprintEdits === 'function') await saveBlueprintEdits(id);
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} });
+        r = await startStage(id, 'storyboard', {}, ctx);
         normalizeBundle?.(r);
         showStep?.(4);
       } else if (stage === 'keyframes') {
-        if (!state.shots.length) normalizeBundle?.(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} }));
+        if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
         if (state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_only: true } : {} });
+        r = await startStage(id, 'keyframes', missingOnly ? { missing_only: true } : {}, ctx);
         normalizeBundle?.(r);
         showStep?.(4);
       } else if (stage === 'tts') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/tts`, { method: 'POST', body: mediaStageBody(ctx) });
+        r = await startStage(id, 'tts', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'video') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: mediaStageBody(ctx) });
+        r = await startStage(id, 'video', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'compose') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/compose`, { method: 'POST', body: mediaStageBody(ctx) });
+        r = await startStage(id, 'compose', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
         showStep?.(5);
       }
@@ -105,11 +241,44 @@
     } catch (err) {
       if (err.data) normalizeBundle?.(err.data);
       renderAll?.();
-      toast?.(err.message || '阶段执行失败', 'error');
+      toast?.(err.message || '阶段执行失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
       return false;
     } finally {
+      if (state) {
+        state.cancelRequested = false;
+        if (!state.activeGenerationId) state.activeStage = '';
+      }
       setButtonBusy?.(button, false);
       setBusy?.(false);
+    }
+  }
+
+  async function cancelStage(ctx = {}) {
+    const { state, api, renderAll, toast, setBusy } = ctx;
+    if (!state || typeof api !== 'function' || state.cancelRequested) return false;
+    const auxiliary = state.activeStage === 'person_sheet';
+    if ((!state.taskId && !auxiliary) || (auxiliary && !state.activeGenerationId)) return false;
+    state.cancelRequested = true;
+    renderAll?.();
+    try {
+      const body = state.activeGenerationId ? { generation_id: state.activeGenerationId } : {};
+      const url = auxiliary
+        ? `/api/new-story-ad/generations/${encodeURIComponent(state.activeGenerationId)}/cancel`
+        : `/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/cancel`;
+      const response = await api(url, { method: 'POST', body });
+      if (response?.conflict) throw new Error('当前生成已变更，请刷新后重试');
+      state.activeGenerationId = '';
+      state.activeStage = '';
+      state.cancelRequested = false;
+      setBusy?.(false);
+      renderAll?.();
+      toast?.(response?.already_cancelled ? '当前生成已取消' : '已取消生成，已停止后续模型调用', 'info');
+      return true;
+    } catch (error) {
+      state.cancelRequested = false;
+      renderAll?.();
+      toast?.(error.message || '取消生成失败', 'error');
+      return false;
     }
   }
 
@@ -146,6 +315,11 @@
     runMediaChain,
     assist,
     mediaStageBody,
+    startStage,
+    waitForStage,
+    cancelStage,
+    isNetworkError,
+    stageWasAccepted,
     STAGE_LABELS,
   };
 })();

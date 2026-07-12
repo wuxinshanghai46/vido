@@ -1,8 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 
+const sqlite = require('../../db/sqlite');
+const contentRecords = require('../../repositories/contentRecordRepository');
+const cancellation = require('./cancellationContext');
+
 const DB_PATH = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'), 'new_story_ad_db.json');
 const HEALTH_PATH = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'), 'new_story_ad_model_health.json');
+
+const COLLECTIONS = {
+  tasks: 'new_story_ad_tasks',
+  assets: 'new_story_ad_assets',
+  stages: 'new_story_ad_stages',
+  outputs: 'new_story_ad_outputs',
+  model_calls: 'new_story_ad_model_calls',
+  reviews: 'new_story_ad_reviews',
+};
+
+let dbSeedChecked = false;
 
 function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -39,44 +54,111 @@ function writeJson(filePath, data) {
       try { fs.unlinkSync(tmp); } catch {}
       throw err;
     }
-    // Windows can briefly lock JSON files while another process or antivirus scans them.
-    // Fall back to copy+unlink so the new-story-ad task store does not fail the pipeline.
     fs.copyFileSync(tmp, filePath);
     try { fs.unlinkSync(tmp); } catch {}
   }
 }
 
-function readDb() {
+function normalizedJsonDb() {
   const db = readJson(DB_PATH, defaultDb());
   const base = defaultDb();
-  return {
-    ...base,
-    ...db,
-    tasks: Array.isArray(db.tasks) ? db.tasks : [],
-    assets: Array.isArray(db.assets) ? db.assets : [],
-    stages: Array.isArray(db.stages) ? db.stages : [],
-    outputs: Array.isArray(db.outputs) ? db.outputs : [],
-    model_calls: Array.isArray(db.model_calls) ? db.model_calls : [],
-    reviews: Array.isArray(db.reviews) ? db.reviews : [],
-  };
+  return Object.fromEntries(Object.keys(base).map(key => [key, Array.isArray(db[key]) ? db[key] : []]));
 }
 
-function saveDb(db) {
+function dbConfig() {
+  return sqlite.getDbConfig();
+}
+
+function useSqlite() {
+  return dbConfig().enabled;
+}
+
+function ensureDbSeeded() {
+  if (!useSqlite() || dbSeedChecked) return;
+  dbSeedChecked = true;
+  const legacy = normalizedJsonDb();
+  for (const [key, collection] of Object.entries(COLLECTIONS)) {
+    const existing = contentRecords.list(collection);
+    if (existing.length || !legacy[key].length) continue;
+    contentRecords.upsertMany(collection, legacy[key]);
+  }
+}
+
+function listRows(key, filters = {}) {
+  if (!useSqlite()) return normalizedJsonDb()[key].slice();
+  ensureDbSeeded();
+  return contentRecords.list(COLLECTIONS[key], filters);
+}
+
+function getRow(key, id) {
+  if (!useSqlite()) return normalizedJsonDb()[key].find(row => String(row.id) === String(id)) || null;
+  ensureDbSeeded();
+  return contentRecords.get(COLLECTIONS[key], String(id));
+}
+
+function mutateJson(key, updater) {
+  const db = normalizedJsonDb();
+  const result = updater(db[key], db);
   writeJson(DB_PATH, db);
+  return result;
+}
+
+function writeRow(key, row) {
+  if (useSqlite()) {
+    ensureDbSeeded();
+    const saved = contentRecords.upsert(COLLECTIONS[key], row);
+    if (dbConfig().dualWrite) {
+      mutateJson(key, list => {
+        const idx = list.findIndex(item => String(item.id) === String(row.id));
+        if (idx >= 0) list[idx] = row;
+        else list.push(row);
+        return row;
+      });
+    }
+    return saved;
+  }
+  return mutateJson(key, list => {
+    const idx = list.findIndex(item => String(item.id) === String(row.id));
+    if (idx >= 0) list[idx] = row;
+    else list.push(row);
+    return row;
+  });
+}
+
+function removeRow(key, id) {
+  if (useSqlite()) {
+    ensureDbSeeded();
+    contentRecords.remove(COLLECTIONS[key], String(id));
+    return;
+  }
+  mutateJson(key, list => {
+    const idx = list.findIndex(item => String(item.id) === String(id));
+    if (idx >= 0) list.splice(idx, 1);
+  });
+}
+
+function readDb() {
+  return Object.fromEntries(Object.keys(COLLECTIONS).map(key => [key, listRows(key)]));
 }
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function upsertById(list, row) {
-  const idx = list.findIndex(x => String(x.id) === String(row.id));
-  if (idx >= 0) list[idx] = { ...list[idx], ...row, updated_at: nowIso() };
-  else list.push({ ...row, created_at: row.created_at || nowIso(), updated_at: row.updated_at || nowIso() });
+function mergedRow(key, id, patch, defaults = {}) {
+  const existing = getRow(key, id);
+  const created = existing?.created_at || defaults.created_at || nowIso();
+  return {
+    ...defaults,
+    ...(existing || {}),
+    ...(patch || {}),
+    id: String(id),
+    created_at: created,
+    updated_at: nowIso(),
+  };
 }
 
 function createTask(task) {
-  const db = readDb();
   const row = {
     id: task.id,
     type: 'new_story_ad',
@@ -90,88 +172,106 @@ function createTask(task) {
     created_at: nowIso(),
     updated_at: nowIso(),
   };
-  db.tasks.push(row);
-  saveDb(db);
-  return row;
+  if (getTask(row.id)) throw new Error('任务已存在');
+  return writeRow('tasks', row);
 }
 
 function updateTask(id, patch) {
-  const db = readDb();
-  const idx = db.tasks.findIndex(x => String(x.id) === String(id));
-  if (idx < 0) return null;
-  db.tasks[idx] = { ...db.tasks[idx], ...patch, updated_at: nowIso() };
-  saveDb(db);
-  return db.tasks[idx];
+  if (!getTask(id)) return null;
+  return writeRow('tasks', mergedRow('tasks', id, patch));
 }
 
 function getTask(id) {
-  return readDb().tasks.find(x => String(x.id) === String(id)) || null;
+  return getRow('tasks', id);
+}
+
+function taskFingerprint(task = {}) {
+  const request = task.request || {};
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const brief = clean(task.brief || request.brief || request.content || '');
+  if (!brief) return `id:${String(task.id || '')}`;
+  const user = clean(task.user_id || request.user_id || 'legacy');
+  const duration = Number(request.duration_sec || request.duration || 30) || 30;
+  const ratio = clean(request.output_ratio || request.outputRatio || '9:16');
+  return JSON.stringify([user, brief, duration, ratio]);
+}
+
+function dedupeLatestTasks(rows = []) {
+  const latest = new Map();
+  const timestamp = task => Date.parse(task.updated_at || task.created_at || '') || 0;
+  for (const task of rows) {
+    const key = taskFingerprint(task);
+    const current = latest.get(key);
+    if (!current || timestamp(task) > timestamp(current) || (timestamp(task) === timestamp(current) && String(task.id).localeCompare(String(current.id)) > 0)) {
+      latest.set(key, task);
+    }
+  }
+  return [...latest.values()];
 }
 
 function listTasks({ limit = 50, status = '', userId = '' } = {}) {
-  let rows = readDb().tasks.slice();
-  if (status && status !== 'all') rows = rows.filter(x => String(x.status || '') === String(status));
-  if (userId) rows = rows.filter(x => !x.user_id || String(x.user_id) === String(userId));
-  return rows
+  let rows = listRows('tasks');
+  if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
+  if (userId) rows = rows.filter(row => !row.user_id || String(row.user_id) === String(userId));
+  return dedupeLatestTasks(rows)
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
     .slice(0, Math.max(1, Math.min(200, Number(limit) || 50)));
 }
 
+function deleteTask(taskId) {
+  const id = String(taskId || '');
+  if (!id || !getTask(id)) return false;
+  for (const key of ['stages', 'outputs', 'model_calls', 'reviews']) {
+    const related = listRows(key).filter(row => String(row.task_id || '') === id);
+    related.forEach(row => removeRow(key, row.id));
+  }
+  removeRow('tasks', id);
+  return true;
+}
+
 function saveStage(taskId, stage, data = {}) {
-  const db = readDb();
+  cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${stage}`;
-  upsertById(db.stages, {
-    id,
+  const previous = getRow('stages', id) || {};
+  const status = data.status || 'done';
+  return writeRow('stages', mergedRow('stages', id, {
     task_id: taskId,
     stage,
-    status: data.status || 'done',
-    input_summary: data.input_summary || '',
-    output_summary: data.output_summary || '',
-    started_at: data.started_at || nowIso(),
-    finished_at: data.finished_at || nowIso(),
+    status,
+    input_summary: data.input_summary ?? previous.input_summary ?? '',
+    output_summary: data.output_summary ?? previous.output_summary ?? '',
+    started_at: data.started_at || previous.started_at || nowIso(),
+    finished_at: data.finished_at || (['queued', 'running'].includes(status) ? '' : nowIso()),
     error: data.error || '',
     diagnostics: data.diagnostics || {},
-  });
-  saveDb(db);
-  return db.stages.find(x => x.id === id);
+  }));
 }
 
 function saveOutput(taskId, kind, payload) {
-  const db = readDb();
+  cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${kind}`;
-  upsertById(db.outputs, {
-    id,
-    task_id: taskId,
-    kind,
-    payload,
-  });
-  saveDb(db);
-  return db.outputs.find(x => x.id === id);
+  return writeRow('outputs', mergedRow('outputs', id, { task_id: taskId, kind, payload }));
 }
 
 function getOutput(taskId, kind) {
-  return readDb().outputs.find(x => String(x.task_id) === String(taskId) && String(x.kind) === String(kind))?.payload || null;
+  return getRow('outputs', `${taskId}:${kind}`)?.payload ?? null;
+}
+
+function deleteOutput(taskId, kind) {
+  removeRow('outputs', `${taskId}:${kind}`);
 }
 
 function listOutputs(taskId) {
-  return readDb().outputs.filter(x => String(x.task_id) === String(taskId));
+  return listRows('outputs', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId));
 }
 
 function saveReview(taskId, stage, review) {
-  const db = readDb();
+  cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${stage}`;
-  upsertById(db.reviews, {
-    id,
-    task_id: taskId,
-    stage,
-    review,
-  });
-  saveDb(db);
-  return db.reviews.find(x => x.id === id);
+  return writeRow('reviews', mergedRow('reviews', id, { task_id: taskId, stage, review }));
 }
 
 function saveModelCall(call) {
-  const db = readDb();
   const row = {
     id: call.id || `${call.task_id || 'task'}:${call.stage || 'stage'}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
     task_id: call.task_id || '',
@@ -186,21 +286,22 @@ function saveModelCall(call) {
     latency_ms: call.latency_ms || 0,
     fallback_rank: call.fallback_rank || 0,
     created_at: nowIso(),
+    updated_at: nowIso(),
   };
-  db.model_calls.push(row);
-  if (db.model_calls.length > 2000) db.model_calls = db.model_calls.slice(-2000);
-  saveDb(db);
+  writeRow('model_calls', row);
+  const rows = listRows('model_calls')
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  for (const stale of rows.slice(0, Math.max(0, rows.length - 2000))) removeRow('model_calls', stale.id);
   return row;
 }
 
-function getTaskBundle(taskId) {
-  const db = readDb();
+function getTaskBundle(taskId, { diagnostics = true } = {}) {
   return {
-    task: db.tasks.find(x => String(x.id) === String(taskId)) || null,
-    stages: db.stages.filter(x => String(x.task_id) === String(taskId)),
-    outputs: db.outputs.filter(x => String(x.task_id) === String(taskId)),
-    model_calls: db.model_calls.filter(x => String(x.task_id) === String(taskId)),
-    reviews: db.reviews.filter(x => String(x.task_id) === String(taskId)),
+    task: getTask(taskId),
+    stages: listRows('stages', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId)),
+    outputs: listOutputs(taskId),
+    model_calls: diagnostics ? listRows('model_calls', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId)) : [],
+    reviews: diagnostics ? listRows('reviews', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId)) : [],
   };
 }
 
@@ -215,14 +316,19 @@ function writeHealth(data) {
 module.exports = {
   DB_PATH,
   HEALTH_PATH,
+  COLLECTIONS,
   readDb,
   createTask,
   updateTask,
   getTask,
   listTasks,
+  dedupeLatestTasks,
+  taskFingerprint,
+  deleteTask,
   saveStage,
   saveOutput,
   getOutput,
+  deleteOutput,
   listOutputs,
   saveReview,
   saveModelCall,

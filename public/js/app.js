@@ -394,7 +394,7 @@ function switchPage(page, opts = {}) {
   if (page === 'profile') loadProfilePage();
   if (page === 'workflow') {
     const iframe = document.getElementById('workflow-iframe');
-    if (iframe && iframe.src === 'about:blank') iframe.src = '/workflow.html';
+    if (iframe && iframe.src === 'about:blank') iframe.src = '/aicanvas.html';
   }
   if (page === 'create' && !(opts && opts.keepProject)) {
     resetForm();
@@ -10126,7 +10126,7 @@ function openWorkflow(id) {
   switchPage('workflow');
   setTimeout(() => {
     const iframe = document.getElementById('workflow-iframe');
-    if (iframe) iframe.src = '/workflow.html?id=' + id;
+    if (iframe) iframe.src = '/aicanvas.html?id=' + id;
   }, 100);
 }
 

@@ -2,6 +2,9 @@
 const jsonRepair = require('./jsonRepairService');
 const { contextPrompt, normalizeCharacters } = require('./contextBuilder');
 
+const { ensureChineseOutput } = require('./outputLanguageService');
+const { polishBlueprint } = require('./blueprintQualityService');
+
 function desiredBeatCount(ctx = {}) {
   if (ctx.shot_count) return Math.max(1, Math.min(18, Number(ctx.shot_count) || 0));
   return 0;
@@ -186,6 +189,11 @@ async function generateBlueprint(ctx, { taskId = '' } = {}) {
   const systemPrompt = [
     'You are the story blueprint writer for the New Story Ad module.',
     'Return strict JSON only. Do not write markdown or backend explanations.',
+    'All user-visible text values must be natural Simplified Chinese, including titles, logline, character names/descriptions, scene descriptions, plot, visuals, actions, spoken lines, purposes and continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
+    'Write a causal short story with character motivation, a visible obstacle, a meaningful turn and a concrete result. Do not write a feature checklist or a sequence of unrelated selling-point demonstrations.',
+    'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
+    'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
+    'The visual field describes what the audience sees; the action field describes what changes or what the subject does. Never duplicate the same sentence across visual and action.',
     'Do not use a fixed template, fixed large segments, or fixed shot count. The number of beats must follow the user brief content, event density and pacing.',
     'First extract concrete user-provided story events, actions, selling points, proof points, emotional turns, and call-to-action moments. Each real filmable event becomes one beat.',
     'Duration is a pacing constraint, not a fixed template. Only obey shot_count when the user explicitly provided it.',
@@ -254,11 +262,20 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
     taskId,
     stage: 'new_story_ad.json_repair',
   });
-  const normalized = normalizeBlueprint(parsed, ctx);
+  const language = await ensureChineseOutput({ payload: parsed, kind: 'blueprint', taskId, context: ctx });
+  const firstPass = normalizeBlueprint(language.payload, ctx);
+  const polish = await polishBlueprint(ctx, firstPass, { taskId });
+  const normalized = normalizeBlueprint(polish.blueprint, ctx);
   normalized.model_meta = {
     used_model: result.used_model,
     fallback_used: result.fallback_used,
     failed_models: result.failed_models,
+    language_repaired: language.repaired,
+    language_model: language.model_meta?.used_model || '',
+    polished: polish.polished,
+    polish_model: polish.model_meta?.used_model || '',
+    quality_before: polish.before,
+    quality_after: polish.after,
   };
   return normalized;
 }

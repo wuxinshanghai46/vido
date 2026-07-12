@@ -12,6 +12,8 @@ const ttsAdapter = require('../services/newStoryAd/ttsAdapter');
 const videoAdapter = require('../services/newStoryAd/videoAdapter');
 const composeService = require('../services/newStoryAd/composeService');
 const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
+const jobService = require('../services/newStoryAd/jobService');
+const cancellation = require('../services/newStoryAd/cancellationContext');
 const db = require('../models/database');
 
 function userFromReq(req) {
@@ -23,9 +25,15 @@ function asyncRoute(fn) {
     try {
       await fn(req, res);
     } catch (err) {
+      const requestId = uuidv4();
+      console.error(`[new-story-ad] request failed request_id=${requestId} code=${err.code || 'INTERNAL_ERROR'}:`, String(err.message || err));
       res.status(err.status || 500).json({
         success: false,
+        code: err.code || 'INTERNAL_ERROR',
         error: String(err.message || err),
+        request_id: requestId,
+        retryable: err.retryable === true,
+        conflicts: err.conflicts || undefined,
         review: err.review || undefined,
         partial: err.partial || undefined,
         keyframes: err.keyframes || undefined,
@@ -33,6 +41,23 @@ function asyncRoute(fn) {
       });
     }
   };
+}
+
+function taskForReq(req) {
+  return service.assertTaskOwner(req.params.id, userFromReq(req));
+}
+
+function queueTaskStage(req, res, stage, execute) {
+  const task = taskForReq(req);
+  const queued = jobService.queueStage({ taskId: task.id, stage, execute });
+  return res.status(202).json({
+    success: true,
+    accepted: queued.accepted,
+    duplicate: queued.duplicate,
+    task_id: task.id,
+    job: queued.job,
+    task: service.taskSummary(storage.getTask(task.id)),
+  });
 }
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs');
@@ -342,6 +367,18 @@ function actorPayload(actorAsset, extra = {}) {
 }
 
 function buildActorDescription({ brief = '', description = '', spec = {}, context = {} } = {}) {
+  const ageLabels = {
+    match_brief: 'the age explicitly required by the campaign brief',
+    young_adult_17_25: '17-25 years old',
+    young_adult: '25-32 years old',
+    adult_30_40: '30-40 years old',
+    middle_40_55: '40-55 years old',
+    senior_55_plus: '55 years old or above',
+  };
+  const age = String(spec.age || '').trim();
+  const gender = String(spec.gender || '').trim();
+  const origin = String(spec.origin || '').trim();
+  const castMode = String(spec.castMode || spec.cast_mode || '').trim();
   return [
     'Strict live-action photorealistic full-body commercial actor casting reference. It must look like a real adult human photographed by a real camera, not an AI beauty poster.',
     'Natural skin pores, imperfect human expression, realistic hands, real fabric wrinkles, normal body proportions, believable commercial wardrobe, clean studio casting background.',
@@ -350,6 +387,10 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
     'Show full body from head to feet, realistic clothing and shoes, no cartoon, no anime, no 3D render, no waxy skin, no plastic face, no over-smoothed glamour retouching, no poster text.',
     brief ? `Campaign brief: ${String(brief).slice(0, 1200)}` : '',
     description ? `User actor description: ${String(description).slice(0, 800)}` : '',
+    castMode ? `Cast mode lock: ${castMode}. This is a hard constraint.` : '',
+    gender ? `Gender lock: ${gender}. This is a hard constraint.` : '',
+    age ? `Age lock: ${ageLabels[age] || age}. This is a hard constraint. Do not depict another age group even if stale freeform text conflicts.` : '',
+    origin ? `Origin/ethnicity lock: ${origin}. This is a hard constraint.` : '',
     spec.roleName || spec.role_name ? `Role hint: ${String(spec.roleName || spec.role_name).slice(0, 120)}` : '',
     spec.appearanceText || spec.appearance_text ? `Appearance lock: ${String(spec.appearanceText || spec.appearance_text).slice(0, 300)}` : '',
     spec.wardrobeText || spec.wardrobe_text ? `Wardrobe lock: ${String(spec.wardrobeText || spec.wardrobe_text).slice(0, 300)}` : '',
@@ -408,7 +449,16 @@ router.get('/health', (req, res) => {
       db_path: storage.DB_PATH,
       health_path: storage.HEALTH_PATH,
     },
-    candidates: Object.fromEntries(stages.map(stage => [stage, modelGateway.candidatesForStage(stage).map(m => `${m.provider_id}/${m.model_id}`)])),
+    candidates: Object.fromEntries(stages.map((stage) => {
+      const rows = stage === 'new_story_ad.video'
+        ? videoAdapter.videoCandidates({})
+        : ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe'].includes(stage)
+          ? mediaAdapter.availableImageCandidates(stage)
+          : stage === 'new_story_ad.tts'
+            ? []
+            : modelGateway.candidatesForStage(stage);
+      return [stage, rows.map(m => `${m.provider_id}/${m.model_id}`)];
+    })),
     model_health: service.modelHealth(),
   });
 });
@@ -478,38 +528,45 @@ router.get('/compose/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
-router.get('/tasks', (req, res) => {
+router.get('/tasks', asyncRoute(async (req, res) => {
+  const user = userFromReq(req);
+  const canListAll = String(user.role || '').toLowerCase() === 'admin' && String(req.query.all || '') === '1';
+  const result = service.listTaskSummaries({
+    limit: req.query.limit || 50,
+    page: req.query.page || 1,
+    status: req.query.status || '',
+    userId: canListAll ? '' : (user.id || user.userId || ''),
+  });
   res.json({
     success: true,
-    tasks: storage.listTasks({
-      limit: req.query.limit || 50,
-      status: req.query.status || '',
-      userId: req.query.mine ? userFromReq(req).id : '',
-    }),
+    ...result,
   });
-});
+}));
 
-router.post('/tasks', (req, res) => {
+router.post('/tasks', asyncRoute(async (req, res) => {
   const created = service.createTask(req.body || {}, userFromReq(req));
   res.json({ success: true, ...created });
-});
+}));
 
-router.put('/tasks/:id', (req, res) => {
+router.put('/tasks/:id', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const updated = service.updateTaskRequest(req.params.id, req.body || {}, userFromReq(req));
-  res.json({ success: true, ...updated, bundle: service.publicTaskBundle(req.params.id) });
-});
+  res.json({ success: true, ...updated });
+}));
 
-router.put('/tasks/:id/blueprint', (req, res) => {
+router.put('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const body = req.body || {};
   const blueprint = service.updateBlueprint(req.params.id, body.blueprint || body || {}, userFromReq(req));
-  res.json({ success: true, task_id: req.params.id, blueprint, bundle: service.publicTaskBundle(req.params.id) });
-});
+  res.json({ success: true, task_id: req.params.id, blueprint });
+}));
 
-router.put('/tasks/:id/storyboard', (req, res) => {
+router.put('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const body = req.body || {};
   const result = service.updateStoryboardTable(req.params.id, body.shots || body.storyboard_table || [], userFromReq(req));
-  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
-});
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
 
 router.post('/assist', asyncRoute(async (req, res) => {
   const result = await service.assistBrief(req.body || {}, userFromReq(req));
@@ -519,6 +576,9 @@ router.post('/assist', asyncRoute(async (req, res) => {
 router.post('/person-sheet', asyncRoute(async (req, res) => {
   const body = req.body || {};
   const user = userFromReq(req);
+  const generationId = String(body.generation_id || body.generationId || uuidv4());
+  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
+  return cancellation.run({ generationId, taskId: body.task_id || body.taskId || '', stage: 'person_sheet', ownerId }, async () => {
   const userId = user.id || user.username || 'anonymous';
   const brief = String(body.brief || body.content || '').trim();
   if (brief.length < 6) {
@@ -549,6 +609,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       filenamePrefix: `actor_${actorId}`,
       viewKeys,
     });
+    cancellation.throwIfCancelled();
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
     const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
     const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
@@ -585,6 +646,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       request_key: body.request_key || '',
     }));
   } catch (err) {
+    if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
     const allowActorLibraryFallback = body.allow_actor_library_fallback === true || body.allowActorLibraryFallback === true;
     if (!allowActorLibraryFallback) {
       err.status = err.status || 503;
@@ -616,84 +678,125 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       request_key: body.request_key || '',
     }));
   }
-}));
-
-router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
-  const result = await sceneAssetService.generateSceneAsset(req.params.id, req.body || {});
-  res.json({
-    success: true,
-    task_id: req.params.id,
-    ...result,
-    bundle: service.publicTaskBundle(req.params.id),
   });
 }));
 
+router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => {
+  const user = userFromReq(req);
+  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
+  const result = cancellation.cancelActive(req.params.generationId, { ownerId, cancelledBy: ownerId });
+  if (result.forbidden) return res.status(403).json({ success: false, code: 'FORBIDDEN', error: '无权取消该生成任务' });
+  res.json({ success: true, ...result });
+}));
+
+router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.generateSceneAsset(req.params.id, body));
+}));
+
 router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const body = req.body || {};
   const sceneAssets = sceneAssetService.saveSceneAssetsToTask(req.params.id, body.scene_assets || body.sceneAssets || []);
   res.json({
     success: true,
     task_id: req.params.id,
     scene_assets: sceneAssets,
-    bundle: service.publicTaskBundle(req.params.id),
   });
 }));
 
-router.get('/tasks/:id', (req, res) => {
+router.get('/tasks/:id', asyncRoute(async (req, res) => {
+  taskForReq(req);
   const bundle = service.publicTaskBundle(req.params.id);
   if (!bundle.task) return res.status(404).json({ success: false, error: '任务不存在' });
   res.json({ success: true, ...bundle });
-});
-
-router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
-  const scene_config = await service.generateSceneConfig(req.params.id);
-  res.json({ success: true, task_id: req.params.id, scene_config, bundle: service.publicTaskBundle(req.params.id) });
 }));
 
-router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
-  const blueprint = await service.generateBlueprintStage(req.params.id);
-  res.json({ success: true, task_id: req.params.id, blueprint, bundle: service.publicTaskBundle(req.params.id) });
-}));
-
-router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
-  const result = await service.generateStoryboardStage(req.params.id);
-  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
-}));
-
-router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
-  const keyframe_contracts = await service.buildKeyframeContractStage(req.params.id);
-  res.json({ success: true, task_id: req.params.id, keyframe_contracts, bundle: service.publicTaskBundle(req.params.id) });
-}));
-
-router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
-  const result = await service.generateKeyframesStage(req.params.id, req.body || {});
+router.post('/tasks/:id/cancel', asyncRoute(async (req, res) => {
+  const task = taskForReq(req);
+  const user = userFromReq(req);
+  const result = jobService.cancelJob(task.id, {
+    generationId: req.body?.generation_id || req.body?.generationId || '',
+    cancelledBy: user.id || user.userId || user.username || '',
+  });
+  if (result.conflict) {
+    return res.status(409).json({
+      success: false,
+      code: 'GENERATION_CHANGED',
+      error: '当前生成任务已变化，请刷新后再取消',
+      job: result.job,
+      task: service.taskSummary(storage.getTask(task.id)),
+    });
+  }
   res.json({
     success: true,
-    task_id: req.params.id,
     ...result,
-    note: '当前接口生成关键帧合同，供后续图片/视频生成模块消费。',
-    bundle: service.publicTaskBundle(req.params.id),
+    task_id: task.id,
+    task: service.taskSummary(storage.getTask(task.id)),
   });
 }));
 
+router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const bundle = service.publicTaskBundle(req.params.id, { diagnostics: true });
+  res.json({
+    success: true,
+    task_id: req.params.id,
+    stages: bundle.stages,
+    model_calls: bundle.model_calls,
+    reviews: bundle.reviews,
+  });
+}));
+
+router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
+  return queueTaskStage(req, res, 'scene_config', () => service.generateSceneConfig(req.params.id));
+}));
+
+router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
+  return queueTaskStage(req, res, 'blueprint', () => service.generateBlueprintStage(req.params.id));
+}));
+
+router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
+  return queueTaskStage(req, res, 'storyboard', () => service.generateStoryboardStage(req.params.id));
+}));
+
+router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const keyframe_contracts = await service.buildKeyframeContractStage(req.params.id);
+  res.json({ success: true, task_id: req.params.id, keyframe_contracts });
+}));
+
+router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'keyframes', () => service.generateKeyframesStage(req.params.id, body));
+}));
+
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
-  const result = await service.generateTtsStage(req.params.id, req.body || {});
-  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'tts', () => service.generateTtsStage(req.params.id, body));
 }));
 
 router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
-  const result = await service.generateVideoStage(req.params.id, req.body || {});
-  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'video', () => service.generateVideoStage(req.params.id, body));
 }));
 
 router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
-  const result = await service.composeStage(req.params.id, req.body || {});
-  res.json({ success: true, task_id: req.params.id, ...result, bundle: service.publicTaskBundle(req.params.id) });
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'compose', () => service.composeStage(req.params.id, body));
 }));
 
 router.post('/storyboard', asyncRoute(async (req, res) => {
-  const result = await service.runFull(req.body || {}, userFromReq(req));
-  res.status(result.success ? 200 : 422).json(result);
+  const created = service.createTask(req.body || {}, userFromReq(req));
+  req.params.id = created.task.id;
+  return queueTaskStage(req, res, 'full', async () => {
+    await service.generateSceneConfig(created.task.id);
+    await service.generateBlueprintStage(created.task.id);
+    await service.generateStoryboardStage(created.task.id);
+  });
 }));
 
 module.exports = router;
+
+// Exported for focused regression tests without changing the router contract.
+module.exports.buildActorDescription = buildActorDescription;
