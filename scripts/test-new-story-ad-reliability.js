@@ -113,6 +113,11 @@ async function main() {
       && model.model_id === 'topview-image2video-pro'
       && model.enabled === true
   )));
+  assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
+    model.provider_id === 'zhipu'
+      && model.model_id === 'cogvideox-flash'
+      && model.enabled === true
+  )));
 
   const staleFailedFrame = service.keyframeCompletion([{ image_url: 'https://example.test/old.png', error: 'latest regeneration failed', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED' }], [{}]);
   assert.deepEqual(staleFailedFrame, { total: 1, completed: 0, missing: 1, failed: 1, missing_indexes: [0] });

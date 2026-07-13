@@ -6,6 +6,7 @@ const VIDEO_MODELS = [
   { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', enabled: true },
   { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', enabled: true },
   { provider_id: 'topview', model_id: 'topview-image2video-pro', enabled: true },
+  { provider_id: 'zhipu', model_id: 'cogvideox-flash', enabled: true },
 ];
 
 function ensureModel(provider, model) {
