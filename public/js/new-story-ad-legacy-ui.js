@@ -226,7 +226,7 @@
     const output = [];
 
     entries.forEach((entry, entryIndex) => {
-      const pair = entry.match(/^([a-z][a-z0-9_-]*)\s*:\s*(.*)$/i);
+      const pair = entry.match(/^([a-z][a-z0-9_-]*)\s*[：:]\s*(.*)$/i);
       if (pair) {
         const key = String(pair[1] || '').toLowerCase();
         const content = String(pair[2] || '').replace(/\s+/g, ' ').trim();
