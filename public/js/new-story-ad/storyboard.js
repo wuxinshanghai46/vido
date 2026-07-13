@@ -56,6 +56,14 @@
     return raw;
   }
 
+  function shotZoneId(shot = {}) {
+    return clean(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : ''), 100);
+  }
+
+  function shotZoneLabel(shot = {}) {
+    return sceneZoneLabel(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || '');
+  }
+
   function normalizeShotBinding(shot = {}, sceneAssets = [], index = 0) {
     if (!shot || typeof shot !== 'object') return shot;
     const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
@@ -72,6 +80,8 @@
     if (!shot.scene_name) shot.scene_name = sceneName(selected, selectedIndex);
     if (!shot.scene_view) shot.scene_view = viewValue('', index);
     if (!shot.scene_zone) shot.scene_zone = clean(shot.purpose || shot.title || `第 ${index + 1} 镜区域`, 160);
+    if (!shot.scene_zone_id) shot.scene_zone_id = shotZoneId(shot);
+    if (!shot.scene_zone_label_zh) shot.scene_zone_label_zh = shotZoneLabel(shot);
     return shot;
   }
 
@@ -114,7 +124,7 @@
       </label>
       <label>
         <span>场景区域</span>
-        <input class="dh-input" value="${esc(sceneZoneLabel(shot.scene_zone || ''))}" placeholder="例如：入口区、展示区、互动位、细节区，按当前任务填写" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_zone">
+        <input class="dh-input" value="${esc(shotZoneLabel(shot))}" placeholder="例如：入口区、展示区、互动位、细节区，按当前任务填写" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_zone">
       </label>
       <label>
         <span>转场原因</span>
@@ -128,6 +138,8 @@
     normalizeShotBinding,
     normalizeShots,
     sceneZoneLabel,
+    shotZoneId,
+    shotZoneLabel,
     bindingHtml,
   };
 })();

@@ -117,6 +117,8 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     scene_name: clampText(shot.scene_name || shot.sceneName || '', 120),
     scene_view: clampText(shot.scene_view || shot.sceneView || '', 40),
     scene_zone: clampText(shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
+    scene_zone_id: clampText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : '') || '', 100),
+    scene_zone_label_zh: clampText(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
     scene_revision: Math.max(1, Number(shot.scene_revision || shot.sceneRevision || 1) || 1),
     camera_id: clampText(shot.camera_id || shot.cameraId || '', 100),
     zone_ids: (Array.isArray(shot.zone_ids) ? shot.zone_ids : []).map(value => clampText(value, 100)).filter(Boolean).slice(0, 16),
@@ -231,7 +233,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -284,6 +286,8 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
       'Do not output shots that violate negative requirements.',
       'If scene assets exist, scene_id must be selected from the current task scene assets only.',
+      'scene_zone_id and zone_ids are stable machine bindings from the selected scene contract. Never translate, rename or invent them.',
+      'scene_zone_label_zh is the user-facing Simplified Chinese label for the selected zone. It may explain the binding but must not replace or change scene_zone_id/zone_ids.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
       'Every shot after the first must describe entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type and audio_bridge when applicable.',
       'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
@@ -323,6 +327,8 @@ Return JSON array for current beats only. Fields:
   "scene_view": "master/reverse/interaction/detail",
   "camera_id": "camera id from the selected scene contract",
   "scene_zone": "the concrete zone inside this task scene",
+  "scene_zone_id": "stable machine zone id; normally zone_ids[0]",
+  "scene_zone_label_zh": "面向用户显示的简体中文场景区域名称",
   "zone_ids": ["zone ids from the selected scene contract"],
   "anchor_ids": ["required spatial anchor ids visible in this shot"],
   "transition_from": "previous scene_id when changing scene, otherwise empty",
@@ -413,7 +419,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } 
     'Fix thin shots by strengthening the visual layers required by the user brief.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
-    'Preserve scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets.',
+    'Preserve scene_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
     'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type and audio bridge.',
   ].join('\n');
 

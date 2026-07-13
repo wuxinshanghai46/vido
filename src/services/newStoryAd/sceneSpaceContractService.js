@@ -46,10 +46,12 @@ function normalizeZones(input = []) {
   return (Array.isArray(input) ? input : []).map((item, index) => {
     const source = typeof item === 'string' ? { label: item } : (item || {});
     const label = cleanText(source.label || source.name || source.purpose || 'zone ' + (index + 1), 120);
+    const labelZh = cleanText(source.label_zh || source.labelZh || (/[㐀-鿿]/.test(label) ? label : ''), 120);
     const box = Array.isArray(source.normalized_box) ? source.normalized_box.map(Number).slice(0, 4) : [];
     return {
       id: cleanText(source.id || stableId('zone', label, index), 100),
       label,
+      label_zh: labelZh,
       purpose: cleanText(source.purpose || source.description || label, 300),
       tags: stringList(source.tags || source.allowed_actions || [], 12, 80),
       normalized_box: box.length === 4 && box.every(Number.isFinite)
@@ -174,7 +176,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'scene_consistency_score, geometry_consistency_score and material_consistency_score as REQUIRED EVALUATED numbers from 0 to 1; '
       + 'mismatch_reasons string array; anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
-      + 'zones object array with id, label, purpose, tags, normalized_box and visible_in_views; '
+      + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
+      + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
       + 'geometry_facts string array; materials string array; lighting object; cameras object array. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail when fixed architecture, anchor placement, dominant material family or lighting logic changes. '

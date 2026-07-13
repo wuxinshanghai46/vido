@@ -186,7 +186,6 @@
   }
 
   const PROMPT_LABEL_TEXT = {
-    medium: '镜头类型',
     story: '剧情画面',
     character: '人物',
     product: '产品/商品',
@@ -200,6 +199,13 @@
     offer: '卖点',
     result: '结果',
     action: '动作',
+    lighting: '光线氛围',
+    camera: '镜头设计',
+    composition: '构图方式',
+    ui: '界面呈现',
+    dialogue: '台词内容',
+    endcard: '收尾画面',
+    packshot: '产品定格',
   };
   const SHOT_TYPE_TEXT = {
     insert: '细节插入镜头',
@@ -209,28 +215,42 @@
     product_detail: '产品细节',
     reaction: '反应镜头',
     endcard: '收束画面',
+    packshot: '产品定格',
     wide: '全景',
   };
 
   function editorFriendlyPromptText(value = '') {
     const raw = String(value || '').trim();
     if (!raw) return '';
-    const labelKeys = Object.keys(PROMPT_LABEL_TEXT);
-    const shotTypeKeys = Object.keys(SHOT_TYPE_TEXT);
-    const labelPattern = labelKeys.join('|');
-    const shotTypePattern = shotTypeKeys.join('|');
-    if (!new RegExp(`\\b(${labelPattern})\\s*:|^\\s*(${shotTypePattern})\\s*;`, 'i').test(raw)) return raw;
+    const entries = raw.split(/\s*[;；\n]+\s*/).map(item => item.trim()).filter(Boolean);
+    const output = [];
 
-    let text = raw
-      .replace(new RegExp(`^\\s*(${shotTypePattern})\\s*;\\s*`, 'i'), (_, type) => `镜头类型：${SHOT_TYPE_TEXT[String(type).toLowerCase()] || type}\n`)
-      .replace(new RegExp(`\\s*;\\s*(?=(${labelPattern})\\s*:)`, 'gi'), '\n')
-      .replace(new RegExp(`\\b(${labelPattern})\\s*:\\s*`, 'gi'), (_, key) => `\n${PROMPT_LABEL_TEXT[String(key).toLowerCase()] || key}：`);
+    entries.forEach((entry, entryIndex) => {
+      const pair = entry.match(/^([a-z][a-z0-9_-]*)\s*:\s*(.*)$/i);
+      if (pair) {
+        const key = String(pair[1] || '').toLowerCase();
+        const content = String(pair[2] || '').replace(/\s+/g, ' ').trim();
+        if (PROMPT_LABEL_TEXT[key] && content) {
+          output.push(`${PROMPT_LABEL_TEXT[key]}：${content}`);
+          return;
+        }
+        if (SHOT_TYPE_TEXT[key] && !content) {
+          output.push(`镜头类型：${SHOT_TYPE_TEXT[key]}`);
+          return;
+        }
+      }
 
-    return text
-      .split(/\n+/)
-      .map(line => line.replace(/\s+/g, ' ').trim())
-      .filter(line => line && !/^[^：:]+[：:]$/.test(line))
-      .join('\n');
+      const token = entry.toLowerCase();
+      if (SHOT_TYPE_TEXT[token]) {
+        output.push(`镜头类型：${SHOT_TYPE_TEXT[token]}`);
+        return;
+      }
+
+      // 已经是用户可读中文或未知业务专有内容时原样保留，避免写死行业词汇。
+      output.push(entryIndex === 0 && /^[a-z_ -]+$/i.test(entry) ? `镜头说明：${entry}` : entry);
+    });
+
+    return output.join('\n') || raw;
   }
 
   function outputPixels(ratio = '9:16', size = 'standard') {
@@ -2266,7 +2286,7 @@
     if (field === 'purpose') return shot.purpose || shot.objective || shot.role || contract.subject_strategy || '';
     if (field === 'scene_id') return shot.scene_id || shot.scene_asset_id || contract.scene_lock?.scene_id || '';
     if (field === 'scene_view') return shot.scene_view || contract.scene_lock?.scene_view || '';
-    if (field === 'scene_zone') return shot.scene_zone || contract.scene_lock?.scene_zone || '';
+    if (field === 'scene_zone') return shot.scene_zone_label_zh || contract.scene_lock?.scene_zone_label_zh || shot.scene_zone || contract.scene_lock?.scene_zone || '';
     if (field === 'transition_reason') return shot.transition_reason || contract.scene_lock?.transition_reason || '';
     return shot[field] || '';
   }
@@ -2298,7 +2318,11 @@
       shot.scene_name = matched?.name || shot.scene_name || '';
     }
     else if (field === 'scene_view') { shot.scene_view = value; }
-    else if (field === 'scene_zone') { shot.scene_zone = value; }
+    else if (field === 'scene_zone') {
+      // 中文名称只用于展示；zone_ids/scene_zone_id 是生成与 QA 使用的稳定绑定，不在此处改写。
+      shot.scene_zone_label_zh = value;
+      shot.scene_zone = value;
+    }
     else if (field === 'transition_reason') { shot.transition_reason = value; }
     else { shot[field] = value; }
     shot.edited_at = new Date().toISOString();
@@ -2352,7 +2376,10 @@
           <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
           ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
           <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
-          <label><span>\u753b\u9762\u63cf\u8ff0</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
+          <label class="dh-nsa-visual-field">
+            <span class="dh-nsa-visual-field-title"><b>画面审核</b><small>镜头类型、剧情、品牌、人物与空间已分项展示</small></span>
+            <textarea class="dh-input dh-nsa-visual-editor" rows="8" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea>
+          </label>
           <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
           <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
           <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
@@ -2663,6 +2690,10 @@
         scene_name: shot.scene_name || '',
         scene_view: shot.scene_view || '',
         scene_zone: shot.scene_zone || '',
+        scene_zone_id: shot.scene_zone_id || shot.zone_ids?.[0] || '',
+        scene_zone_label_zh: shot.scene_zone_label_zh || shot.scene_zone || '',
+        zone_ids: Array.isArray(shot.zone_ids) ? shot.zone_ids : [],
+        anchor_ids: Array.isArray(shot.anchor_ids) ? shot.anchor_ids : [],
         transition_from: shot.transition_from || '',
         transition_reason: shot.transition_reason || '',
       };

@@ -373,6 +373,7 @@ function sceneAssetsPrompt(sceneAssets = []) {
     zones: (Array.isArray(asset.scene_contract?.zones) ? asset.scene_contract.zones : []).map(zone => ({
       id: cleanText(zone.id || '', 100),
       label: cleanText(zone.label || '', 120),
+      label_zh: cleanText(zone.label_zh || zone.labelZh || '', 120),
       purpose: cleanText(zone.purpose || '', 180),
     })).slice(0, 16),
     views: (Array.isArray(asset.view_images) ? asset.view_images : []).map((view, viewIndex) => ({
