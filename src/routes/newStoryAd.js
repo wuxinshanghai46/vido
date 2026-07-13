@@ -4,6 +4,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const router = express.Router();
+const sharedDigitalHumanRouter = require('./digitalHuman');
 const service = require('../services/newStoryAd');
 const storage = require('../services/newStoryAd/storageService');
 const modelGateway = require('../services/newStoryAd/modelGateway');
@@ -43,6 +44,26 @@ function asyncRoute(fn) {
     }
   };
 }
+
+function forwardSharedOpenMusic(targetPath) {
+  return (req, res, next) => {
+    const originalUrl = req.url;
+    const queryIndex = originalUrl.indexOf('?');
+    const query = queryIndex >= 0 ? originalUrl.slice(queryIndex) : '';
+    req.url = `${targetPath}${query}`;
+    sharedDigitalHumanRouter.handle(req, res, err => {
+      req.url = originalUrl;
+      if (err) return next(err);
+      if (!res.headersSent) return res.status(404).json({ success: false, error: '公开曲库能力不可用' });
+      return undefined;
+    });
+  };
+}
+
+// 新剧情广告复用已经过商用许可过滤的公开曲库能力，但使用新版专属 URL，
+// 避免再次依赖已下线的旧剧情广告入口。
+router.get('/music/search', forwardSharedOpenMusic('/luxury-ad/open-music/search'));
+router.post('/music/import', forwardSharedOpenMusic('/luxury-ad/open-music/import'));
 
 function taskForReq(req) {
   return service.assertTaskOwner(req.params.id, userFromReq(req));
@@ -747,6 +768,9 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
 }));
 
 router.get('/tasks/:id', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   taskForReq(req);
   const bundle = service.publicTaskBundle(req.params.id);
   if (!bundle.task) return res.status(404).json({ success: false, error: '任务不存在' });
@@ -778,6 +802,7 @@ router.post('/tasks/:id/cancel', asyncRoute(async (req, res) => {
 }));
 
 router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   taskForReq(req);
   const bundle = service.publicTaskBundle(req.params.id, { diagnostics: true });
   res.json({

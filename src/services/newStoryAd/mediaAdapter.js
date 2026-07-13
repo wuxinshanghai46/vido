@@ -297,6 +297,7 @@ async function generateImage({
   referenceImages = [],
   requireReferences = false,
   inputFidelity = 'high',
+  timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
   const candidates = stageCandidates(stage);
@@ -359,6 +360,7 @@ async function generateImage({
           referenceImages: referenceCapable ? references : [],
           inputFidelity,
           signal: cancellation.signal(),
+          timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
         });
         cancellation.throwIfCancelled(taskId);
         const url = Array.isArray(generated?.urls) ? generated.urls.find(Boolean) : '';

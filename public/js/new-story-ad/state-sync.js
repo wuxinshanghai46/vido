@@ -188,7 +188,20 @@
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
     setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto', { within });
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
+    state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;
+    state.subtitleStyle = request.subtitle_style || request.subtitleStyle || state.subtitleStyle || 'popup';
+    const subtitleConfig = request.subtitle_config || request.subtitleConfig || {};
+    state.subtitleEnabled = subtitleConfig.show === false ? false : state.subtitleEnabled;
+    state.subtitleStyle = subtitleConfig.style || state.subtitleStyle;
+    state.subtitleOptions = {
+      ...(state.subtitleOptions || {}),
+      smartEmphasis: subtitleConfig.smartEmphasis !== false,
+      fontName: subtitleConfig.fontName || state.subtitleOptions?.fontName || '抖音美好体',
+      fontSize: Number(subtitleConfig.fontSize || state.subtitleOptions?.fontSize) || 72,
+      color: subtitleConfig.color || '',
+      outlineColor: subtitleConfig.outlineColor || '',
+    };
     state.voiceVolume = Number(request.voice_volume || request.voiceVolume || state.voiceVolume || 1) || 1;
     state.bgmVolume = Number(request.bgm_volume || request.bgmVolume || state.bgmVolume || 0.16) || 0.16;
     state.bgmProfile = request.bgm_profile || request.bgmProfile || state.bgmProfile || 'auto';

@@ -1,4 +1,40 @@
 (() => {
+  const QA_REASON_TRANSLATIONS = [
+    [/drastically different space.*tunnel-like structure.*high-tech command center/i, '生成画面变成隧道式空间，与已锁定的高科技指挥中心不是同一场景'],
+    [/new shield element and energy pathway.*unsupported.*contradict/i, '新增了分镜和参考场景未要求的盾牌与能量通道'],
+    [/dominant materials.*rock textures.*glowing pathways.*brushed metal.*polished concrete.*frosted glass/i, '岩石墙面和发光通道偏离参考场景的拉丝金属、抛光混凝土与磨砂玻璃材质'],
+    [/camera perspective and framing.*camera_detail/i, '机位与构图不符合已锁定的细节视角'],
+    [/rock-textured tunnel walls/i, '出现参考场景中没有的岩石隧道墙'],
+    [/energy pathway.*inconsistent.*data wall/i, '能量通道与原有数据墙元素不一致'],
+    [/blue shield symbol.*deviates.*platform-focus core/i, '蓝色盾牌符号偏离平台主体视觉核心'],
+    [/unexpected human subject added/i, '画面新增了未要求的人物'],
+    [/subject is not in the provided scene contract or specified requirements/i, '该人物不在场景合同或分镜要求中'],
+    [/presence of new human figure explicitly forbidden/i, '新增人物违反当前场景禁止项'],
+    [/human subject not allowed.*contract negative clauses/i, '场景负面约束明确不允许出现人物'],
+  ];
+
+  function qaReasonToChinese(reason = '') {
+    const raw = String(reason || '').trim();
+    if (!raw || /[\u3400-\u9fff]/.test(raw)) return raw;
+    const matched = QA_REASON_TRANSLATIONS.find(([pattern]) => pattern.test(raw));
+    return matched
+      ? matched[1]
+      : '场景、机位、材质或禁止元素与参考图不一致（原始检查详情已保留供技术人员排查）';
+  }
+
+  function friendlyError(error = '') {
+    const raw = String(error || '').trim();
+    if (!raw) return '';
+    const match = raw.match(/^(第\s*\d+\s*镜场景空间一致性\s*QA\s*未通过)[：:]\s*(.*)$/i);
+    if (!match) return raw;
+    const translated = String(match[2] || '')
+      .split(/\s*;\s*/)
+      .map(qaReasonToChinese)
+      .filter(Boolean)
+      .filter((reason, index, all) => all.indexOf(reason) === index);
+    return `${match[1]}：${translated.join('；') || '空间、机位或材质与参考场景不一致'}`;
+  }
+
   function frameUrl(frame = {}) {
     const raw = String(frame.image_url || frame.imageUrl || frame.url || '').trim();
     return raw;
@@ -60,7 +96,9 @@
     const loading = index < 2 ? 'eager' : 'lazy';
     const priority = index < 2 ? ' fetchpriority="high"' : '';
     const qa = frame.qa || {};
-    const qaText = qa.status === 'not_applicable'
+    const qaText = frame.regeneration_error
+      ? '仍显示上一版 · 新版本未通过 QA'
+      : qa.status === 'not_applicable'
       ? '未启用场景空间锁'
       : (qa.pass === true
         ? `空间一致性已通过${qa.scene_consistency_score ? ` · ${Math.round(Number(qa.scene_consistency_score) * 100)}%` : ''}`
@@ -78,6 +116,7 @@
     completedCount,
     status,
     frameTitle,
+    qaReasonToChinese,
     friendlyError,
     previewButtonHtml,
   };

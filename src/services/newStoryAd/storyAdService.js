@@ -63,6 +63,11 @@ function isCompleteKeyframe(frame = {}) {
   return !!(url && !frame.error && !frame.error_code && localKeyframeAssetExists(url));
 }
 
+function hasUsablePreviousKeyframe(frame = {}) {
+  const url = keyframeImageUrl(frame);
+  return !!(url && localKeyframeAssetExists(url) && frame.qa?.pass === true);
+}
+
 function keyframeCompletion(keyframes = [], shots = []) {
   const total = Math.max(
     Array.isArray(shots) ? shots.length : 0,
@@ -421,6 +426,10 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
     scene_name: cleanText(shot.scene_name || shot.sceneName || previousShot.scene_name || '', 120) || undefined,
     scene_view: cleanText(shot.scene_view || shot.sceneView || previousShot.scene_view || '', 40) || undefined,
     scene_zone: cleanText(shot.scene_zone || shot.sceneZone || shot.zone || previousShot.scene_zone || '', 160) || undefined,
+    scene_zone_id: cleanText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : '') || previousShot.scene_zone_id || '', 100) || undefined,
+    scene_zone_label_zh: cleanText(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || previousShot.scene_zone_label_zh || previousShot.scene_zone || '', 160) || undefined,
+    zone_ids: Array.isArray(shot.zone_ids) ? shot.zone_ids : (Array.isArray(previousShot.zone_ids) ? previousShot.zone_ids : undefined),
+    anchor_ids: Array.isArray(shot.anchor_ids) ? shot.anchor_ids : (Array.isArray(previousShot.anchor_ids) ? previousShot.anchor_ids : undefined),
     transition_from: cleanText(shot.transition_from || shot.transitionFrom || previousShot.transition_from || '', 120) || undefined,
     transition_reason: cleanText(shot.transition_reason || shot.transitionReason || previousShot.transition_reason || '', 240) || undefined,
     edited_at: new Date().toISOString(),
@@ -637,13 +646,21 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const actionText = cleanText(shot.action || shot.visual_action || '', 500);
+  const interactionRequested = /指向|伸手|食指|点击|点按|触摸|滑动|操作|按下|拿起|握住|放置|递给|注视|凝视|point|tap|touch|swipe|operate|press|pick up|hold|place|hand over|look at|gaze/i
+    .test([visualText, actionText].filter(Boolean).join(' '));
+  const interactionGroundingText = interactionRequested
+    ? 'Visible interaction grounding is mandatory: every pointing, touching, operating, holding or gaze action must connect to a clearly visible, physically reachable target from this shot, such as the specified product, prop, control, screen, table or interface. Align fingertip, hand and eyeline with the same target. Never point, tap or gesture into empty air. If the requested target cannot be shown coherently, use a natural grounded pose with hands resting on or holding a visible task object.'
+    : '';
   const previousFrame = options.previousFrame || null;
   const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
   const sceneReferenceText = sceneAssetPrompt(sceneAsset);
   const sceneBindingText = sceneLock ? [
     `Shot scene binding: ${cleanText(sceneLock.scene_id || '', 120)} / ${cleanText(sceneLock.scene_name || '', 120)}`,
     sceneLock.scene_view ? `Required scene view: ${cleanText(sceneLock.scene_view, 40)}` : '',
-    sceneLock.scene_zone ? `Required scene zone: ${cleanText(sceneLock.scene_zone, 160)}` : '',
+    sceneLock.scene_zone_id ? `Required scene zone ID (stable binding, do not reinterpret): ${cleanText(sceneLock.scene_zone_id, 100)}` : '',
+    Array.isArray(sceneLock.zone_ids) && sceneLock.zone_ids.length ? `Required scene zone IDs: ${cleanText(sceneLock.zone_ids.join(', '), 400)}` : '',
+    Array.isArray(sceneLock.anchor_ids) && sceneLock.anchor_ids.length ? `Required visible scene anchors: ${cleanText(sceneLock.anchor_ids.join(', '), 500)}` : '',
+    (sceneLock.scene_zone_label_zh || sceneLock.scene_zone) ? `Required scene zone description: ${cleanText(sceneLock.scene_zone_label_zh || sceneLock.scene_zone, 160)}` : '',
     sceneLock.transition_from ? `Transition from: ${cleanText(sceneLock.transition_from, 120)}` : '',
     sceneLock.transition_reason ? `Transition reason: ${cleanText(sceneLock.transition_reason, 240)}` : '',
     'The keyframe must be generated inside this bound task scene. Do not move the shot into another location or another industry setting.',
@@ -659,11 +676,12 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     `Advertised subject: ${cleanText(ctx.product_subject, 160)}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
     userVisualOverride ? `User-edited visual override, highest priority: ${visualText}` : '',
-    userVisualOverride ? 'User override mode: rebuild the keyframe from the edited visual and current style controls. Older storyboard fields are not object or layout constraints.' : '',
+    userVisualOverride ? 'User override mode: rebuild the keyframe from the edited visual and current style controls. Keep the current shot action when it is physically compatible with the edited visual; minimally adapt only to make the action plausible and visibly grounded.' : '',
     `Visual: ${visualText}`,
     userVisualOverride
-      ? 'Action guidance: use a natural commercial camera rhythm that supports the edited visual. Do not import object layout or carrier form from older action text.'
+      ? `Current shot action: ${actionText || 'use a natural, physically grounded pose that supports the edited visual'}`
       : `Action: ${actionText}`,
+    interactionGroundingText,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
     !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
     !userVisualOverride && visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
@@ -706,10 +724,11 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     .filter(Boolean)
     .map(value => cleanText(value, 1200))
     .filter(Boolean);
-  const isPriority = line => /User-edited visual override|^Visual:|^Action:|Advertised subject|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
+  const isPriority = line => /User-edited visual override|^Visual:|^Action:|^Current shot action:|Visible interaction grounding|Required visible scene anchors|Advertised subject|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
   const orderedLines = [...lines.filter(isPriority), ...lines.filter(line => !isPriority(line))];
-  const capFor = (line) => {
-    if (/User-edited visual override|^Visual:|^Action:|Final priority:/i.test(line)) return 420;
+  const capFor = line => {
+    if (/User-edited visual override|^Visual:|^Action:|^Current shot action:|Final priority:/i.test(line)) return 420;
+    if (/Visible interaction grounding|Required visible scene anchors/i.test(line)) return 360;
     if (/scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles/i.test(line)) return 320;
     if (/Advertised subject|Commercial evidence|Product visibility|Forbidden:|Negative visual/i.test(line)) return 220;
     if (/Semantic fidelity rule|Do not crop|Use a real camera look/i.test(line)) return 200;
@@ -772,6 +791,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     : indexes;
   const keyframes = existing.slice();
   const attempts = [];
+  const retainedRegenerationFailures = [];
   const beforeStatus = keyframeCompletion(keyframes, shots);
   if (!targetIndexes.length) {
     storage.saveOutput(taskId, 'keyframes', keyframes);
@@ -798,6 +818,8 @@ async function generateKeyframesStage(taskId, options = {}) {
   storage.updateTask(taskId, { generation_progress: generationProgress });
   for (const i of targetIndexes) {
     const shot = shots[i] || {};
+    const previousAcceptedFrame = hasUsablePreviousKeyframe(existing[i]) ? { ...existing[i] } : null;
+    let currentAttemptFailed = false;
     const previousFrame = previousKeyframeContext(keyframes, i);
     const sceneAsset = sceneAssetForShot(ctx, shot, i);
     const basePrompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame, sceneAsset });
@@ -831,6 +853,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           referenceImages,
           requireReferences: referenceImages.length > 0,
           inputFidelity: 'high',
+          timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (5 * 60 * 1000))),
         });
         const imageUrl = keyframeUrlFromResult(result);
         if (!imageUrl) throw new Error('Image provider returned no image url');
@@ -928,28 +951,70 @@ async function generateKeyframesStage(taskId, options = {}) {
         contract: contracts[i] || null,
         error: '',
         error_code: '',
+        regeneration_error: '',
+        regeneration_error_code: '',
+        regeneration_failed_at: '',
       };
     } catch (err) {
+      currentAttemptFailed = true;
       attempts.push({ index: i, ok: false, code: err.code || 'KEYFRAME_FAILED', error: String(err.message || err) });
-      keyframes[i] = {
-        ...(keyframes[i] || {}),
-        shot_index: i,
-        index: i + 1,
-        title: shot.title || `Shot ${i + 1}`,
-        error: String(err.message || err),
-        error_code: err.code || 'KEYFRAME_FAILED',
-        contract: contracts[i] || null,
-        candidates: shotCandidates,
-      };
+      if (previousAcceptedFrame) {
+        retainedRegenerationFailures.push({ index: i, error: String(err.message || err), code: err.code || 'KEYFRAME_FAILED' });
+        keyframes[i] = {
+          ...previousAcceptedFrame,
+          shot_index: i,
+          index: i + 1,
+          title: shot.title || `Shot ${i + 1}`,
+          error: '',
+          error_code: '',
+          regeneration_error: String(err.message || err),
+          regeneration_error_code: err.code || 'KEYFRAME_FAILED',
+          regeneration_failed_at: new Date().toISOString(),
+          contract: contracts[i] || previousAcceptedFrame.contract || null,
+        };
+      } else {
+        keyframes[i] = {
+          ...(keyframes[i] || {}),
+          shot_index: i,
+          index: i + 1,
+          title: shot.title || `Shot ${i + 1}`,
+          error: String(err.message || err),
+          error_code: err.code || 'KEYFRAME_FAILED',
+          contract: contracts[i] || null,
+          candidates: shotCandidates,
+        };
+      }
     }
     storage.saveOutput(taskId, 'keyframes', keyframes);
     generationProgress.processed += 1;
-    if (isCompleteKeyframe(keyframes[i])) generationProgress.succeeded += 1;
-    else generationProgress.failed += 1;
+    if (currentAttemptFailed) generationProgress.failed += 1;
+    else generationProgress.succeeded += 1;
     const nextTarget = targetIndexes[generationProgress.processed];
     generationProgress.current_index = nextTarget === undefined ? i + 1 : nextTarget + 1;
     generationProgress.updated_at = new Date().toISOString();
     storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
+  }
+  if (retainedRegenerationFailures.length) {
+    const finalStatus = keyframeCompletion(keyframes, shots);
+    const shotNumbers = retainedRegenerationFailures.map(item => item.index + 1);
+    const message = `第 ${shotNumbers.join('、')} 镜的新版本未通过生成或 QA，已保留上一版可用画面。请根据具体原因调整后重试。`;
+    generationProgress.status = 'failed';
+    generationProgress.finished_at = new Date().toISOString();
+    storage.saveOutput(taskId, 'keyframes', keyframes);
+    storage.saveStage(taskId, 'keyframes', {
+      status: finalStatus.completed >= finalStatus.total ? 'done' : 'partial',
+      output_summary: `${finalStatus.completed}/${finalStatus.total} image keyframes; ${retainedRegenerationFailures.length} rejected regeneration`,
+      diagnostics: { attempts, keyframe_status: finalStatus, retained_regeneration_failures: retainedRegenerationFailures },
+    });
+    storage.updateTask(taskId, finalStatus.completed >= finalStatus.total
+      ? { status: 'done', stage: 'keyframes_ready', error: '', error_code: '', generation_progress: { ...generationProgress } }
+      : { status: 'working', stage: 'keyframes_partial', error: '', error_code: '', generation_progress: { ...generationProgress } });
+    const err = new Error(message);
+    err.code = 'KEYFRAME_REGENERATION_REJECTED';
+    err.retryable = true;
+    err.keyframes = keyframes;
+    err.attempts = attempts;
+    throw err;
   }
   const failed = targetIndexes
     .filter(index => !isCompleteKeyframe(keyframes[index]) || keyframes[index]?.qa?.pass !== true)
@@ -1178,7 +1243,13 @@ function subtitleTextFromShot(shot = {}) {
   ).replace(/^(字幕|旁白|台词)\s*[：:]\s*/i, '');
 }
 
-function subtitleSegmentsFromShots(shots = [], subtitleStyle = 'popup') {
+function subtitleSegmentsFromShots(shots = [], subtitleConfig = {}) {
+  const config = typeof subtitleConfig === 'string' ? { style: subtitleConfig } : (subtitleConfig || {});
+  const subtitleStyle = cleanText(config.style || config.subtitleStyle || 'popup', 60);
+  const fontName = cleanText(config.fontName || '', 80);
+  const fontSize = Math.max(24, Math.min(120, Number(config.fontSize) || 72));
+  const color = /^#[0-9a-f]{6}$/i.test(String(config.color || '')) ? String(config.color) : '';
+  const outlineColor = /^#[0-9a-f]{6}$/i.test(String(config.outlineColor || '')) ? String(config.outlineColor) : '';
   let cursor = 0;
   return (Array.isArray(shots) ? shots : []).map((shot, index) => {
     const duration = Math.max(1, Math.min(30, Number(shot.duration_sec || shot.duration || shot.seconds || 3) || 3));
@@ -1187,7 +1258,14 @@ function subtitleSegmentsFromShots(shots = [], subtitleStyle = 'popup') {
       text,
       startTime: cursor,
       endTime: cursor + duration,
+      preset: 'subtitle',
+      style: 'subtitle',
       subtitleStyle,
+      smartEmphasis: config.smartEmphasis !== false,
+      ...(fontName ? { fontName } : {}),
+      fontSize,
+      ...(color ? { fontcolor: color } : {}),
+      ...(outlineColor ? { bordercolor: outlineColor } : {}),
       shot_index: index + 1,
     } : null;
     cursor += duration;
@@ -1209,6 +1287,12 @@ async function composeStage(taskId, options = {}) {
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
   const subtitleEnabled = options.subtitle !== false && ctx.subtitle !== false;
   const subtitleStyle = cleanText(options.subtitle_style || options.subtitleStyle || ctx.subtitle_style || ctx.subtitleStyle || 'popup', 60);
+  const rawSubtitleConfig = options.subtitle_config || options.subtitleConfig || ctx.subtitle_config || ctx.subtitleConfig || {};
+  const subtitleConfig = {
+    ...(rawSubtitleConfig && typeof rawSubtitleConfig === 'object' ? rawSubtitleConfig : {}),
+    show: subtitleEnabled,
+    style: subtitleStyle,
+  };
   const bgmAsset = options.bgm_asset || options.bgmAsset || ctx.bgm_asset || ctx.bgmAsset || null;
   storage.saveOutput(taskId, 'context', {
     ...ctx,
@@ -1220,6 +1304,7 @@ async function composeStage(taskId, options = {}) {
     bgm_asset: bgmAsset,
     subtitle: subtitleEnabled,
     subtitle_style: subtitleStyle,
+    subtitle_config: subtitleConfig,
   });
   const final_video = await composeService.concatVideos({
     taskId,
@@ -1227,7 +1312,7 @@ async function composeStage(taskId, options = {}) {
     bgmAsset,
     bgmVolume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     voiceVolume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
-    subtitles: subtitleSegmentsFromShots(shots, subtitleStyle),
+    subtitles: subtitleSegmentsFromShots(shots, subtitleConfig),
     subtitleEnabled,
     subtitleStyle,
     transitions: shots,
@@ -1491,5 +1576,6 @@ module.exports = {
   keyframeCompletion,
   compactKeyframePrompt,
   isCompleteKeyframe,
+  subtitleSegmentsFromShots,
 };
 

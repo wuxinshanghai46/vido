@@ -8,6 +8,24 @@
 
   const VIEW_ORDER = ['master', 'reverse', 'interaction', 'detail'];
 
+  const SCENE_ZONE_LABELS = {
+    'central interaction zone': '中央交互区',
+    'background data wall zone': '背景数据墙区域',
+    'foreground interaction zone': '前景交互区',
+    'entrance zone': '入口区',
+    'display zone': '展示区',
+    'product display zone': '产品展示区',
+    'detail zone': '细节区',
+    'work zone': '工作区',
+  };
+
+  const SCENE_ZONE_TOKENS = {
+    central: '中央', center: '中央', background: '背景', foreground: '前景',
+    data: '数据', wall: '墙', interaction: '交互', entrance: '入口', display: '展示',
+    product: '产品', detail: '细节', work: '工作', operation: '操作', main: '主',
+    stage: '舞台', counter: '柜台', desk: '工作台', corridor: '通道', zone: '区域', area: '区域',
+  };
+
   function clean(value = '', max = 1000) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
@@ -24,6 +42,26 @@
     const raw = clean(value, 40);
     if (VIEW_ORDER.includes(raw)) return raw;
     return VIEW_ORDER[index % VIEW_ORDER.length] || 'master';
+  }
+
+  function sceneZoneLabel(value = '') {
+    const raw = clean(value, 160);
+    if (!raw || /[\u3400-\u9fff]/.test(raw)) return raw;
+    const normalized = raw.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (SCENE_ZONE_LABELS[normalized]) return SCENE_ZONE_LABELS[normalized];
+    const tokens = normalized.split(' ');
+    if (tokens.length && tokens.every(token => SCENE_ZONE_TOKENS[token])) {
+      return tokens.map(token => SCENE_ZONE_TOKENS[token]).join('').replace(/区域区域/g, '区域');
+    }
+    return raw;
+  }
+
+  function shotZoneId(shot = {}) {
+    return clean(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : ''), 100);
+  }
+
+  function shotZoneLabel(shot = {}) {
+    return sceneZoneLabel(shot.scene_zone_label_zh || shot.zone_label_zh || shot.scene_zone || '');
   }
 
   function normalizeShotBinding(shot = {}, sceneAssets = [], index = 0) {
@@ -50,6 +88,8 @@
     if (!shot.scene_name) shot.scene_name = sceneName(selected, selectedIndex);
     if (!shot.scene_view) shot.scene_view = viewValue('', index);
     if (!shot.scene_zone) shot.scene_zone = clean(shot.purpose || shot.title || `第 ${index + 1} 镜区域`, 160);
+    if (!shot.scene_zone_id) shot.scene_zone_id = shotZoneId(shot);
+    if (!shot.scene_zone_label_zh) shot.scene_zone_label_zh = shotZoneLabel(shot);
     return shot;
   }
 
@@ -93,7 +133,7 @@
       </label>
       <label>
         <span>场景区域</span>
-        <input class="dh-input" value="${esc(clean(shot.scene_zone || '', 160))}" placeholder="例如：入口区、展示区、互动位、细节区，按当前任务填写" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_zone">
+        <input class="dh-input" value="${esc(shotZoneLabel(shot))}" placeholder="例如：入口区、展示区、互动位、细节区，按当前任务填写" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_zone">
       </label>
       <label>
         <span>转场原因</span>
@@ -106,6 +146,9 @@
     VIEW_LABELS,
     normalizeShotBinding,
     normalizeShots,
+    sceneZoneLabel,
+    shotZoneId,
+    shotZoneLabel,
     bindingHtml,
   };
 })();

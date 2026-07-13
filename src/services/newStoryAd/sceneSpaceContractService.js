@@ -46,10 +46,12 @@ function normalizeZones(input = []) {
   return (Array.isArray(input) ? input : []).map((item, index) => {
     const source = typeof item === 'string' ? { label: item } : (item || {});
     const label = cleanText(source.label || source.name || source.purpose || 'zone ' + (index + 1), 120);
+    const labelZh = cleanText(source.label_zh || source.labelZh || (/[㐀-鿿]/.test(label) ? label : ''), 120);
     const box = Array.isArray(source.normalized_box) ? source.normalized_box.map(Number).slice(0, 4) : [];
     return {
       id: cleanText(source.id || stableId('zone', label, index), 100),
       label,
+      label_zh: labelZh,
       purpose: cleanText(source.purpose || source.description || label, 300),
       tags: stringList(source.tags || source.allowed_actions || [], 12, 80),
       normalized_box: box.length === 4 && box.every(Number.isFinite)
@@ -174,7 +176,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'scene_consistency_score, geometry_consistency_score and material_consistency_score as REQUIRED EVALUATED numbers from 0 to 1; '
       + 'mismatch_reasons string array; anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
-      + 'zones object array with id, label, purpose, tags, normalized_box and visible_in_views; '
+      + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
+      + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
       + 'geometry_facts string array; materials string array; lighting object; cameras object array. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
@@ -239,7 +242,10 @@ async function reviewKeyframe(options = {}) {
       'Image 1 is the required empty scene/camera reference. Image 2 is the generated keyframe.',
       'Judge spatial identity, fixed anchors, camera intent, material family and newly invented architecture.',
       'People and the advertised subject may be added when required by the shot.',
+      'A person named or described in the shot contract is authorized even though the empty scene reference contains no person. Never reject that required actor merely for being absent from the empty reference.',
+      'When the shot requires pointing, touching, operating, holding or gaze interaction, verify that the intended target is visibly present, physically reachable and aligned with the hand/finger/eyeline. Reject unexplained empty-air gestures.',
       'Return JSON only. Never use fixed industry expectations.',
+      'All mismatch_reasons and forbidden_new_elements entries must be concise Simplified Chinese written for ordinary product users.',
     ].join('\n'),
     userPrompt: 'Scene contract: ' + JSON.stringify(options.contract || {}).slice(0, 10000)
       + '\nShot contract: ' + JSON.stringify(options.shot || {}).slice(0, 5000)
@@ -248,7 +254,8 @@ async function reviewKeyframe(options = {}) {
       + 'as REQUIRED EVALUATED numbers from 0 to 1, plus mismatch_reasons and forbidden_new_elements string arrays. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail for another space, incompatible required-anchor movement, changed dominant material structure, '
-      + 'selected-camera contradiction, or unsupported new architecture.',
+      + 'selected-camera contradiction, or unsupported new architecture.'
+      + '\nUse Simplified Chinese for every reason string. Do not return English reason text.',
     imageUrls: [options.sceneReferenceUrl, options.generatedUrl],
     maxTokens: 3000,
   };

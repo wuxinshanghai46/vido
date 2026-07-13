@@ -21,6 +21,11 @@
       bgm_asset: state.bgmAsset || null,
       subtitle: state.subtitleEnabled !== false,
       subtitle_style: state.subtitleStyle || 'popup',
+      subtitle_config: {
+        show: state.subtitleEnabled !== false,
+        style: state.subtitleStyle || 'popup',
+        ...(state.subtitleOptions || {}),
+      },
     };
   }
 
@@ -248,8 +253,12 @@
         state.cancelRequested = false;
         if (!state.activeGenerationId) state.activeStage = '';
       }
-      setButtonBusy?.(button, false);
-      setBusy?.(false);
+      try {
+        setBusy?.(false);
+      } finally {
+        setButtonBusy?.(button, false);
+        renderAll?.();
+      }
     }
   }
 
