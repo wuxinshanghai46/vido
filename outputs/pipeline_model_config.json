@@ -1626,27 +1626,33 @@
         "priority": 2
       },
       {
+        "provider_id": "zhipu",
+        "model_id": "cogvideox-flash",
+        "priority": 3,
+        "enabled": true
+      },
+      {
+        "provider_id": "topview",
+        "model_id": "topview-image2video-pro",
+        "priority": 4,
+        "enabled": false
+      },
+      {
         "provider_id": "webang-seedance",
         "model_id": "doubao-seedance-2-0-260128",
-        "priority": 3,
+        "priority": 5,
         "enabled": false
       },
       {
         "provider_id": "webang-seedance",
         "model_id": "doubao-seedance-2-0-fast-260128",
-        "priority": 4,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-image2video-pro",
-        "priority": 5,
+        "priority": 6,
         "enabled": false
       },
       {
         "provider_id": "volcengine",
         "model_id": "doubao-seedance-2-0-260128",
-        "priority": 6,
+        "priority": 7,
         "enabled": false
       }
     ],

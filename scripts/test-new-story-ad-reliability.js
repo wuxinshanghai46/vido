@@ -109,11 +109,6 @@ async function main() {
   assert.equal(service.resolveTtsVoiceId({}, {}, { voice_id: 'legacy-voice' }), 'legacy-voice');
   assert.equal(service.resolveTtsVoiceId({ voice_id: 'new-voice' }, {}, { voice_id: 'legacy-voice' }), 'new-voice');
   assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
-    model.provider_id === 'topview'
-      && model.model_id === 'topview-image2video-pro'
-      && model.enabled === true
-  )));
-  assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
     model.provider_id === 'zhipu'
       && model.model_id === 'cogvideox-flash'
       && model.enabled === true

@@ -361,8 +361,8 @@ const STAGE_DEFAULTS = {
   'new_story_ad.video': [
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },
-    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 3, enabled: true },
-    { provider_id: 'zhipu', model_id: 'cogvideox-flash', priority: 4, enabled: true },
+    { provider_id: 'zhipu', model_id: 'cogvideox-flash', priority: 3, enabled: true },
+    { provider_id: 'topview', model_id: 'topview-image2video-pro', priority: 4, enabled: false },
     { provider_id: 'volcengine', model_id: 'doubao-seedance-2-0-260128', priority: 5, enabled: false },
   ],
   'new_story_ad.tts': [
