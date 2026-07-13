@@ -661,7 +661,31 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
-  return parts.filter(Boolean).join('\n');
+  return compactKeyframePrompt(parts);
+}
+
+function compactKeyframePrompt(parts = [], maxChars = 2400) {
+  const lines = (Array.isArray(parts) ? parts : [parts])
+    .filter(Boolean)
+    .map(value => cleanText(value, 1200))
+    .filter(Boolean);
+  const isPriority = line => /User-edited visual override|^Visual:|^Action:|Advertised subject|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
+  const ordered = [...lines.filter(isPriority), ...lines.filter(line => !isPriority(line))];
+  const capFor = line => {
+    if (/User-edited visual override|^Visual:|^Action:|Final priority:/i.test(line)) return 420;
+    if (/scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles/i.test(line)) return 320;
+    if (/Advertised subject|Commercial evidence|Product visibility|Forbidden:|Negative visual/i.test(line)) return 220;
+    if (/Semantic fidelity rule|Do not crop|Use a real camera look/i.test(line)) return 200;
+    return 150;
+  };
+  let output = '';
+  for (const line of ordered.map(value => cleanText(value, capFor(value)))) {
+    const remaining = maxChars - output.length - (output ? 1 : 0);
+    if (remaining <= 24) break;
+    const next = cleanText(line, remaining);
+    if (next) output += `${output ? '\n' : ''}${next}`;
+  }
+  return output;
 }
 
 function keyframeUrlFromResult(result = {}) {
@@ -746,8 +770,11 @@ async function generateKeyframesStage(taskId, options = {}) {
       let qa = null;
       let feedback = '';
       for (let qaAttempt = 0; qaAttempt <= maxQaRetries; qaAttempt += 1) {
-        const prompt = feedback
-          ? basePrompt + '\n\nPrevious visual QA rejected the frame. Correct all of these scene mismatches without changing the requested shot: ' + feedback
+        const correction = feedback
+          ? `Previous visual QA rejected the frame. Correct these scene mismatches without changing the requested shot: ${cleanText(feedback, 320)}`
+          : '';
+        const prompt = correction
+          ? `${cleanText(basePrompt, Math.max(1200, 2390 - correction.length))}\n${correction}`
           : basePrompt;
         const result = await mediaAdapter.generateImage({
           taskId,
@@ -1308,5 +1335,6 @@ module.exports = {
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
   keyframeCompletion,
+  compactKeyframePrompt,
 };
 

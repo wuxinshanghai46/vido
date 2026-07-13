@@ -6,6 +6,8 @@
   function thumbUrl(url = '', width = 520) {
     const raw = String(url || '').trim();
     if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (!/^\/api\/new-story-ad\/assets\//i.test(raw)) return raw;
     const join = raw.includes('?') ? '&' : '?';
     return `${raw}${join}thumb=${Math.max(160, Math.min(960, Number(width) || 520))}`;
   }
@@ -52,7 +54,7 @@
         ? `空间一致性已通过${qa.scene_consistency_score ? ` · ${Math.round(Number(qa.scene_consistency_score) * 100)}%` : ''}`
         : (frame.error ? `失败：${frame.error}` : '等待空间一致性检查'));
     return `<button type="button" class="dh-nsa-frame-preview ${previewUrl ? '' : 'pending'}" ${previewUrl ? `data-nsa-frame-preview="${index}" data-nsa-frame-full="${esc(imageUrl || previewUrl)}" title="点击查看第 ${index + 1} 镜大图"` : 'disabled'}>
-      ${source ? `<img src="${esc(source)}" alt="${esc(title)}" loading="${loading}" decoding="async"${priority} onerror="this.closest('.dh-nsa-frame-preview')?.classList.add('image-error')">` : `<span>${String(index + 1).padStart(2, '0')}</span>`}
+      ${source ? `<img src="${esc(source)}" alt="${esc(title)}" loading="${loading}" decoding="async"${priority} onerror="const p=this.closest('.dh-nsa-frame-preview');this.hidden=true;p?.classList.add('image-error');const s=p?.querySelector('small');if(s)s.textContent='图片地址已失效，请重新生成本镜'">` : `<span>${String(index + 1).padStart(2, '0')}</span>`}
       <b>${String(index + 1).padStart(2, '0')} · ${esc(title)}</b>
       <small>${previewUrl ? qaText : stateText}</small>
     </button>`;

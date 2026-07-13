@@ -1364,6 +1364,8 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-frame-preview small { bottom: 10px; color: rgba(255,255,255,.76); font-size: 11px; font-weight: 800; }
 .dh-nsa-frame-preview.pending { display: grid; place-items: center; cursor: default; background: repeating-linear-gradient(135deg, rgba(33,255,243,.08), rgba(33,255,243,.08) 9px, rgba(255,255,255,.03) 9px, rgba(255,255,255,.03) 18px), #081018; }
 .dh-nsa-frame-preview.pending span { color: var(--dh-primary); font-size: 28px; font-weight: 950; }
+.dh-nsa-frame-preview.image-error { background: repeating-linear-gradient(135deg, rgba(255,91,108,.12), rgba(255,91,108,.12) 10px, rgba(255,255,255,.025) 10px, rgba(255,255,255,.025) 20px), #10070a; }
+.dh-nsa-frame-preview.image-error::before { content: "图片加载失败"; position: absolute; inset: 0; display: grid; place-items: center; color: #ff8d9a; font-size: 14px; font-weight: 900; }
 .dh-nsa-frame-editor { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
 .dh-nsa-frame-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .dh-nsa-frame-head b { min-width: 0; color: var(--dh-text); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

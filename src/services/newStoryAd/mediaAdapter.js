@@ -374,9 +374,14 @@ async function generateImage({
           reference_count: references.length,
           reference_preserving: references.length > 0,
         };
+        const stablePayload = await persistImageResult({
+          result: payload,
+          filename: filename || `${stage}_${Date.now()}`,
+          thumbnailWidths: [520, 640],
+        });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
-        return payload;
+        return stablePayload;
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await client.images.generate({
@@ -398,9 +403,14 @@ async function generateImage({
           reference_count: 0,
           reference_preserving: false,
         };
+        const stablePayload = await persistImageResult({
+          result: payload,
+          filename: filename || `${stage}_${Date.now()}`,
+          thumbnailWidths: [520, 640],
+        });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
-        return payload;
+        return stablePayload;
       }
       if (first?.b64_json) {
         const safe = safeFilename(filename || `${stage}_${Date.now()}`, '.png');
