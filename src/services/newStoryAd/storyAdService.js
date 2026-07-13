@@ -1138,7 +1138,10 @@ async function generateVideoStage(taskId, options = {}) {
     }
   }
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
-  if (!ttsAudio && options.auto_tts !== false && options.autoTts !== false) {
+  const voiceId = cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120);
+  const autoTtsEnabled = options.auto_tts !== false && options.autoTts !== false;
+  const ttsNeedsRefresh = !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
+  if (ttsNeedsRefresh && autoTtsEnabled) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
   }

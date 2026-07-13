@@ -80,6 +80,32 @@ async function main() {
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   await assert.rejects(() => ttsAdapter.generateShotAudio({ shot: { voiceover: '测试' }, voiceId: '' }), /未选择配音音色/);
 
+  const repeatedSpeechShot = {
+    voiceover: '开发 AI 应用，总想找到更强大的开发伙伴。',
+    narration: '开发 AI 应用，总想找到更强大的开发伙伴。',
+    ad_copy: '开发 AI 应用，总想找到更强大的开发伙伴。',
+    subtitle: '开发 AI 应用，总想找到更强大的开发伙伴。',
+    dialogue_lines: [{ speaker: '旁白', line: '开发 AI 应用，总想找到更强大的开发伙伴。' }],
+  };
+  const dedupedSpeech = ttsAdapter.shotSpeechText(repeatedSpeechShot);
+  assert.equal(dedupedSpeech, '开发 AI 应用，总想找到更强大的开发伙伴。');
+  assert.equal(ttsAdapter.shotSpeechText({
+    voiceover: '先介绍产品。',
+    dialogue_lines: [{ speaker: '主持人', line: '再演示核心功能。' }],
+  }), '先介绍产品。 主持人: 再演示核心功能。');
+  assert.equal(ttsAdapter.voiceoverPlanMatches({
+    voice_id: 'voice-a',
+    tracks: [{ text: dedupedSpeech }],
+  }, [repeatedSpeechShot], 'voice-a'), true);
+  assert.equal(ttsAdapter.voiceoverPlanMatches({
+    voice_id: 'voice-a',
+    tracks: [{ text: `${dedupedSpeech} ${dedupedSpeech}` }],
+  }, [repeatedSpeechShot], 'voice-a'), false);
+  assert.equal(ttsAdapter.voiceoverPlanMatches({
+    voice_id: 'voice-b',
+    tracks: [{ text: dedupedSpeech }],
+  }, [repeatedSpeechShot], 'voice-a'), false);
+
   const staleFailedFrame = service.keyframeCompletion([{ image_url: 'https://example.test/old.png', error: 'latest regeneration failed', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED' }], [{}]);
   assert.deepEqual(staleFailedFrame, { total: 1, completed: 0, missing: 1, failed: 1, missing_indexes: [0] });
 

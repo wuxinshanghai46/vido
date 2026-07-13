@@ -30,24 +30,54 @@ function clamp(num, min, max, fallback) {
   return Math.max(min, Math.min(max, n));
 }
 
-function dialogueText(shot = {}) {
+function normalizeSpeechSegment(value = '') {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function speechSegmentKey(value = '') {
+  return normalizeSpeechSegment(value)
+    .replace(/^(?:旁白|解说|画外音|配音|台词|对白|字幕|屏幕字幕)\s*[:：]\s*/i, '')
+    .toLowerCase()
+    .replace(/[\s，。！？,.!?、；;：:"'“”‘’…·—-]+/g, '');
+}
+
+function dialogueSegments(shot = {}) {
   if (Array.isArray(shot.dialogue_lines)) {
-    return shot.dialogue_lines
-      .map(line => [line.speaker || '', line.line || line.text || ''].filter(Boolean).join(': '))
-      .filter(Boolean)
-      .join(' ');
+    return shot.dialogue_lines.map((line) => {
+      const text = normalizeSpeechSegment(line?.line || line?.text || '');
+      const speaker = normalizeSpeechSegment(line?.speaker || '');
+      return [speaker, text].filter(Boolean).join(': ');
+    });
   }
-  return shot.dialogue || shot.dialog || '';
+  return [shot.dialogue || shot.dialog || ''];
 }
 
 function shotSpeechText(shot = {}) {
+  const seen = new Set();
   return [
     shot.voiceover,
     shot.narration,
     shot.ad_copy,
     shot.subtitle,
-    dialogueText(shot),
-  ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    ...dialogueSegments(shot),
+  ].map(normalizeSpeechSegment).filter((segment) => {
+    const key = speechSegmentKey(segment);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).join(' ');
+}
+
+function voiceoverPlanMatches(ttsAudio = {}, shots = [], voiceId = '') {
+  const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : [];
+  const shotList = Array.isArray(shots) ? shots : [];
+  if (tracks.length !== shotList.length) return false;
+  const expectedVoiceId = normalizeSpeechSegment(voiceId);
+  const storedVoiceId = normalizeSpeechSegment(ttsAudio?.voice_id || ttsAudio?.voiceId || '');
+  if (expectedVoiceId && storedVoiceId !== expectedVoiceId) return false;
+  return shotList.every((shot, index) => (
+    normalizeSpeechSegment(tracks[index]?.text) === shotSpeechText(shot)
+  ));
 }
 
 function wavHeader({ sampleRate, channels, bitsPerSample, dataBytes }) {
@@ -186,6 +216,7 @@ module.exports = {
   audioPathFromName,
   publicAudioUrl,
   shotSpeechText,
+  voiceoverPlanMatches,
   generateShotAudio,
   generateVoiceover,
 };
