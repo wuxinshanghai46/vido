@@ -14,6 +14,7 @@ const service = require('../src/services/newStoryAd/storyAdService');
 const { buildContext, assertContextConsistent } = require('../src/services/newStoryAd/contextBuilder');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
+const newStoryAdModelConfig = require('./configure-new-story-ad-models');
 
 function waitUntil(predicate, timeoutMs = 4000) {
   const started = Date.now();
@@ -107,6 +108,11 @@ async function main() {
   }, [repeatedSpeechShot], 'voice-a'), false);
   assert.equal(service.resolveTtsVoiceId({}, {}, { voice_id: 'legacy-voice' }), 'legacy-voice');
   assert.equal(service.resolveTtsVoiceId({ voice_id: 'new-voice' }, {}, { voice_id: 'legacy-voice' }), 'new-voice');
+  assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
+    model.provider_id === 'topview'
+      && model.model_id === 'topview-image2video-pro'
+      && model.enabled === true
+  )));
 
   const staleFailedFrame = service.keyframeCompletion([{ image_url: 'https://example.test/old.png', error: 'latest regeneration failed', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED' }], [{}]);
   assert.deepEqual(staleFailedFrame, { total: 1, completed: 0, missing: 1, failed: 1, missing_indexes: [0] });

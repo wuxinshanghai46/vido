@@ -2,6 +2,12 @@
 const { loadSettings, saveSettings } = require('../src/services/settingsService');
 const pipeline = require('../src/services/pipelineModelService');
 
+const VIDEO_MODELS = [
+  { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', enabled: true },
+  { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', enabled: true },
+  { provider_id: 'topview', model_id: 'topview-image2video-pro', enabled: true },
+];
+
 function ensureModel(provider, model) {
   provider.models = Array.isArray(provider.models) ? provider.models : [];
   const existing = provider.models.find(item => String(item.id) === String(model.id));
@@ -65,10 +71,7 @@ function configure() {
     'new_story_ad.keyframe',
   ]) setStage(config, stage, imageModels);
 
-  setStage(config, 'new_story_ad.video', [
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128', enabled: true },
-    { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-fast-260128', enabled: true },
-  ]);
+  setStage(config, 'new_story_ad.video', VIDEO_MODELS);
   pipeline.saveConfig(config);
   return {
     text: textModels.map(item => `${item.provider_id}/${item.model_id}`),
@@ -82,4 +85,4 @@ if (require.main === module) {
   console.log(JSON.stringify(result, null, 2));
 }
 
-module.exports = { configure, ensureModel, setStage };
+module.exports = { configure, ensureModel, setStage, VIDEO_MODELS };
