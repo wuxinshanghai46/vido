@@ -809,6 +809,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           referenceImages,
           requireReferences: !!sceneReference,
           inputFidelity: 'high',
+          timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (5 * 60 * 1000))),
         });
         const imageUrl = keyframeUrlFromResult(result);
         if (!imageUrl) throw new Error('Image provider returned no image url');
