@@ -81,7 +81,7 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
     product: Math.max(1, Number(old.product || 1) || 1),
   };
   if (scope === 'source') revisions.source += 1;
-  if (scope === 'scene' || scope === 'source' || scope === 'product') revisions.scene += 1;
+  if (scope === 'scene' || scope === 'source') revisions.scene += 1;
   if (scope === 'person' || scope === 'source') revisions.person += 1;
   if (scope === 'product' || scope === 'source') revisions.product += 1;
   return { ...next, revisions };
@@ -89,8 +89,8 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
 
 function invalidateOutputs(storage, taskId, scope = 'none') {
   const downstream = {
-    source: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
-    product: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    source: ['scene_config', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    product: ['scene_config', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
     scene: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
     person: ['blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
     none: [],

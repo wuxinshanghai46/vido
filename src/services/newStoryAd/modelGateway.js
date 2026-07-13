@@ -30,7 +30,19 @@ const STAGE_FALLBACKS = {
 };
 
 function modelKey(model) {
-  return `${String(model?.provider_id || '').toLowerCase()}/${String(model?.model_id || '').toLowerCase()}`;
+  const providerId = String(model?.provider_id || '').toLowerCase();
+  const modelId = String(model?.model_id || '').toLowerCase();
+  let channel = String(model?.billing_channel || model?.channel || '').toLowerCase();
+  let endpoint = String(model?.endpoint || '').toLowerCase();
+  let wallet = String(model?.wallet || model?.account_group || '').toLowerCase();
+  try {
+    const provider = (loadSettings().providers || []).find(item => providerMatches(item, providerId));
+    const providerModel = (provider?.models || []).find(item => String(item.id || '').toLowerCase() === modelId) || {};
+    channel = channel || String(providerModel.billing_channel || providerModel.channel || '').toLowerCase();
+    endpoint = endpoint || String(providerModel.endpoint || provider?.api_url || '').toLowerCase();
+    wallet = wallet || String(providerModel.wallet || providerModel.account_group || provider?.account_group || '').toLowerCase();
+  } catch {}
+  return `${providerId}/${modelId}|channel=${channel || 'default'}|endpoint=${endpoint || 'default'}|wallet=${wallet || 'default'}`;
 }
 
 function storyUseMatches(model) {
@@ -186,6 +198,8 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     const code = row.last_error_code;
     if (/AUTH_CONFIG|MODEL_CONFIG/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    } else if (code === 'PROVIDER_BILLING') {
+      row.cooldown_until = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     } else if (/TIMEOUT|RATE_LIMIT|NETWORK/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     }
@@ -300,6 +314,7 @@ async function generateText({
         maxTokens,
         temperature,
         timeoutMs,
+        signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
       const text = result.text;
@@ -324,6 +339,7 @@ async function generateText({
         latency_ms: latency,
       };
     } catch (err) {
+      if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const latency = Date.now() - start;
       const classified = classifyError(err);
       failed.push({
@@ -437,6 +453,7 @@ async function generateVision({
         messages,
         maxTokens,
         timeoutMs,
+        signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
       const latency = Date.now() - start;
@@ -454,6 +471,7 @@ async function generateVision({
         latency_ms: latency,
       };
     } catch (err) {
+      if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const latency = Date.now() - start;
       const classified = classifyError(err);
       failed.push({

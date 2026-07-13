@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const cancellation = require('./cancellationContext');
 const ffmpegPath = require('ffmpeg-static');
 const videoAdapter = require('./videoAdapter');
 
@@ -29,6 +30,10 @@ function execFfmpeg(args, timeoutMs = 180000) {
   if (!ffmpegPath) return Promise.reject(new Error('ffmpeg-static is unavailable'));
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const signal = cancellation.signal();
+    const abort = () => child.kill('SIGKILL');
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
     let stderr = '';
     const timer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch {}
@@ -41,6 +46,8 @@ function execFfmpeg(args, timeoutMs = 180000) {
     });
     child.on('close', code => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) return reject(signal.reason || new Error('FFmpeg aborted'));
       if (code === 0) return resolve();
       reject(new Error(stderr.split(/\r?\n/).filter(Boolean).slice(-6).join(' | ') || `ffmpeg exited ${code}`));
     });

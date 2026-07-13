@@ -1364,6 +1364,8 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-frame-preview small { bottom: 10px; color: rgba(255,255,255,.76); font-size: 11px; font-weight: 800; }
 .dh-nsa-frame-preview.pending { display: grid; place-items: center; cursor: default; background: repeating-linear-gradient(135deg, rgba(33,255,243,.08), rgba(33,255,243,.08) 9px, rgba(255,255,255,.03) 9px, rgba(255,255,255,.03) 18px), #081018; }
 .dh-nsa-frame-preview.pending span { color: var(--dh-primary); font-size: 28px; font-weight: 950; }
+.dh-nsa-frame-preview.image-error { background: repeating-linear-gradient(135deg, rgba(255,91,108,.12), rgba(255,91,108,.12) 10px, rgba(255,255,255,.025) 10px, rgba(255,255,255,.025) 20px), #10070a; }
+.dh-nsa-frame-preview.image-error::before { content: "图片加载失败"; position: absolute; inset: 0; display: grid; place-items: center; color: #ff8d9a; font-size: 14px; font-weight: 900; }
 .dh-nsa-frame-editor { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
 .dh-nsa-frame-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
 .dh-nsa-frame-head b { min-width: 0; color: var(--dh-text); font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1670,6 +1672,58 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   font-size: 11px;
   font-weight: 900;
 }
+.dh-nsa-verification-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.dh-nsa-verification-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+.dh-nsa-verification-badge.is-verified {
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, .42);
+  background: rgba(34, 197, 94, .1);
+}
+.dh-nsa-verification-badge.is-unverified {
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, .42);
+  background: rgba(245, 158, 11, .1);
+}
+.dh-nsa-production-mode-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  align-items: end;
+  gap: 14px;
+  margin: 10px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--dh-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dh-surface) 88%, transparent);
+}
+.dh-nsa-production-mode-row label { display: grid; gap: 6px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
+.dh-nsa-production-mode-row p { margin: 0; color: var(--dh-text-muted); font-size: 12px; line-height: 1.6; }
+.dh-nsa-candidate-strip { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--dh-border); border-radius: 10px; background: rgba(255,255,255,.025); }
+.dh-nsa-candidate-strip > b { color: var(--dh-text); font-size: 12px; }
+.dh-nsa-candidate-strip > div { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 3px; }
+.dh-nsa-candidate { flex: 0 0 92px; display: grid; gap: 5px; padding: 5px; border: 1px solid var(--dh-border); border-radius: 9px; background: var(--dh-surface); }
+.dh-nsa-candidate.is-accepted { border-color: rgba(34,197,94,.45); }
+.dh-nsa-candidate.is-rejected { border-color: rgba(239,68,68,.42); opacity: .78; }
+.dh-nsa-candidate.is-selected { box-shadow: 0 0 0 2px rgba(56,189,248,.42); }
+.dh-nsa-candidate > button:first-child { width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: 6px; background: #05070b; cursor: zoom-in; }
+.dh-nsa-candidate img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dh-nsa-candidate-use { min-height: 26px; border: 0; border-radius: 6px; color: #052e16; background: #86efac; font-size: 11px; font-weight: 900; cursor: pointer; }
+.dh-nsa-candidate em { color: var(--dh-text-muted); font-size: 10px; font-style: normal; text-align: center; }
 .dh-nsa-scene-views {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1929,6 +1983,7 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-lux-failed-candidate small { margin-top: 4px; color: var(--dh-text-muted); font-size: 11px; }
 .dh-lux-failed-candidate-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 @media (max-width: 720px) {
+  .dh-nsa-production-mode-row { grid-template-columns: 1fr; align-items: stretch; }
   .dh-video-modal-video { width: 90vw; height: auto; max-height: 70vh; }
   .dh-lux-resume-modal-card { width: 96vw; height: 94vh; }
 }

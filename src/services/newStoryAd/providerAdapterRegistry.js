@@ -2,6 +2,7 @@ require('dotenv').config();
 const https = require('https');
 const OpenAI = require('openai');
 const { loadSettings } = require('../settingsService');
+const cancellation = require('./cancellationContext');
 
 const DEYUNAI_C35_VENDOR = String(process.env.DEYUNAI_C35_VENDOR || '').trim();
 
@@ -86,6 +87,14 @@ function reasoningBudgetExhausted(completion, tokenLimit) {
     && completionTokens >= Math.max(1, Math.floor(Number(tokenLimit || 0) * 0.9));
 }
 
+function bindAbort(req, signal) {
+  if (!signal) return () => {};
+  const abort = () => req.destroy(signal.reason instanceof Error ? signal.reason : new Error('Request aborted'));
+  if (signal.aborted) abort();
+  else signal.addEventListener('abort', abort, { once: true });
+  return () => signal.removeEventListener('abort', abort);
+}
+
 function callAnthropicMessages(config, systemPrompt, userPrompt, opts = {}) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
@@ -124,6 +133,8 @@ function callAnthropicMessages(config, systemPrompt, userPrompt, opts = {}) {
         resolve({ text, usage: data.usage || {} });
       });
     });
+    const unbind = bindAbort(req, opts.signal);
+    req.on('close', unbind);
     req.on('error', reject);
     req.on('timeout', () => req.destroy(new Error('Anthropic request timeout')));
     req.write(body);
@@ -170,6 +181,8 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
         resolve({ text, usage: data.usage || {} });
       });
     });
+    const unbind = bindAbort(req, opts.signal);
+    req.on('close', unbind);
     req.on('error', reject);
     req.on('timeout', () => req.destroy(new Error('DeyunAI Claude Messages request timeout')));
     req.write(body);
@@ -212,7 +225,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
       ? { max_completion_tokens: tokenLimit }
       : { max_tokens: tokenLimit }),
   });
-  let completion = await client.chat.completions.create(buildPayload(maxTokenValue));
+  let completion = await client.chat.completions.create(buildPayload(maxTokenValue), { signal: opts.signal });
   if (typeof completion === 'string') {
     try { completion = JSON.parse(completion); } catch (_) {}
   }
@@ -220,7 +233,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   if ((!completion?.choices?.length || !text) && reasoningBudgetExhausted(completion, maxTokenValue)) {
     const retryTokenValue = Math.min(32000, Math.max(maxTokenValue + 6000, Math.ceil(maxTokenValue * 2)));
     if (retryTokenValue > maxTokenValue) {
-      completion = await client.chat.completions.create(buildPayload(retryTokenValue));
+      completion = await client.chat.completions.create(buildPayload(retryTokenValue), { signal: opts.signal });
       if (typeof completion === 'string') {
         try { completion = JSON.parse(completion); } catch (_) {}
       }
@@ -234,15 +247,15 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   return { text, usage: completion.usage || {} };
 }
 
-async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000 } = {}) {
+async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000, signal = cancellation.signal() } = {}) {
   const config = resolveTextAdapter(model);
   let result;
   if (config.family.includes('anthropic') || config.providerId === 'anthropic') {
-    result = await callAnthropicMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs });
+    result = await callAnthropicMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
   } else if ((config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) && /^claude-/i.test(config.modelId)) {
-    result = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs });
+    result = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
   } else {
-    result = await callOpenAICompatible(config, systemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs });
+    result = await callOpenAICompatible(config, systemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs, signal });
   }
   return {
     text: result.text,

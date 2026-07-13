@@ -54,9 +54,9 @@ async function main() {
     scene_revision: 3,
   };
   const bound = sceneBinding.bindShotsToScenes([
-    { title: '建立空间', visual: '展示完整空间和主体关系', action: '镜头建立整体关系' },
-    { title: '执行动作', visual: '主体在行动区完成操作', action: '进行明确互动和操作' },
-    { title: '读取细节', visual: '读取当前材质与结果细节', action: '镜头靠近观察细节' },
+    { title: '建立空间', visual: '展示完整空间和主体关系', action: '镜头建立整体关系', scene_id: asset.scene_id, scene_revision: 1 },
+    { title: '执行动作', visual: '主体在行动区完成操作', action: '进行明确互动和操作', scene_id: asset.scene_id, scene_revision: 1 },
+    { title: '读取细节', visual: '读取当前材质与结果细节', action: '镜头靠近观察细节', scene_id: asset.scene_id, scene_revision: 1 },
   ], [asset, secondAsset]);
   assert(bound.every(shot => shot.scene_id === asset.scene_id), '未指定场景时不能按镜头序号轮换到其他场景');
   assert.equal(bound[0].scene_view, 'master');
@@ -77,6 +77,17 @@ async function main() {
       name: '当前任务人物',
       image_url: '/api/new-story-ad/assets/dynamic-person.png',
       real_person_reference: true,
+      view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, url: `https://test.invalid/${key}.png` })),
+      person_contract: {
+        status: 'verified',
+        person_revision: 2,
+        cross_view_qa: { pass: true, identity_score: 0.95, age_score: 0.95, wardrobe_score: 0.95, body_score: 0.95, mismatch_reasons: [] },
+      },
+    },
+    person_contract: {
+      status: 'verified',
+      person_revision: 2,
+      cross_view_qa: { pass: true, identity_score: 0.95, age_score: 0.95, wardrobe_score: 0.95, body_score: 0.95, mismatch_reasons: [] },
     },
   }, { id: 'scene-space-test-user' });
   assert.equal(updated.change_scope, 'person');
@@ -95,7 +106,10 @@ async function main() {
     assert.equal(frame.reference_mode, 'strict_scene_reference');
     assert(frame.reference_count >= 1);
     assert.equal(frame.reference_preserving, false, 'mock provider must not pretend it performed real reference preservation');
+    assert(Array.isArray(frame.candidates) && frame.candidates.length >= 1, '关键帧必须保留候选审片记录');
   });
+  const selected = service.selectKeyframeCandidate(taskId, 0, keyframeResult.keyframes[0].candidates[0].id);
+  assert.equal(selected.keyframe.selected_candidate_id, keyframeResult.keyframes[0].candidates[0].id);
 
   assert.equal(mediaAdapter.supportsReferenceImages({
     family: 'deyunai',

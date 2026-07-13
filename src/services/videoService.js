@@ -14,18 +14,24 @@ const WEBANG_ASSET_CACHE = new Map();
 const WEBANG_GROUP_CACHE = new Map();
 
 // ——— 工具函数 ———
-function downloadFile(url, destPath) {
+function downloadFile(url, destPath, signal = null) {
   return new Promise((resolve, reject) => {
     const proto = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(destPath);
-    proto.get(url, { headers: { 'User-Agent': 'VIDO/1.0' } }, (res) => {
+    const req = proto.get(url, { headers: { 'User-Agent': 'VIDO/1.0' } }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         file.close();
-        return downloadFile(res.headers.location, destPath).then(resolve).catch(reject);
+        return downloadFile(res.headers.location, destPath, signal).then(resolve).catch(reject);
       }
       res.pipe(file);
       file.on('finish', () => file.close(() => resolve(destPath)));
     }).on('error', (err) => { fs.unlink(destPath, () => {}); reject(err); });
+    if (signal) {
+      const abort = () => req.destroy(signal.reason instanceof Error ? signal.reason : new Error('Download aborted'));
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+      req.on('close', () => signal.removeEventListener('abort', abort));
+    }
   });
 }
 
@@ -2278,7 +2284,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2316,9 +2322,10 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
     timeoutMs: 600000,
     userId,
     agentId: agentId || 'video_gen',
+    signal,
   });
   if (!r.url) throw new Error('漫路视频生成无 URL');
-  await downloadFile(r.url, outputPath);
+  await downloadFile(r.url, outputPath, signal);
   return { filePath: outputPath };
 }
 

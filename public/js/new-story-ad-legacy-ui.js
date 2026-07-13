@@ -481,7 +481,7 @@
     const castMode = ['single', 'dual', 'group'].includes(rawCastMode)
       ? rawCastMode
       : (count >= 3 ? 'group' : (count === 2 ? 'dual' : 'single'));
-    const next = { ...spec, castMode };
+    const next = { ...spec, castMode, expectedPeople: count || '' };
     if (gender) next.gender = gender;
     if (age) next.age = age;
     if (origin) next.origin = origin;
@@ -495,7 +495,7 @@
       age,
       origin,
       castMode,
-      expected_people: count || (castMode === 'group' ? 3 : (castMode === 'dual' ? 2 : 1)),
+      expected_people: count || (castMode === 'dual' ? 2 : (castMode === 'single' ? 1 : 0)),
       reference_kind: actorReferenceKind(asset),
     };
     syncCastProfilesFromPersonAsset(asset);
@@ -850,6 +850,8 @@
       output_size: size,
       video_resolution: videoResolution,
       cast_mode: personSpec('castMode') || 'auto',
+      expected_people: Number(personSpec('expectedPeople') || 0) || undefined,
+      production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
       voice_id: voiceId,
       voice_name: state.voiceName || '',
       subtitle: state.subtitleEnabled,
@@ -1076,11 +1078,13 @@
     const product = state.productAsset || null;
     if (productHost) {
       const url = previewUrl(product);
+      const productContract = state.context?.product_contract || product?.product_contract || null;
+      const productVerified = productContract?.status === 'verified' && productContract?.reference_qa?.pass === true;
       productHost.innerHTML = url
         ? `<button type="button" class="dh-luxgen-product-card ${product.uploading ? 'uploading' : ''}" data-nsa-product-preview title="点击预览主体主图">
             <img src="${escapeHtml(url)}" alt="${escapeHtml(product.name || '商品/主体图')}">
             <b>商品/主体图</b><span>${escapeHtml(product.uploading ? `${product.name || '商品/主体图'} · 上传中` : (product.name || '已上传商品/主体图'))}</span>
-          </button>`
+          </button><div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${productVerified ? 'verified' : 'unverified'}">${productVerified ? '产品已验证' : '产品待验证'}</span>${!productVerified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-product-verify>验证产品</button>' : ''}</div>`
         : '<div class="dh-luxgen-product-empty">未上传商品/主体图</div>';
     }
     if (productClear) {
@@ -1235,31 +1239,6 @@
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
         <div class="dh-luxgen-person-thumb">生成中</div>
         <b>拟真一致性演员</b>
-        <small>正在根据广告需求、人物设定和当前剧本上下文生成 4 视图演员参考。</small>
-        ${personGenerationProgressHtml()}
-      </div>`;
-      return;
-    }
-    const asset = state.actorAsset || state.personAsset || null;
-    if (!asset) {
-      host.innerHTML = '<div class="dh-luxgen-person-empty">未选择人物来源；可上传真人参考或生成拟真演员。</div>';
-      return;
-    }
-    const url = previewUrl(asset) || asset.view_images?.[0]?.url || '';
-    host.innerHTML = `<div class="dh-luxgen-character-sheet">
-      ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(asset.name || '人物参考')}" loading="lazy">` : '<div class="dh-luxgen-person-thumb">已选择</div>'}
-      <b>${escapeHtml(asset.name || '人物参考')}</b>
-      <small>${escapeHtml(asset.description || '仅用于当前剧情广告任务的人物一致性参考。')}</small>
-    </div>`;
-  }
-
-  function renderPerson() {
-    const host = within('#dhNsaAdPersonCurrent');
-    if (!host) return;
-    if (state.personGenerationProgress?.active) {
-      host.innerHTML = `<div class="dh-luxgen-character-sheet">
-        <div class="dh-luxgen-person-thumb">生成中</div>
-        <b>拟真一致性演员</b>
         <small>正在根据广告需求、人物设定和当前剧本上下文生成演员参考。</small>
         ${personGenerationProgressHtml()}
       </div>`;
@@ -1278,6 +1257,9 @@
     const isSynthetic = actorIsSynthetic(asset);
     const isAi = actorReferenceKind(asset) === 'ai_generated';
     const actorId = asset.actor_asset_id || asset.asset_library_id || asset.material_id || '';
+    const personContract = asset.person_contract || state.context?.person_contract || null;
+    const verificationStatus = personContract?.status || (asset.production_usable_actor === true ? 'legacy_unverified' : 'unverified');
+    const verified = verificationStatus === 'verified' && personContract?.cross_view_qa?.pass === true;
     const meta = [
       actorReferenceLabel(asset),
       actorId ? '已绑定人物参考' : '',
@@ -1310,6 +1292,10 @@
       <b>${escapeHtml(asset.name || defaultName)}</b>
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
       ${viewStrip}
+      <div class="dh-nsa-verification-row">
+        <span class="dh-nsa-verification-badge is-${verified ? 'verified' : 'unverified'}">${verified ? '人物已验证' : '人物待验证'}</span>
+        ${!verified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>重新验证</button>' : ''}
+      </div>
       ${warning}
     </div>`;
   }
@@ -1563,6 +1549,7 @@
     state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
+    setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto');
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;
@@ -2339,6 +2326,18 @@
         : (shot.dialogue || shot.voiceover || '');
       const duration = shotFieldValue(shot, contract, 'duration');
       const title = window.NewStoryAdKeyframes?.frameTitle ? window.NewStoryAdKeyframes.frameTitle(shot, i) : (shot.title || `\u7b2c ${i + 1} \u955c`);
+      const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
+      const candidateStrip = candidates.length > 1 || candidates.some(candidate => candidate.status === 'rejected')
+        ? `<div class="dh-nsa-candidate-strip"><b>\u5019\u9009\u5ba1\u7247</b><div>${candidates.map((candidate, candidateIndex) => {
+            const candidateUrl = candidate.image_url || candidate.imageUrl || '';
+            const accepted = candidate.qa?.pass === true && candidate.status !== 'rejected';
+            const selected = String(frame.selected_candidate_id || '') === String(candidate.id || '');
+            return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : 'is-rejected'} ${selected ? 'is-selected' : ''}">
+              <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(withAuthQuery(candidateUrl))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
+              ${accepted && !selected ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">\u9009\u7528</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`}
+            </span>`;
+          }).join('')}</div></div>`
+        : '';
       return `<article class="dh-nsa-frame-card">
         ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
           ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
@@ -2348,6 +2347,7 @@
         <div class="dh-nsa-frame-editor">
           <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
           ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
+          ${candidateStrip}
           <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
           <label><span>\u753b\u9762\u63cf\u8ff0</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea></label>
           <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
@@ -2355,7 +2355,12 @@
           <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
           <details class="dh-nsa-continuity-editor">
             <summary>镜头语言与前后镜连续性</summary>
-            <label><span>景别 / 焦段 / 景深</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'shot_type'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_type"></label>
+            <label><span>景别</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_size">${['','extreme_wide','wide','full','medium','medium_close','close_up','extreme_close_up','macro'].map(value => `<option value="${value}" ${String(shot.shot_size || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>机位角度</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_angle">${['','eye_level','high_angle','low_angle','overhead','dutch','over_shoulder','pov'].map(value => `<option value="${value}" ${String(shot.camera_angle || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>焦段（mm）</span><input class="dh-input" type="number" min="0" max="300" step="1" value="${escapeHtml(shotFieldValue(shot, contract, 'lens_mm'))}" placeholder="如 24 / 35 / 50 / 85" data-nsa-shot-index="${i}" data-nsa-shot-field="lens_mm"></label>
+            <label><span>景深</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="depth_of_field">${['','deep','medium','shallow','ultra_shallow'].map(value => `<option value="${value}" ${String(shot.depth_of_field || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>构图</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'composition'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="composition"></label>
+            <label><span>主体位置</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'subject_position'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="subject_position"></label>
             <label><span>镜头运动</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'camera_movement'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_movement"></label>
             <label><span>入镜状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="entry_frame_state">${escapeHtml(shotFieldValue(shot, contract, 'entry_frame_state'))}</textarea></label>
             <label><span>出镜状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="exit_frame_state">${escapeHtml(shotFieldValue(shot, contract, 'exit_frame_state'))}</textarea></label>
@@ -2367,10 +2372,14 @@
               ${['none','hard_cut','cut_on_action','match_cut','dissolve','fade'].map(value => `<option value="${value}" ${String(shot.transition_type || '') === value ? 'selected' : ''}>${value}</option>`).join('')}
             </select></label>
             <label><span>转场原因</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_reason'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_reason"></label>
-            <label><span>环境声 / 音效桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
+            <label><span>环境声</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'ambient_sound'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="ambient_sound"></label>
+            <label><span>动作 / 物体音效</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'sfx'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="sfx"></label>
+            <label><span>音乐节点</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'music_cue'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="music_cue"></label>
+            <label><span>旁白与动作时机</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'voiceover_timing'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover_timing"></label>
+            <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
           </details>
           ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
-          ${frame.error ? `<p class="dh-nsa-frame-error">${escapeHtml(frame.error)}</p>` : ''}
+          ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。') : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
@@ -3610,6 +3619,7 @@
           gender: personSpec('gender') || 'auto',
           age: personSpec('age') || '',
           cast_mode: personSpec('castMode') || 'auto',
+          expected_people: Number(personSpec('expectedPeople') || 0) || undefined,
           task_id: state.taskId || '',
           generation_id: generationId,
         },
@@ -3747,6 +3757,84 @@
         const asset = state.personAsset || state.actorAsset || null;
         const entry = actorViewEntries(asset)[Number(personPreview.dataset.nsaPersonPreview || 0)] || null;
         if (entry?.url) openPreview(withAuthQuery(entry.url), `${asset?.name || '人物参考'} · ${entry.label || ''}`);
+        return;
+      }
+      const candidatePreview = target.closest('[data-nsa-candidate-preview]');
+      if (candidatePreview && host.contains(candidatePreview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const [shotIndex, candidateIndex] = String(candidatePreview.dataset.nsaCandidatePreview || '').split(':').map(Number);
+        const candidate = state.keyframes?.[shotIndex]?.candidates?.[candidateIndex];
+        if (candidate?.image_url || candidate?.imageUrl) openPreview(withAuthQuery(candidate.image_url || candidate.imageUrl), `\u7b2c ${shotIndex + 1} \u955c\u5019\u9009 ${candidateIndex + 1}`);
+        return;
+      }
+      const candidateUse = target.closest('[data-nsa-candidate-use]');
+      if (candidateUse && host.contains(candidateUse)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const raw = String(candidateUse.dataset.nsaCandidateUse || '');
+        const separator = raw.indexOf(':');
+        const shotIndex = Number(raw.slice(0, separator));
+        const candidateId = raw.slice(separator + 1);
+        setButtonBusy(candidateUse, true, '\u9009\u7528\u4e2d...');
+        try {
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/keyframes/${shotIndex}/select`, { method: 'PUT', body: { candidate_id: candidateId } });
+          state.keyframes = response.keyframes || state.keyframes;
+          state.videoClips = [];
+          state.finalVideo = null;
+          renderAll();
+          toast('\u5df2\u9009\u7528\u901a\u8fc7 QA \u7684\u5019\u9009\u5173\u952e\u5e27，下游视频将按新图重新生成', 'success');
+        } catch (error) {
+          toast(error.message || '\u5019\u9009\u5173\u952e\u5e27\u9009\u7528\u5931\u8d25', 'error');
+        } finally {
+          setButtonBusy(candidateUse, false);
+        }
+        return;
+      }
+      const personVerify = target.closest('[data-nsa-person-verify]');
+      if (personVerify && host.contains(personVerify)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setButtonBusy(personVerify, true, '验证中...');
+        try {
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/person-verify`, { method: 'POST', body: {} });
+          const asset = state.personAsset || state.actorAsset || {};
+          const next = { ...asset, ...(response.person_asset || {}), person_contract: response.person_contract };
+          if (state.personAsset) state.personAsset = next;
+          else state.actorAsset = next;
+          state.context = { ...(state.context || {}), person_asset: next, person_contract: response.person_contract };
+          renderAll();
+          toast(response.person_contract?.status === 'verified' ? '人物一致性验证已通过' : '人物验证未通过，请查看原因或重新生成失败视图', response.person_contract?.status === 'verified' ? 'success' : 'error');
+        } catch (error) {
+          toast(error.message || '人物重新验证失败', 'error');
+        } finally {
+          setButtonBusy(personVerify, false);
+        }
+        return;
+      }
+      const productVerify = target.closest('[data-nsa-product-verify]');
+      if (productVerify && host.contains(productVerify)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setButtonBusy(productVerify, true, '验证中...');
+        try {
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/product-verify`, { method: 'POST', body: {} });
+          state.context = { ...(state.context || {}), product_contract: response.product_contract };
+          if (state.productAsset) state.productAsset = { ...state.productAsset, product_contract: response.product_contract };
+          renderAll();
+          toast(response.product_contract?.status === 'verified' ? '产品一致性验证已通过' : '产品验证未通过，请检查参考图', response.product_contract?.status === 'verified' ? 'success' : 'error');
+        } catch (error) {
+          toast(error.message || '产品验证失败', 'error');
+        } finally {
+          setButtonBusy(productVerify, false);
+        }
+        return;
+      }
+      const sceneVerify = target.closest('[data-nsa-scene-verify]');
+      if (sceneVerify && host.contains(sceneVerify)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await window.NewStoryAdSceneAssets?.verify?.({ state, api, normalizeBundle, renderAll, setButtonBusy, toast, button: sceneVerify, sceneId: sceneVerify.dataset.nsaSceneVerify });
         return;
       }
       const scenePreview = target.closest('[data-nsa-scene-preview]');

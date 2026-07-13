@@ -347,6 +347,47 @@ async function generateSceneAsset(taskId, body = {}) {
   };
 }
 
+async function reverifySceneAsset(taskId, sceneId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
+  const index = assets.findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
+  if (index < 0) {
+    const error = new Error('要重新验证的场景不存在');
+    error.code = 'SCENE_ASSET_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const asset = assets[index];
+  const views = (asset.view_images || []).map(view => ({
+    ...view,
+    url: mediaAdapter.absolutePublicImageUrl(view.url || view.image_url),
+    image_url: mediaAdapter.absolutePublicImageUrl(view.image_url || view.url),
+  }));
+  if (views.length < 4) {
+    const error = new Error('场景资产缺少完整四视图，需先重新生成当前场景');
+    error.code = 'SCENE_VIEWS_INCOMPLETE';
+    error.status = 422;
+    throw error;
+  }
+  const contract = await sceneSpace.analyzeSceneViews({
+    taskId,
+    sceneId: asset.scene_id,
+    revision: asset.scene_revision || 1,
+    views,
+    requested: {
+      layout_summary: asset.layout_summary || '',
+      material_summary: asset.material_summary || '',
+      style_summary: asset.style_summary || '',
+      negative: asset.negative || '',
+    },
+  });
+  assets[index] = { ...asset, scene_contract: contract, cross_view_qa: contract.cross_view_qa };
+  saveSceneAssetsToTask(taskId, assets);
+  return { scene_asset: assets[index], scene_assets: assets };
+}
+
 module.exports = {
   SCENE_VIEW_KEYS,
   sceneViewLabel,
@@ -355,4 +396,5 @@ module.exports = {
   localizeSceneAssets,
   saveSceneAssetsToTask,
   generateSceneAsset,
+  reverifySceneAsset,
 };

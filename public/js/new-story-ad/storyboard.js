@@ -31,9 +31,17 @@
     const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
     if (!assets.length) return shot;
     const existing = clean(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId, 120);
-    const matchedIndex = Math.max(0, assets.findIndex((asset, assetIndex) => sceneId(asset, assetIndex) === existing));
-    const selectedIndex = matchedIndex >= 0 ? matchedIndex : Math.min(index, assets.length - 1);
-    const selected = assets[selectedIndex] || assets[0];
+    const matchedIndex = assets.findIndex((asset, assetIndex) => sceneId(asset, assetIndex) === existing);
+    // 多场景任务必须由用户或模型明确绑定，不能再按镜头序号静默回退到某个场景。
+    if (assets.length > 1 && matchedIndex < 0) {
+      shot.scene_id = '';
+      shot.scene_asset_id = '';
+      if (!shot.scene_view) shot.scene_view = viewValue('', index);
+      if (!shot.scene_zone) shot.scene_zone = clean(shot.purpose || shot.title || `第 ${index + 1} 镜区域`, 160);
+      return shot;
+    }
+    const selectedIndex = matchedIndex >= 0 ? matchedIndex : 0;
+    const selected = assets[selectedIndex];
     const id = sceneId(selected, selectedIndex);
 
     // 只给缺失字段补默认值，不覆盖用户已经手动选择的场景绑定。
@@ -63,7 +71,7 @@
       </div>`;
     }
 
-    const currentScene = clean(shot.scene_id || shot.scene_asset_id || sceneId(assets[Math.min(index, assets.length - 1)] || {}, index), 120);
+    const currentScene = clean(shot.scene_id || shot.scene_asset_id || (assets.length === 1 ? sceneId(assets[0], 0) : ''), 120);
     const currentView = viewValue(shot.scene_view, index);
     return `<div class="dh-nsa-frame-scene">
       <div class="dh-nsa-frame-scene-title">
@@ -73,6 +81,7 @@
       <label>
         <span>绑定场景</span>
         <select class="dh-input" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_id">
+          ${assets.length > 1 ? optionHtml('', '请选择本镜头场景（必选）', currentScene, esc) : ''}
           ${assets.map((asset, assetIndex) => optionHtml(sceneId(asset, assetIndex), `场景 ${assetIndex + 1} · ${sceneName(asset, assetIndex)}`, currentScene, esc)).join('')}
         </select>
       </label>

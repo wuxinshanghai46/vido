@@ -265,6 +265,8 @@ function _cacheSet(key, filePath) {
 }
 
 async function synthesize(text, voiceId, outputPath, opts = {}) {
+  const signal = opts.signal;
+  if (signal?.aborted) throw signal.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' });
   const apiKey = _getKey();
   if (!apiKey) throw new Error('阿里百炼 API Key 未配置');
   if (!voiceId) throw new Error('阿里合成需要 voice_id');
@@ -330,12 +332,24 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
     const audioChunks = [];
     let started = false;
     let finished = false;
-    const timeout = setTimeout(() => {
+    let timeout = null;
+    const cleanupAbort = () => signal?.removeEventListener?.('abort', onAbort);
+    const onAbort = () => {
+      if (finished) return;
+      finished = true;
+      if (timeout) clearTimeout(timeout);
+      try { ws.terminate(); } catch { try { ws.close(); } catch {} }
+      reject(signal?.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' }));
+    };
+    timeout = setTimeout(() => {
       if (!finished) {
+        finished = true;
+        cleanupAbort();
         try { ws.close(); } catch {}
         reject(new Error('CosyVoice WebSocket 合成超时（90s）'));
       }
     }, 90000);
+    signal?.addEventListener?.('abort', onAbort, { once: true });
 
     ws.on('open', () => {
       const runTask = {
@@ -385,6 +399,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
         } else if (event === 'task-finished') {
           finished = true;
           clearTimeout(timeout);
+          cleanupAbort();
           try { ws.close(); } catch {}
           if (!audioChunks.length) return reject(new Error('CosyVoice 未收到音频数据'));
           const buf = Buffer.concat(audioChunks);
@@ -403,6 +418,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
         } else if (event === 'task-failed') {
           finished = true;
           clearTimeout(timeout);
+          cleanupAbort();
           try { ws.close(); } catch {}
           const errMsg = msg?.header?.error_message || msg?.payload?.error_message || JSON.stringify(msg).slice(0, 300);
           const errCode = msg?.header?.error_code || msg?.payload?.error_code || '-';
@@ -433,6 +449,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
+      cleanupAbort();
       reject(new Error(`CosyVoice WebSocket 错误: ${err.message}`));
     });
 
@@ -440,6 +457,7 @@ async function synthesize(text, voiceId, outputPath, opts = {}) {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
+      cleanupAbort();
       if (!started) reject(new Error(`CosyVoice WebSocket 异常关闭 (${code}): ${reason}`));
       else if (!audioChunks.length) reject(new Error('CosyVoice WebSocket 关闭但未拿到音频'));
     });

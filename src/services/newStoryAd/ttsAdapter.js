@@ -123,9 +123,11 @@ async function generateShotAudio({
 
   const outBase = path.join(AUDIO_DIR, `${base}.mp3`);
   try {
+    const signal = cancellation.signal();
     const actual = await aliyunVoice.synthesize(text, voiceId, outBase, {
       speed: clamp(speed, 0.5, 1.8, 1),
       format: 'mp3',
+      signal,
     });
     return publicResult(actual, {
       shot_index: index,

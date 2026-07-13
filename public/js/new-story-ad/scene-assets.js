@@ -205,6 +205,7 @@
             </div>
             <em>${qaPassed ? '空间锁已验证' : '空间锁待验证'}</em>
           </div>
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-unverified">未验证场景不会进入关键帧</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">重新验证</button></div>` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 4).map((view, index) => {
               const url = view.url || view.image_url || '';
@@ -314,6 +315,24 @@
     }
   }
 
+  async function verify({ state, api, normalizeBundle, renderAll, setButtonBusy, toast, button, sceneId } = {}) {
+    if (!state?.taskId || !sceneId) return false;
+    setButtonBusy?.(button, true, '验证中...');
+    try {
+      const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/scene-assets/${encodeURIComponent(sceneId)}/verify`, { method: 'POST', body: {} });
+      if (typeof normalizeBundle === 'function' && response.bundle) normalizeBundle(response);
+      state.sceneAssets = normalizeAssets(response.scene_assets || response.outputs?.scene_assets || state.sceneAssets || []);
+      renderAll?.();
+      toast?.('场景空间一致性验证已完成', 'success');
+      return true;
+    } catch (error) {
+      toast?.(error.message || '场景重新验证失败', 'error');
+      return false;
+    } finally {
+      setButtonBusy?.(button, false);
+    }
+  }
+
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
     thumbUrl,
@@ -325,5 +344,6 @@
     payload,
     hydrate,
     generate,
+    verify,
   };
 })();

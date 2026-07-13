@@ -14,6 +14,7 @@ const composeService = require('../services/newStoryAd/composeService');
 const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
 const jobService = require('../services/newStoryAd/jobService');
 const cancellation = require('../services/newStoryAd/cancellationContext');
+const personIdentity = require('../services/newStoryAd/personIdentityContractService');
 const db = require('../models/database');
 
 function userFromReq(req) {
@@ -588,7 +589,10 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   const context = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   const gender = requestedGender(spec, `${brief} ${body.description || ''}`);
   const castMode = String(spec.castMode || spec.cast_mode || '').trim() || 'single';
-  const expectedPeople = castMode === 'group' ? 3 : (castMode === 'dual' ? 2 : 1);
+  const requestedPeople = Number(spec.expected_people || spec.expectedPeople || spec.person_count || body.expected_people || body.expectedPeople || 0) || 0;
+  const expectedPeople = requestedPeople > 0
+    ? Math.max(1, Math.min(12, Math.round(requestedPeople)))
+    : (castMode === 'dual' ? 2 : (castMode === 'single' ? 1 : 0));
   const actorId = `new_story_actor_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const description = buildActorDescription({
     brief,
@@ -612,6 +616,21 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     cancellation.throwIfCancelled();
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
     const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
+    const personContract = await personIdentity.verifyPersonAsset({
+      taskId: body.task_id || body.taskId || generationId,
+      asset: {
+        id: `actor_asset_${actorId}`,
+        actor_id: actorId,
+        gender,
+        cast_mode: castMode,
+        expected_people: expectedPeople,
+        image_url: viewImages[0]?.url || '',
+        view_images: viewImages,
+        description,
+      },
+      spec,
+      revision: 1,
+    });
     const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
@@ -619,7 +638,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       name: '剧情广告拟真演员',
       source: 'new_story_ad_actor_sheet',
       reference_kind: 'synthetic_realistic_actor',
-      production_usable_actor: true,
+      production_usable_actor: personContract.status === 'verified',
       is_ai_generated: true,
       gender,
       cast_mode: castMode,
@@ -629,6 +648,8 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       extra_image_urls: extraImages,
       view_images: viewImages,
       view_count: viewImages.length,
+      person_revision: personContract.person_revision,
+      person_contract: personContract,
       description,
       prompt: description,
     }, {
@@ -644,6 +665,8 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       public_actor_library: true,
       provider_used: providerUsed,
       request_key: body.request_key || '',
+      verification_status: personContract.status,
+      person_contract: personContract,
     }));
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
@@ -694,6 +717,18 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.generateSceneAsset(req.params.id, body));
 }));
 
+router.post('/tasks/:id/person-verify', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = await service.verifyPersonContract(req.params.id);
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
+
+router.post('/tasks/:id/product-verify', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = await service.verifyProductContract(req.params.id);
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
+
 router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
@@ -703,6 +738,12 @@ router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
     task_id: req.params.id,
     scene_assets: sceneAssets,
   });
+}));
+
+router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = await sceneAssetService.reverifySceneAsset(req.params.id, req.params.sceneId);
+  res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
 router.get('/tasks/:id', asyncRoute(async (req, res) => {
@@ -769,6 +810,12 @@ router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
 router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
   const body = req.body || {};
   return queueTaskStage(req, res, 'keyframes', () => service.generateKeyframesStage(req.params.id, body));
+}));
+
+router.put('/tasks/:id/keyframes/:index/select', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = service.selectKeyframeCandidate(req.params.id, req.params.index, req.body?.candidate_id || req.body?.candidateId || '');
+  res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {

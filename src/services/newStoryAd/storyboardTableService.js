@@ -131,9 +131,19 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     eyeline: clampText(shot.eyeline || shot.eyeLine || '', 100),
     camera_axis: clampText(shot.camera_axis || shot.cameraAxis || '', 100),
     camera_movement: clampText(shot.camera_movement || shot.cameraMovement || '', 140),
+    shot_size: clampText(shot.shot_size || shot.shotSize || '', 40),
+    camera_angle: clampText(shot.camera_angle || shot.cameraAngle || '', 40),
+    lens_mm: Math.max(0, Math.min(300, Number(shot.lens_mm || shot.lensMm || 0) || 0)),
+    depth_of_field: clampText(shot.depth_of_field || shot.depthOfField || '', 40),
+    composition: clampText(shot.composition || '', 80),
+    subject_position: clampText(shot.subject_position || shot.subjectPosition || '', 80),
     object_states: clampText(shot.object_states || shot.objectStates || '', 240),
     transition_type: clampText(shot.transition_type || shot.transitionType || shot.transition || '', 40),
     audio_bridge: clampText(shot.audio_bridge || shot.audioBridge || '', 160),
+    ambient_sound: clampText(shot.ambient_sound || shot.ambientSound || '', 180),
+    sfx: (Array.isArray(shot.sfx) ? shot.sfx : String(shot.sfx || '').split(/[,，；;]/)).map(value => clampText(value, 100)).filter(Boolean).slice(0, 12),
+    music_cue: clampText(shot.music_cue || shot.musicCue || '', 180),
+    voiceover_timing: clampText(shot.voiceover_timing || shot.voiceoverTiming || '', 120),
   };
   return normalized;
 }
@@ -231,7 +241,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -286,6 +296,8 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
       'If scene assets exist, scene_id must be selected from the current task scene assets only.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
       'Every shot after the first must describe entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type and audio_bridge when applicable.',
+      'Choose shot_size, camera_angle, lens_mm, depth_of_field, composition and subject_position from the current shot purpose. These are cinematography controls, not fixed story templates.',
+      'Add ambient_sound, sfx, music_cue and voiceover_timing only when they serve the current shot. Never assume a fixed genre or industry sound.',
       'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
     ].join('\n');
 
@@ -335,9 +347,19 @@ Return JSON array for current beats only. Fields:
   "eyeline": "character eyeline when relevant",
   "camera_axis": "spatial axis that must be preserved",
   "camera_movement": "static/push/pull/pan/tilt/tracking/orbit/handheld as required by this shot",
+  "shot_size": "extreme_wide/wide/full/medium/medium_close/close_up/extreme_close_up/macro",
+  "camera_angle": "eye_level/high_angle/low_angle/overhead/dutch/over_shoulder/pov",
+  "lens_mm": 50,
+  "depth_of_field": "deep/medium/shallow/ultra_shallow",
+  "composition": "composition derived from current shot purpose",
+  "subject_position": "subject placement derived from current action and continuity",
   "object_states": "product and prop positions/states that must not jump",
   "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
-  "audio_bridge": "ambient or sound bridge into this shot, empty when none"
+  "audio_bridge": "ambient or sound bridge into this shot, empty when none",
+  "ambient_sound": "environment sound from the current scene",
+  "sfx": ["specific action or object sound"],
+  "music_cue": "music change serving the current story beat",
+  "voiceover_timing": "timing relationship between spoken line and visible action"
 }`;
 
     const result = await modelGateway.generateText({

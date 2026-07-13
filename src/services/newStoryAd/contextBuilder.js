@@ -189,6 +189,8 @@ function normalizePersonAsset(input = null) {
       url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
       image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
     })).filter(view => view.url || view.image_url).slice(0, 8) : [],
+    person_revision: Math.max(1, Number(input.person_revision || input.personRevision || input.person_contract?.person_revision || 1) || 1),
+    person_contract: input.person_contract && typeof input.person_contract === 'object' ? input.person_contract : null,
     cast_assets: Array.isArray(input.cast_assets) ? input.cast_assets.map((member, idx) => ({
       cast_member_index: Number(member?.cast_member_index || member?.index || idx + 1) || idx + 1,
       cast_role: cleanText(member?.cast_role || member?.role || member?.name || `角色${idx + 1}`, 80),
@@ -268,6 +270,21 @@ function normalizeControlledProduction(input = null) {
   return result;
 }
 
+function normalizeProductionMode(value = '') {
+  const raw = cleanText(value, 60).toLowerCase();
+  const aliases = {
+    narrative: 'narrative_live_action',
+    live_action: 'narrative_live_action',
+    product: 'product_story',
+    product_ad: 'product_story',
+    service: 'service_app_story',
+    app: 'service_app_story',
+    software: 'service_app_story',
+  };
+  const normalized = aliases[raw] || raw;
+  return ['auto', 'narrative_live_action', 'product_story', 'service_app_story'].includes(normalized) ? normalized : 'auto';
+}
+
 function buildContext(body = {}, user = {}) {
   const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
@@ -282,6 +299,7 @@ function buildContext(body = {}, user = {}) {
     ? body.forbidden.map(x => cleanText(x, 100)).filter(Boolean)
     : cleanText(body.forbidden || body.negative || '', 500).split(/[，,;\n]/).map(x => cleanText(x, 100)).filter(Boolean);
   const castMode = inferCastMode({ castMode: body.cast_mode || body.castMode, characters, brief });
+  const expectedPeopleRaw = Number(body.expected_people || body.expectedPeople || body.person_count || body.personCount || 0) || 0;
   const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
   const personSpec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const personAsset = normalizePersonAsset(body.person_asset || body.personAsset);
@@ -297,13 +315,19 @@ function buildContext(body = {}, user = {}) {
     shot_count: shotCount,
     output_ratio: outputRatio,
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
+    production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
     cast_mode: castMode,
+    expected_people: expectedPeopleRaw > 0 ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw))) : 0,
     characters,
     assets,
     forbidden,
     controlled_production: controlledProduction,
     person_spec: personSpec,
     person_asset: personAsset,
+    person_contract: body.person_contract && typeof body.person_contract === 'object'
+      ? body.person_contract
+      : (personAsset?.person_contract || null),
+    product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
     revisions: body.revisions && typeof body.revisions === 'object' ? {
@@ -397,6 +421,8 @@ function contextPrompt(ctx) {
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
     `人物/主体模式：${ctx.cast_mode}`,
+    ctx.expected_people ? `精确人数：${ctx.expected_people}（必须保持，不得用默认群体数量替代）` : '',
+    `生产模式：${ctx.production_mode || 'auto'}（只控制当前任务的制作与 QA 策略，不是行业或场景模板）`,
     ctx.cast_mode === 'no_human'
       ? '角色设定：本任务选择无人物模式，不得强行加入真人、手部、背影或人形主体，除非用户需求另有明确要求。'
       : (ctx.cast_mode === 'animal'
@@ -423,7 +449,7 @@ function contextConflicts(ctx = {}) {
   const forbidden = (Array.isArray(ctx.forbidden) ? ctx.forbidden : []).join('；');
   const negative = String(ctx.controlled_production?.negative_control?.text || '');
   const noPerson = /(?:不能|不要|禁止|不得)出现(?:任何)?(?:人物|真人|演员|人像|人类)|(?:完全)?无人物|无人出镜/.test(`${forbidden}；${negative}`);
-  const personRequired = ['single', 'multi'].includes(String(ctx.cast_mode || ''))
+  const personRequired = ['single', 'dual', 'multi', 'group'].includes(String(ctx.cast_mode || ''))
     || (Array.isArray(ctx.characters) && ctx.characters.length > 0)
     || !!ctx.person_asset
     || /(?:人物|真人|演员|老师|顾问|客户|用户|主持人|模特|主角|面对镜头|出镜)/.test(String(ctx.brief || ''));
@@ -454,5 +480,6 @@ module.exports = {
   looksLikeDescriptorName,
   normalizeSceneSpec,
   normalizeSceneAssets,
+  normalizeProductionMode,
   contextConflicts,
 };

@@ -62,6 +62,10 @@ function execFfmpeg(args, timeoutMs = 120000) {
   if (!ffmpegPath) return Promise.reject(new Error('ffmpeg-static is unavailable'));
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const signal = cancellation.signal();
+    const abort = () => child.kill('SIGKILL');
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
     let stderr = '';
     const timer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch {}
@@ -74,6 +78,8 @@ function execFfmpeg(args, timeoutMs = 120000) {
     });
     child.on('close', code => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (signal?.aborted) return reject(signal.reason || new Error('FFmpeg aborted'));
       if (code === 0) return resolve();
       reject(new Error(stderr.split(/\r?\n/).filter(Boolean).slice(-6).join(' | ') || `ffmpeg exited ${code}`));
     });
@@ -259,6 +265,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
+        signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
       if (!generated?.filePath || !fs.existsSync(generated.filePath)) throw new Error('视频供应商未生成可用文件');
@@ -288,6 +295,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         attempts,
       });
     } catch (error) {
+      if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = modelGateway.classifyError(error);
       modelGateway.recordHealth(model, { ok: false, error });
       storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'failed', error_code: error.code || classified.code, error_message: String(error.message || error).slice(0, 500), fallback_rank: attempts.length + 1 });
@@ -344,11 +352,16 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
   }
 }
 
-async function generateShotVideos({ taskId = '', shots = [], keyframes = [], ttsAudio = {}, contracts = [], ctx = {}, options = {}, onClip = null } = {}) {
+async function generateShotVideos({ taskId = '', shots = [], keyframes = [], ttsAudio = {}, contracts = [], ctx = {}, options = {}, existingClips = [], onClip = null } = {}) {
   const list = Array.isArray(shots) ? shots : [];
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
-  const clips = [];
-  for (let i = 0; i < list.length; i += 1) {
+  const clips = Array.isArray(existingClips) ? existingClips.slice() : [];
+  const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
+  const indexes = onlyIndex === null ? list.map((_, index) => index) : [onlyIndex];
+  const targetIndexes = options.missing_only === true || options.missingOnly === true
+    ? indexes.filter(index => !(clips[index]?.video_url || clips[index]?.videoUrl || clips[index]?.file_path))
+    : indexes;
+  for (const i of targetIndexes) {
     cancellation.throwIfCancelled(taskId);
     const clip = await generateShotVideo({
       taskId,
@@ -362,10 +375,10 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
       options,
     });
     cancellation.throwIfCancelled(taskId);
-    clips.push(clip);
+    clips[i] = clip;
     if (typeof onClip === 'function') await onClip(clip, clips.slice());
   }
-  return { clips, provider_used: clips.find(item => item.provider_used)?.provider_used || '' };
+  return { clips, provider_used: clips.find(item => item?.provider_used)?.provider_used || '', target_indexes: targetIndexes };
 }
 
 module.exports = {

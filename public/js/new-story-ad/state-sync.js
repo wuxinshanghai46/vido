@@ -186,6 +186,7 @@
     state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
+    setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto', { within });
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.subtitleEnabled = request.subtitle !== false;
     state.voiceVolume = Number(request.voice_volume || request.voiceVolume || state.voiceVolume || 1) || 1;

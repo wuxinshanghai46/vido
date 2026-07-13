@@ -5,6 +5,23 @@ const cancellation = require('./cancellationContext');
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
+const DEFAULT_STAGE_BUDGETS = Object.freeze({
+  scene_config: 120000,
+  blueprint: 120000,
+  storyboard: 180000,
+  scene_asset: 600000,
+  keyframes: 900000,
+  tts: 600000,
+  video: 1800000,
+  compose: 600000,
+  full: 3600000,
+});
+
+function stageBudgetMs(stage = '') {
+  const key = String(stage || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const configured = Number(process.env[`NEW_STORY_AD_${key}_BUDGET_MS`]);
+  return Math.max(5000, Number.isFinite(configured) && configured > 0 ? configured : (DEFAULT_STAGE_BUDGETS[stage] || 600000));
+}
 
 function jobKey(taskId) {
   return String(taskId);
@@ -203,7 +220,7 @@ function queueStage({ taskId, stage, execute }) {
     diagnostics: { generation_id: id },
   });
 
-  setImmediate(() => cancellation.run({ generationId: id, taskId, stage }, async () => {
+  setImmediate(() => cancellation.run({ generationId: id, taskId, stage, deadlineMs: stageBudgetMs(stage) }, async () => {
     if (cancellation.isCancelled(id)) {
       setTimeout(() => {
         if (runningJobs.get(key)?.id === id) runningJobs.delete(key);
@@ -297,6 +314,7 @@ function queueStage({ taskId, stage, execute }) {
 module.exports = {
   cancelJob,
   classifyFailure,
+  stageBudgetMs,
   getJob,
   publicJob,
   queueStage,

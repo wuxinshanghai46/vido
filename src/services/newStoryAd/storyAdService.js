@@ -14,9 +14,31 @@ const mediaAdapter = require('./mediaAdapter');
 const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
 const composeService = require('./composeService');
-const { bindShotsToScenes, selectSceneAsset } = require('./sceneBindingService');
+const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets } = require('./sceneBindingService');
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService');
+const personIdentity = require('./personIdentityContractService');
+const productIdentity = require('./productIdentityContractService');
+const personKeyframeQa = require('./personConsistencyQaService');
+const productKeyframeQa = require('./productConsistencyQaService');
+const videoFrameQa = require('./videoFrameQaService');
+const { buildSoundJourney } = require('./soundJourneyService');
+
+function withAssetContracts(ctx = {}) {
+  const next = { ...ctx };
+  if (next.person_asset) {
+    next.person_contract = next.person_contract || personIdentity.buildPersonContract(
+      next.person_asset,
+      next.person_spec || {},
+      { revision: next.revisions?.person || 1 },
+    );
+    next.person_asset = { ...next.person_asset, person_contract: next.person_contract, person_revision: next.person_contract.person_revision };
+  } else {
+    next.person_contract = null;
+  }
+  next.product_contract = next.product_contract || productIdentity.buildProductContract(next, { revision: next.revisions?.product || 1 });
+  return next;
+}
 
 function taskTitle(ctx) {
   return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
@@ -28,7 +50,9 @@ function keyframeImageUrl(frame = {}) {
 
 function localKeyframeAssetExists(url = '') {
   const clean = String(url || '').split('?')[0];
-  if (!clean.startsWith('/api/new-story-ad/assets/')) return true;
+  // Historical frames may still use a provider URL. Keep them available for a
+  // scoped retry; all newly generated frames are persisted locally below.
+  if (!clean.startsWith('/api/new-story-ad/assets/')) return /^https?:\/\//i.test(clean);
   const filename = decodeURIComponent(clean.split('/').pop() || '');
   const filePath = mediaAdapter.assetPathFromName(filename);
   return !!(filePath && fs.existsSync(filePath));
@@ -178,8 +202,8 @@ function taskSummary(task = {}) {
     error: cleanText(task.error || '', 300),
     error_code: task.error_code || '',
     retryable: task.retryable === true,
-    shot_count: Array.isArray(storyboard) ? storyboard.length : 0,
-    keyframe_count: Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0,
+    shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
+    keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
     thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || '',
     final_video_url: finalVideo?.video_url || finalVideo?.videoUrl || '',
     created_at: task.created_at,
@@ -188,18 +212,7 @@ function taskSummary(task = {}) {
 }
 
 function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = {}) {
-  const db = storage.readDb();
-  const outputsByTask = new Map();
-  for (const row of db.outputs || []) {
-    const taskId = String(row.task_id || '');
-    if (!outputsByTask.has(taskId)) outputsByTask.set(taskId, {});
-    outputsByTask.get(taskId)[row.kind] = row.payload;
-  }
-  let tasks = storage.dedupeLatestTasks((db.tasks || []).filter((task) => {
-    if (status && status !== 'all' && String(task.status || '') !== String(status)) return false;
-    if (userId && task.user_id && String(task.user_id) !== String(userId)) return false;
-    return true;
-  })).sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+  let tasks = storage.listTaskRows({ status, userId });
   const total = tasks.length;
   const pageSize = Math.max(1, Math.min(200, Number(limit) || 50));
   const currentPage = Math.max(1, Number(page) || 1);
@@ -208,41 +221,12 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
     total,
     page: currentPage,
     page_size: pageSize,
-    tasks: tasks.map((task) => {
-      const outputs = outputsByTask.get(String(task.id)) || {};
-      const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
-      const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
-      const sceneAssets = Array.isArray(outputs.scene_assets) ? outputs.scene_assets : [];
-      const finalVideo = outputs.final_video || null;
-      const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
-      const firstScene = sceneAssets[0] || {};
-      return {
-        id: task.id,
-        type: task.type,
-        status: task.status,
-        stage: task.stage,
-        title: task.title,
-        brief: cleanText(task.brief || '', 220),
-        user_id: task.user_id,
-        saved_progress: task.saved_progress === true,
-        active_stage: task.active_stage || '',
-        active_generation_id: task.active_generation_id || '',
-        error: cleanText(task.error || '', 300),
-        error_code: task.error_code || '',
-        retryable: task.retryable === true,
-        shot_count: storyboard.length,
-        keyframe_count: keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length,
-        thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || '',
-        final_video_url: finalVideo?.video_url || finalVideo?.videoUrl || '',
-        created_at: task.created_at,
-        updated_at: task.updated_at,
-      };
-    }),
+    tasks: tasks.map(taskSummary),
   };
 }
 
 function createTask(body = {}, user = {}) {
-  const ctx = buildContext(body, user);
+  const ctx = withAssetContracts(buildContext(body, user));
   const id = cleanText(body.task_id || body.taskId || '', 80) || uuidv4();
   const task = storage.createTask({
     id,
@@ -262,7 +246,10 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const builtCtx = buildContext({ ...(task.request || {}), ...(body || {}), task_id: taskId }, user);
   const scope = revisionService.changeScope(previousCtx, builtCtx, body.change_scope || body.changeScope || '');
-  const ctx = revisionService.applyRevisions(previousCtx, builtCtx, scope);
+  let ctx = revisionService.applyRevisions(previousCtx, builtCtx, scope);
+  if (scope === 'person' || scope === 'source') ctx.person_contract = null;
+  if (scope === 'product' || scope === 'source') ctx.product_contract = null;
+  ctx = withAssetContracts(ctx);
   let invalidated = [];
   const patch = {
     title: taskTitle(ctx),
@@ -283,6 +270,50 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   storage.saveOutput(taskId, 'context', ctx);
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
   return { task: updated, context: ctx, change_scope: scope, invalidated_outputs: invalidated };
+}
+
+async function verifyPersonContract(taskId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  if (!ctx.person_asset) {
+    const error = new Error('当前任务没有可验证的人物资产');
+    error.code = 'PERSON_ASSET_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const contract = await personIdentity.verifyPersonAsset({
+    taskId,
+    asset: ctx.person_asset,
+    spec: ctx.person_spec || {},
+    revision: ctx.revisions?.person || ctx.person_asset.person_revision || 1,
+  });
+  const next = {
+    ...ctx,
+    person_contract: contract,
+    person_asset: {
+      ...ctx.person_asset,
+      person_revision: contract.person_revision,
+      person_contract: contract,
+      production_usable_actor: contract.status === 'verified',
+    },
+  };
+  storage.saveOutput(taskId, 'context', next);
+  storage.saveOutput(taskId, 'person_contract', contract);
+  storage.updateTask(taskId, { request: next });
+  return { person_contract: contract, person_asset: next.person_asset };
+}
+
+async function verifyProductContract(taskId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const contract = await productIdentity.verifyProductContract({ taskId, ctx });
+  const next = { ...ctx, product_contract: contract };
+  storage.saveOutput(taskId, 'context', next);
+  storage.saveOutput(taskId, 'product_contract', contract);
+  storage.updateTask(taskId, { request: next });
+  return { product_contract: contract };
 }
 
 function normalizeBlueprintDraft(blueprint = {}, seed = '') {
@@ -408,6 +439,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
   const normalized = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
   storage.saveOutput(taskId, 'storyboard_table', normalized);
+  storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
@@ -531,6 +563,7 @@ async function generateStoryboardStage(taskId) {
   }
   const contracts = buildKeyframeContracts(stageCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);
+  storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots));
   storage.saveOutput(taskId, 'quality_review', review);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
@@ -661,7 +694,37 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
-  return parts.filter(Boolean).join('\n');
+  return compactKeyframePrompt(parts);
+}
+
+// Image providers commonly cap prompts around 2,500 characters. Keep every
+// task-specific constraint category, but give the visual/action and identity
+// locks more room than explanatory prose. This is semantic compaction, not an
+// industry template and not a blind tail cut.
+function compactKeyframePrompt(parts = [], maxChars = 2400) {
+  const lines = (Array.isArray(parts) ? parts : [parts])
+    .filter(Boolean)
+    .map(value => cleanText(value, 1200))
+    .filter(Boolean);
+  const isPriority = line => /User-edited visual override|^Visual:|^Action:|Advertised subject|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
+  const orderedLines = [...lines.filter(isPriority), ...lines.filter(line => !isPriority(line))];
+  const capFor = (line) => {
+    if (/User-edited visual override|^Visual:|^Action:|Final priority:/i.test(line)) return 420;
+    if (/scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles/i.test(line)) return 320;
+    if (/Advertised subject|Commercial evidence|Product visibility|Forbidden:|Negative visual/i.test(line)) return 220;
+    if (/Semantic fidelity rule|Do not crop|Use a real camera look/i.test(line)) return 200;
+    return 150;
+  };
+  const compacted = orderedLines.map(line => cleanText(line, capFor(line)));
+  let output = '';
+  for (const line of compacted) {
+    const remaining = maxChars - output.length - (output ? 1 : 0);
+    if (remaining <= 24) break;
+    const next = cleanText(line, remaining);
+    if (!next) continue;
+    output += `${output ? '\n' : ''}${next}`;
+  }
+  return output;
 }
 
 function keyframeUrlFromResult(result = {}) {
@@ -676,6 +739,9 @@ async function generateKeyframesStage(taskId, options = {}) {
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  assertVerifiedSceneAssets(ctx.scene_assets);
+  personIdentity.assertVerifiedPerson(ctx);
+  productIdentity.assertVerifiedProduct(ctx);
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) {
     const generated = await generateStoryboardStage(taskId);
@@ -736,18 +802,23 @@ async function generateKeyframesStage(taskId, options = {}) {
     const sceneAsset = sceneAssetForShot(ctx, shot, i);
     const basePrompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame, sceneAsset });
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
+    const shotCandidates = [];
     try {
       const sceneReference = selectedSceneReference(sceneAsset, contracts[i] || {});
       const referenceImages = keyframeReferenceImages(ctx, sceneReference, previousFrame);
-      const maxQaRetries = sceneReference
+      const requireVisualQa = !!sceneReference || personIdentity.personRequired(ctx) || productIdentity.productRequired(ctx);
+      const maxQaRetries = requireVisualQa
           ? Math.max(0, Math.min(1, Number(options.max_scene_retries ?? options.maxSceneRetries ?? 1) || 0))
         : 0;
       let accepted = null;
       let qa = null;
       let feedback = '';
       for (let qaAttempt = 0; qaAttempt <= maxQaRetries; qaAttempt += 1) {
-        const prompt = feedback
-          ? basePrompt + '\n\nPrevious visual QA rejected the frame. Correct all of these scene mismatches without changing the requested shot: ' + feedback
+        const correction = feedback
+          ? `Previous visual QA rejected the frame. Correct these scene, person and product consistency problems without changing the requested shot, industry, location, person or product: ${cleanText(feedback, 320)}`
+          : '';
+        const prompt = correction
+          ? `${cleanText(basePrompt, Math.max(1200, 2390 - correction.length))}\n${correction}`
           : basePrompt;
         const result = await mediaAdapter.generateImage({
           taskId,
@@ -758,16 +829,19 @@ async function generateKeyframesStage(taskId, options = {}) {
           resolution: options.resolution || '2K',
           imageModel: options.image_model || options.imageModel || 'auto',
           referenceImages,
-          requireReferences: !!sceneReference,
+          requireReferences: referenceImages.length > 0,
           inputFidelity: 'high',
         });
         const imageUrl = keyframeUrlFromResult(result);
         if (!imageUrl) throw new Error('Image provider returned no image url');
-        qa = sceneReference
+        // Use the provider URL for immediate remote QA when available, while
+        // keeping the persisted VIDO URL as the production/display asset.
+        const qaImageUrl = result.source_url || mediaAdapter.absolutePublicImageUrl(imageUrl);
+        const sceneQa = sceneReference
           ? await sceneSpace.reviewKeyframe({
             taskId,
             sceneReferenceUrl: sceneReference,
-            generatedUrl: mediaAdapter.absolutePublicImageUrl(imageUrl),
+            generatedUrl: qaImageUrl,
             contract: contracts[i]?.scene_lock || sceneAsset?.scene_contract || {},
             shot,
           })
@@ -777,6 +851,43 @@ async function generateKeyframesStage(taskId, options = {}) {
             reason: '当前任务没有已锁定场景资产，不执行场景空间一致性比较。',
             checked_at: new Date().toISOString(),
           };
+        const personQa = await personKeyframeQa.reviewPersonKeyframe({
+          taskId,
+          ctx,
+          shot,
+          generatedUrl: qaImageUrl,
+        });
+        const productQa = await productKeyframeQa.reviewProductKeyframe({
+          taskId,
+          ctx,
+          shot,
+          generatedUrl: qaImageUrl,
+        });
+        const conflicts = [
+          ...(sceneQa.mismatch_reasons || []),
+          ...(sceneQa.forbidden_new_elements || []),
+          ...(personQa.conflicts || []),
+          ...(productQa.conflicts || []),
+          personQa.retry_instruction || '',
+          productQa.retry_instruction || '',
+        ].filter(Boolean);
+        qa = {
+          pass: sceneQa.pass === true && personQa.pass === true && productQa.pass === true,
+          status: sceneQa.pass === true && personQa.pass === true && productQa.pass === true ? 'verified' : 'rejected',
+          scene: sceneQa,
+          person: personQa,
+          product: productQa,
+          mismatch_reasons: conflicts,
+          checked_at: new Date().toISOString(),
+        };
+        shotCandidates.push({
+          id: `shot_${i + 1}_candidate_${qaAttempt + 1}_${Date.now()}`,
+          image_url: imageUrl,
+          provider_used: result.provider_used || '',
+          qa,
+          status: qa.pass ? 'accepted' : 'rejected',
+          created_at: new Date().toISOString(),
+        });
         attempts.push({
           index: i,
           qa_attempt: qaAttempt + 1,
@@ -789,7 +900,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           accepted = { result, imageUrl, prompt };
           break;
         }
-        feedback = [...(qa.mismatch_reasons || []), ...(qa.forbidden_new_elements || [])].join('; ');
+        feedback = (qa.mismatch_reasons || []).join('; ');
       }
       if (!accepted) {
         const error = new Error('第 ' + (i + 1) + ' 镜场景空间一致性 QA 未通过：' + (feedback || '空间、机位或材质与参考场景不一致'));
@@ -812,6 +923,8 @@ async function generateKeyframesStage(taskId, options = {}) {
         reference_preserving: result.reference_preserving === true,
         prompt,
         qa,
+        candidates: shotCandidates,
+        selected_candidate_id: shotCandidates.find(candidate => candidate.image_url === imageUrl)?.id || '',
         contract: contracts[i] || null,
         error: '',
         error_code: '',
@@ -826,6 +939,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         error: String(err.message || err),
         error_code: err.code || 'KEYFRAME_FAILED',
         contract: contracts[i] || null,
+        candidates: shotCandidates,
       };
     }
     storage.saveOutput(taskId, 'keyframes', keyframes);
@@ -965,6 +1079,7 @@ async function generateVideoStage(taskId, options = {}) {
   }
   storage.updateTask(taskId, { status: 'running', stage: 'video' });
   storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
+  const existingClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const generated = await videoAdapter.generateShotVideos({
     taskId,
     shots,
@@ -973,6 +1088,7 @@ async function generateVideoStage(taskId, options = {}) {
     contracts,
     ctx,
     options,
+    existingClips,
     onClip: async (clip, clips) => {
       storage.saveOutput(taskId, 'video_clips', clips);
       storage.saveStage(taskId, 'video', {
@@ -983,14 +1099,76 @@ async function generateVideoStage(taskId, options = {}) {
       });
     },
   });
-  storage.saveOutput(taskId, 'video_clips', generated.clips);
+  const clips = generated.clips.slice();
+  const targetIndexes = Array.isArray(generated.target_indexes) ? generated.target_indexes : shots.map((_, index) => index);
+  const qaFailures = [];
+  for (const index of targetIndexes) {
+    const clip = clips[index];
+    if (!clip) continue;
+    const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, contract: contracts[index] || {}, ctx, index });
+    clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
+    if (!qa.pass) qaFailures.push({ index, problems: qa.problems || [] });
+  }
+  const crossIndexes = [...new Set(targetIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
+  for (const index of crossIndexes) {
+    const previous = clips[index - 1];
+    const current = clips[index];
+    if (!previous?.qa?.pass || !current?.qa?.pass) continue;
+    const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: shots[index - 1] || {}, currentShot: shots[index] || {}, ctx });
+    clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? current.error : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? current.error_code : 'CROSS_SHOT_CONTINUITY_FAILED' };
+    if (!crossQa.pass) qaFailures.push({ index, problems: crossQa.problems || [] });
+  }
+  storage.saveOutput(taskId, 'video_clips', clips);
+  if (qaFailures.length) {
+    storage.saveStage(taskId, 'video', { status: 'failed', output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`, error: '视频审片未通过', diagnostics: { qa_failures: qaFailures } });
+    storage.updateTask(taskId, { status: 'failed', stage: 'video_failed', error: '部分视频镜头未通过视觉审核，请只重试失败镜头', error_code: 'VIDEO_QA_FAILED', retryable: true });
+    const error = new Error('视频审片未通过：' + qaFailures.map(item => `第 ${item.index + 1} 镜`).join('、'));
+    error.code = 'VIDEO_QA_FAILED';
+    error.retryable = true;
+    error.video_clips = clips;
+    error.qa_failures = qaFailures;
+    throw error;
+  }
   storage.saveStage(taskId, 'video', {
     status: 'done',
-    output_summary: `${generated.clips.length} video clips`,
+    output_summary: `${clips.filter(Boolean).length} video clips`,
     diagnostics: { provider_used: generated.provider_used || '' },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
-  return { video_clips: generated.clips };
+  return { video_clips: clips };
+}
+
+function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
+  const index = Math.max(0, Number(shotIndex) || 0);
+  const frame = keyframes[index];
+  if (!frame) {
+    const error = new Error('要选择候选图的镜头不存在');
+    error.code = 'KEYFRAME_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const candidate = (Array.isArray(frame.candidates) ? frame.candidates : []).find(item => String(item.id) === String(candidateId));
+  if (!candidate) {
+    const error = new Error('候选关键帧不存在');
+    error.code = 'KEYFRAME_CANDIDATE_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  if (candidate.qa?.pass !== true || candidate.status === 'rejected') {
+    const error = new Error('该候选未通过场景、人物或产品一致性 QA，不能设为正式关键帧');
+    error.code = 'KEYFRAME_CANDIDATE_NOT_ACCEPTABLE';
+    error.status = 422;
+    throw error;
+  }
+  keyframes[index] = { ...frame, image_url: candidate.image_url, imageUrl: candidate.image_url, qa: candidate.qa, provider_used: candidate.provider_used || frame.provider_used, selected_candidate_id: candidate.id, error: '', error_code: '' };
+  storage.saveOutput(taskId, 'keyframes', keyframes);
+  storage.deleteOutput(taskId, 'video_clips');
+  storage.deleteOutput(taskId, 'final_video');
+  storage.updateTask(taskId, { status: 'done', stage: 'keyframes_ready', error: '', error_code: '' });
+  return { keyframe: keyframes[index], keyframes };
 }
 
 function subtitleTextFromShot(shot = {}) {
@@ -1298,6 +1476,9 @@ module.exports = {
   generateKeyframesStage,
   generateTtsStage,
   generateVideoStage,
+  verifyPersonContract,
+  verifyProductContract,
+  selectKeyframeCandidate,
   composeStage,
   runFull,
   publicTaskBundle,
@@ -1308,5 +1489,7 @@ module.exports = {
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
   keyframeCompletion,
+  compactKeyframePrompt,
+  isCompleteKeyframe,
 };
 

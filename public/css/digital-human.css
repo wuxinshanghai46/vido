@@ -335,3 +335,13 @@ html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light;
 .dh-view::-webkit-scrollbar, .dh-nav::-webkit-scrollbar, .dh-recent-list::-webkit-scrollbar, .dh-modal-body::-webkit-scrollbar { width: 6px; }
 .dh-view::-webkit-scrollbar-thumb, .dh-nav::-webkit-scrollbar-thumb, .dh-recent-list::-webkit-scrollbar-thumb, .dh-modal-body::-webkit-scrollbar-thumb { background: var(--dh-border); border-radius: 3px; }
 .dh-view::-webkit-scrollbar-track, .dh-nav::-webkit-scrollbar-track, .dh-recent-list::-webkit-scrollbar-track, .dh-modal-body::-webkit-scrollbar-track { background: transparent; }
+
+/* Mobile workspace: keep the production canvas usable instead of squeezing it
+   beside the 220px desktop navigation. The page already exposes a workspace
+   return action, so the desktop sidebar can be removed at this breakpoint. */
+@media (max-width: 760px) {
+  .dh-app { width: 100%; min-width: 0; }
+  .dh-sidebar { display: none; }
+  .dh-main { width: 100%; min-width: 0; }
+  .dh-view { padding-left: 12px; padding-right: 12px; }
+}

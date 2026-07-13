@@ -218,6 +218,14 @@ function listTasks({ limit = 50, status = '', userId = '' } = {}) {
     .slice(0, Math.max(1, Math.min(200, Number(limit) || 50)));
 }
 
+function listTaskRows({ status = '', userId = '' } = {}) {
+  let rows = listRows('tasks');
+  if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
+  if (userId) rows = rows.filter(row => !row.user_id || String(row.user_id) === String(userId));
+  return dedupeLatestTasks(rows)
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+}
+
 function deleteTask(taskId) {
   const id = String(taskId || '');
   if (!id || !getTask(id)) return false;
@@ -322,6 +330,7 @@ module.exports = {
   updateTask,
   getTask,
   listTasks,
+  listTaskRows,
   dedupeLatestTasks,
   taskFingerprint,
   deleteTask,

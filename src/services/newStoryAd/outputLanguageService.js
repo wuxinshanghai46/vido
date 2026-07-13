@@ -8,6 +8,7 @@ const VISIBLE_KEYS = new Set([
   'line', 'material_usage', 'keyframe_notes', 'scene_name', 'scene_zone',
   'transition_reason', 'entry_frame_state', 'exit_frame_state', 'action_start', 'action_end',
   'screen_direction', 'eyeline', 'camera_axis', 'camera_movement', 'object_states', 'audio_bridge',
+  'composition', 'subject_position', 'ambient_sound', 'sfx', 'music_cue', 'voiceover_timing',
   'content', 'space_anchor', 'fixed_subjects', 'continuity_rules',
 ]);
 

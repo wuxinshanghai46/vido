@@ -179,7 +179,7 @@ async function imageBufferFromResult(result = {}) {
     if (filePath && fs.existsSync(filePath)) return fs.readFileSync(filePath);
   }
   if (/^https?:\/\//i.test(value)) {
-    const response = await axios.get(value, { responseType: 'arraybuffer', timeout: 120000 });
+    const response = await axios.get(value, { responseType: 'arraybuffer', timeout: 120000, signal: cancellation.signal() });
     return Buffer.from(response.data);
   }
   throw new Error(`unsupported image url for local processing: ${value.slice(0, 120)}`);
@@ -309,7 +309,6 @@ async function generateImage({
     .slice(0, IMAGE_MAX_CANDIDATES);
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
-  const blockedProviders = new Set();
   if (String(stage || '').startsWith('new_story_ad.')) {
     console.info('[new_story_ad:image_candidates]', JSON.stringify({
       stage,
@@ -327,7 +326,6 @@ async function generateImage({
   for (let candidateIndex = 0; candidateIndex < filtered.length; candidateIndex += 1) {
     cancellation.throwIfCancelled(taskId);
     const model = filtered[candidateIndex];
-    if (blockedProviders.has(String(model.provider_id || ''))) continue;
     const startedAt = Date.now();
     let config = null;
     try {
@@ -360,6 +358,7 @@ async function generateImage({
           aspectRatio,
           referenceImages: referenceCapable ? references : [],
           inputFidelity,
+          signal: cancellation.signal(),
         });
         cancellation.throwIfCancelled(taskId);
         const url = Array.isArray(generated?.urls) ? generated.urls.find(Boolean) : '';
@@ -374,9 +373,14 @@ async function generateImage({
           reference_count: references.length,
           reference_preserving: references.length > 0,
         };
+        const stablePayload = await persistImageResult({
+          result: payload,
+          filename: filename || `${stage}_${Date.now()}`,
+          thumbnailWidths: [520, 640],
+        });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
-        return payload;
+        return stablePayload;
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await client.images.generate({
@@ -384,7 +388,7 @@ async function generateImage({
         prompt,
         size: sizeFor(config, aspectRatio),
         n: 1,
-      });
+      }, { signal: cancellation.signal() });
       cancellation.throwIfCancelled(taskId);
       const first = Array.isArray(response?.data) ? response.data[0] : null;
       if (first?.url) {
@@ -398,9 +402,14 @@ async function generateImage({
           reference_count: 0,
           reference_preserving: false,
         };
+        const stablePayload = await persistImageResult({
+          result: payload,
+          filename: filename || `${stage}_${Date.now()}`,
+          thumbnailWidths: [520, 640],
+        });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
-        return payload;
+        return stablePayload;
       }
       if (first?.b64_json) {
         const safe = safeFilename(filename || `${stage}_${Date.now()}`, '.png');
@@ -423,6 +432,7 @@ async function generateImage({
       }
       throw new Error('image provider returned no url or b64_json');
     } catch (err) {
+      if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = modelGateway.classifyError(err);
       if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED') modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
       storage.saveModelCall({
@@ -437,7 +447,6 @@ async function generateImage({
         fallback_rank: candidateIndex + 1,
       });
       errors.push({ model: modelKey(model), code: err.code || classified.code, retryable: err.retryable === true || classified.retryable, message: String(err.message || err).slice(0, 180) });
-      if ((err.code || classified.code) === 'PROVIDER_BILLING') blockedProviders.add(String(model.provider_id || ''));
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length

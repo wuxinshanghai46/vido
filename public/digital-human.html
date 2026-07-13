@@ -25,8 +25,8 @@
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=20260709-nav-scroll-reset">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260712-cancellable-generation">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260713-mobile-workspace">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260713-keyframe-assets">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -304,6 +304,10 @@
                         </select>
                       </label>
                       <label>
+                        <span>精确人数</span>
+                        <input class="dh-input" type="number" min="1" max="12" step="1" data-nsa-person-spec="expectedPeople" placeholder="单/双人可自动，多人请填 3-12">
+                      </label>
+                      <label>
                         <span>人物年龄</span>
                         <select class="dh-input" data-nsa-person-spec="age">
                           <option value="match_brief">按广告需求判断</option>
@@ -416,6 +420,18 @@
                 </div>
               </div>
               <div class="dh-demo-section-title">视频基础信息</div>
+              <div class="dh-nsa-production-mode-row">
+                <label>
+                  <span>生产模式</span>
+                  <select class="dh-input" id="dhNsaAdProductionMode">
+                    <option value="auto">按广告需求判断</option>
+                    <option value="narrative_live_action">真人剧情广告</option>
+                    <option value="product_story">产品剧情 / 无人产品</option>
+                    <option value="service_app_story">服务 / SaaS / 应用剧情</option>
+                  </select>
+                </label>
+                <p>模式只决定生产和 QA 策略，不会写死行业、场景、人物或镜头内容。</p>
+              </div>
               <div id="dhNsaAdSceneConfigHost" class="dh-luxgen-storyboard">
                 <div class="dh-luxgen-empty"><b>还没有基础信息</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>
               </div>
@@ -2479,18 +2495,18 @@ B: ...
   <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/task-store.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/progress.js?v=20260712-keyframe-live-progress"></script>
-  <script src="/js/new-story-ad/scene-assets.js?v=20260712-base-info-restore"></script>
-  <script src="/js/new-story-ad/state-sync.js?v=20260712-progress-clock-fix"></script>
+  <script src="/js/new-story-ad/scene-assets.js?v=20260713-commercial-hardening"></script>
+  <script src="/js/new-story-ad/state-sync.js?v=20260713-commercial-hardening"></script>
   <script src="/js/new-story-ad/button-state.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/step-navigation.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/task-persistence.js?v=20260712-network-recovery"></script>
-  <script src="/js/new-story-ad/storyboard.js?v=20260710-restore-no-progress"></script>
+  <script src="/js/new-story-ad/storyboard.js?v=20260713-strict-scene-binding"></script>
   <script src="/js/new-story-ad/actors.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/keyframes.js?v=20260711-scene-space-lock"></script>
+  <script src="/js/new-story-ad/keyframes.js?v=20260713-stable-assets"></script>
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/generation-flow.js?v=20260712-progress-clock-fix"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260712-progress-clock-fix"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260713-keyframe-assets"></script>
 </body>
 </html>
 

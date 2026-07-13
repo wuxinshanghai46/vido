@@ -103,8 +103,43 @@ function selectSceneAsset(sceneAssets = [], sceneId = '', index = 0) {
   if (wanted) {
     const matched = assets.find((asset, assetIndex) => normalizeSceneId(asset, assetIndex) === wanted);
     if (matched) return matched;
+    if (assets.length > 1) {
+      const error = new Error(`多场景任务中的 scene_id 无效：${wanted}`);
+      error.code = 'SCENE_BINDING_INVALID';
+      error.status = 422;
+      error.retryable = true;
+      throw error;
+    }
   }
-  return assets[0] || null;
+  if (assets.length === 1) return assets[0];
+  const error = new Error(`第 ${Number(index) + 1} 镜未指定多场景任务所需的 scene_id`);
+  error.code = 'SCENE_BINDING_REQUIRED';
+  error.status = 422;
+  error.retryable = true;
+  throw error;
+}
+
+function sceneVerificationState(asset = {}) {
+  const contract = asset.scene_contract || {};
+  const qa = contract.cross_view_qa || asset.cross_view_qa || {};
+  if (contract.status === 'verified' && qa.pass === true) return 'verified';
+  if (contract.status === 'rejected' || qa.pass === false && contract.qa_unavailable !== true) return 'rejected';
+  return cleanText(contract.status || 'unverified', 40) || 'unverified';
+}
+
+function assertVerifiedSceneAssets(sceneAssets = []) {
+  const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
+  const invalid = assets.map((asset, index) => ({
+    scene_id: normalizeSceneId(asset, index),
+    status: sceneVerificationState(asset),
+  })).filter(item => item.status !== 'verified');
+  if (!invalid.length) return true;
+  const error = new Error(`场景资产尚未完成一致性验证：${invalid.map(item => `${item.scene_id}(${item.status})`).join('、')}`);
+  error.code = 'SCENE_VERIFICATION_REQUIRED';
+  error.status = 422;
+  error.retryable = true;
+  error.invalid_scenes = invalid;
+  throw error;
 }
 
 function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = null) {
@@ -123,9 +158,25 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
   const matched = selectSceneAsset(assets, shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId, index);
   const matchedIndex = Math.max(0, assets.indexOf(matched));
   const sceneId = normalizeSceneId(matched, matchedIndex);
+  const requestedRevision = Number(shot.scene_revision || shot.sceneRevision || 0) || 0;
+  const actualRevision = Math.max(1, Number(matched.scene_revision || matched.scene_contract?.scene_revision || 1) || 1);
+  if (requestedRevision && requestedRevision !== actualRevision) {
+    const error = new Error(`镜头绑定的场景版本已失效：${sceneId} 请求 r${requestedRevision}，当前 r${actualRevision}`);
+    error.code = 'SCENE_REVISION_MISMATCH';
+    error.status = 422;
+    error.retryable = true;
+    throw error;
+  }
   const previousSceneId = cleanText(previousShot?.scene_id || previousShot?.sceneId || '', 120);
   const changedScene = !!previousSceneId && previousSceneId !== sceneId;
   const rawReason = cleanText(shot.transition_reason || shot.transitionReason || '', 240);
+  if (changedScene && !rawReason) {
+    const error = new Error(`第 ${Number(index) + 1} 镜从 ${previousSceneId} 切换到 ${sceneId}，但缺少与当前剧情相关的转场理由`);
+    error.code = 'SCENE_TRANSITION_REASON_REQUIRED';
+    error.status = 422;
+    error.retryable = true;
+    throw error;
+  }
   const sceneView = normalizeSceneView(shot.scene_view || shot.sceneView) || semanticSceneView(shot, matched);
   const spatial = spatialBindingForShot(shot, matched, sceneView);
 
@@ -134,16 +185,14 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
     scene_id: sceneId,
     scene_asset_id: sceneId,
     scene_name: cleanText(shot.scene_name || shot.sceneName || matched.name || `任务场景 ${matchedIndex + 1}`, 120),
-    scene_revision: Math.max(1, Number(matched.scene_revision || matched.scene_contract?.scene_revision || 1) || 1),
+    scene_revision: actualRevision,
     scene_view: sceneView,
     camera_id: spatial.camera_id,
     scene_zone: spatial.zone_label,
     zone_ids: spatial.zone_ids,
     anchor_ids: spatial.anchor_ids,
     transition_from: changedScene ? previousSceneId : cleanText(shot.transition_from || shot.transitionFrom || '', 120) || undefined,
-    transition_reason: changedScene
-      ? (rawReason || '剧情进入当前任务已生成的另一个空间资产，需要按镜头目的切换场景。')
-      : (rawReason || undefined),
+    transition_reason: rawReason || undefined,
   };
 }
 
@@ -212,6 +261,8 @@ module.exports = {
   sceneAssetDigest,
   sceneBindingPrompt,
   sceneContractForShot,
+  sceneVerificationState,
+  assertVerifiedSceneAssets,
   selectSceneAsset,
   semanticSceneView,
   spatialBindingForShot,

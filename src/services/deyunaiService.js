@@ -22,6 +22,16 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 const GPT_IMAGE2_STREAM_PARTIAL_IMAGES = Math.max(1, Math.min(3, Math.round(Number(process.env.GPT_IMAGE2_PARTIAL_IMAGES) || 2)));
 
+function abortableWait(ms, signal) {
+  if (!signal) return new Promise(resolve => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.reject(signal.reason || new Error('Request aborted'));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    const abort = () => { clearTimeout(timer); reject(signal.reason || new Error('Request aborted')); };
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+
 // 海外通道判定（用于决定走 /v1 还是 /c35/v1）
 //   注意：gemini-3.1-flash-lite-preview 是漫路接的"国内代理 Gemini"，走 /v1
 const OVERSEAS_MODEL_RE = /^(gpt-|o[1-9]|claude-|grok-|gemini-(?!3\.1-flash-lite-preview))/i;
@@ -277,7 +287,7 @@ function summarizeGptImage2Request(endpoint, body = {}) {
  * @param {string} [opts.agentId]
  * @returns {Promise<{ text:string, raw:object }>}
  */
-async function chat({ model, messages, maxTokens = 4096, userId = null, agentId = null }) {
+async function chat({ model, messages, maxTokens = 4096, userId = null, agentId = null, signal = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null;
   let _inputTokens = 0; let _outputTokens = 0;
@@ -285,7 +295,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
     const res = await axios.post(
       buildUrl('/chat/completions', model),
       { model, messages, max_tokens: maxTokens },
-      { headers: buildHeaders(model), timeout: 120000 }
+      { headers: buildHeaders(model), timeout: 120000, signal }
     );
     let data = res.data;
     if (typeof data === 'string') {
@@ -330,7 +340,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  * @param {string} [opts.agentId]
  * @returns {Promise<{ urls:string[], taskId:string }>}
  */
-async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null }) {
+async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null, signal = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   try {
@@ -363,7 +373,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       const submitRes = await axios.post(
         buildEnterpriseImageUrl(endpoint),
         body,
-        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true }
+        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true, signal }
       );
       const streamText = isReadableStream(submitRes.data) ? await readStreamText(submitRes.data, timeoutMs) : '';
       if (streamText) submitRes.data = parseStreamResponsePayload(streamText);
@@ -406,7 +416,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     const submitRes = await axios.post(
       buildImageUrl('/images/generations', model),
       body,
-      { headers: buildHeaders(model), timeout: timeoutMs, validateStatus: () => true }
+      { headers: buildHeaders(model), timeout: timeoutMs, validateStatus: () => true, signal }
     );
     if (submitRes.status >= 400) {
       throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
@@ -427,10 +437,10 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     // 轮询
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      await abortableWait(POLL_INTERVAL_MS, signal);
       const queryRes = await axios.get(
         buildImageUrl(`/images/generations/${_taskId}`, model),
-        { headers: buildHeaders(model), timeout: 15000 }
+        { headers: buildHeaders(model), timeout: 15000, signal }
       );
       const d = queryRes.data?.data || {};
       if (d.task_status === 'succeed') {
@@ -475,7 +485,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
  * @param {string} [opts.agentId]
  * @returns {Promise<{ url:string, taskId:string, durationSec:number }>}
  */
-async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, timeoutMs = 600000, userId = null, agentId = null }) {
+async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, timeoutMs = 600000, userId = null, agentId = null, signal = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   let _videoSeconds = duration || 5;
@@ -486,7 +496,7 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     const submitRes = await axios.post(
       buildUrl('/videos', model),
       body,
-      { headers: buildHeaders(model), timeout: 30000 }
+      { headers: buildHeaders(model), timeout: 30000, signal }
     );
     _taskId = submitRes.data?.data?.task_id || submitRes.data?.task_id;
     if (!_taskId) {
@@ -496,10 +506,10 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     // 轮询（视频可能 5-10 分钟）
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 5000));
+      await abortableWait(5000, signal);
       const queryRes = await axios.get(
         buildUrl(`/videos/${_taskId}`, model),
-        { headers: buildHeaders(model), timeout: 15000 }
+        { headers: buildHeaders(model), timeout: 15000, signal }
       );
       const d = queryRes.data?.data || {};
       if (d.task_status === 'succeed') {
