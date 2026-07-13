@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const axios = require('axios');
 
 async function main() {
   const taskId = String(process.argv[2] || '').trim();
@@ -19,9 +20,8 @@ async function main() {
     const frame = output.payload[i] || {};
     const remoteUrl = String(frame.image_url || frame.imageUrl || frame.url || '').trim();
     if (!/^https?:\/\//i.test(remoteUrl)) continue;
-    const response = await fetch(remoteUrl);
-    if (!response.ok) throw new Error(`shot ${i + 1} download failed: HTTP ${response.status}`);
-    const buffer = Buffer.from(await response.arrayBuffer());
+    const response = await axios.get(remoteUrl, { responseType: 'arraybuffer', timeout: 120000 });
+    const buffer = Buffer.from(response.data);
     const metadata = await sharp(buffer).metadata();
     if (!metadata.width || !metadata.height) throw new Error(`shot ${i + 1} is not a readable image`);
     const filename = `recovered_keyframe_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}.png`;
