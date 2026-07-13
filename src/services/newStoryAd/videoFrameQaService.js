@@ -59,6 +59,39 @@ function aggregatePass(parsed = {}) {
   return parsed.pass === true && dimensions.every(key => parsed[key] !== false);
 }
 
+function reviewDecision(parsed = {}, problems = [], clip = {}) {
+  const provider = String(clip.provider_used || clip.providerUsed || '').toLowerCase();
+  const zhipuProvenance = provider.startsWith('zhipu/');
+  const warnings = [];
+  const blockingProblems = [];
+  let acceptedProvenanceWatermark = false;
+  for (const problem of problems) {
+    const value = cleanText(problem, 300);
+    if (zhipuProvenance && /(?:watermark|ai\s*生成|水印|lower\s+right|右下角)/i.test(value)) {
+      acceptedProvenanceWatermark = true;
+      warnings.push(value);
+      continue;
+    }
+    if (parsed.product_pass !== false && /(?:not\s+validated|cannot\s+validate|unable\s+to\s+validate).*(?:missing|without).*(?:reference|qa\s+data)|(?:missing|without).*(?:reference|qa\s+data).*(?:product|specification)/i.test(value)) {
+      warnings.push(value);
+      continue;
+    }
+    blockingProblems.push(value);
+  }
+  const coreDimensionsPass = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass']
+    .every(key => parsed[key] !== false);
+  const normalPass = aggregatePass(parsed);
+  const provenanceOnlyPass = acceptedProvenanceWatermark
+    && parsed.text_watermark_pass === false
+    && coreDimensionsPass;
+  return {
+    pass: (normalPass || provenanceOnlyPass) && blockingProblems.length === 0,
+    problems: blockingProblems,
+    warnings,
+    accepted_provenance_watermark: acceptedProvenanceWatermark,
+  };
+}
+
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -83,16 +116,19 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const problems = Array.isArray(parsed.problems) ? parsed.problems.map(value => cleanText(value, 300)).filter(Boolean) : [];
+  const decision = reviewDecision(parsed, problems, clip);
   return {
-    pass: aggregatePass(parsed) && !problems.length,
-    status: aggregatePass(parsed) && !problems.length ? 'verified' : 'rejected',
+    pass: decision.pass,
+    status: decision.pass ? 'verified' : 'rejected',
     person_pass: parsed.person_pass !== false || !personIdentity.personRequired(ctx),
     product_pass: parsed.product_pass !== false || !productIdentity.productRequired(ctx),
     scene_pass: parsed.scene_pass !== false,
     action_pass: parsed.action_pass !== false,
     people_count_pass: parsed.people_count_pass !== false,
-    text_watermark_pass: parsed.text_watermark_pass !== false,
-    problems,
+    text_watermark_pass: parsed.text_watermark_pass !== false || decision.accepted_provenance_watermark,
+    problems: decision.problems,
+    warnings: decision.warnings,
+    accepted_provenance_watermark: decision.accepted_provenance_watermark,
     retry_instruction: cleanText(parsed.retry_instruction || '', 800),
     frames,
     checked_at: new Date().toISOString(),
@@ -121,4 +157,4 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   return { pass, status: pass ? 'verified' : 'rejected', ...normalized, problems, checked_at: new Date().toISOString(), used_model: result.used_model };
 }
 
-module.exports = { FRAME_POINTS, extractReviewFrames, reviewVideoClip, reviewCrossShot };
+module.exports = { FRAME_POINTS, extractReviewFrames, reviewDecision, reviewVideoClip, reviewCrossShot };

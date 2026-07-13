@@ -14,6 +14,41 @@ const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
 
 (async () => {
+  const provenanceDecision = videoQa.reviewDecision({
+    pass: false,
+    person_pass: true,
+    product_pass: true,
+    scene_pass: true,
+    action_pass: true,
+    people_count_pass: true,
+    text_watermark_pass: false,
+  }, [
+    "Watermark 'AI生成' visible in footage.",
+    'Product specifications are not validated due to missing reference QA data.',
+  ], { provider_used: 'zhipu/cogvideox-flash' });
+  assert.strictEqual(provenanceDecision.pass, true);
+  assert.strictEqual(provenanceDecision.accepted_provenance_watermark, true);
+  assert.strictEqual(provenanceDecision.problems.length, 0);
+  assert.strictEqual(provenanceDecision.warnings.length, 2);
+  assert.strictEqual(videoQa.reviewDecision({
+    pass: false,
+    person_pass: true,
+    product_pass: true,
+    scene_pass: true,
+    action_pass: false,
+    people_count_pass: true,
+    text_watermark_pass: false,
+  }, ["Watermark 'AI生成' visible in footage."], { provider_used: 'zhipu/cogvideox-flash' }).pass, false);
+  assert.strictEqual(videoQa.reviewDecision({
+    pass: false,
+    person_pass: true,
+    product_pass: true,
+    scene_pass: true,
+    action_pass: true,
+    people_count_pass: true,
+    text_watermark_pass: false,
+  }, ['Unexpected commercial watermark visible.'], { provider_used: 'other/provider' }).pass, false);
+
   const clipPath = path.join(videoAdapter.VIDEO_DIR, 'qa-source.mp4');
   await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 2, aspectRatio: '9:16' });
   const qa = await videoQa.reviewVideoClip({
