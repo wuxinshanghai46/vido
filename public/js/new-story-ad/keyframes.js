@@ -84,7 +84,9 @@
     const loading = index < 2 ? 'eager' : 'lazy';
     const priority = index < 2 ? ' fetchpriority="high"' : '';
     const qa = frame.qa || {};
-    const qaText = qa.status === 'not_applicable'
+    const qaText = frame.regeneration_error
+      ? '仍显示上一版 · 新版本未通过 QA'
+      : qa.status === 'not_applicable'
       ? '未启用场景空间锁'
       : (qa.pass === true
         ? `空间一致性已通过${qa.scene_consistency_score ? ` · ${Math.round(Number(qa.scene_consistency_score) * 100)}%` : ''}`

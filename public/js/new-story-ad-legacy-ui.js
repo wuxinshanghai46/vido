@@ -2400,6 +2400,7 @@
             <label><span>环境声 / 音效桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
           </details>
           ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
+          ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>新版本未通过，当前仍显示上一版画面。</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error) : frame.regeneration_error)}</p>` : ''}
           ${frame.error ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error) : frame.error)}</p>` : ''}
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
