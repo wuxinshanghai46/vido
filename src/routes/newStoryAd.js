@@ -706,6 +706,9 @@ router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
 }));
 
 router.get('/tasks/:id', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   taskForReq(req);
   const bundle = service.publicTaskBundle(req.params.id);
   if (!bundle.task) return res.status(404).json({ success: false, error: '任务不存在' });
@@ -737,6 +740,7 @@ router.post('/tasks/:id/cancel', asyncRoute(async (req, res) => {
 }));
 
 router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   taskForReq(req);
   const bundle = service.publicTaskBundle(req.params.id, { diagnostics: true });
   res.json({

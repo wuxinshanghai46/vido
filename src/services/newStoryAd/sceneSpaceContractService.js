@@ -240,6 +240,7 @@ async function reviewKeyframe(options = {}) {
       'Judge spatial identity, fixed anchors, camera intent, material family and newly invented architecture.',
       'People and the advertised subject may be added when required by the shot.',
       'Return JSON only. Never use fixed industry expectations.',
+      'All mismatch_reasons and forbidden_new_elements entries must be concise Simplified Chinese written for ordinary product users.',
     ].join('\n'),
     userPrompt: 'Scene contract: ' + JSON.stringify(options.contract || {}).slice(0, 10000)
       + '\nShot contract: ' + JSON.stringify(options.shot || {}).slice(0, 5000)
@@ -248,7 +249,8 @@ async function reviewKeyframe(options = {}) {
       + 'as REQUIRED EVALUATED numbers from 0 to 1, plus mismatch_reasons and forbidden_new_elements string arrays. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail for another space, incompatible required-anchor movement, changed dominant material structure, '
-      + 'selected-camera contradiction, or unsupported new architecture.',
+      + 'selected-camera contradiction, or unsupported new architecture.'
+      + '\nUse Simplified Chinese for every reason string. Do not return English reason text.',
     imageUrls: [options.sceneReferenceUrl, options.generatedUrl],
     maxTokens: 3000,
   };
