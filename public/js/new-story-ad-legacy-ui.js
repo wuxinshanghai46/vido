@@ -78,7 +78,18 @@
     voiceId: '',
     voiceName: '',
     voiceList: [],
+    voiceGenderFilter: 'all',
     voiceLoading: false,
+    musicLibrary: {
+      query: '',
+      results: [],
+      page: 0,
+      pageCount: 0,
+      resultCount: 0,
+      hasMore: false,
+      note: '',
+      loading: false,
+    },
     voiceVolume: 1,
     bgmVolume: 0.16,
     outputRatio: '9:16',
@@ -1370,18 +1381,6 @@
 
     const status = within('#dhNsaAdBgmStatus');
     const license = within('#dhNsaAdBgmLicense');
-    const profileLabel = within('#dhNsaAdBgmProfileLabel');
-    const profileDesc = within('#dhNsaAdBgmProfileDesc');
-    const profileMenu = within('#dhNsaAdBgmProfileMenu');
-    const profilesHost = within('#dhNsaAdBgmProfiles');
-    const current = BGM_PROFILES.find(([id]) => id === state.bgmProfile) || BGM_PROFILES[0];
-    if (profileLabel) profileLabel.textContent = current[1];
-    if (profileDesc) profileDesc.textContent = current[2];
-    if (profileMenu) {
-      const open = !!profilesHost?.classList.contains('open');
-      profileMenu.hidden = !open;
-      profileMenu.innerHTML = BGM_PROFILES.map(([id, label, desc]) => `<button type="button" class="dh-luxgen-bgm-option ${id === state.bgmProfile ? 'active' : ''}" data-nsa-bgm-profile="${escapeHtml(id)}"><b>${escapeHtml(label)}</b><span>${escapeHtml(desc)}</span></button>`).join('');
-    }
     if (status) status.textContent = state.bgmAsset ? (state.bgmAsset.name || '背景音乐已配置') : '未配置，可先合成无配乐广告片';
     if (license) {
       const source = state.bgmAsset?.source || (state.bgmAsset ? '用户上传' : '');
@@ -3336,8 +3335,16 @@
   function voiceDisplay(voice = {}) {
     const name = voice.name || voice.title || voice.id || '未命名音色';
     const provider = voice.provider || voice.providerId || '系统';
-    const gender = voice.gender && voice.gender !== 'auto' ? ` · ${voice.gender}` : '';
+    const genderKey = nsaVoiceGender(voice);
+    const gender = genderKey === 'female' ? ' · 女声' : (genderKey === 'male' ? ' · 男声' : '');
     return { name, sub: `${provider}${gender}` };
+  }
+
+  function nsaVoiceGender(voice = {}) {
+    const raw = String(voice.gender || voice.sex || voice.tags?.gender || '').trim().toLowerCase();
+    if (/female|woman|girl|女/.test(raw)) return 'female';
+    if (/male|man|boy|男/.test(raw)) return 'male';
+    return 'unknown';
   }
 
   function nsaVoiceDemoUrl(voice = {}) {
@@ -3439,11 +3446,15 @@
         <input class="dh-input" data-nsa-voice-filter placeholder="搜索音色名称、供应商、性别" style="flex:1;">
         <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-refresh>刷新音色</button>
       </div>
+      <div data-nsa-voice-genders style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;">
+        <span style="font-size:13px;font-weight:700;color:#334155;margin-right:2px;">声音性别</span>
+        ${[['all', '全部'], ['female', '女声'], ['male', '男声']].map(([id, label]) => `<button type="button" class="dh-btn dh-btn-sm ${state.voiceGenderFilter === id ? 'dh-btn-primary' : 'dh-btn-ghost'}" data-nsa-voice-gender="${id}">${label}</button>`).join('')}
+      </div>
       <div data-nsa-voice-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
         ${voices.map(voice => {
           const display = voiceDisplay(voice);
           const id = String(voice.id || '');
-          return `<div data-nsa-voice-card data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:8px;min-height:86px;">
+          return `<div data-nsa-voice-card data-nsa-voice-gender="${nsaVoiceGender(voice)}" data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:8px;min-height:86px;">
             <button type="button" data-nsa-voice-select="${escapeHtml(id)}" ${voice.selectable === false ? 'disabled' : ''} style="min-width:0;text-align:left;border:0;background:transparent;padding:4px;cursor:${voice.selectable === false ? 'not-allowed' : 'pointer'};opacity:${voice.selectable === false ? '.68' : '1'};">
               <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
               <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
@@ -3465,12 +3476,25 @@
         toast(err.message || '音色列表刷新失败', 'error');
       }
     });
-    body.querySelector('[data-nsa-voice-filter]')?.addEventListener('input', e => {
-      const q = String(e.target.value || '').trim().toLowerCase();
+    const applyVoiceFilters = () => {
+      const q = String(body.querySelector('[data-nsa-voice-filter]')?.value || '').trim().toLowerCase();
+      const gender = state.voiceGenderFilter || 'all';
       body.querySelectorAll('[data-nsa-voice-card]').forEach(card => {
-        card.style.display = !q || String(card.dataset.nsaVoiceSearch || '').includes(q) ? '' : 'none';
+        const matchesQuery = !q || String(card.dataset.nsaVoiceSearch || '').includes(q);
+        const matchesGender = gender === 'all' || card.dataset.nsaVoiceGender === gender;
+        card.style.display = matchesQuery && matchesGender ? '' : 'none';
       });
-    });
+    };
+    body.querySelector('[data-nsa-voice-filter]')?.addEventListener('input', applyVoiceFilters);
+    body.querySelectorAll('[data-nsa-voice-gender]').forEach(btn => btn.addEventListener('click', () => {
+      state.voiceGenderFilter = btn.dataset.nsaVoiceGender || 'all';
+      body.querySelectorAll('[data-nsa-voice-gender]').forEach(item => {
+        item.classList.toggle('dh-btn-primary', item === btn);
+        item.classList.toggle('dh-btn-ghost', item !== btn);
+      });
+      applyVoiceFilters();
+    }));
+    applyVoiceFilters();
     body.querySelector('[data-nsa-voice-record]')?.addEventListener('click', () => {
       stopNsaVoicePreview();
       modal.style.display = 'none';
@@ -3535,21 +3559,35 @@
     if (!except || nsaMusicPreviewAudio !== except) nsaMusicPreviewAudio = except;
   }
 
-  function renderNsaMusicModal(results = [], note = '', query = '') {
+  function renderNsaMusicModal(results = [], note = '', query = '', meta = {}) {
     stopNsaMusicPreview();
     const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
     const body = modal.querySelector('[data-nsa-modal-body]');
+    const page = Math.max(1, Number(meta.page) || 1);
+    const pageCount = Math.max(page, Number(meta.pageCount) || page);
+    const resultCount = Math.max(results.length, Number(meta.resultCount) || 0);
+    const hasMore = meta.hasMore === true && page < pageCount;
     body.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
         <input class="dh-input" data-nsa-music-query value="${escapeHtml(String(query || '').slice(0, 80))}" placeholder="输入曲名、风格或乐器，如：古筝、国风、钢琴" style="flex:1;">
         <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-search>搜索</button>
       </div>
+      <div data-nsa-music-profiles style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:0 0 12px;">
+        ${BGM_PROFILES.map(([id, label, desc]) => `<button type="button" data-nsa-music-profile="${escapeHtml(id)}" style="text-align:left;border:1px solid ${id === state.bgmProfile ? '#2dd4bf' : '#dbe7f5'};background:${id === state.bgmProfile ? '#e8fffb' : '#fff'};border-radius:10px;padding:9px 11px;cursor:pointer;">
+          <b style="display:block;color:#0f172a;margin-bottom:3px;">${escapeHtml(label)}</b>
+          <small style="display:block;color:#64748b;line-height:1.4;">${escapeHtml(desc)}</small>
+        </button>`).join('')}
+      </div>
       ${note ? `<p style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 12px;">${escapeHtml(note)}</p>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;color:#64748b;font-size:12px;">
+        <span>已加载 ${results.length} 首${resultCount ? ` · 当前检索约 ${resultCount} 首` : ''}</span>
+        <span>第 ${page} / ${pageCount} 页</span>
+      </div>
       <div data-nsa-music-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
         ${results.map((item, index) => {
           const title = item.title_zh || item.titleZh || item.title || item.name || `公开曲目 ${index + 1}`;
           const creator = item.creator || item.author || item.source || '';
           const url = item.preview_url || item.previewUrl || item.url || item.file_url || '';
-          const license = item.license || item.license_name || 'public';
+          const license = item.license_label || item.licenseLabel || item.license || item.license_name || 'public';
           return `<div style="border:1px solid #dbe7f5;border-radius:10px;padding:12px;background:#fff;">
             <b style="display:block;margin-bottom:4px;">${escapeHtml(title)}</b>
             <small style="display:block;color:#64748b;margin-bottom:8px;">${escapeHtml([creator, license].filter(Boolean).join(' · '))}</small>
@@ -3557,10 +3595,28 @@
             <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-import="${index}" style="margin-top:8px;">导入使用</button>
           </div>`;
         }).join('') || '<div class="dh-task-empty-note">暂无曲目，换一个关键词再试。</div>'}
+      </div>
+      <div style="display:flex;justify-content:center;padding:16px 0 2px;">
+        ${hasMore ? `<button type="button" class="dh-btn dh-btn-ghost" data-nsa-music-more>加载更多（第 ${page + 1} 页）</button>` : '<span style="font-size:12px;color:#94a3b8;">已加载当前检索可访问的全部结果</span>'}
       </div>`;
     body.querySelector('[data-nsa-music-search]')?.addEventListener('click', () => {
       const q = body.querySelector('[data-nsa-music-query]')?.value || '';
       openNsaMusicLibrary(q);
+    });
+    body.querySelector('[data-nsa-music-query]')?.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      openNsaMusicLibrary(e.currentTarget.value || '');
+    });
+    body.querySelectorAll('[data-nsa-music-profile]').forEach(btn => btn.addEventListener('click', () => {
+      state.bgmProfile = btn.dataset.nsaMusicProfile || 'auto';
+      const q = body.querySelector('[data-nsa-music-query]')?.value || '';
+      openNsaMusicLibrary(q);
+    }));
+    body.querySelector('[data-nsa-music-more]')?.addEventListener('click', e => {
+      e.currentTarget.disabled = true;
+      e.currentTarget.textContent = '正在加载...';
+      openNsaMusicLibrary(query, { page: page + 1, append: true });
     });
     body.querySelector('[data-nsa-music-list]')?.addEventListener('play', e => {
       const audio = e.target.closest?.('[data-nsa-music-preview]');
@@ -3596,22 +3652,50 @@
     });
   }
 
-  async function openNsaMusicLibrary(query = '') {
+  async function openNsaMusicLibrary(query = '', { page = 1, append = false } = {}) {
     const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
     const body = modal.querySelector('[data-nsa-modal-body]');
-    body.innerHTML = '<div class="dh-task-empty-note">正在搜索公开可用纯音乐...</div>';
+    const normalizedQuery = String(query || '').trim();
+    const requestedPage = Math.max(1, Number(page) || 1);
+    if (!append) body.innerHTML = '<div class="dh-task-empty-note">正在搜索可商用免费版权音乐...</div>';
     showNsaModal(modal);
+    state.musicLibrary.loading = true;
     try {
       const params = new URLSearchParams({
-        q: String(query || '').trim(),
+        q: normalizedQuery,
         profile_id: state.bgmProfile || 'auto',
         text: musicSearchText(),
-        page_size: '32',
+        page: String(requestedPage),
+        page_size: '20',
       });
       const r = await api(`/api/new-story-ad/music/search?${params.toString()}`);
-      renderNsaMusicModal(Array.isArray(r.results) ? r.results : [], r.license_note || r.query || '', query);
+      const incoming = Array.isArray(r.results) ? r.results : [];
+      const previous = append && state.musicLibrary.query === normalizedQuery ? state.musicLibrary.results : [];
+      const seen = new Set();
+      const merged = [...previous, ...incoming].filter(item => {
+        const key = String(item?.url || item?.id || '');
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      state.musicLibrary = {
+        query: normalizedQuery,
+        results: merged,
+        page: Number(r.page) || requestedPage,
+        pageCount: Number(r.page_count || r.pageCount) || requestedPage,
+        resultCount: Number(r.result_count || r.resultCount) || merged.length,
+        hasMore: r.has_more === true || r.hasMore === true,
+        note: r.license_note || r.query || '',
+        loading: false,
+      };
+      renderNsaMusicModal(merged, state.musicLibrary.note, normalizedQuery, state.musicLibrary);
     } catch (err) {
-      body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '公开曲库搜索失败')}</div>`;
+      state.musicLibrary.loading = false;
+      if (append && state.musicLibrary.results.length) {
+        renderNsaMusicModal(state.musicLibrary.results, `${state.musicLibrary.note || ''}；加载下一页失败：${err.message || '请稍后重试'}`, normalizedQuery, state.musicLibrary);
+      } else {
+        body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '公开曲库搜索失败')}</div>`;
+      }
     }
   }
 
@@ -4293,24 +4377,6 @@
         syncShotFieldsFromDom(index, host);
         toast(`\u5df2\u63d0\u4ea4\u7b2c ${index + 1} \u955c\u91cd\u65b0\u751f\u6210`, 'info');
         await regenerateSingleKeyframe(index, shotRegenerate);
-        return;
-      }
-      const bgmProfileToggle = target.closest('#dhNsaAdBgmProfileToggle');
-      if (bgmProfileToggle && host.contains(bgmProfileToggle)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const picker = within('#dhNsaAdBgmProfiles');
-        picker?.classList.toggle('open');
-        renderAudio();
-        return;
-      }
-      const bgmProfile = target.closest('[data-nsa-bgm-profile]');
-      if (bgmProfile && host.contains(bgmProfile)) {
-        e.preventDefault();
-        e.stopPropagation();
-        state.bgmProfile = bgmProfile.dataset.nsaBgmProfile || 'auto';
-        within('#dhNsaAdBgmProfiles')?.classList.remove('open');
-        renderAudio();
         return;
       }
       if (!btn || !host.contains(btn)) return;

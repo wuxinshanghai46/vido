@@ -10915,13 +10915,45 @@ function _openMusicScriptSignals(profileId = 'auto', text = '') {
 }
 
 function _openMusicQueryForProfile(profileId = 'auto', text = '') {
-  return _openMusicScriptSignals(profileId, text)[0].query;
+  const signal = _openMusicScriptSignals(profileId, text)[0];
+  const aliases = {
+    orchestral: 'cinematic',
+    uplifting: 'uplifting',
+    documentary: 'documentary',
+    warm: 'acoustic',
+    asian: 'chinese',
+    chinese: 'chinese',
+    tension: 'suspense',
+  };
+  return aliases[signal?.tag] || signal?.tag || 'cinematic';
+}
+
+function _openMusicSearchQuery(query = '', profileId = 'auto', text = '') {
+  const raw = String(query || '').trim();
+  if (!raw) return _openMusicQueryForProfile(profileId, text);
+  const aliases = [
+    [/开场|片头|开幕|开机/, 'opening'],
+    [/结尾|收尾|片尾|结束/, 'outro'],
+    [/国风|中国风|古风|民乐|古筝|二胡|琵琶|古琴|笛子|竹笛/, 'chinese'],
+    [/钢琴/, 'piano'],
+    [/吉他/, 'guitar'],
+    [/大气|史诗|大片|电影感/, 'cinematic'],
+    [/轻快|活力|明快|励志/, 'uplifting'],
+    [/温暖|治愈|安心|柔和/, 'acoustic'],
+    [/浪漫|爱情/, 'romantic'],
+    [/悬疑|紧张|危机|压迫/, 'suspense'],
+    [/科技|未来|数码|电子/, 'technology'],
+    [/企业|商务|商业/, 'corporate'],
+    [/纪录|纪实|叙事/, 'documentary'],
+  ];
+  return aliases.find(([pattern]) => pattern.test(raw))?.[1] || raw;
 }
 
 function _openMusicLicenseLabel(item = {}) {
   const license = String(item.license || '').toLowerCase();
   const version = String(item.license_version || item.licenseVersion || '').trim();
   if (license === 'cc0') return 'CC0 公共领域';
+  if (license === 'pdm') return 'PDM 公共领域标记';
   if (license === 'by') return `CC BY${version ? ` ${version}` : ''}，使用时需保留作者署名`;
   return license ? license.toUpperCase() : '开放许可';
 }
@@ -11294,11 +11326,12 @@ function _normalizeOpenMusicItem(item = {}) {
     license_url: String(item.license_url || item.licenseUrl || '').trim(),
     license_label: _openMusicLicenseLabel(item),
     source: String(item.source || item.provider || 'Openverse').trim(),
+    category: String(item.category || '').trim().toLowerCase(),
     foreign_landing_url: String(item.foreign_landing_url || item.landing_url || item.foreignLandingUrl || '').trim(),
     url: String(item.url || item.audio_url || '').trim(),
     duration: Number(item.duration || item.duration_sec || 0) || null,
     score: Number(item.score || 0) || 0,
-    tags: Array.isArray(item.tags) ? item.tags.map(x => String(x || '').trim()).filter(Boolean).slice(0, 12) : [],
+    tags: Array.isArray(item.tags) ? item.tags.map(x => String(x?.name || x || '').trim()).filter(Boolean).slice(0, 12) : [],
     recommend_reason: String(item.recommend_reason || item.recommendReason || '').trim().slice(0, 80),
   };
 }
@@ -11321,6 +11354,8 @@ function _openMusicAllowedDownloadUrl(raw = '') {
     'freemusicarchive.org',
     'archive.org',
     'commons.wikimedia.org',
+    'storage.jamendo.com',
+    'mp3d.jamendo.com',
   ];
   if (!allowed.some(x => host === x || host.endsWith(`.${x}`))) return null;
   return u;
@@ -11330,7 +11365,7 @@ async function _downloadOpenMusicToLocal(item = {}) {
   const normalized = _normalizeOpenMusicItem(item);
   const u = _openMusicAllowedDownloadUrl(normalized.url);
   if (!u) throw new Error('该公开曲目来源暂不支持导入，请换一首或上传自有授权音乐');
-  if (!['cc0', 'by'].includes(normalized.license)) throw new Error('仅支持导入 CC0 或 CC BY 授权曲目');
+  if (!['cc0', 'pdm', 'by'].includes(normalized.license)) throw new Error('仅支持导入 CC0、PDM 或 CC BY 可商用授权曲目');
   const outDir = path.join(OUTPUT_ROOT_DIR, 'music');
   fs.mkdirSync(outDir, { recursive: true });
   const extFromPath = path.extname(u.pathname || '').toLowerCase();
@@ -11384,6 +11419,7 @@ async function _downloadOpenMusicToLocal(item = {}) {
     creator: normalized.creator,
     license: normalized.license_label,
     license_code: normalized.license,
+    requires_attribution: normalized.license === 'by',
     license_url: normalized.license_url,
     landing_url: normalized.foreign_landing_url,
     file_path: outputPath,
@@ -32013,17 +32049,21 @@ router.get('/luxury-ad/open-music/search', async (req, res) => {
     const q = String(req.query.q || '').trim().slice(0, 120);
     const profileId = String(req.query.profile_id || req.query.profileId || 'auto').trim().slice(0, 64);
     const text = String(req.query.text || '').trim().slice(0, 600);
-    const query = q || _openMusicQueryForProfile(profileId, text);
-    const pageSize = Math.max(12, Math.min(32, Math.round(Number(req.query.page_size || req.query.pageSize) || 16)));
+    const query = _openMusicSearchQuery(q, profileId, text);
+    const page = Math.max(1, Math.min(50, Math.round(Number(req.query.page) || 1)));
+    // Openverse 匿名 API 单页上限为 20；超过会返回 401，导致只能看到内置曲目。
+    const pageSize = Math.max(10, Math.min(20, Math.round(Number(req.query.page_size || req.query.pageSize) || 20)));
     const scriptSignals = _openMusicScriptSignals(profileId, `${query} ${text}`);
-    const curated = _curatedOpenMusicItems(query, profileId, text);
+    const curated = page === 1 ? _curatedOpenMusicItems(query, profileId, text) : [];
     let data = {};
     let searchWarning = '';
     try {
       data = await _searchOpenverseAudio({
         q: query,
-        license: 'cc0,by',
-        extension: 'mp3',
+        license: 'cc0,pdm,by',
+        category: 'music',
+        filter_dead: true,
+        page,
         page_size: pageSize,
       });
     } catch (err) {
@@ -32033,7 +32073,7 @@ router.get('/luxury-ad/open-music/search', async (req, res) => {
     const positive = /music|cinematic|corporate|background|inspiring|uplifting|piano|orchestral|orchestra|strings|acoustic|instrumental|documentary|chinese|traditional|folk|guzheng|erhu|pipa|guqin|dizi|flute|ruan/i;
     const remoteResults = (Array.isArray(data?.results) ? data.results : [])
       .map(_normalizeOpenMusicItem)
-      .filter(x => x.url && ['cc0', 'by'].includes(x.license) && _openMusicAllowedDownloadUrl(x.url) && _isPureInstrumentalCandidate(x))
+      .filter(x => x.url && ['cc0', 'pdm', 'by'].includes(x.license) && _openMusicAllowedDownloadUrl(x.url))
       .map(x => {
         const title = `${x.title} ${x.creator} ${(x.tags || []).join(' ')}`;
         const lower = title.toLowerCase();
@@ -32049,13 +32089,21 @@ router.get('/luxury-ad/open-music/search', async (req, res) => {
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
-      })
-      .slice(0, pageSize);
+      });
+    const remoteResultCount = Math.max(remoteResults.length, Number(data?.result_count) || 0);
+    const remotePageCount = Math.max(page, Number(data?.page_count) || page);
+    const totalResultCount = remoteResultCount + (page === 1 ? curated.length : 0);
     res.json({
       success: true,
+      requested_query: q,
       query,
       source: 'Openverse',
-      license_note: searchWarning || '结果来自 Openverse/Freesound 等公开来源；CC0 可较自由使用，CC BY 使用时需保留作者和来源署名，导入前仍建议复核来源页。',
+      page,
+      page_size: pageSize,
+      page_count: searchWarning ? page : remotePageCount,
+      result_count: totalResultCount,
+      has_more: !searchWarning && page < remotePageCount,
+      license_note: searchWarning || `正在搜索 Openverse 全库“${query}”；仅展示允许商用与修改的 CC0、PDM、CC BY 音乐。CC BY 导入后需保留作者和来源署名。`,
       results,
     });
   } catch (err) {
