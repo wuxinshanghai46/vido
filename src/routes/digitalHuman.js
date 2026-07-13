@@ -10901,6 +10901,7 @@ function _openMusicScriptSignals(profileId = 'auto', text = '') {
   add('documentary', 4, 'documentary piano acoustic instrumental music', '按剧本的真实案例/叙事推进推荐', /documentary|纪录|案例|真实|人物|用户|客户|痛点|焦虑|困扰|问题|场景|日常|审片|素材/i);
   add('warm', 3, 'warm piano acoustic background instrumental music', '按剧本的温暖/安心情绪推荐', /warm|温暖|安心|释然|服务|陪伴|生活|家庭|轻松|开心|治愈/i);
   add('asian', 3, 'cinematic asian acoustic instrumental music', '按剧本的东方/文化气质推荐', /chinese|asian|东方|国风|文化|传统|中式|匠心/i);
+  add('chinese', 5, 'traditional chinese instrumental music guzheng erhu pipa guqin dizi', '按国风与民族乐器方向推荐', /国风|中国风|古风|民乐|古筝|二胡|琵琶|古琴|笛子|竹笛|chinese|guzheng|erhu|pipa|guqin|dizi/i);
   add('tension', 2, 'cinematic piano strings tension instrumental music', '按剧本的悬念/转折段落推荐', /suspense|trailer|悬疑|预告|转折|冲突|犹豫|对比|危机|倒计时/i);
   if (!signals.length) {
     signals.push({
@@ -11169,6 +11170,96 @@ function _curatedOpenMusicItems(query = '', profileId = 'auto', scriptText = '')
       foreign_landing_url: 'https://commons.wikimedia.org/wiki/File:Carefree_(ISRC_USUAN1400037).mp3',
       tags: ['corporate', 'uplifting', 'warm', 'acoustic'],
     },
+    {
+      id: 'curated_cn_ritual_1_cc0',
+      title: 'Chinese Traditional Ritual 1',
+      title_zh: '中国传统仪式音乐（一）',
+      creator: 'soloan', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/82/82818_519220-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/soloan/sounds/82818',
+      tags: ['chinese', 'traditional', 'instrumental', 'ritual', 'folk'],
+    },
+    {
+      id: 'curated_cn_ritual_2_cc0',
+      title: 'Chinese Traditional Ritual 2',
+      title_zh: '中国传统仪式音乐（二）',
+      creator: 'soloan', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/82/82819_519220-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/soloan/sounds/82819',
+      tags: ['chinese', 'traditional', 'instrumental', 'ritual', 'folk'],
+    },
+    {
+      id: 'curated_cn_ruan_practice_cc0',
+      title: 'Traditional Chinese Instruments Practice',
+      title_zh: '传统中国乐器练习（阮）',
+      creator: '__O', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/325/325897_5623566-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/__O/sounds/325897',
+      tags: ['chinese', 'traditional', 'instrumental', 'ruan', 'folk'],
+    },
+    {
+      id: 'curated_cn_orchestra_2',
+      title: 'Chinese Orchestra 2',
+      title_zh: '中国民族管弦乐（二）',
+      creator: 'xserra', license: 'by', license_version: '4.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/162/162094_43-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/xserra/sounds/162094',
+      tags: ['chinese', 'orchestral', 'instrumental', 'dizi', 'traditional'],
+    },
+    {
+      id: 'curated_cn_orchestra_3',
+      title: 'Chinese Orchestra 3',
+      title_zh: '中国民族管弦乐（三）',
+      creator: 'xserra', license: 'by', license_version: '4.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/162/162093_43-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/xserra/sounds/162093',
+      tags: ['chinese', 'orchestral', 'instrumental', 'dizi', 'traditional'],
+    },
+    {
+      id: 'curated_cn_guqin_concert',
+      title: 'Guqin Concert 1',
+      title_zh: '古琴音乐会（一）',
+      creator: 'xserra', license: 'by', license_version: '4.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/162/162023_43-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/xserra/sounds/162023',
+      tags: ['chinese', 'guqin', 'instrumental', 'traditional', 'folk'],
+    },
+    {
+      id: 'curated_cn_guqin_excerpt',
+      title: 'Guqin Song Excerpt',
+      title_zh: '古琴曲选段',
+      creator: 'vichug', license: 'by', license_version: '4.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/448/448159_9279214-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/vichug/sounds/448159',
+      tags: ['chinese', 'guqin', 'instrumental', 'traditional', 'nature'],
+    },
+    {
+      id: 'curated_cn_erhu_loop_cc0',
+      title: 'Erhu and a Half',
+      title_zh: '二胡旋律循环',
+      creator: 'CrashBulb', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/795/795957_16665092-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/CrashBulb/sounds/795957',
+      tags: ['chinese', 'erhu', 'instrumental', 'strings', 'soundtrack'],
+    },
+    {
+      id: 'curated_cn_dizi_cc0',
+      title: 'Dizi Flute 01',
+      title_zh: '竹笛独奏（一）',
+      creator: 'CarlosCarty', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/339/339341_197130-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/CarlosCarty/sounds/339341',
+      tags: ['chinese', 'dizi', 'flute', 'instrumental', 'traditional'],
+    },
+    {
+      id: 'curated_cn_erhu_sample_cc0',
+      title: 'Erhu Sample',
+      title_zh: '二胡器乐片段',
+      creator: 'irzirgpznj', license: 'cc0', license_version: '1.0', source: 'Freesound / Openverse',
+      url: 'https://cdn.freesound.org/previews/477/477169_10194539-hq.mp3',
+      foreign_landing_url: 'https://freesound.org/people/irzirgpznj/sounds/477169',
+      tags: ['chinese', 'erhu', 'instrumental', 'strings', 'traditional'],
+    },
   ];
   const text = `${query || ''} ${profileId || ''} ${scriptText || ''}`.toLowerCase();
   const signals = _openMusicScriptSignals(profileId, `${query || ''} ${scriptText || ''}`);
@@ -11196,6 +11287,7 @@ function _normalizeOpenMusicItem(item = {}) {
   return {
     id,
     title: String(item.title || '未命名音乐').trim().slice(0, 160),
+    title_zh: String(item.title_zh || item.titleZh || '').trim().slice(0, 160),
     creator: String(item.creator || item.author || 'Unknown').trim().slice(0, 120),
     license,
     license_version: String(item.license_version || item.licenseVersion || '').trim(),
@@ -11214,7 +11306,7 @@ function _normalizeOpenMusicItem(item = {}) {
 function _isPureInstrumentalCandidate(item = {}) {
   const text = `${item.title || ''} ${item.creator || ''} ${(item.tags || []).join(' ')}`.toLowerCase();
   if (/electronic|synth|synthwave|techno|edm|dubstep|idm|chiptune|8bit|8-bit|game|video game|arcade|looperman|sfx|sound effect|noise|glitch|riser|whoosh|drone only|horror|spooky|vox|voice|vocal|christmas|jingle/i.test(text)) return false;
-  return /piano|orchestral|orchestra|strings|string|cinematic|corporate|documentary|acoustic|instrumental|romantic|hero|reveal|uplifting|inspiring|ambient guitar|soundscape/i.test(text);
+  return /piano|orchestral|orchestra|strings|string|cinematic|corporate|documentary|acoustic|instrumental|romantic|hero|reveal|uplifting|inspiring|ambient guitar|soundscape|chinese|traditional|folk|guzheng|erhu|pipa|guqin|dizi|flute|ruan/i.test(text);
 }
 
 function _openMusicAllowedDownloadUrl(raw = '') {
@@ -31938,7 +32030,7 @@ router.get('/luxury-ad/open-music/search', async (req, res) => {
       searchWarning = 'Openverse 在线搜索暂时较慢，已先返回内置核验公开曲目。';
     }
     const blocked = /electronic|synth|techno|edm|dubstep|idm|chiptune|horror|sfx|sound effect|noise|ambience only|looperman|8bit|8-bit|game|riser|whoosh|vox|voice|vocal|jingle/i;
-    const positive = /music|cinematic|corporate|background|inspiring|uplifting|piano|orchestral|orchestra|strings|acoustic|instrumental|documentary/i;
+    const positive = /music|cinematic|corporate|background|inspiring|uplifting|piano|orchestral|orchestra|strings|acoustic|instrumental|documentary|chinese|traditional|folk|guzheng|erhu|pipa|guqin|dizi|flute|ruan/i;
     const remoteResults = (Array.isArray(data?.results) ? data.results : [])
       .map(_normalizeOpenMusicItem)
       .filter(x => x.url && ['cc0', 'by'].includes(x.license) && _openMusicAllowedDownloadUrl(x.url) && _isPureInstrumentalCandidate(x))

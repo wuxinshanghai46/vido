@@ -13,6 +13,15 @@ assert(uiSource.includes("/api/new-story-ad/music/import"), '新版公开曲库�
 assert(!uiSource.includes("/api/dh/luxury-ad/open-music"), '新版页面不得继续调用已下线旧剧情广告接口');
 assert(uiSource.includes('data-nsa-voice-preview'), '新版音色列表必须提供试听操作');
 assert(uiSource.includes("/api/dh/tts/preview-voice"), '新版音色试听必须调用共用 TTS 试听能力');
+assert(uiSource.includes("/api/workbench/voices"), '新版音色列表必须合并用户自己录制的声音');
+assert(uiSource.includes('data-nsa-voice-record'), '新版音色列表必须提供录制/管理我的声音入口');
+assert(uiSource.includes("page_size: '32'"), '公开曲库单次必须至少加载 32 首候选曲目');
+assert(uiSource.includes('stopNsaMusicPreview'), '公开曲库必须保证同一时间只试听一首音乐');
+assert(uiSource.includes("value=\"${escapeHtml(String(query || '').slice(0, 80))}\""), '公开曲库查询框只能回显用户查询，不能默认填入广告标题');
+
+const digitalHumanRoute = fs.readFileSync(path.join(__dirname, '../src/routes/digitalHuman.js'), 'utf8');
+assert(digitalHumanRoute.includes("title_zh: '古琴音乐会（一）'"), '公开曲库必须补充中文/国风曲目');
+assert(digitalHumanRoute.includes('guzheng|erhu|pipa|guqin|dizi'), '公开曲库必须识别常见中国民族乐器');
 
 const subtitleStyles = [
   'popup', 'bouncy', 'karaoke', 'neon', 'comic', 'news', 'emphasis', 'classic',

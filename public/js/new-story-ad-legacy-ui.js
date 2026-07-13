@@ -117,6 +117,7 @@
 
   let nsaVoicePreviewAudio = null;
   let nsaVoicePreviewObjectUrl = '';
+  let nsaMusicPreviewAudio = null;
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -3281,6 +3282,7 @@
     modal.addEventListener('click', e => {
       if (e.target === modal || e.target.closest('[data-nsa-modal-close]')) {
         if (modal.id === 'dhNsaVoicePickerModal') stopNsaVoicePreview();
+        if (modal.id === 'dhNsaMusicLibraryModal') stopNsaMusicPreview();
         modal.style.display = 'none';
       }
     });
@@ -3296,10 +3298,36 @@
     if (!force && Array.isArray(state.voiceList) && state.voiceList.length) return state.voiceList;
     state.voiceLoading = true;
     try {
-      const r = await api(`/api/avatar/voice-list?_t=${Date.now()}`);
-      const voices = Array.isArray(r.voices) ? r.voices : (Array.isArray(r.data?.voices) ? r.data.voices : []);
-      state.voiceList = voices.filter(voice => String(voice?.id || '').trim());
-      return voices;
+      const stamp = Date.now();
+      const [availableResult, recordedResult] = await Promise.allSettled([
+        api(`/api/avatar/voice-list?_t=${stamp}`),
+        api(`/api/workbench/voices?_t=${stamp}`),
+      ]);
+      if (availableResult.status === 'rejected' && recordedResult.status === 'rejected') throw availableResult.reason;
+      const availableResponse = availableResult.status === 'fulfilled' ? availableResult.value : {};
+      const recordedResponse = recordedResult.status === 'fulfilled' ? recordedResult.value : {};
+      const available = Array.isArray(availableResponse.voices)
+        ? availableResponse.voices
+        : (Array.isArray(availableResponse.data?.voices) ? availableResponse.data.voices : []);
+      const recorded = (Array.isArray(recordedResponse.voices) ? recordedResponse.voices : [])
+        .filter(voice => String(voice?.id || '').trim())
+        .map(voice => ({
+          ...voice,
+          provider: voice.aliyun_voice_id ? '我的录音 · 已克隆' : `我的录音 · ${voice.status || '待克隆'}`,
+          providerId: 'custom-recording',
+          preview_url: `/api/workbench/voices/${encodeURIComponent(voice.id)}/play`,
+          isRecorded: true,
+          isCloned: !!voice.cloned,
+          selectable: !!voice.aliyun_voice_id,
+        }));
+      const seen = new Set();
+      state.voiceList = [...recorded, ...available].filter(voice => {
+        const id = String(voice?.id || '').trim();
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      return state.voiceList;
     } finally {
       state.voiceLoading = false;
     }
@@ -3416,14 +3444,18 @@
           const display = voiceDisplay(voice);
           const id = String(voice.id || '');
           return `<div data-nsa-voice-card data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:8px;min-height:86px;">
-            <button type="button" data-nsa-voice-select="${escapeHtml(id)}" style="min-width:0;text-align:left;border:0;background:transparent;padding:4px;cursor:pointer;">
+            <button type="button" data-nsa-voice-select="${escapeHtml(id)}" ${voice.selectable === false ? 'disabled' : ''} style="min-width:0;text-align:left;border:0;background:transparent;padding:4px;cursor:${voice.selectable === false ? 'not-allowed' : 'pointer'};opacity:${voice.selectable === false ? '.68' : '1'};">
               <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
               <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
               ${id === state.voiceId ? '<small style="color:#029e8d;font-weight:700;">已选择</small>' : ''}
+              ${voice.selectable === false ? '<small style="display:block;color:#b45309;margin-top:4px;">录音已保留，完成声音克隆后即可用于配音</small>' : ''}
             </button>
             <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-preview="${escapeHtml(id)}" aria-label="试听${escapeHtml(display.name)}">▶ 试听</button>
           </div>`;
         }).join('') || '<div class="dh-task-empty-note">暂无可用音色，请先检查配音模型配置。</div>'}
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-record>🎤 录制 / 管理我的声音</button>
       </div>`;
     body.querySelector('[data-nsa-voice-refresh]')?.addEventListener('click', async () => {
       try {
@@ -3438,6 +3470,11 @@
       body.querySelectorAll('[data-nsa-voice-card]').forEach(card => {
         card.style.display = !q || String(card.dataset.nsaVoiceSearch || '').includes(q) ? '' : 'none';
       });
+    });
+    body.querySelector('[data-nsa-voice-record]')?.addEventListener('click', () => {
+      stopNsaVoicePreview();
+      modal.style.display = 'none';
+      document.querySelector('[data-tab="voice-clone"]')?.click();
     });
     body.querySelector('[data-nsa-voice-list]')?.addEventListener('click', async e => {
       const preview = e.target.closest('[data-nsa-voice-preview]');
@@ -3488,24 +3525,35 @@
     ].filter(Boolean).join(' '), 600);
   }
 
-  function renderNsaMusicModal(results = [], note = '') {
+  function stopNsaMusicPreview(except = null) {
+    if (nsaMusicPreviewAudio && nsaMusicPreviewAudio !== except) {
+      try {
+        nsaMusicPreviewAudio.pause();
+        nsaMusicPreviewAudio.currentTime = 0;
+      } catch {}
+    }
+    if (!except || nsaMusicPreviewAudio !== except) nsaMusicPreviewAudio = except;
+  }
+
+  function renderNsaMusicModal(results = [], note = '', query = '') {
+    stopNsaMusicPreview();
     const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
     const body = modal.querySelector('[data-nsa-modal-body]');
     body.innerHTML = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
-        <input class="dh-input" data-nsa-music-query value="${escapeHtml(musicSearchText().slice(0, 80))}" placeholder="按当前广告内容搜索合适的纯音乐" style="flex:1;">
+        <input class="dh-input" data-nsa-music-query value="${escapeHtml(String(query || '').slice(0, 80))}" placeholder="输入曲名、风格或乐器，如：古筝、国风、钢琴" style="flex:1;">
         <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-search>搜索</button>
       </div>
       ${note ? `<p style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 12px;">${escapeHtml(note)}</p>` : ''}
       <div data-nsa-music-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
         ${results.map((item, index) => {
-          const title = item.title || item.name || `公开曲目 ${index + 1}`;
+          const title = item.title_zh || item.titleZh || item.title || item.name || `公开曲目 ${index + 1}`;
           const creator = item.creator || item.author || item.source || '';
           const url = item.preview_url || item.previewUrl || item.url || item.file_url || '';
           const license = item.license || item.license_name || 'public';
           return `<div style="border:1px solid #dbe7f5;border-radius:10px;padding:12px;background:#fff;">
             <b style="display:block;margin-bottom:4px;">${escapeHtml(title)}</b>
             <small style="display:block;color:#64748b;margin-bottom:8px;">${escapeHtml([creator, license].filter(Boolean).join(' · '))}</small>
-            ${url ? `<audio controls preload="none" src="${escapeHtml(url)}" style="width:100%;height:32px;"></audio>` : ''}
+            ${url ? `<audio controls preload="none" data-nsa-music-preview src="${escapeHtml(url)}" style="width:100%;height:32px;"></audio>` : ''}
             <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-import="${index}" style="margin-top:8px;">导入使用</button>
           </div>`;
         }).join('') || '<div class="dh-task-empty-note">暂无曲目，换一个关键词再试。</div>'}
@@ -3514,6 +3562,18 @@
       const q = body.querySelector('[data-nsa-music-query]')?.value || '';
       openNsaMusicLibrary(q);
     });
+    body.querySelector('[data-nsa-music-list]')?.addEventListener('play', e => {
+      const audio = e.target.closest?.('[data-nsa-music-preview]');
+      if (!audio) return;
+      stopNsaMusicPreview(audio);
+      body.querySelectorAll('[data-nsa-music-preview]').forEach(other => {
+        if (other === audio || other.paused) return;
+        try { other.pause(); other.currentTime = 0; } catch {}
+      });
+      audio.addEventListener('ended', () => {
+        if (nsaMusicPreviewAudio === audio) nsaMusicPreviewAudio = null;
+      }, { once: true });
+    }, true);
     body.querySelector('[data-nsa-music-list]')?.addEventListener('click', async e => {
       const btn = e.target.closest('[data-nsa-music-import]');
       if (!btn) return;
@@ -3525,6 +3585,7 @@
         const r = await api('/api/new-story-ad/music/import', { method: 'POST', body: { item } });
         state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item;
         renderAll();
+        stopNsaMusicPreview();
         ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库').style.display = 'none';
         toast('背景音乐已导入', 'success');
       } catch (err) {
@@ -3545,10 +3606,10 @@
         q: String(query || '').trim(),
         profile_id: state.bgmProfile || 'auto',
         text: musicSearchText(),
-        page_size: '16',
+        page_size: '32',
       });
       const r = await api(`/api/new-story-ad/music/search?${params.toString()}`);
-      renderNsaMusicModal(Array.isArray(r.results) ? r.results : [], r.license_note || r.query || '');
+      renderNsaMusicModal(Array.isArray(r.results) ? r.results : [], r.license_note || r.query || '', query);
     } catch (err) {
       body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '公开曲库搜索失败')}</div>`;
     }
