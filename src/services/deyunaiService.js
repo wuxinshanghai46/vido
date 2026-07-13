@@ -20,6 +20,7 @@ const BASE_HOST = 'https://api.deyunai.com';
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
+const CONTENT_GENERATION_TASKS_URL = `${BASE_HOST}/api/v3/contents/generations/tasks`;
 const GPT_IMAGE2_STREAM_PARTIAL_IMAGES = Math.max(1, Math.min(3, Math.round(Number(process.env.GPT_IMAGE2_PARTIAL_IMAGES) || 2)));
 
 function abortableWait(ms, signal) {
@@ -82,6 +83,115 @@ function buildHeaders(modelId, options = {}) {
   };
   if (!options.forceDomestic && isOverseasModel(modelId)) headers.vendor = 'API_VENDOR';
   return headers;
+}
+
+function isSeedanceContentGenerationModel(modelId) {
+  return /^doubao-seedance-2-0-(?:260128|fast-260128)$/i.test(String(modelId || '').trim());
+}
+
+function seedanceRatioFromSize(size = '') {
+  const match = String(size || '').match(/^(\d+)x(\d+)$/i);
+  if (!match) return '9:16';
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (width === height) return '1:1';
+  return width > height ? '16:9' : '9:16';
+}
+
+function seedanceResolutionFromSize(size = '') {
+  const match = String(size || '').match(/^(\d+)x(\d+)$/i);
+  if (!match) return '720p';
+  const shortSide = Math.min(Number(match[1]), Number(match[2]));
+  if (shortSide >= 2160) return '4k';
+  if (shortSide >= 1080) return '1080p';
+  if (shortSide <= 480) return '480p';
+  return '720p';
+}
+
+function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl }) {
+  const content = [{ type: 'text', text: String(prompt || '').trim().substring(0, 4000) }];
+  if (imageUrl) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: String(imageUrl).trim() },
+      role: 'first_frame',
+    });
+  }
+  return {
+    model,
+    content,
+    ratio: seedanceRatioFromSize(size),
+    duration: Math.min(10, Math.max(5, Math.round(Number(duration) || 5))),
+    resolution: seedanceResolutionFromSize(size),
+    generate_audio: false,
+    watermark: false,
+  };
+}
+
+function extractSeedanceContentTaskVideoUrl(payload) {
+  const data = payload?.data || payload || {};
+  const direct = data.video_url
+    || data.videoUrl
+    || data.content?.video_url
+    || data.content?.videoUrl
+    || data.output?.video_url
+    || data.output?.videoUrl
+    || data.output?.video?.url
+    || data.result?.video_url
+    || data.result?.videoUrl
+    || data.result?.video?.url
+    || data.videos?.[0]?.url
+    || data.videos?.[0]?.video_url;
+  if (direct) return direct;
+
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 6) return '';
+    if (typeof value === 'string') return /^https?:\/\//i.test(value) ? value : '';
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = visit(item, depth + 1);
+        if (found) return found;
+      }
+      return '';
+    }
+    if (typeof value !== 'object') return '';
+    for (const [key, child] of Object.entries(value)) {
+      if (!/video|url|output|result|content/i.test(key)) continue;
+      const found = visit(child, depth + 1);
+      if (found) return found;
+    }
+    return '';
+  };
+  return visit(data);
+}
+
+async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, timeoutMs, signal }) {
+  const headers = buildHeaders(model, { forceDomestic: true });
+  const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl });
+  const submitRes = await axios.post(CONTENT_GENERATION_TASKS_URL, body, { headers, timeout: 30000, signal });
+  const taskId = submitRes.data?.data?.id || submitRes.data?.id || submitRes.data?.data?.task_id || submitRes.data?.task_id;
+  if (!taskId) throw new Error('漫路 Seedance 2.0 提交成功但未返回任务 ID: ' + JSON.stringify(submitRes.data).slice(0, 300));
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    await abortableWait(5000, signal);
+    const queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(taskId)}`, {
+      headers,
+      timeout: 30000,
+      signal,
+    });
+    const task = queryRes.data?.data || queryRes.data || {};
+    const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
+    const url = extractSeedanceContentTaskVideoUrl(task);
+    if (url && (!status || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(status))) {
+      return { url, taskId, durationSec: Number(task.duration || task.duration_sec) || duration };
+    }
+    if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(status)) {
+      const message = task.error?.message || task.message || task.error_message || JSON.stringify(task).slice(0, 500);
+      throw new Error(`漫路 Seedance 2.0 生成失败: ${message}`);
+    }
+  }
+  throw new Error(`漫路 Seedance 2.0 生成超时（${timeoutMs}ms）`);
 }
 
 function extractImageUrlsFromSyncPayload(payload) {
@@ -490,6 +600,14 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
   let _ok = false; let _err = null; let _taskId = null;
   let _videoSeconds = duration || 5;
   try {
+    if (isSeedanceContentGenerationModel(model)) {
+      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, timeoutMs, signal });
+      _taskId = result.taskId;
+      _videoSeconds = Number(result.durationSec) || _videoSeconds;
+      _ok = true;
+      return result;
+    }
+
     const body = { model, prompt, duration: parseInt(duration, 10), size };
     if (imageUrl) body.image_url = imageUrl;
 
@@ -546,6 +664,9 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
 
 module.exports = {
   isOverseasModel,
+  isSeedanceContentGenerationModel,
+  buildSeedanceContentTaskBody,
+  extractSeedanceContentTaskVideoUrl,
   getDeyunaiKey,
   chat,
   generateImage,
