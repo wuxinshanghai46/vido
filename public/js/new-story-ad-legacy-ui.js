@@ -27,12 +27,22 @@
   ];
 
   const SUBTITLE_STYLES = [
-    ['popup', '弹跳出现', '短视频常用，适合大多数剧情广告。'],
-    ['classic', '经典静态', '稳定克制，适合企业、服务和说明型广告。'],
-    ['bouncy', '节奏跳字', '更强节奏感，适合轻快内容。'],
-    ['karaoke', '逐字高亮', '强调口播跟读和重点词。'],
-    ['news', '信息条样式', '适合信息密度高、偏说明的广告。'],
-    ['neon', '霓虹发光', '适合潮流、科技、夜景或强视觉风格。'],
+    ['popup', '弹跳出现', '主流推荐 · 抖音同款'],
+    ['bouncy', '律动跳字', '节奏感 · 黄字'],
+    ['karaoke', '卡拉OK', '逐字高亮 · 跟唱感'],
+    ['neon', '霓虹发光', '赛博 · 直播间'],
+    ['comic', '漫画黄底', '综艺感 · 顶部'],
+    ['news', '新闻条', '黑底白字 · 严肃'],
+    ['emphasis', '关键词强调', '数字/限时词自动放大'],
+    ['classic', '经典静态', '白字黑边 · 传统'],
+    ['fire', '火焰燃烧', '激情感 · 促销'],
+    ['shake', '地震抖动', '紧张感 · 爆点'],
+    ['gold', '土豪金', '奢华感 · 高端'],
+    ['matrix', '科技矩阵', '未来感 · 科技'],
+    ['film', '电影字幕', '大片感 · 纪录'],
+    ['pink', '少女粉', '生活感 · 小红书'],
+    ['wave', '波浪摇摆', '活力感 · 综艺'],
+    ['zoom', '冲击放大', '爆款感 · 开场'],
   ];
 
   function subtitleStyleLabel(id = '') {
@@ -76,6 +86,13 @@
     videoResolution: '720p',
     subtitleEnabled: true,
     subtitleStyle: 'popup',
+    subtitleOptions: {
+      smartEmphasis: true,
+      fontName: '抖音美好体',
+      fontSize: 72,
+      color: '',
+      outlineColor: '',
+    },
     pendingShotUploadIndex: null,
     controlledProduction: {
       environment: { mode: 'auto', custom: '' },
@@ -97,6 +114,9 @@
     restoringTask: false,
     currentStep: 1,
   };
+
+  let nsaVoicePreviewAudio = null;
+  let nsaVoicePreviewObjectUrl = '';
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -874,6 +894,11 @@
       voice_name: state.voiceName || '',
       subtitle: state.subtitleEnabled,
       subtitle_style: state.subtitleStyle || 'popup',
+      subtitle_config: {
+        show: state.subtitleEnabled,
+        style: state.subtitleStyle || 'popup',
+        ...(state.subtitleOptions || {}),
+      },
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
@@ -1371,11 +1396,17 @@
       profileMenu.innerHTML = BGM_PROFILES.map(([id, label, desc]) => `<button type="button" class="dh-luxgen-bgm-option ${id === state.bgmProfile ? 'active' : ''}" data-nsa-bgm-profile="${escapeHtml(id)}"><b>${escapeHtml(label)}</b><span>${escapeHtml(desc)}</span></button>`).join('');
     }
     if (status) status.textContent = state.bgmAsset ? (state.bgmAsset.name || '背景音乐已配置') : '未配置，可先合成无配乐广告片';
-    if (license) license.textContent = state.bgmAsset ? '用户上传 · 请确认已获得商用授权' : '可先不配置背景音乐，成片后再补充。';
+    if (license) {
+      const source = state.bgmAsset?.source || (state.bgmAsset ? '用户上传' : '');
+      const licenseText = state.bgmAsset?.license || state.bgmAsset?.license_name || '';
+      license.textContent = state.bgmAsset
+        ? [source, licenseText || '请确认已获得商用授权'].filter(Boolean).join(' · ')
+        : '可从公开曲库选择授权纯音乐，也可上传自有音乐；不配置时将生成无配乐成片。';
+    }
     const preview = within('#dhNsaAdBgmPreview');
     if (preview) {
       const url = previewUrl(state.bgmAsset);
-      preview.innerHTML = url ? `<audio controls preload="none" src="${escapeHtml(url)}"></audio>` : '';
+      preview.innerHTML = url ? `<audio controls preload="none" src="${escapeHtml(withAuthQuery(url))}"></audio>` : '';
     }
 
     const subtitleSelect = within('#dhNsaAdSubtitle');
@@ -1587,6 +1618,17 @@
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;
     state.subtitleStyle = request.subtitle_style || request.subtitleStyle || state.subtitleStyle || 'popup';
+    const subtitleConfig = request.subtitle_config || request.subtitleConfig || {};
+    state.subtitleEnabled = subtitleConfig.show === false ? false : state.subtitleEnabled;
+    state.subtitleStyle = subtitleConfig.style || state.subtitleStyle;
+    state.subtitleOptions = {
+      ...state.subtitleOptions,
+      smartEmphasis: subtitleConfig.smartEmphasis !== false,
+      fontName: subtitleConfig.fontName || state.subtitleOptions.fontName,
+      fontSize: Number(subtitleConfig.fontSize || state.subtitleOptions.fontSize) || 72,
+      color: subtitleConfig.color || '',
+      outlineColor: subtitleConfig.outlineColor || '',
+    };
     state.voiceVolume = Number(request.voice_volume || request.voiceVolume || state.voiceVolume || 1) || 1;
     state.bgmVolume = Number(request.bgm_volume || request.bgmVolume || state.bgmVolume || 0.16) || 0.16;
     state.bgmProfile = request.bgm_profile || request.bgmProfile || state.bgmProfile || 'auto';
@@ -2765,6 +2807,11 @@
       bgm_asset: state.bgmAsset || null,
       subtitle: state.subtitleEnabled,
       subtitle_style: state.subtitleStyle || 'popup',
+      subtitle_config: {
+        show: state.subtitleEnabled,
+        style: state.subtitleStyle || 'popup',
+        ...(state.subtitleOptions || {}),
+      },
     };
   }
 
@@ -3223,7 +3270,10 @@
       <div data-nsa-modal-body></div>
     </div>`;
     modal.addEventListener('click', e => {
-      if (e.target === modal || e.target.closest('[data-nsa-modal-close]')) modal.style.display = 'none';
+      if (e.target === modal || e.target.closest('[data-nsa-modal-close]')) {
+        if (modal.id === 'dhNsaVoicePickerModal') stopNsaVoicePreview();
+        modal.style.display = 'none';
+      }
     });
     document.body.appendChild(modal);
     return modal;
@@ -3253,6 +3303,97 @@
     return { name, sub: `${provider}${gender}` };
   }
 
+  function nsaVoiceDemoUrl(voice = {}) {
+    return voice.expressiveDemoUrl
+      || voice.expressive_demo_url
+      || voice.emotionDemoUrl
+      || voice.emotion_demo_url
+      || voice.demoAudioUrl
+      || voice.demo_audio_url
+      || voice.preview_url
+      || voice.previewUrl
+      || voice.sample_url
+      || '';
+  }
+
+  function stopNsaVoicePreview() {
+    if (nsaVoicePreviewAudio) {
+      try { nsaVoicePreviewAudio.pause(); } catch {}
+      nsaVoicePreviewAudio.removeAttribute('src');
+      nsaVoicePreviewAudio = null;
+    }
+    if (nsaVoicePreviewObjectUrl) {
+      try { URL.revokeObjectURL(nsaVoicePreviewObjectUrl); } catch {}
+      nsaVoicePreviewObjectUrl = '';
+    }
+  }
+
+  async function previewNsaVoice(voiceId = '', button = null) {
+    const voice = (state.voiceList || []).find(item => String(item?.id || '') === String(voiceId)) || {};
+    if (!voiceId) return;
+    stopNsaVoicePreview();
+    const oldText = button?.textContent || '▶ 试听';
+    if (button) { button.disabled = true; button.textContent = '生成中…'; }
+    try {
+      const demoUrl = nsaVoiceDemoUrl(voice);
+      let audioUrl = demoUrl;
+      if (!audioUrl) {
+        const shotText = (state.shots || []).map(shot => shot.voiceover || shot.narration || shot.dialogue || shot.ad_copy || '').find(Boolean);
+        const previewText = normalizeText(shotText || '您好，这里是剧情广告配音试听。', 160);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 90000);
+        let response;
+        try {
+          response = await fetch('/api/dh/tts/preview-voice', {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+            },
+            body: JSON.stringify({
+              voice_id: voiceId,
+              voiceId,
+              text: previewText,
+              gender: voice.gender || voice._gender || '',
+              providerId: voice.providerId || voice.provider_id || '',
+              provider: voice.provider || '',
+            }),
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!response?.ok) {
+          let detail = '';
+          try { detail = (await response.json())?.error || ''; } catch {}
+          throw new Error(detail || `HTTP ${response?.status || 500}`);
+        }
+        const blob = await response.blob();
+        if (!/^audio\//i.test(blob.type || '') || blob.size < 2048) throw new Error('试听音频为空或格式不可播放');
+        nsaVoicePreviewObjectUrl = URL.createObjectURL(blob);
+        audioUrl = nsaVoicePreviewObjectUrl;
+      }
+      nsaVoicePreviewAudio = new Audio(audioUrl);
+      nsaVoicePreviewAudio.preload = 'auto';
+      nsaVoicePreviewAudio.volume = 1;
+      nsaVoicePreviewAudio.addEventListener('ended', stopNsaVoicePreview, { once: true });
+      await nsaVoicePreviewAudio.play();
+      if (button) button.textContent = '■ 停止';
+      toast('正在播放音色试听', 'success');
+    } catch (err) {
+      stopNsaVoicePreview();
+      toast(`试听失败：${err.name === 'AbortError' ? '生成超时，请稍后重试' : (err.message || '当前音色不可试听')}`, 'error');
+    } finally {
+      if (button && !nsaVoicePreviewAudio) {
+        button.disabled = false;
+        button.textContent = oldText;
+      } else if (button) {
+        button.disabled = false;
+        nsaVoicePreviewAudio?.addEventListener('ended', () => { button.textContent = oldText; }, { once: true });
+      }
+    }
+  }
+
   function renderNsaVoiceModal() {
     const modal = ensureNsaModal('dhNsaVoicePickerModal', '选择旁白配音');
     const body = modal.querySelector('[data-nsa-modal-body]');
@@ -3265,11 +3406,14 @@
         ${voices.map(voice => {
           const display = voiceDisplay(voice);
           const id = String(voice.id || '');
-          return `<button type="button" data-nsa-voice-select="${escapeHtml(id)}" data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="text-align:left;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:12px;min-height:78px;cursor:pointer;">
-            <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
-            <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
-            ${id === state.voiceId ? '<small style="color:#029e8d;font-weight:700;">已选择</small>' : ''}
-          </button>`;
+          return `<div data-nsa-voice-card data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:8px;min-height:86px;">
+            <button type="button" data-nsa-voice-select="${escapeHtml(id)}" style="min-width:0;text-align:left;border:0;background:transparent;padding:4px;cursor:pointer;">
+              <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
+              <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
+              ${id === state.voiceId ? '<small style="color:#029e8d;font-weight:700;">已选择</small>' : ''}
+            </button>
+            <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-preview="${escapeHtml(id)}" aria-label="试听${escapeHtml(display.name)}">▶ 试听</button>
+          </div>`;
         }).join('') || '<div class="dh-task-empty-note">暂无可用音色，请先检查配音模型配置。</div>'}
       </div>`;
     body.querySelector('[data-nsa-voice-refresh]')?.addEventListener('click', async () => {
@@ -3282,11 +3426,23 @@
     });
     body.querySelector('[data-nsa-voice-filter]')?.addEventListener('input', e => {
       const q = String(e.target.value || '').trim().toLowerCase();
-      body.querySelectorAll('[data-nsa-voice-select]').forEach(btn => {
-        btn.style.display = !q || String(btn.dataset.nsaVoiceSearch || '').includes(q) ? '' : 'none';
+      body.querySelectorAll('[data-nsa-voice-card]').forEach(card => {
+        card.style.display = !q || String(card.dataset.nsaVoiceSearch || '').includes(q) ? '' : 'none';
       });
     });
-    body.querySelector('[data-nsa-voice-list]')?.addEventListener('click', e => {
+    body.querySelector('[data-nsa-voice-list]')?.addEventListener('click', async e => {
+      const preview = e.target.closest('[data-nsa-voice-preview]');
+      if (preview) {
+        e.preventDefault();
+        const id = preview.dataset.nsaVoicePreview || '';
+        if (nsaVoicePreviewAudio && preview.textContent.includes('停止')) {
+          stopNsaVoicePreview();
+          preview.textContent = '▶ 试听';
+          return;
+        }
+        await previewNsaVoice(id, preview);
+        return;
+      }
       const btn = e.target.closest('[data-nsa-voice-select]');
       if (!btn) return;
       const id = btn.dataset.nsaVoiceSelect || '';
@@ -3295,6 +3451,7 @@
       state.voiceName = voice.name || id || '自动配音';
       setFieldValue('#dhNsaAdVoiceId', state.voiceId);
       renderAll();
+      stopNsaVoicePreview();
       modal.style.display = 'none';
       toast('配音已选择', 'success');
     });
@@ -3356,7 +3513,7 @@
       btn.disabled = true;
       btn.textContent = '导入中...';
       try {
-        const r = await api('/api/dh/luxury-ad/open-music/import', { method: 'POST', body: { item } });
+        const r = await api('/api/new-story-ad/music/import', { method: 'POST', body: { item } });
         state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item;
         renderAll();
         ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库').style.display = 'none';
@@ -3381,7 +3538,7 @@
         text: musicSearchText(),
         page_size: '16',
       });
-      const r = await api(`/api/dh/luxury-ad/open-music/search?${params.toString()}`);
+      const r = await api(`/api/new-story-ad/music/search?${params.toString()}`);
       renderNsaMusicModal(Array.isArray(r.results) ? r.results : [], r.license_note || r.query || '');
     } catch (err) {
       body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '公开曲库搜索失败')}</div>`;
@@ -3391,21 +3548,99 @@
   function openNsaSubtitleStyleModal() {
     const modal = ensureNsaModal('dhNsaSubtitleStyleModal', '字幕样式');
     const body = modal.querySelector('[data-nsa-modal-body]');
-    body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
-      ${SUBTITLE_STYLES.map(([id, label, desc]) => `<button type="button" data-nsa-subtitle-style="${escapeHtml(id)}" style="text-align:left;border:1px solid ${id === state.subtitleStyle ? '#38d9c8' : '#dbe7f5'};background:${id === state.subtitleStyle ? '#e8fffb' : '#fff'};border-radius:10px;padding:12px;cursor:pointer;">
-        <b style="display:block;margin-bottom:5px;">${escapeHtml(label)}</b>
-        <span style="display:block;color:#64748b;font-size:12px;line-height:1.5;">${escapeHtml(desc)}</span>
-      </button>`).join('')}
+    const options = state.subtitleOptions || {};
+    body.innerHTML = `<div class="dh-subtitle-modal-scroll">
+      <div style="margin-bottom:18px;">
+        <div style="font-size:12px;color:#64748b;margin-bottom:6px;">实时预览（最终成片使用同一套 ASS 字幕效果）</div>
+        <div class="dh-sub-preview-stage" data-nsa-sub-preview-stage data-sub-style="${escapeHtml(state.subtitleStyle || 'popup')}" data-sub-pos="bottom">
+          <span class="dh-sub-preview-text" data-nsa-sub-preview-text>限时秒杀 仅需99元 立刻抢购</span>
+        </div>
+      </div>
+      <div class="dh-field">
+        <label>字幕动效</label>
+        <div class="dh-sub-style-grid">
+          ${SUBTITLE_STYLES.map(([id, label, desc]) => `<button type="button" class="dh-sub-style ${id === state.subtitleStyle ? 'active' : ''}" data-nsa-subtitle-style="${escapeHtml(id)}">
+            <span class="dh-sub-style-thumb ${escapeHtml(id)}"><b>${id === 'emphasis' ? '99<em>元</em>' : '嗨~'}</b></span>
+            <span class="dh-sub-style-name">${escapeHtml(label)}</span>
+            <span class="dh-sub-style-desc">${escapeHtml(desc)}</span>
+          </button>`).join('')}
+        </div>
+      </div>
+      <label class="dh-switch" style="margin:12px 0;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" data-nsa-sub-smart ${options.smartEmphasis !== false ? 'checked' : ''}>
+        <span>智能识别并强调关键词（数字、价格、限时词和重点词）</span>
+      </label>
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:#64748b;font-size:12px;padding:8px 0;">高级：字体、字号与颜色</summary>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding-top:8px;">
+          <label class="dh-field"><span>字体</span><select class="dh-input" data-nsa-sub-font>
+            ${['抖音美好体', '思源黑体', '微软雅黑', 'Noto Sans SC', '宋体', '黑体'].map(name => `<option value="${escapeHtml(name)}" ${name === (options.fontName || '抖音美好体') ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+          </select></label>
+          <label class="dh-field"><span>字号</span><select class="dh-input" data-nsa-sub-size>
+            ${[56, 72, 80, 96].map(size => `<option value="${size}" ${Number(options.fontSize || 72) === size ? 'selected' : ''}>${size}</option>`).join('')}
+          </select></label>
+          <label class="dh-field"><span>字体颜色</span><input type="color" class="dh-input" data-nsa-sub-color value="${escapeHtml(options.color || '#FFFFFF')}"></label>
+          <label class="dh-field"><span>描边颜色</span><input type="color" class="dh-input" data-nsa-sub-outline value="${escapeHtml(options.outlineColor || '#000000')}"></label>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#64748b;">
+          <input type="checkbox" data-nsa-sub-custom-color ${options.color || options.outlineColor ? 'checked' : ''}> 使用上面的自定义颜色；关闭则使用各动效的设计默认色
+        </label>
+      </details>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="dh-btn dh-btn-primary" data-nsa-subtitle-save>保存字幕设置</button>
+      </div>
     </div>`;
-    body.querySelectorAll('[data-nsa-subtitle-style]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.subtitleStyle = btn.dataset.nsaSubtitleStyle || 'popup';
-        state.subtitleEnabled = true;
-        renderAll();
-        modal.style.display = 'none';
-        toast('字幕样式已更新', 'success');
-      });
+
+    const refreshPreview = () => {
+      const stage = body.querySelector('[data-nsa-sub-preview-stage]');
+      const text = body.querySelector('[data-nsa-sub-preview-text]');
+      const style = body.querySelector('[data-nsa-subtitle-style].active')?.dataset.nsaSubtitleStyle || state.subtitleStyle || 'popup';
+      if (!stage || !text) return;
+      stage.dataset.subStyle = style;
+      stage.dataset.subPos = style === 'comic' ? 'top' : 'bottom';
+      text.style.fontFamily = `"${body.querySelector('[data-nsa-sub-font]')?.value || '抖音美好体'}", "Microsoft YaHei", sans-serif`;
+      text.style.setProperty('--sub-size', `${Math.max(14, Math.round((Number(body.querySelector('[data-nsa-sub-size]')?.value) || 72) * 0.5))}px`);
+      const useCustom = body.querySelector('[data-nsa-sub-custom-color]')?.checked;
+      if (useCustom) {
+        text.style.setProperty('--sub-color', body.querySelector('[data-nsa-sub-color]')?.value || '#FFFFFF');
+        text.style.setProperty('--sub-outline', body.querySelector('[data-nsa-sub-outline]')?.value || '#000000');
+      } else {
+        text.style.removeProperty('--sub-color');
+        text.style.removeProperty('--sub-outline');
+      }
+      const sample = '限时秒杀 仅需99元 立刻抢购';
+      if (style === 'emphasis') {
+        text.innerHTML = '限时秒杀 仅需<em class="sub-key">99元</em> 立刻抢购';
+      } else if (style === 'karaoke') {
+        text.innerHTML = Array.from(sample).map((char, index) => char === ' ' ? ' ' : `<em class="sub-kara" style="animation-delay:${index * 0.18}s">${escapeHtml(char)}</em>`).join('');
+      } else {
+        text.textContent = sample;
+      }
+    };
+    body.querySelectorAll('[data-nsa-subtitle-style]').forEach(btn => btn.addEventListener('click', () => {
+      body.querySelectorAll('[data-nsa-subtitle-style]').forEach(item => item.classList.toggle('active', item === btn));
+      refreshPreview();
+    }));
+    ['[data-nsa-sub-font]', '[data-nsa-sub-size]', '[data-nsa-sub-color]', '[data-nsa-sub-outline]', '[data-nsa-sub-custom-color]'].forEach(selector => {
+      body.querySelector(selector)?.addEventListener('input', refreshPreview);
+      body.querySelector(selector)?.addEventListener('change', refreshPreview);
     });
+    body.querySelector('[data-nsa-subtitle-save]')?.addEventListener('click', () => {
+      state.subtitleStyle = body.querySelector('[data-nsa-subtitle-style].active')?.dataset.nsaSubtitleStyle || 'popup';
+      state.subtitleEnabled = true;
+      const useCustom = body.querySelector('[data-nsa-sub-custom-color]')?.checked;
+      state.subtitleOptions = {
+        smartEmphasis: body.querySelector('[data-nsa-sub-smart]')?.checked !== false,
+        fontName: body.querySelector('[data-nsa-sub-font]')?.value || '抖音美好体',
+        fontSize: Number(body.querySelector('[data-nsa-sub-size]')?.value) || 72,
+        color: useCustom ? (body.querySelector('[data-nsa-sub-color]')?.value || '#FFFFFF') : '',
+        outlineColor: useCustom ? (body.querySelector('[data-nsa-sub-outline]')?.value || '#000000') : '',
+      };
+      renderAll();
+      modal.style.display = 'none';
+      toast(`字幕样式已更新：${subtitleStyleLabel(state.subtitleStyle)}`, 'success');
+    });
+    refreshPreview();
     showNsaModal(modal);
   }
 

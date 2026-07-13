@@ -1092,7 +1092,13 @@ function subtitleTextFromShot(shot = {}) {
   ).replace(/^(字幕|旁白|台词)\s*[：:]\s*/i, '');
 }
 
-function subtitleSegmentsFromShots(shots = [], subtitleStyle = 'popup') {
+function subtitleSegmentsFromShots(shots = [], subtitleConfig = {}) {
+  const config = typeof subtitleConfig === 'string' ? { style: subtitleConfig } : (subtitleConfig || {});
+  const subtitleStyle = cleanText(config.style || config.subtitleStyle || 'popup', 60);
+  const fontName = cleanText(config.fontName || '', 80);
+  const fontSize = Math.max(24, Math.min(120, Number(config.fontSize) || 72));
+  const color = /^#[0-9a-f]{6}$/i.test(String(config.color || '')) ? String(config.color) : '';
+  const outlineColor = /^#[0-9a-f]{6}$/i.test(String(config.outlineColor || '')) ? String(config.outlineColor) : '';
   let cursor = 0;
   return (Array.isArray(shots) ? shots : []).map((shot, index) => {
     const duration = Math.max(1, Math.min(30, Number(shot.duration_sec || shot.duration || shot.seconds || 3) || 3));
@@ -1101,7 +1107,14 @@ function subtitleSegmentsFromShots(shots = [], subtitleStyle = 'popup') {
       text,
       startTime: cursor,
       endTime: cursor + duration,
+      preset: 'subtitle',
+      style: 'subtitle',
       subtitleStyle,
+      smartEmphasis: config.smartEmphasis !== false,
+      ...(fontName ? { fontName } : {}),
+      fontSize,
+      ...(color ? { fontcolor: color } : {}),
+      ...(outlineColor ? { bordercolor: outlineColor } : {}),
       shot_index: index + 1,
     } : null;
     cursor += duration;
@@ -1123,6 +1136,12 @@ async function composeStage(taskId, options = {}) {
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
   const subtitleEnabled = options.subtitle !== false && ctx.subtitle !== false;
   const subtitleStyle = cleanText(options.subtitle_style || options.subtitleStyle || ctx.subtitle_style || ctx.subtitleStyle || 'popup', 60);
+  const rawSubtitleConfig = options.subtitle_config || options.subtitleConfig || ctx.subtitle_config || ctx.subtitleConfig || {};
+  const subtitleConfig = {
+    ...(rawSubtitleConfig && typeof rawSubtitleConfig === 'object' ? rawSubtitleConfig : {}),
+    show: subtitleEnabled,
+    style: subtitleStyle,
+  };
   const bgmAsset = options.bgm_asset || options.bgmAsset || ctx.bgm_asset || ctx.bgmAsset || null;
   storage.saveOutput(taskId, 'context', {
     ...ctx,
@@ -1134,6 +1153,7 @@ async function composeStage(taskId, options = {}) {
     bgm_asset: bgmAsset,
     subtitle: subtitleEnabled,
     subtitle_style: subtitleStyle,
+    subtitle_config: subtitleConfig,
   });
   const final_video = await composeService.concatVideos({
     taskId,
@@ -1141,7 +1161,7 @@ async function composeStage(taskId, options = {}) {
     bgmAsset,
     bgmVolume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     voiceVolume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
-    subtitles: subtitleSegmentsFromShots(shots, subtitleStyle),
+    subtitles: subtitleSegmentsFromShots(shots, subtitleConfig),
     subtitleEnabled,
     subtitleStyle,
     transitions: shots,
@@ -1401,5 +1421,6 @@ module.exports = {
   enforceAssistedPersonSpec,
   keyframeCompletion,
   compactKeyframePrompt,
+  subtitleSegmentsFromShots,
 };
 

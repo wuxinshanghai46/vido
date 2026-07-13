@@ -21,6 +21,11 @@
       bgm_asset: state.bgmAsset || null,
       subtitle: state.subtitleEnabled !== false,
       subtitle_style: state.subtitleStyle || 'popup',
+      subtitle_config: {
+        show: state.subtitleEnabled !== false,
+        style: state.subtitleStyle || 'popup',
+        ...(state.subtitleOptions || {}),
+      },
     };
   }
 

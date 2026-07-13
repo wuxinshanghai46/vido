@@ -1,0 +1,54 @@
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const storyAdService = require('../src/services/newStoryAd/storyAdService');
+const { buildAssSubtitleFile } = require('../src/services/effectsService');
+
+const uiPath = path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js');
+const uiSource = fs.readFileSync(uiPath, 'utf8');
+
+assert(uiSource.includes("/api/new-story-ad/music/search"), '新版公开曲库必须使用新版专属搜索接口');
+assert(uiSource.includes("/api/new-story-ad/music/import"), '新版公开曲库必须使用新版专属导入接口');
+assert(!uiSource.includes("/api/dh/luxury-ad/open-music"), '新版页面不得继续调用已下线旧剧情广告接口');
+assert(uiSource.includes('data-nsa-voice-preview'), '新版音色列表必须提供试听操作');
+assert(uiSource.includes("/api/dh/tts/preview-voice"), '新版音色试听必须调用共用 TTS 试听能力');
+
+const subtitleStyles = [
+  'popup', 'bouncy', 'karaoke', 'neon', 'comic', 'news', 'emphasis', 'classic',
+  'fire', 'shake', 'gold', 'matrix', 'film', 'pink', 'wave', 'zoom',
+];
+subtitleStyles.forEach(style => assert(uiSource.includes(`['${style}',`), `缺少字幕样式：${style}`));
+
+const segments = storyAdService.subtitleSegmentsFromShots([
+  { duration_sec: 3, voiceover: '限时优惠 99元' },
+], {
+  style: 'popup',
+  smartEmphasis: true,
+  fontName: 'Noto Sans SC',
+  fontSize: 72,
+  color: '#FFFFFF',
+  outlineColor: '#000000',
+});
+
+assert.strictEqual(segments.length, 1);
+assert.strictEqual(segments[0].preset, 'subtitle', '字幕段必须标记为 subtitle，才能应用动效预设');
+assert.strictEqual(segments[0].subtitleStyle, 'popup');
+assert.strictEqual(segments[0].smartEmphasis, true);
+
+const assPath = buildAssSubtitleFile(segments, `nsa_media_sync_${Date.now()}`, {
+  width: 1080,
+  height: 1920,
+  duration: 3,
+}, { defaultStyle: 'popup' });
+
+try {
+  const ass = fs.readFileSync(assPath, 'utf8');
+  assert(ass.includes('\\fad(120,80)'), '弹跳字幕动画必须写入最终 ASS 文件');
+  assert(ass.includes('Noto Sans SC'), '字幕字体必须写入最终 ASS 文件');
+  assert(ass.includes('Dialogue:'), '最终 ASS 文件必须包含字幕事件');
+} finally {
+  try { fs.unlinkSync(assPath); } catch {}
+}
+
+console.log(`new-story-ad media sync: ${subtitleStyles.length} subtitle styles, voice preview and music API passed`);
