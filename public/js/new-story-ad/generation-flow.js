@@ -248,8 +248,12 @@
         state.cancelRequested = false;
         if (!state.activeGenerationId) state.activeStage = '';
       }
-      setButtonBusy?.(button, false);
-      setBusy?.(false);
+      try {
+        setBusy?.(false);
+      } finally {
+        setButtonBusy?.(button, false);
+        renderAll?.();
+      }
     }
   }
 

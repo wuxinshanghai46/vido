@@ -1893,13 +1893,16 @@
     };
     const intervalMs = stage === 'keyframes' ? 2000 : 1000;
     state.stageProgressTimer = setInterval(async () => {
-      if (!state.stageProgress?.active) return;
+      const activeProgress = state.stageProgress;
+      if (!activeProgress?.active) return;
       if (stage === 'keyframes' && state.taskId) {
         try {
           const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}`);
+          if (!state.stageProgress?.active || state.stageProgress !== activeProgress) return;
           normalizeBundle(r);
         } catch {}
       }
+      if (!state.stageProgress?.active || state.stageProgress !== activeProgress) return;
       setBusy(true, label);
     }, intervalMs);
   }
