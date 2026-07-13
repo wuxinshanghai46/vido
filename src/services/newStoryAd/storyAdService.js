@@ -1093,12 +1093,26 @@ async function ensureContractsForMedia(taskId, ctx, shots) {
   return contracts;
 }
 
+function resolveTtsVoiceId(options = {}, ctx = {}, existingTtsAudio = {}) {
+  return cleanText(
+    options.voice_id
+      || options.voiceId
+      || ctx.voice_id
+      || ctx.voiceId
+      || existingTtsAudio?.voice_id
+      || existingTtsAudio?.voiceId
+      || '',
+    120,
+  );
+}
+
 async function generateTtsStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
-  const voiceId = cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120);
+  const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
+  const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });
   storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
   const tts_audio = await ttsAdapter.generateVoiceover({
@@ -1138,7 +1152,7 @@ async function generateVideoStage(taskId, options = {}) {
     }
   }
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
-  const voiceId = cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120);
+  const voiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const autoTtsEnabled = options.auto_tts !== false && options.autoTts !== false;
   const ttsNeedsRefresh = !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
   if (ttsNeedsRefresh && autoTtsEnabled) {
@@ -1562,6 +1576,7 @@ module.exports = {
   generateStoryboardStage,
   buildKeyframeContractStage,
   generateKeyframesStage,
+  resolveTtsVoiceId,
   generateTtsStage,
   generateVideoStage,
   verifyPersonContract,
