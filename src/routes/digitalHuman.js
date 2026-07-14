@@ -8349,6 +8349,41 @@ function _isStaleJimengAssetUrl(url) {
   return !!url && /https?:\/\/vido\.smsend\.cn\/public\/jimeng-assets\//i.test(String(url));
 }
 
+function _sendMediaPlaceholder(res, label = 'VIDO') {
+  const safeLabel = String(label || 'VIDO').replace(/[<>&"']/g, '').slice(0, 18) || 'VIDO';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="640" viewBox="0 0 480 640"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef6ff"/><stop offset="1" stop-color="#e9fbf3"/></linearGradient></defs><rect width="480" height="640" fill="url(#g)"/><circle cx="240" cy="250" r="72" fill="#bfd8ef"/><path d="M112 530c18-105 73-158 128-158s110 53 128 158" fill="#bfd8ef"/><text x="240" y="590" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" fill="#64809a">${safeLabel}</text></svg>`;
+  res.status(200);
+  res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+  return res.send(svg);
+}
+
+function _localAvatarImagePath(url) {
+  if (!url) return null;
+  let pathname = String(url).split('?')[0];
+  try { pathname = new URL(String(url), 'http://localhost').pathname; } catch {}
+  const mappings = [
+    ['/public/jimeng-assets/', JIMENG_ASSETS_DIR],
+    ['/public/dh-assets/', DH_PUBLIC_ASSETS_DIR],
+  ];
+  for (const [marker, root] of mappings) {
+    const idx = pathname.indexOf(marker);
+    if (idx < 0) continue;
+    const name = path.basename(pathname.slice(idx + marker.length));
+    if (!name || !/\.(png|jpe?g|webp|gif)$/i.test(name)) return null;
+    const candidate = path.join(root, name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function _isLegacyAvatarTaskMediaUrl(url) {
+  if (!url) return false;
+  let pathname = String(url).split('?')[0];
+  try { pathname = new URL(String(url), 'http://localhost').pathname; } catch {}
+  return /^\/api\/avatar\/tasks\/[^/]+(?:\/(?:stream|download))?\/?$/i.test(pathname);
+}
+
 function normalizeMyAvatarAssetUrls(row, req) {
   const out = { ...row };
   out.image_url = _localJimengAssetUrl(out.image_url, req);
@@ -13647,18 +13682,16 @@ router.get('/my-avatars/:id/thumbnail', async (req, res) => {
     const path = require('path');
     const ffmpegService = require('../services/ffmpegService');
     const p = db.getPortrait(req.params.id);
-    if (!p) return res.status(404).end();
-    const sample = p.sample_video_url || '';
-    if (!sample) return res.status(204).end();
-    // 优先用 portrait 自带的 image_url（已经是图）
-    if (p.image_url && p.image_url.startsWith('/public/')) {
-      const local = path.resolve(__dirname, '../..' + p.image_url);
-      if (fs.existsSync(local)) {
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        return fs.createReadStream(local).pipe(res);
-      }
+    if (!p) return _sendMediaPlaceholder(res, '形象已移除');
+    // 先检查本地静态图；旧逻辑在没有 sample_video_url 时提前返回 204，
+    // 即使 image_url 已经同步到本地也无法显示。
+    const localImage = _localAvatarImagePath(p.image_url || p.photo_url || '');
+    if (localImage) {
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      return res.sendFile(localImage);
     }
+    const sample = p.sample_video_url || '';
+    if (!sample) return _sendMediaPlaceholder(res, p.name || 'VIDO');
     // 找本地视频文件抽帧
     let localVideo = null;
     if (sample.includes('/public/jimeng-assets/')) {
@@ -13666,7 +13699,7 @@ router.get('/my-avatars/:id/thumbnail', async (req, res) => {
       const candidate = path.resolve(__dirname, '../../outputs/jimeng-assets', name);
       if (fs.existsSync(candidate)) localVideo = candidate;
     }
-    if (!localVideo) return res.status(204).end();
+    if (!localVideo) return _sendMediaPlaceholder(res, p.name || 'VIDO');
 
     const thumbPath = localVideo.replace(/\.(mp4|mov|webm|mkv)$/i, '') + '.thumb.jpg';
     const send = () => {
@@ -13680,11 +13713,11 @@ router.get('/my-avatars/:id/thumbnail', async (req, res) => {
       send();
     } catch (e) {
       console.warn('[DH/avatar-thumb] 抽帧失败:', e.message);
-      res.status(204).end();
+      _sendMediaPlaceholder(res, p.name || 'VIDO');
     }
   } catch (err) {
     console.warn('[DH/avatar-thumb] err:', err.message);
-    res.status(500).end();
+    _sendMediaPlaceholder(res, 'VIDO');
   }
 });
 
@@ -32885,11 +32918,10 @@ router.get('/videos/tasks', (req, res) => {
       // 统一 thumbnail_url：只有本地视频文件可抽帧时才走 on-demand 首帧端点。
       // 历史任务可能只有远端 video_url 或缺少 local_path，盲目返回首帧端点会得到 204，前端只能显示占位。
       const rawVideoUrl = t.video_url || t.videoUrl || '';
-      const localVideoPath = lite
-        ? ''
-        : ((t.videoPath && fs.existsSync(t.videoPath))
-          ? t.videoPath
-          : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : _localJimengPathFromUrl(rawVideoUrl)));
+      const explicitLocalVideoPath = (t.videoPath && fs.existsSync(t.videoPath))
+        ? t.videoPath
+        : ((t.local_path && fs.existsSync(t.local_path)) ? t.local_path : '');
+      const localVideoPath = explicitLocalVideoPath || (lite ? '' : _localJimengPathFromUrl(rawVideoUrl));
       const onDemandThumbnail = localVideoPath ? `${base}/api/dh/videos/tasks/${t.id}/thumbnail` : null;
       const imageUrl = _localJimengAssetUrl(t.image_url || t.imageUrl, req);
       const thumbnailCandidate = _localJimengAssetUrl(t.thumbnail_url, req);
@@ -32897,8 +32929,8 @@ router.get('/videos/tasks', (req, res) => {
         || (!_isStaleJimengAssetUrl(imageUrl) && imageUrl)
         || null;
       const thumbnail_url = onDemandThumbnail || fallbackThumbnail;
-      const video_url = _localJimengAssetUrl(t.video_url || t.videoUrl, req);
-      const videoUrl = _localJimengAssetUrl(t.videoUrl || t.video_url, req);
+      const resolvedVideoUrl = _localJimengAssetUrl(t.video_url || t.videoUrl, req);
+      const safeVideoUrl = (_isLegacyAvatarTaskMediaUrl(resolvedVideoUrl) && !localVideoPath) ? null : resolvedVideoUrl;
       return {
         id: t.id,
         taskId: t.id,
@@ -32926,8 +32958,8 @@ router.get('/videos/tasks', (req, res) => {
         project_id: t.project_id || '',
         image_url: imageUrl || t.image_url || '',
         thumbnail_url,
-        video_url,
-        videoUrl,
+        video_url: safeVideoUrl,
+        videoUrl: safeVideoUrl,
       };
     });
     res.json({ success: true, data });
@@ -32951,14 +32983,16 @@ router.get('/videos/tasks/:id', (req, res) => {
   const fallbackThumbnail = (!_isStaleJimengAssetUrl(thumbnailCandidate) && thumbnailCandidate)
     || (!_isStaleJimengAssetUrl(imageUrl) && imageUrl)
     || null;
+  const resolvedVideoUrl = _localJimengAssetUrl(t.video_url || t.videoUrl, req);
+  const safeVideoUrl = (_isLegacyAvatarTaskMediaUrl(resolvedVideoUrl) && !localVideoPath) ? null : resolvedVideoUrl;
   res.json({
     success: true,
     data: {
       ...t,
       image_url: imageUrl || t.image_url || '',
       thumbnail_url: onDemandThumbnail || fallbackThumbnail,
-      video_url: _localJimengAssetUrl(t.video_url || t.videoUrl, req),
-      videoUrl: _localJimengAssetUrl(t.videoUrl || t.video_url, req),
+      video_url: safeVideoUrl,
+      videoUrl: safeVideoUrl,
     },
   });
 });
@@ -32986,14 +33020,14 @@ router.get('/videos/tasks/:id/download', (req, res) => {
 router.get('/videos/tasks/:id/thumbnail', async (req, res) => {
   try {
     const t = db.getAvatarTask(req.params.id);
-    if (!t) return res.status(404).end();
+    if (!t) return _sendMediaPlaceholder(res, '任务已移除');
     // 鉴权：作品库的 poster URL 走 <video> 标签直接发，<video poster> 不会带 Authorization
     // 因此这里不强制鉴权；但用 task id 不可枚举（uuid）来保证安全。
 
     const localPath = t.videoPath || t.local_path;
     if (!localPath || !fs.existsSync(localPath)) {
       // 没有本地视频文件（远端 URL）→ 返回 1x1 透明 png 占位
-      return res.status(204).end();
+      return _sendMediaPlaceholder(res, t.title || '视频任务');
     }
 
     const thumbPath = localPath.replace(/\.(mp4|mov|webm|mkv|avi)$/i, '') + '.thumb.jpg';
@@ -33003,7 +33037,7 @@ router.get('/videos/tasks/:id/thumbnail', async (req, res) => {
         await ffmpegService.extractFirstFrame(localPath, thumbPath, { atSec: 0.5, width: 480 });
       } catch (e) {
         console.warn('[DH/thumbnail] 抽帧失败 ' + req.params.id + ':', e.message);
-        return res.status(204).end();
+        return _sendMediaPlaceholder(res, t.title || '视频任务');
       }
     }
     res.setHeader('Content-Type', 'image/jpeg');
@@ -33011,7 +33045,7 @@ router.get('/videos/tasks/:id/thumbnail', async (req, res) => {
     fs.createReadStream(thumbPath).pipe(res);
   } catch (err) {
     console.warn('[DH/thumbnail] err:', err.message);
-    res.status(500).end();
+    _sendMediaPlaceholder(res, '视频任务');
   }
 });
 

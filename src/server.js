@@ -478,6 +478,15 @@ app.use('/api/avatar', authenticate, _avatarPermGate, require('./routes/avatar')
 app.use('/api/hifly', authenticate, requirePermission('avatar'), require('./routes/hifly'));
 // 数字人作品缩略图 — 公开端点（在 authenticate 之前注册）
 //   <video poster> 不能带 Authorization header；task id 是 uuid 不可枚举，安全 OK
+function sendPublicMediaPlaceholder(res, label = 'VIDO') {
+  const safeLabel = String(label || 'VIDO').replace(/[<>&"']/g, '').slice(0, 18) || 'VIDO';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="640" viewBox="0 0 480 640"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef6ff"/><stop offset="1" stop-color="#e9fbf3"/></linearGradient></defs><rect width="480" height="640" fill="url(#g)"/><circle cx="240" cy="250" r="72" fill="#bfd8ef"/><path d="M112 530c18-105 73-158 128-158s110 53 128 158" fill="#bfd8ef"/><text x="240" y="590" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" fill="#64809a">${safeLabel}</text></svg>`;
+  res.status(200);
+  res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+  return res.send(svg);
+}
+
 app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
   const fs = require('fs');
   const path = require('path');
@@ -485,7 +494,7 @@ app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
     const db = require('./models/database');
     const ffmpegService = require('./services/ffmpegService');
     const t = db.getAvatarTask(req.params.id);
-    if (!t) return res.status(404).end();
+    if (!t) return sendPublicMediaPlaceholder(res, '任务已移除');
     const resolveJimengVideoPath = (url = '') => {
       const raw = String(url || '').split('?')[0].split('#')[0];
       const marker = '/public/jimeng-assets/';
@@ -499,7 +508,7 @@ app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
     const localPath = (t.videoPath && fs.existsSync(t.videoPath) ? t.videoPath : '')
       || (t.local_path && fs.existsSync(t.local_path) ? t.local_path : '')
       || resolveJimengVideoPath(t.video_url || t.videoUrl);
-    if (!localPath || !fs.existsSync(localPath)) return res.status(204).end();
+    if (!localPath || !fs.existsSync(localPath)) return sendPublicMediaPlaceholder(res, t.title || '视频任务');
     const thumbPath = localPath.replace(/\.(mp4|mov|webm|mkv|avi)$/i, '') + '.thumb.jpg';
     const send = () => {
       res.setHeader('Content-Type', 'image/jpeg');
@@ -511,11 +520,11 @@ app.get('/api/dh/videos/tasks/:id/thumbnail', (req, res) => {
       .then(send)
       .catch(err => {
         console.warn('[DH/thumbnail] 抽帧失败:', err.message);
-        res.status(204).end();
+        sendPublicMediaPlaceholder(res, t.title || '视频任务');
       });
   } catch (err) {
     console.warn('[DH/thumbnail] err:', err.message);
-    res.status(500).end();
+    sendPublicMediaPlaceholder(res, '视频任务');
   }
 });
 
@@ -528,7 +537,7 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
     const db = require('./models/database');
     const ffmpegService = require('./services/ffmpegService');
     const p = db.getPortrait(req.params.id);
-    if (!p) return res.status(404).end();
+    if (!p) return sendPublicMediaPlaceholder(res, '形象已移除');
 
     const sendFile = (filePath, contentType = 'image/jpeg') => {
       res.setHeader('Content-Type', contentType);
@@ -536,18 +545,14 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
       fs.createReadStream(filePath).pipe(res);
       return true;
     };
-    const sendPlaceholder = () => {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="720" viewBox="0 0 480 720"><rect width="480" height="720" fill="#0b0d12"/><rect x="34" y="34" width="412" height="652" rx="18" fill="none" stroke="#2a2f3a" stroke-width="3" stroke-dasharray="12 10"/><text x="240" y="340" text-anchor="middle" fill="#8791a5" font-size="30" font-family="Arial, sans-serif">本地未同步图片</text><text x="240" y="388" text-anchor="middle" fill="#596276" font-size="20" font-family="Arial, sans-serif">请同步 outputs/jimeng-assets</text></svg>`;
-      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-store');
-      return res.send(svg);
-    };
+    const sendPlaceholder = () => sendPublicMediaPlaceholder(res, p.name || 'VIDO');
     const findLocalImage = (url) => {
       if (!url) return null;
       const clean = String(url).split('?')[0];
       const candidates = [];
       if (/^\/public\//.test(clean)) candidates.push(path.resolve(__dirname, '..' + clean));
       if (clean.includes('/public/jimeng-assets/')) candidates.push(path.resolve(__dirname, '../outputs/jimeng-assets', path.basename(clean)));
+      if (clean.includes('/public/dh-assets/')) candidates.push(path.resolve(__dirname, '../outputs/dh-assets', path.basename(clean)));
       if (clean.includes('/api/portrait/image/')) candidates.push(path.resolve(__dirname, '../outputs/portraits', path.basename(clean)), path.resolve(__dirname, '../outputs/portraits/uploads', path.basename(clean)));
       return candidates.find(x => x && fs.existsSync(x)) || null;
     };
@@ -571,7 +576,7 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
       if (fs.existsSync(thumbPath)) { send(); return true; }
       ffmpegService.extractFirstFrame(localVideo, thumbPath, { atSec: 0.5, width: 480 })
         .then(send)
-        .catch(err => { console.warn('[DH/avatar-thumb] 抽帧失败:', err.message); res.status(204).end(); });
+        .catch(err => { console.warn('[DH/avatar-thumb] 抽帧失败:', err.message); sendPlaceholder(); });
       return true;
     };
     if (preferVideo && sendVideoThumb()) return;
@@ -609,7 +614,7 @@ app.get('/api/dh/my-avatars/:id/thumbnail', async (req, res) => {
     return sendPlaceholder();
   } catch (err) {
     console.warn('[DH/avatar-thumb] err:', err.message);
-    res.status(500).end();
+    sendPublicMediaPlaceholder(res, 'VIDO');
   }
 });
 

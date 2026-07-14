@@ -2313,7 +2313,9 @@
     const sourceTag = forceImageView && hasVideo ? '📸 图片素材 · 已有视频' : (a.source === 'upload' ? '📤 上传' : a.source === 'dual_generate' ? '👥 双人生成' : '🎨 AI 生成');
     const genderTag = a.gender === 'female' ? '女' : a.gender === 'male' ? '男' : '';
     const thumb = a.id ? `/api/dh/my-avatars/${a.id}/thumbnail${video ? '?prefer_video=1' : ''}` : img;
-    const fallbackImg = img || thumb;
+    // 已有 id 的形象统一通过本地缩略图端点取图。不要再把供应商临时 URL 作为
+    // onerror 回退，否则临时签名过期后每次打开页面都会产生 403。
+    const fallbackImg = a.id ? '' : img;
     const safeFallback = escapeHtml(withAuthQuery(fallbackImg));
     const safeThumb = escapeHtml(withAuthQuery(thumb));
     const media = `<div class="dh-av-media ${video ? 'dh-av-media-video' : ''}" ${video ? `data-avatar-video-preview="${escapeHtml(withAuthQuery(video))}" data-avatar-title="${escapeHtml(a.name || '视频素材')}" title="点击播放视频"` : ''}>${video
@@ -4792,6 +4794,17 @@
     return `${m[1]}/stream${m[2] || ''}`;
   }
 
+  function isLegacyAvatarTaskVideoUrl(url = '') {
+    const raw = String(url || '').trim();
+    if (!raw) return false;
+    try {
+      const parsed = new URL(raw, location.origin);
+      return /^\/api\/avatar\/tasks\/[^/]+(?:\/(?:stream|download))?\/?$/i.test(parsed.pathname);
+    } catch {
+      return /^\/api\/avatar\/tasks\/[^/?#]+(?:\/(?:stream|download))?(?:[?#].*)?$/i.test(raw);
+    }
+  }
+
   function taskProjectId(task = {}) {
     return String(
       task.production_project_id
@@ -6114,6 +6127,16 @@
           announceCompletedVideoTask(t, { focus: opts.focusCompleted === true });
         });
       } else {
+        // 服务器任务列表是权威来源。旧版本会把已经被服务端清理的成片地址永久留在
+        // localStorage，页面刷新后浏览器便反复请求 /api/avatar/tasks/:id/stream，制造 404。
+        // 这里只移除“已完成 + 旧兼容地址”的孤儿缓存，不影响草稿、失败任务或新剧情广告任务。
+        const localWithoutOrphanedLegacyMedia = local.filter(task => {
+          if (!taskDoneWithPlayableVideo(task)) return true;
+          return !isLegacyAvatarTaskVideoUrl(task.videoUrl || task.video_url || '');
+        });
+        if (localWithoutOrphanedLegacyMedia.length !== local.length) {
+          writeVideoTasks(localWithoutOrphanedLegacyMedia);
+        }
         renderTaskCenter();
       }
     } catch (err) {
@@ -6159,7 +6182,7 @@
         const rawImg = a.image_url || a.photo_url || '';
         const img = a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : rawImg;
         host.innerHTML = `${img
-          ? `<img src="${escapeHtml(withAuthQuery(img))}" alt="${escapeHtml(a.name || '数字人')}" loading="eager" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='${escapeHtml(withAuthQuery(rawImg || (a.id ? `/api/dh/my-avatars/${a.id}/thumbnail` : '')))}'">`
+          ? `<img src="${escapeHtml(withAuthQuery(img))}" alt="${escapeHtml(a.name || '数字人')}" loading="eager" decoding="async" fetchpriority="high" onerror="window.__dhAvatarImageFallback&&window.__dhAvatarImageFallback(this)">`
           : `<div class="dh-selected-empty"><div class="dh-empty-icon">▥</div><div>这个形象缺少可用封面图</div><button class="dh-link-btn" data-space-pick-avatar>重新选择形象 →</button></div>`}
           <div class="av-name">${escapeHtml(a.name || '已选形象')}</div>
           <div class="av-badges"><span class="av-badge">${isLuxury ? '剧情广告' : '素材审片'}</span><span class="av-badge">静态图驱动</span></div>
@@ -20631,6 +20654,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     updateLuxuryAdStepLocks();
     const defer = window.requestIdleCallback || ((fn) => setTimeout(fn, 80));
     defer(() => {
+      // 剧情广告是独立工作流。历史版本在该深链首屏也会加载“我的形象”和旧数字人任务，
+      // 从而请求已经过期的供应商缩略图及已删除的 /api/avatar/tasks 记录。
+      // 用户进入相关标签时 switchTab 会按需加载，因此此处跳过不会影响任何功能。
+      if (state.activeTab === 'new-story-ad') return;
       loadMyAvatars().catch(err => console.warn('[dh] deferred avatar load failed:', err.message || err));
       renderProductMaterial();
       restoreVideoTasks();
