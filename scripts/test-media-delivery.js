@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const express = require('express');
 const sharp = require('sharp');
 const mediaDelivery = require('../src/services/mediaDeliveryService');
@@ -77,7 +78,10 @@ async function main() {
     await new Promise(resolve => server.close(resolve));
   }
 
-  const htmlFiles = fs.readdirSync(path.join(root, 'public')).filter(name => name.endsWith('.html'));
+  const htmlFiles = execFileSync('git', ['ls-files', '--', 'public/*.html'], { cwd: root, encoding: 'utf8' })
+    .split(/\r?\n/)
+    .map(name => path.basename(name.trim()))
+    .filter(Boolean);
   assert.ok(htmlFiles.length >= 20);
   htmlFiles.forEach(name => {
     const html = fs.readFileSync(path.join(root, 'public', name), 'utf8');
