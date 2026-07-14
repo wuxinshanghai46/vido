@@ -17,6 +17,17 @@ assert.match(result.title, /第 3\/6 张/);
 assert.match(result.stat, /1分0[45]秒/);
 assert.match(result.message, /已处理 2\/6 张，成功 1 张，失败 1 张/);
 
+const parallel = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'keyframes', generationId: 'generation-parallel', startedAt: Date.now(), total: 6 },
+  serverProgress: {
+    stage: 'keyframes', generation_id: 'generation-parallel', target_total: 6,
+    processed: 1, succeeded: 1, failed: 0, current_index: 2,
+    configured_concurrency: 2, effective_concurrency: 2, active_indexes: [3, 2, 2],
+  },
+});
+assert.match(parallel.title, /并行生成真实画面：第 2、3 张（共 6 张）/);
+assert.match(parallel.message, /正在并行生成第 2、3 张（并发 2）/);
+
 const freshBatch = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'keyframes', generationId: 'generation-fresh', startedAt: Date.now(), total: 6 },
   completed: 6,

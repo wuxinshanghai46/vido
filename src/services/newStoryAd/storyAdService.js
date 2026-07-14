@@ -14,6 +14,7 @@ const diagnostics = require('./diagnosticsService');
 const mediaAdapter = require('./mediaAdapter');
 const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
+const keyframeParallel = require('./keyframeParallelScheduler');
 const composeService = require('./composeService');
 const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets } = require('./sceneBindingService');
 const sceneSpace = require('./sceneSpaceContractService');
@@ -46,7 +47,8 @@ function taskTitle(ctx) {
 }
 
 function keyframeImageUrl(frame = {}) {
-  return String(frame.image_url || frame.imageUrl || frame.url || '').trim();
+  const value = frame && typeof frame === 'object' ? frame : {};
+  return String(value.image_url || value.imageUrl || value.url || '').trim();
 }
 
 function localKeyframeAssetExists(url = '') {
@@ -807,20 +809,84 @@ async function buildKeyframeContractStage(taskId) {
   return contracts;
 }
 
-function previousKeyframeContext(keyframes = [], index = 0) {
-  if (!Array.isArray(keyframes) || index <= 0) return null;
-  for (let i = index - 1; i >= 0; i -= 1) {
-    const frame = keyframes[i] || {};
-    const imageUrl = frame.image_url || frame.imageUrl || frame.url || '';
-    if (!imageUrl) continue;
-    return {
-      index: i + 1,
-      title: frame.title || `Shot ${i + 1}`,
-      image_url: imageUrl,
-      prompt: cleanText(frame.prompt || '', 700),
-    };
+function acceptedKeyframeContextAt(keyframes = [], index = -1) {
+  if (!Array.isArray(keyframes) || !Number.isInteger(index) || index < 0) return null;
+  const frame = keyframes[index] || {};
+  if (!hasUsablePreviousKeyframe(frame)) return null;
+  return {
+    index: index + 1,
+    title: frame.title || `Shot ${index + 1}`,
+    image_url: keyframeImageUrl(frame),
+    prompt: cleanText(frame.prompt || '', 700),
+  };
+}
+
+function continuityCharacterKeys(ctx = {}, shot = {}, contract = {}) {
+  const values = [
+    ...(Array.isArray(shot.characters) ? shot.characters : []),
+    ...(Array.isArray(contract?.cast_lock?.shot_characters) ? contract.cast_lock.shot_characters : []),
+  ];
+  const keys = values.map(value => cleanText(value?.id || value?.name || value?.role || value, 120).toLowerCase()).filter(Boolean);
+  if (!keys.length && personIdentity.shotPersonRequired(ctx, shot, contract)) keys.push('__locked_person__');
+  return [...new Set(keys)].sort();
+}
+
+function continuitySceneKey(shot = {}, contract = {}) {
+  return cleanText(
+    contract?.scene_lock?.scene_id
+      || contract?.scene_lock?.scene_zone_id
+      || shot.scene_id
+      || shot.sceneId
+      || shot.scene_asset_id
+      || shot.sceneAssetId
+      || '',
+    160,
+  ).toLowerCase();
+}
+
+function hasHardPreviousContinuity(shot = {}, contract = {}) {
+  const lock = contract?.continuity_lock || shot.continuity || {};
+  const transitionType = cleanText(lock.transition_type || shot.transition_type || '', 80).toLowerCase();
+  // continuity_from/entry_frame_state are auto-populated on most storyboards,
+  // so treating those fields alone as hard dependencies would serialize every
+  // shot. Only transitions that visually bridge adjacent frames force an
+  // immediate parent; shared scene/cast dependencies are handled separately.
+  return /match|cut.?on.?action|continuous|dissolve|whip|bridge|动作接续|状态接续|连续/i.test(transitionType);
+}
+
+function buildKeyframeDependencyPlan(shots = [], contracts = [], ctx = {}) {
+  const list = Array.isArray(shots) ? shots : [];
+  const descriptors = list.map((shot, index) => ({
+    index,
+    scene: continuitySceneKey(shot || {}, contracts[index] || {}),
+    characters: continuityCharacterKeys(ctx, shot || {}, contracts[index] || {}),
+    hardPrevious: index > 0 && hasHardPreviousContinuity(shot || {}, contracts[index] || {}),
+  }));
+  const dependencies = {};
+  for (let index = 0; index < descriptors.length; index += 1) {
+    const current = descriptors[index];
+    if (index === 0) {
+      dependencies[index] = null;
+      continue;
+    }
+    if (current.hardPrevious) {
+      dependencies[index] = index - 1;
+      continue;
+    }
+    let dependency = null;
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const candidate = descriptors[previous];
+      const sameScene = !!(current.scene && candidate.scene && current.scene === candidate.scene);
+      const sharedCharacter = current.characters.some(key => candidate.characters.includes(key));
+      const unknownContinuity = !current.scene && !candidate.scene && !current.characters.length && !candidate.characters.length;
+      if (sameScene || sharedCharacter || unknownContinuity) {
+        dependency = previous;
+        break;
+      }
+    }
+    dependencies[index] = dependency;
   }
-  return null;
+  return { dependencies, descriptors };
 }
 
 function sceneAssetForShot(ctx = {}, shot = {}, index = 0) {
@@ -846,6 +912,21 @@ function sceneAssetPrompt(asset = {}) {
 function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, options = {}) {
   const visualContract = contract.visual_contract || {};
   const sceneLock = contract.scene_lock || null;
+  const continuityLock = contract.continuity_lock || shot.continuity || {};
+  const continuityText = [
+    continuityLock.continuity_from ? `Continuity from: ${cleanText(continuityLock.continuity_from, 100)}` : '',
+    continuityLock.entry_frame_state ? `Entry frame state: ${cleanText(continuityLock.entry_frame_state, 260)}` : '',
+    continuityLock.exit_frame_state ? `Exit frame state: ${cleanText(continuityLock.exit_frame_state, 260)}` : '',
+    (continuityLock.action_start || continuityLock.action_end) ? `Action start/end: ${cleanText(continuityLock.action_start, 180)} -> ${cleanText(continuityLock.action_end, 180)}` : '',
+    continuityLock.screen_direction ? `Screen direction: ${cleanText(continuityLock.screen_direction, 80)}` : '',
+    continuityLock.eyeline ? `Eyeline: ${cleanText(continuityLock.eyeline, 100)}` : '',
+    continuityLock.camera_axis ? `Camera axis: ${cleanText(continuityLock.camera_axis, 100)}` : '',
+    continuityLock.camera_movement ? `Camera movement: ${cleanText(continuityLock.camera_movement, 140)}` : '',
+    continuityLock.object_states ? `Object state lock: ${cleanText(continuityLock.object_states, 260)}` : '',
+    (continuityLock.transition_type || continuityLock.transition_reason)
+      ? `Transition: ${cleanText(continuityLock.transition_type || 'hard_cut', 40)}; ${cleanText(continuityLock.transition_reason, 180)}`
+      : '',
+  ].filter(Boolean).join('\n');
   const personAsset = ctx.person_asset || {};
   const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
@@ -899,6 +980,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
+    continuityText ? `Strict shot continuity lock:\n${continuityText}` : '',
     sceneBindingText ? `Storyboard scene binding lock:\n${sceneBindingText}` : '',
     sceneReferenceText ? `Strict scene consistency lock:\n${sceneReferenceText}` : '',
     ctx.person_asset ? `Locked real actor/person asset: ${cleanText(JSON.stringify(ctx.person_asset), 1200)}` : '',
@@ -929,11 +1011,12 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     .filter(Boolean)
     .map(value => cleanText(value, 1200))
     .filter(Boolean);
-  const isPriority = line => /User-edited visual override|^Visual:|^Action:|^Current shot action:|Visible interaction grounding|Required visible scene anchors|Advertised subject|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
+  const isPriority = line => /User-edited visual override|^Visual:|^Action:|^Current shot action:|Visible interaction grounding|Required visible scene anchors|Advertised subject|shot continuity lock|scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles|Product visibility|Forbidden:|Negative visual|Semantic fidelity rule|Do not crop|Use a real camera look|Final priority:/i.test(line);
   const orderedLines = [...lines.filter(isPriority), ...lines.filter(line => !isPriority(line))];
   const capFor = line => {
     if (/User-edited visual override|^Visual:|^Action:|^Current shot action:|Final priority:/i.test(line)) return 420;
     if (/Visible interaction grounding|Required visible scene anchors/i.test(line)) return 360;
+    if (/shot continuity lock/i.test(line)) return 560;
     if (/scene consistency lock|scene binding lock|actor consistency lock|Locked real actor|Locked cast profiles/i.test(line)) return 320;
     if (/Advertised subject|Commercial evidence|Product visibility|Forbidden:|Negative visual/i.test(line)) return 220;
     if (/Semantic fidelity rule|Do not crop|Use a real camera look/i.test(line)) return 200;
@@ -986,6 +1069,9 @@ async function generateKeyframesStage(taskId, options = {}) {
   const existing = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   const targetIndexes = keyframeTargetIndexes(shots, existing, options);
   const keyframes = existing.slice();
+  const dependencyPlan = buildKeyframeDependencyPlan(shots, contracts, ctx);
+  const targetIndexSet = new Set(targetIndexes);
+  const completedBatchIndexes = new Set();
   const attempts = [];
   const retainedRegenerationFailures = [];
   const beforeStatus = keyframeCompletion(keyframes, shots);
@@ -1018,20 +1104,45 @@ async function generateKeyframesStage(taskId, options = {}) {
   storage.updateTask(taskId, { status: 'running', stage: 'keyframes' });
   storage.saveStage(taskId, 'keyframes', { status: 'running', input_summary: `${targetIndexes.length} image keyframes` });
   const progressStartedAt = new Date().toISOString();
+  const configuredConcurrency = keyframeParallel.resolveConcurrency(options, targetIndexes.length);
+  const pendingProgressIndexes = new Set(targetIndexes);
+  const activeProgressIndexes = new Set();
   const generationProgress = {
     stage: 'keyframes', status: 'running', target_total: targetIndexes.length,
     generation_id: cleanText(options.generation_id || options.generationId || '', 80),
     processed: 0, succeeded: 0, failed: 0,
     current_index: (targetIndexes[0] ?? 0) + 1,
     target_indexes: targetIndexes.map(index => index + 1),
+    configured_concurrency: configuredConcurrency,
+    effective_concurrency: configuredConcurrency,
+    active_indexes: [],
+    queued_indexes: targetIndexes.map(index => index + 1),
     started_at: progressStartedAt, updated_at: progressStartedAt,
   };
+  function refreshParallelProgress(fallbackIndex = targetIndexes[0] ?? 0) {
+    generationProgress.active_indexes = [...activeProgressIndexes].sort((a, b) => a - b).map(index => index + 1);
+    generationProgress.queued_indexes = [...pendingProgressIndexes].sort((a, b) => a - b).map(index => index + 1);
+    const next = [...activeProgressIndexes, ...pendingProgressIndexes].sort((a, b) => a - b)[0];
+    generationProgress.current_index = (next === undefined ? fallbackIndex : next) + 1;
+    generationProgress.updated_at = new Date().toISOString();
+  }
   storage.updateTask(taskId, { generation_progress: generationProgress });
-  for (const i of targetIndexes) {
+  async function generateKeyframeAtIndex(i, scheduleMeta = {}) {
+    pendingProgressIndexes.delete(i);
+    activeProgressIndexes.add(i);
+    generationProgress.effective_concurrency = Math.max(1, Number(scheduleMeta.concurrency) || 1);
+    generationProgress.wave_number = Math.max(1, Number(scheduleMeta.wave_number) || 1);
+    generationProgress.wave_kind = scheduleMeta.kind || 'sequential';
+    refreshParallelProgress(i);
+    storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
     const shot = shots[i] || {};
     const previousAcceptedFrame = hasUsablePreviousKeyframe(existing[i]) ? { ...existing[i] } : null;
     let currentAttemptFailed = false;
-    const previousFrame = previousKeyframeContext(keyframes, i);
+    let currentError = null;
+    let retryRequired = false;
+    const referenceKeyframes = Array.isArray(scheduleMeta.snapshot) ? scheduleMeta.snapshot : keyframes;
+    const dependencyIndex = Number.isInteger(scheduleMeta.dependency_index) ? scheduleMeta.dependency_index : -1;
+    const previousFrame = acceptedKeyframeContextAt(referenceKeyframes, dependencyIndex);
     const sceneAsset = sceneAssetForShot(ctx, shot, i);
     const basePrompt = buildKeyframePrompt(ctx, shot, contracts[i] || {}, i, { previousFrame, sceneAsset });
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
@@ -1181,16 +1292,21 @@ async function generateKeyframesStage(taskId, options = {}) {
       };
     } catch (err) {
       if (err?.code === 'STAGE_DEADLINE_EXCEEDED' || err?.code === 'USER_CANCELLED') {
+        activeProgressIndexes.delete(i);
+        refreshParallelProgress(i);
         storage.saveOutput(taskId, 'keyframes', keyframes);
         generationProgress.status = err.code === 'USER_CANCELLED' ? 'cancelled' : 'partial';
-        generationProgress.updated_at = new Date().toISOString();
         storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
         throw err;
       }
       currentAttemptFailed = true;
+      currentError = err;
+      retryRequired = keyframeParallel.isThrottleError(err) && scheduleMeta.throttle_retry !== true;
       attempts.push({ index: i, ok: false, code: err.code || 'KEYFRAME_FAILED', error: String(err.message || err) });
       if (previousAcceptedFrame) {
-        retainedRegenerationFailures.push({ index: i, error: String(err.message || err), code: err.code || 'KEYFRAME_FAILED' });
+        if (!retryRequired) {
+          retainedRegenerationFailures.push({ index: i, error: String(err.message || err), code: err.code || 'KEYFRAME_FAILED' });
+        }
         keyframes[i] = {
           ...previousAcceptedFrame,
           shot_index: i,
@@ -1201,7 +1317,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           regeneration_error: String(err.message || err),
           regeneration_error_code: err.code || 'KEYFRAME_FAILED',
           regeneration_failed_at: new Date().toISOString(),
-          current_generation_status: isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected',
+          current_generation_status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected'),
           current_generation_id: generationProgress.generation_id,
           contract: contracts[i] || previousAcceptedFrame.contract || null,
         };
@@ -1215,20 +1331,110 @@ async function generateKeyframesStage(taskId, options = {}) {
           error_code: err.code || 'KEYFRAME_FAILED',
           contract: contracts[i] || null,
           candidates: shotCandidates,
-          current_generation_status: isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed',
+          current_generation_status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed'),
           current_generation_id: generationProgress.generation_id,
         };
       }
     }
     storage.saveOutput(taskId, 'keyframes', keyframes);
+    activeProgressIndexes.delete(i);
+    if (retryRequired) {
+      pendingProgressIndexes.add(i);
+      generationProgress.effective_concurrency = 1;
+      refreshParallelProgress(i);
+      storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
+      return {
+        index: i,
+        failed: true,
+        throttled: true,
+        retry_required: true,
+        usable: hasUsablePreviousKeyframe(keyframes[i]),
+      };
+    }
     generationProgress.processed += 1;
     if (currentAttemptFailed) generationProgress.failed += 1;
     else generationProgress.succeeded += 1;
-    const nextTarget = targetIndexes[generationProgress.processed];
-    generationProgress.current_index = nextTarget === undefined ? i + 1 : nextTarget + 1;
-    generationProgress.updated_at = new Date().toISOString();
+    const usable = hasUsablePreviousKeyframe(keyframes[i]);
+    if (usable) completedBatchIndexes.add(i);
+    refreshParallelProgress(i);
     storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
+    return {
+      index: i,
+      failed: currentAttemptFailed,
+      throttled: currentAttemptFailed && keyframeParallel.isThrottleError(currentError),
+      usable,
+    };
   }
+  const schedule = await keyframeParallel.runSchedule({
+    indexes: targetIndexes,
+    concurrency: configuredConcurrency,
+    dependencyOf: index => dependencyPlan.dependencies[index],
+    externalDependencyUsable: index => hasUsablePreviousKeyframe(keyframes[index]),
+    snapshot: () => keyframes.map((frame, index) => {
+      if (targetIndexSet.has(index) && !completedBatchIndexes.has(index)) return null;
+      return frame && typeof frame === 'object' ? { ...frame } : frame;
+    }),
+    worker: generateKeyframeAtIndex,
+  });
+  const blockedResults = schedule.results.filter(result => result?.blocked === true);
+  for (const result of blockedResults) {
+    const index = Number(result.index);
+    if (!Number.isInteger(index) || index < 0 || index >= shots.length) continue;
+    pendingProgressIndexes.delete(index);
+    const dependencyNumber = Number.isInteger(result.dependency) ? result.dependency + 1 : 0;
+    const message = dependencyNumber
+      ? `依赖的第 ${dependencyNumber} 镜没有可用关键帧，已停止第 ${index + 1} 镜生成以避免连续性错误。`
+      : `第 ${index + 1} 镜的连续性依赖无效，已停止生成。`;
+    const previousAcceptedFrame = hasUsablePreviousKeyframe(existing[index]) ? { ...existing[index] } : null;
+    attempts.push({ index, ok: false, code: 'KEYFRAME_DEPENDENCY_BLOCKED', error: message });
+    if (previousAcceptedFrame) {
+      retainedRegenerationFailures.push({ index, error: message, code: 'KEYFRAME_DEPENDENCY_BLOCKED' });
+      keyframes[index] = {
+        ...previousAcceptedFrame,
+        shot_index: index,
+        index: index + 1,
+        title: shots[index]?.title || `Shot ${index + 1}`,
+        error: '',
+        error_code: '',
+        regeneration_error: message,
+        regeneration_error_code: 'KEYFRAME_DEPENDENCY_BLOCKED',
+        regeneration_failed_at: new Date().toISOString(),
+        current_generation_status: 'blocked',
+        current_generation_id: generationProgress.generation_id,
+        contract: contracts[index] || previousAcceptedFrame.contract || null,
+      };
+    } else {
+      keyframes[index] = {
+        ...(keyframes[index] || {}),
+        shot_index: index,
+        index: index + 1,
+        title: shots[index]?.title || `Shot ${index + 1}`,
+        error: message,
+        error_code: 'KEYFRAME_DEPENDENCY_BLOCKED',
+        contract: contracts[index] || null,
+        current_generation_status: 'blocked',
+        current_generation_id: generationProgress.generation_id,
+      };
+    }
+  }
+  if (blockedResults.length) {
+    generationProgress.processed += blockedResults.length;
+    generationProgress.failed += blockedResults.length;
+    generationProgress.blocked = blockedResults.length;
+    storage.saveOutput(taskId, 'keyframes', keyframes);
+  }
+  generationProgress.configured_concurrency = schedule.configured_concurrency;
+  generationProgress.effective_concurrency = schedule.effective_concurrency;
+  generationProgress.wave_count = schedule.waves.length;
+  generationProgress.waves = schedule.waves.map(wave => ({
+    kind: wave.kind,
+    indexes: wave.indexes.map(index => index + 1),
+    concurrency: wave.concurrency,
+  }));
+  attempts.sort((a, b) => Number(a.index || 0) - Number(b.index || 0) || Number(a.qa_attempt || 0) - Number(b.qa_attempt || 0));
+  retainedRegenerationFailures.sort((a, b) => a.index - b.index);
+  refreshParallelProgress(targetIndexes[targetIndexes.length - 1] ?? 0);
+  storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
   if (retainedRegenerationFailures.length) {
     const finalStatus = keyframeCompletion(keyframes, shots);
     const shotNumbers = retainedRegenerationFailures.map(item => item.index + 1);
@@ -1290,13 +1496,20 @@ function selectedSceneReference(sceneAsset = {}, contract = {}) {
 }
 
 function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null) {
-  const refs = [sceneReference];
   const person = ctx.person_asset || {};
   const personViews = Array.isArray(person.view_images) ? person.view_images : [];
-  refs.push(person.image_url || person.url || '', personViews[0]?.url || personViews[0]?.image_url || '');
+  const personPrimary = person.image_url || person.url || personViews[0]?.url || personViews[0]?.image_url || '';
   const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
   const product = assets.find(asset => /product|subject|商品|产品|主体/i.test(String(asset.type || '') + ' ' + String(asset.name || '')));
-  refs.push(product?.url || product?.image_url || '', previousFrame?.image_url || '');
+  const productReference = product?.url || product?.image_url || '';
+  const continuityReference = previousFrame?.image_url || '';
+  const personFallback = !continuityReference
+    ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '')
+    : '';
+  // Providers accept at most four references here. Preserve one stable slot per
+  // contract so the previous accepted keyframe can never be displaced by extra
+  // actor views: scene + actor + product + continuity/fallback actor view.
+  const refs = [sceneReference, personPrimary, productReference, continuityReference || personFallback];
   const seen = new Set();
   return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => {
     if (!url || seen.has(url)) return false;
@@ -1866,9 +2079,14 @@ module.exports = {
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
   keyframeCompletion,
+  keyframeTargetIndexes,
   keyframeStageBudgetMs,
   isQaInfrastructureError,
   structuredQaFeedback,
+  buildKeyframeDependencyPlan,
+  buildKeyframePrompt,
+  keyframeReferenceImages,
+  acceptedKeyframeContextAt,
   compactKeyframePrompt,
   isCompleteKeyframe,
   subtitleSegmentsFromShots,
