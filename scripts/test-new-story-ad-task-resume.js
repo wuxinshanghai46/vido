@@ -5,6 +5,7 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-store.js'), 'utf8');
+const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
 const values = new Map([['vido_new_story_ad_current_task_id', 'old-task']]);
 const location = {
   href: 'https://example.test/digital-human?tab=new-story-ad&nsa_task_id=old-task&nsa_step=4',
@@ -46,6 +47,13 @@ assert.equal(store.resumeStep({}, [
   { kind: 'storyboard_table', payload: [{ id: 'shot-1' }] },
 ]), 4);
 assert.equal(store.resumeStep({}, { final_video: { video_url: '/video.mp4' } }), 5);
+assert.equal(store.canContinue({ status: 'working' }), true);
+assert.equal(store.canContinue({ status: 'failed' }), true);
+assert.equal(store.canContinue({ status: 'done' }), false);
+assert.equal(store.canContinue({ status: 'completed' }), false);
+assert.equal(store.canContinue({ status: 'succeeded' }), false);
+assert.match(taskCenterSource, /canContinueNewStoryAdTask\s*\?/);
+assert.doesNotMatch(taskCenterSource, /\$\{isNewStoryAdTask\s*\?\s*`<button[^`]+data-new-story-ad-continue/);
 
 store.rememberTaskId('', 1);
 assert.equal(values.has('vido_new_story_ad_current_task_id'), false);

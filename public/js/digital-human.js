@@ -5565,6 +5565,9 @@
         : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
       const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
       const isNewStoryAdTask = getTaskType(t) === 'new_story_ad';
+      const canContinueNewStoryAdTask = isNewStoryAdTask && (window.NewStoryAdTaskStore?.canContinue
+        ? window.NewStoryAdTaskStore.canContinue(t)
+        : !['done', 'completed', 'succeeded'].includes(String(t.status || '').toLowerCase()));
       const idLabel = t.isLuxuryProjectDraft
         ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
         : `ID ${String(t.taskId).slice(0, 8)}`;
@@ -5589,7 +5592,7 @@
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-lux-project-continue="${escapeHtml(t.projectId)}">继续制作</button>` : ''}
-            ${isNewStoryAdTask ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-new-story-ad-continue="${escapeHtml(t.taskId)}" data-new-story-ad-step="${escapeHtml(t.resumeStep || 1)}">继续制作</button>` : ''}
+            ${canContinueNewStoryAdTask ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-new-story-ad-continue="${escapeHtml(t.taskId)}" data-new-story-ad-step="${escapeHtml(t.resumeStep || 1)}">继续制作</button>` : ''}
             ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">查看详情</button>` : ''}
             ${playableVideoUrl ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-preview="${escapeHtml(t.taskId)}">&#9654; &#25918;&#22823;&#39044;&#35272;</button>` : ''}
             ${canRetry ? `<button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(t.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>` : ''}

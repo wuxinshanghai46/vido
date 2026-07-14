@@ -81,6 +81,11 @@
     return 1;
   }
 
+  function canContinue(task = {}) {
+    const status = clean(task.status || '', 40).toLowerCase();
+    return !['done', 'completed', 'succeeded'].includes(status);
+  }
+
   window.NewStoryAdTaskStore = {
     TASK_STORAGE_KEY,
     routeStep,
@@ -90,5 +95,6 @@
     rememberRouteStep,
     normalizeOutputs,
     resumeStep,
+    canContinue,
   };
 })();
