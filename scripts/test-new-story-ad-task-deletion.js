@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const assert = require('assert');
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const express = require('express');
@@ -26,6 +27,27 @@ function waitUntil(predicate, timeoutMs = 5000) {
         reject(new Error('task deletion test timed out'));
       }
     }, 15);
+  });
+}
+
+function requestDelete(baseUrl, taskId, userId) {
+  const target = new URL(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, baseUrl);
+  return new Promise((resolve, reject) => {
+    const request = http.request(target, {
+      method: 'DELETE',
+      headers: { 'x-test-user': userId },
+    }, response => {
+      let raw = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { raw += chunk; });
+      response.on('end', () => {
+        let body = {};
+        try { body = raw ? JSON.parse(raw) : {}; } catch (error) { return reject(error); }
+        resolve({ status: response.statusCode, body });
+      });
+    });
+    request.on('error', reject);
+    request.end();
   });
 }
 
@@ -63,18 +85,12 @@ async function main() {
     const taskId = 'delete-owned-task';
     createFixture(taskId, 'owner-a');
 
-    const forbidden = await fetch(`${baseUrl}/api/new-story-ad/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': 'owner-b' },
-    });
+    const forbidden = await requestDelete(baseUrl, taskId, 'owner-b');
     assert.equal(forbidden.status, 403);
     assert(storage.getTask(taskId), 'unauthorized deletion must keep the task');
 
-    const deleted = await fetch(`${baseUrl}/api/new-story-ad/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': 'owner-a' },
-    });
-    const deletedBody = await deleted.json();
+    const deleted = await requestDelete(baseUrl, taskId, 'owner-a');
+    const deletedBody = deleted.body;
     assert.equal(deleted.status, 200);
     assert.equal(deletedBody.success, true);
     assert.equal(deletedBody.deleted, true);
@@ -83,10 +99,7 @@ async function main() {
       assert.equal(storage.readDb()[key].some(row => String(row.task_id) === taskId), false, `${key} must be deleted`);
     }
 
-    const missing = await fetch(`${baseUrl}/api/new-story-ad/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': 'owner-a' },
-    });
+    const missing = await requestDelete(baseUrl, taskId, 'owner-a');
     assert.equal(missing.status, 404);
 
     const runningTaskId = 'delete-running-task';
@@ -103,11 +116,8 @@ async function main() {
     assert.equal(queued.accepted, true);
     await waitUntil(() => jobs.getJob(runningTaskId)?.status === 'running' && typeof release === 'function');
 
-    const runningDeleted = await fetch(`${baseUrl}/api/new-story-ad/tasks/${runningTaskId}`, {
-      method: 'DELETE',
-      headers: { 'x-test-user': 'owner-a' },
-    });
-    const runningBody = await runningDeleted.json();
+    const runningDeleted = await requestDelete(baseUrl, runningTaskId, 'owner-a');
+    const runningBody = runningDeleted.body;
     assert.equal(runningDeleted.status, 200);
     assert.equal(runningBody.cancelled_running_job, true);
     release();
