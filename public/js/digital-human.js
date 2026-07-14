@@ -5346,16 +5346,7 @@
     const existing = findTaskCenterTask(id);
     if (getTaskType(existing) === 'new_story_ad') {
       try {
-        const r = await api('/api/new-story-ad/tasks/' + encodeURIComponent(id));
-        const detailed = normalizeNewStoryAdTask(r || {});
-        if (!detailed) return;
-        const list = state.newStoryAdTasks || [];
-        const idx = list.findIndex(x => String(x.taskId) === id);
-        if (idx >= 0) list[idx] = { ...list[idx], ...detailed };
-        else list.unshift(detailed);
-        state.newStoryAdTasks = list;
-        refreshTaskProgressModal();
-        renderTaskCenter();
+        await loadNewStoryAdTaskDetail(id);
       } catch (err) {
         console.warn('[DH/new-story-ad/tasks] detail load failed:', err?.message || err);
       }
@@ -5899,7 +5890,12 @@
   function normalizeNewStoryAdTask(raw = {}) {
     const bundle = raw.bundle && typeof raw.bundle === 'object' ? raw.bundle : raw;
     const task = bundle.task || raw.task || raw;
-    const outputs = bundle.outputs || raw.outputs || {};
+    const rawOutputs = bundle.outputs || raw.outputs || {};
+    const outputs = window.NewStoryAdTaskStore?.normalizeOutputs
+      ? window.NewStoryAdTaskStore.normalizeOutputs(rawOutputs)
+      : (Array.isArray(rawOutputs)
+        ? Object.fromEntries(rawOutputs.filter(item => item?.kind).map(item => [item.kind, item.payload]))
+        : rawOutputs);
     const ctx = outputs.context || task.request || raw.context || {};
     const taskId = task.id || task.taskId || raw.id || raw.taskId || raw.task_id;
     if (!taskId) return null;
@@ -5909,10 +5905,12 @@
     const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
     const finalVideo = outputs.final_video || raw.final_video || {};
     const finalUrl = finalVideo.video_url || finalVideo.videoUrl || '';
-    const resumeStep = finalUrl ? 5
-      : (keyframes.length || shots.length ? 4
-        : (outputs.blueprint ? 3
-          : (outputs.scene_config ? 2 : 1)));
+    const resumeStep = window.NewStoryAdTaskStore?.resumeStep
+      ? window.NewStoryAdTaskStore.resumeStep(task, outputs)
+      : (finalUrl ? 5
+        : (keyframes.length || shots.length ? 4
+          : (outputs.blueprint ? 3
+            : (outputs.scene_config ? 2 : 1))));
     const title = task.title || ctx.product_subject || ctx.productSubject || '剧情广告任务';
     const brief = task.brief || ctx.brief || ctx.content || '';
     const createdAt = task.created_at || task.createdAt || raw.created_at || Date.now();
@@ -5992,6 +5990,25 @@
     } finally {
       state.newStoryAdTasksLoading = false;
     }
+  }
+
+  async function loadNewStoryAdTaskDetail(taskId, { render = true } = {}) {
+    const id = String(taskId || '').trim();
+    if (!id) throw new Error('任务 ID 为空');
+    const response = await api('/api/new-story-ad/tasks/' + encodeURIComponent(id));
+    const detailed = normalizeNewStoryAdTask(response || {});
+    if (!detailed) throw new Error('服务器未返回可恢复的任务数据');
+    const list = state.newStoryAdTasks || [];
+    const index = list.findIndex(item => String(item.taskId) === id);
+    if (index >= 0) list[index] = { ...list[index], ...detailed };
+    else list.unshift(detailed);
+    state.newStoryAdTasks = list;
+    state.newStoryAdTasksLoadedAt = Date.now();
+    if (render) {
+      refreshTaskProgressModal();
+      renderTaskCenter();
+    }
+    return detailed;
   }
 
   window.__dhRefreshNewStoryAdTasks = async function() {
@@ -18408,10 +18425,20 @@
     const newStoryAdContinue = closest('[data-new-story-ad-continue]');
     if (newStoryAdContinue) {
       const id = String(newStoryAdContinue.dataset.newStoryAdContinue || '').trim();
-      const step = Math.max(1, Math.min(5, Number(newStoryAdContinue.dataset.newStoryAdStep || 1) || 1));
       if (!id) return;
-      try { localStorage.setItem('vido_new_story_ad_current_task_id', id); } catch {}
-      window.location.href = `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(id)}&nsa_step=${step}`;
+      const originalText = newStoryAdContinue.textContent;
+      try {
+        newStoryAdContinue.disabled = true;
+        newStoryAdContinue.textContent = '正在恢复…';
+        const detailed = await loadNewStoryAdTaskDetail(id, { render: false });
+        const step = Math.max(1, Math.min(5, Number(detailed.resumeStep || newStoryAdContinue.dataset.newStoryAdStep || 1) || 1));
+        try { localStorage.setItem('vido_new_story_ad_current_task_id', id); } catch {}
+        window.location.href = `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(id)}&nsa_step=${step}`;
+      } catch (err) {
+        newStoryAdContinue.disabled = false;
+        newStoryAdContinue.textContent = originalText;
+        toast('任务恢复失败：' + (err.message || '无法读取任务数据'), 'error');
+      }
       return;
     }
     const luxProjectDelete = closest('[data-lux-project-delete]');
@@ -18537,7 +18564,7 @@
             }
           } catch {}
           closeTaskProgressModal();
-          toast('任务已彻底删除', 'success');
+          toast('任务已删除', 'success');
           renderTaskCenter();
           if (deletedActiveRoute) location.reload();
         } catch (err) {

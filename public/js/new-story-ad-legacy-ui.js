@@ -1766,7 +1766,7 @@
       return true;
     } catch (err) {
       rememberTaskId('');
-      toast('当前任务恢复失败，请从任务中心重新打开或新建任务', 'error');
+      toast('当前任务恢复失败：' + (err.message || '无法读取任务数据'), 'error');
       return false;
     } finally {
       state.restoringTask = false;
