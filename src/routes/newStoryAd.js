@@ -570,6 +570,27 @@ router.post('/tasks', asyncRoute(async (req, res) => {
   res.json({ success: true, ...created });
 }));
 
+router.delete('/tasks/:id', asyncRoute(async (req, res) => {
+  const task = taskForReq(req);
+  const user = userFromReq(req);
+  const cancelled = jobService.cancelJob(task.id, {
+    cancelledBy: user.id || user.userId || user.username || '',
+  });
+  const deleted = storage.deleteTask(task.id);
+  if (!deleted) {
+    const err = new Error('任务不存在或已被删除');
+    err.status = 404;
+    err.code = 'TASK_NOT_FOUND';
+    throw err;
+  }
+  res.json({
+    success: true,
+    deleted: true,
+    task_id: task.id,
+    cancelled_running_job: cancelled.cancelled === true,
+  });
+}));
+
 router.put('/tasks/:id', asyncRoute(async (req, res) => {
   taskForReq(req);
   const updated = service.updateTaskRequest(req.params.id, req.body || {}, userFromReq(req));

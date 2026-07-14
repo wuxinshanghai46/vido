@@ -5429,7 +5429,7 @@
       ${detailPanel}
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         <button class="dh-btn dh-btn-primary dh-btn-sm" data-task-retry="${escapeHtml(data.taskId)}">&#8635; &#37325;&#26032;&#25552;&#20132;</button>
-        <button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(data.taskId)}">&#31227;&#38500;&#20219;&#21153;</button>
+        <button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(data.taskId)}">${getTaskType(data) === 'new_story_ad' ? '删除任务' : '&#31227;&#38500;&#20219;&#21153;'}</button>
       </div>`;
       return;
     }
@@ -5551,7 +5551,7 @@
             ${!t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-focus="${escapeHtml(t.taskId)}">&#26597;&#30475;&#35814;&#24773;</button>` : ''}
             ${playableVideoUrl ? `<a class="dh-btn dh-btn-ghost dh-btn-sm" href="${escapeHtml(playableVideoUrl)}" download>&#19979;&#36733;</a>` : ''}
             ${playableVideoUrl ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-tab-go="works">&#20316;&#21697;&#24211;</button>` : ''}
-            ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-project-delete="${escapeHtml(t.projectId)}">删除</button>` : `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">&#31227;&#38500;</button>`}
+            ${t.isLuxuryProjectDraft ? `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-lux-project-delete="${escapeHtml(t.projectId)}">删除</button>` : `<button class="dh-btn dh-btn-ghost dh-btn-sm" data-task-remove="${escapeHtml(t.taskId)}">${isNewStoryAdTask ? '删除' : '&#31227;&#38500;'}</button>`}
           </div>
         </div>
       </div>`;
@@ -18496,7 +18496,56 @@
     }
     const taskRemove = closest('[data-task-remove]');
     if (taskRemove) {
-      const id = taskRemove.dataset.taskRemove;
+      const id = String(taskRemove.dataset.taskRemove || '').trim();
+      if (!id) return;
+      const task = findTaskCenterTask(id);
+      const isNewStoryAdTask = getTaskType(task) === 'new_story_ad';
+      if (isNewStoryAdTask) {
+        const title = task?.avatarName || task?.title || task?.textPreview || '新剧情广告任务';
+        const ok = await DhConfirm({
+          title: '删除新剧情广告任务？',
+          message: `确定删除「${escapeHtml(title)}」吗？`,
+          detail: '删除后不可恢复。系统会删除该任务、制作进度、分镜、审核和结果记录；不会删除演员库、场景库或其他任务可能复用的公共素材。',
+          confirmText: '确认删除',
+          cancelText: '取消',
+          type: 'danger',
+        });
+        if (!ok) return;
+        try {
+          taskRemove.disabled = true;
+          await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          const meta = state.s3.runningTasks.get(id);
+          if (meta?.pollTimer) clearInterval(meta.pollTimer);
+          state.s3.runningTasks.delete(id);
+          state.newStoryAdTasks = (state.newStoryAdTasks || []).filter(x => String(x.taskId) !== id);
+          state.serverVideoTasks = (state.serverVideoTasks || []).filter(x => String(x.taskId) !== id);
+          state.newStoryAdTasksLoadedAt = Date.now();
+          removeStoredVideoTask(id);
+          try {
+            if (localStorage.getItem('vido_new_story_ad_current_task_id') === id) {
+              localStorage.removeItem('vido_new_story_ad_current_task_id');
+            }
+          } catch {}
+          let deletedActiveRoute = false;
+          try {
+            const url = new URL(location.href);
+            if (url.searchParams.get('nsa_task_id') === id) {
+              url.searchParams.delete('nsa_task_id');
+              url.searchParams.delete('nsa_step');
+              history.replaceState(null, '', url.pathname + url.search + url.hash);
+              deletedActiveRoute = true;
+            }
+          } catch {}
+          closeTaskProgressModal();
+          toast('任务已彻底删除', 'success');
+          renderTaskCenter();
+          if (deletedActiveRoute) location.reload();
+        } catch (err) {
+          taskRemove.disabled = false;
+          toast('删除失败：' + err.message, 'error');
+        }
+        return;
+      }
       const meta = state.s3.runningTasks.get(id);
       if (meta?.pollTimer) clearInterval(meta.pollTimer);
       state.s3.runningTasks.delete(id);

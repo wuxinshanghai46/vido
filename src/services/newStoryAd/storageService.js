@@ -129,6 +129,12 @@ function removeRow(key, id) {
   if (useSqlite()) {
     ensureDbSeeded();
     contentRecords.remove(COLLECTIONS[key], String(id));
+    if (dbConfig().dualWrite) {
+      mutateJson(key, list => {
+        const idx = list.findIndex(item => String(item.id) === String(id));
+        if (idx >= 0) list.splice(idx, 1);
+      });
+    }
     return;
   }
   mutateJson(key, list => {
