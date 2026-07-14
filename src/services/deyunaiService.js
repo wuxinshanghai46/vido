@@ -21,6 +21,9 @@ const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const MODEL_PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 const CONTENT_GENERATION_TASKS_URL = `${BASE_HOST}/api/v3/contents/generations/tasks`;
+const ASSET_API_BASE_URL = `${BASE_HOST}/api/v1`;
+const ASSET_POLL_INTERVAL_MS = 5000;
+const ASSET_POLL_TIMEOUT_MS = 3 * 60 * 1000;
 const GPT_IMAGE2_STREAM_PARTIAL_IMAGES = Math.max(1, Math.min(3, Math.round(Number(process.env.GPT_IMAGE2_PARTIAL_IMAGES) || 2)));
 
 function abortableWait(ms, signal) {
@@ -108,8 +111,26 @@ function seedanceResolutionFromSize(size = '') {
   return '720p';
 }
 
-function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl }) {
+function normalizeSeedanceAssetUri(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^asset:\/\//i.test(raw)) return raw;
+  if (/^asset-[a-z0-9-]+$/i.test(raw)) return `asset://${raw}`;
+  throw new Error('漫路 Seedance 人物参考必须是已入库的 asset:// 素材 ID');
+}
+
+function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [] }) {
   const content = [{ type: 'text', text: String(prompt || '').trim().substring(0, 4000) }];
+  const assets = [...new Set((Array.isArray(referenceAssetUrls) ? referenceAssetUrls : [referenceAssetUrls])
+    .map(normalizeSeedanceAssetUri)
+    .filter(Boolean))].slice(0, 8);
+  for (const assetUrl of assets) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: assetUrl },
+      role: 'reference_image',
+    });
+  }
   if (imageUrl) {
     content.push({
       type: 'image_url',
@@ -126,6 +147,172 @@ function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl 
     generate_audio: false,
     watermark: false,
   };
+}
+
+function assetResult(payload = {}) {
+  return payload?.Result || payload?.result || payload?.data?.Result || payload?.data?.result || payload?.data || payload || {};
+}
+
+function assetApiError(payload = {}) {
+  const metadata = payload?.ResponseMetadata || payload?.response_metadata || {};
+  const err = metadata.Error || metadata.error || payload?.Error || payload?.error || null;
+  if (!err) return '';
+  return String(err.Message || err.message || err.Code || err.code || JSON.stringify(err)).slice(0, 500);
+}
+
+async function requestAssetApi(action, body = {}, { httpClient = axios, signal = null } = {}) {
+  const response = await httpClient.post(`${ASSET_API_BASE_URL}/${encodeURIComponent(action)}`, body, {
+    headers: buildHeaders('', { forceDomestic: true }),
+    timeout: 30000,
+    signal,
+  });
+  const businessError = assetApiError(response.data);
+  if (businessError) throw new Error(`漫路素材库 ${action} 失败: ${businessError}`);
+  return response.data;
+}
+
+async function listAssetGroups({ groupType = 'AIGC', name = '', projectName = 'default', httpClient = axios, signal = null } = {}) {
+  const filter = { GroupType: groupType };
+  if (String(name || '').trim()) filter.Name = String(name).trim().slice(0, 64);
+  const payload = await requestAssetApi('ListAssetGroups', {
+    Filter: filter,
+    PageNumber: 1,
+    PageSize: 100,
+    SortBy: 'UpdateTime',
+    SortOrder: 'Desc',
+    ProjectName: projectName,
+  }, { httpClient, signal });
+  const result = assetResult(payload);
+  return Array.isArray(result.Items || result.items) ? (result.Items || result.items) : [];
+}
+
+async function createAssetGroup({ name, description = '', groupType = 'AIGC', projectName = 'default', httpClient = axios, signal = null } = {}) {
+  const payload = await requestAssetApi('CreateAssetGroup', {
+    Name: String(name || '').trim().slice(0, 64),
+    Description: String(description || '').trim().slice(0, 300),
+    GroupType: groupType,
+    ProjectName: projectName,
+  }, { httpClient, signal });
+  const id = assetId(assetResult(payload));
+  if (!id) throw new Error('漫路虚拟人像素材组创建成功但未返回 Group ID');
+  return id;
+}
+
+async function listAssets({ groupId, groupType = 'AIGC', projectName = 'default', httpClient = axios, signal = null } = {}) {
+  const payload = await requestAssetApi('ListAssets', {
+    Filter: { GroupIds: [groupId], GroupType: groupType },
+    PageNumber: 1,
+    PageSize: 100,
+    SortBy: 'UpdateTime',
+    SortOrder: 'Desc',
+    ProjectName: projectName,
+  }, { httpClient, signal });
+  const result = assetResult(payload);
+  return Array.isArray(result.Items || result.items) ? (result.Items || result.items) : [];
+}
+
+function assetStatus(item = {}) {
+  return String(item.Status || item.status || item.State || item.state || '').trim();
+}
+
+function assetId(item = {}) {
+  return String(item.Id || item.id || item.AssetId || item.asset_id || item.assetId || '').trim();
+}
+
+async function ensurePersonImageAsset({
+  sourceUrl,
+  name = '',
+  groupName = '',
+  groupType = 'AIGC',
+  groupId = '',
+  projectName = 'default',
+  existing = null,
+  timeoutMs = ASSET_POLL_TIMEOUT_MS,
+  pollIntervalMs = ASSET_POLL_INTERVAL_MS,
+  httpClient = axios,
+  signal = null,
+} = {}) {
+  const url = String(sourceUrl || '').trim();
+  if (!/^https?:\/\//i.test(url) || /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(url)) {
+    const error = new Error('漫路人物素材必须使用公网可访问的 http(s) 图片 URL');
+    error.code = 'DEYUNAI_PERSON_ASSET_URL_REQUIRED';
+    throw error;
+  }
+  if (existing && String(existing.source_url || '') === url && /^active$/i.test(String(existing.status || '')) && existing.asset_id) {
+    return { ...existing, asset_url: normalizeSeedanceAssetUri(existing.asset_id) };
+  }
+
+  const resolvedGroupType = /^livenessface$/i.test(String(groupType || '')) ? 'LivenessFace' : 'AIGC';
+  const safeGroupName = String(groupName || `vido_person_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
+  let resolvedGroupId = String(groupId || existing?.group_id || '').trim();
+  if (!resolvedGroupId) {
+    if (resolvedGroupType === 'LivenessFace') {
+      const error = new Error('真实人物必须绑定该人物本人已授权的漫路 LivenessFace GroupId；系统不会自动选择其他真人素材组');
+      error.code = 'DEYUNAI_LIVENESS_GROUP_BINDING_REQUIRED';
+      error.status = 422;
+      error.retryable = false;
+      throw error;
+    }
+    const groups = await listAssetGroups({ groupType: resolvedGroupType, name: safeGroupName, projectName, httpClient, signal });
+    const exact = groups.find(item => String(item.Name || item.name || '') === safeGroupName);
+    resolvedGroupId = String(exact?.Id || exact?.id || '').trim();
+    if (!resolvedGroupId) {
+      resolvedGroupId = await createAssetGroup({
+        name: safeGroupName,
+        description: 'VIDO 独立虚拟人物素材组；仅用于同一人物的 Seedance 2.0 一致性锁定',
+        groupType: 'AIGC',
+        projectName,
+        httpClient,
+        signal,
+      });
+    }
+  }
+  if (!resolvedGroupId) {
+    const error = new Error(`漫路账号没有可用的${resolvedGroupType === 'LivenessFace' ? '真人' : '虚拟人像'}素材组，请先在供应商控制台完成授权并创建素材组`);
+    error.code = 'DEYUNAI_PERSON_ASSET_GROUP_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+
+  const safeName = String(name || `vido_actor_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
+  const createPayload = await requestAssetApi('CreateAsset', {
+    GroupId: resolvedGroupId,
+    URL: url,
+    Name: safeName || `vido_actor_${Date.now()}`,
+    AssetType: 'Image',
+    ProjectName: projectName,
+  }, { httpClient, signal });
+  const createdId = assetId(assetResult(createPayload));
+  if (!createdId) throw new Error('漫路人物素材上传成功但未返回 Asset ID');
+
+  const startedAt = Date.now();
+  let lastStatus = 'Processing';
+  while (Date.now() - startedAt < timeoutMs) {
+    const items = await listAssets({ groupId: resolvedGroupId, groupType: resolvedGroupType, projectName, httpClient, signal });
+    const current = items.find(item => assetId(item).toLowerCase() === createdId.toLowerCase());
+    if (current) {
+      lastStatus = assetStatus(current) || lastStatus;
+      if (/^active$/i.test(lastStatus)) {
+        return {
+          asset_id: createdId,
+          asset_url: normalizeSeedanceAssetUri(createdId),
+          group_id: resolvedGroupId,
+          group_type: resolvedGroupType,
+          status: 'Active',
+          source_url: url,
+          project_name: projectName,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      if (/^failed$/i.test(lastStatus)) {
+        const detail = current.Error || current.error || current.Message || current.message || '';
+        throw new Error(`漫路人物素材处理失败: ${String(detail || JSON.stringify(current)).slice(0, 500)}`);
+      }
+    }
+    await abortableWait(Math.max(0, Number(pollIntervalMs) || 0), signal);
+  }
+  throw new Error(`漫路人物素材处理超时，asset=${createdId}, lastStatus=${lastStatus}`);
 }
 
 function extractSeedanceContentTaskVideoUrl(payload) {
@@ -165,9 +352,9 @@ function extractSeedanceContentTaskVideoUrl(payload) {
   return visit(data);
 }
 
-async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, timeoutMs, signal }) {
+async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal }) {
   const headers = buildHeaders(model, { forceDomestic: true });
-  const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl });
+  const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
   const submitRes = await axios.post(CONTENT_GENERATION_TASKS_URL, body, { headers, timeout: 30000, signal });
   const taskId = submitRes.data?.data?.id || submitRes.data?.id || submitRes.data?.data?.task_id || submitRes.data?.task_id;
   if (!taskId) throw new Error('漫路 Seedance 2.0 提交成功但未返回任务 ID: ' + JSON.stringify(submitRes.data).slice(0, 300));
@@ -595,13 +782,13 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
  * @param {string} [opts.agentId]
  * @returns {Promise<{ url:string, taskId:string, durationSec:number }>}
  */
-async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, timeoutMs = 600000, userId = null, agentId = null, signal = null }) {
+async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, referenceAssetUrls = [], timeoutMs = 600000, userId = null, agentId = null, signal = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   let _videoSeconds = duration || 5;
   try {
     if (isSeedanceContentGenerationModel(model)) {
-      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, timeoutMs, signal });
+      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal });
       _taskId = result.taskId;
       _videoSeconds = Number(result.durationSec) || _videoSeconds;
       _ok = true;
@@ -665,8 +852,13 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
 module.exports = {
   isOverseasModel,
   isSeedanceContentGenerationModel,
+  normalizeSeedanceAssetUri,
   buildSeedanceContentTaskBody,
   extractSeedanceContentTaskVideoUrl,
+  listAssetGroups,
+  createAssetGroup,
+  listAssets,
+  ensurePersonImageAsset,
   getDeyunaiKey,
   chat,
   generateImage,

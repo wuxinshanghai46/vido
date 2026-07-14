@@ -1093,6 +1093,52 @@ async function ensureContractsForMedia(taskId, ctx, shots) {
   return contracts;
 }
 
+function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [] } = {}) {
+  assertVerifiedSceneAssets(ctx.scene_assets || []);
+  const personContract = personIdentity.assertVerifiedPerson(ctx);
+  productIdentity.assertVerifiedProduct(ctx);
+  const failures = [];
+  const personRequired = personIdentity.personRequired(ctx);
+  const productRequired = productIdentity.productRequired(ctx);
+  for (let index = 0; index < shots.length; index += 1) {
+    const frame = keyframes[index] || {};
+    const qa = frame.qa || {};
+    if (!isCompleteKeyframe(frame)) {
+      failures.push(`第 ${index + 1} 镜缺少可用关键帧`);
+      continue;
+    }
+    if (qa.pass !== true || qa.status === 'rejected') {
+      failures.push(`第 ${index + 1} 镜尚未通过关键帧总 QA`);
+      continue;
+    }
+    const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shots[index] || {}, contracts[index] || {});
+    if (shotNeedsPerson && (qa.person?.pass !== true || qa.person?.status !== 'verified')) {
+      failures.push(`第 ${index + 1} 镜缺少已通过的人物一致性 QA`);
+    }
+    if (productRequired && (qa.product?.pass !== true || qa.product?.status !== 'verified')) {
+      failures.push(`第 ${index + 1} 镜缺少已通过的产品一致性 QA`);
+    }
+    const frameRevision = Number(frame.contract?.cast_lock?.person_contract?.person_revision || 0);
+    const currentRevision = Number(personContract?.person_revision || 0);
+    if (personRequired && currentRevision > 0 && frameRevision !== currentRevision) {
+      failures.push(`第 ${index + 1} 镜人物版本已过期（关键帧 v${frameRevision || 0}，当前 v${currentRevision}）`);
+    }
+    const contractRevision = Number(contracts[index]?.cast_lock?.person_contract?.person_revision || 0);
+    if (personRequired && currentRevision > 0 && contractRevision !== currentRevision) {
+      failures.push(`第 ${index + 1} 镜人物合同版本未同步`);
+    }
+  }
+  if (failures.length) {
+    const error = new Error(`视频生成前校验未通过：${failures.join('；')}。系统不会自动补图或继续合成，请先在分镜页明确处理。`);
+    error.code = 'VIDEO_INPUT_QA_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    error.details = failures;
+    throw error;
+  }
+  return true;
+}
+
 function resolveTtsVoiceId(options = {}, ctx = {}, existingTtsAudio = {}) {
   return cleanText(
     options.voice_id
@@ -1141,16 +1187,8 @@ async function generateVideoStage(taskId, options = {}) {
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
-  let keyframes = storage.getOutput(taskId, 'keyframes');
-  if (!Array.isArray(keyframes) || keyframes.filter(k => k?.image_url || k?.imageUrl).length < shots.length) {
-    try {
-      const generated = await generateKeyframesStage(taskId, options);
-      keyframes = generated.keyframes || [];
-    } catch (err) {
-      if (options.require_keyframes !== false && options.requireKeyframes !== false) throw err;
-      keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-    }
-  }
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  assertVideoInputsReady({ ctx, shots, keyframes, contracts });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
   const voiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const autoTtsEnabled = options.auto_tts !== false && options.autoTts !== false;
@@ -1579,6 +1617,7 @@ module.exports = {
   resolveTtsVoiceId,
   generateTtsStage,
   generateVideoStage,
+  assertVideoInputsReady,
   verifyPersonContract,
   verifyProductContract,
   selectKeyframeCandidate,

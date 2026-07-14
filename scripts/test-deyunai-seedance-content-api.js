@@ -4,6 +4,7 @@ const {
   isSeedanceContentGenerationModel,
   buildSeedanceContentTaskBody,
   extractSeedanceContentTaskVideoUrl,
+  ensurePersonImageAsset,
 } = require('../src/services/deyunaiService');
 
 assert.strictEqual(isSeedanceContentGenerationModel('doubao-seedance-2-0-260128'), true);
@@ -32,11 +33,17 @@ const i2v = buildSeedanceContentTaskBody({
   duration: 12,
   size: '1080x1920',
   imageUrl: 'https://example.com/frame.png',
+  referenceAssetUrls: ['asset://asset-person-001'],
 });
 assert.strictEqual(i2v.ratio, '9:16');
 assert.strictEqual(i2v.resolution, '1080p');
 assert.strictEqual(i2v.duration, 10);
 assert.deepStrictEqual(i2v.content[1], {
+  type: 'image_url',
+  image_url: { url: 'asset://asset-person-001' },
+  role: 'reference_image',
+});
+assert.deepStrictEqual(i2v.content[2], {
   type: 'image_url',
   image_url: { url: 'https://example.com/frame.png' },
   role: 'first_frame',
@@ -51,4 +58,57 @@ assert.strictEqual(
   'https://cdn.example.com/b.mp4'
 );
 
-console.log('DEYUNAI_SEEDANCE_CONTENT_API_TEST_OK');
+let listCalls = 0;
+const fakeHttpClient = {
+  async post(url, body) {
+    if (url.endsWith('/ListAssetGroups')) {
+      assert.strictEqual(body.Filter.GroupType, 'AIGC');
+      assert.strictEqual(body.Filter.Name, 'vido_person_test');
+      return { data: { Result: { Items: [] } } };
+    }
+    if (url.endsWith('/CreateAssetGroup')) {
+      assert.strictEqual(body.Name, 'vido_person_test');
+      assert.strictEqual(body.GroupType, 'AIGC');
+      return { data: { Result: { Id: 'group-aigc-001' } } };
+    }
+    if (url.endsWith('/CreateAsset')) {
+      assert.strictEqual(body.GroupId, 'group-aigc-001');
+      assert.strictEqual(body.AssetType, 'Image');
+      return { data: { Result: { Id: 'asset-person-001' } } };
+    }
+    if (url.endsWith('/ListAssets')) {
+      listCalls += 1;
+      return { data: { Result: { Items: [{ Id: 'asset-person-001', Status: listCalls > 1 ? 'Active' : 'Processing' }] } } };
+    }
+    throw new Error(`unexpected fake request: ${url}`);
+  },
+};
+
+(async () => {
+  const asset = await ensurePersonImageAsset({
+    sourceUrl: 'https://example.com/actor-front.png',
+    groupType: 'AIGC',
+    groupName: 'vido_person_test',
+    httpClient: fakeHttpClient,
+    pollIntervalMs: 1,
+    timeoutMs: 2000,
+  });
+  assert.strictEqual(asset.asset_id, 'asset-person-001');
+  assert.strictEqual(asset.asset_url, 'asset://asset-person-001');
+  assert.strictEqual(asset.status, 'Active');
+  assert.strictEqual(listCalls, 2);
+  await assert.rejects(
+    () => ensurePersonImageAsset({
+      sourceUrl: 'https://example.com/real-person.png',
+      groupType: 'LivenessFace',
+      httpClient: fakeHttpClient,
+      pollIntervalMs: 1,
+      timeoutMs: 100,
+    }),
+    error => error?.code === 'DEYUNAI_LIVENESS_GROUP_BINDING_REQUIRED',
+  );
+  console.log('DEYUNAI_SEEDANCE_CONTENT_API_TEST_OK');
+})().catch(error => {
+  console.error(error.stack || error.message);
+  process.exit(1);
+});

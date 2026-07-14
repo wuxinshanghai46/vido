@@ -56,7 +56,7 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
 
 function aggregatePass(parsed = {}) {
   const dimensions = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass', 'text_watermark_pass'];
-  return parsed.pass === true && dimensions.every(key => parsed[key] !== false);
+  return parsed.pass === true && dimensions.every(key => parsed[key] === true);
 }
 
 function reviewDecision(parsed = {}, problems = [], clip = {}) {
@@ -79,7 +79,7 @@ function reviewDecision(parsed = {}, problems = [], clip = {}) {
     blockingProblems.push(value);
   }
   const coreDimensionsPass = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass']
-    .every(key => parsed[key] !== false);
+    .every(key => parsed[key] === true);
   const normalPass = aggregatePass(parsed);
   const provenanceOnlyPass = acceptedProvenanceWatermark
     && parsed.text_watermark_pass === false
@@ -92,6 +92,19 @@ function reviewDecision(parsed = {}, problems = [], clip = {}) {
   };
 }
 
+function expectedPeopleForShot(ctx = {}, shot = {}) {
+  const explicit = Number(shot.expected_people || shot.person_count || ctx.expected_people || ctx.person_asset?.expected_people || 0);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit);
+  if (Object.prototype.hasOwnProperty.call(shot, 'characters') && Array.isArray(shot.characters)) {
+    return shot.characters.filter(Boolean).length;
+  }
+  const mode = String(ctx.cast_mode || ctx.person_asset?.cast_mode || '').toLowerCase();
+  if (mode === 'single') return 1;
+  if (mode === 'dual') return 2;
+  if (['no_human', 'animal'].includes(mode)) return 0;
+  return null;
+}
+
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -102,6 +115,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {
   const personRef = Object.values((ctx.person_contract || ctx.person_asset?.person_contract || {}).reference_views || {}).find(Boolean) || '';
   const productRef = (ctx.product_contract?.reference_images || [])[0] || '';
   const references = [sceneRef.url || sceneRef.image_url || '', personRef, productRef].filter(Boolean);
+  const expectedPeople = expectedPeopleForShot(ctx, shot);
   const result = await gateway.generateVision({
     taskId,
     stage: 'new_story_ad.video_frame_qa',
@@ -111,21 +125,30 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {
       'The first optional images are current-task scene/person/product references. The remaining images are ordered samples from one generated clip.',
       'The task may cover any lawful industry, scene, person, product or visual medium. Never impose a fixed template. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration })}\nReturn {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension that is genuinely not applicable.`,
+    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople })}\nHard rules: if a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension only when it is genuinely not applicable.`,
     maxTokens: 3000,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const problems = Array.isArray(parsed.problems) ? parsed.problems.map(value => cleanText(value, 300)).filter(Boolean) : [];
-  const decision = reviewDecision(parsed, problems, clip);
+  const normalized = {
+    ...parsed,
+    person_pass: personIdentity.shotPersonRequired(ctx, shot, contract) ? parsed.person_pass === true : true,
+    product_pass: productIdentity.productRequired(ctx) ? parsed.product_pass === true : true,
+    scene_pass: parsed.scene_pass === true,
+    action_pass: parsed.action_pass === true,
+    people_count_pass: parsed.people_count_pass === true,
+    text_watermark_pass: parsed.text_watermark_pass === true,
+  };
+  const decision = reviewDecision(normalized, problems, clip);
   return {
     pass: decision.pass,
     status: decision.pass ? 'verified' : 'rejected',
-    person_pass: parsed.person_pass !== false || !personIdentity.personRequired(ctx),
-    product_pass: parsed.product_pass !== false || !productIdentity.productRequired(ctx),
-    scene_pass: parsed.scene_pass !== false,
-    action_pass: parsed.action_pass !== false,
-    people_count_pass: parsed.people_count_pass !== false,
-    text_watermark_pass: parsed.text_watermark_pass !== false || decision.accepted_provenance_watermark,
+    person_pass: normalized.person_pass,
+    product_pass: normalized.product_pass,
+    scene_pass: normalized.scene_pass,
+    action_pass: normalized.action_pass,
+    people_count_pass: normalized.people_count_pass,
+    text_watermark_pass: normalized.text_watermark_pass || decision.accepted_provenance_watermark,
     problems: decision.problems,
     warnings: decision.warnings,
     accepted_provenance_watermark: decision.accepted_provenance_watermark,
@@ -157,4 +180,4 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   return { pass, status: pass ? 'verified' : 'rejected', ...normalized, problems, checked_at: new Date().toISOString(), used_model: result.used_model };
 }
 
-module.exports = { FRAME_POINTS, extractReviewFrames, reviewDecision, reviewVideoClip, reviewCrossShot };
+module.exports = { FRAME_POINTS, extractReviewFrames, reviewDecision, expectedPeopleForShot, reviewVideoClip, reviewCrossShot };

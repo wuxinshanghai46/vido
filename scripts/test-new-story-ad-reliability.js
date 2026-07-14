@@ -14,6 +14,8 @@ const service = require('../src/services/newStoryAd/storyAdService');
 const { buildContext, assertContextConsistent } = require('../src/services/newStoryAd/contextBuilder');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
+const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
+const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const newStoryAdModelConfig = require('./configure-new-story-ad-models');
 
 function waitUntil(predicate, timeoutMs = 4000) {
@@ -108,6 +110,68 @@ async function main() {
   }, [repeatedSpeechShot], 'voice-a'), false);
   assert.equal(service.resolveTtsVoiceId({}, {}, { voice_id: 'legacy-voice' }), 'legacy-voice');
   assert.equal(service.resolveTtsVoiceId({ voice_id: 'new-voice' }, {}, { voice_id: 'legacy-voice' }), 'new-voice');
+  assert.strictEqual(personIdentity.personRequired({ cast_mode: 'single', characters: [{ name: '角色甲' }] }), true);
+  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [] }), false);
+  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [{ name: '角色甲' }] }), true);
+  assert.throws(
+    () => personIdentity.assertVerifiedPerson({ cast_mode: 'single', characters: [{ name: '角色甲' }] }),
+    error => error?.code === 'PERSON_ASSET_REQUIRED',
+  );
+  assert.strictEqual(videoAdapter.deyunaiAssetGroupType({ person_asset: { is_ai_generated: true } }), 'AIGC');
+  assert.strictEqual(videoAdapter.deyunaiAssetGroupType({ person_asset: { real_person_reference: true } }), 'LivenessFace');
+  assert.throws(
+    () => videoAdapter.resolvePinnedVideoModel({}, [
+      { video_url: '/a.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128' },
+      { video_url: '/b.mp4', provider_used: 'zhipu/cogvideox-flash' },
+    ]),
+    error => error?.code === 'MIXED_VIDEO_PROVIDER_REQUIRES_RESET',
+  );
+
+  const verifiedPersonContract = {
+    person_revision: 3,
+    status: 'verified',
+    reference_views: { front: 'https://example.test/front.png' },
+    cross_view_qa: {
+      pass: true,
+      identity_score: 0.95,
+      age_score: 0.95,
+      wardrobe_score: 0.95,
+      body_score: 0.95,
+      mismatch_reasons: [],
+    },
+  };
+  const verifiedPersonCtx = {
+    cast_mode: 'single',
+    scene_assets: [],
+    person_asset: { image_url: 'https://example.test/front.png', person_contract: verifiedPersonContract },
+    person_contract: verifiedPersonContract,
+  };
+  const verifiedFrame = {
+    image_url: 'https://example.test/keyframe.png',
+    qa: {
+      pass: true,
+      status: 'verified',
+      person: { pass: true, status: 'verified' },
+      product: { pass: true, status: 'not_applicable' },
+    },
+    contract: { cast_lock: { person_contract: { person_revision: 3 } } },
+  };
+  const verifiedMediaContract = { cast_lock: { person_contract: { person_revision: 3 } } };
+  assert.strictEqual(service.assertVideoInputsReady({
+    ctx: verifiedPersonCtx,
+    shots: [{ characters: [{ name: '角色甲' }] }],
+    keyframes: [verifiedFrame],
+    contracts: [verifiedMediaContract],
+  }), true);
+  assert.throws(
+    () => service.assertVideoInputsReady({
+      ctx: verifiedPersonCtx,
+      shots: [{ characters: [{ name: '角色甲' }] }],
+      keyframes: [{ ...verifiedFrame, qa: { pass: true, status: 'verified' } }],
+      contracts: [verifiedMediaContract],
+    }),
+    error => error?.code === 'VIDEO_INPUT_QA_REQUIRED' && /人物一致性/.test(error.message),
+  );
   assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
     model.provider_id === 'zhipu'
       && model.model_id === 'cogvideox-flash'

@@ -12,6 +12,8 @@ const modelGateway = require('./modelGateway');
 const storage = require('./storageService');
 const { continuityPrompt } = require('./continuityService');
 const cancellation = require('./cancellationContext');
+const personIdentity = require('./personIdentityContractService');
+const deyunaiService = require('../deyunaiService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -189,6 +191,98 @@ function videoCandidates(options = {}) {
     .slice(0, VIDEO_MAX_CANDIDATES);
 }
 
+function modelRoute(model = {}) {
+  return `${String(model.provider_id || '').trim().toLowerCase()}/${String(model.model_id || '').trim().toLowerCase()}`;
+}
+
+function clipRoute(clip = {}) {
+  return String(clip.provider_used || clip.providerUsed || '').trim().toLowerCase();
+}
+
+function resolvePinnedVideoModel(options = {}, existingClips = []) {
+  const candidates = videoCandidates(options);
+  const existingRoutes = [...new Set((Array.isArray(existingClips) ? existingClips : [])
+    .filter(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)
+    .map(clipRoute)
+    .filter(route => route && !route.startsWith('local-ffmpeg/')))];
+  if (existingRoutes.length > 1) {
+    const error = new Error(`当前任务已混用多个视频模型（${existingRoutes.join('、')}），为避免人物和画风继续漂移，请先清空旧视频后统一重做`);
+    error.code = 'MIXED_VIDEO_PROVIDER_REQUIRES_RESET';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  if (!candidates.length) {
+    const error = new Error('new_story_ad.video 当前没有未熔断的真实视频模型，已立即停止本阶段');
+    error.code = 'VIDEO_CIRCUIT_OPEN';
+    error.retryable = true;
+    throw error;
+  }
+  if (existingRoutes.length === 1) {
+    const pinned = candidates.find(candidate => modelRoute(candidate) === existingRoutes[0]);
+    if (!pinned) {
+      const error = new Error(`任务原视频模型 ${existingRoutes[0]} 当前不可用；为避免静默换模导致画风和人物变化，已停止生成`);
+      error.code = 'PINNED_VIDEO_MODEL_UNAVAILABLE';
+      error.retryable = true;
+      throw error;
+    }
+    return pinned;
+  }
+  return candidates[0];
+}
+
+function deyunaiAssetGroupType(ctx = {}) {
+  return ctx.person_asset?.real_person_reference === true || ctx.person_context?.real_person_locked === true
+    ? 'LivenessFace'
+    : 'AIGC';
+}
+
+function personReferenceUrl(ctx = {}) {
+  const contract = ctx.person_contract || ctx.person_asset?.person_contract || {};
+  const refs = contract.reference_views || {};
+  return refs.front || Object.values(refs).find(Boolean) || ctx.person_asset?.image_url || ctx.person_asset?.url || '';
+}
+
+async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} } = {}) {
+  if (!personIdentity.personRequired(ctx)) return null;
+  personIdentity.assertVerifiedPerson(ctx);
+  const sourceUrl = absoluteAssetUrl(personReferenceUrl(ctx), options);
+  if (!sourceUrl) {
+    const error = new Error('人物合同没有可上传到漫路素材库的正面参考图');
+    error.code = 'DEYUNAI_PERSON_REFERENCE_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const saved = storage.getOutput(taskId, 'deyunai_person_asset');
+  const personKey = String(ctx.person_contract?.person_id || ctx.person_asset?.actor_id || ctx.person_asset?.id || taskId || 'person')
+    .replace(/[^a-z0-9_.-]+/ig, '_')
+    .slice(0, 42);
+  const personRevision = ctx.person_contract?.person_revision || 1;
+  const selectedAssetId = String(ctx.person_asset?.deyunai_asset_id || '').trim();
+  const selectedStatus = String(ctx.person_asset?.deyunai_asset_status || '').trim();
+  const existing = selectedAssetId && /^active$/i.test(selectedStatus)
+    ? {
+      asset_id: selectedAssetId,
+      status: 'Active',
+      source_url: sourceUrl,
+      group_id: ctx.person_asset?.deyunai_asset_group_id || '',
+      group_type: ctx.person_asset?.deyunai_asset_group_type || deyunaiAssetGroupType(ctx),
+    }
+    : saved;
+  const asset = await deyunaiService.ensurePersonImageAsset({
+    sourceUrl,
+    name: `vido_${personKey}_v${personRevision}`,
+    groupName: `vido_person_${personKey}_v${personRevision}`,
+    groupType: deyunaiAssetGroupType(ctx),
+    groupId: ctx.person_asset?.deyunai_asset_group_id || '',
+    projectName: options.deyunai_project_name || options.deyunaiProjectName || 'default',
+    existing,
+    signal: cancellation.signal(),
+  });
+  storage.saveOutput(taskId, 'deyunai_person_asset', asset);
+  return asset;
+}
+
 function publicBaseUrl(options = {}) {
   return String(
     options.public_base_url
@@ -227,13 +321,14 @@ async function renderLocalClip({ outputPath, imagePath = '', audioPath = '', dur
 }
 
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
-  const candidates = videoCandidates(options);
-  if (!candidates.length) {
+  const pinnedModel = options._pinnedVideoModel;
+  if (!pinnedModel) {
     const error = new Error('new_story_ad.video 当前没有未熔断的真实视频模型，已立即停止本阶段');
     error.code = 'VIDEO_CIRCUIT_OPEN';
     error.retryable = true;
     throw error;
   }
+  const candidates = [pinnedModel];
   const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = clipPrompt(shot, ctx, contract, previousShot);
@@ -260,6 +355,9 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         outputDir: VIDEO_DIR,
         filename,
         image_url: imageUrl,
+        reference_image_urls: options._deyunaiPersonAsset?.asset_url && personIdentity.shotPersonRequired(ctx, shot, contract)
+          ? [options._deyunaiPersonAsset.asset_url]
+          : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
         videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
@@ -356,6 +454,21 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   const list = Array.isArray(shots) ? shots : [];
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const clips = Array.isArray(existingClips) ? existingClips.slice() : [];
+  const pinnedModel = resolvePinnedVideoModel(options, clips);
+  const isDeyunaiSeedance = String(pinnedModel.provider_id || '').toLowerCase() === 'deyunai'
+    && /^doubao-seedance-2-0/i.test(String(pinnedModel.model_id || ''));
+  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance) {
+    const error = new Error(`人物广告必须使用支持人物素材库锁定的漫路 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
+    error.code = 'PERSON_ASSET_VIDEO_MODEL_REQUIRED';
+    error.status = 422;
+    error.retryable = true;
+    throw error;
+  }
+  const hasPersonShot = list.some((shot, index) => personIdentity.shotPersonRequired(ctx, shot, contracts[index] || {}));
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot
+    ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
+    : null;
+  const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset };
   const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
   const indexes = onlyIndex === null ? list.map((_, index) => index) : [onlyIndex];
   const targetIndexes = options.missing_only === true || options.missingOnly === true
@@ -372,13 +485,19 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
       contract: contracts[i] || {},
       ctx,
       index: i,
-      options,
+      options: runOptions,
     });
     cancellation.throwIfCancelled(taskId);
     clips[i] = clip;
     if (typeof onClip === 'function') await onClip(clip, clips.slice());
   }
-  return { clips, provider_used: clips.find(item => item?.provider_used)?.provider_used || '', target_indexes: targetIndexes };
+  return {
+    clips,
+    provider_used: modelRoute(pinnedModel),
+    pinned_model: pinnedModel,
+    deyunai_person_asset: deyunaiPersonAsset,
+    target_indexes: targetIndexes,
+  };
 }
 
 module.exports = {
@@ -386,6 +505,10 @@ module.exports = {
   VIDEO_STAGE,
   absoluteAssetUrl,
   videoCandidates,
+  resolvePinnedVideoModel,
+  deyunaiAssetGroupType,
+  personReferenceUrl,
+  prepareDeyunaiPersonAsset,
   videoPathFromName,
   publicVideoUrl,
   generateShotVideo,

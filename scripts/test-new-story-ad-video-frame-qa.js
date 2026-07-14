@@ -48,6 +48,18 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
     people_count_pass: true,
     text_watermark_pass: false,
   }, ['Unexpected commercial watermark visible.'], { provider_used: 'other/provider' }).pass, false);
+  assert.strictEqual(videoQa.reviewDecision({
+    pass: true,
+    person_pass: true,
+    product_pass: true,
+    scene_pass: true,
+    action_pass: true,
+    text_watermark_pass: true,
+  }, [], { provider_used: 'deyunai/doubao-seedance-2-0-260128' }).pass, false);
+  assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'single' }, {}), 1);
+  assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'single' }, { characters: [] }), 0);
+  assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'no_human' }, {}), 0);
+  assert.strictEqual(videoQa.expectedPeopleForShot({}, { characters: [{ name: '甲' }, { name: '乙' }] }), 2);
 
   const clipPath = path.join(videoAdapter.VIDEO_DIR, 'qa-source.mp4');
   await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 2, aspectRatio: '9:16' });

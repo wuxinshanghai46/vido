@@ -168,6 +168,10 @@ function normalizePersonAsset(input = null) {
   return {
     id: cleanText(input.id || actorAssetId || 'new_story_person_asset', 120),
     actor_asset_id: actorAssetId,
+    deyunai_asset_id: cleanText(input.deyunai_asset_id || input.deyunaiAssetId || '', 160),
+    deyunai_asset_status: cleanText(input.deyunai_asset_status || input.deyunaiAssetStatus || '', 40),
+    deyunai_asset_group_id: cleanText(input.deyunai_asset_group_id || input.deyunaiAssetGroupId || '', 160),
+    deyunai_asset_group_type: cleanText(input.deyunai_asset_group_type || input.deyunaiAssetGroupType || '', 40),
     actor_id: cleanText(input.actor_id || input.actorId || '', 120),
     name: cleanText(input.name || '', 120),
     type: cleanText(input.type || 'new_story_ad_actor', 80),

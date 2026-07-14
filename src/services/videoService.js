@@ -2284,7 +2284,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2319,6 +2319,7 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
     duration: Math.max(3, Math.min(15, parseInt(duration) || 5)),
     size,
     imageUrl: image_url && !image_url.startsWith('data:') ? image_url : undefined,
+    referenceAssetUrls: reference_image_urls,
     timeoutMs: 600000,
     userId,
     agentId: agentId || 'video_gen',

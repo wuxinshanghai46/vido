@@ -14,7 +14,7 @@ function notApplicable(reason = '') {
 }
 
 async function reviewPersonKeyframe({ taskId = '', ctx = {}, shot = {}, generatedUrl = '', gateway = modelGateway, repair = jsonRepair } = {}) {
-  if (!personIdentity.personRequired(ctx)) return notApplicable('当前镜头不需要人物身份检查');
+  if (!personIdentity.shotPersonRequired(ctx, shot)) return notApplicable('当前镜头不需要人物身份检查');
   const contract = personIdentity.assertVerifiedPerson(ctx);
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return { pass: true, status: 'verified', identity_score: 0.95, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.92, hand_owner_score: 0.9, conflicts: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-person-keyframe-qa' };

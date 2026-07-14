@@ -126,12 +126,40 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
 
 function personRequired(ctx = {}) {
   const mode = String(ctx.cast_mode || ctx.person_asset?.cast_mode || '').toLowerCase();
-  return !['no_human', 'animal'].includes(mode) && !!ctx.person_asset;
+  if (['no_human', 'animal'].includes(mode)) return false;
+  return !!(
+    ctx.person_asset
+    || ctx.person_contract
+    || ['single', 'dual', 'multi', 'group'].includes(mode)
+    || (Array.isArray(ctx.characters) && ctx.characters.length)
+    || (Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length)
+  );
+}
+
+function shotPersonRequired(ctx = {}, shot = {}, contract = {}) {
+  if (!personRequired(ctx)) return false;
+  if (shot.no_person === true || shot.noHuman === true) return false;
+  if (Object.prototype.hasOwnProperty.call(shot, 'characters') && Array.isArray(shot.characters)) {
+    return shot.characters.filter(Boolean).length > 0;
+  }
+  const lockedCharacters = contract?.cast_lock?.shot_characters;
+  if (Array.isArray(lockedCharacters)) return lockedCharacters.filter(Boolean).length > 0;
+  if (Array.isArray(shot.dialogue_lines) && shot.dialogue_lines.length > 0) return true;
+  const text = [shot.visual, shot.visual_description, shot.action, shot.content_prompt, shot.title].filter(Boolean).join(' ');
+  if (/(?:人物|真人|演员|主角|主持人|模特|顾客|客户|用户|老师|顾问|工程师|开发者|手部|人脸|全身|半身|person|actor|presenter|customer|developer|engineer|face|hand)/i.test(text)) return true;
+  return true;
 }
 
 function assertVerifiedPerson(ctx = {}) {
   if (!personRequired(ctx)) return null;
   const contract = ctx.person_contract || ctx.person_asset?.person_contract;
+  if (!ctx.person_asset && !contract) {
+    const error = new Error('当前任务要求人物出镜，但还没有已确认的人物资产，请先选择或创建人物并完成一致性验证');
+    error.code = 'PERSON_ASSET_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
   if (contract?.status === 'verified' && normalizeQa(contract.cross_view_qa).pass) return contract;
   const error = new Error('人物参考尚未通过身份、年龄、服装和体态一致性验证，请先重新验证人物资产');
   error.code = 'PERSON_VERIFICATION_REQUIRED';
@@ -140,4 +168,4 @@ function assertVerifiedPerson(ctx = {}) {
   throw error;
 }
 
-module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, buildPersonContract, verifyPersonAsset, personRequired, assertVerifiedPerson };
+module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, buildPersonContract, verifyPersonAsset, personRequired, shotPersonRequired, assertVerifiedPerson };
