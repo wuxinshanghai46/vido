@@ -8,6 +8,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const { generateDrama, CAMERA_MOTIONS, SHOT_SCALES, MOTION_PRESETS, DRAMA_DIR } = require('../services/dramaService');
+const mediaDelivery = require('../services/mediaDeliveryService');
 
 const progressListeners = new Map();
 function dramaScriptModelOpts(extra = {}) {
@@ -746,10 +747,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/make-video', async (req, r
 // GET /api/drama/tasks/:id/video/:idx — 场景视频流播放
 router.get('/tasks/:id/video/:idx', (req, res) => {
   const filePath = path.join(DRAMA_DIR, req.params.id, `video_${req.params.idx}.mp4`);
-  if (!fs.existsSync(filePath)) return res.status(404).end();
-  const stat = fs.statSync(filePath);
-  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size });
-  fs.createReadStream(filePath).pipe(res);
+  return mediaDelivery.streamVideo(req, res, filePath);
 });
 
 // GET /api/drama/tasks/:id/voice/:idx — 场景配音 mp3 流
@@ -986,24 +984,7 @@ router.post('/projects/:pid/episodes/:eid/compose-from-images', async (req, res)
 // GET /api/drama/tasks/:id/final — 成片视频流
 router.get('/tasks/:id/final', (req, res) => {
   const filePath = path.join(DRAMA_DIR, req.params.id, 'final.mp4');
-  if (!fs.existsSync(filePath)) return res.status(404).end();
-  const stat = fs.statSync(filePath);
-  const range = req.headers.range;
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': end - start + 1,
-      'Content-Type': 'video/mp4',
-    });
-    fs.createReadStream(filePath, { start, end }).pipe(res);
-  } else {
-    res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size });
-    fs.createReadStream(filePath).pipe(res);
-  }
+  return mediaDelivery.streamVideo(req, res, filePath);
 });
 
 // GET /api/drama/tasks/:id/final/download — 下载成片

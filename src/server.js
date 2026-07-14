@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const mediaDelivery = require('./services/mediaDeliveryService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -61,6 +62,11 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Platform-wide media delivery: any existing image route that uses sendFile
+// automatically supports ?thumb=<width>&format=webp without bypassing its
+// original authentication or ownership checks.
+mediaDelivery.installSendFileOptimizer(app);
 
 // 静态文件（登录页、admin页不需要 auth）
 // 屏蔽未登录直接访问 .html 文件（防绕过路由层直接取源码）
@@ -162,10 +168,7 @@ app.get('/api/showcase/stream/:id', (req, res) => {
     // 兼容旧格式 (无前缀 = 项目视频)
     filePath = path.join(root, 'projects', raw + '_final.mp4');
   }
-  if (!fs.existsSync(filePath)) return res.status(404).end();
-  const stat = fs.statSync(filePath);
-  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size, 'Cache-Control': 'public, max-age=3600' });
-  fs.createReadStream(filePath).pipe(res);
+  return mediaDelivery.streamVideo(req, res, filePath);
 });
 
 // 音乐预听（公开，audio 标签无法带 Authorization header）
@@ -255,12 +258,8 @@ app.get('/api/comic/image/:taskId/:filename', (req, res) => {
 
 // 网剧场景视频（公开）
 app.get('/api/drama/tasks/:id/video/:idx', (req, res) => {
-  const fs = require('fs');
   const filePath = path.join(__dirname, '../outputs/dramas', req.params.id, `video_${req.params.idx}.mp4`);
-  if (!fs.existsSync(filePath)) return res.status(404).end();
-  const stat = fs.statSync(filePath);
-  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': stat.size });
-  fs.createReadStream(filePath).pipe(res);
+  return mediaDelivery.streamVideo(req, res, filePath);
 });
 
 // 网剧场景图片（公开）
@@ -311,6 +310,8 @@ app.get('/public/workflow-assets/:filename', (req, res) => {
   const ext = path.extname(filename).toLowerCase();
   const mimeMap = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.mp4': 'video/mp4',
                     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+  if (req.query.thumb && /^image\//.test(mimeMap[ext] || '')) return res.sendFile(filePath);
+  if (['.mp4', '.mov', '.webm', '.mkv'].includes(ext)) return mediaDelivery.streamVideo(req, res, filePath);
   res.writeHead(200, {
     'Content-Type': mimeMap[ext] || 'application/octet-stream',
     'Content-Length': stat.size,
@@ -422,15 +423,8 @@ app.get('/public/dh-assets/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
   const filePath = path.join(__dirname, '../outputs/dh-assets', filename);
   if (!fs.existsSync(filePath)) return res.status(404).end();
-  const stat = fs.statSync(filePath);
-  const ext = path.extname(filename).toLowerCase();
-  const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.bmp': 'image/bmp' };
-  res.writeHead(200, {
-    'Content-Type': mimeMap[ext] || 'application/octet-stream',
-    'Content-Length': stat.size,
-    'Cache-Control': 'public, max-age=31536000, immutable',
-  });
-  fs.createReadStream(filePath).pipe(res);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  return res.sendFile(filePath);
 });
 
 app.put('/api/user/theme', authenticate, (req, res) => {

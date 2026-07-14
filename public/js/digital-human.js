@@ -517,17 +517,20 @@
   }
 
   function withAuthQuery(url) {
-    if (!state.token || !url || /^(data|blob):/i.test(url)) return url;
+    const stabilize = value => window.VidoMediaDelivery?.stableCacheUrl
+      ? window.VidoMediaDelivery.stableCacheUrl(value)
+      : value;
+    if (!state.token || !url || /^(data|blob):/i.test(url)) return stabilize(url);
     if (/^https?:\/\//i.test(url)) {
       try {
         const u = new URL(url, location.origin);
         if (u.origin !== location.origin) return url;
         u.searchParams.set('token', state.token);
-        return u.pathname + u.search + u.hash;
+        return stabilize(u.pathname + u.search + u.hash);
       } catch { return url; }
     }
     const join = url.includes('?') ? '&' : '?';
-    return `${url}${join}token=${encodeURIComponent(state.token)}`;
+    return stabilize(`${url}${join}token=${encodeURIComponent(state.token)}`);
   }
 
   function jimengThumbUrl(url, width = 480) {
@@ -5102,6 +5105,7 @@
             <span class="dh-video-modal-title"></span>
             <button class="dh-video-modal-close" data-modal-close type="button" title="关闭">×</button>
           </div>
+          <div class="dh-video-modal-state dh-image-modal-state">图片加载中...</div>
           <img class="dh-image-modal-img" alt="镜头预览">
           <div class="dh-video-modal-actions">
             <a class="dh-btn dh-btn-ghost dh-btn-sm dh-image-modal-open" target="_blank" rel="noopener">打开原图</a>
@@ -5115,14 +5119,32 @@
         if (e.key === 'Escape' && modal.classList.contains('open')) modal.classList.remove('open');
       });
     }
-    const url = withAuthQuery(imageUrl);
+    const delivery = window.VidoMediaDelivery || null;
+    const authenticatedUrl = withAuthQuery(imageUrl);
+    const url = delivery?.stableOriginalUrl ? delivery.stableOriginalUrl(authenticatedUrl) : authenticatedUrl;
+    const displayUrl = delivery?.previewUrl ? delivery.previewUrl(url, 1280) : url;
     const img = modal.querySelector('.dh-image-modal-img');
+    const stateEl = modal.querySelector('.dh-image-modal-state');
     if (modal.classList.contains('open') && img?.dataset.sourceUrl === url) {
       modal.classList.remove('open');
       return;
     }
     modal.querySelector('.dh-video-modal-title').textContent = title || '镜头预览';
-    img.src = url;
+    if (stateEl) {
+      stateEl.textContent = '图片加载中...';
+      stateEl.classList.remove('error');
+      stateEl.hidden = false;
+    }
+    img.onload = () => { if (stateEl) stateEl.hidden = true; };
+    img.onerror = () => {
+      if (!stateEl) return;
+      stateEl.textContent = '图片加载失败，请刷新后重试或打开原图。';
+      stateEl.classList.add('error');
+      stateEl.hidden = false;
+    };
+    img.dataset.mediaOriginal = url;
+    img.dataset.mediaWidth = '1280';
+    img.src = displayUrl;
     img.dataset.sourceUrl = url;
     modal.querySelector('.dh-image-modal-open').href = url;
     modal.classList.add('open');

@@ -2444,7 +2444,7 @@
             const accepted = candidate.qa?.pass === true && candidate.status !== 'rejected';
             const selected = String(frame.selected_candidate_id || '') === String(candidate.id || '');
             return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : 'is-rejected'} ${selected ? 'is-selected' : ''}">
-              <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(withAuthQuery(candidateUrl))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
+              <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(assetThumbUrl(candidateUrl, 320))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
               ${accepted && !selected ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">\u9009\u7528</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`}
             </span>`;
           }).join('')}</div></div>`
