@@ -136,9 +136,9 @@
     const qa = frame.qa || {};
     const qaOutdated = !!previewUrl && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated');
     const qaText = frame.regeneration_error
-      ? regenerationStatusText(frame)
+      ? '当前显示上一版画面'
       : qaOutdated
-      ? (frame.contract_outdated ? '镜头信息已修改 · 需重新生成验证' : '旧版画面 · 需按新规则重新验证')
+      ? (frame.contract_outdated ? '镜头已修改 · 等待重新生成' : '旧版画面 · 等待重新验证')
       : qa.status === 'not_applicable'
       ? '当前镜头无需视觉一致性检查'
       : (qa.pass === true

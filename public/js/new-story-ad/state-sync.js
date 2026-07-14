@@ -65,14 +65,41 @@
     return true;
   }
 
+  function isPendingKeyframeSubmission(state = {}) {
+    return state.stageProgress?.active === true
+      && state.stageProgress?.stage === 'keyframes'
+      && state.stageProgress?.submissionPending === true;
+  }
+
+  function shouldPreserveTrackedGeneration(state = {}, task = {}) {
+    if (isPendingKeyframeSubmission(state)) return true;
+    const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
+    if (!trackedGenerationId) return false;
+    const incomingActiveId = String(task.active_generation_id || '');
+    const incomingProgressId = String(task.generation_progress?.generation_id || '');
+    if (incomingActiveId) return incomingActiveId !== trackedGenerationId;
+    if (incomingProgressId) return incomingProgressId !== trackedGenerationId;
+    return true;
+  }
+
   function syncGenerationProgress(state = {}, task = {}) {
+    // Between the click and the POST acknowledgement, save/poll responses still
+    // contain the previous batch's terminal counters. Keep the optimistic 0/N
+    // snapshot until the new generation id is known.
+    if (isPendingKeyframeSubmission(state)) return;
     const activeGenerationId = String(task.active_generation_id || '');
     const activeStage = String(task.active_stage || '');
     const incoming = task.generation_progress && typeof task.generation_progress === 'object'
       ? task.generation_progress
       : null;
     const incomingGenerationId = String(incoming?.generation_id || '');
-    if (incoming && (!activeGenerationId || !incomingGenerationId || incomingGenerationId === activeGenerationId)) {
+    const trackedGenerationId = String(state.stageProgress?.generationId || activeGenerationId || '');
+    const trackingKeyframes = state.stageProgress?.active === true
+      && progressStageMatches(state.stageProgress?.stage, activeStage || incoming?.stage);
+    if (incoming && trackingKeyframes && trackedGenerationId
+      && (!incomingGenerationId || incomingGenerationId !== trackedGenerationId)) return;
+    if (incoming && activeGenerationId && incomingGenerationId && incomingGenerationId !== activeGenerationId) return;
+    if (incoming) {
       state.generationProgress = incoming;
       return;
     }
@@ -106,8 +133,10 @@
       response,
     });
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
-    state.activeGenerationId = task.active_generation_id || '';
-    state.activeStage = task.active_stage || '';
+    if (!shouldPreserveTrackedGeneration(state, task)) {
+      state.activeGenerationId = task.active_generation_id || '';
+      state.activeStage = task.active_stage || '';
+    }
     syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     syncActiveGenerationClock(state, task);
@@ -183,8 +212,10 @@
       ...(outputs.context || {}),
     };
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
-    state.activeGenerationId = task.active_generation_id || '';
-    state.activeStage = task.active_stage || '';
+    if (!shouldPreserveTrackedGeneration(state, task)) {
+      state.activeGenerationId = task.active_generation_id || '';
+      state.activeStage = task.active_stage || '';
+    }
     syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     if (!state.activeGenerationId) state.cancelRequested = false;
@@ -240,5 +271,8 @@
     hydratePersonSpec,
     progressStageMatches,
     syncActiveGenerationClock,
+    syncGenerationProgress,
+    isPendingKeyframeSubmission,
+    shouldPreserveTrackedGeneration,
   };
 })();

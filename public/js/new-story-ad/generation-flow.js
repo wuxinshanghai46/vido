@@ -93,7 +93,70 @@
     return Array.isArray(shots) && shots.length > 0;
   }
 
-  async function recoverUncertainStageSubmission(taskId, expectedStage, ctx = {}, originalError) {
+  function adoptActiveGeneration(state = {}, job = {}, expectedStage = '', body = {}) {
+    if (!state || !job?.id) return;
+    state.activeGenerationId = job.id || '';
+    state.activeStage = job.stage || expectedStage;
+    state.generationStartedAt = job.started_at || job.queued_at || new Date().toISOString();
+    state.generationProgress = state.activeStage === 'keyframes'
+      ? {
+          stage: 'keyframes', status: 'queued', target_total: body?.only_index !== undefined ? 1 : Math.max(1, state.shots?.length || 1),
+          processed: 0, succeeded: 0, failed: 0,
+          current_index: body?.only_index !== undefined ? Number(body.only_index) + 1 : 1,
+          generation_id: job.id || '',
+          started_at: state.generationStartedAt,
+        }
+      : null;
+    if (state.stageProgress?.active) {
+      state.stageProgress.generationId = state.activeGenerationId;
+      state.stageProgress.submissionPending = false;
+      const startedAt = Date.parse(state.generationStartedAt);
+      if (Number.isFinite(startedAt)) state.stageProgress.startedAt = startedAt;
+    }
+    state.cancelRequested = false;
+  }
+
+  function submissionEvidence(ctx = {}) {
+    const state = ctx.state || {};
+    const stageProgress = state.stageProgress || {};
+    return {
+      previousGenerationId: String(stageProgress.previousGenerationId
+        || state.generationProgress?.generation_id
+        || state.activeGenerationId
+        || ''),
+      submittedAt: Number(stageProgress.startedAt) || Date.now(),
+    };
+  }
+
+  function taskConfirmsSubmission(task = {}, expectedStage = '', evidence = {}) {
+    if (!stageWasAccepted(task, expectedStage)) return false;
+    const progress = task.generation_progress || {};
+    const activeGenerationId = String(task.active_generation_id || '');
+    const progressGenerationId = String(progress.generation_id || '');
+    const generationId = activeGenerationId || progressGenerationId;
+    if (!generationId) return false;
+
+    const activeStage = String(task.active_stage || '');
+    const progressStage = String(progress.stage || '');
+    if (activeGenerationId && activeStage && activeStage !== expectedStage) return false;
+    if (!activeGenerationId && progressStage && progressStage !== expectedStage) return false;
+
+    const previousGenerationId = String(evidence.previousGenerationId || '');
+    if (previousGenerationId) return generationId !== previousGenerationId;
+
+    const submittedAt = Number(evidence.submittedAt) || Date.now();
+    const generationTimestamps = [
+      task.generation_queued_at,
+      task.generation_started_at,
+      progress.started_at,
+    ]
+      .map(value => Date.parse(value || ''))
+      .filter(Number.isFinite);
+    if (!generationTimestamps.length) return false;
+    return Math.max(...generationTimestamps) >= submittedAt - 30000;
+  }
+
+  async function recoverUncertainStageSubmission(taskId, expectedStage, ctx = {}, originalError, evidence = {}) {
     if (!isNetworkError(originalError)) throw originalError;
     let lastError = originalError;
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -102,7 +165,7 @@
         const bundle = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
         ctx.normalizeBundle?.(bundle);
         const task = bundle.task || {};
-        if (!stageWasAccepted(task, expectedStage)) continue;
+        if (!taskConfirmsSubmission(task, expectedStage, evidence)) continue;
         ctx.toast?.('网络刚刚发生波动，服务器已接收任务，正在自动恢复进度', 'info');
         if (String(task.status || '').toLowerCase() === 'failed') {
           const error = new Error(task.error || `${STAGE_LABELS[expectedStage] || expectedStage}执行失败`);
@@ -112,6 +175,15 @@
           throw error;
         }
         if (task.active_generation_id || ['queued', 'running'].includes(String(task.status || '').toLowerCase())) {
+          if (task.active_generation_id) {
+            adoptActiveGeneration(ctx.state, {
+              id: task.active_generation_id,
+              stage: task.active_stage || expectedStage,
+              started_at: task.generation_started_at,
+              queued_at: task.generation_queued_at,
+            }, expectedStage);
+            ctx.renderAll?.();
+          }
           return waitForStage(taskId, expectedStage, ctx);
         }
         return bundle;
@@ -161,6 +233,7 @@
 
   async function startStage(taskId, stage, body, ctx = {}) {
     const expectedStage = stage === 'scene' ? 'scene_config' : stage;
+    const evidence = submissionEvidence(ctx);
     let response;
     try {
       response = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/${stage === 'scene' ? 'scene-config' : stage}`, {
@@ -168,27 +241,10 @@
         body: body || {},
       });
     } catch (error) {
-      return recoverUncertainStageSubmission(taskId, expectedStage, ctx, error);
+      return recoverUncertainStageSubmission(taskId, expectedStage, ctx, error, evidence);
     }
     if (ctx.state && response.job) {
-      ctx.state.activeGenerationId = response.job.id || '';
-      ctx.state.activeStage = response.job.stage || expectedStage;
-      ctx.state.generationStartedAt = response.job.started_at || response.job.queued_at || new Date().toISOString();
-      ctx.state.generationProgress = ctx.state.activeStage === 'keyframes'
-        ? {
-            stage: 'keyframes', status: 'queued', target_total: body?.only_index !== undefined ? 1 : Math.max(1, ctx.state.shots?.length || 1),
-            processed: 0, succeeded: 0, failed: 0,
-            current_index: body?.only_index !== undefined ? Number(body.only_index) + 1 : 1,
-            generation_id: response.job.id || '',
-            started_at: ctx.state.generationStartedAt,
-          }
-        : null;
-      if (ctx.state.stageProgress?.active) {
-        ctx.state.stageProgress.generationId = ctx.state.activeGenerationId;
-        const startedAt = Date.parse(ctx.state.generationStartedAt);
-        if (Number.isFinite(startedAt)) ctx.state.stageProgress.startedAt = startedAt;
-      }
-      ctx.state.cancelRequested = false;
+      adoptActiveGeneration(ctx.state, response.job, expectedStage, body);
       ctx.renderAll?.();
     }
     if (!response.job) return response;
@@ -351,6 +407,7 @@
     cancelStage,
     isNetworkError,
     stageWasAccepted,
+    taskConfirmsSubmission,
     storyboardIsReady,
     STAGE_LABELS,
   };

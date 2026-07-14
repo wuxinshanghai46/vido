@@ -22,10 +22,21 @@
     }
 
     if (stage === 'keyframes') {
+      if (progress.submissionPending === true) {
+        return {
+          title: '正在启动画面生成',
+          stat: '准备中',
+          percent: 0,
+          indeterminate: true,
+          message: '正在创建本次生成任务，请稍候。',
+        };
+      }
       const progressGenerationId = String(progress.generationId || '');
       const serverGenerationId = String(serverProgress?.generation_id || '');
       const tracked = serverProgress?.stage === 'keyframes'
-        && (!progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId)
+        && progressGenerationId
+        && serverGenerationId
+        && progressGenerationId === serverGenerationId
         ? serverProgress
         : null;
       const targetTotal = Math.max(1, Number(tracked?.target_total || count) || count);

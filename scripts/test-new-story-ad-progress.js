@@ -9,9 +9,9 @@ const sandbox = { window: {}, Date, Math, Number, String };
 vm.runInNewContext(source, sandbox, { filename: 'progress.js' });
 
 const result = sandbox.window.NewStoryAdProgress.snapshot({
-  progress: { stage: 'keyframes', startedAt: Date.now() - 65000, total: 6 },
+  progress: { stage: 'keyframes', generationId: 'generation-current', startedAt: Date.now() - 65000, total: 6 },
   completed: 6,
-  serverProgress: { stage: 'keyframes', target_total: 6, processed: 2, succeeded: 1, failed: 1, current_index: 3 },
+  serverProgress: { stage: 'keyframes', generation_id: 'generation-current', target_total: 6, processed: 2, succeeded: 1, failed: 1, current_index: 3 },
 });
 assert.match(result.title, /第 3\/6 张/);
 assert.match(result.stat, /1分0[45]秒/);
@@ -42,6 +42,16 @@ const staleServerBatch = sandbox.window.NewStoryAdProgress.snapshot({
   serverProgress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 6 },
 });
 assert.match(staleServerBatch.title, /第 1\/6 张/, '不得混用上一批次的服务端进度');
+
+const submittingBatch = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'keyframes', generationId: '', submissionPending: true, startedAt: Date.now(), total: 6 },
+  completed: 6,
+  serverProgress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4, current_index: 6 },
+});
+assert.strictEqual(submittingBatch.title, '正在启动画面生成');
+assert.strictEqual(submittingBatch.stat, '准备中');
+assert.strictEqual(submittingBatch.indeterminate, true);
+assert(!/6\/6|成功|失败|96%/.test(`${submittingBatch.title}${submittingBatch.stat}${submittingBatch.message}`), '提交窗口不得闪现上一批终态统计');
 
 const syncSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
 vm.runInNewContext(syncSource, sandbox, { filename: 'state-sync.js' });
@@ -75,6 +85,52 @@ sync.normalizeBundle({
   outputs: {},
 }, { state });
 assert.strictEqual(state.stageProgress.startedAt, acceptedStart, '不同生成 ID 或阶段不得覆盖当前计时');
+
+const keyframeState = {
+  activeGenerationId: '', activeStage: 'keyframes',
+  stageProgress: { active: true, stage: 'keyframes', generationId: '', submissionPending: true, startedAt: localStart, total: 6 },
+  generationProgress: { stage: 'keyframes', status: 'submitting', target_total: 6, processed: 0, succeeded: 0, failed: 0 },
+  shots: Array.from({ length: 6 }, (_, index) => ({ index: index + 1 })), contracts: [], keyframes: [], videoClips: [],
+};
+sync.normalizeBundle({
+  task: {
+    active_generation_id: '', active_stage: '',
+    generation_progress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4 },
+  },
+  outputs: {},
+}, { state: keyframeState });
+assert.strictEqual(keyframeState.generationProgress.processed, 0, '保存或轮询返回的历史进度不得覆盖提交中的 0/N');
+
+keyframeState.activeGenerationId = 'generation-new';
+keyframeState.activeStage = 'keyframes';
+keyframeState.stageProgress.generationId = 'generation-new';
+keyframeState.stageProgress.submissionPending = false;
+sync.normalizeBundle({
+  task: {
+    active_generation_id: 'generation-new', active_stage: 'keyframes',
+    generation_progress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4 },
+  },
+  outputs: {},
+}, { state: keyframeState });
+assert.strictEqual(keyframeState.generationProgress.processed, 0, '迟到的旧 generation_id 不得覆盖新批次');
+
+sync.normalizeBundle({
+  task: {
+    active_generation_id: '', active_stage: '',
+    generation_progress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4 },
+  },
+  outputs: {},
+}, { state: keyframeState });
+assert.strictEqual(keyframeState.activeGenerationId, 'generation-new', '迟到的旧终态响应不得清空当前生成 ID');
+
+sync.normalizeBundle({
+  task: {
+    active_generation_id: 'generation-new', active_stage: 'keyframes',
+    generation_progress: { stage: 'keyframes', generation_id: 'generation-new', target_total: 6, processed: 1, succeeded: 1, failed: 0 },
+  },
+  outputs: {},
+}, { state: keyframeState });
+assert.strictEqual(keyframeState.generationProgress.processed, 1, '必须接收当前 generation_id 的真实进度');
 
 const keyframesSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/keyframes.js'), 'utf8');
 vm.runInNewContext(keyframesSource, sandbox, { filename: 'keyframes.js' });

@@ -1489,9 +1489,22 @@
       state.sceneAssets = outputs.scene_assets || response.scene_assets || state.context?.scene_assets || state.sceneAssets || [];
     }
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
-    state.activeGenerationId = task.active_generation_id || '';
-    state.activeStage = task.active_stage || '';
-    state.generationProgress = task.generation_progress || null;
+    const pendingKeyframeSubmission = state.stageProgress?.active === true
+      && state.stageProgress?.stage === 'keyframes'
+      && state.stageProgress?.submissionPending === true;
+    const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
+    const incomingActiveId = String(task.active_generation_id || '');
+    const incomingGenerationId = String(task.generation_progress?.generation_id || '');
+    const staleGenerationResponse = trackedGenerationId && (incomingActiveId
+      ? incomingActiveId !== trackedGenerationId
+      : (!incomingGenerationId || incomingGenerationId !== trackedGenerationId));
+    if (!pendingKeyframeSubmission && !staleGenerationResponse) {
+      state.activeGenerationId = task.active_generation_id || '';
+      state.activeStage = task.active_stage || '';
+      if (!trackedGenerationId || !incomingGenerationId || trackedGenerationId === incomingGenerationId) {
+        state.generationProgress = task.generation_progress || null;
+      }
+    }
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     if (state.stageProgress?.active && state.activeGenerationId
       && (!state.stageProgress.generationId || state.stageProgress.generationId === state.activeGenerationId)) {
@@ -1632,9 +1645,22 @@
     const outputs = normalizeTaskOutputs(bundle);
     const request = outputs.context || task.request || {};
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
-    state.activeGenerationId = task.active_generation_id || '';
-    state.activeStage = task.active_stage || '';
-    state.generationProgress = task.generation_progress || null;
+    const pendingKeyframeSubmission = state.stageProgress?.active === true
+      && state.stageProgress?.stage === 'keyframes'
+      && state.stageProgress?.submissionPending === true;
+    const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
+    const incomingActiveId = String(task.active_generation_id || '');
+    const incomingGenerationId = String(task.generation_progress?.generation_id || '');
+    const staleGenerationResponse = trackedGenerationId && (incomingActiveId
+      ? incomingActiveId !== trackedGenerationId
+      : (!incomingGenerationId || incomingGenerationId !== trackedGenerationId));
+    if (!pendingKeyframeSubmission && !staleGenerationResponse) {
+      state.activeGenerationId = task.active_generation_id || '';
+      state.activeStage = task.active_stage || '';
+      if (!trackedGenerationId || !incomingGenerationId || trackedGenerationId === incomingGenerationId) {
+        state.generationProgress = task.generation_progress || null;
+      }
+    }
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     if (!state.activeGenerationId) state.cancelRequested = false;
     state.context = outputs.context || request || state.context;
@@ -1978,7 +2004,7 @@
   function renderStageProgress(label = '') {
     const snap = stageProgressSnapshot(label);
     const canCancel = !!state.taskId && (!!state.activeGenerationId || !!state.stageProgress?.active || !!state.sceneGenerationProgress?.active);
-    return `<div class="dh-lux-person-progress">
+    return `<div class="dh-lux-person-progress${snap.indeterminate ? ' is-indeterminate' : ''}">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(snap.title)}</b>
         <div class="dh-nsa-progress-actions">
@@ -1986,23 +2012,41 @@
           ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>` : ''}
         </div>
       </div>
-      <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${snap.percent}%"></i></div>
+      <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${snap.indeterminate ? 28 : snap.percent}%"></i></div>
       <small>${escapeHtml(snap.message)}</small>
     </div>`;
   }
   function startStageProgress(stage = '', label = '', { resume = false } = {}) {
     stopStageProgress();
+    const previousGenerationId = String(state.generationProgress?.generation_id || state.activeGenerationId || '');
     const persistedStart = resume && state.activeGenerationId
       ? Date.parse(state.generationStartedAt || '')
       : NaN;
+    const total = stageItemCount(stage);
     state.stageProgress = {
       active: true,
       stage,
       label,
-      total: stageItemCount(stage),
+      total,
       generationId: resume ? state.activeGenerationId : '',
+      previousGenerationId: resume ? '' : previousGenerationId,
+      submissionPending: stage === 'keyframes' && !resume,
       startedAt: Number.isFinite(persistedStart) ? persistedStart : Date.now(),
     };
+    if (stage === 'keyframes' && !resume) {
+      state.activeGenerationId = '';
+      state.activeStage = 'keyframes';
+      state.generationProgress = {
+        stage: 'keyframes',
+        status: 'submitting',
+        target_total: total,
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        current_index: 1,
+        generation_id: '',
+      };
+    }
     const intervalMs = stage === 'keyframes' ? 2000 : 1000;
     state.stageProgressTimer = setInterval(async () => {
       const activeProgress = state.stageProgress;
@@ -2021,6 +2065,7 @@
   function startSingleKeyframeProgress(index = 0, label = '') {
     stopStageProgress();
     const shotNo = Math.max(1, Number(index) + 1 || 1);
+    const previousGenerationId = String(state.generationProgress?.generation_id || state.activeGenerationId || '');
     state.stageProgress = {
       active: true,
       stage: 'single_keyframe',
@@ -2028,6 +2073,9 @@
       total: 1,
       targetIndex: Number(index) || 0,
       shotNo,
+      generationId: '',
+      previousGenerationId,
+      submissionPending: true,
       startedAt: Date.now(),
     };
     state.stageProgressTimer = setInterval(() => {
@@ -2475,10 +2523,21 @@
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
       const qaState = currentFailed || qaOutdated ? 'warning' : (qaPassed ? 'pass' : 'pending');
       const qaLabel = frame.regeneration_error
-        ? '旧版可用 · 新版未通过'
+        ? '新版本未通过'
         : (currentFailed
-          ? '生成失败 · 当前版本未通过'
-          : (qaOutdated ? (frame.contract_outdated ? '镜头信息已修改 · 请重新生成' : '旧版 QA 已升级 · 请重新生成') : (qaPassed ? '当前版本视觉 QA 已通过' : '等待视觉 QA')));
+          ? '生成失败'
+          : (qaOutdated ? (frame.contract_outdated ? '需重新生成' : '需重新验证') : (qaPassed ? 'QA 已通过' : '待验证')));
+      const qaDetail = frame.regeneration_error
+        ? '新版本未通过，当前继续显示上一版可用画面。'
+        : (currentFailed
+          ? '本镜头生成失败，请重新生成。'
+          : (qaOutdated
+            ? (frame.contract_outdated
+              ? '镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'
+              : '当前画面由旧版审核规则生成，需按最新规则重新验证。')
+            : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。')));
+      const headerSummary = [cameraSummary, sceneName].filter(Boolean).join(' · ');
+      const showStatusNotice = currentFailed || qaOutdated;
       const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
       const frameRatio = ratioMatch ? `${Number(ratioMatch[1]) || 9} / ${Number(ratioMatch[2]) || 16}` : '9 / 16';
       const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
@@ -2497,12 +2556,16 @@
         : '';
       return `<article class="dh-nsa-frame-card" style="--dh-nsa-frame-ratio:${frameRatio}">
         <header class="dh-nsa-frame-head">
-          <div><span class="dh-nsa-shot-number">${String(i + 1).padStart(2, '0')}</span><b>${escapeHtml(title)}</b></div>
+          <div class="dh-nsa-frame-identity">
+            <span class="dh-nsa-shot-number" aria-label="第 ${i + 1} 镜">${String(i + 1).padStart(2, '0')}</span>
+            <div class="dh-nsa-frame-title"><b title="${escapeHtml(title)}">${escapeHtml(title)}</b><small>${escapeHtml(headerSummary)}</small></div>
+          </div>
           <div class="dh-nsa-frame-head-meta">
-            <label class="dh-nsa-duration"><span>时长</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"><em>秒</em></label>
-            <span class="dh-nsa-qa-badge is-${qaState}">${escapeHtml(qaLabel)}</span>
+            <label class="dh-nsa-duration" title="镜头时长"><input type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" aria-label="第 ${i + 1} 镜时长" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"><em>秒</em></label>
+            <span class="dh-nsa-qa-badge is-${qaState}" title="${escapeHtml(qaDetail)}">${escapeHtml(qaLabel)}</span>
           </div>
         </header>
+        ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span><button type="button" data-nsa-shot-regenerate="${i}">重新生成</button></div>` : ''}
         <div class="dh-nsa-frame-media">
           ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
