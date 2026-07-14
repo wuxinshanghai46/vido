@@ -283,6 +283,9 @@ async function reviewKeyframe(options = {}) {
       + '\nUse Simplified Chinese for every reason string. Do not return English reason text.',
     imageUrls: [options.sceneReferenceUrl, options.generatedUrl],
     maxTokens: 3000,
+    timeoutMs: Math.max(15000, Number(options.timeoutMs) || 60000),
+    maxCandidates: Math.max(1, Math.min(3, Number(options.maxCandidates) || 2)),
+    stageBudgetMs: Math.max(30000, Number(options.stageBudgetMs) || 90000),
   };
   let result = await modelGateway.generateVision(request);
   let parsed = safeJson(result.text);

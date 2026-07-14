@@ -170,7 +170,7 @@ function cancelJob(taskId, { generationId = '', cancelledBy = '' } = {}) {
   return { cancelled: true, already_cancelled: false, job: publicJob(job) };
 }
 
-function queueStage({ taskId, stage, execute }) {
+function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   const key = jobKey(taskId);
   const active = runningJobs.get(key);
@@ -200,6 +200,7 @@ function queueStage({ taskId, stage, execute }) {
     errorCode: '',
     error: '',
     retryable: false,
+    deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
   };
   runningJobs.set(key, job);
   storage.updateTask(taskId, {
@@ -221,7 +222,7 @@ function queueStage({ taskId, stage, execute }) {
   });
 
   setImmediate(() => {
-    const execution = cancellation.run({ generationId: id, taskId, stage, deadlineMs: stageBudgetMs(stage) }, async () => {
+    const execution = cancellation.run({ generationId: id, taskId, stage, deadlineMs: job.deadlineMs }, async () => {
     if (cancellation.isCancelled(id)) {
       setTimeout(() => {
         if (runningJobs.get(key)?.id === id) runningJobs.delete(key);

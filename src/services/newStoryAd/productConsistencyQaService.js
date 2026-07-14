@@ -13,7 +13,10 @@ function notApplicable(reason = '') {
   return { pass: true, status: 'not_applicable', reason, conflicts: [], checked_at: new Date().toISOString() };
 }
 
-async function reviewProductKeyframe({ taskId = '', ctx = {}, shot = {}, generatedUrl = '', gateway = modelGateway, repair = jsonRepair } = {}) {
+async function reviewProductKeyframe({
+  taskId = '', ctx = {}, shot = {}, generatedUrl = '', gateway = modelGateway, repair = jsonRepair,
+  timeoutMs = 60000, maxCandidates = 2, stageBudgetMs = 90000,
+} = {}) {
   if (!productIdentity.productRequired(ctx)) return notApplicable('当前任务没有需要视觉锁定的产品参考');
   const contract = productIdentity.assertVerifiedProduct(ctx);
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -30,6 +33,9 @@ async function reviewProductKeyframe({ taskId = '', ctx = {}, shot = {}, generat
     ].join('\n'),
     userPrompt: `Product contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, material_usage: shot.material_usage })}\nReturn {"pass":boolean,"identity_score":0..1,"shape_score":0..1,"color_score":0..1,"material_score":0..1,"count_score":0..1,"conflicts":string[],"retry_instruction":string}.`,
     maxTokens: 2400,
+    timeoutMs,
+    maxCandidates,
+    stageBudgetMs,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const conflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts.map(value => cleanText(value, 240)).filter(Boolean) : [];

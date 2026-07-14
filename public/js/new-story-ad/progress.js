@@ -22,12 +22,19 @@
     }
 
     if (stage === 'keyframes') {
-      const tracked = serverProgress?.stage === 'keyframes' ? serverProgress : null;
+      const progressGenerationId = String(progress.generationId || '');
+      const serverGenerationId = String(serverProgress?.generation_id || '');
+      const tracked = serverProgress?.stage === 'keyframes'
+        && (!progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId)
+        ? serverProgress
+        : null;
       const targetTotal = Math.max(1, Number(tracked?.target_total || count) || count);
-      const done = Math.max(0, Math.min(targetTotal, Number(tracked?.processed ?? completed) || 0));
-      const succeeded = Math.max(0, Number(tracked?.succeeded ?? done) || 0);
+      // A new batch always starts at 0. Historical keyframes are retained for
+      // display, but must not be counted as work completed by this batch.
+      const done = Math.max(0, Math.min(targetTotal, Number(tracked?.processed ?? 0) || 0));
+      const succeeded = Math.max(0, Number(tracked?.succeeded ?? 0) || 0);
       const failed = Math.max(0, Number(tracked?.failed) || 0);
-      const current = Math.max(1, Math.min(targetTotal, Number(tracked?.current_index) || done + 1));
+      const current = Math.max(1, Math.min(targetTotal, done + 1));
       const pct = done >= targetTotal ? 96 : Math.max(8, Math.min(92, Math.round(8 + (done / targetTotal) * 78 + Math.min(10, elapsed / 9000))));
       return {
         title: `生成真实画面中：第 ${current}/${targetTotal} 张`,

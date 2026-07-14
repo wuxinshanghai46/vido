@@ -43,7 +43,7 @@
     scene_config: 10 * 60 * 1000,
     scene_asset: 12 * 60 * 1000,
     storyboard: 10 * 60 * 1000,
-    keyframes: 15 * 60 * 1000,
+    keyframes: 60 * 60 * 1000,
     tts: 12 * 60 * 1000,
     video: 20 * 60 * 1000,
     compose: 12 * 60 * 1000,
@@ -73,6 +73,16 @@
       compose: ['completed', 'compose_done'],
     };
     return (downstream[expectedStage] || []).some(stage => current === stage || current.startsWith(`${stage}_`));
+  }
+
+  function stageTimeoutMs(stage = '', ctx = {}) {
+    if (stage !== 'keyframes') return STAGE_TIMEOUTS[stage] || STAGE_TIMEOUT_MS;
+    const state = ctx.state || {};
+    const targetCount = Math.max(1, Number(state.generationProgress?.target_total)
+      || state.shots?.length
+      || state.contracts?.length
+      || 1);
+    return Math.min(STAGE_TIMEOUTS.keyframes, Math.max(12 * 60 * 1000, (6 + targetCount * 4) * 60 * 1000));
   }
 
   function storyboardIsReady(bundle = {}, state = {}) {
@@ -116,7 +126,7 @@
   async function waitForStage(taskId, stage, ctx = {}) {
     const { api, normalizeBundle } = ctx;
     const started = Date.now();
-    const timeoutMs = STAGE_TIMEOUTS[stage] || STAGE_TIMEOUT_MS;
+    const timeoutMs = stageTimeoutMs(stage, ctx);
     while (Date.now() - started < timeoutMs) {
       const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
       normalizeBundle?.(bundle);
@@ -169,6 +179,7 @@
             stage: 'keyframes', status: 'queued', target_total: body?.only_index !== undefined ? 1 : Math.max(1, ctx.state.shots?.length || 1),
             processed: 0, succeeded: 0, failed: 0,
             current_index: body?.only_index !== undefined ? Number(body.only_index) + 1 : 1,
+            generation_id: response.job.id || '',
             started_at: ctx.state.generationStartedAt,
           }
         : null;

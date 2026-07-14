@@ -69,9 +69,17 @@ function taskForReq(req) {
   return service.assertTaskOwner(req.params.id, userFromReq(req));
 }
 
-function queueTaskStage(req, res, stage, execute) {
+function queueTaskStage(req, res, stage, execute, options = {}) {
   const task = taskForReq(req);
-  const queued = jobService.queueStage({ taskId: task.id, stage, execute });
+  const deadlineMs = typeof options.deadlineMs === 'function'
+    ? options.deadlineMs(task)
+    : options.deadlineMs;
+  const queued = jobService.queueStage({
+    taskId: task.id,
+    stage,
+    execute,
+    deadlineMs,
+  });
   return res.status(202).json({
     success: true,
     accepted: queued.accepted,
@@ -855,7 +863,13 @@ router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'keyframes', () => service.generateKeyframesStage(req.params.id, body));
+  return queueTaskStage(
+    req,
+    res,
+    'keyframes',
+    job => service.generateKeyframesStage(req.params.id, { ...body, generation_id: job.generationId }),
+    { deadlineMs: task => service.keyframeStageBudgetMs(task.id, body) },
+  );
 }));
 
 router.put('/tasks/:id/keyframes/:index/select', asyncRoute(async (req, res) => {

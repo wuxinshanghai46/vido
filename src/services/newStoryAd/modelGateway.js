@@ -257,7 +257,7 @@ function candidatesForVisionStage(stage) {
 
 function classifyError(error) {
   const msg = String(error?.message || error || '');
-  if (/timeout|ETIMEDOUT|ECONNRESET/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
+  if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };
   if (/429|rate limit|quota/i.test(msg)) return { code: 'RATE_LIMIT', retryable: true };
   if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };

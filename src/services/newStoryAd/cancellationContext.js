@@ -6,7 +6,7 @@ const active = new Map();
 
 function cancelledError(meta = {}) {
   const deadline = meta.cancelReason === 'deadline';
-  const error = new Error(deadline ? '生成阶段已达到后端总时限' : '用户已取消当前生成');
+  const error = new Error(deadline ? '本批次已达到安全执行时限，已保存完成结果；可以继续补齐未完成镜头' : '用户已取消当前生成');
   error.code = deadline ? 'STAGE_DEADLINE_EXCEEDED' : 'USER_CANCELLED';
   error.retryable = true;
   error.cancelled = true;

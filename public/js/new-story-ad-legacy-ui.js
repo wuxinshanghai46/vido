@@ -1932,7 +1932,7 @@
       };
     }
     if (stage === 'keyframes') {
-      const completed = Math.min(total, completedKeyframeCount());
+      const completed = Math.min(total, Number(state.generationProgress?.processed) || 0);
       const current = Math.min(total, completed + 1);
       const pct = completed >= total ? 96 : Math.max(8, Math.min(92, Math.round(8 + (completed / total) * 78 + Math.min(10, elapsed / 9000))));
       return {
@@ -2501,8 +2501,8 @@
             <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
           </details>
           ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
-          ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>新版本未通过，当前仍显示上一版画面。</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error) : frame.regeneration_error)}</p>` : ''}
-          ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。') : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
+          ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>${escapeHtml(window.NewStoryAdKeyframes?.isQaInfrastructureError?.(frame.regeneration_error, frame.regeneration_error_code) ? '本轮视觉审核服务异常，当前仍显示上一版画面。' : '新版本未通过，当前仍显示上一版画面。')}</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error, frame.regeneration_error_code) : frame.regeneration_error)}</p>` : ''}
+          ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。', frame.error_code) : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>

@@ -1,16 +1,14 @@
 (() => {
+  // Category-level translations only. They intentionally contain no fixed
+  // industry, person, scene, product or model examples.
   const QA_REASON_TRANSLATIONS = [
-    [/drastically different space.*tunnel-like structure.*high-tech command center/i, '生成画面变成隧道式空间，与已锁定的高科技指挥中心不是同一场景'],
-    [/new shield element and energy pathway.*unsupported.*contradict/i, '新增了分镜和参考场景未要求的盾牌与能量通道'],
-    [/dominant materials.*rock textures.*glowing pathways.*brushed metal.*polished concrete.*frosted glass/i, '岩石墙面和发光通道偏离参考场景的拉丝金属、抛光混凝土与磨砂玻璃材质'],
-    [/camera perspective and framing.*camera_detail/i, '机位与构图不符合已锁定的细节视角'],
-    [/rock-textured tunnel walls/i, '出现参考场景中没有的岩石隧道墙'],
-    [/energy pathway.*inconsistent.*data wall/i, '能量通道与原有数据墙元素不一致'],
-    [/blue shield symbol.*deviates.*platform-focus core/i, '蓝色盾牌符号偏离平台主体视觉核心'],
-    [/unexpected human subject added/i, '画面新增了未要求的人物'],
-    [/subject is not in the provided scene contract or specified requirements/i, '该人物不在场景合同或分镜要求中'],
-    [/presence of new human figure explicitly forbidden/i, '新增人物违反当前场景禁止项'],
-    [/human subject not allowed.*contract negative clauses/i, '场景负面约束明确不允许出现人物'],
+    [/(?:camera|perspective|framing|composition|viewpoint|angle)/i, '机位、视角或构图与当前镜头约束不一致'],
+    [/(?:material|texture|surface|finish|fabric)/i, '材质、纹理或表面质感与已锁定参考不一致'],
+    [/(?:space|spatial|layout|geometry|anchor|zone|location)/i, '空间结构、区域关系或定位锚点与已锁定场景不一致'],
+    [/(?:unsupported|unexpected|new element|not (?:present|specified|allowed)|forbidden|contradict)/i, '画面出现了当前合同未要求或明确禁止的新元素'],
+    [/(?:person|human|identity|face|facial|body|wardrobe|clothing|character)/i, '人物身份、外貌、身形或服装与已锁定人物参考不一致'],
+    [/(?:product|logo|packag|brand|shape|color|count)/i, '产品主体、标识、包装、形状、颜色或数量与已锁定参考不一致'],
+    [/(?:interaction|eyeline|gaze|contact|hand|pose|action)/i, '人物动作、视线或与物体的交互关系不符合当前镜头要求'],
   ];
 
   function qaReasonToChinese(reason = '') {
@@ -19,20 +17,7 @@
     const matched = QA_REASON_TRANSLATIONS.find(([pattern]) => pattern.test(raw));
     return matched
       ? matched[1]
-      : '场景、机位、材质或禁止元素与参考图不一致（原始检查详情已保留供技术人员排查）';
-  }
-
-  function friendlyError(error = '') {
-    const raw = String(error || '').trim();
-    if (!raw) return '';
-    const match = raw.match(/^(第\s*\d+\s*镜场景空间一致性\s*QA\s*未通过)[：:]\s*(.*)$/i);
-    if (!match) return raw;
-    const translated = String(match[2] || '')
-      .split(/\s*;\s*/)
-      .map(qaReasonToChinese)
-      .filter(Boolean)
-      .filter((reason, index, all) => all.indexOf(reason) === index);
-    return `${match[1]}：${translated.join('；') || '空间、机位或材质与参考场景不一致'}`;
+      : '视觉审核发现画面与当前镜头合同不一致（原始详情已保留供技术人员排查）';
   }
 
   function frameUrl(frame = {}) {
@@ -40,13 +25,35 @@
     return raw;
   }
 
-  function friendlyError(value = '') {
+  function isQaInfrastructureError(value = '', code = '') {
+    return /VISION_QA_UNAVAILABLE|VISION_CIRCUIT_OPEN|MODEL_ATTEMPTS_EXHAUSTED|TIMEOUT_OR_NETWORK/i.test(String(code || ''))
+      || /视觉模型全部失败|视觉审核服务|timed?\s*out|timeout|ECONNRESET|socket hang up|(?:HTTP\s*)?5\d\d/i.test(String(value || ''));
+  }
+
+  function friendlyError(value = '', code = '') {
     const raw = String(value || '').trim();
     if (!raw) return '';
+    if (isQaInfrastructureError(raw, code)) return '本轮视觉审核服务暂时不可用；已保留上一版画面，只需重新验证，无需重新生成图片。';
+    if (/STAGE_DEADLINE_EXCEEDED/i.test(String(code || '')) || /安全执行时限|后端总时限/i.test(raw)) return '本批次已达到安全执行时限，完成结果已保存；可以继续补齐未完成镜头。';
     if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(raw)) return '本镜头生成约束过长，系统需要压缩提示词后重新生成。';
-    if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|"code"\s*:\s*(1005|1102)/i.test(raw)) return '当前图片模型通道额度不足，请补充额度或切换可用模型后重新生成。';
+    if (/PROVIDER_BILLING/i.test(String(code || '')) || /insufficient quota|account balance not enough|insufficient balance|balance not enough|"code"\s*:\s*(1005|1102)/i.test(raw)) return '供应商返回当前模型计费通道不可用；可能是调用 Key、子账号、模型授权或通道额度不一致，不代表平台账户总余额为零。';
     if (/temporary|expired|asset.*not found|404/i.test(raw)) return '关键帧图片地址已失效，请重新生成本镜头。';
+    const match = raw.match(/^(第\s*\d+\s*镜(?:(?:场景空间|视觉)一致性\s*)?QA\s*未通过)[：:]\s*(.*)$/i);
+    if (match) {
+      const translated = String(match[2] || '')
+        .split(/\s*[;；]\s*/)
+        .map(qaReasonToChinese)
+        .filter(Boolean)
+        .filter((reason, index, all) => all.indexOf(reason) === index);
+      return `${match[1]}：${translated.join('；') || '画面与当前镜头合同不一致'}`;
+    }
     return raw.length > 220 ? `${raw.slice(0, 220)}…` : raw;
+  }
+
+  function regenerationStatusText(frame = {}) {
+    return isQaInfrastructureError(frame.regeneration_error, frame.regeneration_error_code)
+      ? '仍显示上一版 · 本轮视觉审核服务异常'
+      : '仍显示上一版 · 新版本未通过 QA';
   }
 
   function thumbUrl(url = '', width = 520) {
@@ -90,14 +97,14 @@
   function previewButtonHtml({ frame = {}, shot = {}, index = 0, previewUrl = '', imageUrl = '', escapeHtml } = {}) {
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (x => String(x || ''));
     const title = frameTitle(shot, index);
-    const displayError = friendlyError(frame.error || (frame.image_url && !previewUrl ? '关键帧图片地址已失效，请重新生成本镜头。' : ''));
+    const displayError = friendlyError(frame.error || (frame.image_url && !previewUrl ? '关键帧图片地址已失效，请重新生成本镜头。' : ''), frame.error_code);
     const stateText = displayError ? displayError : '等待生成关键帧';
     const source = previewUrl ? thumbUrl(previewUrl, index < 2 ? 640 : 520) : '';
     const loading = index < 2 ? 'eager' : 'lazy';
     const priority = index < 2 ? ' fetchpriority="high"' : '';
     const qa = frame.qa || {};
     const qaText = frame.regeneration_error
-      ? '仍显示上一版 · 新版本未通过 QA'
+      ? regenerationStatusText(frame)
       : qa.status === 'not_applicable'
       ? '未启用场景空间锁'
       : (qa.pass === true
@@ -117,6 +124,8 @@
     status,
     frameTitle,
     qaReasonToChinese,
+    isQaInfrastructureError,
+    regenerationStatusText,
     friendlyError,
     previewButtonHtml,
   };

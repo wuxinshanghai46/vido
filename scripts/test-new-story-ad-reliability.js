@@ -82,6 +82,11 @@ async function main() {
   assert.equal(storage.getTask(taskId).retryable, false);
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
+  assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });
+  assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('视觉模型全部失败'), { code: 'VISION_QA_UNAVAILABLE' })), true);
+  assert.match(service.structuredQaFeedback({ mismatch_reasons: ['机位不一致'] }, { conflicts: ['人物身份不一致'] }, {}), /场景空间：机位不一致[\s\S]*人物身份：人物身份不一致/);
+  storage.saveOutput(taskId, 'storyboard_table', Array.from({ length: 6 }, (_, index) => ({ index: index + 1 })));
+  assert(service.keyframeStageBudgetMs(taskId, {}) > 15 * 60 * 1000, '多镜头批次不应再受固定 15 分钟限制');
   await assert.rejects(() => ttsAdapter.generateShotAudio({ shot: { voiceover: '测试' }, voiceId: '' }), /未选择配音音色/);
 
   const repeatedSpeechShot = {

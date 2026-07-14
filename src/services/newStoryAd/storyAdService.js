@@ -81,6 +81,64 @@ function keyframeCompletion(keyframes = [], shots = []) {
   return { total, completed, missing: Math.max(0, total - completed), failed, missing_indexes };
 }
 
+function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
+  const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex))
+    ? Number(options.only_index ?? options.onlyIndex)
+    : null;
+  const indexes = onlyIndex === null
+    ? shots.map((_, index) => index)
+    : [Math.max(0, Math.min(Math.max(0, shots.length - 1), onlyIndex))];
+  const missingOnly = options.missing_only === true || options.missingOnly === true;
+  return missingOnly ? indexes.filter(index => !isCompleteKeyframe(existing[index])) : indexes;
+}
+
+function keyframeStageBudgetMs(taskId, options = {}) {
+  const shots = storage.getOutput(taskId, 'storyboard_table');
+  const existing = storage.getOutput(taskId, 'keyframes');
+  const shotList = Array.isArray(shots) ? shots : [];
+  const keyframes = Array.isArray(existing) ? existing : [];
+  const targetCount = Math.max(1, keyframeTargetIndexes(shotList, keyframes, options).length || shotList.length || 1);
+  // Budget follows batch size instead of a fixed industry/model assumption.
+  // QA runs in parallel below, while this allowance protects slow providers
+  // without making the browser stop at an arbitrary 15-minute boundary.
+  return Math.min(60 * 60 * 1000, Math.max(10 * 60 * 1000, (4 + targetCount * 4) * 60 * 1000));
+}
+
+function isQaInfrastructureError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  if (['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
+  const message = String(error?.message || error || '');
+  return /视觉模型全部失败|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
+}
+
+async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
+  let lastError = null;
+  for (let attempt = 0; attempt < Math.max(1, attempts); attempt += 1) {
+    try {
+      return await reviewer(attempt);
+    } catch (error) {
+      lastError = error;
+      if (!isQaInfrastructureError(error) || attempt >= attempts - 1) throw error;
+    }
+  }
+  throw lastError;
+}
+
+function structuredQaFeedback(sceneQa = {}, personQa = {}, productQa = {}) {
+  const groups = [
+    ['场景空间', [...(sceneQa.mismatch_reasons || []), ...(sceneQa.forbidden_new_elements || [])]],
+    ['人物身份', [...(personQa.conflicts || []), personQa.retry_instruction || '']],
+    ['产品主体', [...(productQa.conflicts || []), productQa.retry_instruction || '']],
+  ];
+  return groups
+    .map(([label, values]) => {
+      const details = values.map(value => cleanText(value, 160)).filter(Boolean).slice(0, 3);
+      return details.length ? `${label}：${details.join('；')}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 function isBeforeOrAtKeyframes(stage = '') {
   return !['tts', 'tts_ready', 'video', 'video_ready', 'compose', 'final_video_ready'].includes(String(stage || ''));
 }
@@ -926,16 +984,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     storage.saveOutput(taskId, 'keyframe_contracts', contracts);
   }
   const existing = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-  const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex))
-    ? Number(options.only_index ?? options.onlyIndex)
-    : null;
-  const indexes = onlyIndex === null
-    ? shots.map((_, i) => i)
-    : [Math.max(0, Math.min(shots.length - 1, onlyIndex))];
-  const missingOnly = options.missing_only === true || options.missingOnly === true;
-  const targetIndexes = missingOnly
-    ? indexes.filter(i => !isCompleteKeyframe(existing[i]))
-    : indexes;
+  const targetIndexes = keyframeTargetIndexes(shots, existing, options);
   const keyframes = existing.slice();
   const attempts = [];
   const retainedRegenerationFailures = [];
@@ -952,11 +1001,26 @@ async function generateKeyframesStage(taskId, options = {}) {
     }
     return { keyframes, keyframe_contracts: contracts, attempts, keyframe_status: beforeStatus, skipped: true };
   }
+  targetIndexes.forEach(index => {
+    if (!keyframes[index]) return;
+    keyframes[index] = {
+      ...keyframes[index],
+      error: '',
+      error_code: '',
+      regeneration_error: '',
+      regeneration_error_code: '',
+      regeneration_failed_at: '',
+      current_generation_status: 'pending',
+      current_generation_id: cleanText(options.generation_id || options.generationId || '', 80),
+    };
+  });
+  storage.saveOutput(taskId, 'keyframes', keyframes);
   storage.updateTask(taskId, { status: 'running', stage: 'keyframes' });
   storage.saveStage(taskId, 'keyframes', { status: 'running', input_summary: `${targetIndexes.length} image keyframes` });
   const progressStartedAt = new Date().toISOString();
   const generationProgress = {
     stage: 'keyframes', status: 'running', target_total: targetIndexes.length,
+    generation_id: cleanText(options.generation_id || options.generationId || '', 80),
     processed: 0, succeeded: 0, failed: 0,
     current_index: (targetIndexes[0] ?? 0) + 1,
     target_indexes: targetIndexes.map(index => index + 1),
@@ -984,7 +1048,7 @@ async function generateKeyframesStage(taskId, options = {}) {
       let feedback = '';
       for (let qaAttempt = 0; qaAttempt <= maxQaRetries; qaAttempt += 1) {
         const correction = feedback
-          ? `Previous visual QA rejected the frame. Correct these scene, person and product consistency problems without changing the requested shot, industry, location, person or product: ${cleanText(feedback, 320)}`
+          ? `Previous visual QA rejected the frame. Correct only the structured consistency conflicts below. Keep the current shot contract, scene contract, person contract and product contract unchanged. Do not introduce any new person, object, place, industry detail or visual symbol that is absent from those contracts.\n${cleanText(feedback, 520)}`
           : '';
         const prompt = correction
           ? `${cleanText(basePrompt, Math.max(1200, 2390 - correction.length))}\n${correction}`
@@ -1007,32 +1071,43 @@ async function generateKeyframesStage(taskId, options = {}) {
         // Use the provider URL for immediate remote QA when available, while
         // keeping the persisted VIDO URL as the production/display asset.
         const qaImageUrl = result.source_url || mediaAdapter.absolutePublicImageUrl(imageUrl);
-        const sceneQa = sceneReference
-          ? await sceneSpace.reviewKeyframe({
+        const [sceneQa, personQa, productQa] = await Promise.all([
+          sceneReference
+            ? reviewWithInfrastructureRetry(attempt => sceneSpace.reviewKeyframe({
+              taskId,
+              sceneReferenceUrl: sceneReference,
+              generatedUrl: qaImageUrl,
+              contract: contracts[i]?.scene_lock || sceneAsset?.scene_contract || {},
+              shot,
+              timeoutMs: attempt ? 30000 : 45000,
+              maxCandidates: attempt ? 1 : 2,
+              stageBudgetMs: attempt ? 35000 : 70000,
+            }))
+            : Promise.resolve({
+              pass: true,
+              status: 'not_applicable',
+              reason: '当前任务没有已锁定场景资产，不执行场景空间一致性比较。',
+              checked_at: new Date().toISOString(),
+            }),
+          reviewWithInfrastructureRetry(attempt => personKeyframeQa.reviewPersonKeyframe({
             taskId,
-            sceneReferenceUrl: sceneReference,
-            generatedUrl: qaImageUrl,
-            contract: contracts[i]?.scene_lock || sceneAsset?.scene_contract || {},
+            ctx,
             shot,
-          })
-          : {
-            pass: true,
-            status: 'not_applicable',
-            reason: '当前任务没有已锁定场景资产，不执行场景空间一致性比较。',
-            checked_at: new Date().toISOString(),
-          };
-        const personQa = await personKeyframeQa.reviewPersonKeyframe({
-          taskId,
-          ctx,
-          shot,
-          generatedUrl: qaImageUrl,
-        });
-        const productQa = await productKeyframeQa.reviewProductKeyframe({
-          taskId,
-          ctx,
-          shot,
-          generatedUrl: qaImageUrl,
-        });
+            generatedUrl: qaImageUrl,
+            timeoutMs: attempt ? 30000 : 45000,
+            maxCandidates: attempt ? 1 : 2,
+            stageBudgetMs: attempt ? 35000 : 70000,
+          })),
+          reviewWithInfrastructureRetry(attempt => productKeyframeQa.reviewProductKeyframe({
+            taskId,
+            ctx,
+            shot,
+            generatedUrl: qaImageUrl,
+            timeoutMs: attempt ? 30000 : 45000,
+            maxCandidates: attempt ? 1 : 2,
+            stageBudgetMs: attempt ? 35000 : 70000,
+          })),
+        ]);
         const conflicts = [
           ...(sceneQa.mismatch_reasons || []),
           ...(sceneQa.forbidden_new_elements || []),
@@ -1070,10 +1145,10 @@ async function generateKeyframesStage(taskId, options = {}) {
           accepted = { result, imageUrl, prompt };
           break;
         }
-        feedback = (qa.mismatch_reasons || []).join('; ');
+        feedback = structuredQaFeedback(sceneQa, personQa, productQa);
       }
       if (!accepted) {
-        const error = new Error('第 ' + (i + 1) + ' 镜场景空间一致性 QA 未通过：' + (feedback || '空间、机位或材质与参考场景不一致'));
+        const error = new Error('第 ' + (i + 1) + ' 镜视觉一致性 QA 未通过：' + (feedback || '画面与当前镜头合同不一致'));
         error.code = 'SCENE_CONSISTENCY_QA_FAILED';
         error.retryable = true;
         throw error;
@@ -1101,8 +1176,17 @@ async function generateKeyframesStage(taskId, options = {}) {
         regeneration_error: '',
         regeneration_error_code: '',
         regeneration_failed_at: '',
+        current_generation_status: 'accepted',
+        current_generation_id: generationProgress.generation_id,
       };
     } catch (err) {
+      if (err?.code === 'STAGE_DEADLINE_EXCEEDED' || err?.code === 'USER_CANCELLED') {
+        storage.saveOutput(taskId, 'keyframes', keyframes);
+        generationProgress.status = err.code === 'USER_CANCELLED' ? 'cancelled' : 'partial';
+        generationProgress.updated_at = new Date().toISOString();
+        storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
+        throw err;
+      }
       currentAttemptFailed = true;
       attempts.push({ index: i, ok: false, code: err.code || 'KEYFRAME_FAILED', error: String(err.message || err) });
       if (previousAcceptedFrame) {
@@ -1117,6 +1201,8 @@ async function generateKeyframesStage(taskId, options = {}) {
           regeneration_error: String(err.message || err),
           regeneration_error_code: err.code || 'KEYFRAME_FAILED',
           regeneration_failed_at: new Date().toISOString(),
+          current_generation_status: isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected',
+          current_generation_id: generationProgress.generation_id,
           contract: contracts[i] || previousAcceptedFrame.contract || null,
         };
       } else {
@@ -1129,6 +1215,8 @@ async function generateKeyframesStage(taskId, options = {}) {
           error_code: err.code || 'KEYFRAME_FAILED',
           contract: contracts[i] || null,
           candidates: shotCandidates,
+          current_generation_status: isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed',
+          current_generation_id: generationProgress.generation_id,
         };
       }
     }
@@ -1778,6 +1866,9 @@ module.exports = {
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
   keyframeCompletion,
+  keyframeStageBudgetMs,
+  isQaInfrastructureError,
+  structuredQaFeedback,
   compactKeyframePrompt,
   isCompleteKeyframe,
   subtitleSegmentsFromShots,

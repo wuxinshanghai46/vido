@@ -13,7 +13,10 @@ function notApplicable(reason = '') {
   return { pass: true, status: 'not_applicable', reason, conflicts: [], checked_at: new Date().toISOString() };
 }
 
-async function reviewPersonKeyframe({ taskId = '', ctx = {}, shot = {}, generatedUrl = '', gateway = modelGateway, repair = jsonRepair } = {}) {
+async function reviewPersonKeyframe({
+  taskId = '', ctx = {}, shot = {}, generatedUrl = '', gateway = modelGateway, repair = jsonRepair,
+  timeoutMs = 60000, maxCandidates = 2, stageBudgetMs = 90000,
+} = {}) {
   if (!personIdentity.shotPersonRequired(ctx, shot)) return notApplicable('当前镜头不需要人物身份检查');
   const contract = personIdentity.assertVerifiedPerson(ctx);
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -31,6 +34,9 @@ async function reviewPersonKeyframe({ taskId = '', ctx = {}, shot = {}, generate
     ].join('\n'),
     userPrompt: `Person contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters })}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"hand_owner_score":0..1,"conflicts":string[],"retry_instruction":string}.`,
     maxTokens: 2400,
+    timeoutMs,
+    maxCandidates,
+    stageBudgetMs,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const conflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts.map(value => cleanText(value, 240)).filter(Boolean) : [];

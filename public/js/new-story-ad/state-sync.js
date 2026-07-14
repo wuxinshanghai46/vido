@@ -65,6 +65,24 @@
     return true;
   }
 
+  function syncGenerationProgress(state = {}, task = {}) {
+    const activeGenerationId = String(task.active_generation_id || '');
+    const activeStage = String(task.active_stage || '');
+    const incoming = task.generation_progress && typeof task.generation_progress === 'object'
+      ? task.generation_progress
+      : null;
+    const incomingGenerationId = String(incoming?.generation_id || '');
+    if (incoming && (!activeGenerationId || !incomingGenerationId || incomingGenerationId === activeGenerationId)) {
+      state.generationProgress = incoming;
+      return;
+    }
+    const preserveOptimisticKeyframeProgress = activeGenerationId
+      && activeStage === 'keyframes'
+      && state.stageProgress?.active
+      && (!state.stageProgress.generationId || String(state.stageProgress.generationId) === activeGenerationId);
+    if (!preserveOptimisticKeyframeProgress) state.generationProgress = null;
+  }
+
   function normalizeBundle(response = {}, ctx = {}) {
     const { state, rememberTaskId } = ctx;
     if (!state) return;
@@ -90,7 +108,7 @@
     state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
     state.activeGenerationId = task.active_generation_id || '';
     state.activeStage = task.active_stage || '';
-    state.generationProgress = task.generation_progress || null;
+    syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     syncActiveGenerationClock(state, task);
     if (!state.activeGenerationId) state.cancelRequested = false;
@@ -167,7 +185,7 @@
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
     state.activeGenerationId = task.active_generation_id || '';
     state.activeStage = task.active_stage || '';
-    state.generationProgress = task.generation_progress || null;
+    syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     if (!state.activeGenerationId) state.cancelRequested = false;
     state.context = outputs.context || request || state.context;
