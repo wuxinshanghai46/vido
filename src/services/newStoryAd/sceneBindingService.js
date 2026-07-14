@@ -66,10 +66,22 @@ function spatialBindingForShot(shot = {}, asset = {}, sceneView = 'master') {
     .sort((a, b) => b.score - a.score);
   // 机器 ID 是场景绑定的唯一事实来源；中文展示名称不能反向改变生成区域。
   const selectedZone = lockedZone || rankedZones[0]?.zone || eligibleZones[0] || null;
-  const anchors = (Array.isArray(contract.anchors) ? contract.anchors : [])
+  const eligibleAnchors = (Array.isArray(contract.anchors) ? contract.anchors : [])
     .filter(anchor => anchor.required !== false
-      && (!Array.isArray(anchor.visible_in_views) || !anchor.visible_in_views.length || anchor.visible_in_views.includes(sceneView)))
-    .map(anchor => anchor.id).filter(Boolean);
+      && (!Array.isArray(anchor.visible_in_views) || !anchor.visible_in_views.length || anchor.visible_in_views.includes(sceneView)));
+  // A close-up cannot prove every wide-scene anchor at once. Select only the
+  // most relevant anchors for the requested view, while master shots retain the
+  // broader spatial lock. This is semantic and works for any scene or industry.
+  const anchorLimit = sceneView === 'detail' ? 1 : (sceneView === 'master' ? 4 : 2);
+  const anchors = eligibleAnchors
+    .map(anchor => ({
+      anchor,
+      score: overlapScore(shotText, [anchor.label, anchor.description, anchor.relative_position, anchor.kind].join(' ')),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, anchorLimit)
+    .map(item => item.anchor.id)
+    .filter(Boolean);
   const camera = (Array.isArray(contract.cameras) ? contract.cameras : [])
     .find(item => item.view_id === sceneView) || null;
   return {

@@ -145,6 +145,34 @@ function productRequired(ctx = {}) {
   return ctx.controlled_production?.product_control?.enabled === true || productAssets(ctx).length > 0;
 }
 
+function shotProductPresence(ctx = {}, shot = {}, contract = {}) {
+  const layers = Array.isArray(shot.visual_layers) ? shot.visual_layers : [];
+  const advertisedSubject = cleanText(ctx.product_subject || contract?.subject_lock?.advertised_subject || '', 240).toLowerCase();
+  const layerEvidence = layers.some(layer => {
+    const value = typeof layer === 'string' ? layer : [layer?.type, layer?.content, layer?.text].filter(Boolean).join(' ');
+    const type = typeof layer === 'string' ? layer : String(layer?.type || '');
+    const subjectInLayer = advertisedSubject.length >= 2 && value.toLowerCase().includes(advertisedSubject);
+    return /product|proof|package|packshot|商品|产品|包装|主体/i.test(type) || subjectInLayer;
+  });
+  const text = [
+    shot.subject_type, shot.shot_type, shot.title, shot.visual, shot.visual_description, shot.story_visual,
+    shot.promo_visual, shot.action, shot.content_prompt, shot.keyframe_notes, shot.material_usage,
+  ].filter(Boolean).join(' ');
+  const subjectMentioned = advertisedSubject.length >= 2 && text.toLowerCase().includes(advertisedSubject);
+  const explicitProduct = /product_only|proof_scene|packshot|商品|产品|货品|包装|样品|设备|器件|主体特写|\b(?:product|goods|package|packshot|sample|device)\b/i.test(text);
+  const required = layerEvidence || subjectMentioned || explicitProduct;
+  const declaredNonProduct = /^(?:scene_only|environment|human_scene|brand_endcard)$/i.test(String(shot.subject_type || '').trim());
+  return {
+    required,
+    mode: required ? (/手持|拿起|触摸|局部|细节|特写|\b(?:hold|touch|detail|close[- ]?up|partial)\b/i.test(text) ? 'partial' : 'full') : (declaredNonProduct ? 'not_present' : 'optional'),
+    reasons: [layerEvidence ? 'visual_layer' : '', subjectMentioned ? 'advertised_subject' : '', explicitProduct ? 'shot_text' : ''].filter(Boolean),
+  };
+}
+
+function shotProductRequired(ctx = {}, shot = {}, contract = {}) {
+  return productRequired(ctx) && shotProductPresence(ctx, shot, contract).required;
+}
+
 function assertVerifiedProduct(ctx = {}) {
   if (!productRequired(ctx)) return null;
   const contract = ctx.product_contract;
@@ -156,4 +184,4 @@ function assertVerifiedProduct(ctx = {}) {
   throw error;
 }
 
-module.exports = { THRESHOLDS, productAssets, normalizeQa, buildProductContract, verifyProductContract, productRequired, assertVerifiedProduct };
+module.exports = { THRESHOLDS, productAssets, normalizeQa, buildProductContract, verifyProductContract, productRequired, shotProductPresence, shotProductRequired, assertVerifiedProduct };

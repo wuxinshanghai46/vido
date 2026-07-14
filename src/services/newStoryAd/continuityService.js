@@ -18,7 +18,13 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
   const action = clean(shot.action || shot.visual_action || '', 240);
   const previousExit = clean(previousShot?.exit_frame_state || previousShot?.continuity?.exit_frame_state || previousShot?.action || '', 320);
   const explicitTransition = shot.transition_type || shot.transitionType || shot.transition || '';
-  const transitionFallback = !previousShot ? 'none' : (sameScene && action ? 'cut_on_action' : 'hard_cut');
+  const transitionFallback = !previousShot ? 'none' : 'hard_cut';
+  const explicitPreviousFrame = shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
+    || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true';
+  const normalizedTransition = normalizeTransitionType(explicitTransition, transitionFallback);
+  // Ordinary adjacent shots are editorial hard cuts. A cut-on-action must be
+  // explicitly authored; inferring it from the mere presence of an action
+  // serializes nearly every storyboard and invents continuity requirements.
   return {
     continuity_from: previousShot ? clean(shot.continuity_from || shot.continuityFrom || `shot_${previousIndex}`, 100) : '',
     entry_frame_state: clean(shot.entry_frame_state || shot.entryFrameState || previousExit, 320),
@@ -30,7 +36,8 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     camera_axis: clean(shot.camera_axis || shot.cameraAxis || '', 120),
     camera_movement: clean(shot.camera_movement || shot.cameraMovement || shot.camera || '', 160),
     object_states: clean(shot.object_states || shot.objectStates || '', 320),
-    transition_type: normalizeTransitionType(explicitTransition, transitionFallback),
+    transition_type: normalizedTransition,
+    requires_previous_frame: !!previousShot && (explicitPreviousFrame || ['cut_on_action', 'match_cut'].includes(normalizedTransition)),
     transition_reason: clean(shot.transition_reason || shot.transitionReason || '', 240),
     audio_bridge: clean(shot.audio_bridge || shot.audioBridge || '', 180),
     same_scene_as_previous: sameScene,
@@ -62,6 +69,7 @@ function continuityPrompt(shot = {}, previousShot = null) {
     `Camera movement: ${contract.camera_movement || 'natural movement required by this shot only'}`,
     `Object state lock: ${contract.object_states || 'preserve all visible product and prop states'}`,
     `Transition: ${contract.transition_type || 'hard_cut'}; ${contract.transition_reason || ''}`,
+    `Requires previous frame: ${contract.requires_previous_frame === true ? 'yes' : 'no'}`,
     `Audio bridge: ${contract.audio_bridge || 'none specified'}`,
   ].join('\n');
 }

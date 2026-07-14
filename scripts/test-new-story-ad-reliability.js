@@ -15,6 +15,7 @@ const { buildContext, assertContextConsistent } = require('../src/services/newSt
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
+const personKeyframeQa = require('../src/services/newStoryAd/personConsistencyQaService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const storyboardTable = require('../src/services/newStoryAd/storyboardTableService');
 const newStoryAdModelConfig = require('./configure-new-story-ad-models');
@@ -117,8 +118,13 @@ async function main() {
   assert.equal(service.resolveTtsVoiceId({}, {}, { voice_id: 'legacy-voice' }), 'legacy-voice');
   assert.equal(service.resolveTtsVoiceId({ voice_id: 'new-voice' }, {}, { voice_id: 'legacy-voice' }), 'new-voice');
   assert.strictEqual(personIdentity.personRequired({ cast_mode: 'single', characters: [{ name: '角色甲' }] }), true);
-  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [] }), false);
+  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [], subject_type: 'product_only', visual: '产品独立静物展示' }), false);
   assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [{ name: '角色甲' }] }), true);
+  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [], subject_type: 'product_only', visual: '人物指尖与深色衣袖进入画面触摸产品' }), true);
+  assert.strictEqual(personIdentity.shotPersonRequired({ cast_mode: 'single', person_asset: { image_url: 'https://example.test/front.png' } }, { characters: [], visual: '镜面里出现人物倒影与服装' }), true);
+  assert.equal(personIdentity.shotPersonPresence({ subject_type: 'human_scene', visual: '手部和深色衣袖进入特写' }).mode, 'partial');
+  assert.equal(personIdentity.shotPersonPresence({ visual: '镜面里出现人物倒影与衣袖' }).mode, 'reflection');
+  assert.equal(personIdentity.shotForbidsPerson({ cast_mode: 'no_human' }, {}), true);
   assert.throws(
     () => personIdentity.assertVerifiedPerson({ cast_mode: 'single', characters: [{ name: '角色甲' }] }),
     error => error?.code === 'PERSON_ASSET_REQUIRED',
@@ -154,6 +160,8 @@ async function main() {
   };
   const verifiedFrame = {
     image_url: 'https://example.test/keyframe.png',
+    qa_policy_version: 2,
+    contract_fingerprint: 'verified-contract-v3',
     qa: {
       pass: true,
       status: 'verified',
@@ -162,7 +170,29 @@ async function main() {
     },
     contract: { cast_lock: { person_contract: { person_revision: 3 } } },
   };
-  const verifiedMediaContract = { cast_lock: { person_contract: { person_revision: 3 } } };
+  const verifiedMediaContract = { contract_fingerprint: 'verified-contract-v3', cast_lock: { person_contract: { person_revision: 3 } } };
+  const jsonRepair = { parseOrRepair: async ({ raw }) => JSON.parse(raw) };
+  const qaFrom = payload => ({ generateVision: async () => ({ text: JSON.stringify(payload), used_model: 'test/vision' }) });
+  const faceQa = await personKeyframeQa.reviewPersonKeyframe({
+    taskId: 'face-qa', ctx: verifiedPersonCtx, shot: { visual: '人物正脸特写' }, generatedUrl: 'https://example.test/face.png',
+    gateway: qaFrom({ pass: true, identity_score: 0.95, age_score: 0.92, wardrobe_score: 0.9, body_score: 0.88, hand_owner_score: 0 }), repair: jsonRepair,
+  });
+  assert.equal(faceQa.pass, true, '正脸特写不应因画面没有手而失败');
+  const reflectionQa = await personKeyframeQa.reviewPersonKeyframe({
+    taskId: 'reflection-qa', ctx: verifiedPersonCtx, shot: { visual: '镜面里出现人物倒影与深色衣袖' }, generatedUrl: 'https://example.test/reflection.png',
+    gateway: qaFrom({ pass: true, identity_score: 0.1, age_score: 0.9, wardrobe_score: 0.95, body_score: 0.9, hand_owner_score: 0.9 }), repair: jsonRepair,
+  });
+  assert.equal(reflectionQa.pass, false, '人物倒影不能仅凭衣袖相似就绕过身份验证');
+  const forbiddenHumanQa = await personKeyframeQa.reviewPersonKeyframe({
+    taskId: 'no-human-qa', ctx: { cast_mode: 'no_human' }, shot: { subject_type: 'product_only' }, generatedUrl: 'https://example.test/product.png',
+    gateway: qaFrom({ pass: false, visible_human: true, conflicts: ['画面出现人物手部'] }), repair: jsonRepair,
+  });
+  assert.equal(forbiddenHumanQa.pass, false, 'no_human 镜头必须拦截意外出现的人手或衣袖');
+  const ambiguousNoHumanQa = await personKeyframeQa.reviewPersonKeyframe({
+    taskId: 'no-human-ambiguous', ctx: { cast_mode: 'no_human' }, shot: { subject_type: 'product_only' }, generatedUrl: 'https://example.test/product.png',
+    gateway: qaFrom({ pass: true, conflicts: [] }), repair: jsonRepair,
+  });
+  assert.equal(ambiguousNoHumanQa.pass, false, 'no_human QA 未明确返回 visible_human=false 时必须失败关闭');
   assert.strictEqual(service.assertVideoInputsReady({
     ctx: verifiedPersonCtx,
     shots: [{ characters: [{ name: '角色甲' }] }],
@@ -178,6 +208,24 @@ async function main() {
     }),
     error => error?.code === 'VIDEO_INPUT_QA_REQUIRED' && /人物一致性/.test(error.message),
   );
+  assert.throws(
+    () => service.assertVideoInputsReady({
+      ctx: verifiedPersonCtx,
+      shots: [{ characters: [{ name: '角色甲' }] }],
+      keyframes: [{ ...verifiedFrame, qa_policy_version: 1 }],
+      contracts: [verifiedMediaContract],
+    }),
+    error => error?.code === 'VIDEO_INPUT_QA_REQUIRED' && /旧版视觉 QA/.test(error.message),
+  );
+  assert.throws(
+    () => service.assertVideoInputsReady({
+      ctx: verifiedPersonCtx,
+      shots: [{ characters: [{ name: '角色甲' }] }],
+      keyframes: [{ ...verifiedFrame, current_generation_status: 'pending' }],
+      contracts: [verifiedMediaContract],
+    }),
+    error => error?.code === 'VIDEO_INPUT_QA_REQUIRED' && /仍在生成/.test(error.message),
+  );
   assert(newStoryAdModelConfig.VIDEO_MODELS.some(model => (
     model.provider_id === 'zhipu'
       && model.model_id === 'cogvideox-flash'
@@ -185,7 +233,49 @@ async function main() {
   )));
 
   const staleFailedFrame = service.keyframeCompletion([{ image_url: 'https://example.test/old.png', error: 'latest regeneration failed', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED' }], [{}]);
-  assert.deepEqual(staleFailedFrame, { total: 1, completed: 0, missing: 1, failed: 1, missing_indexes: [0] });
+  assert.deepEqual(staleFailedFrame, { total: 1, completed: 0, fresh_pass: 0, outdated: 0, retained_previous: 0, latest_failed: 1, needs_regeneration: 1, missing: 1, failed: 1, missing_indexes: [0] });
+  const outdatedFrame = service.keyframeCompletion([{ image_url: 'https://example.test/old.png', qa: { pass: true } }], [{}]);
+  assert.equal(outdatedFrame.fresh_pass, 0);
+  assert.equal(outdatedFrame.outdated, 1);
+
+  const candidateTask = service.createTask({ brief: '候选图状态测试', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.saveOutput(candidateTask.id, 'storyboard_table', [{ index: 1, subject_type: 'product_only' }]);
+  storage.saveOutput(candidateTask.id, 'keyframe_contracts', [{ contract_fingerprint: 'candidate-contract-v1' }]);
+  storage.saveOutput(candidateTask.id, 'keyframes', [{
+    image_url: 'https://example.test/old-frame.png',
+    qa_policy_version: 1,
+    qa: { pass: true, status: 'verified' },
+    regeneration_error: 'new rejected',
+    regeneration_error_code: 'SCENE_CONSISTENCY_QA_FAILED',
+    current_generation_status: 'rejected',
+    candidates: [
+      { id: 'old-candidate', image_url: 'https://example.test/old-candidate.png', status: 'accepted', qa_policy_version: 1, qa: { pass: true, status: 'verified' } },
+      { id: 'new-candidate', image_url: 'https://example.test/new-candidate.png', status: 'accepted', qa_policy_version: 2, contract_fingerprint: 'candidate-contract-v1', generation_id: 'gen-2', qa: { pass: true, status: 'verified' } },
+    ],
+  }]);
+  assert.throws(
+    () => service.selectKeyframeCandidate(candidateTask.id, 0, 'old-candidate'),
+    error => error?.code === 'KEYFRAME_CANDIDATE_QA_OUTDATED',
+  );
+  const selected = service.selectKeyframeCandidate(candidateTask.id, 0, 'new-candidate').keyframe;
+  assert.equal(selected.regeneration_error, '');
+  assert.equal(selected.current_generation_status, 'accepted');
+  assert.equal(selected.qa_policy_version, 2);
+  assert.equal(selected.accepted_revision.selected_candidate_id, 'new-candidate');
+  assert.equal(selected.latest_attempt.status, 'accepted');
+
+  const rebuildTask = service.createTask({ brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.saveOutput(rebuildTask.id, 'context', { brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });
+  storage.saveOutput(rebuildTask.id, 'storyboard_table', [{ index: 1, title: '旧镜头', subject_type: 'scene_only', visual: '旧画面', transition_type: 'none' }]);
+  storage.saveOutput(rebuildTask.id, 'keyframes', [{ image_url: 'https://example.test/stale.png', qa_policy_version: 2, contract_fingerprint: 'old-fingerprint', current_generation_status: 'accepted', qa: { pass: true, status: 'verified' } }]);
+  storage.saveOutput(rebuildTask.id, 'video_clips', [{ video_url: 'https://example.test/old.mp4' }]);
+  storage.saveOutput(rebuildTask.id, 'final_video', { video_url: 'https://example.test/final.mp4' });
+  await service.buildKeyframeContractStage(rebuildTask.id);
+  const invalidatedFrame = storage.getOutput(rebuildTask.id, 'keyframes')[0];
+  assert.equal(invalidatedFrame.contract_outdated, true);
+  assert.equal(invalidatedFrame.current_generation_status, 'outdated');
+  assert.equal(storage.getOutput(rebuildTask.id, 'video_clips'), null);
+  assert.equal(storage.getOutput(rebuildTask.id, 'final_video'), null);
 
   const deduped = storage.dedupeLatestTasks([
     { id: 'older', user_id: 'same-user', brief: '相同任务', request: { duration_sec: 30, output_ratio: '9:16' }, updated_at: '2026-01-01T00:00:00.000Z' },

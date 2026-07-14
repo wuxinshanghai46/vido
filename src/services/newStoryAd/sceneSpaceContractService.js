@@ -269,6 +269,7 @@ async function reviewKeyframe(options = {}) {
       'People and the advertised subject may be added when required by the shot.',
       'A person named or described in the shot contract is authorized even though the empty scene reference contains no person. Never reject that required actor merely for being absent from the empty reference.',
       'When the shot requires pointing, touching, operating, holding or gaze interaction, verify that the intended target is visibly present, physically reachable and aligned with the hand/finger/eyeline. Reject unexplained empty-air gestures.',
+      'Judge only the anchor_ids explicitly required by the current shot contract. For detail, macro or tight close-up shots, do not require unrelated wide-scene furniture or distant anchors outside the intended framing; instead verify local material, structure, camera intent and the selected anchor.',
       'Return JSON only. Never use fixed industry expectations.',
       'All mismatch_reasons and forbidden_new_elements entries must be concise Simplified Chinese written for ordinary product users.',
     ].join('\n'),

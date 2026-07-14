@@ -64,6 +64,18 @@ async function main() {
   assert.equal(bound[2].scene_view, 'detail');
   assert(bound.every(shot => shot.scene_revision === 1));
   assert(bound.every(shot => shot.camera_id));
+  const detailBinding = sceneBinding.spatialBindingForShot({
+    visual: '手指靠近主墙面，展示墙面纹理细节',
+  }, {
+    scene_contract: {
+      anchors: [
+        { id: 'main_surface', label: '主墙面纹理', description: '主要材质表面', required: true, visible_in_views: ['master', 'detail'] },
+        { id: 'distant_table', label: '远处桌台', description: '宽景空间参照', required: true, visible_in_views: ['master', 'detail'] },
+      ],
+      zones: [], cameras: [],
+    },
+  }, 'detail');
+  assert.deepEqual(detailBinding.anchor_ids, ['main_surface'], '细节镜头只应锁定最相关的可见锚点，不能强迫展示宽景家具');
 
   storage.saveOutput(taskId, 'storyboard_table', bound.slice(0, 2));
   storage.saveOutput(taskId, 'blueprint', { story_title: '旧人物版本剧本' });

@@ -1,4 +1,34 @@
+const crypto = require('crypto');
 const { sceneContractForShot } = require('./sceneBindingService');
+const productIdentity = require('./productIdentityContractService');
+
+function contractFingerprint(contract = {}) {
+  const personContract = contract.cast_lock?.person_contract || {};
+  const productContract = contract.product_lock || {};
+  const payload = {
+    shot_index: contract.shot_index,
+    output_ratio: contract.output_ratio,
+    title: contract.title,
+    role: contract.role,
+    subject_lock: contract.subject_lock,
+    scene_lock: contract.scene_lock,
+    continuity_lock: contract.continuity_lock,
+    cast_lock: {
+      cast_mode: contract.cast_lock?.cast_mode,
+      shot_characters: contract.cast_lock?.shot_characters,
+      dialogue_lines: contract.cast_lock?.dialogue_lines,
+      person_revision: personContract.person_revision,
+      person_fingerprint: personContract.reference_fingerprint,
+    },
+    product_lock: {
+      product_revision: productContract.product_revision,
+      product_fingerprint: productContract.reference_fingerprint,
+    },
+    visual_contract: contract.visual_contract,
+    negative_prompt: contract.negative_prompt,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
 
 function buildKeyframeContracts(ctx, shots) {
   const controls = ctx.controlled_production || {};
@@ -8,7 +38,8 @@ function buildKeyframeContracts(ctx, shots) {
   const environmentControl = controls.environment_control || {};
   return (Array.isArray(shots) ? shots : []).map((shot, idx) => {
     const sceneLock = sceneContractForShot(ctx, shot, idx);
-    return {
+    const productPresence = productIdentity.shotProductPresence(ctx, shot, {});
+    const contract = {
       shot_index: idx + 1,
       title: shot.title || `镜头 ${idx + 1}`,
       role: shot.role || shot.purpose || '',
@@ -43,6 +74,7 @@ function buildKeyframeContracts(ctx, shots) {
         sfx: shot.sfx || [],
         music_cue: shot.music_cue || '',
         voiceover_timing: shot.voiceover_timing || '',
+        requires_previous_frame: shot.requires_previous_frame === true,
       },
       cast_lock: {
         cast_mode: ctx.cast_mode,
@@ -62,7 +94,8 @@ function buildKeyframeContracts(ctx, shots) {
         evidence: shot.keyframe_notes || shot.material_usage || '',
         scene_direction: environmentControl.mode || 'auto',
         custom_scene_requirement: environmentControl.custom || '',
-        product_required: productControl.enabled === true,
+        product_required: productControl.enabled === true && productPresence.required,
+        product_presence_mode: productPresence.mode,
         product_presence: productControl.presence || 'medium',
         product_lock_strength: productControl.lock_strength || 'standard',
         product_methods: Array.isArray(productControl.methods) ? productControl.methods : [],
@@ -85,7 +118,10 @@ function buildKeyframeContracts(ctx, shots) {
         negativeControl.text || '',
       ],
     };
+    contract.contract_fingerprint = contractFingerprint(contract);
+    contract.contract_revision = 1;
+    return contract;
   });
 }
 
-module.exports = { buildKeyframeContracts };
+module.exports = { buildKeyframeContracts, contractFingerprint };

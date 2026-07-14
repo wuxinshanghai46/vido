@@ -257,6 +257,21 @@
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
 
+  const TECHNICAL_LABELS = {
+    extreme_wide: '大远景', wide: '远景', full: '全身景', medium: '中景', medium_close: '中近景',
+    close_up: '近景', extreme_close_up: '特写', macro: '微距',
+    eye_level: '平视', high_angle: '俯拍', low_angle: '仰拍', overhead: '顶视', dutch: '倾斜机位',
+    over_shoulder: '越肩视角', pov: '主观视角',
+    deep: '深景深', shallow: '浅景深', ultra_shallow: '极浅景深',
+    none: '无转场', hard_cut: '直接切换', cut_on_action: '动作切换', match_cut: '匹配切换',
+    dissolve: '叠化', fade: '淡入淡出',
+  };
+
+  function technicalLabel(value = '') {
+    const key = normalizeText(value, 80);
+    return TECHNICAL_LABELS[key] || key.replace(/_/g, ' ');
+  }
+
   const PROMPT_LABEL_TEXT = {
     story: '剧情画面',
     character: '人物',
@@ -2445,42 +2460,84 @@
         : (shot.dialogue || shot.voiceover || '');
       const duration = shotFieldValue(shot, contract, 'duration');
       const title = window.NewStoryAdKeyframes?.frameTitle ? window.NewStoryAdKeyframes.frameTitle(shot, i) : (shot.title || `\u7b2c ${i + 1} \u955c`);
+      const visualSummary = shotFieldValue(shot, contract, 'visual') || '未填写画面说明';
+      const actionSummary = shotFieldValue(shot, contract, 'action') || '未填写镜头动作';
+      const voiceoverSummary = shotFieldValue(shot, contract, 'voiceover') || dialogue || '本镜无台词或旁白';
+      const sceneName = shot.scene_name || contract.scene_lock?.scene_name || contract.scene_lock?.observed_summary || '';
+      const sceneZone = shot.scene_zone_label_zh || shot.scene_zone || '';
+      const sceneView = shot.scene_view_label_zh || shot.scene_view || shot.camera_view || '';
+      const transition = technicalLabel(shot.transition_type || '');
+      const sceneSummary = [sceneName, sceneView, sceneZone, transition, shot.transition_reason].filter(Boolean).join(' · ') || '按任务场景与连续性合同生成';
+      const cameraSummary = [technicalLabel(shot.shot_size || shot.shot_type), technicalLabel(shot.camera_angle), shot.lens_mm ? `${shot.lens_mm}mm` : '', technicalLabel(shot.camera_movement)].filter(Boolean).join(' · ') || '按镜头目的判断';
+      const soundSummary = [shot.ambient_sound, Array.isArray(shot.sfx) ? shot.sfx.join('、') : shot.sfx, shot.music_cue].filter(Boolean).join('；') || '跟随整片声音设计';
+      const currentFailed = !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked', 'qa_unavailable'].includes(String(frame.current_generation_status || '')));
+      const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
+      const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
+      const qaState = currentFailed || qaOutdated ? 'warning' : (qaPassed ? 'pass' : 'pending');
+      const qaLabel = frame.regeneration_error
+        ? '旧版可用 · 新版未通过'
+        : (currentFailed
+          ? '生成失败 · 当前版本未通过'
+          : (qaOutdated ? (frame.contract_outdated ? '镜头信息已修改 · 请重新生成' : '旧版 QA 已升级 · 请重新生成') : (qaPassed ? '当前版本视觉 QA 已通过' : '等待视觉 QA')));
+      const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
+      const frameRatio = ratioMatch ? `${Number(ratioMatch[1]) || 9} / ${Number(ratioMatch[2]) || 16}` : '9 / 16';
       const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
       const candidateStrip = candidates.length > 1 || candidates.some(candidate => candidate.status === 'rejected')
         ? `<div class="dh-nsa-candidate-strip"><b>\u5019\u9009\u5ba1\u7247</b><div>${candidates.map((candidate, candidateIndex) => {
             const candidateUrl = candidate.image_url || candidate.imageUrl || '';
             const accepted = candidate.qa?.pass === true && candidate.status !== 'rejected';
             const selected = String(frame.selected_candidate_id || '') === String(candidate.id || '');
+            const confirmRetained = accepted && selected && !!frame.regeneration_error && Number(candidate.qa_policy_version || 0) >= 2
+              && !!contract.contract_fingerprint && candidate.contract_fingerprint === contract.contract_fingerprint;
             return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : 'is-rejected'} ${selected ? 'is-selected' : ''}">
               <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(assetThumbUrl(candidateUrl, 320))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
-              ${accepted && !selected ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">\u9009\u7528</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`}
+              ${accepted && (!selected || confirmRetained) ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">${confirmRetained ? '确认沿用旧版' : '\u9009\u7528'}</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`}
             </span>`;
           }).join('')}</div></div>`
         : '';
-      return `<article class="dh-nsa-frame-card">
-        ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
-          ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
-          <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
-          <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
-        </button>`}
-        <div class="dh-nsa-frame-editor">
-          <div class="dh-nsa-frame-head"><b>${escapeHtml(title)}</b><span>${escapeHtml(duration ? `${duration}s` : '\u672a\u8bbe\u7f6e\u65f6\u957f')}</span></div>
-          ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
+      return `<article class="dh-nsa-frame-card" style="--dh-nsa-frame-ratio:${frameRatio}">
+        <header class="dh-nsa-frame-head">
+          <div><span class="dh-nsa-shot-number">${String(i + 1).padStart(2, '0')}</span><b>${escapeHtml(title)}</b></div>
+          <div class="dh-nsa-frame-head-meta">
+            <label class="dh-nsa-duration"><span>时长</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"><em>秒</em></label>
+            <span class="dh-nsa-qa-badge is-${qaState}">${escapeHtml(qaLabel)}</span>
+          </div>
+        </header>
+        <div class="dh-nsa-frame-media">
+          ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+            ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
+            <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
+            <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
+          </button>`}
           ${candidateStrip}
-          <label><span>\u65f6\u957f\uff08\u79d2\uff09</span><input class="dh-input" type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"></label>
-          <label class="dh-nsa-visual-field">
-            <span class="dh-nsa-visual-field-title"><b>画面审核</b><small>镜头类型、剧情、品牌、人物与空间已分项展示</small></span>
-            <textarea class="dh-input dh-nsa-visual-editor" rows="8" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea>
-          </label>
-          <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
-          <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
-          <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+        </div>
+        <div class="dh-nsa-frame-editor">
+          <div class="dh-nsa-frame-summary">
+            <section><b>镜头 / 构图</b><span>${escapeHtml(cameraSummary)}</span></section>
+            <section><b>场景 / 连续性</b><span>${escapeHtml(sceneSummary)}</span></section>
+            <section class="is-wide"><b>画面</b><span>${escapeHtml(visualSummary)}</span></section>
+            <section><b>动作</b><span>${escapeHtml(actionSummary)}</span></section>
+            <section><b>台词 / 声音</b><span>${escapeHtml(voiceoverSummary)}${soundSummary ? `<small>${escapeHtml(soundSummary)}</small>` : ''}</span></section>
+          </div>
+          ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>${escapeHtml(window.NewStoryAdKeyframes?.isQaInfrastructureError?.(frame.regeneration_error, frame.regeneration_error_code) ? '本轮视觉审核服务异常，当前仍显示上一版画面。' : '新版本未通过，当前仍显示上一版画面。')}</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error, frame.regeneration_error_code) : frame.regeneration_error)}</p>` : ''}
+          ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。', frame.error_code) : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
+          <details class="dh-nsa-frame-settings">
+            <summary>编辑镜头信息与高级设置</summary>
+            <div class="dh-nsa-frame-settings-grid">
+              ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
+              <label class="dh-nsa-visual-field">
+                <span class="dh-nsa-visual-field-title"><b>完整画面说明</b><small>修改后会作为本镜重生成的最高优先级</small></span>
+                <textarea class="dh-input dh-nsa-visual-editor" rows="6" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea>
+              </label>
+              <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
+              <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
+              <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
           <details class="dh-nsa-continuity-editor">
             <summary>镜头语言与前后镜连续性</summary>
-            <label><span>景别</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_size">${['','extreme_wide','wide','full','medium','medium_close','close_up','extreme_close_up','macro'].map(value => `<option value="${value}" ${String(shot.shot_size || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
-            <label><span>机位角度</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_angle">${['','eye_level','high_angle','low_angle','overhead','dutch','over_shoulder','pov'].map(value => `<option value="${value}" ${String(shot.camera_angle || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>景别</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_size">${['','extreme_wide','wide','full','medium','medium_close','close_up','extreme_close_up','macro'].map(value => `<option value="${value}" ${String(shot.shot_size || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>机位角度</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_angle">${['','eye_level','high_angle','low_angle','overhead','dutch','over_shoulder','pov'].map(value => `<option value="${value}" ${String(shot.camera_angle || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
             <label><span>焦段（mm）</span><input class="dh-input" type="number" min="0" max="300" step="1" value="${escapeHtml(shotFieldValue(shot, contract, 'lens_mm'))}" placeholder="如 24 / 35 / 50 / 85" data-nsa-shot-index="${i}" data-nsa-shot-field="lens_mm"></label>
-            <label><span>景深</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="depth_of_field">${['','deep','medium','shallow','ultra_shallow'].map(value => `<option value="${value}" ${String(shot.depth_of_field || '') === value ? 'selected' : ''}>${value || '按镜头目的判断'}</option>`).join('')}</select></label>
+            <label><span>景深</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="depth_of_field">${['','deep','medium','shallow','ultra_shallow'].map(value => `<option value="${value}" ${String(shot.depth_of_field || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
             <label><span>构图</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'composition'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="composition"></label>
             <label><span>主体位置</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'subject_position'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="subject_position"></label>
             <label><span>镜头运动</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'camera_movement'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_movement"></label>
@@ -2491,7 +2548,7 @@
             <label><span>摄影轴线</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'camera_axis'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_axis"></label>
             <label><span>产品与道具状态</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'object_states'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="object_states"></label>
             <label><span>转场类型</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_type">
-              ${['none','hard_cut','cut_on_action','match_cut','dissolve','fade'].map(value => `<option value="${value}" ${String(shot.transition_type || '') === value ? 'selected' : ''}>${value}</option>`).join('')}
+              ${['none','hard_cut','cut_on_action','match_cut','dissolve','fade'].map(value => `<option value="${value}" ${String(shot.transition_type || '') === value ? 'selected' : ''}>${technicalLabel(value)}</option>`).join('')}
             </select></label>
             <label><span>转场原因</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_reason'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_reason"></label>
             <label><span>环境声</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'ambient_sound'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="ambient_sound"></label>
@@ -2499,10 +2556,10 @@
             <label><span>音乐节点</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'music_cue'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="music_cue"></label>
             <label><span>旁白与动作时机</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'voiceover_timing'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover_timing"></label>
             <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
+              </details>
+              ${contract.subject_strategy ? `<details class="dh-nsa-frame-contract"><summary>查看生成约束</summary><p>${escapeHtml(contract.subject_strategy)}</p></details>` : ''}
+            </div>
           </details>
-          ${contract.subject_strategy ? `<p class="dh-nsa-frame-contract"><b>\u751f\u6210\u7ea6\u675f</b>${escapeHtml(contract.subject_strategy)}</p>` : ''}
-          ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>${escapeHtml(window.NewStoryAdKeyframes?.isQaInfrastructureError?.(frame.regeneration_error, frame.regeneration_error_code) ? '本轮视觉审核服务异常，当前仍显示上一版画面。' : '新版本未通过，当前仍显示上一版画面。')}</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error, frame.regeneration_error_code) : frame.regeneration_error)}</p>` : ''}
-          ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。', frame.error_code) : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
@@ -2577,15 +2634,22 @@
     const stateBadge = within('#dhNsaAdFrameState');
     if (stateBadge) {
       const kf = keyframeStatus();
+      const parts = [
+        `当前版本通过 ${kf.fresh_pass || 0}/${kf.total}`,
+        kf.retained_previous ? `保留旧版 ${kf.retained_previous}` : '',
+        kf.outdated ? `旧版待验证 ${kf.outdated}` : '',
+        kf.failed ? `生成失败 ${kf.failed}` : '',
+        Math.max(0, Number(kf.missing || 0) - Number(kf.failed || 0)) ? `尚缺 ${Math.max(0, Number(kf.missing || 0) - Number(kf.failed || 0))}` : '',
+      ].filter(Boolean);
       stateBadge.textContent = kf.total
-        ? `已生成 ${kf.completed}/${kf.total} 张关键帧${kf.missing ? `，缺 ${kf.missing} 张` : ''}`
+        ? parts.join(' · ')
         : (state.shots.length ? `已生成 ${state.shots.length} 镜分镜` : '待生成');
     }
     const fillMissing = within('#dhNsaAdFillMissingFramesTop');
     if (fillMissing) {
       const kf = keyframeStatus();
-      fillMissing.hidden = !(kf.total && kf.missing > 0);
-      fillMissing.textContent = kf.missing > 0 ? `补齐未生成镜头（${kf.missing}）` : '补齐未生成镜头';
+      fillMissing.hidden = !(kf.total && kf.needs_regeneration > 0);
+      fillMissing.textContent = kf.needs_regeneration > 0 ? `补齐或修复镜头（${kf.needs_regeneration}）` : '补齐或修复镜头';
     }
     showStep(state.currentStep);
     syncPersonSpecControls();

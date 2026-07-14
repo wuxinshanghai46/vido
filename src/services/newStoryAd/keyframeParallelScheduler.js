@@ -48,12 +48,14 @@ async function runSchedule({
   const waves = [];
 
   async function runWave(wave, kind = 'parallel') {
+    const waveStartedMs = Date.now();
     const frozenSnapshot = snapshot();
     const waveMeta = {
       kind,
       indexes: wave.slice(),
       concurrency: effectiveConcurrency,
       wave_number: waves.length + 1,
+      started_at: new Date(waveStartedMs).toISOString(),
     };
     if (typeof onWaveStart === 'function') await onWaveStart(waveMeta);
     const settled = await Promise.allSettled(wave.map(index => worker(index, {
@@ -63,10 +65,21 @@ async function runSchedule({
       snapshot: frozenSnapshot,
     })));
     const rejected = settled.find(item => item.status === 'rejected');
-    if (rejected) throw rejected.reason;
-    const values = settled.map(item => item.value);
-    values.forEach(value => {
+    const values = settled.map((item, position) => item.status === 'fulfilled' ? item.value : ({
+      index: wave[position], failed: true, usable: false, fatal: true,
+      error: String(item.reason?.message || item.reason || 'worker rejected'),
+      error_code: item.reason?.code || 'WORKER_REJECTED',
+    }));
+    values.forEach((value, position) => {
       const index = Number(value?.index);
+      if (settled[position]?.status === 'rejected') {
+        if (Number.isInteger(index)) {
+          completed.add(index);
+          resultByIndex.set(index, value);
+        }
+        results.push(value);
+        return;
+      }
       if (value?.retry_required === true && Number.isInteger(index) && (throttleRetries.get(index) || 0) < 1) {
         throttleRetries.set(index, 1);
         pending.push(index);
@@ -79,12 +92,25 @@ async function runSchedule({
       }
       results.push(value);
     });
-    waves.push({ ...waveMeta, results: values });
+    const waveFinishedMs = Date.now();
+    const completedWave = {
+      ...waveMeta,
+      results: values,
+      wave_size: wave.length,
+      actual_concurrency: wave.length,
+      finished_at: new Date(waveFinishedMs).toISOString(),
+      duration_ms: waveFinishedMs - waveStartedMs,
+    };
+    waves.push(completedWave);
     if (values.some(value => value?.throttled === true || value?.force_sequential === true)) {
       effectiveConcurrency = 1;
     }
     if (typeof onWaveComplete === 'function') {
-      await onWaveComplete({ ...waveMeta, results: values, effective_concurrency: effectiveConcurrency });
+      await onWaveComplete({ ...completedWave, effective_concurrency: effectiveConcurrency });
+    }
+    if (rejected) {
+      rejected.reason.partial_schedule = { results: results.slice(), waves: waves.slice() };
+      throw rejected.reason;
     }
   }
 

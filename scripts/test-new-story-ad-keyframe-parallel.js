@@ -14,6 +14,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const personKeyframeQa = require('../src/services/newStoryAd/personConsistencyQaService');
 const productKeyframeQa = require('../src/services/newStoryAd/productConsistencyQaService');
+const continuity = require('../src/services/newStoryAd/continuityService');
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -157,7 +158,7 @@ async function testStageIntegrationWithoutPaidProvider() {
     };
   };
   personKeyframeQa.reviewPersonKeyframe = async () => ({
-    pass: true, status: 'not_applicable', conflicts: [], checked_at: new Date().toISOString(),
+    pass: true, status: 'verified', forbidden_person_check: true, visible_human: false, conflicts: [], checked_at: new Date().toISOString(),
   });
   productKeyframeQa.reviewProductKeyframe = async () => ({
     pass: true, status: 'not_applicable', conflicts: [], checked_at: new Date().toISOString(),
@@ -198,8 +199,84 @@ function testConfigurationAndContracts() {
     scene_lock: { scene_id: shot.scene_id },
     continuity_lock: index === 4 ? { entry_frame_state: '承接上一镜动作', transition_type: 'cut_on_action' } : {},
   }));
-  const plan = service.buildKeyframeDependencyPlan(shots, contracts, { cast_mode: 'no_human' });
-  assert.deepStrictEqual(plan.dependencies, { 0: null, 1: 0, 2: null, 3: 2, 4: 3 });
+  const plan = service.buildKeyframeDependencyPlan(shots, contracts, {
+    cast_mode: 'single',
+    person_contract: { status: 'verified', cross_view_qa: { pass: true } },
+    scene_assets: shots.map(shot => ({ scene_id: shot.scene_id, scene_contract: { status: 'verified', cross_view_qa: { pass: true } } })),
+  });
+  assert.deepStrictEqual(plan.dependencies, { 0: null, 1: null, 2: null, 3: null, 4: 3 });
+  assert.strictEqual(plan.reasons[1], 'independent_with_shared_anchors', '共享已验证场景是锚点，不应变成镜头依赖');
+  assert.strictEqual(plan.reasons[4], 'temporal_continuity');
+
+  const unanchoredPlan = service.buildKeyframeDependencyPlan(shots.slice(0, 2), contracts.slice(0, 2), { cast_mode: 'no_human', scene_assets: [] });
+  assert.deepStrictEqual(unanchoredPlan.dependencies, { 0: null, 1: 0 }, '场景锚点缺失时应保守串行');
+
+  const unknownShots = Array.from({ length: 6 }, (_, index) => ({ index: index + 1, action: `独立动作 ${index + 1}`, characters: [] }));
+  const unknownNormalized = continuity.withContinuityContracts(unknownShots);
+  assert(unknownNormalized.slice(1).every(shot => shot.transition_type === 'hard_cut'), '普通动作不得自动升级为 cut_on_action');
+  const unknownPlan = service.buildKeyframeDependencyPlan(unknownNormalized, unknownNormalized.map(shot => ({ continuity_lock: shot.continuity })), { cast_mode: 'no_human' });
+  assert.deepStrictEqual(unknownPlan.dependencies, { 0: null, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4 }, '完全缺少连续性元数据时必须保守串行');
+
+  const sameSceneShots = continuity.withContinuityContracts(Array.from({ length: 6 }, (_, index) => ({
+    index: index + 1, scene_id: 'verified-scene', action: `普通独立动作 ${index + 1}`, characters: [],
+  })));
+  const sameScenePlan = service.buildKeyframeDependencyPlan(sameSceneShots, sameSceneShots.map(shot => ({ scene_lock: { scene_id: 'verified-scene' }, continuity_lock: shot.continuity })), {
+    cast_mode: 'no_human',
+    scene_assets: [{ scene_id: 'verified-scene', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+  });
+  assert.deepStrictEqual(sameScenePlan.dependencies, { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null }, '同场景普通动作必须依靠场景锚点并行');
+
+  const dissolvePlan = service.buildKeyframeDependencyPlan([
+    { scene_id: 'scene-a', transition_type: 'none' },
+    { scene_id: 'scene-b', transition_type: 'dissolve' },
+  ], [
+    { scene_lock: { scene_id: 'scene-a' }, continuity_lock: { transition_type: 'none' } },
+    { scene_lock: { scene_id: 'scene-b' }, continuity_lock: { transition_type: 'dissolve' } },
+  ], {
+    cast_mode: 'no_human',
+    scene_assets: ['scene-a', 'scene-b'].map(scene_id => ({ scene_id, scene_contract: { status: 'verified', cross_view_qa: { pass: true } } })),
+  });
+  assert.deepStrictEqual(dissolvePlan.dependencies, { 0: null, 1: null }, '普通 dissolve 不需要上一关键帧参与生成');
+
+  const explicitStatePlan = service.buildKeyframeDependencyPlan([
+    { scene_id: 'scene-a' },
+    { scene_id: 'scene-a', transition_type: 'hard_cut', requires_previous_frame: true, object_states: '产品保持开启' },
+  ], [
+    { scene_lock: { scene_id: 'scene-a' }, continuity_lock: { transition_type: 'none' } },
+    { scene_lock: { scene_id: 'scene-a' }, continuity_lock: { transition_type: 'hard_cut', requires_previous_frame: true, object_states: '产品保持开启' } },
+  ], {
+    cast_mode: 'no_human',
+    scene_assets: [{ scene_id: 'scene-a', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+  });
+  assert.deepStrictEqual(explicitStatePlan.dependencies, { 0: null, 1: 0 }, '显式要求承接上一帧时，即使 hard_cut 也必须建立依赖');
+
+  const multiPersonPlan = service.buildKeyframeDependencyPlan([
+    { scene_id: 'verified-scene', characters: [{ name: '已验证主角' }] },
+    { scene_id: 'verified-scene', characters: [{ name: '未验证配角' }] },
+    { scene_id: 'verified-scene', characters: [{ name: '未验证配角' }] },
+  ], [
+    { scene_lock: { scene_id: 'verified-scene' } },
+    { scene_lock: { scene_id: 'verified-scene' } },
+    { scene_lock: { scene_id: 'verified-scene' } },
+  ], {
+    cast_mode: 'multi',
+    person_contract: { status: 'verified', cross_view_qa: { pass: true } },
+    person_asset: { name: '已验证主角', image_url: 'https://example.test/main.png' },
+    scene_assets: [{ scene_id: 'verified-scene', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+  });
+  assert.deepStrictEqual(multiPersonPlan.dependencies, { 0: null, 1: null, 2: 1 }, '未验证的同一配角必须保守承接，不能被主角全局验证状态放行');
+
+  for (const sceneContract of [
+    { status: 'verified', cross_view_qa: { pass: false } },
+    { status: 'pending', cross_view_qa: { pass: true } },
+  ]) {
+    const inconsistentScenePlan = service.buildKeyframeDependencyPlan(
+      [{ scene_id: 'scene-x' }, { scene_id: 'scene-x' }],
+      [{ scene_lock: { scene_id: 'scene-x' } }, { scene_lock: { scene_id: 'scene-x' } }],
+      { cast_mode: 'no_human', scene_assets: [{ scene_id: 'scene-x', scene_contract: sceneContract }] },
+    );
+    assert.deepStrictEqual(inconsistentScenePlan.dependencies, { 0: null, 1: 0 }, '场景 status 与 QA 必须同时通过才可作为并发锚点');
+  }
 
   const refs = service.keyframeReferenceImages({
     person_asset: {
@@ -207,7 +284,10 @@ function testConfigurationAndContracts() {
       view_images: [{ url: 'https://example.test/person-side.png' }],
     },
     assets: [{ type: 'product', url: 'https://example.test/product.png' }],
-  }, 'https://example.test/scene.png', { image_url: 'https://example.test/previous.png' });
+    product_subject: '测试产品',
+  }, 'https://example.test/scene.png', { image_url: 'https://example.test/previous.png' }, {
+    characters: [{ name: '测试人物' }], visual: '测试人物拿起测试产品进行展示',
+  });
   assert.deepStrictEqual(refs, [
     'https://example.test/scene.png',
     'https://example.test/person-main.png',
@@ -223,12 +303,11 @@ function testConfigurationAndContracts() {
       screen_direction: 'left_to_right', object_states: '包装保持开启', transition_type: 'cut_on_action',
     },
   }, 1);
-  assert.match(prompt, /Strict shot continuity lock/);
   assert.match(prompt, /Entry frame state: 产品位于桌面左侧/);
   assert.match(prompt, /Object state lock: 包装保持开启/);
 
   const targetIndexes = service.keyframeTargetIndexes([{}, {}, {}], [
-    { image_url: 'https://example.test/accepted.png' },
+    { image_url: 'https://example.test/accepted.png', qa_policy_version: 2, current_generation_status: 'accepted', qa: { pass: true } },
     null,
     { image_url: 'https://example.test/failed.png', error: 'failed' },
   ], { missing_only: true });

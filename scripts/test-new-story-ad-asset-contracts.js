@@ -46,6 +46,15 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
       }),
     },
   });
+  const aliasPersonContract = person.buildPersonContract(personAsset, {
+    appearanceText: '成年演员，椭圆脸，身份特征固定',
+    wardrobeText: '深蓝色长袖服装',
+    hairMakeupText: '黑色束发，自然妆容',
+  });
+  assert.match(aliasPersonContract.identity.face_description, /椭圆脸/);
+  assert.match(aliasPersonContract.wardrobe.description, /深蓝色长袖/);
+  assert.match(aliasPersonContract.appearance.hair_style, /黑色束发/);
+  assert.equal(person.shotPersonPresence({ characters: [{ name: 'A' }], visual: 'A walks through the room in a black dress' }).mode, 'person');
   assert.strictEqual(personContract.status, 'verified');
   assert.doesNotThrow(() => person.assertVerifiedPerson({ cast_mode: 'single', person_asset: { ...personAsset, person_contract: personContract }, person_contract: personContract }));
   assert.throws(
@@ -145,6 +154,15 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
   assert.strictEqual(second.scene_id, 'scene-b');
   assert.strictEqual(second.transition_reason.includes('当前任务'), true);
 
+  const sceneOnlyProductCtx = {
+    product_subject: '测试产品',
+    assets: [{ type: 'product', url: 'https://example.test/product.png' }],
+  };
+  assert.equal(product.shotProductRequired(sceneOnlyProductCtx, { subject_type: 'scene_only', visual: '空展厅的墙面材质与地面光影' }), false);
+  const productDetail = product.shotProductPresence(sceneOnlyProductCtx, { subject_type: 'product_only', visual: '测试产品的局部材质特写' });
+  assert.equal(productDetail.required, true);
+  assert.equal(productDetail.mode, 'partial');
+
   const compactedPrompt = storyAd.compactKeyframePrompt([
     `Campaign brief: ${'task-specific brief '.repeat(180)}`,
     `Visual: ${'current shot visual '.repeat(100)}`,
@@ -155,6 +173,44 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
   assert.ok(compactedPrompt.includes('Visual:'));
   assert.ok(compactedPrompt.includes('Strict actor consistency lock:'));
   assert.ok(compactedPrompt.includes('Semantic fidelity rule:'));
+  const partialPersonPrompt = storyAd.buildKeyframePrompt({
+    brief: '通用长任务 '.repeat(120),
+    product_subject: '当前任务主体',
+    cast_mode: 'single',
+    person_asset: { id: 'actor-1', name: '锁定演员', image_url: 'https://example.test/front.png', view_images: [{ key: 'front', url: 'https://example.test/front.png' }] },
+    person_contract: { person_revision: 2, status: 'verified', cross_view_qa: { pass: true } },
+    person_spec: { wardrobeText: '深色长袖服装，袖口和全片保持完全一致', appearanceText: '成年演员，身份固定', hairMakeupText: '发型固定' },
+    forbidden: ['不得切换任务主体'],
+    controlled_production: {
+      product_control: { enabled: true, presence: 'high', lock_strength: 'strict', methods: ['detail', 'proof'] },
+      style_control: { notes: '自然纪实光线与克制的商业质感' },
+    },
+  }, {
+    title: '局部互动', characters: [], subject_type: 'product_only', visual: '锁定演员的手指和衣袖进入画面触摸主体', action: '指尖轻触可见主体',
+  }, {
+    scene_lock: { scene_id: 'scene-1', scene_name: '任务场景', scene_view: 'detail', anchor_ids: ['anchor-1'] },
+    continuity_lock: { transition_type: 'match_cut', entry_frame_state: '承接上一镜局部位置', object_states: '主体保持在画面右侧且包装维持开启' },
+    visual_contract: {
+      product_required: true,
+      product_presence: 'high',
+      product_lock_strength: 'strict',
+      product_methods: ['detail', 'proof'],
+      evidence: '镜头必须给出真实可见的产品证据',
+      style_direction: '自然纪实光线与克制的商业质感',
+    },
+  }, 2, { sceneAsset: { id: 'scene-1', name: '任务场景', material_summary: '材质必须保持一致', layout_summary: '结构必须保持一致' } });
+  assert.ok(partialPersonPrompt.length <= 2400);
+  assert.match(partialPersonPrompt, /Person QA required/);
+  assert.match(partialPersonPrompt, /Actor wardrobe lock/);
+  assert.match(partialPersonPrompt, /Shot scene binding:/i);
+  assert.match(partialPersonPrompt, /Scene material lock:/i);
+  assert.match(partialPersonPrompt, /Object state lock:/i);
+  assert.match(partialPersonPrompt, /Semantic fidelity rule/i);
+  assert.match(partialPersonPrompt, /Campaign brief:/i);
+  assert.match(partialPersonPrompt, /Product visibility:/i);
+  assert.match(partialPersonPrompt, /Product presentation methods:/i);
+  assert.match(partialPersonPrompt, /Visual style direction:/i);
+  assert.match(partialPersonPrompt, /Object state lock:/i);
   assert.strictEqual(storyAd.isCompleteKeyframe({ image_url: 'https://temporary-provider.example/keyframe.png' }), true);
 
   console.log('new story ad asset contracts: ok');

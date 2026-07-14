@@ -81,9 +81,40 @@
     const failed = Array.from({ length: total })
       .filter((_, index) => (keyframes || [])[index]?.error && !frameUrl((keyframes || [])[index] || {}))
       .length;
+    const retainedPrevious = Array.from({ length: total })
+      .filter((_, index) => frameUrl((keyframes || [])[index] || {}) && !!(keyframes || [])[index]?.regeneration_error)
+      .length;
+    const freshPass = Array.from({ length: total })
+      .filter((_, index) => {
+        const frame = (keyframes || [])[index] || {};
+        return frameUrl(frame) && !frame.regeneration_error
+          && !['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame.current_generation_status || ''))
+          && frame.contract_outdated !== true
+          && Number(frame.qa_policy_version || 0) >= 2 && frame.qa?.pass === true;
+      }).length;
+    const outdated = Array.from({ length: total })
+      .filter((_, index) => {
+        const frame = (keyframes || [])[index] || {};
+        return frameUrl(frame) && !frame.regeneration_error && (
+          Number(frame.qa_policy_version || 0) < 2
+          || frame.contract_outdated === true
+          || String(frame.current_generation_status || '') === 'outdated'
+        );
+      }).length;
     return {
       total,
       completed: Math.max(0, total - missingIndexes.length),
+      fresh_pass: freshPass,
+      outdated,
+      retained_previous: retainedPrevious,
+      latest_failed: retainedPrevious + failed,
+      needs_regeneration: Array.from({ length: total }).filter((_, index) => {
+        const frame = (keyframes || [])[index] || {};
+        return !frameUrl(frame) || !!frame.regeneration_error || Number(frame.qa_policy_version || 0) < 2
+          || frame.contract_outdated === true
+          || ['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame.current_generation_status || ''))
+          || frame.qa?.pass !== true;
+      }).length,
       missing: missingIndexes.length,
       failed,
       missing_indexes: missingIndexes,
@@ -103,13 +134,16 @@
     const loading = index < 2 ? 'eager' : 'lazy';
     const priority = index < 2 ? ' fetchpriority="high"' : '';
     const qa = frame.qa || {};
+    const qaOutdated = !!previewUrl && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated');
     const qaText = frame.regeneration_error
       ? regenerationStatusText(frame)
+      : qaOutdated
+      ? (frame.contract_outdated ? '镜头信息已修改 · 需重新生成验证' : '旧版画面 · 需按新规则重新验证')
       : qa.status === 'not_applicable'
-      ? '未启用场景空间锁'
+      ? '当前镜头无需视觉一致性检查'
       : (qa.pass === true
-        ? `空间一致性已通过${qa.scene_consistency_score ? ` · ${Math.round(Number(qa.scene_consistency_score) * 100)}%` : ''}`
-        : (displayError ? `失败：${displayError}` : '等待空间一致性检查'));
+        ? `视觉 QA 已通过${qa.scene?.scene_consistency_score ? ` · 场景 ${Math.round(Number(qa.scene.scene_consistency_score) * 100)}%` : ''}`
+        : (displayError ? `失败：${displayError}` : '等待视觉 QA'));
     return `<button type="button" class="dh-nsa-frame-preview ${previewUrl ? '' : 'pending'}" ${previewUrl ? `data-nsa-frame-preview="${index}" data-nsa-frame-full="${esc(imageUrl || previewUrl)}" title="点击查看第 ${index + 1} 镜大图"` : 'disabled'}>
       ${source ? `<img src="${esc(source)}" alt="${esc(title)}" loading="${loading}" decoding="async"${priority} onerror="const p=this.closest('.dh-nsa-frame-preview');this.hidden=true;p?.classList.add('image-error');const s=p?.querySelector('small');if(s)s.textContent='图片地址已失效，请重新生成本镜'">` : `<span>${String(index + 1).padStart(2, '0')}</span>`}
       <b>${String(index + 1).padStart(2, '0')} · ${esc(title)}</b>

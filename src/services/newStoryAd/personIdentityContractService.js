@@ -76,19 +76,19 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
       age_range: cleanText(spec.age || spec.age_range || asset.age || '', 80),
       gender: cleanText(spec.gender || asset.gender || '', 40),
       origin: cleanText(spec.origin || asset.origin || '', 120),
-      face_description: cleanText(spec.appearance || spec.face_description || asset.description || '', 600),
+      face_description: cleanText(spec.appearanceText || spec.appearance || spec.face_description || asset.description || '', 600),
       body_type: cleanText(spec.bodyType || spec.body_type || '', 120),
       height_impression: cleanText(spec.height || spec.height_impression || '', 120),
     },
     appearance: {
       face_shape: cleanText(spec.faceShape || spec.face_shape || '', 120),
-      hair_style: cleanText(spec.hairMakeup || spec.hair_style || '', 240),
+      hair_style: cleanText(spec.hairMakeupText || spec.hairMakeup || spec.hair_style || '', 240),
       hair_color: cleanText(spec.hairColor || spec.hair_color || '', 80),
       skin_tone: cleanText(spec.skinTone || spec.skin_tone || '', 80),
       makeup: cleanText(spec.makeup || '', 160),
     },
     wardrobe: {
-      description: cleanText(spec.wardrobe || spec.outfit || asset.outfit || '', 600),
+      description: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || asset.outfit || '', 600),
       top: cleanText(spec.top || '', 160),
       bottom: cleanText(spec.bottom || '', 160),
       shoes: cleanText(spec.shoes || '', 160),
@@ -180,18 +180,72 @@ function personRequired(ctx = {}) {
   );
 }
 
+function shotPersonPresence(shot = {}, contract = {}) {
+  const shotCharacters = Array.isArray(shot.characters) ? shot.characters.filter(Boolean) : [];
+  const lockedCharacters = Array.isArray(contract?.cast_lock?.shot_characters)
+    ? contract.cast_lock.shot_characters.filter(Boolean)
+    : [];
+  const visualLayers = Array.isArray(shot.visual_layers)
+    ? shot.visual_layers.map(layer => typeof layer === 'string' ? layer : (layer?.content || layer?.text || ''))
+    : [];
+  const text = [
+    shot.subject_type,
+    shot.shot_type,
+    shot.visual,
+    shot.visual_description,
+    shot.story_visual,
+    shot.promo_visual,
+    shot.action,
+    shot.visual_action,
+    shot.content_prompt,
+    shot.keyframe_notes,
+    shot.material_usage,
+    shot.title,
+    ...visualLayers,
+  ].filter(Boolean).join(' ');
+  const handVisible = /手部|手指|指尖|手掌|手腕|手臂|\b(?:hand|finger|fingertip|palm|wrist|arm)\b/i.test(text);
+  const wardrobeVisible = /袖口|衣袖|服装|衣服|外套|连衣裙|衬衫|裤装|鞋|配饰|\b(?:sleeve|wardrobe|outfit|dress|shirt|jacket|trouser|shoe|accessor)\w*\b/i.test(text);
+  const explicitPartialFraming = /身体局部|局部身体|手部特写|手指特写|指尖特写|袖口特写|微距|macro|extreme_close_up|\b(?:hand[- ]only|partial\s+(?:body|figure))\b/i.test(text);
+  const partial = explicitPartialFraming || handVisible || wardrobeVisible;
+  const facePartial = /侧脸|半张脸|\b(?:side\s+profile|partial\s+face)\b/i.test(text);
+  const reflection = /人物倒影|人物反射|\b(?:human\s+reflection|person\s+reflection)\b/i.test(text);
+  const obscured = /背影|人形剪影|\b(?:silhouette|back\s+view)\b/i.test(text);
+  const full = /人物|真人|演员|主角|主持人|模特|顾客|客户|用户|老师|顾问|工程师|开发者|人脸|全身|半身|眼神|发型|妆容|服装|连衣裙|衬衫|人物身份|human_scene|\b(?:person|actor|presenter|model|customer|teacher|consultant|engineer|developer|face|full[- ]body|half[- ]body|wardrobe|hairstyle)\b/i.test(text);
+  const faceVisible = facePartial || /人脸|正脸|面部|\b(?:face|facial)\b/i.test(text);
+  const bodyVisible = /全身|半身|人物站|人物坐|人物行走|演员站|演员坐|模特站|模特走|\b(?:full[- ]body|half[- ]body|standing person|seated person|walking person)\b/i.test(text);
+  const fullBodyVisible = faceVisible || bodyVisible;
+  const castDeclared = shotCharacters.length > 0 || lockedCharacters.length > 0;
+  if (shotCharacters.length || lockedCharacters.length || partial || facePartial || reflection || obscured || full) {
+    return {
+      required: true,
+      mode: facePartial ? 'face_partial' : (reflection && !faceVisible ? 'reflection' : (obscured && !faceVisible ? 'obscured' : ((explicitPartialFraming || (!castDeclared && partial)) && !fullBodyVisible ? 'partial' : 'person'))),
+      visible_parts: [handVisible ? 'hand' : '', wardrobeVisible ? 'wardrobe' : '', faceVisible ? 'face' : '', bodyVisible ? 'body' : '', reflection ? 'reflection' : '', obscured ? 'obscured' : ''].filter(Boolean),
+      reasons: [
+        shotCharacters.length || lockedCharacters.length ? 'cast' : '',
+        partial ? 'partial_body' : '',
+        reflection ? 'reflection_person' : '',
+        obscured ? 'obscured_person' : '',
+        full ? 'person_visual' : '',
+      ].filter(Boolean),
+    };
+  }
+  const noPerson = shot.no_person === true || shot.noHuman === true
+    || /^(?:product_only|scene_only|brand_endcard|object_only|no_human)$/i.test(String(shot.subject_type || '').trim());
+  return { required: !noPerson && !Object.prototype.hasOwnProperty.call(shot, 'characters'), mode: noPerson ? 'none' : 'unspecified', reasons: [] };
+}
+
 function shotPersonRequired(ctx = {}, shot = {}, contract = {}) {
   if (!personRequired(ctx)) return false;
-  if (shot.no_person === true || shot.noHuman === true) return false;
-  if (Object.prototype.hasOwnProperty.call(shot, 'characters') && Array.isArray(shot.characters)) {
-    return shot.characters.filter(Boolean).length > 0;
-  }
-  const lockedCharacters = contract?.cast_lock?.shot_characters;
-  if (Array.isArray(lockedCharacters)) return lockedCharacters.filter(Boolean).length > 0;
-  if (Array.isArray(shot.dialogue_lines) && shot.dialogue_lines.length > 0) return true;
-  const text = [shot.visual, shot.visual_description, shot.action, shot.content_prompt, shot.title].filter(Boolean).join(' ');
-  if (/(?:人物|真人|演员|主角|主持人|模特|顾客|客户|用户|老师|顾问|工程师|开发者|手部|人脸|全身|半身|person|actor|presenter|customer|developer|engineer|face|hand)/i.test(text)) return true;
-  return true;
+  return shotPersonPresence(shot, contract).required;
+}
+
+function shotForbidsPerson(ctx = {}, shot = {}) {
+  const castMode = String(ctx.cast_mode || ctx.person_asset?.cast_mode || '').toLowerCase();
+  const subjectType = String(shot.subject_type || '').trim();
+  const declaredNonHuman = /^(?:product_only|scene_only|brand_endcard|object_only|no_human|environment)$/i.test(subjectType);
+  return castMode === 'no_human' || shot.no_person === true || shot.noHuman === true
+    || /^(?:no_human)$/i.test(subjectType)
+    || (declaredNonHuman && !shotPersonPresence(shot, {}).required);
 }
 
 function assertVerifiedPerson(ctx = {}) {
@@ -212,4 +266,4 @@ function assertVerifiedPerson(ctx = {}) {
   throw error;
 }
 
-module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, contractFingerprint, buildPersonContract, verifyPersonAsset, personRequired, shotPersonRequired, assertVerifiedPerson };
+module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, contractFingerprint, buildPersonContract, verifyPersonAsset, personRequired, shotPersonPresence, shotPersonRequired, shotForbidsPerson, assertVerifiedPerson };

@@ -141,6 +141,8 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     subject_position: clampText(shot.subject_position || shot.subjectPosition || '', 80),
     object_states: clampText(shot.object_states || shot.objectStates || '', 240),
     transition_type: clampText(shot.transition_type || shot.transitionType || shot.transition || '', 40),
+    requires_previous_frame: shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
+      || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true',
     audio_bridge: clampText(shot.audio_bridge || shot.audioBridge || '', 160),
     ambient_sound: clampText(shot.ambient_sound || shot.ambientSound || '', 180),
     sfx: (Array.isArray(shot.sfx) ? shot.sfx : String(shot.sfx || '').split(/[,，；;]/)).map(value => clampText(value, 100)).filter(Boolean).slice(0, 12),
@@ -243,7 +245,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -317,6 +319,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'scene_zone_label_zh is the user-facing Simplified Chinese label for the selected zone. It may explain the binding but must not replace or change scene_zone_id/zone_ids.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
       'Every shot after the first must describe entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type and audio_bridge when applicable.',
+      'Set requires_previous_frame=true only when the current image must visually inherit an exact action, pose, object state, eyeline or composition from the immediately previous frame. Ordinary hard cuts with shared verified scene/person anchors must use false so they can generate in parallel.',
       'Choose shot_size, camera_angle, lens_mm, depth_of_field, composition and subject_position from the current shot purpose. These are cinematography controls, not fixed story templates.',
       'Add ambient_sound, sfx, music_cue and voiceover_timing only when they serve the current shot. Never assume a fixed genre or industry sound.',
       'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
@@ -378,6 +381,7 @@ Return JSON array for current beats only. Fields:
   "subject_position": "subject placement derived from current action and continuity",
   "object_states": "product and prop positions/states that must not jump",
   "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
+  "requires_previous_frame": false,
   "audio_bridge": "ambient or sound bridge into this shot, empty when none",
   "ambient_sound": "environment sound from the current scene",
   "sfx": ["specific action or object sound"],
