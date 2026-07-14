@@ -3,6 +3,7 @@ const { loadSettings } = require('../settingsService');
 const storage = require('./storageService');
 const providerAdapters = require('./providerAdapterRegistry');
 const cancellation = require('./cancellationContext');
+const publicReferences = require('./publicReferenceService');
 
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
 const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
@@ -386,14 +387,13 @@ async function generateVision({
   maxCandidates = Math.min(2, TEXT_MAX_CANDIDATES),
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
 } = {}) {
-  const urls = (Array.isArray(imageUrls) ? imageUrls : [])
-    .map(value => String(value || '').trim())
-    .filter(value => /^https?:\/\//i.test(value))
-    .slice(0, 8);
+  const referenceDiagnostics = publicReferences.normalizeVisionReferences(imageUrls, { max: 8 });
+  const urls = referenceDiagnostics.urls;
   if (!urls.length) {
     const error = new Error(`${stage} 缺少可供视觉模型读取的公网参考图`);
     error.code = 'VISION_REFERENCE_UNAVAILABLE';
     error.retryable = false;
+    error.reference_diagnostics = referenceDiagnostics;
     throw error;
   }
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {

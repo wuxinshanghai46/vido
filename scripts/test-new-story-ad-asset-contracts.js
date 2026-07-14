@@ -1,13 +1,36 @@
 const assert = require('assert');
+process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://public.example';
 const person = require('../src/services/newStoryAd/personIdentityContractService');
 const product = require('../src/services/newStoryAd/productIdentityContractService');
 const scenes = require('../src/services/newStoryAd/sceneBindingService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
+const publicReferences = require('../src/services/newStoryAd/publicReferenceService');
+const sceneViewStrategy = require('../src/services/newStoryAd/sceneViewStrategyService');
 
 const viewImages = ['front', 'side', 'back', 'action'].map(key => ({ key, url: `https://example.com/person-${key}.png` }));
 const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_images: viewImages };
 
 (async () => {
+  const referenceSet = publicReferences.normalizeVisionReferences([
+    '/api/new-story-ad/assets/reference.png',
+    'https://cdn.example/reference.png',
+    'file:///private/reference.png',
+    '/api/new-story-ad/assets/reference.png',
+  ]);
+  assert.deepStrictEqual(referenceSet.urls, [
+    'https://public.example/api/new-story-ad/assets/reference.png',
+    'https://cdn.example/reference.png',
+  ]);
+  assert.strictEqual(referenceSet.rejected.length, 1);
+  assert.strictEqual(referenceSet.duplicates.length, 1);
+
+  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master'] }).selected, 'single_view');
+  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master', 'reverse'] }).selected, 'image_derived');
+  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requested: '360', requiredViews: ['master', 'reverse'], videoAcquisitionEnabled: true }).selected, 'orbit_extract');
+  const disabledOrbit = sceneViewStrategy.resolveSceneViewStrategy({ requested: 'orbit', requiredViews: ['master', 'reverse'], videoAcquisitionEnabled: false });
+  assert.strictEqual(disabledOrbit.selected, 'image_derived');
+  assert.strictEqual(disabledOrbit.fallback_reason, 'video_acquisition_not_enabled');
+
   const personContract = await person.verifyPersonAsset({
     taskId: 'asset-contract-test',
     asset: personAsset,
@@ -30,6 +53,55 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
     error => error.code === 'PERSON_VERIFICATION_REQUIRED',
   );
   assert.doesNotThrow(() => person.assertVerifiedPerson({ cast_mode: 'no_human' }));
+
+  let normalizedPersonUrls = [];
+  const relativePersonAsset = {
+    id: 'person-relative-references',
+    actor_id: 'person-relative-references',
+    view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, url: `/api/new-story-ad/assets/${key}.png` })),
+  };
+  const relativePersonContract = await person.verifyPersonAsset({
+    taskId: 'asset-contract-relative-test',
+    asset: relativePersonAsset,
+    spec: { age: 'task-defined', gender: 'task-defined', wardrobe: 'task-defined wardrobe' },
+    gateway: {
+      generateVision: async ({ imageUrls }) => {
+        normalizedPersonUrls = imageUrls;
+        return { text: '{}', used_model: 'test/vision' };
+      },
+    },
+    repair: {
+      parseOrRepair: async () => ({
+        pass: true, identity_score: 0.94, age_score: 0.91, wardrobe_score: 0.93, body_score: 0.88, mismatch_reasons: [],
+      }),
+    },
+  });
+  assert.strictEqual(relativePersonContract.status, 'verified');
+  assert.strictEqual(relativePersonContract.verification.state, 'verified');
+  assert.strictEqual(normalizedPersonUrls.length, 4);
+  assert(normalizedPersonUrls.every(url => url.startsWith('https://public.example/api/new-story-ad/assets/')));
+
+  let reusedPersonCalled = false;
+  const reusedPersonContract = await person.verifyPersonAsset({
+    taskId: 'asset-contract-reuse-test',
+    asset: { ...relativePersonAsset, person_contract: relativePersonContract, person_revision: 1 },
+    spec: { age: 'task-defined', gender: 'task-defined', wardrobe: 'task-defined wardrobe' },
+    revision: 1,
+    gateway: { generateVision: async () => { reusedPersonCalled = true; throw new Error('must not run'); } },
+  });
+  assert.strictEqual(reusedPersonContract.status, 'verified');
+  assert.strictEqual(reusedPersonCalled, false, 'unchanged verified person revision must reuse its verification result');
+
+  const unreadablePersonContract = await person.verifyPersonAsset({
+    taskId: 'asset-contract-invalid-reference-test',
+    asset: {
+      id: 'person-invalid-references',
+      view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, url: `file:///private/${key}.png` })),
+    },
+  });
+  assert.strictEqual(unreadablePersonContract.status, 'unverified');
+  assert.strictEqual(unreadablePersonContract.verification.code, 'VISION_REFERENCE_UNAVAILABLE');
+  assert.strictEqual(unreadablePersonContract.verification.state, 'unavailable');
 
   const productCtx = {
     product_subject: 'current task product',

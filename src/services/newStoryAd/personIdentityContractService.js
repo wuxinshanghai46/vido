@@ -1,6 +1,9 @@
+const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { cleanText } = require('./contextBuilder');
+const publicReferences = require('./publicReferenceService');
+const verification = require('./visualVerificationService');
 
 const PERSON_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const THRESHOLDS = Object.freeze({ identity: 0.82, age: 0.8, wardrobe: 0.85, body: 0.75 });
@@ -46,17 +49,29 @@ function normalizeQa(input = {}) {
   return qa;
 }
 
+function contractFingerprint(contract = {}) {
+  const payload = {
+    person_id: contract.person_id,
+    person_revision: contract.person_revision,
+    identity: contract.identity,
+    appearance: contract.appearance,
+    wardrobe: contract.wardrobe,
+    reference_views: contract.reference_views,
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
 function buildPersonContract(asset = {}, spec = {}, options = {}) {
   const views = personViews(asset);
   const revision = Math.max(1, Number(options.revision || asset.person_revision || asset.person_contract?.person_revision || 1) || 1);
-  const existingQa = asset.person_contract?.cross_view_qa || asset.cross_view_qa || {};
+  const existing = asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : {};
+  const existingQa = existing.cross_view_qa || asset.cross_view_qa || {};
   const qa = normalizeQa(existingQa);
-  const verified = asset.person_contract?.status === 'verified' && qa.pass;
-  return {
+  const contract = {
     schema_version: 1,
     person_id: cleanText(asset.actor_id || asset.actor_asset_id || asset.id || options.personId || 'person_asset', 120),
     person_revision: revision,
-    status: verified ? 'verified' : cleanText(asset.person_contract?.status || options.status || 'unverified', 40),
+    status: 'unverified',
     identity: {
       age_range: cleanText(spec.age || spec.age_range || asset.age || '', 80),
       gender: cleanText(spec.gender || asset.gender || '', 40),
@@ -82,26 +97,49 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
     },
     reference_views: Object.fromEntries(PERSON_VIEW_KEYS.map(key => [key, views.find(view => view.key === key)?.url || ''])),
     cross_view_qa: qa,
+    verification: existing.verification || verification.pending(),
     updated_at: new Date().toISOString(),
   };
+  contract.reference_fingerprint = contractFingerprint(contract);
+  const sameRevision = Number(existing.person_revision || revision) === revision;
+  const sameFingerprint = !existing.reference_fingerprint || existing.reference_fingerprint === contract.reference_fingerprint;
+  const verified = existing.status === 'verified' && qa.pass && sameRevision && sameFingerprint;
+  contract.status = verified ? 'verified' : cleanText(options.status || 'unverified', 40);
+  if (verified) contract.verification = existing.verification || verification.verified(qa.used_model);
+  return contract;
 }
 
-async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, gateway = modelGateway, repair = jsonRepair } = {}) {
+async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair } = {}) {
   const contract = buildPersonContract(asset, spec, { revision });
   const views = personViews(asset);
+  if (!force && contract.status === 'verified' && contract.cross_view_qa.pass) return contract;
   if (views.length < 4 || PERSON_VIEW_KEYS.some(key => !views.some(view => view.key === key))) {
     contract.status = 'unverified';
     contract.cross_view_qa = normalizeQa({
       pass: false,
       mismatch_reasons: ['人物参考必须包含 front、side、back、action 四个独立视图'],
     });
+    contract.verification = verification.rejected(contract.cross_view_qa.mismatch_reasons, '人物参考视图不完整');
+    return contract;
+  }
+  const normalizedReferences = publicReferences.normalizeVisionReferences(views.map(view => view.url), { max: PERSON_VIEW_KEYS.length });
+  if (normalizedReferences.urls.length !== PERSON_VIEW_KEYS.length) {
+    const error = new Error('人物参考图片地址无法提供给视觉审核');
+    error.code = 'VISION_REFERENCE_UNAVAILABLE';
+    error.retryable = true;
+    error.reference_diagnostics = normalizedReferences;
+    contract.status = 'unverified';
+    contract.qa_unavailable = true;
+    contract.cross_view_qa = normalizeQa({ pass: false, mismatch_reasons: ['人物参考图片无法读取，请检查图片后重新验证'] });
+    contract.verification_error_code = error.code;
+    contract.verification = verification.unavailable(error);
     return contract;
   }
   try {
     const result = await gateway.generateVision({
       taskId,
       stage: 'new_story_ad.person_consistency_qa',
-      imageUrls: views.map(view => view.url),
+      imageUrls: normalizedReferences.urls,
       systemPrompt: [
         'You are a strict cross-view identity inspector for a general-purpose commercial video platform.',
         'The images may depict any lawful person, age group, ethnicity, wardrobe, occupation or visual style requested by the current task. Never assume a fixed country, industry, name or character template.',
@@ -113,12 +151,18 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
     const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
     contract.cross_view_qa = normalizeQa({ ...parsed, used_model: result.used_model });
     contract.status = contract.cross_view_qa.pass ? 'verified' : 'rejected';
+    contract.qa_unavailable = false;
+    contract.verification_error_code = '';
+    contract.verification = contract.cross_view_qa.pass
+      ? verification.verified(result.used_model)
+      : verification.rejected(contract.cross_view_qa.mismatch_reasons, '人物身份、年龄、服装或体态一致性未通过');
   } catch (error) {
     if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
     contract.status = 'unverified';
     contract.qa_unavailable = true;
     contract.cross_view_qa = normalizeQa({ pass: false, mismatch_reasons: ['人物视觉验证暂不可用，请稍后重新验证'] });
     contract.verification_error_code = error.code;
+    contract.verification = verification.unavailable(error);
   }
   contract.updated_at = new Date().toISOString();
   return contract;
@@ -168,4 +212,4 @@ function assertVerifiedPerson(ctx = {}) {
   throw error;
 }
 
-module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, buildPersonContract, verifyPersonAsset, personRequired, shotPersonRequired, assertVerifiedPerson };
+module.exports = { PERSON_VIEW_KEYS, THRESHOLDS, personViews, normalizeQa, contractFingerprint, buildPersonContract, verifyPersonAsset, personRequired, shotPersonRequired, assertVerifiedPerson };

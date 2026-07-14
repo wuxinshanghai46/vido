@@ -1713,6 +1713,48 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   border: 1px solid rgba(245, 158, 11, .42);
   background: rgba(245, 158, 11, .1);
 }
+.dh-nsa-verification-badge.is-rejected {
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, .42);
+  background: rgba(239, 68, 68, .1);
+}
+.dh-nsa-verification-badge.is-unavailable {
+  color: #fdba74;
+  border: 1px solid rgba(249, 115, 22, .42);
+  background: rgba(249, 115, 22, .1);
+}
+.dh-nsa-verification-details {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid rgba(245, 158, 11, .28);
+  border-radius: 9px;
+  color: var(--dh-text-muted);
+  background: rgba(245, 158, 11, .06);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dh-nsa-verification-details b { color: var(--dh-text); font-size: 12px; }
+.dh-nsa-verification-details span { overflow-wrap: anywhere; }
+.dh-nsa-verification-scores { display: flex; gap: 6px; flex-wrap: wrap; }
+.dh-nsa-verification-scores em {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--dh-text);
+  background: color-mix(in srgb, var(--dh-surface) 76%, transparent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+.dh-nsa-verification-details.is-rejected {
+  border-color: rgba(239, 68, 68, .3);
+  background: rgba(239, 68, 68, .06);
+}
+.dh-nsa-verification-details.is-unavailable {
+  border-color: rgba(249, 115, 22, .3);
+  background: rgba(249, 115, 22, .06);
+}
 .dh-nsa-production-mode-row {
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);

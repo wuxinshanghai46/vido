@@ -1,5 +1,7 @@
+const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
 const { cleanText } = require('./contextBuilder');
+const verification = require('./visualVerificationService');
 
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 
@@ -139,7 +141,26 @@ function normalizeContract(input = {}, options = {}) {
   const qa = contract.cross_view_qa;
   qa.pass = sourceQa.pass === true && qa.scene_consistency_score >= 0.72
     && qa.geometry_consistency_score >= 0.68 && qa.material_consistency_score >= 0.72;
-  contract.status = qa.pass ? 'verified' : 'rejected';
+  const unavailable = input.qa_unavailable === true || input.verification?.state === 'unavailable';
+  contract.status = unavailable ? 'unverified' : (qa.pass ? 'verified' : 'rejected');
+  if (unavailable) {
+    contract.qa_unavailable = true;
+    contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
+    contract.qa_error = cleanText(input.qa_error || input.verification?.message || '', 500);
+  }
+  contract.reference_fingerprint = crypto.createHash('sha256').update(JSON.stringify({
+    scene_id: contract.scene_id,
+    scene_revision: contract.scene_revision,
+    requested_layout: contract.requested_layout,
+    requested_material_light: contract.requested_material_light,
+    requested_interaction: contract.requested_interaction,
+    cameras: contract.cameras.map(camera => ({ view_id: camera.view_id, reference_image_url: camera.reference_image_url })),
+  })).digest('hex');
+  contract.verification = unavailable
+    ? (input.verification || verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error }))
+    : (qa.pass
+      ? verification.verified(input.vision_model || '')
+      : verification.rejected(qa.mismatch_reasons, '场景空间、结构或材质一致性未通过'));
   return contract;
 }
 
@@ -149,6 +170,7 @@ function buildUnverifiedContract(options = {}, error = null) {
   contract.qa_unavailable = true;
   contract.qa_error_code = cleanText(error?.code || 'VISION_QA_UNAVAILABLE', 80);
   contract.qa_error = cleanText(error?.message || '视觉验收暂不可用', 500);
+  contract.verification = verification.unavailable(error || { code: contract.qa_error_code, message: contract.qa_error });
   contract.vision_model = '';
   contract.cross_view_qa = {
     pass: null,
@@ -212,6 +234,9 @@ async function analyzeSceneViews(options = {}) {
     requested,
   });
   contract.vision_model = result.used_model || '';
+  contract.verification = contract.status === 'verified'
+    ? verification.verified(result.used_model)
+    : verification.rejected(contract.cross_view_qa.mismatch_reasons, '场景空间、结构或材质一致性未通过');
   return contract;
 }
 

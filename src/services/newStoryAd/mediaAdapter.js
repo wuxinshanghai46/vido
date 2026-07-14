@@ -10,6 +10,7 @@ const deyunaiService = require('../deyunaiService');
 const modelGateway = require('./modelGateway');
 const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
+const publicReferences = require('./publicReferenceService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
@@ -97,19 +98,11 @@ function publicAssetUrl(filename) {
 }
 
 function publicBaseUrl() {
-  return String(
-    process.env.NEW_STORY_AD_PUBLIC_BASE_URL
-      || process.env.PUBLIC_BASE_URL
-      || 'https://www.vidoai.cn'
-  ).trim().replace(/\/$/, '');
+  return publicReferences.publicBaseUrl();
 }
 
 function absolutePublicImageUrl(value = '') {
-  const url = String(value || '').trim();
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('/')) return `${publicBaseUrl()}${url}`;
-  return '';
+  return publicReferences.absolutePublicUrl(value);
 }
 
 function supportsReferenceImages(config = {}) {

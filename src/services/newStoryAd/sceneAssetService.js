@@ -4,6 +4,7 @@ const mediaAdapter = require('./mediaAdapter');
 const { cleanText } = require('./contextBuilder');
 const sceneSpace = require('./sceneSpaceContractService');
 const cancellation = require('./cancellationContext');
+const sceneViewStrategy = require('./sceneViewStrategyService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 
@@ -46,12 +47,15 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     lock_strength: cleanText(asset.lock_strength || asset.lockStrength || 'standard', 40),
     layout_summary: cleanText(asset.layout_summary || asset.layoutSummary || asset.description || '', 1000),
     material_summary: cleanText(asset.material_summary || asset.materialSummary || '', 1000),
+    interaction_summary: cleanText(asset.interaction_summary || asset.interactionSummary || '', 800),
     style_summary: cleanText(asset.style_summary || asset.styleSummary || '', 800),
     negative: cleanText(asset.negative || asset.negative_prompt || '', 800),
     image_url: primary,
     url: primary,
     view_images: viewImages,
     view_count: Number(asset.view_count || viewImages.length || (primary ? 1 : 0)) || 0,
+    view_strategy: cleanText(asset.view_strategy || asset.viewStrategy || 'image_derived', 40),
+    view_acquisition: asset.view_acquisition && typeof asset.view_acquisition === 'object' ? asset.view_acquisition : null,
     scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
     scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object'
       ? sceneSpace.normalizeContract(asset.scene_contract, {
@@ -236,6 +240,12 @@ async function generateSceneAsset(taskId, body = {}) {
   const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
+  const viewAcquisition = sceneViewStrategy.resolveSceneViewStrategy({
+    requested: body.view_strategy || body.viewStrategy || 'auto',
+    requiredViews: SCENE_VIEW_KEYS,
+    uploadedViewCount: Array.isArray(body.view_images) ? body.view_images.length : 0,
+    videoAcquisitionEnabled: false,
+  });
   const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
   const prompt = buildSceneSheetPrompt({ ctx, sceneConfig, body });
   const master = await mediaAdapter.generateImage({
@@ -321,6 +331,7 @@ async function generateSceneAsset(taskId, body = {}) {
     lock_strength: body.lock_strength || body.lockStrength || 'standard',
     layout_summary: body.layout_summary || body.layoutSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).layoutText || sceneConfig.business_boundary || ctx.brief || '',
     material_summary: body.material_summary || body.materialSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).materialLightText || '',
+    interaction_summary: body.interaction_summary || body.interactionSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).interactionText || '',
     style_summary: ctx.controlled_production?.style_control?.notes || '',
     negative: [
       '空场景资产，不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影。',
@@ -333,10 +344,13 @@ async function generateSceneAsset(taskId, body = {}) {
       provider_used: providerUsed,
     })),
     view_count: viewImages.length,
+    view_strategy: viewAcquisition.selected,
+    view_acquisition: viewAcquisition,
     provider_used: providerUsed,
     prompt,
     scene_contract: sceneContract,
     cross_view_qa: sceneContract.cross_view_qa,
+    verification: sceneContract.verification,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
   saveSceneAssetsToTask(taskId, sceneAssets);
@@ -371,19 +385,32 @@ async function reverifySceneAsset(taskId, sceneId) {
     error.status = 422;
     throw error;
   }
-  const contract = await sceneSpace.analyzeSceneViews({
+  const contractOptions = {
     taskId,
     sceneId: asset.scene_id,
     revision: asset.scene_revision || 1,
     views,
     requested: {
-      layout_summary: asset.layout_summary || '',
-      material_summary: asset.material_summary || '',
-      style_summary: asset.style_summary || '',
+      layout: asset.layout_summary || '',
+      material_light: asset.material_summary || '',
+      interaction: asset.interaction_summary || '',
+      style: asset.style_summary || '',
       negative: asset.negative || '',
     },
-  });
-  assets[index] = { ...asset, scene_contract: contract, cross_view_qa: contract.cross_view_qa };
+  };
+  let contract;
+  try {
+    contract = await sceneSpace.analyzeSceneViews(contractOptions);
+  } catch (error) {
+    if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
+    contract = sceneSpace.buildUnverifiedContract(contractOptions, error);
+  }
+  assets[index] = {
+    ...asset,
+    scene_contract: contract,
+    cross_view_qa: contract.cross_view_qa,
+    verification: contract.verification,
+  };
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }

@@ -1,6 +1,9 @@
+const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { cleanText } = require('./contextBuilder');
+const publicReferences = require('./publicReferenceService');
+const verification = require('./visualVerificationService');
 
 const THRESHOLDS = Object.freeze({ identity: 0.82, shape: 0.8, color: 0.8, material: 0.72 });
 
@@ -45,7 +48,7 @@ function buildProductContract(ctx = {}, options = {}) {
   const revision = Math.max(1, Number(options.revision || ctx.revisions?.product || existing.product_revision || 1) || 1);
   const qa = normalizeQa(existing.reference_qa || {});
   const required = ctx.controlled_production?.product_control?.enabled === true || assets.length > 0;
-  return {
+  const contract = {
     schema_version: 1,
     product_id: cleanText(existing.product_id || assets[0]?.id || 'advertised_subject', 120),
     product_revision: revision,
@@ -62,8 +65,25 @@ function buildProductContract(ctx = {}, options = {}) {
     },
     lock_strength: cleanText(ctx.controlled_production?.product_control?.lock_strength || 'standard', 40),
     reference_qa: qa,
+    verification: existing.verification || verification.pending(),
     updated_at: new Date().toISOString(),
   };
+  contract.reference_fingerprint = crypto.createHash('sha256').update(JSON.stringify({
+    product_id: contract.product_id,
+    product_revision: contract.product_revision,
+    advertised_subject: contract.advertised_subject,
+    reference_images: contract.reference_images,
+    identity: contract.identity,
+  })).digest('hex');
+  const sameRevision = Number(existing.product_revision || revision) === revision;
+  const sameFingerprint = !existing.reference_fingerprint || existing.reference_fingerprint === contract.reference_fingerprint;
+  if (contract.status === 'verified' && sameRevision && sameFingerprint) {
+    contract.verification = existing.verification || verification.verified(qa.used_model);
+  } else if (contract.status === 'verified') {
+    contract.status = 'unverified';
+    contract.verification = verification.pending('产品参考或版本已变化，需要重新验证');
+  }
+  return contract;
 }
 
 async function verifyProductContract({ taskId = '', ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
@@ -72,13 +92,27 @@ async function verifyProductContract({ taskId = '', ctx = {}, gateway = modelGat
   if (!contract.reference_images.length) {
     contract.status = 'unverified';
     contract.reference_qa = normalizeQa({ pass: false, conflicts: ['当前任务要求锁定产品，但没有产品参考图'] });
+    contract.verification = verification.rejected(contract.reference_qa.conflicts, '产品参考图缺失');
+    return contract;
+  }
+  const normalizedReferences = publicReferences.normalizeVisionReferences(contract.reference_images, { max: 8 });
+  if (!normalizedReferences.urls.length) {
+    const error = new Error('产品参考图片地址无法提供给视觉审核');
+    error.code = 'VISION_REFERENCE_UNAVAILABLE';
+    error.retryable = true;
+    error.reference_diagnostics = normalizedReferences;
+    contract.status = 'unverified';
+    contract.qa_unavailable = true;
+    contract.reference_qa = normalizeQa({ pass: false, conflicts: ['产品参考图片无法读取，请检查图片后重新验证'] });
+    contract.verification_error_code = error.code;
+    contract.verification = verification.unavailable(error);
     return contract;
   }
   try {
     const result = await gateway.generateVision({
       taskId,
       stage: 'new_story_ad.product_consistency_qa',
-      imageUrls: contract.reference_images,
+      imageUrls: normalizedReferences.urls,
       systemPrompt: [
         'You are a strict product identity inspector for a general-purpose commercial video platform.',
         'The product may belong to any lawful industry and may be a physical product, package, material sample, device or other visual subject. Never assume a fixed category, brand, shape or scene.',
@@ -90,12 +124,18 @@ async function verifyProductContract({ taskId = '', ctx = {}, gateway = modelGat
     const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
     contract.reference_qa = normalizeQa({ ...parsed, used_model: result.used_model });
     contract.status = contract.reference_qa.pass ? 'verified' : 'rejected';
+    contract.qa_unavailable = false;
+    contract.verification_error_code = '';
+    contract.verification = contract.reference_qa.pass
+      ? verification.verified(result.used_model)
+      : verification.rejected(contract.reference_qa.conflicts, '产品外观、形状、颜色或材质一致性未通过');
   } catch (error) {
     if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
     contract.status = 'unverified';
     contract.qa_unavailable = true;
     contract.reference_qa = normalizeQa({ pass: false, conflicts: ['产品视觉验证暂不可用，请稍后重新验证'] });
     contract.verification_error_code = error.code;
+    contract.verification = verification.unavailable(error);
   }
   contract.updated_at = new Date().toISOString();
   return contract;

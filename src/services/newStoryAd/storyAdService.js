@@ -292,6 +292,7 @@ async function verifyPersonContract(taskId) {
     asset: ctx.person_asset,
     spec: ctx.person_spec || {},
     revision: ctx.revisions?.person || ctx.person_asset.person_revision || 1,
+    force: true,
   });
   const next = {
     ...ctx,

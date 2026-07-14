@@ -9,6 +9,39 @@
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;
 
+  function verificationView(asset = {}) {
+    const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
+    const qa = asset.cross_view_qa || contract.cross_view_qa || {};
+    const details = asset.verification || contract.verification || {};
+    const reasons = [...new Set([
+      ...(Array.isArray(details.reasons) ? details.reasons : []),
+      ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
+    ].map(value => clean(value, 240)).filter(Boolean))].slice(0, 6);
+    const scores = [
+      ['空间', qa.scene_consistency_score],
+      ['结构', qa.geometry_consistency_score || qa.anchor_consistency_score],
+      ['材质', qa.material_consistency_score || qa.material_match_score],
+    ].map(([label, value]) => ({ label, value: Number(value) }))
+      .filter(item => Number.isFinite(item.value) && item.value > 0)
+      .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
+    if (contract.status === 'verified' && qa.pass === true) {
+      return { tone: 'verified', label: '空间锁已验证', message: details.message || '当前场景版本已通过空间一致性验证', reasons: [], scores };
+    }
+    if (contract.status === 'rejected') {
+      return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '空间结构、材质或固定元素不一致', reasons, scores };
+    }
+    if (details.state === 'unavailable' || contract.qa_unavailable === true) {
+      return { tone: 'unavailable', label: '场景验证异常', message: details.message || '视觉审核暂时不可用，请稍后重试', reasons };
+    }
+    return { tone: 'unverified', label: '空间锁待验证', message: details.message || '首次使用或场景版本变化后需要验证一次', reasons };
+  }
+
+  function verificationDetailsHtml(view = {}, escapeHtml = value => value) {
+    const lines = [view.message, ...(view.reasons || []).filter(reason => reason !== view.message)].filter(Boolean);
+    if (!lines.length || view.tone === 'verified') return '';
+    return `<div class="dh-nsa-verification-details is-${escapeHtml(view.tone || 'unverified')}"><b>${escapeHtml(view.label)}</b>${(view.scores || []).length ? `<div class="dh-nsa-verification-scores">${view.scores.map(item => `<em>${escapeHtml(item.label)} ${item.percent}%</em>`).join('')}</div>` : ''}${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>`;
+  }
+
   function specPayload() {
     const scope = root();
     const value = key => clean(scope.querySelector(`[data-nsa-scene-spec="${key}"]`)?.value || '', key === 'negativeText' ? 500 : 600);
@@ -184,6 +217,7 @@
     const qa = asset.cross_view_qa || asset.scene_contract?.cross_view_qa || {};
     const qaPassed = qa.pass === true;
     const qaScore = Number(qa.scene_consistency_score || 0);
+    const sceneVerification = verificationView(asset);
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
@@ -201,11 +235,11 @@
           <div class="dh-nsa-scene-head">
             <div>
               <b>${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}</b>
-              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', `${views.length || 1} 张空间参考`, qaScore ? `空间一致性 ${Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
+              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`, qaScore ? `空间一致性 ${Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
             </div>
-            <em>${qaPassed ? '空间锁已验证' : '空间锁待验证'}</em>
+            <em>${escapeHtml(sceneVerification.label)}</em>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-unverified">未验证场景不会进入关键帧</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">重新验证</button></div>` : ''}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">未验证场景不会进入关键帧</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">重新验证</button></div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 4).map((view, index) => {
               const url = view.url || view.image_url || '';
@@ -323,8 +357,10 @@
       if (typeof normalizeBundle === 'function' && response.bundle) normalizeBundle(response);
       state.sceneAssets = normalizeAssets(response.scene_assets || response.outputs?.scene_assets || state.sceneAssets || []);
       renderAll?.();
-      toast?.('场景空间一致性验证已完成', 'success');
-      return true;
+      const updated = state.sceneAssets.find(asset => String(asset.scene_id || asset.id) === String(sceneId)) || response.scene_asset || {};
+      const result = verificationView(updated);
+      toast?.(result.message || result.label, result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'));
+      return result.tone === 'verified';
     } catch (error) {
       toast?.(error.message || '场景重新验证失败', 'error');
       return false;
@@ -345,5 +381,12 @@
     hydrate,
     generate,
     verify,
+  };
+  const STRATEGY_LABELS = {
+    single_view: '单视角',
+    image_derived: '母场景图片派生',
+    orbit_extract: '环绕视频抽帧',
+    path_extract: '路径视频抽帧',
+    uploaded_views: '用户多视图',
   };
 })();

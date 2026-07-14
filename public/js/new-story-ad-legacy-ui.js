@@ -213,6 +213,45 @@
     }[ch]));
   }
 
+  function verificationView(contract = null, qaKey = '', subject = '资产') {
+    const qa = contract?.[qaKey] && typeof contract[qaKey] === 'object' ? contract[qaKey] : {};
+    const status = String(contract?.status || 'unverified');
+    const details = contract?.verification && typeof contract.verification === 'object' ? contract.verification : {};
+    const reasons = [
+      ...(Array.isArray(details.reasons) ? details.reasons : []),
+      ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
+      ...(Array.isArray(qa.conflicts) ? qa.conflicts : []),
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    const uniqueReasons = [...new Set(reasons)].slice(0, 6);
+    const scoreLabels = {
+      identity_score: '身份', age_score: '年龄', wardrobe_score: '服装', body_score: '体态',
+      shape_score: '形状', color_score: '颜色', material_score: '材质', product_score: '主体',
+    };
+    const scores = Object.entries(scoreLabels).map(([key, label]) => ({ label, value: Number(qa[key]) }))
+      .filter(item => Number.isFinite(item.value) && item.value > 0)
+      .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
+    if (status === 'verified' && qa.pass === true) {
+      return { status, tone: 'verified', label: `${subject}已验证`, message: details.message || '当前资产版本已通过一致性验证', reasons: [], scores };
+    }
+    if (status === 'rejected') {
+      return { status, tone: 'rejected', label: `${subject}未通过`, message: details.message || uniqueReasons[0] || '视觉一致性未达到使用要求', reasons: uniqueReasons, scores };
+    }
+    if (details.state === 'unavailable' || contract?.qa_unavailable === true) {
+      return { status, tone: 'unavailable', label: `${subject}验证异常`, message: details.message || '视觉审核暂时不可用，请稍后重试', reasons: uniqueReasons, scores: [] };
+    }
+    return { status, tone: 'unverified', label: `${subject}待验证`, message: details.message || '首次使用或资产版本变化后需要验证一次', reasons: uniqueReasons, scores };
+  }
+
+  function verificationDetailsHtml(view = {}) {
+    const lines = [view.message, ...(view.reasons || []).filter(reason => reason !== view.message)].filter(Boolean);
+    if (!lines.length || view.tone === 'verified') return '';
+    return `<div class="dh-nsa-verification-details is-${escapeHtml(view.tone || 'unverified')}">
+      <b>${escapeHtml(view.label || '验证说明')}</b>
+      ${(view.scores || []).length ? `<div class="dh-nsa-verification-scores">${view.scores.map(item => `<em>${escapeHtml(item.label)} ${item.percent}%</em>`).join('')}</div>` : ''}
+      ${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}
+    </div>`;
+  }
+
   function normalizeText(value = '', max = 1000) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
@@ -1137,11 +1176,12 @@
       const url = previewUrl(product);
       const productContract = state.context?.product_contract || product?.product_contract || null;
       const productVerified = productContract?.status === 'verified' && productContract?.reference_qa?.pass === true;
+      const productVerification = verificationView(productContract, 'reference_qa', '产品');
       productHost.innerHTML = url
         ? `<button type="button" class="dh-luxgen-product-card ${product.uploading ? 'uploading' : ''}" data-nsa-product-preview title="点击预览主体主图">
             <img src="${escapeHtml(url)}" alt="${escapeHtml(product.name || '商品/主体图')}">
             <b>商品/主体图</b><span>${escapeHtml(product.uploading ? `${product.name || '商品/主体图'} · 上传中` : (product.name || '已上传商品/主体图'))}</span>
-          </button><div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${productVerified ? 'verified' : 'unverified'}">${productVerified ? '产品已验证' : '产品待验证'}</span>${!productVerified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-product-verify>验证产品</button>' : ''}</div>`
+          </button><div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(productVerification.tone)}">${escapeHtml(productVerification.label)}</span>${!productVerified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-product-verify>验证产品</button>' : ''}</div>${verificationDetailsHtml(productVerification)}`
         : '<div class="dh-luxgen-product-empty">未上传商品/主体图</div>';
     }
     if (productClear) {
@@ -1317,6 +1357,7 @@
     const personContract = asset.person_contract || state.context?.person_contract || null;
     const verificationStatus = personContract?.status || (asset.production_usable_actor === true ? 'legacy_unverified' : 'unverified');
     const verified = verificationStatus === 'verified' && personContract?.cross_view_qa?.pass === true;
+    const personVerification = verificationView(personContract, 'cross_view_qa', '人物');
     const meta = [
       actorReferenceLabel(asset),
       actorId ? '已绑定人物参考' : '',
@@ -1350,9 +1391,10 @@
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
       ${viewStrip}
       <div class="dh-nsa-verification-row">
-        <span class="dh-nsa-verification-badge is-${verified ? 'verified' : 'unverified'}">${verified ? '人物已验证' : '人物待验证'}</span>
+        <span class="dh-nsa-verification-badge is-${escapeHtml(personVerification.tone)}">${escapeHtml(personVerification.label)}</span>
         ${!verified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>重新验证</button>' : ''}
       </div>
+      ${verificationDetailsHtml(personVerification)}
       ${warning}
     </div>`;
   }
@@ -4219,7 +4261,8 @@
           else state.actorAsset = next;
           state.context = { ...(state.context || {}), person_asset: next, person_contract: response.person_contract };
           renderAll();
-          toast(response.person_contract?.status === 'verified' ? '人物一致性验证已通过' : '人物验证未通过，请查看原因或重新生成失败视图', response.person_contract?.status === 'verified' ? 'success' : 'error');
+          const result = verificationView(response.person_contract, 'cross_view_qa', '人物');
+          toast(result.message || result.label, result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'));
         } catch (error) {
           toast(error.message || '人物重新验证失败', 'error');
         } finally {
@@ -4237,7 +4280,8 @@
           state.context = { ...(state.context || {}), product_contract: response.product_contract };
           if (state.productAsset) state.productAsset = { ...state.productAsset, product_contract: response.product_contract };
           renderAll();
-          toast(response.product_contract?.status === 'verified' ? '产品一致性验证已通过' : '产品验证未通过，请检查参考图', response.product_contract?.status === 'verified' ? 'success' : 'error');
+          const result = verificationView(response.product_contract, 'reference_qa', '产品');
+          toast(result.message || result.label, result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'));
         } catch (error) {
           toast(error.message || '产品验证失败', 'error');
         } finally {
