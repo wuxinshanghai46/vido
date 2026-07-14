@@ -42,6 +42,7 @@
   const STAGE_TIMEOUTS = {
     scene_config: 10 * 60 * 1000,
     scene_asset: 12 * 60 * 1000,
+    storyboard: 10 * 60 * 1000,
     keyframes: 15 * 60 * 1000,
     tts: 12 * 60 * 1000,
     video: 20 * 60 * 1000,
@@ -72,6 +73,14 @@
       compose: ['completed', 'compose_done'],
     };
     return (downstream[expectedStage] || []).some(stage => current === stage || current.startsWith(`${stage}_`));
+  }
+
+  function storyboardIsReady(bundle = {}, state = {}) {
+    const status = bundle.storyboard_status || bundle.bundle?.storyboard_status || state.storyboardStatus;
+    if (status && typeof status.ready === 'boolean') return status.ready;
+    const outputs = bundle.outputs || bundle.bundle?.outputs || {};
+    const shots = outputs.storyboard_table || state.shots || [];
+    return Array.isArray(shots) && shots.length > 0;
   }
 
   async function recoverUncertainStageSubmission(taskId, expectedStage, ctx = {}, originalError) {
@@ -115,6 +124,7 @@
       const active = String(task.active_generation_id || '');
       const status = String(task.status || '').toLowerCase();
       const currentStage = String(task.stage || '');
+      if (stage === 'storyboard' && !active && storyboardIsReady(bundle, ctx.state || {})) return bundle;
       if (status === 'cancelled' || currentStage.endsWith('_cancelled')) {
         const error = new Error('已取消当前生成');
         error.code = 'USER_CANCELLED';
@@ -212,6 +222,7 @@
         if (state.blueprint && typeof saveBlueprintEdits === 'function') await saveBlueprintEdits(id);
         r = await startStage(id, 'storyboard', {}, ctx);
         normalizeBundle?.(r);
+        if (!storyboardIsReady(r, state)) throw new Error('分镜任务已结束，但服务器尚未确认当前剧本对应的分镜结果，请重试');
         showStep?.(4);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
@@ -329,6 +340,7 @@
     cancelStage,
     isNetworkError,
     stageWasAccepted,
+    storyboardIsReady,
     STAGE_LABELS,
   };
 })();

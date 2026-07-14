@@ -16,6 +16,7 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
+const storyboardTable = require('../src/services/newStoryAd/storyboardTableService');
 const newStoryAdModelConfig = require('./configure-new-story-ad-models');
 
 function waitUntil(predicate, timeoutMs = 4000) {
@@ -191,6 +192,48 @@ async function main() {
   const summary = service.taskSummary(storage.getTask(taskId));
   assert.equal(Object.prototype.hasOwnProperty.call(summary, 'request'), false);
   assert.equal(summary.id, taskId);
+
+  const freshnessTask = service.createTask({
+    brief: '验证剧本与分镜版本一致性',
+    product_subject: '用户指定主体',
+    cast_mode: 'no_human',
+  }, owner);
+  const freshnessId = freshnessTask.task.id;
+  storage.saveOutput(freshnessId, 'storyboard_table', [{ index: 1, title: '旧分镜', visual: '旧画面' }]);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  const firstBlueprint = service.updateBlueprint(freshnessId, {
+    story_title: '通用测试剧本',
+    beats: [{ title: '开场', visual: '用户指定主体出现', action: '完成演示', spoken_line: '开始演示' }],
+  }, owner);
+  assert.equal(service.publicTaskBundle(freshnessId).storyboard_status.stale, true);
+  const sameBlueprint = service.updateBlueprint(freshnessId, firstBlueprint, owner);
+  assert.equal(sameBlueprint.revision, firstBlueprint.revision);
+  service.updateStoryboardTable(freshnessId, [{ index: 1, title: '新分镜', visual: '当前剧本对应画面', action: '完成演示', voiceover: '开始演示' }], owner);
+  const freshBundle = service.publicTaskBundle(freshnessId);
+  assert.equal(freshBundle.storyboard_status.ready, true);
+  assert.equal(freshBundle.storyboard_status.blueprint_revision, firstBlueprint.revision);
+
+  let resumedCheckpoint = null;
+  const resumedStoryboard = await storyboardTable.generateStoryboardTable({
+    brief: '通用断点恢复测试',
+    target_duration: 6,
+    cast_mode: 'no_human',
+    scene_assets: [],
+  }, {
+    beats: [
+      { beat_index: 1, title: '第一镜', plot: '主体进入画面' },
+      { beat_index: 2, title: '第二镜', plot: '主体完成演示' },
+    ],
+  }, {
+    taskId: freshnessId,
+    resumeShots: [
+      { index: 1, title: '第一镜', visual: '主体进入画面', action: '进入', voiceover: '开始' },
+      { index: 2, title: '第二镜', visual: '主体完成演示', action: '演示', voiceover: '完成' },
+    ],
+    onCheckpoint: async checkpoint => { resumedCheckpoint = checkpoint; },
+  });
+  assert.equal(resumedStoryboard.shots.length, 2);
+  assert.deepEqual(resumedCheckpoint.completed_indexes, [1, 2]);
   console.log('new-story-ad reliability tests passed');
 }
 

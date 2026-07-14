@@ -30,16 +30,28 @@ function run(meta = {}, fn) {
   if (normalized.generationId) active.set(normalized.generationId, normalized);
   return context.run(normalized, async () => {
     let timer = null;
+    let rejectAbort = null;
+    const abortPromise = new Promise((resolve, reject) => {
+      rejectAbort = reject;
+    });
     if (normalized.deadlineMs > 0) {
       timer = setTimeout(() => {
         normalized.cancelReason = 'deadline';
         cancelled.set(normalized.generationId, { ...normalized, controller: undefined, signal: undefined, cancelledAt: new Date().toISOString(), reason: 'deadline' });
-        controller.abort(cancelledError(normalized));
+        const error = cancelledError(normalized);
+        controller.abort(error);
+        rejectAbort(error);
       }, normalized.deadlineMs);
       timer.unref?.();
     }
     try {
-      return await fn();
+      // Some provider SDKs do not honour AbortSignal. Racing the work against
+      // the deadline guarantees that the persisted job reaches a terminal
+      // state instead of leaving the browser polling indefinitely. Any late
+      // write is still rejected by storageService.throwIfCancelled().
+      const workPromise = Promise.resolve().then(fn);
+      workPromise.catch(() => {});
+      return await Promise.race([workPromise, abortPromise]);
     } finally {
       if (timer) clearTimeout(timer);
       if (normalized.generationId) active.delete(normalized.generationId);

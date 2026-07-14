@@ -272,11 +272,28 @@ Return exactly ${beats.length} shots. Required fields: index, title, role, durat
   };
 }
 
-async function generateStoryboardTable(ctx, blueprint, { taskId = '' } = {}) {
+async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShots = [], onCheckpoint = null } = {}) {
   const beats = plannedBeats(blueprint, ctx);
-  const beatChunks = chunksOf(beats, beats.length > 8 ? 3 : 4);
-  const all = [];
+  const expectedIndexes = new Set(beats.map((beat, index) => Number(beat?.beat_index || index + 1)));
+  const resumedByIndex = new Map((Array.isArray(resumeShots) ? resumeShots : [])
+    .map(shot => [Number(shot?.index || shot?.shot_index || 0), shot])
+    .filter(([index]) => expectedIndexes.has(index)));
+  const all = [...resumedByIndex.values()];
+  const pendingBeats = beats.filter((beat, index) => !resumedByIndex.has(Number(beat?.beat_index || index + 1)));
+  const beatChunks = chunksOf(pendingBeats, beats.length > 8 ? 3 : 4);
   const meta = [];
+
+  const checkpoint = async phase => {
+    if (typeof onCheckpoint !== 'function') return;
+    await onCheckpoint({
+      phase,
+      shots: all.slice().sort((a, b) => Number(a?.index || 0) - Number(b?.index || 0)),
+      completed_indexes: [...new Set(all.map(shot => Number(shot?.index || shot?.shot_index || 0)).filter(Boolean))].sort((a, b) => a - b),
+      expected_total: beats.length,
+    });
+  };
+
+  if (all.length) await checkpoint('resumed');
 
   for (const chunk of beatChunks) {
     const systemPrompt = [
@@ -393,6 +410,7 @@ Return JSON array for current beats only. Fields:
       language_repaired: language.repaired,
       language_model: language.model_meta?.used_model || '',
     });
+    await checkpoint('chunk_done');
   }
 
   const missingIndexes = missingBeatIndexes(beats, all);
@@ -402,6 +420,7 @@ Return JSON array for current beats only. Fields:
     const filled = await generateMissingStoryboardBeats(ctx, blueprint, missingBeats, { taskId });
     all.push(...filled.shots);
     if (filled.model_meta) meta.push(filled.model_meta);
+    await checkpoint('missing_filled');
   }
 
   const unresolved = missingBeatIndexes(beats, all);

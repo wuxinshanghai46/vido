@@ -8,7 +8,7 @@ const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_G
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
   blueprint: 120000,
-  storyboard: 180000,
+  storyboard: 480000,
   scene_asset: 600000,
   keyframes: 900000,
   tts: 600000,
@@ -220,7 +220,8 @@ function queueStage({ taskId, stage, execute }) {
     diagnostics: { generation_id: id },
   });
 
-  setImmediate(() => cancellation.run({ generationId: id, taskId, stage, deadlineMs: stageBudgetMs(stage) }, async () => {
+  setImmediate(() => {
+    const execution = cancellation.run({ generationId: id, taskId, stage, deadlineMs: stageBudgetMs(stage) }, async () => {
     if (cancellation.isCancelled(id)) {
       setTimeout(() => {
         if (runningJobs.get(key)?.id === id) runningJobs.delete(key);
@@ -263,7 +264,8 @@ function queueStage({ taskId, stage, execute }) {
         });
       }
     } catch (error) {
-      if (error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.isCancelled(id)) {
+      if (error?.code !== 'STAGE_DEADLINE_EXCEEDED'
+        && (error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.isCancelled(id))) {
         job.status = 'cancelled';
         job.finishedAt = job.finishedAt || new Date().toISOString();
         job.errorCode = 'USER_CANCELLED';
@@ -289,7 +291,7 @@ function queueStage({ taskId, stage, execute }) {
             error_code: failure.code,
             retryable: failure.retryable,
           },
-        });
+        }, { systemFinalization: true });
         storage.updateTask(taskId, {
           status: 'failed',
           stage: `${stage}_failed`,
@@ -306,7 +308,39 @@ function queueStage({ taskId, stage, execute }) {
         if (runningJobs.get(key)?.id === id) runningJobs.delete(key);
       }, 5 * 60 * 1000).unref?.();
     }
-  }));
+    });
+    execution.catch(error => {
+      // A hard deadline wins the race even when the provider ignores abort.
+      // Finalize the persisted job here; the late provider continuation cannot
+      // overwrite outputs because its cancellation context remains marked.
+      if (error?.code !== 'STAGE_DEADLINE_EXCEEDED') return;
+      const failure = classifyFailure(error);
+      job.status = 'failed';
+      job.finishedAt = new Date().toISOString();
+      job.errorCode = failure.code;
+      job.error = failure.message.slice(0, 1000);
+      job.retryable = true;
+      const current = storage.getTask(taskId);
+      if (String(current?.active_generation_id || '') !== id) return;
+      storage.saveStage(taskId, stage, {
+        status: 'failed',
+        started_at: job.startedAt,
+        finished_at: job.finishedAt,
+        error: job.error,
+        diagnostics: { generation_id: id, error_code: failure.code, retryable: true },
+      }, { systemFinalization: true });
+      storage.updateTask(taskId, {
+        status: 'failed',
+        stage: `${stage}_failed`,
+        active_stage: '',
+        active_generation_id: '',
+        generation_finished_at: job.finishedAt,
+        error: job.error,
+        error_code: failure.code,
+        retryable: true,
+      });
+    });
+  });
 
   return { accepted: true, duplicate: false, job: publicJob(job) };
 }

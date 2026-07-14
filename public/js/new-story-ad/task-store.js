@@ -57,7 +57,7 @@
       .map(item => [item.kind, item.payload]));
   }
 
-  function resumeStep(task = {}, rawOutputs = {}) {
+  function resumeStep(task = {}, rawOutputs = {}, storyboardStatus = null) {
     const outputs = normalizeOutputs(rawOutputs);
     const stage = clean(task.active_stage || task.stage || '', 120).toLowerCase();
     const shotCount = Math.max(
@@ -70,7 +70,12 @@
     );
     const finalVideo = outputs.final_video || {};
     if (finalVideo.video_url || finalVideo.videoUrl || outputs.video_clips || outputs.tts_audio || /(?:final|compose|video|tts)/.test(stage)) return 5;
-    if (keyframeCount || shotCount || outputs.keyframe_contracts || /(?:keyframe|storyboard)/.test(stage)) return 4;
+    if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
+    const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
+      ? storyboardStatus.ready
+      : shotCount > 0;
+    if (keyframeCount || storyboardReady || outputs.keyframe_contracts || /keyframe/.test(stage)) return 4;
+    if (/storyboard/.test(stage) && !/(?:failed|cancelled)/.test(stage)) return 3;
     if (outputs.blueprint || /blueprint/.test(stage)) return 3;
     if (outputs.scene_config || outputs.scene_assets || /scene/.test(stage)) return 2;
     return 1;

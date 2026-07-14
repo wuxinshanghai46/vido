@@ -243,8 +243,8 @@ function deleteTask(taskId) {
   return true;
 }
 
-function saveStage(taskId, stage, data = {}) {
-  cancellation.throwIfCancelled(taskId);
+function saveStage(taskId, stage, data = {}, options = {}) {
+  if (options.systemFinalization !== true) cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${stage}`;
   const previous = getRow('stages', id) || {};
   const status = data.status || 'done';

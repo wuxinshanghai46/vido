@@ -1,4 +1,5 @@
 const fs = require('fs');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const modelGateway = require('./modelGateway');
@@ -138,9 +139,65 @@ function assertTaskOwner(taskId, user = {}) {
   return task;
 }
 
+function canonicalBlueprintValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalBlueprintValue);
+  if (!value || typeof value !== 'object') return value;
+  const ignored = new Set(['edited_at', 'edited_by_user', 'model_meta', 'revision', 'fingerprint']);
+  return Object.keys(value).sort().reduce((out, key) => {
+    if (!ignored.has(key)) out[key] = canonicalBlueprintValue(value[key]);
+    return out;
+  }, {});
+}
+
+function blueprintFingerprint(blueprint = {}) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify(canonicalBlueprintValue(blueprint || {})))
+    .digest('hex');
+}
+
+function versionedBlueprint(blueprint = {}, previous = {}) {
+  const fingerprint = blueprintFingerprint(blueprint);
+  const previousFingerprint = previous.fingerprint || (Object.keys(previous || {}).length ? blueprintFingerprint(previous) : '');
+  const changed = !previousFingerprint || fingerprint !== previousFingerprint;
+  return {
+    ...blueprint,
+    revision: changed ? Math.max(1, Number(previous.revision || 0) + 1) : Math.max(1, Number(previous.revision || 1)),
+    fingerprint,
+  };
+}
+
+function storyboardStatus(bundle = {}, outputs = {}) {
+  const rows = Array.isArray(bundle.outputs) ? bundle.outputs : [];
+  const rowByKind = kind => rows.find(row => row?.kind === kind) || null;
+  const blueprintRow = rowByKind('blueprint');
+  const storyboardRow = rowByKind('storyboard_table');
+  const checkpoint = outputs.storyboard_checkpoint || null;
+  const meta = outputs.storyboard_meta || null;
+  const blueprint = outputs.blueprint || {};
+  const shots = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
+  const currentFingerprint = blueprint.fingerprint || (Object.keys(blueprint).length ? blueprintFingerprint(blueprint) : '');
+  const metaMatches = !!(meta?.blueprint_fingerprint && currentFingerprint && meta.blueprint_fingerprint === currentFingerprint);
+  const timestampFresh = !!(blueprintRow && storyboardRow
+    && Date.parse(storyboardRow.updated_at || 0) >= Date.parse(blueprintRow.updated_at || 0));
+  const ready = shots.length > 0 && (meta
+    ? meta.status === 'ready' && metaMatches
+    : timestampFresh);
+  return {
+    ready,
+    stale: shots.length > 0 && !ready,
+    reason: ready ? '' : (shots.length ? 'BLUEPRINT_NEWER_THAN_STORYBOARD' : 'STORYBOARD_MISSING'),
+    blueprint_revision: Number(blueprint.revision || 0),
+    storyboard_blueprint_revision: Number(meta?.blueprint_revision || 0),
+    checkpoint_available: !!(checkpoint && checkpoint.blueprint_fingerprint === currentFingerprint && Array.isArray(checkpoint.shots) && checkpoint.shots.length),
+    checkpoint_completed: Array.isArray(checkpoint?.shots) ? checkpoint.shots.length : 0,
+    checkpoint_total: Number(checkpoint?.expected_total || 0),
+  };
+}
+
 function publicTaskBundle(taskId, { diagnostics = false } = {}) {
   const bundle = storage.getTaskBundle(taskId, { diagnostics });
   const outputs = Object.fromEntries((bundle.outputs || []).map(x => [x.kind, x.payload]));
+  const currentStoryboardStatus = storyboardStatus(bundle, outputs);
   const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
   const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
   const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
@@ -167,7 +224,7 @@ function publicTaskBundle(taskId, { diagnostics = false } = {}) {
           error: '',
         };
       }
-    } else if (storyboard.length && ['storyboard', 'storyboard_done', 'storyboard_running'].includes(String(task.stage || ''))) {
+    } else if (currentStoryboardStatus.ready && storyboard.length && ['storyboard', 'storyboard_done', 'storyboard_running'].includes(String(task.stage || ''))) {
       task = {
         ...task,
         status: task.saved_progress === true ? 'working' : 'done',
@@ -182,6 +239,7 @@ function publicTaskBundle(taskId, { diagnostics = false } = {}) {
     task,
     context,
     outputs,
+    storyboard_status: currentStoryboardStatus,
     keyframe_status: keyframeStatus,
   };
 }
@@ -359,7 +417,7 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
         spoken_line: spoken,
         voiceover: spoken,
         visual_proof: proof,
-        purpose: cleanText(beat.purpose || beat.objective || proof || beat.role || '', 160),
+        purpose: cleanText(beat.purpose || beat.objective || proof || '', 160),
         confirmed: beat.confirmed !== false,
       };
     }).filter(beat => beat.plot || beat.visual || beat.action || beat.spoken_line || beat.visual_proof),
@@ -375,7 +433,10 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-  const normalized = normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
+  const normalized = versionedBlueprint(
+    normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`),
+    previous,
+  );
   storage.saveOutput(taskId, 'blueprint', normalized);
   storage.saveStage(taskId, 'blueprint', {
     status: 'done',
@@ -448,7 +509,16 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
     .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
   const normalized = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   storage.saveOutput(taskId, 'storyboard_table', normalized);
+  storage.saveOutput(taskId, 'storyboard_meta', {
+    status: 'ready',
+    source: 'user_edit',
+    blueprint_revision: Number(blueprint.revision || 0),
+    blueprint_fingerprint: blueprint.fingerprint || blueprintFingerprint(blueprint),
+    completed_at: new Date().toISOString(),
+  });
+  storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
@@ -521,7 +591,8 @@ async function generateBlueprintStage(taskId) {
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   storage.updateTask(taskId, { status: 'running', stage: 'blueprint' });
   storage.saveStage(taskId, 'blueprint', { status: 'running', input_summary: ctx.brief });
-  const blueprint = await generateBlueprint(ctx, { taskId });
+  const previous = storage.getOutput(taskId, 'blueprint') || {};
+  const blueprint = versionedBlueprint(await generateBlueprint(ctx, { taskId }), previous);
   storage.saveOutput(taskId, 'blueprint', blueprint);
   storage.saveStage(taskId, 'blueprint', { status: 'done', output_summary: `${blueprint.beats?.length || 0} 个剧情 beat`, diagnostics: blueprint.model_meta || {} });
   storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done' });
@@ -535,6 +606,16 @@ async function generateStoryboardStage(taskId) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
+  if (!blueprint.fingerprint) {
+    blueprint = versionedBlueprint(blueprint, {});
+    storage.saveOutput(taskId, 'blueprint', blueprint);
+  }
+  const sourceFingerprint = blueprint.fingerprint;
+  const sourceRevision = Number(blueprint.revision || 1);
+  const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
+  const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && Array.isArray(savedCheckpoint.shots)
+    ? savedCheckpoint.shots
+    : [];
   const characterSeed = `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const stageCtx = {
     ...ctx,
@@ -546,8 +627,54 @@ async function generateStoryboardStage(taskId) {
   };
   storage.updateTask(taskId, { status: 'running', stage: 'storyboard' });
   storage.saveStage(taskId, 'storyboard', { status: 'running', input_summary: `${blueprint.beats?.length || 0} beats` });
-  const generated = await generateStoryboardTable(stageCtx, blueprint, { taskId });
+  storage.saveOutput(taskId, 'storyboard_meta', {
+    status: 'running',
+    source: 'generated',
+    blueprint_revision: sourceRevision,
+    blueprint_fingerprint: sourceFingerprint,
+    started_at: new Date().toISOString(),
+  });
+  const saveCheckpoint = async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0 } = {}) => {
+    storage.saveOutput(taskId, 'storyboard_checkpoint', {
+      schema_version: 1,
+      status: 'running',
+      phase,
+      blueprint_revision: sourceRevision,
+      blueprint_fingerprint: sourceFingerprint,
+      expected_total: Number(expected_total || blueprint.beats?.length || 0),
+      completed_count: completed_indexes.length || shots.length,
+      completed_indexes,
+      shots,
+      updated_at: new Date().toISOString(),
+    });
+    storage.updateTask(taskId, {
+      generation_progress: {
+        stage: 'storyboard',
+        status: 'running',
+        phase,
+        processed: completed_indexes.length || shots.length,
+        target_total: Number(expected_total || blueprint.beats?.length || 0),
+        updated_at: new Date().toISOString(),
+      },
+    });
+  };
+  const assertBlueprintUnchanged = () => {
+    const current = storage.getOutput(taskId, 'blueprint') || {};
+    const currentFingerprint = current.fingerprint || blueprintFingerprint(current);
+    if (currentFingerprint === sourceFingerprint) return;
+    const error = new Error('剧本在分镜生成期间发生了修改，本次结果未覆盖新剧本，请重新生成分镜');
+    error.code = 'BLUEPRINT_CHANGED_DURING_STORYBOARD';
+    error.retryable = true;
+    throw error;
+  };
+  const generated = await generateStoryboardTable(stageCtx, blueprint, {
+    taskId,
+    resumeShots,
+    onCheckpoint: saveCheckpoint,
+  });
   let shots = generated.shots;
+  await saveCheckpoint({ phase: 'reviewing', shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
+  assertBlueprintUnchanged();
   let review = await reviewStoryboard(stageCtx, shots, { taskId });
   storage.saveReview(taskId, 'storyboard.initial', review);
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -557,6 +684,8 @@ async function generateStoryboardStage(taskId) {
     ];
     if (!shots.length || !issues.length) break;
     shots = await rewriteStoryboard(stageCtx, blueprint, shots, issues, { taskId });
+    await saveCheckpoint({ phase: `rewrite_${attempt}_reviewing`, shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
+    assertBlueprintUnchanged();
     const nextReview = await reviewStoryboard(stageCtx, shots, { taskId });
     storage.saveReview(taskId, `storyboard.rewrite.${attempt}`, nextReview);
     review = nextReview;
@@ -564,6 +693,14 @@ async function generateStoryboardStage(taskId) {
   }
   if (review.blocking_issues.length) {
     storage.saveOutput(taskId, 'storyboard_table', shots);
+    storage.saveOutput(taskId, 'storyboard_meta', {
+      status: 'failed',
+      source: 'generated',
+      blueprint_revision: sourceRevision,
+      blueprint_fingerprint: sourceFingerprint,
+      completed_at: new Date().toISOString(),
+    });
+    storage.deleteOutput(taskId, 'storyboard_checkpoint');
     storage.saveStage(taskId, 'storyboard', { status: 'failed', error: review.blocking_issues.join('；'), diagnostics: review });
     storage.updateTask(taskId, { status: 'failed', stage: 'storyboard_failed', error: review.blocking_issues.join('；') });
     const err = new Error(`剧情广告分镜硬阻断：${review.blocking_issues.join('；')}`);
@@ -571,8 +708,17 @@ async function generateStoryboardStage(taskId) {
     err.partial = shots;
     throw err;
   }
+  assertBlueprintUnchanged();
   const contracts = buildKeyframeContracts(stageCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);
+  storage.saveOutput(taskId, 'storyboard_meta', {
+    status: 'ready',
+    source: 'generated',
+    blueprint_revision: sourceRevision,
+    blueprint_fingerprint: sourceFingerprint,
+    completed_at: new Date().toISOString(),
+  });
+  storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots));
   storage.saveOutput(taskId, 'quality_review', review);
   storage.saveOutput(taskId, 'keyframe_contracts', contracts);

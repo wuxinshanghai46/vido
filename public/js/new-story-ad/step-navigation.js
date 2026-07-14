@@ -5,7 +5,9 @@
     if (step === 1) return !!state.taskId || !!(within('#dhNsaAdText')?.value || '').trim();
     if (step === 2) return !!state.sceneConfig;
     if (step === 3) return !!state.blueprint;
-    if (step === 4) return Array.isArray(state.shots) && state.shots.length > 0;
+    if (step === 4) return state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
+      ? state.storyboardStatus.ready
+      : (Array.isArray(state.shots) && state.shots.length > 0);
     if (step === 5) return !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl);
     return false;
   }
@@ -16,7 +18,7 @@
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
     if (step === 3) return !!state.blueprint || !!state.sceneConfig;
     if (step === 4) return (Array.isArray(state.shots) && state.shots.length > 0) || !!state.blueprint;
-    if (step === 5) return Array.isArray(state.shots) && state.shots.length > 0;
+    if (step === 5) return stepReady(4, { state });
     return true;
   }
 

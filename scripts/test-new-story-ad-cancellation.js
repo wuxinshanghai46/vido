@@ -86,6 +86,17 @@ async function main() {
   assert.equal(cancellation.cancelActive(auxiliaryId, { ownerId: 'cancel-owner' }).cancelled, true);
   releaseAuxiliary();
   await assert.rejects(auxiliary, error => error?.code === 'USER_CANCELLED');
+
+  const deadlineStartedAt = Date.now();
+  await assert.rejects(
+    cancellation.run({ generationId: 'hard-deadline-test', taskId, stage: 'storyboard', deadlineMs: 40 }, async () => {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      return 'provider ignored abort';
+    }),
+    error => error?.code === 'STAGE_DEADLINE_EXCEEDED',
+  );
+  assert(Date.now() - deadlineStartedAt < 250, 'hard deadline must not wait for an abort-ignoring provider');
+  cancellation.forget('hard-deadline-test');
   console.log('new-story-ad cancellation tests passed');
 }
 

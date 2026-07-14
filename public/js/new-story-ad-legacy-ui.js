@@ -56,6 +56,7 @@
     context: null,
     sceneConfig: null,
     blueprint: null,
+    storyboardStatus: null,
     shots: [],
     contracts: [],
     keyframes: [],
@@ -1760,7 +1761,10 @@
       hydrateTaskBundle(bundle);
       await recoverPersonAssetFromLibrary(bundle);
       const requestedStep = routeStep();
-      showStep(requestedStep === 3 && state.shots.length ? 4 : requestedStep, { remember: false });
+      const storyboardReady = state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
+        ? state.storyboardStatus.ready
+        : state.shots.length > 0;
+      showStep(requestedStep === 3 && storyboardReady ? 4 : requestedStep, { remember: false });
       renderAll();
       resumeActiveGeneration();
       return true;
@@ -1784,6 +1788,8 @@
     window.NewStoryAdGenerationFlow.waitForStage(state.taskId, persistedStage, generationFlowContext())
       .then(bundle => {
         normalizeBundle(bundle);
+        if (persistedStage === 'storyboard'
+          && window.NewStoryAdGenerationFlow.storyboardIsReady(bundle, state)) showStep(4);
         renderAll();
       })
       .catch(error => {
@@ -2061,7 +2067,9 @@
     if (step === 1) return !!state.taskId || !!(within('#dhNsaAdText')?.value || '').trim();
     if (step === 2) return !!state.sceneConfig;
     if (step === 3) return !!state.blueprint;
-    if (step === 4) return Array.isArray(state.shots) && state.shots.length > 0;
+    if (step === 4) return state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
+      ? state.storyboardStatus.ready
+      : (Array.isArray(state.shots) && state.shots.length > 0);
     if (step === 5) return !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl);
     return false;
   }
@@ -2074,7 +2082,7 @@
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
     if (step === 3) return !!state.blueprint || !!state.sceneConfig;
     if (step === 4) return Array.isArray(state.shots) && state.shots.length > 0 || !!state.blueprint;
-    if (step === 5) return Array.isArray(state.shots) && state.shots.length > 0;
+    if (step === 5) return stepReady(4);
     return true;
   }
 

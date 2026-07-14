@@ -5947,7 +5947,7 @@
     const finalVideo = outputs.final_video || raw.final_video || {};
     const finalUrl = finalVideo.video_url || finalVideo.videoUrl || '';
     const resumeStep = window.NewStoryAdTaskStore?.resumeStep
-      ? window.NewStoryAdTaskStore.resumeStep(task, outputs)
+      ? window.NewStoryAdTaskStore.resumeStep(task, outputs, bundle.storyboard_status || raw.storyboard_status || null)
       : (finalUrl ? 5
         : (keyframes.length || shots.length ? 4
           : (outputs.blueprint ? 3

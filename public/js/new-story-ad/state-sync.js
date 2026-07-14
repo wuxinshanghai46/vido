@@ -74,6 +74,7 @@
     state.context = outputs.context || response.context || state.context;
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
+    state.storyboardStatus = response.storyboard_status || bundle.storyboard_status || state.storyboardStatus || null;
     state.shots = outputs.storyboard_table || response.shots || state.shots || [];
     state.contracts = outputs.keyframe_contracts || response.keyframe_contracts || state.contracts || [];
     state.keyframes = outputs.keyframes || response.keyframes || state.keyframes || [];
@@ -172,6 +173,7 @@
     state.context = outputs.context || request || state.context;
     state.sceneConfig = outputs.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || state.blueprint;
+    state.storyboardStatus = bundle.storyboard_status || state.storyboardStatus || null;
     state.shots = outputs.storyboard_table || state.shots || [];
     state.contracts = outputs.keyframe_contracts || state.contracts || [];
     state.keyframes = outputs.keyframes || state.keyframes || [];
