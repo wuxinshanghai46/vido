@@ -69,6 +69,6 @@ const keyframesSource = fs.readFileSync(path.join(__dirname, '../public/js/new-s
 vm.runInNewContext(keyframesSource, sandbox, { filename: 'keyframes.js' });
 const keyframes = sandbox.window.NewStoryAdKeyframes;
 assert.match(keyframes.friendlyError('HTTP 400: {"code":1102,"message":"Account balance not enough"}'), /不代表平台账户总余额为零/);
-assert.match(keyframes.friendlyError('new_story_ad.person_keyframe_qa 视觉模型全部失败：deyunai\/gpt-4o:UNKNOWN', 'VISION_QA_UNAVAILABLE'), /只需重新验证，无需重新生成图片/);
+assert.match(keyframes.friendlyError('new_story_ad.person_keyframe_qa 视觉模型全部失败：deyunai\/gpt-4o:UNKNOWN', 'VISION_QA_UNAVAILABLE'), /只重试审核，没有因审核异常额外生成图片/);
 assert(!/high-tech command center|blue shield|tunnel-like/i.test(keyframesSource), 'QA 文案不得写死具体场景');
 console.log('new-story-ad progress tests passed');

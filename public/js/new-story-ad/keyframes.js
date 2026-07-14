@@ -33,7 +33,7 @@
   function friendlyError(value = '', code = '') {
     const raw = String(value || '').trim();
     if (!raw) return '';
-    if (isQaInfrastructureError(raw, code)) return '本轮视觉审核服务暂时不可用；已保留上一版画面，只需重新验证，无需重新生成图片。';
+    if (isQaInfrastructureError(raw, code)) return '本轮视觉审核服务暂时不可用；系统已只重试审核，没有因审核异常额外生成图片，当前继续保留上一版画面。';
     if (/STAGE_DEADLINE_EXCEEDED/i.test(String(code || '')) || /安全执行时限|后端总时限/i.test(raw)) return '本批次已达到安全执行时限，完成结果已保存；可以继续补齐未完成镜头。';
     if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(raw)) return '本镜头生成约束过长，系统需要压缩提示词后重新生成。';
     if (/PROVIDER_BILLING/i.test(String(code || '')) || /insufficient quota|account balance not enough|insufficient balance|balance not enough|"code"\s*:\s*(1005|1102)/i.test(raw)) return '供应商返回当前模型计费通道不可用；可能是调用 Key、子账号、模型授权或通道额度不一致，不代表平台账户总余额为零。';
