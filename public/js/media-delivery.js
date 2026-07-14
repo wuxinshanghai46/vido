@@ -67,6 +67,10 @@
 
   function processImage(img) {
     if (!(img instanceof HTMLImageElement)) return;
+    if (img.dataset.mediaLock === 'true') {
+      img.decoding = 'async';
+      return;
+    }
     const current = img.getAttribute('src') || '';
     const original = img.dataset.mediaOriginal || stableOriginalUrl(current);
     if (!original || !supportsPreview(original)) {

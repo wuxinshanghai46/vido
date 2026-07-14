@@ -5122,7 +5122,8 @@
     const delivery = window.VidoMediaDelivery || null;
     const authenticatedUrl = withAuthQuery(imageUrl);
     const url = delivery?.stableOriginalUrl ? delivery.stableOriginalUrl(authenticatedUrl) : authenticatedUrl;
-    const displayUrl = delivery?.previewUrl ? delivery.previewUrl(url, 1280) : url;
+    const displayUrl = delivery?.previewUrl ? delivery.previewUrl(url, 640) : url;
+    const hdDisplayUrl = delivery?.previewUrl ? delivery.previewUrl(url, 960) : url;
     const img = modal.querySelector('.dh-image-modal-img');
     const stateEl = modal.querySelector('.dh-image-modal-state');
     if (modal.classList.contains('open') && img?.dataset.sourceUrl === url) {
@@ -5135,7 +5136,21 @@
       stateEl.classList.remove('error');
       stateEl.hidden = false;
     }
-    img.onload = () => { if (stateEl) stateEl.hidden = true; };
+    img.onload = () => {
+      if (stateEl) stateEl.hidden = true;
+      if (hdDisplayUrl === displayUrl || img.dataset.hdLoading === 'true' || img.dataset.hdReady === 'true') return;
+      img.dataset.hdLoading = 'true';
+      const upgrade = new Image();
+      upgrade.decoding = 'async';
+      upgrade.onload = () => {
+        img.dataset.hdLoading = 'false';
+        if (img.dataset.sourceUrl !== url || !modal.classList.contains('open')) return;
+        img.dataset.hdReady = 'true';
+        img.src = hdDisplayUrl;
+      };
+      upgrade.onerror = () => { img.dataset.hdLoading = 'false'; };
+      upgrade.src = hdDisplayUrl;
+    };
     img.onerror = () => {
       if (!stateEl) return;
       stateEl.textContent = '图片加载失败，请刷新后重试或打开原图。';
@@ -5143,7 +5158,11 @@
       stateEl.hidden = false;
     };
     img.dataset.mediaOriginal = url;
-    img.dataset.mediaWidth = '1280';
+    img.dataset.mediaLock = 'true';
+    img.dataset.hdLoading = 'false';
+    img.dataset.hdReady = 'false';
+    img.removeAttribute('srcset');
+    img.removeAttribute('sizes');
     img.src = displayUrl;
     img.dataset.sourceUrl = url;
     modal.querySelector('.dh-image-modal-open').href = url;

@@ -85,7 +85,7 @@ async function main() {
   assert.ok(htmlFiles.length >= 20);
   htmlFiles.forEach(name => {
     const html = fs.readFileSync(path.join(root, 'public', name), 'utf8');
-    assert.match(html, /\/js\/media-delivery\.js\?v=20260714-platform-media-v1/, `${name} must load platform media delivery`);
+    assert.match(html, /\/js\/media-delivery\.js\?v=20260714-platform-media-v2/, `${name} must load platform media delivery`);
   });
   const browserSource = fs.readFileSync(path.join(root, 'public/js/media-delivery.js'), 'utf8');
   assert.match(browserSource, /MutationObserver/);
