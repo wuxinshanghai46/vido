@@ -1215,6 +1215,13 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-luxgen-person-spec label.dh-luxgen-person-text-field { grid-column: span 6; }
 .dh-luxgen-person-spec span { color: var(--dh-text-muted); font-size: 11px; font-weight: 900; }
 .dh-luxgen-person-spec .dh-input { min-height: 42px; font-size: 13px; }
+.dh-nsa-cast-mode-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(56,189,248,.24); border-radius: 10px; background: rgba(56,189,248,.055); }
+.dh-nsa-cast-mode-quick > span { color: var(--dh-text); font-size: 12px; font-weight: 900; margin-right: 2px; }
+.dh-nsa-cast-mode-quick > button { min-height: 34px; padding: 0 13px; border: 1px solid var(--dh-border); border-radius: 999px; background: var(--dh-surface); color: var(--dh-text-soft); font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; }
+.dh-nsa-cast-mode-quick > button.is-active { border-color: rgba(34,197,94,.62); background: rgba(34,197,94,.14); color: var(--dh-text); box-shadow: 0 0 0 2px rgba(34,197,94,.09); }
+.dh-nsa-cast-mode-quick > small { flex: 1 1 280px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.5; }
+.dh-luxgen-post-script-person.is-no-human .dh-luxgen-person-spec label:not(:first-child) { opacity: .48; }
+.dh-luxgen-post-script-person.is-no-human .dh-demo-person-actions { opacity: .58; }
 .dh-luxgen-person-textarea { min-height: 78px !important; line-height: 1.55; resize: vertical; white-space: pre-wrap; overflow: auto; }
 .dh-luxgen-post-script-person { margin-top: 16px; display: grid; gap: 12px; }
 .dh-luxgen-post-script-person[hidden] { display: none !important; }
@@ -2012,9 +2019,11 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-nsa-candidate > button:first-child { width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: 6px; background: #05070b; cursor: zoom-in; }
 .dh-nsa-candidate img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dh-nsa-candidate-use,
-.dh-nsa-candidate-review { min-height: 26px; border: 0; border-radius: 6px; font-size: 11px; font-weight: 900; cursor: pointer; }
+.dh-nsa-candidate-review,
+.dh-nsa-candidate-override { min-height: 26px; border: 0; border-radius: 6px; font-size: 11px; font-weight: 900; cursor: pointer; }
 .dh-nsa-candidate-use { color: #052e16; background: #86efac; }
 .dh-nsa-candidate-review { color: #422006; background: #fcd34d; }
+.dh-nsa-candidate-override { color: #fff; background: #2563eb; }
 .dh-nsa-candidate em { color: var(--dh-text-muted); font-size: 10px; font-style: normal; text-align: center; }
 .dh-nsa-scene-views {
   display: grid;

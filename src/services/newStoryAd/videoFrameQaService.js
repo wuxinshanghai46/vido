@@ -105,7 +105,7 @@ function expectedPeopleForShot(ctx = {}, shot = {}) {
   return null;
 }
 
-async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
+async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return { pass: true, status: 'verified', frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, text_watermark_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
@@ -114,7 +114,11 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {
     || contract.scene_lock?.view_images?.[0] || {};
   const personRef = Object.values((ctx.person_contract || ctx.person_asset?.person_contract || {}).reference_views || {}).find(Boolean) || '';
   const productRef = (ctx.product_contract?.reference_images || [])[0] || '';
-  const references = [sceneRef.url || sceneRef.image_url || '', personRef, productRef].filter(Boolean);
+  const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
+  const acceptedKeyframeRef = humanApproved ? mediaAdapter.absolutePublicImageUrl(keyframe.image_url || keyframe.imageUrl || '') : '';
+  const references = humanApproved
+    ? [acceptedKeyframeRef, personRef, productRef].filter(Boolean)
+    : [sceneRef.url || sceneRef.image_url || '', personRef, productRef].filter(Boolean);
   const expectedPeople = expectedPeopleForShot(ctx, shot);
   const result = await gateway.generateVision({
     taskId,
@@ -125,7 +129,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, contract = {
       'The first optional images are current-task scene/person/product references. The remaining images are ordered samples from one generated clip.',
       'The task may cover any lawful industry, scene, person, product or visual medium. Never impose a fixed template. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople })}\nHard rules: if a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension only when it is genuinely not applicable.`,
+    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nHuman-approved keyframe: ${JSON.stringify(humanApproved ? { authoritative: true, reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'user approved current visual' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople })}\nHard rules: if a human-approved keyframe is authoritative, judge scene/material/layout consistency against that accepted keyframe and do not reject intentional seams, panel layout, crop or starting subject presence merely because they conflict with older automated scene observations. Still reject drift away from the accepted keyframe, wrong action, identity/product changes, unexpected people or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension only when it is genuinely not applicable.`,
     maxTokens: 3000,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });

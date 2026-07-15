@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260713-complete-sync">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-compose-gate-autosave-v2">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-human-override-no-human-v1">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -281,6 +281,12 @@
                     </div>
                     <div class="dh-luxgen-mini-actions">
                       <span>系统会优先补齐留空字段；真人入口仍是“上传真人参考”和“选择真人演员/演员库”。“穿着/服装”会进入演员包生成约束，用来控制衣服、颜色、鞋和配饰。</span>
+                    </div>
+                    <div class="dh-nsa-cast-mode-quick" aria-label="人物出镜模式">
+                      <span>是否需要人物出镜</span>
+                      <button type="button" data-nsa-cast-mode-quick="auto">按内容判断</button>
+                      <button type="button" data-nsa-cast-mode-quick="no_human">无人物 / 纯产品广告</button>
+                      <small>选择“无人物”后，系统会自动忽略人物素材、演员和人数，只生成商品、空间或品牌画面。</small>
                     </div>
                     <div class="dh-luxgen-person-spec">
                       <label>
@@ -2523,7 +2529,7 @@ B: ...
   <script src="/js/new-story-ad/progress.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/scene-assets.js?v=20260715-shot-effects-v1"></script>
   <script src="/js/new-story-ad/state-sync.js?v=20260715-compose-gate-autosave-v2"></script>
-  <script src="/js/new-story-ad/button-state.js?v=20260715-compose-gate-autosave-v2"></script>
+  <script src="/js/new-story-ad/button-state.js?v=20260715-human-override-no-human-v1"></script>
   <script src="/js/new-story-ad/step-navigation.js?v=20260715-compose-gate-autosave-v3"></script>
   <script src="/js/new-story-ad/task-persistence.js?v=20260715-compose-gate-autosave-v2"></script>
   <script src="/js/new-story-ad/storyboard.js?v=20260715-shot-ai-assist-v1"></script>
@@ -2532,7 +2538,7 @@ B: ...
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/generation-flow.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-compose-gate-autosave-v2"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-human-override-no-human-v1"></script>
 </body>
 </html>
 

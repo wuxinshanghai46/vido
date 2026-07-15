@@ -60,6 +60,15 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'single' }, { characters: [] }), 0);
   assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'no_human' }, {}), 0);
   assert.strictEqual(videoQa.expectedPeopleForShot({}, { characters: [{ name: '甲' }, { name: '乙' }] }), 2);
+  const manualPrompt = videoAdapter.clipPrompt(
+    { visual: '展示不锈钢饰面', action: '光线缓慢扫过' },
+    { product_subject: '不锈钢饰面' },
+    {},
+    null,
+    { current_generation_status: 'manual_accepted', qa: { manual_override: true, override_reason: '用户确认多条拼缝符合设计' } },
+  );
+  assert(manualPrompt.includes('Human-approved keyframe is authoritative'));
+  assert(manualPrompt.includes('用户确认多条拼缝符合设计'));
 
   const clipPath = path.join(videoAdapter.VIDEO_DIR, 'qa-source.mp4');
   await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 2, aspectRatio: '9:16' });

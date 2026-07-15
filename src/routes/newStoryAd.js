@@ -884,6 +884,18 @@ router.put('/tasks/:id/keyframes/:index/select', asyncRoute(async (req, res) => 
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
+router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/manual-accept', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = service.acceptKeyframeCandidateOverride(
+    req.params.id,
+    req.params.index,
+    req.params.candidateId,
+    req.body || {},
+    userFromReq(req),
+  );
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
+
 router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncRoute(async (req, res) => {
   taskForReq(req);
   const result = await service.retryKeyframeCandidateQa(req.params.id, req.params.index, req.params.candidateId);

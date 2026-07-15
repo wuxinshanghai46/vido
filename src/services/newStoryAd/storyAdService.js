@@ -2144,7 +2144,7 @@ async function generateVideoStage(taskId, options = {}) {
   for (const index of targetIndexes) {
     const clip = clips[index];
     if (!clip) continue;
-    const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, contract: contracts[index] || {}, ctx, index });
+    const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
     clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
     if (!qa.pass) qaFailures.push({ index, problems: qa.problems || [] });
   }
@@ -2175,6 +2175,84 @@ async function generateVideoStage(taskId, options = {}) {
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
   return { video_clips: clips };
+}
+
+function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, candidate, options = {}) {
+  const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
+  const currentFingerprint = contracts[index]?.contract_fingerprint || '';
+  if (!currentFingerprint) {
+    const error = new Error('当前镜头生成约束不存在，请先重新生成分镜合同');
+    error.code = 'KEYFRAME_CONTRACT_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const acceptedAt = new Date().toISOString();
+  const generationId = cleanText(candidate.generation_id || frame.current_generation_id || '', 80);
+  const manualAcceptance = options.manual_acceptance || null;
+  const acceptedQa = options.qa || candidate.qa;
+  const acceptedStatus = manualAcceptance ? 'manual_accepted' : 'accepted';
+  const acceptedCandidate = {
+    ...candidate,
+    qa: acceptedQa,
+    qa_policy_version: 2,
+    contract_fingerprint: currentFingerprint,
+    status: acceptedStatus,
+    ...(manualAcceptance ? { manual_acceptance: manualAcceptance } : {}),
+  };
+  const candidates = (Array.isArray(frame.candidates) ? frame.candidates : []).map(item => (
+    String(item.id) === String(candidate.id) ? acceptedCandidate : item
+  ));
+  keyframes[index] = {
+    ...frame,
+    candidates,
+    image_url: candidate.image_url,
+    imageUrl: candidate.image_url,
+    qa: acceptedQa,
+    qa_policy_version: 2,
+    contract_fingerprint: currentFingerprint,
+    contract_outdated: false,
+    contract_outdated_reason: '',
+    provider_used: candidate.provider_used || frame.provider_used,
+    selected_candidate_id: candidate.id,
+    error: '',
+    error_code: '',
+    regeneration_error: '',
+    regeneration_error_code: '',
+    regeneration_failed_at: '',
+    current_generation_status: acceptedStatus,
+    current_generation_id: generationId,
+    manual_acceptance: manualAcceptance,
+    accepted_revision: {
+      generation_id: generationId,
+      accepted_at: acceptedAt,
+      qa_policy_version: 2,
+      selected_candidate_id: candidate.id,
+      decision_source: manualAcceptance ? 'human_override' : 'model_qa',
+    },
+    latest_attempt: { generation_id: generationId, status: acceptedStatus, selected_candidate_id: candidate.id, finished_at: acceptedAt },
+  };
+  storage.saveOutput(taskId, 'keyframes', keyframes);
+  storage.deleteOutput(taskId, 'video_clips');
+  storage.deleteOutput(taskId, 'final_video');
+  const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
+  const completion = keyframeCompletion(keyframes, shots);
+  const allCurrent = completion.total > 0 && completion.fresh_pass === completion.total;
+  storage.saveStage(taskId, 'keyframes', {
+    status: allCurrent ? 'done' : 'partial',
+    output_summary: `${completion.fresh_pass}/${completion.total} current keyframes verified`,
+    diagnostics: {
+      keyframe_status: completion,
+      manually_selected_candidate: candidate.id,
+      ...(manualAcceptance ? { human_override: { shot_index: index, ...manualAcceptance } } : {}),
+    },
+  });
+  storage.updateTask(taskId, {
+    status: allCurrent ? 'done' : 'failed',
+    stage: allCurrent ? 'keyframes_ready' : 'keyframes_partial',
+    error: allCurrent ? '' : '仍有镜头未通过当前版本视觉 QA',
+    error_code: allCurrent ? '' : 'KEYFRAME_REGENERATION_REJECTED',
+  });
+  return { keyframe: keyframes[index], keyframes, completion };
 }
 
 function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
@@ -2216,47 +2294,68 @@ function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
     error.status = 422;
     throw error;
   }
+  return finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, candidate);
+}
+
+function acceptKeyframeCandidateOverride(taskId, shotIndex, candidateId, input = {}, user = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
+  const index = Math.max(0, Number(shotIndex) || 0);
+  const frame = keyframes[index];
+  if (!frame) {
+    const error = new Error('要人工确认的镜头不存在');
+    error.code = 'KEYFRAME_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const candidate = (Array.isArray(frame.candidates) ? frame.candidates : []).find(item => String(item.id) === String(candidateId));
+  if (!candidate || !keyframeImageUrl(candidate) || !localKeyframeAssetExists(keyframeImageUrl(candidate))) {
+    const error = new Error('候选关键帧不存在或图片文件不可用');
+    error.code = 'KEYFRAME_CANDIDATE_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
+  const currentFingerprint = cleanText(contracts[index]?.contract_fingerprint || '', 160);
+  if (!currentFingerprint) {
+    const error = new Error('当前镜头生成约束不存在，不能人工确认');
+    error.code = 'KEYFRAME_CONTRACT_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
   const acceptedAt = new Date().toISOString();
-  const generationId = cleanText(candidate.generation_id || frame.current_generation_id || '', 80);
-  keyframes[index] = {
-    ...frame,
-    image_url: candidate.image_url,
-    imageUrl: candidate.image_url,
-    qa: candidate.qa,
-    qa_policy_version: 2,
-    contract_fingerprint: currentFingerprint,
-    contract_outdated: false,
-    contract_outdated_reason: '',
-    provider_used: candidate.provider_used || frame.provider_used,
-    selected_candidate_id: candidate.id,
-    error: '',
-    error_code: '',
-    regeneration_error: '',
-    regeneration_error_code: '',
-    regeneration_failed_at: '',
-    current_generation_status: 'accepted',
-    current_generation_id: generationId,
-    accepted_revision: { generation_id: generationId, accepted_at: acceptedAt, qa_policy_version: 2, selected_candidate_id: candidate.id },
-    latest_attempt: { generation_id: generationId, status: 'accepted', selected_candidate_id: candidate.id, finished_at: acceptedAt },
+  const reason = cleanText(input.reason || '用户确认当前画面符合创作意图', 500);
+  const acceptedBy = {
+    id: cleanText(user.id || user.userId || '', 100),
+    name: cleanText(user.name || user.username || user.nickname || '', 100),
+    source: cleanText(input.source || 'story_ad_ui', 80),
   };
-  storage.saveOutput(taskId, 'keyframes', keyframes);
-  storage.deleteOutput(taskId, 'video_clips');
-  storage.deleteOutput(taskId, 'final_video');
-  const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
-  const completion = keyframeCompletion(keyframes, shots);
-  const allCurrent = completion.total > 0 && completion.fresh_pass === completion.total;
-  storage.saveStage(taskId, 'keyframes', {
-    status: allCurrent ? 'done' : 'partial',
-    output_summary: `${completion.fresh_pass}/${completion.total} current keyframes verified`,
-    diagnostics: { keyframe_status: completion, manually_selected_candidate: candidate.id },
+  const originalQa = candidate.qa && typeof candidate.qa === 'object' ? { ...candidate.qa } : {};
+  const manualAcceptance = {
+    accepted_at: acceptedAt,
+    accepted_by: acceptedBy,
+    reason,
+    original_status: cleanText(candidate.status || '', 80),
+    original_qa: originalQa,
+    previous_contract_fingerprint: cleanText(candidate.contract_fingerprint || '', 160),
+    current_contract_fingerprint: currentFingerprint,
+  };
+  const qa = {
+    ...originalQa,
+    pass: true,
+    status: 'manual_accepted',
+    manual_override: true,
+    model_pass: originalQa.pass === true,
+    decision_source: 'human_override',
+    override_reason: reason,
+    overridden_at: acceptedAt,
+    overridden_by: acceptedBy,
+  };
+  return finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, candidate, {
+    qa,
+    manual_acceptance: manualAcceptance,
   });
-  storage.updateTask(taskId, {
-    status: allCurrent ? 'done' : 'failed',
-    stage: allCurrent ? 'keyframes_ready' : 'keyframes_partial',
-    error: allCurrent ? '' : '仍有镜头未通过当前版本视觉 QA',
-    error_code: allCurrent ? '' : 'KEYFRAME_REGENERATION_REJECTED',
-  });
-  return { keyframe: keyframes[index], keyframes };
 }
 
 async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
@@ -2903,6 +3002,7 @@ module.exports = {
   verifyPersonContract,
   verifyProductContract,
   selectKeyframeCandidate,
+  acceptKeyframeCandidateOverride,
   retryKeyframeCandidateQa,
   composeStage,
   runFull,

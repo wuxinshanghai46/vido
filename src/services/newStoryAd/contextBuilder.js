@@ -314,6 +314,10 @@ function buildContext(body = {}, user = {}) {
   const sceneSpec = normalizeSceneSpec(body.scene_spec || body.sceneSpec);
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
+  const noHuman = castMode === 'no_human';
+  const contextAssets = noHuman
+    ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
+    : assets;
   return {
     request_id: requestId,
     brief,
@@ -324,16 +328,16 @@ function buildContext(body = {}, user = {}) {
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
     cast_mode: castMode,
-    expected_people: expectedPeopleRaw > 0 ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw))) : 0,
-    characters,
-    assets,
+    expected_people: noHuman ? 0 : (expectedPeopleRaw > 0 ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw))) : 0),
+    characters: noHuman ? [] : characters,
+    assets: contextAssets,
     forbidden,
     controlled_production: controlledProduction,
-    person_spec: personSpec,
-    person_asset: personAsset,
-    person_contract: body.person_contract && typeof body.person_contract === 'object'
+    person_spec: noHuman ? { castMode: 'no_human' } : personSpec,
+    person_asset: noHuman ? null : personAsset,
+    person_contract: noHuman ? null : (body.person_contract && typeof body.person_contract === 'object'
       ? body.person_contract
-      : (personAsset?.person_contract || null),
+      : (personAsset?.person_contract || null)),
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
@@ -343,8 +347,13 @@ function buildContext(body = {}, user = {}) {
       person: Math.max(1, Number(body.revisions.person || 1) || 1),
       product: Math.max(1, Number(body.revisions.product || 1) || 1),
     } : { source: 1, scene: 1, person: 1, product: 1 },
-    cast_profiles: castProfiles,
-    person_context: {
+    cast_profiles: noHuman ? [] : castProfiles,
+    person_context: noHuman ? {
+      source: 'no_human_mode',
+      real_person_locked: false,
+      production_usable_actor: false,
+      person_notes: [],
+    } : {
       source: cleanText(personContext.source || (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'), 120),
       real_person_locked: personContext.real_person_locked === true || personAsset?.real_person_reference === true,
       production_usable_actor: personContext.production_usable_actor === true || personAsset?.production_usable_actor === true,

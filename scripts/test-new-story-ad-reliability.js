@@ -39,6 +39,28 @@ function waitUntil(predicate, timeoutMs = 4000) {
 
 async function main() {
   const owner = { id: 'owner-1', role: 'user' };
+  const noHumanContext = buildContext({
+    brief: '纯产品广告，不出现人物',
+    cast_mode: 'no_human',
+    expected_people: 3,
+    characters: [{ name: '旧演员' }],
+    assets: [
+      { id: 'person-ref', type: 'person_reference', url: 'https://example.test/person.png' },
+      { id: 'product-ref', type: 'product', url: 'https://example.test/product.png' },
+    ],
+    person_spec: { castMode: 'group', appearanceText: '旧人物设定' },
+    person_asset: { id: 'person-1', image_url: 'https://example.test/person.png' },
+    cast_profiles: [{ id: 'cast-1', name: '旧演员' }],
+  }, owner);
+  assert.equal(noHumanContext.cast_mode, 'no_human');
+  assert.equal(noHumanContext.expected_people, 0);
+  assert.deepEqual(noHumanContext.characters, []);
+  assert.equal(noHumanContext.person_asset, null);
+  assert.equal(noHumanContext.person_contract, null);
+  assert.deepEqual(noHumanContext.cast_profiles, []);
+  assert.deepEqual(noHumanContext.person_spec, { castMode: 'no_human' });
+  assert.equal(noHumanContext.person_context.source, 'no_human_mode');
+  assert.deepEqual(noHumanContext.assets.map(item => item.id), ['product-ref']);
   const created = service.createTask({
     brief: '制作一条面向通用业务场景的产品功能演示广告，按用户输入动态生成内容。',
     product_subject: '用户指定的广告主体',
@@ -255,6 +277,7 @@ async function main() {
     candidates: [
       { id: 'old-candidate', image_url: 'https://example.test/old-candidate.png', status: 'accepted', qa_policy_version: 1, qa: { pass: true, status: 'verified' } },
       { id: 'new-candidate', image_url: 'https://example.test/new-candidate.png', status: 'accepted', qa_policy_version: 2, contract_fingerprint: 'candidate-contract-v1', generation_id: 'gen-2', qa: { pass: true, status: 'verified' } },
+      { id: 'manual-candidate', image_url: 'https://example.test/manual-candidate.png', status: 'rejected', qa_policy_version: 2, contract_fingerprint: 'old-contract', generation_id: 'gen-3', qa: { pass: false, status: 'rejected', mismatch_reasons: ['模型误判拼缝'] } },
     ],
   }]);
   assert.throws(
@@ -267,6 +290,26 @@ async function main() {
   assert.equal(selected.qa_policy_version, 2);
   assert.equal(selected.accepted_revision.selected_candidate_id, 'new-candidate');
   assert.equal(selected.latest_attempt.status, 'accepted');
+  const manualSelected = service.acceptKeyframeCandidateOverride(
+    candidateTask.id,
+    0,
+    'manual-candidate',
+    { reason: '用户确认多条拼缝符合样品设计', source: 'test' },
+    { id: 'owner-1', username: '测试用户' },
+  ).keyframe;
+  assert.equal(manualSelected.qa.pass, true);
+  assert.equal(manualSelected.qa.manual_override, true);
+  assert.equal(manualSelected.qa.model_pass, false);
+  assert.equal(manualSelected.qa.decision_source, 'human_override');
+  assert.equal(manualSelected.manual_acceptance.original_qa.pass, false);
+  assert.equal(manualSelected.manual_acceptance.original_status, 'rejected');
+  assert.equal(manualSelected.manual_acceptance.previous_contract_fingerprint, 'old-contract');
+  assert.equal(manualSelected.manual_acceptance.current_contract_fingerprint, 'candidate-contract-v1');
+  assert.equal(manualSelected.manual_acceptance.accepted_by.id, 'owner-1');
+  assert.equal(manualSelected.accepted_revision.decision_source, 'human_override');
+  assert.equal(manualSelected.current_generation_status, 'manual_accepted');
+  assert.equal(manualSelected.contract_outdated, false);
+  assert.equal(manualSelected.regeneration_error, '');
 
   const qaRetryTask = service.createTask({ brief: '现有图片只重试 QA', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
   storage.saveOutput(qaRetryTask.id, 'context', { brief: '现有图片只重试 QA', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });

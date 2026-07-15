@@ -790,7 +790,7 @@
       .slice(0, 20);
   }
 
-  function assetPayloadList() {
+  function assetPayloadList(options = {}) {
     const list = [];
     const add = (asset, type) => {
       if (!asset) return;
@@ -806,7 +806,7 @@
       });
     };
     add(state.productAsset, 'product');
-    add(state.personAsset || state.actorAsset, 'person_reference');
+    if (options.includePerson !== false) add(state.personAsset || state.actorAsset, 'person_reference');
     state.referenceAssets.forEach(asset => add(asset, 'storyboard_reference'));
     return list;
   }
@@ -954,10 +954,12 @@
     const voiceId = state.voiceId || '';
     const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '剧情广告';
     const person = collectPersonSpec();
-    const personAsset = personAssetPayload();
+    const noHuman = person.castMode === 'no_human';
+    const personAsset = noHuman ? null : personAssetPayload();
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
-    const castProfiles = state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []);
+    const castProfiles = noHuman ? [] : (state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []));
+    const assets = assetPayloadList({ includePerson: !noHuman });
     const ctrl = controlledPayload();
     const negative = [
       ...splitNegativeText(ctrl.negative_control.text),
@@ -971,8 +973,8 @@
       output_ratio: ratio,
       output_size: size,
       video_resolution: videoResolution,
-      cast_mode: personSpec('castMode') || 'auto',
-      expected_people: Number(personSpec('expectedPeople') || 0) || undefined,
+      cast_mode: noHuman ? 'no_human' : (person.castMode || 'auto'),
+      expected_people: noHuman ? 0 : (Number(person.expectedPeople || 0) || undefined),
       production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
       voice_id: voiceId,
       voice_name: state.voiceName || '',
@@ -987,19 +989,19 @@
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
       bgm_asset: state.bgmAsset,
-      assets: assetPayloadList(),
-      references: assetPayloadList(),
-      person_spec: person,
+      assets,
+      references: assets,
+      person_spec: noHuman ? { castMode: 'no_human' } : person,
       person_asset: personAsset,
       scene_spec: sceneSpec,
       scene_assets: sceneAssets,
       cast_profiles: castProfiles,
       person_context: {
-        source: personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec',
-        person_spec: person,
+        source: noHuman ? 'no_human_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'),
+        person_spec: noHuman ? { castMode: 'no_human' } : person,
         person_asset: personAsset,
         cast_profiles: castProfiles,
-        person_notes: [personDescription(person)].filter(Boolean),
+        person_notes: noHuman ? [] : [personDescription(person)].filter(Boolean),
         real_person_locked: !!(personAsset && personAsset.real_person_reference),
         production_usable_actor: !!(personAsset && personAsset.production_usable_actor),
       },
@@ -1375,6 +1377,10 @@
   function renderPerson() {
     const host = within('#dhNsaAdPersonCurrent');
     if (!host) return;
+    if (isNoHumanMode()) {
+      host.innerHTML = '<span class="dh-luxgen-person-badge">无人物</span><div class="dh-luxgen-person-copy"><b>纯产品 / 纯场景广告</b><small>人物素材、演员、人数和人物描述均不会进入剧本、分镜或视频生成。</small></div>';
+      return;
+    }
     if (state.personGenerationProgress?.active) {
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
         <div class="dh-luxgen-person-thumb">生成中</div>
@@ -1963,6 +1969,10 @@
     const total = Math.max((state.shots || []).length, (state.keyframes || []).length);
     const completed = (state.keyframes || []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length;
     return { total, completed, missing: Math.max(0, total - completed), failed: 0, missing_indexes: [] };
+  }
+
+  function isNoHumanMode() {
+    return personSpec('castMode') === 'no_human';
   }
 
   function composeReadiness() {
@@ -2844,6 +2854,7 @@
       const currentFailed = !qaUnavailable && !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked'].includes(String(frame.current_generation_status || '')));
       const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
+      const manualAccepted = qaPassed && frame.qa?.manual_override === true;
       const qaState = qaUnavailable || currentFailed || qaOutdated ? 'warning' : (qaPassed ? 'pass' : 'pending');
       const qaLabel = qaUnavailable
         ? '审核服务异常'
@@ -2851,7 +2862,7 @@
         ? '新版本未通过'
         : (currentFailed
           ? '生成失败'
-          : (qaOutdated ? (frame.contract_outdated ? '需重新生成' : '需重新验证') : (qaPassed ? 'QA 已通过' : '待验证'))));
+            : (qaOutdated ? (frame.contract_outdated ? '需重新生成' : '需重新验证') : (manualAccepted ? '人工已确认' : (qaPassed ? 'QA 已通过' : '待验证')))));
       const qaDetail = qaUnavailable
         ? '新图已经生成，但视觉审核服务超时或返回格式异常。可直接重新验证此图，无需重新生成图片。'
         : (frame.regeneration_error
@@ -2862,7 +2873,7 @@
             ? (frame.contract_outdated
               ? '镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'
               : '当前画面由旧版审核规则生成，需按最新规则重新验证。')
-            : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。'))));
+            : (manualAccepted ? '自动 QA 的原始结论已保留；该画面由用户人工确认符合创作意图并采用。' : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。')))));
       const headerSummary = [cameraSummary, sceneName].filter(Boolean).join(' · ');
       const showStatusNotice = qaUnavailable || currentFailed || qaOutdated;
       const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
@@ -2871,13 +2882,16 @@
         ? `<div class="dh-nsa-candidate-strip"><b>\u5019\u9009\u5ba1\u7247</b><div>${candidates.map((candidate, candidateIndex) => {
             const candidateUrl = candidate.image_url || candidate.imageUrl || '';
             const accepted = candidate.qa?.pass === true && candidate.status !== 'rejected';
+            const manualCandidate = candidate.qa?.manual_override === true || candidate.status === 'manual_accepted';
             const reviewable = candidate.status === 'qa_unavailable' || candidate.qa?.status === 'unavailable';
             const selected = String(frame.selected_candidate_id || '') === String(candidate.id || '');
             const confirmRetained = accepted && selected && !!frame.regeneration_error && Number(candidate.qa_policy_version || 0) >= 2
               && !!contract.contract_fingerprint && candidate.contract_fingerprint === contract.contract_fingerprint;
+            const needsHumanRebind = accepted && selected && !confirmRetained && (currentFailed || qaOutdated);
             return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : (reviewable ? 'is-review' : 'is-rejected')} ${selected ? 'is-selected' : ''}">
               <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(assetThumbUrl(candidateUrl, 320))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
-              ${reviewable ? `<button type="button" class="dh-nsa-candidate-review" data-nsa-candidate-review="${i}:${escapeHtml(candidate.id || '')}">重新验证</button>` : (accepted && (!selected || confirmRetained) ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">${confirmRetained ? '确认沿用旧版' : '\u9009\u7528'}</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`)}
+              ${reviewable ? `<button type="button" class="dh-nsa-candidate-review" data-nsa-candidate-review="${i}:${escapeHtml(candidate.id || '')}">重新验证</button>` : ''}
+              ${accepted && (!selected || confirmRetained) ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">${confirmRetained ? '确认沿用旧版' : '\u9009\u7528'}</button>` : ((!accepted || needsHumanRebind) && candidateUrl ? `<button type="button" class="dh-nsa-candidate-override" data-nsa-candidate-override="${i}:${escapeHtml(candidate.id || '')}">${needsHumanRebind ? '人工确认沿用' : '人工确认采用'}</button>` : `<em>${manualCandidate ? '人工已采用' : (selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7')}</em>`)}
             </span>`;
           }).join('')}</div></div>`
         : '';
@@ -3068,13 +3082,23 @@
   function syncPersonSpecControls() {
     const lock = state.personSpecLock || null;
     const generating = !!state.personGenerationProgress?.active;
+    const noHuman = isNoHumanMode();
+    within('#dhNsaAdPostScriptPerson')?.classList.toggle('is-no-human', noHuman);
+    $$('[data-nsa-cast-mode-quick]', root()).forEach(button => {
+      const active = button.dataset.nsaCastModeQuick === personSpec('castMode');
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.disabled = generating;
+    });
     $$('[data-nsa-person-spec]', root()).forEach(el => {
       const field = el.dataset.nsaPersonSpec;
-      const locked = !!(lock && ['castMode', 'gender', 'age', 'origin'].includes(field) && (field !== 'origin' || lock.origin) && (field !== 'age' || lock.age));
-      el.disabled = locked || generating;
+      const locked = !!(lock && ['gender', 'age', 'origin'].includes(field) && (field !== 'origin' || lock.origin) && (field !== 'age' || lock.age));
+      el.disabled = generating || (noHuman && field !== 'castMode') || locked;
       el.title = generating
         ? '正在生成拟真演员，人物设定暂时锁定。'
-        : (locked ? `已按人物一致性参考「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '');
+        : (noHuman && field !== 'castMode'
+          ? '无人物模式下不会使用人物设定。'
+          : (locked ? `已按人物一致性参考「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : ''));
     });
   }
 
@@ -4802,6 +4826,15 @@
     host.dataset.bound = '1';
     host.addEventListener('click', async e => {
       const target = e.target;
+      const castModeQuick = target.closest('[data-nsa-cast-mode-quick]');
+      if (castModeQuick && host.contains(castModeQuick)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const mode = castModeQuick.dataset.nsaCastModeQuick === 'no_human' ? 'no_human' : 'auto';
+        writeAllFields('[data-nsa-person-spec="castMode"]', mode);
+        activeField('[data-nsa-person-spec="castMode"]')?.dispatchEvent(new Event('change', { bubbles: true }));
+        return;
+      }
       const btn = target.closest('button, [role="button"], a');
       const cancelGeneration = target.closest('[data-nsa-cancel-generation]');
       if (cancelGeneration && host.contains(cancelGeneration)) {
@@ -4948,6 +4981,38 @@
           toast(error.message || '候选画面重新验证失败', 'error');
         } finally {
           setButtonBusy(candidateReview, false);
+        }
+        return;
+      }
+      const candidateOverride = target.closest('[data-nsa-candidate-override]');
+      if (candidateOverride && host.contains(candidateOverride)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const raw = String(candidateOverride.dataset.nsaCandidateOverride || '');
+        const separator = raw.indexOf(':');
+        const shotIndex = Number(raw.slice(0, separator));
+        const candidateId = raw.slice(separator + 1);
+        if (!state.taskId || separator < 1 || !candidateId) {
+          toast('无法识别要人工确认的候选画面', 'error');
+          return;
+        }
+        const confirmed = window.confirm(`确认人工采用第 ${shotIndex + 1} 镜当前候选图吗？\n\n这会覆盖自动 QA 的未通过结论，但系统会保留原始审核结果和人工确认记录。`);
+        if (!confirmed) return;
+        setButtonBusy(candidateOverride, true, '确认中...');
+        try {
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/keyframes/${shotIndex}/candidates/${encodeURIComponent(candidateId)}/manual-accept`, {
+            method: 'POST',
+            body: { reason: '用户在分镜页确认当前画面符合创作意图', source: 'story_ad_keyframe_review' },
+          });
+          state.keyframes = response.keyframes || state.keyframes;
+          state.videoClips = [];
+          state.finalVideo = null;
+          renderAll();
+          toast(`第 ${shotIndex + 1} 镜已人工确认采用，原始 QA 记录已保留`, 'success');
+        } catch (error) {
+          toast(error.message || '人工确认候选画面失败', 'error');
+        } finally {
+          setButtonBusy(candidateOverride, false);
         }
         return;
       }
@@ -5400,7 +5465,14 @@
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
         markSourceDirty('person');
-        renderStatus();
+        if (target.dataset.nsaPersonSpec === 'castMode') {
+          renderAll();
+          toast(target.value === 'no_human'
+            ? '已切换为无人物模式，人物素材和演员不会进入后续生成'
+            : '已恢复按内容判断人物，当前设置会自动保存', 'success');
+        } else {
+          renderStatus();
+        }
       }
     });
     const scheduleFieldAutoSave = e => {

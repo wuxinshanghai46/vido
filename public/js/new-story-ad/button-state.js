@@ -47,6 +47,7 @@
       ? window.NewStoryAdStepNavigation.composeReadiness({ state })
       : { ready: hasShots, message: '请先生成并审核全部分镜' };
     const hasActorInput = !!getPersonSpec('appearanceText');
+    const noHuman = getPersonSpec('castMode') === 'no_human';
 
     lock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
     const generateBtn = within('#dhNsaAdGenerate');
@@ -56,7 +57,7 @@
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜');
     lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜');
-    lock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
+    lock('#dhNsaAdGeneratePersonSheet', noHuman || (!hasBrief && !hasActorInput), noHuman ? '无人物模式不需要生成演员' : '请先填写广告需求或人物设定', { allowBusy: true });
     lock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     lock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     lock('#dhNsaAdAiSceneSpec', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
@@ -72,7 +73,10 @@
       '#dhNsaAdUploadPersonRef',
       '#dhNsaAdPickActorAsset',
       '#dhNsaAdAiPersonSpec',
-    ].forEach(selector => lock(selector, false));
+    ].forEach(selector => {
+      const personAction = ['#dhNsaAdUploadPersonRef', '#dhNsaAdPickActorAsset', '#dhNsaAdAiPersonSpec'].includes(selector);
+      lock(selector, personAction && noHuman, personAction && noHuman ? '无人物模式不会使用人物素材或人物设定' : '');
+    });
   }
 
   window.NewStoryAdButtonState = {

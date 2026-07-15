@@ -63,6 +63,13 @@ const html = read('public/digital-human.html');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(html.includes('data-nsa-autosave-status'), 'autosave status must be visible');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
+assert(html.includes('data-nsa-cast-mode-quick="no_human"'), 'no-human mode must be directly visible instead of hidden only in a select');
+
+const ui = read('public/js/new-story-ad-legacy-ui.js');
+assert(ui.includes('data-nsa-candidate-override'), 'rejected keyframes must offer an explicit human override action');
+assert(ui.includes('/manual-accept'), 'human override must call the auditable manual acceptance endpoint');
+assert(ui.includes("person_spec: noHuman ? { castMode: 'no_human' } : person"), 'no-human payload must suppress stale person details');
+assert(ui.includes('assetPayloadList({ includePerson: !noHuman })'), 'no-human payload must exclude person reference assets');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));

@@ -143,9 +143,10 @@ function localAudioPath(url = '') {
   return filePath && fs.existsSync(filePath) ? filePath : '';
 }
 
-function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null) {
+function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, keyframe = {}) {
   const design = shotDesign.normalizeShotDesign(shot);
   const authoredEffectTarget = !!(design.motion_effect?.target_state || design.motion_effect?.reference_asset_id);
+  const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
   return [
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
@@ -155,6 +156,9 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null) {
     continuityPrompt(shot, previousShot),
     shotDesign.surfacePrompt(design.surface_topology, design.shot_scope),
     shotDesign.motionEffectPrompt(design.motion_effect),
+    humanApproved
+      ? `Human-approved keyframe is authoritative for the starting composition and visible scene/material structure. Preserve its intentional seams, panel layout, crop and subject presence exactly; do not "correct" them because of older automated observations. Approval note: ${keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'user approved the current visual'}.`
+      : '',
     'Animate the supplied keyframe only. Preserve the current subject identity, wardrobe, product, materials, scene geometry and lighting.',
     authoredEffectTarget
       ? 'Use physically plausible motion and camera movement. The explicitly authored effect target is allowed; do not add any other people, objects, text, logos, products or locations.'
@@ -338,7 +342,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const candidates = [pinnedModel];
   const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
-  const prompt = clipPrompt(shot, ctx, contract, previousShot);
+  const prompt = clipPrompt(shot, ctx, contract, previousShot, keyframe);
   const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
   const audioDuration = await probeDuration(audioPath);
   if (audioDuration > duration + 0.35) {
@@ -450,7 +454,7 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
       provider_used: 'local-ffmpeg/explicit-fallback',
       image_source: imagePath ? (keyframe.image_url || keyframe.imageUrl || '') : '',
       audio_source: audioPath ? (audio.audio_url || audio.audioUrl || '') : '',
-      motion_prompt: clipPrompt(shot, ctx, contract, previousShot),
+      motion_prompt: clipPrompt(shot, ctx, contract, previousShot, keyframe),
       mode: imagePath ? 'still_keyframe_video' : 'placeholder_video',
       warning: String(error.message || error).slice(0, 500),
     });
