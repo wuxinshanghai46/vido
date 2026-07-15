@@ -36,6 +36,17 @@ const comparisonText = shotDesign.surfacePrompt({
 }, 'product_comparison');
 assert.match(comparisonText, /isolated product\/sample comparison insert/i);
 assert.match(comparisonText, /must not redefine the topology of the master environment/i);
+const comparisonKeyframePrompt = storyAd.buildKeyframePrompt({
+  brief: 'A generic material comparison task',
+  product_subject: 'task subject',
+}, {
+  title: 'comparison insert',
+  visual: 'Three task-defined samples shown independently',
+  action: 'Camera passes across the samples',
+  shot_scope: 'product_comparison',
+  surface_topology: { mode: 'segmented', seam_policy: 'visible', finish_distribution: 'sample_comparison' },
+}, { visual_contract: {} }, 3);
+assert.match(comparisonKeyframePrompt, /isolated product\/sample comparison insert/i);
 
 const particleShot = {
   title: 'brand endcard',
