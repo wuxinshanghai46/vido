@@ -4520,6 +4520,7 @@
   }
   const DH_TASK_STORE_KEY = 'dh_video_tasks_v1';
   const ACTIVE_TASK_STATUSES = new Set(['submitted', 'running', 'polling', 'preparing']);
+  const DISPLAY_ACTIVE_TASK_STATUSES = new Set([...ACTIVE_TASK_STATUSES, 'queued', 'processing', 'generating']);
   const TERMINAL_ERROR_TASK_STATUSES = new Set(['error', 'invalid', 'timeout', 'failed']);
 
   function readJwtPayload() {
@@ -4581,6 +4582,67 @@
     if (TERMINAL_ERROR_TASK_STATUSES.has(status)) return true;
     if (status === 'done' || status === 'ready') return false;
     return !!String(task.error || task.error_message || task.errorMessage || '').trim();
+  }
+
+  function taskTimestamp(value) {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value > 0 && value < 1e12 ? value * 1000 : value;
+    }
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function isTaskDisplayActive(task = {}) {
+    if (isTaskTerminalError(task)) return false;
+    const status = String(task.status || '').toLowerCase();
+    if (!DISPLAY_ACTIVE_TASK_STATUSES.has(status)) return false;
+    // 新剧情广告由持久化 generation id 表示真实后台作业，避免陈旧 running 状态误导用户。
+    if (getTaskType(task) === 'new_story_ad' && Object.prototype.hasOwnProperty.call(task, 'activeGenerationId')) {
+      return !!String(task.activeGenerationId || '').trim();
+    }
+    return true;
+  }
+
+  function formatTaskElapsedText(elapsedSec) {
+    const total = Math.max(0, Math.round(Number(elapsedSec) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    if (hours > 0) return `${hours}时${minutes}分${seconds}秒`;
+    if (minutes > 0) return `${minutes}分${seconds}秒`;
+    return `${seconds}秒`;
+  }
+
+  function getTaskElapsedSeconds(task = {}, active = isTaskDisplayActive(task)) {
+    const explicit = Number(task.elapsed);
+    const hasExplicit = task.elapsed != null && task.elapsed !== '' && Number.isFinite(explicit) && explicit >= 0;
+    const startedAt = taskTimestamp(
+      task.operationStartedAt || task.generationStartedAt || task.generation_started_at
+      || task.submittedAt || task.createDetail?.submittedAt || task.startedAt
+    );
+    const finishedAt = taskTimestamp(
+      task.operationFinishedAt || task.generationFinishedAt || task.generation_finished_at
+      || task.finishedAt || task.completedAt
+    );
+    if (active) {
+      if (startedAt) return Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+      return hasExplicit ? Math.round(explicit) : null;
+    }
+    if (hasExplicit) return Math.round(explicit);
+    if (startedAt && finishedAt >= startedAt) return Math.max(0, Math.round((finishedAt - startedAt) / 1000));
+    return null;
+  }
+
+  function getTaskTimingLabel(task = {}, active = isTaskDisplayActive(task)) {
+    if (task.isLuxuryProjectDraft) return '已保存';
+    const elapsed = getTaskElapsedSeconds(task, active);
+    if (active) return elapsed == null ? '后台运行中' : `已用 ${formatTaskElapsedText(elapsed)}`;
+    const status = String(task.status || '').toLowerCase();
+    if (status === 'draft' || status === 'working') return '未在后台运行';
+    if (isTaskTerminalError(task)) return elapsed == null ? '已结束' : `本次耗时 ${formatTaskElapsedText(elapsed)}`;
+    if (status === 'done' || status === 'ready') return elapsed == null ? getTaskStatusText(status) : `本次耗时 ${formatTaskElapsedText(elapsed)}`;
+    return '未在后台运行';
   }
 
   function readVideoTasks() {
@@ -4675,6 +4737,9 @@
       startedAt: task.startedAt,
       updatedAt: task.updatedAt,
       elapsed: task.elapsed,
+      operationStartedAt: task.operationStartedAt,
+      operationFinishedAt: task.operationFinishedAt,
+      activeGenerationId: task.activeGenerationId,
       avatarName: task.avatarName,
       previewUrl: task.previewUrl,
       textPreview: task.textPreview,
@@ -4749,6 +4814,9 @@
           startedAt: t.startedAt,
           updatedAt: t.updatedAt,
           elapsed: t.elapsed,
+          operationStartedAt: t.operationStartedAt,
+          operationFinishedAt: t.operationFinishedAt,
+          activeGenerationId: t.activeGenerationId,
           avatarName: t.avatarName,
           previewUrl: t.previewUrl,
           textPreview: t.textPreview,
@@ -4854,10 +4922,13 @@
 
   function getTaskStatusText(status) {
     return {
+      queued: '排队中',
       submitted: '已提交',
       running: '生成中',
       polling: '生成中',
       preparing: '准备中',
+      processing: '处理中',
+      generating: '生成中',
       done: '已完成',
       error: '失败',
       invalid: '已失效',
@@ -4872,7 +4943,7 @@
   function getTaskStageText(stage, task = null) {
     const isLuxury = task ? getTaskType(task) === 'luxury_ad' : false;
     if (task && isTaskTerminalError(task)) return '生成失败';
-    return {
+    const text = {
       prepare_image: '准备形象',
       prepare_audio: '准备语音',
       detecting: '主体检测',
@@ -4889,6 +4960,7 @@
       blueprint_done: '剧情蓝图已完成',
       storyboard_failed: '分镜 QA 未通过',
       keyframe_contract_ready: '关键帧合同已就绪',
+      keyframes_partial: '关键帧待继续处理',
       keyframes_ready: '关键帧已就绪',
       keyframes_failed: '关键帧生成失败',
       tts: '生成 TTS',
@@ -4905,13 +4977,20 @@
       video: '图生视频',
       post_effects: '字幕/特效合成',
       done: '成品保存',
-    }[stage] || '后台处理中';
+    }[stage];
+    if (text) return text;
+    if (!task || isTaskDisplayActive(task)) return '后台处理中';
+    const status = String(task.status || '').toLowerCase();
+    if (status === 'draft' || status === 'working') return '制作进度已保存';
+    if (status === 'done') return '任务已完成';
+    if (status === 'ready') return '等待下一步';
+    return '当前未运行';
   }
 
   function updateTaskBadge() {
     const badge = $('#dhTaskCount');
     if (!badge) return;
-    const active = [...readVideoTasks(), ...(state.newStoryAdTasks || [])].filter(t => ACTIVE_TASK_STATUSES.has(t.status)).length;
+    const active = [...readVideoTasks(), ...(state.newStoryAdTasks || [])].filter(isTaskDisplayActive).length;
     badge.textContent = String(active);
     badge.style.display = active ? 'inline-flex' : 'none';
   }
@@ -5441,7 +5520,9 @@
       body.innerHTML = `<div class="dh-render-stage"><div class="dh-render-stage-name">&#20219;&#21153;&#24050;&#19981;&#23384;&#22312;</div></div>`;
       return;
     }
-    const elapsed = data.elapsed || Math.round((Date.now() - (data.startedAt || Date.now())) / 1000);
+    const active = isTaskDisplayActive(data);
+    const elapsed = getTaskElapsedSeconds(data, active);
+    const timingLabel = getTaskTimingLabel(data, active);
     const detailPanel = renderTaskDetailPanel(data);
     if (data.videoUrl || data.video_url) {
       const url = data.videoUrl || data.video_url;
@@ -5466,10 +5547,10 @@
       return;
     }
     delete body.dataset.doneVideoUrl;
-    if (data.status === 'error' || data.status === 'invalid' || data.status === 'timeout') {
+    if (isTaskTerminalError(data)) {
       body.innerHTML = `<div class="dh-render-stage">
         <div class="dh-render-stage-name" style="color:var(--dh-error)">&#10005; ${escapeHtml(getTaskStatusText(data.status))}</div>
-        <div class="dh-render-stage-sub">${escapeHtml(data.error || '')}</div>
+        <div class="dh-render-stage-sub">${escapeHtml(timingLabel)}${data.error ? ` · ${escapeHtml(data.error)}` : ''}</div>
       </div>
       ${detailPanel}
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
@@ -5478,14 +5559,24 @@
       </div>`;
       return;
     }
+    if (!active) {
+      body.innerHTML = `<div class="dh-task-detail-head">
+        <div>
+          <div class="dh-task-detail-status">${escapeHtml(getTaskStatusText(data.status))}</div>
+          <div class="dh-task-detail-stage">${escapeHtml(getTaskStageText(data.stage, data))} · ${escapeHtml(timingLabel)}</div>
+        </div>
+      </div>
+      ${detailPanel}`;
+      return;
+    }
     body.innerHTML = `<div class="dh-task-detail-head">
       <div>
         <div class="dh-task-detail-status">${escapeHtml(getTaskStatusText(data.status))}</div>
-        <div class="dh-task-detail-stage">${escapeHtml(getTaskStageText(data.stage, data))} · &#24050;&#29992; ${escapeHtml(String(elapsed))}s</div>
+        <div class="dh-task-detail-stage">${escapeHtml(getTaskStageText(data.stage, data))} · ${escapeHtml(timingLabel)}</div>
       </div>
       <div class="dh-task-detail-percent">${getTaskProgressPercent(data)}%</div>
     </div>
-    ${renderProgressPreview(getTaskStageText(data.stage, data), `${escapeHtml(data.avatarName || '\u5f53\u524d\u4efb\u52a1')}`, elapsed, data)}
+    ${renderProgressPreview(getTaskStageText(data.stage, data), `${escapeHtml(data.avatarName || '\u5f53\u524d\u4efb\u52a1')}`, elapsed || 0, data)}
     ${detailPanel}`;
   }
   function renderTaskCenter() {
@@ -5524,18 +5615,15 @@
       return;
     }
     const ordered = scopedTasks.slice().sort((a, b) => {
-      const aw = ACTIVE_TASK_STATUSES.has(a.status) ? 1 : 0;
-      const bw = ACTIVE_TASK_STATUSES.has(b.status) ? 1 : 0;
+      const aw = isTaskDisplayActive(a) ? 1 : 0;
+      const bw = isTaskDisplayActive(b) ? 1 : 0;
       return bw - aw || (b.startedAt || 0) - (a.startedAt || 0);
     });
     host.innerHTML = ordered.map(t => {
       const failed = isTaskTerminalError(t);
-      const active = ACTIVE_TASK_STATUSES.has(t.status) && !failed;
+      const active = isTaskDisplayActive(t);
       const progressPct = getTaskProgressPercent(t);
-      const elapsed = t.elapsed != null
-        ? `${t.elapsed}s`
-        : (t.startedAt ? `${Math.max(0, Math.round((Date.now() - t.startedAt) / 1000))}s` : '--');
-      const elapsedLabel = t.isLuxuryProjectDraft ? '已保存' : `&#24050;&#29992; ${escapeHtml(elapsed)}`;
+      const elapsedLabel = getTaskTimingLabel(t, active);
       const created = t.startedAt ? new Date(t.startedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
       const videoUrl = t.videoUrl || t.video_url || '';
       const onDemandPoster = (!t.isLuxuryProjectDraft && videoUrl && t.taskId)
@@ -5562,7 +5650,7 @@
         : (t.subtitleBurned ? `<div class="dh-task-ok">&#23383;&#24149;&#24050;&#28903;&#24405;&#21040;&#35270;&#39057;</div>` : '');
       const progressBar = active
         ? `<div class="dh-task-progress-bar"><i style="width:${progressPct}%"></i></div>`
-        : (failed ? `<div class="dh-task-progress-bar dh-task-progress-bar-failed"><i style="width:100%"></i></div>` : '');
+        : '';
       const canRetry = !t.isLuxuryProjectDraft && ['error', 'invalid', 'timeout'].includes(String(t.status || ''));
       const isNewStoryAdTask = getTaskType(t) === 'new_story_ad';
       const canContinueNewStoryAdTask = isNewStoryAdTask && (window.NewStoryAdTaskStore?.canContinue
@@ -5939,6 +6027,9 @@
       scenes: t.scenes || [],
       keyframes: t.keyframes || [],
       clips: t.clips || t.clip_urls || [],
+      elapsed: t.elapsed != null && Number.isFinite(Number(t.elapsed)) ? Math.max(0, Math.round(Number(t.elapsed))) : null,
+      operationStartedAt: taskTimestamp(t.generation_started_at || t.started_at || t.submitted_at || ''),
+      operationFinishedAt: taskTimestamp(t.generation_finished_at || t.finished_at || t.completed_at || ''),
       startedAt,
       updatedAt: Date.parse(t.updated_at || t.updatedAt || t.created_at || '') || Date.now(),
     };
@@ -5974,6 +6065,16 @@
     const updatedAt = task.updated_at || task.updatedAt || raw.updated_at || createdAt;
     const status = String(task.status || raw.status || 'draft').trim() || 'draft';
     const stage = task.stage || raw.stage || 'draft';
+    const generationProgress = task.generation_progress && typeof task.generation_progress === 'object'
+      ? task.generation_progress
+      : (raw.generation_progress && typeof raw.generation_progress === 'object' ? raw.generation_progress : {});
+    const operationStartedAt = taskTimestamp(
+      task.generation_started_at || task.generation_queued_at || generationProgress.started_at
+      || raw.generation_started_at || raw.generation_queued_at
+    );
+    const operationFinishedAt = taskTimestamp(
+      task.generation_finished_at || generationProgress.finished_at || raw.generation_finished_at
+    );
     return {
       taskId,
       taskType: 'new_story_ad',
@@ -5995,6 +6096,9 @@
       resolution: ctx.resolution || '',
       user_id: task.user_id || ctx.user_id || '',
       userId: task.user_id || ctx.user_id || '',
+      activeGenerationId: task.active_generation_id || raw.active_generation_id || '',
+      operationStartedAt,
+      operationFinishedAt,
       startedAt: typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now()),
       updatedAt: typeof updatedAt === 'number' ? updatedAt : (Date.parse(updatedAt) || Date.now()),
       scenes: shots,
@@ -13766,7 +13870,7 @@
 
   function taskStatusBucket(status = '') {
     if (['draft', 'working', 'ready', 'error', 'invalid', 'timeout', 'failed'].includes(status)) return 'pending';
-    if (ACTIVE_TASK_STATUSES.has(status)) return 'generating';
+    if (DISPLAY_ACTIVE_TASK_STATUSES.has(status)) return 'generating';
     if (status === 'done') return 'done';
     return 'pending';
   }
