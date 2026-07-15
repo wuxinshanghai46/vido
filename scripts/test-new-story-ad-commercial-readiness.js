@@ -83,9 +83,12 @@ async function main() {
     active_generation_id: 'active-generation',
     generation_started_at: new Date().toISOString(),
   });
+  storage.saveOutput(activeSave.id, 'blueprint', { title: '运行中的有效剧本' });
+  storage.saveOutput(activeSave.id, 'storyboard_table', [{ index: 1, visual: '运行中的有效分镜' }]);
   storyAdService.updateTaskRequest(activeSave.id, {
     brief: activeSave.brief,
     save_progress: true,
+    change_scope: 'source',
     progress_stage: 'keyframes_ready',
     progress_snapshot: { storyboard_table: [{ index: 1, visual: '通用测试镜头' }] },
   }, owner);
@@ -93,6 +96,8 @@ async function main() {
   assert.equal(activeAfterSave.status, 'running');
   assert.equal(activeAfterSave.stage, 'keyframes');
   assert.equal(activeAfterSave.active_generation_id, 'active-generation');
+  assert.deepEqual(storage.getOutput(activeSave.id, 'blueprint'), { title: '运行中的有效剧本' });
+  assert.equal(storage.getOutput(activeSave.id, 'storyboard_table').length, 1);
 
   const model = { provider_id: 'test-provider', model_id: 'test-model' };
   modelGateway.recordHealth(model, { ok: false, error: new Error('configuration not found') });

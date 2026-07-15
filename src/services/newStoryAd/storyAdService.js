@@ -422,7 +422,15 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const builtCtx = buildContext({ ...(task.request || {}), ...(body || {}), task_id: taskId }, user);
-  const scope = revisionService.changeScope(previousCtx, builtCtx, body.change_scope || body.changeScope || '');
+  const savingProgress = body.save_progress === true || body.saveProgress === true;
+  const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
+  // A progress save can race with a background stage (for example when the
+  // user closes an editor while keyframes are running). Never invalidate the
+  // stage's inputs/outputs in that case; upstream edits must be applied after
+  // the active generation is cancelled or finished.
+  const scope = savingProgress && hasActiveGeneration
+    ? 'none'
+    : revisionService.changeScope(previousCtx, builtCtx, body.change_scope || body.changeScope || '');
   let ctx = revisionService.applyRevisions(previousCtx, builtCtx, scope);
   if (scope === 'person' || scope === 'source') ctx.person_contract = null;
   if (scope === 'product' || scope === 'source') ctx.product_contract = null;
@@ -433,9 +441,8 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     brief: ctx.brief,
     request: ctx,
   };
-  if (body.save_progress === true || body.saveProgress === true) {
+  if (savingProgress) {
     const progressStage = cleanText(body.progress_stage || body.progressStage || task.stage || 'draft', 80) || 'draft';
-    const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
     if (!hasActiveGeneration) {
       const finalDone = ['final_video_ready', 'done'].includes(progressStage);
       patch.status = finalDone ? (task.status || 'done') : 'working';
