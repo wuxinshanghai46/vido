@@ -561,7 +561,21 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
     normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`),
     previous,
   );
+  const changed = !!previous.fingerprint && previous.fingerprint !== normalized.fingerprint;
   storage.saveOutput(taskId, 'blueprint', normalized);
+  if (changed) {
+    ['keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'].forEach(kind => storage.deleteOutput(taskId, kind));
+    const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta');
+    if (storyboardMeta) {
+      storage.saveOutput(taskId, 'storyboard_meta', {
+        ...storyboardMeta,
+        status: 'stale',
+        stale_reason: 'BLUEPRINT_EDITED',
+        current_blueprint_revision: Number(normalized.revision || 0),
+        current_blueprint_fingerprint: normalized.fingerprint || '',
+      });
+    }
+  }
   storage.saveStage(taskId, 'blueprint', {
     status: 'done',
     output_summary: `${normalized.beats.length} script shots saved`,
@@ -570,7 +584,7 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
       edited_by_user: true,
     },
   });
-  storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done' });
+  storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done', error: '', error_code: '', retryable: false });
   return normalized;
 }
 
@@ -663,7 +677,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
     },
   });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} keyframe contracts rebuilt` });
-  storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready' });
+  storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', error: '', error_code: '', retryable: false });
   return { shots: normalized, keyframe_contracts: contracts };
 }
 
@@ -2057,6 +2071,11 @@ async function generateTtsStage(taskId, options = {}) {
   if (!task) throw new Error('Task not found');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
+  const contracts = await ensureContractsForMedia(taskId, ctx, shots);
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  // “合成广告”会先执行 TTS。必须在产生配音费用之前执行与视频阶段
+  // 相同的审核门禁，避免未通过的关键帧仍然消耗一次配音调用。
+  assertVideoInputsReady({ ctx, shots, keyframes, contracts });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });

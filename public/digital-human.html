@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260713-complete-sync">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-keyframe-qa-retry-v1">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-compose-gate-autosave-v2">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -177,6 +177,7 @@
               <div class="dh-wizard-title" id="dhNsaAdModeTitle">素材审片</div>
               <div class="dh-wizard-sub" id="dhNsaAdModeSub">选择演员、上传多张素材，AI 生成广告词后直接合成基础广告。</div>
             </div>
+            <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
           </div>
 
           <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告完整流程" id="dhNsaAdSteps">
@@ -239,7 +240,7 @@
                   <p class="dh-demo-copy">系统根据广告需求先整理标题、主题、风格、时长和比例，再确认主体来源。</p>
                 </div>
                 <div class="dh-demo-script-actions">
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep2" type="button">保存进度</button>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认基础信息，生成剧本</button>
                 </div>
               </div>
@@ -482,7 +483,7 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdScriptRegenerateTop" type="button">重新生成剧本</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep3" type="button">保存进度</button>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdPreviewFrames" type="button">确认剧本，生成分镜</button>
                 </div>
               </div>
@@ -502,7 +503,7 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdRegenerateScriptFromStep4" type="button">重新生成剧本</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep4" type="button">保存进度</button>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
                   <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">确认分镜，进入广告合成</button>
@@ -530,10 +531,11 @@
                   <p class="dh-demo-copy">合成前确认配音和字幕。点击“合成广告”后进入任务中心，在任务详情里查看广告需求、场景配置、剧本、分镜、配音字幕和视频进度。</p>
                 </div>
                 <div class="dh-demo-script-actions">
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdSaveDraftStep5" type="button">保存进度</button>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdConfirmGenerate" type="button">合成广告</button>
                 </div>
               </div>
+              <div class="dh-nsa-compose-gate is-warning" id="dhNsaAdComposeGate" role="status" hidden></div>
               <div class="dh-demo-compose-grid dh-luxgen-compose-audio">
                 <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-voice-card">
                   <div class="dh-luxgen-audio-head">
@@ -2517,20 +2519,20 @@ B: ...
 
   <script src="/js/digital-human.js?v=20260715-task-center-real-timing-v2"></script>
   <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/task-store.js?v=20260714-completed-task-actions"></script>
+  <script src="/js/new-story-ad/task-store.js?v=20260715-compose-gate-autosave-v2"></script>
   <script src="/js/new-story-ad/progress.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/scene-assets.js?v=20260715-shot-effects-v1"></script>
-  <script src="/js/new-story-ad/state-sync.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad/button-state.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/step-navigation.js?v=20260714-storyboard-recovery"></script>
-  <script src="/js/new-story-ad/task-persistence.js?v=20260715-shot-effects-v1"></script>
+  <script src="/js/new-story-ad/state-sync.js?v=20260715-compose-gate-autosave-v2"></script>
+  <script src="/js/new-story-ad/button-state.js?v=20260715-compose-gate-autosave-v2"></script>
+  <script src="/js/new-story-ad/step-navigation.js?v=20260715-compose-gate-autosave-v3"></script>
+  <script src="/js/new-story-ad/task-persistence.js?v=20260715-compose-gate-autosave-v2"></script>
   <script src="/js/new-story-ad/storyboard.js?v=20260715-shot-ai-assist-v1"></script>
   <script src="/js/new-story-ad/actors.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/keyframes.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/generation-flow.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-keyframe-qa-retry-v1"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-compose-gate-autosave-v2"></script>
 </body>
 </html>
 

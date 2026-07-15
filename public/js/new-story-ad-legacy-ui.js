@@ -115,6 +115,14 @@
     },
     controlAiPending: {},
     blueprintDirty: false,
+    storyboardDirty: false,
+    taskStatus: '',
+    taskStage: '',
+    taskError: '',
+    taskErrorCode: '',
+    autoSaveStatus: 'idle',
+    autoSaveMessage: '自动保存已开启',
+    autoSaveLastAt: '',
     stageProgress: null,
     stageProgressTimer: null,
     activeGenerationId: '',
@@ -132,6 +140,11 @@
   let nsaVoicePreviewAudio = null;
   let nsaVoicePreviewObjectUrl = '';
   let nsaMusicPreviewAudio = null;
+  let autoSaveTimer = null;
+  let autoSaveInFlight = false;
+  let autoSaveVersion = 0;
+  let autoSaveCommittedVersion = 0;
+  const AUTO_SAVE_DELAY_MS = 900;
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -1050,6 +1063,11 @@
   }
 
   function resetForNewSession() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    autoSaveInFlight = false;
+    autoSaveVersion = 0;
+    autoSaveCommittedVersion = 0;
     state.taskId = '';
     rememberTaskId('');
     markSourceDirty();
@@ -1087,6 +1105,15 @@
       uiExpanded: false,
     };
     state.controlAiPending = {};
+    state.blueprintDirty = false;
+    state.storyboardDirty = false;
+    state.taskStatus = '';
+    state.taskStage = '';
+    state.taskError = '';
+    state.taskErrorCode = '';
+    state.autoSaveStatus = 'idle';
+    state.autoSaveMessage = '自动保存已开启';
+    state.autoSaveLastAt = '';
     state.activeGenerationId = '';
     state.activeStage = '';
     state.generationProgress = null;
@@ -1244,9 +1271,8 @@
           state.personAsset = actorMaterialToPersonAsset(asset);
           applyPersonAssetConstraints(state.personAsset);
           renderAll();
-          saveCurrentTaskProgress({ silent: true })
-            .then(() => toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步并保存`, 'success'))
-            .catch(err => toast(`已选择角色素材，但保存任务失败：${err.message || err}`, 'error'));
+          scheduleAutoSave('actor_select', { immediate: true });
+          toast(`已选择角色素材「${asset.name || '演员'}」，人物约束正在自动保存`, 'success');
         },
       });
     }
@@ -1332,9 +1358,8 @@
       applyPersonAssetConstraints(state.personAsset);
       renderAll();
       close();
-      saveCurrentTaskProgress({ silent: true })
-        .then(() => toast(`已选择角色素材「${asset.name || '演员'}」，人物约束已同步并保存`, 'success'))
-        .catch(err => toast(`已选择角色素材，但保存任务失败：${err.message || err}`, 'error'));
+      scheduleAutoSave('actor_select', { immediate: true });
+      toast(`已选择角色素材「${asset.name || '演员'}」，人物约束正在自动保存`, 'success');
     });
     try {
       const r = await api('/api/assets?type=character&limit=120&fast=1');
@@ -1807,7 +1832,8 @@
       const storyboardReady = state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
         ? state.storyboardStatus.ready
         : state.shots.length > 0;
-      showStep(requestedStep === 3 && storyboardReady ? 4 : requestedStep, { remember: false });
+      const desiredStep = requestedStep === 3 && storyboardReady ? 4 : requestedStep;
+      showStep(desiredStep === 5 && !composeReadiness().ready ? 4 : desiredStep, { remember: false });
       renderAll();
       resumeActiveGeneration();
       return true;
@@ -1891,6 +1917,7 @@
     const hasScene = !!state.sceneConfig;
     const hasBlueprint = !!state.blueprint;
     const hasShots = Array.isArray(state.shots) && state.shots.length > 0;
+    const compose = composeReadiness();
     const hasActorInput = !!personSpec('appearanceText');
 
     setButtonLock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
@@ -1899,8 +1926,8 @@
     setButtonLock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
     setButtonLock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     setButtonLock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
-    setButtonLock('#dhNsaAdGoCompose', !hasShots, '请先生成分镜');
-    setButtonLock('#dhNsaAdConfirmGenerate', !hasShots, '请先生成分镜');
+    setButtonLock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜');
+    setButtonLock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜');
     setButtonLock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
     setButtonLock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     setButtonLock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
@@ -1910,10 +1937,6 @@
       '#dhNsaAdWrite',
       '#dhNsaAdClean',
       '#dhNsaAdSample',
-      '#dhNsaAdSaveDraftStep2',
-      '#dhNsaAdSaveDraftStep3',
-      '#dhNsaAdSaveDraftStep4',
-      '#dhNsaAdSaveDraftStep5',
       '#dhNsaAdVoiceOpen',
       '#dhNsaAdBgmUpload',
       '#dhNsaAdSubtitleStyleBtn',
@@ -1940,6 +1963,17 @@
     const total = Math.max((state.shots || []).length, (state.keyframes || []).length);
     const completed = (state.keyframes || []).filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length;
     return { total, completed, missing: Math.max(0, total - completed), failed: 0, missing_indexes: [] };
+  }
+
+  function composeReadiness() {
+    if (window.NewStoryAdStepNavigation?.composeReadiness) {
+      return window.NewStoryAdStepNavigation.composeReadiness({ state });
+    }
+    const kf = keyframeStatus();
+    const total = Math.max(Number(kf.total || 0), state.shots.length || 0);
+    const passed = Number(kf.fresh_pass || 0);
+    const ready = total > 0 && total === state.shots.length && passed === total && Number(kf.needs_regeneration || 0) === 0;
+    return { ready, total, passed, message: ready ? '' : `当前版本仅通过 ${passed}/${total} 镜，请先修复未通过审核的镜头` };
   }
 
   function stopStageProgress() {
@@ -2309,6 +2343,7 @@
       if (field === 'title') beat.role = value || beat.role;
     }
     state.blueprintDirty = true;
+    state.storyboardStatus = { ready: false, stale: true, reason: 'BLUEPRINT_EDITED' };
     return true;
   }
 
@@ -2499,6 +2534,7 @@
     else if (field.includes('.')) { setNestedField(shot, field, value); }
     else { shot[field] = value; }
     shot.edited_at = new Date().toISOString();
+    state.storyboardDirty = true;
     return true;
   }
 
@@ -2518,23 +2554,6 @@
     state.shotEditorIndex = -1;
     state.shotEditorSnapshot = null;
     if (rerender) renderStoryboard();
-  }
-
-  async function saveShotEditorModal(index, button, modal) {
-    const shotIndex = Math.max(0, Number(index) || 0);
-    syncShotFieldsFromDom(shotIndex, modal);
-    setButtonBusy(button, true, '保存中...');
-    try {
-      const id = await ensureTask();
-      await saveStoryboardEdits(id);
-      closeShotEditorModal({ keepChanges: true, rerender: false });
-      renderAll();
-      toast(`第 ${shotIndex + 1} 镜已保存`, 'success');
-    } catch (err) {
-      toast(err.message || '保存本镜失败', 'error');
-    } finally {
-      if (button?.isConnected) setButtonBusy(button, false);
-    }
   }
 
   function shotAssistPayload(index = 0) {
@@ -2626,8 +2645,10 @@
       const settings = response.shot_settings || response.shotSettings;
       if (!settings || typeof settings !== 'object') throw new Error('AI 没有返回可用的镜头设置');
       applyAssistedShotSettings(index, settings, modal);
-      if (status) status.textContent = 'AI 已填写到表单。请检查各项，确认后点击“保存修改”；尚未生成图片或视频。';
-      toast(`第 ${index + 1} 镜已由 AI 补齐设置，请检查后保存`, 'success');
+      state.storyboardDirty = true;
+      scheduleAutoSave('shot_ai_assist', { immediate: true });
+      if (status) status.textContent = 'AI 已填写到表单，系统正在自动保存；尚未生成图片或视频。';
+      toast(`第 ${index + 1} 镜已由 AI 补齐设置并自动保存`, 'success');
     } catch (error) {
       if (status) status.textContent = error.message || 'AI 帮写失败，请稍后重试。';
       toast(error.message || 'AI 帮写镜头设置失败', 'error');
@@ -2639,7 +2660,10 @@
   function openShotEditorModal(index = 0) {
     const shotIndex = Math.max(0, Number(index) || 0);
     if (!state.shots[shotIndex]) return;
-    if (document.querySelector('.dh-nsa-shot-edit-modal')) closeShotEditorModal({ keepChanges: false, rerender: true });
+    if (document.querySelector('.dh-nsa-shot-edit-modal')) {
+      scheduleAutoSave('shot_editor_switch', { immediate: true });
+      closeShotEditorModal({ keepChanges: true, rerender: true });
+    }
     const editor = within(`[data-nsa-shot-editor="${shotIndex}"]`);
     if (!editor) return;
     state.shotEditorIndex = shotIndex;
@@ -2651,14 +2675,14 @@
       <div class="dh-modal-head">
         <div>
           <div class="dh-modal-title" id="dhNsaShotEditTitle">编辑第 ${shotIndex + 1} 镜</div>
-          <div class="dh-modal-sub">修改只作用于当前分镜；保存后重新生成本镜才会应用到新画面。</div>
+          <div class="dh-modal-sub">修改只作用于当前分镜并会自动保存；重新生成本镜后应用到新画面。</div>
         </div>
         <button class="dh-modal-close-btn" type="button" data-nsa-shot-edit-close aria-label="关闭编辑弹窗" title="关闭">×</button>
       </div>
       <section class="dh-nsa-shot-ai-assist" aria-label="AI 镜头设置助手">
         <div class="dh-nsa-shot-ai-copy">
           <b>不知道这些参数怎么填？让 AI 按脚本设置</b>
-          <small>调用文字 AI 读取本镜、前后镜和当前场景；只填写当前镜头，不自动保存，也不会生成图片或视频。</small>
+          <small>调用文字 AI 读取本镜、前后镜和当前场景；填写后自动保存，但不会生成图片或视频。</small>
         </div>
         <div class="dh-nsa-shot-ai-row">
           <textarea class="dh-input" rows="2" data-nsa-shot-ai-instruction placeholder="可不填，直接让 AI 按当前脚本判断；也可以补充你希望本镜如何呈现"></textarea>
@@ -2676,12 +2700,12 @@
             <button type="button" data-nsa-shot-jump=".dh-nsa-continuity-editor">镜头连续性</button>
           </nav>
         </div>
-        <div class="dh-nsa-shot-ai-status" data-nsa-shot-ai-status>可以直接点击，也可以先写一句要求；不确定的项目保持“按任务判断”或“无”。AI 填写后仍需点击“保存修改”。</div>
+        <div class="dh-nsa-shot-ai-status" data-nsa-shot-ai-status>可以直接点击，也可以先写一句要求；所有修改都会自动保存。</div>
       </section>
       <div class="dh-nsa-shot-edit-scroll" data-nsa-shot-edit-content></div>
       <div class="dh-modal-foot dh-nsa-shot-edit-foot">
-        <button type="button" class="dh-btn dh-btn-ghost" data-nsa-shot-edit-close>取消</button>
-        <button type="button" class="dh-btn dh-btn-primary" data-nsa-shot-save="${shotIndex}">保存修改</button>
+        <span class="dh-nsa-autosave-status is-idle" data-nsa-shot-autosave-status>修改后自动保存</span>
+        <button type="button" class="dh-btn dh-btn-primary" data-nsa-shot-done>完成</button>
       </div>
     </div>`;
     editor.hidden = false;
@@ -2712,25 +2736,38 @@
       const close = event.target.closest('[data-nsa-shot-edit-close]');
       if (event.target === modal || close) {
         event.preventDefault();
-        closeShotEditorModal({ keepChanges: false, rerender: true });
+        syncShotFieldsFromDom(shotIndex, modal);
+        scheduleAutoSave('shot_editor_close', { immediate: true });
+        closeShotEditorModal({ keepChanges: true, rerender: true });
         return;
       }
-      const save = event.target.closest('[data-nsa-shot-save]');
-      if (save) {
+      const done = event.target.closest('[data-nsa-shot-done]');
+      if (done) {
         event.preventDefault();
-        await saveShotEditorModal(shotIndex, save, modal);
+        syncShotFieldsFromDom(shotIndex, modal);
+        scheduleAutoSave('shot_editor_done', { immediate: true });
+        closeShotEditorModal({ keepChanges: true, rerender: true });
       }
     });
+    const syncShotEditorAutoSave = event => {
+      if (!updateShotField(event.target)) return;
+      const status = modal.querySelector('[data-nsa-shot-autosave-status]');
+      if (status) status.textContent = '有更改，正在自动保存…';
+      scheduleAutoSave('shot_editor_field');
+    };
+    modal.addEventListener('input', syncShotEditorAutoSave);
+    modal.addEventListener('change', syncShotEditorAutoSave);
     modal.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        closeShotEditorModal({ keepChanges: false, rerender: true });
+        syncShotFieldsFromDom(shotIndex, modal);
+        scheduleAutoSave('shot_editor_escape', { immediate: true });
+        closeShotEditorModal({ keepChanges: true, rerender: true });
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
-        const save = modal.querySelector('[data-nsa-shot-save]');
-        if (save && !save.disabled) save.click();
+        modal.querySelector('[data-nsa-shot-done]')?.click();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -2991,6 +3028,28 @@
     const tracks = Array.isArray(state.ttsAudio?.tracks) ? state.ttsAudio.tracks : [];
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
     const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
+    const compose = composeReadiness();
+    const composeSummary = within('#dhNsaAdComposeSummary');
+    const progressHint = within('#dhNsaAdProgressHint');
+    const gate = within('#dhNsaAdComposeGate');
+    if (composeSummary) {
+      composeSummary.textContent = compose.total
+        ? `${compose.passed}/${compose.total} 镜当前版本审核通过`
+        : '尚未生成真实分镜';
+    }
+    if (progressHint) {
+      progressHint.textContent = compose.ready
+        ? '审核已全部通过，可以生成配音、逐镜视频和最终成片'
+        : compose.message;
+    }
+    if (gate) {
+      const failed = state.taskStatus === 'failed' && state.taskError;
+      gate.hidden = compose.ready && !failed;
+      gate.className = `dh-nsa-compose-gate ${failed ? 'is-error' : 'is-warning'}`;
+      gate.innerHTML = failed
+        ? `<b>上次合成未完成</b><span>${escapeHtml(state.taskError)}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`
+        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`;
+    }
     if (!tracks.length && !clips.length && !finalUrl) {
       host.innerHTML = '<div class="dh-task-empty-note">还没有生成配音、逐镜视频或成片。</div>';
       return;
@@ -3071,6 +3130,7 @@
     renderStoryboard();
     renderMedia();
     renderStatus();
+    renderAutoSaveStatus();
   }
 
   async function ensureTask() {
@@ -3111,11 +3171,14 @@
       });
     }
     const id = await ensureTask();
-    const progressStage = state.currentStep >= 5 ? 'video_ready'
-      : (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url)) ? 'keyframes_ready'
-        : (Array.isArray(state.shots) && state.shots.length ? 'keyframe_contract_ready'
-          : (state.blueprint ? 'blueprint_done'
-            : (state.sceneConfig ? 'scene_config_done' : 'draft'))));
+    let progressStage = 'draft';
+    if (state.sceneConfig) progressStage = 'scene_config_done';
+    if (state.blueprint) progressStage = 'blueprint_done';
+    if (Array.isArray(state.shots) && state.shots.length) progressStage = 'keyframe_contract_ready';
+    if (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url))) progressStage = 'keyframes_ready';
+    if (Array.isArray(state.ttsAudio?.tracks) && state.ttsAudio.tracks.length) progressStage = 'tts_ready';
+    if (Array.isArray(state.videoClips) && state.videoClips.some(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)) progressStage = 'video_ready';
+    if (state.finalVideo?.video_url || state.finalVideo?.videoUrl) progressStage = 'final_video_ready';
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
@@ -3147,6 +3210,101 @@
     renderAll();
     if (opts.silent !== true) toast('剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
+  }
+
+  function renderAutoSaveStatus() {
+    const status = state.autoSaveStatus || 'idle';
+    const text = state.autoSaveMessage || '自动保存已开启';
+    $$('[data-nsa-autosave-status], [data-nsa-shot-autosave-status]', document).forEach(el => {
+      el.className = `dh-nsa-autosave-status is-${status}`;
+      el.textContent = text;
+      el.setAttribute('aria-live', 'polite');
+    });
+  }
+
+  function setAutoSaveStatus(status = 'idle', message = '') {
+    state.autoSaveStatus = status;
+    state.autoSaveMessage = message || ({
+      idle: '自动保存已开启',
+      pending: '有更改，等待自动保存…',
+      saving: '正在自动保存…',
+      saved: '已自动保存',
+      error: '自动保存失败',
+    }[status] || '自动保存已开启');
+    renderAutoSaveStatus();
+  }
+
+  function scheduleAutoSave(reason = 'content_change', options = {}) {
+    autoSaveVersion += 1;
+    setAutoSaveStatus('pending', '有更改，等待自动保存…');
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    const delay = options.immediate === true ? 0 : AUTO_SAVE_DELAY_MS;
+    autoSaveTimer = setTimeout(() => {
+      autoSaveTimer = null;
+      flushAutoSave(reason).catch(() => {});
+    }, delay);
+  }
+
+  async function persistAutoSaveChanges() {
+    const id = await ensureTask();
+    if (state.blueprintDirty && state.blueprint) {
+      await saveBlueprintEdits(id);
+      state.storyboardStatus = { ready: false, stale: true, reason: 'BLUEPRINT_EDITED' };
+      state.contracts = [];
+      state.keyframes = [];
+      state.review = null;
+      state.ttsAudio = null;
+      state.videoClips = [];
+      state.finalVideo = null;
+      return id;
+    }
+    if (state.storyboardDirty && Array.isArray(state.shots) && state.shots.length) {
+      await saveStoryboardEdits(id);
+      state.storyboardDirty = false;
+      state.keyframes = [];
+      state.review = null;
+      state.ttsAudio = null;
+      state.videoClips = [];
+      state.finalVideo = null;
+      return id;
+    }
+    return saveCurrentTaskProgress({ silent: true, render: false });
+  }
+
+  async function flushAutoSave(reason = 'content_change') {
+    if (autoSaveInFlight) return false;
+    if (state.restoringTask || state.busy || state.activeGenerationId) {
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => {
+        autoSaveTimer = null;
+        flushAutoSave(reason).catch(() => {});
+      }, 1200);
+      return false;
+    }
+    const brief = String(within('#dhNsaAdText')?.value || state.context?.brief || '').trim();
+    if (!state.taskId && brief.length < 8) {
+      setAutoSaveStatus('pending', '继续填写，满 8 个字后自动保存');
+      return false;
+    }
+    const savingVersion = autoSaveVersion;
+    autoSaveInFlight = true;
+    setAutoSaveStatus('saving', '正在自动保存…');
+    try {
+      await persistAutoSaveChanges();
+      autoSaveCommittedVersion = savingVersion;
+      state.autoSaveLastAt = new Date().toISOString();
+      const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setAutoSaveStatus('saved', `已自动保存 · ${time}`);
+      renderStatus();
+      return true;
+    } catch (error) {
+      setAutoSaveStatus('error', `自动保存失败：${error.message || '请检查网络后重试'}`);
+      toast(`自动保存失败：${error.message || error}`, 'error');
+      return false;
+    } finally {
+      autoSaveInFlight = false;
+      if (autoSaveVersion > Math.max(savingVersion, autoSaveCommittedVersion)) scheduleAutoSave('queued_change', { immediate: true });
+    }
   }
 
   async function saveCurrentTaskProgressFromButton(button = null) {
@@ -3205,12 +3363,14 @@
 
   async function saveStoryboardEdits(taskId = state.taskId) {
     if (window.NewStoryAdTaskPersistence?.saveStoryboardEdits) {
-      return window.NewStoryAdTaskPersistence.saveStoryboardEdits(taskId, {
+      const response = await window.NewStoryAdTaskPersistence.saveStoryboardEdits(taskId, {
         state,
         api,
         normalizeBundle,
         normalizeSpeechText,
       });
+      state.storyboardDirty = false;
+      return response;
     }
     if (!taskId || !Array.isArray(state.shots) || !state.shots.length) return null;
     const shots = state.shots.map((shot, index) => {
@@ -3264,6 +3424,7 @@
       body: { shots },
     });
     normalizeBundle(r);
+    state.storyboardDirty = false;
     return r;
   }
 
@@ -3443,6 +3604,13 @@
   }
 
   async function runMediaChain(button) {
+    const compose = composeReadiness();
+    if (!compose.ready) {
+      showStep(4);
+      renderAll();
+      toast(compose.message || '请先修复所有未通过审核的镜头，再合成广告', 'error');
+      return false;
+    }
     if (window.NewStoryAdGenerationFlow?.runMediaChain) {
       try {
         return await window.NewStoryAdGenerationFlow.runMediaChain(generationFlowContext(button));
@@ -3458,7 +3626,12 @@
   async function assist(mode, button) {
     if (window.NewStoryAdGenerationFlow?.assist) {
       try {
-        return await window.NewStoryAdGenerationFlow.assist(mode, generationFlowContext(button));
+        const result = await window.NewStoryAdGenerationFlow.assist(mode, generationFlowContext(button));
+        if (result) {
+          markSourceDirty('source');
+          scheduleAutoSave('brief_assist');
+        }
+        return result;
       } catch (err) {
         console.warn('[newStoryAd] assist fallback:', err.message || err);
       }
@@ -3471,6 +3644,8 @@
     try {
       const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...body, mode } });
       if (r.brief && within('#dhNsaAdText')) within('#dhNsaAdText').value = r.brief;
+      markSourceDirty('source');
+      scheduleAutoSave('brief_assist');
       toast('需求已整理', 'success');
     } catch (err) {
       toast(err.message || '需求整理失败', 'error');
@@ -3508,6 +3683,7 @@
       ctrl.uiExpanded = true;
       markSourceDirty('scene');
       renderAll();
+      scheduleAutoSave('control_ai');
       toast(field === 'negative' ? '禁止项已整理' : '风格方向已整理', 'success');
     } catch (err) {
       toast(err.message || 'AI 帮写失败', 'error');
@@ -3659,37 +3835,12 @@
       revokePreview(state.productAsset);
       state.productAsset = { ...asset, previewUrl: asset.image_url || asset.url, uploading: false };
       renderAll();
+      scheduleAutoSave('product_upload');
       toast('商品/主体图已上传', 'success');
     } catch (err) {
       state.productAsset = { ...state.productAsset, uploading: false, failed: true };
       renderAll();
       toast(err.message || '商品/主体图上传失败', 'error');
-    }
-  }
-
-  async function uploadPersonFile(file) {
-    if (!file) return;
-    revokePreview(state.personAsset);
-    state.personAsset = {
-      name: file.name || '真人参考',
-      previewUrl: URL.createObjectURL(file),
-      uploading: true,
-      description: '用户上传的真人参考，只用于当前剧情广告任务。',
-    };
-    state.actorAsset = null;
-    markSourceDirty('person');
-    renderAll();
-    toast('真人参考正在上传...');
-    try {
-      const asset = await uploadAsset(file, 'person_reference');
-      revokePreview(state.personAsset);
-      state.personAsset = { ...asset, previewUrl: asset.image_url || asset.url, uploading: false, description: '用户上传的真人参考，只用于当前剧情广告任务。' };
-      renderAll();
-      toast('真人参考已上传', 'success');
-    } catch (err) {
-      state.personAsset = { ...state.personAsset, uploading: false, failed: true };
-      renderAll();
-      toast(err.message || '真人参考上传失败', 'error');
     }
   }
 
@@ -3742,6 +3893,7 @@
       applyPersonAssetConstraints(state.personAsset);
       renderAll();
       await persistPersonAssetToLibrary(state.personAsset, 'uploaded_person_reference');
+      scheduleAutoSave('person_upload');
       toast('真人照片参考已上传并写入角色素材库，会用于后续剧本、分镜和关键帧保持人物一致', 'success');
     } catch (err) {
       state.personAsset = state.personAsset ? { ...state.personAsset, uploading: false, failed: true } : null;
@@ -3773,6 +3925,7 @@
       }
       renderAll();
     }
+    scheduleAutoSave('reference_upload');
     toast('参考素材已处理', 'success');
   }
 
@@ -3787,6 +3940,7 @@
       revokePreview(state.bgmAsset);
       state.bgmAsset = { ...asset, previewUrl: asset.file_url || asset.url, uploading: false };
       renderAll();
+      scheduleAutoSave('bgm_upload');
       toast('BGM 已上传', 'success');
     } catch (err) {
       state.bgmAsset = { ...state.bgmAsset, uploading: false, failed: true };
@@ -4084,6 +4238,7 @@
       renderAll();
       stopNsaVoicePreview();
       hideNsaModal(modal);
+      scheduleAutoSave('voice_select');
       toast('配音已选择', 'success');
     });
   }
@@ -4171,6 +4326,7 @@
     });
     body.querySelectorAll('[data-nsa-music-profile]').forEach(btn => btn.addEventListener('click', () => {
       state.bgmProfile = btn.dataset.nsaMusicProfile || 'auto';
+      scheduleAutoSave('bgm_profile');
       const q = body.querySelector('[data-nsa-music-query]')?.value || '';
       openNsaMusicLibrary(q);
     }));
@@ -4204,6 +4360,7 @@
         renderAll();
         stopNsaMusicPreview();
         hideNsaModal(ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库'));
+        scheduleAutoSave('music_select');
         toast('背景音乐已导入', 'success');
       } catch (err) {
         btn.disabled = false;
@@ -4353,6 +4510,7 @@
       };
       renderAll();
       hideNsaModal(modal);
+      scheduleAutoSave('subtitle_style');
       toast(`字幕样式已更新：${subtitleStyleLabel(state.subtitleStyle)}`, 'success');
     });
     refreshPreview();
@@ -4491,6 +4649,7 @@
       const changed = applyPersonSpecSuggestion(suggestion || fallbackPersonSpecFromBrief(brief));
       markSourceDirty('person');
       renderAll();
+      scheduleAutoSave('person_spec_assist');
       toast(changed ? '已按当前年龄、性别和人物选择重新校准人物设定' : '当前人物设定已经与所选条件一致', changed ? 'success' : 'info');
     } finally {
       setButtonBusy(button, false);
@@ -4530,6 +4689,7 @@
       const changed = window.NewStoryAdSceneAssets?.applySpecSuggestion?.(suggestion || fallbackSceneSpecFromBrief(brief));
       markSourceDirty('scene');
       renderAll();
+      scheduleAutoSave('scene_spec_assist');
       toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
     } finally {
       setButtonBusy(button, false);
@@ -4655,8 +4815,18 @@
         e.preventDefault();
         e.stopPropagation();
         const n = Number(step.dataset.nsaStep || 1);
-        if (!canOpenStep(n)) return toast('请先完成前置阶段', 'error');
+        if (!canOpenStep(n)) {
+          const message = n === 5 ? composeReadiness().message : '请先完成前置阶段';
+          return toast(message || '请先完成前置阶段', 'error');
+        }
         showStep(n);
+        return;
+      }
+      const returnKeyframes = target.closest('[data-nsa-return-keyframes]');
+      if (returnKeyframes && host.contains(returnKeyframes)) {
+        e.preventDefault();
+        e.stopPropagation();
+        showStep(4);
         return;
       }
       const ratioBtn = target.closest('[data-nsa-ratio]');
@@ -4666,6 +4836,7 @@
         state.outputRatio = ratioBtn.dataset.nsaRatio || '9:16';
         markSourceDirty('source');
         renderAll();
+        scheduleAutoSave('output_ratio');
         return;
       }
       const resolutionBtn = target.closest('[data-nsa-video-resolution]');
@@ -4676,6 +4847,7 @@
         state.videoResolution = VIDEO_RESOLUTION_LABELS[value] ? value : '720p';
         syncOptionControls();
         renderStatus();
+        scheduleAutoSave('video_resolution');
         return;
       }
       const envBtn = target.closest('[data-nsa-control-env]');
@@ -4690,6 +4862,7 @@
         ctrl.uiExpanded = true;
         markSourceDirty('scene');
         renderAll();
+        scheduleAutoSave('environment_control');
         return;
       }
       const controlAi = target.closest('[data-nsa-control-ai]');
@@ -4709,6 +4882,7 @@
         markSourceDirty('product');
         renderAdvancedControls();
         renderStatus();
+        scheduleAutoSave('product_method');
         return;
       }
       const productPreview = target.closest('[data-nsa-product-preview]');
@@ -4909,7 +5083,9 @@
           confirmed: true,
         });
         state.blueprintDirty = true;
+        state.storyboardStatus = { ready: false, stale: true, reason: 'BLUEPRINT_EDITED' };
         renderBlueprint();
+        scheduleAutoSave('blueprint_add');
         return;
       }
       const blueprintDelete = target.closest('[data-nsa-blueprint-delete]');
@@ -4922,7 +5098,9 @@
         beats.splice(index, 1);
         beats.forEach((beat, i) => { beat.beat_index = i + 1; beat.index = i + 1; });
         state.blueprintDirty = true;
+        state.storyboardStatus = { ready: false, stale: true, reason: 'BLUEPRINT_EDITED' };
         renderBlueprint();
+        scheduleAutoSave('blueprint_delete');
         return;
       }
       const shotUpload = target.closest('[data-nsa-shot-upload]');
@@ -4959,27 +5137,6 @@
         closeShotEditorModal({ keepChanges: false, rerender: true });
         return;
       }
-      const shotSave = target.closest('[data-nsa-shot-save]');
-      if (shotSave && host.contains(shotSave)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const index = Number(shotSave.dataset.nsaShotSave || 0);
-        syncShotFieldsFromDom(index, host);
-        setButtonBusy(shotSave, true, '\u4fdd\u5b58\u4e2d...');
-        try {
-          const id = await ensureTask();
-          await saveStoryboardEdits(id);
-          closeShotEditorModal({ keepChanges: true, rerender: false });
-          renderAll();
-          toast(`\u7b2c ${index + 1} \u955c\u5df2\u4fdd\u5b58`, 'success');
-        } catch (err) {
-          renderAll();
-          toast(err.message || '\u4fdd\u5b58\u672c\u955c\u5931\u8d25', 'error');
-        } finally {
-          setButtonBusy(shotSave, false);
-        }
-        return;
-      }
       const promptPreview = target.closest('[data-nsa-prompt-preview]');
       if (promptPreview && host.contains(promptPreview)) {
         e.preventDefault();
@@ -5010,15 +5167,21 @@
         dhNsaAdRegenerateFrames: () => runStage('keyframes', btn),
         dhNsaAdDetectStyle: () => runStage('scene', btn),
         dhNsaAdAutoVisuals: () => runStage('keyframes', btn),
-        dhNsaAdGoCompose: () => showStep(5),
+        dhNsaAdGoCompose: () => {
+          const compose = composeReadiness();
+          if (!compose.ready) return toast(compose.message || '请先修复所有未通过审核的镜头', 'error');
+          return showStep(5);
+        },
         dhNsaAdConfirmGenerate: () => runMediaChain(btn),
         dhNsaAdWrite: () => assist('write', btn),
         dhNsaAdClean: () => assist('clean', btn),
-        dhNsaAdSample: () => { const text = within('#dhNsaAdText'); if (text) text.value = SAMPLE_BRIEF; renderStatus(); },
-        dhNsaAdSaveDraftStep2: () => saveCurrentTaskProgressFromButton(btn),
-        dhNsaAdSaveDraftStep3: () => saveCurrentTaskProgressFromButton(btn),
-        dhNsaAdSaveDraftStep4: () => saveCurrentTaskProgressFromButton(btn),
-        dhNsaAdSaveDraftStep5: () => saveCurrentTaskProgressFromButton(btn),
+        dhNsaAdSample: () => {
+          const text = within('#dhNsaAdText');
+          if (text) text.value = SAMPLE_BRIEF;
+          markSourceDirty('source');
+          renderStatus();
+          scheduleAutoSave('sample_brief');
+        },
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
         dhNsaAdGenerateSceneSheet: () => {
@@ -5059,8 +5222,8 @@
         dhNsaAdSubtitleStyleBtn: () => openNsaSubtitleStyleModal(),
         dhNsaAdProductDrop: () => within('#dhNsaAdProductFile')?.click(),
         dhNsaAdProductDropInline: () => within('#dhNsaAdProductFile')?.click(),
-        dhNsaAdProductClear: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); toast('主体图已删除', 'success'); },
-        dhNsaAdProductClearInline: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); toast('主体图已删除', 'success'); },
+        dhNsaAdProductClear: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); scheduleAutoSave('product_clear'); toast('主体图已删除', 'success'); },
+        dhNsaAdProductClearInline: () => { revokePreview(state.productAsset); state.productAsset = null; markSourceDirty('product'); renderAll(); scheduleAutoSave('product_clear'); toast('主体图已删除', 'success'); },
         dhNsaAdAssetDrop: () => within('#dhNsaAdAssetFile')?.click(),
         dhNsaAdUploadPersonRef: () => within('#dhNsaAdPersonFile')?.click(),
         dhNsaAdPickActorAsset: () => openActorLibrary(),
@@ -5240,6 +5403,13 @@
         renderStatus();
       }
     });
+    const scheduleFieldAutoSave = e => {
+      const target = e.target;
+      if (!target?.matches?.('input:not([type="file"]):not([type="search"]), textarea, select')) return;
+      scheduleAutoSave('form_field');
+    };
+    host.addEventListener('input', scheduleFieldAutoSave);
+    host.addEventListener('change', scheduleFieldAutoSave);
     host.addEventListener('toggle', e => {
       const details = e.target;
       if (!details?.matches?.('[data-nsa-control-box]')) return;

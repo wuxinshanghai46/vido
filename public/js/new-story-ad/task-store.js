@@ -69,7 +69,17 @@
       Array.isArray(outputs.keyframes) ? outputs.keyframes.filter(frame => frame && (frame.image_url || frame.imageUrl || frame.url)).length : 0,
     );
     const finalVideo = outputs.final_video || {};
-    if (finalVideo.video_url || finalVideo.videoUrl || outputs.video_clips || outputs.tts_audio || /(?:final|compose|video|tts)/.test(stage)) return 5;
+    const frames = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
+    const currentFramesReady = shotCount > 0 && frames.length >= shotCount && frames.slice(0, shotCount).every(frame => (
+      !!(frame?.image_url || frame?.imageUrl || frame?.url)
+      && !frame?.regeneration_error
+      && !['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame?.current_generation_status || ''))
+      && frame?.contract_outdated !== true
+      && Number(frame?.qa_policy_version || 0) >= 2
+      && frame?.qa?.pass === true
+    ));
+    if (finalVideo.video_url || finalVideo.videoUrl || outputs.video_clips) return 5;
+    if (outputs.tts_audio || /(?:final|compose|video|tts)/.test(stage)) return currentFramesReady ? 5 : 4;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready

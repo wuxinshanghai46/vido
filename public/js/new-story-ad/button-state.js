@@ -43,6 +43,9 @@
     const hasBrief = brief.length >= 8;
     const hasBlueprint = !!state.blueprint;
     const hasShots = Array.isArray(state.shots) && state.shots.length > 0;
+    const compose = window.NewStoryAdStepNavigation?.composeReadiness
+      ? window.NewStoryAdStepNavigation.composeReadiness({ state })
+      : { ready: hasShots, message: '请先生成并审核全部分镜' };
     const hasActorInput = !!getPersonSpec('appearanceText');
 
     lock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
@@ -51,8 +54,8 @@
     lock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
-    lock('#dhNsaAdGoCompose', !hasShots, '请先生成分镜');
-    lock('#dhNsaAdConfirmGenerate', !hasShots, '请先生成分镜');
+    lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜');
+    lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜');
     lock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
     lock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     lock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
@@ -62,10 +65,6 @@
       '#dhNsaAdWrite',
       '#dhNsaAdClean',
       '#dhNsaAdSample',
-      '#dhNsaAdSaveDraftStep2',
-      '#dhNsaAdSaveDraftStep3',
-      '#dhNsaAdSaveDraftStep4',
-      '#dhNsaAdSaveDraftStep5',
       '#dhNsaAdVoiceOpen',
       '#dhNsaAdBgmUpload',
       '#dhNsaAdSubtitleStyleBtn',

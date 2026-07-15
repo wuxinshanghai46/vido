@@ -127,6 +127,12 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    if (task.id || task.status || task.stage || task.error || task.error_code) {
+      state.taskStatus = task.status || '';
+      state.taskStage = task.stage || '';
+      state.taskError = task.error || '';
+      state.taskErrorCode = task.error_code || '';
+    }
     hydrateSceneAssets(state, {
       request: state.context || {},
       outputs,
@@ -230,6 +236,10 @@
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips;
     state.finalVideo = outputs.final_video || state.finalVideo;
+    state.taskStatus = task.status || '';
+    state.taskStage = task.stage || '';
+    state.taskError = task.error || '';
+    state.taskErrorCode = task.error_code || '';
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
     setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '', { within });

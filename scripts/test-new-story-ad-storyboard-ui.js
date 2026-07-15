@@ -14,12 +14,14 @@ const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8
   'data-nsa-shot-field="action"',
   'data-nsa-shot-field="voiceover"',
   'data-nsa-shot-field="purpose"',
-  'data-nsa-shot-save',
+  'data-nsa-shot-autosave-status',
   'data-nsa-shot-regenerate',
   'data-nsa-candidate-preview',
   'data-nsa-candidate-use',
   'data-nsa-candidate-review',
 ].forEach(token => assert(ui.includes(token), `missing storyboard action hook: ${token}`));
+
+assert(!ui.includes('data-nsa-shot-save'), 'storyboard edits must not depend on a manual save action');
 
 assert(ui.includes('dh-nsa-frame-summary'), 'compact approval summary must render by default');
 assert(ui.includes('dh-nsa-frame-settings'), 'full edit controls must be available behind disclosure');

@@ -78,7 +78,9 @@ function testUiContractIsPresent() {
 
   assert.match(ui, /data-nsa-shot-ai-run/);
   assert.match(ui, /AI 帮我设置/);
-  assert.match(ui, /只填写当前镜头/);
+  assert.match(ui, /填写后自动保存/);
+  assert.match(ui, /data-nsa-shot-autosave-status/);
+  assert.doesNotMatch(ui, /data-nsa-shot-save/);
   assert.match(ui, /data-nsa-shot-jump/);
   assert.match(css, /\.dh-nsa-shot-ai-assist/);
   assert.match(css, /\.dh-nsa-editor-section-fields/);

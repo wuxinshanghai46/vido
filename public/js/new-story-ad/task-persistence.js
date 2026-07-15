@@ -146,7 +146,9 @@
   }
 
   function progressStageForState(state = {}) {
-    if (state.currentStep >= 5) return 'video_ready';
+    if (state.finalVideo?.video_url || state.finalVideo?.videoUrl) return 'final_video_ready';
+    if (Array.isArray(state.videoClips) && state.videoClips.some(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)) return 'video_ready';
+    if (Array.isArray(state.ttsAudio?.tracks) && state.ttsAudio.tracks.length) return 'tts_ready';
     if (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url))) return 'keyframes_ready';
     if (Array.isArray(state.shots) && state.shots.length) return 'keyframe_contract_ready';
     if (state.blueprint) return 'blueprint_done';
@@ -192,7 +194,7 @@
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});
     }
-    if (typeof renderAll === 'function') renderAll();
+    if (opts.render !== false && typeof renderAll === 'function') renderAll();
     if (opts.silent !== true && typeof toast === 'function') toast('剧情广告任务已保存，可在任务中心继续制作', 'success');
     return id;
   }
@@ -203,6 +205,7 @@
     saveSceneAssetsProgress,
     saveBlueprintEdits,
     saveStoryboardEdits,
+    progressStageForState,
   };
 })();
 
