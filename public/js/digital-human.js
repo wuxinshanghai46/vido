@@ -4013,7 +4013,8 @@
     };
     const stage = task.stage || task.status || 'submitted';
     const base = stageBase[stage] ?? 10;
-    const elapsed = Number(task.elapsed || (task.startedAt ? Math.round((Date.now() - task.startedAt) / 1000) : 0));
+    const operationElapsed = getTaskElapsedSeconds(task, isTaskDisplayActive(task));
+    const elapsed = Number(task.elapsed ?? operationElapsed ?? 0);
     const timeBoost = Math.min(22, Math.floor(elapsed / 10));
     const explicit = Number(task.progress);
     const estimated = base + timeBoost;
@@ -4619,7 +4620,7 @@
     const hasExplicit = task.elapsed != null && task.elapsed !== '' && Number.isFinite(explicit) && explicit >= 0;
     const startedAt = taskTimestamp(
       task.operationStartedAt || task.generationStartedAt || task.generation_started_at
-      || task.submittedAt || task.createDetail?.submittedAt || task.startedAt
+      || task.submittedAt || task.createDetail?.submittedAt
     );
     const finishedAt = taskTimestamp(
       task.operationFinishedAt || task.generationFinishedAt || task.generation_finished_at
@@ -4940,9 +4941,18 @@
     }[status] || '等待中';
   }
 
+  function getTaskDisplayStatusText(task = {}) {
+    const status = String(task.status || '').toLowerCase();
+    if (DISPLAY_ACTIVE_TASK_STATUSES.has(status) && !isTaskDisplayActive(task)) return '待继续';
+    return getTaskStatusText(status);
+  }
+
   function getTaskStageText(stage, task = null) {
     const isLuxury = task ? getTaskType(task) === 'luxury_ad' : false;
     if (task && isTaskTerminalError(task)) return '生成失败';
+    if (task && DISPLAY_ACTIVE_TASK_STATUSES.has(String(task.status || '').toLowerCase()) && !isTaskDisplayActive(task)) {
+      return '制作进度已保存';
+    }
     const text = {
       prepare_image: '准备形象',
       prepare_audio: '准备语音',
@@ -5562,7 +5572,7 @@
     if (!active) {
       body.innerHTML = `<div class="dh-task-detail-head">
         <div>
-          <div class="dh-task-detail-status">${escapeHtml(getTaskStatusText(data.status))}</div>
+          <div class="dh-task-detail-status">${escapeHtml(getTaskDisplayStatusText(data))}</div>
           <div class="dh-task-detail-stage">${escapeHtml(getTaskStageText(data.stage, data))} · ${escapeHtml(timingLabel)}</div>
         </div>
       </div>
@@ -5571,7 +5581,7 @@
     }
     body.innerHTML = `<div class="dh-task-detail-head">
       <div>
-        <div class="dh-task-detail-status">${escapeHtml(getTaskStatusText(data.status))}</div>
+        <div class="dh-task-detail-status">${escapeHtml(getTaskDisplayStatusText(data))}</div>
         <div class="dh-task-detail-stage">${escapeHtml(getTaskStageText(data.stage, data))} · ${escapeHtml(timingLabel)}</div>
       </div>
       <div class="dh-task-detail-percent">${getTaskProgressPercent(data)}%</div>
@@ -5598,13 +5608,13 @@
     });
     $$('#dhTaskStatusTabs [data-task-status]').forEach(btn => {
       const status = btn.dataset.taskStatus || 'pending';
-      const count = tasks.filter(t => getTaskType(t) === state.activeTaskType && (status === 'all' || taskStatusBucket(t.status) === status)).length;
+      const count = tasks.filter(t => getTaskType(t) === state.activeTaskType && (status === 'all' || taskStatusBucket(t) === status)).length;
       btn.classList.toggle('active', status === state.activeTaskStatus);
       btn.textContent = count ? `${btn.dataset.label || btn.textContent.replace(/\s+\d+$/, '')} ${count}` : (btn.dataset.label || btn.textContent.replace(/\s+\d+$/, ''));
     });
     updateTaskBadge();
     const scopedTasks = tasks.filter(t => getTaskType(t) === state.activeTaskType)
-      .filter(t => state.activeTaskStatus === 'all' || taskStatusBucket(t.status) === state.activeTaskStatus);
+      .filter(t => state.activeTaskStatus === 'all' || taskStatusBucket(t) === state.activeTaskStatus);
     if (!scopedTasks.length) {
       const statusLabel = $(`#dhTaskStatusTabs [data-task-status="${state.activeTaskStatus}"]`)?.dataset?.label || '';
       host.innerHTML = `<div class="dh-empty">
@@ -5668,11 +5678,11 @@
               <div class="dh-task-title">${escapeHtml(t.avatarName || '\u6570\u5b57\u4eba\u4efb\u52a1')}</div>
               <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)} · ${escapeHtml(created)}</div>
             </div>
-            <span class="dh-task-status ${escapeHtml(t.status || '')}">${getTaskStatusText(t.status)}</span>
+            <span class="dh-task-status ${escapeHtml(t.status || '')}">${getTaskDisplayStatusText(t)}</span>
           </div>
           <div class="dh-task-progress">
             <span>${getTaskStageText(t.stage, t)}</span>
-            <span>${failed ? '失败' : (active ? `${progressPct}%` : escapeHtml(getTaskStatusText(t.status)))}</span>
+            <span>${failed ? '失败' : (active ? `${progressPct}%` : escapeHtml(getTaskDisplayStatusText(t)))}</span>
             <span>${elapsedLabel}</span>
           </div>
           ${progressBar}
@@ -5697,6 +5707,11 @@
   function syncRunningTask(taskId, patch = {}) {
     const current = state.s3.runningTasks.get(taskId) || {};
     const next = { ...current, ...patch };
+    const status = String(next.status || '').toLowerCase();
+    if (DISPLAY_ACTIVE_TASK_STATUSES.has(status) && !next.operationStartedAt) {
+      // operationStartedAt 专用于真实生成耗时；startedAt 仍只负责列表创建时间和排序。
+      next.operationStartedAt = taskTimestamp(next.submittedAt || next.createDetail?.submittedAt) || Date.now();
+    }
     state.s3.runningTasks.set(taskId, next);
     upsertVideoTask({ taskId, ...next });
     return next;
@@ -13868,10 +13883,12 @@
     };
   }
 
-  function taskStatusBucket(status = '') {
+  function taskStatusBucket(taskOrStatus = '') {
+    const task = taskOrStatus && typeof taskOrStatus === 'object' ? taskOrStatus : null;
+    const status = String(task ? task.status : taskOrStatus || '').toLowerCase();
     if (['draft', 'working', 'ready', 'error', 'invalid', 'timeout', 'failed'].includes(status)) return 'pending';
-    if (DISPLAY_ACTIVE_TASK_STATUSES.has(status)) return 'generating';
     if (status === 'done') return 'done';
+    if (DISPLAY_ACTIVE_TASK_STATUSES.has(status)) return !task || isTaskDisplayActive(task) ? 'generating' : 'pending';
     return 'pending';
   }
 
