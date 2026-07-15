@@ -106,14 +106,14 @@
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (x => String(x || ''));
     const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
     if (!assets.length) {
-      return `<div class="dh-nsa-frame-scene is-empty">
+      return `<div class="dh-nsa-frame-scene is-empty" data-nsa-editor-section="scene">
         <b>场景绑定</b><span>当前任务还没有场景空间锁；生成场景四视图后，每个分镜会绑定到对应场景。</span>
       </div>`;
     }
 
     const currentScene = clean(shot.scene_id || shot.scene_asset_id || (assets.length === 1 ? sceneId(assets[0], 0) : ''), 120);
     const currentView = viewValue(shot.scene_view, index);
-    return `<div class="dh-nsa-frame-scene">
+    return `<div class="dh-nsa-frame-scene" data-nsa-editor-section="scene">
       <div class="dh-nsa-frame-scene-title">
         <b>场景绑定</b>
         <span>${assets.length > 1 ? '多场景任务：可为本镜选择空间、视角和转场原因。' : '单场景任务：本镜锁定当前任务唯一空间。'}</span>

@@ -2306,6 +2306,69 @@ function enforceAssistedPersonSpec(spec = {}, current = {}) {
   return output;
 }
 
+const ASSISTED_SHOT_ENUMS = {
+  shot_size: ['', 'extreme_wide', 'wide', 'full', 'medium', 'medium_close', 'close_up', 'extreme_close_up', 'macro'],
+  camera_angle: ['', 'eye_level', 'high_angle', 'low_angle', 'overhead', 'dutch', 'over_shoulder', 'pov'],
+  depth_of_field: ['', 'deep', 'medium', 'shallow', 'ultra_shallow'],
+  transition_type: ['none', 'hard_cut', 'cut_on_action', 'match_cut', 'dissolve', 'fade'],
+  scene_view: ['', 'master', 'reverse', 'interaction', 'detail'],
+};
+
+function normalizeAssistedShotSettings(input = {}, current = {}) {
+  const source = input?.shot_settings || input?.shotSettings || input || {};
+  const existing = current && typeof current === 'object' ? current : {};
+  const textValue = (key, aliases = [], max = 500) => {
+    const keys = [key, ...aliases];
+    const explicit = keys.find(name => Object.prototype.hasOwnProperty.call(source, name));
+    const raw = explicit ? source[explicit] : keys.map(name => existing[name]).find(value => value !== undefined && value !== null);
+    return cleanText(typeof raw === 'object' ? shotDesign.structuredText(raw, max) : raw || '', max);
+  };
+  const enumValue = (key, fallback = '') => {
+    const allowed = ASSISTED_SHOT_ENUMS[key] || [];
+    const requested = cleanText(source[key] ?? existing[key] ?? fallback, 60);
+    return allowed.includes(requested) ? requested : (allowed.includes(existing[key]) ? existing[key] : fallback);
+  };
+  const design = shotDesign.normalizeShotDesign({
+    shot_scope: source.shot_scope ?? source.shotScope ?? existing.shot_scope ?? existing.shotScope,
+    surface_topology: source.surface_topology ?? source.surfaceTopology ?? existing.surface_topology ?? existing.surfaceTopology,
+    motion_effect: source.motion_effect ?? source.motionEffect ?? existing.motion_effect ?? existing.motionEffect,
+  });
+  const surface = design.surface_topology || { mode: 'auto', seam_policy: 'auto', finish_distribution: 'auto', notes: '' };
+  const motion = design.motion_effect || { type: 'none', source_state: '', target_state: '', timeline: '', intensity: 'medium', preserve_scene_geometry: true, reference_asset_id: '', notes: '' };
+  const requestedLens = Number(source.lens_mm ?? source.lensMm ?? existing.lens_mm ?? existing.lensMm ?? 0);
+  return {
+    visual: textValue('visual', ['visual_description', 'content_prompt'], 1800),
+    action: textValue('action', ['visual_action'], 900),
+    voiceover: textValue('voiceover', ['narration', 'subtitle'], 600),
+    purpose: textValue('purpose', ['objective', 'role'], 500),
+    shot_scope: design.shot_scope || 'auto',
+    surface_topology: surface,
+    motion_effect: motion,
+    scene_view: enumValue('scene_view', cleanText(existing.scene_view || '', 40)),
+    scene_zone: textValue('scene_zone', ['scene_zone_label_zh'], 180),
+    shot_size: enumValue('shot_size', ''),
+    camera_angle: enumValue('camera_angle', ''),
+    lens_mm: requestedLens > 0 ? Math.max(1, Math.min(300, Math.round(requestedLens))) : '',
+    depth_of_field: enumValue('depth_of_field', ''),
+    composition: textValue('composition', [], 320),
+    subject_position: textValue('subject_position', [], 180),
+    camera_movement: textValue('camera_movement', [], 220),
+    entry_frame_state: textValue('entry_frame_state', [], 500),
+    exit_frame_state: textValue('exit_frame_state', [], 500),
+    screen_direction: textValue('screen_direction', [], 160),
+    eyeline: textValue('eyeline', [], 160),
+    camera_axis: textValue('camera_axis', [], 160),
+    object_states: textValue('object_states', [], 360),
+    transition_type: enumValue('transition_type', 'none'),
+    transition_reason: textValue('transition_reason', [], 280),
+    ambient_sound: textValue('ambient_sound', [], 240),
+    sfx: textValue('sfx', [], 240),
+    music_cue: textValue('music_cue', [], 240),
+    voiceover_timing: textValue('voiceover_timing', [], 280),
+    audio_bridge: textValue('audio_bridge', [], 240),
+  };
+}
+
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
@@ -2313,6 +2376,7 @@ async function assistBrief(body = {}, user = {}) {
   const isNegativeControl = mode === 'negative_control' || mode === 'negative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
+  const isShotSettings = mode === 'shot_settings' || mode === 'shot';
   const systemPrompt = [
     '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
@@ -2321,6 +2385,8 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
+    '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
+    'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
   ].join('\n');
   const outputSchema = isStyleControl
@@ -2361,7 +2427,41 @@ async function assistBrief(body = {}, user = {}) {
     }
   }
 }`
-        : `{
+        : isShotSettings
+          ? `{
+  "shot_settings": {
+    "visual": "当前镜头完整画面说明",
+    "action": "镜头内主体动作与变化",
+    "voiceover": "保留或按明确要求微调的台词/旁白",
+    "purpose": "本镜叙事或广告目的",
+    "shot_scope": "auto/environment/product_comparison/character/brand_endcard",
+    "surface_topology": {"mode":"auto/continuous/segmented/modular","seam_policy":"auto/hidden/visible/task_defined","finish_distribution":"auto/uniform/gradient/regional/sample_comparison","notes":"任务专属补充"},
+    "motion_effect": {"type":"none/particle_assembly/fade/dissolve/material_flow/custom","source_state":"起始状态","target_state":"目标状态","timeline":"按本镜时长编写的时间轴","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"已有素材 ID 或空","notes":"任务专属效果补充"},
+    "scene_view": "master/reverse/interaction/detail",
+    "scene_zone": "使用当前任务已有空间区域，不编造新场景",
+    "shot_size": "extreme_wide/wide/full/medium/medium_close/close_up/extreme_close_up/macro",
+    "camera_angle": "eye_level/high_angle/low_angle/overhead/dutch/over_shoulder/pov",
+    "lens_mm": 50,
+    "depth_of_field": "deep/medium/shallow/ultra_shallow",
+    "composition": "构图",
+    "subject_position": "主体位置",
+    "camera_movement": "镜头运动",
+    "entry_frame_state": "承接上一镜的入镜状态",
+    "exit_frame_state": "交给下一镜的出镜状态",
+    "screen_direction": "运动方向",
+    "eyeline": "人物视线或空",
+    "camera_axis": "摄影轴线",
+    "object_states": "商品/道具状态",
+    "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
+    "transition_reason": "转场原因",
+    "ambient_sound": "环境声",
+    "sfx": "动作或物体音效",
+    "music_cue": "音乐节点",
+    "voiceover_timing": "旁白与动作时机",
+    "audio_bridge": "跨镜声音桥"
+  }
+}`
+          : `{
   "brief": "可直接放入广告需求文本框的完整需求",
   "product_subject": "广告主体",
   "cast_mode": "auto/single/dual/multi/no_human",
@@ -2369,11 +2469,19 @@ async function assistBrief(body = {}, user = {}) {
   "forbidden": ["禁止项"],
   "characters": [{"name":"角色名","role":"剧情职责","description":"简短说明"}]
 }`;
+  const shotAssistContext = isShotSettings ? {
+    user_instruction: cleanText(body.user_instruction || body.instruction || '', 800),
+    previous_shot: body.shot_assist_context?.previous_shot || body.previous_shot || null,
+    current_shot: body.shot_assist_context?.current_shot || body.current_shot || body.shot || null,
+    next_shot: body.shot_assist_context?.next_shot || body.next_shot || null,
+    scene_assets: body.shot_assist_context?.scene_assets || body.scene_assets || [],
+  } : null;
   const userPrompt = `${contextPrompt(ctx)}
 
-模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 
 ${isPersonSpec ? '人物设定中用户已经明确选择的数量、性别、年龄、地域、身份和姓名是硬约束，必须原样保留；外貌、穿着、发型妆造和禁止项必须根据这些选择重新生成，不能保留与当前年龄冲突的旧描述。' : ''}
+${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 
 输出 JSON：
 ${outputSchema}`;
@@ -2447,6 +2555,20 @@ ${outputSchema}`;
       },
     };
   }
+  if (isShotSettings) {
+    const currentShot = shotAssistContext?.current_shot && typeof shotAssistContext.current_shot === 'object'
+      ? shotAssistContext.current_shot
+      : {};
+    return {
+      shot_settings: normalizeAssistedShotSettings(parsed, currentShot),
+      mode,
+      model_meta: {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models,
+      },
+    };
+  }
   return {
     brief: cleanText(parsed.brief || parsed.content || ctx.brief, 3000),
     product_subject: cleanText(parsed.product_subject || parsed.productSubject || ctx.product_subject, 200),
@@ -2491,6 +2613,7 @@ module.exports = {
   assistBrief,
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
+  normalizeAssistedShotSettings,
   keyframeCompletion,
   keyframeTargetIndexes,
   keyframeStageBudgetMs,

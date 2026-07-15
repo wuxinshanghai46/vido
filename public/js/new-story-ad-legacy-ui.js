@@ -2537,6 +2537,105 @@
     }
   }
 
+  function shotAssistPayload(index = 0) {
+    const compactShot = shot => {
+      if (!shot || typeof shot !== 'object') return null;
+      const { _prompt_preview, candidates, ...rest } = shot;
+      return rest;
+    };
+    const sceneAssets = (state.sceneAssets || []).map((asset, assetIndex) => ({
+      scene_id: asset.scene_id || asset.id || `scene_${assetIndex + 1}`,
+      name: asset.name || `场景 ${assetIndex + 1}`,
+      zones: asset.zones || asset.scene_zones || [],
+      views: (asset.views || asset.view_images || []).map(view => ({ key: view.key || view.view || '', label: view.label || view.name || '' })),
+    }));
+    return {
+      previous_shot: compactShot(state.shots[index - 1]),
+      current_shot: compactShot(state.shots[index]),
+      next_shot: compactShot(state.shots[index + 1]),
+      scene_assets: sceneAssets,
+    };
+  }
+
+  function hydrateShotEditorFields(index = 0, modal = document) {
+    const shot = state.shots[index] || {};
+    $$(`[data-nsa-shot-index="${index}"][data-nsa-shot-field]`, modal).forEach(field => {
+      const name = field.dataset.nsaShotField || '';
+      const value = shotFieldValue(shot, {}, name);
+      if (field.type === 'checkbox') field.checked = value !== false && value !== 'false';
+      else field.value = value ?? '';
+    });
+  }
+
+  function applyAssistedShotSettings(index = 0, settings = {}, modal = document) {
+    const current = state.shots[index] || {};
+    const next = {
+      ...current,
+      ...settings,
+      scene_id: current.scene_id || current.scene_asset_id || '',
+      scene_asset_id: current.scene_asset_id || current.scene_id || '',
+      surface_topology: { ...(current.surface_topology || {}), ...(settings.surface_topology || {}) },
+      motion_effect: { ...(current.motion_effect || {}), ...(settings.motion_effect || {}) },
+      _nsa_user_edited_fields: { ...(current._nsa_user_edited_fields || {}) },
+      edited_at: new Date().toISOString(),
+    };
+    if (settings.visual !== undefined) {
+      next.visual = settings.visual;
+      next.visual_description = settings.visual;
+      next.content_prompt = settings.visual;
+      next.user_visual_override = true;
+    }
+    if (settings.action !== undefined) next.visual_action = settings.action;
+    if (settings.voiceover !== undefined) {
+      next.narration = settings.voiceover;
+      next.subtitle = settings.voiceover;
+    }
+    if (settings.purpose !== undefined) {
+      next.objective = settings.purpose;
+      next.role = settings.purpose;
+      next.keyframe_notes = settings.purpose;
+      next.material_usage = settings.purpose;
+    }
+    if (settings.scene_zone !== undefined) next.scene_zone_label_zh = settings.scene_zone;
+    Object.keys(settings || {}).forEach(key => { next._nsa_user_edited_fields[key] = true; });
+    state.shots[index] = next;
+    hydrateShotEditorFields(index, modal);
+    if (settings.motion_effect?.type && settings.motion_effect.type !== 'none') modal.querySelector('.dh-nsa-shot-design-editor')?.setAttribute('open', '');
+    return next;
+  }
+
+  async function runShotAiAssist(index = 0, modal, button) {
+    if (!modal || !button) return;
+    syncShotFieldsFromDom(index, modal);
+    const instruction = String(modal.querySelector('[data-nsa-shot-ai-instruction]')?.value || '').trim();
+    const status = modal.querySelector('[data-nsa-shot-ai-status]');
+    setButtonBusy(button, true, 'AI 分析中...');
+    if (status) status.textContent = '正在结合当前脚本、场景绑定和前后镜连续性整理设置…';
+    try {
+      const id = await ensureTask();
+      const response = await api('/api/new-story-ad/assist', {
+        method: 'POST',
+        body: {
+          ...payload(),
+          task_id: id,
+          mode: 'shot_settings',
+          user_instruction: instruction,
+          shot_assist_context: shotAssistPayload(index),
+        },
+      });
+      const settings = response.shot_settings || response.shotSettings;
+      if (!settings || typeof settings !== 'object') throw new Error('AI 没有返回可用的镜头设置');
+      applyAssistedShotSettings(index, settings, modal);
+      if (status) status.textContent = 'AI 已填写到表单。请检查各项，确认后点击“保存修改”；尚未生成图片或视频。';
+      toast(`第 ${index + 1} 镜已由 AI 补齐设置，请检查后保存`, 'success');
+    } catch (error) {
+      if (status) status.textContent = error.message || 'AI 帮写失败，请稍后重试。';
+      toast(error.message || 'AI 帮写镜头设置失败', 'error');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
   function openShotEditorModal(index = 0) {
     const shotIndex = Math.max(0, Number(index) || 0);
     if (!state.shots[shotIndex]) return;
@@ -2556,6 +2655,29 @@
         </div>
         <button class="dh-modal-close-btn" type="button" data-nsa-shot-edit-close aria-label="关闭编辑弹窗" title="关闭">×</button>
       </div>
+      <section class="dh-nsa-shot-ai-assist" aria-label="AI 镜头设置助手">
+        <div class="dh-nsa-shot-ai-copy">
+          <b>不知道这些参数怎么填？让 AI 按脚本设置</b>
+          <small>调用文字 AI 读取本镜、前后镜和当前场景；只填写当前镜头，不自动保存，也不会生成图片或视频。</small>
+        </div>
+        <div class="dh-nsa-shot-ai-row">
+          <textarea class="dh-input" rows="2" data-nsa-shot-ai-instruction placeholder="可不填，直接让 AI 按当前脚本判断；也可以补充你希望本镜如何呈现"></textarea>
+          <button type="button" class="dh-btn dh-btn-primary" data-nsa-shot-ai-run>AI 帮我设置</button>
+        </div>
+        <div class="dh-nsa-shot-ai-tools">
+          <span>快速告诉 AI：</span>
+          <button type="button" data-nsa-shot-ai-preset="优先保证与前后镜的场景、主体位置、动作方向和道具状态连续。">优先连续性</button>
+          <button type="button" data-nsa-shot-ai-preset="突出当前镜头的主要人物、商品或品牌主体，其它元素只作辅助，不改变任务原有场景。">突出主体</button>
+          <button type="button" data-nsa-shot-ai-preset="根据当前镜头目的设计自然的镜头运动和动态效果，同时保持人物、商品和场景结构稳定。">增强动态</button>
+          <nav class="dh-nsa-shot-jumps" aria-label="镜头设置分区">
+            <button type="button" data-nsa-shot-jump=".dh-nsa-frame-scene">场景</button>
+            <button type="button" data-nsa-shot-jump=".dh-nsa-editor-basic">画面与台词</button>
+            <button type="button" data-nsa-shot-jump=".dh-nsa-shot-design-editor">结构与效果</button>
+            <button type="button" data-nsa-shot-jump=".dh-nsa-continuity-editor">镜头连续性</button>
+          </nav>
+        </div>
+        <div class="dh-nsa-shot-ai-status" data-nsa-shot-ai-status>可以直接点击，也可以先写一句要求；不确定的项目保持“按任务判断”或“无”。AI 填写后仍需点击“保存修改”。</div>
+      </section>
       <div class="dh-nsa-shot-edit-scroll" data-nsa-shot-edit-content></div>
       <div class="dh-modal-foot dh-nsa-shot-edit-foot">
         <button type="button" class="dh-btn dh-btn-ghost" data-nsa-shot-edit-close>取消</button>
@@ -2565,6 +2687,28 @@
     editor.hidden = false;
     modal.querySelector('[data-nsa-shot-edit-content]')?.appendChild(editor);
     modal.addEventListener('click', async event => {
+      const preset = event.target.closest('[data-nsa-shot-ai-preset]');
+      if (preset) {
+        event.preventDefault();
+        const input = modal.querySelector('[data-nsa-shot-ai-instruction]');
+        if (input) input.value = preset.dataset.nsaShotAiPreset || '';
+        input?.focus();
+        return;
+      }
+      const jump = event.target.closest('[data-nsa-shot-jump]');
+      if (jump) {
+        event.preventDefault();
+        const target = modal.querySelector(jump.dataset.nsaShotJump || '');
+        if (target?.matches('details')) target.open = true;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      const aiRun = event.target.closest('[data-nsa-shot-ai-run]');
+      if (aiRun) {
+        event.preventDefault();
+        await runShotAiAssist(shotIndex, modal, aiRun);
+        return;
+      }
       const close = event.target.closest('[data-nsa-shot-edit-close]');
       if (event.target === modal || close) {
         event.preventDefault();
@@ -2727,16 +2871,22 @@
           <div class="dh-nsa-frame-settings" data-nsa-shot-editor="${i}" hidden>
             <div class="dh-nsa-frame-settings-grid">
               ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
-              <label class="dh-nsa-visual-field">
-                <span class="dh-nsa-visual-field-title"><b>完整画面说明</b><small>修改后会作为本镜重生成的最高优先级</small></span>
-                <textarea class="dh-input dh-nsa-visual-editor" rows="6" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea>
-              </label>
-              <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
-              <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
-              <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+              <section class="dh-nsa-editor-section dh-nsa-editor-basic">
+                <div class="dh-nsa-editor-section-head"><b>画面、动作与台词</b><small>这里决定本镜实际要拍什么，是重新生成时优先级最高的内容。</small></div>
+                <label class="dh-nsa-visual-field">
+                  <span class="dh-nsa-visual-field-title"><b>完整画面说明</b><small>人物/商品、环境、位置、材质、光线和画面关系</small></span>
+                  <textarea class="dh-input dh-nsa-visual-editor" rows="6" data-nsa-shot-index="${i}" data-nsa-shot-field="visual">${escapeHtml(shotFieldValue(shot, contract, 'visual'))}</textarea>
+                </label>
+                <div class="dh-nsa-editor-section-fields">
+                  <label><span>镜头动作</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
+                  <label><span>台词 / 旁白</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
+                  <label class="is-wide"><span>本镜目的 / 补充</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+                </div>
+              </section>
           <details class="dh-nsa-shot-design-editor">
             <summary>本镜表面结构与动态效果</summary>
-            <p class="dh-nsa-shot-design-help">这些设置只作用于本镜；“按任务判断”不会改变旧任务。分镜 4 这类样品对比可独立设置，不会反向定义其它镜头的环境结构。</p>
+            <p class="dh-nsa-shot-design-help">用于说明本镜中的表面是连续、分段还是样品对比，以及画面内是否发生粒子汇聚、淡入等变化。不确定时保持“按任务判断”或“无”。这些设置只作用于本镜，不会反向定义其它镜头。</p>
+            <div class="dh-nsa-editor-section-fields">
             <label><span>镜头作用域</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_scope">
               ${[['auto','按任务判断'],['environment','环境镜头'],['product_comparison','产品/样品对比'],['character','人物镜头'],['brand_endcard','品牌收尾']].map(([value,label]) => `<option value="${value}" ${String(shot.shot_scope || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
             </select></label>
@@ -2762,9 +2912,12 @@
             <label><span>目标参考素材 ID（可选）</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.reference_asset_id'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.reference_asset_id"></label>
             <label class="dh-nsa-inline-check"><input type="checkbox" ${shot.motion_effect?.preserve_scene_geometry !== false ? 'checked' : ''} data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.preserve_scene_geometry"><span>效果过程中保持场景几何不变</span></label>
             <label class="is-wide"><span>效果补充</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.notes">${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.notes'))}</textarea></label>
+            </div>
           </details>
           <details class="dh-nsa-continuity-editor">
             <summary>镜头语言与前后镜连续性</summary>
+            <p class="dh-nsa-shot-design-help">景别、焦段和构图控制怎么拍；入镜/出镜状态、运动方向和道具状态用于衔接前后镜。不熟悉摄影参数时可保持默认，让 AI 按镜头目的判断。</p>
+            <div class="dh-nsa-editor-section-fields">
             <label><span>景别</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_size">${['','extreme_wide','wide','full','medium','medium_close','close_up','extreme_close_up','macro'].map(value => `<option value="${value}" ${String(shot.shot_size || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
             <label><span>机位角度</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="camera_angle">${['','eye_level','high_angle','low_angle','overhead','dutch','over_shoulder','pov'].map(value => `<option value="${value}" ${String(shot.camera_angle || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
             <label><span>焦段（mm）</span><input class="dh-input" type="number" min="0" max="300" step="1" value="${escapeHtml(shotFieldValue(shot, contract, 'lens_mm'))}" placeholder="如 24 / 35 / 50 / 85" data-nsa-shot-index="${i}" data-nsa-shot-field="lens_mm"></label>
@@ -2787,6 +2940,7 @@
             <label><span>音乐节点</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'music_cue'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="music_cue"></label>
             <label><span>旁白与动作时机</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'voiceover_timing'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover_timing"></label>
             <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
+            </div>
               </details>
               ${contract.subject_strategy ? `<details class="dh-nsa-frame-contract"><summary>查看生成约束</summary><p>${escapeHtml(contract.subject_strategy)}</p></details>` : ''}
               ${shot._prompt_preview ? `<details class="dh-nsa-prompt-preview" open><summary>最终生成提示词（仅预览，未生成媒体）</summary><b>关键帧提示词</b><pre>${escapeHtml(shot._prompt_preview.keyframe_prompt || '')}</pre><b>视频动作提示词</b><pre>${escapeHtml(shot._prompt_preview.motion_prompt || '')}</pre></details>` : ''}
