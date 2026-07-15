@@ -3,7 +3,11 @@ const fs = require('fs');
 const path = require('path');
 
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
+const ttsService = require('../src/services/ttsService');
 const { buildAssSubtitleFile } = require('../src/services/effectsService');
+
+assert.strictEqual(ttsService.voiceProviderForId('tongtong'), 'zhipu', '智谱音色不得误送到阿里 CosyVoice');
+assert.strictEqual(ttsService.voiceProviderForId('longxiaochun_v3'), 'aliyun-tts', '阿里音色必须保留 CosyVoice 路由');
 
 const uiPath = path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js');
 const uiSource = fs.readFileSync(uiPath, 'utf8');

@@ -435,9 +435,12 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   };
   if (body.save_progress === true || body.saveProgress === true) {
     const progressStage = cleanText(body.progress_stage || body.progressStage || task.stage || 'draft', 80) || 'draft';
-    const finalDone = ['final_video_ready', 'done'].includes(progressStage);
-    patch.status = finalDone ? (task.status || 'done') : 'working';
-    patch.stage = progressStage;
+    const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
+    if (!hasActiveGeneration) {
+      const finalDone = ['final_video_ready', 'done'].includes(progressStage);
+      patch.status = finalDone ? (task.status || 'done') : 'working';
+      patch.stage = progressStage;
+    }
     patch.saved_progress = true;
     patch.saved_progress_at = new Date().toISOString();
     persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});

@@ -5,6 +5,7 @@ const cancellation = require('./cancellationContext');
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
+const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
   blueprint: 120000,
@@ -356,11 +357,23 @@ module.exports = {
   reconcileInterruptedJobs,
 };
 
-setTimeout(() => {
+function runBackgroundReconciliation(label = 'startup') {
   try {
     const result = reconcileInterruptedJobs();
-    if (result.interrupted || result.normalized) console.warn('[new-story-ad:jobs] startup reconciliation', result);
+    if (result.interrupted || result.normalized) console.warn(`[new-story-ad:jobs] ${label} reconciliation`, result);
   } catch (error) {
-    console.error('[new-story-ad:jobs] startup reconciliation failed:', String(error.message || error));
+    console.error(`[new-story-ad:jobs] ${label} reconciliation failed:`, String(error.message || error));
   }
-}, 1500).unref?.();
+}
+
+setTimeout(() => runBackgroundReconciliation('startup'), 1500).unref?.();
+
+// A PM2 reload can start the replacement worker only seconds after a stage was
+// persisted. The first startup pass intentionally honours ORPHAN_GRACE_MS so
+// the old worker may finish, but a single pass would leave that fresh orphan
+// marked active forever. Re-run reconciliation periodically; jobs owned by
+// this process are skipped through runningJobs above.
+setInterval(
+  () => runBackgroundReconciliation('periodic'),
+  ORPHAN_RECONCILE_INTERVAL_MS,
+).unref?.();

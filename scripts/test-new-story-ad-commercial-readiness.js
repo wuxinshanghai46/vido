@@ -12,6 +12,7 @@ process.env.NEW_STORY_AD_MOCK_TTS = '1';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const jobs = require('../src/services/newStoryAd/jobService');
+const storyAdService = require('../src/services/newStoryAd/storyAdService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
@@ -68,6 +69,30 @@ async function main() {
   assert.equal(storage.getTask(orphan.id).status, 'failed');
   assert.equal(storage.getTask(orphan.id).error_code, 'WORKER_INTERRUPTED');
   assert.equal(storage.getTask(orphan.id).active_generation_id, '');
+
+  const activeSave = storage.createTask({
+    id: 'commercial-active-save',
+    title: 'active save state test',
+    brief: '验证生成期间保存不会覆盖后台状态',
+    user_id: owner.id,
+    status: 'running',
+    stage: 'keyframes',
+  });
+  storage.updateTask(activeSave.id, {
+    active_stage: 'keyframes',
+    active_generation_id: 'active-generation',
+    generation_started_at: new Date().toISOString(),
+  });
+  storyAdService.updateTaskRequest(activeSave.id, {
+    brief: activeSave.brief,
+    save_progress: true,
+    progress_stage: 'keyframes_ready',
+    progress_snapshot: { storyboard_table: [{ index: 1, visual: '通用测试镜头' }] },
+  }, owner);
+  const activeAfterSave = storage.getTask(activeSave.id);
+  assert.equal(activeAfterSave.status, 'running');
+  assert.equal(activeAfterSave.stage, 'keyframes');
+  assert.equal(activeAfterSave.active_generation_id, 'active-generation');
 
   const model = { provider_id: 'test-provider', model_id: 'test-model' };
   modelGateway.recordHealth(model, { ok: false, error: new Error('configuration not found') });

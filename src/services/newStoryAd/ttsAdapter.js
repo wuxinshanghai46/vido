@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const aliyunVoice = require('../aliyunVoiceService');
+const ttsService = require('../ttsService');
 const cancellation = require('./cancellationContext');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
@@ -153,18 +153,19 @@ async function generateShotAudio({
 
   const outBase = path.join(AUDIO_DIR, `${base}.mp3`);
   try {
-    const signal = cancellation.signal();
-    const actual = await aliyunVoice.synthesize(text, voiceId, outBase, {
+    cancellation.throwIfCancelled(taskId);
+    const actual = await ttsService.generateSpeech(text, outBase, {
       speed: clamp(speed, 0.5, 1.8, 1),
-      format: 'mp3',
-      signal,
+      voiceId,
     });
+    cancellation.throwIfCancelled(taskId);
+    if (!actual || !fs.existsSync(actual)) throw new Error(`所选音色 ${voiceId} 未生成有效配音文件`);
     return publicResult(actual, {
       shot_index: index,
       index: index + 1,
       text,
       duration_sec: estimatedDuration,
-      provider_used: `aliyun-tts/${voiceId}`,
+      provider_used: `${ttsService.voiceProviderForId(voiceId) || 'shared-tts'}/${voiceId}`,
     });
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;

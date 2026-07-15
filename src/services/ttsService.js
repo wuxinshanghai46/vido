@@ -41,6 +41,17 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
     throw new Error('自定义声音合成失败，请检查声音文件或配置 阿里 CosyVoice / 火山声音复刻 API Key 以启用声音克隆');
   }
 
+  // 显式选择的智谱音色必须回到智谱合成。此前它会落入下方阿里链，
+  // 把 tongtong 等智谱 voice id 误传给 CosyVoice，最终得到 418
+  // InvalidParameter。显式音色失败时不改用另一位说话人，避免声音错乱。
+  if (voiceProviderForId(voiceId) === 'zhipu') {
+    const apiKey = _getTTSKey('zhipu');
+    if (!apiKey) throw new Error(`所选智谱音色 ${voiceId} 当前未配置可用的 TTS API Key`);
+    const result = await generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey });
+    if (!result) throw new Error(`智谱音色 ${voiceId} 合成返回空结果`);
+    return _postProcessAudio(result);
+  }
+
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const chain = [
@@ -384,6 +395,19 @@ const ZHIPU_VOICES = {
   'male-young': 'jam',
   'child': 'tongtong',
 };
+
+const ZHIPU_PUBLIC_VOICE_IDS = new Set([
+  'tongtong', 'xiaochen', 'chuichui', 'jam', 'kazi', 'douji', 'luodo',
+]);
+
+function voiceProviderForId(voiceId = '') {
+  const id = String(voiceId || '').trim();
+  if (!id) return '';
+  if (ZHIPU_PUBLIC_VOICE_IDS.has(id) || Object.prototype.hasOwnProperty.call(ZHIPU_VOICES, id)) return 'zhipu';
+  if (/^(?:long|loong)[a-z0-9_-]+$/i.test(id)) return 'aliyun-tts';
+  if (/^custom[_:]/i.test(id)) return 'custom';
+  return '';
+}
 
 async function generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey }) {
   const OpenAI = require('openai');
@@ -1326,4 +1350,4 @@ async function testProviderSynthesis(providerId, outputPath) {
   return await fn();
 }
 
-module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio, testProviderSynthesis };
+module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio, testProviderSynthesis, voiceProviderForId };
