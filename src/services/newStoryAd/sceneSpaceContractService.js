@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
 const { cleanText } = require('./contextBuilder');
 const verification = require('./visualVerificationService');
+const personIdentity = require('./personIdentityContractService');
 
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 
@@ -258,7 +259,68 @@ function normalizeKeyframeQa(input = {}) {
   return qa;
 }
 
+function positiveShotText(shot = {}) {
+  const layers = Array.isArray(shot.visual_layers)
+    ? shot.visual_layers.map(layer => typeof layer === 'string' ? layer : (layer?.content || layer?.text || ''))
+    : [];
+  return [
+    shot.title,
+    shot.visual,
+    shot.visual_description,
+    shot.story_visual,
+    shot.promo_visual,
+    shot.action,
+    shot.visual_action,
+    shot.content_prompt,
+    ...layers,
+  ].filter(Boolean).join(' ');
+}
+
+function keyframeSceneContract(contract = {}, shot = {}) {
+  const next = { ...(contract || {}) };
+  const personAuthorized = personIdentity.shotPersonPresence(shot, {}).required;
+  const shotText = positiveShotText(shot);
+  const brandCopyAuthorized = /品牌|标识|标志|文字|字幕|标语|logo|slogan|brand\s*(?:name|mark|copy)?/i.test(shotText);
+  const clauses = String(next.negative || '').split(/[；;\n]/).map(value => value.trim()).filter(Boolean);
+  next.negative = clauses.map(clause => {
+    const emptyScenePersonRule = /空场景|(?:不要|不得|不能|禁止)(?:画面中)?出现(?:任何)?(?:真人|人物|模特|背影|侧脸|手|身体局部|人形剪影|人物倒影)(?:[、，,]|$)/i.test(clause);
+    if (personAuthorized && emptyScenePersonRule) return '';
+    const copyRule = /(?:禁止|不要|不得|不能|避免).*(?:文字|logo|品牌标识|标语|字幕)/i.test(clause);
+    if (brandCopyAuthorized && copyRule) {
+      return /水印|日期戳/i.test(clause)
+        ? '禁止未要求的水印、日期戳或随机文字；当前镜头明确要求的品牌文字与标识除外'
+        : '';
+    }
+    return clause;
+  }).filter(Boolean).join('；');
+  next.final_shot_authorizations = {
+    person: personAuthorized,
+    requested_brand_copy_or_logo: brandCopyAuthorized,
+    note: 'These authorizations come only from the current shot. Empty-scene capture restrictions must not override them.',
+  };
+  return next;
+}
+
+function staticShotContract(shot = {}) {
+  const {
+    transition_type, transitionType, transition, transition_reason, transitionReason,
+    audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing,
+    ...still
+  } = shot || {};
+  return {
+    ...still,
+    static_qa_scope: {
+      still_image_only: true,
+      temporal_effects_not_evaluated: true,
+      omitted_temporal_fields: [transition_type, transitionType, transition, transition_reason, transitionReason]
+        .filter(Boolean).length,
+    },
+  };
+}
+
 async function reviewKeyframe(options = {}) {
+  const sceneContract = keyframeSceneContract(options.contract || {}, options.shot || {});
+  const shotContract = staticShotContract(options.shot || {});
   const request = {
     taskId: options.taskId || '',
     stage: 'new_story_ad.scene_consistency_qa',
@@ -268,13 +330,16 @@ async function reviewKeyframe(options = {}) {
       'Judge spatial identity, fixed anchors, camera intent, material family and newly invented architecture.',
       'People and the advertised subject may be added when required by the shot.',
       'A person named or described in the shot contract is authorized even though the empty scene reference contains no person. Never reject that required actor merely for being absent from the empty reference.',
+      'The empty scene reference may contain capture-only negatives such as no people or no brand copy. For the final keyframe, explicit current-shot people, products, copy and logos override those capture-only restrictions.',
       'When the shot requires pointing, touching, operating, holding or gaze interaction, verify that the intended target is visibly present, physically reachable and aligned with the hand/finger/eyeline. Reject unexplained empty-air gestures.',
       'Judge only the anchor_ids explicitly required by the current shot contract. For detail, macro or tight close-up shots, do not require unrelated wide-scene furniture or distant anchors outside the intended framing; instead verify local material, structure, camera intent and the selected anchor.',
+      'This is a still-image QA step. Never fail a keyframe for not proving fade, dissolve, animation, camera motion, timing, gradual appearance or any other temporal effect. Those belong to video/composition QA. Judge only the intended visible end-state and available layout space.',
       'Return JSON only. Never use fixed industry expectations.',
       'All mismatch_reasons and forbidden_new_elements entries must be concise Simplified Chinese written for ordinary product users.',
     ].join('\n'),
-    userPrompt: 'Scene contract: ' + JSON.stringify(options.contract || {}).slice(0, 10000)
-      + '\nShot contract: ' + JSON.stringify(options.shot || {}).slice(0, 5000)
+    userPrompt: 'Scene contract for this final keyframe: ' + JSON.stringify(sceneContract).slice(0, 10000)
+      + '\nStatic shot contract: ' + JSON.stringify(shotContract).slice(0, 5000)
+      + '\nTemporal QA boundary: ignore transition, dissolve, fade, animation and gradual-appearance timing. Do not mention their absence in any failure reason.'
       + '\nReturn one JSON object with pass boolean, status string, '
       + 'scene_consistency_score, anchor_consistency_score, camera_match_score and material_match_score '
       + 'as REQUIRED EVALUATED numbers from 0 to 1, plus mismatch_reasons and forbidden_new_elements string arrays. '
@@ -288,7 +353,8 @@ async function reviewKeyframe(options = {}) {
     maxCandidates: Math.max(1, Math.min(3, Number(options.maxCandidates) || 2)),
     stageBudgetMs: Math.max(30000, Number(options.stageBudgetMs) || 90000),
   };
-  let result = await modelGateway.generateVision(request);
+  const gateway = options.gateway || modelGateway;
+  let result = await gateway.generateVision(request);
   let parsed = safeJson(result.text);
   const keyframeScoreFields = [
     ['scene_consistency_score', 'scene_continuity', 'scene_consistency'],
@@ -297,7 +363,7 @@ async function reviewKeyframe(options = {}) {
     ['material_match_score', 'material_fidelity', 'material_match'],
   ];
   if (!hasRequiredScores(parsed, keyframeScoreFields)) {
-    result = await modelGateway.generateVision({
+    result = await gateway.generateVision({
       ...request,
       userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact schema with all four numeric scores from 0 to 1.',
     });
@@ -340,5 +406,7 @@ module.exports = {
   normalizeContract,
   normalizeAnchors,
   normalizeZones,
+  keyframeSceneContract,
+  staticShotContract,
   reviewKeyframe,
 };

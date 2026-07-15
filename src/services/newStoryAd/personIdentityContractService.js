@@ -205,8 +205,6 @@ function shotPersonPresence(shot = {}, contract = {}) {
   ].filter(Boolean).join(' ');
   const handVisible = /手部|手指|指尖|手掌|手腕|手臂|\b(?:hand|finger|fingertip|palm|wrist|arm)\b/i.test(text);
   const wardrobeVisible = /袖口|衣袖|服装|衣服|外套|连衣裙|衬衫|裤装|鞋|配饰|\b(?:sleeve|wardrobe|outfit|dress|shirt|jacket|trouser|shoe|accessor)\w*\b/i.test(text);
-  const explicitPartialFraming = /身体局部|局部身体|手部特写|手指特写|指尖特写|袖口特写|微距|macro|extreme_close_up|\b(?:hand[- ]only|partial\s+(?:body|figure))\b/i.test(text);
-  const partial = explicitPartialFraming || handVisible || wardrobeVisible;
   const facePartial = /侧脸|半张脸|\b(?:side\s+profile|partial\s+face)\b/i.test(text);
   const reflection = /人物倒影|人物反射|\b(?:human\s+reflection|person\s+reflection)\b/i.test(text);
   const obscured = /背影|人形剪影|\b(?:silhouette|back\s+view)\b/i.test(text);
@@ -215,10 +213,18 @@ function shotPersonPresence(shot = {}, contract = {}) {
   const bodyVisible = /全身|半身|人物站|人物坐|人物行走|演员站|演员坐|模特站|模特走|\b(?:full[- ]body|half[- ]body|standing person|seated person|walking person)\b/i.test(text);
   const fullBodyVisible = faceVisible || bodyVisible;
   const castDeclared = shotCharacters.length > 0 || lockedCharacters.length > 0;
+  const explicitPersonPartial = /身体局部|局部身体|手部特写|手指特写|指尖特写|袖口特写|人物特写|人像特写|脸部特写|\b(?:hand[- ]only|partial\s+(?:body|figure)|person\s+close[- ]?up|portrait\s+close[- ]?up)\b/i.test(text);
+  const genericTightFraming = /微距|特写|macro|extreme_close_up|close[-_ ]?up/i.test(text);
+  // A generic macro/close-up describes framing, not its subject. It becomes
+  // a partial-person requirement only when the shot independently declares a
+  // person or a visible body/wardrobe dimension.
+  const partialPersonFraming = explicitPersonPartial
+    || (genericTightFraming && (castDeclared || handVisible || wardrobeVisible || faceVisible || bodyVisible || reflection || obscured || full));
+  const partial = partialPersonFraming || handVisible || wardrobeVisible;
   if (shotCharacters.length || lockedCharacters.length || partial || facePartial || reflection || obscured || full) {
     return {
       required: true,
-      mode: facePartial ? 'face_partial' : (reflection && !faceVisible ? 'reflection' : (obscured && !faceVisible ? 'obscured' : ((explicitPartialFraming || (!castDeclared && partial)) && !fullBodyVisible ? 'partial' : 'person'))),
+      mode: facePartial ? 'face_partial' : (reflection && !faceVisible ? 'reflection' : (obscured && !faceVisible ? 'obscured' : ((partialPersonFraming || (!castDeclared && partial)) && !fullBodyVisible ? 'partial' : 'person'))),
       visible_parts: [handVisible ? 'hand' : '', wardrobeVisible ? 'wardrobe' : '', faceVisible ? 'face' : '', bodyVisible ? 'body' : '', reflection ? 'reflection' : '', obscured ? 'obscured' : ''].filter(Boolean),
       reasons: [
         shotCharacters.length || lockedCharacters.length ? 'cast' : '',

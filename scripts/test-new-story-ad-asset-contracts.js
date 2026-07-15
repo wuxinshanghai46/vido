@@ -3,6 +3,7 @@ process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://public.example';
 const person = require('../src/services/newStoryAd/personIdentityContractService');
 const product = require('../src/services/newStoryAd/productIdentityContractService');
 const scenes = require('../src/services/newStoryAd/sceneBindingService');
+const sceneQa = require('../src/services/newStoryAd/sceneSpaceContractService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const publicReferences = require('../src/services/newStoryAd/publicReferenceService');
 const sceneViewStrategy = require('../src/services/newStoryAd/sceneViewStrategyService');
@@ -55,6 +56,46 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
   assert.match(aliasPersonContract.wardrobe.description, /深蓝色长袖/);
   assert.match(aliasPersonContract.appearance.hair_style, /黑色束发/);
   assert.equal(person.shotPersonPresence({ characters: [{ name: 'A' }], visual: 'A walks through the room in a black dress' }).mode, 'person');
+  const materialEndcard = {
+    subject_type: 'brand_endcard',
+    shot_type: 'endcard',
+    shot_size: 'extreme_close_up',
+    characters: [],
+    visual: '超写实微距展示当前任务材质纹理，中心留出品牌落版空间',
+    action: '品牌文字在最终画面清晰呈现',
+  };
+  assert.deepStrictEqual(person.shotPersonPresence(materialEndcard), {
+    required: false,
+    mode: 'none',
+    reasons: [],
+  });
+  assert.strictEqual(person.shotPersonRequired({ cast_mode: 'single', person_asset: personAsset }, materialEndcard), false);
+  assert.strictEqual(person.shotForbidsPerson({ cast_mode: 'single' }, materialEndcard), true);
+  const personEndcard = {
+    ...materialEndcard,
+    characters: [{ name: '当前任务角色' }],
+    visual: '当前任务角色缩小置于画面一侧，场景与材质保持主导，中心留出品牌落版空间',
+  };
+  assert.strictEqual(person.shotPersonPresence(personEndcard).required, true);
+  assert.strictEqual(person.shotForbidsPerson({ cast_mode: 'single' }, personEndcard), false);
+  const qaSceneContract = sceneQa.keyframeSceneContract({
+    negative: '空场景资产，不要出现真人、手或人物倒影；禁止出现人物模糊、比例失真；禁止画面中出现文字或logo叠加；禁止任何水印、日期戳、品牌标识或字幕',
+  }, personEndcard);
+  assert.equal(qaSceneContract.final_shot_authorizations.person, true);
+  assert.equal(qaSceneContract.final_shot_authorizations.requested_brand_copy_or_logo, true);
+  assert.doesNotMatch(qaSceneContract.negative, /空场景资产|不要出现真人|文字或logo叠加/);
+  assert.match(qaSceneContract.negative, /人物模糊/);
+  assert.match(qaSceneContract.negative, /水印/);
+  const staticContract = sceneQa.staticShotContract({
+    ...personEndcard,
+    transition_type: 'dissolve',
+    transition_reason: '品牌缓慢淡入',
+    music_cue: '收束音乐',
+  });
+  assert.strictEqual(staticContract.transition_type, undefined);
+  assert.strictEqual(staticContract.transition_reason, undefined);
+  assert.strictEqual(staticContract.music_cue, undefined);
+  assert.strictEqual(staticContract.static_qa_scope.temporal_effects_not_evaluated, true);
   assert.strictEqual(personContract.status, 'verified');
   assert.doesNotThrow(() => person.assertVerifiedPerson({ cast_mode: 'single', person_asset: { ...personAsset, person_contract: personContract }, person_contract: personContract }));
   assert.throws(
