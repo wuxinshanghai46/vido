@@ -2513,19 +2513,36 @@
     if (!keepChanges && index >= 0 && state.shotEditorSnapshot) {
       state.shots[index] = state.shotEditorSnapshot;
     }
-    within('.dh-nsa-shot-edit-modal')?.remove();
+    document.querySelector('.dh-nsa-shot-edit-modal')?.remove();
+    document.documentElement.classList.remove('dh-nsa-modal-open');
     state.shotEditorIndex = -1;
     state.shotEditorSnapshot = null;
     if (rerender) renderStoryboard();
   }
 
+  async function saveShotEditorModal(index, button, modal) {
+    const shotIndex = Math.max(0, Number(index) || 0);
+    syncShotFieldsFromDom(shotIndex, modal);
+    setButtonBusy(button, true, '保存中...');
+    try {
+      const id = await ensureTask();
+      await saveStoryboardEdits(id);
+      closeShotEditorModal({ keepChanges: true, rerender: false });
+      renderAll();
+      toast(`第 ${shotIndex + 1} 镜已保存`, 'success');
+    } catch (err) {
+      toast(err.message || '保存本镜失败', 'error');
+    } finally {
+      if (button?.isConnected) setButtonBusy(button, false);
+    }
+  }
+
   function openShotEditorModal(index = 0) {
     const shotIndex = Math.max(0, Number(index) || 0);
     if (!state.shots[shotIndex]) return;
-    if (within('.dh-nsa-shot-edit-modal')) closeShotEditorModal({ keepChanges: false, rerender: true });
+    if (document.querySelector('.dh-nsa-shot-edit-modal')) closeShotEditorModal({ keepChanges: false, rerender: true });
     const editor = within(`[data-nsa-shot-editor="${shotIndex}"]`);
-    const mount = root();
-    if (!editor || !mount) return;
+    if (!editor) return;
     state.shotEditorIndex = shotIndex;
     state.shotEditorSnapshot = JSON.parse(JSON.stringify(state.shots[shotIndex]));
     const modal = document.createElement('div');
@@ -2547,10 +2564,47 @@
     </div>`;
     editor.hidden = false;
     modal.querySelector('[data-nsa-shot-edit-content]')?.appendChild(editor);
-    modal.addEventListener('click', event => {
-      if (event.target === modal) closeShotEditorModal({ keepChanges: false, rerender: true });
+    modal.addEventListener('click', async event => {
+      const close = event.target.closest('[data-nsa-shot-edit-close]');
+      if (event.target === modal || close) {
+        event.preventDefault();
+        closeShotEditorModal({ keepChanges: false, rerender: true });
+        return;
+      }
+      const save = event.target.closest('[data-nsa-shot-save]');
+      if (save) {
+        event.preventDefault();
+        await saveShotEditorModal(shotIndex, save, modal);
+      }
     });
-    mount.appendChild(modal);
+    modal.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeShotEditorModal({ keepChanges: false, rerender: true });
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        const save = modal.querySelector('[data-nsa-shot-save]');
+        if (save && !save.disabled) save.click();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.hidden && el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    document.documentElement.classList.add('dh-nsa-modal-open');
+    document.body.appendChild(modal);
     modal.querySelector('textarea, input, select')?.focus();
   }
 
@@ -3586,19 +3640,40 @@
     modal = document.createElement('div');
     modal.id = id;
     modal.className = 'dh-nsa-modal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.56);display:none;align-items:center;justify-content:center;padding:24px;';
-    modal.innerHTML = `<div class="dh-nsa-modal-panel" style="width:min(920px,96vw);max-height:86vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.28);padding:18px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
-        <b style="font-size:18px;">${escapeHtml(title)}</b>
-        <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-modal-close>关闭</button>
+    modal.innerHTML = `<div class="dh-nsa-modal-panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="dh-nsa-modal-head">
+        <b>${escapeHtml(title)}</b>
+        <button type="button" class="dh-modal-close-btn" data-nsa-modal-close aria-label="关闭弹窗" title="关闭">×</button>
       </div>
-      <div data-nsa-modal-body></div>
+      <div class="dh-nsa-modal-content" data-nsa-modal-body></div>
     </div>`;
     modal.addEventListener('click', e => {
       if (e.target === modal || e.target.closest('[data-nsa-modal-close]')) {
         if (modal.id === 'dhNsaVoicePickerModal') stopNsaVoicePreview();
         if (modal.id === 'dhNsaMusicLibraryModal') stopNsaMusicPreview();
-        modal.style.display = 'none';
+        hideNsaModal(modal);
+      }
+    });
+    modal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (modal.id === 'dhNsaVoicePickerModal') stopNsaVoicePreview();
+        if (modal.id === 'dhNsaMusicLibraryModal') stopNsaMusicPreview();
+        hideNsaModal(modal);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), audio[controls], [tabindex]:not([tabindex="-1"])'))
+        .filter(el => !el.hidden && el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     });
     document.body.appendChild(modal);
@@ -3606,7 +3681,16 @@
   }
 
   function showNsaModal(modal) {
-    if (modal) modal.style.display = 'flex';
+    if (modal) {
+      document.documentElement.classList.add('dh-nsa-modal-open');
+      modal.style.display = 'flex';
+      modal.querySelector('[data-nsa-modal-body] input, [data-nsa-modal-body] textarea, [data-nsa-modal-body] select, [data-nsa-modal-body] button, [data-nsa-modal-close]')?.focus();
+    }
+  }
+
+  function hideNsaModal(modal) {
+    if (modal) modal.style.display = 'none';
+    document.documentElement.classList.remove('dh-nsa-modal-open');
   }
 
   async function loadNsaVoices(force = false) {
@@ -3763,19 +3847,19 @@
         <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-refresh>刷新音色</button>
       </div>
       <div data-nsa-voice-genders style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;">
-        <span style="font-size:13px;font-weight:700;color:#334155;margin-right:2px;">声音性别</span>
+        <span class="dh-nsa-picker-label">声音性别</span>
         ${[['all', '全部'], ['female', '女声'], ['male', '男声']].map(([id, label]) => `<button type="button" class="dh-btn dh-btn-sm ${state.voiceGenderFilter === id ? 'dh-btn-primary' : 'dh-btn-ghost'}" data-nsa-voice-gender="${id}">${label}</button>`).join('')}
       </div>
       <div data-nsa-voice-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
         ${voices.map(voice => {
           const display = voiceDisplay(voice);
           const id = String(voice.id || '');
-          return `<div data-nsa-voice-card data-nsa-voice-gender="${nsaVoiceGender(voice)}" data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid ${id === state.voiceId ? '#38d9c8' : '#dbe7f5'};background:${id === state.voiceId ? '#e8fffb' : '#fff'};border-radius:10px;padding:8px;min-height:86px;">
-            <button type="button" data-nsa-voice-select="${escapeHtml(id)}" ${voice.selectable === false ? 'disabled' : ''} style="min-width:0;text-align:left;border:0;background:transparent;padding:4px;cursor:${voice.selectable === false ? 'not-allowed' : 'pointer'};opacity:${voice.selectable === false ? '.68' : '1'};">
-              <b style="display:block;color:#0f172a;margin-bottom:5px;">${escapeHtml(display.name)}</b>
-              <span style="display:block;color:#64748b;font-size:12px;line-height:1.45;">${escapeHtml(display.sub)}</span>
-              ${id === state.voiceId ? '<small style="color:#029e8d;font-weight:700;">已选择</small>' : ''}
-              ${voice.selectable === false ? '<small style="display:block;color:#b45309;margin-top:4px;">录音已保留，完成声音克隆后即可用于配音</small>' : ''}
+          return `<div class="dh-nsa-picker-card dh-nsa-voice-card ${id === state.voiceId ? 'is-selected' : ''}" data-nsa-voice-card data-nsa-voice-gender="${nsaVoiceGender(voice)}" data-nsa-voice-search="${escapeHtml(`${display.name} ${display.sub}`.toLowerCase())}">
+            <button type="button" class="dh-nsa-picker-select" data-nsa-voice-select="${escapeHtml(id)}" ${voice.selectable === false ? 'disabled' : ''}>
+              <b>${escapeHtml(display.name)}</b>
+              <span>${escapeHtml(display.sub)}</span>
+              ${id === state.voiceId ? '<small class="is-selected-note">已选择</small>' : ''}
+              ${voice.selectable === false ? '<small class="is-warning-note">录音已保留，完成声音克隆后即可用于配音</small>' : ''}
             </button>
             <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-preview="${escapeHtml(id)}" aria-label="试听${escapeHtml(display.name)}">▶ 试听</button>
           </div>`;
@@ -3813,7 +3897,7 @@
     applyVoiceFilters();
     body.querySelector('[data-nsa-voice-record]')?.addEventListener('click', () => {
       stopNsaVoicePreview();
-      modal.style.display = 'none';
+      hideNsaModal(modal);
       document.querySelector('[data-tab="voice-clone"]')?.click();
     });
     body.querySelector('[data-nsa-voice-list]')?.addEventListener('click', async e => {
@@ -3838,7 +3922,7 @@
       setFieldValue('#dhNsaAdVoiceId', state.voiceId);
       renderAll();
       stopNsaVoicePreview();
-      modal.style.display = 'none';
+      hideNsaModal(modal);
       toast('配音已选择', 'success');
     });
   }
@@ -3888,13 +3972,13 @@
         <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-search>搜索</button>
       </div>
       <div data-nsa-music-profiles style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:0 0 12px;">
-        ${BGM_PROFILES.map(([id, label, desc]) => `<button type="button" data-nsa-music-profile="${escapeHtml(id)}" style="text-align:left;border:1px solid ${id === state.bgmProfile ? '#2dd4bf' : '#dbe7f5'};background:${id === state.bgmProfile ? '#e8fffb' : '#fff'};border-radius:10px;padding:9px 11px;cursor:pointer;">
-          <b style="display:block;color:#0f172a;margin-bottom:3px;">${escapeHtml(label)}</b>
-          <small style="display:block;color:#64748b;line-height:1.4;">${escapeHtml(desc)}</small>
+        ${BGM_PROFILES.map(([id, label, desc]) => `<button type="button" class="dh-nsa-picker-card dh-nsa-music-profile ${id === state.bgmProfile ? 'is-selected' : ''}" data-nsa-music-profile="${escapeHtml(id)}">
+          <b>${escapeHtml(label)}</b>
+          <small>${escapeHtml(desc)}</small>
         </button>`).join('')}
       </div>
-      ${note ? `<p style="font-size:12px;color:#64748b;line-height:1.6;margin:0 0 12px;">${escapeHtml(note)}</p>` : ''}
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px;color:#64748b;font-size:12px;">
+      ${note ? `<p class="dh-nsa-picker-note">${escapeHtml(note)}</p>` : ''}
+      <div class="dh-nsa-picker-meta">
         <span>已加载 ${results.length} 首${resultCount ? ` · 当前检索约 ${resultCount} 首` : ''}</span>
         <span>第 ${page} / ${pageCount} 页</span>
       </div>
@@ -3904,16 +3988,16 @@
           const creator = item.creator || item.author || item.source || '';
           const url = item.preview_url || item.previewUrl || item.url || item.file_url || '';
           const license = item.license_label || item.licenseLabel || item.license || item.license_name || 'public';
-          return `<div style="border:1px solid #dbe7f5;border-radius:10px;padding:12px;background:#fff;">
+          return `<div class="dh-nsa-picker-card dh-nsa-music-card">
             <b style="display:block;margin-bottom:4px;">${escapeHtml(title)}</b>
-            <small style="display:block;color:#64748b;margin-bottom:8px;">${escapeHtml([creator, license].filter(Boolean).join(' · '))}</small>
+            <small class="dh-nsa-picker-secondary">${escapeHtml([creator, license].filter(Boolean).join(' · '))}</small>
             ${url ? `<audio controls preload="none" data-nsa-music-preview src="${escapeHtml(url)}" style="width:100%;height:32px;"></audio>` : ''}
             <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-music-import="${index}" style="margin-top:8px;">导入使用</button>
           </div>`;
         }).join('') || '<div class="dh-task-empty-note">暂无曲目，换一个关键词再试。</div>'}
       </div>
       <div style="display:flex;justify-content:center;padding:16px 0 2px;">
-        ${hasMore ? `<button type="button" class="dh-btn dh-btn-ghost" data-nsa-music-more>加载更多（第 ${page + 1} 页）</button>` : '<span style="font-size:12px;color:#94a3b8;">已加载当前检索可访问的全部结果</span>'}
+        ${hasMore ? `<button type="button" class="dh-btn dh-btn-ghost" data-nsa-music-more>加载更多（第 ${page + 1} 页）</button>` : '<span class="dh-nsa-picker-secondary">已加载当前检索可访问的全部结果</span>'}
       </div>`;
     body.querySelector('[data-nsa-music-search]')?.addEventListener('click', () => {
       const q = body.querySelector('[data-nsa-music-query]')?.value || '';
@@ -3958,7 +4042,7 @@
         state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item;
         renderAll();
         stopNsaMusicPreview();
-        ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库').style.display = 'none';
+        hideNsaModal(ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库'));
         toast('背景音乐已导入', 'success');
       } catch (err) {
         btn.disabled = false;
@@ -4107,7 +4191,7 @@
         outlineColor: useCustom ? (body.querySelector('[data-nsa-sub-outline]')?.value || '#000000') : '',
       };
       renderAll();
-      modal.style.display = 'none';
+      hideNsaModal(modal);
       toast(`字幕样式已更新：${subtitleStyleLabel(state.subtitleStyle)}`, 'success');
     });
     refreshPreview();
