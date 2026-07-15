@@ -310,6 +310,55 @@ async function main() {
     mediaAdapter.generateImage = originalGenerateImage;
   }
 
+  const qaReuseTask = service.createTask({ brief: '复用已有结构化视觉审核', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.saveOutput(qaReuseTask.id, 'context', { brief: '复用已有结构化视觉审核', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });
+  storage.saveOutput(qaReuseTask.id, 'storyboard_table', [{ index: 1, title: '已有结构化结果', subject_type: 'product_only' }]);
+  storage.saveOutput(qaReuseTask.id, 'keyframe_contracts', [{ contract_fingerprint: 'qa-reuse-contract-v1' }]);
+  storage.saveOutput(qaReuseTask.id, 'keyframes', [{
+    image_url: 'https://example.test/retained-old.png',
+    qa_policy_version: 2,
+    contract_fingerprint: 'qa-reuse-contract-v1',
+    qa: { pass: true, status: 'verified' },
+    current_generation_status: 'rejected',
+    candidates: [{
+      id: 'structured-qa-candidate',
+      image_url: 'https://example.test/structured-qa.png',
+      status: 'rejected',
+      qa_policy_version: 2,
+      contract_fingerprint: 'qa-reuse-contract-v1',
+      qa: {
+        pass: false,
+        status: 'rejected',
+        scene: {
+          pass: false,
+          status: 'failed',
+          scene_consistency_score: 0.85,
+          anchor_consistency_score: 0.7,
+          camera_match_score: 0.9,
+          material_match_score: 0.95,
+          mismatch_reasons: ['非阻断构图观察'],
+          forbidden_new_elements: [],
+        },
+        person: { pass: true, status: 'verified', conflicts: [] },
+        product: { pass: true, status: 'verified', conflicts: [] },
+      },
+    }],
+  }]);
+  let unexpectedVisionReviews = 0;
+  personKeyframeQa.reviewPersonKeyframe = async () => { unexpectedVisionReviews += 1; throw new Error('existing structured QA should be reused'); };
+  productKeyframeQa.reviewProductKeyframe = async () => { unexpectedVisionReviews += 1; throw new Error('existing structured QA should be reused'); };
+  try {
+    const reused = await service.retryKeyframeCandidateQa(qaReuseTask.id, 0, 'structured-qa-candidate');
+    assert.equal(reused.status, 'accepted');
+    assert.equal(reused.media_generated, false);
+    assert.equal(reused.vision_review_reused, true);
+    assert.equal(reused.qa.reused_structured_review, true);
+    assert.equal(unexpectedVisionReviews, 0);
+  } finally {
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
+  }
+
   const rebuildTask = service.createTask({ brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
   storage.saveOutput(rebuildTask.id, 'context', { brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });
   storage.saveOutput(rebuildTask.id, 'storyboard_table', [{ index: 1, title: '旧镜头', subject_type: 'scene_only', visual: '旧画面', transition_type: 'none' }]);

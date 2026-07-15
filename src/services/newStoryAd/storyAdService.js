@@ -2274,9 +2274,57 @@ async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const sceneAsset = sceneAssetForShot(ctx, shot, index);
+  const qaHistory = Array.isArray(candidate.qa_history) ? candidate.qa_history.slice(-4) : [];
+  if (candidate.qa && !['reviewing', 'unavailable'].includes(String(candidate.qa.status || ''))) {
+    qaHistory.push(candidate.qa);
+  }
+  const reusableQa = [...qaHistory].reverse().find(item => {
+    const scene = item?.scene || {};
+    return ['scene_consistency_score', 'anchor_consistency_score', 'camera_match_score', 'material_match_score']
+      .every(field => Number.isFinite(Number(scene[field])));
+  });
+  if (reusableQa) {
+    const reclassifiedSceneQa = sceneSpace.normalizeKeyframeQa(reusableQa.scene || {});
+    const reclassifiedQa = combineKeyframeQa({
+      ctx,
+      shot,
+      contract,
+      sceneReference: selectedSceneReference(sceneAsset, contract),
+      sceneQa: reclassifiedSceneQa,
+      personQa: reusableQa.person || {},
+      productQa: reusableQa.product || {},
+    });
+    if (reclassifiedQa.pass) {
+      candidates[candidateIndex] = {
+        ...candidate,
+        qa: { ...reclassifiedQa, reused_structured_review: true, reclassified_at: new Date().toISOString() },
+        qa_history: qaHistory.slice(-5),
+        status: 'accepted',
+        qa_policy_version: 2,
+        qa_reviewed_at: new Date().toISOString(),
+      };
+      keyframes[index] = {
+        ...frame,
+        candidates,
+        current_generation_status: 'accepted',
+        regeneration_error: '',
+        regeneration_error_code: '',
+      };
+      storage.saveOutput(taskId, 'keyframes', keyframes);
+      const selected = selectKeyframeCandidate(taskId, index, candidate.id);
+      return {
+        ...selected,
+        status: 'accepted',
+        qa: candidates[candidateIndex].qa,
+        media_generated: false,
+        vision_review_reused: true,
+      };
+    }
+  }
   const startedAt = new Date().toISOString();
   candidates[candidateIndex] = {
     ...candidate,
+    qa_history: qaHistory.slice(-5),
     status: 'qa_reviewing',
     qa_review_started_at: startedAt,
     qa: { ...(candidate.qa || {}), pass: false, status: 'reviewing', error: '' },
@@ -2312,6 +2360,7 @@ async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
     candidates[candidateIndex] = {
       ...candidate,
       qa,
+      qa_history: qaHistory.slice(-5),
       status,
       qa_policy_version: 2,
       qa_review_started_at: startedAt,
@@ -2342,6 +2391,7 @@ async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
     candidates[candidateIndex] = {
       ...candidate,
       qa,
+      qa_history: qaHistory.slice(-5),
       status: unavailable ? 'qa_unavailable' : 'rejected',
       qa_policy_version: 2,
       qa_review_started_at: startedAt,

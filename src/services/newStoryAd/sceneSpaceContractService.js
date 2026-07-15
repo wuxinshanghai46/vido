@@ -424,5 +424,6 @@ module.exports = {
   normalizeZones,
   keyframeSceneContract,
   staticShotContract,
+  normalizeKeyframeQa,
   reviewKeyframe,
 };
