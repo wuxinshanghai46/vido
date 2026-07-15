@@ -884,6 +884,12 @@ router.put('/tasks/:id/keyframes/:index/select', asyncRoute(async (req, res) => 
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
+router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = await service.retryKeyframeCandidateQa(req.params.id, req.params.index, req.params.candidateId);
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
+
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
   const body = req.body || {};
   return queueTaskStage(req, res, 'tts', () => service.generateTtsStage(req.params.id, body));

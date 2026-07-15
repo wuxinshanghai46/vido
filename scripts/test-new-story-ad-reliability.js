@@ -16,6 +16,8 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
 const personKeyframeQa = require('../src/services/newStoryAd/personConsistencyQaService');
+const productKeyframeQa = require('../src/services/newStoryAd/productConsistencyQaService');
+const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const storyboardTable = require('../src/services/newStoryAd/storyboardTableService');
 const newStoryAdModelConfig = require('./configure-new-story-ad-models');
@@ -85,6 +87,8 @@ async function main() {
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('视觉模型全部失败'), { code: 'VISION_QA_UNAVAILABLE' })), true);
+  assert.strictEqual(service.isQaInfrastructureError(new Error('视觉模型未返回有效 JSON')), true);
+  assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('vision response schema invalid'), { code: 'VISION_QA_SCHEMA_INVALID' })), true);
   assert.match(service.structuredQaFeedback({ mismatch_reasons: ['机位不一致'] }, { conflicts: ['人物身份不一致'] }, {}), /场景空间：机位不一致[\s\S]*人物身份：人物身份不一致/);
   storage.saveOutput(taskId, 'storyboard_table', Array.from({ length: 6 }, (_, index) => ({ index: index + 1 })));
   assert(service.keyframeStageBudgetMs(taskId, {}) > 15 * 60 * 1000, '多镜头批次不应再受固定 15 分钟限制');
@@ -263,6 +267,48 @@ async function main() {
   assert.equal(selected.qa_policy_version, 2);
   assert.equal(selected.accepted_revision.selected_candidate_id, 'new-candidate');
   assert.equal(selected.latest_attempt.status, 'accepted');
+
+  const qaRetryTask = service.createTask({ brief: '现有图片只重试 QA', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.saveOutput(qaRetryTask.id, 'context', { brief: '现有图片只重试 QA', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });
+  storage.saveOutput(qaRetryTask.id, 'storyboard_table', [{ index: 1, title: '现有候选', subject_type: 'product_only' }]);
+  storage.saveOutput(qaRetryTask.id, 'keyframe_contracts', [{ contract_fingerprint: 'qa-retry-contract-v1' }]);
+  storage.saveOutput(qaRetryTask.id, 'keyframes', [{
+    image_url: 'https://example.test/retained-old.png',
+    qa_policy_version: 2,
+    contract_fingerprint: 'qa-retry-contract-v1',
+    qa: { pass: true, status: 'verified' },
+    regeneration_error: '视觉模型未返回有效 JSON',
+    regeneration_error_code: 'VISION_QA_UNAVAILABLE',
+    current_generation_status: 'qa_unavailable',
+    candidates: [{
+      id: 'qa-only-candidate',
+      image_url: 'https://example.test/new-image-already-generated.png',
+      status: 'qa_unavailable',
+      qa_policy_version: 2,
+      contract_fingerprint: 'qa-retry-contract-v1',
+      generation_id: 'qa-only-gen',
+      qa: { pass: false, status: 'unavailable', error: '视觉模型未返回有效 JSON' },
+    }],
+  }]);
+  const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
+  const originalProductReview = productKeyframeQa.reviewProductKeyframe;
+  const originalGenerateImage = mediaAdapter.generateImage;
+  let generatedImages = 0;
+  personKeyframeQa.reviewPersonKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  productKeyframeQa.reviewProductKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  mediaAdapter.generateImage = async () => { generatedImages += 1; throw new Error('QA retry must not generate media'); };
+  try {
+    const qaRetried = await service.retryKeyframeCandidateQa(qaRetryTask.id, 0, 'qa-only-candidate');
+    assert.equal(qaRetried.status, 'accepted');
+    assert.equal(qaRetried.media_generated, false);
+    assert.equal(qaRetried.keyframe.selected_candidate_id, 'qa-only-candidate');
+    assert.equal(qaRetried.keyframe.image_url, 'https://example.test/new-image-already-generated.png');
+    assert.equal(generatedImages, 0);
+  } finally {
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
+    mediaAdapter.generateImage = originalGenerateImage;
+  }
 
   const rebuildTask = service.createTask({ brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
   storage.saveOutput(rebuildTask.id, 'context', { brief: '合同重建失效测试', product_subject: '测试主体', cast_mode: 'no_human', scene_assets: [] });

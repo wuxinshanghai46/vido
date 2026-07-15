@@ -28,7 +28,7 @@ function probe(filePath) {
 async function main() {
   const shots = continuity.withContinuityContracts([
     { index: 1, scene_id: 'dynamic_scene_a', action: 'subject raises the current task object', exit_frame_state: 'object remains raised on the right' },
-    { index: 2, scene_id: 'dynamic_scene_a', action: 'subject continues the same movement', screen_direction: 'left_to_right', transition_reason: 'continue the current action' },
+    { index: 2, scene_id: 'dynamic_scene_a', action: 'subject continues the same movement', screen_direction: 'left_to_right', transition_type: 'cut_on_action', transition_reason: 'continue the current action' },
     { index: 3, scene_id: 'dynamic_scene_b', action: 'show the result', transition_type: 'match_cut', audio_bridge: 'carry current ambience' },
   ]);
   assert.equal(shots[1].entry_frame_state, 'object remains raised on the right');

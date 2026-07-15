@@ -2801,16 +2801,23 @@
         surfaceLabels[shot.surface_topology?.mode || 'auto'],
         effectLabels[shot.motion_effect?.type || 'none'],
       ].filter(Boolean).join(' · ');
-      const currentFailed = !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked', 'qa_unavailable'].includes(String(frame.current_generation_status || '')));
+      const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
+      const reviewableCandidate = candidates.slice().reverse().find(candidate => candidate.status === 'qa_unavailable' || candidate.qa?.status === 'unavailable');
+      const qaUnavailable = String(frame.current_generation_status || '') === 'qa_unavailable' || !!reviewableCandidate;
+      const currentFailed = !qaUnavailable && !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked'].includes(String(frame.current_generation_status || '')));
       const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
-      const qaState = currentFailed || qaOutdated ? 'warning' : (qaPassed ? 'pass' : 'pending');
-      const qaLabel = frame.regeneration_error
+      const qaState = qaUnavailable || currentFailed || qaOutdated ? 'warning' : (qaPassed ? 'pass' : 'pending');
+      const qaLabel = qaUnavailable
+        ? '审核服务异常'
+        : (frame.regeneration_error
         ? '新版本未通过'
         : (currentFailed
           ? '生成失败'
-          : (qaOutdated ? (frame.contract_outdated ? '需重新生成' : '需重新验证') : (qaPassed ? 'QA 已通过' : '待验证')));
-      const qaDetail = frame.regeneration_error
+          : (qaOutdated ? (frame.contract_outdated ? '需重新生成' : '需重新验证') : (qaPassed ? 'QA 已通过' : '待验证'))));
+      const qaDetail = qaUnavailable
+        ? '新图已经生成，但视觉审核服务超时或返回格式异常。可直接重新验证此图，无需重新生成图片。'
+        : (frame.regeneration_error
         ? '新版本未通过，当前继续显示上一版可用画面。'
         : (currentFailed
           ? '本镜头生成失败，请重新生成。'
@@ -2818,22 +2825,22 @@
             ? (frame.contract_outdated
               ? '镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'
               : '当前画面由旧版审核规则生成，需按最新规则重新验证。')
-            : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。')));
+            : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。'))));
       const headerSummary = [cameraSummary, sceneName].filter(Boolean).join(' · ');
-      const showStatusNotice = currentFailed || qaOutdated;
+      const showStatusNotice = qaUnavailable || currentFailed || qaOutdated;
       const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
       const frameRatio = ratioMatch ? `${Number(ratioMatch[1]) || 9} / ${Number(ratioMatch[2]) || 16}` : '9 / 16';
-      const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
-      const candidateStrip = candidates.length > 1 || candidates.some(candidate => candidate.status === 'rejected')
+      const candidateStrip = candidates.length > 1 || candidates.some(candidate => ['rejected', 'qa_unavailable'].includes(candidate.status))
         ? `<div class="dh-nsa-candidate-strip"><b>\u5019\u9009\u5ba1\u7247</b><div>${candidates.map((candidate, candidateIndex) => {
             const candidateUrl = candidate.image_url || candidate.imageUrl || '';
             const accepted = candidate.qa?.pass === true && candidate.status !== 'rejected';
+            const reviewable = candidate.status === 'qa_unavailable' || candidate.qa?.status === 'unavailable';
             const selected = String(frame.selected_candidate_id || '') === String(candidate.id || '');
             const confirmRetained = accepted && selected && !!frame.regeneration_error && Number(candidate.qa_policy_version || 0) >= 2
               && !!contract.contract_fingerprint && candidate.contract_fingerprint === contract.contract_fingerprint;
-            return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : 'is-rejected'} ${selected ? 'is-selected' : ''}">
+            return `<span class="dh-nsa-candidate ${accepted ? 'is-accepted' : (reviewable ? 'is-review' : 'is-rejected')} ${selected ? 'is-selected' : ''}">
               <button type="button" data-nsa-candidate-preview="${i}:${candidateIndex}" title="\u67e5\u770b\u5019\u9009 ${candidateIndex + 1}">${candidateUrl ? `<img src="${escapeHtml(assetThumbUrl(candidateUrl, 320))}" alt="\u5019\u9009 ${candidateIndex + 1}" loading="lazy" decoding="async">` : `<i>${candidateIndex + 1}</i>`}</button>
-              ${accepted && (!selected || confirmRetained) ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">${confirmRetained ? '确认沿用旧版' : '\u9009\u7528'}</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`}
+              ${reviewable ? `<button type="button" class="dh-nsa-candidate-review" data-nsa-candidate-review="${i}:${escapeHtml(candidate.id || '')}">重新验证</button>` : (accepted && (!selected || confirmRetained) ? `<button type="button" class="dh-nsa-candidate-use" data-nsa-candidate-use="${i}:${escapeHtml(candidate.id || '')}">${confirmRetained ? '确认沿用旧版' : '\u9009\u7528'}</button>` : `<em>${selected ? '\u5df2\u9009' : '\u672a\u901a\u8fc7'}</em>`)}
             </span>`;
           }).join('')}</div></div>`
         : '';
@@ -2848,7 +2855,7 @@
             <span class="dh-nsa-qa-badge is-${qaState}" title="${escapeHtml(qaDetail)}">${escapeHtml(qaLabel)}</span>
           </div>
         </header>
-        ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span><button type="button" data-nsa-shot-regenerate="${i}">重新生成</button></div>` : ''}
+        ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span>${reviewableCandidate ? `<button type="button" data-nsa-candidate-review="${i}:${escapeHtml(reviewableCandidate.id || '')}">重新验证此图</button>` : `<button type="button" data-nsa-shot-regenerate="${i}">重新生成</button>`}</div>` : ''}
         <div class="dh-nsa-frame-media">
           ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
@@ -4735,6 +4742,39 @@
         const [shotIndex, candidateIndex] = String(candidatePreview.dataset.nsaCandidatePreview || '').split(':').map(Number);
         const candidate = state.keyframes?.[shotIndex]?.candidates?.[candidateIndex];
         if (candidate?.image_url || candidate?.imageUrl) openPreview(withAuthQuery(candidate.image_url || candidate.imageUrl), `\u7b2c ${shotIndex + 1} \u955c\u5019\u9009 ${candidateIndex + 1}`);
+        return;
+      }
+      const candidateReview = target.closest('[data-nsa-candidate-review]');
+      if (candidateReview && host.contains(candidateReview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const raw = String(candidateReview.dataset.nsaCandidateReview || '');
+        const separator = raw.indexOf(':');
+        const shotIndex = Number(raw.slice(0, separator));
+        const candidateId = raw.slice(separator + 1);
+        if (!state.taskId || separator < 1 || !candidateId) {
+          toast('无法识别要重新验证的候选画面', 'error');
+          return;
+        }
+        setButtonBusy(candidateReview, true, '验证中...');
+        try {
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/keyframes/${shotIndex}/candidates/${encodeURIComponent(candidateId)}/review`, { method: 'POST', body: {} });
+          state.keyframes = response.keyframes || state.keyframes;
+          if (response.status === 'accepted') {
+            state.videoClips = [];
+            state.finalVideo = null;
+            toast('现有候选画面已通过 QA 并采用，没有重新生成图片', 'success');
+          } else if (response.status === 'qa_unavailable') {
+            toast('视觉审核服务仍然异常，原图已保留，可稍后再次验证', 'warning');
+          } else {
+            toast(`重新验证完成：${response.qa?.mismatch_reasons?.join('；') || response.qa?.error || '画面未通过当前要求'}`, 'error');
+          }
+          renderAll();
+        } catch (error) {
+          toast(error.message || '候选画面重新验证失败', 'error');
+        } finally {
+          setButtonBusy(candidateReview, false);
+        }
         return;
       }
       const candidateUse = target.closest('[data-nsa-candidate-use]');

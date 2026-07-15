@@ -87,16 +87,16 @@ function surfacePrompt(surface = null, shotScope = 'auto') {
     lines.push('This is an isolated product/sample comparison insert. Divisions between samples belong only to this insert and must not redefine the topology of the master environment used by other shots.');
   }
   if (topology?.mode === 'continuous') {
-    lines.push('Surface topology lock: depict the specified primary surface as one continuous, uninterrupted construction plane, not as repeated modules or a multi-panel decorative grid.');
+    lines.push('Surface topology lock: ONE continuous, uninterrupted construction plane; never repeated modules, panels, tiles, grids, sample boards or decorative divisions.');
   } else if (topology?.mode === 'segmented') {
     lines.push('Surface topology lock: intentional segmented construction is required; make the segment logic physically coherent and task-specific.');
   } else if (topology?.mode === 'modular') {
     lines.push('Surface topology lock: a modular system is required; preserve its repeat logic and physical assembly details.');
   }
-  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: hide construction joints and edge closures from the visible composition; do not invent evenly spaced vertical or horizontal divisions.');
+  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: NO visible construction joints, panel borders or evenly spaced vertical/horizontal divisions.');
   if (topology?.seam_policy === 'visible') lines.push('Seam policy: visible joints are intentional evidence and must follow the task-defined construction logic.');
   if (topology?.seam_policy === 'task_defined') lines.push('Seam policy: follow only seams explicitly required by this shot or its task references; do not add generic decorative divisions.');
-  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: keep one coherent finish across the visible primary surface.');
+  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or color panels.');
   if (topology?.finish_distribution === 'gradient') lines.push('Finish distribution: use one continuous gradient without turning it into separate panels or sample blocks.');
   if (topology?.finish_distribution === 'regional') lines.push('Finish distribution: regional variation is allowed only where the shot explicitly places it; preserve the underlying continuous construction topology.');
   if (topology?.finish_distribution === 'sample_comparison') lines.push('Finish distribution: show clearly distinguishable comparison samples as product evidence within this shot only.');

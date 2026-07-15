@@ -24,14 +24,16 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
   const explicitPreviousFrame = shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
     || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true';
   const normalizedTransition = normalizeTransitionType(explicitTransition, transitionFallback);
+  const inheritsPreviousState = !!previousShot
+    && (explicitPreviousFrame || ['cut_on_action', 'match_cut'].includes(normalizedTransition));
   // Ordinary adjacent shots are editorial hard cuts. A cut-on-action must be
   // explicitly authored; inferring it from the mere presence of an action
   // serializes nearly every storyboard and invents continuity requirements.
   return {
     continuity_from: previousShot ? clean(shot.continuity_from || shot.continuityFrom || `shot_${previousIndex}`, 100) : '',
-    entry_frame_state: clean(shot.entry_frame_state || shot.entryFrameState || previousExit, 320),
+    entry_frame_state: clean(shot.entry_frame_state || shot.entryFrameState || (inheritsPreviousState ? previousExit : ''), 320),
     exit_frame_state: clean(shot.exit_frame_state || shot.exitFrameState || action, 320),
-    action_start: clean(shot.action_start || shot.actionStart || (previousShot ? previousExit : ''), 240),
+    action_start: clean(shot.action_start || shot.actionStart || (inheritsPreviousState ? previousExit : ''), 240),
     action_end: clean(shot.action_end || shot.actionEnd || action, 240),
     screen_direction: clean(shot.screen_direction || shot.screenDirection || '', 80),
     eyeline: clean(shot.eyeline || shot.eyeLine || '', 120),
@@ -39,7 +41,7 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     camera_movement: clean(shot.camera_movement || shot.cameraMovement || shot.camera || '', 160),
     object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 320),
     transition_type: normalizedTransition,
-    requires_previous_frame: !!previousShot && (explicitPreviousFrame || ['cut_on_action', 'match_cut'].includes(normalizedTransition)),
+    requires_previous_frame: inheritsPreviousState,
     transition_reason: clean(shot.transition_reason || shot.transitionReason || '', 240),
     audio_bridge: clean(shot.audio_bridge || shot.audioBridge || '', 180),
     same_scene_as_previous: sameScene,

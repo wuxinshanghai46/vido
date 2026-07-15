@@ -1974,11 +1974,15 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-nsa-candidate-strip > div { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 3px; }
 .dh-nsa-candidate { flex: 0 0 92px; display: grid; gap: 5px; padding: 5px; border: 1px solid var(--dh-border); border-radius: 9px; background: var(--dh-surface); }
 .dh-nsa-candidate.is-accepted { border-color: rgba(34,197,94,.45); }
+.dh-nsa-candidate.is-review { border-color: rgba(245,158,11,.55); }
 .dh-nsa-candidate.is-rejected { border-color: rgba(239,68,68,.42); opacity: .78; }
 .dh-nsa-candidate.is-selected { box-shadow: 0 0 0 2px rgba(56,189,248,.42); }
 .dh-nsa-candidate > button:first-child { width: 100%; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border: 0; border-radius: 6px; background: #05070b; cursor: zoom-in; }
 .dh-nsa-candidate img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.dh-nsa-candidate-use { min-height: 26px; border: 0; border-radius: 6px; color: #052e16; background: #86efac; font-size: 11px; font-weight: 900; cursor: pointer; }
+.dh-nsa-candidate-use,
+.dh-nsa-candidate-review { min-height: 26px; border: 0; border-radius: 6px; font-size: 11px; font-weight: 900; cursor: pointer; }
+.dh-nsa-candidate-use { color: #052e16; background: #86efac; }
+.dh-nsa-candidate-review { color: #422006; background: #fcd34d; }
 .dh-nsa-candidate em { color: var(--dh-text-muted); font-size: 10px; font-style: normal; text-align: center; }
 .dh-nsa-scene-views {
   display: grid;

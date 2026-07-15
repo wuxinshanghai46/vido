@@ -26,8 +26,50 @@ const continuousShot = {
 };
 const surfaceText = shotDesign.surfacePrompt(continuousShot.surface_topology, continuousShot.shot_scope);
 assert.match(surfaceText, /continuous, uninterrupted construction plane/i);
-assert.match(surfaceText, /hide construction joints/i);
+assert.match(surfaceText, /NO visible construction joints/i);
 assert.doesNotMatch(surfaceText, /stainless|wall|actress|佛山/i);
+
+const isolatedHardCut = continuity.continuityContract({
+  title: 'independent environment shot',
+  scene_id: 'scene_a',
+  transition_type: 'hard_cut',
+}, {
+  title: 'comparison insert',
+  scene_id: 'scene_a',
+  action: '第一块样品进入画面并与第二块样品比较',
+  exit_frame_state: '第一块样品停留在画面中央',
+}, 1);
+assert.strictEqual(isolatedHardCut.requires_previous_frame, false);
+assert.strictEqual(isolatedHardCut.entry_frame_state, '');
+assert.strictEqual(isolatedHardCut.action_start, '');
+
+const isolatedPrompt = storyAd.buildKeyframePrompt({
+  brief: 'A generic commercial environment',
+  product_subject: 'task subject',
+  scene_assets: [{
+    id: 'scene_a',
+    name: 'master environment',
+    surface_topology: { mode: 'segmented', seam_policy: 'visible', finish_distribution: 'sample_comparison' },
+  }],
+}, {
+  ...continuousShot,
+  scene_id: 'scene_a',
+  transition_type: 'hard_cut',
+}, {
+  visual_contract: {},
+  continuity_lock: {
+    transition_type: 'hard_cut',
+    requires_previous_frame: false,
+    entry_frame_state: '第一块样品停留在画面中央',
+    action_start: '第一块样品进入画面',
+  },
+}, 4);
+assert.match(isolatedPrompt, /Surface topology lock: ONE continuous, uninterrupted construction plane; never repeated modules, panels, tiles, grids, sample boards or decorative divisions\./);
+assert.match(isolatedPrompt, /Seam policy: NO visible construction joints, panel borders or evenly spaced vertical\/horizontal divisions\./);
+assert.match(isolatedPrompt, /Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or color panels\./);
+assert.doesNotMatch(isolatedPrompt, /第一块样品|Entry frame state:|Action start\/end:/);
+assert.strictEqual((isolatedPrompt.match(/Shot scope:/g) || []).length, 1);
+assert.doesNotMatch(isolatedPrompt, /Master environment only — Surface topology lock:/);
 
 const comparisonText = shotDesign.surfacePrompt({
   mode: 'segmented',

@@ -161,9 +161,9 @@ function keyframeStageBudgetMs(taskId, options = {}) {
 
 function isQaInfrastructureError(error) {
   const code = String(error?.code || '').toUpperCase();
-  if (['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
+  if (['VISION_QA_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID', 'VISION_QA_IMAGE_UNREADABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
   const message = String(error?.message || error || '');
-  return /视觉模型全部失败|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
+  return /视觉模型全部失败|视觉模型未返回有效\s*JSON|视觉\s*QA.*(?:JSON|结构|评分)|vision.*invalid\s*json|invalid\s*json.*vision|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
 }
 
 async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
@@ -1010,11 +1010,16 @@ function sceneAssetForShot(ctx = {}, shot = {}, index = 0) {
   return selectSceneAsset(assets, shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', index);
 }
 
-function sceneAssetPrompt(asset = {}) {
+function sceneAssetPrompt(asset = {}, options = {}) {
   if (!asset || typeof asset !== 'object') return '';
   const views = Array.isArray(asset.view_images) ? asset.view_images : [];
   const assetSurfaceTopology = asset.surface_topology || asset.surfaceTopology;
-  const surfaceContract = assetSurfaceTopology ? shotDesign.surfacePrompt(assetSurfaceTopology, 'environment') : '';
+  const rawSurfaceContract = options.includeSurfaceContract !== false && assetSurfaceTopology
+    ? shotDesign.surfacePrompt(assetSurfaceTopology, 'auto')
+    : '';
+  const surfaceContract = rawSurfaceContract
+    ? rawSurfaceContract.split('\n').map(line => `Master environment only — ${line}`).join('\n')
+    : '';
   return [
     `Locked scene asset: ${cleanText(asset.name || asset.scene_id || asset.id || 'task scene', 120)}`,
     asset.lock_strength ? `Scene lock strength: ${cleanText(asset.lock_strength, 60)}` : '',
@@ -1032,11 +1037,13 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualContract = contract.visual_contract || {};
   const sceneLock = contract.scene_lock || null;
   const continuityLock = contract.continuity_lock || shot.continuity || {};
+  const transitionType = cleanText(continuityLock.transition_type || 'hard_cut', 40).toLowerCase();
+  const inheritsPreviousState = continuityLock.requires_previous_frame === true || ['cut_on_action', 'match_cut'].includes(transitionType);
   const continuityText = [
-    continuityLock.continuity_from ? `Continuity from: ${cleanText(continuityLock.continuity_from, 100)}` : '',
-    continuityLock.entry_frame_state ? `Entry frame state: ${cleanText(continuityLock.entry_frame_state, 260)}` : '',
+    inheritsPreviousState && continuityLock.continuity_from ? `Continuity from: ${cleanText(continuityLock.continuity_from, 100)}` : '',
+    inheritsPreviousState && continuityLock.entry_frame_state ? `Entry frame state: ${cleanText(continuityLock.entry_frame_state, 260)}` : '',
     continuityLock.exit_frame_state ? `Exit frame state: ${cleanText(continuityLock.exit_frame_state, 260)}` : '',
-    (continuityLock.action_start || continuityLock.action_end) ? `Action start/end: ${cleanText(continuityLock.action_start, 180)} -> ${cleanText(continuityLock.action_end, 180)}` : '',
+    inheritsPreviousState && (continuityLock.action_start || continuityLock.action_end) ? `Action start/end: ${cleanText(continuityLock.action_start, 180)} -> ${cleanText(continuityLock.action_end, 180)}` : '',
     continuityLock.screen_direction ? `Screen direction: ${cleanText(continuityLock.screen_direction, 80)}` : '',
     continuityLock.eyeline ? `Eyeline: ${cleanText(continuityLock.eyeline, 100)}` : '',
     continuityLock.camera_axis ? `Camera axis: ${cleanText(continuityLock.camera_axis, 100)}` : '',
@@ -1063,7 +1070,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     : '';
   const previousFrame = options.previousFrame || null;
   const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
-  const sceneReferenceText = sceneAssetPrompt(sceneAsset);
+  const includeSceneSurfaceContract = !design.surface_topology || design.shot_scope === 'product_comparison';
+  const sceneReferenceText = sceneAssetPrompt(sceneAsset, { includeSurfaceContract: includeSceneSurfaceContract });
   const sceneBindingText = sceneLock ? [
     `Shot scene binding: ${cleanText(sceneLock.scene_id || '', 120)} / ${cleanText(sceneLock.scene_name || '', 120)}`,
     sceneLock.scene_view ? `Required scene view: ${cleanText(sceneLock.scene_view, 40)}` : '',
@@ -1164,11 +1172,11 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'subject', cap: 130, items: 2, match: /^Advertised subject|^Shot \d+:/i },
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
-    { name: 'design', cap: 460, items: 7, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|Surface topology lock:|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
-    { name: 'actor', cap: 360, items: 5, match: /Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
-    { name: 'scene', cap: 340, items: 5, match: /scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
+    { name: 'design', cap: 700, items: 9, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
+    { name: 'actor', cap: 320, items: 5, match: /Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
+    { name: 'scene', cap: 300, items: 5, match: /scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
-    { name: 'continuity', cap: 280, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
+    { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
     { name: 'product', cap: 200, items: 5, match: /Product visibility|Product presentation|Commercial evidence|Product identity lock|Product shape lock|Product material lock|Product color lock|Product reference images/i },
     { name: 'style', cap: 140, items: 2, match: /^Style:|Visual style direction|Scene direction|Custom scene requirement/i },
     { name: 'safety', cap: 220, items: 3, match: /Forbidden:|Negative visual|Semantic fidelity rule|Never infer a different industry|Use a real camera look/i },
@@ -1209,12 +1217,41 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     } else if (category.name === 'safety') {
       const rank = value => /Semantic fidelity rule/i.test(value) ? 0 : (/^Forbidden:|Negative visual|no-human lock/i.test(value) ? 1 : (/Use a real camera look/i.test(value) ? 2 : 3));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
+    } else if (category.name === 'design') {
+      const rank = value => /isolated product\/sample comparison insert/i.test(value) ? 0
+        : (/^Surface topology lock:/i.test(value) ? 1
+          : (/^Seam policy:/i.test(value) ? 2
+            : (/^Finish distribution:/i.test(value) ? 3
+              : (/^Task-specific surface note:/i.test(value) ? 4
+                : (/^Master environment only/i.test(value) ? 5 : 6)))));
+      values = values.slice().sort((a, b) => rank(a) - rank(b));
     }
-    const selected = values.slice(0, category.items || 1);
+    const selected = [...new Set(values)].slice(0, category.items || 1);
+    if (category.whole_lines) {
+      const complete = [];
+      let used = 0;
+      for (const value of selected) {
+        const normalized = cleanText(value, 1200);
+        const nextSize = normalized.length + (complete.length ? 3 : 0);
+        if (!normalized || used + nextSize > category.cap) continue;
+        complete.push(normalized);
+        used += nextSize;
+      }
+      return complete.join(' | ');
+    }
     const perItem = Math.max(40, Math.floor((category.cap - Math.max(0, selected.length - 1) * 3) / Math.max(1, selected.length)));
     return selected.map(value => cleanText(value, perItem)).filter(Boolean).join(' | ');
   }).filter(Boolean);
-  return excerpts.join('\n').slice(0, Math.max(400, Number(maxChars) || 2400));
+  const limit = Math.max(400, Number(maxChars) || 2400);
+  const output = [];
+  let used = 0;
+  for (const excerpt of excerpts) {
+    const nextSize = excerpt.length + (output.length ? 1 : 0);
+    if (used + nextSize > limit) continue;
+    output.push(excerpt);
+    used += nextSize;
+  }
+  return output.join('\n');
 }
 
 function previewShotPrompts(taskId, options = {}) {
@@ -1423,45 +1460,17 @@ async function generateKeyframesStage(taskId, options = {}) {
         let personQa;
         let productQa;
         try {
-          [sceneQa, personQa, productQa] = await Promise.all([
-          sceneReference
-            ? reviewWithInfrastructureRetry(attempt => sceneSpace.reviewKeyframe({
-              taskId,
-              sceneReferenceUrl: sceneReference,
-              generatedUrl: qaImageUrl,
-              contract: contracts[i]?.scene_lock || sceneAsset?.scene_contract || {},
-              shot,
-              timeoutMs: attempt ? 30000 : 45000,
-              maxCandidates: attempt ? 1 : 2,
-              stageBudgetMs: attempt ? 35000 : 70000,
-            }))
-            : Promise.resolve({
-              pass: true,
-              status: 'not_applicable',
-              reason: '当前任务没有已锁定场景资产，不执行场景空间一致性比较。',
-              checked_at: new Date().toISOString(),
-            }),
-          reviewWithInfrastructureRetry(attempt => personKeyframeQa.reviewPersonKeyframe({
+          const reviewed = await runKeyframeQaReviews({
             taskId,
             ctx,
             shot,
             contract: contracts[i] || {},
+            sceneAsset,
             generatedUrl: qaImageUrl,
-            timeoutMs: attempt ? 30000 : 45000,
-            maxCandidates: attempt ? 1 : 2,
-            stageBudgetMs: attempt ? 35000 : 70000,
-          })),
-          reviewWithInfrastructureRetry(attempt => productKeyframeQa.reviewProductKeyframe({
-            taskId,
-            ctx,
-            shot,
-            contract: contracts[i] || {},
-            generatedUrl: qaImageUrl,
-            timeoutMs: attempt ? 30000 : 45000,
-            maxCandidates: attempt ? 1 : 2,
-            stageBudgetMs: attempt ? 35000 : 70000,
-          })),
-          ]);
+          });
+          sceneQa = reviewed.sceneQa;
+          personQa = reviewed.personQa;
+          productQa = reviewed.productQa;
         } catch (error) {
           error.keyframe_candidate_generated = true;
           shotCandidates.push({
@@ -1494,26 +1503,15 @@ async function generateKeyframesStage(taskId, options = {}) {
           throw error;
         }
         const qaLatencyMs = Date.now() - qaStartedMs;
-        const conflicts = [
-          ...(sceneQa.mismatch_reasons || []),
-          ...(sceneQa.forbidden_new_elements || []),
-          ...(personQa.conflicts || []),
-          ...(productQa.conflicts || []),
-          personQa.retry_instruction || '',
-          productQa.retry_instruction || '',
-        ].filter(Boolean);
-        const scenePass = !sceneReference || (sceneQa.pass === true && sceneQa.status === 'passed');
-        const personPass = !(shotNeedsPerson || personForbidden) || (personQa.pass === true && personQa.status === 'verified');
-        const productPass = !productRequired || (productQa.pass === true && productQa.status === 'verified');
-        qa = {
-          pass: scenePass && personPass && productPass,
-          status: scenePass && personPass && productPass ? 'verified' : 'rejected',
-          scene: sceneQa,
-          person: personQa,
-          product: productQa,
-          mismatch_reasons: conflicts,
-          checked_at: new Date().toISOString(),
-        };
+        qa = combineKeyframeQa({
+          ctx,
+          shot,
+          contract: contracts[i] || {},
+          sceneReference,
+          sceneQa,
+          personQa,
+          productQa,
+        });
         shotCandidates.push({
           id: `shot_${i + 1}_candidate_${qaAttempt + 1}_${Date.now()}`,
           image_url: imageUrl,
@@ -1607,7 +1605,11 @@ async function generateKeyframesStage(taskId, options = {}) {
       attempts.push({ index: i, ok: false, code: err.code || 'KEYFRAME_FAILED', error: String(err.message || err) });
       if (previousAcceptedFrame) {
         if (!retryRequired) {
-          retainedRegenerationFailures.push({ index: i, error: String(err.message || err), code: err.code || 'KEYFRAME_FAILED' });
+          retainedRegenerationFailures.push({
+            index: i,
+            error: String(err.message || err),
+            code: isQaInfrastructureError(err) ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
+          });
         }
         keyframes[i] = {
           ...previousAcceptedFrame,
@@ -1617,7 +1619,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           error: '',
           error_code: '',
           regeneration_error: String(err.message || err),
-          regeneration_error_code: err.code || 'KEYFRAME_FAILED',
+          regeneration_error_code: isQaInfrastructureError(err) ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
           regeneration_failed_at: new Date().toISOString(),
           current_generation_status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected'),
           current_generation_id: generationProgress.generation_id,
@@ -1776,7 +1778,11 @@ async function generateKeyframesStage(taskId, options = {}) {
   if (retainedRegenerationFailures.length) {
     const finalStatus = keyframeCompletion(keyframes, shots);
     const shotNumbers = retainedRegenerationFailures.map(item => item.index + 1);
-    const message = `第 ${shotNumbers.join('、')} 镜的新版本未通过生成或 QA，已保留上一版可用画面。请根据具体原因调整后重试。`;
+    const qaUnavailableFailures = retainedRegenerationFailures.filter(item => item.code === 'VISION_QA_UNAVAILABLE');
+    const rejectedFailures = retainedRegenerationFailures.filter(item => item.code !== 'VISION_QA_UNAVAILABLE');
+    const message = qaUnavailableFailures.length && !rejectedFailures.length
+      ? `第 ${shotNumbers.join('、')} 镜的新图已经生成，但视觉审核服务超时或返回格式异常。图片已保留，可直接重新验证，无需再次生成。`
+      : `第 ${shotNumbers.join('、')} 镜的新版本未通过生成或 QA，已保留上一版可用画面。请根据具体原因调整后重试。`;
     generationProgress.status = 'failed';
     generationProgress.finished_at = new Date().toISOString();
     storage.saveOutput(taskId, 'keyframes', keyframes);
@@ -1787,7 +1793,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     });
     storage.updateTask(taskId, { status: 'working', stage: 'keyframes_partial', error: '', error_code: '', generation_progress: { ...generationProgress } });
     const err = new Error(message);
-    err.code = 'KEYFRAME_REGENERATION_REJECTED';
+    err.code = qaUnavailableFailures.length && !rejectedFailures.length ? 'VISION_QA_UNAVAILABLE' : 'KEYFRAME_REGENERATION_REJECTED';
     err.retryable = true;
     err.keyframes = keyframes;
     err.attempts = attempts;
@@ -1829,6 +1835,85 @@ function selectedSceneReference(sceneAsset = {}, contract = {}) {
     || views.find(item => cleanText(item?.key || item?.view || '', 40) === 'master')
     || views[0];
   return mediaAdapter.absolutePublicImageUrl(view?.url || view?.image_url || sceneAsset?.image_url || '');
+}
+
+async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, generatedUrl = '' } = {}) {
+  const sceneReference = selectedSceneReference(sceneAsset, contract);
+  const reviewUrl = /^https?:\/\//i.test(String(generatedUrl || ''))
+    ? String(generatedUrl)
+    : mediaAdapter.absolutePublicImageUrl(generatedUrl);
+  if (!reviewUrl) {
+    const error = new Error('候选关键帧缺少可审核的图片地址');
+    error.code = 'KEYFRAME_CANDIDATE_IMAGE_MISSING';
+    error.status = 422;
+    throw error;
+  }
+  const [sceneQa, personQa, productQa] = await Promise.all([
+    sceneReference
+      ? reviewWithInfrastructureRetry(attempt => sceneSpace.reviewKeyframe({
+        taskId,
+        sceneReferenceUrl: sceneReference,
+        generatedUrl: reviewUrl,
+        contract: contract?.scene_lock || sceneAsset?.scene_contract || {},
+        shot,
+        timeoutMs: attempt ? 45000 : 60000,
+        maxCandidates: attempt ? 2 : 3,
+        stageBudgetMs: attempt ? 90000 : 120000,
+      }), 2)
+      : Promise.resolve({
+        pass: true,
+        status: 'not_applicable',
+        reason: '当前任务没有已锁定场景资产，不执行场景空间一致性比较。',
+        checked_at: new Date().toISOString(),
+      }),
+    reviewWithInfrastructureRetry(attempt => personKeyframeQa.reviewPersonKeyframe({
+      taskId,
+      ctx,
+      shot,
+      contract,
+      generatedUrl: reviewUrl,
+      timeoutMs: attempt ? 45000 : 60000,
+      maxCandidates: attempt ? 2 : 3,
+      stageBudgetMs: attempt ? 90000 : 120000,
+    }), 2),
+    reviewWithInfrastructureRetry(attempt => productKeyframeQa.reviewProductKeyframe({
+      taskId,
+      ctx,
+      shot,
+      contract,
+      generatedUrl: reviewUrl,
+      timeoutMs: attempt ? 45000 : 60000,
+      maxCandidates: attempt ? 2 : 3,
+      stageBudgetMs: attempt ? 90000 : 120000,
+    }), 2),
+  ]);
+  return { sceneReference, sceneQa, personQa, productQa };
+}
+
+function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference = '', sceneQa = {}, personQa = {}, productQa = {} } = {}) {
+  const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
+  const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
+  const productRequired = productIdentity.shotProductRequired(ctx, shot, contract);
+  const conflicts = [
+    ...(sceneQa.mismatch_reasons || []),
+    ...(sceneQa.forbidden_new_elements || []),
+    ...(personQa.conflicts || []),
+    ...(productQa.conflicts || []),
+    personQa.retry_instruction || '',
+    productQa.retry_instruction || '',
+  ].filter(Boolean);
+  const scenePass = !sceneReference || (sceneQa.pass === true && sceneQa.status === 'passed');
+  const personPass = !(shotNeedsPerson || personForbidden) || (personQa.pass === true && personQa.status === 'verified');
+  const productPass = !productRequired || (productQa.pass === true && productQa.status === 'verified');
+  return {
+    pass: scenePass && personPass && productPass,
+    status: scenePass && personPass && productPass ? 'verified' : 'rejected',
+    scene: sceneQa,
+    person: personQa,
+    product: productQa,
+    mismatch_reasons: conflicts,
+    checked_at: new Date().toISOString(),
+  };
 }
 
 function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}) {
@@ -2143,6 +2228,141 @@ function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
     error_code: allCurrent ? '' : 'KEYFRAME_REGENERATION_REJECTED',
   });
   return { keyframe: keyframes[index], keyframes };
+}
+
+async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
+  const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
+  const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
+  const index = Math.max(0, Number(shotIndex) || 0);
+  const frame = keyframes[index];
+  const shot = shots[index];
+  const contract = contracts[index] || {};
+  if (!frame || !shot) {
+    const error = new Error('要重新验证的候选镜头不存在');
+    error.code = 'KEYFRAME_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const candidates = Array.isArray(frame.candidates) ? frame.candidates.slice() : [];
+  const candidateIndex = candidates.findIndex(item => String(item.id) === String(candidateId));
+  if (candidateIndex < 0) {
+    const error = new Error('要重新验证的候选关键帧不存在');
+    error.code = 'KEYFRAME_CANDIDATE_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const candidate = candidates[candidateIndex];
+  const currentFingerprint = contract.contract_fingerprint || '';
+  if (!currentFingerprint || candidate.contract_fingerprint !== currentFingerprint) {
+    const error = new Error('该候选与当前镜头设置不一致，不能重新验证');
+    error.code = 'KEYFRAME_CANDIDATE_CONTRACT_OUTDATED';
+    error.status = 422;
+    throw error;
+  }
+  const reviewStartedAt = Date.parse(candidate.qa_review_started_at || 0) || 0;
+  if (candidate.status === 'qa_reviewing' && Date.now() - reviewStartedAt < 10 * 60 * 1000) {
+    const error = new Error('该候选正在重新验证，请勿重复提交');
+    error.code = 'KEYFRAME_CANDIDATE_QA_IN_PROGRESS';
+    error.status = 409;
+    throw error;
+  }
+
+  const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const sceneAsset = sceneAssetForShot(ctx, shot, index);
+  const startedAt = new Date().toISOString();
+  candidates[candidateIndex] = {
+    ...candidate,
+    status: 'qa_reviewing',
+    qa_review_started_at: startedAt,
+    qa: { ...(candidate.qa || {}), pass: false, status: 'reviewing', error: '' },
+  };
+  keyframes[index] = {
+    ...frame,
+    candidates,
+    current_generation_status: 'qa_reviewing',
+    regeneration_error: '',
+    regeneration_error_code: '',
+  };
+  storage.saveOutput(taskId, 'keyframes', keyframes);
+
+  try {
+    const reviewed = await runKeyframeQaReviews({
+      taskId,
+      ctx,
+      shot,
+      contract,
+      sceneAsset,
+      generatedUrl: candidate.image_url || candidate.imageUrl || '',
+    });
+    const qa = combineKeyframeQa({
+      ctx,
+      shot,
+      contract,
+      sceneReference: reviewed.sceneReference,
+      sceneQa: reviewed.sceneQa,
+      personQa: reviewed.personQa,
+      productQa: reviewed.productQa,
+    });
+    const status = qa.pass ? 'accepted' : 'rejected';
+    candidates[candidateIndex] = {
+      ...candidate,
+      qa,
+      status,
+      qa_policy_version: 2,
+      qa_review_started_at: startedAt,
+      qa_reviewed_at: new Date().toISOString(),
+    };
+    keyframes[index] = {
+      ...frame,
+      candidates,
+      current_generation_status: qa.pass ? 'accepted' : 'rejected',
+      regeneration_error: qa.pass ? '' : `视觉 QA 未通过：${qa.mismatch_reasons.join('；') || '画面与当前合同不一致'}`,
+      regeneration_error_code: qa.pass ? '' : 'KEYFRAME_CANDIDATE_QA_REJECTED',
+    };
+    storage.saveOutput(taskId, 'keyframes', keyframes);
+    if (qa.pass) {
+      const selected = selectKeyframeCandidate(taskId, index, candidate.id);
+      return { ...selected, status: 'accepted', qa, media_generated: false };
+    }
+    storage.saveStage(taskId, 'keyframes', {
+      status: 'partial',
+      output_summary: `shot ${index + 1} existing candidate QA rejected`,
+      diagnostics: { candidate_id: candidate.id, qa_retry_only: true, media_generated: false, qa },
+    });
+    storage.updateTask(taskId, { status: 'working', stage: 'keyframes_partial', error: '', error_code: '', retryable: true });
+    return { status: 'rejected', qa, keyframe: keyframes[index], keyframes, media_generated: false };
+  } catch (error) {
+    const unavailable = isQaInfrastructureError(error);
+    const qa = { pass: false, status: unavailable ? 'unavailable' : 'failed', error: String(error.message || error), checked_at: new Date().toISOString() };
+    candidates[candidateIndex] = {
+      ...candidate,
+      qa,
+      status: unavailable ? 'qa_unavailable' : 'rejected',
+      qa_policy_version: 2,
+      qa_review_started_at: startedAt,
+      qa_reviewed_at: new Date().toISOString(),
+    };
+    keyframes[index] = {
+      ...frame,
+      candidates,
+      current_generation_status: unavailable ? 'qa_unavailable' : 'rejected',
+      regeneration_error: String(error.message || error),
+      regeneration_error_code: unavailable ? 'VISION_QA_UNAVAILABLE' : (error.code || 'KEYFRAME_CANDIDATE_QA_FAILED'),
+    };
+    storage.saveOutput(taskId, 'keyframes', keyframes);
+    storage.saveStage(taskId, 'keyframes', {
+      status: 'partial',
+      output_summary: `shot ${index + 1} existing candidate QA unavailable`,
+      diagnostics: { candidate_id: candidate.id, qa_retry_only: true, media_generated: false, error: qa.error, error_code: error.code || '' },
+    });
+    storage.updateTask(taskId, { status: 'working', stage: 'keyframes_partial', error: '', error_code: '', retryable: true });
+    return { status: unavailable ? 'qa_unavailable' : 'rejected', qa, keyframe: keyframes[index], keyframes, media_generated: false, retryable: unavailable };
+  }
 }
 
 function subtitleTextFromShot(shot = {}) {
@@ -2604,6 +2824,7 @@ module.exports = {
   verifyPersonContract,
   verifyProductContract,
   selectKeyframeCandidate,
+  retryKeyframeCandidateQa,
   composeStage,
   runFull,
   publicTaskBundle,

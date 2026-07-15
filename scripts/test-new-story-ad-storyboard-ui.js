@@ -18,6 +18,7 @@ const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8
   'data-nsa-shot-regenerate',
   'data-nsa-candidate-preview',
   'data-nsa-candidate-use',
+  'data-nsa-candidate-review',
 ].forEach(token => assert(ui.includes(token), `missing storyboard action hook: ${token}`));
 
 assert(ui.includes('dh-nsa-frame-summary'), 'compact approval summary must render by default');
@@ -30,6 +31,9 @@ assert(ui.includes("frame.contract_outdated ? '需重新生成' : '需重新验�
 assert(ui.includes('dh-nsa-frame-status-note'), 'status reason and regeneration action must be separate from the short badge');
 assert(ui.includes('镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'), 'changed-shot notice must explain why regeneration is required');
 assert(ui.includes('确认沿用旧版'), 'retained QA2 candidates must offer an explicit confirmation action');
+assert(ui.includes('审核服务异常'), 'QA infrastructure failures must be distinguished from visual rejection');
+assert(ui.includes('重新验证此图'), 'QA infrastructure failures must support retrying the existing image');
+assert(ui.includes('没有重新生成图片'), 'QA-only retry must explain that media generation was not invoked');
 assert(ui.includes('当前版本通过 ${kf.fresh_pass || 0}/${kf.total}'), 'status summary must use fresh pass instead of URL count');
 assert(ui.includes('保留旧版 ${kf.retained_previous}'), 'status summary must expose retained old frames');
 assert(ui.includes('生成失败 ${kf.failed}'), 'status summary must expose hard failures');
