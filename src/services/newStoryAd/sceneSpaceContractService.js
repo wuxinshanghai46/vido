@@ -242,19 +242,32 @@ async function analyzeSceneViews(options = {}) {
 }
 
 function normalizeKeyframeQa(input = {}) {
+  const modelPass = input.pass === true;
+  const modelReasons = stringList(input.mismatch_reasons || [], 16, 300);
   const qa = {
-    pass: input.pass === true,
+    pass: false,
+    model_pass: modelPass,
     status: cleanText(input.status || '', 40),
     scene_consistency_score: score(firstScore(input, ['scene_consistency_score', 'scene_continuity', 'scene_consistency'])),
     anchor_consistency_score: score(firstScore(input, ['anchor_consistency_score', 'spatial_anchor_consistency', 'anchor_consistency'])),
     camera_match_score: score(firstScore(input, ['camera_match_score', 'camera_match', 'view_match'])),
     material_match_score: score(firstScore(input, ['material_match_score', 'material_fidelity', 'material_match'])),
-    mismatch_reasons: stringList(input.mismatch_reasons || [], 16, 300),
+    mismatch_reasons: modelReasons,
+    review_notes: [],
     forbidden_new_elements: stringList(input.forbidden_new_elements || [], 16, 220),
   };
-  qa.pass = qa.pass && qa.scene_consistency_score >= 0.72
+  // The numeric contract is the authoritative decision. Vision providers
+  // sometimes return pass=false for subjective composition notes even while
+  // all four scene-continuity scores satisfy the published thresholds. Those
+  // notes are useful for review but must not become a hidden fifth veto.
+  qa.pass = qa.scene_consistency_score >= 0.72
     && qa.anchor_consistency_score >= 0.65 && qa.camera_match_score >= 0.65
     && qa.material_match_score >= 0.7 && qa.forbidden_new_elements.length === 0;
+  if (qa.pass && modelReasons.length) {
+    qa.review_notes = modelReasons;
+    qa.mismatch_reasons = [];
+  }
+  qa.decision_basis = 'numeric_scene_contract';
   qa.status = qa.pass ? 'passed' : 'failed';
   return qa;
 }
@@ -328,6 +341,8 @@ async function reviewKeyframe(options = {}) {
       'You are a strict scene-continuity visual QA inspector for general-purpose commercial storyboards.',
       'Image 1 is the required empty scene/camera reference. Image 2 is the generated keyframe.',
       'Judge spatial identity, fixed anchors, camera intent, material family and newly invented architecture.',
+      'This stage evaluates scene continuity only. Do not judge subjective aesthetics, symmetry, balance, actor placement, copy layout, or ordinary foreground occlusion here. A required actor covering part of a surface does not break that surface topology.',
+      'Only treat framing or occlusion as a scene failure when it contradicts the selected camera contract or makes every required scene anchor impossible to identify.',
       'People and the advertised subject may be added when required by the shot.',
       'A person named or described in the shot contract is authorized even though the empty scene reference contains no person. Never reject that required actor merely for being absent from the empty reference.',
       'The empty scene reference may contain capture-only negatives such as no people or no brand copy. For the final keyframe, explicit current-shot people, products, copy and logos override those capture-only restrictions.',
@@ -344,6 +359,7 @@ async function reviewKeyframe(options = {}) {
       + 'scene_consistency_score, anchor_consistency_score, camera_match_score and material_match_score '
       + 'as REQUIRED EVALUATED numbers from 0 to 1, plus mismatch_reasons and forbidden_new_elements string arrays. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
+      + 'The numeric thresholds are authoritative: set pass=false only when at least one evaluated score is below its threshold or forbidden_new_elements is non-empty. Put non-blocking composition observations in mismatch_reasons without lowering pass. '
       + 'Fail for another space, incompatible required-anchor movement, changed dominant material structure, '
       + 'selected-camera contradiction, or unsupported new architecture.'
       + '\nUse Simplified Chinese for every reason string. Do not return English reason text.',

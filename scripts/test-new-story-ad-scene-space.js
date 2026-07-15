@@ -160,6 +160,31 @@ async function main() {
   assert.equal(rejectedQa.pass, false, '低于阈值的场景 QA 必须真实失败');
   assert.equal(rejectedQa.status, 'failed');
 
+  modelGateway.generateVision = async () => ({
+    text: JSON.stringify({
+      pass: false,
+      scene_consistency_score: 0.85,
+      anchor_consistency_score: 0.7,
+      camera_match_score: 0.9,
+      material_match_score: 0.95,
+      mismatch_reasons: ['非阻断的主体构图观察'],
+      forbidden_new_elements: [],
+    }),
+    used_model: 'mock/inconsistent-pass-boolean',
+  });
+  const scoreQualifiedQa = await sceneSpace.reviewKeyframe({
+    taskId,
+    sceneReferenceUrl: 'https://test.invalid/reference.png',
+    generatedUrl: 'https://test.invalid/generated.png',
+    contract: asset.scene_contract,
+    shot: bound[0],
+  });
+  modelGateway.generateVision = originalVision;
+  assert.equal(scoreQualifiedQa.pass, true, '高于全部公开阈值且无禁入元素时，模型矛盾的 pass=false 不得形成隐藏否决');
+  assert.equal(scoreQualifiedQa.status, 'passed');
+  assert.deepEqual(scoreQualifiedQa.mismatch_reasons, []);
+  assert.deepEqual(scoreQualifiedQa.review_notes, ['非阻断的主体构图观察']);
+
   const invalidated = [];
   revision.invalidateOutputs({ deleteOutput: (_taskId, kind) => invalidated.push(kind) }, taskId, 'person');
   assert(!invalidated.includes('scene_assets'));
