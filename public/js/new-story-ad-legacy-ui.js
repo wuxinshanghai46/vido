@@ -2739,7 +2739,7 @@
             </div>
           </div>
           <div class="dh-nsa-frame-actions">
-            <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-shot-edit="${i}">编辑</button>
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-edit="${i}">编辑</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
             ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">\u67e5\u770b\u5927\u56fe</button>` : ''}
