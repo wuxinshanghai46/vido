@@ -11,6 +11,28 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 
+const BAD_PREVIEW_VOICES_FILE = path.join(__dirname, '../../outputs/avatar/bad_preview_voices.json');
+
+function readBadPreviewVoices() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(BAD_PREVIEW_VOICES_FILE, 'utf8'));
+    return new Set(Array.isArray(rows) ? rows.filter(Boolean).map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function markBadPreviewVoices(voiceIds = []) {
+  const bad = readBadPreviewVoices();
+  voiceIds.filter(Boolean).map(String).forEach(id => bad.add(id));
+  fs.mkdirSync(path.dirname(BAD_PREVIEW_VOICES_FILE), { recursive: true });
+  fs.writeFileSync(BAD_PREVIEW_VOICES_FILE, JSON.stringify([...bad], null, 2), 'utf8');
+}
+
+function isTtsBillingError(error) {
+  return /\b429\b|余额不足|资源包|请充值|insufficient (?:balance|quota|credit)|quota exceeded/i.test(String(error?.message || error || ''));
+}
+
 /**
  * 生成语音文件
  * @param {string} text - 要合成的文字
@@ -47,9 +69,20 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   if (voiceProviderForId(voiceId) === 'zhipu') {
     const apiKey = _getTTSKey('zhipu');
     if (!apiKey) throw new Error(`所选智谱音色 ${voiceId} 当前未配置可用的 TTS API Key`);
-    const result = await generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey });
-    if (!result) throw new Error(`智谱音色 ${voiceId} 合成返回空结果`);
-    return _postProcessAudio(result);
+    try {
+      const result = await generateWithZhipu(text, outputPath, { gender, speed, voiceId, apiKey });
+      if (!result) throw new Error(`智谱音色 ${voiceId} 合成返回空结果`);
+      return _postProcessAudio(result);
+    } catch (error) {
+      if (isTtsBillingError(error)) {
+        markBadPreviewVoices([...ZHIPU_PUBLIC_VOICE_IDS]);
+        const unavailable = new Error('智谱 TTS 余额或资源包不足，当前智谱音色已暂停；请改选阿里云音色后重试，或先为智谱账号充值');
+        unavailable.code = 'TTS_PROVIDER_BILLING';
+        unavailable.retryable = true;
+        throw unavailable;
+      }
+      throw error;
+    }
   }
 
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
@@ -1350,4 +1383,13 @@ async function testProviderSynthesis(providerId, outputPath) {
   return await fn();
 }
 
-module.exports = { generateSpeech, getAvailableVoices, uploadVoiceToFishAudio, testProviderSynthesis, voiceProviderForId };
+module.exports = {
+  generateSpeech,
+  getAvailableVoices,
+  uploadVoiceToFishAudio,
+  testProviderSynthesis,
+  voiceProviderForId,
+  isTtsBillingError,
+  readBadPreviewVoices,
+  markBadPreviewVoices,
+};

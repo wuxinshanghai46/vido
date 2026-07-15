@@ -8,6 +8,7 @@ const { buildAssSubtitleFile } = require('../src/services/effectsService');
 
 assert.strictEqual(ttsService.voiceProviderForId('tongtong'), 'zhipu', '智谱音色不得误送到阿里 CosyVoice');
 assert.strictEqual(ttsService.voiceProviderForId('longxiaochun_v3'), 'aliyun-tts', '阿里音色必须保留 CosyVoice 路由');
+assert.strictEqual(ttsService.isTtsBillingError(new Error('429 余额不足或无可用资源包,请充值。')), true, '供应商余额错误必须被识别并隔离');
 
 const uiPath = path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js');
 const uiSource = fs.readFileSync(uiPath, 'utf8');
