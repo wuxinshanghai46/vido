@@ -42,7 +42,32 @@ async function testDependencyAwareParallelism() {
   assert.strictEqual(peak, 2, '两个独立连续性分支应并行执行');
   assert(events.indexOf('start:1') > events.indexOf('end:0'), '子镜头必须等父镜头验收后启动');
   assert(events.indexOf('start:3') > events.indexOf('end:2'), '另一分支也必须遵守依赖');
-  assert.deepStrictEqual(schedule.waves.map(wave => wave.indexes), [[0, 2], [1, 3]]);
+  assert.deepStrictEqual(schedule.waves[0].indexes, [0, 2]);
+  assert(schedule.waves.slice(1).every(wave => wave.indexes.length === 1), '依赖完成后应按空闲槽位滚动补位');
+}
+
+async function testRollingPoolRefillsFreedSlot() {
+  const events = [];
+  let active = 0;
+  let peak = 0;
+  const schedule = await scheduler.runSchedule({
+    indexes: [0, 1, 2, 3],
+    concurrency: 2,
+    worker: async index => {
+      events.push(`start:${index}`);
+      active += 1;
+      peak = Math.max(peak, active);
+      await delay(index === 1 ? 55 : 8);
+      active -= 1;
+      events.push(`end:${index}`);
+      return { index, usable: true };
+    },
+  });
+  assert.strictEqual(peak, 2);
+  assert(events.indexOf('start:2') > events.indexOf('end:0'), '空闲槽位应由下一镜补入');
+  assert(events.indexOf('start:2') < events.indexOf('end:1'), '不得等待同批慢任务完成后再补位');
+  assert(events.indexOf('start:3') < events.indexOf('end:1'), '连续空闲槽位应持续滚动补位');
+  assert(schedule.waves.some(wave => wave.kind === 'rolling'), '调度记录应标记滚动补位');
 }
 
 async function testFailureIsolationAndBlocking() {
@@ -317,6 +342,7 @@ function testConfigurationAndContracts() {
 async function main() {
   testConfigurationAndContracts();
   await testDependencyAwareParallelism();
+  await testRollingPoolRefillsFreedSlot();
   await testFailureIsolationAndBlocking();
   await testThrottleDowngradeAndSingleRetry();
   await testCancellationStopsNewWaves();

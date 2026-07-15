@@ -46,105 +46,146 @@ async function runSchedule({
   let effectiveConcurrency = configuredConcurrency;
   const results = [];
   const waves = [];
+  const active = new Map();
+  let fatalError = null;
 
-  async function runWave(wave, kind = 'parallel') {
-    const waveStartedMs = Date.now();
-    const frozenSnapshot = snapshot();
-    const waveMeta = {
-      kind,
-      indexes: wave.slice(),
-      concurrency: effectiveConcurrency,
-      wave_number: waves.length + 1,
-      started_at: new Date(waveStartedMs).toISOString(),
-    };
-    if (typeof onWaveStart === 'function') await onWaveStart(waveMeta);
-    const settled = await Promise.allSettled(wave.map(index => worker(index, {
-      ...waveMeta,
-      dependency_index: dependencyOf(index),
-      throttle_retry: (throttleRetries.get(index) || 0) > 0,
-      snapshot: frozenSnapshot,
-    })));
-    const rejected = settled.find(item => item.status === 'rejected');
-    const values = settled.map((item, position) => item.status === 'fulfilled' ? item.value : ({
-      index: wave[position], failed: true, usable: false, fatal: true,
-      error: String(item.reason?.message || item.reason || 'worker rejected'),
-      error_code: item.reason?.code || 'WORKER_REJECTED',
-    }));
-    values.forEach((value, position) => {
-      const index = Number(value?.index);
-      if (settled[position]?.status === 'rejected') {
-        if (Number.isInteger(index)) {
-          completed.add(index);
-          resultByIndex.set(index, value);
-        }
-        results.push(value);
-        return;
-      }
-      if (value?.retry_required === true && Number.isInteger(index) && (throttleRetries.get(index) || 0) < 1) {
-        throttleRetries.set(index, 1);
-        pending.push(index);
-        effectiveConcurrency = 1;
-        return;
-      }
-      if (Number.isInteger(index)) {
-        completed.add(index);
-        resultByIndex.set(index, value);
-      }
-      results.push(value);
-    });
-    const waveFinishedMs = Date.now();
-    const completedWave = {
-      ...waveMeta,
-      results: values,
-      wave_size: wave.length,
-      actual_concurrency: wave.length,
-      finished_at: new Date(waveFinishedMs).toISOString(),
-      duration_ms: waveFinishedMs - waveStartedMs,
-    };
-    waves.push(completedWave);
-    if (values.some(value => value?.throttled === true || value?.force_sequential === true)) {
-      effectiveConcurrency = 1;
-    }
-    if (typeof onWaveComplete === 'function') {
-      await onWaveComplete({ ...completedWave, effective_concurrency: effectiveConcurrency });
-    }
-    if (rejected) {
-      rejected.reason.partial_schedule = { results: results.slice(), waves: waves.slice() };
-      throw rejected.reason;
+  function removePending(indexesToRemove) {
+    const removing = new Set(indexesToRemove);
+    for (let i = pending.length - 1; i >= 0; i -= 1) {
+      if (removing.has(pending[i])) pending.splice(i, 1);
     }
   }
 
-  while (pending.length) {
-    const blocked = [];
-    for (const index of pending.slice()) {
-      const dependency = dependencyOf(index);
-      if (!Number.isInteger(dependency)) continue;
-      if (targetSet.has(dependency)) {
-        const parent = resultByIndex.get(dependency);
-        if (parent && parent.usable !== true) blocked.push({ index, dependency, reason: 'dependency_failed' });
-      } else if (!externalDependencyUsable(dependency)) {
-        blocked.push({ index, dependency, reason: 'dependency_unavailable' });
-      }
-    }
-    if (blocked.length) {
-      const blockedSet = new Set(blocked.map(item => item.index));
-      for (let i = pending.length - 1; i >= 0; i -= 1) {
-        if (blockedSet.has(pending[i])) pending.splice(i, 1);
-      }
-      blocked.forEach(item => {
-        const value = { ...item, blocked: true, failed: true, usable: false };
-        completed.add(item.index);
-        resultByIndex.set(item.index, value);
-        results.push(value);
-      });
-      waves.push({ kind: 'blocked', indexes: blocked.map(item => item.index), concurrency: 0, results: blocked });
-      continue;
-    }
-    const ready = pending.filter(index => {
+  function readyIndexes() {
+    return pending.filter(index => {
       const dependency = dependencyOf(index);
       return !Number.isInteger(dependency) || !targetSet.has(dependency) || completed.has(dependency);
     });
-    if (!ready.length) {
+  }
+
+  function blockFailedDependencies() {
+    let blockedAny = false;
+    while (true) {
+      const blocked = [];
+      for (const index of pending.slice()) {
+        const dependency = dependencyOf(index);
+        if (!Number.isInteger(dependency)) continue;
+        if (targetSet.has(dependency)) {
+          const parent = resultByIndex.get(dependency);
+          if (parent && parent.usable !== true) blocked.push({ index, dependency, reason: 'dependency_failed' });
+        } else if (!externalDependencyUsable(dependency)) {
+          blocked.push({ index, dependency, reason: 'dependency_unavailable' });
+        }
+      }
+      if (!blocked.length) break;
+      blockedAny = true;
+      removePending(blocked.map(item => item.index));
+      const values = blocked.map(item => ({ ...item, blocked: true, failed: true, usable: false }));
+      values.forEach(value => {
+        completed.add(value.index);
+        resultByIndex.set(value.index, value);
+        results.push(value);
+      });
+      waves.push({
+        kind: 'blocked', indexes: values.map(item => item.index), concurrency: 0,
+        wave_size: values.length, actual_concurrency: 0, results: values,
+      });
+    }
+    return blockedAny;
+  }
+
+  async function startReadyWork() {
+    if (fatalError) return 0;
+    const slots = Math.max(0, effectiveConcurrency - active.size);
+    if (!slots) return 0;
+    const batch = readyIndexes().slice(0, slots);
+    if (!batch.length) return 0;
+    removePending(batch);
+    const startedMs = Date.now();
+    const activeBefore = active.size;
+    const frozenSnapshot = snapshot();
+    const kind = effectiveConcurrency <= 1
+      ? 'sequential'
+      : (batch.length > 1 ? 'parallel' : (activeBefore > 0 ? 'rolling' : 'sequential'));
+    const waveMeta = {
+      kind,
+      indexes: batch.slice(),
+      concurrency: effectiveConcurrency,
+      wave_number: waves.length + 1,
+      started_at: new Date(startedMs).toISOString(),
+    };
+    const waveRecord = {
+      ...waveMeta,
+      wave_size: batch.length,
+      actual_concurrency: Math.min(effectiveConcurrency, activeBefore + batch.length),
+      results: [],
+    };
+    const waveState = { record: waveRecord, remaining: new Set(batch), values: new Map(), startedMs };
+    waves.push(waveRecord);
+    if (typeof onWaveStart === 'function') await onWaveStart(waveMeta);
+    batch.forEach(index => {
+      const promise = Promise.resolve()
+        .then(() => worker(index, {
+          ...waveMeta,
+          dependency_index: dependencyOf(index),
+          throttle_retry: (throttleRetries.get(index) || 0) > 0,
+          snapshot: frozenSnapshot,
+        }))
+        .then(
+          value => ({ index, value, rejected: false, waveState }),
+          reason => ({ index, reason, rejected: true, waveState }),
+        );
+      active.set(index, promise);
+    });
+    return batch.length;
+  }
+
+  async function finishWork(envelope) {
+    const { index, rejected, reason, waveState } = envelope;
+    active.delete(index);
+    const value = rejected ? {
+      index, failed: true, usable: false, fatal: true,
+      error: String(reason?.message || reason || 'worker rejected'),
+      error_code: reason?.code || 'WORKER_REJECTED',
+    } : envelope.value;
+    waveState.remaining.delete(index);
+    waveState.values.set(index, value);
+
+    if (rejected) {
+      completed.add(index);
+      resultByIndex.set(index, value);
+      results.push(value);
+      fatalError ||= reason;
+    } else if (value?.retry_required === true && Number.isInteger(Number(value.index)) && (throttleRetries.get(index) || 0) < 1) {
+      throttleRetries.set(index, 1);
+      pending.push(index);
+      effectiveConcurrency = 1;
+    } else {
+      completed.add(index);
+      resultByIndex.set(index, value);
+      results.push(value);
+    }
+
+    if (value?.throttled === true || value?.force_sequential === true) effectiveConcurrency = 1;
+    if (!waveState.remaining.size) {
+      const finishedMs = Date.now();
+      waveState.record.results = waveState.record.indexes.map(item => waveState.values.get(item));
+      waveState.record.finished_at = new Date(finishedMs).toISOString();
+      waveState.record.duration_ms = finishedMs - waveState.startedMs;
+      if (typeof onWaveComplete === 'function') {
+        await onWaveComplete({ ...waveState.record, effective_concurrency: effectiveConcurrency });
+      }
+    }
+  }
+
+  while (pending.length || active.size) {
+    blockFailedDependencies();
+    if (!fatalError) await startReadyWork();
+
+    if (!active.size) {
+      if (fatalError) break;
+      if (!pending.length) break;
+      if (readyIndexes().length) continue;
       // A malformed/cyclic plan must fail closed instead of silently generating
       // without its continuity reference.
       const unresolved = pending.splice(0).map(index => ({
@@ -160,15 +201,24 @@ async function runSchedule({
         resultByIndex.set(value.index, value);
         results.push(value);
       });
-      waves.push({ kind: 'blocked', indexes: unresolved.map(item => item.index), concurrency: 0, results: unresolved });
+      waves.push({
+        kind: 'blocked', indexes: unresolved.map(item => item.index), concurrency: 0,
+        wave_size: unresolved.length, actual_concurrency: 0, results: unresolved,
+      });
       break;
     }
-    const wave = ready.slice(0, Math.max(1, effectiveConcurrency));
-    const waveSet = new Set(wave);
-    for (let i = pending.length - 1; i >= 0; i -= 1) {
-      if (waveSet.has(pending[i])) pending.splice(i, 1);
+
+    const envelope = await Promise.race(active.values());
+    try {
+      await finishWork(envelope);
+    } catch (error) {
+      fatalError ||= error;
     }
-    await runWave(wave, effectiveConcurrency > 1 && wave.length > 1 ? 'parallel' : 'sequential');
+  }
+
+  if (fatalError) {
+    fatalError.partial_schedule = { results: results.slice(), waves: waves.slice() };
+    throw fatalError;
   }
   return {
     results,
