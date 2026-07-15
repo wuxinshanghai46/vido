@@ -1510,6 +1510,12 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-frame-settings-grid > .dh-nsa-continuity-editor,
 .dh-nsa-frame-settings-grid > .dh-nsa-frame-contract { grid-column: 1 / -1; }
 .dh-nsa-frame-settings-grid textarea.dh-nsa-visual-editor { min-height: 132px; max-height: 280px; }
+.dh-nsa-shot-edit-modal { padding: 24px; align-items: center; justify-content: center; z-index: 1200; }
+.dh-nsa-shot-edit-modal-body { width: min(1040px, calc(100vw - 32px)); max-width: 1040px; max-height: min(900px, calc(100vh - 40px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.dh-nsa-shot-edit-scroll { min-height: 0; overflow: auto; padding: 14px 16px 18px; }
+.dh-nsa-shot-edit-scroll .dh-nsa-frame-settings { border: 0; background: transparent; }
+.dh-nsa-shot-edit-scroll .dh-nsa-frame-settings-grid { padding: 0; }
+.dh-nsa-shot-edit-foot { justify-content: flex-end; border-top: 1px solid var(--dh-border); }
 .dh-nsa-frame-contract { padding: 9px 10px; }
 .dh-nsa-frame-contract summary { cursor: pointer; color: var(--dh-primary); font-weight: 900; }
 .dh-nsa-frame-contract p { margin: 8px 0 0; color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }

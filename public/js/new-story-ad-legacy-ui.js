@@ -125,6 +125,8 @@
     busy: false,
     restoringTask: false,
     currentStep: 1,
+    shotEditorIndex: -1,
+    shotEditorSnapshot: null,
   };
 
   let nsaVoicePreviewAudio = null;
@@ -2506,6 +2508,52 @@
     return state.shots[shotIndex] || null;
   }
 
+  function closeShotEditorModal({ keepChanges = false, rerender = true } = {}) {
+    const index = Number(state.shotEditorIndex);
+    if (!keepChanges && index >= 0 && state.shotEditorSnapshot) {
+      state.shots[index] = state.shotEditorSnapshot;
+    }
+    within('.dh-nsa-shot-edit-modal')?.remove();
+    state.shotEditorIndex = -1;
+    state.shotEditorSnapshot = null;
+    if (rerender) renderStoryboard();
+  }
+
+  function openShotEditorModal(index = 0) {
+    const shotIndex = Math.max(0, Number(index) || 0);
+    if (!state.shots[shotIndex]) return;
+    if (within('.dh-nsa-shot-edit-modal')) closeShotEditorModal({ keepChanges: false, rerender: true });
+    const editor = within(`[data-nsa-shot-editor="${shotIndex}"]`);
+    const mount = root();
+    if (!editor || !mount) return;
+    state.shotEditorIndex = shotIndex;
+    state.shotEditorSnapshot = JSON.parse(JSON.stringify(state.shots[shotIndex]));
+    const modal = document.createElement('div');
+    modal.className = 'dh-modal dh-nsa-shot-edit-modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `<div class="dh-modal-body dh-nsa-shot-edit-modal-body" role="dialog" aria-modal="true" aria-labelledby="dhNsaShotEditTitle">
+      <div class="dh-modal-head">
+        <div>
+          <div class="dh-modal-title" id="dhNsaShotEditTitle">编辑第 ${shotIndex + 1} 镜</div>
+          <div class="dh-modal-sub">修改只作用于当前分镜；保存后重新生成本镜才会应用到新画面。</div>
+        </div>
+        <button class="dh-modal-close-btn" type="button" data-nsa-shot-edit-close aria-label="关闭编辑弹窗" title="关闭">×</button>
+      </div>
+      <div class="dh-nsa-shot-edit-scroll" data-nsa-shot-edit-content></div>
+      <div class="dh-modal-foot dh-nsa-shot-edit-foot">
+        <button type="button" class="dh-btn dh-btn-ghost" data-nsa-shot-edit-close>取消</button>
+        <button type="button" class="dh-btn dh-btn-primary" data-nsa-shot-save="${shotIndex}">保存修改</button>
+      </div>
+    </div>`;
+    editor.hidden = false;
+    modal.querySelector('[data-nsa-shot-edit-content]')?.appendChild(editor);
+    modal.addEventListener('click', event => {
+      if (event.target === modal) closeShotEditorModal({ keepChanges: false, rerender: true });
+    });
+    mount.appendChild(modal);
+    modal.querySelector('textarea, input, select')?.focus();
+  }
+
   function renderStoryboard() {
     const host = within('#dhNsaAdFrameHost');
     const guard = within('#dhNsaAdCommercialGuard');
@@ -2622,8 +2670,7 @@
           </div>
           ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>${escapeHtml(window.NewStoryAdKeyframes?.isQaInfrastructureError?.(frame.regeneration_error, frame.regeneration_error_code) ? '本轮视觉审核服务异常，当前仍显示上一版画面。' : '新版本未通过，当前仍显示上一版画面。')}</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error, frame.regeneration_error_code) : frame.regeneration_error)}</p>` : ''}
           ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。', frame.error_code) : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
-          <details class="dh-nsa-frame-settings">
-            <summary>编辑镜头信息与高级设置</summary>
+          <div class="dh-nsa-frame-settings" data-nsa-shot-editor="${i}" hidden>
             <div class="dh-nsa-frame-settings-grid">
               ${window.NewStoryAdStoryboard?.bindingHtml ? window.NewStoryAdStoryboard.bindingHtml({ shot, index: i, sceneAssets: state.sceneAssets || [], escapeHtml }) : ''}
               <label class="dh-nsa-visual-field">
@@ -2690,9 +2737,9 @@
               ${contract.subject_strategy ? `<details class="dh-nsa-frame-contract"><summary>查看生成约束</summary><p>${escapeHtml(contract.subject_strategy)}</p></details>` : ''}
               ${shot._prompt_preview ? `<details class="dh-nsa-prompt-preview" open><summary>最终生成提示词（仅预览，未生成媒体）</summary><b>关键帧提示词</b><pre>${escapeHtml(shot._prompt_preview.keyframe_prompt || '')}</pre><b>视频动作提示词</b><pre>${escapeHtml(shot._prompt_preview.motion_prompt || '')}</pre></details>` : ''}
             </div>
-          </details>
+          </div>
           <div class="dh-nsa-frame-actions">
-            <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
+            <button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-shot-edit="${i}">编辑</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
             ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">\u67e5\u770b\u5927\u56fe</button>` : ''}
@@ -4620,6 +4667,20 @@
         else toast(`\u7b2c ${index + 1} \u955c\u6682\u65e0\u53ef\u9884\u89c8\u56fe\u7247`, 'info');
         return;
       }
+      const shotEdit = target.closest('[data-nsa-shot-edit]');
+      if (shotEdit && host.contains(shotEdit)) {
+        e.preventDefault();
+        e.stopPropagation();
+        openShotEditorModal(Number(shotEdit.dataset.nsaShotEdit || 0));
+        return;
+      }
+      const shotEditClose = target.closest('[data-nsa-shot-edit-close]');
+      if (shotEditClose && host.contains(shotEditClose)) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeShotEditorModal({ keepChanges: false, rerender: true });
+        return;
+      }
       const shotSave = target.closest('[data-nsa-shot-save]');
       if (shotSave && host.contains(shotSave)) {
         e.preventDefault();
@@ -4630,6 +4691,7 @@
         try {
           const id = await ensureTask();
           await saveStoryboardEdits(id);
+          closeShotEditorModal({ keepChanges: true, rerender: false });
           renderAll();
           toast(`\u7b2c ${index + 1} \u955c\u5df2\u4fdd\u5b58`, 'success');
         } catch (err) {
